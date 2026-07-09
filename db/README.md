@@ -1,0 +1,1 @@
+-- Coloca aquí crewhub-esquema-supabase.sql (el esquema completo de diseño)
