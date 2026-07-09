@@ -22,10 +22,12 @@ create table perfiles (
 );
 
 -- Crear perfil automáticamente al registrarse con Google
-create or replace function crear_perfil()
-returns trigger language plpgsql security definer as $$
+create or replace function public.crear_perfil()
+returns trigger language plpgsql security definer
+set search_path = public
+as $$
 begin
-  insert into perfiles (id, nombre, avatar_url)
+  insert into public.perfiles (id, nombre, avatar_url)
   values (new.id,
           coalesce(new.raw_user_meta_data->>'full_name', new.email),
           new.raw_user_meta_data->>'avatar_url');
@@ -517,18 +519,22 @@ create index idx_actividad_reciente on actividad(creado_en desc);
 -- frontend olvide registrar el evento, la base lo escribe sola.
 
 -- (a) Todo INSERT deja su evento 'creado'
-create or replace function registrar_evento_creacion()
-returns trigger language plpgsql security definer as $$
+create or replace function public.registrar_evento_creacion()
+returns trigger language plpgsql security definer
+set search_path = public
+as $$
 begin
-  insert into actividad (entidad_tipo, entidad_id, actor_id, tipo, detalle)
+  insert into public.actividad (entidad_tipo, entidad_id, actor_id, tipo, detalle)
   values (tg_table_name, new.id, auth.uid(), 'creado', '{}');
   return new;
 end $$;
 
 -- (b) Todo UPDATE que cambie un campo de estado deja su evento,
 --     con el valor anterior y el nuevo ("de" → "a").
-create or replace function registrar_evento_estado()
-returns trigger language plpgsql security definer as $$
+create or replace function public.registrar_evento_estado()
+returns trigger language plpgsql security definer
+set search_path = public
+as $$
 declare
   k     text;
   claves text[] := array['estado','etapa','estado_actividad','prioridad','responsable'];
@@ -537,7 +543,7 @@ declare
 begin
   foreach k in array claves loop
     if (vold ? k) and (vnew->>k) is distinct from (vold->>k) then
-      insert into actividad (entidad_tipo, entidad_id, actor_id, tipo, detalle)
+      insert into public.actividad (entidad_tipo, entidad_id, actor_id, tipo, detalle)
       values (tg_table_name, new.id, auth.uid(), 'estado',
               jsonb_build_object('campo', k, 'de', vold->>k, 'a', vnew->>k));
     end if;

@@ -3,6 +3,7 @@ import Composer from "@/components/Composer";
 import Avatar from "@/components/Avatar";
 import LogoutButton from "@/components/LogoutButton";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 const TIPO_META: Record<string, [string, string]> = {
   aviso: ["📢 Aviso", "#a78bfa"], tarea: ["✅ Tarea", "#22c55e"],
@@ -18,9 +19,10 @@ const ESTADOS: Record<string, string> = {
 export default async function Feed() {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
 
   const { data: perfil } = await supabase
-    .from("perfiles").select("nombre,color,rol").eq("id", user!.id).single();
+    .from("perfiles").select("nombre,color,rol").eq("id", user.id).single();
 
   const { data: posts } = await supabase
     .from("publicaciones")

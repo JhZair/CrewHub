@@ -1,5 +1,5 @@
 "use client";
-import { createClient } from "@/lib/supabase/client";
+import { crearPublicacion } from "@/app/actions";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -18,16 +18,9 @@ export default function Composer({ userId }: { userId: string }) {
   const publicar = async () => {
     if (!titulo.trim() || enviando) return;
     setEnviando(true);
-    const supabase = createClient();
-    const { error } = await supabase.from("publicaciones").insert({
-      autor_id: userId,
-      tipo,
-      titulo: titulo.trim(),
-      cuerpo: cuerpo.trim() || null,
-      estado: tipo === "problema" ? "abierta" : "en_progreso",
-    });
+    const res = await crearPublicacion(tipo, titulo.trim(), cuerpo.trim());
     setEnviando(false);
-    if (error) { alert("Error al publicar: " + error.message); return; }
+    if (res?.error) { alert("Error al publicar: " + res.error); return; }
     setTitulo(""); setCuerpo("");
     router.refresh();
   };

@@ -1,15 +1,14 @@
 "use client";
-import { createClient } from "@/lib/supabase/client";
+import { comentar, cambiarEstado } from "@/app/actions";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 export function EstadoSelect({ pubId, estado }: { pubId: string; estado: string }) {
   const router = useRouter();
   const cambiar = async (nuevo: string) => {
-    const supabase = createClient();
     // El trigger de la base registra el evento en `actividad` automáticamente
-    const { error } = await supabase.from("publicaciones").update({ estado: nuevo }).eq("id", pubId);
-    if (error) alert(error.message); else router.refresh();
+    const res = await cambiarEstado(pubId, nuevo);
+    if (res?.error) alert(res.error); else router.refresh();
   };
   return (
     <select defaultValue={estado} onChange={e => cambiar(e.target.value)}>
@@ -29,19 +28,9 @@ export function CommentBox({ pubId, userId }: { pubId: string; userId: string })
   const enviar = async () => {
     if (!txt.trim() || enviando) return;
     setEnviando(true);
-    const supabase = createClient();
-    const { data: com, error } = await supabase
-      .from("comentarios")
-      .insert({ publicacion_id: pubId, autor_id: userId, cuerpo: txt.trim() })
-      .select("id").single();
-    if (!error && com) {
-      await supabase.from("actividad").insert({
-        entidad_tipo: "publicacion", entidad_id: pubId, actor_id: userId,
-        tipo: "comentario", detalle: { comentario_id: com.id },
-      });
-    }
+    const res = await comentar(pubId, txt.trim());
     setEnviando(false);
-    if (error) { alert(error.message); return; }
+    if (res?.error) { alert(res.error); return; }
     setTxt("");
     router.refresh();
   };

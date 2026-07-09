@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import Avatar from "@/components/Avatar";
 import { EstadoSelect, CommentBox } from "@/components/CaseActions";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 const TIPO_META: Record<string, [string, string]> = {
   aviso: ["📢 Aviso", "#a78bfa"], tarea: ["✅ Tarea", "#22c55e"],
@@ -21,6 +21,7 @@ const fecha = (d: string) =>
 export default async function Caso({ params }: { params: { id: string } }) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
 
   const { data: p } = await supabase
     .from("publicaciones")
