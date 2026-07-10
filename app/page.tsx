@@ -34,6 +34,21 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
   const { data: perfil } = await supabase
     .from("perfiles").select("nombre,color,rol").eq("id", user.id).single();
 
+  // "Mis asuntos" incluye también publicaciones vinculadas a MI PERSONA
+  // (gracias al enlace personas.usuario_id ↔ perfil)
+  let misVinculadas: string[] = [];
+  if (v === "mios") {
+    const { data: yo } = await supabase.from("personas")
+      .select("id").eq("usuario_id", user.id).maybeSingle();
+    if (yo) {
+      const { data: vs } = await supabase.from("publicacion_vinculos")
+        .select("publicacion_id")
+        .eq("entidad_tipo", "persona").eq("entidad_id", yo.id)
+        .limit(300);
+      misVinculadas = (vs || []).map((x: any) => x.publicacion_id);
+    }
+  }
+
 
   // Catálogos (pequeños: una consulta cada uno, en paralelo)
   const [proy, pers, conv, equi, luga, etiq, perfs, postsQ] = await Promise.all([
@@ -55,7 +70,11 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
         `)
         .order("creado_en", { ascending: false })
         .limit(50);
-      if (v === "mios") q = q.or(`autor_id.eq.${user.id},responsable.eq.${user.id}`);
+      if (v === "mios") {
+        const cond = [`autor_id.eq.${user.id}`, `responsable.eq.${user.id}`];
+        if (misVinculadas.length) cond.push(`id.in.(${misVinculadas.join(",")})`);
+        q = q.or(cond.join(","));
+      }
       else if (v) q = q.eq("tipo", v);
       return q;
     })(),
