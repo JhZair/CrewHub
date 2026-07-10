@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Avatar from "@/components/Avatar";
 import { EstadoSelect, CommentBox, RespSelect } from "@/components/CaseActions";
+import Realtime from "@/components/Realtime";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -109,6 +110,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
 
   return (
     <div className="shell">
+      <Realtime tablas={["actividad", "comentarios", "publicaciones"]} />
       <div className="topbar">
         <Link href="/" className="btn btn-ghost">← Volver al feed</Link>
         <span className="spacer" />

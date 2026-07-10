@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import Composer, { type Catalogos } from "@/components/Composer";
+import Realtime from "@/components/Realtime";
 import Avatar from "@/components/Avatar";
 import LogoutButton from "@/components/LogoutButton";
 import Link from "next/link";
@@ -99,6 +100,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
 
   return (
     <div className="shell">
+      <Realtime tablas={["publicaciones", "comentarios", "publicacion_vinculos"]} />
       <div className="topbar">
         <div className="logo"><span className="ic">⬡</span><span>CrewHub<sup>+</sup></span></div>
         <span className="spacer" />
