@@ -4,14 +4,15 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 
 /* Escucha cambios en las tablas indicadas y refresca la vista.
-   Con esto, cuando Katy publica desde su celular, el feed de John
-   se actualiza solo — sin recargar. */
-export default function Realtime({ tablas }: { tablas: string[] }) {
+   El token viene del servidor (que sí tiene la sesión) para que
+   el canal se autentique y las políticas RLS entreguen eventos. */
+export default function Realtime({ tablas, token }: { tablas: string[]; token?: string }) {
   const router = useRouter();
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const supabase = createClient();
+    if (token) supabase.realtime.setAuth(token);
     const canal = supabase.channel("crewhub-vivo");
     tablas.forEach(t =>
       canal.on(
@@ -23,10 +24,12 @@ export default function Realtime({ tablas }: { tablas: string[] }) {
         }
       )
     );
-    canal.subscribe();
+    canal.subscribe(status => {
+      console.log("[CrewHub tiempo real]", status);
+    });
     return () => { supabase.removeChannel(canal); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [token]);
 
   return null;
 }

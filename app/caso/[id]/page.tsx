@@ -31,6 +31,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+  const { data: { session } } = await supabase.auth.getSession();
 
   const { data: p } = await supabase
     .from("publicaciones")
@@ -93,7 +94,8 @@ export default async function Caso({ params }: { params: { id: string } }) {
   const [tl, tc] = TIPO_META[p.tipo] || TIPO_META.conversacion;
 
   const textoEvento = (e: any) => {
-    const quien = e.actor?.nombre || "Qhaway 🤖";
+    const quien = e.actor?.nombre || "Qhaway";
+    if (e.tipo === "bot") return `Qhaway: "${e.detalle?.mensaje || "evento automático"}"`;
     if (e.tipo === "creado") return `${quien} creó la publicación`;
     if (e.tipo === "estado") {
       const campo = e.detalle?.campo || "estado";
@@ -105,12 +107,12 @@ export default async function Caso({ params }: { params: { id: string } }) {
       const a = ESTADOS_TXT[e.detalle?.a] || e.detalle?.a || "—";
       return `${quien} · ${campo}: ${de} → ${a}`;
     }
-    return `${quien} · ${e.tipo}`;
+    return `${quien} · ${e.detalle?.mensaje || e.tipo}`;
   };
 
   return (
     <div className="shell">
-      <Realtime tablas={["actividad", "comentarios", "publicaciones"]} />
+      <Realtime tablas={["actividad", "comentarios", "publicaciones"]} token={session?.access_token} />
       <div className="topbar">
         <Link href="/" className="btn btn-ghost">← Volver al feed</Link>
         <span className="spacer" />

@@ -31,6 +31,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+  const { data: { session } } = await supabase.auth.getSession();
 
   const { data: perfil } = await supabase
     .from("perfiles").select("nombre,color,rol").eq("id", user.id).single();
@@ -100,7 +101,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
 
   return (
     <div className="shell">
-      <Realtime tablas={["publicaciones", "comentarios", "publicacion_vinculos"]} />
+      <Realtime tablas={["publicaciones", "comentarios", "publicacion_vinculos"]} token={session?.access_token} />
       <div className="topbar">
         <div className="logo"><span className="ic">⬡</span><span>CrewHub<sup>+</sup></span></div>
         <span className="spacer" />
