@@ -15,6 +15,9 @@ export async function GET(request: Request) {
         .split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
       const email = user?.email?.toLowerCase() || "";
       if (allowed.length && !allowed.includes(email)) {
+        // Marca el perfil fantasma como inactivo antes de expulsarlo:
+        // no aparecerá en listas de responsables ni selectores.
+        if (user) await supabase.from("perfiles").update({ activo: false }).eq("id", user.id);
         await supabase.auth.signOut();
         return NextResponse.redirect(`${origin}/login?error=no-autorizado`);
       }

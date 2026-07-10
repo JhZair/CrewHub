@@ -1,7 +1,22 @@
 "use client";
-import { comentar, cambiarEstado } from "@/app/actions";
+import { comentar, cambiarEstado, asignarResponsable } from "@/app/actions";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+
+export function RespSelect({ pubId, actual, perfiles }:
+  { pubId: string; actual: string | null; perfiles: { id: string; nombre: string }[] }) {
+  const router = useRouter();
+  const cambiar = async (v: string) => {
+    const res = await asignarResponsable(pubId, v || null);
+    if (res?.error) alert(res.error); else router.refresh();
+  };
+  return (
+    <select defaultValue={actual || ""} onChange={e => cambiar(e.target.value)}>
+      <option value="">Sin asignar</option>
+      {perfiles.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+    </select>
+  );
+}
 
 export function EstadoSelect({ pubId, estado }: { pubId: string; estado: string }) {
   const router = useRouter();
