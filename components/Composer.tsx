@@ -19,6 +19,7 @@ const GRUPOS_PERSONA: [string, string][] = [
 ];
 export type Catalogos = {
   proyecto: CatalogoItem[];
+  empresa: CatalogoItem[];
   persona: CatalogoItem[];
   convocatoria: CatalogoItem[];
   equipamiento: CatalogoItem[];
@@ -27,8 +28,9 @@ export type Catalogos = {
 };
 
 const ENT_META: Record<string, string> = {
-  proyecto: "📁 Proyecto", persona: "👤 Persona", convocatoria: "📜 Convocatoria",
-  equipamiento: "🎥 Equipo", lugar: "📍 Lugar", etiqueta: "🏷️ Etiqueta",
+  proyecto: "📁 Proyecto", empresa: "🏢 Empresa", persona: "👤 Persona",
+  convocatoria: "📜 Convocatoria", equipamiento: "🎥 Equipo",
+  lugar: "📍 Lugar", etiqueta: "🏷️ Etiqueta",
 };
 
 type Sel = Vinculo & { nombre: string };
@@ -39,6 +41,7 @@ export default function Composer({ userId, catalogos, perfiles }:
   const [cuerpo, setCuerpo] = useState("");
   const [tipo, setTipo] = useState("aviso");
   const [resp, setResp] = useState("");
+  const [fecha, setFecha] = useState("");
   const [links, setLinks] = useState<Sel[]>([]);
   const [enviando, setEnviando] = useState(false);
   const router = useRouter();
@@ -58,11 +61,12 @@ export default function Composer({ userId, catalogos, perfiles }:
     const res = await crearPublicacion(
       tipo, titulo.trim(), cuerpo.trim(),
       links.map(({ tipo: t, id }) => ({ tipo: t, id })),
-      resp || null
+      resp || null,
+      fecha || null
     );
     setEnviando(false);
     if (res?.error) { alert("Error al publicar: " + res.error); return; }
-    setTitulo(""); setCuerpo(""); setLinks([]); setResp("");
+    setTitulo(""); setCuerpo(""); setLinks([]); setResp(""); setFecha("");
     router.refresh();
   };
 
@@ -101,6 +105,10 @@ export default function Composer({ userId, catalogos, perfiles }:
           <option value="">→ Sin asignar</option>
           {perfiles.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
         </select>
+        <span className="ent-lbl" style={{ marginLeft: 8 }}>VENCE:</span>
+        <input type="date" className="ent-select"
+          style={{ borderStyle: "solid", borderColor: fecha ? "var(--yellow)" : "var(--border2)" }}
+          value={fecha} onChange={e => setFecha(e.target.value)} />
         <span className="ent-lbl" style={{ marginLeft: 8 }}>VINCULAR:</span>
         {Object.keys(ENT_META).map(t => (
           <select key={t} className="ent-select" value="" onChange={e => agregar(t, e.target.value)}>

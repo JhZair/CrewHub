@@ -17,9 +17,20 @@ const ESTADOS: Record<string, string> = {
   resuelta: "Resuelta", archivada: "Archivada",
 };
 const ENT_ICO: Record<string, string> = {
-  proyecto: "📁", persona: "👤", convocatoria: "📜",
+  proyecto: "📁", empresa: "🏢", persona: "👤", convocatoria: "📜",
   equipamiento: "🎥", lugar: "📍", etiqueta: "🏷️",
 };
+
+/* Cuenta regresiva de fecha límite: [texto, color] */
+function vencimiento(fecha: string | null, estado: string): [string, string] | null {
+  if (!fecha || ["resuelta", "archivada"].includes(estado)) return null;
+  const d = Math.ceil((new Date(fecha + "T12:00:00").getTime() - Date.now()) / 86400000);
+  if (d < 0) return [`⏱ VENCIDO hace ${Math.abs(d)} día${Math.abs(d) === 1 ? "" : "s"}`, "var(--red)"];
+  if (d === 0) return ["⏱ VENCE HOY", "var(--red)"];
+  if (d <= 2) return [`⏱ vence en ${d} día${d === 1 ? "" : "s"}`, "var(--red)"];
+  if (d <= 7) return [`⏱ vence en ${d} días`, "var(--yellow)"];
+  return [`⏱ vence en ${d} días`, "var(--dim)"];
+}
 
 const VISTAS: [string, string][] = [
   ["", "🌐 Todo"], ["mios", "🙋 Mis asuntos"], ["problema", "❗ Problemas"],
@@ -53,8 +64,9 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
 
 
   // Catálogos (pequeños: una consulta cada uno, en paralelo)
-  const [proy, pers, conv, equi, luga, etiq, perfs, postsQ] = await Promise.all([
+  const [proy, emp, pers, conv, equi, luga, etiq, perfs, postsQ] = await Promise.all([
     supabase.from("proyectos").select("id,nombre").order("nombre"),
+    supabase.from("empresas").select("id,nombre,codigo").order("codigo"),
     supabase.from("personas").select("id,nombre,tipo").order("nombre"),
     supabase.from("convocatorias").select("id,codigo,nombre").order("codigo"),
     supabase.from("equipamiento").select("id,nombre").order("nombre"),
@@ -64,7 +76,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
     (() => {
       let q = supabase.from("publicaciones")
         .select(`
-          id, tipo, titulo, cuerpo, estado, prioridad, creado_en,
+          id, tipo, titulo, cuerpo, estado, prioridad, creado_en, fecha_limite,
           autor:perfiles!publicaciones_autor_id_fkey(nombre, color),
           resp:perfiles!publicaciones_responsable_fkey(nombre),
           comentarios(count),
@@ -84,6 +96,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
 
   const catalogos: Catalogos = {
     proyecto: proy.data || [],
+    empresa: (emp.data || []).map((e: any) => ({ id: e.id, nombre: e.codigo ? `${e.codigo} · ${e.nombre}` : e.nombre })),
     persona: pers.data || [],
     convocatoria: (conv.data || []).map((c: any) => ({ id: c.id, nombre: `${c.codigo} · ${c.nombre}` })),
     equipamiento: equi.data || [],
@@ -109,6 +122,9 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
           <Avatar nombre={perfil?.nombre} color={perfil?.color} size={32} />
           <span><b style={{ color: "var(--text)" }}>{perfil?.nombre}</b><br />{perfil?.rol || "Equipo"}</span>
         </div>
+        <Link href="/proyectos" className="btn btn-ghost" title="Proyectos">📁</Link>
+        <Link href="/empresas" className="btn btn-ghost" title="Empresas">🏢</Link>
+        <Link href="/personas" className="btn btn-ghost" title="Personas">👤</Link>
         <Link href="/importar" className="btn btn-ghost" title="Importar desde Seatable">⬆</Link>
         <LogoutButton />
       </div>
@@ -148,6 +164,10 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
                       : ["tarea", "problema", "pago"].includes(p.tipo) &&
                         <><span>•</span><span style={{ color: "var(--yellow)" }}>⚠ sin responsable</span></>}
                     <span>•</span><span>💬 {nc}</span>
+                    {(() => {
+                      const v2 = vencimiento(p.fecha_limite, p.estado);
+                      return v2 ? <><span>•</span><b style={{ color: v2[1] }}>{v2[0]}</b></> : null;
+                    })()}
                   </div>
                   {p.cuerpo && <p style={{ color: "#c6c6da", fontSize: 13, marginTop: 8, lineHeight: 1.5 }}>{p.cuerpo.slice(0, 180)}{p.cuerpo.length > 180 ? "…" : ""}</p>}
                   {chips.length > 0 && (

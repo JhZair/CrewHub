@@ -16,7 +16,7 @@ const EV_ICO: Record<string, string> = {
   prioridad: "⚡", tarea: "✅", bot: "🤖", cierre: "✔️", vinculo: "🔗",
 };
 const ENT_ICO: Record<string, string> = {
-  proyecto: "📁", persona: "👤", convocatoria: "📜",
+  proyecto: "📁", empresa: "🏢", persona: "👤", convocatoria: "📜",
   equipamiento: "🎥", lugar: "📍", etiqueta: "🏷️",
 };
 const ESTADOS_TXT: Record<string, string> = {
@@ -46,7 +46,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
   if (!p) notFound();
 
   const [{ data: eventos }, { data: comentarios }, { data: perfiles },
-         proy, pers, conv, equi, luga, etiq] = await Promise.all([
+         proy, emp, pers, conv, equi, luga, etiq] = await Promise.all([
     supabase.from("actividad")
       .select("*, actor:perfiles(nombre)")
       .eq("entidad_tipo", "publicacion").eq("entidad_id", p.id)
@@ -57,6 +57,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
       .order("creado_en"),
     supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
     supabase.from("proyectos").select("id,nombre"),
+    supabase.from("empresas").select("id,nombre"),
     supabase.from("personas").select("id,nombre"),
     supabase.from("convocatorias").select("id,codigo"),
     supabase.from("equipamiento").select("id,nombre"),
@@ -67,6 +68,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
   // Resolver nombres de entidades vinculadas y de perfiles
   const nombres = new Map<string, string>();
   (proy.data || []).forEach((x: any) => nombres.set(`proyecto:${x.id}`, x.nombre));
+  (emp.data || []).forEach((x: any) => nombres.set(`empresa:${x.id}`, x.nombre));
   (pers.data || []).forEach((x: any) => nombres.set(`persona:${x.id}`, x.nombre));
   (conv.data || []).forEach((x: any) => nombres.set(`convocatoria:${x.id}`, x.codigo));
   (equi.data || []).forEach((x: any) => nombres.set(`equipamiento:${x.id}`, x.nombre));
@@ -125,7 +127,12 @@ export default async function Caso({ params }: { params: { id: string } }) {
         <div className="gm"><span className="k">Estado</span><EstadoSelect pubId={p.id} estado={p.estado} /></div>
         <div className="gm"><span className="k">Responsable</span>
           <RespSelect pubId={p.id} actual={p.responsable} perfiles={perfiles || []} /></div>
-        <div className="gm"><span className="k">Prioridad</span><span className="v">{p.prioridad || "—"}</span></div>
+        <div className="gm"><span className="k">Fecha límite</span>
+          <span className="v" style={{ color: p.fecha_limite ? "var(--yellow)" : "var(--dim)" }}>
+            {p.fecha_limite
+              ? new Date(p.fecha_limite + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "long" })
+              : "—"}
+          </span></div>
         <div className="gm"><span className="k">Creado</span>
           <span className="v">{fecha(p.creado_en)}<br /><span style={{ color: "var(--muted)", fontWeight: 400 }}>por {p.autor?.nombre}</span></span></div>
       </div>
@@ -135,7 +142,11 @@ export default async function Caso({ params }: { params: { id: string } }) {
       {chips.length > 0 && (
         <div className="sel-chips" style={{ marginBottom: 6 }}>
           {chips.map((v: any, i: number) => (
-            <span key={i} className="echip">{ENT_ICO[v.entidad_tipo] || "🔗"} {v.nombre}</span>
+            <Link key={i} href={`/entidad/${v.entidad_tipo}/${v.entidad_id}`}>
+              <span className="echip" style={{ cursor: "pointer" }}>
+                {ENT_ICO[v.entidad_tipo] || "🔗"} {v.nombre} →
+              </span>
+            </Link>
           ))}
         </div>
       )}

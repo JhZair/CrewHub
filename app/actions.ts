@@ -1,6 +1,35 @@
 "use server";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { FORM_CONF } from "@/lib/entidades";
+
+/* Crear o actualizar una entidad núcleo (proyecto/empresa/persona).
+   La config compartida actúa como whitelist de tabla y campos. */
+export async function guardarEntidad(tipo: string, id: string | null, datos: Record<string, string>) {
+  const conf = FORM_CONF[tipo];
+  if (!conf) return { error: "Tipo de entidad no permitido" };
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  const limpio: Record<string, string | null> = {};
+  conf.campos.forEach(c => {
+    if (c.key in datos) limpio[c.key] = (datos[c.key] || "").trim() || null;
+  });
+  const req = conf.campos.find(c => c.requerido && !limpio[c.key]);
+  if (req) return { error: `El campo "${req.label}" es obligatorio.` };
+
+  if (id) {
+    const { error } = await supabase.from(conf.tabla).update(limpio).eq("id", id);
+    if (error) return { error: error.message };
+    revalidatePath(`/entidad/${tipo}/${id}`);
+    return { id };
+  }
+  const { data, error } = await supabase.from(conf.tabla).insert(limpio).select("id").single();
+  if (error) return { error: error.message };
+  revalidatePath("/");
+  return { id: data.id };
+}
 
 export type Vinculo = { tipo: string; id: string };
 
@@ -9,7 +38,8 @@ export async function crearPublicacion(
   titulo: string,
   cuerpo: string,
   vinculos: Vinculo[] = [],
-  responsable: string | null = null
+  responsable: string | null = null,
+  fechaLimite: string | null = null
 ) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -20,6 +50,7 @@ export async function crearPublicacion(
     titulo,
     cuerpo: cuerpo || null,
     responsable: responsable || null,
+    fecha_limite: fechaLimite || null,
     estado: tipo === "problema" ? "abierta" : "en_progreso",
   }).select("id").single();
   if (error) return { error: error.message };
