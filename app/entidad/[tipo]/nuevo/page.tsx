@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import Volver from "@/components/Volver";
 import { EntidadForm } from "@/components/EntidadForm";
 import { FORM_CONF } from "@/lib/entidades";
 import Link from "next/link";
@@ -13,7 +14,7 @@ export default async function Nueva({ params }: { params: { tipo: string } }) {
   return (
     <div className="shell">
       <div className="topbar">
-        <Link href="/" className="btn btn-ghost">← Feed</Link>
+        <Volver />
         <span className="spacer" />
       </div>
       <EntidadForm tipo={params.tipo} />

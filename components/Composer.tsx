@@ -1,5 +1,5 @@
 "use client";
-import { crearPublicacion, type Vinculo } from "@/app/actions";
+import { crearPublicacion, crearEtiqueta, crearLugar, type Vinculo } from "@/app/actions";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -22,6 +22,7 @@ export type Catalogos = {
   empresa: CatalogoItem[];
   persona: CatalogoItem[];
   convocatoria: CatalogoItem[];
+  postulacion?: CatalogoItem[];
   equipamiento: CatalogoItem[];
   lugar: CatalogoItem[];
   etiqueta: CatalogoItem[];
@@ -29,28 +30,101 @@ export type Catalogos = {
 
 const ENT_META: Record<string, string> = {
   proyecto: "📁 Proyecto", empresa: "🏢 Empresa", persona: "👤 Persona",
-  convocatoria: "📜 Convocatoria", equipamiento: "🎥 Equipo",
-  lugar: "📍 Lugar", etiqueta: "🏷️ Etiqueta",
+  convocatoria: "📜 Convocatoria", postulacion: "🎯 Postulación",
+  equipamiento: "🎥 Equipo", lugar: "📍 Lugar", etiqueta: "🏷️ Etiqueta",
 };
 
 type Sel = Vinculo & { nombre: string };
 
-export default function Composer({ userId, catalogos, perfiles }:
-  { userId: string; catalogos: Catalogos; perfiles: { id: string; nombre: string }[] }) {
+/* Buscador desplegable para entidades: filtra mientras escribes */
+export function EntPicker({ etiqueta, items, onPick, onCrear }: {
+  etiqueta: string; items: CatalogoItem[];
+  onPick: (id: string) => void; onCrear?: (nombre: string) => void;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const [filtro, setFiltro] = useState("");
+  const nrm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const lista = filtro ? items.filter(i => nrm(i.nombre).includes(nrm(filtro))) : items;
+  const cerrar = () => { setAbierto(false); setFiltro(""); };
+
+  return (
+    <span className="cbx">
+      <button type="button" className="ent-btn" onClick={() => setAbierto(!abierto)}>
+        {etiqueta} ▾
+      </button>
+      {abierto && (
+        <>
+          <div className="cbx-fondo" onClick={cerrar} />
+          <div className="cbx-menu">
+            <input autoFocus className="cbx-inp" placeholder="Buscar..." value={filtro}
+              onChange={e => setFiltro(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Escape") cerrar();
+                if (e.key === "Enter" && lista.length >= 1) { onPick(lista[0].id); cerrar(); }
+              }} />
+            <div className="cbx-lista">
+              {onCrear && filtro.trim() && !lista.some(i => nrm(i.nombre) === nrm(filtro)) && (
+                <button className="cbx-item cbx-crear" onClick={() => { onCrear(filtro.trim()); cerrar(); }}>
+                  ＋ Crear «{filtro.trim()}»
+                </button>
+              )}
+              {lista.slice(0, 40).map(i => (
+                <button key={i.id} className="cbx-item" onClick={() => { onPick(i.id); cerrar(); }}>
+                  <span style={{ flex: 1, textAlign: "left" }}>{i.nombre}</span>
+                  {i.tipo && <span className="cbx-tag">{i.tipo.replace(/_/g, " ")}</span>}
+                </button>
+              ))}
+              {!lista.length && !filtro && <div className="cbx-vacio">Escribe para buscar</div>}
+              {!lista.length && filtro && !onCrear && <div className="cbx-vacio">Sin resultados</div>}
+              {lista.length > 40 && <div className="cbx-vacio">+{lista.length - 40} más — afina la búsqueda</div>}
+            </div>
+          </div>
+        </>
+      )}
+    </span>
+  );
+}
+
+export default function Composer({ userId, catalogos, perfiles, inicial }:
+  { userId: string; catalogos: Catalogos; perfiles: { id: string; nombre: string }[]; inicial?: Sel[] }) {
   const [titulo, setTitulo] = useState("");
   const [cuerpo, setCuerpo] = useState("");
   const [tipo, setTipo] = useState("aviso");
   const [resp, setResp] = useState("");
   const [fecha, setFecha] = useState("");
-  const [links, setLinks] = useState<Sel[]>([]);
+  const [links, setLinks] = useState<Sel[]>(inicial || []);
+  const [extraEtq, setExtraEtq] = useState<CatalogoItem[]>([]);
   const [enviando, setEnviando] = useState(false);
   const router = useRouter();
 
+  const itemsDe = (t: string): CatalogoItem[] =>
+    t === "etiqueta" ? [...catalogos.etiqueta, ...extraEtq]
+    : t === "lugar" ? [...catalogos.lugar, ...extraLug]
+    : (catalogos as any)[t] || [];
+
   const agregar = (t: string, id: string) => {
-    if (!id) return;
-    if (links.some(l => l.tipo === t && l.id === id)) return;
-    const item = (catalogos as any)[t]?.find((x: CatalogoItem) => x.id === id);
+    if (!id || links.some(l => l.tipo === t && l.id === id)) return;
+    const item = itemsDe(t).find(x => x.id === id);
     if (item) setLinks([...links, { tipo: t, id, nombre: item.nombre }]);
+  };
+
+  const crearYAgregarEtiqueta = async (nombre: string) => {
+    const res: any = await crearEtiqueta(nombre);
+    if (res?.error) { alert(res.error); return; }
+    if (!extraEtq.some(x => x.id === res.id) && !catalogos.etiqueta.some(x => x.id === res.id))
+      setExtraEtq(prev => [...prev, { id: res.id, nombre: res.nombre }]);
+    setLinks(prev => prev.some(l => l.tipo === "etiqueta" && l.id === res.id)
+      ? prev : [...prev, { tipo: "etiqueta", id: res.id, nombre: res.nombre }]);
+  };
+
+  const [extraLug, setExtraLug] = useState<CatalogoItem[]>([]);
+  const crearYAgregarLugar = async (nombre: string) => {
+    const res: any = await crearLugar(nombre);
+    if (res?.error) { alert(res.error); return; }
+    if (!extraLug.some(x => x.id === res.id) && !catalogos.lugar.some(x => x.id === res.id))
+      setExtraLug(prev => [...prev, { id: res.id, nombre: res.nombre }]);
+    setLinks(prev => prev.some(l => l.tipo === "lugar" && l.id === res.id)
+      ? prev : [...prev, { tipo: "lugar", id: res.id, nombre: res.nombre }]);
   };
   const quitar = (t: string, id: string) =>
     setLinks(links.filter(l => !(l.tipo === t && l.id === id)));
@@ -98,35 +172,28 @@ export default function Composer({ userId, catalogos, perfiles }:
         </button>
       </div>
 
-      <div className="ent-bar">
-        <span className="ent-lbl">RESPONSABLE:</span>
-        <select className="ent-select" style={{ borderStyle: "solid", borderColor: resp ? "var(--teal)" : "var(--border2)" }}
-          value={resp} onChange={e => setResp(e.target.value)}>
-          <option value="">→ Sin asignar</option>
-          {perfiles.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-        </select>
-        <span className="ent-lbl" style={{ marginLeft: 8 }}>VENCE:</span>
-        <input type="date" className="ent-select"
-          style={{ borderStyle: "solid", borderColor: fecha ? "var(--yellow)" : "var(--border2)" }}
-          value={fecha} onChange={e => setFecha(e.target.value)} />
-        <span className="ent-lbl" style={{ marginLeft: 8 }}>VINCULAR:</span>
-        {Object.keys(ENT_META).map(t => (
-          <select key={t} className="ent-select" value="" onChange={e => agregar(t, e.target.value)}>
-            <option value="">{ENT_META[t]}</option>
-            {t === "persona"
-              ? GRUPOS_PERSONA.map(([g, label]) => {
-                  const grupo = (catalogos.persona || []).filter(p => (p.tipo || "contacto") === g);
-                  return grupo.length ? (
-                    <optgroup key={g} label={label}>
-                      {grupo.map(it => <option key={it.id} value={it.id}>{it.nombre}</option>)}
-                    </optgroup>
-                  ) : null;
-                })
-              : ((catalogos as any)[t] || []).map((it: CatalogoItem) => (
-                  <option key={it.id} value={it.id}>{it.nombre}</option>
-                ))}
+      <div className="meta-bar">
+        <div className="meta-linea">
+          <span className="ent-lbl">👤 Responsable</span>
+          <select className="ent-ctrl" style={resp ? { borderColor: "var(--teal)", color: "var(--teal)" } : undefined}
+            value={resp} onChange={e => setResp(e.target.value)}>
+            <option value="">Sin asignar</option>
+            {perfiles.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
           </select>
-        ))}
+          <span className="ent-lbl" style={{ marginLeft: 14 }}>⏱ Vence</span>
+          <input type="date" className="ent-ctrl"
+            style={fecha ? { borderColor: "var(--yellow)", color: "var(--yellow)" } : undefined}
+            value={fecha} onChange={e => setFecha(e.target.value)} />
+        </div>
+        <div className="meta-linea">
+          <span className="ent-lbl">🔗 Vincular</span>
+          {Object.keys(ENT_META).map(t => (
+            <EntPicker key={t} etiqueta={ENT_META[t]} items={itemsDe(t)}
+              onPick={id => agregar(t, id)}
+              onCrear={t === "etiqueta" ? crearYAgregarEtiqueta
+                : t === "lugar" ? crearYAgregarLugar : undefined} />
+          ))}
+        </div>
       </div>
       {links.length > 0 && (
         <div className="sel-chips">

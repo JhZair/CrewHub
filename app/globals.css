@@ -2,7 +2,7 @@
   --bg:#08080f; --panel:#10101a; --card:#14141f; --border:#232336; --border2:#2e2e48;
   --text:#e8e8f2; --muted:#8b8ba3; --dim:#5d5d78;
   --accent:#7c5cff; --yellow:#f4b400; --red:#ff4d5e; --green:#2ecc71;
-  --blue:#3b82f6; --violet:#a78bfa; --teal:#2dd4bf;
+  --blue:#3b82f6; --violet:#a78bfa; --teal:#2dd4bf; --orange:#f59e0b;
 }
 *{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',system-ui,sans-serif}
 body{background:var(--bg);color:var(--text);font-size:14px;min-height:100vh}
@@ -114,3 +114,154 @@ input[type=file]{color:var(--muted);font-size:12.5px}
 .f-campo input,.f-campo select,.f-campo textarea{background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:9px 12px;font-size:13px;color:var(--text);outline:none}
 .f-campo input:focus,.f-campo select:focus,.f-campo textarea:focus{border-color:var(--accent)}
 @media(max-width:700px){.f-grid{grid-template-columns:1fr}}
+
+/* ===== Buscador de entidades (combobox) ===== */
+.cbx{position:relative;display:inline-block}
+.ent-btn{display:inline-flex;align-items:center;gap:5px;padding:7px 11px;border-radius:9px;font-size:12px;color:var(--muted);border:1px dashed var(--border2);background:none;cursor:pointer}
+.ent-btn:hover{color:var(--text);border-color:var(--accent);border-style:solid}
+.cbx-fondo{position:fixed;inset:0;z-index:40}
+.cbx-menu{position:absolute;top:calc(100% + 6px);left:0;background:#191928;border:1px solid var(--border2);border-radius:12px;padding:8px;width:270px;z-index:50;box-shadow:0 12px 40px rgba(0,0,0,.6)}
+.cbx-inp{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 11px;font-size:12.5px;color:var(--text);outline:none}
+.cbx-inp:focus{border-color:var(--accent)}
+.cbx-lista{max-height:230px;overflow-y:auto;margin-top:6px}
+.cbx-item{display:flex;align-items:center;gap:8px;width:100%;padding:8px 10px;border-radius:8px;font-size:12.5px;color:var(--muted);cursor:pointer}
+.cbx-item:hover{background:#22223a;color:var(--text)}
+.cbx-tag{font-size:9.5px;color:var(--dim);background:#23233a;padding:2px 7px;border-radius:5px;white-space:nowrap}
+.cbx-crear{color:var(--yellow);font-weight:600}
+.cbx-vacio{color:var(--dim);font-size:11.5px;text-align:center;padding:12px 0}
+
+/* ===== Perfil de entidad en dos columnas ===== */
+.shell-ancho{max-width:1150px}
+.perfil-grid{display:grid;grid-template-columns:360px 1fr;gap:22px;align-items:start}
+.ficha-row{display:flex;justify-content:space-between;gap:12px;font-size:12.5px;padding:6px 0;border-bottom:1px solid #1c1c2c}
+.ficha-row:last-of-type{border-bottom:none}
+.ficha-row .fk{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.6px;white-space:nowrap}
+.ficha-row .fv{color:#c6c6da;text-align:right}
+@media(max-width:900px){.perfil-grid{grid-template-columns:1fr}}
+
+/* Formulario de edición dentro del carné (columna angosta):
+   una sola columna y sin tarjeta anidada */
+.perfil-grid aside .f-grid{grid-template-columns:1fr}
+.perfil-grid aside .card .card{border:none;background:transparent;padding:12px 0 0;margin:0}
+.perfil-grid aside .f-campo input,
+.perfil-grid aside .f-campo select,
+.perfil-grid aside .f-campo textarea{width:100%}
+
+/* ===== Edición en ventana modal amplia ===== */
+.modal-fondo{position:fixed;inset:0;background:rgba(4,4,10,.72);backdrop-filter:blur(3px);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;z-index:80;overflow-y:auto}
+.modal-ed{width:100%;max-width:780px}
+.perfil-grid aside .modal-ed .card{border:1px solid var(--border2);background:var(--panel);padding:18px 22px;margin:0;border-radius:16px}
+.perfil-grid aside .modal-ed .f-grid{grid-template-columns:1fr 1fr}
+@media(max-width:700px){.perfil-grid aside .modal-ed .f-grid{grid-template-columns:1fr}}
+
+/* Controles nativos en modo oscuro (ícono y panel del calendario) */
+:root{color-scheme:dark}
+input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(.65);cursor:pointer}
+
+/* ===== Barra de metadatos del composer, en dos líneas ordenadas ===== */
+.meta-bar{margin-top:12px;padding-top:12px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:9px}
+.meta-linea{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.meta-linea .ent-lbl{min-width:92px;font-size:10.5px;letter-spacing:1px;color:var(--dim);text-transform:uppercase}
+.ent-ctrl{background:var(--bg);border:1px solid var(--border2);border-radius:9px;padding:7px 11px;font-size:12.5px;color:var(--text);outline:none;cursor:pointer}
+.ent-ctrl:hover{border-color:var(--accent)}
+
+/* El date del composer no debe estirarse a ancho completo */
+.composer .meta-bar input.ent-ctrl{width:auto;min-width:150px}
+
+/* ===== Bloques laterales del perfil (relaciones y expedientes) ===== */
+.linked{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:12px}
+.linked h4{margin:0 0 10px;font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim)}
+.eq-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;flex-wrap:wrap}
+.eq-row:last-child{border-bottom:none}
+.cargo{color:var(--violet);background:rgba(167,139,250,.12);border-radius:7px;padding:2px 9px;font-size:11px;font-weight:700;white-space:nowrap}
+.err-inline{color:var(--red);font-size:12px;margin:6px 0;padding:6px 10px;background:rgba(255,77,94,.08);border-radius:8px}
+
+/* ===== Línea de tiempo (regla: lo que tiene fechas, se dibuja) ===== */
+.lt{margin-top:8px;padding:2px 0 2px 4px}
+.lt-ev{display:flex;gap:12px;align-items:flex-start}
+.lt-dot{width:12px;height:12px;border-radius:50%;margin-top:3px;flex:none;box-shadow:0 0 0 3px rgba(255,255,255,.05)}
+.lt-hoy .lt-dot{background:var(--orange);box-shadow:0 0 0 4px rgba(245,158,11,.22)}
+.lt-hoy .lt-fecha{color:var(--orange)!important;font-weight:800;letter-spacing:1px}
+.lt-info{display:flex;flex-direction:column;gap:2px;font-size:13px}
+.lt-info:hover .lt-fecha{color:var(--violet)}
+.lt-fecha{font-size:11px;color:var(--muted);font-weight:700;letter-spacing:.3px}
+.lt-conn{width:2px;background:var(--border);margin-left:9px;position:relative}
+.lt-conn i{position:absolute;left:16px;top:50%;transform:translateY(-50%);font-style:normal;font-size:10px;color:var(--dim);white-space:nowrap}
+
+/* Comentario del jurado, colapsable con "ver más..." */
+.jurado-box{margin-top:10px;padding:10px 12px;background:var(--bg);border-radius:10px;border-left:3px solid var(--violet);font-size:12.5px;line-height:1.55;color:var(--muted)}
+.jurado-box summary{cursor:pointer;list-style:none}
+.jurado-box summary::-webkit-details-marker{display:none}
+.jurado-box summary i{color:var(--violet);font-style:normal;font-weight:700}
+.jurado-box[open] summary .jx{display:none}
+.jurado-box[open] summary::after{content:" — ver menos";color:var(--violet);font-weight:700;font-size:12px;cursor:pointer}
+
+/* ===== Paneles de entidades (stats + buscador) ===== */
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px}
+a.stat-card{display:block;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:13px 16px;transition:border-color .15s}
+a.stat-card:hover{border-color:var(--border2)}
+a.stat-card.on{border-color:var(--violet)}
+.stat-n{font-size:24px;font-weight:800;line-height:1.15}
+.stat-l{font-size:11.5px;color:var(--muted);margin-top:3px}
+.panel-h{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
+.info-row{display:flex;gap:10px;align-items:center;padding:9px 2px;border-bottom:1px solid var(--border);font-size:13.5px;flex-wrap:wrap}
+.info-row:last-child{border-bottom:none}
+.info-fecha{min-width:70px;font-weight:700;font-size:12.5px}
+
+/* ===== Tira de Qhaway sobre el composer ===== */
+.qhaway-tira{display:flex;align-items:center;gap:10px;background:rgba(59,130,246,.07);border:1px solid rgba(59,130,246,.25);border-radius:12px;padding:9px 14px;margin-bottom:12px;font-size:12.5px;color:#c6c6da}
+.qhaway-tira .qa{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#7c5cff);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+.qhaway-tira a{color:var(--blue);font-weight:600}
+
+/* ===== Campanita de notificaciones ===== */
+.campanita{position:relative}
+.camp-btn{position:relative;font-size:17px;padding:8px 10px;color:var(--muted);border-radius:10px}
+.camp-btn:hover{background:#1a1a2a;color:var(--text)}
+.camp-badge{position:absolute;top:2px;right:2px;background:var(--red);color:#fff;font-size:9.5px;font-weight:800;border-radius:8px;padding:1px 5px;min-width:16px;text-align:center}
+.camp-menu{position:absolute;top:calc(100% + 8px);right:0;background:#191928;border:1px solid var(--border2);border-radius:14px;padding:8px;width:330px;z-index:70;box-shadow:0 14px 44px rgba(0,0,0,.65)}
+.camp-item{display:block;padding:9px 11px;border-radius:9px;font-size:12.5px;color:#c6c6da;line-height:1.45}
+.camp-item:hover{background:#22223a}
+.camp-item .cuando{color:var(--dim);font-size:10.5px}
+.camp-item.nueva{border-left:2px solid var(--accent)}
+
+/* ===== Cabecera ordenada ===== */
+.nav-icons{display:flex;gap:3px;margin-left:16px;padding-left:16px;border-left:1px solid var(--border)}
+.nav-icons .btn-ghost{padding:8px 11px;font-size:15px}
+img.av{border:1px solid var(--border2)}
+
+/* ===== Cronograma: lista ordenada y Gantt ===== */
+.cr-etapa-h{font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim);padding:12px 2px 6px}
+.cr-item{display:flex;gap:10px;align-items:center;padding:9px 12px;border:1px solid var(--border);border-radius:10px;margin-bottom:6px;background:var(--bg)}
+.gt-axis{display:flex;justify-content:space-between;font-size:10.5px;color:var(--dim);padding-left:170px;margin-bottom:6px}
+.gt-row{display:flex;align-items:center;gap:0;margin-bottom:5px}
+.gt-nombre{width:170px;flex-shrink:0;font-size:12px;color:#c6c6da;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:10px}
+.gt-track{flex:1;position:relative;height:18px;background:#101018;border-radius:6px;overflow:hidden}
+.gt-bar{position:absolute;top:3px;bottom:3px;border-radius:5px;min-width:6px}
+.gt-hoy{position:absolute;top:18px;bottom:26px;width:0;border-left:2px dashed var(--orange);opacity:.85;z-index:5}
+.gt-hoy i{position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-style:normal;font-size:9px;font-weight:800;color:var(--orange);letter-spacing:1px}
+
+/* Chips clicables */
+.echip-link{cursor:pointer;transition:border-color .12s}
+.echip-link:hover{border-color:var(--accent);color:var(--text)}
+
+/* ===== Estado En Pausa ===== */
+.st-en_pausa{background:rgba(59,130,246,.13);color:var(--blue)}
+
+/* ===== Tablero Kanban ===== */
+.kb{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;align-items:start}
+.kb-col{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:11px;min-height:340px;transition:border-color .15s,background .15s}
+.kb-col.kb-sobre{border-color:var(--accent);background:rgba(124,92,255,.06)}
+.kb-head{font-size:12px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;display:flex;align-items:center;gap:8px;padding:2px 4px 10px}
+.kb-n{font-size:10.5px;background:#23233a;color:var(--muted);border-radius:7px;padding:1px 7px}
+.kb-card{background:var(--card);border:1px solid var(--border);border-radius:11px;padding:10px 12px;margin-bottom:8px;cursor:grab}
+.kb-card:hover{border-color:var(--border2)}
+.kb-card:active{cursor:grabbing;opacity:.7}
+.kb-vacia{color:var(--dim);font-size:11px;text-align:center;padding:24px 0}
+@media(max-width:1000px){.kb{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:600px){.kb{grid-template-columns:1fr}}
+
+/* ===== Buscador global ===== */
+.buscador-glob{display:flex;align-items:center;gap:9px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:8px 13px;width:100%;max-width:380px}
+.buscador-glob:focus-within{border-color:var(--accent)}
+.buscador-glob input{flex:1;background:none;border:none;outline:none;font-size:13px;color:var(--text);min-width:0}
+.buscador-glob .kbd{font-size:10px;color:var(--dim);border:1px solid var(--border2);border-radius:5px;padding:2px 6px;white-space:nowrap}

@@ -62,9 +62,10 @@ create table proyectos (
 
 -- Campos de _EQUIPO-Empresas: las 15+ empresas E-### vinculadas.
 create table empresas (
-  id        uuid primary key default gen_random_uuid(),
-  codigo    text unique,                     -- "E-010-A-Wilkakalle"
-  nombre    text not null,
+  id           uuid primary key default gen_random_uuid(),
+  codigo       text unique,                  -- "E-010-A-Wilkakalle"
+  nombre       text not null,                -- nombre corto
+  razon_social text,                         -- nombre legal completo
   tipo      text,                            -- eirl | sac | asociacion | ong | municipalidad
   ruc       text,
   estado    text default 'activa',

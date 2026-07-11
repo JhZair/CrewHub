@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import Volver from "@/components/Volver";
 import Avatar from "@/components/Avatar";
 import { EstadoSelect, CommentBox, RespSelect } from "@/components/CaseActions";
 import Realtime from "@/components/Realtime";
@@ -17,10 +18,10 @@ const EV_ICO: Record<string, string> = {
 };
 const ENT_ICO: Record<string, string> = {
   proyecto: "📁", empresa: "🏢", persona: "👤", convocatoria: "📜",
-  equipamiento: "🎥", lugar: "📍", etiqueta: "🏷️",
+  postulacion: "🎯", equipamiento: "🎥", lugar: "📍", etiqueta: "🏷️",
 };
 const ESTADOS_TXT: Record<string, string> = {
-  abierta: "Sin Resolver", en_progreso: "En Progreso",
+  abierta: "Sin Resolver", en_progreso: "En Progreso", en_pausa: "En Pausa",
   resuelta: "Resuelta", archivada: "Archivada",
 };
 
@@ -46,13 +47,13 @@ export default async function Caso({ params }: { params: { id: string } }) {
   if (!p) notFound();
 
   const [{ data: eventos }, { data: comentarios }, { data: perfiles },
-         proy, emp, pers, conv, equi, luga, etiq] = await Promise.all([
+         proy, emp, pers, conv, equi, luga, etiq, postu] = await Promise.all([
     supabase.from("actividad")
       .select("*, actor:perfiles(nombre)")
       .eq("entidad_tipo", "publicacion").eq("entidad_id", p.id)
       .order("creado_en"),
     supabase.from("comentarios")
-      .select("*, autor:perfiles(nombre, color)")
+      .select("*, autor:perfiles(nombre, color, avatar_url)")
       .eq("publicacion_id", p.id)
       .order("creado_en"),
     supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
@@ -63,6 +64,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
     supabase.from("equipamiento").select("id,nombre"),
     supabase.from("lugares").select("id,nombre"),
     supabase.from("etiquetas").select("id,nombre"),
+    supabase.from("postulaciones").select("id,codigo,proy:proyectos(nombre),conv:convocatorias(codigo)"),
   ]);
 
   // Resolver nombres de entidades vinculadas y de perfiles
@@ -74,6 +76,8 @@ export default async function Caso({ params }: { params: { id: string } }) {
   (equi.data || []).forEach((x: any) => nombres.set(`equipamiento:${x.id}`, x.nombre));
   (luga.data || []).forEach((x: any) => nombres.set(`lugar:${x.id}`, x.nombre));
   (etiq.data || []).forEach((x: any) => nombres.set(`etiqueta:${x.id}`, x.nombre));
+  (postu.data || []).forEach((x: any) =>
+    nombres.set(`postulacion:${x.id}`, `${x.codigo || x.conv?.codigo || "🎯"} · ${x.proy?.nombre || "postulación"}`));
   const perfilNombre = new Map((perfiles || []).map((x: any) => [x.id, x.nombre]));
 
   const chips = (p.vinculos || [])
@@ -116,7 +120,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
     <div className="shell">
       <Realtime tablas={["actividad", "comentarios", "publicaciones"]} token={session?.access_token} />
       <div className="topbar">
-        <Link href="/" className="btn btn-ghost">← Volver al feed</Link>
+        <Volver />
         <span className="spacer" />
         <span className="badge" style={{ color: tc, background: `${tc}22`, fontSize: 12 }}>{tl}</span>
       </div>
@@ -158,7 +162,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
             const c = e.comentario;
             return (
               <div className="tl-com" key={i}>
-                <Avatar nombre={c.autor?.nombre} color={c.autor?.color} size={32} />
+                <Avatar nombre={c.autor?.nombre} color={c.autor?.color} size={32} src={c.autor?.avatar_url} />
                 <div className="bubble">
                   <div className="who">{c.autor?.nombre}<span className="t">{fecha(c.creado_en)}</span></div>
                   <div className="tx">{c.cuerpo}</div>

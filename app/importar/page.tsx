@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import Volver from "@/components/Volver";
 import Importador from "@/components/Importador";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -11,14 +12,14 @@ export default async function Importar() {
   return (
     <div className="shell">
       <div className="topbar">
-        <Link href="/" className="btn btn-ghost">← Volver al feed</Link>
+        <Volver />
         <span className="spacer" />
       </div>
-      <h1 className="title-lg">⬆ Importar personas desde Seatable</h1>
+      <h1 className="title-lg">⬆ Importar desde Seatable</h1>
       <p style={{ color: "var(--muted)", fontSize: 13, marginBottom: 16 }}>
-        Sube el CSV de tu tabla Proveedores. La importación no duplica: si una persona
-        ya existe (mismo nombre), se omite. Cada persona importada queda registrada
-        en la bitácora con su evento de creación.
+        Personas, proyectos o empresas. La importación no duplica (reconoce folios,
+        códigos y nombres ya existentes) y cada registro queda en la bitácora con
+        su evento de creación.
       </p>
       <Importador />
     </div>
