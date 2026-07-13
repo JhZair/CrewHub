@@ -9,7 +9,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "CrewHub+ by KAWSAY",
     short_name: "CrewHub+",
     description: "El centro operativo del equipo: publicaciones, casos vivos y seguimiento.",
-    start_url: "/",
+    start_url: "/monitor",
     scope: "/",
     display: "standalone",
     // "tabbed" aún no está en los tipos de Next, pero el navegador lo soporta.
@@ -26,6 +26,7 @@ export default function manifest(): MetadataRoute.Manifest {
       { src: "/icons/icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
     shortcuts: [
+      { name: "Monitor (3 vistas)", short_name: "Monitor", url: "/monitor" },
       { name: "Tablero Kanban", short_name: "Tablero", url: "/tablero" },
       { name: "Pantalla TV", short_name: "Pantalla", url: "/pantalla" },
       { name: "Pulso", short_name: "Pulso", url: "/pulso" },

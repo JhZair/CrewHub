@@ -126,6 +126,10 @@ export default async function TableroPage({ searchParams }: {
             title="Pulso semanal del equipo — quién cerró qué, semana a semana">
             📊 Pulso
           </Link>
+          <Link href="/pantalla" className="vtab"
+            title="Pantalla para la TV de la oficina">
+            📺 TV
+          </Link>
         </span>
       </div>
 
