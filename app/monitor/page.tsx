@@ -3,12 +3,14 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
-/* ── MONITOR (cockpit) — SOLO para la app instalada ─────────────────
+/* ── MONITOR (cockpit) ──────────────────────────────────────────────
    Dos vistas a la vez en una sola ventana: navegación para trabajar +
    Tablero Kanban, cada una en vivo (cada panel es la página real
    embebida, con su propio Realtime).
-   En navegador web o en móvil NO se muestra: redirige a "/".
-   Para previsualizar en desarrollo: localhost o añadir ?force=1. */
+   Se muestra en pantalla ANCHA (escritorio / app). En móvil o ventanas
+   angostas redirige a la vista normal ("/"). En web, nadie llega aquí
+   por accidente: la app abre aquí por su start_url, y en el navegador
+   normal no hay ningún enlace hacia /monitor. */
 
 const PANES = [
   { titulo: "🧭 Navegación", src: "/", nota: "trabaja aquí" },
@@ -20,15 +22,9 @@ export default function MonitorPage() {
   const [ok, setOk] = useState<boolean | null>(null);
 
   useEffect(() => {
-    const enApp =
-      !window.matchMedia("(display-mode: browser)").matches ||
-      (navigator as any).standalone === true;
-    const previa =
-      window.location.hostname === "localhost" ||
-      new URLSearchParams(window.location.search).has("force");
-    const ancho = window.innerWidth >= 900;
-    if ((enApp || previa) && ancho) setOk(true);
-    else router.replace("/"); // web o móvil → vista normal
+    // Pantalla ancha (escritorio o app) → cockpit. Angosta (móvil) → normal.
+    if (window.innerWidth >= 760) setOk(true);
+    else router.replace("/");
   }, [router]);
 
   if (!ok) return null;

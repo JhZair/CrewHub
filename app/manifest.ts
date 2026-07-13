@@ -12,8 +12,6 @@ export default function manifest(): MetadataRoute.Manifest {
     start_url: "/monitor",
     scope: "/",
     display: "standalone",
-    // "tabbed" aún no está en los tipos de Next, pero el navegador lo soporta.
-    display_override: ["tabbed", "standalone"] as any,
     orientation: "any",
     lang: "es",
     dir: "ltr",
