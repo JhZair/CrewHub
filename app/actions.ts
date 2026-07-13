@@ -1218,6 +1218,48 @@ export async function editarTitulo(pubId: string, titulo: string) {
   return {};
 }
 
+export async function editarCuerpo(pubId: string, cuerpo: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const limpio = cuerpo.trim();
+  const { error } = await supabase.from("publicaciones")
+    .update({ cuerpo: limpio || null }).eq("id", pubId);
+  if (error) return { error: error.message };
+  await supabase.from("actividad").insert({
+    entidad_tipo: "publicacion", entidad_id: pubId, tipo: "edicion", actor_id: user.id,
+    detalle: { mensaje: "editó la descripción" },
+  });
+  revalidatePath(`/caso/${pubId}`);
+  revalidatePath("/");
+  return {};
+}
+
+export async function agregarVinculo(pubId: string, entidadTipo: string, entidadId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { error } = await supabase.from("publicacion_vinculos").upsert(
+    { publicacion_id: pubId, entidad_tipo: entidadTipo, entidad_id: entidadId },
+    { onConflict: "publicacion_id,entidad_tipo,entidad_id", ignoreDuplicates: true });
+  if (error) return { error: error.message };
+  revalidatePath(`/caso/${pubId}`);
+  revalidatePath("/");
+  return {};
+}
+
+export async function quitarVinculo(pubId: string, entidadTipo: string, entidadId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { error } = await supabase.from("publicacion_vinculos").delete()
+    .eq("publicacion_id", pubId).eq("entidad_tipo", entidadTipo).eq("entidad_id", entidadId);
+  if (error) return { error: error.message };
+  revalidatePath(`/caso/${pubId}`);
+  revalidatePath("/");
+  return {};
+}
+
 /* ===== SUB-CASOS: un caso largo se descompone en hijos =====
    El hijo hereda los vínculos del padre; el padre acumula el progreso. */
 export async function crearSubCaso(padreId: string, titulo: string, tipo: string = "tarea") {
@@ -1253,7 +1295,7 @@ export async function crearSubCaso(padreId: string, titulo: string, tipo: string
 
 /* ===== REACCIONES: los famosos "me gusta" =====
    Toggle por usuario: mismo emoji dos veces = quitar. */
-const EMOJIS_REACCION = ["👍", "❤️", "🔥", "👏", "😂", "😢"];
+const EMOJIS_REACCION = ["👀", "👍", "❤️", "🔥", "👏", "😂", "😢"];
 export async function toggleReaccion(pubId: string, comentarioId: string | null, emoji: string) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -1309,6 +1351,21 @@ export async function cambiarEstado(pubId: string, estado: string) {
   }
   revalidatePath(`/caso/${pubId}`);
   revalidatePath("/");
+  return {};
+}
+
+export async function cambiarFechaLimite(pubId: string, fecha: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  // Acepta 'YYYY-MM-DD'; vacío = quitar la fecha
+  const val = /^\d{4}-\d{2}-\d{2}$/.test(fecha) ? fecha : null;
+  const { error } = await supabase.from("publicaciones")
+    .update({ fecha_limite: val }).eq("id", pubId);
+  if (error) return { error: error.message };
+  revalidatePath(`/caso/${pubId}`);
+  revalidatePath("/");
+  revalidatePath("/tablero");
   return {};
 }
 

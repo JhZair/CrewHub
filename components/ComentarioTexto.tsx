@@ -1,5 +1,6 @@
 "use client";
 import { editarComentario } from "@/app/actions";
+import TextoRico from "@/components/TextoRico";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -48,11 +49,7 @@ export default function ComentarioTexto({ comentarioId, pubId, cuerpo, esMio, ed
 
   return (
     <div className="tx" style={{ position: "relative" }}>
-      {cuerpo.split(/(@[^\s@,;:!?]+)/g).map((parte, i) =>
-        parte.startsWith("@")
-          ? <span key={i} className="mencion">{parte}</span>
-          : parte
-      )}
+      <TextoRico texto={cuerpo} />
       {editadoEn && (
         <span style={{ color: "var(--dim)", fontSize: 10.5, marginLeft: 6 }}
           title={new Date(editadoEn).toLocaleString("es-PE")}>(editado)</span>

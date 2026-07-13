@@ -1,5 +1,5 @@
 "use client";
-import { comentar, cambiarEstado, asignarResponsable } from "@/app/actions";
+import { comentar, cambiarEstado, asignarResponsable, cambiarFechaLimite } from "@/app/actions";
 import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -16,6 +16,17 @@ export function RespSelect({ pubId, actual, perfiles }:
       <option value="">Sin asignar</option>
       {perfiles.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
     </select>
+  );
+}
+
+export function FechaSelect({ pubId, fecha }: { pubId: string; fecha: string | null }) {
+  const router = useRouter();
+  const cambiar = async (v: string) => {
+    const res = await cambiarFechaLimite(pubId, v);
+    if (res?.error) alert(res.error); else router.refresh();
+  };
+  return (
+    <input type="date" defaultValue={fecha || ""} onChange={e => cambiar(e.target.value)} />
   );
 }
 

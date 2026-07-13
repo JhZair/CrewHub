@@ -3,7 +3,12 @@ import { toggleReaccion } from "@/app/actions";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-const EMOJIS = ["👍", "❤️", "🔥", "👏", "😂", "😢"];
+const EMOJIS = ["👀", "👍", "❤️", "🔥", "👏", "😂", "😢"];
+const LABEL: Record<string, string> = {
+  "👀": "Visto — lo leí y lo tengo presente",
+  "👍": "De acuerdo", "❤️": "Me encanta", "🔥": "Genial",
+  "👏": "Aplausos", "😂": "Divertido", "😢": "Triste",
+};
 
 export type Reaccion = { emoji: string; usuario_id: string };
 
@@ -56,7 +61,7 @@ export default function Reacciones({ pubId, comentarioId = null, reacciones, use
             <span className="rx-fondo" onClick={() => setAbierto(false)} />
             <span className="rx-paleta">
               {EMOJIS.map(e => (
-                <button key={e} onClick={() => tap(e)}>{e}</button>
+                <button key={e} title={LABEL[e] || ""} onClick={() => tap(e)}>{e}</button>
               ))}
             </span>
           </>

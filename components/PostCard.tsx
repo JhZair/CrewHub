@@ -2,6 +2,7 @@
 import Avatar from "@/components/Avatar";
 import Reacciones, { type Reaccion } from "@/components/Reacciones";
 import NuevoBadge from "@/components/NuevoBadge";
+import TextoRico from "@/components/TextoRico";
 import { cambiarTipo, cambiarEstado } from "@/app/actions";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -117,7 +118,7 @@ export default function PostCard({
           </div>
           {cuerpo && (
             <p style={{ color: "#c6c6da", fontSize: 13, marginTop: 8, lineHeight: 1.5 }}>
-              {cuerpo.slice(0, 180)}{cuerpo.length > 180 ? "…" : ""}
+              <TextoRico texto={cuerpo.slice(0, 180)} />{cuerpo.length > 180 ? "…" : ""}
             </p>
           )}
           {(imagenes || []).length > 0 && (

@@ -1,10 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import Avatar from "@/components/Avatar";
-import { EstadoSelect, CommentBox, RespSelect } from "@/components/CaseActions";
+import { EstadoSelect, CommentBox, RespSelect, FechaSelect } from "@/components/CaseActions";
 import Reacciones from "@/components/Reacciones";
 import SubCasos from "@/components/SubCasos";
 import TituloEditable from "@/components/TituloEditable";
+import DescripcionEditable from "@/components/DescripcionEditable";
+import EtiquetasEditor from "@/components/EtiquetasEditor";
 import ComentarioTexto from "@/components/ComentarioTexto";
 import Realtime from "@/components/Realtime";
 import Link from "next/link";
@@ -108,8 +110,14 @@ export default async function Caso({ params }: { params: { id: string } }) {
   const perfilNombre = new Map((perfiles || []).map((x: any) => [x.id, x.nombre]));
 
   const chips = (p.vinculos || [])
+    .filter((v: any) => v.entidad_tipo !== "etiqueta")
     .map((v: any) => ({ ...v, nombre: nombres.get(`${v.entidad_tipo}:${v.entidad_id}`) }))
     .filter((v: any) => v.nombre);
+  const etqTodas = (etiq.data || []) as { id: string; nombre: string }[];
+  const etqMap = new Map(etqTodas.map(x => [x.id, x.nombre]));
+  const etiquetasActuales = (p.vinculos || [])
+    .filter((v: any) => v.entidad_tipo === "etiqueta")
+    .map((v: any) => ({ id: v.entidad_id, nombre: etqMap.get(v.entidad_id) || "etiqueta" }));
 
   // Línea de tiempo unificada
   const comMap = new Map((comentarios || []).map((c: any) => [c.id, c]));
@@ -164,16 +172,12 @@ export default async function Caso({ params }: { params: { id: string } }) {
         <div className="gm"><span className="k">Responsable</span>
           <RespSelect pubId={p.id} actual={p.responsable} perfiles={perfiles || []} /></div>
         <div className="gm"><span className="k">Fecha límite</span>
-          <span className="v" style={{ color: p.fecha_limite ? "var(--yellow)" : "var(--dim)" }}>
-            {p.fecha_limite
-              ? new Date(p.fecha_limite + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "long" })
-              : "—"}
-          </span></div>
+          <FechaSelect pubId={p.id} fecha={p.fecha_limite} /></div>
         <div className="gm"><span className="k">Creado</span>
           <span className="v">{fecha(p.creado_en)}<br /><span style={{ color: "var(--muted)", fontWeight: 400 }}>por {p.autor?.nombre}</span></span></div>
       </div>
 
-      {p.cuerpo && <p className="desc">{p.cuerpo}</p>}
+      <DescripcionEditable pubId={p.id} cuerpo={p.cuerpo || ""} />
 
       {(p.imagenes || []).length > 0 && (
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", margin: "4px 0 12px" }}>
@@ -200,6 +204,10 @@ export default async function Caso({ params }: { params: { id: string } }) {
           ))}
         </div>
       )}
+
+      <div style={{ marginBottom: 10 }}>
+        <EtiquetasEditor pubId={p.id} actuales={etiquetasActuales} todas={etqTodas} />
+      </div>
 
       {(!p.padre_id || (hijos || []).length > 0) && (
         <SubCasos padreId={p.id} hijos={hijos || []} />

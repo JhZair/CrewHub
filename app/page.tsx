@@ -5,7 +5,6 @@ import Campanita from "@/components/Campanita";
 import PostCard from "@/components/PostCard";
 import BuscadorGlobal from "@/components/BuscadorGlobal";
 import MenuUsuario from "@/components/MenuUsuario";
-import MonitorLink from "@/components/MonitorLink";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -223,7 +222,6 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
             className={`vtab ${v === val ? "on" : ""}`}>{label}</Link>
         ))}
         <Link href="/tablero" className="vtab" style={{ marginLeft: "auto" }}>🗂 Tablero</Link>
-        <MonitorLink />
       </div>
 
       <Composer userId={user.id} catalogos={catalogos} perfiles={perfs.data || []}

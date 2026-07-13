@@ -12,6 +12,11 @@ function dias(fecha: string | null) {
   return Math.ceil((new Date(fecha + "T12:00:00").getTime() - Date.now()) / 86400000);
 }
 
+function reacStr(reac?: Record<string, number>) {
+  if (!reac) return "";
+  return Object.entries(reac).slice(0, 3).map(([em, n]) => `${em}${n}`).join(" ");
+}
+
 export default function Tablero({ columnas }: {
   columnas: { estado: string; titulo: string; color: string; items: any[] }[];
 }) {
@@ -63,6 +68,9 @@ export default function Tablero({ columnas }: {
                       {d < 0 ? `vencido ${Math.abs(d)}d` : d === 0 ? "HOY" : `${d}d`}
                     </span>
                   )}
+                  {p.nc > 0 && <span className="mini-ind">💬 {p.nc}</span>}
+                  {p.sub > 0 && <span className="mini-ind">🧩 {p.sub}</span>}
+                  {reacStr(p.reac) && <span className="mini-ind">{reacStr(p.reac)}</span>}
                 </div>
               </div>
             );

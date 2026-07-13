@@ -1,16 +1,14 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 
 /* ── MONITOR (cockpit) ──────────────────────────────────────────────
    Dos vistas a la vez en una sola ventana: navegación para trabajar +
    Tablero Kanban, cada una en vivo (cada panel es la página real
    embebida, con su propio Realtime).
    Se muestra en pantalla ANCHA (escritorio / app). En móvil o ventanas
-   angostas redirige a la vista normal ("/"). En web, nadie llega aquí
-   por accidente: la app abre aquí por su start_url, y en el navegador
-   normal no hay ningún enlace hacia /monitor. */
+   angostas redirige a la vista normal ("/"). La app abre aquí por su
+   start_url; para salir se cierra la ventana de la app. */
 
 const PANES = [
   { titulo: "🧭 Navegación", src: "/", nota: "trabaja aquí" },
@@ -22,7 +20,6 @@ export default function MonitorPage() {
   const [ok, setOk] = useState<boolean | null>(null);
 
   useEffect(() => {
-    // Pantalla ancha (escritorio o app) → cockpit. Angosta (móvil) → normal.
     if (window.innerWidth >= 760) setOk(true);
     else router.replace("/");
   }, [router]);
@@ -31,7 +28,6 @@ export default function MonitorPage() {
 
   return (
     <div className="monitor">
-      <Link href="/" className="mon-exit" title="Salir del monitor">✕</Link>
       <div className="mon-grid">
         {PANES.map((p) => (
           <section key={p.src} className="mon-pane">
