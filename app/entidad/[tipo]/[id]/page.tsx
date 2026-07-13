@@ -6,6 +6,9 @@ import Credenciales from "@/components/Credenciales";
 import ClienteProyecto from "@/components/ClienteProyecto";
 import Postulaciones from "@/components/Postulaciones";
 import EquipoPostulacion from "@/components/EquipoPostulacion";
+import PrestamoEquipo from "@/components/PrestamoEquipo";
+import CuentaAcceso from "@/components/CuentaAcceso";
+import { BotonVerificarRuc, BotonVerificarDni } from "@/components/VerificarSunat";
 import Materiales from "@/components/Materiales";
 import LineaTiempo from "@/components/LineaTiempo";
 import CronogramaProyecto from "@/components/CronogramaProyecto";
@@ -18,9 +21,9 @@ import { notFound, redirect } from "next/navigation";
    derecha  = la vida (publicaciones activas, cerradas, historial) */
 
 const CONF: Record<string, { tabla: string; icono: string; campos: [string, string][] }> = {
-  proyecto: { tabla: "proyectos", icono: "📁", campos: [["Folio", "folio"], ["Tipo", "tipo"], ["Modalidad", "modalidad"], ["Etapa", "etapa"], ["Actividad", "estado_actividad"]] },
-  empresa: { tabla: "empresas", icono: "🏢", campos: [["Código", "codigo"], ["Razón social", "razon_social"], ["RUC", "ruc"], ["Región", "region"], ["Estado interno", "estado"], ["Constitución", "fecha_constitucion"], ["Domicilio fiscal", "domicilio_fiscal"], ["Estado SUNAT", "estado_sunat"], ["Condición SUNAT", "condicion_sunat"], ["Verificado SUNAT", "fecha_verificacion_sunat"]] },
-  persona: { tabla: "personas", icono: "👤", campos: [["Alias", "alias"], ["Tipo", "tipo"], ["Equipo", "equipo"], ["Estado", "estado"], ["Región", "region"], ["Rol", "rol"], ["RUC/DNI", "ruc_dni"], ["DNI vence", "dni_vencimiento"]] },
+  proyecto: { tabla: "proyectos", icono: "📁", campos: [["Folio", "folio"], ["Tipo", "tipo"], ["Modalidad", "modalidad"], ["Etapa", "etapa"], ["Actividad", "estado_actividad"], ["RENCA", "renca"]] },
+  empresa: { tabla: "empresas", icono: "🏢", campos: [["Código", "codigo"], ["Razón social", "razon_social"], ["RUC", "ruc"], ["RENCA", "renca"], ["Región", "region"], ["Estado interno", "estado"], ["Constitución", "fecha_constitucion"], ["Domicilio fiscal", "domicilio_fiscal"], ["Estado SUNAT", "estado_sunat"], ["Condición SUNAT", "condicion_sunat"], ["Verificado SUNAT", "fecha_verificacion_sunat"]] },
+  persona: { tabla: "personas", icono: "👤", campos: [["Alias", "alias"], ["Tipo", "tipo"], ["Equipo", "equipo"], ["Estado", "estado"], ["Región", "region"], ["Rol", "rol"], ["DNI", "ruc_dni"], ["DNI vence", "dni_vencimiento"]] },
   equipamiento: { tabla: "equipamiento", icono: "🎥", campos: [["Folio", "folio"], ["Categoría", "categoria"], ["Subcategoría", "subcategoria"], ["Estado", "estado"], ["Valor (S/)", "valor_compra"], ["Comprado en", "comprado_en"]] },
   lugar: { tabla: "lugares", icono: "📍", campos: [] },
   postulacion: { tabla: "postulaciones", icono: "🎯", campos: [["Código", "codigo"], ["Código plataforma DAFO", "codigo_plataforma"], ["Código del acta", "codigo_acta"], ["Estado", "estado"], ["Lenguas originarias", "lenguas_originarias"], ["Puntaje jurado", "puntaje_jurado"], ["Monto adjudicado (S/)", "monto_adjudicado"], ["Firma del acta", "fecha_firma_acta"], ["Límite de rendición", "fecha_limite_rendicion"], ["Prórroga", "fecha_prorroga"]] },
@@ -29,11 +32,11 @@ const CONF: Record<string, { tabla: string; icono: string; campos: [string, stri
 };
 
 const ESTADOS: Record<string, string> = {
-  abierta: "Sin Resolver", en_progreso: "En Progreso", en_pausa: "En Pausa",
-  resuelta: "Resuelta", archivada: "Archivada",
+  abierta: "Sin Resolver", en_progreso: "En Progreso", seguimiento: "🔭 Seguimiento",
+  en_pausa: "En Pausa", resuelta: "Resuelta", archivada: "Archivada",
 };
 const TIPO_META: Record<string, string> = {
-  aviso: "📢", tarea: "✅", problema: "❗", pago: "💰", idea: "💡", archivo: "📎",
+  aviso: "📢", tarea: "✅", problema: "❗", consulta: "❓", pago: "💰", idea: "💡", archivo: "📎",
 };
 
 const fecha = (d: string) =>
@@ -43,7 +46,7 @@ const fecha = (d: string) =>
 const CAMPOS_DINERO = ["monto_adjudicado", "valor_compra"];
 const ICONO_ESTADO: Record<string, string> = {
   // postulaciones
-  ganadora: "🏆", finalista: "⭐", enviada: "📨", no_seleccionada: "✖", retirada: "↩", en_preparacion: "🛠",
+  ganadora: "🏆", finalista: "⭐", finalista_no_ganadora: "🥈", enviada: "📨", no_seleccionada: "✖", retirada: "↩", en_preparacion: "🛠",
   // convocatorias
   postulacion: "📨", en_ejecucion: "🎬", rendicion_pendiente: "🧾", cerrada: "🗄",
   // empresas
@@ -84,11 +87,56 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   ]);
 
   const ids = (vincs || []).map((v: any) => v.publicacion_id);
-  const { data: pubs } = ids.length
-    ? await supabase.from("publicaciones")
-        .select("id,titulo,tipo,estado,creado_en,fecha_limite,resp:perfiles!publicaciones_responsable_fkey(nombre)")
-        .in("id", ids).order("creado_en", { ascending: false })
-    : { data: [] };
+  const SEL_PUB = "id,titulo,tipo,estado,creado_en,fecha_limite,autor:perfiles!publicaciones_autor_id_fkey(nombre),resp:perfiles!publicaciones_responsable_fkey(nombre),comentarios(count)";
+  // Si la persona tiene cuenta, su vida también son los casos que creó o le asignaron
+  const uid = params.tipo === "persona" ? ent.usuario_id : null;
+  const [porVinculo, porUsuario, misComs] = await Promise.all([
+    ids.length
+      ? supabase.from("publicaciones").select(SEL_PUB).in("id", ids)
+      : Promise.resolve({ data: [] as any[] }),
+    uid
+      ? supabase.from("publicaciones").select(SEL_PUB)
+          .or(`autor_id.eq.${uid},responsable.eq.${uid}`)
+          .order("creado_en", { ascending: false }).limit(150)
+      : Promise.resolve({ data: [] as any[] }),
+    uid
+      ? supabase.from("comentarios").select("publicacion_id")
+          .eq("autor_id", uid).limit(400)
+      : Promise.resolve({ data: [] as any[] }),
+  ]);
+  // Casos donde solo participó comentando (ni autor ni responsable ni vinculado)
+  const yaTraidos = new Set([...(porVinculo.data || []), ...(porUsuario.data || [])].map((p: any) => p.id));
+  const idsComentados = [...new Set((misComs.data || []).map((c: any) => c.publicacion_id))]
+    .filter((id: string) => !yaTraidos.has(id));
+  const porComentario = idsComentados.length
+    ? await supabase.from("publicaciones").select(SEL_PUB).in("id", idsComentados)
+    : { data: [] as any[] };
+  const vistosPub = new Set<string>();
+  const pubs = [...(porVinculo.data || []), ...(porUsuario.data || []), ...(porComentario.data || [])]
+    .filter((p: any) => vistosPub.has(p.id) ? false : (vistosPub.add(p.id), true))
+    .sort((a: any, b: any) => (b.creado_en || "").localeCompare(a.creado_en || ""));
+
+  // Los datos importantes de cada caso: sub-casos y reacciones
+  const idsP = pubs.map((p: any) => p.id);
+  const hijosDe = new Map<string, { total: number; ok: number }>();
+  const reaccDe = new Map<string, Map<string, number>>();
+  if (idsP.length) {
+    const [hj, rc] = await Promise.all([
+      supabase.from("publicaciones").select("padre_id,estado").in("padre_id", idsP),
+      supabase.from("reacciones").select("publicacion_id,emoji").is("comentario_id", null).in("publicacion_id", idsP),
+    ]);
+    (hj.data || []).forEach((h: any) => {
+      const m = hijosDe.get(h.padre_id) || { total: 0, ok: 0 };
+      m.total++;
+      if (["resuelta", "archivada"].includes(h.estado)) m.ok++;
+      hijosDe.set(h.padre_id, m);
+    });
+    (rc.data || []).forEach((r: any) => {
+      const m = reaccDe.get(r.publicacion_id) || new Map<string, number>();
+      m.set(r.emoji, (m.get(r.emoji) || 0) + 1);
+      reaccDe.set(r.publicacion_id, m);
+    });
+  }
 
   // Relaciones societarias
   let miembros: any[] = [], personasCat: any[] = [], cargosDe: any[] = [];
@@ -97,9 +145,9 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   let postusProy: any[] = [];
   if (params.tipo === "proyecto") {
     const [pc, cl, ca, pf, pp] = await Promise.all([
-      supabase.from("personas").select("id,nombre,tipo").order("nombre"),
+      supabase.from("personas").select("id,nombre,alias,tipo").order("nombre"),
       ent.cliente_id
-        ? supabase.from("personas").select("id,nombre").eq("id", ent.cliente_id).single()
+        ? supabase.from("personas").select("id,nombre,alias").eq("id", ent.cliente_id).single()
         : Promise.resolve({ data: null }),
       supabase.from("cronograma_actividades")
         .select("*, resp:perfiles(nombre)")
@@ -109,8 +157,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         .select("id,codigo,estado,codigo_acta,monto_adjudicado,fecha_firma_acta,fecha_limite_rendicion,fecha_prorroga,acta_url,conv:convocatorias(id,codigo,nombre,anio)")
         .eq("proyecto_id", params.id).order("creado_en", { ascending: false }),
     ]);
-    personasCat = pc.data || [];
-    clienteDe = (cl as any).data || null;
+    personasCat = (pc.data || []).map((x: any) => ({ ...x, nombre: x.alias ? `${x.nombre} · ${x.alias}` : x.nombre }));
+    const _cl = (cl as any).data; clienteDe = _cl ? { id: _cl.id, nombre: _cl.alias || _cl.nombre } : null;
     cronoActs = ca.data || [];
     perfilesCat = pf.data || [];
     postusProy = pp.data || [];
@@ -134,6 +182,20 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     proyectosCat = pr.data || [];
     empresasCat = (em.data || []).map((x: any) => ({ id: x.id, nombre: x.codigo ? `${x.codigo} · ${x.nombre}` : x.nombre }));
   }
+  let prestamos: any[] = [], proyectosPrest: any[] = [];
+  if (params.tipo === "equipamiento") {
+    const [pr, pc, py] = await Promise.all([
+      supabase.from("equipo_prestamos")
+        .select("id,desde,hasta,nota,persona:personas(id,nombre,alias),proy:proyectos(id,nombre)")
+        .eq("equipamiento_id", params.id).order("desde", { ascending: false }),
+      supabase.from("personas").select("id,nombre,alias,tipo").order("nombre"),
+      supabase.from("proyectos").select("id,nombre").order("nombre"),
+    ]);
+    prestamos = pr.data || [];
+    personasCat = (pc.data || []).map((x: any) => ({ ...x, nombre: x.alias ? `${x.nombre} · ${x.alias}` : x.nombre }));
+    proyectosPrest = py.data || [];
+  }
+
   let postCtx: any = null, equipoPost: any[] = [];
   if (params.tipo === "postulacion") {
     const [ctx, eq, pc] = await Promise.all([
@@ -141,29 +203,57 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         .select("proy:proyectos(id,nombre,tipo), emp:empresas(id,nombre,codigo), conv:convocatorias(id,codigo,nombre,anio,monto_adjudicado,bases_url,hitos:cronograma_actividades(id,nombre,fecha_inicio,estado,clase))")
         .eq("id", params.id).single(),
       supabase.from("postulacion_equipo")
-        .select("id,cargo,persona:personas(id,nombre)")
+        .select("id,cargo,persona:personas(id,nombre,alias)")
         .eq("postulacion_id", params.id).order("cargo"),
-      supabase.from("personas").select("id,nombre,tipo").order("nombre"),
+      supabase.from("personas").select("id,nombre,alias,tipo").order("nombre"),
     ]);
     postCtx = ctx.data;
     equipoPost = eq.data || [];
-    personasCat = pc.data || [];
+    personasCat = (pc.data || []).map((x: any) => ({ ...x, nombre: x.alias ? `${x.nombre} · ${x.alias}` : x.nombre }));
   }
   if (params.tipo === "empresa") {
     const [m, pc] = await Promise.all([
       supabase.from("empresa_miembros")
-        .select("id,cargo,fecha_inicio,fecha_fin,estado,persona:personas(id,nombre)")
+        .select("id,cargo,fecha_inicio,fecha_fin,estado,persona:personas(id,nombre,alias)")
         .eq("empresa_id", params.id).order("cargo"),
-      supabase.from("personas").select("id,nombre,tipo").order("nombre"),
+      supabase.from("personas").select("id,nombre,alias,tipo").order("nombre"),
     ]);
     miembros = m.data || [];
-    personasCat = pc.data || [];
+    personasCat = (pc.data || []).map((x: any) => ({ ...x, nombre: x.alias ? `${x.nombre} · ${x.alias}` : x.nombre }));
   }
+  let postDe: any[] = [], equiposEnMano: any[] = [], clienteEnProy: any[] = [];
+  let cuentaDe: { id: string; nombre: string } | null = null;
+  let cuentasLibres: { id: string; nombre: string }[] = [];
   if (params.tipo === "persona") {
-    const { data } = await supabase.from("empresa_miembros")
-      .select("id,cargo,estado,fecha_inicio,fecha_fin,empresa:empresas(id,nombre,codigo)")
-      .eq("persona_id", params.id).order("estado");
-    cargosDe = data || [];
+    const [cg, pe, pr, cl] = await Promise.all([
+      supabase.from("empresa_miembros")
+        .select("id,cargo,estado,fecha_inicio,fecha_fin,empresa:empresas(id,nombre,codigo)")
+        .eq("persona_id", params.id).order("estado"),
+      supabase.from("postulacion_equipo")
+        .select("id,cargo,post:postulaciones(id,codigo,estado,proy:proyectos(id,nombre),conv:convocatorias(anio))")
+        .eq("persona_id", params.id),
+      supabase.from("equipo_prestamos")
+        .select("id,desde,equipo:equipamiento(id,folio,nombre)")
+        .eq("persona_id", params.id).is("hasta", null).order("desde", { ascending: false }),
+      supabase.from("proyectos")
+        .select("id,nombre,tipo,estado")
+        .eq("cliente_id", params.id).order("nombre"),
+    ]);
+    cargosDe = cg.data || [];
+    postDe = (pe.data || []).sort((a: any, b: any) =>
+      (b.post?.conv?.anio || 0) - (a.post?.conv?.anio || 0));
+    equiposEnMano = pr.data || [];
+    clienteEnProy = cl.data || [];
+
+    // Cuenta de acceso: perfil enlazado + cuentas que aún no tienen persona
+    const [pf, up] = await Promise.all([
+      supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
+      supabase.from("personas").select("usuario_id").not("usuario_id", "is", null),
+    ]);
+    const usadas = new Set((up.data || []).map((x: any) => x.usuario_id));
+    const perfilesAll = (pf.data || []).filter((p: any) => p.nombre !== "Qhaway");
+    cuentaDe = ent.usuario_id ? perfilesAll.find((p: any) => p.id === ent.usuario_id) || null : null;
+    cuentasLibres = perfilesAll.filter((p: any) => !usadas.has(p.id));
   }
 
   let creds: any[] = [];
@@ -178,22 +268,41 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   const nombre = params.tipo === "postulacion"
     ? `${ent.codigo || postCtx?.conv?.codigo || "Postulación"} · ${postCtx?.proy?.nombre || ""}`.replace(/ · $/, "")
     : ent.nombre || ent.codigo || "—";
-  const activas = (pubs || []).filter((p: any) => ["abierta", "en_progreso"].includes(p.estado));
-  const cerradas = (pubs || []).filter((p: any) => !["abierta", "en_progreso"].includes(p.estado));
+  const activas = (pubs || []).filter((p: any) => ["abierta", "en_progreso", "seguimiento"].includes(p.estado));
+  const cerradas = (pubs || []).filter((p: any) => !["abierta", "en_progreso", "seguimiento"].includes(p.estado));
 
-  const cardPub = (p: any) => (
-    <Link key={p.id} href={`/caso/${p.id}`}>
-      <div className="card link" style={{ cursor: "pointer", padding: "12px 15px" }}>
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <span>{TIPO_META[p.tipo] || "💬"}</span>
-          <b style={{ flex: 1, fontSize: 13.5 }}>{p.titulo}</b>
-          {(p.resp as any)?.nombre && <span className="tv-resp">{(p.resp as any).nombre.split(" ")[0]}</span>}
-          <span className={`pill st-${p.estado}`}>{ESTADOS[p.estado] || p.estado}</span>
+  const cardPub = (p: any) => {
+    const hj = hijosDe.get(p.id);
+    const rx = reaccDe.get(p.id);
+    const nComs = (p.comentarios as any)?.[0]?.count || 0;
+    return (
+      <Link key={p.id} href={`/caso/${p.id}`}>
+        <div className="card link" style={{ cursor: "pointer", padding: "12px 15px" }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <span>{TIPO_META[p.tipo] || "💬"}</span>
+            <b style={{ flex: 1, fontSize: 13.5 }}>{p.titulo}</b>
+            {(p.resp as any)?.nombre && <span className="tv-resp">{(p.resp as any).nombre.split(" ")[0]}</span>}
+            <span className={`pill st-${p.estado}`}>{ESTADOS[p.estado] || p.estado}</span>
+          </div>
+          <div className="meta" style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+            {(p.autor as any)?.nombre && <span>✍ {(p.autor as any).nombre.split(" ")[0]}</span>}
+            <span>{fecha(p.creado_en)}</span>
+            {nComs > 0 && <span>💬 {nComs}</span>}
+            {hj && (
+              <span style={{ color: hj.ok === hj.total ? "var(--green)" : "var(--yellow)" }}>
+                🧩 {hj.ok}/{hj.total} sub-casos
+              </span>
+            )}
+            {rx && (
+              <span style={{ letterSpacing: .5 }}>
+                {[...rx.entries()].map(([e, n]) => `${e}${n > 1 ? ` ${n}` : ""}`).join("  ")}
+              </span>
+            )}
+          </div>
         </div>
-        <div className="meta">{fecha(p.creado_en)}</div>
-      </div>
-    </Link>
-  );
+      </Link>
+    );
+  };
 
   return (
     <div className="shell shell-ancho">
@@ -239,6 +348,10 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                 <a href={ent.ficha_ruc_url} target="_blank" rel="noopener noreferrer"
                   className="btn btn-ghost" style={{ fontSize: 12, padding: "7px 12px" }}>📄 Ficha RUC</a>
               )}
+              {ent.renca_url && (
+                <a href={ent.renca_url} target="_blank" rel="noopener noreferrer"
+                  className="btn btn-ghost" style={{ fontSize: 12, padding: "7px 12px" }}>🎬 RENCA</a>
+              )}
               {ent.vigencia_poder_url && (
                 <a href={ent.vigencia_poder_url} target="_blank" rel="noopener noreferrer"
                   className="btn btn-ghost" style={{ fontSize: 12, padding: "7px 12px" }}>📜 Vigencia</a>
@@ -262,7 +375,17 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                   <span className="fv" style={
                     key === "estado_sunat" && ent[key] !== "activo" ? { color: "var(--red)", fontWeight: 700 }
                       : CAMPOS_DINERO.includes(key) ? { color: "var(--teal)", fontWeight: 700 } : undefined
-                  }>{verFicha(key, ent[key])}</span>
+                  }>
+                    {key === "rol" && String(ent[key]).split(",").length > 3 ? (
+                      <details style={{ display: "inline" }}>
+                        <summary style={{ cursor: "pointer", listStyle: "none" }}>
+                          {String(ent[key]).split(",").slice(0, 3).map(s => s.trim()).join(", ")}
+                          <i style={{ color: "var(--dim)" }}> … +{String(ent[key]).split(",").length - 3} ver más</i>
+                        </summary>
+                        {String(ent[key]).split(",").slice(3).map(s => s.trim()).join(", ")}
+                      </details>
+                    ) : verFicha(key, ent[key])}
+                  </span>
                 </div>
               ) : null
             )}
@@ -283,48 +406,61 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                 </div>
               )
             )}
-            <div style={{ marginTop: 12 }}>
+            <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
               <Mantenimiento tipo={params.tipo} id={params.id} valores={ent} />
+              {params.tipo === "empresa" && ent.ruc && <BotonVerificarRuc empresaId={params.id} />}
+              {params.tipo === "persona" && ent.ruc_dni && <BotonVerificarDni personaId={params.id} />}
             </div>
           </div>
-
-          {params.tipo === "proyecto" && (
-            <ClienteProyecto proyectoId={params.id} cliente={clienteDe} personas={personasCat} />
-          )}
 
           {params.tipo === "proyecto" && postusProy.length > 0 && (
             <div className="linked" style={{ marginTop: 14 }}>
               <h4>🎯 Postulaciones y fondos · {postusProy.length}</h4>
               {postusProy.map((p: any) => (
-                <div key={p.id} style={{ borderBottom: "1px solid var(--border)", padding: "8px 0" }}>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", fontSize: 13 }}>
-                    <Link href={`/entidad/postulacion/${p.id}`} style={{ color: "var(--text)", fontWeight: 600 }}>
-                      {ICONO_ESTADO[p.estado] || "🎯"} {p.conv?.nombre || p.codigo || "Postulación"} →
-                    </Link>
+                <div key={p.id} style={{ borderBottom: "1px solid var(--border)", padding: "10px 0" }}>
+                  {/* línea 1: el concurso */}
+                  <Link href={`/entidad/postulacion/${p.id}`}
+                    style={{ color: "var(--text)", fontWeight: 600, fontSize: 13, display: "block", lineHeight: 1.4 }}>
+                    {ICONO_ESTADO[p.estado] || "🎯"} {p.conv?.nombre || p.codigo || "Postulación"} →
+                  </Link>
+                  {/* línea 2: año + estado */}
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6 }}>
                     {p.conv?.anio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{p.conv.anio}</span>}
+                    <span className="badge" style={{
+                      color: p.estado === "ganadora" ? "var(--green)" : "var(--muted)", background: "#1c1c2c",
+                    }}>{(p.estado || "").replace(/_/g, " ")}</span>
                   </div>
+                  {/* la ejecución, en su caja verde */}
                   {p.estado === "ganadora" && (
-                    <div style={{ marginTop: 5, fontSize: 12, color: "var(--muted)", display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-                      {p.codigo_acta && <span style={{ color: "var(--green)", fontWeight: 700 }}>{p.codigo_acta}</span>}
-                      {p.monto_adjudicado && (
-                        <span style={{ color: "var(--teal)", fontWeight: 700 }}>
-                          S/ {parseFloat(p.monto_adjudicado).toLocaleString("es-PE")}
-                        </span>
-                      )}
-                      {p.fecha_firma_acta && <span>🖋 {verFicha("f", p.fecha_firma_acta)}</span>}
-                      {(p.fecha_prorroga || p.fecha_limite_rendicion) && (
-                        <span style={{ color: "var(--yellow)" }}>
-                          🧾 rinde: {verFicha("f", p.fecha_prorroga || p.fecha_limite_rendicion)}{p.fecha_prorroga ? " (prórroga)" : ""}
-                        </span>
-                      )}
-                      {p.acta_url && (
-                        <a href={p.acta_url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--violet)" }}>📄 Acta</a>
-                      )}
+                    <div style={{ marginTop: 8, padding: "8px 10px", background: "var(--bg)", borderRadius: 9, borderLeft: "3px solid var(--green)", fontSize: 11.5, color: "var(--muted)" }}>
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                        {p.codigo_acta && <span style={{ color: "var(--green)", fontWeight: 700 }}>{p.codigo_acta}</span>}
+                        {p.monto_adjudicado && (
+                          <span style={{ color: "var(--teal)", fontWeight: 700 }}>
+                            S/ {parseFloat(p.monto_adjudicado).toLocaleString("es-PE")}
+                          </span>
+                        )}
+                        {p.fecha_firma_acta && <span>🖋 {verFicha("f", p.fecha_firma_acta)}</span>}
+                      </div>
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 5 }}>
+                        {(p.fecha_prorroga || p.fecha_limite_rendicion) && (
+                          <span style={{ color: "var(--yellow)" }}>
+                            🧾 rinde: {verFicha("f", p.fecha_prorroga || p.fecha_limite_rendicion)}{p.fecha_prorroga ? " (prórroga)" : ""}
+                          </span>
+                        )}
+                        {p.acta_url && (
+                          <a href={p.acta_url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--violet)" }}>📄 Acta</a>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
               ))}
             </div>
+          )}
+
+          {params.tipo === "proyecto" && (
+            <ClienteProyecto proyectoId={params.id} cliente={clienteDe} personas={personasCat} />
           )}
 
           {params.tipo === "convocatoria" && (
@@ -381,6 +517,11 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             <Miembros empresaId={params.id} miembros={miembros} personas={personasCat} />
           )}
 
+          {params.tipo === "equipamiento" && (
+            <PrestamoEquipo equipoId={params.id} prestamos={prestamos}
+              personas={personasCat} proyectos={proyectosPrest} />
+          )}
+
           {params.tipo === "persona" && cargosDe.length > 0 && (
             <div className="linked" style={{ marginTop: 14 }}>
               <h4>🏢 Cargos en empresas</h4>
@@ -397,8 +538,86 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             </div>
           )}
 
+          {params.tipo === "persona" && postDe.length > 0 && (() => {
+            const ganadas = postDe.filter((r: any) => r.post?.estado === "ganadora");
+            const finalistas = postDe.filter((r: any) =>
+              ["finalista", "finalista_no_ganadora"].includes(r.post?.estado));
+            const resto = postDe.filter((r: any) => r.post?.estado !== "ganadora");
+            const fila = (r: any) => (
+              <div key={r.id} className="eq-row" style={{ alignItems: "center" }}>
+                <span className="cargo">{r.cargo || "—"}</span>
+                <span style={{ flex: 1, textAlign: "right" }}>
+                  <Link href={`/entidad/postulacion/${r.post?.id}`} style={{ color: "var(--text)" }}>
+                    {ICONO_ESTADO[r.post?.estado] || "🎯"} {r.post?.proy?.nombre || r.post?.codigo} →
+                  </Link>
+                  {r.post?.conv?.anio && (
+                    <span style={{ color: "var(--dim)", fontSize: 11, marginLeft: 8 }}>{r.post.conv.anio}</span>
+                  )}
+                </span>
+              </div>
+            );
+            return (
+              <>
+                {ganadas.length > 0 && (
+                  <div className="linked" style={{ marginTop: 14, borderLeft: "3px solid var(--green)" }}>
+                    <h4 style={{ color: "var(--green)" }}>🏆 Palmarés · {ganadas.length}</h4>
+                    <div style={{ color: "var(--muted)", fontSize: 11.5, marginBottom: 8 }}>
+                      {ganadas.length} estímulo{ganadas.length === 1 ? "" : "s"} ganado{ganadas.length === 1 ? "" : "s"}
+                      {finalistas.length > 0 && ` · ${finalistas.length} finalista${finalistas.length === 1 ? "" : "s"}`}
+                      {` · ${postDe.length} postulaciones en total`}
+                    </div>
+                    {ganadas.map(fila)}
+                  </div>
+                )}
+                {resto.length > 0 && (
+                  <div className="linked" style={{ marginTop: 14 }}>
+                    <h4>🎯 En postulaciones · {resto.length}</h4>
+                    {resto.map(fila)}
+                  </div>
+                )}
+              </>
+            );
+          })()}
+
+          {params.tipo === "persona" && equiposEnMano.length > 0 && (
+            <div className="linked" style={{ marginTop: 14, borderLeft: "3px solid var(--yellow)" }}>
+              <h4>🎥 Equipos en su poder · {equiposEnMano.length}</h4>
+              {equiposEnMano.map((r: any) => (
+                <div key={r.id} className="eq-row" style={{ alignItems: "center" }}>
+                  {r.equipo?.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{r.equipo.folio}</span>}
+                  <span style={{ flex: 1, textAlign: "right" }}>
+                    <Link href={`/entidad/equipamiento/${r.equipo?.id}`} style={{ color: "var(--text)" }}>
+                      {r.equipo?.nombre} →
+                    </Link>
+                    <span style={{ color: "var(--dim)", fontSize: 11, marginLeft: 8 }}>
+                      desde {new Date(r.desde + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short" })}
+                    </span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {params.tipo === "persona" && clienteEnProy.length > 0 && (
+            <div className="linked" style={{ marginTop: 14 }}>
+              <h4>🤝 Cliente de proyectos · {clienteEnProy.length}</h4>
+              {clienteEnProy.map((p: any) => (
+                <div key={p.id} className="eq-row" style={{ alignItems: "center" }}>
+                  {p.tipo && <span className="cargo">{p.tipo.replace(/_/g, " ")}</span>}
+                  <span style={{ flex: 1, textAlign: "right" }}>
+                    <Link href={`/entidad/proyecto/${p.id}`} style={{ color: "var(--text)" }}>📁 {p.nombre} →</Link>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
           {(params.tipo === "empresa" || params.tipo === "persona") && (
             <Credenciales dueno={params.tipo as "empresa" | "persona"} duenoId={params.id} credenciales={creds} />
+          )}
+
+          {params.tipo === "persona" && (ent.usuario_id || ent.tipo === "personal") && (
+            <CuentaAcceso personaId={params.id} cuenta={cuentaDe} libres={cuentasLibres} />
           )}
         </aside>
 
@@ -446,18 +665,38 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             );
 
             if (params.tipo === "postulacion") {
+              const enJuego = ["en_preparacion", "enviada", "finalista"].includes(ent.estado);
               const hitosConc = (postCtx?.conv?.hitos || [])
                 .filter((h: any) => h.clase === "hito_externo" && h.estado !== "cancelada")
                 .sort((a: any, b: any) => (a.fecha_inicio < b.fecha_inicio ? -1 : 1));
+              // Ganadora: su ruta ya no es el concurso, es la ejecución
+              const rutaEjec = ent.estado === "ganadora" ? [
+                ent.fecha_firma_acta && { fecha: ent.fecha_firma_acta, titulo: "Firma del acta de compromiso", icono: "🖋", color: "var(--green)" },
+                ent.fecha_limite_rendicion && { fecha: ent.fecha_limite_rendicion, titulo: `Límite de rendición${ent.fecha_prorroga ? " (original)" : ""}`, icono: "🧾", color: ent.fecha_prorroga ? "#4a4a5e" : "var(--yellow)" },
+                ent.fecha_prorroga && { fecha: ent.fecha_prorroga, titulo: "Límite de rendición (prórroga)", icono: "⏳", color: "var(--yellow)" },
+              ].filter(Boolean) as any[] : [];
               return (
                 <>
-                  {hitosConc.length > 0 && (
+                  {enJuego && hitosConc.length > 0 && (
                     <div className="card" style={{ marginBottom: 16 }}>
                       <div className="panel-h">📅 Línea de tiempo del concurso — la carrera de esta postulación</div>
                       <LineaTiempo eventos={hitosConc.map((h: any) => ({
                         fecha: h.fecha_inicio, titulo: h.nombre, icono: "🏛",
                         color: h.estado === "finalizada" ? "#4a4a5e" : "var(--violet)",
                       }))} />
+                    </div>
+                  )}
+                  {rutaEjec.length > 0 && (
+                    <div className="card" style={{ marginBottom: 16, borderColor: "rgba(46,204,113,.3)" }}>
+                      <div className="panel-h" style={{ color: "var(--green)" }}>🏆 Camino de ejecución — del acta a la rendición</div>
+                      <LineaTiempo eventos={rutaEjec} />
+                    </div>
+                  )}
+                  {ent.estado === "ganadora" && !rutaEjec.length && (
+                    <div className="card" style={{ marginBottom: 16 }}>
+                      <span style={{ color: "var(--yellow)", fontSize: 13 }}>
+                        ⚠ Ganadora sin fechas de ejecución — registra acta y rendición en ✏️ Editar.
+                      </span>
                     </div>
                   )}
                   {vida}

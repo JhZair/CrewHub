@@ -10,6 +10,7 @@ const EST_META: Record<string, [string, string]> = {
   enviada: ["📨 Enviadas", "var(--blue)"],
   finalista: ["⭐ Finalistas", "var(--yellow)"],
   ganadora: ["🏆 Ganadoras", "var(--green)"],
+  finalista_no_ganadora: ["🥈 Finalistas (no ganaron)", "var(--yellow)"],
   no_seleccionada: ["✖ No seleccionadas", "var(--dim)"],
   retirada: ["↩ Retiradas", "var(--dim)"],
 };
@@ -112,7 +113,7 @@ export default async function Postulaciones({ searchParams }: {
       {!listar && (
         <>
           <div className="stat-grid">
-            {(["en_preparacion", "enviada", "finalista", "ganadora", "no_seleccionada"] as const).map(est => (
+            {(["en_preparacion", "enviada", "finalista", "ganadora", "finalista_no_ganadora", "no_seleccionada"] as const).map(est => (
               <Link key={est} href={`/postulaciones?e=${est}`} className="stat-card">
                 <div className="stat-n" style={{ color: EST_META[est][1] }}>{cnt(est)}</div>
                 <div className="stat-l">{EST_META[est][0]}</div>

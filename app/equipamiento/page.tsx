@@ -1,7 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
+import BotonComprobar from "@/components/BotonComprobar";
+import BotonDevolver from "@/components/BotonDevolver";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+
+const diasDesde = (f: string) => Math.floor((Date.now() - new Date(f + "T12:00:00").getTime()) / 86400000);
 
 const EST_META: Record<string, [string, string]> = {
   disponible: ["Disponibles", "var(--green)"],
@@ -12,27 +16,38 @@ const EST_META: Record<string, [string, string]> = {
 };
 
 export default async function Equipamiento({ searchParams }: {
-  searchParams: { q?: string; e?: string };
+  searchParams: { q?: string; e?: string; ronda?: string };
 }) {
   const q = (searchParams?.q || "").trim();
   const e = searchParams?.e || "";
-  const listar = !!(q || e);
+  const ronda = searchParams?.ronda === "1";
+  const listar = !!(q || e || ronda);
 
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: eqs } = await supabase.from("equipamiento")
-    .select("id,folio,nombre,categoria,subcategoria,estado,valor_compra")
-    .order("folio");
+  const [{ data: eqs }, { data: enManos }] = await Promise.all([
+    supabase.from("equipamiento")
+      .select("id,folio,nombre,categoria,subcategoria,estado,valor_compra,ultima_comprobacion")
+      .order("folio"),
+    supabase.from("equipo_prestamos")
+      .select("id,desde,equipo:equipamiento(id,folio,nombre),persona:personas(id,nombre,alias),proy:proyectos(id,nombre)")
+      .is("hasta", null).order("desde", { ascending: false }),
+  ]);
 
   const todos = eqs || [];
   const nrm = (s: any) => String(s || "").toLowerCase();
+  const porComprobar = (x: any) =>
+    !["de_baja"].includes(x.estado) &&
+    (!x.ultima_comprobacion || diasDesde(x.ultima_comprobacion) > 90);
   const filtrados = todos.filter((x: any) =>
     (!e || x.estado === e) &&
+    (!ronda || porComprobar(x)) &&
     (!q || nrm(x.nombre).includes(nrm(q)) || nrm(x.folio).includes(nrm(q)) ||
       nrm(x.categoria).includes(nrm(q)) || nrm(x.subcategoria).includes(nrm(q)))
-  ).slice(0, 150);
+  ).slice(0, 200);
+  const pendientesRonda = todos.filter(porComprobar).length;
 
   const cnt = (est: string) => todos.filter((x: any) => x.estado === est).length;
   const valorTotal = todos
@@ -77,7 +92,41 @@ export default async function Equipamiento({ searchParams }: {
               </span>
               <span className="stat-l">valor del inventario activo</span>
             </span>
+            <Link href="/equipamiento?ronda=1" className="stat-card"
+              style={pendientesRonda > 0 ? { borderColor: "rgba(244,180,0,.4)" } : undefined}>
+              <div className="stat-n" style={{ color: pendientesRonda > 0 ? "var(--yellow)" : "var(--green)" }}>
+                {pendientesRonda}
+              </div>
+              <div className="stat-l">🔍 por comprobar (90+ días)</div>
+            </Link>
           </div>
+
+          {(enManos || []).length > 0 && (
+            <div className="card">
+              <div className="panel-h" style={{ color: "var(--yellow)" }}>🤝 En uso ahora — quién tiene qué</div>
+              {(enManos || []).map((p: any) => (
+                <div className="info-row" key={p.id}>
+                  {p.equipo?.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{p.equipo.folio}</span>}
+                  <Link href={`/entidad/equipamiento/${p.equipo?.id}`} style={{ fontWeight: 600 }}>
+                    {p.equipo?.nombre} →
+                  </Link>
+                  <span style={{ color: "var(--dim)", fontSize: 12 }}>en manos de</span>
+                  <Link href={`/entidad/persona/${p.persona?.id}`} style={{ color: "var(--teal)", fontWeight: 600, fontSize: 12.5 }}>
+                    👤 {p.persona?.alias || p.persona?.nombre}
+                  </Link>
+                  {p.proy && (
+                    <Link href={`/entidad/proyecto/${p.proy.id}`} className="badge"
+                      style={{ color: "var(--violet)", background: "rgba(167,139,250,.12)" }}>📁 {p.proy.nombre}</Link>
+                  )}
+                  <span style={{ flex: 1 }} />
+                  <span style={{ color: "var(--dim)", fontSize: 11.5 }}>
+                    desde {new Date(p.desde + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short" })}
+                  </span>
+                  <BotonDevolver prestamoId={p.id} equipoId={p.equipo?.id} />
+                </div>
+              ))}
+            </div>
+          )}
 
           {atencion.length > 0 && (
             <div className="card" style={{ borderColor: "rgba(255,77,94,.4)" }}>
@@ -114,6 +163,7 @@ export default async function Equipamiento({ searchParams }: {
       {listar && (
         <>
           <div style={{ color: "var(--muted)", fontSize: 13, margin: "2px 4px 10px" }}>
+            {ronda && <b style={{ color: "var(--yellow)" }}>🔍 MODO RONDA — marca cada equipo que veas físicamente · </b>}
             {filtrados.length} resultado{filtrados.length === 1 ? "" : "s"}
             {e && ` · ${(EST_META[e]?.[0] || e).toLowerCase()}`}{q && ` · «${q}»`}
           </div>
@@ -125,6 +175,7 @@ export default async function Equipamiento({ searchParams }: {
                   <b style={{ fontSize: 14.5, flex: 1 }}>{x.nombre}</b>
                   {x.categoria && <span className="badge" style={{ color: "var(--violet)", background: "rgba(167,139,250,.12)" }}>{x.categoria}</span>}
                   {x.subcategoria && <span style={{ color: "var(--dim)", fontSize: 12 }}>{x.subcategoria}</span>}
+                  <BotonComprobar equipoId={x.id} ultima={x.ultima_comprobacion} compacto={!ronda} />
                   <span className="badge" style={{ color: EST_META[x.estado]?.[1] || "var(--muted)", background: "#1c1c2c" }}>
                     {(x.estado || "").replace(/_/g, " ")}
                   </span>

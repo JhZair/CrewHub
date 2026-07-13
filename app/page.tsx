@@ -4,20 +4,19 @@ import Realtime from "@/components/Realtime";
 import Campanita from "@/components/Campanita";
 import PostCard from "@/components/PostCard";
 import BuscadorGlobal from "@/components/BuscadorGlobal";
-import Avatar from "@/components/Avatar";
-import LogoutButton from "@/components/LogoutButton";
+import MenuUsuario from "@/components/MenuUsuario";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
 const TIPO_META: Record<string, [string, string]> = {
   aviso: ["📢 Aviso", "#a78bfa"], tarea: ["✅ Tarea", "#22c55e"],
-  problema: ["❗ Problema", "#ff4d5e"], pago: ["💰 Pago", "#2dd4bf"],
-  idea: ["💡 Idea", "#f4b400"], archivo: ["📎 Archivo", "#3b82f6"],
-  conversacion: ["💬 Conversación", "#8b8ba3"],
+  problema: ["❗ Problema", "#ff4d5e"], consulta: ["❓ Consulta", "#60a5fa"],
+  pago: ["💰 Pago", "#2dd4bf"], idea: ["💡 Idea", "#f4b400"],
+  archivo: ["📎 Archivo", "#3b82f6"], conversacion: ["💬 Conversación", "#8b8ba3"],
 };
 const ESTADOS: Record<string, string> = {
-  abierta: "Sin Resolver", en_progreso: "En Progreso", en_pausa: "En Pausa",
-  resuelta: "Resuelta", archivada: "Archivada",
+  abierta: "Sin Resolver", en_progreso: "En Progreso", seguimiento: "🔭 Seguimiento",
+  en_pausa: "En Pausa", resuelta: "Resuelta", archivada: "Archivada",
 };
 const ENT_ICO: Record<string, string> = {
   proyecto: "📁", empresa: "🏢", persona: "👤", convocatoria: "📜",
@@ -37,7 +36,8 @@ function vencimiento(fecha: string | null, estado: string): [string, string] | n
 
 const VISTAS: [string, string][] = [
   ["", "🌐 Todo"], ["mios", "🙋 Mis asuntos"], ["problema", "❗ Problemas"],
-  ["tarea", "✅ Tareas"], ["pago", "💰 Pagos"], ["aviso", "📢 Avisos"],
+  ["tarea", "✅ Tareas"], ["consulta", "❓ Consultas"], ["pago", "💰 Pagos"],
+  ["aviso", "📢 Avisos"],
 ];
 
 export default async function Feed({ searchParams }: { searchParams: { v?: string; link?: string } }) {
@@ -71,22 +71,24 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
   const [proy, emp, pers, conv, postu, equi, luga, etiq, perfs, postsQ] = await Promise.all([
     supabase.from("proyectos").select("id,nombre").order("nombre"),
     supabase.from("empresas").select("id,nombre,codigo").order("codigo"),
-    supabase.from("personas").select("id,nombre,tipo").order("nombre"),
-    supabase.from("convocatorias").select("id,codigo,nombre").order("codigo"),
+    supabase.from("personas").select("id,nombre,alias,tipo").order("nombre"),
+    supabase.from("convocatorias").select("id,codigo,nombre,anio")
+      .order("anio", { ascending: false }).order("codigo"),
     supabase.from("postulaciones").select("id,codigo,proy:proyectos(nombre),conv:convocatorias(codigo)"),
-    supabase.from("equipamiento").select("id,nombre").order("nombre"),
+    supabase.from("equipamiento").select("id,nombre,folio").order("folio"),
     supabase.from("lugares").select("id,nombre").order("nombre"),
     supabase.from("etiquetas").select("id,nombre").order("nombre"),
     supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
     (() => {
       let q = supabase.from("publicaciones")
         .select(`
-          id, tipo, titulo, cuerpo, estado, prioridad, creado_en, fecha_limite,
+          id, tipo, titulo, cuerpo, estado, prioridad, creado_en, fecha_limite, imagenes, padre_id,
           autor:perfiles!publicaciones_autor_id_fkey(nombre, color, avatar_url),
           resp:perfiles!publicaciones_responsable_fkey(nombre),
           comentarios(count),
           vinculos:publicacion_vinculos(entidad_tipo, entidad_id)
         `)
+        .neq("estado", "archivada")   // lo archivado descansa fuera del feed
         .order("creado_en", { ascending: false })
         .limit(50);
       if (v === "mios") {
@@ -98,6 +100,39 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
       return q;
     })(),
   ]);
+
+  // Familia de cada caso visible: ¿tiene hijos? ¿tiene padre?
+  const idsPubs = (postsQ.data || []).map((p: any) => p.id);
+  const { data: hijosData } = idsPubs.length
+    ? await supabase.from("publicaciones").select("padre_id,estado").in("padre_id", idsPubs)
+    : { data: [] };
+  const hijosDe = new Map<string, { total: number; ok: number }>();
+  (hijosData || []).forEach((h: any) => {
+    const m = hijosDe.get(h.padre_id) || { total: 0, ok: 0 };
+    m.total++;
+    if (["resuelta", "archivada"].includes(h.estado)) m.ok++;
+    hijosDe.set(h.padre_id, m);
+  });
+  // Títulos de padres que no están en la página del feed
+  const idsPadres = [...new Set((postsQ.data || [])
+    .map((p: any) => p.padre_id).filter(Boolean)
+    .filter((id: string) => !idsPubs.includes(id)))];
+  const { data: padresExt } = idsPadres.length
+    ? await supabase.from("publicaciones").select("id,titulo").in("id", idsPadres)
+    : { data: [] };
+  const tituloPadre = new Map<string, string>();
+  (postsQ.data || []).forEach((p: any) => tituloPadre.set(p.id, p.titulo));
+  (padresExt || []).forEach((p: any) => tituloPadre.set(p.id, p.titulo));
+  const { data: reaccs } = idsPubs.length
+    ? await supabase.from("reacciones")
+        .select("publicacion_id,emoji,usuario_id")
+        .is("comentario_id", null).in("publicacion_id", idsPubs)
+    : { data: [] };
+  const reaccsDe = new Map<string, any[]>();
+  (reaccs || []).forEach((r: any) => {
+    const l = reaccsDe.get(r.publicacion_id) || [];
+    l.push(r); reaccsDe.set(r.publicacion_id, l);
+  });
 
   // Notificaciones + actividad de Qhaway hoy
   const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
@@ -126,13 +161,18 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
   const catalogos: Catalogos = {
     proyecto: proy.data || [],
     empresa: (emp.data || []).map((e: any) => ({ id: e.id, nombre: e.codigo ? `${e.codigo} · ${e.nombre}` : e.nombre })),
-    persona: pers.data || [],
-    convocatoria: (conv.data || []).map((c: any) => ({ id: c.id, nombre: `${c.codigo} · ${c.nombre}` })),
+    persona: (pers.data || []).map((x: any) => ({ ...x, nombre: x.alias ? `${x.nombre} · ${x.alias}` : x.nombre })),
+    convocatoria: (conv.data || []).map((c: any) => ({
+      id: c.id,
+      nombre: `${c.anio ? `${c.anio} · ` : ""}${c.nombre} · ${c.codigo}`,
+    })),
     postulacion: (postu.data || []).map((p: any) => ({
       id: p.id,
       nombre: `${p.codigo || p.conv?.codigo || "🎯"} · ${p.proy?.nombre || "postulación"}`,
     })),
-    equipamiento: equi.data || [],
+    equipamiento: (equi.data || []).map((x: any) => ({
+      id: x.id, nombre: x.folio ? `${x.folio} · ${x.nombre}` : x.nombre,
+    })),
     lugar: luga.data || [],
     etiqueta: etiq.data || [],
   };
@@ -147,7 +187,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
 
   return (
     <div className="shell">
-      <Realtime tablas={["publicaciones", "comentarios", "publicacion_vinculos"]} token={session?.access_token} />
+      <Realtime tablas={["publicaciones", "comentarios", "publicacion_vinculos", "reacciones"]} token={session?.access_token} />
       <div className="topbar">
         <Link href="/" className="logo"><span className="ic">⬡</span><span>CrewHub<sup>+</sup></span></Link>
         <nav className="nav-icons">
@@ -158,15 +198,13 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
           <Link href="/convocatorias" className="btn btn-ghost" title="Convocatorias y fondos">📜</Link>
           <Link href="/postulaciones" className="btn btn-ghost" title="Postulaciones">🎯</Link>
           <Link href="/importar" className="btn btn-ghost" title="Importar desde Seatable">⬆</Link>
+          <Link href="/wiki" className="btn btn-ghost" title="Wiki: los flujos de trabajo">📖</Link>
         </nav>
         <span className="spacer" />
         <BuscadorGlobal />
         <Campanita items={notifs || []} sinLeer={sinLeer || 0} />
-        <div className="userbox">
-          <Avatar nombre={perfil?.nombre} color={perfil?.color} size={34} src={perfil?.avatar_url} />
-          <span><b style={{ color: "var(--text)" }}>{perfil?.nombre}</b><br />{perfil?.rol || "Equipo"}</span>
-        </div>
-        <LogoutButton />
+        <MenuUsuario nombre={perfil?.nombre} rol={perfil?.rol}
+          color={perfil?.color} src={perfil?.avatar_url} />
       </div>
 
       <div className="qhaway-tira">
@@ -208,7 +246,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
           <PostCard key={p.id}
             href={`/caso/${p.id}`}
             titulo={p.titulo}
-            tipoLabel={tl} tipoColor={tc}
+            tipo={p.tipo} tipoLabel={tl} tipoColor={tc}
             estado={p.estado} estadoTxt={ESTADOS[p.estado] || p.estado}
             autorNombre={p.autor?.nombre} autorColor={p.autor?.color} autorSrc={p.autor?.avatar_url}
             fechaStr={new Date(p.creado_en).toLocaleString("es-PE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
@@ -218,6 +256,12 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
             venc={vencimiento(p.fecha_limite, p.estado)}
             cuerpo={p.cuerpo}
             chips={chips}
+            pubId={p.id} userId={user.id} reacciones={reaccsDe.get(p.id) || []}
+            imagenes={p.imagenes || []}
+            creadoEn={p.creado_en}
+            padreId={p.padre_id || null}
+            padreTitulo={p.padre_id ? (tituloPadre.get(p.padre_id) || null) : null}
+            hijos={hijosDe.get(p.id) || null}
           />
         );
       })}

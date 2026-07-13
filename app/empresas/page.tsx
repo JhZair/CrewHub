@@ -1,7 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
+import { BotonVerificarLote } from "@/components/VerificarSunat";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+
+const diasDesde = (f: string) => Math.floor((Date.now() - new Date(f + "T12:00:00").getTime()) / 86400000);
 
 const EST_META: Record<string, [string, string]> = {
   activa: ["Activas", "var(--green)"],
@@ -22,9 +25,10 @@ export default async function Empresas({ searchParams }: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: emps }, { data: vincs }] = await Promise.all([
+  const [{ data: emps }, { data: vincs }, { data: postsEmp }] = await Promise.all([
     supabase.from("empresas").select("*").order("codigo"),
     supabase.from("publicacion_vinculos").select("entidad_id").eq("entidad_tipo", "empresa"),
+    supabase.from("postulaciones").select("empresa_id,estado,monto_adjudicado").not("empresa_id", "is", null),
   ]);
   const conteo = new Map<string, number>();
   (vincs || []).forEach((v: any) => conteo.set(v.entidad_id, (conteo.get(v.entidad_id) || 0) + 1));
@@ -38,6 +42,21 @@ export default async function Empresas({ searchParams }: {
     (!q || nrm(x.nombre).includes(nrm(q)) || nrm(x.razon_social).includes(nrm(q)) ||
       nrm(x.codigo).includes(nrm(q)) || nrm(x.ruc).includes(nrm(q))));
   const cnt = (est: string) => todas.filter((x: any) => x.estado === est).length;
+
+  // Palmarés competitivo: qué empresa gana, roza y persiste
+  const marca = new Map<string, { total: number; ganadas: number; casi: number; monto: number }>();
+  (postsEmp || []).forEach((p: any) => {
+    const m = marca.get(p.empresa_id) || { total: 0, ganadas: 0, casi: 0, monto: 0 };
+    m.total++;
+    if (p.estado === "ganadora") { m.ganadas++; m.monto += parseFloat(p.monto_adjudicado) || 0; }
+    if (p.estado === "finalista_no_ganadora") m.casi++;
+    marca.set(p.empresa_id, m);
+  });
+  const palmares = todas
+    .filter((x: any) => marca.has(x.id))
+    .map((x: any) => ({ emp: x, ...marca.get(x.id)! }))
+    .sort((a, b) => b.ganadas - a.ganadas || b.casi - a.casi || b.total - a.total)
+    .slice(0, 10);
 
   const Fila = (emp: any) => (
     <Link key={emp.id} href={`/entidad/empresa/${emp.id}`}>
@@ -98,6 +117,18 @@ export default async function Empresas({ searchParams }: {
             </Link>
           </div>
 
+          <div className="card">
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <div className="panel-h" style={{ margin: 0 }}>🔄 Ronda SUNAT</div>
+              <span style={{ flex: 1 }} />
+              <BotonVerificarLote />
+            </div>
+            <p style={{ color: "var(--dim)", fontSize: 12, margin: "8px 0 0" }}>
+              Consulta el RUC de todas las activas y actualiza estado, condición y fecha de verificación.
+              Qhaway deja de contar "sin verificar" por 60 días.
+            </p>
+          </div>
+
           {alertas.length > 0 && (
             <div className="card" style={{ borderColor: "rgba(255,77,94,.4)" }}>
               <div className="panel-h" style={{ color: "var(--red)" }}>⚠ Salud SUNAT — requiere atención</div>
@@ -111,6 +142,62 @@ export default async function Empresas({ searchParams }: {
                     {x.estado_sunat.replace(/_/g, " ")}
                     {x.condicion_sunat && x.condicion_sunat !== "habido" ? ` · ${x.condicion_sunat.replace(/_/g, " ")}` : ""}
                   </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {(() => {
+            // Vigencia de poder: DAFO suele exigirla con < 3 meses de emisión
+            const anejas = todas.filter((x: any) =>
+              x.estado === "activa" && x.vigencia_poder_fecha && diasDesde(x.vigencia_poder_fecha) > 90);
+            return anejas.length > 0 && (
+              <div className="card" style={{ borderColor: "rgba(244,180,0,.35)" }}>
+                <div className="panel-h" style={{ color: "var(--yellow)" }}>
+                  📜 Vigencias de poder con 90+ días — renovar antes de postular
+                </div>
+                {anejas.map((x: any) => (
+                  <div className="info-row" key={x.id}>
+                    <Link href={`/entidad/empresa/${x.id}`} style={{ fontWeight: 600 }}>
+                      {x.codigo ? `${x.codigo} · ` : ""}{x.nombre} →
+                    </Link>
+                    <span style={{ flex: 1 }} />
+                    <span style={{ color: "var(--yellow)", fontSize: 12, fontWeight: 700 }}>
+                      emitida hace {diasDesde(x.vigencia_poder_fecha)} días
+                    </span>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+
+          {palmares.length > 0 && (
+            <div className="card">
+              <div className="panel-h" style={{ color: "var(--yellow)" }}>🏅 Palmarés — quién gana, quién roza, quién persiste</div>
+              {palmares.map(({ emp, total, ganadas, casi, monto }) => (
+                <div className="info-row" key={emp.id}>
+                  <Link href={`/entidad/empresa/${emp.id}`} style={{ fontWeight: 600 }}>
+                    {emp.codigo ? `${emp.codigo} · ` : ""}{emp.nombre} →
+                  </Link>
+                  {ganadas > 0 && (
+                    <span className="badge" style={{ color: "var(--green)", background: "rgba(46,204,113,.12)" }}>
+                      🏆 {ganadas}
+                    </span>
+                  )}
+                  {casi > 0 && (
+                    <span className="badge" style={{ color: "var(--yellow)", background: "rgba(244,180,0,.12)" }}>
+                      🥈 {casi}
+                    </span>
+                  )}
+                  <span className="badge" style={{ color: "var(--blue)", background: "rgba(59,130,246,.12)" }}>
+                    🎯 {total} intento{total === 1 ? "" : "s"}
+                  </span>
+                  <span style={{ flex: 1 }} />
+                  {monto > 0 && (
+                    <span style={{ color: "var(--teal)", fontSize: 12.5, fontWeight: 700 }}>
+                      S/ {monto.toLocaleString("es-PE")} ganado
+                    </span>
+                  )}
                 </div>
               ))}
             </div>

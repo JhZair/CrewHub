@@ -25,7 +25,7 @@ export default function BuscadorGlobal({ inicial = "" }: { inicial?: string }) {
   return (
     <div className="buscador-glob">
       <span style={{ color: "var(--dim)" }}>🔍</span>
-      <input ref={ref} value={q} placeholder="Buscar en todo CrewHub+..."
+      <input ref={ref} value={q} placeholder="Buscar..."
         onChange={e => setQ(e.target.value)}
         onKeyDown={e => { if (e.key === "Enter") buscar(); }} />
       <span className="kbd">Ctrl K</span>

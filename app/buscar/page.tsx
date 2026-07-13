@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { coincideQ, nrmQ } from "@/lib/quechua";
 import Volver from "@/components/Volver";
 import BuscadorGlobal from "@/components/BuscadorGlobal";
 import Link from "next/link";
@@ -9,11 +10,11 @@ import { redirect } from "next/navigation";
    lugares y convocatorias. Una caja, todo el sistema. */
 
 const ESTADOS: Record<string, string> = {
-  abierta: "Sin Resolver", en_progreso: "En Progreso", en_pausa: "En Pausa",
-  resuelta: "Resuelta", archivada: "Archivada",
+  abierta: "Sin Resolver", en_progreso: "En Progreso", seguimiento: "🔭 Seguimiento",
+  en_pausa: "En Pausa", resuelta: "Resuelta", archivada: "Archivada",
 };
 const TIPO_ICO: Record<string, string> = {
-  aviso: "📢", tarea: "✅", problema: "❗", pago: "💰", idea: "💡", archivo: "📎",
+  aviso: "📢", tarea: "✅", problema: "❗", consulta: "❓", pago: "💰", idea: "💡", archivo: "📎",
 };
 
 /* ===== búsqueda por palabras =====
@@ -47,11 +48,15 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
 
   let casos: any[] = [], coms: any[] = [], pers: any[] = [], proys: any[] = [],
       emps: any[] = [], equis: any[] = [], lugs: any[] = [], convs: any[] = [], postus: any[] = [];
+  let statProy = new Map<string, any>(), statEmp = new Map<string, any>(),
+      statConv = new Map<string, any>(), statPers = new Map<string, any>();
+  let equisMas = 0;
   const palabras = q ? partir(q) : [];
 
   if (q) {
     // Coincide si TODAS las palabras están en el "pajar" del registro
-    const coincide = (hay: string) => { const h = nrmB(hay); return palabras.every(w => h.includes(w)); };
+    // (literal o por esqueleto fonético quechua: Mujunacuy = Mujunakuy)
+    const coincide = (hay: string) => coincideQ(hay, palabras);
     // Para tablas grandes: pre-filtro OR en la BD (cualquier palabra en cualquier campo)
     const orDe = (campos: string[]) => palabras
       .map(w => w.replace(/[,%()]/g, ""))
@@ -76,12 +81,43 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
         .select("id,codigo,codigo_plataforma,codigo_acta,estado,feedback_jurado,acta_url,fecha_limite_rendicion,proy:proyectos(nombre),conv:convocatorias(codigo,nombre,anio)"),
     ]);
 
+    // El marcador en los resultados: 🏆 ganados · 🥈 casi · 🎯 intentos
+    const [{ data: postStats }, { data: equipoStats }] = await Promise.all([
+      supabase.from("postulaciones").select("estado,proyecto_id,empresa_id,convocatoria_id"),
+      supabase.from("postulacion_equipo").select("persona_id,post:postulaciones(estado)"),
+    ]);
+    const marca = (key: "proyecto_id" | "empresa_id" | "convocatoria_id") => {
+      const m = new Map<string, { t: number; g: number; c: number }>();
+      (postStats || []).forEach((p: any) => {
+        const id = p[key];
+        if (!id) return;
+        const s = m.get(id) || { t: 0, g: 0, c: 0 };
+        s.t++;
+        if (p.estado === "ganadora") s.g++;
+        if (p.estado === "finalista_no_ganadora") s.c++;
+        m.set(id, s);
+      });
+      return m;
+    };
+    statProy = marca("proyecto_id");
+    statEmp = marca("empresa_id");
+    statConv = marca("convocatoria_id");
+    (equipoStats || []).forEach((e: any) => {
+      const s = statPers.get(e.persona_id) || { t: 0, g: 0, c: 0 };
+      s.t++;
+      if (e.post?.estado === "ganadora") s.g++;
+      if (e.post?.estado === "finalista_no_ganadora") s.c++;
+      statPers.set(e.persona_id, s);
+    });
+
     casos = (c1.data || []).filter((p: any) => coincide(`${p.titulo} ${p.cuerpo}`)).slice(0, 12);
     coms = (c2.data || []).filter((c: any) => coincide(`${c.cuerpo} ${(c.pub as any)?.titulo}`)).slice(0, 12);
     pers = (c3.data || []).filter((p: any) => coincide(`persona ${p.nombre} ${p.alias} ${p.rol} ${p.notas} ${p.ruc_dni}`)).slice(0, 10);
     proys = (c4.data || []).filter((p: any) => coincide(`proyecto ${p.nombre} ${p.nombre_corto} ${p.folio} ${p.descripcion}`)).slice(0, 10);
     emps = (c5.data || []).filter((e: any) => coincide(`empresa ${e.nombre} ${e.razon_social} ${e.codigo} ${e.ruc}`)).slice(0, 10);
-    equis = (c6.data || []).filter((e: any) => coincide(`equipo ${e.nombre} ${e.folio} ${e.categoria} ${e.subcategoria} ${e.descripcion}`)).slice(0, 10);
+    const equisTodos = (c6.data || []).filter((e: any) => coincide(`equipo ${e.nombre} ${e.folio} ${e.categoria} ${e.subcategoria} ${e.descripcion}`));
+    equis = equisTodos.slice(0, 15);
+    equisMas = Math.max(0, equisTodos.length - 15);
     lugs = (c7.data || []).filter((l: any) => coincide(`lugar ${l.nombre}`)).slice(0, 6);
     convs = (c8.data || []).filter((c: any) => coincide(`convocatoria concurso ${c.codigo} ${c.nombre} ${c.anio}`)).slice(0, 6);
     postus = (c9.data || []).filter((p: any) => coincide(
@@ -96,16 +132,25 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
     + emps.length + equis.length + lugs.length + convs.length + postus.length;
 
   const Seccion = ({ titulo, n, children }: any) => n > 0 ? (
-    <div style={{ marginBottom: 22 }}>
-      <div className="h4" style={{ marginTop: 0 }}>{titulo} · {n}</div>
+    <div style={{ marginBottom: 14 }}>
+      <div className="panel-h" style={{ marginBottom: 6 }}>{titulo} · {n}</div>
       {children}
     </div>
   ) : null;
 
+  /* Insignias del marcador: 🏆 ganados · 🥈 casi · 🎯 intentos */
+  const Marca = ({ s }: { s?: { t: number; g: number; c: number } }) => !s?.t ? null : (
+    <span style={{ display: "inline-flex", gap: 5 }}>
+      {s.g > 0 && <span className="badge" style={{ color: "var(--green)", background: "rgba(46,204,113,.12)", fontSize: 10.5 }}>🏆 {s.g}</span>}
+      {s.c > 0 && <span className="badge" style={{ color: "var(--yellow)", background: "rgba(244,180,0,.12)", fontSize: 10.5 }}>🥈 {s.c}</span>}
+      <span className="badge" style={{ color: "var(--blue)", background: "rgba(59,130,246,.12)", fontSize: 10.5 }}>🎯 {s.t}</span>
+    </span>
+  );
+
   const Fila = ({ href, children }: any) => (
     <Link href={href}>
-      <div className="card link" style={{ cursor: "pointer", padding: "11px 15px" }}>
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 13 }}>
+      <div className="card link" style={{ cursor: "pointer", padding: "7px 13px", marginBottom: 7 }}>
+        <div style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap", fontSize: 12.5 }}>
           {children}
         </div>
       </div>
@@ -114,56 +159,30 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
 
   return (
     <div className="shell">
-      <div className="topbar">
-        <Volver />
-        <span className="spacer" />
-      </div>
-
-      <h1 className="title-lg">🔍 Buscar en todo CrewHub+</h1>
-      <div style={{ marginBottom: 18 }}>
-        <BuscadorGlobal inicial={q} />
-      </div>
-
-      {q && (
-        <div className="qhaway-tira" style={{ marginBottom: 20 }}>
-          <span className="qa">🤖</span>
-          <span>
-            <b>Qhaway</b>: {total
-              ? `encontré ${total} resultado${total === 1 ? "" : "s"} para «${q}» en todo el conocimiento del equipo.`
-              : `nada para «${q}» — prueba con menos palabras o revisa la ortografía.`}
-          </span>
+      {/* La caja no se mueve: cabecera pegajosa mientras recorres resultados */}
+      <div style={{ position: "sticky", top: 0, zIndex: 30, background: "var(--bg)", paddingBottom: 10 }}>
+        <div className="topbar" style={{ marginBottom: 12 }}>
+          <Volver />
+          <span style={{ fontWeight: 800, fontSize: 16 }}>🔍 Buscar</span>
+          <div style={{ flex: 1, maxWidth: 520 }}>
+            <BuscadorGlobal inicial={q} />
+          </div>
+          {q && (
+            <span style={{ color: "var(--muted)", fontSize: 12 }}>
+              🤖 {total ? `${total} resultado${total === 1 ? "" : "s"}` : "nada — prueba con menos palabras"}
+            </span>
+          )}
         </div>
-      )}
+      </div>
 
-      <Seccion titulo="📌 Casos" n={casos.length}>
-        {casos.map((p: any) => (
-          <Fila key={p.id} href={`/caso/${p.id}`}>
-            <span>{TIPO_ICO[p.tipo] || "💬"}</span>
-            <b>{p.titulo}</b>
-            <span className={`pill st-${p.estado}`} style={{ fontSize: 10 }}>{ESTADOS[p.estado] || p.estado}</span>
-            {p.cuerpo && <span style={{ color: "var(--muted)", fontSize: 12, width: "100%" }}>{snippet(p.cuerpo, palabras)}</span>}
-          </Fila>
-        ))}
-      </Seccion>
-
-      <Seccion titulo="💬 En comentarios" n={coms.length}>
-        {coms.map((c: any) => (
-          <Fila key={c.id} href={`/caso/${c.publicacion_id}`}>
-            <span style={{ color: "var(--muted)", fontSize: 12.5, fontStyle: "italic" }}>
-              "{snippet(c.cuerpo, palabras)}"
-            </span>
-            <span style={{ color: "var(--dim)", fontSize: 11.5 }}>
-              — {(c.autor as any)?.nombre?.split(" ")[0]} en «{(c.pub as any)?.titulo}»
-            </span>
-          </Fila>
-        ))}
-      </Seccion>
-
+      {/* Entidades primero: son la respuesta corta. Los casos, el océano, al final. */}
       <Seccion titulo="👤 Personas" n={pers.length}>
         {pers.map((p: any) => (
           <Fila key={p.id} href={`/entidad/persona/${p.id}`}>
             <b>{p.nombre}</b>
+            {p.ruc_dni && <span style={{ color: "var(--teal)", fontSize: 11.5, fontWeight: 700 }}>🪪 {p.ruc_dni}</span>}
             {p.rol && <span style={{ color: "var(--muted)", fontSize: 12 }}>{p.rol.slice(0, 50)}</span>}
+            <Marca s={statPers.get(p.id)} />
             <span style={{ flex: 1 }} />
             <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{p.tipo}</span>
           </Fila>
@@ -175,6 +194,8 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
           <Fila key={p.id} href={`/entidad/proyecto/${p.id}`}>
             <b>{p.nombre}</b>
             {p.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{p.folio}</span>}
+            <Marca s={statProy.get(p.id)} />
+            <span style={{ flex: 1 }} />
             <span style={{ color: "var(--dim)", fontSize: 12 }}>{p.etapa?.replace(/_/g, " ")}</span>
           </Fila>
         ))}
@@ -184,8 +205,9 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
         {emps.map((e: any) => (
           <Fila key={e.id} href={`/entidad/empresa/${e.id}`}>
             <b>{e.nombre}</b>
+            {e.ruc && <span style={{ color: "var(--teal)", fontSize: 11.5, fontWeight: 700 }}>RUC {e.ruc}</span>}
             {e.razon_social && <span style={{ color: "var(--dim)", fontSize: 12 }}>{e.razon_social}</span>}
-            {e.ruc && <span style={{ color: "var(--dim)", fontSize: 12 }}>RUC {e.ruc}</span>}
+            <Marca s={statEmp.get(e.id)} />
             {e.estado_sunat && e.estado_sunat !== "activo" &&
               <span className="badge" style={{ color: "var(--red)", background: "rgba(255,77,94,.12)" }}>⚠ SUNAT</span>}
           </Fila>
@@ -200,6 +222,12 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
             <span style={{ color: "var(--dim)", fontSize: 12 }}>{e.categoria} · {(e.estado || "").replace(/_/g, " ")}</span>
           </Fila>
         ))}
+        {equisMas > 0 && (
+          <Link href={`/equipamiento?q=${encodeURIComponent(q)}`}
+            style={{ color: "var(--violet)", fontSize: 12.5, fontWeight: 600, display: "block", padding: "4px 2px" }}>
+            … y {equisMas} equipo{equisMas === 1 ? "" : "s"} más — ver todos en el inventario →
+          </Link>
+        )}
       </Seccion>
 
       <Seccion titulo="🎯 Postulaciones" n={postus.length}>
@@ -221,6 +249,8 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
           <Fila key={c.id} href={`/entidad/convocatoria/${c.id}`}>
             <b>{c.codigo}</b>
             <span style={{ color: "var(--muted)", fontSize: 12 }}>{c.nombre}</span>
+            {c.anio && <span style={{ color: "var(--dim)", fontSize: 11.5 }}>{c.anio}</span>}
+            <Marca s={statConv.get(c.id)} />
           </Fila>
         ))}
       </Seccion>
@@ -229,6 +259,30 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
         {lugs.map((l: any) => (
           <Fila key={l.id} href={`/entidad/lugar/${l.id}`}>
             <b>{l.nombre}</b>
+          </Fila>
+        ))}
+      </Seccion>
+
+      <Seccion titulo="📌 Casos" n={casos.length}>
+        {casos.map((p: any) => (
+          <Fila key={p.id} href={`/caso/${p.id}`}>
+            <span>{TIPO_ICO[p.tipo] || "💬"}</span>
+            <b>{p.titulo}</b>
+            <span className={`pill st-${p.estado}`} style={{ fontSize: 10 }}>{ESTADOS[p.estado] || p.estado}</span>
+            {p.cuerpo && <span style={{ color: "var(--muted)", fontSize: 11.5, width: "100%" }}>{snippet(p.cuerpo, palabras)}</span>}
+          </Fila>
+        ))}
+      </Seccion>
+
+      <Seccion titulo="💬 En comentarios" n={coms.length}>
+        {coms.map((c: any) => (
+          <Fila key={c.id} href={`/caso/${c.publicacion_id}`}>
+            <span style={{ color: "var(--muted)", fontSize: 12, fontStyle: "italic" }}>
+              "{snippet(c.cuerpo, palabras)}"
+            </span>
+            <span style={{ color: "var(--dim)", fontSize: 11.5 }}>
+              — {(c.autor as any)?.nombre?.split(" ")[0]} en «{(c.pub as any)?.titulo}»
+            </span>
           </Fila>
         ))}
       </Seccion>

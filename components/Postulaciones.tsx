@@ -10,6 +10,7 @@ const ESTADOS: [string, string, string][] = [
   ["enviada", "📨 Enviada", "var(--blue)"],
   ["finalista", "⭐ Finalista", "var(--yellow)"],
   ["ganadora", "🏆 Ganadora", "var(--green)"],
+  ["finalista_no_ganadora", "🥈 Finalista (no ganó)", "var(--yellow)"],
   ["no_seleccionada", "✖ No seleccionada", "var(--dim)"],
   ["retirada", "↩ Retirada", "var(--dim)"],
 ];
@@ -48,6 +49,11 @@ export default function Postulaciones({ convocatoriaId, postulaciones, proyectos
 
   const cambiarEstado = async (id: string, estado: string) => {
     const res = await actualizarPostulacion(id, convocatoriaId, { estado });
+    if (res?.error) setError(res.error); else router.refresh();
+  };
+
+  const asignarEmpresa = async (id: string, empresaId: string) => {
+    const res = await actualizarPostulacion(id, convocatoriaId, { empresa_id: empresaId });
     if (res?.error) setError(res.error); else router.refresh();
   };
 
@@ -105,43 +111,53 @@ export default function Postulaciones({ convocatoriaId, postulaciones, proyectos
       )}
 
       {postulaciones.map((p: any) => {
-        const [, lbl, col] = estMeta(p.estado);
+        const [, , col] = estMeta(p.estado);
         return (
-          <div key={p.id} style={{ borderBottom: "1px solid var(--border)", padding: "8px 0" }}>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <Link href={`/entidad/postulacion/${p.id}`} style={{ color: "var(--text)", fontWeight: 600, fontSize: 13 }}>
+          <div key={p.id} style={{ borderBottom: "1px solid var(--border)", padding: "10px 0" }}>
+            {/* línea 1: la postulación + borrar */}
+            <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+              <Link href={`/entidad/postulacion/${p.id}`}
+                style={{ color: "var(--text)", fontWeight: 600, fontSize: 13, flex: 1, minWidth: 0, lineHeight: 1.4 }}>
                 🎯 {p.codigo ? `${p.codigo} · ` : ""}{p.proy?.nombre || "—"} →
               </Link>
-              {p.emp && (
-                <Link href={`/entidad/empresa/${p.emp.id}`} style={{ color: "var(--muted)", fontSize: 12 }}>
-                  🏢 {p.emp.nombre}
-                </Link>
-              )}
-              <span style={{ flex: 1 }} />
-              <select value={p.estado} onChange={e => cambiarEstado(p.id, e.target.value)}
-                style={{ ...inputCss, color: col, fontWeight: 700 }}>
-                {ESTADOS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </select>
               {borrando === p.id ? (
-                <span style={{ fontSize: 11.5 }}>
+                <span style={{ fontSize: 11.5, whiteSpace: "nowrap" }}>
                   ¿borrar? <button style={{ color: "var(--red)", fontWeight: 700 }} onClick={() => borrar(p.id)}>sí</button>
                   {" / "}<button style={{ color: "var(--dim)" }} onClick={() => setBorrando(null)}>no</button>
                 </span>
               ) : (
-                <button title="Borrar postulación" style={{ color: "var(--dim)" }} onClick={() => setBorrando(p.id)}>✕</button>
+                <button title="Borrar postulación" style={{ color: "var(--dim)", flex: "none" }} onClick={() => setBorrando(p.id)}>✕</button>
               )}
+            </div>
+            {/* línea 2: empresa (clic para cambiar) + estado */}
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 7 }}>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <EntPicker
+                  etiqueta={p.emp ? `🏢 ${p.emp.nombre}` : "🏢 asignar empresa"}
+                  items={empresas}
+                  onPick={id => asignarEmpresa(p.id, id)} />
+              </span>
+              <select value={p.estado} onChange={e => cambiarEstado(p.id, e.target.value)}
+                style={{ ...inputCss, color: col, fontWeight: 700, fontSize: 11.5, padding: "5px 7px", maxWidth: 170 }}>
+                {ESTADOS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
             </div>
 
             {p.estado === "ganadora" && editando !== p.id && (
-              <div style={{ marginTop: 6, fontSize: 12, color: "var(--muted)", display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-                {p.codigo_acta && <span style={{ color: "var(--green)", fontWeight: 700 }}>{p.codigo_acta}</span>}
-                {p.monto_adjudicado && <span style={{ color: "var(--teal)" }}>S/ {parseFloat(p.monto_adjudicado).toLocaleString("es-PE")}</span>}
-                {p.fecha_firma_acta && <span>🖋 acta: {fmtF(p.fecha_firma_acta)}</span>}
-                {p.fecha_limite_rendicion && <span style={{ color: "var(--yellow)" }}>🧾 rendición: {fmtF(p.fecha_prorroga || p.fecha_limite_rendicion)}{p.fecha_prorroga ? " (prórroga)" : ""}</span>}
-                {p.acta_url && <a href={p.acta_url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--violet)" }}>📄 Acta</a>}
-                <button className="btn btn-ghost" style={{ padding: "3px 10px", fontSize: 11.5 }} onClick={() => abrirEjec(p)}>
-                  ✎ {p.fecha_firma_acta || p.monto_adjudicado ? "Editar" : "Registrar"} ejecución
-                </button>
+              <div style={{ marginTop: 8, padding: "8px 10px", background: "var(--bg)", borderRadius: 9, borderLeft: "3px solid var(--green)", fontSize: 11.5, color: "var(--muted)" }}>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                  {p.codigo_acta && <span style={{ color: "var(--green)", fontWeight: 700 }}>{p.codigo_acta}</span>}
+                  {p.monto_adjudicado && <span style={{ color: "var(--teal)", fontWeight: 700 }}>S/ {parseFloat(p.monto_adjudicado).toLocaleString("es-PE")}</span>}
+                  {p.fecha_firma_acta && <span>🖋 {fmtF(p.fecha_firma_acta)}</span>}
+                </div>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 5 }}>
+                  {p.fecha_limite_rendicion && <span style={{ color: "var(--yellow)" }}>🧾 rinde: {fmtF(p.fecha_prorroga || p.fecha_limite_rendicion)}{p.fecha_prorroga ? " (prórroga)" : ""}</span>}
+                  {p.acta_url && <a href={p.acta_url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--violet)" }}>📄 Acta</a>}
+                  <span style={{ flex: 1 }} />
+                  <button className="btn btn-ghost" style={{ padding: "2px 9px", fontSize: 11 }} onClick={() => abrirEjec(p)}>
+                    ✎ {p.fecha_firma_acta || p.monto_adjudicado ? "Editar" : "Registrar"} ejecución
+                  </button>
+                </div>
               </div>
             )}
 

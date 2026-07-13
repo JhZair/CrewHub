@@ -2,15 +2,19 @@ import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import Avatar from "@/components/Avatar";
 import { EstadoSelect, CommentBox, RespSelect } from "@/components/CaseActions";
+import Reacciones from "@/components/Reacciones";
+import SubCasos from "@/components/SubCasos";
+import TituloEditable from "@/components/TituloEditable";
+import ComentarioTexto from "@/components/ComentarioTexto";
 import Realtime from "@/components/Realtime";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 const TIPO_META: Record<string, [string, string]> = {
   aviso: ["📢 Aviso", "#a78bfa"], tarea: ["✅ Tarea", "#22c55e"],
-  problema: ["❗ Problema", "#ff4d5e"], pago: ["💰 Pago", "#2dd4bf"],
-  idea: ["💡 Idea", "#f4b400"], archivo: ["📎 Archivo", "#3b82f6"],
-  conversacion: ["💬 Conversación", "#8b8ba3"],
+  problema: ["❗ Problema", "#ff4d5e"], consulta: ["❓ Consulta", "#60a5fa"],
+  pago: ["💰 Pago", "#2dd4bf"], idea: ["💡 Idea", "#f4b400"],
+  archivo: ["📎 Archivo", "#3b82f6"], conversacion: ["💬 Conversación", "#8b8ba3"],
 };
 const EV_ICO: Record<string, string> = {
   creado: "📝", estado: "🔄", asignacion: "👤", archivo: "📎",
@@ -21,8 +25,8 @@ const ENT_ICO: Record<string, string> = {
   postulacion: "🎯", equipamiento: "🎥", lugar: "📍", etiqueta: "🏷️",
 };
 const ESTADOS_TXT: Record<string, string> = {
-  abierta: "Sin Resolver", en_progreso: "En Progreso", en_pausa: "En Pausa",
-  resuelta: "Resuelta", archivada: "Archivada",
+  abierta: "Sin Resolver", en_progreso: "En Progreso", seguimiento: "🔭 Seguimiento",
+  en_pausa: "En Pausa", resuelta: "Resuelta", archivada: "Archivada",
 };
 
 const fecha = (d: string) =>
@@ -61,11 +65,33 @@ export default async function Caso({ params }: { params: { id: string } }) {
     supabase.from("empresas").select("id,nombre"),
     supabase.from("personas").select("id,nombre"),
     supabase.from("convocatorias").select("id,codigo"),
-    supabase.from("equipamiento").select("id,nombre"),
+    supabase.from("equipamiento").select("id,nombre,folio"),
     supabase.from("lugares").select("id,nombre"),
     supabase.from("etiquetas").select("id,nombre"),
     supabase.from("postulaciones").select("id,codigo,proy:proyectos(nombre),conv:convocatorias(codigo)"),
   ]);
+
+  // Familia: el padre (si soy sub-caso) y los hijos (si soy caso largo)
+  const [{ data: padre }, { data: hijos }] = await Promise.all([
+    p.padre_id
+      ? supabase.from("publicaciones").select("id,titulo").eq("id", p.padre_id).single()
+      : Promise.resolve({ data: null }),
+    supabase.from("publicaciones")
+      .select("id,titulo,estado,resp:perfiles!publicaciones_responsable_fkey(nombre)")
+      .eq("padre_id", p.id).order("creado_en"),
+  ]);
+
+  // Reacciones de la publicación y sus comentarios
+  const { data: reaccs } = await supabase.from("reacciones")
+    .select("publicacion_id,comentario_id,emoji,usuario_id")
+    .eq("publicacion_id", p.id);
+  const rxPub = (reaccs || []).filter((r: any) => !r.comentario_id);
+  const rxCom = new Map<string, any[]>();
+  (reaccs || []).forEach((r: any) => {
+    if (!r.comentario_id) return;
+    const l = rxCom.get(r.comentario_id) || [];
+    l.push(r); rxCom.set(r.comentario_id, l);
+  });
 
   // Resolver nombres de entidades vinculadas y de perfiles
   const nombres = new Map<string, string>();
@@ -73,7 +99,8 @@ export default async function Caso({ params }: { params: { id: string } }) {
   (emp.data || []).forEach((x: any) => nombres.set(`empresa:${x.id}`, x.nombre));
   (pers.data || []).forEach((x: any) => nombres.set(`persona:${x.id}`, x.nombre));
   (conv.data || []).forEach((x: any) => nombres.set(`convocatoria:${x.id}`, x.codigo));
-  (equi.data || []).forEach((x: any) => nombres.set(`equipamiento:${x.id}`, x.nombre));
+  (equi.data || []).forEach((x: any) =>
+    nombres.set(`equipamiento:${x.id}`, x.folio ? `${x.folio} · ${x.nombre}` : x.nombre));
   (luga.data || []).forEach((x: any) => nombres.set(`lugar:${x.id}`, x.nombre));
   (etiq.data || []).forEach((x: any) => nombres.set(`etiqueta:${x.id}`, x.nombre));
   (postu.data || []).forEach((x: any) =>
@@ -118,14 +145,19 @@ export default async function Caso({ params }: { params: { id: string } }) {
 
   return (
     <div className="shell">
-      <Realtime tablas={["actividad", "comentarios", "publicaciones"]} token={session?.access_token} />
+      <Realtime tablas={["actividad", "comentarios", "publicaciones", "reacciones"]} token={session?.access_token} />
       <div className="topbar">
         <Volver />
         <span className="spacer" />
         <span className="badge" style={{ color: tc, background: `${tc}22`, fontSize: 12 }}>{tl}</span>
       </div>
 
-      <h1 className="title-lg">{p.titulo}</h1>
+      {padre && (
+        <Link href={`/caso/${padre.id}`} style={{ color: "var(--muted)", fontSize: 12.5, display: "inline-block", marginBottom: 4 }}>
+          ↑ Parte de: <b style={{ color: "var(--violet)" }}>{padre.titulo}</b>
+        </Link>
+      )}
+      <TituloEditable pubId={p.id} titulo={p.titulo} />
 
       <div className="grid-meta">
         <div className="gm"><span className="k">Estado</span><EstadoSelect pubId={p.id} estado={p.estado} /></div>
@@ -143,6 +175,20 @@ export default async function Caso({ params }: { params: { id: string } }) {
 
       {p.cuerpo && <p className="desc">{p.cuerpo}</p>}
 
+      {(p.imagenes || []).length > 0 && (
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", margin: "4px 0 12px" }}>
+          {p.imagenes.map((u: string, i: number) => (
+            <a key={i} href={u} target="_blank" rel="noopener noreferrer">
+              <img src={u} alt="" style={{ maxHeight: 260, maxWidth: "100%", borderRadius: 12, border: "1px solid var(--border)" }} />
+            </a>
+          ))}
+        </div>
+      )}
+
+      <div style={{ margin: "4px 0 12px" }}>
+        <Reacciones pubId={p.id} reacciones={rxPub} userId={user.id} />
+      </div>
+
       {chips.length > 0 && (
         <div className="sel-chips" style={{ marginBottom: 6 }}>
           {chips.map((v: any, i: number) => (
@@ -155,6 +201,10 @@ export default async function Caso({ params }: { params: { id: string } }) {
         </div>
       )}
 
+      {(!p.padre_id || (hijos || []).length > 0) && (
+        <SubCasos padreId={p.id} hijos={hijos || []} />
+      )}
+
       <div className="h4">🕐 Actividad · {linea.length} eventos</div>
       <div className="tl">
         {linea.map((e: any, i: number) => {
@@ -165,7 +215,20 @@ export default async function Caso({ params }: { params: { id: string } }) {
                 <Avatar nombre={c.autor?.nombre} color={c.autor?.color} size={32} src={c.autor?.avatar_url} />
                 <div className="bubble">
                   <div className="who">{c.autor?.nombre}<span className="t">{fecha(c.creado_en)}</span></div>
-                  <div className="tx">{c.cuerpo}</div>
+                  <ComentarioTexto comentarioId={c.id} pubId={p.id} cuerpo={c.cuerpo || ""}
+                    esMio={c.autor_id === user.id} editadoEn={c.editado_en} />
+                  {(c.imagenes || []).length > 0 && (
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                      {c.imagenes.map((u: string, j: number) => (
+                        <a key={j} href={u} target="_blank" rel="noopener noreferrer">
+                          <img src={u} alt="" style={{ maxHeight: 160, borderRadius: 10, border: "1px solid var(--border)" }} />
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{ marginTop: 7 }}>
+                    <Reacciones pubId={p.id} comentarioId={c.id} reacciones={rxCom.get(c.id) || []} userId={user.id} />
+                  </div>
                 </div>
               </div>
             );
@@ -180,7 +243,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
         })}
       </div>
 
-      <CommentBox pubId={p.id} userId={user.id} />
+      <CommentBox pubId={p.id} userId={user.id} perfiles={perfiles || []} />
     </div>
   );
 }

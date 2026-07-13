@@ -1,12 +1,15 @@
 "use client";
-import { agregarMiembro, bajaMiembro } from "@/app/actions";
+import { agregarMiembro, bajaMiembro, editarFechaMiembro } from "@/app/actions";
 import { EntPicker, type CatalogoItem } from "@/components/Composer";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
 
+const fmtF = (f: string) =>
+  new Date(f + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" });
+
 const CARGOS = [
-  "Representante Legal", "Titular-Gerente", "Gerente General",
+  "Representante Legal", "Titular-Gerente", "Gerente General", "CEO",
   "Presidente/a", "Vicepresidente/a", "Secretario/a", "Tesorero/a",
   "Socio/a", "Accionista", "Asociado/a",
 ];
@@ -22,8 +25,17 @@ export default function Miembros({ empresaId, miembros, personas }: {
   const [desde, setDesde] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [bajando, setBajando] = useState<string | null>(null);
+  const [editandoF, setEditandoF] = useState<string | null>(null);
+  const [nuevaF, setNuevaF] = useState("");
   const [error, setError] = useState("");
   const router = useRouter();
+
+  const guardarFecha = async (id: string) => {
+    if (!nuevaF) { setEditandoF(null); return; }
+    const res = await editarFechaMiembro(id, empresaId, nuevaF);
+    setEditandoF(null); setNuevaF("");
+    if (res?.error) setError(res.error); else router.refresh();
+  };
 
   const guardar = async () => {
     if (!sel || guardando) return;
@@ -79,9 +91,23 @@ export default function Miembros({ empresaId, miembros, personas }: {
           <span className="cargo">{m.cargo}</span>
           <span style={{ flex: 1, textAlign: "right" }}>
             <Link href={`/entidad/persona/${m.persona?.id}`} style={{ color: "var(--text)" }}>
-              {m.persona?.nombre} →
+              {m.persona?.alias || m.persona?.nombre} →
             </Link>
-            {m.fecha_inicio && <span style={{ color: "var(--dim)", fontSize: 11, marginLeft: 8 }}>desde {m.fecha_inicio}</span>}
+            {editandoF === m.id ? (
+              <span style={{ marginLeft: 8, whiteSpace: "nowrap" }}>
+                <input type="date" value={nuevaF} autoFocus
+                  onChange={e => setNuevaF(e.target.value)}
+                  style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "2px 6px", fontSize: 11, color: "var(--text)", outline: "none" }} />
+                {" "}<button style={{ color: "var(--green)", fontWeight: 700, fontSize: 11.5 }} onClick={() => guardarFecha(m.id)}>✓</button>
+                {" "}<button style={{ color: "var(--dim)", fontSize: 11.5 }} onClick={() => { setEditandoF(null); setNuevaF(""); }}>✕</button>
+              </span>
+            ) : (
+              <button title="Corregir la fecha real del cargo (la de SUNAT)"
+                style={{ color: "var(--dim)", fontSize: 11, marginLeft: 8, cursor: "pointer", background: "none", border: "none", padding: 0, textDecoration: "underline dotted", textUnderlineOffset: 3 }}
+                onClick={() => { setEditandoF(m.id); setNuevaF(m.fecha_inicio || ""); }}>
+                {m.fecha_inicio ? `desde ${fmtF(m.fecha_inicio)}` : "¿desde cuándo?"}
+              </button>
+            )}
           </span>
           {bajando === m.id ? (
             <span style={{ fontSize: 11.5, marginLeft: 8, whiteSpace: "nowrap" }}>
@@ -109,9 +135,9 @@ export default function Miembros({ empresaId, miembros, personas }: {
             <div key={m.id} className="eq-row" style={{ opacity: .55 }}>
               <span className="cargo">{m.cargo}</span>
               <span style={{ flex: 1, textAlign: "right" }}>
-                {m.persona?.nombre}
+                {m.persona?.alias || m.persona?.nombre}
                 <span style={{ color: "var(--dim)", fontSize: 11, marginLeft: 8 }}>
-                  {m.fecha_inicio} → {m.fecha_fin || "—"}
+                  {m.fecha_inicio ? fmtF(m.fecha_inicio) : "—"} → {m.fecha_fin ? fmtF(m.fecha_fin) : "—"}
                 </span>
               </span>
             </div>

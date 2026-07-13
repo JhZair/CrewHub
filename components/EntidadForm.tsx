@@ -1,8 +1,8 @@
 "use client";
-import { guardarEntidad } from "@/app/actions";
-import { FORM_CONF } from "@/lib/entidades";
+import { guardarEntidad, buscarParecidos } from "@/app/actions";
+import { FORM_CONF, VALIDADORES } from "@/lib/entidades";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const PALETA = ["#a78bfa", "#3b82f6", "#f59e0b", "#2ecc71", "#ec4899", "#2dd4bf", "#f4b400", "#60a5fa"];
 
@@ -67,14 +67,33 @@ export function EntidadForm({ tipo, id, valores, onDone }:
   });
   const [guardando, setGuardando] = useState(false);
   const [errores, setErrores] = useState<Record<string, string>>({});
+  const [parecidos, setParecidos] = useState<{ id: string; nombre: string }[]>([]);
   const router = useRouter();
+
+  // Al CREAR: aviso de posibles duplicados mientras se escribe el nombre
+  useEffect(() => {
+    if (id) return;
+    const n = (form["nombre"] || "").trim();
+    const timer = setTimeout(async () => {
+      if (n.length < 4) { setParecidos([]); return; }
+      const r: any = await buscarParecidos(tipo, n);
+      setParecidos(r?.parecidos || []);
+    }, 500);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form["nombre"], id, tipo]);
 
   const guardar = async () => {
     if (guardando) return;
     // Validación en el propio formulario: marca los campos faltantes
     const errs: Record<string, string> = {};
     campos.forEach(c => {
-      if (c.requerido && !(form[c.key] || "").trim()) errs[c.key] = "Este campo es obligatorio";
+      const v = (form[c.key] || "").trim();
+      if (c.requerido && !v) { errs[c.key] = "Este campo es obligatorio"; return; }
+      // validación anti-humanos: si hay valor, debe tener el formato correcto
+      if (v && c.valida && VALIDADORES[c.valida] && !VALIDADORES[c.valida][0].test(v)) {
+        errs[c.key] = VALIDADORES[c.valida][1];
+      }
     });
     setErrores(errs);
     if (Object.keys(errs).length) return;
@@ -95,6 +114,18 @@ export function EntidadForm({ tipo, id, valores, onDone }:
     if (errores[key]) { const e = { ...errores }; delete e[key]; setErrores(e); }
   };
 
+  // Sugerencias fijas o dependientes de otro campo (subcategoría ← categoría)
+  const sugerenciasDe = (c: any): string[] | undefined => {
+    if (c.sugerencias) return c.sugerencias;
+    if (c.sugerenciasPor) {
+      const valor = form[c.sugerenciasPor.campo];
+      const propias = c.sugerenciasPor.mapa[valor];
+      if (propias?.length) return propias;
+      return [...new Set(Object.values(c.sugerenciasPor.mapa).flat())] as string[];
+    }
+    return undefined;
+  };
+
   return (
     <div className="card" style={{ borderColor: "var(--accent)" }}>
       <b style={{ fontSize: 15 }}>{id ? `✏️ Editar ${conf.titulo.toLowerCase()}` : `＋ Nuevo ${conf.titulo.toLowerCase()}`}</b>
@@ -112,6 +143,13 @@ export function EntidadForm({ tipo, id, valores, onDone }:
               <select value={form[c.key]} onChange={e => setCampo(c.key, e.target.value)}
                 style={errores[c.key] ? { borderColor: "var(--red)" } : undefined}>
                 <option value="">—</option>
+                {/* valor actual que no está entre las opciones (dato migrado o
+                    puesto por el sistema): visible pero no re-elegible */}
+                {form[c.key] && !c.opciones!.includes(form[c.key]) && (
+                  <option value={form[c.key]} disabled>
+                    {form[c.key].replace(/_/g, " ")} (valor actual)
+                  </option>
+                )}
                 {c.opciones!.map(o => <option key={o} value={o}>{o.replace(/_/g, " ")}</option>)}
               </select>
             ) : c.tipo === "textarea" ? (
@@ -129,17 +167,17 @@ export function EntidadForm({ tipo, id, valores, onDone }:
             ) : c.tipo === "date" ? (
               <input type="date" value={form[c.key]} onChange={e => setCampo(c.key, e.target.value)}
                 style={errores[c.key] ? { borderColor: "var(--red)" } : undefined} />
-            ) : c.sugerencias && c.multiple ? (
+            ) : sugerenciasDe(c) && c.multiple ? (
               <MultiTag valor={form[c.key]} onChange={v => setCampo(c.key, v)}
-                sugerencias={c.sugerencias} listId={`sug-${c.key}`} error={!!errores[c.key]} />
-            ) : c.sugerencias ? (
+                sugerencias={sugerenciasDe(c)!} listId={`sug-${c.key}`} error={!!errores[c.key]} />
+            ) : sugerenciasDe(c) ? (
               <>
                 <input list={`sug-${c.key}`} value={form[c.key]}
                   onChange={e => setCampo(c.key, e.target.value)}
                   placeholder="Escribe o elige de la lista..."
                   style={errores[c.key] ? { borderColor: "var(--red)" } : undefined} />
                 <datalist id={`sug-${c.key}`}>
-                  {c.sugerencias.map(s => <option key={s} value={s} />)}
+                  {sugerenciasDe(c)!.map(s => <option key={s} value={s} />)}
                 </datalist>
               </>
             ) : (
@@ -150,6 +188,17 @@ export function EntidadForm({ tipo, id, valores, onDone }:
           </label>
         ))}
       </div>
+      {!id && parecidos.length > 0 && (
+        <div style={{ marginTop: 12, padding: "9px 12px", background: "rgba(244,180,0,.08)", border: "1px solid rgba(244,180,0,.35)", borderRadius: 10, fontSize: 12.5, color: "var(--yellow)" }}>
+          ⚠ Ya existen parecidos — verifica antes de crear un duplicado:{" "}
+          {parecidos.map(p => (
+            <a key={p.id} href={`/entidad/${tipo}/${p.id}`} target="_blank" rel="noopener noreferrer"
+              style={{ color: "var(--yellow)", fontWeight: 700, marginLeft: 8, textDecoration: "underline" }}>
+              {p.nombre} ↗
+            </a>
+          ))}
+        </div>
+      )}
       <div style={{ display: "flex", gap: 10, marginTop: 14, justifyContent: "flex-end" }}>
         <button className="btn btn-ghost" onClick={cancelar}>Cancelar</button>
         <button className="btn" disabled={guardando} onClick={guardar}>

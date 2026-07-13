@@ -2,6 +2,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { FORM_CONF } from "@/lib/entidades";
+import { nrmQ } from "@/lib/quechua";
 
 /* Crear o actualizar una entidad núcleo (proyecto/empresa/persona).
    La config compartida actúa como whitelist de tabla y campos. */
@@ -70,7 +71,8 @@ export async function crearPublicacion(
   cuerpo: string,
   vinculos: Vinculo[] = [],
   responsable: string | null = null,
-  fechaLimite: string | null = null
+  fechaLimite: string | null = null,
+  imagenes: string[] = []
 ) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -82,7 +84,8 @@ export async function crearPublicacion(
     cuerpo: cuerpo || null,
     responsable: responsable || null,
     fecha_limite: fechaLimite || null,
-    estado: tipo === "problema" ? "abierta" : "en_progreso",
+    imagenes: (imagenes || []).slice(0, 6),
+    estado: "abierta",  // todo caso nace Sin Resolver; En Progreso se gana trabajando
   }).select("id").single();
   if (error) return { error: error.message };
 
@@ -109,16 +112,41 @@ export async function crearPublicacion(
   return {};
 }
 
-export async function comentar(pubId: string, texto: string) {
+export async function comentar(pubId: string, texto: string, imagenes: string[] = []) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
   const { data: com, error } = await supabase
     .from("comentarios")
-    .insert({ publicacion_id: pubId, autor_id: user.id, cuerpo: texto })
+    .insert({ publicacion_id: pubId, autor_id: user.id, cuerpo: texto, imagenes: (imagenes || []).slice(0, 6) })
     .select("id")
     .single();
   if (error) return { error: error.message };
+
+  // 🪄 Menciones @nombre → notificación al invocado
+  const tokens = [...new Set((texto.match(/@[^\s@,;:!?]+/g) || []).map(m => m.slice(1)))];
+  if (tokens.length) {
+    const nrmM = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+    const [{ data: perfs }, { data: pubT }] = await Promise.all([
+      supabase.from("perfiles").select("id,nombre").eq("activo", true),
+      supabase.from("publicaciones").select("titulo").eq("id", pubId).single(),
+    ]);
+    const { data: yo } = await supabase.from("perfiles").select("nombre").eq("id", user.id).single();
+    for (const p of perfs || []) {
+      const sinEspacios = nrmM(p.nombre).replace(/\s+/g, "");
+      const palabras = nrmM(p.nombre).split(/\s+/);
+      const invocado = tokens.some(t => {
+        const tk = nrmM(t);
+        return sinEspacios.startsWith(tk) || palabras.some(w => w.startsWith(tk));
+      });
+      if (invocado && p.id !== user.id) {
+        await supabase.from("notificaciones").insert({
+          usuario_id: p.id, publicacion_id: pubId, tipo: "mencion",
+          mensaje: `🪄 ${(yo?.nombre || "Alguien").split(" ")[0]} te mencionó en «${(pubT?.titulo || "").slice(0, 60)}»`,
+        });
+      }
+    }
+  }
   await supabase.from("actividad").insert({
     entidad_tipo: "publicacion",
     entidad_id: pubId,
@@ -564,6 +592,18 @@ export async function agregarMiembro(empresaId: string, personaId: string, cargo
   return {};
 }
 
+export async function editarFechaMiembro(miembroId: string, empresaId: string, fecha: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return { error: "Fecha inválida." };
+  const { error } = await supabase.from("empresa_miembros")
+    .update({ fecha_inicio: fecha }).eq("id", miembroId);
+  if (error) return { error: error.message };
+  revalidatePath(`/entidad/empresa/${empresaId}`);
+  return {};
+}
+
 export async function bajaMiembro(miembroId: string, empresaId: string) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -574,6 +614,52 @@ export async function bajaMiembro(miembroId: string, empresaId: string) {
     .eq("id", miembroId);
   if (error) return { error: error.message };
   revalidatePath(`/entidad/empresa/${empresaId}`);
+  return {};
+}
+
+/* --- Editar comentario: solo el autor, y queda la marca de editado --- */
+export async function editarComentario(comentarioId: string, pubId: string, cuerpo: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const texto = (cuerpo || "").trim();
+  if (!texto) return { error: "El comentario no puede quedar vacío." };
+  const { data: com } = await supabase.from("comentarios")
+    .select("autor_id").eq("id", comentarioId).single();
+  if (!com) return { error: "Comentario no encontrado." };
+  if (com.autor_id !== user.id) return { error: "Solo el autor puede editar su comentario." };
+  const { error } = await supabase.from("comentarios")
+    .update({ cuerpo: texto, editado_en: new Date().toISOString() })
+    .eq("id", comentarioId);
+  if (error) return { error: error.message };
+  revalidatePath(`/caso/${pubId}`);
+  return {};
+}
+
+/* --- Cuenta de acceso: enlaza una persona con su perfil (usuario del sistema) --- */
+export async function enlazarCuenta(personaId: string, perfilId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  // Una cuenta solo puede pertenecer a una persona
+  const { data: ocupada } = await supabase.from("personas")
+    .select("id,nombre").eq("usuario_id", perfilId).neq("id", personaId).maybeSingle();
+  if (ocupada) return { error: `Esa cuenta ya está enlazada a ${ocupada.nombre}.` };
+  const { error } = await supabase.from("personas")
+    .update({ usuario_id: perfilId }).eq("id", personaId);
+  if (error) return { error: error.message };
+  revalidatePath(`/entidad/persona/${personaId}`);
+  return {};
+}
+
+export async function desenlazarCuenta(personaId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { error } = await supabase.from("personas")
+    .update({ usuario_id: null }).eq("id", personaId);
+  if (error) return { error: error.message };
+  revalidatePath(`/entidad/persona/${personaId}`);
   return {};
 }
 
@@ -652,7 +738,7 @@ export async function actualizarPostulacion(id: string, convocatoriaId: string, 
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
-  const PERMITIDOS = ["estado", "codigo_acta", "fecha_firma_acta", "monto_adjudicado",
+  const PERMITIDOS = ["estado", "empresa_id", "codigo_acta", "fecha_firma_acta", "monto_adjudicado",
     "fecha_limite_rendicion", "fecha_prorroga", "acta_url", "feedback_jurado"];
   const limpio: Record<string, string | null> = {};
   PERMITIDOS.forEach(k => {
@@ -821,6 +907,379 @@ export async function materializarActividad(actId: string, dueno: string, duenoI
   return {};
 }
 
+/* ¿Ya existe alguien parecido? Detector de duplicados al crear entidades,
+   con conciencia quechua (Huaman encuentra a Waman). */
+export async function buscarParecidos(tipo: string, nombre: string) {
+  const conf = FORM_CONF[tipo];
+  if (!conf) return { parecidos: [] };
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { parecidos: [] };
+  const n = nombre.trim();
+  if (n.length < 4) return { parecidos: [] };
+
+  const { data } = await supabase.from(conf.tabla).select("id,nombre").limit(1000);
+  const palabras = nrmQ(n).split(/\s+/).filter(w => w.length >= 3);
+  if (!palabras.length) return { parecidos: [] };
+  const minimo = Math.min(2, palabras.length);
+
+  const parecidos = (data || [])
+    .map((r: any) => {
+      const hw = nrmQ(r.nombre || "").split(/\s+/);
+      const s = palabras.filter(p => hw.some(w => w === p || w.startsWith(p) || p.startsWith(w))).length;
+      return { id: r.id, nombre: r.nombre, s };
+    })
+    .filter(r => r.s >= minimo)
+    .sort((a, b) => b.s - a.s)
+    .slice(0, 3)
+    .map(({ id, nombre: nom }) => ({ id, nombre: nom }));
+  return { parecidos };
+}
+
+/* ===== RONDA DE LINKS: ¿los documentos invocados de Drive siguen vivos? =====
+   Un 404 es un link definitivamente muerto (archivo borrado o URL mal
+   pegada). Un error de red se reporta como "sin respuesta" (dudoso). */
+export async function verificarLinksDrive() {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  const FUENTES: [string, string, string[]][] = [
+    ["proyecto", "proyectos", ["carpeta_drive_url", "presupuesto_url"]],
+    ["empresa", "empresas", ["carpeta_drive_url", "ficha_ruc_url", "vigencia_poder_url"]],
+    ["persona", "personas", ["carpeta_drive_url", "cv_url", "dni_url"]],
+    ["convocatoria", "convocatorias", ["bases_url", "carpeta_drive_url"]],
+    ["postulacion", "postulaciones", ["acta_url", "matriz_jurado_url", "carpeta_drive_url"]],
+    ["equipamiento", "equipamiento", ["link"]],
+  ];
+
+  type LinkReg = { tipo: string; id: string; nombre: string; campo: string; url: string };
+  const links: LinkReg[] = [];
+  for (const [tipo, tabla, campos] of FUENTES) {
+    const { data } = await supabase.from(tabla).select(`id,nombre,${campos.join(",")}`).limit(500);
+    (data || []).forEach((r: any) => {
+      campos.forEach(c => {
+        const u = (r[c] || "").trim();
+        if (/^https?:\/\//.test(u)) links.push({ tipo, id: r.id, nombre: r.nombre, campo: c, url: u });
+      });
+    });
+  }
+  // materiales de postulaciones (JSON flexible)
+  const { data: posts } = await supabase.from("postulaciones")
+    .select("id,materiales,proy:proyectos(nombre)").not("materiales", "eq", "{}");
+  (posts || []).forEach((p: any) => {
+    Object.entries(p.materiales || {}).forEach(([campo, u]: any) => {
+      if (/^https?:\/\//.test(String(u).trim()))
+        links.push({ tipo: "postulacion", id: p.id, nombre: p.proy?.nombre || "postulación", campo: `material: ${campo}`, url: String(u).trim() });
+    });
+  });
+
+  const probar = async (l: LinkReg) => {
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 8000);
+      const r = await fetch(l.url, { method: "GET", redirect: "follow", signal: ctrl.signal });
+      clearTimeout(t);
+      return { ...l, estado: r.ok ? "ok" : `error ${r.status}` };
+    } catch {
+      return { ...l, estado: "sin respuesta" };
+    }
+  };
+
+  const resultados: any[] = [];
+  for (let i = 0; i < links.length; i += 8) {
+    resultados.push(...await Promise.all(links.slice(i, i + 8).map(probar)));
+  }
+  const rotos = resultados.filter(r => r.estado !== "ok")
+    .map(({ tipo, id, nombre, campo, estado, url }) => ({ tipo, id, nombre, campo, estado, url }));
+  return { revisados: links.length, rotos };
+}
+
+/* Del hallazgo a la acción: convierte una alerta de Qhaway en caso
+   urgente (❗ prioridad alta) vinculado a la entidad. Si ya existe un
+   caso abierto con el mismo título, lleva ahí en vez de duplicar. */
+export async function crearCasoUrgente(titulo: string, cuerpo: string, entTipo: string, entId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  const { data: ya } = await supabase.from("publicaciones")
+    .select("id").eq("titulo", titulo)
+    .in("estado", ["abierta", "en_progreso", "seguimiento"])
+    .limit(1).maybeSingle();
+  if (ya) return { id: ya.id, yaExistia: true };
+
+  const { data: pub, error } = await supabase.from("publicaciones").insert({
+    autor_id: user.id, tipo: "problema", titulo, cuerpo,
+    prioridad: "alta", estado: "abierta",
+  }).select("id").single();
+  if (error) return { error: error.message };
+
+  await supabase.from("publicacion_vinculos").insert({
+    publicacion_id: pub.id, entidad_tipo: entTipo, entidad_id: entId,
+  });
+  revalidatePath("/");
+  return { id: pub.id };
+}
+
+/* ===== VERIFICACIÓN SUNAT AUTOMÁTICA (API de consulta RUC) =====
+   Requiere SUNAT_API_TOKEN en las variables de entorno
+   (token gratuito de apis.net.pe). */
+async function consultarRucApi(ruc: string): Promise<{ estado?: string; condicion?: string; error?: string }> {
+  const token = process.env.SUNAT_API_TOKEN;
+  if (!token) return { error: "Falta configurar SUNAT_API_TOKEN en el entorno." };
+  try {
+    const r = await fetch(`https://api.decolecta.com/v1/sunat/ruc?numero=${encodeURIComponent(ruc)}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      cache: "no-store",
+    });
+    if (!r.ok) return { error: `API respondió ${r.status} para RUC ${ruc}` };
+    const d: any = await r.json();
+    const limpiar = (s: any) => String(s || "").trim().toLowerCase().replace(/\s+/g, "_");
+    return {
+      estado: limpiar(d.estado || d.estadoContribuyente || d.status),
+      condicion: limpiar(d.condicion || d.condicionDomicilio || d.condition),
+    };
+  } catch (e: any) {
+    return { error: "No se pudo consultar la API: " + (e?.message || "error de red") };
+  }
+}
+
+export async function verificarRucSunat(empresaId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: emp } = await supabase.from("empresas")
+    .select("id,nombre,ruc,estado_sunat,condicion_sunat").eq("id", empresaId).single();
+  if (!emp?.ruc) return { error: "Esta empresa no tiene RUC registrado." };
+
+  const r = await consultarRucApi(emp.ruc);
+  if (r.error) return { error: r.error };
+
+  const hoy = new Date().toISOString().slice(0, 10);
+  const { error } = await supabase.from("empresas").update({
+    estado_sunat: r.estado || null,
+    condicion_sunat: r.condicion || null,
+    fecha_verificacion_sunat: hoy,
+  }).eq("id", empresaId);
+  if (error) return { error: error.message };
+
+  const cambio = emp.estado_sunat !== r.estado || emp.condicion_sunat !== r.condicion;
+  await supabase.from("actividad").insert({
+    entidad_tipo: "empresa", entidad_id: empresaId, tipo: "bot",
+    detalle: { mensaje: `Verificación SUNAT automática: ${r.estado} · ${r.condicion}${cambio ? " (¡cambió!)" : ""}`, regla: "sunat_api" },
+  });
+  return { estado: r.estado, condicion: r.condicion, cambio };
+}
+
+export async function verificarSunatLote() {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: emps } = await supabase.from("empresas")
+    .select("id,nombre,ruc").eq("estado", "activa").not("ruc", "is", null);
+
+  let ok = 0, alertas: string[] = [], fallas: string[] = [];
+  for (const emp of emps || []) {
+    const r = await verificarRucSunat(emp.id);
+    if ((r as any).error) { fallas.push(`${emp.nombre}: ${(r as any).error}`); continue; }
+    ok++;
+    const rr = r as any;
+    if (rr.estado !== "activo" || (rr.condicion && rr.condicion !== "habido"))
+      alertas.push(`${emp.nombre}: ${rr.estado} · ${rr.condicion}`);
+    await new Promise(res => setTimeout(res, 400)); // respirar entre consultas
+  }
+  revalidatePath("/empresas");
+  return { ok, alertas, fallas: fallas.slice(0, 5) };
+}
+
+/* Consulta RENIEC: el nombre oficial detrás de un DNI (mismo token) */
+export async function verificarDniReniec(personaId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const token = process.env.SUNAT_API_TOKEN;
+  if (!token) return { error: "Falta configurar SUNAT_API_TOKEN en el entorno." };
+
+  const { data: per } = await supabase.from("personas")
+    .select("id,nombre,ruc_dni").eq("id", personaId).single();
+  const dni = String(per?.ruc_dni || "").replace(/\D/g, "");
+  if (dni.length !== 8) return { error: "El campo RUC/DNI no contiene un DNI de 8 dígitos." };
+
+  try {
+    const r = await fetch(`https://api.decolecta.com/v1/reniec/dni?numero=${dni}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      cache: "no-store",
+    });
+    if (!r.ok) return { error: `RENIEC respondió ${r.status} para DNI ${dni}` };
+    const d: any = await r.json();
+    const nombreReniec = (d.full_name && String(d.full_name).trim())
+      || [d.first_name || d.nombres, d.first_last_name || d.apellidoPaterno, d.second_last_name || d.apellidoMaterno]
+        .filter(Boolean).join(" ").trim();
+    if (!nombreReniec) return { error: "RENIEC no devolvió nombre para ese DNI." };
+
+    // ¿Coincide con lo registrado? (tolerante a orden y ortografía andina)
+    const palabras = nrmQ(nombreReniec).split(/\s+/).filter(w => w.length >= 3);
+    const registrado = nrmQ(per!.nombre || "");
+    const aciertos = palabras.filter(w => registrado.includes(w)).length;
+    const coincide = aciertos >= Math.min(2, palabras.length);
+
+    await supabase.from("actividad").insert({
+      entidad_tipo: "persona", entidad_id: personaId, tipo: "bot",
+      detalle: { mensaje: `Verificación RENIEC: «${nombreReniec}»${coincide ? " ✔ coincide" : " ⚠ NO coincide con lo registrado"}`, regla: "reniec_api" },
+    });
+    return { nombreReniec, coincide };
+  } catch (e: any) {
+    return { error: "No se pudo consultar RENIEC: " + (e?.message || "error de red") };
+  }
+}
+
+/* Ronda de comprobación: "vi este equipo hoy, existe y está bien" */
+export async function comprobarEquipo(equipoId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const hoy = new Date().toISOString().slice(0, 10);
+  const { error } = await supabase.from("equipamiento")
+    .update({ ultima_comprobacion: hoy }).eq("id", equipoId);
+  if (error) return { error: error.message };
+  await supabase.from("actividad").insert({
+    entidad_tipo: "equipamiento", entidad_id: equipoId, tipo: "edicion", actor_id: user.id,
+    detalle: { mensaje: "comprobación física: el equipo existe y está conforme ✔" },
+  });
+  revalidatePath("/equipamiento");
+  revalidatePath(`/entidad/equipamiento/${equipoId}`);
+  return {};
+}
+
+/* ===== PRÉSTAMOS DE EQUIPOS: los recursos pasan de mano en mano =====
+   El estado dice QUÉ (en_uso); el préstamo dice QUIÉN, DESDE CUÁNDO y
+   PARA QUÉ proyecto. Cerrar el préstamo devuelve el equipo a disponible. */
+export async function prestarEquipo(equipoId: string, personaId: string, proyectoId: string | null, nota: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  // Si alguien más lo tenía, ese préstamo se cierra hoy
+  await supabase.from("equipo_prestamos")
+    .update({ hasta: new Date().toISOString().slice(0, 10) })
+    .eq("equipamiento_id", equipoId).is("hasta", null);
+
+  const { error } = await supabase.from("equipo_prestamos").insert({
+    equipamiento_id: equipoId, persona_id: personaId,
+    proyecto_id: proyectoId || null, nota: nota.trim() || null,
+  });
+  if (error) return { error: error.message };
+
+  const { error: e2 } = await supabase.from("equipamiento")
+    .update({ estado: "en_uso" }).eq("id", equipoId);
+  if (e2) return { error: "Préstamo registrado, pero el estado no se actualizó: " + e2.message };
+  revalidatePath(`/entidad/equipamiento/${equipoId}`);
+  revalidatePath("/equipamiento");
+  return {};
+}
+
+export async function devolverEquipo(prestamoId: string, equipoId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { error } = await supabase.from("equipo_prestamos")
+    .update({ hasta: new Date().toISOString().slice(0, 10) })
+    .eq("id", prestamoId);
+  if (error) return { error: error.message };
+  const { error: e2 } = await supabase.from("equipamiento")
+    .update({ estado: "disponible" }).eq("id", equipoId);
+  if (e2) return { error: "Devolución registrada, pero el estado no se actualizó: " + e2.message };
+  revalidatePath(`/entidad/equipamiento/${equipoId}`);
+  revalidatePath("/equipamiento");
+  return {};
+}
+
+/* Editar el título de una publicación (queda en la bitácora quién y qué) */
+export async function editarTitulo(pubId: string, titulo: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const limpio = titulo.trim();
+  if (!limpio) return { error: "El título no puede quedar vacío." };
+
+  const { data: antes } = await supabase.from("publicaciones")
+    .select("titulo").eq("id", pubId).single();
+  const { error } = await supabase.from("publicaciones")
+    .update({ titulo: limpio }).eq("id", pubId);
+  if (error) return { error: error.message };
+
+  await supabase.from("actividad").insert({
+    entidad_tipo: "publicacion", entidad_id: pubId, tipo: "edicion", actor_id: user.id,
+    detalle: { mensaje: `editó el título (antes: «${(antes?.titulo || "").slice(0, 80)}»)` },
+  });
+  revalidatePath(`/caso/${pubId}`);
+  revalidatePath("/");
+  return {};
+}
+
+/* ===== SUB-CASOS: un caso largo se descompone en hijos =====
+   El hijo hereda los vínculos del padre; el padre acumula el progreso. */
+export async function crearSubCaso(padreId: string, titulo: string, tipo: string = "tarea") {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!titulo.trim()) return { error: "El título es obligatorio." };
+
+  const { data: hijo, error } = await supabase.from("publicaciones").insert({
+    autor_id: user.id,
+    tipo: ["tarea", "problema", "consulta", "pago"].includes(tipo) ? tipo : "tarea",
+    titulo: titulo.trim(),
+    padre_id: padreId,
+    estado: "abierta",
+  }).select("id").single();
+  if (error) return { error: error.message };
+
+  // Hereda los vínculos del padre (proyecto, personas, etc.)
+  const { data: vincs } = await supabase.from("publicacion_vinculos")
+    .select("entidad_tipo,entidad_id").eq("publicacion_id", padreId);
+  if (vincs?.length) {
+    await supabase.from("publicacion_vinculos").insert(
+      vincs.map((v: any) => ({ publicacion_id: hijo.id, entidad_tipo: v.entidad_tipo, entidad_id: v.entidad_id })));
+  }
+  await supabase.from("actividad").insert({
+    entidad_tipo: "publicacion", entidad_id: padreId, tipo: "vinculo", actor_id: user.id,
+    detalle: { mensaje: `Sub-caso creado: «${titulo.trim()}»` },
+  });
+  revalidatePath(`/caso/${padreId}`);
+  revalidatePath("/");
+  return { id: hijo.id };
+}
+
+/* ===== REACCIONES: los famosos "me gusta" =====
+   Toggle por usuario: mismo emoji dos veces = quitar. */
+const EMOJIS_REACCION = ["👍", "❤️", "🔥", "👏", "😂", "😢"];
+export async function toggleReaccion(pubId: string, comentarioId: string | null, emoji: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!EMOJIS_REACCION.includes(emoji)) return { error: "Reacción no permitida." };
+
+  let q = supabase.from("reacciones").select("id")
+    .eq("usuario_id", user.id).eq("emoji", emoji);
+  q = comentarioId ? q.eq("comentario_id", comentarioId) : q.eq("publicacion_id", pubId).is("comentario_id", null);
+  const { data: ya } = await q.maybeSingle();
+
+  if (ya) {
+    const { error } = await supabase.from("reacciones").delete().eq("id", ya.id);
+    if (error) return { error: error.message };
+  } else {
+    const { error } = await supabase.from("reacciones").insert({
+      publicacion_id: pubId, comentario_id: comentarioId,
+      usuario_id: user.id, emoji,
+    });
+    if (error) return { error: error.message };
+  }
+  revalidatePath("/");
+  revalidatePath(`/caso/${pubId}`);
+  return {};
+}
+
 export async function marcarNotifsLeidas() {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -848,6 +1307,19 @@ export async function cambiarEstado(pubId: string, estado: string) {
     await supabase.from("cronograma_actividades")
       .update({ estado: "finalizada" }).eq("publicacion_id", pubId).neq("estado", "finalizada");
   }
+  revalidatePath(`/caso/${pubId}`);
+  revalidatePath("/");
+  return {};
+}
+
+export async function cambiarTipo(pubId: string, tipo: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const VALIDOS = ["aviso", "tarea", "problema", "consulta", "pago", "idea", "archivo"];
+  if (!VALIDOS.includes(tipo)) return { error: "Tipo no válido." };
+  const { error } = await supabase.from("publicaciones").update({ tipo }).eq("id", pubId);
+  if (error) return { error: error.message };
   revalidatePath(`/caso/${pubId}`);
   revalidatePath("/");
   return {};

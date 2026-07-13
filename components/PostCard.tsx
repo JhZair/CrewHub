@@ -1,20 +1,41 @@
 "use client";
 import Avatar from "@/components/Avatar";
+import Reacciones, { type Reaccion } from "@/components/Reacciones";
+import NuevoBadge from "@/components/NuevoBadge";
+import { cambiarTipo, cambiarEstado } from "@/app/actions";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+const TIPOS_SEL = [
+  ["aviso", "📢 Aviso"], ["tarea", "✅ Tarea"], ["problema", "❗ Problema"],
+  ["consulta", "❓ Consulta"], ["pago", "💰 Pago"], ["idea", "💡 Idea"],
+  ["archivo", "📎 Archivo"],
+];
+
+const ESTADOS_SEL = [
+  ["abierta", "Sin Resolver"], ["en_progreso", "En Progreso"],
+  ["seguimiento", "🔭 Seguimiento"], ["en_pausa", "En Pausa"],
+  ["resuelta", "Resuelta"], ["archivada", "Archivada"],
+];
+
 /* Tarjeta del feed: la tarjeta navega al caso; los chips, a su entidad. */
 export default function PostCard({
-  href, titulo, tipoLabel, tipoColor, estado, estadoTxt,
+  href, titulo, tipo, tipoLabel, tipoColor, estado, estadoTxt,
   autorNombre, autorColor, autorSrc, fechaStr, respNombre, avisaSinResp,
-  nc, venc, cuerpo, chips,
+  nc, venc, cuerpo, chips, pubId, userId, reacciones, imagenes,
+  padreId, padreTitulo, hijos, creadoEn,
 }: {
-  href: string; titulo: string; tipoLabel: string; tipoColor: string;
+  href: string; titulo: string; tipo?: string; tipoLabel: string; tipoColor: string;
   estado: string; estadoTxt: string;
   autorNombre?: string | null; autorColor?: string | null; autorSrc?: string | null;
   fechaStr: string; respNombre?: string | null; avisaSinResp: boolean;
   nc: number; venc: [string, string] | null; cuerpo?: string | null;
   chips: { tipo: string; id: string; nombre: string; ico: string }[];
+  pubId?: string; userId?: string; reacciones?: Reaccion[];
+  imagenes?: string[];
+  padreId?: string | null; padreTitulo?: string | null;
+  hijos?: { total: number; ok: number } | null;
+  creadoEn?: string;
 }) {
   const router = useRouter();
   return (
@@ -22,11 +43,68 @@ export default function PostCard({
       <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
         <Avatar nombre={autorNombre} color={autorColor} size={38} src={autorSrc} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <b style={{ fontSize: 15 }}>{titulo}</b>
-            <span className="badge" style={{ color: tipoColor, background: `${tipoColor}22` }}>{tipoLabel}</span>
-            <span style={{ flex: 1 }} />
-            <span className={`pill st-${estado}`}>{estadoTxt}</span>
+          {padreId && (
+            <Link href={`/caso/${padreId}`} onClick={e => e.stopPropagation()}
+              style={{ color: "var(--muted)", fontSize: 11.5, display: "inline-block", marginBottom: 3 }}>
+              🧩 ↑ parte de: <b style={{ color: "var(--violet)" }}>{padreTitulo || "caso padre"}</b>
+            </Link>
+          )}
+          <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+            {/* Izquierda: el título respira y envuelve sin empujar los controles */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <b style={{ fontSize: 15, lineHeight: 1.35 }}>{titulo}</b>
+              {creadoEn && <span style={{ marginLeft: 8, display: "inline-block", verticalAlign: "middle" }}><NuevoBadge creadoEn={creadoEn} /></span>}
+              {hijos && hijos.total > 0 && (
+                <span className="badge" style={{
+                  color: hijos.ok === hijos.total ? "var(--green)" : "var(--teal)",
+                  background: "rgba(45,212,191,.1)", marginLeft: 8, verticalAlign: "middle",
+                }}>🧩 {hijos.ok}/{hijos.total}</span>
+              )}
+            </div>
+            {/* Derecha: los dos mandos, anclados arriba pase lo que pase con el título */}
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+              {pubId && tipo ? (
+                <select value={tipo} title="Cambiar el tipo de caso"
+                  onClick={e => e.stopPropagation()}
+                  onChange={async e => {
+                    e.stopPropagation();
+                    await cambiarTipo(pubId, e.target.value);
+                    router.refresh();
+                  }}
+                  className="badge"
+                  style={{
+                    color: tipoColor, background: `${tipoColor}22`, border: "none",
+                    cursor: "pointer", appearance: "none", WebkitAppearance: "none",
+                    fontFamily: "inherit", fontSize: 11, fontWeight: 700,
+                  }}>
+                  {TIPOS_SEL.map(([v, l]) => (
+                    <option key={v} value={v} style={{ background: "#16161f", color: "#e8e8f2" }}>{l}</option>
+                  ))}
+                </select>
+              ) : (
+                <span className="badge" style={{ color: tipoColor, background: `${tipoColor}22` }}>{tipoLabel}</span>
+              )}
+              {pubId ? (
+                <select value={estado} title="Cambiar el estado"
+                  onClick={e => e.stopPropagation()}
+                  onChange={async e => {
+                    e.stopPropagation();
+                    await cambiarEstado(pubId, e.target.value);
+                    router.refresh();
+                  }}
+                  className={`pill st-${estado}`}
+                  style={{
+                    border: "none", cursor: "pointer", appearance: "none",
+                    WebkitAppearance: "none", fontFamily: "inherit",
+                  }}>
+                  {ESTADOS_SEL.map(([v, l]) => (
+                    <option key={v} value={v} style={{ background: "#16161f", color: "#e8e8f2" }}>{l}</option>
+                  ))}
+                </select>
+              ) : (
+                <span className={`pill st-${estado}`}>{estadoTxt}</span>
+              )}
+            </div>
           </div>
           <div className="meta">
             <span>{fechaStr}</span>
@@ -42,6 +120,16 @@ export default function PostCard({
               {cuerpo.slice(0, 180)}{cuerpo.length > 180 ? "…" : ""}
             </p>
           )}
+          {(imagenes || []).length > 0 && (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 9 }}>
+              {imagenes!.slice(0, 4).map((u, i) => (
+                <a key={i} href={u} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}>
+                  <img src={u} alt="" style={{ height: 110, borderRadius: 10, border: "1px solid var(--border)", objectFit: "cover" }} />
+                </a>
+              ))}
+              {imagenes!.length > 4 && <span style={{ color: "var(--dim)", fontSize: 12, alignSelf: "center" }}>+{imagenes!.length - 4}</span>}
+            </div>
+          )}
           {chips.length > 0 && (
             <div className="sel-chips" style={{ marginTop: 9 }}>
               {chips.map((c, i) => (
@@ -50,6 +138,11 @@ export default function PostCard({
                   <span className="echip echip-link">{c.ico} {c.nombre}</span>
                 </Link>
               ))}
+            </div>
+          )}
+          {pubId && userId && (
+            <div style={{ marginTop: 9 }}>
+              <Reacciones pubId={pubId} reacciones={reacciones || []} userId={userId} />
             </div>
           )}
         </div>

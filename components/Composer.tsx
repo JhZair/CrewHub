@@ -1,11 +1,14 @@
 "use client";
 import { crearPublicacion, crearEtiqueta, crearLugar, type Vinculo } from "@/app/actions";
+import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
+import { coincideQ } from "@/lib/quechua";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 const TIPOS = [
   ["aviso", "📢 Aviso"], ["tarea", "✅ Tarea"], ["problema", "❗ Problema"],
-  ["pago", "💰 Pago"], ["idea", "💡 Idea"], ["archivo", "📎 Archivo"],
+  ["consulta", "❓ Consulta"], ["pago", "💰 Pago"], ["idea", "💡 Idea"],
+  ["archivo", "📎 Archivo"],
 ];
 
 export type CatalogoItem = { id: string; nombre: string; tipo?: string };
@@ -14,7 +17,6 @@ const GRUPOS_PERSONA: [string, string][] = [
   ["personal", "— Equipo Kawsay —"],
   ["colaborador", "— Colaboradores —"],
   ["independiente", "— Independientes —"],
-  ["entidad_financiera", "— Entidades —"],
   ["contacto", "— Contactos —"],
 ];
 export type Catalogos = {
@@ -44,7 +46,11 @@ export function EntPicker({ etiqueta, items, onPick, onCrear }: {
   const [abierto, setAbierto] = useState(false);
   const [filtro, setFiltro] = useState("");
   const nrm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-  const lista = filtro ? items.filter(i => nrm(i.nombre).includes(nrm(filtro))) : items;
+  // Búsqueda por palabras + fonética quechua: "mujunacuy" encuentra "Mujunakuy"
+  const palabras = nrm(filtro).split(/\s+/).filter(Boolean);
+  const lista = palabras.length
+    ? items.filter(i => coincideQ(i.nombre, palabras))
+    : items;
   const cerrar = () => { setAbierto(false); setFiltro(""); };
 
   return (
@@ -95,7 +101,20 @@ export default function Composer({ userId, catalogos, perfiles, inicial }:
   const [links, setLinks] = useState<Sel[]>(inicial || []);
   const [extraEtq, setExtraEtq] = useState<CatalogoItem[]>([]);
   const [enviando, setEnviando] = useState(false);
+  const [imgs, setImgs] = useState<string[]>([]);
+  const [subiendo, setSubiendo] = useState(false);
   const router = useRouter();
+
+  const subir = async (files: File[]) => {
+    if (!files.length || subiendo) return;
+    setSubiendo(true);
+    for (const f of files.slice(0, 6 - imgs.length)) {
+      const r = await subirImagen(f);
+      if (r.error) { alert(r.error); break; }
+      if (r.url) setImgs(prev => [...prev, r.url!]);
+    }
+    setSubiendo(false);
+  };
 
   const itemsDe = (t: string): CatalogoItem[] =>
     t === "etiqueta" ? [...catalogos.etiqueta, ...extraEtq]
@@ -136,11 +155,12 @@ export default function Composer({ userId, catalogos, perfiles, inicial }:
       tipo, titulo.trim(), cuerpo.trim(),
       links.map(({ tipo: t, id }) => ({ tipo: t, id })),
       resp || null,
-      fecha || null
+      fecha || null,
+      imgs
     );
     setEnviando(false);
     if (res?.error) { alert("Error al publicar: " + res.error); return; }
-    setTitulo(""); setCuerpo(""); setLinks([]); setResp(""); setFecha("");
+    setTitulo(""); setCuerpo(""); setLinks([]); setResp(""); setFecha(""); setImgs([]);
     router.refresh();
   };
 
@@ -151,14 +171,28 @@ export default function Composer({ userId, catalogos, perfiles, inicial }:
         value={titulo}
         onChange={e => setTitulo(e.target.value)}
         onKeyDown={e => { if (e.key === "Enter" && !cuerpo) publicar(); }}
+        onPaste={e => { const f = imagenesDePaste(e); if (f.length) { e.preventDefault(); subir(f); } }}
       />
       {titulo && (
         <textarea
-          placeholder="Descripción (opcional)"
+          placeholder="Descripción (opcional) — también puedes pegar un pantallazo con Ctrl+V"
           rows={3}
           value={cuerpo}
           onChange={e => setCuerpo(e.target.value)}
+          onPaste={e => { const f = imagenesDePaste(e); if (f.length) { e.preventDefault(); subir(f); } }}
         />
+      )}
+      {(imgs.length > 0 || subiendo) && (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "8px 0" }}>
+          {imgs.map((u, i) => (
+            <span key={i} style={{ position: "relative" }}>
+              <img src={u} alt="" style={{ height: 74, borderRadius: 9, border: "1px solid var(--border)" }} />
+              <button onClick={() => setImgs(imgs.filter((_, j) => j !== i))}
+                style={{ position: "absolute", top: -6, right: -6, background: "var(--panel)", border: "1px solid var(--border2)", borderRadius: "50%", width: 20, height: 20, fontSize: 11, color: "var(--red)", cursor: "pointer", lineHeight: 1 }}>×</button>
+            </span>
+          ))}
+          {subiendo && <span style={{ color: "var(--dim)", fontSize: 12, alignSelf: "center" }}>subiendo…</span>}
+        </div>
       )}
       <div className="tipos">
         {TIPOS.map(([v, l]) => (
@@ -167,31 +201,40 @@ export default function Composer({ userId, catalogos, perfiles, inicial }:
           </button>
         ))}
         <span style={{ flex: 1 }} />
-        <button className="btn" disabled={!titulo.trim() || enviando} onClick={publicar}>
+        <label className="tipo-chip" title="Adjuntar imagen o pantallazo" style={{ cursor: "pointer" }}>
+          📷
+          <input type="file" accept="image/*" multiple style={{ display: "none" }}
+            onChange={e => { subir(Array.from(e.target.files || [])); e.target.value = ""; }} />
+        </label>
+        <button className="btn" disabled={!titulo.trim() || enviando || subiendo} onClick={publicar}>
           {enviando ? "Publicando..." : "Publicar"}
         </button>
       </div>
 
       <div className="meta-bar">
         <div className="meta-linea">
-          <span className="ent-lbl">👤 Responsable</span>
-          <select className="ent-ctrl" style={resp ? { borderColor: "var(--teal)", color: "var(--teal)" } : undefined}
+          <span className="ent-lbl" title="Responsable" style={{ minWidth: "auto" }}>👤</span>
+          <select className="ent-ctrl"
+            style={{ height: 34, padding: "0 11px", margin: 0, boxSizing: "border-box", fontSize: 12.5, lineHeight: "32px", borderRadius: 9, ...(resp ? { borderColor: "var(--teal)", color: "var(--teal)" } : {}) }}
             value={resp} onChange={e => setResp(e.target.value)}>
             <option value="">Sin asignar</option>
             {perfiles.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
           </select>
-          <span className="ent-lbl" style={{ marginLeft: 14 }}>⏱ Vence</span>
+          <span className="ent-lbl" title="Fecha límite" style={{ marginLeft: 14, minWidth: "auto" }}>📅</span>
           <input type="date" className="ent-ctrl"
-            style={fecha ? { borderColor: "var(--yellow)", color: "var(--yellow)" } : undefined}
+            style={{ height: 34, minHeight: 34, maxHeight: 34, width: 150, minWidth: 150, padding: "0 10px", margin: 0, boxSizing: "border-box", fontSize: 12.5, fontFamily: "inherit", lineHeight: "32px", borderRadius: 9, ...(fecha ? { borderColor: "var(--yellow)", color: "var(--yellow)" } : {}) }}
             value={fecha} onChange={e => setFecha(e.target.value)} />
+          {/* la etiqueta no es entidad: vive aquí como chip */}
+          <span className="etq-pick" style={{ marginLeft: 14 }}>
+            <EntPicker etiqueta="🏷️ Etiqueta" items={itemsDe("etiqueta")}
+              onPick={id => agregar("etiqueta", id)} onCrear={crearYAgregarEtiqueta} />
+          </span>
         </div>
         <div className="meta-linea">
-          <span className="ent-lbl">🔗 Vincular</span>
-          {Object.keys(ENT_META).map(t => (
+          {Object.keys(ENT_META).filter(t => t !== "etiqueta").map(t => (
             <EntPicker key={t} etiqueta={ENT_META[t]} items={itemsDe(t)}
               onPick={id => agregar(t, id)}
-              onCrear={t === "etiqueta" ? crearYAgregarEtiqueta
-                : t === "lugar" ? crearYAgregarLugar : undefined} />
+              onCrear={t === "lugar" ? crearYAgregarLugar : undefined} />
           ))}
         </div>
       </div>

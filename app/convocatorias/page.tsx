@@ -88,15 +88,19 @@ export default async function Convocatorias({ searchParams }: {
   const desde = anios.length ? Math.min(...anios) : null;
   const porAnio = [...new Set(anios)].sort((a: any, b: any) => b - a);
 
-  // Nuestra historia en cada concurso: ¿postulamos? ¿ganamos?
+  // Nuestra historia en cada concurso: ¿postulamos? ¿ganamos? ¿rozamos?
   const postulamosEn = new Map<string, number>();
-  const ganamosEn = new Set<string>();
+  const ganamosCnt = new Map<string, number>();
+  const finalistasEn = new Map<string, number>();
   posts.forEach((p: any) => {
     const cid = p.conv?.id;
     if (!cid) return;
     postulamosEn.set(cid, (postulamosEn.get(cid) || 0) + 1);
-    if (p.estado === "ganadora") ganamosEn.add(cid);
+    if (p.estado === "ganadora") ganamosCnt.set(cid, (ganamosCnt.get(cid) || 0) + 1);
+    if (p.estado === "finalista_no_ganadora")
+      finalistasEn.set(cid, (finalistasEn.get(cid) || 0) + 1);
   });
+  const ganamosEn = { has: (id: string) => ganamosCnt.has(id) };
 
   return (
     <div className="shell">
@@ -246,15 +250,23 @@ export default async function Convocatorias({ searchParams }: {
               <Link key={c.id} href={`/entidad/convocatoria/${c.id}`}>
                 <div className="card link" style={{
                   cursor: "pointer", padding: "12px 16px",
-                  borderLeft: `3px solid ${ganamosEn.has(c.id) ? "var(--green)" : "var(--blue)"}`,
+                  borderLeft: `3px solid ${ganamosEn.has(c.id) ? "var(--green)" : finalistasEn.has(c.id) ? "var(--yellow)" : "var(--blue)"}`,
                 }}>
                   <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
                     <b style={{ fontSize: 14.5 }}>{c.codigo}</b>
                     <span style={{ color: "var(--text)", fontSize: 13 }}>{c.nombre}</span>
                     {c.anio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{c.anio}</span>}
-                    {ganamosEn.has(c.id) ? (
-                      <span className="badge" style={{ color: "var(--green)", background: "rgba(46,204,113,.12)" }}>🏆 ganamos</span>
-                    ) : (
+                    {ganamosEn.has(c.id) && (
+                      <span className="badge" style={{ color: "var(--green)", background: "rgba(46,204,113,.12)" }}>
+                        🏆 ganamos{(ganamosCnt.get(c.id) || 0) > 1 ? ` · ${ganamosCnt.get(c.id)}` : ""}
+                      </span>
+                    )}
+                    {finalistasEn.has(c.id) && (
+                      <span className="badge" style={{ color: "var(--yellow)", background: "rgba(244,180,0,.12)" }}>
+                        🥈 finalista{(finalistasEn.get(c.id) || 0) > 1 ? `s · ${finalistasEn.get(c.id)}` : ""}
+                      </span>
+                    )}
+                    {!ganamosEn.has(c.id) && (
                       <span className="badge" style={{ color: "var(--blue)", background: "rgba(59,130,246,.12)" }}>
                         🎯 postulamos · {postulamosEn.get(c.id)}
                       </span>

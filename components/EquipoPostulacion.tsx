@@ -6,9 +6,13 @@ import Link from "next/link";
 import { useState } from "react";
 
 const ROLES = [
-  "Director/a", "Productor/a", "Guionista", "Director/a de Fotografía",
-  "Sonidista", "Editor/a", "Director/a de Arte", "Investigador/a",
-  "Compositor/a de Música", "Operador/a de Drone", "Animador/a", "Asistente de producción",
+  "Responsable General", "Representante Legal", "Titular",
+  "Director/a", "Asistente de Dirección",
+  "Productor/a", "Productor/a Ejecutivo/a", "Jefe/a de Producción", "Asistente de Producción",
+  "Creador/a del concepto artístico", "Autor/a del tratamiento o guión", "Guionista",
+  "Director/a de Fotografía", "Sonidista", "Director/a de Arte",
+  "Editor/a", "Asistente de Edición", "Investigador/a", "Facilitador/a",
+  "Compositor/a de Música", "Operador/a de Drone", "Animador/a",
 ];
 
 export default function EquipoPostulacion({ postulacionId, equipo, personas }: {
@@ -71,8 +75,9 @@ export default function EquipoPostulacion({ postulacionId, equipo, personas }: {
         <div key={m.id} className="eq-row" style={{ alignItems: "center" }}>
           <span className="cargo">{m.cargo || "—"}</span>
           <span style={{ flex: 1, textAlign: "right" }}>
-            <Link href={`/entidad/persona/${m.persona?.id}`} style={{ color: "var(--text)" }}>
-              {m.persona?.nombre} →
+            <Link href={`/entidad/persona/${m.persona?.id}`} style={{ color: "var(--text)" }}
+              title={m.persona?.nombre}>
+              {m.persona?.alias || m.persona?.nombre} →
             </Link>
           </span>
           {quitando === m.id ? (
