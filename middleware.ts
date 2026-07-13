@@ -23,7 +23,8 @@ export async function middleware(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser();
   const path = request.nextUrl.pathname;
-  const publica = path.startsWith("/login") || path.startsWith("/auth");
+  const publica = path.startsWith("/login") || path.startsWith("/auth")
+    || path === "/manifest.webmanifest";
 
   if (!user && !publica) {
     return NextResponse.redirect(new URL("/login", request.url));
