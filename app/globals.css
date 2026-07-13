@@ -31,12 +31,15 @@ a{color:inherit;text-decoration:none}
 .st-resuelta{background:rgba(46,204,113,.13);color:var(--green)}
 .st-archivada{background:#1c1c2c;color:var(--dim)}
 .av{border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;color:#fff;flex-shrink:0}
-.composer{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:16px}
-.composer input,.composer textarea{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 14px;outline:none;font-size:13.5px;margin-bottom:9px}
+/* Identidad del compositor de "nuevo caso": violeta, igual en feed y modal */
+.composer{background:linear-gradient(180deg,rgba(124,92,255,.06),transparent 140px),var(--card);border:1px solid rgba(124,92,255,.42);border-radius:14px;padding:16px 18px;margin-bottom:16px}
+.composer input,.composer textarea{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 14px;outline:none;font-size:13.5px;margin-bottom:10px}
 .composer input:focus,.composer textarea:focus{border-color:var(--accent)}
 .tipos{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.tipo-chip{padding:7px 13px;border-radius:9px;font-size:12.5px;color:var(--muted);border:1px solid transparent}
-.tipo-chip.sel{border-color:var(--border2);background:#1c1c2e;color:var(--text)}
+.tipos-acc{margin-left:auto;display:flex;gap:6px;align-items:center}
+.tipo-chip{padding:7px 13px;border-radius:9px;font-size:12.5px;color:var(--muted);border:1px solid transparent;cursor:pointer}
+.tipo-chip.sel{border-color:var(--accent);background:rgba(124,92,255,.16);color:var(--text)}
+.modal-caja .composer{margin-bottom:0;border:none;background:none;padding:0}
 .title-lg{font-size:22px;font-weight:800;margin:8px 0 12px}
 .grid-meta{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:14px}
 .gm .k{font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim);display:block;margin-bottom:5px}
@@ -55,7 +58,7 @@ a{color:inherit;text-decoration:none}
 .bubble{flex:1;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 14px}
 .bubble .who{font-size:12.5px;font-weight:700;display:flex;gap:8px}
 .bubble .who .t{margin-left:auto;font-size:10.5px;color:var(--dim);font-weight:400}
-.bubble .tx{font-size:13px;color:#c6c6da;margin-top:4px;line-height:1.5}
+.bubble .tx{font-size:13px;color:#c6c6da;margin-top:4px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
 .cbox{display:flex;gap:10px;margin-top:14px;align-items:flex-end}
 .cbox input,.cbox textarea{flex:1;background:var(--card);border:1px solid var(--border);border-radius:11px;padding:11px 15px;outline:none;font-size:13px;color:var(--text)}
 .cbox input:focus,.cbox textarea:focus{border-color:var(--accent)}
@@ -112,6 +115,17 @@ a{color:inherit;text-decoration:none}
 .tl-resp{color:var(--teal);background:rgba(45,212,191,.1);padding:1px 7px;border-radius:6px}
 .mini-ind{font-size:10px;color:var(--dim);white-space:nowrap}
 .btn-ocultar:hover{color:var(--text)}
+
+/* FAB global "+" y su modal de nuevo caso */
+.fab-nuevo{position:fixed;right:22px;bottom:22px;z-index:60;width:56px;height:56px;border-radius:50%;background:var(--accent);color:#fff;border:none;font-size:28px;line-height:1;cursor:pointer;box-shadow:0 8px 24px rgba(124,92,255,.45);display:flex;align-items:center;justify-content:center}
+.fab-nuevo:hover{filter:brightness(1.1);transform:translateY(-1px)}
+.modal-fondo{position:fixed;inset:0;z-index:70;background:rgba(4,4,10,.72);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto}
+.modal-caja{background:linear-gradient(180deg,rgba(124,92,255,.07),transparent 170px),var(--panel);border:1px solid rgba(124,92,255,.5);border-radius:16px;padding:16px 18px;width:100%;max-width:720px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+.modal-cab{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid rgba(124,92,255,.22)}
+.modal-cab b{font-size:15px;color:var(--text)}
+.modal-x{background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer}
+.modal-x:hover{color:var(--red)}
+.modal-cargando{color:var(--dim);text-align:center;padding:40px 0}
 .tx-link{color:var(--violet);text-decoration:underline;overflow-wrap:anywhere}
 .tx-link:hover{color:var(--accent)}
 

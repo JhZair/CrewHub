@@ -91,8 +91,8 @@ export function EntPicker({ etiqueta, items, onPick, onCrear }: {
   );
 }
 
-export default function Composer({ userId, catalogos, perfiles, inicial }:
-  { userId: string; catalogos: Catalogos; perfiles: { id: string; nombre: string }[]; inicial?: Sel[] }) {
+export default function Composer({ userId, catalogos, perfiles, inicial, onListo }:
+  { userId: string; catalogos: Catalogos; perfiles: { id: string; nombre: string }[]; inicial?: Sel[]; onListo?: () => void }) {
   const [titulo, setTitulo] = useState("");
   const [cuerpo, setCuerpo] = useState("");
   const [tipo, setTipo] = useState("aviso");
@@ -162,6 +162,7 @@ export default function Composer({ userId, catalogos, perfiles, inicial }:
     if (res?.error) { alert("Error al publicar: " + res.error); return; }
     setTitulo(""); setCuerpo(""); setLinks([]); setResp(""); setFecha(""); setImgs([]);
     router.refresh();
+    onListo?.();
   };
 
   return (
@@ -200,15 +201,16 @@ export default function Composer({ userId, catalogos, perfiles, inicial }:
             {l}
           </button>
         ))}
-        <span style={{ flex: 1 }} />
-        <label className="tipo-chip" title="Adjuntar imagen o pantallazo" style={{ cursor: "pointer" }}>
-          📷
-          <input type="file" accept="image/*" multiple style={{ display: "none" }}
-            onChange={e => { subir(Array.from(e.target.files || [])); e.target.value = ""; }} />
-        </label>
-        <button className="btn" disabled={!titulo.trim() || enviando || subiendo} onClick={publicar}>
-          {enviando ? "Publicando..." : "Publicar"}
-        </button>
+        <span className="tipos-acc">
+          <label className="tipo-chip" title="Adjuntar imagen o pantallazo" style={{ cursor: "pointer" }}>
+            📷
+            <input type="file" accept="image/*" multiple style={{ display: "none" }}
+              onChange={e => { subir(Array.from(e.target.files || [])); e.target.value = ""; }} />
+          </label>
+          <button className="btn" disabled={!titulo.trim() || enviando || subiendo} onClick={publicar}>
+            {enviando ? "Publicando..." : "Publicar"}
+          </button>
+        </span>
       </div>
 
       <div className="meta-bar">

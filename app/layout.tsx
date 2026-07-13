@@ -1,5 +1,6 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
+import BotonNuevoCaso from "@/components/BotonNuevoCaso";
 
 export const metadata: Metadata = {
   title: "CrewHub+ by KAWSAY",
@@ -19,7 +20,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es">
-      <body>{children}</body>
+      <body>
+        {children}
+        <BotonNuevoCaso />
+      </body>
     </html>
   );
 }

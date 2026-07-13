@@ -1384,6 +1384,35 @@ export async function cambiarFechaLimite(pubId: string, fecha: string) {
   return {};
 }
 
+// Catálogos + perfiles para el compositor global (FAB "+"), bajo demanda.
+export async function datosNuevoCaso() {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const [proy, emp, pers, conv, postu, equi, luga, etiq, perfs] = await Promise.all([
+    supabase.from("proyectos").select("id,nombre").order("nombre"),
+    supabase.from("empresas").select("id,nombre,codigo").order("codigo"),
+    supabase.from("personas").select("id,nombre,alias,tipo").order("nombre"),
+    supabase.from("convocatorias").select("id,codigo,nombre,anio").order("anio", { ascending: false }).order("codigo"),
+    supabase.from("postulaciones").select("id,codigo,proy:proyectos(nombre),conv:convocatorias(codigo)"),
+    supabase.from("equipamiento").select("id,nombre,folio").order("folio"),
+    supabase.from("lugares").select("id,nombre").order("nombre"),
+    supabase.from("etiquetas").select("id,nombre").order("nombre"),
+    supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
+  ]);
+  const catalogos = {
+    proyecto: proy.data || [],
+    empresa: (emp.data || []).map((e: any) => ({ id: e.id, nombre: e.codigo ? `${e.codigo} · ${e.nombre}` : e.nombre })),
+    persona: (pers.data || []).map((x: any) => ({ ...x, nombre: x.alias ? `${x.nombre} · ${x.alias}` : x.nombre })),
+    convocatoria: (conv.data || []).map((c: any) => ({ id: c.id, nombre: `${c.anio ? `${c.anio} · ` : ""}${c.nombre} · ${c.codigo}` })),
+    postulacion: (postu.data || []).map((p: any) => ({ id: p.id, nombre: `${p.codigo || (p as any).conv?.codigo || "🎯"} · ${(p as any).proy?.nombre || "postulación"}` })),
+    equipamiento: (equi.data || []).map((x: any) => ({ id: x.id, nombre: x.folio ? `${x.folio} · ${x.nombre}` : x.nombre })),
+    lugar: luga.data || [],
+    etiqueta: etiq.data || [],
+  };
+  return { userId: user.id, catalogos, perfiles: perfs.data || [] };
+}
+
 export async function cambiarTipo(pubId: string, tipo: string) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
