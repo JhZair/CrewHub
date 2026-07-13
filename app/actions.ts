@@ -184,9 +184,19 @@ export async function asignarResponsable(pubId: string, perfilId: string | null)
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
+  const { data: antes } = await supabase.from("publicaciones")
+    .select("responsable").eq("id", pubId).single();
   const { error } = await supabase.from("publicaciones")
     .update({ responsable: perfilId }).eq("id", pubId);
   if (error) return { error: error.message };
+
+  // 🗂 Bitácora: registrar el cambio de responsable (para el histórico)
+  if ((antes?.responsable || null) !== (perfilId || null)) {
+    await supabase.from("actividad").insert({
+      entidad_tipo: "publicacion", entidad_id: pubId, actor_id: user.id, tipo: "estado",
+      detalle: { campo: "responsable", de: antes?.responsable || null, a: perfilId || null },
+    });
+  }
 
   // 🔔 Notificar al nuevo responsable
   if (perfilId && perfilId !== user.id) {
@@ -691,6 +701,27 @@ export async function agregarCredencial(
     metodo_acceso: metodo.trim() || null,
     actualizado_en: new Date().toISOString().slice(0, 10),
   });
+  if (error) return { error: error.message };
+  revalidatePath(`/entidad/${dueno}/${duenoId}`);
+  return {};
+}
+
+export async function editarCredencial(
+  id: string, dueno: string, duenoId: string,
+  plataforma: string, identificador: string, ubicacion: string, notas: string, metodo: string = ""
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!plataforma.trim()) return { error: "La plataforma es obligatoria." };
+  const { error } = await supabase.from("credenciales").update({
+    plataforma: plataforma.trim(),
+    identificador: identificador.trim() || null,
+    ubicacion: ubicacion.trim() || null,
+    notas: notas.trim() || null,
+    metodo_acceso: metodo.trim() || null,
+    actualizado_en: new Date().toISOString().slice(0, 10),
+  }).eq("id", id);
   if (error) return { error: error.message };
   revalidatePath(`/entidad/${dueno}/${duenoId}`);
   return {};
@@ -1247,6 +1278,23 @@ export async function editarCuerpo(pubId: string, cuerpo: string) {
   return {};
 }
 
+const ENT_LBL: Record<string, string> = {
+  proyecto: "proyecto", empresa: "empresa", persona: "persona", convocatoria: "convocatoria",
+  postulacion: "postulación", equipamiento: "equipo", lugar: "lugar", etiqueta: "etiqueta",
+};
+const ENT_TABLA: Record<string, [string, string]> = {
+  proyecto: ["proyectos", "nombre"], empresa: ["empresas", "nombre"],
+  persona: ["personas", "nombre"], convocatoria: ["convocatorias", "codigo"],
+  postulacion: ["postulaciones", "codigo"], equipamiento: ["equipamiento", "nombre"],
+  lugar: ["lugares", "nombre"], etiqueta: ["etiquetas", "nombre"],
+};
+async function nombreEntidad(supabase: any, tipo: string, id: string): Promise<string> {
+  const t = ENT_TABLA[tipo];
+  if (!t) return ENT_LBL[tipo] || tipo;
+  const { data } = await supabase.from(t[0]).select(t[1]).eq("id", id).single();
+  return data?.[t[1]] || (ENT_LBL[tipo] || tipo);
+}
+
 export async function agregarVinculo(pubId: string, entidadTipo: string, entidadId: string) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -1255,6 +1303,12 @@ export async function agregarVinculo(pubId: string, entidadTipo: string, entidad
     { publicacion_id: pubId, entidad_tipo: entidadTipo, entidad_id: entidadId },
     { onConflict: "publicacion_id,entidad_tipo,entidad_id", ignoreDuplicates: true });
   if (error) return { error: error.message };
+  // 🗂 Bitácora
+  const nombre = await nombreEntidad(supabase, entidadTipo, entidadId);
+  await supabase.from("actividad").insert({
+    entidad_tipo: "publicacion", entidad_id: pubId, actor_id: user.id, tipo: "vinculo",
+    detalle: { mensaje: `vinculó ${ENT_LBL[entidadTipo] || entidadTipo}: ${nombre}` },
+  });
   revalidatePath(`/caso/${pubId}`);
   revalidatePath("/");
   return {};
@@ -1264,9 +1318,15 @@ export async function quitarVinculo(pubId: string, entidadTipo: string, entidadI
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
+  const nombre = await nombreEntidad(supabase, entidadTipo, entidadId);
   const { error } = await supabase.from("publicacion_vinculos").delete()
     .eq("publicacion_id", pubId).eq("entidad_tipo", entidadTipo).eq("entidad_id", entidadId);
   if (error) return { error: error.message };
+  // 🗂 Bitácora
+  await supabase.from("actividad").insert({
+    entidad_tipo: "publicacion", entidad_id: pubId, actor_id: user.id, tipo: "vinculo",
+    detalle: { mensaje: `desvinculó ${ENT_LBL[entidadTipo] || entidadTipo}: ${nombre}` },
+  });
   revalidatePath(`/caso/${pubId}`);
   revalidatePath("/");
   return {};
@@ -1387,9 +1447,20 @@ export async function cambiarFechaLimite(pubId: string, fecha: string) {
   if (!user) return { error: "Sesión no encontrada." };
   // Acepta 'YYYY-MM-DD'; vacío = quitar la fecha
   const val = /^\d{4}-\d{2}-\d{2}$/.test(fecha) ? fecha : null;
+  const { data: antes } = await supabase.from("publicaciones")
+    .select("fecha_limite").eq("id", pubId).single();
   const { error } = await supabase.from("publicaciones")
     .update({ fecha_limite: val }).eq("id", pubId);
   if (error) return { error: error.message };
+  // 🗂 Bitácora
+  if ((antes?.fecha_limite || null) !== val) {
+    const fmt = (d: string) => new Date(d + "T12:00:00")
+      .toLocaleDateString("es-PE", { day: "numeric", month: "short", timeZone: "America/Lima" });
+    await supabase.from("actividad").insert({
+      entidad_tipo: "publicacion", entidad_id: pubId, actor_id: user.id, tipo: "edicion",
+      detalle: { mensaje: val ? `puso la fecha límite en ${fmt(val)}` : "quitó la fecha límite" },
+    });
+  }
   revalidatePath(`/caso/${pubId}`);
   revalidatePath("/");
   revalidatePath("/tablero");

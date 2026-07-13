@@ -1,5 +1,5 @@
 "use client";
-import { agregarCredencial, borrarCredencial } from "@/app/actions";
+import { agregarCredencial, editarCredencial, borrarCredencial } from "@/app/actions";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -10,11 +10,44 @@ const PLATAFORMAS = [
 const UBICACIONES = ["KeePass (Drive)", "Bitwarden", "Custodia física", "Otro"];
 const METODOS = ["Correo y contraseña", "Con Google", "Con Facebook", "Con Apple", "Con Microsoft"];
 
+const inp = { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, outline: "none" } as const;
+
+type Val = { plataforma: string; identificador: string; ubicacion: string; notas: string; metodo: string };
+
+/* Formulario reutilizable (agregar y editar) — a nivel de módulo para que
+   los inputs no pierdan el foco al escribir. */
+function FormFila({ v, set, onSave, onCancel, guardando }: {
+  v: Val; set: (x: Val) => void; onSave: () => void; onCancel: () => void; guardando: boolean;
+}) {
+  return (
+    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12, padding: 10, background: "var(--bg)", borderRadius: 10 }}>
+      <input list="plat-lista" placeholder="Plataforma *" value={v.plataforma}
+        onChange={e => set({ ...v, plataforma: e.target.value })} style={{ ...inp, width: 160 }} />
+      <datalist id="plat-lista">{PLATAFORMAS.map(p => <option key={p} value={p} />)}</datalist>
+      <input placeholder="Usuario / RUC / correo (no la clave)" value={v.identificador}
+        onChange={e => set({ ...v, identificador: e.target.value })} style={{ ...inp, flex: 1, minWidth: 180 }} />
+      <select value={v.metodo} onChange={e => set({ ...v, metodo: e.target.value })} title="Cómo se inicia sesión" style={inp}>
+        {METODOS.map(m => <option key={m} value={m}>{m}</option>)}
+      </select>
+      <select value={v.ubicacion} onChange={e => set({ ...v, ubicacion: e.target.value })} style={inp}>
+        {UBICACIONES.map(u => <option key={u} value={u}>{u}</option>)}
+      </select>
+      <button className="btn" style={{ padding: "7px 14px", fontSize: 12 }} disabled={!v.plataforma.trim() || guardando} onClick={onSave}>
+        {guardando ? "..." : "Guardar"}
+      </button>
+      <button className="btn btn-ghost" style={{ padding: "7px 10px", fontSize: 12 }} onClick={onCancel}>Cancelar</button>
+    </div>
+  );
+}
+
 export default function Credenciales({ dueno, duenoId, credenciales }: {
   dueno: "empresa" | "persona"; duenoId: string; credenciales: any[];
 }) {
+  const vacio: Val = { plataforma: "", identificador: "", ubicacion: UBICACIONES[0], notas: "", metodo: METODOS[0] };
   const [agregando, setAgregando] = useState(false);
-  const [f, setF] = useState({ plataforma: "", identificador: "", ubicacion: UBICACIONES[0], notas: "", metodo: METODOS[0] });
+  const [f, setF] = useState<Val>(vacio);
+  const [editando, setEditando] = useState<string | null>(null);
+  const [ef, setEf] = useState<Val>(vacio);
   const [guardando, setGuardando] = useState(false);
   const [borrando, setBorrando] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -26,9 +59,24 @@ export default function Credenciales({ dueno, duenoId, credenciales }: {
     const res = await agregarCredencial(dueno, duenoId, f.plataforma, f.identificador, f.ubicacion, f.notas, f.metodo);
     setGuardando(false);
     if (res?.error) { setError(res.error); return; }
-    setF({ plataforma: "", identificador: "", ubicacion: UBICACIONES[0], notas: "", metodo: METODOS[0] });
-    setAgregando(false);
-    router.refresh();
+    setF(vacio); setAgregando(false); router.refresh();
+  };
+
+  const abrirEdicion = (c: any) => {
+    setEditando(c.id); setError("");
+    setEf({
+      plataforma: c.plataforma || "", identificador: c.identificador || "",
+      ubicacion: c.ubicacion || UBICACIONES[0], notas: c.notas || "",
+      metodo: c.metodo_acceso || METODOS[0],
+    });
+  };
+  const guardarEdicion = async (id: string) => {
+    if (!ef.plataforma.trim() || guardando) return;
+    setGuardando(true); setError("");
+    const res = await editarCredencial(id, dueno, duenoId, ef.plataforma, ef.identificador, ef.ubicacion, ef.notas, ef.metodo);
+    setGuardando(false);
+    if (res?.error) { setError(res.error); return; }
+    setEditando(null); router.refresh();
   };
 
   const borrar = async (id: string) => {
@@ -52,60 +100,40 @@ export default function Credenciales({ dueno, duenoId, credenciales }: {
       </p>
 
       {error && <div className="err-inline">⚠ {error}</div>}
-      {agregando && (
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12, padding: 10, background: "var(--bg)", borderRadius: 10 }}>
-          <input list="plat-lista" placeholder="Plataforma *" value={f.plataforma}
-            onChange={e => setF({ ...f, plataforma: e.target.value })}
-            style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, outline: "none", width: 160 }} />
-          <datalist id="plat-lista">{PLATAFORMAS.map(p => <option key={p} value={p} />)}</datalist>
-          <input placeholder="Usuario / RUC / correo (no la clave)" value={f.identificador}
-            onChange={e => setF({ ...f, identificador: e.target.value })}
-            style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, outline: "none", flex: 1, minWidth: 180 }} />
-          <select value={f.metodo} onChange={e => setF({ ...f, metodo: e.target.value })}
-            title="Cómo se inicia sesión"
-            style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, outline: "none" }}>
-            {METODOS.map(m => <option key={m} value={m}>{m}</option>)}
-          </select>
-          <select value={f.ubicacion} onChange={e => setF({ ...f, ubicacion: e.target.value })}
-            style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, outline: "none" }}>
-            {UBICACIONES.map(u => <option key={u} value={u}>{u}</option>)}
-          </select>
-          <button className="btn" style={{ padding: "7px 14px", fontSize: 12 }}
-            disabled={!f.plataforma.trim() || guardando} onClick={guardar}>
-            {guardando ? "..." : "Guardar"}
-          </button>
-          <button className="btn btn-ghost" style={{ padding: "7px 10px", fontSize: 12 }}
-            onClick={() => setAgregando(false)}>Cancelar</button>
-        </div>
-      )}
+      {agregando && <FormFila v={f} set={setF} onSave={guardar} onCancel={() => setAgregando(false)} guardando={guardando} />}
 
       {credenciales.map(c => (
-        <div key={c.id} className="eq-row" style={{ alignItems: "center" }}>
-          <span className="cargo" style={{ minWidth: 130 }}>{c.plataforma}</span>
-          <span style={{ flex: 1, color: "#c6c6da" }}>{c.identificador || "—"}</span>
-          {c.metodo_acceso && (
-            <span className="badge" style={{
-              fontSize: 10.5,
-              color: c.metodo_acceso === "Correo y contraseña" ? "var(--muted)" : "var(--violet)",
-              background: c.metodo_acceso === "Correo y contraseña" ? "#1c1c2c" : "rgba(167,139,250,.12)",
-            }}>
-              {c.metodo_acceso === "Correo y contraseña" ? "🔑" : "🔗"} {c.metodo_acceso}
+        editando === c.id ? (
+          <FormFila key={c.id} v={ef} set={setEf} onSave={() => guardarEdicion(c.id)} onCancel={() => setEditando(null)} guardando={guardando} />
+        ) : (
+          <div key={c.id} className="eq-row" style={{ alignItems: "center" }}>
+            <span className="cargo" style={{ minWidth: 130 }}>{c.plataforma}</span>
+            <span style={{ flex: 1, color: "#c6c6da" }}>{c.identificador || "—"}</span>
+            {c.metodo_acceso && (
+              <span className="badge" style={{
+                fontSize: 10.5,
+                color: c.metodo_acceso === "Correo y contraseña" ? "var(--muted)" : "var(--violet)",
+                background: c.metodo_acceso === "Correo y contraseña" ? "#1c1c2c" : "rgba(167,139,250,.12)",
+              }}>
+                {c.metodo_acceso === "Correo y contraseña" ? "🔑" : "🔗"} {c.metodo_acceso}
+              </span>
+            )}
+            <span className="badge" style={{ color: "var(--teal)", background: "rgba(45,212,191,.1)" }}>
+              🔒 {c.ubicacion || "sin ubicar"}
             </span>
-          )}
-          <span className="badge" style={{ color: "var(--teal)", background: "rgba(45,212,191,.1)" }}>
-            🔒 {c.ubicacion || "sin ubicar"}
-          </span>
-          {c.actualizado_en && <span style={{ color: "var(--dim)", fontSize: 11 }}>{c.actualizado_en}</span>}
-          {borrando === c.id ? (
-            <span style={{ fontSize: 11.5, marginLeft: 6, whiteSpace: "nowrap" }}>
-              ¿quitar? <button style={{ color: "var(--red)", fontWeight: 700 }} onClick={() => borrar(c.id)}>sí</button>
-              {" / "}<button style={{ color: "var(--dim)" }} onClick={() => setBorrando(null)}>no</button>
-            </span>
-          ) : (
-            <button title="Quitar registro (la clave en el gestor no se toca)" style={{ color: "var(--dim)", marginLeft: 6 }}
-              onClick={() => setBorrando(c.id)}>✕</button>
-          )}
-        </div>
+            {c.actualizado_en && <span style={{ color: "var(--dim)", fontSize: 11 }}>{c.actualizado_en}</span>}
+            <button title="Editar" style={{ color: "var(--dim)", marginLeft: 6 }} onClick={() => abrirEdicion(c)}>✎</button>
+            {borrando === c.id ? (
+              <span style={{ fontSize: 11.5, marginLeft: 6, whiteSpace: "nowrap" }}>
+                ¿quitar? <button style={{ color: "var(--red)", fontWeight: 700 }} onClick={() => borrar(c.id)}>sí</button>
+                {" / "}<button style={{ color: "var(--dim)" }} onClick={() => setBorrando(null)}>no</button>
+              </span>
+            ) : (
+              <button title="Quitar registro (la clave en el gestor no se toca)" style={{ color: "var(--dim)", marginLeft: 4 }}
+                onClick={() => setBorrando(c.id)}>✕</button>
+            )}
+          </div>
+        )
       ))}
       {!credenciales.length && !agregando && (
         <div style={{ color: "var(--dim)", fontSize: 12.5, padding: "4px 0" }}>Sin credenciales registradas.</div>

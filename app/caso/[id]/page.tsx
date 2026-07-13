@@ -21,7 +21,7 @@ const TIPO_META: Record<string, [string, string]> = {
 };
 const EV_ICO: Record<string, string> = {
   creado: "📝", estado: "🔄", asignacion: "👤", archivo: "📎",
-  prioridad: "⚡", tarea: "✅", bot: "🤖", cierre: "✔️", vinculo: "🔗",
+  prioridad: "⚡", tarea: "✅", bot: "🤖", cierre: "✔️", vinculo: "🔗", edicion: "✏️",
 };
 const ENT_ICO: Record<string, string> = {
   proyecto: "📁", empresa: "🏢", persona: "👤", convocatoria: "📜",
@@ -208,10 +208,12 @@ export default async function Caso({ params }: { params: { id: string } }) {
         <Reacciones pubId={p.id} reacciones={rxPub} userId={user.id} />
       </div>
 
-      <VinculosEditor pubId={p.id} actuales={actualesVinc} catalogos={catEnt} />
-
-      <div style={{ marginBottom: 10 }}>
-        <EtiquetasEditor pubId={p.id} actuales={etiquetasActuales} todas={etqTodas} />
+      <div className="linked" style={{ marginTop: 4 }}>
+        <h4>🔗 Vínculos y etiquetas</h4>
+        <VinculosEditor pubId={p.id} actuales={actualesVinc} catalogos={catEnt} />
+        <div style={{ marginTop: 8 }}>
+          <EtiquetasEditor pubId={p.id} actuales={etiquetasActuales} todas={etqTodas} />
+        </div>
       </div>
 
       {(!p.padre_id || (hijos || []).length > 0) && (
