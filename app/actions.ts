@@ -1348,8 +1348,23 @@ export async function cambiarEstado(pubId: string, estado: string) {
   if (estado === "resuelta") {
     await supabase.from("cronograma_actividades")
       .update({ estado: "finalizada" }).eq("publicacion_id", pubId).neq("estado", "finalizada");
+  } else {
+    // Si deja de estar resuelto, reaparece en el feed de quien lo había ocultado
+    await supabase.from("feed_ocultos").delete().eq("publicacion_id", pubId);
   }
   revalidatePath(`/caso/${pubId}`);
+  revalidatePath("/");
+  return {};
+}
+
+export async function ocultarDelFeed(pubId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { error } = await supabase.from("feed_ocultos").upsert(
+    { usuario_id: user.id, publicacion_id: pubId },
+    { onConflict: "usuario_id,publicacion_id", ignoreDuplicates: true });
+  if (error) return { error: error.message };
   revalidatePath("/");
   return {};
 }

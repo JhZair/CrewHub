@@ -122,7 +122,7 @@ export default async function Pantalla() {
               <span className="tv-dot" style={{ background: a.actor ? "var(--accent)" : "var(--blue)" }} />
               <span style={{ flex: 1 }}>{textoAct(a)}</span>
               <span className="tv-hora">
-                {new Date(a.creado_en).toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" })}
+                {new Date(a.creado_en).toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit", timeZone: "America/Lima" })}
               </span>
             </div>
           ))}

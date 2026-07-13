@@ -13,7 +13,7 @@ const diasDesde = (f: string) => -diasHasta(f);
    carné a la izquierda, vida a la derecha. */
 
 const fecha = (d: string) =>
-  new Date(d).toLocaleString("es-PE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  new Date(d).toLocaleString("es-PE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "America/Lima" });
 
 export default async function Qhaway() {
   const supabase = createClient();

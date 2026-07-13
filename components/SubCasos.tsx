@@ -49,7 +49,7 @@ export default function SubCasos({ padreId, hijos }: {
           <Link href={`/caso/${h.id}`} style={{ fontWeight: 600, flex: 1, minWidth: 0 }}>
             {["resuelta", "archivada"].includes(h.estado) ? "✅ " : "○ "}{h.titulo} →
           </Link>
-          {h.resp?.nombre && <span style={{ color: "var(--teal)", fontSize: 12 }}>{h.resp.nombre.split(" ")[0]}</span>}
+          {h.resp?.nombre && <span style={{ color: "var(--teal)", fontSize: 12 }}>{h.resp.nombre}</span>}
           <span className={`pill st-${h.estado}`} style={{ fontSize: 10 }}>{EST_TXT[h.estado] || h.estado}</span>
         </div>
       ))}

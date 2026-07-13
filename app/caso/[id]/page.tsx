@@ -32,7 +32,7 @@ const ESTADOS_TXT: Record<string, string> = {
 };
 
 const fecha = (d: string) =>
-  new Date(d).toLocaleString("es-PE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  new Date(d).toLocaleString("es-PE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "America/Lima" });
 
 export default async function Caso({ params }: { params: { id: string } }) {
   const supabase = createClient();

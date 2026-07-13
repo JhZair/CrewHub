@@ -114,15 +114,20 @@ export function CommentBox({ pubId, userId, perfiles = [] }: {
             ))}
           </div>
         )}
-        <input
-          placeholder="Escribe un comentario... @nombre para invocar a alguien"
+        <textarea
+          placeholder="Escribe un comentario… (Enter envía · Shift+Enter salto de línea) · @nombre para invocar"
           value={txt}
+          rows={1}
           onChange={e => setTxt(e.target.value)}
           onKeyDown={e => {
-            if (e.key === "Enter" && candidatos.length && enMencion) { e.preventDefault(); invocar(candidatos[0].nombre); return; }
-            if (e.key === "Enter") enviar();
+            if (e.key === "Enter" && !e.shiftKey) {
+              if (candidatos.length && enMencion) { e.preventDefault(); invocar(candidatos[0].nombre); return; }
+              e.preventDefault(); enviar();
+            }
+            // Shift+Enter: salto de línea (comportamiento por defecto del textarea)
           }}
           onPaste={e => { const f = imagenesDePaste(e); if (f.length) { e.preventDefault(); subir(f); } }}
+          style={{ resize: "none", fontFamily: "inherit", lineHeight: 1.4, maxHeight: 160 }}
         />
         <label className="btn btn-ghost" title="Adjuntar imagen" style={{ cursor: "pointer" }}>
           📷

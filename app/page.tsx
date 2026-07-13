@@ -66,6 +66,10 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
     }
   }
 
+  // Casos que ESTE usuario ocultó de su feed (resueltos que ya no quiere ver)
+  const { data: ocultosData } = await supabase.from("feed_ocultos")
+    .select("publicacion_id").eq("usuario_id", user.id);
+  const idsOcultos = (ocultosData || []).map((x: any) => x.publicacion_id);
 
   // Catálogos (pequeños: una consulta cada uno, en paralelo)
   const [proy, emp, pers, conv, postu, equi, luga, etiq, perfs, postsQ] = await Promise.all([
@@ -91,6 +95,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
         .neq("estado", "archivada")   // lo archivado descansa fuera del feed
         .order("creado_en", { ascending: false })
         .limit(50);
+      if (idsOcultos.length) q = q.not("id", "in", `(${idsOcultos.join(",")})`);
       if (v === "mios") {
         const cond = [`autor_id.eq.${user.id}`, `responsable.eq.${user.id}`];
         if (misVinculadas.length) cond.push(`id.in.(${misVinculadas.join(",")})`);
@@ -249,7 +254,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
             tipo={p.tipo} tipoLabel={tl} tipoColor={tc}
             estado={p.estado} estadoTxt={ESTADOS[p.estado] || p.estado}
             autorNombre={p.autor?.nombre} autorColor={p.autor?.color} autorSrc={p.autor?.avatar_url}
-            fechaStr={new Date(p.creado_en).toLocaleString("es-PE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+            fechaStr={new Date(p.creado_en).toLocaleString("es-PE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "America/Lima" })}
             respNombre={p.resp?.nombre || null}
             avisaSinResp={["tarea", "problema", "pago"].includes(p.tipo)}
             nc={nc}
