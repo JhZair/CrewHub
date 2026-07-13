@@ -101,10 +101,12 @@ export async function crearPublicacion(
 
   // 🔔 Notificar al responsable asignado (si no soy yo mismo)
   if (pub && responsable && responsable !== user.id) {
+    const { data: miP } = await supabase.from("perfiles").select("nombre").eq("id", user.id).single();
     await supabase.from("notificaciones").insert({
       usuario_id: responsable,
       publicacion_id: pub.id,
       tipo: "asignacion",
+      actor_nombre: miP?.nombre || "Alguien",
       mensaje: `Te asignaron: «${titulo}»`,
     });
   }
@@ -123,6 +125,10 @@ export async function comentar(pubId: string, texto: string, imagenes: string[] 
     .single();
   if (error) return { error: error.message };
 
+  // Quién comenta (para el "quién" en la notificación)
+  const { data: miPerfilC } = await supabase.from("perfiles").select("nombre").eq("id", user.id).single();
+  const actorNombre = miPerfilC?.nombre || "Alguien";
+
   // 🪄 Menciones @nombre → notificación al invocado
   const tokens = [...new Set((texto.match(/@[^\s@,;:!?]+/g) || []).map(m => m.slice(1)))];
   if (tokens.length) {
@@ -131,7 +137,6 @@ export async function comentar(pubId: string, texto: string, imagenes: string[] 
       supabase.from("perfiles").select("id,nombre").eq("activo", true),
       supabase.from("publicaciones").select("titulo").eq("id", pubId).single(),
     ]);
-    const { data: yo } = await supabase.from("perfiles").select("nombre").eq("id", user.id).single();
     for (const p of perfs || []) {
       const sinEspacios = nrmM(p.nombre).replace(/\s+/g, "");
       const palabras = nrmM(p.nombre).split(/\s+/);
@@ -141,8 +146,8 @@ export async function comentar(pubId: string, texto: string, imagenes: string[] 
       });
       if (invocado && p.id !== user.id) {
         await supabase.from("notificaciones").insert({
-          usuario_id: p.id, publicacion_id: pubId, tipo: "mencion",
-          mensaje: `🪄 ${(yo?.nombre || "Alguien").split(" ")[0]} te mencionó en «${(pubT?.titulo || "").slice(0, 60)}»`,
+          usuario_id: p.id, publicacion_id: pubId, tipo: "mencion", actor_nombre: actorNombre,
+          mensaje: `🪄 ${actorNombre.split(" ")[0]} te mencionó en «${(pubT?.titulo || "").slice(0, 60)}»`,
         });
       }
     }
@@ -166,6 +171,7 @@ export async function comentar(pubId: string, texto: string, imagenes: string[] 
         usuario_id: d,
         publicacion_id: pubId,
         tipo: "comentario",
+        actor_nombre: actorNombre,
         mensaje: `Nuevo comentario en «${pub.titulo}»`,
       })));
     }
@@ -184,11 +190,15 @@ export async function asignarResponsable(pubId: string, perfilId: string | null)
 
   // 🔔 Notificar al nuevo responsable
   if (perfilId && perfilId !== user.id) {
-    const { data: pub } = await supabase.from("publicaciones").select("titulo").eq("id", pubId).single();
+    const [{ data: pub }, { data: miP }] = await Promise.all([
+      supabase.from("publicaciones").select("titulo").eq("id", pubId).single(),
+      supabase.from("perfiles").select("nombre").eq("id", user.id).single(),
+    ]);
     await supabase.from("notificaciones").insert({
       usuario_id: perfilId,
       publicacion_id: pubId,
       tipo: "asignacion",
+      actor_nombre: miP?.nombre || "Alguien",
       mensaje: `Te asignaron: «${pub?.titulo || "un caso"}»`,
     });
   }
@@ -666,7 +676,8 @@ export async function desenlazarCuenta(personaId: string) {
 /* --- Credenciales: SOLO metadatos; la clave vive en el gestor --- */
 export async function agregarCredencial(
   dueno: "empresa" | "persona", duenoId: string,
-  plataforma: string, identificador: string, ubicacion: string, notas: string
+  plataforma: string, identificador: string, ubicacion: string, notas: string,
+  metodo: string = ""
 ) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -677,6 +688,7 @@ export async function agregarCredencial(
     identificador: identificador.trim() || null,
     ubicacion: ubicacion.trim() || null,
     notas: notas.trim() || null,
+    metodo_acceso: metodo.trim() || null,
     actualizado_en: new Date().toISOString().slice(0, 10),
   });
   if (error) return { error: error.message };
@@ -1391,7 +1403,7 @@ export async function misNotificaciones() {
   if (!user) return { items: [], sinLeer: 0 };
   const [{ data: notifs }, { count: sinLeer }] = await Promise.all([
     supabase.from("notificaciones")
-      .select("id,tipo,mensaje,publicacion_id,leida,creado_en")
+      .select("id,tipo,mensaje,actor_nombre,publicacion_id,leida,creado_en")
       .eq("usuario_id", user.id).order("creado_en", { ascending: false }).limit(12),
     supabase.from("notificaciones").select("id", { count: "exact", head: true })
       .eq("usuario_id", user.id).eq("leida", false),

@@ -8,12 +8,13 @@ const PLATAFORMAS = [
   "TikTok", "YouTube", "Vimeo", "WhatsApp Business", "Banco", "Hosting/Web",
 ];
 const UBICACIONES = ["KeePass (Drive)", "Bitwarden", "Custodia física", "Otro"];
+const METODOS = ["Correo y contraseña", "Con Google", "Con Facebook", "Con Apple", "Con Microsoft"];
 
 export default function Credenciales({ dueno, duenoId, credenciales }: {
   dueno: "empresa" | "persona"; duenoId: string; credenciales: any[];
 }) {
   const [agregando, setAgregando] = useState(false);
-  const [f, setF] = useState({ plataforma: "", identificador: "", ubicacion: UBICACIONES[0], notas: "" });
+  const [f, setF] = useState({ plataforma: "", identificador: "", ubicacion: UBICACIONES[0], notas: "", metodo: METODOS[0] });
   const [guardando, setGuardando] = useState(false);
   const [borrando, setBorrando] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -22,10 +23,10 @@ export default function Credenciales({ dueno, duenoId, credenciales }: {
   const guardar = async () => {
     if (!f.plataforma.trim() || guardando) return;
     setGuardando(true); setError("");
-    const res = await agregarCredencial(dueno, duenoId, f.plataforma, f.identificador, f.ubicacion, f.notas);
+    const res = await agregarCredencial(dueno, duenoId, f.plataforma, f.identificador, f.ubicacion, f.notas, f.metodo);
     setGuardando(false);
     if (res?.error) { setError(res.error); return; }
-    setF({ plataforma: "", identificador: "", ubicacion: UBICACIONES[0], notas: "" });
+    setF({ plataforma: "", identificador: "", ubicacion: UBICACIONES[0], notas: "", metodo: METODOS[0] });
     setAgregando(false);
     router.refresh();
   };
@@ -60,6 +61,11 @@ export default function Credenciales({ dueno, duenoId, credenciales }: {
           <input placeholder="Usuario / RUC / correo (no la clave)" value={f.identificador}
             onChange={e => setF({ ...f, identificador: e.target.value })}
             style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, outline: "none", flex: 1, minWidth: 180 }} />
+          <select value={f.metodo} onChange={e => setF({ ...f, metodo: e.target.value })}
+            title="Cómo se inicia sesión"
+            style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, outline: "none" }}>
+            {METODOS.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
           <select value={f.ubicacion} onChange={e => setF({ ...f, ubicacion: e.target.value })}
             style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, outline: "none" }}>
             {UBICACIONES.map(u => <option key={u} value={u}>{u}</option>)}
@@ -77,6 +83,15 @@ export default function Credenciales({ dueno, duenoId, credenciales }: {
         <div key={c.id} className="eq-row" style={{ alignItems: "center" }}>
           <span className="cargo" style={{ minWidth: 130 }}>{c.plataforma}</span>
           <span style={{ flex: 1, color: "#c6c6da" }}>{c.identificador || "—"}</span>
+          {c.metodo_acceso && (
+            <span className="badge" style={{
+              fontSize: 10.5,
+              color: c.metodo_acceso === "Correo y contraseña" ? "var(--muted)" : "var(--violet)",
+              background: c.metodo_acceso === "Correo y contraseña" ? "#1c1c2c" : "rgba(167,139,250,.12)",
+            }}>
+              {c.metodo_acceso === "Correo y contraseña" ? "🔑" : "🔗"} {c.metodo_acceso}
+            </span>
+          )}
           <span className="badge" style={{ color: "var(--teal)", background: "rgba(45,212,191,.1)" }}>
             🔒 {c.ubicacion || "sin ubicar"}
           </span>

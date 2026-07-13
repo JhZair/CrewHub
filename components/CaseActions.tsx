@@ -2,7 +2,7 @@
 import { comentar, cambiarEstado, asignarResponsable, cambiarFechaLimite } from "@/app/actions";
 import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 
 export function RespSelect({ pubId, actual, perfiles }:
   { pubId: string; actual: string | null; perfiles: { id: string; nombre: string }[] }) {
@@ -57,6 +57,14 @@ export function CommentBox({ pubId, userId, perfiles = [] }: {
   const [imgs, setImgs] = useState<string[]>([]);
   const [subiendo, setSubiendo] = useState(false);
   const router = useRouter();
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  // Auto-crecer con el texto (hasta 160px; luego hace scroll)
+  useEffect(() => {
+    const el = taRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 160) + "px";
+  }, [txt]);
 
   // 🪄 Autocompletado de menciones: detecta el @token al final de lo escrito
   const nrmA = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
@@ -115,6 +123,7 @@ export function CommentBox({ pubId, userId, perfiles = [] }: {
           </div>
         )}
         <textarea
+          ref={taRef}
           placeholder="Escribe un comentario… (Enter envía · Shift+Enter salto de línea) · @nombre para invocar"
           value={txt}
           rows={1}
@@ -127,7 +136,7 @@ export function CommentBox({ pubId, userId, perfiles = [] }: {
             // Shift+Enter: salto de línea (comportamiento por defecto del textarea)
           }}
           onPaste={e => { const f = imagenesDePaste(e); if (f.length) { e.preventDefault(); subir(f); } }}
-          style={{ resize: "none", fontFamily: "inherit", lineHeight: 1.4, maxHeight: 160 }}
+          style={{ resize: "none", fontFamily: "inherit", lineHeight: 1.4, maxHeight: 160, overflowY: "auto" }}
         />
         <label className="btn btn-ghost" title="Adjuntar imagen" style={{ cursor: "pointer" }}>
           📷

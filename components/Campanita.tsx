@@ -9,8 +9,8 @@ const ICONO: Record<string, string> = {
   cambio_estado: "🔄", mencion: "🔗", reaccion: "👍", bot: "🤖",
 };
 const ETIQ: Record<string, string> = {
-  asignacion: "te asignaron", comentario: "comentó", vencimiento: "vence",
-  cambio_estado: "cambió estado", mencion: "te mencionó", reaccion: "reaccionó",
+  asignacion: "te asignó", comentario: "comentó", vencimiento: "vence",
+  cambio_estado: "cambió el estado", mencion: "te mencionó", reaccion: "reaccionó",
 };
 const ENT_ICO: Record<string, string> = {
   proyecto: "📁", empresa: "🏢", persona: "👤", convocatoria: "📜",
@@ -49,7 +49,7 @@ export default function Campanita({ items, sinLeer }: { items: any[]; sinLeer: n
     <>
       <div className="camp-tt">{ICONO[n.tipo] || "•"} {tituloDe(n.mensaje)}</div>
       <div className="cuando">
-        <span>{ETIQ[n.tipo] ? `${ETIQ[n.tipo]} · ` : ""}{hace(n.creado_en)}</span>
+        <span>{(() => { const a = [n.actor_nombre, ETIQ[n.tipo]].filter(Boolean).join(" "); return a ? `${a} · ` : ""; })()}{hace(n.creado_en)}</span>
         {(n.vinculos || []).slice(0, 3).map((v: any, i: number) => (
           <span key={i} className="camp-vinc">{ENT_ICO[v.tipo] || "🔗"} {v.nombre}</span>
         ))}

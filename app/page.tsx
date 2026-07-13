@@ -143,7 +143,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
   const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
   const [{ data: notifs }, { count: sinLeer }, { count: botHoy }] = await Promise.all([
     supabase.from("notificaciones")
-      .select("id,tipo,mensaje,publicacion_id,leida,creado_en")
+      .select("id,tipo,mensaje,actor_nombre,publicacion_id,leida,creado_en")
       .eq("usuario_id", user.id)
       .order("creado_en", { ascending: false }).limit(12),
     supabase.from("notificaciones").select("id", { count: "exact", head: true })
