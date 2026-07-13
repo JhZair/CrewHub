@@ -116,6 +116,12 @@ a{color:inherit;text-decoration:none}
 .mini-ind{font-size:10px;color:var(--dim);white-space:nowrap}
 .btn-ocultar:hover{color:var(--text)}
 
+/* Campanita flotante global (páginas internas), encima del FAB "+" */
+.camp-flot{position:fixed;right:24px;bottom:88px;z-index:60}
+.camp-flot-btn{position:relative;width:50px;height:50px;border-radius:50%;background:var(--card);border:1px solid var(--border2);color:var(--text);font-size:20px;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center}
+.camp-flot-btn:hover{border-color:var(--accent)}
+.camp-flot .camp-menu-flot{position:absolute;top:auto;bottom:calc(100% + 10px);right:0;max-height:70vh;overflow-y:auto}
+
 /* FAB global "+" y su modal de nuevo caso */
 .fab-nuevo{position:fixed;right:22px;bottom:22px;z-index:60;width:56px;height:56px;border-radius:50%;background:var(--accent);color:#fff;border:none;font-size:28px;line-height:1;cursor:pointer;box-shadow:0 8px 24px rgba(124,92,255,.45);display:flex;align-items:center;justify-content:center}
 .fab-nuevo:hover{filter:brightness(1.1);transform:translateY(-1px)}
@@ -408,7 +414,9 @@ a.stat-card:hover{border-color:var(--border2)}
 .camp-menu{position:absolute;top:calc(100% + 8px);right:0;background:#191928;border:1px solid var(--border2);border-radius:14px;padding:8px;width:330px;z-index:70;box-shadow:0 14px 44px rgba(0,0,0,.65)}
 .camp-item{display:block;padding:9px 11px;border-radius:9px;font-size:12.5px;color:#c6c6da;line-height:1.45}
 .camp-item:hover{background:#22223a}
-.camp-item .cuando{color:var(--dim);font-size:10.5px}
+.camp-item .camp-tt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+.camp-item .cuando{color:var(--dim);font-size:10.5px;margin-top:3px;display:flex;flex-wrap:wrap;align-items:center;gap:5px}
+.camp-vinc{background:#22223a;border:1px solid var(--border2);border-radius:6px;padding:1px 6px;color:var(--muted);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .camp-item.nueva{border-left:2px solid var(--accent)}
 
 /* ===== Cabecera ordenada ===== */

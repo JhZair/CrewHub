@@ -1384,6 +1384,54 @@ export async function cambiarFechaLimite(pubId: string, fecha: string) {
   return {};
 }
 
+// Notificaciones del usuario (con vínculos de entidad) para la campanita global.
+export async function misNotificaciones() {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { items: [], sinLeer: 0 };
+  const [{ data: notifs }, { count: sinLeer }] = await Promise.all([
+    supabase.from("notificaciones")
+      .select("id,tipo,mensaje,publicacion_id,leida,creado_en")
+      .eq("usuario_id", user.id).order("creado_en", { ascending: false }).limit(12),
+    supabase.from("notificaciones").select("id", { count: "exact", head: true })
+      .eq("usuario_id", user.id).eq("leida", false),
+  ]);
+  const ids = [...new Set((notifs || []).map((n: any) => n.publicacion_id).filter(Boolean))];
+  const vincDe = new Map<string, { tipo: string; nombre: string }[]>();
+  if (ids.length) {
+    const { data: vincs } = await supabase.from("publicacion_vinculos")
+      .select("publicacion_id,entidad_tipo,entidad_id").in("publicacion_id", ids);
+    const TABLA: Record<string, [string, string]> = {
+      proyecto: ["proyectos", "nombre"], empresa: ["empresas", "nombre"],
+      persona: ["personas", "nombre"], convocatoria: ["convocatorias", "codigo"],
+      postulacion: ["postulaciones", "codigo"], equipamiento: ["equipamiento", "nombre"],
+      lugar: ["lugares", "nombre"], etiqueta: ["etiquetas", "nombre"],
+    };
+    const porTipo = new Map<string, Set<string>>();
+    (vincs || []).forEach((v: any) => {
+      if (!porTipo.has(v.entidad_tipo)) porTipo.set(v.entidad_tipo, new Set());
+      porTipo.get(v.entidad_tipo)!.add(v.entidad_id);
+    });
+    const nombres = new Map<string, string>();
+    await Promise.all([...porTipo.entries()].map(async ([tipo, idset]) => {
+      const t = TABLA[tipo]; if (!t) return;
+      const { data } = await supabase.from(t[0]).select(`id,${t[1]}`).in("id", [...idset]);
+      (data || []).forEach((r: any) => nombres.set(`${tipo}:${r.id}`, r[t[1]]));
+    }));
+    (vincs || []).forEach((v: any) => {
+      const nombre = nombres.get(`${v.entidad_tipo}:${v.entidad_id}`);
+      if (!nombre) return;
+      const l = vincDe.get(v.publicacion_id) || [];
+      l.push({ tipo: v.entidad_tipo, nombre });
+      vincDe.set(v.publicacion_id, l);
+    });
+  }
+  const items = (notifs || []).map((n: any) => ({
+    ...n, vinculos: n.publicacion_id ? (vincDe.get(n.publicacion_id) || []) : [],
+  }));
+  return { items, sinLeer: sinLeer || 0 };
+}
+
 // Catálogos + perfiles para el compositor global (FAB "+"), bajo demanda.
 export async function datosNuevoCaso() {
   const supabase = createClient();

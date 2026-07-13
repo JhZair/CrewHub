@@ -7,7 +7,9 @@ import { datosNuevoCaso } from "@/app/actions";
 /* FAB "+" global + atajo de teclado (tecla C): crea un caso desde cualquier
    parte del sistema, con el MISMO Composer del feed (todas las vinculaciones).
    Carga catálogos bajo demanda y, si estás en la ficha de una entidad,
-   pre-vincula ese elemento. */
+   pre-vincula ese elemento.
+   Solo aparece en la ventana principal: NO dentro de los paneles embebidos
+   del Monitor (iframes), para no duplicar el botón. */
 type Datos = { userId: string; catalogos: Catalogos; perfiles: { id: string; nombre: string }[] };
 
 export default function BotonNuevoCaso() {
@@ -16,6 +18,10 @@ export default function BotonNuevoCaso() {
   const [abierto, setAbierto] = useState(false);
   const [datos, setDatos] = useState<Datos | null>(null);
   const [cargando, setCargando] = useState(false);
+  // Arranca oculto y solo se muestra tras confirmar que somos la ventana
+  // principal (no un iframe del Monitor). Así no parpadea en los paneles.
+  const [esTop, setEsTop] = useState(false);
+  useEffect(() => { setEsTop(window.self === window.top); }, []);
 
   const abrir = async () => {
     setAbierto(true);
@@ -28,21 +34,22 @@ export default function BotonNuevoCaso() {
     }
   };
 
-  // Atajo: C abre el creador; Escape lo cierra. No dispara si estás escribiendo.
+  // Atajo: C abre el creador; Escape lo cierra. No dispara si estás escribiendo,
+  // ni dentro de un panel embebido.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && abierto) { setAbierto(false); return; }
       const t = e.target as HTMLElement | null;
       const escribiendo = !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA"
         || t.tagName === "SELECT" || t.isContentEditable);
-      if (enLogin || abierto || escribiendo || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (enLogin || !esTop || abierto || escribiendo || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "c" || e.key === "C") { e.preventDefault(); abrir(); }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [abierto, datos, cargando, enLogin]);
+  }, [abierto, datos, cargando, enLogin, esTop]);
 
-  if (enLogin) return null;
+  if (enLogin || !esTop) return null;
 
   // Pre-vínculo por contexto: si estoy en /entidad/[tipo]/[id]
   const inicial = (() => {

@@ -188,11 +188,29 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
     items.forEach((it: any) => nombres.set(`${t}:${it.id}`, it.nombre))
   );
 
+  // Contexto para las notificaciones: vínculos de entidad de cada caso notificado
+  const idsNotif = [...new Set((notifs || []).map((n: any) => n.publicacion_id).filter(Boolean))];
+  const { data: vincNotif } = idsNotif.length
+    ? await supabase.from("publicacion_vinculos")
+        .select("publicacion_id,entidad_tipo,entidad_id").in("publicacion_id", idsNotif)
+    : { data: [] };
+  const vincDe = new Map<string, { tipo: string; nombre: string }[]>();
+  (vincNotif || []).forEach((v: any) => {
+    const nombre = nombres.get(`${v.entidad_tipo}:${v.entidad_id}`);
+    if (!nombre) return;
+    const l = vincDe.get(v.publicacion_id) || [];
+    l.push({ tipo: v.entidad_tipo, nombre });
+    vincDe.set(v.publicacion_id, l);
+  });
+  const notifsEnriq = (notifs || []).map((n: any) => ({
+    ...n, vinculos: n.publicacion_id ? (vincDe.get(n.publicacion_id) || []) : [],
+  }));
+
   const posts = postsQ.data || [];
 
   return (
     <div className="shell">
-      <Realtime tablas={["publicaciones", "comentarios", "publicacion_vinculos", "reacciones"]} token={session?.access_token} />
+      <Realtime tablas={["publicaciones", "comentarios", "publicacion_vinculos", "reacciones", "notificaciones"]} token={session?.access_token} />
       <div className="topbar">
         <Link href="/" className="logo"><span className="ic">⬡</span><span>CrewHub<sup>+</sup></span></Link>
         <nav className="nav-icons">
@@ -207,7 +225,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
         </nav>
         <span className="spacer" />
         <BuscadorGlobal />
-        <Campanita items={notifs || []} sinLeer={sinLeer || 0} />
+        <Campanita items={notifsEnriq} sinLeer={sinLeer || 0} />
         <MenuUsuario nombre={perfil?.nombre} rol={perfil?.rol}
           color={perfil?.color} src={perfil?.avatar_url} />
       </div>
