@@ -47,7 +47,8 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
   if (!user) redirect("/login");
 
   let casos: any[] = [], coms: any[] = [], pers: any[] = [], proys: any[] = [],
-      emps: any[] = [], equis: any[] = [], lugs: any[] = [], convs: any[] = [], postus: any[] = [];
+      emps: any[] = [], equis: any[] = [], lugs: any[] = [], convs: any[] = [], postus: any[] = [],
+      creds: any[] = [];
   let statProy = new Map<string, any>(), statEmp = new Map<string, any>(),
       statConv = new Map<string, any>(), statPers = new Map<string, any>();
   let equisMas = 0;
@@ -62,7 +63,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
       .map(w => w.replace(/[,%()]/g, ""))
       .flatMap(w => campos.map(f => `${f}.ilike.%${w}%`)).join(",");
 
-    const [c1, c2, c3, c4, c5, c6, c7, c8, c9] = await Promise.all([
+    const [c1, c2, c3, c4, c5, c6, c7, c8, c9, c10] = await Promise.all([
       supabase.from("publicaciones")
         .select("id,titulo,cuerpo,tipo,estado,creado_en")
         .or(orDe(["titulo", "cuerpo"]))
@@ -79,6 +80,8 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
       supabase.from("convocatorias").select("id,codigo,nombre,anio,estado"),
       supabase.from("postulaciones")
         .select("id,codigo,codigo_plataforma,codigo_acta,estado,feedback_jurado,acta_url,fecha_limite_rendicion,proy:proyectos(nombre),conv:convocatorias(codigo,nombre,anio)"),
+      supabase.from("credenciales")
+        .select("id,plataforma,identificador,ubicacion,notas,empresa_id,persona_id").limit(600),
     ]);
 
     // El marcador en los resultados: 🏆 ganados · 🥈 casi · 🎯 intentos
@@ -126,10 +129,22 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
       `${p.codigo_acta || p.acta_url ? "acta de compromiso" : ""} ${p.fecha_limite_rendicion ? "rendicion" : ""} ` +
       `${p.estado === "ganadora" ? "ganadora fondo estimulo" : ""}`
     )).slice(0, 8);
+
+    // Credenciales: inventario de accesos (plataforma, usuario, dónde vive la clave)
+    const empMap = new Map((c5.data || []).map((e: any) => [e.id, e.nombre]));
+    const persMap = new Map((c3.data || []).map((p: any) => [p.id, p.nombre]));
+    creds = (c10.data || [])
+      .filter((c: any) => coincide(`credencial acceso clave usuario ${c.plataforma} ${c.identificador} ${c.ubicacion} ${c.notas}`))
+      .map((c: any) => {
+        const dueno = c.empresa_id ? "empresa" : "persona";
+        const duenoId = c.empresa_id || c.persona_id;
+        const duenoNombre = c.empresa_id ? empMap.get(c.empresa_id) : persMap.get(c.persona_id);
+        return { ...c, dueno, duenoId, duenoNombre };
+      }).slice(0, 10);
   }
 
   const total = casos.length + coms.length + pers.length + proys.length
-    + emps.length + equis.length + lugs.length + convs.length + postus.length;
+    + emps.length + equis.length + lugs.length + convs.length + postus.length + creds.length;
 
   const Seccion = ({ titulo, n, children }: any) => n > 0 ? (
     <div style={{ marginBottom: 14 }}>
@@ -185,6 +200,18 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
             <Marca s={statPers.get(p.id)} />
             <span style={{ flex: 1 }} />
             <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{p.tipo}</span>
+          </Fila>
+        ))}
+      </Seccion>
+
+      <Seccion titulo="🔑 Credenciales" n={creds.length}>
+        {creds.map((c: any) => (
+          <Fila key={c.id} href={`/entidad/${c.dueno}/${c.duenoId}`}>
+            <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{c.plataforma}</span>
+            {c.identificador && <b>{c.identificador}</b>}
+            {c.ubicacion && <span style={{ color: "var(--dim)", fontSize: 11.5 }}>🔒 {c.ubicacion}</span>}
+            <span style={{ flex: 1 }} />
+            {c.duenoNombre && <span style={{ color: "var(--muted)", fontSize: 12 }}>{c.dueno === "empresa" ? "🏢" : "👤"} {c.duenoNombre}</span>}
           </Fila>
         ))}
       </Seccion>

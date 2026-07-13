@@ -148,6 +148,8 @@ a{color:inherit;text-decoration:none}
 .etq-lista button:hover{background:rgba(124,92,255,.14)}
 .etq-lista .etq-crear{color:var(--accent);font-weight:600}
 .etq-vacio{color:var(--dim);font-size:11.5px;padding:4px 8px}
+.vinc-editor{margin-bottom:10px}
+.vinc-pickers{display:flex;gap:6px;flex-wrap:wrap}
 .tl-leyenda{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-top:12px;color:var(--muted);font-size:11.5px}
 .tl-leyenda span{display:flex;align-items:center;gap:6px}
 .tl-leyenda i{width:9px;height:9px;border-radius:50%;display:inline-block}

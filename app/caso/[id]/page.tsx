@@ -7,6 +7,7 @@ import SubCasos from "@/components/SubCasos";
 import TituloEditable from "@/components/TituloEditable";
 import DescripcionEditable from "@/components/DescripcionEditable";
 import EtiquetasEditor from "@/components/EtiquetasEditor";
+import VinculosEditor from "@/components/VinculosEditor";
 import ComentarioTexto from "@/components/ComentarioTexto";
 import Realtime from "@/components/Realtime";
 import Link from "next/link";
@@ -119,6 +120,20 @@ export default async function Caso({ params }: { params: { id: string } }) {
     .filter((v: any) => v.entidad_tipo === "etiqueta")
     .map((v: any) => ({ id: v.entidad_id, nombre: etqMap.get(v.entidad_id) || "etiqueta" }));
 
+  // Catálogos por tipo para el editor de vínculos + vínculos actuales (no-etiqueta)
+  const catEnt: Record<string, { id: string; nombre: string }[]> = {
+    proyecto: (proy.data || []).map((x: any) => ({ id: x.id, nombre: x.nombre })),
+    empresa: (emp.data || []).map((x: any) => ({ id: x.id, nombre: x.nombre })),
+    persona: (pers.data || []).map((x: any) => ({ id: x.id, nombre: x.nombre })),
+    convocatoria: (conv.data || []).map((x: any) => ({ id: x.id, nombre: x.codigo })),
+    postulacion: (postu.data || []).map((x: any) => ({
+      id: x.id, nombre: `${x.codigo || x.conv?.codigo || "🎯"} · ${x.proy?.nombre || "postulación"}`,
+    })),
+    equipamiento: (equi.data || []).map((x: any) => ({ id: x.id, nombre: x.folio ? `${x.folio} · ${x.nombre}` : x.nombre })),
+    lugar: (luga.data || []).map((x: any) => ({ id: x.id, nombre: x.nombre })),
+  };
+  const actualesVinc = chips.map((v: any) => ({ tipo: v.entidad_tipo, id: v.entidad_id, nombre: v.nombre }));
+
   // Línea de tiempo unificada
   const comMap = new Map((comentarios || []).map((c: any) => [c.id, c]));
   const timeline = (eventos || []).map((e: any) => ({
@@ -193,17 +208,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
         <Reacciones pubId={p.id} reacciones={rxPub} userId={user.id} />
       </div>
 
-      {chips.length > 0 && (
-        <div className="sel-chips" style={{ marginBottom: 6 }}>
-          {chips.map((v: any, i: number) => (
-            <Link key={i} href={`/entidad/${v.entidad_tipo}/${v.entidad_id}`}>
-              <span className="echip" style={{ cursor: "pointer" }}>
-                {ENT_ICO[v.entidad_tipo] || "🔗"} {v.nombre} →
-              </span>
-            </Link>
-          ))}
-        </div>
-      )}
+      <VinculosEditor pubId={p.id} actuales={actualesVinc} catalogos={catEnt} />
 
       <div style={{ marginBottom: 10 }}>
         <EtiquetasEditor pubId={p.id} actuales={etiquetasActuales} todas={etqTodas} />
