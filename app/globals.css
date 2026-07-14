@@ -97,6 +97,28 @@ a{color:inherit;text-decoration:none}
 .vtab.on{border-color:var(--accent);color:var(--text);background:rgba(124,92,255,.12)}
 .vtab-n{display:inline-block;min-width:18px;padding:0 5px;margin-left:3px;border-radius:8px;background:rgba(255,255,255,.07);color:var(--muted);font-size:10.5px;font-weight:700;text-align:center;vertical-align:middle}
 .vtab.on .vtab-n{background:rgba(124,92,255,.22);color:var(--text)}
+/* Filtros del feed: una fila compacta (sin recortar el desplegable) */
+.vtabs-compacta{flex-wrap:wrap;gap:6px;margin:2px 0 14px;justify-content:center}
+.vtabs-compacta .vtab{padding:6px 10px;font-size:11.5px;white-space:nowrap;flex:0 0 auto}
+.vtabs-compacta .vtab-n{min-width:15px;padding:0 4px;font-size:10px}
+.vtabs-compacta .vtab{cursor:pointer}
+.filtro-mas-menu{position:absolute;top:calc(100% + 6px);right:0;z-index:50;background:var(--panel);border:1px solid var(--border2);border-radius:12px;padding:6px;min-width:170px;box-shadow:0 12px 30px rgba(0,0,0,.4);display:flex;flex-direction:column;gap:2px}
+.filtro-mas-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 10px;border-radius:8px;font-size:12.5px;color:var(--muted);font-weight:600}
+.filtro-mas-item:hover{background:#22223a;color:var(--text)}
+.filtro-mas-item.on{background:rgba(124,92,255,.12);color:var(--text)}
+/* Desplegable propio de tipo/estado en las tarjetas (reemplaza al select nativo) */
+.combo-menu{position:absolute;top:calc(100% + 5px);left:0;z-index:50;background:var(--panel);border:1px solid var(--border2);border-radius:11px;padding:5px;min-width:150px;max-height:260px;overflow-y:auto;box-shadow:0 12px 30px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:2px}
+.combo-menu.arriba{top:auto;bottom:calc(100% + 5px)}
+.combo-item{text-align:left;background:transparent;border:none;border-radius:7px;padding:7px 10px;font-size:12.5px;color:var(--muted);font-weight:600;cursor:pointer;white-space:nowrap}
+.combo-item:hover{background:#22223a;color:var(--text)}
+.combo-item.on{background:rgba(124,92,255,.14);color:var(--text)}
+/* Pie de la tarjeta del feed */
+.post-pie{margin-top:10px}
+/* Divisora muy tenue, sobre la descripción */
+.post-divisor{border-top:1px solid rgba(255,255,255,.05);margin:11px 0}
+/* Barra de progreso del plazo (creación → vencimiento), al fondo de la tarjeta */
+.post-progreso{height:2px;border-radius:2px;background:rgba(255,255,255,.05);overflow:hidden;margin-top:12px}
+.post-progreso>span{display:block;height:100%;border-radius:2px;opacity:.7;transition:width .3s}
 .sel-persona{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:8px 12px;font-size:12.5px;color:var(--muted);font-weight:600;outline:none;cursor:pointer}
 .sel-persona:hover{border-color:var(--border2);color:var(--text)}
 
@@ -169,6 +191,22 @@ a{color:inherit;text-decoration:none}
 /* Casos resueltos en el feed: atenuados; al pasar el mouse vuelven a plena */
 .card-apagada{opacity:.55;filter:saturate(.75)}
 .card-apagada:hover{opacity:1;filter:none}
+
+/* Identidad de color por estado (tono tenue) en las tarjetas del feed */
+.card.est-abierta{border-left:3px solid rgba(255,77,94,.55);background-image:linear-gradient(90deg,rgba(255,77,94,.03),transparent 55%)}
+.card.est-en_progreso{border-left:3px solid rgba(244,180,0,.55);background-image:linear-gradient(90deg,rgba(244,180,0,.03),transparent 55%)}
+.card.est-seguimiento{border-left:3px solid rgba(45,212,191,.5);background-image:linear-gradient(90deg,rgba(45,212,191,.03),transparent 55%)}
+.card.est-en_pausa{border-left:3px solid rgba(59,130,246,.5);background-image:linear-gradient(90deg,rgba(59,130,246,.03),transparent 55%)}
+.card.est-resuelta{border-left:3px solid rgba(46,204,113,.5);background-image:linear-gradient(90deg,rgba(46,204,113,.03),transparent 55%)}
+.card.est-archivada{border-left:3px solid rgba(150,150,170,.4)}
+
+/* Misma identidad de estado, solo en la cabecera del caso (grid-meta) */
+.grid-meta.est-abierta{border-color:rgba(255,77,94,.28);border-left:3px solid rgba(255,77,94,.6);background:linear-gradient(180deg,rgba(255,77,94,.09),transparent 130px),var(--card)}
+.grid-meta.est-en_progreso{border-color:rgba(244,180,0,.28);border-left:3px solid rgba(244,180,0,.6);background:linear-gradient(180deg,rgba(244,180,0,.09),transparent 130px),var(--card)}
+.grid-meta.est-seguimiento{border-color:rgba(45,212,191,.26);border-left:3px solid rgba(45,212,191,.55);background:linear-gradient(180deg,rgba(45,212,191,.09),transparent 130px),var(--card)}
+.grid-meta.est-en_pausa{border-color:rgba(59,130,246,.26);border-left:3px solid rgba(59,130,246,.55);background:linear-gradient(180deg,rgba(59,130,246,.09),transparent 130px),var(--card)}
+.grid-meta.est-resuelta{border-color:rgba(46,204,113,.26);border-left:3px solid rgba(46,204,113,.55);background:linear-gradient(180deg,rgba(46,204,113,.09),transparent 130px),var(--card)}
+.grid-meta.est-archivada{border-color:rgba(150,150,170,.25);border-left:3px solid rgba(150,150,170,.45);background:var(--card)}
 
 /* Campanita flotante global (páginas internas), encima del FAB "+" */
 .camp-flot{position:fixed;right:24px;bottom:88px;z-index:60}

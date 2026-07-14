@@ -125,7 +125,7 @@ export default async function Empresas({ searchParams }: {
             </div>
             <p style={{ color: "var(--dim)", fontSize: 12, margin: "8px 0 0" }}>
               Consulta el RUC de todas las activas y actualiza estado, condición y fecha de verificación.
-              Qhaway deja de contar "sin verificar" por 60 días.
+              Bot Qhaway deja de contar "sin verificar" por 60 días.
             </p>
           </div>
 

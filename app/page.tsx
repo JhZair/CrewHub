@@ -5,6 +5,7 @@ import Campanita from "@/components/Campanita";
 import PostCard from "@/components/PostCard";
 import BuscadorGlobal from "@/components/BuscadorGlobal";
 import MenuUsuario from "@/components/MenuUsuario";
+import FiltroMas from "@/components/FiltroMas";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -35,13 +36,16 @@ function vencimiento(fecha: string | null, estado: string): [string, string] | n
 }
 
 const VISTAS: [string, string][] = [
-  ["", "🌐 Todo"], ["mios", "🙋 Mis asuntos"], ["problema", "❗ Problemas"],
-  ["tarea", "✅ Tareas"], ["consulta", "❓ Consultas"], ["pago", "💰 Pagos"],
-  ["aviso", "📢 Avisos"],
+  ["mios", "🙋 Mis asuntos"], ["tarea", "✅ Tareas"], ["problema", "❗ Problemas"],
+  ["consulta", "❓ Consultas"], ["aviso", "📢 Avisos"], ["todo", "🌐 Todo"],
+];
+// Filtros menos usados → van al desplegable "⋯ Más"
+const VISTAS_MAS: [string, string][] = [
+  ["pago", "💰 Pagos"], ["idea", "💡 Ideas"], ["archivo", "📎 Archivos"],
 ];
 
 export default async function Feed({ searchParams }: { searchParams: { v?: string; link?: string } }) {
-  const v = searchParams?.v || "";
+  const v = searchParams?.v || "mios";
   const linkParam = searchParams?.link || "";
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -54,7 +58,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
   // "Mis asuntos" incluye también publicaciones vinculadas a MI PERSONA
   // (gracias al enlace personas.usuario_id ↔ perfil)
   let misVinculadas: string[] = [];
-  if (v === "mios") {
+  {
     const { data: yo } = await supabase.from("personas")
       .select("id").eq("usuario_id", user.id).maybeSingle();
     if (yo) {
@@ -72,7 +76,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
   const idsOcultos = (ocultosData || []).map((x: any) => x.publicacion_id);
 
   // Catálogos (pequeños: una consulta cada uno, en paralelo)
-  const [proy, emp, pers, conv, postu, equi, luga, etiq, perfs, postsQ] = await Promise.all([
+  const [proy, emp, pers, conv, postu, equi, luga, etiq, perfs, postsQ, univQ] = await Promise.all([
     supabase.from("proyectos").select("id,nombre").order("nombre"),
     supabase.from("empresas").select("id,nombre,codigo").order("codigo"),
     supabase.from("personas").select("id,nombre,alias,tipo").order("nombre"),
@@ -101,8 +105,14 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
         if (misVinculadas.length) cond.push(`id.in.(${misVinculadas.join(",")})`);
         q = q.or(cond.join(","));
       }
-      else if (v) q = q.eq("tipo", v);
+      else if (v && v !== "todo") q = q.eq("tipo", v);
       return q;
+    })(),
+    (() => {
+      // Universo para los contadores de cada pestaña (independiente del filtro activo)
+      let q = supabase.from("publicaciones").select("id,tipo,autor_id,responsable").neq("estado", "archivada");
+      if (idsOcultos.length) q = q.not("id", "in", `(${idsOcultos.join(",")})`);
+      return q.limit(2000);
     })(),
   ]);
 
@@ -152,16 +162,75 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
       .eq("tipo", "bot").gte("creado_en", hoy.toISOString()),
   ]);
 
-  const FRASES = [
+  // ── Mensaje de Qhaway: combina hallazgos reales + cumpleaños + frases decorativas,
+  //    elegido al azar (los cumpleaños tienen prioridad). No crea tarjetas: solo informa. ──
+  const hoyISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Lima" }); // YYYY-MM-DD
+  const en60ISO = new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10);
+  const [{ count: cVencidos }, { count: cSinResp }, { count: cSunat }, { count: cDni }, { data: nacim }, { data: postAnio }] =
+    await Promise.all([
+      supabase.from("publicaciones").select("id", { count: "exact", head: true })
+        .in("estado", ["abierta", "en_progreso", "seguimiento", "en_pausa"])
+        .not("fecha_limite", "is", null).lt("fecha_limite", hoyISO),
+      supabase.from("publicaciones").select("id", { count: "exact", head: true })
+        .in("estado", ["abierta", "en_progreso", "seguimiento", "en_pausa"]).is("responsable", null),
+      supabase.from("empresas").select("id", { count: "exact", head: true })
+        .eq("estado", "activa").not("estado_sunat", "is", null).neq("estado_sunat", "activo"),
+      supabase.from("personas").select("id", { count: "exact", head: true })
+        .not("dni_vencimiento", "is", null).lte("dni_vencimiento", en60ISO),
+      supabase.from("personas").select("nombre,alias,fecha_nacimiento")
+        .in("tipo", ["personal", "colaborador"]).not("fecha_nacimiento", "is", null),
+      supabase.from("postulaciones")
+        .select("estado, proy:proyectos(nombre), conv:convocatorias(anio)")
+        .in("estado", ["en_preparacion", "enviada", "finalista", "ganadora"]),
+    ]);
+
+  // 🎂 Cumpleaños de hoy (compara mes-día)
+  const hoyMD = hoyISO.slice(5);
+  const cumples: string[] = (nacim || [])
+    .filter((p: any) => (p.fecha_nacimiento || "").slice(5) === hoyMD)
+    .map((p: any) => `🎂 ¡Hoy cumple años ${p.alias || (p.nombre || "").split(" ")[0]}! Que no falte el saludo, Kawsay 🎉`);
+
+  // 🔎 Hallazgos reales (solo los que existen)
+  const hallazgos: string[] = [];
+  if (cVencidos) hallazgos.push(`⏰ Hay ${cVencidos} caso${cVencidos === 1 ? "" : "s"} vencido${cVencidos === 1 ? "" : "s"} — un vistazo no cae mal.`);
+  if (cSinResp) hallazgos.push(`🙋 ${cSinResp} caso${cSinResp === 1 ? "" : "s"} sin responsable — un caso huérfano es de todos.`);
+  if (cSunat) hallazgos.push(`🏢 ${cSunat} empresa${cSunat === 1 ? "" : "s"} con alerta SUNAT — regularizar antes de postular.`);
+  if (cDni) hallazgos.push(`🪪 ${cDni} DNI por vencer — renovar a tiempo evita sustos.`);
+  if (botHoy) hallazgos.push(`📝 Hoy dejé ${botHoy} apunte${botHoy === 1 ? "" : "s"} en mi ronda.`);
+
+  // 🍀 Buenas vibras a las postulaciones del año en curso (más ánimo mientras más avanzan)
+  const anioActual = new Date().getFullYear();
+  const vibras: string[] = [];
+  for (const p of (postAnio || []) as any[]) {
+    if (p.conv?.anio !== anioActual) continue;
+    const nom = p.proy?.nombre || "un proyecto";
+    if (p.estado === "ganadora") {
+      const m = `🏆 ¡${nom} ganó su fondo ${anioActual}! Orgullo Kawsay — a celebrarlo. 🎉`;
+      vibras.push(m, m, m); // los ganadores brillan más
+    } else if (p.estado === "finalista") {
+      const m = `🌟 ${nom} es finalista ${anioActual} — ya casi, un último empujón. 💪`;
+      vibras.push(m, m);
+    } else {
+      vibras.push(`✨ ${nom} va por el fondo ${anioActual} — buenas vibras para esa postulación. 🍀`);
+    }
+  }
+
+  // 💬 Frases decorativas (siempre presentes en la mezcla)
+  const DECORATIVAS = [
     "Nada se pierde mientras yo mire. 👁",
-    "Un caso sin responsable es un caso huérfano — adopten uno hoy.",
     "Lo que mañana importa, hoy se publica.",
     "Vigilo los plazos para que ustedes vigilen el arte.",
     "Mi ronda fue tranquila. Sigan así, Kawsay.",
     "Recuerden: el chat coordina, CrewHub+ recuerda.",
     "Cada vínculo de hoy es una respuesta instantánea en el futuro.",
+    "Menos tarjetas abiertas, más calma — cerrar también es avanzar.",
+    "Un feed corto es un equipo tranquilo. No acumulen, resuelvan.",
   ];
-  const fraseQhaway = FRASES[new Date().getDay() % FRASES.length];
+
+  const pick = (a: string[]): string => a[Math.floor(Math.random() * a.length)];
+  const fraseQhaway: string = cumples.length
+    ? pick(cumples)                                              // el cumpleaños manda
+    : pick([...hallazgos, ...hallazgos, ...vibras, ...DECORATIVAS]); // hallazgos y vibras con más peso
 
   const catalogos: Catalogos = {
     proyecto: proy.data || [],
@@ -211,6 +280,21 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
 
   const posts = postsQ.data || [];
 
+  // Contadores por pestaña (sobre el universo no archivado y no oculto)
+  const misSet = new Set(misVinculadas);
+  const U = univQ.data || [];
+  const conteo: Record<string, number> = {
+    mios: U.filter((p: any) => p.autor_id === user.id || p.responsable === user.id || misSet.has(p.id)).length,
+    todo: U.length,
+    problema: U.filter((p: any) => p.tipo === "problema").length,
+    tarea: U.filter((p: any) => p.tipo === "tarea").length,
+    consulta: U.filter((p: any) => p.tipo === "consulta").length,
+    pago: U.filter((p: any) => p.tipo === "pago").length,
+    idea: U.filter((p: any) => p.tipo === "idea").length,
+    archivo: U.filter((p: any) => p.tipo === "archivo").length,
+    aviso: U.filter((p: any) => p.tipo === "aviso").length,
+  };
+
   return (
     <div className="shell">
       <Realtime tablas={["publicaciones", "comentarios", "publicacion_vinculos", "reacciones", "notificaciones"]} token={session?.access_token} />
@@ -220,34 +304,15 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
           <Link href="/proyectos" className="btn btn-ghost" title="Proyectos">📁</Link>
           <Link href="/empresas" className="btn btn-ghost" title="Empresas">🏢</Link>
           <Link href="/personas" className="btn btn-ghost" title="Personas">👤</Link>
+          <Link href="/postulaciones" className="btn btn-ghost" title="Postulaciones">🎯</Link>
           <Link href="/equipamiento" className="btn btn-ghost" title="Equipos audiovisuales">🎥</Link>
           <Link href="/convocatorias" className="btn btn-ghost" title="Convocatorias y fondos">📜</Link>
-          <Link href="/postulaciones" className="btn btn-ghost" title="Postulaciones">🎯</Link>
-          <Link href="/importar" className="btn btn-ghost" title="Importar desde Seatable">⬆</Link>
-          <Link href="/wiki" className="btn btn-ghost" title="Wiki: los flujos de trabajo">📖</Link>
         </nav>
         <span className="spacer" />
         <BuscadorGlobal />
         <Campanita items={notifsEnriq} sinLeer={sinLeer || 0} />
         <MenuUsuario nombre={perfil?.nombre} rol={perfil?.rol}
           color={perfil?.color} src={perfil?.avatar_url} />
-      </div>
-
-      <div className="qhaway-tira">
-        <span className="qa">🤖</span>
-        <span style={{ flex: 1 }}>
-          <b>Qhaway</b>: {botHoy ? `hoy dejé ${botHoy} apunte${botHoy === 1 ? "" : "s"} en mi ronda. ` : "ronda matutina al día. "}
-          <i style={{ color: "var(--muted)" }}>{fraseQhaway}</i>
-        </span>
-        <Link href="/qhaway">ver mi bitácora →</Link>
-      </div>
-
-      <div className="vtabs">
-        {VISTAS.map(([val, label]) => (
-          <Link key={val} href={val ? `/?v=${val}` : "/"}
-            className={`vtab ${v === val ? "on" : ""}`}>{label}</Link>
-        ))}
-        <Link href="/tablero" className="vtab" style={{ marginLeft: "auto" }}>🗂 Tablero</Link>
       </div>
 
       <Composer userId={user.id} catalogos={catalogos} perfiles={perfs.data || []}
@@ -257,6 +322,24 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
           const n = nombres.get(`${t}:${i}`);
           return n ? [{ tipo: t, id: i, nombre: n }] : undefined;
         })()} />
+
+      <div className="qhaway-tira">
+        <span className="qa">🤖</span>
+        <span style={{ flex: 1 }}>
+          <b>Bot Qhaway</b>: <i style={{ color: "var(--muted)" }}>{fraseQhaway}</i>
+        </span>
+        <Link href="/qhaway" title="Ver mi bitácora">bitácora →</Link>
+      </div>
+
+      <div className="vtabs vtabs-compacta">
+        {VISTAS.map(([val, label]) => (
+          <Link key={val} href={val === "mios" ? "/" : `/?v=${val}`}
+            className={`vtab ${v === val ? "on" : ""}`}>
+            {label} <span className="vtab-n">{conteo[val] ?? 0}</span>
+          </Link>
+        ))}
+        <FiltroMas v={v} items={VISTAS_MAS.map(([val, label]) => ({ val, label, n: conteo[val] ?? 0 }))} />
+      </div>
 
       {posts.map((p: any) => {
         const [tl, tc] = TIPO_META[p.tipo] || TIPO_META.conversacion;
@@ -285,7 +368,8 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
             pubId={p.id} userId={user.id} reacciones={reaccsDe.get(p.id) || []}
             imagenes={p.imagenes || []}
             creadoEn={p.creado_en}
-            equipoTotal={(perfs.data || []).filter((x: any) => x.nombre !== "Qhaway").length}
+            fechaLimite={p.fecha_limite}
+            equipoTotal={(perfs.data || []).filter((x: any) => x.nombre !== "Bot Qhaway").length}
             padreId={p.padre_id || null}
             padreTitulo={p.padre_id ? (tituloPadre.get(p.padre_id) || null) : null}
             hijos={hijosDe.get(p.id) || null}

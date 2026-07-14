@@ -1,5 +1,6 @@
 "use client";
 import Avatar from "@/components/Avatar";
+import Link from "next/link";
 import { useState } from "react";
 
 /* La esquina del usuario, compacta: solo el avatar.
@@ -21,8 +22,14 @@ export default function MenuUsuario({ nombre, rol, color, src }: {
           <div className="menu-usuario">
             <b style={{ fontSize: 13.5 }}>{nombre}</b>
             <span style={{ color: "var(--muted)", fontSize: 11.5 }}>{rol || "Equipo"}</span>
+            <Link href="/tablero" onClick={() => setAbierto(false)} className="btn btn-ghost"
+              style={{ marginTop: 10, fontSize: 12.5, textAlign: "center" }}>🗂 Tablero</Link>
+            <Link href="/pulso" onClick={() => setAbierto(false)} className="btn btn-ghost"
+              style={{ marginTop: 6, fontSize: 12.5, textAlign: "center" }}>📊 Pulso del equipo</Link>
+            <Link href="/etiquetas" onClick={() => setAbierto(false)} className="btn btn-ghost"
+              style={{ marginTop: 6, fontSize: 12.5, textAlign: "center" }}>🏷️ Etiquetas</Link>
             <a href="/auth/signout" className="btn btn-ghost"
-              style={{ marginTop: 10, fontSize: 12.5, textAlign: "center" }}>⎋ Salir</a>
+              style={{ marginTop: 6, fontSize: 12.5, textAlign: "center" }}>⎋ Salir</a>
           </div>
         </>
       )}

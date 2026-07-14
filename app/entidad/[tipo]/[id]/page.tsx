@@ -251,7 +251,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       supabase.from("personas").select("usuario_id").not("usuario_id", "is", null),
     ]);
     const usadas = new Set((up.data || []).map((x: any) => x.usuario_id));
-    const perfilesAll = (pf.data || []).filter((p: any) => p.nombre !== "Qhaway");
+    const perfilesAll = (pf.data || []).filter((p: any) => p.nombre !== "Bot Qhaway");
     cuentaDe = ent.usuario_id ? perfilesAll.find((p: any) => p.id === ent.usuario_id) || null : null;
     cuentasLibres = perfilesAll.filter((p: any) => !usadas.has(p.id));
   }
@@ -652,7 +652,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                           <span>{e.tipo === "creado" ? "📝" : e.tipo === "estado" ? "🔄" : "🤖"}</span>
                           <span>
                             {e.tipo === "creado" && `${e.actor?.nombre || "Sistema"} registró esta entidad`}
-                            {e.tipo === "estado" && `${e.actor?.nombre || "Qhaway"} · ${e.detalle?.campo}: ${String(e.detalle?.de ?? "—").replace(/_/g, " ")} → ${String(e.detalle?.a ?? "—").replace(/_/g, " ")}`}
+                            {e.tipo === "estado" && `${e.actor?.nombre || "Bot Qhaway"} · ${e.detalle?.campo}: ${String(e.detalle?.de ?? "—").replace(/_/g, " ")} → ${String(e.detalle?.a ?? "—").replace(/_/g, " ")}`}
                             {!["creado", "estado"].includes(e.tipo) && (e.detalle?.mensaje || e.tipo)}
                           </span>
                           <span className="t">{fecha(e.creado_en)}</span>

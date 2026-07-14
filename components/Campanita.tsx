@@ -81,7 +81,7 @@ export default function Campanita({ items: itemsProp, sinLeer: sinLeerProp }: { 
             </div>
             {items.length === 0 && (
               <div style={{ color: "var(--dim)", fontSize: 12.5, textAlign: "center", padding: "16px 0" }}>
-                Nada nuevo — Qhaway vigila por ti. 🤖
+                Nada nuevo — Bot Qhaway vigila por ti. 🤖
               </div>
             )}
             {items.map((n: any) => (

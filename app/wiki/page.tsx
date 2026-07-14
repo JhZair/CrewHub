@@ -40,7 +40,7 @@ export default async function Wiki() {
         ❗ Problema (algo se rompió) · ❓ Consulta (preguntar al equipo; la respuesta queda
         buscable para siempre) · 💰 Pago · 💡 Idea · 📎 Archivo (entregar un documento suelto
         vía link de Drive).</P>
-        <P><K>Estados</K>: Sin Resolver → En Progreso → Resuelta. Además: ⏸ En Pausa (Qhaway no
+        <P><K>Estados</K>: Sin Resolver → En Progreso → Resuelta. Además: ⏸ En Pausa (Bot Qhaway no
         molesta), 🔭 Seguimiento (casos largos de meses: viven sin regaños de "dormido") y
         Archivada (ya no aplica; sale del feed pero queda buscable).</P>
         <P><K>Sub-casos</K> 🧩: un caso largo se descompone en hijos desde su página; heredan los
@@ -58,14 +58,14 @@ export default async function Wiki() {
         <P>El <K>🗂 Tablero</K> es el kanban: arrastra tarjetas entre columnas para cambiar estado.
         Tiene los mismos filtros del feed, incluido Mis asuntos.</P>
         <P>La <K>🔔 campanita</K> avisa: asignaciones, vencimientos, menciones y despertares de
-        Qhaway. El <K>buscador global</K> (Ctrl+K) busca por palabras en TODO — y entiende
+        Bot Qhaway. El <K>buscador global</K> (Ctrl+K) busca por palabras en TODO — y entiende
         quechua: «mujunacuy» encuentra a Mujunakuy, «guamani» a Huamani.</P>
       </S>
 
       <S titulo="📜 Convocatorias: la cancha y el calendario">
         <P>Cada concurso DAFO de cada año es una <K>convocatoria</K> (código C-###, automático).
         Guarda las bases 📖, el monto del estímulo y el <K>cronograma del concurso</K>: los
-        🏛 hitos (cierre, revisión, evaluación, finalistas, beneficiarios, RENCA...) que Qhaway
+        🏛 hitos (cierre, revisión, evaluación, finalistas, beneficiarios, RENCA...) que Bot Qhaway
         anuncia con anticipación — solo de concursos donde jugamos.</P>
         <P>Cuando salen bases nuevas: crear la convocatoria (o importarla), cargar los hitos del
         numeral XVI en su pestaña 📅 (＋ Actividad → 🏛 Hito del concurso). El panel 📜 muestra
@@ -99,7 +99,7 @@ export default async function Wiki() {
         llega el dinero 💰) se carga el cronograma REPROGRAMADO en el proyecto, y el presupuesto
         vigente en su campo (botón 💰).</P>
         <P>Las actividades tienen etapa (colores del Gantt), responsable y anticipación.
-        <K> Qhaway las materializa</K>: N días antes crea la tarea (o el aviso si es 🏛 hito) y
+        <K> Bot Qhaway las materializa</K>: N días antes crea la tarea (o el aviso si es 🏛 hito) y
         se la asigna al responsable. La línea naranja de HOY cruza el Gantt.</P>
       </S>
 
@@ -118,7 +118,7 @@ export default async function Wiki() {
       <S titulo="🏢 Empresas · 👤 Personas">
         <P><K>Empresas</K> (E-###): cada una con RUC, <K>RENCA (obligatorio para postular —
         sin él el semáforo sale rojo)</K>, salud SUNAT (las alertas salen en su panel
-        y en la ronda de Qhaway), miembros y cargos con historial (representante legal, socios;
+        y en la ronda de Bot Qhaway), miembros y cargos con historial (representante legal, socios;
         la fecha del cargo se corrige con un clic — usar la real de SUNAT),
         y sus documentos invocados de Drive (ficha RUC, reconocimiento RENCA, vigencia de poder).
         El panel muestra el <K> 🏅 palmarés</K>: qué empresa gana, roza y persiste ante DAFO.</P>
@@ -130,13 +130,13 @@ export default async function Wiki() {
         ganados con cargo y año), postulaciones, cargos en empresas, equipos en su poder,
         proyectos donde es cliente — y su actividad real (casos que creó, le asignaron o comentó).
         Para que esa actividad aparezca, su <K>🔗 Cuenta de acceso</K> debe estar enlazada
-        (bloque al final del carné; Qhaway lo vigila en su higiene).</P>
+        (bloque al final del carné; Bot Qhaway lo vigila en su higiene).</P>
         <P><K>🔑 Credenciales — REGLA DE ORO</K>: en CrewHub+ solo el inventario (plataforma,
         usuario, dónde vive la clave). <b>La contraseña real JAMÁS se escribe aquí</b> — vive en
         el KeePass del Drive.</P>
       </S>
 
-      <S titulo="🤖 Qhaway: qué hace cada mañana (7:30)">
+      <S titulo="🤖 Bot Qhaway: qué hace cada mañana (7:30)">
         <P>1) <K>Materializa</K> del cronograma: tareas de trabajo y avisos de 🏛 hitos (solo de
         concursos donde tenemos postulaciones en juego). 2) <K>Vencimientos</K>: avisa a 7, 2 y
         0 días, y persigue lo vencido. 3) <K>Despierta dormidos</K>: caso activo con 3 días sin
@@ -147,7 +147,7 @@ export default async function Wiki() {
         (RENCA, SUNAT, vigencias, DNI, materiales), higiene de datos y el <K>🫀 Pulso del
         equipo</K> — carga por persona para redistribuir, nunca ranking. Los lunes 7:35
         publica el pulso en el feed.</P>
-        <P>Qhaway firma sus creaciones. No se le asignan tareas: él crea, los humanos ejecutan.</P>
+        <P>Bot Qhaway firma sus creaciones. No se le asignan tareas: él crea, los humanos ejecutan.</P>
       </S>
 
       <S titulo="📐 Convenciones de la casa">

@@ -53,9 +53,9 @@ export default async function Pantalla() {
   const tituloDe = new Map((titulos || []).map((t: any) => [t.id, t.titulo]));
 
   const textoAct = (a: any) => {
-    const quien = a.actor?.nombre?.split(" ")[0] || "Qhaway 🤖";
+    const quien = a.actor?.nombre?.split(" ")[0] || "Bot Qhaway 🤖";
     const sobre = tituloDe.get(a.entidad_id) || "";
-    if (a.tipo === "bot") return `Qhaway en «${sobre}»: ${a.detalle?.mensaje || ""}`;
+    if (a.tipo === "bot") return `Bot Qhaway en «${sobre}»: ${a.detalle?.mensaje || ""}`;
     if (a.tipo === "comentario") return `${quien} comentó en «${sobre}»`;
     if (a.tipo === "creado") return `${quien} publicó «${sobre}»`;
     if (a.tipo === "estado") {

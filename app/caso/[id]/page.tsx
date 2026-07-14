@@ -152,8 +152,8 @@ export default async function Caso({ params }: { params: { id: string } }) {
   const [tl, tc] = TIPO_META[p.tipo] || TIPO_META.conversacion;
 
   const textoEvento = (e: any) => {
-    const quien = e.actor?.nombre || "Qhaway";
-    if (e.tipo === "bot") return `Qhaway: "${e.detalle?.mensaje || "evento automático"}"`;
+    const quien = e.actor?.nombre || "Bot Qhaway";
+    if (e.tipo === "bot") return `Bot Qhaway: "${e.detalle?.mensaje || "evento automático"}"`;
     if (e.tipo === "creado") return `${quien} creó la publicación`;
     if (e.tipo === "estado") {
       const campo = e.detalle?.campo || "estado";
@@ -184,7 +184,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
       )}
       <TituloEditable pubId={p.id} titulo={p.titulo} />
 
-      <div className="grid-meta">
+      <div className={`grid-meta est-${p.estado}`}>
         <div className="gm"><span className="k">Estado</span><EstadoSelect pubId={p.id} estado={p.estado} tipo={p.tipo} /></div>
         <div className="gm"><span className="k">Responsable</span>
           <RespSelect pubId={p.id} actual={p.responsable} perfiles={perfiles || []} /></div>
@@ -211,7 +211,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
           pubId={p.id}
           userId={user.id}
           enteradosIds={rxPub.filter((r: any) => r.emoji === "👀").map((r: any) => r.usuario_id)}
-          equipo={(perfiles || []).filter((x: any) => x.nombre !== "Qhaway")}
+          equipo={(perfiles || []).filter((x: any) => x.nombre !== "Bot Qhaway")}
         />
       )}
 

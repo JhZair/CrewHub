@@ -272,7 +272,7 @@ export default async function Qhaway({ searchParams }: { searchParams: { bit?: s
               <span style={{ flex: 1 }} />
               <BotonCasoUrgente
                 titulo={`⚠ SUNAT: ${x.nombre} en ${(x.estado_sunat || "").replace(/_/g, " ")}`}
-                cuerpo={`Hallazgo de Qhaway: la empresa ${x.nombre} figura en SUNAT como «${(x.estado_sunat || "").replace(/_/g, " ")}». Regularizar antes de postular, facturar o rendir con esta empresa.`}
+                cuerpo={`Hallazgo de Bot Qhaway: la empresa ${x.nombre} figura en SUNAT como «${(x.estado_sunat || "").replace(/_/g, " ")}». Regularizar antes de postular, facturar o rendir con esta empresa.`}
                 entTipo="empresa" entId={x.id} />
             </div>
           ))}
@@ -292,7 +292,7 @@ export default async function Qhaway({ searchParams }: { searchParams: { bit?: s
                 <span style={{ flex: 1 }} />
                 <BotonCasoUrgente
                   titulo={`🪪 Renovar DNI de ${p.nombre}`}
-                  cuerpo={`Hallazgo de Qhaway: el DNI de ${p.nombre} ${d < 0 ? `venció hace ${-d} días` : `vence en ${d} días`}. Un DNI vencido invalida postulaciones, contratos y giros de RHE.`}
+                  cuerpo={`Hallazgo de Bot Qhaway: el DNI de ${p.nombre} ${d < 0 ? `venció hace ${-d} días` : `vence en ${d} días`}. Un DNI vencido invalida postulaciones, contratos y giros de RHE.`}
                   entTipo="persona" entId={p.id} />
               </div>
             );
@@ -311,7 +311,7 @@ export default async function Qhaway({ searchParams }: { searchParams: { bit?: s
               <span style={{ flex: 1 }} />
               <BotonCasoUrgente
                 titulo={`📜 Renovar vigencia de poder de ${x.nombre}`}
-                cuerpo={`Hallazgo de Qhaway: la vigencia de poder de ${x.nombre} fue emitida hace ${diasDesde(x.vigencia_poder_fecha)} días. DAFO suele exigirla con menos de 3 meses — tramitar una nueva en SUNARP antes de la próxima postulación.`}
+                cuerpo={`Hallazgo de Bot Qhaway: la vigencia de poder de ${x.nombre} fue emitida hace ${diasDesde(x.vigencia_poder_fecha)} días. DAFO suele exigirla con menos de 3 meses — tramitar una nueva en SUNARP antes de la próxima postulación.`}
                 entTipo="empresa" entId={x.id} />
             </div>
           ))}
@@ -334,7 +334,7 @@ export default async function Qhaway({ searchParams }: { searchParams: { bit?: s
                 <span style={{ flex: 1 }} />
                 <BotonCasoUrgente
                   titulo={`🧾 Preparar rendición de ${r.proy?.nombre || "proyecto"}`}
-                  cuerpo={`Hallazgo de Qhaway: la rendición de ${r.proy?.nombre} (${r.conv?.codigo || ""}) vence ${d < 0 ? `hace ${-d} días — URGENTE` : `en ${d} días`}. Reunir informe económico al 100%, comprobantes y presupuesto actualizado.`}
+                  cuerpo={`Hallazgo de Bot Qhaway: la rendición de ${r.proy?.nombre} (${r.conv?.codigo || ""}) vence ${d < 0 ? `hace ${-d} días — URGENTE` : `en ${d} días`}. Reunir informe económico al 100%, comprobantes y presupuesto actualizado.`}
                   entTipo="postulacion" entId={r.id} />
               </div>
             );
@@ -416,6 +416,8 @@ export default async function Qhaway({ searchParams }: { searchParams: { bit?: s
     <div className="shell shell-ancho">
       <div className="topbar">
         <Volver />
+        <Link href="/importar" className="btn btn-ghost" title="Importar desde Seatable">⬆ Importar</Link>
+        <Link href="/wiki" className="btn btn-ghost" title="Wiki: los flujos de trabajo">📖 Wiki</Link>
         <span className="spacer" />
         <span style={{ color: "var(--dim)", fontSize: 12, textTransform: "uppercase", letterSpacing: 1 }}>
           🤖 miembro no humano
@@ -424,7 +426,7 @@ export default async function Qhaway({ searchParams }: { searchParams: { bit?: s
 
       <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", marginBottom: 16 }}>
         <span style={{ width: 54, height: 54, borderRadius: "50%", background: "linear-gradient(135deg,#3b82f6,#7c5cff)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 27 }}>🤖</span>
-        <h1 className="title-lg" style={{ flex: 1, margin: 0 }}>Qhaway</h1>
+        <h1 className="title-lg" style={{ flex: 1, margin: 0 }}>Bot Qhaway</h1>
       </div>
 
       <div className="perfil-grid">
@@ -437,8 +439,9 @@ export default async function Qhaway({ searchParams }: { searchParams: { bit?: s
             <details style={{ marginTop: 4 }}>
               <summary style={{ color: "var(--muted)", fontSize: 12, cursor: "pointer", padding: "4px 0" }}>Ver bio y reglas de servicio</summary>
               <div style={{ marginTop: 4 }}>
-                <div className="ficha-row"><span className="fk">Significado</span><span className="fv">"El que observa y cuida"</span></div>
-                <div className="ficha-row"><span className="fk">Rol</span><span className="fv">Vigilante del equipo</span></div>
+                <div className="ficha-row"><span className="fk">Nombre corto</span><span className="fv" style={{ color: "var(--violet)", fontWeight: 800 }}>BQ</span></div>
+                <div className="ficha-row"><span className="fk">Significado</span><span className="fv">«Qhaway»: mirar, observar, cuidar (quechua)</span></div>
+                <div className="ficha-row"><span className="fk">Rol</span><span className="fv">Vigilante del equipo Kawsay</span></div>
                 <div className="ficha-row"><span className="fk">En servicio desde</span><span className="fv">{nacimiento}</span></div>
                 <div className="ficha-row"><span className="fk">Canales</span><span className="fv">Feed · Google Chat · 🔔</span></div>
                 <div className="ficha-row"><span className="fk">Sueldo</span><span className="fv">S/ 0.00 (voluntario) 😄</span></div>

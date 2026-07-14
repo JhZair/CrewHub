@@ -595,6 +595,23 @@ export async function crearEtiqueta(nombre: string) {
   return { id: data.id, nombre: data.nombre };
 }
 
+// Borra una etiqueta — solo si no tiene casos vinculados (seguridad).
+export async function borrarEtiqueta(id: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { count } = await supabase.from("publicacion_vinculos")
+    .select("publicacion_id", { count: "exact", head: true })
+    .eq("entidad_tipo", "etiqueta").eq("entidad_id", id);
+  if (count && count > 0)
+    return { error: `Tiene ${count} caso${count === 1 ? "" : "s"} — quítala de ellos antes de borrarla.` };
+  const { error } = await supabase.from("etiquetas").delete().eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath("/etiquetas");
+  revalidatePath("/");
+  return {};
+}
+
 /* --- Miembros de empresa (rep. legal, socios, directiva) --- */
 export async function agregarMiembro(empresaId: string, personaId: string, cargo: string, fechaInicio?: string | null) {
   const supabase = createClient();
@@ -1486,7 +1503,7 @@ export async function toggleEnterado(pubId: string) {
   const { data: pub } = await supabase.from("publicaciones").select("tipo,estado").eq("id", pubId).single();
   if (pub?.tipo === "aviso" && !["archivada", "resuelta"].includes(pub.estado)) {
     const [{ data: team }, { data: vistos }] = await Promise.all([
-      supabase.from("perfiles").select("id").eq("activo", true).neq("nombre", "Qhaway"),
+      supabase.from("perfiles").select("id").eq("activo", true).neq("nombre", "Bot Qhaway"),
       supabase.from("reacciones").select("usuario_id")
         .eq("publicacion_id", pubId).is("comentario_id", null).eq("emoji", "👀"),
     ]);

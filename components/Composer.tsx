@@ -4,6 +4,7 @@ import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
 import { coincideQ } from "@/lib/quechua";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import MiniSelect from "@/components/MiniSelect";
 
 const TIPOS = [
   ["tarea", "✅ Tarea"], ["problema", "❗ Problema"], ["consulta", "❓ Consulta"],
@@ -32,8 +33,8 @@ export type Catalogos = {
 
 const ENT_META: Record<string, string> = {
   proyecto: "📁 Proyecto", empresa: "🏢 Empresa", persona: "👤 Persona",
-  convocatoria: "📜 Convocatoria", postulacion: "🎯 Postulación",
-  equipamiento: "🎥 Equipo", lugar: "📍 Lugar", etiqueta: "🏷️ Etiqueta",
+  postulacion: "🎯 Postulación", equipamiento: "🎥 Equipo", convocatoria: "📜 Convocatoria",
+  lugar: "📍 Lugar", etiqueta: "🏷️ Etiqueta",
 };
 
 type Sel = Vinculo & { nombre: string };
@@ -216,12 +217,13 @@ export default function Composer({ userId, catalogos, perfiles, inicial, onListo
       <div className="meta-bar">
         <div className="meta-linea">
           <span className="ent-lbl" title="Responsable" style={{ minWidth: "auto" }}>👤</span>
-          <select className="ent-ctrl"
-            style={{ height: 34, padding: "0 11px", margin: 0, boxSizing: "border-box", fontSize: 12.5, lineHeight: "32px", borderRadius: 9, ...(resp ? { borderColor: "var(--teal)", color: "var(--teal)" } : {}) }}
-            value={resp} onChange={e => setResp(e.target.value)}>
-            <option value="">Sin asignar</option>
-            {perfiles.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-          </select>
+          <MiniSelect
+            value={resp}
+            options={[["", "Sin asignar"], ...perfiles.map(p => [p.id, p.nombre])]}
+            onSelect={setResp}
+            buttonClass="ent-ctrl"
+            buttonStyle={{ height: 34, padding: "0 11px", boxSizing: "border-box", fontSize: 12.5, borderRadius: 9, minWidth: 132, ...(resp ? { borderColor: "var(--teal)", color: "var(--teal)" } : {}) }}
+          />
           <span className="ent-lbl" title="Fecha límite" style={{ marginLeft: 14, minWidth: "auto" }}>📅</span>
           <input type="date" className="ent-ctrl"
             style={{ height: 34, minHeight: 34, maxHeight: 34, width: 150, minWidth: 150, padding: "0 10px", margin: 0, boxSizing: "border-box", fontSize: 12.5, fontFamily: "inherit", lineHeight: "32px", borderRadius: 9, ...(fecha ? { borderColor: "var(--yellow)", color: "var(--yellow)" } : {}) }}

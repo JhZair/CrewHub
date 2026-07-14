@@ -316,7 +316,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
 
       {!q && (
         <div className="empty">
-          Escribe algo arriba — Qhaway buscará en casos, comentarios, personas,
+          Escribe algo arriba — Bot Qhaway buscará en casos, comentarios, personas,
           proyectos, empresas, equipos, lugares, convocatorias y postulaciones a la vez.
           Puedes combinar palabras: «acta mujeres», «rendición 2027», «rodaje drone».
         </div>

@@ -1,6 +1,7 @@
 "use client";
 import { agregarVinculo, quitarVinculo, crearEtiqueta } from "@/app/actions";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useState } from "react";
 
 /* Editor de etiquetas de un caso: chips actuales con ✕ para quitar, y un
@@ -43,7 +44,8 @@ export default function EtiquetasEditor({ pubId, actuales, todas }: {
     <div className="etq-editor">
       {actuales.map(e => (
         <span key={e.id} className="echip">
-          🏷️ {e.nombre}
+          <Link href={`/entidad/etiqueta/${e.id}`} title="Ver la etiqueta"
+            style={{ color: "inherit", textDecoration: "none" }}>🏷️ {e.nombre}</Link>
           <button className="x" title="Quitar etiqueta" onClick={() => quitar(e.id)}>×</button>
         </span>
       ))}

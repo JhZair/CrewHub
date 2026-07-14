@@ -30,7 +30,7 @@ export default async function TableroPage({ searchParams }: {
 
   // El equipo, para poder mirar los asuntos de cada quien
   const { data: equipoPerf } = await supabase.from("perfiles")
-    .select("id,nombre").eq("activo", true).neq("nombre", "Qhaway").order("nombre");
+    .select("id,nombre").eq("activo", true).neq("nombre", "Bot Qhaway").order("nombre");
 
   // Vínculos de persona del USUARIO logueado (para "Mis asuntos" y su contador)
   let misVinc: string[] = [];

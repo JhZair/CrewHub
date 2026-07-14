@@ -67,7 +67,7 @@ export default async function PulsoPage({ searchParams }: {
 
   // Equipo (Qhaway fuera: él reparte, no carga casos)
   const { data: equipo } = await supabase.from("perfiles")
-    .select("id,nombre").eq("activo", true).neq("nombre", "Qhaway").order("nombre");
+    .select("id,nombre").eq("activo", true).neq("nombre", "Bot Qhaway").order("nombre");
 
   // Bitácora del mes sobre publicaciones
   const { data: eventos } = await supabase.from("actividad")
