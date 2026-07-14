@@ -737,6 +737,61 @@ export async function borrarCredencial(id: string, dueno: string, duenoId: strin
   return {};
 }
 
+// ── Datos flexibles y verificables dentro de una credencial ──
+export async function agregarDato(
+  credencialId: string, dueno: string, duenoId: string, etiqueta: string, valor: string
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!etiqueta.trim()) return { error: "La etiqueta es obligatoria." };
+  const { error } = await supabase.from("credencial_datos").insert({
+    credencial_id: credencialId,
+    etiqueta: etiqueta.trim(),
+    valor: valor.trim() || null,
+    verificado_en: new Date().toISOString().slice(0, 10), // recién ingresado = verificado hoy
+  });
+  if (error) return { error: error.message };
+  revalidatePath(`/entidad/${dueno}/${duenoId}`);
+  return {};
+}
+
+export async function editarDato(
+  id: string, dueno: string, duenoId: string, etiqueta: string, valor: string
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!etiqueta.trim()) return { error: "La etiqueta es obligatoria." };
+  const { error } = await supabase.from("credencial_datos").update({
+    etiqueta: etiqueta.trim(), valor: valor.trim() || null,
+  }).eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath(`/entidad/${dueno}/${duenoId}`);
+  return {};
+}
+
+export async function verificarDato(id: string, dueno: string, duenoId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { error } = await supabase.from("credencial_datos")
+    .update({ verificado_en: new Date().toISOString().slice(0, 10) }).eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath(`/entidad/${dueno}/${duenoId}`);
+  return {};
+}
+
+export async function borrarDato(id: string, dueno: string, duenoId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { error } = await supabase.from("credencial_datos").delete().eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath(`/entidad/${dueno}/${duenoId}`);
+  return {};
+}
+
 export async function crearLugar(nombre: string) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -1379,7 +1434,7 @@ export async function crearSubCaso(padreId: string, titulo: string, tipo: string
 
 /* ===== REACCIONES: los famosos "me gusta" =====
    Toggle por usuario: mismo emoji dos veces = quitar. */
-const EMOJIS_REACCION = ["👀", "👍", "❤️", "🔥", "👏", "😂", "😢"];
+const EMOJIS_REACCION = ["👀", "👍", "❤️", "🔥", "👏", "😂", "😮", "🤔", "😕", "😢"];
 export async function toggleReaccion(pubId: string, comentarioId: string | null, emoji: string) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();

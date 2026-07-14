@@ -3,11 +3,13 @@ import { toggleReaccion } from "@/app/actions";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-const EMOJIS = ["👀", "👍", "❤️", "🔥", "👏", "😂", "😢"];
+const EMOJIS = ["👀", "👍", "❤️", "🔥", "👏", "😂", "😮", "🤔", "😕", "😢"];
 const LABEL: Record<string, string> = {
   "👀": "Visto — lo leí y lo tengo presente",
   "👍": "De acuerdo", "❤️": "Me encanta", "🔥": "Genial",
-  "👏": "Aplausos", "😂": "Divertido", "😢": "Triste",
+  "👏": "Aplausos", "😂": "Me dio risa", "😮": "Me sorprendió",
+  "🤔": "Estoy pensando / déjame revisarlo",
+  "😕": "No entendí / estoy confundido", "😢": "Triste",
 };
 
 export type Reaccion = { emoji: string; usuario_id: string };

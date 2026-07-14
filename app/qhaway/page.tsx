@@ -118,6 +118,21 @@ export default async function Qhaway({ searchParams }: { searchParams: { bit?: s
     .select("id", { count: "exact", head: true })
     .or("tipo.in.(personal,colaborador),usuario_id.not.is.null")
     .is("dni_vencimiento", null);
+  // Datos de credenciales sin verificar o con 180+ días sin reverificar
+  const credCutoff = new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10);
+  const { data: datosViejos } = await supabase.from("credencial_datos")
+    .select("id,etiqueta,verificado_en,cred:credenciales(plataforma,empresa_id,persona_id)")
+    .or(`verificado_en.is.null,verificado_en.lt.${credCutoff}`).limit(40);
+  const credDatosItems = (datosViejos || []).map((d: any) => {
+    const cr = d.cred;
+    const eid = cr?.empresa_id || cr?.persona_id;
+    if (!eid) return null;
+    return {
+      href: `/entidad/${cr.empresa_id ? "empresa" : "persona"}/${eid}`,
+      nombre: `${cr.plataforma || "cuenta"} · ${d.etiqueta}`,
+      falta: d.verificado_en ? `sin reverificar hace ${diasDesde(d.verificado_en)} días` : "nunca verificado",
+    };
+  }).filter(Boolean);
   const grupoHigiene = (titulo: string, items: any[], total?: number) =>
     ({ titulo, items, total: total ?? items.length });
   const higieneGrupos = [
@@ -141,6 +156,7 @@ export default async function Qhaway({ searchParams }: { searchParams: { bit?: s
       href: `/entidad/persona/${x.id}`,
       nombre: x.alias || x.nombre,
       falta: "enlazar su cuenta de acceso — su actividad no se ve en su perfil" }))),
+    grupoHigiene("🔑 Datos por reverificar", credDatosItems),
   ].filter(g => g.items.length > 0);
   const higieneTotal = higieneGrupos.reduce((s, g) => s + (g.total ?? g.items.length), 0);
 

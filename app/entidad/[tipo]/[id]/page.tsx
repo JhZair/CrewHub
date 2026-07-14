@@ -259,7 +259,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   let creds: any[] = [];
   if (params.tipo === "empresa" || params.tipo === "persona") {
     const { data } = await supabase.from("credenciales")
-      .select("*")
+      .select("*, datos:credencial_datos(id,etiqueta,valor,verificado_en)")
       .eq(params.tipo === "empresa" ? "empresa_id" : "persona_id", params.id)
       .order("plataforma");
     creds = data || [];

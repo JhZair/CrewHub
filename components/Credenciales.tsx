@@ -1,5 +1,8 @@
 "use client";
-import { agregarCredencial, editarCredencial, borrarCredencial } from "@/app/actions";
+import {
+  agregarCredencial, editarCredencial, borrarCredencial,
+  agregarDato, editarDato, verificarDato, borrarDato,
+} from "@/app/actions";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -9,12 +12,25 @@ const PLATAFORMAS = [
 ];
 const UBICACIONES = ["KeePass (Drive)", "Bitwarden", "Custodia física", "Otro"];
 const METODOS = ["Correo y contraseña", "Con Google", "Con Facebook", "Con Apple", "Con Microsoft"];
+// Sugerencias comunes para los datos de cada cuenta
+const DATOS_SUG = ["correo de contacto", "teléfono de contacto", "correo de recuperación", "pregunta de seguridad", "quién administra", "PIN / token"];
+const STALE_DIAS = 180; // a partir de aquí, un dato pide reverificación
 
 const inp = { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, outline: "none" } as const;
 
-type Val = { plataforma: string; identificador: string; ubicacion: string; notas: string; metodo: string };
+const diasDesde = (d: string) => Math.floor((Date.now() - new Date(d + "T12:00:00").getTime()) / 86400000);
+const frescura = (verificado_en: string | null) => {
+  if (!verificado_en) return { txt: "sin verificar", cls: "rojo" as const };
+  const n = diasDesde(verificado_en);
+  if (n <= 0) return { txt: "verificado hoy", cls: "verde" as const };
+  if (n > STALE_DIAS) return { txt: `revisar · hace ${n}d`, cls: "ambar" as const };
+  return { txt: `verificado hace ${n}d`, cls: "verde" as const };
+};
 
-/* Formulario reutilizable (agregar y editar) — a nivel de módulo para que
+type Val = { plataforma: string; identificador: string; ubicacion: string; notas: string; metodo: string };
+type DVal = { etiqueta: string; valor: string };
+
+/* Formulario de credencial (agregar y editar) — a nivel de módulo para que
    los inputs no pierdan el foco al escribir. */
 function FormFila({ v, set, onSave, onCancel, guardando }: {
   v: Val; set: (x: Val) => void; onSave: () => void; onCancel: () => void; guardando: boolean;
@@ -40,6 +56,25 @@ function FormFila({ v, set, onSave, onCancel, guardando }: {
   );
 }
 
+/* Formulario de un dato (etiqueta + valor) */
+function DatoForm({ v, set, onSave, onCancel, guardando }: {
+  v: DVal; set: (x: DVal) => void; onSave: () => void; onCancel: () => void; guardando: boolean;
+}) {
+  return (
+    <div className="dato-form">
+      <input list="dato-sug" placeholder="Dato (ej. correo de contacto) *" value={v.etiqueta}
+        onChange={e => set({ ...v, etiqueta: e.target.value })} style={{ ...inp, width: 175 }} />
+      <datalist id="dato-sug">{DATOS_SUG.map(s => <option key={s} value={s} />)}</datalist>
+      <input placeholder="Valor (correo, número…)" value={v.valor}
+        onChange={e => set({ ...v, valor: e.target.value })} style={{ ...inp, flex: 1, minWidth: 140 }} />
+      <button className="btn" style={{ padding: "6px 12px", fontSize: 11.5 }} disabled={!v.etiqueta.trim() || guardando} onClick={onSave}>
+        {guardando ? "..." : "Guardar"}
+      </button>
+      <button className="btn btn-ghost" style={{ padding: "6px 9px", fontSize: 11.5 }} onClick={onCancel}>Cancelar</button>
+    </div>
+  );
+}
+
 export default function Credenciales({ dueno, duenoId, credenciales }: {
   dueno: "empresa" | "persona"; duenoId: string; credenciales: any[];
 }) {
@@ -51,6 +86,12 @@ export default function Credenciales({ dueno, duenoId, credenciales }: {
   const [guardando, setGuardando] = useState(false);
   const [borrando, setBorrando] = useState<string | null>(null);
   const [error, setError] = useState("");
+  // Estado de los datos por credencial
+  const [addDato, setAddDato] = useState<string | null>(null);     // credencial id
+  const [nd, setNd] = useState<DVal>({ etiqueta: "", valor: "" });
+  const [edDatoId, setEdDatoId] = useState<string | null>(null);   // dato id
+  const [ed, setEd] = useState<DVal>({ etiqueta: "", valor: "" });
+  const [ocupadoDato, setOcupadoDato] = useState(false);
   const router = useRouter();
 
   const guardar = async () => {
@@ -85,6 +126,32 @@ export default function Credenciales({ dueno, duenoId, credenciales }: {
     if (res?.error) setError(res.error); else router.refresh();
   };
 
+  // ── Datos ──
+  const guardarNd = async (credId: string) => {
+    if (!nd.etiqueta.trim() || ocupadoDato) return;
+    setOcupadoDato(true); setError("");
+    const res = await agregarDato(credId, dueno, duenoId, nd.etiqueta, nd.valor);
+    setOcupadoDato(false);
+    if (res?.error) { setError(res.error); return; }
+    setNd({ etiqueta: "", valor: "" }); setAddDato(null); router.refresh();
+  };
+  const guardarEd = async (id: string) => {
+    if (!ed.etiqueta.trim() || ocupadoDato) return;
+    setOcupadoDato(true); setError("");
+    const res = await editarDato(id, dueno, duenoId, ed.etiqueta, ed.valor);
+    setOcupadoDato(false);
+    if (res?.error) { setError(res.error); return; }
+    setEdDatoId(null); router.refresh();
+  };
+  const verificar = async (id: string) => {
+    const res = await verificarDato(id, dueno, duenoId);
+    if (res?.error) setError(res.error); else router.refresh();
+  };
+  const quitarDato = async (id: string) => {
+    const res = await borrarDato(id, dueno, duenoId);
+    if (res?.error) setError(res.error); else router.refresh();
+  };
+
   return (
     <div className="linked" style={{ marginTop: 14 }}>
       <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
@@ -103,37 +170,64 @@ export default function Credenciales({ dueno, duenoId, credenciales }: {
       {agregando && <FormFila v={f} set={setF} onSave={guardar} onCancel={() => setAgregando(false)} guardando={guardando} />}
 
       {credenciales.map(c => (
-        editando === c.id ? (
-          <FormFila key={c.id} v={ef} set={setEf} onSave={() => guardarEdicion(c.id)} onCancel={() => setEditando(null)} guardando={guardando} />
-        ) : (
-          <div key={c.id} className="eq-row" style={{ alignItems: "center" }}>
-            <span className="cargo" style={{ minWidth: 130 }}>{c.plataforma}</span>
-            <span style={{ flex: 1, color: "#c6c6da" }}>{c.identificador || "—"}</span>
-            {c.metodo_acceso && (
-              <span className="badge" style={{
-                fontSize: 10.5,
-                color: c.metodo_acceso === "Correo y contraseña" ? "var(--muted)" : "var(--violet)",
-                background: c.metodo_acceso === "Correo y contraseña" ? "#1c1c2c" : "rgba(167,139,250,.12)",
-              }}>
-                {c.metodo_acceso === "Correo y contraseña" ? "🔑" : "🔗"} {c.metodo_acceso}
+        <div key={c.id} className="cred-bloque">
+          {editando === c.id ? (
+            <FormFila v={ef} set={setEf} onSave={() => guardarEdicion(c.id)} onCancel={() => setEditando(null)} guardando={guardando} />
+          ) : (
+            <div className="eq-row" style={{ alignItems: "center" }}>
+              <span className="cargo" style={{ minWidth: 130 }}>{c.plataforma}</span>
+              <span style={{ flex: 1, color: "#c6c6da" }}>{c.identificador || "—"}</span>
+              {c.metodo_acceso && (
+                <span className="badge" style={{
+                  fontSize: 10.5,
+                  color: c.metodo_acceso === "Correo y contraseña" ? "var(--muted)" : "var(--violet)",
+                  background: c.metodo_acceso === "Correo y contraseña" ? "#1c1c2c" : "rgba(167,139,250,.12)",
+                }}>
+                  {c.metodo_acceso === "Correo y contraseña" ? "🔑" : "🔗"} {c.metodo_acceso}
+                </span>
+              )}
+              <span className="badge" style={{ color: "var(--teal)", background: "rgba(45,212,191,.1)" }}>
+                🔒 {c.ubicacion || "sin ubicar"}
               </span>
-            )}
-            <span className="badge" style={{ color: "var(--teal)", background: "rgba(45,212,191,.1)" }}>
-              🔒 {c.ubicacion || "sin ubicar"}
-            </span>
-            {c.actualizado_en && <span style={{ color: "var(--dim)", fontSize: 11 }}>{c.actualizado_en}</span>}
-            <button title="Editar" style={{ color: "var(--dim)", marginLeft: 6 }} onClick={() => abrirEdicion(c)}>✎</button>
-            {borrando === c.id ? (
-              <span style={{ fontSize: 11.5, marginLeft: 6, whiteSpace: "nowrap" }}>
-                ¿quitar? <button style={{ color: "var(--red)", fontWeight: 700 }} onClick={() => borrar(c.id)}>sí</button>
-                {" / "}<button style={{ color: "var(--dim)" }} onClick={() => setBorrando(null)}>no</button>
-              </span>
+              {c.actualizado_en && <span style={{ color: "var(--dim)", fontSize: 11 }}>{c.actualizado_en}</span>}
+              <button title="Editar" style={{ color: "var(--dim)", marginLeft: 6 }} onClick={() => abrirEdicion(c)}>✎</button>
+              {borrando === c.id ? (
+                <span style={{ fontSize: 11.5, marginLeft: 6, whiteSpace: "nowrap" }}>
+                  ¿quitar? <button style={{ color: "var(--red)", fontWeight: 700 }} onClick={() => borrar(c.id)}>sí</button>
+                  {" / "}<button style={{ color: "var(--dim)" }} onClick={() => setBorrando(null)}>no</button>
+                </span>
+              ) : (
+                <button title="Quitar registro (la clave en el gestor no se toca)" style={{ color: "var(--dim)", marginLeft: 4 }}
+                  onClick={() => setBorrando(c.id)}>✕</button>
+              )}
+            </div>
+          )}
+
+          {/* Datos de la cuenta (verificables) */}
+          <div className="cred-datos">
+            {[...(c.datos || [])].sort((a: any, b: any) => (a.etiqueta || "").localeCompare(b.etiqueta || "")).map((d: any) => (
+              edDatoId === d.id ? (
+                <DatoForm key={d.id} v={ed} set={setEd} onSave={() => guardarEd(d.id)} onCancel={() => setEdDatoId(null)} guardando={ocupadoDato} />
+              ) : (
+                <div key={d.id} className="dato-row">
+                  <span className="dato-et">{d.etiqueta}</span>
+                  <span className="dato-val">{d.valor || "—"}</span>
+                  {(() => { const fr = frescura(d.verificado_en); return <span className={`dato-verif ${fr.cls}`}>{fr.cls === "verde" ? "✅" : fr.cls === "ambar" ? "⚠" : "⛔"} {fr.txt}</span>; })()}
+                  <button className="dato-btn" title="Confirmé que sigue vigente" onClick={() => verificar(d.id)}>✓ verifiqué</button>
+                  <button className="dato-btn" title="Editar dato" onClick={() => { setEdDatoId(d.id); setEd({ etiqueta: d.etiqueta || "", valor: d.valor || "" }); }}>✎</button>
+                  <button className="dato-btn" title="Quitar dato" style={{ color: "var(--dim)" }} onClick={() => quitarDato(d.id)}>✕</button>
+                </div>
+              )
+            ))}
+            {addDato === c.id ? (
+              <DatoForm v={nd} set={setNd} onSave={() => guardarNd(c.id)} onCancel={() => setAddDato(null)} guardando={ocupadoDato} />
             ) : (
-              <button title="Quitar registro (la clave en el gestor no se toca)" style={{ color: "var(--dim)", marginLeft: 4 }}
-                onClick={() => setBorrando(c.id)}>✕</button>
+              <button className="dato-add" onClick={() => { setAddDato(c.id); setNd({ etiqueta: "", valor: "" }); }}>
+                ＋ dato de esta cuenta
+              </button>
             )}
           </div>
-        )
+        </div>
       ))}
       {!credenciales.length && !agregando && (
         <div style={{ color: "var(--dim)", fontSize: 12.5, padding: "4px 0" }}>Sin credenciales registradas.</div>
