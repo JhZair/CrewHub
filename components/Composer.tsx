@@ -3,7 +3,7 @@ import { crearPublicacion, crearEtiqueta, crearLugar, type Vinculo } from "@/app
 import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
 import { coincideQ } from "@/lib/quechua";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import MiniSelect from "@/components/MiniSelect";
 
 const TIPOS = [
@@ -96,6 +96,15 @@ export default function Composer({ userId, catalogos, perfiles, inicial, onListo
   { userId: string; catalogos: Catalogos; perfiles: { id: string; nombre: string }[]; inicial?: Sel[]; onListo?: () => void }) {
   const [titulo, setTitulo] = useState("");
   const [cuerpo, setCuerpo] = useState("");
+  const cuerpoRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-crecer la descripción con el texto (hasta 220px; luego scroll)
+  useEffect(() => {
+    const el = cuerpoRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 220) + "px";
+  }, [cuerpo, titulo]);
   const [tipo, setTipo] = useState("tarea");
   const [resp, setResp] = useState("");
   const [fecha, setFecha] = useState("");
@@ -177,11 +186,13 @@ export default function Composer({ userId, catalogos, perfiles, inicial, onListo
       />
       {titulo && (
         <textarea
+          ref={cuerpoRef}
           placeholder="Descripción (opcional) — también puedes pegar un pantallazo con Ctrl+V"
-          rows={3}
+          rows={2}
           value={cuerpo}
           onChange={e => setCuerpo(e.target.value)}
           onPaste={e => { const f = imagenesDePaste(e); if (f.length) { e.preventDefault(); subir(f); } }}
+          style={{ resize: "none", overflowY: "auto", maxHeight: 220, lineHeight: 1.4 }}
         />
       )}
       {(imgs.length > 0 || subiendo) && (
