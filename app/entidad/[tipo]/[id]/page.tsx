@@ -9,6 +9,7 @@ import EquipoPostulacion from "@/components/EquipoPostulacion";
 import PrestamoEquipo from "@/components/PrestamoEquipo";
 import CuentaAcceso from "@/components/CuentaAcceso";
 import { BotonVerificarRuc, BotonVerificarDni } from "@/components/VerificarSunat";
+import Alerta from "@/components/Alerta";
 import Materiales from "@/components/Materiales";
 import LineaTiempo from "@/components/LineaTiempo";
 import CronogramaProyecto from "@/components/CronogramaProyecto";
@@ -85,6 +86,11 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       .eq("entidad_tipo", params.tipo).eq("entidad_id", params.id)
       .order("creado_en", { ascending: false }).limit(30),
   ]);
+
+  // Historial sin ruido: los cambios de estado_sunat/condicion_sunat ya
+  // los resume el evento "Verificación SUNAT" del bot; se ocultan aquí.
+  const eventosVis = (eventos || []).filter((e: any) =>
+    !(e.tipo === "estado" && ["estado_sunat", "condicion_sunat"].includes(e.detalle?.campo)));
 
   const ids = (vincs || []).map((v: any) => v.publicacion_id);
   const SEL_PUB = "id,titulo,tipo,estado,creado_en,fecha_limite,autor:perfiles!publicaciones_autor_id_fkey(nombre),resp:perfiles!publicaciones_responsable_fkey(nombre),comentarios(count)";
@@ -366,7 +372,57 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                   🪪 DNI{ent.dni_vencimiento && new Date(ent.dni_vencimiento) < new Date() ? " ⚠" : ""}
                 </a>
               )}
+              {ent.firma_url && (
+                <a href={ent.firma_url} target="_blank" rel="noopener noreferrer"
+                  className="btn btn-ghost" style={{ fontSize: 12, padding: "7px 12px" }}>✍️ Firma</a>
+              )}
             </div>
+
+            {params.tipo === "persona" && ent.dni_vencimiento && (() => {
+              const v = new Date(ent.dni_vencimiento);
+              const dias = Math.ceil((v.getTime() - Date.now()) / 86400000);
+              const fmt = v.toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" });
+              if (dias < 0) return (
+                <Alerta tono="roja"
+                  titulo={`🪪 DNI vencido — venció el ${fmt} (hace ${Math.abs(dias)} ${Math.abs(dias) === 1 ? "día" : "días"}).`}
+                  detalle="Pide el DNI renovado y actualiza la fecha en ✏️ Editar." />
+              );
+              if (dias <= 45) return (
+                <Alerta tono="ambar"
+                  titulo={`🪪 DNI por vencer — vence el ${fmt} (en ${dias} ${dias === 1 ? "día" : "días"}).`}
+                  detalle="Conviene renovarlo antes de la próxima postulación." />
+              );
+              return null;
+            })()}
+
+            {params.tipo === "empresa" && (() => {
+              const al: any[] = [];
+              const est = ent.estado_sunat, cond = ent.condicion_sunat;
+              if (est && est !== "activo") al.push(
+                <Alerta key="sunat-e" tono="roja"
+                  titulo={`🏛 SUNAT: ${String(est).replace(/_/g, " ")}`}
+                  detalle="La empresa no está activa en SUNAT — no puede postular a fondos hasta regularizar." />
+              );
+              else if (cond === "no_habido") al.push(
+                <Alerta key="sunat-c" tono="roja"
+                  titulo="🏛 SUNAT: no habido"
+                  detalle="Domicilio fiscal no habido — regulariza antes de presentar documentos o postular." />
+              );
+              if (!ent.renca) al.push(
+                <Alerta key="renca" tono="ambar"
+                  titulo="🎬 Sin RENCA registrado"
+                  detalle="El RENCA es obligatorio para postular a fondos. Regístralo en ✏️ Editar." />
+              );
+              if (ent.vigencia_poder_fecha) {
+                const dias = Math.floor((Date.now() - new Date(ent.vigencia_poder_fecha).getTime()) / 86400000);
+                if (dias > 90) al.push(
+                  <Alerta key="vig" tono="ambar"
+                    titulo={`📜 Vigencia de poder emitida hace ${dias} días`}
+                    detalle="La vigencia de poder suele caducar para trámites (~30–90 días). Solicita una reciente antes de presentar documentos." />
+                );
+              }
+              return al.length ? <>{al}</> : null;
+            })()}
 
             {conf.campos.map(([lbl, key]) =>
               ent[key] != null && ent[key] !== "" ? (
@@ -374,6 +430,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                   <span className="fk">{lbl}</span>
                   <span className="fv" style={
                     key === "estado_sunat" && ent[key] !== "activo" ? { color: "var(--red)", fontWeight: 700 }
+                      : key === "dni_vencimiento" && new Date(ent[key]) < new Date() ? { color: "var(--red)", fontWeight: 700 }
                       : CAMPOS_DINERO.includes(key) ? { color: "var(--teal)", fontWeight: 700 } : undefined
                   }>
                     {key === "rol" && String(ent[key]).split(",").length > 3 ? (
@@ -641,19 +698,21 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                   </details>
                 )}
 
-                {(eventos || []).length > 0 && (
+                {eventosVis.length > 0 && (
                   <details style={{ marginTop: 16 }}>
                     <summary style={{ color: "var(--muted)", fontSize: 13, cursor: "pointer", padding: "6px 0" }}>
-                      🕐 Historial de la entidad · {(eventos || []).length} eventos
+                      🕐 Historial de la entidad · {eventosVis.length} eventos
                     </summary>
                     <div className="tl" style={{ marginTop: 12 }}>
-                      {(eventos || []).map((e: any, i: number) => (
+                      {eventosVis.map((e: any, i: number) => (
                         <div className={`tl-ev ${e.actor ? e.tipo : "bot"}`} key={i}>
-                          <span>{e.tipo === "creado" ? "📝" : e.tipo === "estado" ? "🔄" : "🤖"}</span>
+                          <span>{e.tipo === "creado" ? "📝" : e.tipo === "estado" ? "🔄" : e.tipo === "editado" ? "✏️" : e.tipo === "dato" ? "🔑" : "🤖"}</span>
                           <span>
                             {e.tipo === "creado" && `${e.actor?.nombre || "Sistema"} registró esta entidad`}
                             {e.tipo === "estado" && `${e.actor?.nombre || "Bot Qhaway"} · ${e.detalle?.campo}: ${String(e.detalle?.de ?? "—").replace(/_/g, " ")} → ${String(e.detalle?.a ?? "—").replace(/_/g, " ")}`}
-                            {!["creado", "estado"].includes(e.tipo) && (e.detalle?.mensaje || e.tipo)}
+                            {e.tipo === "editado" && `${e.actor?.nombre || "Alguien"} ${e.detalle?.mensaje || "editó la ficha"}`}
+                            {e.tipo === "dato" && `${e.actor?.nombre || "Alguien"} ${e.detalle?.mensaje || "modificó un dato"}`}
+                            {!["creado", "estado", "editado", "dato"].includes(e.tipo) && (e.detalle?.mensaje || e.tipo)}
                           </span>
                           <span className="t">{fecha(e.creado_en)}</span>
                         </div>
@@ -664,66 +723,4 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               </>
             );
 
-            if (params.tipo === "postulacion") {
-              const enJuego = ["en_preparacion", "enviada", "finalista"].includes(ent.estado);
-              const hitosConc = (postCtx?.conv?.hitos || [])
-                .filter((h: any) => h.clase === "hito_externo" && h.estado !== "cancelada")
-                .sort((a: any, b: any) => (a.fecha_inicio < b.fecha_inicio ? -1 : 1));
-              // Ganadora: su ruta ya no es el concurso, es la ejecución
-              const rutaEjec = ent.estado === "ganadora" ? [
-                ent.fecha_firma_acta && { fecha: ent.fecha_firma_acta, titulo: "Firma del acta de compromiso", icono: "🖋", color: "var(--green)" },
-                ent.fecha_limite_rendicion && { fecha: ent.fecha_limite_rendicion, titulo: `Límite de rendición${ent.fecha_prorroga ? " (original)" : ""}`, icono: "🧾", color: ent.fecha_prorroga ? "#4a4a5e" : "var(--yellow)" },
-                ent.fecha_prorroga && { fecha: ent.fecha_prorroga, titulo: "Límite de rendición (prórroga)", icono: "⏳", color: "var(--yellow)" },
-              ].filter(Boolean) as any[] : [];
-              return (
-                <>
-                  {enJuego && hitosConc.length > 0 && (
-                    <div className="card" style={{ marginBottom: 16 }}>
-                      <div className="panel-h">📅 Línea de tiempo del concurso — la carrera de esta postulación</div>
-                      <LineaTiempo eventos={hitosConc.map((h: any) => ({
-                        fecha: h.fecha_inicio, titulo: h.nombre, icono: "🏛",
-                        color: h.estado === "finalizada" ? "#4a4a5e" : "var(--violet)",
-                      }))} />
-                    </div>
-                  )}
-                  {rutaEjec.length > 0 && (
-                    <div className="card" style={{ marginBottom: 16, borderColor: "rgba(46,204,113,.3)" }}>
-                      <div className="panel-h" style={{ color: "var(--green)" }}>🏆 Camino de ejecución — del acta a la rendición</div>
-                      <LineaTiempo eventos={rutaEjec} />
-                    </div>
-                  )}
-                  {ent.estado === "ganadora" && !rutaEjec.length && (
-                    <div className="card" style={{ marginBottom: 16 }}>
-                      <span style={{ color: "var(--yellow)", fontSize: 13 }}>
-                        ⚠ Ganadora sin fechas de ejecución — registra acta y rendición en ✏️ Editar.
-                      </span>
-                    </div>
-                  )}
-                  {vida}
-                </>
-              );
-            }
-            if (params.tipo !== "proyecto" && params.tipo !== "convocatoria") return vida;
-
-            const vivasCrono = cronoActs.filter((a: any) => a.estado !== "cancelada");
-            const proxima = vivasCrono
-              .filter((a: any) => a.estado === "planificada")
-              .sort((a: any, b: any) => (a.fecha_inicio < b.fecha_inicio ? -1 : 1))[0];
-            const etiquetaCrono = `📅 Cronograma · ${vivasCrono.length}` +
-              (proxima ? ` · próx. ${new Date(proxima.fecha_inicio + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short" })}` : "");
-
-            return (
-              <TabsPanel
-                labels={[`🔥 Actividad viva · ${activas.length}`, etiquetaCrono]}
-                paneles={[
-                  vida,
-                  <CronogramaProyecto key="crono" dueno={params.tipo as "proyecto" | "convocatoria"} duenoId={params.id} actividades={cronoActs} perfiles={perfilesCat} />,
-                ]}
-              />
-            );
-          })()}
-        </main>
-      </div>
-    </div>
-  );
-}
+            if (params.tipo === "postulacion") 

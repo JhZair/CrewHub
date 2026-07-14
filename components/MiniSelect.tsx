@@ -4,12 +4,14 @@ import { useRef, useState } from "react";
 /* Desplegable propio (reemplaza al <select> nativo, cuyo menú no se puede
    estilizar y muestra un resaltado celeste ajeno a la paleta). Mantiene el
    look de badge/pill del disparador y abre un menú con la identidad del app. */
-export default function MiniSelect({ value, options, onSelect, buttonClass, buttonStyle }: {
+export default function MiniSelect({ value, options, onSelect, buttonClass, buttonStyle, block, error }: {
   value: string;
   options: string[][];
   onSelect: (v: string) => void;
   buttonClass?: string;
   buttonStyle?: React.CSSProperties;
+  block?: boolean;   // ancho completo, con look de campo de formulario
+  error?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [arriba, setArriba] = useState(false);
@@ -27,26 +29,17 @@ export default function MiniSelect({ value, options, onSelect, buttonClass, butt
     setOpen(o => !o);
   };
 
+  const estiloCampo: React.CSSProperties = block
+    ? { width: "100%", justifyContent: "space-between", background: "var(--bg)",
+        border: `1px solid ${error ? "var(--red)" : open ? "var(--accent)" : "var(--border)"}`,
+        borderRadius: 9, padding: "9px 12px", fontSize: 13,
+        color: value ? "var(--text)" : "var(--dim)", fontWeight: 400,
+        textTransform: "none", letterSpacing: 0 }
+    : {};
+
   return (
-    <span style={{ position: "relative", display: "inline-flex" }} onClick={e => e.stopPropagation()}>
-      <button ref={btnRef} className={buttonClass}
-        style={{ ...buttonStyle, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5 }}
-        onClick={toggle}>
-        {label} <span style={{ fontSize: 9, opacity: .75 }}>▾</span>
-      </button>
-      {open && (
-        <>
-          <span className="rx-fondo" onClick={e => { e.stopPropagation(); setOpen(false); }} />
-          <div className={`combo-menu${arriba ? " arriba" : ""}`}>
-            {options.map(o => (
-              <button key={o[0]} className={`combo-item ${o[0] === value ? "on" : ""}`}
-                onClick={e => { e.stopPropagation(); setOpen(false); if (o[0] !== value) onSelect(o[0]); }}>
-                {o[1]}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-    </span>
-  );
-}
+    <span style={{ position: "relative", display: block ? "flex" : "inline-flex", width: block ? "100%" : undefined,
+      ...(block ? { textTransform: "none" as const, letterSpacing: "normal", fontSize: 13 } : {}) }}
+      onClick={e => e.stopPropagation()}>
+      <button ref={btnRef} className={buttonClass} type="button"
+        style={{ ...estiloCampo, ...buttonStyle, cursor: "pointer", 

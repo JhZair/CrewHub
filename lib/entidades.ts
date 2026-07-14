@@ -201,7 +201,7 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
     campos: [
       { key: "nombre", label: "Nombre completo", requerido: true },
       { key: "alias", label: "Nombre corto / alias" },
-      { key: "tipo", label: "Tipo", tipo: "select", opciones: ["personal", "colaborador", "independiente", "contacto"] },
+      { key: "tipo", label: "Tipo", tipo: "select", opciones: ["personal", "colaborador", "colaborador eventual", "independiente", "contacto"] },
       { key: "equipo", label: "Equipo", tipo: "select", opciones: ["creativo", "tecnico", "artistico", "administrativo"] },
       { key: "estado", label: "Estado", tipo: "select", opciones: ["activo", "potencial", "vetado", "inactivo"] },
       { key: "rol", label: "Especialidades / rol", sugerencias: ESPECIALIDADES, multiple: true },
@@ -214,7 +214,4 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
       { key: "carpeta_drive_url", label: "Carpeta en Drive (link)", valida: "url" },
       { key: "cv_url", label: "CV / hoja de vida (link Drive)", valida: "url" },
       { key: "dni_url", label: "DNI escaneado (link Drive)", valida: "url" },
-      { key: "notas", label: "Notas", tipo: "textarea" },
-    ],
-  },
-};
+      { key: "firma_url", label: "Firma escaneada

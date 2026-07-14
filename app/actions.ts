@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { FORM_CONF } from "@/lib/entidades";
 import { nrmQ } from "@/lib/quechua";
+import { procesarSunatEmpresa, correrRondaSunat } from "@/lib/sunat";
 
 /* Crear o actualizar una entidad núcleo (proyecto/empresa/persona).
    La config compartida actúa como whitelist de tabla y campos. */
@@ -32,8 +33,29 @@ export async function guardarEntidad(tipo: string, id: string | null, datos: Rec
   if (req) return { error: `El campo "${req.label}" es obligatorio.` };
 
   if (id) {
+    // Foto previa para el diff del historial (el trigger de BD solo
+    // registra unos pocos campos de estado; aquí anotamos el resto)
+    const TRIGGER_KEYS = ["estado", "etapa", "estado_actividad", "prioridad", "responsable"];
+    const { data: antes } = await supabase.from(conf.tabla).select("*").eq("id", id).maybeSingle();
     const { error } = await supabase.from(conf.tabla).update(limpio).eq("id", id);
     if (error) return { error: error.message };
+    if (antes) {
+      const cambios = conf.campos
+        .filter(c => (c.key in limpio) && !TRIGGER_KEYS.includes(c.key))
+        .filter(c => {
+          const a = (antes as any)[c.key], b = limpio[c.key];
+          return NUMERICOS.includes(c.key)
+            ? Number(a ?? 0) !== Number(b ?? 0)
+            : String(a ?? "") !== String(b ?? "");
+        })
+        .map(c => c.label);
+      if (cambios.length) {
+        await supabase.from("actividad").insert({
+          entidad_tipo: tipo, entidad_id: id, actor_id: user.id, tipo: "editado",
+          detalle: { mensaje: `actualizó: ${cambios.join(", ").toLowerCase()}`, campos: cambios },
+        });
+      }
+    }
     revalidatePath(`/entidad/${tipo}/${id}`);
     return { id };
   }
@@ -977,6 +999,10 @@ export async function agregarDato(
     verificado_en: new Date().toISOString().slice(0, 10), // recién ingresado = verificado hoy
   });
   if (error) return { error: error.message };
+  await supabase.from("actividad").insert({
+    entidad_tipo: dueno, entidad_id: duenoId, actor_id: user.id, tipo: "dato",
+    detalle: { mensaje: `agregó el dato «${etiqueta.trim()}»` },
+  });
   revalidatePath(`/entidad/${dueno}/${duenoId}`);
   return {};
 }
@@ -992,6 +1018,10 @@ export async function editarDato(
     etiqueta: etiqueta.trim(), valor: valor.trim() || null,
   }).eq("id", id);
   if (error) return { error: error.message };
+  await supabase.from("actividad").insert({
+    entidad_tipo: dueno, entidad_id: duenoId, actor_id: user.id, tipo: "dato",
+    detalle: { mensaje: `editó el dato «${etiqueta.trim()}»` },
+  });
   revalidatePath(`/entidad/${dueno}/${duenoId}`);
   return {};
 }
@@ -1000,9 +1030,14 @@ export async function verificarDato(id: string, dueno: string, duenoId: string) 
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
+  const { data: prev } = await supabase.from("credencial_datos").select("etiqueta").eq("id", id).maybeSingle();
   const { error } = await supabase.from("credencial_datos")
     .update({ verificado_en: new Date().toISOString().slice(0, 10) }).eq("id", id);
   if (error) return { error: error.message };
+  await supabase.from("actividad").insert({
+    entidad_tipo: dueno, entidad_id: duenoId, actor_id: user.id, tipo: "dato",
+    detalle: { mensaje: `reverificó el dato «${prev?.etiqueta || "—"}»` },
+  });
   revalidatePath(`/entidad/${dueno}/${duenoId}`);
   return {};
 }
@@ -1011,8 +1046,13 @@ export async function borrarDato(id: string, dueno: string, duenoId: string) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
+  const { data: prev } = await supabase.from("credencial_datos").select("etiqueta").eq("id", id).maybeSingle();
   const { error } = await supabase.from("credencial_datos").delete().eq("id", id);
   if (error) return { error: error.message };
+  await supabase.from("actividad").insert({
+    entidad_tipo: dueno, entidad_id: duenoId, actor_id: user.id, tipo: "dato",
+    detalle: { mensaje: `borró el dato «${prev?.etiqueta || "—"}»` },
+  });
   revalidatePath(`/entidad/${dueno}/${duenoId}`);
   return {};
 }
@@ -1270,7 +1310,7 @@ export async function verificarLinksDrive() {
   const FUENTES: [string, string, string[]][] = [
     ["proyecto", "proyectos", ["carpeta_drive_url", "presupuesto_url"]],
     ["empresa", "empresas", ["carpeta_drive_url", "ficha_ruc_url", "vigencia_poder_url"]],
-    ["persona", "personas", ["carpeta_drive_url", "cv_url", "dni_url"]],
+    ["persona", "personas", ["carpeta_drive_url", "cv_url", "dni_url", "firma_url"]],
     ["convocatoria", "convocatorias", ["bases_url", "carpeta_drive_url"]],
     ["postulacion", "postulaciones", ["acta_url", "matriz_jurado_url", "carpeta_drive_url"]],
     ["equipamiento", "equipamiento", ["link"]],
@@ -1346,33 +1386,8 @@ export async function crearCasoUrgente(titulo: string, cuerpo: string, entTipo: 
 }
 
 /* ===== VERIFICACIÓN SUNAT AUTOMÁTICA (API de consulta RUC) =====
-   Requiere SUNAT_API_TOKEN en las variables de entorno
-   (token gratuito de apis.net.pe). */
-async function consultarRucApi(ruc: string): Promise<{ estado?: string; condicion?: string; error?: string }> {
-  const token = process.env.SUNAT_API_TOKEN;
-  if (!token) return { error: "Falta configurar SUNAT_API_TOKEN en el entorno." };
-  try {
-    const r = await fetch(`https://api.decolecta.com/v1/sunat/ruc?numero=${encodeURIComponent(ruc)}`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
-      cache: "no-store",
-    });
-    if (!r.ok) {
-      if (r.status === 401 || r.status === 429) {
-        return { error: `Límite del plan de decolecta alcanzado (${r.status}) — revisa tu cupo mensual de consultas.` };
-      }
-      const cuerpo = await r.text().catch(() => "");
-      return { error: `SUNAT respondió ${r.status} para RUC ${ruc}${cuerpo ? ` · ${cuerpo.slice(0, 120)}` : ""}` };
-    }
-    const d: any = await r.json();
-    const limpiar = (s: any) => String(s || "").trim().toLowerCase().replace(/\s+/g, "_");
-    return {
-      estado: limpiar(d.estado || d.estadoContribuyente || d.status),
-      condicion: limpiar(d.condicion || d.condicionDomicilio || d.condition),
-    };
-  } catch (e: any) {
-    return { error: "No se pudo consultar la API: " + (e?.message || "error de red") };
-  }
-}
+   La lógica vive en lib/sunat.ts (reutilizada por el cron semanal).
+   Aquí solo los envoltorios con sesión de usuario. */
 
 export async function verificarRucSunat(empresaId: string) {
   const supabase = createClient();
@@ -1382,44 +1397,21 @@ export async function verificarRucSunat(empresaId: string) {
     .select("id,nombre,ruc,estado_sunat,condicion_sunat").eq("id", empresaId).single();
   if (!emp?.ruc) return { error: "Esta empresa no tiene RUC registrado." };
 
-  const r = await consultarRucApi(emp.ruc);
+  // El caso que se genere lo firma el usuario que verifica (evita chocar
+  // con RLS de autor); el cron sí lo firma el bot.
+  const r: any = await procesarSunatEmpresa(supabase, emp as any, user.id);
   if (r.error) return { error: r.error };
-
-  const hoy = new Date().toISOString().slice(0, 10);
-  const { error } = await supabase.from("empresas").update({
-    estado_sunat: r.estado || null,
-    condicion_sunat: r.condicion || null,
-    fecha_verificacion_sunat: hoy,
-  }).eq("id", empresaId);
-  if (error) return { error: error.message };
-
-  const cambio = emp.estado_sunat !== r.estado || emp.condicion_sunat !== r.condicion;
-  await supabase.from("actividad").insert({
-    entidad_tipo: "empresa", entidad_id: empresaId, tipo: "bot",
-    detalle: { mensaje: `Verificación SUNAT automática: ${r.estado} · ${r.condicion}${cambio ? " (¡cambió!)" : ""}`, regla: "sunat_api" },
-  });
-  return { estado: r.estado, condicion: r.condicion, cambio };
+  revalidatePath(`/entidad/empresa/${empresaId}`);
+  return { estado: r.estado, condicion: r.condicion, cambio: r.cambio };
 }
 
 export async function verificarSunatLote() {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
-  const { data: emps } = await supabase.from("empresas")
-    .select("id,nombre,ruc").eq("estado", "activa").not("ruc", "is", null);
-
-  let ok = 0, alertas: string[] = [], fallas: string[] = [];
-  for (const emp of emps || []) {
-    const r = await verificarRucSunat(emp.id);
-    if ((r as any).error) { fallas.push(`${emp.nombre}: ${(r as any).error}`); continue; }
-    ok++;
-    const rr = r as any;
-    if (rr.estado !== "activo" || (rr.condicion && rr.condicion !== "habido"))
-      alertas.push(`${emp.nombre}: ${rr.estado} · ${rr.condicion}`);
-    await new Promise(res => setTimeout(res, 400)); // respirar entre consultas
-  }
+  const res = await correrRondaSunat(supabase, user.id);
   revalidatePath("/empresas");
-  return { ok, alertas, fallas: fallas.slice(0, 5) };
+  return { ok: res.ok, alertas: res.alertas, fallas: res.fallas.slice(0, 5) };
 }
 
 /* Consulta RENIEC: el nombre oficial detrás de un DNI (mismo token) */
@@ -1904,3 +1896,4 @@ export async function cambiarTipo(pubId: string, tipo: string) {
   revalidatePath("/");
   return {};
 }
+                                                                             

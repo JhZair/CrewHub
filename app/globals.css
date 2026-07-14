@@ -113,8 +113,10 @@ a{color:inherit;text-decoration:none}
 .filtro-mas-item:hover{background:#22223a;color:var(--text)}
 .filtro-mas-item.on{background:rgba(124,92,255,.12);color:var(--text)}
 /* Desplegable propio de tipo/estado en las tarjetas (reemplaza al select nativo) */
-.combo-menu{position:absolute;top:calc(100% + 5px);left:0;z-index:50;background:var(--panel);border:1px solid var(--border2);border-radius:11px;padding:5px;min-width:150px;max-height:260px;overflow-y:auto;box-shadow:0 12px 30px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:2px}
+.combo-menu{position:absolute;top:calc(100% + 5px);left:0;z-index:50;background:var(--panel);border:1px solid var(--border2);border-radius:11px;padding:5px;min-width:150px;max-height:260px;overflow-y:auto;box-shadow:0 12px 30px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:2px;text-transform:none;letter-spacing:normal}
 .combo-menu.arriba{top:auto;bottom:calc(100% + 5px)}
+.combo-menu.block{right:0;min-width:0}
+.combo-menu.block .combo-item{white-space:normal}
 .combo-item{text-align:left;background:transparent;border:none;border-radius:7px;padding:7px 10px;font-size:12.5px;color:var(--muted);font-weight:600;cursor:pointer;white-space:nowrap}
 .combo-item:hover{background:#22223a;color:var(--text)}
 .combo-item.on{background:rgba(124,92,255,.14);color:var(--text)}
@@ -597,4 +599,4 @@ img.av{border:1px solid var(--border2)}
 .buscador-glob{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:7px 12px;width:100%;max-width:280px;min-width:130px;flex-shrink:1}
 .buscador-glob:focus-within{border-color:var(--accent)}
 .buscador-glob input{flex:1;background:none;border:none;outline:none;font-size:13px;color:var(--text);min-width:0}
-.buscador-glob .kbd{font-size:10px;color:var(--dim);border:1px solid var(--border2);border-radius:5px;padding:2px 6px;white-space:nowrap}
+.buscad

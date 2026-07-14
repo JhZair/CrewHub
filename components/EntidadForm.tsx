@@ -1,10 +1,14 @@
 "use client";
 import { guardarEntidad, buscarParecidos } from "@/app/actions";
+import MiniSelect from "@/components/MiniSelect";
 import { FORM_CONF, VALIDADORES } from "@/lib/entidades";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 
 const PALETA = ["#a78bfa", "#3b82f6", "#f59e0b", "#2ecc71", "#ec4899", "#2dd4bf", "#f4b400", "#60a5fa"];
+
+/* ¿el valor parece un link abrible? (para el botón ↗ de campos de link) */
+const esLink = (v?: string) => /^https?:\/\/\S+/.test((v || "").trim());
 
 /* Campo de opciones múltiples: chips + autocompletado; guarda "a, b, c" */
 function MultiTag({ valor, onChange, sugerencias, listId, error }: {
@@ -131,7 +135,7 @@ export function EntidadForm({ tipo, id, valores, onDone }:
       <b style={{ fontSize: 15 }}>{id ? `✏️ Editar ${conf.titulo.toLowerCase()}` : `＋ Nuevo ${conf.titulo.toLowerCase()}`}</b>
       <div className="f-grid">
         {campos.map(c => (
-          <label key={c.key} className="f-campo" style={c.tipo === "textarea" ? { gridColumn: "1 / -1" } : undefined}>
+          <div key={c.key} className="f-campo" style={c.tipo === "textarea" ? { gridColumn: "1 / -1" } : undefined}>
             <span style={errores[c.key] ? { color: "var(--red)" } : undefined}>
               {c.label}{c.requerido && <b style={{ color: "var(--red)" }}> *</b>}
             </span>
@@ -140,18 +144,15 @@ export function EntidadForm({ tipo, id, valores, onDone }:
                 placeholder="Se genera automáticamente"
                 style={{ opacity: .55, cursor: "not-allowed" }} />
             ) : c.tipo === "select" ? (
-              <select value={form[c.key]} onChange={e => setCampo(c.key, e.target.value)}
-                style={errores[c.key] ? { borderColor: "var(--red)" } : undefined}>
-                <option value="">—</option>
-                {/* valor actual que no está entre las opciones (dato migrado o
-                    puesto por el sistema): visible pero no re-elegible */}
-                {form[c.key] && !c.opciones!.includes(form[c.key]) && (
-                  <option value={form[c.key]} disabled>
-                    {form[c.key].replace(/_/g, " ")} (valor actual)
-                  </option>
-                )}
-                {c.opciones!.map(o => <option key={o} value={o}>{o.replace(/_/g, " ")}</option>)}
-              </select>
+              <MiniSelect block value={form[c.key]} error={!!errores[c.key]}
+                onSelect={v => setCampo(c.key, v)}
+                options={[
+                  ["", "—"],
+                  // valor actual que no está entre las opciones (dato migrado): visible
+                  ...(form[c.key] && !c.opciones!.includes(form[c.key])
+                    ? [[form[c.key], `${form[c.key].replace(/_/g, " ")} (valor actual)`]] : []),
+                  ...c.opciones!.map(o => [o, o.replace(/_/g, " ")]),
+                ]} />
             ) : c.tipo === "textarea" ? (
               <textarea rows={3} value={form[c.key]} onChange={e => setCampo(c.key, e.target.value)}
                 style={errores[c.key] ? { borderColor: "var(--red)" } : undefined} />
@@ -180,12 +181,27 @@ export function EntidadForm({ tipo, id, valores, onDone }:
                   {sugerenciasDe(c)!.map(s => <option key={s} value={s} />)}
                 </datalist>
               </>
+            ) : c.valida === "url" ? (
+              <div style={{ display: "flex", gap: 6, alignItems: "stretch" }}>
+                <input value={form[c.key]} onChange={e => setCampo(c.key, e.target.value)}
+                  placeholder="https://..." inputMode="url"
+                  style={{ flex: 1, minWidth: 0, ...(errores[c.key] ? { borderColor: "var(--red)" } : {}) }} />
+                <a href={esLink(form[c.key]) ? form[c.key].trim() : undefined}
+                  target="_blank" rel="noopener noreferrer"
+                  title={esLink(form[c.key]) ? "Abrir el link en otra pestaña para revisarlo" : "Pega un link válido (https://…) para poder abrirlo"}
+                  onClick={e => { if (!esLink(form[c.key])) e.preventDefault(); }}
+                  className="btn btn-ghost"
+                  style={{ padding: "0 12px", display: "inline-flex", alignItems: "center", fontSize: 15, textDecoration: "none", flex: "none",
+                    opacity: esLink(form[c.key]) ? 1 : .4, cursor: esLink(form[c.key]) ? "pointer" : "not-allowed" }}>
+                  ↗
+                </a>
+              </div>
             ) : (
               <input value={form[c.key]} onChange={e => setCampo(c.key, e.target.value)}
                 style={errores[c.key] ? { borderColor: "var(--red)" } : undefined} />
             )}
             {errores[c.key] && <span style={{ color: "var(--red)", fontSize: 10.5, textTransform: "none", letterSpacing: 0 }}>{errores[c.key]}</span>}
-          </label>
+          </div>
         ))}
       </div>
       {!id && parecidos.length > 0 && (
@@ -194,37 +210,4 @@ export function EntidadForm({ tipo, id, valores, onDone }:
           {parecidos.map(p => (
             <a key={p.id} href={`/entidad/${tipo}/${p.id}`} target="_blank" rel="noopener noreferrer"
               style={{ color: "var(--yellow)", fontWeight: 700, marginLeft: 8, textDecoration: "underline" }}>
-              {p.nombre} ↗
-            </a>
-          ))}
-        </div>
-      )}
-      <div style={{ display: "flex", gap: 10, marginTop: 14, justifyContent: "flex-end" }}>
-        <button className="btn btn-ghost" onClick={cancelar}>Cancelar</button>
-        <button className="btn" disabled={guardando} onClick={guardar}>
-          {guardando ? "Guardando..." : "Guardar"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/* Botón "Editar" que abre el formulario en ventana modal amplia */
-export function Mantenimiento({ tipo, id, valores }:
-  { tipo: string; id: string; valores: Record<string, any> }) {
-  const [abierto, setAbierto] = useState(false);
-  if (!FORM_CONF[tipo]) return null;
-  return (
-    <>
-      <button className="btn btn-ghost" onClick={() => setAbierto(true)}>✏️ Editar</button>
-      {abierto && (
-        <div className="modal-fondo"
-          onClick={e => { if (e.target === e.currentTarget) setAbierto(false); }}>
-          <div className="modal-ed">
-            <EntidadForm tipo={tipo} id={id} valores={valores} onDone={() => setAbierto(false)} />
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
+              {p.nombre
