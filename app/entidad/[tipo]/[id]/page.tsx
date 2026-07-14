@@ -723,4 +723,64 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               </>
             );
 
-            if (params.tipo === "postulacion") 
+            if (params.tipo === "postulacion") {
+              const enJuego = ["en_preparacion", "enviada", "finalista"].includes(ent.estado);
+              const hitosConc = (postCtx?.conv?.hitos || [])
+                .filter((h: any) => h.clase === "hito_externo" && h.estado !== "cancelada")
+                .sort((a: any, b: any) => (a.fecha_inicio < b.fecha_inicio ? -1 : 1));
+              // Ganadora: su ruta ya no es el concurso, es la ejecución
+              const rutaEjec = ent.estado === "ganadora" ? [
+                ent.fecha_firma_acta && { fecha: ent.fecha_firma_acta, titulo: "Firma del acta de compromiso", icono: "🖋", color: "var(--green)" },
+                ent.fecha_limite_rendicion && { fecha: ent.fecha_limite_rendicion, titulo: `Límite de rendición${ent.fecha_prorroga ? " (original)" : ""}`, icono: "🧾", color: ent.fecha_prorroga ? "#4a4a5e" : "var(--yellow)" },
+                ent.fecha_prorroga && { fecha: ent.fecha_prorroga, titulo: "Límite de rendición (prórroga)", icono: "⏳", color: "var(--yellow)" },
+              ].filter(Boolean) as any[] : [];
+              return (
+                <>
+                  {enJuego && hitosConc.length > 0 && (
+                    <div className="card" style={{ marginBottom: 16 }}>
+                      <div className="panel-h">📅 Línea de tiempo del concurso — la carrera de esta postulación</div>
+                      <LineaTiempo eventos={hitosConc.map((h: any) => ({
+                        fecha: h.fecha_inicio, titulo: h.nombre, icono: "🏛",
+                        color: h.estado === "finalizada" ? "#4a4a5e" : "var(--violet)",
+                      }))} />
+                    </div>
+                  )}
+                  {rutaEjec.length > 0 && (
+                    <div className="card" style={{ marginBottom: 16, borderColor: "rgba(46,204,113,.3)" }}>
+                      <div className="panel-h" style={{ color: "var(--green)" }}>🏆 Camino de ejecución — del acta a la rendición</div>
+                      <LineaTiempo eventos={rutaEjec} />
+                    </div>
+                  )}
+                  {ent.estado === "ganadora" && !rutaEjec.length && (
+                    <Alerta tono="ambar"
+                      titulo="🏆 Ganadora sin fechas de ejecución"
+                      detalle="Registra acta y rendición en ✏️ Editar." />
+                  )}
+                  {vida}
+                </>
+              );
+            }
+            if (params.tipo !== "proyecto" && params.tipo !== "convocatoria") return vida;
+
+            const vivasCrono = cronoActs.filter((a: any) => a.estado !== "cancelada");
+            const proxima = vivasCrono
+              .filter((a: any) => a.estado === "planificada")
+              .sort((a: any, b: any) => (a.fecha_inicio < b.fecha_inicio ? -1 : 1))[0];
+            const etiquetaCrono = `📅 Cronograma · ${vivasCrono.length}` +
+              (proxima ? ` · próx. ${new Date(proxima.fecha_inicio + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short" })}` : "");
+
+            return (
+              <TabsPanel
+                labels={[`🔥 Actividad viva · ${activas.length}`, etiquetaCrono]}
+                paneles={[
+                  vida,
+                  <CronogramaProyecto key="crono" dueno={params.tipo as "proyecto" | "convocatoria"} duenoId={params.id} actividades={cronoActs} perfiles={perfilesCat} />,
+                ]}
+              />
+            );
+          })()}
+        </main>
+      </div>
+    </div>
+  );
+}

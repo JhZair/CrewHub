@@ -210,4 +210,37 @@ export function EntidadForm({ tipo, id, valores, onDone }:
           {parecidos.map(p => (
             <a key={p.id} href={`/entidad/${tipo}/${p.id}`} target="_blank" rel="noopener noreferrer"
               style={{ color: "var(--yellow)", fontWeight: 700, marginLeft: 8, textDecoration: "underline" }}>
-              {p.nombre
+              {p.nombre} ↗
+            </a>
+          ))}
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 10, marginTop: 14, justifyContent: "flex-end" }}>
+        <button className="btn btn-ghost" onClick={cancelar}>Cancelar</button>
+        <button className="btn" disabled={guardando} onClick={guardar}>
+          {guardando ? "Guardando..." : "Guardar"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* Botón "Editar" que abre el formulario en ventana modal amplia */
+export function Mantenimiento({ tipo, id, valores }:
+  { tipo: string; id: string; valores: Record<string, any> }) {
+  const [abierto, setAbierto] = useState(false);
+  if (!FORM_CONF[tipo]) return null;
+  return (
+    <>
+      <button className="btn btn-ghost" onClick={() => setAbierto(true)}>✏️ Editar</button>
+      {abierto && (
+        <div className="modal-fondo"
+          onClick={e => { if (e.target === e.currentTarget) setAbierto(false); }}>
+          <div className="modal-ed">
+            <EntidadForm tipo={tipo} id={id} valores={valores} onDone={() => setAbierto(false)} />
+          </div>
+        </div>
+      )}
+    </>
+  );
+}

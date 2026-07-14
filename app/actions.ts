@@ -1896,4 +1896,3 @@ export async function cambiarTipo(pubId: string, tipo: string) {
   revalidatePath("/");
   return {};
 }
-                                                                             

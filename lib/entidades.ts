@@ -214,4 +214,8 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
       { key: "carpeta_drive_url", label: "Carpeta en Drive (link)", valida: "url" },
       { key: "cv_url", label: "CV / hoja de vida (link Drive)", valida: "url" },
       { key: "dni_url", label: "DNI escaneado (link Drive)", valida: "url" },
-      { key: "firma_url", label: "Firma escaneada
+      { key: "firma_url", label: "Firma escaneada (link Drive)", valida: "url" },
+      { key: "notas", label: "Notas", tipo: "textarea" },
+    ],
+  },
+};

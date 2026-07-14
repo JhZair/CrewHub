@@ -22,8 +22,7 @@ export default function MiniSelect({ value, options, onSelect, buttonClass, butt
     e.stopPropagation();
     if (!open && btnRef.current) {
       const r = btnRef.current.getBoundingClientRect();
-      const alto = Math.min(options.length * 34 + 12, 280); // alto estimado del menú
-      // Abre hacia arriba si abajo no cabe pero arriba sí
+      const alto = Math.min(options.length * 34 + 12, 280);
       setArriba(window.innerHeight - r.bottom < alto && r.top > alto);
     }
     setOpen(o => !o);
@@ -42,4 +41,23 @@ export default function MiniSelect({ value, options, onSelect, buttonClass, butt
       ...(block ? { textTransform: "none" as const, letterSpacing: "normal", fontSize: 13 } : {}) }}
       onClick={e => e.stopPropagation()}>
       <button ref={btnRef} className={buttonClass} type="button"
-        style={{ ...estiloCampo, ...buttonStyle, cursor: "pointer", 
+        style={{ ...estiloCampo, ...buttonStyle, cursor: "pointer", display: block ? "flex" : "inline-flex", alignItems: "center", gap: 5 }}
+        onClick={toggle}>
+        {label} <span style={{ fontSize: 9, opacity: .75 }}>▾</span>
+      </button>
+      {open && (
+        <>
+          <span className="rx-fondo" onClick={e => { e.stopPropagation(); setOpen(false); }} />
+          <div className={`combo-menu${arriba ? " arriba" : ""}${block ? " block" : ""}`}>
+            {options.map(o => (
+              <button key={o[0]} className={`combo-item ${o[0] === value ? "on" : ""}`}
+                onClick={e => { e.stopPropagation(); setOpen(false); if (o[0] !== value) onSelect(o[0]); }}>
+                {o[1]}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </span>
+  );
+}
