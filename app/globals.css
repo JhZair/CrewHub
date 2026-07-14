@@ -69,6 +69,11 @@ a{color:inherit;text-decoration:none}
 .cbox{display:flex;gap:10px;margin-top:14px;align-items:flex-end}
 .cbox input,.cbox textarea{flex:1;background:var(--card);border:1px solid var(--border);border-radius:11px;padding:11px 15px;outline:none;font-size:13px;color:var(--text)}
 .cbox input:focus,.cbox textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(124,92,255,.12)}
+.btn-responder{background:none;border:none;color:var(--dim);font-size:11.5px;cursor:pointer;padding:0}
+.btn-responder:hover{color:var(--accent)}
+.resp-box{margin-top:8px;width:100%}
+.resp-box textarea{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:8px 11px;font-size:12.5px;color:var(--text);outline:none;resize:vertical;line-height:1.4;font-family:inherit}
+.resp-box textarea:focus{border-color:var(--accent)}
 .h4{font-size:11.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--dim);margin:18px 0 10px}
 .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:18px}
 .login-card{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:40px 44px;text-align:center;max-width:380px}
@@ -122,6 +127,9 @@ a{color:inherit;text-decoration:none}
 .tl-resp{color:var(--teal);background:rgba(45,212,191,.1);padding:1px 7px;border-radius:6px}
 .mini-ind{font-size:10px;color:var(--dim);white-space:nowrap}
 .btn-ocultar:hover{color:var(--text)}
+/* Casos resueltos en el feed: atenuados; al pasar el mouse vuelven a plena */
+.card-apagada{opacity:.55;filter:saturate(.75)}
+.card-apagada:hover{opacity:1;filter:none}
 
 /* Campanita flotante global (páginas internas), encima del FAB "+" */
 .camp-flot{position:fixed;right:24px;bottom:88px;z-index:60}

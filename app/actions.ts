@@ -114,13 +114,13 @@ export async function crearPublicacion(
   return {};
 }
 
-export async function comentar(pubId: string, texto: string, imagenes: string[] = []) {
+export async function comentar(pubId: string, texto: string, imagenes: string[] = [], respondeA: string | null = null) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
   const { data: com, error } = await supabase
     .from("comentarios")
-    .insert({ publicacion_id: pubId, autor_id: user.id, cuerpo: texto, imagenes: (imagenes || []).slice(0, 6) })
+    .insert({ publicacion_id: pubId, autor_id: user.id, cuerpo: texto, imagenes: (imagenes || []).slice(0, 6), responde_a: respondeA || null })
     .select("id")
     .single();
   if (error) return { error: error.message };
@@ -1076,7 +1076,13 @@ async function consultarRucApi(ruc: string): Promise<{ estado?: string; condicio
       headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
       cache: "no-store",
     });
-    if (!r.ok) return { error: `API respondió ${r.status} para RUC ${ruc}` };
+    if (!r.ok) {
+      if (r.status === 401 || r.status === 429) {
+        return { error: `Límite del plan de decolecta alcanzado (${r.status}) — revisa tu cupo mensual de consultas.` };
+      }
+      const cuerpo = await r.text().catch(() => "");
+      return { error: `SUNAT respondió ${r.status} para RUC ${ruc}${cuerpo ? ` · ${cuerpo.slice(0, 120)}` : ""}` };
+    }
     const d: any = await r.json();
     const limpiar = (s: any) => String(s || "").trim().toLowerCase().replace(/\s+/g, "_");
     return {
@@ -1154,7 +1160,13 @@ export async function verificarDniReniec(personaId: string) {
       headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
       cache: "no-store",
     });
-    if (!r.ok) return { error: `RENIEC respondió ${r.status} para DNI ${dni}` };
+    if (!r.ok) {
+      if (r.status === 401 || r.status === 429) {
+        return { error: `Límite del plan de decolecta alcanzado (${r.status}) — revisa tu cupo mensual de consultas.` };
+      }
+      const cuerpo = await r.text().catch(() => "");
+      return { error: `RENIEC respondió ${r.status} para DNI ${dni}${cuerpo ? ` · ${cuerpo.slice(0, 120)}` : ""}` };
+    }
     const d: any = await r.json();
     const nombreReniec = (d.full_name && String(d.full_name).trim())
       || [d.first_name || d.nombres, d.first_last_name || d.apellidoPaterno, d.second_last_name || d.apellidoMaterno]

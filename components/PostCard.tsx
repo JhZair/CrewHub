@@ -40,7 +40,7 @@ export default function PostCard({
 }) {
   const router = useRouter();
   return (
-    <div className="card link" style={{ cursor: "pointer" }} onClick={() => router.push(href)}>
+    <div className={`card link ${estado === "resuelta" ? "card-apagada" : ""}`} style={{ cursor: "pointer" }} onClick={() => router.push(href)}>
       <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
         <Avatar nombre={autorNombre} color={autorColor} size={38} src={autorSrc} />
         <div style={{ flex: 1, minWidth: 0 }}>

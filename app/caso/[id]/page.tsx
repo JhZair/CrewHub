@@ -9,6 +9,7 @@ import DescripcionEditable from "@/components/DescripcionEditable";
 import EtiquetasEditor from "@/components/EtiquetasEditor";
 import VinculosEditor from "@/components/VinculosEditor";
 import ComentarioTexto from "@/components/ComentarioTexto";
+import RespuestaBox from "@/components/RespuestaBox";
 import Realtime from "@/components/Realtime";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
@@ -230,6 +231,11 @@ export default async function Caso({ params }: { params: { id: string } }) {
                 <Avatar nombre={c.autor?.nombre} color={c.autor?.color} size={32} src={c.autor?.avatar_url} />
                 <div className="bubble">
                   <div className="who">{c.autor?.nombre}<span className="t">{fecha(c.creado_en)}</span></div>
+                  {c.responde_a && comMap.get(c.responde_a) && (
+                    <div style={{ fontSize: 11, color: "var(--dim)", margin: "1px 0 4px" }}>
+                      ↳ en respuesta a <b style={{ color: "var(--violet)" }}>{(comMap.get(c.responde_a) as any)?.autor?.nombre || "un comentario"}</b>
+                    </div>
+                  )}
                   <ComentarioTexto comentarioId={c.id} pubId={p.id} cuerpo={c.cuerpo || ""}
                     esMio={c.autor_id === user.id} editadoEn={c.editado_en} />
                   {(c.imagenes || []).length > 0 && (
@@ -241,8 +247,9 @@ export default async function Caso({ params }: { params: { id: string } }) {
                       ))}
                     </div>
                   )}
-                  <div style={{ marginTop: 7 }}>
+                  <div style={{ marginTop: 7, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                     <Reacciones pubId={p.id} comentarioId={c.id} reacciones={rxCom.get(c.id) || []} userId={user.id} />
+                    <RespuestaBox pubId={p.id} comentarioId={c.id} />
                   </div>
                 </div>
               </div>

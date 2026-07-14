@@ -187,6 +187,9 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
   Object.entries(catalogos).forEach(([t, items]) =>
     items.forEach((it: any) => nombres.set(`${t}:${it.id}`, it.nombre))
   );
+  // En los chips del feed, la persona se muestra con su nombre corto (alias)
+  // para ocupar menos espacio; el buscador del compositor conserva el completo.
+  (pers.data || []).forEach((x: any) => nombres.set(`persona:${x.id}`, x.alias || x.nombre));
 
   // Contexto para las notificaciones: vínculos de entidad de cada caso notificado
   const idsNotif = [...new Set((notifs || []).map((n: any) => n.publicacion_id).filter(Boolean))];
