@@ -1,14 +1,15 @@
 "use client";
 import { editarCuerpo } from "@/app/actions";
 import TextoRico from "@/components/TextoRico";
+import Foto from "@/components/Foto";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 /* Descripción del caso con lápiz: clic, corriges, Guardar. Si está vacía,
    muestra "+ Agregar descripción". Enter hace salto de línea (no guarda),
    Escape cancela. La bitácora recuerda la edición. */
-export default function DescripcionEditable({ pubId, cuerpo }: {
-  pubId: string; cuerpo: string;
+export default function DescripcionEditable({ pubId, cuerpo, estado, imagenes }: {
+  pubId: string; cuerpo: string; estado?: string; imagenes?: string[];
 }) {
   const [editando, setEditando] = useState(false);
   const [valor, setValor] = useState(cuerpo);
@@ -27,12 +28,22 @@ export default function DescripcionEditable({ pubId, cuerpo }: {
   };
 
   if (!editando) {
-    return cuerpo ? (
-      <p className="desc" style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-        <span style={{ flex: 1, whiteSpace: "pre-wrap" }}><TextoRico texto={cuerpo} /></span>
-        <button title="Editar descripción" onClick={() => setEditando(true)}
-          style={{ color: "var(--dim)", fontSize: 13, flex: "none" }}>✎</button>
-      </p>
+    const imgs = imagenes || [];
+    return (cuerpo || imgs.length > 0) ? (
+      <div className={`desc est-${estado || ""}`}>
+        <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+          <span style={{ flex: 1, whiteSpace: "pre-wrap" }}>
+            {cuerpo ? <TextoRico texto={cuerpo} /> : <span style={{ color: "var(--muted)", fontStyle: "italic" }}>Sin texto</span>}
+          </span>
+          <button title="Editar descripción" onClick={() => setEditando(true)}
+            style={{ color: "var(--dim)", fontSize: 13, flex: "none" }}>✎</button>
+        </div>
+        {imgs.length > 0 && (
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: cuerpo ? 12 : 2 }}>
+            {imgs.map((u, i) => <Foto key={i} src={u} />)}
+          </div>
+        )}
+      </div>
     ) : (
       <button className="desc-add" onClick={() => setEditando(true)}>+ Agregar descripción</button>
     );

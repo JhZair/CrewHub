@@ -7,6 +7,7 @@ import AvisoEnterado from "@/components/AvisoEnterado";
 import SubCasos from "@/components/SubCasos";
 import TituloEditable from "@/components/TituloEditable";
 import DescripcionEditable from "@/components/DescripcionEditable";
+import Foto from "@/components/Foto";
 import EtiquetasEditor from "@/components/EtiquetasEditor";
 import VinculosEditor from "@/components/VinculosEditor";
 import ComentarioTexto from "@/components/ComentarioTexto";
@@ -194,17 +195,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
           <span className="v">{fecha(p.creado_en)}<br /><span style={{ color: "var(--muted)", fontWeight: 400 }}>por {p.autor?.nombre}</span></span></div>
       </div>
 
-      <DescripcionEditable pubId={p.id} cuerpo={p.cuerpo || ""} />
-
-      {(p.imagenes || []).length > 0 && (
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", margin: "4px 0 12px" }}>
-          {p.imagenes.map((u: string, i: number) => (
-            <a key={i} href={u} target="_blank" rel="noopener noreferrer">
-              <img src={u} alt="" style={{ maxHeight: 260, maxWidth: "100%", borderRadius: 12, border: "1px solid var(--border)" }} />
-            </a>
-          ))}
-        </div>
-      )}
+      <DescripcionEditable pubId={p.id} cuerpo={p.cuerpo || ""} estado={p.estado} imagenes={p.imagenes || []} />
 
       {p.tipo === "aviso" && (
         <AvisoEnterado
@@ -251,9 +242,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
                   {(c.imagenes || []).length > 0 && (
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
                       {c.imagenes.map((u: string, j: number) => (
-                        <a key={j} href={u} target="_blank" rel="noopener noreferrer">
-                          <img src={u} alt="" style={{ maxHeight: 160, borderRadius: 10, border: "1px solid var(--border)" }} />
-                        </a>
+                        <Foto key={j} src={u} maxHeight={160} />
                       ))}
                     </div>
                   )}

@@ -5,6 +5,8 @@ import NuevoBadge from "@/components/NuevoBadge";
 import MiniSelect from "@/components/MiniSelect";
 import TextoRico from "@/components/TextoRico";
 import { cambiarTipo, cambiarEstado, ocultarDelFeed, toggleEnterado } from "@/app/actions";
+import { celebrarResuelto } from "@/lib/celebra";
+import Foto from "@/components/Foto";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -89,9 +91,9 @@ export default function PostCard({
           {(imagenes || []).length > 0 && (
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 9 }}>
               {imagenes!.slice(0, 4).map((u, i) => (
-                <a key={i} href={u} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}>
-                  <img src={u} alt="" style={{ maxWidth: "100%", maxHeight: 220, height: "auto", width: "auto", objectFit: "contain", borderRadius: 10, border: "1px solid var(--border)", display: "block" }} />
-                </a>
+                <span key={i} onClick={e => e.stopPropagation()}>
+                  <Foto src={u} maxHeight={220} />
+                </span>
               ))}
               {imagenes!.length > 4 && <span style={{ color: "var(--dim)", fontSize: 12, alignSelf: "center" }}>+{imagenes!.length - 4}</span>}
             </div>
@@ -133,7 +135,7 @@ export default function PostCard({
               )}
               {pubId ? (
                 <MiniSelect value={estado} options={ESTADOS_SEL}
-                  onSelect={async v => { await cambiarEstado(pubId, v); router.refresh(); }}
+                  onSelect={async v => { await cambiarEstado(pubId, v); if (v === "resuelta" && estado !== "resuelta") celebrarResuelto(); router.refresh(); }}
                   buttonClass={`pill st-${estado}`}
                   buttonStyle={{ border: "none" }} />
               ) : (

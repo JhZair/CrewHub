@@ -1,5 +1,6 @@
 "use client";
 import { cambiarEstado } from "@/app/actions";
+import { celebrarResuelto } from "@/lib/celebra";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
@@ -44,7 +45,8 @@ export default function Tablero({ columnas }: {
     setMoviendo(true);
     const res = await cambiarEstado(id, estado);
     setMoviendo(false);
-    if (res?.error) alert(res.error); else router.refresh();
+    if (res?.error) alert(res.error);
+    else { if (estado === "resuelta") celebrarResuelto(); router.refresh(); }
   };
 
   return (

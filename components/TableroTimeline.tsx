@@ -2,6 +2,7 @@
 import { Fragment, useState } from "react";
 import { useRouter } from "next/navigation";
 import { cambiarEstado } from "@/app/actions";
+import { celebrarResuelto } from "@/lib/celebra";
 
 // Nombre corto que distingue homónimos: "John Oros" → "John O."
 function corto(n?: string | null) {
@@ -81,7 +82,8 @@ export default function TableroTimeline({ casos }: { casos: Caso[] }) {
     setMoviendo(true);
     const r: any = await cambiarEstado(id, estadoDestino);
     setMoviendo(false);
-    if (r?.error) alert(r.error); else router.refresh();
+    if (r?.error) alert(r.error);
+    else { if (estadoDestino === "resuelta") celebrarResuelto(); router.refresh(); }
   };
 
   return (

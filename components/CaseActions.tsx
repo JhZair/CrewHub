@@ -1,5 +1,6 @@
 "use client";
 import { comentar, cambiarEstado, asignarResponsable, cambiarFechaLimite } from "@/app/actions";
+import { celebrarResuelto } from "@/lib/celebra";
 import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
 import { useRouter } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
@@ -35,7 +36,8 @@ export function EstadoSelect({ pubId, estado, tipo }: { pubId: string; estado: s
   const cambiar = async (nuevo: string) => {
     // El trigger de la base registra el evento en `actividad` automáticamente
     const res = await cambiarEstado(pubId, nuevo);
-    if (res?.error) alert(res.error); else router.refresh();
+    if (res?.error) alert(res.error);
+    else { if (nuevo === "resuelta" && estado !== "resuelta") celebrarResuelto(); router.refresh(); }
   };
   // Un aviso no se "resuelve": se difunde, la gente se entera y se archiva.
   if (tipo === "aviso") {
