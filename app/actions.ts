@@ -1492,11 +1492,12 @@ export async function toggleEnterado(pubId: string) {
     ]);
     const teamIds = new Set((team || []).map((t: any) => t.id));
     const enterados = new Set((vistos || []).map((v: any) => v.usuario_id).filter((id: string) => teamIds.has(id)));
-    if (teamIds.size > 0 && enterados.size >= teamIds.size) {
+    // Basta con que se entere MÁS DE LA MITAD del equipo
+    if (teamIds.size > 0 && enterados.size * 2 > teamIds.size) {
       await supabase.from("publicaciones").update({ estado: "archivada" }).eq("id", pubId);
       await supabase.from("actividad").insert({
         entidad_tipo: "publicacion", entidad_id: pubId, actor_id: user.id, tipo: "estado",
-        detalle: { campo: "estado", a: "archivada", mensaje: "aviso archivado — todo el equipo se dio por enterado" },
+        detalle: { campo: "estado", a: "archivada", mensaje: "aviso archivado — se enteró la mayoría del equipo" },
       });
     }
   }

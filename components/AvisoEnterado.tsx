@@ -17,6 +17,8 @@ export default function AvisoEnterado({ pubId, userId, enteradosIds, equipo }: {
   const M = equipo.length;
   const pct = M ? Math.round((N / M) * 100) : 0;
   const mia = setE.has(userId);
+  const objetivo = Math.floor(M / 2) + 1; // más de la mitad
+  const suficiente = M > 0 && N >= objetivo;
 
   const tap = async () => {
     if (ocupado) return;
@@ -30,17 +32,20 @@ export default function AvisoEnterado({ pubId, userId, enteradosIds, equipo }: {
   return (
     <div className="aviso-enterado">
       <div className="ae-top">
-        <span className="ae-tit">👀 Enterados · <b>{N}/{M}</b></span>
-        <span className="ae-bar"><span style={{ width: `${pct}%` }} /></span>
+        <span className="ae-tit">👀 Enterados · <b>{N}/{M}</b> <span className="ae-meta">basta la mayoría ({objetivo})</span></span>
+        <span className="ae-bar"><span style={{ width: `${pct}%`, background: suficiente ? "linear-gradient(90deg,#34d399,#10b981)" : undefined }} /></span>
         <button className={mia ? "btn btn-ghost" : "btn"} onClick={tap} disabled={ocupado}
           style={{ fontSize: 12, padding: "5px 13px", whiteSpace: "nowrap" }}>
           {ocupado ? "…" : mia ? "✓ Te enteraste" : "✓ Ya me enteré"}
         </button>
       </div>
-      {faltan.length > 0 ? (
-        <div className="ae-faltan">Faltan por enterarse: {faltan.map(p => p.nombre.split(" ")[0]).join(", ")}</div>
+      {suficiente ? (
+        <div className="ae-todos">✅ Ya se enteró la mayoría ({N}/{M}) — suficiente, el aviso se archiva solo.</div>
       ) : M > 0 ? (
-        <div className="ae-todos">✅ Todo el equipo se enteró — el aviso se archiva solo.</div>
+        <div className="ae-faltan">
+          Faltan <b>{objetivo - N}</b> para la mayoría
+          {faltan.length ? ` · aún no: ${faltan.map(p => p.nombre.split(" ")[0]).join(", ")}` : ""}
+        </div>
       ) : null}
     </div>
   );
