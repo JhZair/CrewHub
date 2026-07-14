@@ -1,10 +1,15 @@
 "use client";
 import { cambiarEstado } from "@/app/actions";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useState } from "react";
 
 const TIPO_ICO: Record<string, string> = {
   aviso: "📢", tarea: "✅", problema: "❗", consulta: "❓", pago: "💰", idea: "💡", archivo: "📎",
+};
+const ENT_ICO: Record<string, string> = {
+  proyecto: "📁", empresa: "🏢", persona: "👤", convocatoria: "📜",
+  postulacion: "🎯", equipamiento: "🎥", lugar: "📍", etiqueta: "🏷️",
 };
 
 function dias(fecha: string | null) {
@@ -15,6 +20,12 @@ function dias(fecha: string | null) {
 function reacStr(reac?: Record<string, number>) {
   if (!reac) return "";
   return Object.entries(reac).slice(0, 3).map(([em, n]) => `${em}${n}`).join(" ");
+}
+
+// Nombre corto que distingue homónimos: "John Oros" → "John O.", "John Zair…" → "John Z."
+function corto(n?: string | null) {
+  const p = (n || "").trim().split(/\s+/);
+  return p.length > 1 ? `${p[0]} ${p[1][0]}.` : (p[0] || "");
 }
 
 export default function Tablero({ columnas }: {
@@ -40,7 +51,7 @@ export default function Tablero({ columnas }: {
     <div className="kb">
       {columnas.map(col => (
         <div key={col.estado}
-          className={`kb-col ${sobre === col.estado ? "kb-sobre" : ""}`}
+          className={`kb-col est-${col.estado} ${sobre === col.estado ? "kb-sobre" : ""}`}
           onDragOver={e => { e.preventDefault(); setSobre(col.estado); }}
           onDragLeave={() => setSobre(s => (s === col.estado ? null : s))}
           onDrop={() => soltar(col.estado)}>
@@ -55,12 +66,12 @@ export default function Tablero({ columnas }: {
                 onDragStart={() => setArrastrando(p.id)}
                 onDragEnd={() => { setArrastrando(null); setSobre(null); }}
                 onClick={() => router.push(`/caso/${p.id}`)}>
-                <div style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.35 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, lineHeight: 1.3 }}>
                   {TIPO_ICO[p.tipo] || "💬"} {p.titulo}
                 </div>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 7, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 5, flexWrap: "wrap" }}>
                   {(p.resp as any)?.nombre
-                    ? <span className="tv-resp" style={{ fontSize: 10.5, padding: "2px 9px" }}>{(p.resp as any).nombre.split(" ")[0]}</span>
+                    ? <span className="tv-resp" style={{ fontSize: 10, padding: "1px 8px" }}>{corto((p.resp as any).nombre)}</span>
                     : ["tarea", "problema", "pago"].includes(p.tipo) &&
                       <span style={{ color: "var(--yellow)", fontSize: 10.5 }}>⚠ sin resp.</span>}
                   {d !== null && !["resuelta", "archivada"].includes(p.estado) && (
@@ -72,6 +83,17 @@ export default function Tablero({ columnas }: {
                   {p.sub > 0 && <span className="mini-ind">🧩 {p.sub}</span>}
                   {reacStr(p.reac) && <span className="mini-ind">{reacStr(p.reac)}</span>}
                 </div>
+                {(p.vinc || []).length > 0 && (
+                  <div className="kb-chips">
+                    {p.vinc.slice(0, 4).map((c: any, i: number) => (
+                      <Link key={i} href={`/entidad/${c.tipo}/${c.id}`}
+                        onClick={e => e.stopPropagation()} className="kb-chip">
+                        {ENT_ICO[c.tipo] || "🔗"} {c.nombre}
+                      </Link>
+                    ))}
+                    {p.vinc.length > 4 && <span className="kb-chip">+{p.vinc.length - 4}</span>}
+                  </div>
+                )}
               </div>
             );
           })}

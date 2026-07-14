@@ -612,6 +612,214 @@ export async function borrarEtiqueta(id: string) {
   return {};
 }
 
+/* ── Jornadas: registro PERSONAL. Solo el usuario logueado registra su
+      propia jornada; la persona se resuelve por su cuenta enlazada. ── */
+export async function registrarMiJornada(
+  fecha: string, proyectoId: string | null, tipo: string, fraccion: number, noche: boolean = false
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return { error: "Fecha inválida." };
+  if (!["rodaje", "oficina", "scouting"].includes(tipo)) return { error: "Tipo inválido." };
+  if (![0.5, 1, 1.5].includes(fraccion)) return { error: "Fracción inválida." };
+
+  const { data: yo } = await supabase.from("personas")
+    .select("id,tarifa_dia,tarifa_rodaje,tarifa_noche").eq("usuario_id", user.id).maybeSingle();
+  if (!yo) return { error: "Tu cuenta no está enlazada a una persona. Pídele al administrador que la enlace." };
+
+  const estMes = await estadoDelMes(supabase, yo.id, fecha);
+  if (estMes === "liquidado") return { error: "Ese mes ya está liquidado; no puedes agregar jornadas." };
+  if (estMes === "confirmado") return { error: "Ya confirmaste ese mes. Reábrelo si necesitas agregar una jornada." };
+
+  // Las fracciones (½, 1½) solo aplican a oficina; rodaje/scouting = día completo.
+  // scouting/oficina pagan con tarifa de día; solo rodaje usa la de rodaje.
+  // El pernocte no aplica en oficina.
+  const frac = tipo === "oficina" ? fraccion : 1;
+  const nocheOk = tipo !== "oficina" && !!noche;
+  const base = tipo === "rodaje" ? (yo.tarifa_rodaje ?? yo.tarifa_dia) : yo.tarifa_dia;
+  const extraNoche = nocheOk ? Number(yo.tarifa_noche ?? yo.tarifa_rodaje ?? yo.tarifa_dia ?? 0) : 0;
+  const dia = base != null ? Number(base) * frac : null;
+  const monto = dia != null ? dia + extraNoche : (nocheOk && extraNoche ? extraNoche : null);
+  const { error } = await supabase.from("jornadas").insert({
+    persona_id: yo.id, fecha, proyecto_id: proyectoId || null, tipo, fraccion: frac, noche: nocheOk, monto, registrado_por: user.id,
+  });
+  if (error) return { error: error.message };
+
+  if (proyectoId) {
+    await supabase.from("actividad").insert({
+      entidad_tipo: "proyecto", entidad_id: proyectoId, actor_id: user.id, tipo: "jornada",
+      detalle: { mensaje: `registró su jornada de ${tipo} (${fecha})` },
+    });
+  }
+  revalidatePath("/jornadas");
+  return { ok: 1 };
+}
+
+export async function borrarJornada(id: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: j } = await supabase.from("jornadas").select("persona_id,fecha").eq("id", id).single();
+  if (j) {
+    const { data: dueno } = await supabase.from("personas").select("usuario_id").eq("id", j.persona_id).single();
+    const { data: perfil } = await supabase.from("perfiles").select("es_admin").eq("id", user.id).single();
+    if (dueno?.usuario_id !== user.id && !perfil?.es_admin) return { error: "No puedes borrar esta jornada." };
+    const est = await estadoDelMes(supabase, j.persona_id, j.fecha);
+    if (est === "liquidado") return { error: "Ese mes está liquidado; reábrelo para borrar." };
+    if (est === "confirmado" && !perfil?.es_admin) return { error: "Confirmaste ese mes; reábrelo para borrar." };
+  }
+  const { error } = await supabase.from("jornadas").delete().eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath("/jornadas");
+  return {};
+}
+
+// Aprobar / desaprobar una jornada — solo admin.
+export async function aprobarJornada(id: string, aprobar: boolean) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: perfil } = await supabase.from("perfiles").select("es_admin").eq("id", user.id).single();
+  if (!perfil?.es_admin) return { error: "Solo un administrador puede aprobar jornadas." };
+  const { error } = await supabase.from("jornadas").update({
+    aprobada: aprobar,
+    aprobada_por: aprobar ? user.id : null,
+    aprobada_en: aprobar ? new Date().toISOString() : null,
+  }).eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath("/jornadas");
+  return {};
+}
+
+// Editar una jornada (dueño o admin). Recalcula el monto y la deja pendiente de aprobar.
+export async function editarJornada(
+  id: string, fecha: string, proyectoId: string | null, tipo: string, fraccion: number, noche: boolean
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return { error: "Fecha inválida." };
+  if (!["rodaje", "oficina", "scouting"].includes(tipo)) return { error: "Tipo inválido." };
+
+  const { data: j } = await supabase.from("jornadas").select("persona_id,fecha").eq("id", id).single();
+  if (!j) return { error: "Jornada no encontrada." };
+  const { data: dueno } = await supabase.from("personas")
+    .select("id,usuario_id,tarifa_dia,tarifa_rodaje,tarifa_noche").eq("id", j.persona_id).single();
+  const { data: perfil } = await supabase.from("perfiles").select("es_admin").eq("id", user.id).single();
+  if (dueno?.usuario_id !== user.id && !perfil?.es_admin) return { error: "No puedes editar esta jornada." };
+  const est = await estadoDelMes(supabase, j.persona_id, j.fecha);
+  if (est === "liquidado") return { error: "Ese mes está liquidado; reábrelo para editar." };
+  if (est === "confirmado" && !perfil?.es_admin) return { error: "Confirmaste ese mes; reábrelo para editar." };
+
+  const frac = tipo === "oficina" ? fraccion : 1;
+  const nocheOk = tipo !== "oficina" && !!noche;
+  const base = tipo === "rodaje" ? (dueno!.tarifa_rodaje ?? dueno!.tarifa_dia) : dueno!.tarifa_dia;
+  const extraNoche = nocheOk ? Number(dueno!.tarifa_noche ?? dueno!.tarifa_rodaje ?? dueno!.tarifa_dia ?? 0) : 0;
+  const dia = base != null ? Number(base) * frac : null;
+  const monto = dia != null ? dia + extraNoche : (nocheOk && extraNoche ? extraNoche : null);
+  const { error } = await supabase.from("jornadas").update({
+    fecha, proyecto_id: proyectoId || null, tipo, fraccion: frac, noche: nocheOk, monto,
+    aprobada: false, aprobada_por: null, aprobada_en: null,
+  }).eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath("/jornadas");
+  return {};
+}
+
+/* ── Ciclo de pago: confirmación (persona) y liquidación (admin) → recibo ── */
+// Estado de liquidación del mes al que pertenece una fecha (para bloquear).
+async function estadoDelMes(supabase: any, personaId: string, fechaISO: string): Promise<string | null> {
+  const [y, m] = (fechaISO || "").split("-");
+  if (!y || !m) return null;
+  const { data } = await supabase.from("liquidaciones").select("estado")
+    .eq("persona_id", personaId).eq("anio", Number(y)).eq("mes", Number(m)).maybeSingle();
+  return (data as any)?.estado || null;
+}
+
+export async function confirmarMiMes(anio: number, mes: number) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: yo } = await supabase.from("personas").select("id").eq("usuario_id", user.id).maybeSingle();
+  if (!yo) return { error: "Tu cuenta no está enlazada a una persona." };
+  const { data: ex } = await supabase.from("liquidaciones").select("estado")
+    .eq("persona_id", yo.id).eq("anio", anio).eq("mes", mes).maybeSingle();
+  if (ex?.estado === "liquidado") return { error: "Este mes ya está liquidado." };
+  const { error } = await supabase.from("liquidaciones").upsert({
+    persona_id: yo.id, anio, mes, estado: "confirmado",
+    confirmado_en: new Date().toISOString(), confirmado_por: user.id,
+  }, { onConflict: "persona_id,anio,mes" });
+  if (error) return { error: error.message };
+  revalidatePath("/jornadas"); revalidatePath("/admin");
+  return {};
+}
+
+export async function reabrirMiMes(anio: number, mes: number) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: yo } = await supabase.from("personas").select("id").eq("usuario_id", user.id).maybeSingle();
+  if (!yo) return { error: "Tu cuenta no está enlazada a una persona." };
+  const { data: ex } = await supabase.from("liquidaciones").select("estado")
+    .eq("persona_id", yo.id).eq("anio", anio).eq("mes", mes).maybeSingle();
+  if (ex?.estado === "liquidado") return { error: "Este mes ya está liquidado; pide al administrador que lo reabra." };
+  await supabase.from("liquidaciones").delete().eq("persona_id", yo.id).eq("anio", anio).eq("mes", mes);
+  revalidatePath("/jornadas"); revalidatePath("/admin");
+  return {};
+}
+
+export async function liquidarMes(personaId: string, anio: number, mes: number) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: perfil } = await supabase.from("perfiles").select("es_admin").eq("id", user.id).single();
+  if (!perfil?.es_admin) return { error: "Solo un administrador puede liquidar." };
+  const pd = (n: number) => String(n).padStart(2, "0");
+  const inicio = `${anio}-${pd(mes)}-01`;
+  const fin = `${mes === 12 ? anio + 1 : anio}-${pd(mes === 12 ? 1 : mes + 1)}-01`;
+  const { data: js } = await supabase.from("jornadas").select("fraccion,monto,aprobada")
+    .eq("persona_id", personaId).gte("fecha", inicio).lt("fecha", fin);
+  if (!js || !js.length) return { error: "No hay jornadas para liquidar en ese mes." };
+  const pend = js.filter((j: any) => !j.aprobada).length;
+  if (pend > 0) return { error: `Faltan ${pend} jornada${pend === 1 ? "" : "s"} por aprobar antes de liquidar.` };
+  const totalJornadas = js.reduce((s: number, j: any) => s + Number(j.fraccion || 0), 0);
+  const totalMonto = js.reduce((s: number, j: any) => s + Number(j.monto || 0), 0);
+  const { error } = await supabase.from("liquidaciones").upsert({
+    persona_id: personaId, anio, mes, estado: "liquidado",
+    total_jornadas: totalJornadas, total_monto: totalMonto,
+    liquidado_en: new Date().toISOString(), liquidado_por: user.id,
+  }, { onConflict: "persona_id,anio,mes" });
+  if (error) return { error: error.message };
+  revalidatePath("/admin"); revalidatePath("/jornadas");
+  return { ok: true };
+}
+
+export async function reabrirLiquidacion(personaId: string, anio: number, mes: number) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: perfil } = await supabase.from("perfiles").select("es_admin").eq("id", user.id).single();
+  if (!perfil?.es_admin) return { error: "Solo un administrador puede reabrir." };
+  await supabase.from("liquidaciones").delete().eq("persona_id", personaId).eq("anio", anio).eq("mes", mes);
+  revalidatePath("/admin"); revalidatePath("/jornadas");
+  return {};
+}
+
+export async function editarTarifa(
+  personaId: string, tarifaDia: number | null, tarifaRodaje: number | null, tarifaNoche: number | null = null
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { error } = await supabase.from("personas")
+    .update({ tarifa_dia: tarifaDia, tarifa_rodaje: tarifaRodaje, tarifa_noche: tarifaNoche }).eq("id", personaId);
+  if (error) return { error: error.message };
+  revalidatePath("/admin");
+  revalidatePath("/jornadas");
+  return {};
+}
+
 /* --- Miembros de empresa (rep. legal, socios, directiva) --- */
 export async function agregarMiembro(empresaId: string, personaId: string, cargo: string, fechaInicio?: string | null) {
   const supabase = createClient();

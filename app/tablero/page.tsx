@@ -90,11 +90,44 @@ export default async function TableroPage({ searchParams }: {
     m[r.emoji] = (m[r.emoji] || 0) + 1;
     reacDe.set(r.publicacion_id, m);
   });
+
+  // Vínculos (entidades relacionadas) para dar contexto en cada tarjeta
+  const { data: vincs } = idsPubs.length
+    ? await supabase.from("publicacion_vinculos")
+        .select("publicacion_id,entidad_tipo,entidad_id").in("publicacion_id", idsPubs)
+    : { data: [] };
+  const TABLA_ENT: Record<string, [string, string]> = {
+    proyecto: ["proyectos", "nombre"], empresa: ["empresas", "nombre"],
+    persona: ["personas", "nombre"], convocatoria: ["convocatorias", "codigo"],
+    postulacion: ["postulaciones", "codigo"], equipamiento: ["equipamiento", "nombre"],
+    lugar: ["lugares", "nombre"], etiqueta: ["etiquetas", "nombre"],
+  };
+  const porTipo = new Map<string, Set<string>>();
+  (vincs || []).forEach((vv: any) => {
+    if (!porTipo.has(vv.entidad_tipo)) porTipo.set(vv.entidad_tipo, new Set());
+    porTipo.get(vv.entidad_tipo)!.add(vv.entidad_id);
+  });
+  const nombreEnt = new Map<string, string>();
+  await Promise.all([...porTipo.entries()].map(async ([tipo, idset]) => {
+    const t = TABLA_ENT[tipo]; if (!t) return;
+    const { data } = await supabase.from(t[0]).select(`id,${t[1]}`).in("id", [...idset]);
+    (data || []).forEach((r: any) => nombreEnt.set(`${tipo}:${r.id}`, r[t[1]]));
+  }));
+  const vincDe = new Map<string, { tipo: string; id: string; nombre: string }[]>();
+  (vincs || []).forEach((vv: any) => {
+    const nombre = nombreEnt.get(`${vv.entidad_tipo}:${vv.entidad_id}`);
+    if (!nombre) return;
+    const l = vincDe.get(vv.publicacion_id) || [];
+    l.push({ tipo: vv.entidad_tipo, id: vv.entidad_id, nombre });
+    vincDe.set(vv.publicacion_id, l);
+  });
+
   const pubsE = (pubs || []).map((p: any) => ({
     ...p,
     nc: p.comentarios?.[0]?.count ?? 0,
     sub: subDe.get(p.id) || 0,
     reac: reacDe.get(p.id) || {},
+    vinc: vincDe.get(p.id) || [],
   }));
 
   // Universo para los contadores de cada pestaña (independiente del filtro activo)
@@ -145,27 +178,24 @@ export default async function TableroPage({ searchParams }: {
   return (
     <div className="shell" style={{ maxWidth: "96vw" }}>
       <Realtime tablas={["publicaciones"]} token={session?.access_token} />
-      <div className="topbar">
+      <div className="topbar" style={{ gap: 10, flexWrap: "wrap" }}>
         <Volver />
-        <span className="spacer" />
-        <span style={{ color: "var(--dim)", fontSize: 12 }}>
-          {modo === "timeline"
-            ? "arrastra una tarjeta a otra fila para cambiar su estado"
-            : "arrastra una tarjeta a otra columna para cambiar su estado"}
-        </span>
-      </div>
-
-      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <h1 className="title-lg" style={{ margin: "8px 0" }}>🗂 Tablero</h1>
+        <h1 className="title-lg" style={{ margin: 0, fontSize: 20 }}>🗂 Tablero</h1>
         <div className="tl-toggle">
           <Link href={urlCols} className={modo === "columnas" ? "on" : ""}>🗂 Columnas</Link>
           <Link href={urlTime} className={modo === "timeline" ? "on" : ""}>🗓 Línea de tiempo</Link>
         </div>
+        <span className="spacer" />
+        <span style={{ color: "var(--dim)", fontSize: 11.5 }}>
+          {modo === "timeline"
+            ? "arrastra a otra fila para cambiar el estado"
+            : "arrastra a otra columna para cambiar el estado"}
+        </span>
       </div>
 
       {/* Una sola fila: tipos a la izquierda; persona + Pulso + TV en la otra esquina.
           Mirar los asuntos de cada quien es para coordinar y repartir, no para auditar. */}
-      <div className="vtabs" style={{ alignItems: "center" }}>
+      <div className="vtabs vtabs-compacta" style={{ alignItems: "center" }}>
         {TIPOS_F.map(([val, label]) => (
           <Link key={val}
             href={val === "mios"

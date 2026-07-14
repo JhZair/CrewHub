@@ -112,6 +112,15 @@ a{color:inherit;text-decoration:none}
 .combo-item{text-align:left;background:transparent;border:none;border-radius:7px;padding:7px 10px;font-size:12.5px;color:var(--muted);font-weight:600;cursor:pointer;white-space:nowrap}
 .combo-item:hover{background:#22223a;color:var(--text)}
 .combo-item.on{background:rgba(124,92,255,.14);color:var(--text)}
+/* ===== Jornadas · registro de ronda ===== */
+.jr-seg{display:inline-flex;border:1px solid var(--border);border-radius:9px;overflow:hidden}
+.jr-seg button{background:transparent;border:none;color:var(--muted);font-size:12px;font-weight:600;padding:7px 11px;cursor:pointer;border-right:1px solid var(--border)}
+.jr-seg button:last-child{border-right:none}
+.jr-seg button.on{background:rgba(124,92,255,.15);color:var(--text)}
+.jr-chip{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:5px 11px;font-size:12px;color:var(--muted);font-weight:600;cursor:pointer}
+.jr-chip:hover{border-color:var(--border2)}
+.jr-chip.on{background:rgba(124,92,255,.15);border-color:var(--accent);color:var(--text)}
+
 /* Pie de la tarjeta del feed */
 .post-pie{margin-top:10px}
 /* Divisora muy tenue, sobre la descripción */
@@ -181,6 +190,12 @@ a{color:inherit;text-decoration:none}
 .tl-cell{border-left:1px solid rgba(255,255,255,.03);border-bottom:1px solid var(--border);padding:5px;min-height:52px;display:flex;flex-direction:column;gap:5px}
 .tl-cell.hoy{border-left:2px solid var(--accent);background:rgba(124,92,255,.05)}
 .tl-cell.tl-sobre{background:rgba(124,92,255,.13)}
+/* Identidad de color por fila (estado) en la línea de tiempo, al 3% */
+.tl-rowlabel.est-abierta,.tl-cell.est-abierta{background-image:linear-gradient(0deg,rgba(255,77,94,.03),rgba(255,77,94,.03))}
+.tl-rowlabel.est-en_progreso,.tl-cell.est-en_progreso{background-image:linear-gradient(0deg,rgba(244,180,0,.03),rgba(244,180,0,.03))}
+.tl-rowlabel.est-seguimiento,.tl-cell.est-seguimiento{background-image:linear-gradient(0deg,rgba(45,212,191,.03),rgba(45,212,191,.03))}
+.tl-rowlabel.est-en_pausa,.tl-cell.est-en_pausa{background-image:linear-gradient(0deg,rgba(59,130,246,.03),rgba(59,130,246,.03))}
+.tl-rowlabel.est-resuelta,.tl-cell.est-resuelta{background-image:linear-gradient(0deg,rgba(46,204,113,.03),rgba(46,204,113,.03))}
 .tl-card{background:var(--bg);border:1px solid var(--border);border-left:3px solid var(--st);border-radius:8px;padding:6px 8px;cursor:grab}
 .tl-card:hover{border-color:var(--border2)}
 .tl-card .tt{font-size:11px;font-weight:600;line-height:1.28;color:var(--text);overflow-wrap:anywhere}
@@ -210,6 +225,12 @@ a{color:inherit;text-decoration:none}
 
 /* Campanita flotante global (páginas internas), encima del FAB "+" */
 .camp-flot{position:fixed;right:24px;bottom:88px;z-index:60}
+.buscar-flot-wrap{position:fixed;right:24px;bottom:150px;z-index:60;display:flex;align-items:center;gap:8px}
+.buscar-flot{width:44px;height:44px;border-radius:50%;background:var(--card);border:1px solid var(--border2);color:var(--text);font-size:18px;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.buscar-flot:hover{border-color:var(--accent)}
+.bf-caja{display:flex;align-items:center;gap:7px;background:var(--panel);border:1px solid var(--border2);border-radius:12px;padding:6px 8px 6px 12px;box-shadow:0 10px 28px rgba(0,0,0,.45)}
+.bf-caja input{background:transparent;border:none;outline:none;color:var(--text);font-size:13px;width:210px;font-family:inherit}
+.bf-fondo{position:fixed;inset:0;z-index:59}
 .camp-flot-btn{position:relative;width:50px;height:50px;border-radius:50%;background:var(--card);border:1px solid var(--border2);color:var(--text);font-size:20px;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center}
 .camp-flot-btn:hover{border-color:var(--accent)}
 .camp-flot .camp-menu-flot{position:absolute;top:auto;bottom:calc(100% + 10px);right:0;max-height:70vh;overflow-y:auto}
@@ -544,15 +565,24 @@ img.av{border:1px solid var(--border2)}
 .st-en_pausa{background:rgba(59,130,246,.13);color:var(--blue)}
 
 /* ===== Tablero Kanban ===== */
-.kb{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;align-items:start}
-.kb-col{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:11px;min-height:340px;transition:border-color .15s,background .15s}
+.kb{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;align-items:start}
+.kb-col{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:8px;min-height:110px;transition:border-color .15s,background .15s}
 .kb-col.kb-sobre{border-color:var(--accent);background:rgba(124,92,255,.06)}
-.kb-head{font-size:12px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;display:flex;align-items:center;gap:8px;padding:2px 4px 10px}
-.kb-n{font-size:10.5px;background:#23233a;color:var(--muted);border-radius:7px;padding:1px 7px}
-.kb-card{background:var(--card);border:1px solid var(--border);border-radius:11px;padding:10px 12px;margin-bottom:8px;cursor:grab}
+/* Identidad de color por columna (tinte al 3%) */
+.kb-col.est-abierta{background-image:linear-gradient(0deg,rgba(255,77,94,.03),rgba(255,77,94,.03))}
+.kb-col.est-en_progreso{background-image:linear-gradient(0deg,rgba(244,180,0,.03),rgba(244,180,0,.03))}
+.kb-col.est-seguimiento{background-image:linear-gradient(0deg,rgba(45,212,191,.03),rgba(45,212,191,.03))}
+.kb-col.est-en_pausa{background-image:linear-gradient(0deg,rgba(59,130,246,.03),rgba(59,130,246,.03))}
+.kb-col.est-resuelta{background-image:linear-gradient(0deg,rgba(46,204,113,.03),rgba(46,204,113,.03))}
+.kb-head{font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;display:flex;align-items:center;gap:7px;padding:2px 4px 8px}
+.kb-n{font-size:10px;background:#23233a;color:var(--muted);border-radius:7px;padding:1px 6px}
+.kb-card{background:var(--card);border:1px solid var(--border);border-radius:9px;padding:7px 9px;margin-bottom:6px;cursor:grab}
 .kb-card:hover{border-color:var(--border2)}
 .kb-card:active{cursor:grabbing;opacity:.7}
-.kb-vacia{color:var(--dim);font-size:11px;text-align:center;padding:24px 0}
+.kb-vacia{color:var(--dim);font-size:10.5px;text-align:center;padding:12px 0}
+.kb-chips{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
+.kb-chip{font-size:9.5px;color:var(--muted);background:#1c1c2c;border:1px solid var(--border);border-radius:6px;padding:1px 6px;max-width:118px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:none}
+.kb-chip:hover{border-color:var(--accent);color:var(--text)}
 @media(max-width:1300px){.kb{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:1000px){.kb{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:600px){.kb{grid-template-columns:1fr}}

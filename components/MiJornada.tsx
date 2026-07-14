@@ -1,0 +1,106 @@
+"use client";
+import { registrarMiJornada } from "@/app/actions";
+import MiniSelect from "@/components/MiniSelect";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+
+const TIPOS: [string, string][] = [["rodaje", "🎬 Rodaje"], ["oficina", "🏢 Oficina"], ["scouting", "🚙 Scouting"]];
+const FRAC: [number, string][] = [[0.5, "½ Medio"], [1, "1 Completo"], [1.5, "1½ Día y medio"]];
+
+/* Registro PERSONAL: el usuario logueado registra su propia jornada. */
+export default function MiJornada({ proyectos, mi }: {
+  proyectos: { id: string; nombre: string }[];
+  mi: { nombre: string; tarifa_dia: number | null; tarifa_rodaje: number | null; tarifa_noche: number | null } | null;
+}) {
+  const router = useRouter();
+  const hoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/Lima" });
+  const [fecha, setFecha] = useState(hoy);
+  const [proyectoId, setProyectoId] = useState("");
+  const [tipo, setTipo] = useState("rodaje");
+  const [fraccion, setFraccion] = useState(1);
+  const [noche, setNoche] = useState(false);
+  const [ocupado, setOcupado] = useState(false);
+  const [error, setError] = useState("");
+  const [ok, setOk] = useState("");
+
+  if (!mi) {
+    return (
+      <div className="card" style={{ borderColor: "rgba(244,180,0,.35)" }}>
+        <div className="panel-h" style={{ color: "var(--yellow)" }}>📓 Registrar mi jornada</div>
+        <p style={{ color: "var(--muted)", fontSize: 13, margin: 0 }}>
+          Tu cuenta no está enlazada a una persona, así que no puedes registrar jornadas todavía.
+          Pídele al administrador que enlace tu cuenta a tu ficha de persona.
+        </p>
+      </div>
+    );
+  }
+
+  // scouting y oficina pagan con la tarifa de día; solo rodaje usa la de rodaje
+  const base = tipo === "rodaje" ? (mi.tarifa_rodaje ?? mi.tarifa_dia) : mi.tarifa_dia;
+  const nocheRate = mi.tarifa_noche ?? mi.tarifa_rodaje ?? mi.tarifa_dia;
+  const nocheOk = tipo !== "oficina" && noche;   // en oficina no hay pernocte
+  const extraNoche = nocheOk && nocheRate != null ? Number(nocheRate) : 0;
+  const dia = base != null ? Number(base) * fraccion : 0;
+  const monto = (base != null || (nocheOk && nocheRate != null)) ? dia + extraNoche : null;
+
+  const inp = { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 9, padding: "7px 10px", fontSize: 12.5, color: "var(--text)", outline: "none", fontFamily: "inherit" } as const;
+
+  const registrar = async () => {
+    if (ocupado) return;
+    setOcupado(true); setError(""); setOk("");
+    const res: any = await registrarMiJornada(fecha, proyectoId || null, tipo, fraccion, nocheOk);
+    setOcupado(false);
+    if (res?.error) { setError(res.error); return; }
+    setOk("Jornada registrada ✓"); setNoche(false); router.refresh();
+    setTimeout(() => setOk(""), 2500);
+  };
+
+  return (
+    <div className="card">
+      <div className="panel-h">📓 Registrar mi jornada — {mi.nombre}</div>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} style={{ ...inp, width: 150 }} />
+        <MiniSelect
+          value={proyectoId}
+          options={[["", "🏢 Oficina (sin proyecto)"], ...proyectos.map(p => [p.id, `📁 ${p.nombre}`])]}
+          onSelect={setProyectoId}
+          buttonClass=""
+          buttonStyle={{ ...inp, minWidth: 190 }} />
+        <span className="jr-seg">
+          {TIPOS.map(([v, l]) => (
+            <button key={v} className={tipo === v ? "on" : ""}
+              onClick={() => { setTipo(v); if (v === "oficina") setNoche(false); else setFraccion(1); }}>{l}</button>
+          ))}
+        </span>
+        {tipo === "oficina" && (
+          <span className="jr-seg">
+            {FRAC.map(([v, l]) => (
+              <button key={v} className={fraccion === v ? "on" : ""} onClick={() => setFraccion(v)}>{l}</button>
+            ))}
+          </span>
+        )}
+        {tipo !== "oficina" && (
+          <button className={`jr-chip ${noche ? "on" : ""}`} onClick={() => setNoche(n => !n)}
+            title="Se pagó también la noche de camping en la puna">
+            🏕 {noche ? "✓ " : ""}Pernocte{noche && nocheRate != null ? ` +S/ ${Math.round(Number(nocheRate))}` : ""}
+          </button>
+        )}
+      </div>
+
+      {error && <div className="err-inline" style={{ marginTop: 10 }}>⚠ {error}</div>}
+
+      <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12.5, color: "var(--muted)" }}>
+          Esta jornada: <b style={{ color: "var(--teal)" }}>
+            {monto != null ? `S/ ${Math.round(monto).toLocaleString("es-PE")}` : "sin tarifa registrada"}
+          </b>
+        </span>
+        <span style={{ flex: 1 }} />
+        {ok && <span style={{ color: "var(--green)", fontSize: 12.5 }}>{ok}</span>}
+        <button className="btn" disabled={ocupado} onClick={registrar}>
+          {ocupado ? "…" : "Registrar mi jornada"}
+        </button>
+      </div>
+    </div>
+  );
+}

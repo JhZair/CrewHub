@@ -5,9 +5,9 @@ import { useState } from "react";
 
 /* La esquina del usuario, compacta: solo el avatar.
    Nombre, rol y Salir viven en el menú desplegable. */
-export default function MenuUsuario({ nombre, rol, color, src }: {
+export default function MenuUsuario({ nombre, rol, color, src, esAdmin }: {
   nombre?: string | null; rol?: string | null;
-  color?: string | null; src?: string | null;
+  color?: string | null; src?: string | null; esAdmin?: boolean | null;
 }) {
   const [abierto, setAbierto] = useState(false);
   return (
@@ -26,6 +26,12 @@ export default function MenuUsuario({ nombre, rol, color, src }: {
               style={{ marginTop: 10, fontSize: 12.5, textAlign: "center" }}>🗂 Tablero</Link>
             <Link href="/pulso" onClick={() => setAbierto(false)} className="btn btn-ghost"
               style={{ marginTop: 6, fontSize: 12.5, textAlign: "center" }}>📊 Pulso del equipo</Link>
+            <Link href="/jornadas" onClick={() => setAbierto(false)} className="btn btn-ghost"
+              style={{ marginTop: 6, fontSize: 12.5, textAlign: "center" }}>📓 Jornadas</Link>
+            {esAdmin && (
+              <Link href="/admin" onClick={() => setAbierto(false)} className="btn btn-ghost"
+                style={{ marginTop: 6, fontSize: 12.5, textAlign: "center" }}>⚙ Administración</Link>
+            )}
             <Link href="/etiquetas" onClick={() => setAbierto(false)} className="btn btn-ghost"
               style={{ marginTop: 6, fontSize: 12.5, textAlign: "center" }}>🏷️ Etiquetas</Link>
             <a href="/auth/signout" className="btn btn-ghost"

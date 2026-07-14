@@ -53,7 +53,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
   const { data: { session } } = await supabase.auth.getSession();
 
   const { data: perfil } = await supabase
-    .from("perfiles").select("nombre,color,rol,avatar_url").eq("id", user.id).single();
+    .from("perfiles").select("nombre,color,rol,avatar_url,es_admin").eq("id", user.id).single();
 
   // "Mis asuntos" incluye también publicaciones vinculadas a MI PERSONA
   // (gracias al enlace personas.usuario_id ↔ perfil)
@@ -312,7 +312,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
         <BuscadorGlobal />
         <Campanita items={notifsEnriq} sinLeer={sinLeer || 0} />
         <MenuUsuario nombre={perfil?.nombre} rol={perfil?.rol}
-          color={perfil?.color} src={perfil?.avatar_url} />
+          color={perfil?.color} src={perfil?.avatar_url} esAdmin={perfil?.es_admin} />
       </div>
 
       <Composer userId={user.id} catalogos={catalogos} perfiles={perfs.data || []}

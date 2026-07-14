@@ -16,11 +16,11 @@ const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio",
 
 const TIPO_ICO: Record<string, string> = {
   aviso: "📢", tarea: "✅", problema: "❗", consulta: "❓",
-  pago: "💰", idea: "💡", archivo: "📎", conversacion: "💬",
+  pago: "💰", idea: "💡", archivo: "📎", conversacion: "🗂", otro: "🗂",
 };
 const TIPO_LBL: Record<string, string> = {
   aviso: "Avisos", tarea: "Tareas", problema: "Problemas", consulta: "Consultas",
-  pago: "Pagos", idea: "Ideas", archivo: "Archivos", conversacion: "Conversaciones",
+  pago: "Pagos", idea: "Ideas", archivo: "Archivos", conversacion: "Otros", otro: "Otros",
 };
 const ESTADO_LBL: Record<string, string> = {
   abierta: "Sin Resolver", en_progreso: "En Progreso", seguimiento: "Seguimiento",
@@ -115,7 +115,7 @@ export default async function PulsoPage({ searchParams }: {
       .select("id,tipo").in("id", Array.from(new Set(cerradosIds)));
     const tipoDe = new Map((tp || []).map((r: any) => [r.id, r.tipo]));
     for (const id of cerradosIds) {
-      const t = tipoDe.get(id) || "conversacion";
+      const t = tipoDe.get(id) || "otro";
       tipoCerr[t] = (tipoCerr[t] || 0) + 1;
     }
   }
@@ -137,6 +137,14 @@ export default async function PulsoPage({ searchParams }: {
       if (!pend[r]) pend[r] = { ab: 0, venc: 0 };
       pend[r].ab++; if (venc) pend[r].venc++;
     }
+  }
+
+  // Comentarios escritos este mes, por persona
+  const comentDe = new Map<string, number>();
+  {
+    const { data: coms } = await supabase.from("comentarios").select("autor_id")
+      .gte("creado_en", inicioMes.toISOString()).lt("creado_en", finMes.toISOString()).limit(6000);
+    (coms || []).forEach((c: any) => { if (c.autor_id) comentDe.set(c.autor_id, (comentDe.get(c.autor_id) || 0) + 1); });
   }
 
   // ── Carga actual del equipo (bloque "Pulso del equipo", movido desde Qhaway) ──
@@ -172,7 +180,7 @@ export default async function PulsoPage({ searchParams }: {
       cerr: s.cerr + c.cerr, creo: s.creo + c.creo, avanzo: s.avanzo + c.avanzo,
     }), { cerr: 0, creo: 0, avanzo: 0 });
     const pp = pend[pf.id] || { ab: 0, venc: 0 };
-    return { id: pf.id, nombre: pf.nombre, celdas, totMes, ab: pp.ab, venc: pp.venc };
+    return { id: pf.id, nombre: pf.nombre, celdas, totMes, ab: pp.ab, venc: pp.venc, coment: comentDe.get(pf.id) || 0 };
   });
 
   // Totales y escalas para el heatmap
@@ -334,6 +342,7 @@ export default async function PulsoPage({ searchParams }: {
               <th>Mes</th>
               <th className="sep">Abiertos<span className="rng">ahora</span></th>
               <th>Vencidos<span className="rng">ahora</span></th>
+              <th className="sep">💬 Coment.<span className="rng">este mes</span></th>
             </tr>
           </thead>
           <tbody>
@@ -373,10 +382,11 @@ export default async function PulsoPage({ searchParams }: {
                     {f.venc > 0 ? <Link className="drill" href={drillHref(f.id, "venc", "now")}>{f.venc}</Link> : 0}
                   </span>
                 </td>
+                <td className="sep"><span style={{ color: f.coment > 0 ? "var(--violet)" : "var(--dim)", fontWeight: 700 }}>{f.coment}</span></td>
               </tr>
             ))}
             {!filas.length && (
-              <tr><td className="quien" colSpan={nSemanas + 4} style={{ color: "var(--dim)" }}>
+              <tr><td className="quien" colSpan={nSemanas + 5} style={{ color: "var(--dim)" }}>
                 — sin equipo activo —
               </td></tr>
             )}
@@ -388,6 +398,7 @@ export default async function PulsoPage({ searchParams }: {
               <td>{totMesGlobal}</td>
               <td className="sep">{totAb}</td>
               <td>{totVenc}</td>
+              <td className="sep">{filas.reduce((s, f) => s + f.coment, 0)}</td>
             </tr>
           </tfoot>
         </table>

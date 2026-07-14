@@ -178,9 +178,8 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
       <div style={{ position: "sticky", top: 0, zIndex: 30, background: "var(--bg)", paddingBottom: 10 }}>
         <div className="topbar" style={{ marginBottom: 12 }}>
           <Volver />
-          <span style={{ fontWeight: 800, fontSize: 16 }}>🔍 Buscar</span>
           <div style={{ flex: 1, maxWidth: 520 }}>
-            <BuscadorGlobal inicial={q} />
+            <BuscadorGlobal inicial={q} autoEnfoque />
           </div>
           {q && (
             <span style={{ color: "var(--muted)", fontSize: 12 }}>

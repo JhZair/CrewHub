@@ -2,6 +2,7 @@ import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import BotonNuevoCaso from "@/components/BotonNuevoCaso";
 import CampanitaGlobal from "@/components/CampanitaGlobal";
+import BuscadorFlotante from "@/components/BuscadorFlotante";
 
 export const metadata: Metadata = {
   title: "CrewHub+ by KAWSAY",
@@ -23,6 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="es">
       <body>
         {children}
+        <BuscadorFlotante />
         <CampanitaGlobal />
         <BotonNuevoCaso />
       </body>

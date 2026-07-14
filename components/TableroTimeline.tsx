@@ -3,6 +3,12 @@ import { Fragment, useState } from "react";
 import { useRouter } from "next/navigation";
 import { cambiarEstado } from "@/app/actions";
 
+// Nombre corto que distingue homónimos: "John Oros" → "John O."
+function corto(n?: string | null) {
+  const p = (n || "").trim().split(/\s+/);
+  return p.length > 1 ? `${p[0]} ${p[1][0]}.` : (p[0] || "");
+}
+
 /* ── TABLERO · LÍNEA DE TIEMPO ──────────────────────────────────────
    Filas = estados, columnas = días. Cada caso se ubica en el día de su
    fecha_limite (o, si no tiene, su fecha de creación). La columna de
@@ -100,7 +106,7 @@ export default function TableroTimeline({ casos }: { casos: Caso[] }) {
 
           {FILAS.map(f => (
             <Fragment key={f.estado}>
-              <div className="tl-rowlabel">
+              <div className={`tl-rowlabel est-${f.estado}`}>
                 <span style={{ color: f.color, fontWeight: 700, fontSize: 11.5, letterSpacing: ".5px" }}>
                   {f.icon} {f.label}
                 </span>
@@ -111,7 +117,7 @@ export default function TableroTimeline({ casos }: { casos: Caso[] }) {
                 const zona = `${f.estado}|${d.key}`;
                 return (
                   <div key={d.key}
-                    className={`tl-cell ${d.hoy ? "hoy" : ""} ${sobre === f.estado ? "tl-sobre" : ""}`}
+                    className={`tl-cell est-${f.estado} ${d.hoy ? "hoy" : ""} ${sobre === f.estado ? "tl-sobre" : ""}`}
                     onDragOver={e => { e.preventDefault(); setSobre(f.estado); }}
                     onDragLeave={() => setSobre(s => (s === f.estado ? null : s))}
                     onDrop={e => soltar(f.estado, e.dataTransfer.getData("text/plain"))}>
@@ -126,7 +132,7 @@ export default function TableroTimeline({ casos }: { casos: Caso[] }) {
                           onClick={() => router.push(`/caso/${c.id}`)}>
                           <div className="tt">{TIPO_ICO[c.tipo] || "💬"} {c.titulo}</div>
                           <div className="mt">
-                            {c.resp && <span className="tl-resp">{c.resp.split(" ")[0]}</span>}
+                            {c.resp && <span className="tl-resp">{corto(c.resp)}</span>}
                             {dd !== null && !cerr && (
                               <span style={{ color: col!, fontWeight: 800 }}>
                                 {dd < 0 ? `venc. ${Math.abs(dd)}d` : dd === 0 ? "HOY" : `${dd}d`}
