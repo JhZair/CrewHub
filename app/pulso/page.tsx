@@ -139,6 +139,32 @@ export default async function PulsoPage({ searchParams }: {
     }
   }
 
+  // ── Carga actual del equipo (bloque "Pulso del equipo", movido desde Qhaway) ──
+  const hace3d = new Date(Date.now() - 3 * 86400000).toISOString();
+  const hace7d = new Date(Date.now() - 7 * 86400000).toISOString();
+  const en7Str = (() => { const d = new Date(Date.now() + 7 * 86400000); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; })();
+  const [{ data: vivosCarga }, { data: act3d }, { count: resueltosSemana }] = await Promise.all([
+    supabase.from("publicaciones").select("id,titulo,responsable,fecha_limite")
+      .in("estado", ["abierta", "en_progreso", "seguimiento", "en_pausa"]).limit(1500),
+    supabase.from("actividad").select("entidad_id").eq("entidad_tipo", "publicacion")
+      .gte("creado_en", hace3d).limit(4000),
+    supabase.from("actividad").select("id", { count: "exact", head: true })
+      .eq("entidad_tipo", "publicacion").eq("tipo", "estado")
+      .eq("detalle->>a", "resuelta").gte("creado_en", hace7d),
+  ]);
+  const conActividad = new Set((act3d || []).map((a: any) => a.entidad_id));
+  const cargaEquipo = (equipo || []).map((pf: any) => {
+    const suyos = (vivosCarga || []).filter((c: any) => c.responsable === pf.id);
+    return {
+      nombre: pf.nombre,
+      carga: suyos.length,
+      dorm: suyos.filter((c: any) => !conActividad.has(c.id)).length,
+      urgentes: suyos.filter((c: any) => c.fecha_limite && c.fecha_limite <= en7Str).length,
+    };
+  }).filter((p: any) => p.carga > 0).sort((a: any, b: any) => b.carga - a.carga);
+  const maxCarga = Math.max(1, ...cargaEquipo.map((p: any) => p.carga));
+  const huerfanosCarga = (vivosCarga || []).filter((c: any) => !c.responsable).slice(0, 8);
+
   // Filas: todo el equipo (orden estable por nombre, nunca por “rendimiento”)
   const filas = (equipo || []).map((pf: any) => {
     const celdas = matriz[pf.id] || nuevo();
@@ -365,6 +391,49 @@ export default async function PulsoPage({ searchParams }: {
             </tr>
           </tfoot>
         </table>
+      </div>
+
+      {/* ── Pulso del equipo · carga actual (movido desde Qhaway) ── */}
+      <div className="pulso-tend" style={{ display: "block" }}>
+        <span className="tend-tit" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          🫀 Pulso del equipo · carga actual
+          <span style={{ color: "var(--dim)", fontSize: 11, fontWeight: 400 }}>carga y flujo — nunca un ranking</span>
+        </span>
+        {(resueltosSemana || 0) > 0 && (
+          <div style={{ color: "var(--green)", fontSize: 13, margin: "10px 0 12px" }}>
+            🎉 En los últimos 7 días el equipo resolvió <b>{resueltosSemana}</b> caso{resueltosSemana === 1 ? "" : "s"} — logro de todos.
+          </div>
+        )}
+        {cargaEquipo.map((p: any) => (
+          <div key={p.nombre} style={{ display: "flex", gap: 10, alignItems: "center", padding: "5px 0" }}>
+            <span style={{ width: 140, fontSize: 12.5, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.nombre}</span>
+            <span style={{ flex: 1, height: 8, background: "var(--bg)", borderRadius: 5, overflow: "hidden" }}>
+              <span style={{ display: "block", height: "100%", borderRadius: 5, width: `${Math.round((p.carga / maxCarga) * 100)}%`, background: "linear-gradient(90deg,#3b82f6,#7c5cff)" }} />
+            </span>
+            <span style={{ width: 20, textAlign: "right", fontSize: 12.5, fontWeight: 700, color: "var(--blue)" }}>{p.carga}</span>
+            <span style={{ width: 110, fontSize: 11, color: "var(--dim)", textAlign: "right" }}>
+              {p.dorm > 0 && <span style={{ color: "var(--yellow)" }}>😴 {p.dorm}</span>}
+              {p.dorm > 0 && p.urgentes > 0 && " · "}
+              {p.urgentes > 0 && <span style={{ color: "var(--red)" }}>⏰ {p.urgentes}</span>}
+            </span>
+          </div>
+        ))}
+        {!cargaEquipo.length && <div style={{ color: "var(--dim)", fontSize: 12.5, marginTop: 8 }}>— sin carga asignada por ahora —</div>}
+        {huerfanosCarga.length > 0 && (
+          <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
+            <div style={{ color: "var(--yellow)", fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
+              🙋 Sin responsable · {huerfanosCarga.length} — trabajo de nadie es trabajo de todos
+            </div>
+            {huerfanosCarga.map((c: any) => (
+              <div key={c.id} style={{ padding: "3px 0" }}>
+                <Link href={`/caso/${c.id}`} style={{ fontWeight: 600, fontSize: 12.5 }}>{c.titulo} →</Link>
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{ color: "var(--dim)", fontSize: 11.5, marginTop: 12 }}>
+          Una barra larga es señal para redistribuir, no un mérito ni una falta. 😴 = sin actividad 3+ días · ⏰ = vence en 7 días o menos.
+        </div>
       </div>
 
       {/* ── Desglose por tipo de lo cerrado ── */}

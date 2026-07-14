@@ -1416,6 +1416,17 @@ export async function marcarNotifsLeidas() {
   return {};
 }
 
+// Marca UNA notificación como leída (al atenderla individualmente).
+export async function marcarNotifLeida(id: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return {};
+  await supabase.from("notificaciones").update({ leida: true })
+    .eq("id", id).eq("usuario_id", user.id);
+  revalidatePath("/");
+  return {};
+}
+
 export async function cerrarSesion() {
   const supabase = createClient();
   await supabase.auth.signOut();
