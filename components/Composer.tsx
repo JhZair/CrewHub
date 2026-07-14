@@ -6,9 +6,9 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 const TIPOS = [
-  ["aviso", "📢 Aviso"], ["tarea", "✅ Tarea"], ["problema", "❗ Problema"],
-  ["consulta", "❓ Consulta"], ["pago", "💰 Pago"], ["idea", "💡 Idea"],
-  ["archivo", "📎 Archivo"],
+  ["tarea", "✅ Tarea"], ["problema", "❗ Problema"], ["consulta", "❓ Consulta"],
+  ["pago", "💰 Pago"], ["idea", "💡 Idea"], ["archivo", "📎 Archivo"],
+  ["aviso", "📢 Aviso"],
 ];
 
 export type CatalogoItem = { id: string; nombre: string; tipo?: string };
@@ -95,7 +95,7 @@ export default function Composer({ userId, catalogos, perfiles, inicial, onListo
   { userId: string; catalogos: Catalogos; perfiles: { id: string; nombre: string }[]; inicial?: Sel[]; onListo?: () => void }) {
   const [titulo, setTitulo] = useState("");
   const [cuerpo, setCuerpo] = useState("");
-  const [tipo, setTipo] = useState("aviso");
+  const [tipo, setTipo] = useState("tarea");
   const [resp, setResp] = useState("");
   const [fecha, setFecha] = useState("");
   const [links, setLinks] = useState<Sel[]>(inicial || []);

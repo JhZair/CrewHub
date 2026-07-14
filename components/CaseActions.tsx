@@ -30,13 +30,23 @@ export function FechaSelect({ pubId, fecha }: { pubId: string; fecha: string | n
   );
 }
 
-export function EstadoSelect({ pubId, estado }: { pubId: string; estado: string }) {
+export function EstadoSelect({ pubId, estado, tipo }: { pubId: string; estado: string; tipo?: string }) {
   const router = useRouter();
   const cambiar = async (nuevo: string) => {
     // El trigger de la base registra el evento en `actividad` automáticamente
     const res = await cambiarEstado(pubId, nuevo);
     if (res?.error) alert(res.error); else router.refresh();
   };
+  // Un aviso no se "resuelve": se difunde, la gente se entera y se archiva.
+  if (tipo === "aviso") {
+    return (
+      <select defaultValue={estado} onChange={e => cambiar(e.target.value)}>
+        <option value="abierta">📢 Vigente</option>
+        <option value="en_pausa">En Pausa</option>
+        <option value="archivada">🗄 Archivado</option>
+      </select>
+    );
+  }
   return (
     <select defaultValue={estado} onChange={e => cambiar(e.target.value)}>
       <option value="abierta">Sin Resolver</option>

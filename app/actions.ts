@@ -1461,6 +1461,50 @@ export async function toggleReaccion(pubId: string, comentarioId: string | null,
   return {};
 }
 
+/* Acuse de recibo de un AVISO: reusa la reacción 👀 como "me enteré".
+   Cuando todo el equipo (perfiles activos, sin Qhaway) se dio por enterado,
+   el aviso se archiva solo — su ciclo cierra por lectura, no por "resolver". */
+export async function toggleEnterado(pubId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  // Toggle del 👀 sobre la publicación
+  const { data: ya } = await supabase.from("reacciones").select("id")
+    .eq("usuario_id", user.id).eq("emoji", "👀")
+    .eq("publicacion_id", pubId).is("comentario_id", null).maybeSingle();
+  if (ya) {
+    await supabase.from("reacciones").delete().eq("id", ya.id);
+  } else {
+    const { error } = await supabase.from("reacciones").insert({
+      publicacion_id: pubId, comentario_id: null, usuario_id: user.id, emoji: "👀",
+    });
+    if (error) return { error: error.message };
+  }
+
+  // ¿Todo el equipo se enteró? → archivar el aviso
+  const { data: pub } = await supabase.from("publicaciones").select("tipo,estado").eq("id", pubId).single();
+  if (pub?.tipo === "aviso" && !["archivada", "resuelta"].includes(pub.estado)) {
+    const [{ data: team }, { data: vistos }] = await Promise.all([
+      supabase.from("perfiles").select("id").eq("activo", true).neq("nombre", "Qhaway"),
+      supabase.from("reacciones").select("usuario_id")
+        .eq("publicacion_id", pubId).is("comentario_id", null).eq("emoji", "👀"),
+    ]);
+    const teamIds = new Set((team || []).map((t: any) => t.id));
+    const enterados = new Set((vistos || []).map((v: any) => v.usuario_id).filter((id: string) => teamIds.has(id)));
+    if (teamIds.size > 0 && enterados.size >= teamIds.size) {
+      await supabase.from("publicaciones").update({ estado: "archivada" }).eq("id", pubId);
+      await supabase.from("actividad").insert({
+        entidad_tipo: "publicacion", entidad_id: pubId, actor_id: user.id, tipo: "estado",
+        detalle: { campo: "estado", a: "archivada", mensaje: "aviso archivado — todo el equipo se dio por enterado" },
+      });
+    }
+  }
+  revalidatePath(`/caso/${pubId}`);
+  revalidatePath("/");
+  return {};
+}
+
 export async function marcarNotifsLeidas() {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();

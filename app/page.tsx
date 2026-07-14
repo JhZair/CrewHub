@@ -285,6 +285,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
             pubId={p.id} userId={user.id} reacciones={reaccsDe.get(p.id) || []}
             imagenes={p.imagenes || []}
             creadoEn={p.creado_en}
+            equipoTotal={(perfs.data || []).filter((x: any) => x.nombre !== "Qhaway").length}
             padreId={p.padre_id || null}
             padreTitulo={p.padre_id ? (tituloPadre.get(p.padre_id) || null) : null}
             hijos={hijosDe.get(p.id) || null}

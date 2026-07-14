@@ -3,14 +3,14 @@ import Avatar from "@/components/Avatar";
 import Reacciones, { type Reaccion } from "@/components/Reacciones";
 import NuevoBadge from "@/components/NuevoBadge";
 import TextoRico from "@/components/TextoRico";
-import { cambiarTipo, cambiarEstado, ocultarDelFeed } from "@/app/actions";
+import { cambiarTipo, cambiarEstado, ocultarDelFeed, toggleEnterado } from "@/app/actions";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 const TIPOS_SEL = [
-  ["aviso", "📢 Aviso"], ["tarea", "✅ Tarea"], ["problema", "❗ Problema"],
-  ["consulta", "❓ Consulta"], ["pago", "💰 Pago"], ["idea", "💡 Idea"],
-  ["archivo", "📎 Archivo"],
+  ["tarea", "✅ Tarea"], ["problema", "❗ Problema"], ["consulta", "❓ Consulta"],
+  ["pago", "💰 Pago"], ["idea", "💡 Idea"], ["archivo", "📎 Archivo"],
+  ["aviso", "📢 Aviso"],
 ];
 
 const ESTADOS_SEL = [
@@ -24,7 +24,7 @@ export default function PostCard({
   href, titulo, tipo, tipoLabel, tipoColor, estado, estadoTxt,
   autorNombre, autorColor, autorSrc, fechaStr, respNombre, avisaSinResp,
   nc, venc, cuerpo, chips, pubId, userId, reacciones, imagenes,
-  padreId, padreTitulo, hijos, creadoEn,
+  padreId, padreTitulo, hijos, creadoEn, equipoTotal,
 }: {
   href: string; titulo: string; tipo?: string; tipoLabel: string; tipoColor: string;
   estado: string; estadoTxt: string;
@@ -36,9 +36,11 @@ export default function PostCard({
   imagenes?: string[];
   padreId?: string | null; padreTitulo?: string | null;
   hijos?: { total: number; ok: number } | null;
-  creadoEn?: string;
+  creadoEn?: string; equipoTotal?: number;
 }) {
   const router = useRouter();
+  const enterN = (reacciones || []).filter(r => r.emoji === "👀").length;
+  const enterMio = (reacciones || []).some(r => r.emoji === "👀" && r.usuario_id === userId);
   return (
     <div className={`card link ${estado === "resuelta" ? "card-apagada" : ""}`} style={{ cursor: "pointer" }} onClick={() => router.push(href)}>
       <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
@@ -131,6 +133,16 @@ export default function PostCard({
               : avisaSinResp && <><span>•</span><span style={{ color: "var(--yellow)" }}>⚠ sin responsable</span></>}
             <span>•</span><span>💬 {nc}</span>
             {venc && <><span>•</span><b style={{ color: venc[1] }}>{venc[0]}</b></>}
+            {tipo === "aviso" && pubId && userId && (
+              <>
+                <span>•</span>
+                <span style={{ color: "var(--violet)" }}>👀 Enterados {enterN}/{equipoTotal ?? "—"}</span>
+                <button className="ae-mini" title={enterMio ? "Ya te enteraste" : "Marcar que me enteré"}
+                  onClick={async e => { e.stopPropagation(); await toggleEnterado(pubId); router.refresh(); }}>
+                  {enterMio ? "✓ enterado" : "me enteré"}
+                </button>
+              </>
+            )}
           </div>
           {cuerpo && (
             <p style={{ color: "#c6c6da", fontSize: 13, marginTop: 8, lineHeight: 1.5 }}>

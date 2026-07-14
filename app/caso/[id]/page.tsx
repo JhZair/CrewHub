@@ -3,6 +3,7 @@ import Volver from "@/components/Volver";
 import Avatar from "@/components/Avatar";
 import { EstadoSelect, CommentBox, RespSelect, FechaSelect } from "@/components/CaseActions";
 import Reacciones from "@/components/Reacciones";
+import AvisoEnterado from "@/components/AvisoEnterado";
 import SubCasos from "@/components/SubCasos";
 import TituloEditable from "@/components/TituloEditable";
 import DescripcionEditable from "@/components/DescripcionEditable";
@@ -184,7 +185,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
       <TituloEditable pubId={p.id} titulo={p.titulo} />
 
       <div className="grid-meta">
-        <div className="gm"><span className="k">Estado</span><EstadoSelect pubId={p.id} estado={p.estado} /></div>
+        <div className="gm"><span className="k">Estado</span><EstadoSelect pubId={p.id} estado={p.estado} tipo={p.tipo} /></div>
         <div className="gm"><span className="k">Responsable</span>
           <RespSelect pubId={p.id} actual={p.responsable} perfiles={perfiles || []} /></div>
         <div className="gm"><span className="k">Fecha límite</span>
@@ -203,6 +204,15 @@ export default async function Caso({ params }: { params: { id: string } }) {
             </a>
           ))}
         </div>
+      )}
+
+      {p.tipo === "aviso" && (
+        <AvisoEnterado
+          pubId={p.id}
+          userId={user.id}
+          enteradosIds={rxPub.filter((r: any) => r.emoji === "👀").map((r: any) => r.usuario_id)}
+          equipo={(perfiles || []).filter((x: any) => x.nombre !== "Qhaway")}
+        />
       )}
 
       <div style={{ margin: "4px 0 12px" }}>
