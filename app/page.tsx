@@ -4,6 +4,7 @@ import Realtime from "@/components/Realtime";
 import Campanita from "@/components/Campanita";
 import PostCard from "@/components/PostCard";
 import BuscadorGlobal from "@/components/BuscadorGlobal";
+import NavIconos from "@/components/NavIconos";
 import MenuUsuario from "@/components/MenuUsuario";
 import { ESTADOS } from "@/lib/estados";
 import FiltroMas from "@/components/FiltroMas";
@@ -308,14 +309,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
       <Realtime tablas={["publicaciones", "comentarios", "publicacion_vinculos", "reacciones", "notificaciones"]} token={session?.access_token} />
       <div className="topbar">
         <Link href="/" className="logo"><span className="ic">⬡</span><span>CrewHub<sup>+</sup></span></Link>
-        <nav className="nav-icons">
-          <Link href="/proyectos" className="btn btn-ghost" title="Proyectos">📁</Link>
-          <Link href="/empresas" className="btn btn-ghost" title="Empresas">🏢</Link>
-          <Link href="/personas" className="btn btn-ghost" title="Personas">👤</Link>
-          <Link href="/postulaciones" className="btn btn-ghost" title="Postulaciones">🎯</Link>
-          <Link href="/equipamiento" className="btn btn-ghost" title="Equipos audiovisuales">🎥</Link>
-          <Link href="/convocatorias" className="btn btn-ghost" title="Convocatorias y fondos">📜</Link>
-        </nav>
+        <NavIconos />
         <span className="spacer" />
         <BuscadorGlobal />
         <Campanita items={notifsEnriq} sinLeer={sinLeer || 0} />
