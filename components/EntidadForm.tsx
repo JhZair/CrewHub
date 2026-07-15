@@ -69,8 +69,15 @@ export function EntidadForm({ tipo, id, valores, onDone }:
         f[c.key] = valores?.[c.key] === true ? "si" : valores?.[c.key] === false ? "no" : "";
         return;
       }
-      f[c.key] = valores?.[c.key]
-        ?? (c.tipo === "color" ? PALETA[Math.floor(Math.random() * PALETA.length)] : "");
+      /* String(): las columnas `numeric` (monto, puntaje, valor) vuelven de
+         la base como NÚMERO, no como texto. Si se guardan así en el estado,
+         cualquier .trim() del formulario revienta y el botón Guardar deja de
+         responder sin decir nada. El servidor ya se protegía de esto; el
+         formulario no. Aquí todo es texto: se convierte al entrar. */
+      const v = valores?.[c.key];
+      f[c.key] = v == null || v === ""
+        ? (c.tipo === "color" ? PALETA[Math.floor(Math.random() * PALETA.length)] : "")
+        : String(v);
     });
     return f;
   });
@@ -101,9 +108,12 @@ export function EntidadForm({ tipo, id, valores, onDone }:
        no se equivocó de link, se equivocó de protocolo. Lo completamos y
        seguimos, en vez de trabarle el guardado por cinco caracteres. */
     const arreglado = { ...form };
+    // Nunca asumir que el estado es texto: un solo .trim() sobre un número
+    // tumba el guardado entero y en silencio.
+    const txt = (k: string) => String(arreglado[k] ?? "").trim();
     campos.forEach(c => {
       if (c.valida !== "url") return;
-      const v = (arreglado[c.key] || "").trim();
+      const v = txt(c.key);
       if (v && !/^https?:\/\//i.test(v) && /^[\w-]+(\.[\w-]+)+\//.test(v))
         arreglado[c.key] = "https://" + v;
     });
@@ -111,7 +121,7 @@ export function EntidadForm({ tipo, id, valores, onDone }:
 
     const errs: Record<string, string> = {};
     campos.forEach(c => {
-      const v = (arreglado[c.key] || "").trim();
+      const v = txt(c.key);
       if (c.requerido && !v) { errs[c.key] = "Este campo es obligatorio"; return; }
       // validación anti-humanos: si hay valor, debe tener el formato correcto
       if (v && c.valida && VALIDADORES[c.valida] && !VALIDADORES[c.valida][0].test(v)) {

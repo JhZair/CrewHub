@@ -95,17 +95,68 @@ export const SUBCATS_EQUIPO: Record<string, string[]> = {
   "otro": [],
 };
 
-/* Especialidades del oficio — sugerencias, no camisa de fuerza */
+/* Especialidades del oficio — sugerencias, no camisa de fuerza.
+ *
+ * Esta lista se OBSERVÓ, no se inventó: sale de los roles realmente
+ * cargados en las fichas. La versión anterior tenía 27 entradas escritas de
+ * memoria y solo diez aparecían en el sistema; peor, nombraba los mismos
+ * oficios con otras palabras ("Camarógrafo/a" cuando el equipo escribe
+ * "Operador/a de Cámara", doce veces). Por eso nadie la usaba: el
+ * desplegable nunca ofrecía la palabra que la gente tenía en la cabeza, y
+ * todos terminaban escribiendo a mano.
+ *
+ * Regla para mantenerla: antes de agregar una entrada, mira si el equipo ya
+ * la escribe de otra forma. Manda la palabra que ya usan, no la correcta.
+ */
 export const ESPECIALIDADES = [
-  "Director/a", "Productor/a", "Guionista", "Director/a de Fotografía",
-  "Camarógrafo/a", "Sonidista", "Editor/a", "Colorista",
-  "Director/a de Arte", "Compositor/a de Música", "Animador/a 2D",
-  "Animador/a 3D", "Ilustrador/a", "Operador/a de Drone",
-  "Asistente de Producción", "Investigador/a", "Fotógrafo/a Fija",
-  "Foto fija Detrás de cámaras BTS",
-  "Traductor/a Quechua", "Actor / Actriz", "Gestor/a Cultural",
-  "Desarrollador/a de Videojuegos", "Diseñador/a Gráfico",
-  "Contador/a", "Abogado/a", "Transporte", "Catering",
+  // — Dirección y guion —
+  "Director/a", "Director/a Cinematográfica", "Director/a Documental",
+  "Director de Casting", "Guionista", "Guión Animación",
+  "Diseño Narrativo", "Escaleta Secuenciada", "Exploración de Historia",
+  "Facilitador/a",
+  // — Producción —
+  "Productor/a", "Productor/a de Línea", "Productor/a de Campo (Local)",
+  "Asistente de Producción", "Coordinación de Logística",
+  "Administrativo", "Guía Local / Orientador (Fixer)",
+  // — Cámara e imagen —
+  "Director/a de Fotografía", "Operador/a de Cámara", "Asistente de Cámara",
+  "Asistente de Iluminación", "Operador de Dron / Piloto",
+  "Operador de Gimbal / Cámara de Dron",
+  "Fotógrafo/a", "Fotógrafo/a Fija", "Foto fija Detrás de cámaras BTS",
+  // — Sonido —
+  "Sonidista", "Asistente de Sonido", "Ingeniero de Sonido",
+  "Editor/a de Sonido", "Foley", "Doblaje",
+  "Compositor/a de Música", "Director Musical",
+  // — Arte —
+  "Dirección de Arte", "Arte Conceptual", "Diseño de Personajes",
+  "Ilustrador/a", "Diseñador/a Gráfico",
+  // — Montaje y post —
+  "Editor/a", "Color grading",
+  // — Animación y 3D —
+  "Animación", "Dirección Animación", "Productor Animación",
+  "Productor de Linea Animación", "Animador/a 2D", "Animador/a 3D",
+  "Modelado 3D", "Texturizado 3D", "Rig",
+  // — Videojuegos —
+  "Programador Videojuegos", "Diseñador de Niveles Videojuegos",
+  "Productor Videojuegos",
+  // — Investigación y cultura (el corazón de lo documental) —
+  "Investigación Documental", "Antropólogo/a", "Historiador/a",
+  "Entrevistador/a de Documental", "Asesor/a Cultural / Sabio/a",
+  "Traductor/a / Intérprete (Lengua Originaria)", "Gestor/a Cultural",
+  // "Actor Social" es el participante del documental, no del elenco:
+  // son 18 personas y no tiene nada que ver con "Actor / Actriz".
+  "Actor Social", "Actor / Actriz",
+  // — Servicios de proveedores —
+  // Ojo: esto no es una especialidad, es lo que alguien VENDE. Está aquí
+  // porque el campo `rol` hace doble trabajo desde Seatable; separarlo es
+  // otra conversación.
+  "Alquiler de Locaciones", "Alquiler de Vehículos", "Alquiler de Dron",
+  "Alquiler de equipos de Filmación", "Alquiler de Grupo Electrógeno",
+  "Alquiler de Mobiliario y Utilería",
+  "Servicio de Catering / Alimentación", "Servicio de Hospedaje / Alojamiento",
+  "Transporte de Personal", "Transporte de Carga / Equipo",
+  "Seguridad en Locación", "Servicios Contables",
+  "Contador/a", "Abogado/a",
 ];
 
 /* Color por tipo de proyecto — el mismo en todo el sistema */

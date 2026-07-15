@@ -44,8 +44,13 @@ export async function guardarEntidad(tipo: string, id: string | null, datos: Rec
     // registra unos pocos campos de estado; aquí anotamos el resto)
     const TRIGGER_KEYS = ["estado", "etapa", "estado_actividad", "prioridad", "responsable"];
     const { data: antes } = await supabase.from(conf.tabla).select("*").eq("id", id).maybeSingle();
-    const { error } = await supabase.from(conf.tabla).update(limpio).eq("id", id);
+    /* El .select() no es decorativo: si una política de RLS impide el UPDATE,
+       PostgREST no devuelve error — afecta cero filas y responde OK. Sin
+       exigir que la fila vuelva, el sistema jura que guardó y no guardó. */
+    const { data: post, error } = await supabase.from(conf.tabla)
+      .update(limpio).eq("id", id).select("id");
     if (error) return { error: error.message };
+    if (!post?.length) return { error: "No se guardó: no tienes permiso para editar este registro." };
     if (antes) {
       // Valor legible y acotado para la bitácora (evita textos kilométricos)
       const vis = (v: any) => {
