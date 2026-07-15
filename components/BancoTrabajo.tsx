@@ -28,6 +28,7 @@ export default function BancoTrabajo() {
   const [txt, setTxt] = useState("");
   const [imgs, setImgs] = useState<string[]>([]);
   const [ocupado, setOcupado] = useState(false);
+  const [guardado, setGuardado] = useState(false);   // acuse tras enviar
   const taRef = useRef<HTMLTextAreaElement>(null);
 
   const enLogin = pathname.startsWith("/login");
@@ -79,6 +80,9 @@ export default function BancoTrabajo() {
     setOcupado(false);
     if (res?.error) { alert(res.error); return; }
     setTxt(""); setImgs([]);
+    // Acuse: el contador 💬 sube y además lo decimos, para no escribir a ciegas
+    setGuardado(true);
+    setTimeout(() => setGuardado(false), 2200);
     cargar(); router.refresh();
   };
 
@@ -133,11 +137,16 @@ export default function BancoTrabajo() {
                 onClick={() => { setAbierto(activo ? null : c.id); setTxt(""); setImgs([]); }}>
                 <span style={{ fontSize: 12 }}>{TIPO_ICO[c.tipo] || "💬"}</span>
                 <span style={{ flex: 1, fontSize: 12, lineHeight: 1.35, color: "var(--text)" }}>{c.titulo}</span>
-                {d !== null && (
-                  <span style={{ fontSize: 10, fontWeight: 700, whiteSpace: "nowrap", color: d < 0 ? "var(--red)" : d <= 3 ? "var(--yellow)" : "var(--dim)" }}>
-                    {d < 0 ? `${-d}d ⚠` : d === 0 ? "hoy" : `${d}d`}
-                  </span>
-                )}
+                <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+                  {d !== null && (
+                    <span style={{ fontSize: 10, fontWeight: 700, whiteSpace: "nowrap", color: d < 0 ? "var(--red)" : d <= 3 ? "var(--yellow)" : "var(--dim)" }}>
+                      {d < 0 ? `${-d}d ⚠` : d === 0 ? "hoy" : `${d}d`}
+                    </span>
+                  )}
+                  {/* El contador es el acuse: si sube, tu avance quedó */}
+                  <span style={{ fontSize: 10, color: c.nComs ? "var(--muted)" : "var(--dim)", whiteSpace: "nowrap" }}
+                    title={`${c.nComs} comentario(s)`}>💬 {c.nComs}</span>
+                </span>
               </div>
 
               {activo && (
@@ -163,6 +172,9 @@ export default function BancoTrabajo() {
                       <input type="file" accept="image/*" multiple style={{ display: "none" }}
                         onChange={e => { subir(Array.from(e.target.files || [])); e.target.value = ""; }} />
                     </label>
+                    {guardado && (
+                      <span style={{ color: "var(--green)", fontSize: 10.5, fontWeight: 700 }}>✓ guardado</span>
+                    )}
                     <span style={{ flex: 1 }} />
                     <button className="btn btn-ghost" title="Marcar como resuelta"
                       style={{ padding: "3px 8px", fontSize: 10.5, color: "var(--green)" }}
