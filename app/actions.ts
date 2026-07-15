@@ -897,6 +897,31 @@ export async function editarFechaMiembro(miembroId: string, empresaId: string, f
   return {};
 }
 
+/* Corregir el cargo sin tener que borrar y volver a crear al miembro */
+export async function editarCargoMiembro(miembroId: string, empresaId: string, cargo: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const nuevo = cargo.trim();
+  if (!nuevo) return { error: "El cargo no puede quedar vacío." };
+  const { data: prev } = await supabase.from("empresa_miembros")
+    .select("cargo,per:personas(nombre,alias)").eq("id", miembroId).maybeSingle();
+  if (prev?.cargo === nuevo) return {};
+  const { error } = await supabase.from("empresa_miembros")
+    .update({ cargo: nuevo }).eq("id", miembroId);
+  if (error) return { error: error.message };
+  const quien = (prev?.per as any)?.alias || (prev?.per as any)?.nombre || "un miembro";
+  await supabase.from("actividad").insert({
+    entidad_tipo: "empresa", entidad_id: empresaId, actor_id: user.id, tipo: "miembro",
+    detalle: {
+      mensaje: `corrigió el cargo de ${quien}`,
+      cambios: [{ campo: quien, de: prev?.cargo || "—", a: nuevo }],
+    },
+  });
+  revalidatePath(`/entidad/empresa/${empresaId}`);
+  return {};
+}
+
 export async function bajaMiembro(miembroId: string, empresaId: string) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();

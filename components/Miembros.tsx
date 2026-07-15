@@ -1,6 +1,7 @@
 "use client";
-import { agregarMiembro, bajaMiembro, editarFechaMiembro } from "@/app/actions";
+import { agregarMiembro, bajaMiembro, editarFechaMiembro, editarCargoMiembro } from "@/app/actions";
 import { EntPicker, type CatalogoItem } from "@/components/Composer";
+import MiniSelect from "@/components/MiniSelect";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
@@ -21,14 +22,23 @@ export default function Miembros({ empresaId, miembros, personas }: {
 }) {
   const [agregando, setAgregando] = useState(false);
   const [sel, setSel] = useState<{ id: string; nombre: string } | null>(null);
-  const [cargo, setCargo] = useState("Representante Legal");
+  const [cargo, setCargo] = useState("");       // en limpio: obliga a elegir
   const [desde, setDesde] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [bajando, setBajando] = useState<string | null>(null);
   const [editandoF, setEditandoF] = useState<string | null>(null);
   const [nuevaF, setNuevaF] = useState("");
+  const [editandoC, setEditandoC] = useState<string | null>(null);
   const [error, setError] = useState("");
   const router = useRouter();
+
+  const OPC_CARGOS = CARGOS.map(c => [c, c]);
+
+  const guardarCargo = async (id: string, nuevo: string) => {
+    setEditandoC(null);
+    const res = await editarCargoMiembro(id, empresaId, nuevo);
+    if (res?.error) setError(res.error); else router.refresh();
+  };
 
   const guardarFecha = async (id: string) => {
     if (!nuevaF) { setEditandoF(null); return; }
@@ -43,7 +53,7 @@ export default function Miembros({ empresaId, miembros, personas }: {
     const res = await agregarMiembro(empresaId, sel.id, cargo, desde || null);
     setGuardando(false);
     if (res?.error) { setError(res.error); return; }
-    setSel(null); setCargo("Representante Legal"); setDesde(""); setAgregando(false);
+    setSel(null); setCargo(""); setDesde(""); setAgregando(false);
     router.refresh();
   };
 
@@ -70,25 +80,40 @@ export default function Miembros({ empresaId, miembros, personas }: {
       {error && <div className="err-inline">⚠ {error}</div>}
       {agregando && (
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12, padding: 10, background: "var(--bg)", borderRadius: 10 }}>
+          {/* El catálogo trae "Nombre · Alias" para poder buscar por ambos,
+              pero el chip muestra solo el nombre corto. */}
           <EntPicker etiqueta={sel ? `👤 ${sel.nombre}` : "👤 Elegir persona"} items={personas}
-            onPick={id => { const p = personas.find(x => x.id === id); if (p) setSel({ id: p.id, nombre: p.nombre }); }} />
-          <input list="cargos-lista" value={cargo} onChange={e => setCargo(e.target.value)}
-            style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, outline: "none", width: 190 }} />
-          <datalist id="cargos-lista">{CARGOS.map(c => <option key={c} value={c} />)}</datalist>
+            onPick={id => {
+              const p: any = personas.find(x => x.id === id);
+              if (p) setSel({ id: p.id, nombre: p.alias || p.nombre });
+            }} />
+          <MiniSelect value={cargo} options={[["", "— elegir cargo —"], ...OPC_CARGOS]}
+            onSelect={v => setCargo(v)}
+            buttonStyle={{ background: "var(--card)", border: `1px solid ${cargo ? "var(--border)" : "var(--border2)"}`, borderRadius: 8, padding: "7px 10px", fontSize: 12.5, color: cargo ? "var(--text)" : "var(--dim)", minWidth: 190, justifyContent: "space-between" }} />
           <input type="date" title="Desde (fecha real del cargo, ej. la de SUNAT)" value={desde}
             onChange={e => setDesde(e.target.value)}
             style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "6px 9px", fontSize: 12, color: "var(--text)", outline: "none" }} />
-          <button className="btn" style={{ padding: "7px 14px", fontSize: 12 }} disabled={!sel || guardando} onClick={guardar}>
+          <button className="btn" style={{ padding: "7px 14px", fontSize: 12 }}
+            title={!sel ? "Elige la persona" : !cargo ? "Elige el cargo" : "Guardar"}
+            disabled={!sel || !cargo || guardando} onClick={guardar}>
             {guardando ? "..." : "Guardar"}
           </button>
           <button className="btn btn-ghost" style={{ padding: "7px 10px", fontSize: 12 }}
-            onClick={() => { setAgregando(false); setSel(null); }}>Cancelar</button>
+            onClick={() => { setAgregando(false); setSel(null); setCargo(""); }}>Cancelar</button>
         </div>
       )}
 
       {activos.map(m => (
         <div key={m.id} className="eq-row" style={{ alignItems: "center" }}>
-          <span className="cargo">{m.cargo}</span>
+          {editandoC === m.id ? (
+            <MiniSelect value={m.cargo || ""} options={OPC_CARGOS}
+              onSelect={v => guardarCargo(m.id, v)}
+              buttonStyle={{ background: "var(--bg)", border: "1px solid var(--accent)", borderRadius: 8, padding: "4px 9px", fontSize: 11.5, color: "var(--text)" }} />
+          ) : (
+            <button className="cargo" title="Clic para corregir el cargo"
+              style={{ cursor: "pointer", border: "none" }}
+              onClick={() => setEditandoC(m.id)}>{m.cargo}</button>
+          )}
           <span style={{ flex: 1, textAlign: "right" }}>
             <Link href={`/entidad/persona/${m.persona?.id}`} style={{ color: "var(--text)" }}>
               {m.persona?.alias || m.persona?.nombre} →
