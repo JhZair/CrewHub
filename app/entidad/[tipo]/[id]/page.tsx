@@ -425,6 +425,12 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             {params.tipo === "empresa" && ent.estado === "activa"
               && (ent.relacion || "propia") === "propia" && (() => {
               const al: any[] = [];
+              // Sin RUC no hay nada que hacer: ni verificar, ni postular, ni firmar
+              if (!ent.ruc) al.push(
+                <Alerta key="ruc" tono="roja"
+                  titulo="🏛 Sin RUC registrado"
+                  detalle="Figura como activa pero no tiene RUC: no se puede verificar en SUNAT, ni postular, ni firmar contratos. Regístralo en ✏️ Editar." />
+              );
               const est = ent.estado_sunat, cond = ent.condicion_sunat;
               if (est && est !== "activo") al.push(
                 <Alerta key="sunat-e" tono="roja"
