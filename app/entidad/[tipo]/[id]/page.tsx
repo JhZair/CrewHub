@@ -10,6 +10,7 @@ import PrestamoEquipo from "@/components/PrestamoEquipo";
 import CuentaAcceso from "@/components/CuentaAcceso";
 import { BotonVerificarRuc, BotonVerificarDni } from "@/components/VerificarSunat";
 import Alerta from "@/components/Alerta";
+import BotonFichaSunat from "@/components/BotonFichaSunat";
 import Materiales from "@/components/Materiales";
 import LineaTiempo from "@/components/LineaTiempo";
 import CronogramaProyecto from "@/components/CronogramaProyecto";
@@ -467,6 +468,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
               <Mantenimiento tipo={params.tipo} id={params.id} valores={ent} />
               {params.tipo === "empresa" && ent.ruc && <BotonVerificarRuc empresaId={params.id} />}
+              {params.tipo === "empresa" && ent.ruc && <BotonFichaSunat ruc={ent.ruc} />}
               {params.tipo === "persona" && ent.ruc_dni && <BotonVerificarDni personaId={params.id} />}
             </div>
           </div>

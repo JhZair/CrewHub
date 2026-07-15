@@ -28,14 +28,12 @@ export default function Miembros({ empresaId, miembros, personas }: {
   const [bajando, setBajando] = useState<string | null>(null);
   const [editandoF, setEditandoF] = useState<string | null>(null);
   const [nuevaF, setNuevaF] = useState("");
-  const [editandoC, setEditandoC] = useState<string | null>(null);
   const [error, setError] = useState("");
   const router = useRouter();
 
   const OPC_CARGOS = CARGOS.map(c => [c, c]);
 
   const guardarCargo = async (id: string, nuevo: string) => {
-    setEditandoC(null);
     const res = await editarCargoMiembro(id, empresaId, nuevo);
     if (res?.error) setError(res.error); else router.refresh();
   };
@@ -105,15 +103,12 @@ export default function Miembros({ empresaId, miembros, personas }: {
 
       {activos.map(m => (
         <div key={m.id} className="eq-row" style={{ alignItems: "center" }}>
-          {editandoC === m.id ? (
-            <MiniSelect value={m.cargo || ""} options={OPC_CARGOS}
-              onSelect={v => guardarCargo(m.id, v)}
-              buttonStyle={{ background: "var(--bg)", border: "1px solid var(--accent)", borderRadius: 8, padding: "4px 9px", fontSize: 11.5, color: "var(--text)" }} />
-          ) : (
-            <button className="cargo" title="Clic para corregir el cargo"
-              style={{ cursor: "pointer", border: "none" }}
-              onClick={() => setEditandoC(m.id)}>{m.cargo}</button>
-          )}
+          {/* El cargo es siempre un combo: un clic abre, elegir guarda.
+              Sin modo edición aparte, no hay estado que se quede pegado. */}
+          <MiniSelect value={m.cargo || ""} options={OPC_CARGOS}
+            onSelect={v => guardarCargo(m.id, v)}
+            buttonClass="cargo"
+            buttonStyle={{ cursor: "pointer", border: "none" }} />
           <span style={{ flex: 1, textAlign: "right" }}>
             <Link href={`/entidad/persona/${m.persona?.id}`} style={{ color: "var(--text)" }}>
               {m.persona?.alias || m.persona?.nombre} →
