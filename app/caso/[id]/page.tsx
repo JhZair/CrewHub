@@ -32,7 +32,7 @@ const ENT_ICO: Record<string, string> = {
   postulacion: "🎯", equipamiento: "🎥", lugar: "📍", etiqueta: "🏷️",
 };
 const ESTADOS_TXT: Record<string, string> = {
-  abierta: "Sin Resolver", en_progreso: "En Progreso", seguimiento: "🔭 Seguimiento",
+  abierta: "📥 Sin Resolver", en_progreso: "🛠 En Progreso", seguimiento: "🔭 Seguimiento",
   en_pausa: "En Pausa", resuelta: "Resuelta", archivada: "Archivada",
 };
 

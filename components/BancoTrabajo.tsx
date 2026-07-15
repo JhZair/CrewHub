@@ -11,11 +11,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
    por el sistema y seguir cargando avances sin perder el caso de vista.
    Se vacía solo — al resolver un caso, sale. */
 
-type Caso = { id: string; tipo: string; titulo: string; fecha_limite: string | null; nComs: number };
+type Ctx = { tipo: string; id: string; nombre: string };
+type Caso = { id: string; tipo: string; titulo: string; fecha_limite: string | null; nComs: number; ctx: Ctx[]; pidio: string | null };
 
 const TIPO_ICO: Record<string, string> = {
   aviso: "📢", tarea: "✅", problema: "❗", consulta: "❓",
   pago: "💰", idea: "💡", archivo: "📎", conversacion: "💬",
+};
+const CTX_ICO: Record<string, string> = {
+  proyecto: "📁", empresa: "🏢", persona: "👤", postulacion: "🎯",
+  convocatoria: "📋", etiqueta: "🏷️",
 };
 
 export default function BancoTrabajo() {
@@ -24,6 +29,10 @@ export default function BancoTrabajo() {
   const [esTop, setEsTop] = useState(false);
   const [colapsado, setColapsado] = useState(true);
   const [casos, setCasos] = useState<Caso[]>([]);
+  const [abiertas, setAbiertas] = useState<Caso[]>([]);
+  const [segui, setSegui] = useState<Caso[]>([]);
+  const [verPend, setVerPend] = useState(false);   // la bandeja de sin resolver
+  const [verSeg, setVerSeg] = useState(false);     // los de seguimiento
   const [abierto, setAbierto] = useState<string | null>(null);
   const [txt, setTxt] = useState("");
   const [imgs, setImgs] = useState<string[]>([]);
@@ -48,8 +57,19 @@ export default function BancoTrabajo() {
 
   const cargar = useCallback(async () => {
     const r: any = await misEnProgreso();
-    if (!r?.error) setCasos(r.casos || []);
+    if (!r?.error) { setCasos(r.casos || []); setAbiertas(r.abiertas || []); setSegui(r.seguimiento || []); }
   }, []);
+
+  // Activar = ponerlo En Progreso: pasa de la bandeja a la mesa
+  const activar = async (id: string) => {
+    if (ocupado) return;
+    setOcupado(true);
+    const r: any = await cambiarEstado(id, "en_progreso");
+    setOcupado(false);
+    if (r?.error) { alert(r.error); return; }
+    setAbierto(id); setVerPend(false);
+    cargar(); router.refresh();
+  };
 
   // Al montar y cada vez que cambias de página (pudo cambiar algo)
   useEffect(() => { if (esTop && !enLogin) cargar(); }, [esTop, enLogin, pathname, cargar]);
@@ -103,8 +123,9 @@ export default function BancoTrabajo() {
   if (colapsado) {
     return (
       <button className="banco-tab" onClick={alternar}
-        title={`${casos.length} caso(s) en progreso — tu banco de trabajo`}>
+        title={`${casos.length} en progreso · ${abiertas.length} sin resolver — tu banco de trabajo`}>
         🛠 {casos.length > 0 && <b>{casos.length}</b>}
+        {abiertas.length > 0 && <span style={{ fontSize: 9, color: "var(--dim)" }}>+{abiertas.length}</span>}
       </button>
     );
   }
@@ -119,10 +140,45 @@ export default function BancoTrabajo() {
       </div>
 
       <div className="banco-body">
+        {/* Bandeja: lo que espera turno. Se activa de un clic y baja a la mesa. */}
+        {abiertas.length > 0 && (
+          <div style={{ marginBottom: 4, borderBottom: "1px solid var(--border)", paddingBottom: 4 }}>
+            <button onClick={() => setVerPend(!verPend)}
+              style={{ width: "100%", display: "flex", alignItems: "center", gap: 6, padding: "6px 9px", borderRadius: 8, color: "var(--muted)", fontSize: 11, background: verPend ? "#1c1c2c" : "transparent" }}>
+              <span>{verPend ? "▾" : "▸"}</span>
+              <span style={{ flex: 1, textAlign: "left" }}>📥 Sin resolver · {abiertas.length}</span>
+            </button>
+            {verPend && abiertas.map(c => (
+              <div key={c.id} className="banco-item" style={{ paddingLeft: 14 }}>
+                <div style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+                  <span style={{ fontSize: 11 }}>{TIPO_ICO[c.tipo] || "💬"}</span>
+                  <span style={{ flex: 1 }}>
+                    <Link href={`/caso/${c.id}`} style={{ fontSize: 11.5, lineHeight: 1.3, color: "var(--muted)" }}>
+                      {c.titulo}
+                    </Link>
+                    {/* Contexto en una línea: sin esto la bandeja son títulos
+                        sueltos y hay que abrir cada uno para saber de qué va */}
+                    {(c.pidio || c.ctx.length > 0) && (
+                      <span style={{ color: "var(--dim)", fontSize: 10, display: "block", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {[c.pidio && `✍ ${c.pidio}`, ...c.ctx.map(v => `${CTX_ICO[v.tipo] || "🔗"} ${v.nombre}`)]
+                          .filter(Boolean).join("  ")}
+                      </span>
+                    )}
+                  </span>
+                  <button onClick={() => activar(c.id)} disabled={ocupado}
+                    title="Ponerlo En Progreso y trabajarlo aquí"
+                    style={{ color: "var(--accent)", fontSize: 13, flex: "none" }}>▶</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {!casos.length && (
           <div style={{ color: "var(--dim)", fontSize: 11.5, padding: "14px 10px", textAlign: "center", lineHeight: 1.5 }}>
-            Nada en progreso.<br />
-            Pon un caso <b>En Progreso</b> y aparecerá aquí, listo para trabajar.
+            {abiertas.length
+              ? <>Nada en la mesa.<br />Activa uno con <b style={{ color: "var(--accent)" }}>▶</b> desde la bandeja.</>
+              : <>Nada en progreso.<br />Pon un caso <b>En Progreso</b> y aparecerá aquí, listo para trabajar.</>}
           </div>
         )}
 
@@ -136,7 +192,7 @@ export default function BancoTrabajo() {
               <div style={{ display: "flex", gap: 6, alignItems: "flex-start", cursor: "pointer" }}
                 onClick={() => { setAbierto(activo ? null : c.id); setTxt(""); setImgs([]); }}>
                 <span style={{ fontSize: 12 }}>{TIPO_ICO[c.tipo] || "💬"}</span>
-                <span style={{ flex: 1, fontSize: 12, lineHeight: 1.35, color: "var(--text)" }}>{c.titulo}</span>
+                <span style={{ flex: 1, fontSize: 12.5, lineHeight: 1.4, color: "var(--text)" }}>{c.titulo}</span>
                 <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
                   {d !== null && (
                     <span style={{ fontSize: 10, fontWeight: 700, whiteSpace: "nowrap", color: d < 0 ? "var(--red)" : d <= 3 ? "var(--yellow)" : "var(--dim)" }}>
@@ -148,6 +204,31 @@ export default function BancoTrabajo() {
                     title={`${c.nComs} comentario(s)`}>💬 {c.nComs}</span>
                 </span>
               </div>
+
+              {/* De qué va: sin esto, "Girar RHE" no dice de quién ni para qué */}
+              {(c.ctx.length > 0 || c.pidio) && (
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4, paddingLeft: 18 }}>
+                  {c.pidio && (
+                    <span title={`Lo pidió ${c.pidio}`}
+                      style={{ fontSize: 9.5, color: "var(--muted)", background: "#1c1c2c", borderRadius: 5, padding: "1px 5px", whiteSpace: "nowrap" }}>
+                      ✍ {c.pidio}
+                    </span>
+                  )}
+                  {c.ctx.map((v, i) => (
+                    <Link key={i} title={`${v.tipo}: ${v.nombre}`}
+                      href={v.tipo === "etiqueta" ? `/?e=${v.id}` : `/entidad/${v.tipo}/${v.id}`}
+                      style={{
+                        fontSize: 10, borderRadius: 5, padding: "1px 6px", whiteSpace: "nowrap",
+                        maxWidth: 152, overflow: "hidden", textOverflow: "ellipsis",
+                        // La etiqueta matiza: va en violeta, como en el resto del app
+                        color: v.tipo === "etiqueta" ? "var(--violet)" : "var(--dim)",
+                        background: v.tipo === "etiqueta" ? "rgba(167,139,250,.10)" : "#1c1c2c",
+                      }}>
+                      {CTX_ICO[v.tipo] || "🔗"} {v.nombre}
+                    </Link>
+                  ))}
+                </div>
+              )}
 
               {activo && (
                 <div style={{ marginTop: 7 }}>
@@ -189,6 +270,48 @@ export default function BancoTrabajo() {
             </div>
           );
         })}
+
+        {/* Seguimiento: casos largos que no se cierran hoy, pero que no hay
+            que perder de vista. Abajo y plegados: vigilar no es trabajar. */}
+        {segui.length > 0 && (
+          <div style={{ marginTop: 4, borderTop: "1px solid var(--border)", paddingTop: 4 }}>
+            <button onClick={() => setVerSeg(!verSeg)}
+              style={{ width: "100%", display: "flex", alignItems: "center", gap: 6, padding: "6px 9px", borderRadius: 8, color: "var(--muted)", fontSize: 11, background: verSeg ? "#1c1c2c" : "transparent" }}>
+              <span>{verSeg ? "▾" : "▸"}</span>
+              <span style={{ flex: 1, textAlign: "left" }}>🔭 En seguimiento · {segui.length}</span>
+            </button>
+            {verSeg && segui.map(c => {
+              const d = c.fecha_limite
+                ? Math.ceil((new Date(c.fecha_limite + "T23:59:59").getTime() - Date.now()) / 86400000)
+                : null;
+              return (
+                <div key={c.id} className="banco-item" style={{ paddingLeft: 14 }}>
+                  <div style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+                    <span style={{ fontSize: 11 }}>{TIPO_ICO[c.tipo] || "💬"}</span>
+                    <span style={{ flex: 1 }}>
+                      <Link href={`/caso/${c.id}`} style={{ fontSize: 12, lineHeight: 1.35, color: "var(--muted)" }}>
+                        {c.titulo}
+                      </Link>
+                      {c.ctx.length > 0 && (
+                        <span style={{ display: "block", color: "var(--dim)", fontSize: 9.5, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {c.ctx.map(v => `${CTX_ICO[v.tipo] || "🔗"} ${v.nombre}`).join("  ")}
+                        </span>
+                      )}
+                    </span>
+                    {d !== null && (
+                      <span style={{ fontSize: 9.5, fontWeight: 700, whiteSpace: "nowrap", color: d < 0 ? "var(--red)" : d <= 3 ? "var(--yellow)" : "var(--dim)" }}>
+                        {d < 0 ? `${-d}d ⚠` : d === 0 ? "hoy" : `${d}d`}
+                      </span>
+                    )}
+                    <button onClick={() => activar(c.id)} disabled={ocupado}
+                      title="Traerlo a la mesa: ponerlo En Progreso"
+                      style={{ color: "var(--accent)", fontSize: 13, flex: "none" }}>▶</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -51,8 +51,8 @@ export function EstadoSelect({ pubId, estado, tipo }: { pubId: string; estado: s
   }
   return (
     <select defaultValue={estado} onChange={e => cambiar(e.target.value)}>
-      <option value="abierta">Sin Resolver</option>
-      <option value="en_progreso">En Progreso</option>
+      <option value="abierta">📥 Sin Resolver</option>
+      <option value="en_progreso">🛠 En Progreso</option>
       <option value="seguimiento">🔭 Seguimiento (caso largo)</option>
       <option value="en_pausa">En Pausa</option>
       <option value="resuelta">Resuelta</option>

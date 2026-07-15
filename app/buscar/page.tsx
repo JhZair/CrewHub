@@ -10,7 +10,7 @@ import { redirect } from "next/navigation";
    lugares y convocatorias. Una caja, todo el sistema. */
 
 const ESTADOS: Record<string, string> = {
-  abierta: "Sin Resolver", en_progreso: "En Progreso", seguimiento: "🔭 Seguimiento",
+  abierta: "📥 Sin Resolver", en_progreso: "🛠 En Progreso", seguimiento: "🔭 Seguimiento",
   en_pausa: "En Pausa", resuelta: "Resuelta", archivada: "Archivada",
 };
 const TIPO_ICO: Record<string, string> = {

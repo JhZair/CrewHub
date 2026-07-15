@@ -133,7 +133,7 @@ a{color:inherit;text-decoration:none}
 .banco-tab b{font-size:10px;color:var(--yellow)}
 
 .banco{position:fixed;left:0;top:50%;transform:translateY(-50%);z-index:60;
-  width:262px;max-height:78vh;background:var(--panel);border:1px solid var(--border2);
+  width:312px;max-height:84vh;background:var(--panel);border:1px solid var(--border2);
   border-left:none;border-radius:0 13px 13px 0;box-shadow:0 10px 34px rgba(0,0,0,.5);
   display:flex;flex-direction:column;overflow:hidden}
 .banco-h{display:flex;align-items:center;padding:9px 11px;border-bottom:1px solid var(--border);

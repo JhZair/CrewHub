@@ -924,22 +924,65 @@ export async function borrarRhe(id: string, personaId: string) {
 /* Mi banco de trabajo: los casos que tengo EN PROGRESO. Ese estado ya
    significa "estoy trabajando en esto", así que no hace falta inventar
    otra marca: se llenan y se vacían solos al mover el estado. */
+const TABLA_VINC: Record<string, [string, string]> = {
+  proyecto: ["proyectos", "nombre"], empresa: ["empresas", "nombre"],
+  persona: ["personas", "alias"], postulacion: ["postulaciones", "codigo"],
+  convocatoria: ["convocatorias", "codigo"], etiqueta: ["etiquetas", "nombre"],
+};
+// Las entidades primero y las etiquetas al final: la etiqueta matiza, el
+// proyecto ubica. Si hay que recortar, se recorta lo que matiza.
+const ORDEN_CTX = ["proyecto", "postulacion", "convocatoria", "empresa", "persona", "etiqueta"];
+
 export async function misEnProgreso() {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
+  /* Solo lo que YO soy responsable. Antes entraba también lo que yo había
+     creado, y eso llenaba el banco de trabajo ajeno: un caso que abrí y
+     asigné a Katy es de Katy, no mío. */
   const { data, error } = await supabase.from("publicaciones")
-    .select("id,tipo,titulo,fecha_limite,comentarios(count)")
-    .eq("estado", "en_progreso")
-    .or(`responsable.eq.${user.id},autor_id.eq.${user.id}`)
-    .order("fecha_limite", { ascending: true, nullsFirst: false })
-    .limit(12);
+    .select("id,tipo,titulo,estado,fecha_limite,creado_en,autor_id,comentarios(count),autor:perfiles!publicaciones_autor_id_fkey(nombre),vinculos:publicacion_vinculos(entidad_tipo,entidad_id)")
+    .in("estado", ["abierta", "en_progreso", "seguimiento"])
+    .eq("responsable", user.id)
+    // Lo más nuevo arriba: lo recién llegado es lo que aún no tiene lugar en
+    // tu cabeza. Lo viejo baja, pero su plazo sigue avisando en rojo.
+    .order("creado_en", { ascending: false })
+    .limit(40);
   if (error) return { error: error.message };
+
+  // Resolver los vínculos a nombres: sin eso, "Girar RHE" no dice de quién
+  const ids: Record<string, Set<string>> = {};
+  (data || []).forEach((p: any) => (p.vinculos || []).forEach((v: any) => {
+    if (!TABLA_VINC[v.entidad_tipo]) return;
+    (ids[v.entidad_tipo] ||= new Set()).add(v.entidad_id);
+  }));
+  const nombre = new Map<string, string>();
+  await Promise.all(Object.entries(ids).map(async ([tipo, set]) => {
+    const [tabla, campo] = TABLA_VINC[tipo];
+    const sel = tipo === "persona" ? "id,alias,nombre" : `id,${campo}`;
+    const { data: rows } = await supabase.from(tabla).select(sel).in("id", [...set]);
+    (rows || []).forEach((r: any) =>
+      nombre.set(`${tipo}:${r.id}`, r[campo] || r.nombre || "—"));
+  }));
+
+  const arma = (p: any) => ({
+    id: p.id, tipo: p.tipo, titulo: p.titulo, estado: p.estado,
+    fecha_limite: p.fecha_limite,
+    // Quién lo pidió: solo importa cuando no fui yo
+    pidio: p.autor_id && p.autor_id !== user.id ? (p.autor?.nombre || "").split(" ")[0] : null,
+    nComs: p.comentarios?.[0]?.count || 0,
+    ctx: (p.vinculos || [])
+      .map((v: any) => ({ tipo: v.entidad_tipo, id: v.entidad_id, nombre: nombre.get(`${v.entidad_tipo}:${v.entidad_id}`) }))
+      .filter((v: any) => v.nombre)
+      .sort((a: any, b: any) => ORDEN_CTX.indexOf(a.tipo) - ORDEN_CTX.indexOf(b.tipo))
+      .slice(0, 4),
+  });
+
   return {
-    casos: (data || []).map((p: any) => ({
-      id: p.id, tipo: p.tipo, titulo: p.titulo, fecha_limite: p.fecha_limite,
-      nComs: p.comentarios?.[0]?.count || 0,
-    })),
+    casos: (data || []).filter((p: any) => p.estado === "en_progreso").map(arma),
+    abiertas: (data || []).filter((p: any) => p.estado === "abierta").map(arma),
+    // Seguimiento: casos largos que no se cierran hoy pero no hay que perder de vista
+    seguimiento: (data || []).filter((p: any) => p.estado === "seguimiento").map(arma),
   };
 }
 

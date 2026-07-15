@@ -5,6 +5,7 @@ import Campanita from "@/components/Campanita";
 import PostCard from "@/components/PostCard";
 import BuscadorGlobal from "@/components/BuscadorGlobal";
 import MenuUsuario from "@/components/MenuUsuario";
+import { ESTADOS } from "@/lib/estados";
 import FiltroMas from "@/components/FiltroMas";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -14,10 +15,6 @@ const TIPO_META: Record<string, [string, string]> = {
   problema: ["❗ Problema", "#ff4d5e"], consulta: ["❓ Consulta", "#60a5fa"],
   pago: ["💰 Pago", "#2dd4bf"], idea: ["💡 Idea", "#f4b400"],
   archivo: ["📎 Archivo", "#3b82f6"], conversacion: ["💬 Conversación", "#8b8ba3"],
-};
-const ESTADOS: Record<string, string> = {
-  abierta: "Sin Resolver", en_progreso: "En Progreso", seguimiento: "🔭 Seguimiento",
-  en_pausa: "En Pausa", resuelta: "Resuelta", archivada: "Archivada",
 };
 const ENT_ICO: Record<string, string> = {
   proyecto: "📁", empresa: "🏢", persona: "👤", convocatoria: "📜",

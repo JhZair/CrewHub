@@ -7,6 +7,7 @@ import TextoRico from "@/components/TextoRico";
 import { cambiarTipo, cambiarEstado, ocultarDelFeed, toggleEnterado } from "@/app/actions";
 import { celebrarResuelto } from "@/lib/celebra";
 import Foto from "@/components/Foto";
+import { ESTADOS_SEL } from "@/lib/estados";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -16,11 +17,6 @@ const TIPOS_SEL = [
   ["aviso", "📢 Aviso"],
 ];
 
-const ESTADOS_SEL = [
-  ["abierta", "Sin Resolver"], ["en_progreso", "En Progreso"],
-  ["seguimiento", "🔭 Seguimiento"], ["en_pausa", "En Pausa"],
-  ["resuelta", "Resuelta"], ["archivada", "Archivada"],
-];
 
 /* Tarjeta del feed: la tarjeta navega al caso; los chips, a su entidad. */
 export default function PostCard({

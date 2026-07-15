@@ -151,8 +151,10 @@ export default async function TableroPage({ searchParams }: {
   };
 
   const columnas = [
-    { estado: "abierta", titulo: "🔴 Sin Resolver", color: "var(--red)", items: de("abierta") },
-    { estado: "en_progreso", titulo: "🟡 En Progreso", color: "var(--yellow)", items: de("en_progreso") },
+    // 📥 entró y espera · 🛠 se trabaja · 🔭 se vigila — mismo vocabulario
+    // que el banco de trabajo. Antes 🔴 y 🟡 solo repetían el color.
+    { estado: "abierta", titulo: "📥 Sin Resolver", color: "var(--red)", items: de("abierta") },
+    { estado: "en_progreso", titulo: "🛠 En Progreso", color: "var(--yellow)", items: de("en_progreso") },
     { estado: "seguimiento", titulo: "🔭 Seguimiento", color: "var(--teal)", items: de("seguimiento") },
     { estado: "en_pausa", titulo: "⏸ En Pausa", color: "var(--blue)", items: de("en_pausa") },
     { estado: "resuelta", titulo: "✅ Resueltas", color: "var(--green)", items: de("resuelta", 12) },
