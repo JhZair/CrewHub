@@ -1,7 +1,7 @@
 "use client";
 import { guardarEntidad, buscarParecidos } from "@/app/actions";
 import MiniSelect from "@/components/MiniSelect";
-import { FORM_CONF, VALIDADORES } from "@/lib/entidades";
+import { FORM_CONF, VALIDADORES, GRUPO_TONO } from "@/lib/entidades";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 
@@ -209,14 +209,18 @@ export function EntidadForm({ tipo, id, valores, onDone }:
       <b style={{ fontSize: 15 }}>{id ? `✏️ Editar ${conf.titulo.toLowerCase()}` : `＋ Nuevo ${conf.titulo.toLowerCase()}`}</b>
       <div className="f-grid">{sueltos.map(pintar)}</div>
 
-      {grupos.map(g => (
-        <div key={g} style={{ marginTop: 16, padding: "10px 13px 13px", borderRadius: 12, border: "1px solid rgba(244,180,0,.3)", background: "rgba(244,180,0,.04)" }}>
-          <div style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: 1, color: "var(--yellow)", fontWeight: 700 }}>{g}</div>
-          <div className="f-grid" style={{ marginTop: 4 }}>
-            {campos.filter(c => (c as any).grupo === g).map(pintar)}
+      {grupos.map(g => {
+        const azul = GRUPO_TONO[g] === "azul";
+        const c1 = azul ? "59,130,246" : "244,180,0";
+        return (
+          <div key={g} style={{ marginTop: 16, padding: "10px 13px 13px", borderRadius: 12, border: `1px solid rgba(${c1},.3)`, background: `rgba(${c1},.04)` }}>
+            <div style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: 1, color: azul ? "var(--blue)" : "var(--yellow)", fontWeight: 700 }}>{g}</div>
+            <div className="f-grid" style={{ marginTop: 4 }}>
+              {campos.filter(c => (c as any).grupo === g).map(pintar)}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
 
       {!id && parecidos.length > 0 && (
         <div style={{ marginTop: 12, padding: "9px 12px", background: "rgba(244,180,0,.08)", border: "1px solid rgba(244,180,0,.35)", borderRadius: 10, fontSize: 12.5, color: "var(--yellow)" }}>

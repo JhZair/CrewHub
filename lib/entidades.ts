@@ -27,9 +27,16 @@ export function nombreCorto(c: { label: string; corto?: string }): string {
   return c.corto || c.label.split("—")[0].replace(/\([^)]*\)/g, "").trim();
 }
 
-/* Bloques de campos agrupados en el formulario. Van al final, en su propio
-   recuadro ámbar: importan de verdad, pero no bloquean el alta. */
+/* Bloques de campos agrupados en el formulario, cada uno con su tono:
+   ámbar = importa, pero no bloquea el alta.
+   azul  = lo llena la verificación automática; no se edita a mano. */
 export const DOCS_EMPRESA = "📎 Documentos — necesarios para postular, no para dar de alta";
+export const SUNAT_EMPRESA = "🏛 SUNAT — lo llena la verificación automática";
+
+export const GRUPO_TONO: Record<string, "ambar" | "azul"> = {
+  [DOCS_EMPRESA]: "ambar",
+  [SUNAT_EMPRESA]: "azul",
+};
 
 /* Validadores: el formato que cada tipo de dato exige */
 export const VALIDADORES: Record<string, [RegExp, string]> = {
@@ -128,20 +135,21 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
       { key: "region", label: "Región", tipo: "select", opciones: REGIONES },
       { key: "estado", label: "Estado (interno)", tipo: "select", opciones: ["en_constitucion", "activa", "inactiva", "en_proceso_de_cierre", "cerrada"] },
       { key: "fecha_constitucion", label: "Fecha de constitución", tipo: "date" },
-      { key: "domicilio_fiscal", label: "Domicilio fiscal" },
-      // — Registros. La ficha RUC en PDF se retiró: se consulta en vivo en
-      //   SUNAT (el PDF guardado se desactualizaba y engañaba). —
-      { key: "ruc", label: "RUC (11 dígitos)", valida: "ruc" },
-      { key: "renca", label: "RENCA — N° de registro (obligatorio para postular)", corto: "RENCA" },
-      { key: "vigencia_poder_fecha", label: "Vigencia de poder — fecha de emisión", corto: "Vigencia poder", tipo: "date" },
-      // — SUNAT (lo llena el botón Verificar, pero editable) —
-      { key: "estado_sunat", label: "Estado SUNAT", tipo: "select", opciones: ["activo", "suspension_temporal", "baja_provisional", "baja_definitiva"] },
-      { key: "condicion_sunat", label: "Condición SUNAT", tipo: "select", opciones: ["habido", "no_habido"] },
-      { key: "fecha_verificacion_sunat", label: "Última verificación SUNAT", tipo: "date" },
-      // — Documentos: importantes para postular, pero no bloquean el alta —
-      { key: "carpeta_drive_url", label: "Carpeta principal en Drive", corto: "Carpeta Drive", valida: "url", grupo: DOCS_EMPRESA },
+      // — SUNAT: el RUC es la llave, y lo demás lo trae la verificación.
+      //   La ficha RUC en PDF se retiró: se consulta en vivo en SUNAT (el
+      //   PDF guardado se desactualizaba y engañaba). —
+      { key: "ruc", label: "RUC (11 dígitos)", valida: "ruc", grupo: SUNAT_EMPRESA },
+      { key: "domicilio_fiscal", label: "Domicilio fiscal", grupo: SUNAT_EMPRESA },
+      { key: "estado_sunat", label: "Estado SUNAT", tipo: "select", opciones: ["activo", "suspension_temporal", "baja_provisional", "baja_definitiva"], grupo: SUNAT_EMPRESA },
+      { key: "condicion_sunat", label: "Condición SUNAT", tipo: "select", opciones: ["habido", "no_habido"], grupo: SUNAT_EMPRESA },
+      { key: "fecha_verificacion_sunat", label: "Última verificación SUNAT", corto: "Verificado SUNAT", tipo: "date", grupo: SUNAT_EMPRESA },
+      // — Documentos: importantes para postular, pero no bloquean el alta.
+      //   Cada dato va a la izquierda con su respaldo (link) a la derecha. —
+      { key: "renca", label: "RENCA — N° de registro", corto: "RENCA", grupo: DOCS_EMPRESA },
       { key: "renca_url", label: "RENCA — reconocimiento (PDF)", corto: "RENCA PDF", valida: "url", grupo: DOCS_EMPRESA },
+      { key: "vigencia_poder_fecha", label: "Vigencia de poder — fecha de emisión", corto: "Vigencia poder", tipo: "date", grupo: DOCS_EMPRESA },
       { key: "vigencia_poder_url", label: "Vigencia de poder (PDF)", corto: "Vigencia PDF", valida: "url", grupo: DOCS_EMPRESA },
+      { key: "carpeta_drive_url", label: "Carpeta principal en Drive", corto: "Carpeta Drive", valida: "url", grupo: DOCS_EMPRESA },
     ],
   },
   convocatoria: {

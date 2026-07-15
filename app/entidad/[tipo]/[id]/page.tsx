@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { Mantenimiento } from "@/components/EntidadForm";
+import { SUNAT_EMPRESA, DOCS_EMPRESA, GRUPO_TONO } from "@/lib/entidades";
 import Miembros from "@/components/Miembros";
 import Credenciales from "@/components/Credenciales";
 import ClienteProyecto from "@/components/ClienteProyecto";
@@ -22,9 +23,18 @@ import { notFound, redirect } from "next/navigation";
    izquierda = el carné (datos estáticos, relaciones, credenciales)
    derecha  = la vida (publicaciones activas, cerradas, historial) */
 
-const CONF: Record<string, { tabla: string; icono: string; campos: [string, string][] }> = {
+/* El tercer elemento agrupa la fila en un bloque de color, igual que en el
+   formulario: la ficha se lee con la misma estructura con la que se edita. */
+const CONF: Record<string, { tabla: string; icono: string; campos: [string, string, string?][] }> = {
   proyecto: { tabla: "proyectos", icono: "📁", campos: [["Folio", "folio"], ["Tipo", "tipo"], ["Modalidad", "modalidad"], ["Etapa", "etapa"], ["Actividad", "estado_actividad"], ["RENCA", "renca"]] },
-  empresa: { tabla: "empresas", icono: "🏢", campos: [["Código", "codigo"], ["Razón social", "razon_social"], ["Relación", "relacion"], ["RUC", "ruc"], ["RENCA", "renca"], ["Región", "region"], ["Estado interno", "estado"], ["Constitución", "fecha_constitucion"], ["Domicilio fiscal", "domicilio_fiscal"], ["Estado SUNAT", "estado_sunat"], ["Condición SUNAT", "condicion_sunat"], ["Verificado SUNAT", "fecha_verificacion_sunat"]] },
+  empresa: { tabla: "empresas", icono: "🏢", campos: [
+    ["Código", "codigo"], ["Razón social", "razon_social"], ["Relación", "relacion"],
+    ["Región", "region"], ["Estado interno", "estado"], ["Constitución", "fecha_constitucion"],
+    ["RUC", "ruc", SUNAT_EMPRESA], ["Domicilio fiscal", "domicilio_fiscal", SUNAT_EMPRESA],
+    ["Estado SUNAT", "estado_sunat", SUNAT_EMPRESA], ["Condición SUNAT", "condicion_sunat", SUNAT_EMPRESA],
+    ["Verificado", "fecha_verificacion_sunat", SUNAT_EMPRESA],
+    ["RENCA", "renca", DOCS_EMPRESA], ["Vigencia de poder", "vigencia_poder_fecha", DOCS_EMPRESA],
+  ] },
   persona: { tabla: "personas", icono: "👤", campos: [["Alias", "alias"], ["Tipo", "tipo"], ["Equipo", "equipo"], ["Estado", "estado"], ["Región", "region"], ["Rol", "rol"], ["DNI", "ruc_dni"], ["DNI vence", "dni_vencimiento"]] },
   equipamiento: { tabla: "equipamiento", icono: "🎥", campos: [["Folio", "folio"], ["Categoría", "categoria"], ["Subcategoría", "subcategoria"], ["Estado", "estado"], ["Valor (S/)", "valor_compra"], ["Comprado en", "comprado_en"]] },
   lugar: { tabla: "lugares", icono: "📍", campos: [] },
@@ -146,7 +156,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   }
 
   // Relaciones societarias
-  let miembros: any[] = [], personasCat: any[] = [], cargosDe: any[] = [];
+  let miembros: any[] = [], personasCat: any[] = [], cargosDe: any[] = [], postusEmp: any[] = [];
   let clienteDe: { id: string; nombre: string } | null = null;
   let cronoActs: any[] = [], perfilesCat: any[] = [];
   let postusProy: any[] = [];
@@ -219,14 +229,19 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     personasCat = (pc.data || []).map((x: any) => ({ ...x, nombre: x.alias ? `${x.nombre} · ${x.alias}` : x.nombre }));
   }
   if (params.tipo === "empresa") {
-    const [m, pc] = await Promise.all([
+    const [m, pc, pe] = await Promise.all([
       supabase.from("empresa_miembros")
         .select("id,cargo,fecha_inicio,fecha_fin,estado,persona:personas(id,nombre,alias)")
         .eq("empresa_id", params.id).order("cargo"),
       supabase.from("personas").select("id,nombre,alias,tipo").order("nombre"),
+      // Con qué proyectos postuló esta empresa, qué ganó y con qué equipo
+      supabase.from("postulaciones")
+        .select("id,codigo,estado,monto_adjudicado,proy:proyectos(id,nombre),conv:convocatorias(id,nombre,anio),equipo:postulacion_equipo(cargo,persona:personas(id,nombre,alias))")
+        .eq("empresa_id", params.id).order("creado_en", { ascending: false }),
     ]);
     miembros = m.data || [];
     personasCat = (pc.data || []).map((x: any) => ({ ...x, nombre: x.alias ? `${x.nombre} · ${x.alias}` : x.nombre }));
+    postusEmp = pe.data || [];
   }
   let postDe: any[] = [], equiposEnMano: any[] = [], clienteEnProy: any[] = [];
   let cuentaDe: { id: string; nombre: string } | null = null;
@@ -284,7 +299,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     const nComs = (p.comentarios as any)?.[0]?.count || 0;
     return (
       <Link key={p.id} href={`/caso/${p.id}`}>
-        <div className="card link" style={{ cursor: "pointer", padding: "12px 15px" }}>
+        {/* est-* aporta el tinte de identidad del estado, igual que en el feed */}
+        <div className={`card link est-${p.estado}`} style={{ cursor: "pointer", padding: "12px 15px" }}>
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             <span>{TIPO_META[p.tipo] || "💬"}</span>
             <b style={{ flex: 1, fontSize: 13.5 }}>{p.titulo}</b>
@@ -322,7 +338,19 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
-        <h1 className="title-lg" style={{ flex: 1, margin: 0 }}>{conf.icono} {nombre}</h1>
+        <h1 className="title-lg" style={{ margin: 0 }}>{conf.icono} {nombre}</h1>
+        {/* De quién es la empresa: se lee sin bajar a la ficha. Solo las
+            propias generan alertas, así que conviene tenerlo a la vista. */}
+        {params.tipo === "empresa" && ent.relacion && (() => {
+          const t: Record<string, [string, string]> = {
+            propia: ["var(--violet)", "rgba(167,139,250,.14)"],
+            aliada: ["var(--teal)", "rgba(45,212,191,.12)"],
+            externa: ["var(--dim)", "rgba(150,150,170,.10)"],
+          };
+          const [col, bg] = t[ent.relacion] || t.externa;
+          return <span className="badge" style={{ color: col, background: bg }}>{ent.relacion}</span>;
+        })()}
+        <span style={{ flex: 1 }} />
         <Link href={`/?link=${params.tipo}:${params.id}`} className="btn">＋ Publicar</Link>
       </div>
 
@@ -331,7 +359,9 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         <aside>
           <div className="card">
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: conf.campos.length ? 12 : 0 }}>
-              {ent.carpeta_drive_url && (
+              {/* En empresa, Drive/RENCA/Vigencia se muestran dentro del
+                  bloque 📎 Documentos, junto al dato que respaldan. */}
+              {params.tipo !== "empresa" && ent.carpeta_drive_url && (
                 <a href={ent.carpeta_drive_url} target="_blank" rel="noopener noreferrer"
                   className="btn" style={{ background: "#1a73e8", fontSize: 12, padding: "7px 12px" }}>📂 Drive</a>
               )}
@@ -351,11 +381,11 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                 <a href={ent.acta_url} target="_blank" rel="noopener noreferrer"
                   className="btn btn-ghost" style={{ fontSize: 12, padding: "7px 12px" }}>🖋 Acta</a>
               )}
-              {ent.renca_url && (
+              {params.tipo !== "empresa" && ent.renca_url && (
                 <a href={ent.renca_url} target="_blank" rel="noopener noreferrer"
                   className="btn btn-ghost" style={{ fontSize: 12, padding: "7px 12px" }}>🎬 RENCA</a>
               )}
-              {ent.vigencia_poder_url && (
+              {params.tipo !== "empresa" && ent.vigencia_poder_url && (
                 <a href={ent.vigencia_poder_url} target="_blank" rel="noopener noreferrer"
                   className="btn btn-ghost" style={{ fontSize: 12, padding: "7px 12px" }}>📜 Vigencia</a>
               )}
@@ -422,13 +452,18 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               return al.length ? <>{al}</> : null;
             })()}
 
-            {conf.campos.map(([lbl, key]) =>
+            {(() => {
+            const pintarFila = ([lbl, key]: [string, string, string?]) =>
               ent[key] != null && ent[key] !== "" ? (
                 <div className="ficha-row" key={key}>
                   <span className="fk">{lbl}</span>
                   <span className="fv" style={
                     key === "estado_sunat" && ent[key] !== "activo" ? { color: "var(--red)", fontWeight: 700 }
                       : key === "dni_vencimiento" && new Date(ent[key]) < new Date() ? { color: "var(--red)", fontWeight: 700 }
+                      // Una vigencia de poder de más de 90 días ya no sirve para trámites
+                      : key === "vigencia_poder_fecha"
+                        && (Date.now() - new Date(ent[key]).getTime()) / 86400000 > 90
+                        ? { color: "var(--red)", fontWeight: 700 }
                       : CAMPOS_DINERO.includes(key) ? { color: "var(--teal)", fontWeight: 700 } : undefined
                   }>
                     {key === "rol" && String(ent[key]).split(",").length > 3 ? (
@@ -442,8 +477,53 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                     ) : verFicha(key, ent[key])}
                   </span>
                 </div>
-              ) : null
-            )}
+              ) : null;
+
+            // Los botones viven en el bloque del dato al que pertenecen:
+            // verificar/ficha con SUNAT, y los PDF con sus documentos.
+            const lnk = { fontSize: 11.5, padding: "5px 10px" };
+            const extras: Record<string, any> = params.tipo !== "empresa" ? {} : {
+              [SUNAT_EMPRESA]: ent.ruc && (
+                <>
+                  <BotonVerificarRuc empresaId={params.id} />
+                  <BotonFichaSunat ruc={ent.ruc} />
+                </>
+              ),
+              [DOCS_EMPRESA]: (ent.carpeta_drive_url || ent.renca_url || ent.vigencia_poder_url) && (
+                <>
+                  {ent.carpeta_drive_url && <a href={ent.carpeta_drive_url} target="_blank" rel="noopener noreferrer" className="btn" style={{ ...lnk, background: "#1a73e8" }}>📂 Drive</a>}
+                  {ent.renca_url && <a href={ent.renca_url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost" style={lnk}>🎬 RENCA ↗</a>}
+                  {ent.vigencia_poder_url && <a href={ent.vigencia_poder_url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost" style={lnk}>📜 Vigencia ↗</a>}
+                </>
+              ),
+            };
+
+            const sueltos = conf.campos.filter(c => !c[2]);
+            const gruposF = [...new Set(conf.campos.map(c => c[2]).filter(Boolean))] as string[];
+            return (
+              <>
+                {sueltos.map(pintarFila)}
+                {gruposF.map(g => {
+                  const filas = conf.campos.filter(c => c[2] === g && ent[c[1]] != null && ent[c[1]] !== "");
+                  const btns = extras[g];
+                  if (!filas.length && !btns) return null;
+                  const azul = GRUPO_TONO[g] === "azul";
+                  const c1 = azul ? "59,130,246" : "244,180,0";
+                  return (
+                    <div key={g} style={{ marginTop: 10, padding: "6px 10px 8px", borderRadius: 10, border: `1px solid rgba(${c1},.25)`, background: `rgba(${c1},.04)` }}>
+                      <div style={{ fontSize: 9.5, textTransform: "uppercase", letterSpacing: 1, color: azul ? "var(--blue)" : "var(--yellow)", fontWeight: 700, marginBottom: 2 }}>
+                        {g.split("—")[0].trim()}
+                      </div>
+                      {filas.map(pintarFila)}
+                      {btns && (
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>{btns}</div>
+                      )}
+                    </div>
+                  );
+                })}
+              </>
+            );
+            })()}
             {ent.descripcion && <p style={{ color: "var(--muted)", fontSize: 12.5, lineHeight: 1.5, marginTop: 10 }}>{ent.descripcion}</p>}
             {params.tipo === "postulacion" && ent.feedback_jurado && (
               ent.feedback_jurado.length > 220 ? (
@@ -463,8 +543,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             )}
             <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
               <Mantenimiento tipo={params.tipo} id={params.id} valores={ent} />
-              {params.tipo === "empresa" && ent.ruc && <BotonVerificarRuc empresaId={params.id} />}
-              {params.tipo === "empresa" && ent.ruc && <BotonFichaSunat ruc={ent.ruc} />}
+              {/* Los de empresa (verificar / ficha SUNAT) van en el bloque 🏛 SUNAT */}
               {params.tipo === "persona" && ent.ruc_dni && <BotonVerificarDni personaId={params.id} />}
             </div>
           </div>
@@ -679,6 +758,54 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
 
         {/* ===== COLUMNA DERECHA: la vida ===== */}
         <main>
+          {/* Palmarés: lo primero que cuenta qué ha logrado esta empresa */}
+          {params.tipo === "empresa" && postusEmp.length > 0 && (
+            <div className="card" style={{ marginBottom: 16 }}>
+              <div className="panel-h">🎯 Postuló con · {postusEmp.length}</div>
+              {postusEmp.map((p: any) => (
+                <div key={p.id} style={{ borderTop: "1px solid var(--border)", padding: "9px 0" }}>
+                  <Link href={`/entidad/postulacion/${p.id}`}
+                    style={{ color: "var(--text)", fontWeight: 600, fontSize: 13.5, display: "block", lineHeight: 1.4 }}>
+                    {ICONO_ESTADO[p.estado] || "🎯"} {p.proy?.nombre || p.codigo || "Postulación"} →
+                  </Link>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 5, flexWrap: "wrap" }}>
+                    {p.conv?.anio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{p.conv.anio}</span>}
+                    <span className="badge" style={{
+                      color: p.estado === "ganadora" ? "var(--green)" : "var(--muted)", background: "#1c1c2c",
+                    }}>{(p.estado || "").replace(/_/g, " ")}</span>
+                    {p.estado === "ganadora" && p.monto_adjudicado && (
+                      <span className="badge" style={{ color: "var(--teal)", background: "rgba(45,212,191,.12)", fontWeight: 700 }}>
+                        S/ {Number(p.monto_adjudicado).toLocaleString("es-PE")}
+                      </span>
+                    )}
+                    {p.conv?.nombre && (
+                      <span style={{ color: "var(--dim)", fontSize: 11 }}>· {p.conv.nombre}</span>
+                    )}
+                    {p.proy?.id && (
+                      <Link href={`/entidad/proyecto/${p.proy.id}`}
+                        style={{ color: "var(--dim)", fontSize: 11, textDecoration: "underline dotted", textUnderlineOffset: 3 }}>
+                        📁 ver proyecto →
+                      </Link>
+                    )}
+                  </div>
+                  {/* Quiénes lo hicieron posible */}
+                  {(p.equipo || []).length > 0 && (
+                    <div style={{ display: "flex", gap: 5, alignItems: "center", marginTop: 6, flexWrap: "wrap" }}>
+                      <span style={{ color: "var(--dim)", fontSize: 11 }}>👥</span>
+                      {p.equipo.map((e: any, i: number) => (
+                        <Link key={i} href={`/entidad/persona/${e.persona?.id}`} className="badge"
+                          title={e.cargo || ""}
+                          style={{ color: "var(--violet)", background: "rgba(167,139,250,.10)", textTransform: "none", letterSpacing: 0, fontWeight: 600 }}>
+                          {e.persona?.alias || e.persona?.nombre}
+                          {e.cargo && <span style={{ color: "var(--dim)", fontWeight: 400 }}> · {e.cargo}</span>}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
           {(() => {
             const vida = (
               <>
@@ -686,7 +813,12 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                   🔥 Activas · {activas.length}
                 </div>
                 {activas.map(cardPub)}
-                {!activas.length && <div className="empty" style={{ padding: "18px 0" }}>Nada activo sobre esta entidad.</div>}
+                {/* Vacío aquí es buena señal: conviene que se lea así */}
+                {!activas.length && (
+                  <div className="empty" style={{ padding: "18px 0" }}>
+                    Sin casos abiertos sobre {nombre} — todo en orden.
+                  </div>
+                )}
 
                 {cerradas.length > 0 && (
                   <details style={{ marginTop: 16 }}>
@@ -697,10 +829,12 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                   </details>
                 )}
 
+                {/* Abierto por defecto: Activas suele estar vacío (buena señal)
+                    y Resueltas va cerrado, así que el historial es lo vivo aquí. */}
                 {eventosVis.length > 0 && (
-                  <details style={{ marginTop: 16 }}>
+                  <details open style={{ marginTop: 16 }}>
                     <summary style={{ color: "var(--muted)", fontSize: 13, cursor: "pointer", padding: "6px 0" }}>
-                      🕐 Historial de la entidad · {eventosVis.length} eventos
+                      🕐 Historial de {nombre} · {eventosVis.length} eventos
                     </summary>
                     <div className="tl" style={{ marginTop: 12 }}>
                       {eventosVis.map((e: any, i: number) => (
