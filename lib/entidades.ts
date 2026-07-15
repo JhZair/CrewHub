@@ -14,7 +14,7 @@ export type CampoDef = {
   multiple?: boolean;     // varias opciones como chips (se guardan separadas por coma)
   sugerenciasPor?: { campo: string; mapa: Record<string, string[]> };
     // sugerencias dependientes de otro campo (ej. subcategoría según categoría)
-  valida?: "dni" | "ruc" | "email" | "telefono" | "url" | "anio";
+  valida?: "dni" | "ruc" | "email" | "telefono" | "url" | "anio" | "monto" | "puntaje";
     // validación anti-humanos: formato exigido antes de guardar
   corto?: string;       // nombre breve para el historial (si la etiqueta es larga)
   grupo?: string;       // agrupa el campo en un bloque destacado del formulario
@@ -36,12 +36,24 @@ export const DNI_PERSONA = "🪪 Identidad — DNI y firma: obligatorios para po
 export const DOCS_PERSONA = "📎 Otros documentos";
 export const SUNAT_PERSONA = "🏛 SUNAT — su RUC sale del DNI; lo demás lo llena la verificación";
 
+/* Una postulación no se llena de una sentada: se envía, la evalúan, y con
+   suerte se gana. Presentarla como una pared de 14 campos hace que la mitad
+   pida datos que todavía NO EXISTEN —el acta de algo que aún no ganas—, y
+   quien la edita no sabe si está olvidando algo o si aún no toca.
+   Los bloques cuentan ese orden. */
+export const JURADO_POST = "⚖️ Resultado del jurado — recién cuando DAFO publica";
+export const FONDO_POST = "🏆 Si ganó — el fondo adjudicado; se llena al firmar el acta";
+export const DOCS_POST = "📎 Documentos";
+
 export const GRUPO_TONO: Record<string, "ambar" | "azul"> = {
   [DOCS_EMPRESA]: "ambar",
   [SUNAT_EMPRESA]: "azul",
   [DNI_PERSONA]: "azul",
   [DOCS_PERSONA]: "ambar",
   [SUNAT_PERSONA]: "azul",
+  [JURADO_POST]: "azul",
+  [FONDO_POST]: "ambar",
+  [DOCS_POST]: "ambar",
 };
 
 /* Validadores: el formato que cada tipo de dato exige */
@@ -52,6 +64,12 @@ export const VALIDADORES: Record<string, [RegExp, string]> = {
   telefono: [/^[+]?[\d\s\-()]{6,20}$/, "Ese teléfono no parece válido"],
   url: [/^https?:\/\/\S+$/, "Debe ser un link completo (https://...)"],
   anio: [/^(19|20)\d{2}$/, "Año de 4 dígitos (ej. 2026)"],
+  /* Dinero y puntaje van a columnas `numeric` de Postgres. La acción ya
+     limpia "S/ 400,000.00" → "400000.00", pero si el operador escribe
+     "por confirmar" el error que devuelve la base es «invalid input syntax
+     for type numeric» — cierto, e inútil. Mejor decirlo aquí. */
+  monto: [/^\d{1,3}(,?\d{3})*(\.\d{1,2})?$|^\d+(\.\d{1,2})?$/, "Solo el número (ej. 45000 o 45,000.50) — sin «S/» ni texto"],
+  puntaje: [/^\d{1,3}(\.\d{1,2})?$/, "Solo el puntaje, hasta 2 decimales (ej. 87.5)"],
 };
 
 /* Subcategorías sugeridas según la categoría del equipo */
@@ -179,20 +197,23 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
     tabla: "postulaciones",
     titulo: "Postulación",
     campos: [
+      // — Lo que existe desde que se prepara —
       { key: "codigo", label: "Código", auto: true },
-      { key: "codigo_plataforma", label: "Código en la plataforma DAFO (ej. CDO-P-00094-26)" },
+      { key: "codigo_plataforma", label: "Código en la plataforma DAFO (ej. CDO-P-00094-26)", corto: "Código DAFO" },
       { key: "estado", label: "Estado", tipo: "select", opciones: ["en_preparacion", "enviada", "finalista", "ganadora", "finalista_no_ganadora", "no_seleccionada", "retirada"] },
       { key: "lenguas_originarias", label: "¿Uso de lenguas originarias?", tipo: "select", opciones: ["no", "quechua", "aymara", "mixto"] },
-      { key: "puntaje_jurado", label: "Puntaje matriz del jurado" },
-      { key: "matriz_jurado_url", label: "Matriz del jurado (link al PDF)", valida: "url" },
-      { key: "feedback_jurado", label: "Comentario del jurado", tipo: "textarea" },
-      { key: "codigo_acta", label: "Código del acta de compromiso (ej. 139-2025-DAFO)" },
-      { key: "fecha_firma_acta", label: "Firma del acta de compromiso", tipo: "date" },
-      { key: "monto_adjudicado", label: "Monto adjudicado (S/)" },
-      { key: "fecha_limite_rendicion", label: "Límite de rendición", tipo: "date" },
-      { key: "fecha_prorroga", label: "Prórroga (si existe)", tipo: "date" },
-      { key: "acta_url", label: "Acta de compromiso (link)", valida: "url" },
-      { key: "carpeta_drive_url", label: "Carpeta en Drive (link)", valida: "url" },
+      // — Lo que aparece cuando el jurado publica —
+      { key: "puntaje_jurado", label: "Puntaje matriz del jurado", valida: "puntaje", grupo: JURADO_POST },
+      { key: "matriz_jurado_url", label: "Matriz del jurado (link al PDF)", corto: "Matriz jurado", valida: "url", grupo: JURADO_POST },
+      { key: "feedback_jurado", label: "Comentario del jurado", corto: "Comentario jurado", tipo: "textarea", grupo: JURADO_POST },
+      // — Lo que solo existe si se ganó —
+      { key: "codigo_acta", label: "Código del acta de compromiso (ej. 139-2025-DAFO)", corto: "Código acta", grupo: FONDO_POST },
+      { key: "fecha_firma_acta", label: "Firma del acta de compromiso", corto: "Firma acta", tipo: "date", grupo: FONDO_POST },
+      { key: "monto_adjudicado", label: "Monto adjudicado (S/)", corto: "Monto", valida: "monto", grupo: FONDO_POST },
+      { key: "acta_url", label: "Acta de compromiso (link)", corto: "Acta", valida: "url", grupo: FONDO_POST },
+      { key: "fecha_limite_rendicion", label: "Límite de rendición", corto: "Límite rendición", tipo: "date", grupo: FONDO_POST },
+      { key: "fecha_prorroga", label: "Prórroga (si existe)", corto: "Prórroga", tipo: "date", grupo: FONDO_POST },
+      { key: "carpeta_drive_url", label: "Carpeta en Drive (link)", corto: "Carpeta Drive", valida: "url", grupo: DOCS_POST },
     ],
   },
   etiqueta: {

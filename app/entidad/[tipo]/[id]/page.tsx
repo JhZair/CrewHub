@@ -570,6 +570,48 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               return null;
             })()}
 
+            {/* Una postulación se contradice sola con facilidad: se marca
+                ganadora y nadie carga el acta, o se pone una prórroga que
+                acorta el plazo en vez de estirarlo. La ficha lo dice. */}
+            {params.tipo === "postulacion" && (() => {
+              const al: any[] = [];
+              const gano = ent.estado === "ganadora";
+              if (gano) {
+                const falta = [
+                  !ent.codigo_acta && "el código del acta",
+                  !ent.fecha_firma_acta && "la fecha de firma",
+                  !ent.monto_adjudicado && "el monto adjudicado",
+                  !ent.fecha_limite_rendicion && "la fecha límite de rendición",
+                ].filter(Boolean);
+                if (falta.length) al.push(
+                  <Alerta key="gan" tono="ambar"
+                    titulo={`🏆 Ganadora, pero falta ${falta.join(", ")}`}
+                    detalle="Sin estos datos el fondo no se puede seguir: no aparece en los montos ganados ni avisa cuando venza la rendición." />
+                );
+              } else if (ent.monto_adjudicado || ent.codigo_acta) {
+                // Datos de fondo en algo que no ganó: o el estado está viejo,
+                // o alguien se equivocó de postulación.
+                al.push(
+                  <Alerta key="inc" tono="ambar"
+                    titulo={`🏆 Tiene datos del fondo, pero figura como «${String(ent.estado || "—").replace(/_/g, " ")}»`}
+                    detalle="Si ya ganó, cambia el estado a ganadora. Si no, revisa: esos datos pueden ser de otra postulación." />
+                );
+              }
+              if (ent.fecha_prorroga && ent.fecha_limite_rendicion
+                && ent.fecha_prorroga < ent.fecha_limite_rendicion) al.push(
+                <Alerta key="pro" tono="roja"
+                  titulo="📅 La prórroga es anterior al límite de rendición"
+                  detalle="Una prórroga estira el plazo, no lo acorta. Seguramente hay un error de tipeo en una de las dos fechas." />
+              );
+              if (ent.fecha_firma_acta && ent.fecha_limite_rendicion
+                && ent.fecha_limite_rendicion < ent.fecha_firma_acta) al.push(
+                <Alerta key="fir" tono="roja"
+                  titulo="📅 La rendición vence antes de la firma del acta"
+                  detalle="Revisa las dos fechas: no se puede rendir un fondo antes de haberlo firmado." />
+              );
+              return al.length ? <>{al}</> : null;
+            })()}
+
             {params.tipo === "empresa" && ent.estado === "activa"
               && (ent.relacion || "propia") === "propia" && (() => {
               const al: any[] = [];

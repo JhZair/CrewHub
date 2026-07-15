@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { coincideQ, nrmQ } from "@/lib/quechua";
+import { ESTADOS } from "@/lib/estados";
 import Volver from "@/components/Volver";
 import BuscadorGlobal from "@/components/BuscadorGlobal";
 import Link from "next/link";
@@ -9,10 +10,6 @@ import { redirect } from "next/navigation";
    casos, comentarios, personas, proyectos, empresas, equipos,
    lugares y convocatorias. Una caja, todo el sistema. */
 
-const ESTADOS: Record<string, string> = {
-  abierta: "📥 Sin Resolver", en_progreso: "🛠 En Progreso", seguimiento: "🔭 Seguimiento",
-  en_pausa: "En Pausa", resuelta: "Resuelta", archivada: "Archivada",
-};
 const TIPO_ICO: Record<string, string> = {
   aviso: "📢", tarea: "✅", problema: "❗", consulta: "❓", pago: "💰", idea: "💡", archivo: "📎",
 };
@@ -80,8 +77,12 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
       supabase.from("convocatorias").select("id,codigo,nombre,anio,estado"),
       supabase.from("postulaciones")
         .select("id,codigo,codigo_plataforma,codigo_acta,estado,feedback_jurado,acta_url,fecha_limite_rendicion,proy:proyectos(nombre),conv:convocatorias(codigo,nombre,anio)"),
+      /* Los datos sueltos de cada cuenta (código de afiliación, correo de
+         recuperación, N° de contrato...) son justo lo que uno viene a
+         buscar meses después. Estaban guardados y no se buscaban. */
       supabase.from("credenciales")
-        .select("id,plataforma,identificador,ubicacion,notas,empresa_id,persona_id").limit(600),
+        .select("id,plataforma,identificador,ubicacion,notas,empresa_id,persona_id,datos:credencial_datos(id,etiqueta,valor)")
+        .limit(600),
     ]);
 
     // El marcador en los resultados: 🏆 ganados · 🥈 casi · 🎯 intentos
@@ -133,13 +134,20 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
     // Credenciales: inventario de accesos (plataforma, usuario, dónde vive la clave)
     const empMap = new Map((c5.data || []).map((e: any) => [e.id, e.nombre]));
     const persMap = new Map((c3.data || []).map((p: any) => [p.id, p.nombre]));
+    const textoDatos = (c: any) =>
+      (c.datos || []).map((d: any) => `${d.etiqueta} ${d.valor}`).join(" ");
     creds = (c10.data || [])
-      .filter((c: any) => coincide(`credencial acceso clave usuario ${c.plataforma} ${c.identificador} ${c.ubicacion} ${c.notas}`))
+      .filter((c: any) => coincide(
+        `credencial acceso clave usuario ${c.plataforma} ${c.identificador} ${c.ubicacion} ${c.notas} ${textoDatos(c)}`))
       .map((c: any) => {
         const dueno = c.empresa_id ? "empresa" : "persona";
         const duenoId = c.empresa_id || c.persona_id;
         const duenoNombre = c.empresa_id ? empMap.get(c.empresa_id) : persMap.get(c.persona_id);
-        return { ...c, dueno, duenoId, duenoNombre };
+        /* Qué dato concreto coincidió: sin esto, buscas un código de
+           afiliación y te sale una fila «DAFO-Estímulos» sin decirte que lo
+           encontró — y no sabrías si es lo que buscabas. */
+        const golpes = (c.datos || []).filter((d: any) => coincide(`${d.etiqueta} ${d.valor}`));
+        return { ...c, dueno, duenoId, duenoNombre, golpes };
       }).slice(0, 10);
   }
 
@@ -211,6 +219,17 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
             {c.ubicacion && <span style={{ color: "var(--dim)", fontSize: 11.5 }}>🔒 {c.ubicacion}</span>}
             <span style={{ flex: 1 }} />
             {c.duenoNombre && <span style={{ color: "var(--muted)", fontSize: 12 }}>{c.dueno === "empresa" ? "🏢" : "👤"} {c.duenoNombre}</span>}
+            {/* El dato que hizo el match, en su propia línea */}
+            {(c.golpes || []).length > 0 && (
+              <span style={{ width: "100%", display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
+                {c.golpes.map((d: any) => (
+                  <span key={d.id} className="badge"
+                    style={{ color: "var(--teal)", background: "rgba(45,212,191,.12)", textTransform: "none", letterSpacing: 0 }}>
+                    {d.etiqueta}: <b>{d.valor || "—"}</b>
+                  </span>
+                ))}
+              </span>
+            )}
           </Fila>
         ))}
       </Seccion>

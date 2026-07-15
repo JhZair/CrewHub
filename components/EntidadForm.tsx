@@ -1,7 +1,7 @@
 "use client";
 import { guardarEntidad, buscarParecidos } from "@/app/actions";
 import MiniSelect from "@/components/MiniSelect";
-import { FORM_CONF, VALIDADORES, GRUPO_TONO } from "@/lib/entidades";
+import { FORM_CONF, VALIDADORES, GRUPO_TONO, nombreCorto } from "@/lib/entidades";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 
@@ -76,6 +76,7 @@ export function EntidadForm({ tipo, id, valores, onDone }:
   });
   const [guardando, setGuardando] = useState(false);
   const [errores, setErrores] = useState<Record<string, string>>({});
+  const [aviso, setAviso] = useState("");   // por qué no se guardó
   const [parecidos, setParecidos] = useState<{ id: string; nombre: string }[]>([]);
   const router = useRouter();
 
@@ -95,9 +96,22 @@ export function EntidadForm({ tipo, id, valores, onDone }:
   const guardar = async () => {
     if (guardando) return;
     // Validación en el propio formulario: marca los campos faltantes
+    /* Un link pegado de la barra del navegador viene sin esquema
+       ("drive.google.com/…"). Rechazarlo es cierto pero inútil: el operador
+       no se equivocó de link, se equivocó de protocolo. Lo completamos y
+       seguimos, en vez de trabarle el guardado por cinco caracteres. */
+    const arreglado = { ...form };
+    campos.forEach(c => {
+      if (c.valida !== "url") return;
+      const v = (arreglado[c.key] || "").trim();
+      if (v && !/^https?:\/\//i.test(v) && /^[\w-]+(\.[\w-]+)+\//.test(v))
+        arreglado[c.key] = "https://" + v;
+    });
+    if (JSON.stringify(arreglado) !== JSON.stringify(form)) setForm(arreglado);
+
     const errs: Record<string, string> = {};
     campos.forEach(c => {
-      const v = (form[c.key] || "").trim();
+      const v = (arreglado[c.key] || "").trim();
       if (c.requerido && !v) { errs[c.key] = "Este campo es obligatorio"; return; }
       // validación anti-humanos: si hay valor, debe tener el formato correcto
       if (v && c.valida && VALIDADORES[c.valida] && !VALIDADORES[c.valida][0].test(v)) {
@@ -105,10 +119,22 @@ export function EntidadForm({ tipo, id, valores, onDone }:
       }
     });
     setErrores(errs);
-    if (Object.keys(errs).length) return;
+    const malos = Object.keys(errs);
+    if (malos.length) {
+      /* Antes esto era un `return` a secas: marcaba el campo en rojo y se
+         iba callado. En un formulario largo dentro de un modal con scroll,
+         el campo rojo queda fuera de pantalla y el efecto es que el botón
+         Guardar «no hace nada». Un formulario que se niega a guardar tiene
+         que decir por qué y llevarte al problema. */
+      setAviso(malos.map(k => nombreCorto(campos.find(c => c.key === k)!)).join(", "));
+      const el = document.getElementById(`campo-${malos[0]}`);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    setAviso("");
 
     setGuardando(true);
-    const res = await guardarEntidad(tipo, id || null, form);
+    const res = await guardarEntidad(tipo, id || null, arreglado);
     setGuardando(false);
     if (res?.error) { alert(res.error); return; }
     if (!id && res?.id) { router.push(`/entidad/${tipo}/${res.id}`); return; }
@@ -140,7 +166,7 @@ export function EntidadForm({ tipo, id, valores, onDone }:
   const grupos = [...new Set(campos.map(c => (c as any).grupo).filter(Boolean))] as string[];
 
   const pintar = (c: any) => (
-          <div key={c.key} className="f-campo" style={c.tipo === "textarea" ? { gridColumn: "1 / -1" } : undefined}>
+          <div key={c.key} id={`campo-${c.key}`} className="f-campo" style={c.tipo === "textarea" ? { gridColumn: "1 / -1" } : undefined}>
             <span style={errores[c.key] ? { color: "var(--red)" } : undefined}>
               {c.label}{c.requerido && <b style={{ color: "var(--red)" }}> *</b>}
             </span>
@@ -240,6 +266,11 @@ export function EntidadForm({ tipo, id, valores, onDone }:
               {p.nombre} ↗
             </a>
           ))}
+        </div>
+      )}
+      {aviso && (
+        <div style={{ marginTop: 12, padding: "9px 12px", background: "rgba(255,77,94,.08)", border: "1px solid rgba(255,77,94,.4)", borderRadius: 10, fontSize: 12.5, color: "var(--red)" }}>
+          ⚠ No se guardó — revisa: <b>{aviso}</b>. Te llevé al primero.
         </div>
       )}
       <div style={{ display: "flex", gap: 10, marginTop: 14, justifyContent: "flex-end" }}>
