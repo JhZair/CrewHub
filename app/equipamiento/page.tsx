@@ -65,6 +65,8 @@ export default async function Equipamiento({ searchParams }: {
       <div className="topbar">
         <Volver />
         <span className="spacer" />
+        <Link href="/historial/equipamiento" className="btn btn-ghost"
+          title="Todo lo que se movió en los equipos, por periodo">🕐 Historial</Link>
         <Link href="/entidad/equipamiento/nuevo" className="btn">＋ Nuevo equipo</Link>
       </div>
       <h1 className="title-lg">🎥 Equipos audiovisuales</h1>

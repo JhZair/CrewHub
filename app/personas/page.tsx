@@ -169,6 +169,8 @@ export default async function Personas({ searchParams }: {
       <div className="topbar">
         <Volver />
         <span className="spacer" />
+        <Link href="/historial/persona" className="btn btn-ghost"
+          title="Todo lo que se movió en las personas, por periodo">🕐 Historial</Link>
         <Link href="/entidad/persona/nuevo" className="btn">＋ Nueva persona</Link>
       </div>
       <h1 className="title-lg">👤 Personas</h1>

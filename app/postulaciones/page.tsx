@@ -94,6 +94,8 @@ export default async function Postulaciones({ searchParams }: {
         <Volver />
         <span className="spacer" />
         <Link href="/convocatorias" className="btn btn-ghost">📜 Convocatorias</Link>
+        <Link href="/historial/postulacion" className="btn btn-ghost"
+          title="Todo lo que se movió en las postulaciones, por periodo">🕐 Historial</Link>
       </div>
       <h1 className="title-lg">🎯 Postulaciones</h1>
       {qErr && (

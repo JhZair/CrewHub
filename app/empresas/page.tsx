@@ -281,6 +281,8 @@ export default async function Empresas({ searchParams }: {
         <Volver />
         <span className="spacer" />
         <Link href="/proyectos" className="btn btn-ghost">📁 Proyectos</Link>
+        <Link href="/historial/empresa" className="btn btn-ghost"
+          title="Todo lo que se movió en las empresas, por periodo">🕐 Historial</Link>
         <Link href="/entidad/empresa/nuevo" className="btn">＋ Nueva empresa</Link>
       </div>
       <h1 className="title-lg">🏢 Empresas</h1>
