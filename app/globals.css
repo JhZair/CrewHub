@@ -631,6 +631,10 @@ img.av{border:1px solid var(--border2)}
 .kb-n{font-size:10px;background:#23233a;color:var(--muted);border-radius:7px;padding:1px 6px}
 .kb-card{background:var(--card);border:1px solid var(--border);border-radius:9px;padding:7px 9px;margin-bottom:6px;cursor:grab}
 .kb-card:hover{border-color:var(--border2)}
+/* Lo que no trabajo yo (delegado o mención) se apaga: el ojo va primero a
+   mis casos, y lo ajeno queda de reojo. Al pasar el cursor se prende. */
+.kb-ajena{opacity:.38;transition:opacity .16s ease}
+.kb-ajena:hover{opacity:1}
 .kb-card:active{cursor:grabbing;opacity:.7}
 .kb-vacia{color:var(--dim);font-size:10.5px;text-align:center;padding:12px 0}
 .kb-chips{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}

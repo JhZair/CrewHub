@@ -62,7 +62,7 @@ export default async function TableroPage({ searchParams }: {
   }
 
   let q = supabase.from("publicaciones")
-    .select("id,titulo,tipo,estado,fecha_limite,creado_en,comentarios(count),resp:perfiles!publicaciones_responsable_fkey(nombre)")
+    .select("id,titulo,tipo,estado,fecha_limite,creado_en,autor_id,responsable,comentarios(count),resp:perfiles!publicaciones_responsable_fkey(nombre)")
     .in("estado", ESTADOS)
     .order("creado_en", { ascending: false })
     .limit(300);
@@ -122,12 +122,25 @@ export default async function TableroPage({ searchParams }: {
     vincDe.set(vv.publicacion_id, l);
   });
 
+  /* "Mis asuntos" es más ancho que el banco de trabajo a propósito: el banco
+     es lo que TENGO QUE HACER (soy responsable) y esta pestaña es lo que ME
+     INCUMBE, que además incluye lo que delegué y lo que me menciona.
+     La regla estaba bien; lo que faltaba era decirlo. Sin la marca, ver 12
+     aquí y 7 en el banco parece un error del sistema. */
+  const marcaFoco = (p: any): "delegado" | "mencion" | null => {
+    if (!uidFoco) return null;
+    if (p.responsable === uidFoco) return null;         // es suyo: sin marca
+    if (p.autor_id === uidFoco) return "delegado";      // lo pidió, lo hace otro
+    return "mencion";                                    // solo lo mencionan
+  };
+
   const pubsE = (pubs || []).map((p: any) => ({
     ...p,
     nc: p.comentarios?.[0]?.count ?? 0,
     sub: subDe.get(p.id) || 0,
     reac: reacDe.get(p.id) || {},
     vinc: vincDe.get(p.id) || [],
+    marca: marcaFoco(p),
   }));
 
   // Universo para los contadores de cada pestaña (independiente del filtro activo)
@@ -203,7 +216,10 @@ export default async function TableroPage({ searchParams }: {
             href={val === "mios"
               ? (sufijo ? `/tablero?${sufijo}` : "/tablero")
               : `/tablero?v=${val}${sufijo ? "&" + sufijo : ""}`}
-            className={`vtab ${v === val && !pFiltro ? "on" : ""}`}>
+            className={`vtab ${v === val && !pFiltro ? "on" : ""}`}
+            title={val === "mios"
+              ? "Todo lo que te incumbe: lo que trabajas tú, lo que pediste y hace otro (📤) y lo que te menciona (👁). Tu banco de trabajo lateral muestra solo de lo que eres responsable, por eso su número es menor."
+              : undefined}>
             {label} <span className="vtab-n">{conteo[val] ?? 0}</span>
           </Link>
         ))}

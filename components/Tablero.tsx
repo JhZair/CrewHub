@@ -64,7 +64,10 @@ export default function Tablero({ columnas }: {
             const d = dias(p.fecha_limite);
             const vencColor = d === null ? null : d < 0 || d <= 2 ? "var(--red)" : d <= 7 ? "var(--yellow)" : "var(--dim)";
             return (
-              <div key={p.id} className="kb-card" draggable
+              <div key={p.id} className={`kb-card${p.marca ? " kb-ajena" : ""}`}
+                title={p.marca === "delegado" ? "Lo pediste tú — lo trabaja otra persona"
+                  : p.marca === "mencion" ? "Te menciona, pero no es tu responsabilidad" : undefined}
+                draggable
                 onDragStart={() => setArrastrando(p.id)}
                 onDragEnd={() => { setArrastrando(null); setSobre(null); }}
                 onClick={() => router.push(`/caso/${p.id}`)}>
@@ -72,6 +75,17 @@ export default function Tablero({ columnas }: {
                   {TIPO_ICO[p.tipo] || "💬"} {p.titulo}
                 </div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 5, flexWrap: "wrap" }}>
+                  {/* Por qué este caso está en "Mis asuntos" si no es mío:
+                      📤 lo pedí yo y lo hace otro · 👁 solo me menciona.
+                      Sin esto, el tablero y el banco parecen contradecirse. */}
+                  {p.marca === "delegado" && (
+                    <span className="mini-ind" title="Lo pediste tú — lo trabaja otra persona"
+                      style={{ color: "var(--blue)" }}>📤</span>
+                  )}
+                  {p.marca === "mencion" && (
+                    <span className="mini-ind" title="Te menciona, pero no es tu responsabilidad"
+                      style={{ color: "var(--dim)" }}>👁</span>
+                  )}
                   {(p.resp as any)?.nombre
                     ? <span className="tv-resp" style={{ fontSize: 10, padding: "1px 8px" }}>{corto((p.resp as any).nombre)}</span>
                     : ["tarea", "problema", "pago"].includes(p.tipo) &&
