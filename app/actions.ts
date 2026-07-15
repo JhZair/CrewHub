@@ -1,7 +1,7 @@
 "use server";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import { FORM_CONF } from "@/lib/entidades";
+import { FORM_CONF, nombreCorto } from "@/lib/entidades";
 import { nrmQ } from "@/lib/quechua";
 import { procesarSunatEmpresa, correrRondaSunat } from "@/lib/sunat";
 
@@ -40,6 +40,12 @@ export async function guardarEntidad(tipo: string, id: string | null, datos: Rec
     const { error } = await supabase.from(conf.tabla).update(limpio).eq("id", id);
     if (error) return { error: error.message };
     if (antes) {
+      // Valor legible y acotado para la bitácora (evita textos kilométricos)
+      const vis = (v: any) => {
+        const s = String(v ?? "").trim();
+        if (!s) return "—";
+        return s.length > 70 ? s.slice(0, 70) + "…" : s;
+      };
       const cambios = conf.campos
         .filter(c => (c.key in limpio) && !TRIGGER_KEYS.includes(c.key))
         .filter(c => {
@@ -48,11 +54,14 @@ export async function guardarEntidad(tipo: string, id: string | null, datos: Rec
             ? Number(a ?? 0) !== Number(b ?? 0)
             : String(a ?? "") !== String(b ?? "");
         })
-        .map(c => c.label);
+        .map(c => ({ campo: nombreCorto(c), de: vis((antes as any)[c.key]), a: vis(limpio[c.key]) }));
       if (cambios.length) {
         await supabase.from("actividad").insert({
           entidad_tipo: tipo, entidad_id: id, actor_id: user.id, tipo: "editado",
-          detalle: { mensaje: `actualizó: ${cambios.join(", ").toLowerCase()}`, campos: cambios },
+          detalle: {
+            mensaje: `actualizó ${cambios.length} campo${cambios.length > 1 ? "s" : ""}`,
+            cambios,
+          },
         });
       }
     }
@@ -847,14 +856,21 @@ export async function agregarMiembro(empresaId: string, personaId: string, cargo
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
+  const cargoOk = cargo.trim() || "Miembro";
   const { error } = await supabase.from("empresa_miembros").insert({
     empresa_id: empresaId,
     persona_id: personaId,
-    cargo: cargo.trim() || "Miembro",
+    cargo: cargoOk,
     fecha_inicio: fechaInicio || new Date().toISOString().slice(0, 10),
     estado: "activo",
   });
   if (error) return { error: error.message };
+  const { data: per } = await supabase.from("personas")
+    .select("nombre,alias").eq("id", personaId).maybeSingle();
+  await supabase.from("actividad").insert({
+    entidad_tipo: "empresa", entidad_id: empresaId, actor_id: user.id, tipo: "miembro",
+    detalle: { mensaje: `sumó a ${per?.alias || per?.nombre || "alguien"} como ${cargoOk}` },
+  });
   revalidatePath(`/entidad/empresa/${empresaId}`);
   return {};
 }
@@ -864,9 +880,19 @@ export async function editarFechaMiembro(miembroId: string, empresaId: string, f
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return { error: "Fecha inválida." };
+  const { data: prev } = await supabase.from("empresa_miembros")
+    .select("cargo,fecha_inicio,per:personas(nombre,alias)").eq("id", miembroId).maybeSingle();
   const { error } = await supabase.from("empresa_miembros")
     .update({ fecha_inicio: fecha }).eq("id", miembroId);
   if (error) return { error: error.message };
+  const quien = (prev?.per as any)?.alias || (prev?.per as any)?.nombre || "un miembro";
+  await supabase.from("actividad").insert({
+    entidad_tipo: "empresa", entidad_id: empresaId, actor_id: user.id, tipo: "miembro",
+    detalle: {
+      mensaje: `cambió la fecha de inicio de ${quien}`,
+      cambios: [{ campo: `${quien} · desde`, de: prev?.fecha_inicio || "—", a: fecha }],
+    },
+  });
   revalidatePath(`/entidad/empresa/${empresaId}`);
   return {};
 }
@@ -876,10 +902,17 @@ export async function bajaMiembro(miembroId: string, empresaId: string) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
   // Baja, no borrado: el historial societario se conserva
+  const { data: prev } = await supabase.from("empresa_miembros")
+    .select("cargo,per:personas(nombre,alias)").eq("id", miembroId).maybeSingle();
   const { error } = await supabase.from("empresa_miembros")
     .update({ estado: "inactivo", fecha_fin: new Date().toISOString().slice(0, 10) })
     .eq("id", miembroId);
   if (error) return { error: error.message };
+  const quien = (prev?.per as any)?.alias || (prev?.per as any)?.nombre || "un miembro";
+  await supabase.from("actividad").insert({
+    entidad_tipo: "empresa", entidad_id: empresaId, actor_id: user.id, tipo: "miembro",
+    detalle: { mensaje: `dio de baja a ${quien}${prev?.cargo ? ` (${prev.cargo})` : ""}` },
+  });
   revalidatePath(`/entidad/empresa/${empresaId}`);
   return {};
 }

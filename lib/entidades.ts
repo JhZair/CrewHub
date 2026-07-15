@@ -16,7 +16,15 @@ export type CampoDef = {
     // sugerencias dependientes de otro campo (ej. subcategoría según categoría)
   valida?: "dni" | "ruc" | "email" | "telefono" | "url" | "anio";
     // validación anti-humanos: formato exigido antes de guardar
+  corto?: string;       // nombre breve para el historial (si la etiqueta es larga)
 };
+
+/* Nombre breve de un campo para la bitácora: usa `corto` si existe; si no,
+   recorta la etiqueta en el guion largo y quita los paréntesis explicativos.
+   "RENCA — N° de registro (obligatorio...)" → "RENCA" */
+export function nombreCorto(c: { label: string; corto?: string }): string {
+  return c.corto || c.label.split("—")[0].replace(/\([^)]*\)/g, "").trim();
+}
 
 /* Validadores: el formato que cada tipo de dato exige */
 export const VALIDADORES: Record<string, [RegExp, string]> = {
@@ -111,7 +119,7 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
       { key: "nombre", label: "Nombre corto", requerido: true },
       { key: "razon_social", label: "Razón social (nombre legal)" },
       { key: "tipo", label: "Tipo", tipo: "select", opciones: ["eirl", "sac", "asociacion", "ong", "municipalidad", "otro"] },
-      { key: "relacion", label: "Relación — solo las propias generan alertas", tipo: "select", opciones: ["propia", "aliada", "externa"] },
+      { key: "relacion", label: "Relación (solo las propias generan alertas)", corto: "Relación", tipo: "select", opciones: ["propia", "aliada", "externa"] },
       { key: "region", label: "Región", tipo: "select", opciones: REGIONES },
       { key: "estado", label: "Estado (interno)", tipo: "select", opciones: ["en_constitucion", "activa", "inactiva", "en_proceso_de_cierre", "cerrada"] },
       { key: "fecha_constitucion", label: "Fecha de constitución", tipo: "date" },
@@ -200,22 +208,22 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
     tabla: "personas",
     titulo: "Persona",
     campos: [
-      { key: "nombre", label: "Nombre completo", requerido: true },
-      { key: "alias", label: "Nombre corto / alias" },
+      { key: "nombre", label: "Nombre completo", corto: "Nombre", requerido: true },
+      { key: "alias", label: "Nombre corto / alias", corto: "Alias" },
       { key: "tipo", label: "Tipo", tipo: "select", opciones: ["personal", "colaborador", "colaborador eventual", "independiente", "contacto"] },
       { key: "equipo", label: "Equipo", tipo: "select", opciones: ["creativo", "tecnico", "artistico", "administrativo"] },
       { key: "estado", label: "Estado", tipo: "select", opciones: ["activo", "potencial", "vetado", "inactivo"] },
-      { key: "rol", label: "Especialidades / rol", sugerencias: ESPECIALIDADES, multiple: true },
+      { key: "rol", label: "Especialidades / rol", corto: "Rol", sugerencias: ESPECIALIDADES, multiple: true },
       { key: "region", label: "Región", tipo: "select", opciones: REGIONES },
       { key: "genero", label: "Género", tipo: "select", opciones: ["femenino", "masculino", "otro"] },
       { key: "telefono", label: "Teléfono", valida: "telefono" },
       { key: "email", label: "Email", valida: "email" },
       { key: "ruc_dni", label: "DNI (8 dígitos)", valida: "dni" },
-      { key: "dni_vencimiento", label: "DNI — fecha de vencimiento", tipo: "date" },
-      { key: "carpeta_drive_url", label: "Carpeta en Drive (link)", valida: "url" },
-      { key: "cv_url", label: "CV / hoja de vida (link Drive)", valida: "url" },
-      { key: "dni_url", label: "DNI escaneado (link Drive)", valida: "url" },
-      { key: "firma_url", label: "Firma escaneada (link Drive)", valida: "url" },
+      { key: "dni_vencimiento", label: "DNI — fecha de vencimiento", corto: "DNI vence", tipo: "date" },
+      { key: "carpeta_drive_url", label: "Carpeta en Drive (link)", corto: "Carpeta Drive", valida: "url" },
+      { key: "cv_url", label: "CV / hoja de vida (link Drive)", corto: "CV", valida: "url" },
+      { key: "dni_url", label: "DNI escaneado (link Drive)", corto: "DNI escaneado", valida: "url" },
+      { key: "firma_url", label: "Firma escaneada (link Drive)", corto: "Firma", valida: "url" },
       { key: "notas", label: "Notas", tipo: "textarea" },
     ],
   },

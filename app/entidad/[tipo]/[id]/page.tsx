@@ -707,13 +707,24 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                     <div className="tl" style={{ marginTop: 12 }}>
                       {eventosVis.map((e: any, i: number) => (
                         <div className={`tl-ev ${e.actor ? e.tipo : "bot"}`} key={i}>
-                          <span>{e.tipo === "creado" ? "📝" : e.tipo === "estado" ? "🔄" : e.tipo === "editado" ? "✏️" : e.tipo === "dato" ? "🔑" : "🤖"}</span>
+                          <span>{e.tipo === "creado" ? "📝" : e.tipo === "estado" ? "🔄" : e.tipo === "editado" ? "✏️" : e.tipo === "dato" ? "🔑" : e.tipo === "miembro" ? "👥" : "🤖"}</span>
                           <span>
                             {e.tipo === "creado" && `${e.actor?.nombre || "Sistema"} registró esta entidad`}
                             {e.tipo === "estado" && `${e.actor?.nombre || "Bot Qhaway"} · ${e.detalle?.campo}: ${String(e.detalle?.de ?? "—").replace(/_/g, " ")} → ${String(e.detalle?.a ?? "—").replace(/_/g, " ")}`}
-                            {e.tipo === "editado" && `${e.actor?.nombre || "Alguien"} ${e.detalle?.mensaje || "editó la ficha"}`}
-                            {e.tipo === "dato" && `${e.actor?.nombre || "Alguien"} ${e.detalle?.mensaje || "modificó un dato"}`}
-                            {!["creado", "estado", "editado", "dato"].includes(e.tipo) && (e.detalle?.mensaje || e.tipo)}
+                            {["editado", "dato", "miembro"].includes(e.tipo) && (
+                              <>
+                                {`${e.actor?.nombre || "Alguien"} ${e.detalle?.mensaje || "editó la ficha"}`}
+                                {(e.detalle?.cambios || []).map((c: any, j: number) => (
+                                  <span key={j} style={{ display: "block", marginTop: 3, fontSize: 12 }}>
+                                    <b style={{ color: "var(--muted)" }}>{c.campo}:</b>{" "}
+                                    <s style={{ color: "var(--red)", opacity: .75 }}>{String(c.de).replace(/_/g, " ")}</s>
+                                    {" → "}
+                                    <span style={{ color: "var(--green)" }}>{String(c.a).replace(/_/g, " ")}</span>
+                                  </span>
+                                ))}
+                              </>
+                            )}
+                            {!["creado", "estado", "editado", "dato", "miembro"].includes(e.tipo) && (e.detalle?.mensaje || e.tipo)}
                           </span>
                           <span className="t">{fecha(e.creado_en)}</span>
                         </div>
