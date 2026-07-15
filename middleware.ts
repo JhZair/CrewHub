@@ -23,7 +23,10 @@ export async function middleware(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser();
   const path = request.nextUrl.pathname;
+  // /api/cron/* no pasa por sesión: se protege con CRON_SECRET (lo llama
+  // Vercel Cron, que no tiene cookies de usuario).
   const publica = path.startsWith("/login") || path.startsWith("/auth")
+    || path.startsWith("/api/cron")
     || path === "/manifest.webmanifest";
 
   if (!user && !publica) {
