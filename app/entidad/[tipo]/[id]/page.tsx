@@ -23,7 +23,7 @@ import { notFound, redirect } from "next/navigation";
 
 const CONF: Record<string, { tabla: string; icono: string; campos: [string, string][] }> = {
   proyecto: { tabla: "proyectos", icono: "📁", campos: [["Folio", "folio"], ["Tipo", "tipo"], ["Modalidad", "modalidad"], ["Etapa", "etapa"], ["Actividad", "estado_actividad"], ["RENCA", "renca"]] },
-  empresa: { tabla: "empresas", icono: "🏢", campos: [["Código", "codigo"], ["Razón social", "razon_social"], ["RUC", "ruc"], ["RENCA", "renca"], ["Región", "region"], ["Estado interno", "estado"], ["Constitución", "fecha_constitucion"], ["Domicilio fiscal", "domicilio_fiscal"], ["Estado SUNAT", "estado_sunat"], ["Condición SUNAT", "condicion_sunat"], ["Verificado SUNAT", "fecha_verificacion_sunat"]] },
+  empresa: { tabla: "empresas", icono: "🏢", campos: [["Código", "codigo"], ["Razón social", "razon_social"], ["Relación", "relacion"], ["RUC", "ruc"], ["RENCA", "renca"], ["Región", "region"], ["Estado interno", "estado"], ["Constitución", "fecha_constitucion"], ["Domicilio fiscal", "domicilio_fiscal"], ["Estado SUNAT", "estado_sunat"], ["Condición SUNAT", "condicion_sunat"], ["Verificado SUNAT", "fecha_verificacion_sunat"]] },
   persona: { tabla: "personas", icono: "👤", campos: [["Alias", "alias"], ["Tipo", "tipo"], ["Equipo", "equipo"], ["Estado", "estado"], ["Región", "region"], ["Rol", "rol"], ["DNI", "ruc_dni"], ["DNI vence", "dni_vencimiento"]] },
   equipamiento: { tabla: "equipamiento", icono: "🎥", campos: [["Folio", "folio"], ["Categoría", "categoria"], ["Subcategoría", "subcategoria"], ["Estado", "estado"], ["Valor (S/)", "valor_compra"], ["Comprado en", "comprado_en"]] },
   lugar: { tabla: "lugares", icono: "📍", campos: [] },
@@ -395,7 +395,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               return null;
             })()}
 
-            {params.tipo === "empresa" && ent.estado === "activa" && (() => {
+            {params.tipo === "empresa" && ent.estado === "activa"
+              && (ent.relacion || "propia") === "propia" && (() => {
               const al: any[] = [];
               const est = ent.estado_sunat, cond = ent.condicion_sunat;
               if (est && est !== "activo") al.push(

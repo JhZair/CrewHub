@@ -1394,7 +1394,7 @@ export async function verificarRucSunat(empresaId: string) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
   const { data: emp } = await supabase.from("empresas")
-    .select("id,nombre,ruc,estado,estado_sunat,condicion_sunat").eq("id", empresaId).single();
+    .select("id,nombre,ruc,estado,relacion,estado_sunat,condicion_sunat").eq("id", empresaId).single();
   if (!emp?.ruc) return { error: "Esta empresa no tiene RUC registrado." };
 
   // El caso que se genere lo firma el usuario que verifica (evita chocar

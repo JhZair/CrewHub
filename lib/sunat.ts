@@ -7,6 +7,7 @@ type DB = any; // SupabaseClient (evitamos acoplar tipos entre clientes)
 type EmpSunat = {
   id: string; nombre: string; ruc: string;
   estado?: string | null;            // estado interno: activa | cerrada | ...
+  relacion?: string | null;          // propia | aliada | externa
   estado_sunat?: string | null; condicion_sunat?: string | null;
 };
 
@@ -99,10 +100,13 @@ export async function procesarSunatEmpresa(db: DB, emp: EmpSunat, autorId: strin
   // ...pero el caso se abre/cierra según el estado ACTUAL, haya cambiado o
   // no: una empresa que ya venía mal también necesita su caso. El
   // deduplicado por título evita que se repita en cada ronda.
-  // Una empresa cerrada/inactiva sigue otro proceso: no se le abre caso, y
-  // si tenía uno abierto se cierra (ya no aplica).
+  // Solo abrimos caso de empresas de las que somos responsables: propias y
+  // activas. De una aliada/externa mantenemos el dato al día (informativo),
+  // pero no podemos actuar sobre su SUNAT, así que no exigimos acción.
+  // Si deja de ser propia o se cierra, su caso abierto se cierra solo.
   const activa = (emp.estado || "activa") === "activa";
-  if (malo && activa) await abrirProblemaSunat(db, emp, r, autorId);
+  const propia = (emp.relacion || "propia") === "propia";
+  if (malo && activa && propia) await abrirProblemaSunat(db, emp, r, autorId);
   else await cerrarProblemaSunat(db, emp);
 
   return { estado: r.estado, condicion: r.condicion, cambio, problematico: malo };
@@ -111,7 +115,7 @@ export async function procesarSunatEmpresa(db: DB, emp: EmpSunat, autorId: strin
 /* Ronda completa: todas las empresas activas con RUC. */
 export async function correrRondaSunat(db: DB, autorId: string | null) {
   const { data: emps } = await db.from("empresas")
-    .select("id,nombre,ruc,estado,estado_sunat,condicion_sunat")
+    .select("id,nombre,ruc,estado,relacion,estado_sunat,condicion_sunat")
     .eq("estado", "activa").not("ruc", "is", null);
 
   let ok = 0; const alertas: string[] = []; const fallas: string[] = [];

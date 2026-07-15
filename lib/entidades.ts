@@ -111,6 +111,7 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
       { key: "nombre", label: "Nombre corto", requerido: true },
       { key: "razon_social", label: "Razón social (nombre legal)" },
       { key: "tipo", label: "Tipo", tipo: "select", opciones: ["eirl", "sac", "asociacion", "ong", "municipalidad", "otro"] },
+      { key: "relacion", label: "Relación — solo las propias generan alertas", tipo: "select", opciones: ["propia", "aliada", "externa"] },
       { key: "region", label: "Región", tipo: "select", opciones: REGIONES },
       { key: "estado", label: "Estado (interno)", tipo: "select", opciones: ["en_constitucion", "activa", "inactiva", "cerrada"] },
       { key: "fecha_constitucion", label: "Fecha de constitución", tipo: "date" },
