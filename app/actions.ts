@@ -1478,9 +1478,26 @@ export async function actualizarPostulacion(id: string, convocatoriaId: string, 
     limpio[k] = v || null;
   });
   if (!Object.keys(limpio).length) return { error: "Nada que actualizar." };
-  const { error } = await supabase.from("postulaciones").update(limpio).eq("id", id);
+  const { data: post, error } = await supabase.from("postulaciones")
+    .update(limpio).eq("id", id).select("id");
   if (error) return { error: error.message };
+  if (!post?.length) return { error: "No se guardó: no tienes permiso sobre esta postulación." };
+
+  // Asignar la empresa es un hecho societario: quién postula con qué RUC.
+  // Antes no dejaba rastro; el historial de la postulación no lo sabía.
+  if ("empresa_id" in limpio) {
+    const { data: emp } = limpio.empresa_id
+      ? await supabase.from("empresas").select("nombre").eq("id", limpio.empresa_id).maybeSingle()
+      : { data: null };
+    await supabase.from("actividad").insert({
+      entidad_tipo: "postulacion", entidad_id: id, actor_id: user.id, tipo: "editado",
+      detalle: { mensaje: emp ? `asignó la empresa ${emp.nombre}` : "quitó la empresa postulante" },
+    });
+  }
   revalidatePath(`/entidad/convocatoria/${convocatoriaId}`);
+  // La ficha de la postulación también muestra esto: sin esta línea, cambias
+  // la empresa y la pantalla donde estás parado sigue mostrando la anterior.
+  revalidatePath(`/entidad/postulacion/${id}`);
   return {};
 }
 

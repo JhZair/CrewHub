@@ -9,6 +9,7 @@ import Miembros from "@/components/Miembros";
 import Credenciales from "@/components/Credenciales";
 import ClienteProyecto from "@/components/ClienteProyecto";
 import Postulaciones from "@/components/Postulaciones";
+import EmpresaPostulacion from "@/components/EmpresaPostulacion";
 import EquipoPostulacion from "@/components/EquipoPostulacion";
 import PrestamoEquipo from "@/components/PrestamoEquipo";
 import CuentaAcceso from "@/components/CuentaAcceso";
@@ -249,7 +250,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
 
   let postCtx: any = null, equipoPost: any[] = [];
   if (params.tipo === "postulacion") {
-    const [ctx, eq, pc] = await Promise.all([
+    const [ctx, eq, pc, ec] = await Promise.all([
       supabase.from("postulaciones")
         .select("proy:proyectos(id,nombre,tipo), emp:empresas(id,nombre,codigo), conv:convocatorias(id,codigo,nombre,anio,monto_adjudicado,bases_url,hitos:cronograma_actividades(id,nombre,fecha_inicio,estado,clase))")
         .eq("id", params.id).single(),
@@ -257,10 +258,16 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         .select("id,cargo,persona:personas(id,nombre,alias)")
         .eq("postulacion_id", params.id).order("cargo"),
       supabase.from("personas").select("id,nombre,alias,tipo").order("nombre"),
+      /* Solo las que pueden postular de verdad: activas y nuestras. Ofrecer
+         una externa o una cerrada sería invitar al error — el fondo lo
+         rechazaría después, cuando ya no hay tiempo de cambiarla. */
+      supabase.from("empresas").select("id,nombre,codigo")
+        .eq("estado", "activa").order("nombre"),
     ]);
     postCtx = ctx.data;
     equipoPost = eq.data || [];
     personasCat = (pc.data || []).map((x: any) => ({ ...x, nombre: x.alias ? `${x.nombre} · ${x.alias}` : x.nombre }));
+    empresasCat = (ec.data || []).map((x: any) => ({ ...x, nombre: x.codigo ? `${x.codigo} · ${x.nombre}` : x.nombre }));
   }
   if (params.tipo === "empresa") {
     const [m, pc, pe] = await Promise.all([
@@ -869,12 +876,9 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                           <Link href={`/entidad/proyecto/${postCtx.proy.id}`} style={{ color: "var(--text)" }}>📁 {postCtx.proy.nombre} →</Link>
                         </span></div>
                     )}
-                    {postCtx?.emp && (
-                      <div className="eq-row"><span className="cargo">Empresa</span>
-                        <span style={{ flex: 1, textAlign: "right" }}>
-                          <Link href={`/entidad/empresa/${postCtx.emp.id}`} style={{ color: "var(--text)" }}>🏢 {postCtx.emp.nombre} →</Link>
-                        </span></div>
-                    )}
+                    <EmpresaPostulacion postulacionId={params.id}
+                      convocatoriaId={postCtx?.conv?.id || ""}
+                      empresa={postCtx?.emp} empresas={empresasCat} />
                     {postCtx?.conv && (
                       <div className="eq-row"><span className="cargo">Concurso</span>
                         <span style={{ flex: 1, textAlign: "right" }}>
