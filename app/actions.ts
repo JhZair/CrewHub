@@ -857,6 +857,58 @@ export async function editarTarifa(
   return {};
 }
 
+/* Mi banco de trabajo: los casos que tengo EN PROGRESO. Ese estado ya
+   significa "estoy trabajando en esto", así que no hace falta inventar
+   otra marca: se llenan y se vacían solos al mover el estado. */
+export async function misEnProgreso() {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data, error } = await supabase.from("publicaciones")
+    .select("id,tipo,titulo,fecha_limite,comentarios(count)")
+    .eq("estado", "en_progreso")
+    .or(`responsable.eq.${user.id},autor_id.eq.${user.id}`)
+    .order("fecha_limite", { ascending: true, nullsFirst: false })
+    .limit(12);
+  if (error) return { error: error.message };
+  return {
+    casos: (data || []).map((p: any) => ({
+      id: p.id, tipo: p.tipo, titulo: p.titulo, fecha_limite: p.fecha_limite,
+      nComs: p.comentarios?.[0]?.count || 0,
+    })),
+  };
+}
+
+/* Destacar un caso en la cabecera del feed. Solo administración.
+   El destacado caduca solo: muere con la fecha límite del caso, o a las
+   2 semanas si no tiene. Así la zona nunca acumula cosas vencidas. */
+export async function destacarCaso(pubId: string, on: boolean) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: perfil } = await supabase.from("perfiles").select("es_admin").eq("id", user.id).single();
+  if (!perfil?.es_admin) return { error: "Solo administración puede destacar casos." };
+
+  let hasta: string | null = null;
+  if (on) {
+    const { data: pub } = await supabase.from("publicaciones")
+      .select("fecha_limite").eq("id", pubId).maybeSingle();
+    const lim = pub?.fecha_limite ? new Date(pub.fecha_limite + "T23:59:59") : null;
+    const dosSem = new Date(Date.now() + 14 * 86400000);
+    hasta = (lim && lim.getTime() > Date.now() ? lim : dosSem).toISOString();
+  }
+  const { error } = await supabase.from("publicaciones")
+    .update({ destacado_hasta: hasta }).eq("id", pubId);
+  if (error) return { error: error.message };
+
+  await supabase.from("actividad").insert({
+    entidad_tipo: "publicacion", entidad_id: pubId, actor_id: user.id, tipo: "edicion",
+    detalle: { mensaje: on ? "destacó el caso en el feed" : "quitó el caso de destacados" },
+  });
+  revalidatePath("/"); revalidatePath(`/caso/${pubId}`);
+  return { hasta };
+}
+
 /* Foto de la persona (pasar null la quita) */
 export async function guardarFotoPersona(personaId: string, url: string | null) {
   const supabase = createClient();

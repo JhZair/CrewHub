@@ -58,9 +58,11 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
   // "Mis asuntos" incluye también publicaciones vinculadas a MI PERSONA
   // (gracias al enlace personas.usuario_id ↔ perfil)
   let misVinculadas: string[] = [];
+  let miPersonaId: string | null = null;   // para el enlace "Mi perfil"
   {
     const { data: yo } = await supabase.from("personas")
       .select("id").eq("usuario_id", user.id).maybeSingle();
+    miPersonaId = yo?.id || null;
     if (yo) {
       const { data: vs } = await supabase.from("publicacion_vinculos")
         .select("publicacion_id")
@@ -76,7 +78,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
   const idsOcultos = (ocultosData || []).map((x: any) => x.publicacion_id);
 
   // Catálogos (pequeños: una consulta cada uno, en paralelo)
-  const [proy, emp, pers, conv, postu, equi, luga, etiq, perfs, postsQ, univQ] = await Promise.all([
+  const [proy, emp, pers, conv, postu, equi, luga, etiq, perfs, destQ, postsQ, univQ] = await Promise.all([
     supabase.from("proyectos").select("id,nombre").order("nombre"),
     supabase.from("empresas").select("id,nombre,codigo").order("codigo"),
     supabase.from("personas").select("id,nombre,alias,tipo").order("nombre"),
@@ -87,6 +89,15 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
     supabase.from("lugares").select("id,nombre").order("nombre"),
     supabase.from("etiquetas").select("id,nombre").order("nombre"),
     supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
+    /* Cabecera del feed: lo que de verdad corre. Entra por dos vías —
+       destacado a mano por administración (vigente), o fecha límite
+       encima. Ambas caducan solas: nada que desdestacar. */
+    supabase.from("publicaciones")
+      .select("id,tipo,titulo,estado,fecha_limite,destacado_hasta,resp:perfiles!publicaciones_responsable_fkey(nombre)")
+      .in("estado", ["abierta", "en_progreso", "seguimiento"])
+      .or(`destacado_hasta.gt.${new Date().toISOString()},and(fecha_limite.gte.${new Date().toISOString().slice(0, 10)},fecha_limite.lte.${new Date(Date.now() + 15 * 86400000).toISOString().slice(0, 10)})`)
+      .order("fecha_limite", { ascending: true, nullsFirst: false })
+      .limit(5),
     (() => {
       let q = supabase.from("publicaciones")
         .select(`
@@ -312,7 +323,8 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
         <BuscadorGlobal />
         <Campanita items={notifsEnriq} sinLeer={sinLeer || 0} />
         <MenuUsuario nombre={perfil?.nombre} rol={perfil?.rol}
-          color={perfil?.color} src={perfil?.avatar_url} esAdmin={perfil?.es_admin} />
+          color={perfil?.color} src={perfil?.avatar_url} esAdmin={perfil?.es_admin}
+          personaId={miPersonaId} />
       </div>
 
       <Composer userId={user.id} catalogos={catalogos} perfiles={perfs.data || []}
@@ -330,6 +342,46 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
         </span>
         <Link href="/qhaway" title="Ver mi bitácora">bitácora →</Link>
       </div>
+
+      {/* Lo que corre: sube solo por fecha límite cercana, o lo sube
+          administración. En ambos casos baja solo. */}
+      {(destQ.data || []).length > 0 && (
+        <div className="card" style={{ borderColor: "rgba(244,180,0,.35)", background: "rgba(244,180,0,.03)", padding: "8px 14px 10px" }}>
+          <div style={{ fontSize: 9.5, textTransform: "uppercase", letterSpacing: 1.2, color: "var(--yellow)", fontWeight: 700, marginBottom: 2 }}>
+            📌 Lo que corre
+          </div>
+          {(destQ.data || []).map((p: any) => {
+            const d = p.fecha_limite
+              ? Math.ceil((new Date(p.fecha_limite + "T23:59:59").getTime() - Date.now()) / 86400000)
+              : null;
+            const urge = d !== null && d <= 3;
+            return (
+              <Link key={p.id} href={`/caso/${p.id}`}>
+                <div className="info-row" style={{ cursor: "pointer", gap: 8 }}>
+                  <span className="badge" style={{
+                    color: (TIPO_META[p.tipo] || TIPO_META.conversacion)[1],
+                    background: `${(TIPO_META[p.tipo] || TIPO_META.conversacion)[1]}22`,
+                  }}>{(TIPO_META[p.tipo] || TIPO_META.conversacion)[0]}</span>
+                  <b style={{ fontSize: 13, color: "var(--text)" }}>{p.titulo}</b>
+                  {p.destacado_hasta && new Date(p.destacado_hasta) > new Date() && (
+                    <span className="badge" title="Destacado por administración"
+                      style={{ color: "var(--yellow)", background: "rgba(244,180,0,.12)" }}>📌</span>
+                  )}
+                  <span style={{ flex: 1 }} />
+                  {(p.resp as any)?.nombre && (
+                    <span className="tv-resp">{(p.resp as any).nombre.split(" ")[0]}</span>
+                  )}
+                  {d !== null && (
+                    <span style={{ color: urge ? "var(--red)" : "var(--yellow)", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>
+                      {d === 0 ? "vence hoy" : d === 1 ? "vence mañana" : `en ${d} días`}
+                    </span>
+                  )}
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      )}
 
       <div className="vtabs vtabs-compacta">
         {VISTAS.map(([val, label]) => (

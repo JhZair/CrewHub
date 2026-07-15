@@ -3,6 +3,7 @@ import Volver from "@/components/Volver";
 import TarifasEditor from "@/components/TarifasEditor";
 import BitacoraJornadas from "@/components/BitacoraJornadas";
 import LiquidacionAdmin from "@/components/LiquidacionAdmin";
+import BotonDestacar from "@/components/BotonDestacar";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -12,7 +13,14 @@ import { redirect } from "next/navigation";
 const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio",
   "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 
-export default async function Admin({ searchParams }: { searchParams: { lm?: string } }) {
+const TIPO_COL: Record<string, string> = {
+  aviso: "#a78bfa", tarea: "#22c55e", problema: "#ff4d5e", consulta: "#60a5fa",
+  pago: "#2dd4bf", idea: "#f4b400", archivo: "#3b82f6", conversacion: "#8b8ba3",
+};
+
+export default async function Admin({ searchParams }: { searchParams: { lm?: string; s?: string } }) {
+  // Sección activa: por defecto lo más frecuente, aprobar jornadas
+  const s = searchParams?.s || "jornadas";
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
@@ -36,7 +44,7 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
   const lInicio = `${lAnio}-${pad(lMes + 1)}-01`;
   const lFin = `${lMes === 11 ? lAnio + 1 : lAnio}-${pad(lMes === 11 ? 1 : lMes + 2)}-01`;
 
-  const [{ data: personas }, { data: jornsPend }, { data: proyectos }, { data: jornsMes }, { data: liqs }] = await Promise.all([
+  const [{ data: personas }, { data: jornsPend }, { data: proyectos }, { data: jornsMes }, { data: liqs }, { data: vivos }] = await Promise.all([
     supabase.from("personas").select("id,nombre,alias,tarifa_dia,tarifa_rodaje,tarifa_noche")
       .eq("tipo", "personal").order("nombre"),
     supabase.from("jornadas")
@@ -46,6 +54,11 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
     supabase.from("jornadas").select("persona_id,fraccion,monto,aprobada,per:personas(nombre,alias)")
       .gte("fecha", lInicio).lt("fecha", lFin).limit(3000),
     supabase.from("liquidaciones").select("persona_id,estado").eq("anio", lAnio).eq("mes", lMes + 1),
+    // Casos vivos, para elegir cuáles suben a la cabecera del feed
+    supabase.from("publicaciones")
+      .select("id,tipo,titulo,fecha_limite,destacado_hasta")
+      .in("estado", ["abierta", "en_progreso", "seguimiento"])
+      .order("creado_en", { ascending: false }).limit(60),
   ]);
 
   const tarifaLista = (personas || []).map((p: any) => ({
@@ -70,6 +83,17 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
     .map(([personaId, a]) => ({ personaId, nombre: a.nombre, dias: a.dias, pend: a.pend, monto: a.monto, estado: estadoDe.get(personaId) || null }))
     .sort((x, y) => x.nombre.localeCompare(y.nombre));
 
+  // Menú: cada sección con su contador, para ver qué pide atención sin entrar
+  const ahoraMs = Date.now();
+  const nDestacados = (vivos || []).filter((p: any) =>
+    p.destacado_hasta && new Date(p.destacado_hasta).getTime() > ahoraMs).length;
+  const SECCIONES: [string, string, number | null][] = [
+    ["destacados", "📌 Destacados", nDestacados || null],
+    ["jornadas", "✅ Aprobar jornadas", porAprobar.length || null],
+    ["liquidar", "🧾 Liquidar mes", filasLiq.filter(f => f.estado !== "liquidado").length || null],
+    ["tarifas", "💰 Tarifas", null],
+  ];
+
   return (
     <div className="shell">
       <div className="topbar">
@@ -79,28 +103,105 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
       </div>
       <h1 className="title-lg">⚙ Administración</h1>
 
-      <div className="h4" style={{ marginTop: 14 }}>✅ Aprobar jornadas</div>
-      <p style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 0 }}>
-        Jornadas pendientes de aprobación. Al aprobar, entran al monto "a pagar". Puedes editar o borrar si hay un error.
-      </p>
-      <BitacoraJornadas items={porAprobar} esAdmin miPersonaId="" proyectos={proyectos || []} titulo="⏳ Por aprobar" />
+      <div className="adm-grid">
+        <aside>
+          <div className="card" style={{ padding: 6 }}>
+            {SECCIONES.map(([k, label, n]) => (
+              <Link key={k} href={`/admin?s=${k}`} className={`adm-nav${s === k ? " on" : ""}`}>
+                <span style={{ flex: 1 }}>{label}</span>
+                {n ? (
+                  <span className="badge" style={{
+                    color: k === "jornadas" ? "var(--yellow)" : "var(--muted)",
+                    background: "#1c1c2c", fontSize: 10,
+                  }}>{n}</span>
+                ) : null}
+              </Link>
+            ))}
+          </div>
+        </aside>
 
-      <div className="h4" style={{ marginTop: 20 }}>🧾 Liquidar mes · <span style={{ textTransform: "capitalize" }}>{MESES[lMes]} {lAnio}</span></div>
-      <div className="vtabs" style={{ alignItems: "center", marginBottom: 8 }}>
-        <Link href={`/admin?lm=${lmOff - 1}`} className="vtab">‹ mes anterior</Link>
-        {lmOff !== 0 && <Link href="/admin" className="vtab">actual</Link>}
-        {lmOff < 0 && <Link href={`/admin?lm=${lmOff + 1}`} className="vtab">siguiente ›</Link>}
+        <main>
+      {s === "destacados" && (() => {
+        const ahora = Date.now();
+        const dias = (f: string) => Math.ceil((new Date(f + "T23:59:59").getTime() - ahora) / 86400000);
+        const fijado = (p: any) => !!p.destacado_hasta && new Date(p.destacado_hasta).getTime() > ahora;
+        // Los ya destacados primero; luego lo que vence antes
+        const lista = [...(vivos || [])].sort((a: any, b: any) => {
+          if (fijado(a) !== fijado(b)) return fijado(a) ? -1 : 1;
+          if (!!a.fecha_limite !== !!b.fecha_limite) return a.fecha_limite ? -1 : 1;
+          return (a.fecha_limite || "") < (b.fecha_limite || "") ? -1 : 1;
+        });
+        return (
+          <>
+            <div className="h4" style={{ marginTop: 0 }}>📌 Destacados del feed</div>
+            <p style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 0 }}>
+              Suben a la cabecera del feed. Los casos con fecha límite en 15 días o menos ya suben
+              solos — aquí es para lo que no tiene fecha, o para adelantarse. El destacado
+              <b> caduca solo</b>: con la fecha límite del caso, o a las 2 semanas.
+            </p>
+            <div className="card">
+              {lista.map((p: any) => {
+                const d = p.fecha_limite ? dias(p.fecha_limite) : null;
+                return (
+                  <div className="info-row" key={p.id} style={{ gap: 10, flexWrap: "wrap" }}>
+                    <span className="badge" style={{
+                      color: TIPO_COL[p.tipo] || "var(--muted)",
+                      background: `${TIPO_COL[p.tipo] || "#8b8ba3"}22`,
+                    }}>{p.tipo}</span>
+                    <Link href={`/caso/${p.id}`} style={{ fontWeight: 600, fontSize: 12.5 }}>{p.titulo}</Link>
+                    <span style={{ flex: 1 }} />
+                    {d !== null && (
+                      <span style={{ color: d <= 3 ? "var(--red)" : d <= 15 ? "var(--yellow)" : "var(--dim)", fontSize: 11.5, fontWeight: 700 }}>
+                        {d < 0 ? `vencido hace ${-d} d` : d === 0 ? "vence hoy" : `en ${d} d`}
+                        {d >= 0 && d <= 15 && " · sube solo"}
+                      </span>
+                    )}
+                    <BotonDestacar pubId={p.id} hasta={p.destacado_hasta} />
+                  </div>
+                );
+              })}
+              {!lista.length && <div className="empty">No hay casos vivos.</div>}
+            </div>
+          </>
+        );
+      })()}
+
+      {s === "jornadas" && (
+        <>
+          <div className="h4" style={{ marginTop: 0 }}>✅ Aprobar jornadas</div>
+          <p style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 0 }}>
+            Jornadas pendientes de aprobación. Al aprobar, entran al monto "a pagar". Puedes editar o borrar si hay un error.
+          </p>
+          <BitacoraJornadas items={porAprobar} esAdmin miPersonaId="" proyectos={proyectos || []} titulo="⏳ Por aprobar" />
+        </>
+      )}
+
+      {s === "liquidar" && (
+        <>
+          <div className="h4" style={{ marginTop: 0 }}>🧾 Liquidar mes · <span style={{ textTransform: "capitalize" }}>{MESES[lMes]} {lAnio}</span></div>
+          <div className="vtabs" style={{ alignItems: "center", marginBottom: 8 }}>
+            <Link href={`/admin?s=liquidar&lm=${lmOff - 1}`} className="vtab">‹ mes anterior</Link>
+            {lmOff !== 0 && <Link href="/admin?s=liquidar" className="vtab">actual</Link>}
+            {lmOff < 0 && <Link href={`/admin?s=liquidar&lm=${lmOff + 1}`} className="vtab">siguiente ›</Link>}
+          </div>
+          <p style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 0 }}>
+            Liquidar genera el recibo interno (congela lo aprobado) y bloquea el mes de esa persona. Solo se puede si no quedan jornadas por aprobar.
+          </p>
+          <LiquidacionAdmin anio={lAnio} mes={lMes + 1} filas={filasLiq} />
+        </>
+      )}
+
+      {s === "tarifas" && (
+        <>
+          <div className="h4" style={{ marginTop: 0 }}>💰 Tarifas del personal</div>
+          <p style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 0 }}>
+            Tarifas por día (S/ normal, rodaje y noche), usadas para calcular el pago de jornadas.
+          </p>
+          <TarifasEditor personas={tarifaLista} abierto />
+        </>
+      )}
+        </main>
       </div>
-      <p style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 0 }}>
-        Liquidar genera el recibo interno (congela lo aprobado) y bloquea el mes de esa persona. Solo se puede si no quedan jornadas por aprobar.
-      </p>
-      <LiquidacionAdmin anio={lAnio} mes={lMes + 1} filas={filasLiq} />
-
-      <div className="h4" style={{ marginTop: 20 }}>💰 Tarifas del personal</div>
-      <p style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 0 }}>
-        Tarifas por día (S/ normal, rodaje y noche), usadas para calcular el pago de jornadas.
-      </p>
-      <TarifasEditor personas={tarifaLista} abierto />
     </div>
   );
 }

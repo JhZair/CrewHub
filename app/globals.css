@@ -121,6 +121,41 @@ a{color:inherit;text-decoration:none}
 .fila-tenue{opacity:.32;transition:opacity .16s ease}
 .fila-tenue:hover{opacity:1}
 
+/* Banco de trabajo: lo que tengo EN PROGRESO, pegado al borde izquierdo.
+   Vive en el layout, así que no se pierde al navegar. Colapsa a una
+   pestaña para no estorbar. */
+.banco-tab{position:fixed;left:0;top:50%;transform:translateY(-50%);z-index:60;
+  background:var(--panel);border:1px solid var(--border2);border-left:none;
+  border-radius:0 11px 11px 0;padding:11px 7px;font-size:13px;color:var(--muted);
+  cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;
+  box-shadow:0 6px 22px rgba(0,0,0,.35);transition:color .15s,background .15s}
+.banco-tab:hover{background:#1c1c2c;color:var(--text)}
+.banco-tab b{font-size:10px;color:var(--yellow)}
+
+.banco{position:fixed;left:0;top:50%;transform:translateY(-50%);z-index:60;
+  width:262px;max-height:78vh;background:var(--panel);border:1px solid var(--border2);
+  border-left:none;border-radius:0 13px 13px 0;box-shadow:0 10px 34px rgba(0,0,0,.5);
+  display:flex;flex-direction:column;overflow:hidden}
+.banco-h{display:flex;align-items:center;padding:9px 11px;border-bottom:1px solid var(--border);
+  background:rgba(124,92,255,.07)}
+.banco-body{overflow-y:auto;padding:5px}
+.banco-item{padding:8px 9px;border-radius:9px;margin-bottom:2px}
+.banco-item:hover{background:#1c1c2c}
+.banco-item.on{background:#1c1c2c;box-shadow:inset 3px 0 0 var(--accent)}
+@media(max-width:760px){.banco{display:none}.banco-tab{display:none}}
+
+/* Administración: menú lateral + contenido. Pensado para crecer:
+   las secciones nuevas solo se suman al menú. */
+.adm-grid{display:grid;grid-template-columns:210px 1fr;gap:16px;align-items:start}
+.adm-nav{display:flex;align-items:center;gap:8px;padding:9px 11px;border-radius:9px;
+  font-size:12.5px;color:var(--muted);cursor:pointer}
+.adm-nav:hover{background:#1c1c2c;color:var(--text)}
+.adm-nav.on{background:rgba(124,92,255,.14);color:var(--text);font-weight:700}
+@media(max-width:760px){
+  .adm-grid{grid-template-columns:1fr}
+  .adm-grid aside .card{display:flex;flex-wrap:wrap;gap:4px}
+}
+
 /* La ✕ de quitar la foto solo asoma al pasar el cursor: no estorba */
 .foto-p .foto-x{opacity:0;transition:opacity .15s ease}
 .foto-p:hover .foto-x{opacity:1}

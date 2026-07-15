@@ -8,6 +8,7 @@ import SubCasos from "@/components/SubCasos";
 import TituloEditable from "@/components/TituloEditable";
 import DescripcionEditable from "@/components/DescripcionEditable";
 import Foto from "@/components/Foto";
+import BotonDestacar from "@/components/BotonDestacar";
 import EtiquetasEditor from "@/components/EtiquetasEditor";
 import VinculosEditor from "@/components/VinculosEditor";
 import ComentarioTexto from "@/components/ComentarioTexto";
@@ -56,7 +57,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
 
   if (!p) notFound();
 
-  const [{ data: eventos }, { data: comentarios }, { data: perfiles },
+  const [{ data: eventos }, { data: comentarios }, { data: perfiles }, { data: miPerfil },
          proy, emp, pers, conv, equi, luga, etiq, postu] = await Promise.all([
     supabase.from("actividad")
       .select("*, actor:perfiles(nombre)")
@@ -67,6 +68,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
       .eq("publicacion_id", p.id)
       .order("creado_en"),
     supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
+    supabase.from("perfiles").select("es_admin").eq("id", user.id).single(),
     supabase.from("proyectos").select("id,nombre"),
     supabase.from("empresas").select("id,nombre"),
     supabase.from("personas").select("id,nombre"),
@@ -175,6 +177,8 @@ export default async function Caso({ params }: { params: { id: string } }) {
       <div className="topbar">
         <Volver />
         <span className="spacer" />
+        {/* Subirlo a la cabecera del feed: solo administración */}
+        {miPerfil?.es_admin && <BotonDestacar pubId={p.id} hasta={p.destacado_hasta} />}
         <span className="badge" style={{ color: tc, background: `${tc}22`, fontSize: 12 }}>{tl}</span>
       </div>
 
