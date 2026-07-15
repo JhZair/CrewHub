@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { BotonVerificarLote } from "@/components/VerificarSunat";
+import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -28,22 +29,6 @@ const REL_META: Record<string, [string, string]> = {
    deben exigir acción. El resto es contexto, no tarea. */
 const nosCompete = (x: any) => x.estado === "activa" && (x.relacion || "propia") === "propia";
 
-/* Un solo estilo de filtro para todas las dimensiones */
-const Chip = ({ href, on, color, children }: {
-  href: string; on?: boolean; color?: string; children: React.ReactNode;
-}) => (
-  <Link href={href} className={`vtab${on ? " on" : ""}`}
-    style={!on && color ? { color } : undefined}>{children}</Link>
-);
-
-const FilaFiltro = ({ titulo, children }: { titulo: string; children: React.ReactNode }) => (
-  <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", padding: "5px 0" }}>
-    <span style={{ fontSize: 9.5, textTransform: "uppercase", letterSpacing: 1, color: "var(--dim)", width: 58, flex: "none" }}>
-      {titulo}
-    </span>
-    {children}
-  </div>
-);
 
 export default async function Empresas({ searchParams }: {
   searchParams: { q?: string; e?: string; sunat?: string; t?: string; r?: string; f?: string };
@@ -65,7 +50,7 @@ export default async function Empresas({ searchParams }: {
     supabase.from("publicacion_vinculos")
       .select("entidad_id,publicacion_id,pub:publicaciones(estado)").eq("entidad_tipo", "empresa"),
     supabase.from("postulaciones")
-      .select("id,empresa_id,estado,monto_adjudicado,proy:proyectos(nombre),conv:convocatorias(nombre,anio)")
+      .select("id,empresa_id,estado,monto_adjudicado,fecha_limite_rendicion,fecha_prorroga,proy:proyectos(nombre),conv:convocatorias(nombre,anio)")
       .not("empresa_id", "is", null),
     supabase.from("comentarios").select("publicacion_id"),
   ]);
@@ -93,21 +78,67 @@ export default async function Empresas({ searchParams }: {
 
   // En concurso = la partida sigue viva (mismo criterio que la ficha)
   const EN_JUEGO = ["en_preparacion", "enviada", "finalista"];
-  const marca = new Map<string, { total: number; ganadas: number; casi: number; monto: number; juego: number }>();
+  /* Una ganadora sigue ejecutando mientras no venza su rendición (o su
+     prórroga). Pasada esa fecha se asume cerrada: el sistema no registra
+     la rendición efectiva, así que la fecha es el mejor indicio que hay. */
+  const ejecutando = (p: any) => {
+    if (p.estado !== "ganadora") return false;
+    const f = p.fecha_prorroga || p.fecha_limite_rendicion;
+    return !!f && diasDesde(f) <= 0;
+  };
+  const marca = new Map<string, { total: number; ganadas: number; casi: number; monto: number; juego: number; ejec: number }>();
   (postsEmp || []).forEach((p: any) => {
-    const m = marca.get(p.empresa_id) || { total: 0, ganadas: 0, casi: 0, monto: 0, juego: 0 };
+    const m = marca.get(p.empresa_id) || { total: 0, ganadas: 0, casi: 0, monto: 0, juego: 0, ejec: 0 };
     m.total++;
     if (p.estado === "ganadora") { m.ganadas++; m.monto += parseFloat(p.monto_adjudicado) || 0; }
     if (p.estado === "finalista_no_ganadora") m.casi++;
     if (EN_JUEGO.includes(p.estado)) m.juego++;
+    if (ejecutando(p)) m.ejec++;
     marca.set(p.empresa_id, m);
   });
+
+  /* Libre para postular: sin compromisos vivos Y con los papeles en regla.
+     Cualquier "no" de esta lista la descalifica ante el fondo. */
+  const libre = (x: any) => {
+    const m = marca.get(x.id);
+    return x.estado === "activa"
+      && !!x.ruc
+      && x.estado_sunat === "activo" && x.condicion_sunat === "habido"
+      && !!x.renca
+      && !!x.vigencia_poder_fecha && diasDesde(x.vigencia_poder_fecha) <= 90
+      && (m?.juego || 0) === 0
+      && (m?.ejec || 0) === 0;
+  };
+  /* Por qué NO está libre: sirve para saber qué arreglar */
+  const trabas = (x: any) => {
+    const m = marca.get(x.id);
+    const t: string[] = [];
+    if (x.estado !== "activa") t.push("no activa");
+    if (!x.ruc) t.push("sin RUC");
+    if (x.estado_sunat !== "activo") t.push("SUNAT no activo");
+    if (x.condicion_sunat !== "habido") t.push("no habido");
+    if (!x.renca) t.push("sin RENCA");
+    if (!x.vigencia_poder_fecha) t.push("sin vigencia de poder");
+    else if (diasDesde(x.vigencia_poder_fecha) > 90) t.push("vigencia vencida");
+    if ((m?.juego || 0) > 0) t.push("en concurso");
+    if ((m?.ejec || 0) > 0) t.push("ejecutando un fondo");
+    return t;
+  };
   const enConcurso = (postsEmp || []).filter((p: any) => EN_JUEGO.includes(p.estado));
   const empDe = new Map(todas.map((x: any) => [x.id, x]));
 
   // Filtro por fondos: cada opción con su prueba
+  /* Casi libre: cumple todo salvo la vigencia de poder. No es un descarte,
+     es un trámite de días — vale la pena tenerlas a la vista. */
+  const soloVigencia = (x: any) => {
+    const t = trabas(x);
+    return t.length > 0 && t.every(z => z.includes("vigencia"));
+  };
+
   const PRUEBA_F: Record<string, (x: any) => boolean> = {
+    libre: x => libre(x) || soloVigencia(x),
     juego: x => (marca.get(x.id)?.juego || 0) > 0,
+    ejecutando: x => (marca.get(x.id)?.ejec || 0) > 0,
     ganadoras: x => (marca.get(x.id)?.ganadas || 0) > 0,
     postularon: x => marca.has(x.id),
     nunca: x => !marca.has(x.id),
@@ -137,11 +168,13 @@ export default async function Empresas({ searchParams }: {
   const Fila = (emp: any) => {
     const a = act.get(emp.id) || VACIO;
     const m = marca.get(emp.id);
+    const esLibre = libre(emp);
+    const casi = !esLibre && soloVigencia(emp);   // candidata: apagada, no descartada
     const alerta = nosCompete(emp)
       && ((emp.estado_sunat && emp.estado_sunat !== "activo") || emp.condicion_sunat === "no_habido");
     return (
       <Link key={emp.id} href={`/entidad/empresa/${emp.id}`}>
-        <div className="card link" style={{ cursor: "pointer", padding: "11px 16px" }}>
+        <div className={`card link${casi ? " fila-tenue" : ""}`} style={{ cursor: "pointer", padding: "11px 16px" }}>
           {/* línea 1: quién es */}
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <b style={{ fontSize: 14.5 }}>{emp.nombre}</b>
@@ -151,6 +184,23 @@ export default async function Empresas({ searchParams }: {
               </span>
             )}
             {emp.tipo && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{emp.tipo}</span>}
+            {/* Lista para postular, o candidata a un trámite de distancia */}
+            {esLibre && (
+              <span className="badge" title="Cumple todo: puede postular ya"
+                style={{ color: "var(--green)", background: "rgba(46,204,113,.14)", fontWeight: 700 }}>
+                ✅ libre para postular
+              </span>
+            )}
+            {casi && (
+              <span className="badge" title="Cumple todo lo demás: basta sacar la vigencia de poder"
+                style={{ color: "var(--yellow)", background: "rgba(244,180,0,.12)", fontWeight: 700 }}>
+                📜 solo falta la vigencia
+              </span>
+            )}
+            {m && m.ejec > 0 && (
+              <span className="badge" title="Tiene un fondo ganado con rendición pendiente"
+                style={{ color: "var(--teal)", background: "rgba(45,212,191,.12)" }}>🎬 ejecutando</span>
+            )}
             {/* En concurso: la partida sigue viva, es lo más accionable */}
             {m && m.juego > 0 && (
               <span className="badge" title={`${m.juego} postulación(es) en curso`}
@@ -197,6 +247,13 @@ export default async function Empresas({ searchParams }: {
               </span>
             )}
             <span style={{ flex: 1 }} />
+            {/* Qué le falta para poder postular */}
+            {!esLibre && (
+              <span style={{ color: casi ? "var(--yellow)" : "var(--dim)" }}
+                title="Requisitos que no cumple para postular">
+                🚫 {trabas(emp).join(" · ")}
+              </span>
+            )}
             {m && m.monto > 0 && (
               <span style={{ color: "var(--teal)", fontWeight: 700 }}>
                 S/ {m.monto.toLocaleString("es-PE")} ganado
@@ -234,19 +291,7 @@ export default async function Empresas({ searchParams }: {
         <button className="btn" type="submit">Buscar</button>
       </form>
 
-      {/* Todo esto son filtros: un solo estilo, agrupados por dimensión */}
-      <div className="card" style={{ padding: "8px 14px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, paddingBottom: 4, borderBottom: "1px solid var(--border)" }}>
-          <span style={{ fontSize: 9.5, textTransform: "uppercase", letterSpacing: 1.2, color: "var(--dim)", fontWeight: 700 }}>
-            Filtros
-          </span>
-          <span style={{ flex: 1 }} />
-          {listar && (
-            <Link href="/empresas" className="vtab" style={{ padding: "2px 9px", fontSize: 11 }}>
-              ✕ limpiar filtros
-            </Link>
-          )}
-        </div>
+      <PanelFiltros limpiar="/empresas" mostrarLimpiar={listar}>
         <FilaFiltro titulo="Relación">
           {Object.entries(REL_META).map(([k, [lbl, col]]) => (
             <Chip key={k} href={`/empresas?r=${k}`} on={r === k} color={col}>
@@ -270,8 +315,17 @@ export default async function Empresas({ searchParams }: {
           })}
         </FilaFiltro>
         <FilaFiltro titulo="Fondos">
+          <Chip href="/empresas?f=libre" on={f === "libre"} color="var(--green)"
+            title="Listas: cumplen todo. El +N son candidatas a las que solo les falta sacar la vigencia de poder">
+            ✅ libres para postular · {todas.filter(libre).length}
+            {todas.filter(soloVigencia).length > 0 && ` +${todas.filter(soloVigencia).length}`}
+          </Chip>
           <Chip href="/empresas?f=juego" on={f === "juego"} color="var(--violet)">
             ⏳ en concurso · {cntF("juego")}
+          </Chip>
+          <Chip href="/empresas?f=ejecutando" on={f === "ejecutando"} color="var(--teal)"
+            title="Con un fondo ganado cuya rendición aún no vence">
+            🎬 ejecutando · {cntF("ejecutando")}
           </Chip>
           <Chip href="/empresas?f=ganadoras" on={f === "ganadoras"} color="var(--green)">
             🏆 ganadoras · {cntF("ganadoras")}
@@ -290,7 +344,7 @@ export default async function Empresas({ searchParams }: {
             ⚠ SUNAT · {alertas.length}
           </Chip>
         </FilaFiltro>
-      </div>
+      </PanelFiltros>
 
       {!listar && (
         <>
