@@ -3,6 +3,7 @@ import Volver from "@/components/Volver";
 import { Mantenimiento } from "@/components/EntidadForm";
 import { SUNAT_EMPRESA, DOCS_EMPRESA, DNI_PERSONA, DOCS_PERSONA, SUNAT_PERSONA, GRUPO_TONO } from "@/lib/entidades";
 import { rucDePersona } from "@/lib/ruc";
+import { estado4ta, money } from "@/lib/cuarta";
 import Miembros from "@/components/Miembros";
 import Credenciales from "@/components/Credenciales";
 import ClienteProyecto from "@/components/ClienteProyecto";
@@ -44,7 +45,7 @@ const CONF: Record<string, { tabla: string; icono: string; campos: [string, stri
     ["DNI", "ruc_dni", DNI_PERSONA], ["DNI vence", "dni_vencimiento", DNI_PERSONA],
     ["Estado SUNAT", "estado_sunat", SUNAT_PERSONA], ["Condición SUNAT", "condicion_sunat", SUNAT_PERSONA],
     ["Verificado", "fecha_verificacion_sunat", SUNAT_PERSONA],
-    ["Suspensión 4ta", "suspension_4ta", SUNAT_PERSONA],
+    ["Suspensión 4ta", "suspension_4ta_anio", SUNAT_PERSONA],
   ] },
   equipamiento: { tabla: "equipamiento", icono: "🎥", campos: [["Folio", "folio"], ["Categoría", "categoria"], ["Subcategoría", "subcategoria"], ["Estado", "estado"], ["Valor (S/)", "valor_compra"], ["Comprado en", "comprado_en"]] },
   lugar: { tabla: "lugares", icono: "📍", campos: [] },
@@ -80,6 +81,11 @@ const sunatOk = (key: string, val: any) =>
 
 const verFicha = (key: string, val: any) => {
   if (typeof val === "boolean") return val ? "✅ Sí" : "No";
+  // La suspensión de 4ta vale por el año calendario y se pide de nuevo en enero
+  if (key === "suspension_4ta_anio") {
+    const a = Number(val), hoy = new Date().getFullYear();
+    return a >= hoy ? `✅ vigente ${a}` : `⚠ venció en ${a} — renovar`;
+  }
   const s = String(val);
   if (CAMPOS_DINERO.includes(key)) {
     const n = parseFloat(s);
@@ -259,15 +265,19 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     postusEmp = pe.data || [];
   }
   let postDe: any[] = [], equiposEnMano: any[] = [], clienteEnProy: any[] = [], cvsDe: any[] = [];
+  let acum4ta = 0;   // lo girado este año en RHE
   let cuentaDe: { id: string; nombre: string; avatar_url?: string | null } | null = null;
   let cuentasLibres: { id: string; nombre: string }[] = [];
   let pulso: { cerr: number; creo: number; coments: number; ab: number; venc: number; ultimo: string } | null = null;
   if (params.tipo === "persona") {
-    const [cg, cv, pe, pr, cl] = await Promise.all([
+    const [cg, cv, rh, pe, pr, cl] = await Promise.all([
       supabase.from("empresa_miembros")
         .select("id,cargo,estado,fecha_inicio,fecha_fin,empresa:empresas(id,nombre,codigo)")
         .eq("persona_id", params.id).order("estado"),
       supabase.from("persona_cv").select("*").eq("persona_id", params.id).order("enfoque"),
+      // RHE del año: para vigilar su tope de 4ta
+      supabase.from("rhe").select("monto,fecha")
+        .eq("persona_id", params.id).gte("fecha", `${new Date().getFullYear()}-01-01`),
       // Con qué postuló, con quién y por cuál empresa: el contexto completo
       supabase.from("postulacion_equipo")
         .select("id,cargo,post:postulaciones(id,codigo,estado,monto_adjudicado,proy:proyectos(id,nombre),conv:convocatorias(id,nombre,anio),emp:empresas(id,nombre),equipo:postulacion_equipo(cargo,persona:personas(id,nombre,alias)))")
@@ -281,6 +291,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     ]);
     cargosDe = cg.data || [];
     cvsDe = cv.data || [];
+    acum4ta = (rh.data || []).reduce((s: number, r: any) => s + Number(r.monto || 0), 0);
     postDe = (pe.data || []).sort((a: any, b: any) =>
       (b.post?.conv?.anio || 0) - (a.post?.conv?.anio || 0));
     equiposEnMano = pr.data || [];
@@ -468,6 +479,40 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                 );
               })()}
 
+            {/* La suspensión de 4ta vence cada 31 de diciembre: si quedó en un
+                año pasado, hay que renovarla o corresponde retener el 8%. */}
+            {/* El tope de 4ta: si lo supera, la suspensión se rompe por el
+                resto del año. Solo nosotros podemos verlo venir. */}
+            {params.tipo === "persona" && acum4ta > 0 && (() => {
+              const e = estado4ta(acum4ta, new Date().getFullYear());
+              if (e.supero) return (
+                <Alerta tono="roja"
+                  titulo={`🏛 Superó el tope de 4ta: ${money(acum4ta)} de ${money(e.tope)}`}
+                  detalle="Su suspensión se rompió: corresponde retenerle el 8% en los recibos de lo que resta del año, aunque después cobre menos. Ya no se recompone." />
+              );
+              if (e.cerca) return (
+                <Alerta tono="ambar"
+                  titulo={`🏛 Al ${e.pct}% del tope de 4ta — le quedan ${money(e.resta)}`}
+                  detalle="Con nosotros lleva girado casi el límite del año. Si lo pasa, habrá que retenerle el 8% por el resto del año. Ojo: si factura por fuera, el tope real llega antes." />
+              );
+              return null;
+            })()}
+
+            {params.tipo === "persona" && ent.suspension_4ta_anio && (() => {
+              const a = Number(ent.suspension_4ta_anio);
+              if (a < new Date().getFullYear()) return (
+                <Alerta tono="ambar"
+                  titulo={`🏛 Suspensión de 4ta vencida (${a})`}
+                  detalle="Caduca cada 31 de diciembre. Mientras no la renueve en SUNAT, a sus recibos por honorarios les corresponde la retención del 8%." />
+              );
+              // Vigente pero sin respaldo: si SUNAT la pide, no hay cómo probarla
+              return !ent.suspension_4ta_url && (
+                <Alerta tono="ambar"
+                  titulo="🧾 Suspensión de 4ta sin constancia"
+                  detalle={`Figura vigente ${a}, pero no está cargado el comprobante que emite SUNAT al tramitarla. Sin él no hay cómo sustentar por qué no se retuvo.`} />
+              );
+            })()}
+
             {/* El CV depende del rol: hace falta uno por cada cargo con el
                 que postula, y DAFO lo exige en la carpeta. */}
             {params.tipo === "persona" && ent.estado === "activo"
@@ -562,6 +607,11 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                           background: sunatOk(key, ent[key]) ? "rgba(46,204,113,.10)" : "rgba(255,77,94,.10)",
                           padding: "1px 8px", borderRadius: 6, fontWeight: 600,
                         }
+                      // La suspensión de 4ta caduca cada 31 de diciembre
+                      : key === "suspension_4ta_anio"
+                        ? Number(ent[key]) >= new Date().getFullYear()
+                          ? { color: "var(--green)", background: "rgba(46,204,113,.10)", padding: "1px 8px", borderRadius: 6, fontWeight: 600 }
+                          : { color: "var(--red)", background: "rgba(255,77,94,.10)", padding: "1px 8px", borderRadius: 6, fontWeight: 600 }
                       : key === "dni_vencimiento" && new Date(ent[key]) < new Date() ? { color: "var(--red)", fontWeight: 700 }
                       // Una vigencia de poder de más de 90 días ya no sirve para trámites
                       : key === "vigencia_poder_fecha"
@@ -601,6 +651,27 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                   </span>
                   <BotonRucPersona personaId={params.id} />
                   <BotonFichaSunat numero={ent.ruc_dni} tipo="DNI" />
+                  {ent.suspension_4ta_url && (
+                    <a href={ent.suspension_4ta_url} target="_blank" rel="noopener noreferrer"
+                      className="btn btn-ghost" style={lnk}>🧾 Constancia 4ta ↗</a>
+                  )}
+                  {/* Cuánto lleva del tope de 4ta con nosotros este año */}
+                  {acum4ta > 0 && (() => {
+                    const e = estado4ta(acum4ta, new Date().getFullYear());
+                    const col = e.supero ? "var(--red)" : e.cerca ? "var(--yellow)" : "var(--green)";
+                    return (
+                      <span style={{ width: "100%", marginTop: 2 }}>
+                        <span style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 11 }}>
+                          <span style={{ color: "var(--dim)" }}>Girado {new Date().getFullYear()}:</span>
+                          <b style={{ color: col }}>{money(acum4ta)}</b>
+                          <span style={{ color: "var(--dim)" }}>de {money(e.tope)} · {e.pct}%</span>
+                        </span>
+                        <span style={{ display: "block", height: 4, background: "var(--bg)", borderRadius: 3, marginTop: 4, overflow: "hidden" }}>
+                          <span style={{ display: "block", width: `${Math.min(100, e.pct)}%`, height: "100%", background: col }} />
+                        </span>
+                      </span>
+                    );
+                  })()}
                 </>
               ),
               [DOCS_PERSONA]: (ent.carpeta_drive_url || ent.cv_url) && (

@@ -253,7 +253,10 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
       { key: "estado_sunat", label: "Estado SUNAT", tipo: "select", opciones: ["activo", "suspension_temporal", "baja_provisional", "baja_definitiva"], grupo: SUNAT_PERSONA },
       { key: "condicion_sunat", label: "Condición SUNAT", tipo: "select", opciones: ["habido", "no_habido"], grupo: SUNAT_PERSONA },
       { key: "fecha_verificacion_sunat", label: "Última verificación SUNAT", corto: "Verificado SUNAT", tipo: "date", grupo: SUNAT_PERSONA },
-      { key: "suspension_4ta", label: "Suspensión de renta de 4ta", corto: "Suspensión 4ta", tipo: "bool", grupo: SUNAT_PERSONA },
+      // Año, no Sí/No: la suspensión caduca cada 31 de diciembre.
+      // La constancia va al lado: el año dice que vale, el PDF lo prueba.
+      { key: "suspension_4ta_anio", label: "Suspensión 4ta — año vigente", corto: "Suspensión 4ta", valida: "anio", grupo: SUNAT_PERSONA },
+      { key: "suspension_4ta_url", label: "Suspensión 4ta — constancia SUNAT", corto: "Constancia 4ta", valida: "url", grupo: SUNAT_PERSONA },
       // Los CV viven en su propia biblioteca (uno por enfoque), no aquí:
       // un solo cv_url no alcanza cuando se postula con distintos roles.
       { key: "carpeta_drive_url", label: "Carpeta en Drive", corto: "Carpeta Drive", valida: "url", grupo: DOCS_PERSONA },

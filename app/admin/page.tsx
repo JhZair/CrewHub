@@ -4,6 +4,8 @@ import TarifasEditor from "@/components/TarifasEditor";
 import BitacoraJornadas from "@/components/BitacoraJornadas";
 import LiquidacionAdmin from "@/components/LiquidacionAdmin";
 import BotonDestacar from "@/components/BotonDestacar";
+import RheAdmin from "@/components/RheAdmin";
+import { estado4ta } from "@/lib/cuarta";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -44,9 +46,17 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
   const lInicio = `${lAnio}-${pad(lMes + 1)}-01`;
   const lFin = `${lMes === 11 ? lAnio + 1 : lAnio}-${pad(lMes === 11 ? 1 : lMes + 2)}-01`;
 
-  const [{ data: personas }, { data: jornsPend }, { data: proyectos }, { data: jornsMes }, { data: liqs }, { data: vivos }] = await Promise.all([
+  const [{ data: personas }, { data: cobrables }, { data: rhes }, { data: jornsPend },
+         { data: proyectos }, { data: jornsMes }, { data: liqs }, { data: vivos }] = await Promise.all([
     supabase.from("personas").select("id,nombre,alias,tarifa_dia,tarifa_rodaje,tarifa_noche")
       .eq("tipo", "personal").order("nombre"),
+    // A quién se le puede girar un RHE, y los del año en curso
+    supabase.from("personas").select("id,nombre,alias,suspension_4ta_anio")
+      .in("tipo", ["personal", "colaborador", "colaborador eventual", "independiente"])
+      .eq("estado", "activo").order("nombre"),
+    supabase.from("rhe").select("*")
+      .gte("fecha", `${new Date().getFullYear()}-01-01`)
+      .order("fecha", { ascending: false }).limit(400),
     supabase.from("jornadas")
       .select("id,persona_id,fecha,proyecto_id,tipo,fraccion,noche,monto,aprobada,per:personas(nombre,alias),proy:proyectos(nombre)")
       .eq("aprobada", false).order("fecha", { ascending: false }).limit(400),
@@ -83,6 +93,15 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
     .map(([personaId, a]) => ({ personaId, nombre: a.nombre, dias: a.dias, pend: a.pend, monto: a.monto, estado: estadoDe.get(personaId) || null }))
     .sort((x, y) => x.nombre.localeCompare(y.nombre));
 
+  // Cuántos rozan o pasaron el tope de 4ta: eso es lo que pide atención
+  const anioHoy = new Date().getFullYear();
+  const acum4ta = new Map<string, number>();
+  (rhes || []).forEach((r: any) => acum4ta.set(r.persona_id, (acum4ta.get(r.persona_id) || 0) + Number(r.monto || 0)));
+  const nCerca = [...acum4ta.values()].filter(v => {
+    const e = estado4ta(v, anioHoy);
+    return e.cerca || e.supero;
+  }).length;
+
   // Menú: cada sección con su contador, para ver qué pide atención sin entrar
   const ahoraMs = Date.now();
   const nDestacados = (vivos || []).filter((p: any) =>
@@ -91,6 +110,7 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
     ["destacados", "📌 Destacados", nDestacados || null],
     ["jornadas", "✅ Aprobar jornadas", porAprobar.length || null],
     ["liquidar", "🧾 Liquidar mes", filasLiq.filter(f => f.estado !== "liquidado").length || null],
+    ["rhe", "🧾 RHE y tope 4ta", nCerca || null],
     ["tarifas", "💰 Tarifas", null],
   ];
 
@@ -188,6 +208,21 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
             Liquidar genera el recibo interno (congela lo aprobado) y bloquea el mes de esa persona. Solo se puede si no quedan jornadas por aprobar.
           </p>
           <LiquidacionAdmin anio={lAnio} mes={lMes + 1} filas={filasLiq} />
+        </>
+      )}
+
+      {s === "rhe" && (
+        <>
+          <div className="h4" style={{ marginTop: 0 }}>🧾 RHE y tope de 4ta · {anioHoy}</div>
+          <p style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 0 }}>
+            Los recibos que giramos por cuenta de quienes nos delegan su clave SOL.
+            Importan por dos razones: la rendición del fondo, y sobre todo el <b>tope de 4ta</b> —
+            si alguien lo supera, su suspensión se rompe y corresponde retenerle el 8%
+            por el resto del año. Nadie más se va a dar cuenta.
+          </p>
+          <RheAdmin anio={anioHoy}
+            personas={(cobrables || []).map((p: any) => ({ id: p.id, nombre: p.alias || p.nombre, suspension_4ta_anio: p.suspension_4ta_anio }))}
+            proyectos={proyectos || []} rhes={(rhes || []) as any} />
         </>
       )}
 

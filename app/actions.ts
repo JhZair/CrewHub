@@ -857,6 +857,70 @@ export async function editarTarifa(
   return {};
 }
 
+/* --- Recibos por honorarios girados ---
+   Los registra administración. Sirven para vigilar el tope de 4ta: si la
+   persona lo supera, su suspensión se rompe y hay que retenerle el 8%
+   por el resto del año. Como le manejamos la clave SOL, nadie más se
+   va a dar cuenta. */
+export async function guardarRhe(f: {
+  id?: string | null; personaId: string; numero: string; fecha: string;
+  monto: string; retencion: string; concepto: string; proyectoId: string; url: string;
+}) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: perfil } = await supabase.from("perfiles").select("es_admin").eq("id", user.id).single();
+  if (!perfil?.es_admin) return { error: "Solo administración registra los RHE." };
+
+  if (!f.personaId) return { error: "Elige a quién se le giró." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(f.fecha)) return { error: "Fecha inválida." };
+  const num = (s: string) => parseFloat(String(s).replace(/[^\d.]/g, "")) || 0;
+  const monto = num(f.monto);
+  if (monto <= 0) return { error: "El monto debe ser mayor que cero." };
+  if (f.url && !/^https?:\/\/\S+$/.test(f.url.trim())) return { error: "El PDF debe ser un link completo." };
+
+  const fila = {
+    persona_id: f.personaId,
+    numero: f.numero.trim() || null,
+    fecha: f.fecha,
+    monto,
+    retencion: num(f.retencion),
+    concepto: f.concepto.trim() || null,
+    proyecto_id: f.proyectoId || null,
+    url: f.url.trim() || null,
+  };
+  const { error } = f.id
+    ? await supabase.from("rhe").update(fila).eq("id", f.id)
+    : await supabase.from("rhe").insert({ ...fila, creado_por: user.id });
+  if (error) return { error: error.message };
+
+  await supabase.from("actividad").insert({
+    entidad_tipo: "persona", entidad_id: f.personaId, actor_id: user.id, tipo: "dato",
+    detalle: { mensaje: `${f.id ? "corrigió" : "registró"} un RHE de S/ ${monto.toLocaleString("es-PE")}${fila.numero ? ` (${fila.numero})` : ""}` },
+  });
+  revalidatePath("/admin");
+  revalidatePath(`/entidad/persona/${f.personaId}`);
+  return {};
+}
+
+export async function borrarRhe(id: string, personaId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: perfil } = await supabase.from("perfiles").select("es_admin").eq("id", user.id).single();
+  if (!perfil?.es_admin) return { error: "Solo administración puede borrar RHE." };
+  const { data: prev } = await supabase.from("rhe").select("monto,numero").eq("id", id).maybeSingle();
+  const { error } = await supabase.from("rhe").delete().eq("id", id);
+  if (error) return { error: error.message };
+  await supabase.from("actividad").insert({
+    entidad_tipo: "persona", entidad_id: personaId, actor_id: user.id, tipo: "dato",
+    detalle: { mensaje: `borró el RHE${prev?.numero ? ` ${prev.numero}` : ""} de S/ ${Number(prev?.monto || 0).toLocaleString("es-PE")}` },
+  });
+  revalidatePath("/admin");
+  revalidatePath(`/entidad/persona/${personaId}`);
+  return {};
+}
+
 /* Mi banco de trabajo: los casos que tengo EN PROGRESO. Ese estado ya
    significa "estoy trabajando en esto", así que no hace falta inventar
    otra marca: se llenan y se vacían solos al mover el estado. */
