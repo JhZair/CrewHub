@@ -3,6 +3,7 @@ import Volver from "@/components/Volver";
 import { BotonVerificarLote } from "@/components/VerificarSunat";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import { alertaSunat, esNuestra, esProblematico, textoSunat } from "@/lib/sunat";
+import { fmtVence, vigenciaVencida } from "@/lib/vigencia";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -109,7 +110,7 @@ export default async function Empresas({ searchParams }: {
       && !!x.ruc
       && x.estado_sunat === "activo" && x.condicion_sunat === "habido"
       && !!x.renca
-      && !!x.vigencia_poder_fecha && diasDesde(x.vigencia_poder_fecha) <= 90
+      && !!x.vigencia_poder_fecha && !vigenciaVencida(x.vigencia_poder_fecha)
       && (m?.juego || 0) === 0
       && (m?.ejec || 0) === 0;
   };
@@ -123,7 +124,7 @@ export default async function Empresas({ searchParams }: {
     if (x.condicion_sunat !== "habido") t.push("no habido");
     if (!x.renca) t.push("sin RENCA");
     if (!x.vigencia_poder_fecha) t.push("sin vigencia de poder");
-    else if (diasDesde(x.vigencia_poder_fecha) > 90) t.push("vigencia vencida");
+    else if (vigenciaVencida(x.vigencia_poder_fecha)) t.push("vigencia vencida");
     if ((m?.juego || 0) > 0) t.push("en concurso");
     if ((m?.ejec || 0) > 0) t.push("ejecutando un fondo");
     return t;
@@ -408,11 +409,11 @@ export default async function Empresas({ searchParams }: {
           {(() => {
             // Vigencia de poder: DAFO suele exigirla con < 3 meses de emisión
             const anejas = todas.filter((x: any) =>
-              nosCompete(x) && x.vigencia_poder_fecha && diasDesde(x.vigencia_poder_fecha) > 90);
+              nosCompete(x) && vigenciaVencida(x.vigencia_poder_fecha));
             return anejas.length > 0 && (
               <div className="card" style={{ borderColor: "rgba(244,180,0,.35)" }}>
                 <div className="panel-h" style={{ color: "var(--yellow)" }}>
-                  📜 Vigencias de poder con 90+ días — renovar antes de postular
+                  📜 Vigencias de poder vencidas — renovar antes de postular
                 </div>
                 {anejas.map((x: any) => (
                   <div className="info-row" key={x.id}>
@@ -421,7 +422,7 @@ export default async function Empresas({ searchParams }: {
                     </Link>
                     <span style={{ flex: 1 }} />
                     <span style={{ color: "var(--yellow)", fontSize: 12, fontWeight: 700 }}>
-                      emitida hace {diasDesde(x.vigencia_poder_fecha)} días
+                      venció el {fmtVence(x.vigencia_poder_fecha)}
                     </span>
                   </div>
                 ))}

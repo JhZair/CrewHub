@@ -153,7 +153,10 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
       //   Cada dato va a la izquierda con su respaldo (link) a la derecha. —
       { key: "renca", label: "RENCA — N° de registro", corto: "RENCA", grupo: DOCS_EMPRESA },
       { key: "renca_url", label: "RENCA — reconocimiento (PDF)", corto: "RENCA PDF", valida: "url", grupo: DOCS_EMPRESA },
-      { key: "vigencia_poder_fecha", label: "Vigencia de poder — fecha de emisión", corto: "Vigencia poder", tipo: "date", grupo: DOCS_EMPRESA },
+      /* Se pide la emisión, no el vencimiento: es el dato que trae el papel
+         de SUNARP. El vencimiento (emisión + 90 d) se calcula y se muestra
+         en la ficha, para que nadie tenga que hacer la cuenta de cabeza. */
+      { key: "vigencia_poder_fecha", label: "Vigencia de poder — fecha de emisión (vence a los 90 días)", corto: "Vigencia poder", tipo: "date", grupo: DOCS_EMPRESA },
       { key: "vigencia_poder_url", label: "Vigencia de poder (PDF)", corto: "Vigencia PDF", valida: "url", grupo: DOCS_EMPRESA },
       { key: "carpeta_drive_url", label: "Carpeta principal en Drive", corto: "Carpeta Drive", valida: "url", grupo: DOCS_EMPRESA },
     ],

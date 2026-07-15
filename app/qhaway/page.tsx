@@ -5,6 +5,7 @@ import RondaLinks from "@/components/RondaLinks";
 import TabsPanel from "@/components/TabsPanel";
 import { alertaSunat, esProblematico, textoSunat } from "@/lib/sunat";
 import { TIPOS_EQUIPO } from "@/lib/personas";
+import { fmtVence, vigenciaVencida } from "@/lib/vigencia";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -218,7 +219,8 @@ export default async function Qhaway({ searchParams }: { searchParams: { bit?: s
       if (!p.emp.fecha_verificacion_sunat || diasDesde(p.emp.fecha_verificacion_sunat) > 60)
         avisos.push("SUNAT sin verificar");
       if (!p.emp.vigencia_poder_fecha) avisos.push("vigencia de poder sin registrar");
-      else if (diasDesde(p.emp.vigencia_poder_fecha) > 90) criticos.push("vigencia de poder con 90+ días");
+      else if (vigenciaVencida(p.emp.vigencia_poder_fecha))
+        criticos.push(`vigencia de poder vencida (${fmtVence(p.emp.vigencia_poder_fecha)})`);
     }
     const llenos = Object.values(p.materiales || {}).filter(Boolean).length;
     if (llenos < 10) avisos.push(`materiales ${llenos}/10`);
@@ -238,7 +240,7 @@ export default async function Qhaway({ searchParams }: { searchParams: { bit?: s
 
   // (El "Pulso del equipo" se movió a la página /pulso)
   const vigenciasAnejas = (vigenciasTodas || [])
-    .filter((x: any) => diasDesde(x.vigencia_poder_fecha) > 90);
+    .filter((x: any) => vigenciaVencida(x.vigencia_poder_fecha));
   const rendPronto = (rendiciones || [])
     .map((r: any) => ({ ...r, f: r.fecha_prorroga || r.fecha_limite_rendicion }))
     .filter((r: any) => r.f && diasHasta(r.f) <= 90)
@@ -389,11 +391,11 @@ export default async function Qhaway({ searchParams }: { searchParams: { bit?: s
               <Link href={`/entidad/empresa/${x.id}`} style={{ fontWeight: 600 }}>
                 {x.codigo ? `${x.codigo} · ` : ""}{x.nombre} →
               </Link>
-              <span style={{ color: "var(--yellow)", fontSize: 12 }}>emitida hace {diasDesde(x.vigencia_poder_fecha)}d</span>
+              <span style={{ color: "var(--yellow)", fontSize: 12 }}>venció el {fmtVence(x.vigencia_poder_fecha)}</span>
               <span style={{ flex: 1 }} />
               <BotonCasoUrgente
                 titulo={`📜 Renovar vigencia de poder de ${x.nombre}`}
-                cuerpo={`Hallazgo de Bot Qhaway: la vigencia de poder de ${x.nombre} fue emitida hace ${diasDesde(x.vigencia_poder_fecha)} días. DAFO suele exigirla con menos de 3 meses — tramitar una nueva en SUNARP antes de la próxima postulación.`}
+                cuerpo={`Hallazgo de Bot Qhaway: la vigencia de poder de ${x.nombre} venció el ${fmtVence(x.vigencia_poder_fecha)} (se emitió el ${x.vigencia_poder_fecha} y DAFO la exige con menos de 3 meses). Tramitar una nueva en SUNARP antes de la próxima postulación.`}
                 entTipo="empresa" entId={x.id} />
             </div>
           ))}

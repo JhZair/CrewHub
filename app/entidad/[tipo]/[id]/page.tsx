@@ -4,6 +4,7 @@ import { Mantenimiento } from "@/components/EntidadForm";
 import { SUNAT_EMPRESA, DOCS_EMPRESA, DNI_PERSONA, DOCS_PERSONA, SUNAT_PERSONA, GRUPO_TONO } from "@/lib/entidades";
 import { rucDePersona } from "@/lib/ruc";
 import { estado4ta, money } from "@/lib/cuarta";
+import { diasDeVigencia, fmtVence, vigenciaVencida } from "@/lib/vigencia";
 import Miembros from "@/components/Miembros";
 import Credenciales from "@/components/Credenciales";
 import ClienteProyecto from "@/components/ClienteProyecto";
@@ -37,7 +38,7 @@ const CONF: Record<string, { tabla: string; icono: string; campos: [string, stri
     ["RUC", "ruc", SUNAT_EMPRESA], ["Domicilio fiscal", "domicilio_fiscal", SUNAT_EMPRESA],
     ["Estado SUNAT", "estado_sunat", SUNAT_EMPRESA], ["Condición SUNAT", "condicion_sunat", SUNAT_EMPRESA],
     ["Verificado", "fecha_verificacion_sunat", SUNAT_EMPRESA],
-    ["RENCA", "renca", DOCS_EMPRESA], ["Vigencia de poder", "vigencia_poder_fecha", DOCS_EMPRESA],
+    ["RENCA", "renca", DOCS_EMPRESA], ["Vigencia de poder vence", "vigencia_poder_fecha", DOCS_EMPRESA],
   ] },
   persona: { tabla: "personas", icono: "👤", campos: [
     ["Alias", "alias"], ["Tipo", "tipo"], ["Equipo", "equipo"], ["Estado", "estado"],
@@ -89,6 +90,14 @@ const verFicha = (key: string, val: any) => {
   if (key === "suspension_4ta_anio") {
     const a = Number(val), hoy = new Date().getFullYear();
     return a >= hoy ? `✅ vigente ${a}` : `⚠ venció en ${a} — renovar`;
+  }
+  /* La vigencia se guarda por su emisión (es lo que dice el papel) pero se
+     lee por su vencimiento, que es lo que a uno le importa: nadie quiere
+     restar 90 días de cabeza para saber si el certificado todavía sirve. */
+  if (key === "vigencia_poder_fecha") {
+    const d = diasDeVigencia(String(val));
+    return d < 0 ? `⚠ ${fmtVence(String(val))} — venció hace ${-d} d`
+      : `${fmtVence(String(val))} · en ${d} d`;
   }
   const s = String(val);
   if (CAMPOS_DINERO.includes(key)) {
@@ -586,14 +595,11 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                   titulo="🎬 Sin RENCA registrado"
                   detalle="El RENCA es obligatorio para postular a fondos. Regístralo en ✏️ Editar." />
               );
-              if (ent.vigencia_poder_fecha) {
-                const dias = Math.floor((Date.now() - new Date(ent.vigencia_poder_fecha).getTime()) / 86400000);
-                if (dias > 90) al.push(
-                  <Alerta key="vig" tono="ambar"
-                    titulo={`📜 Vigencia de poder emitida hace ${dias} días`}
-                    detalle="La vigencia de poder suele caducar para trámites (~30–90 días). Solicita una reciente antes de presentar documentos." />
-                );
-              }
+              if (vigenciaVencida(ent.vigencia_poder_fecha)) al.push(
+                <Alerta key="vig" tono="ambar"
+                  titulo={`📜 La vigencia de poder venció el ${fmtVence(ent.vigencia_poder_fecha)}`}
+                  detalle="Ya no sirve para presentar documentos. Solicita una nueva en SUNARP antes de la próxima postulación." />
+              );
               return al.length ? <>{al}</> : null;
             })()}
 
@@ -617,9 +623,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                           ? { color: "var(--green)", background: "rgba(46,204,113,.10)", padding: "1px 8px", borderRadius: 6, fontWeight: 600 }
                           : { color: "var(--red)", background: "rgba(255,77,94,.10)", padding: "1px 8px", borderRadius: 6, fontWeight: 600 }
                       : key === "dni_vencimiento" && new Date(ent[key]) < new Date() ? { color: "var(--red)", fontWeight: 700 }
-                      // Una vigencia de poder de más de 90 días ya no sirve para trámites
-                      : key === "vigencia_poder_fecha"
-                        && (Date.now() - new Date(ent[key]).getTime()) / 86400000 > 90
+                      // Vencida = ya no sirve para trámites
+                      : key === "vigencia_poder_fecha" && vigenciaVencida(ent[key])
                         ? { color: "var(--red)", fontWeight: 700 }
                       : CAMPOS_DINERO.includes(key) ? { color: "var(--teal)", fontWeight: 700 } : undefined
                   }>
