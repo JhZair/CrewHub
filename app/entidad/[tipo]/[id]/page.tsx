@@ -242,7 +242,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         .select("id,desde,equipo:equipamiento(id,folio,nombre)")
         .eq("persona_id", params.id).is("hasta", null).order("desde", { ascending: false }),
       supabase.from("proyectos")
-        .select("id,nombre,tipo,estado")
+        .select("id,nombre,tipo")
         .eq("cliente_id", params.id).order("nombre"),
     ]);
     cargosDe = cg.data || [];
