@@ -113,7 +113,7 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
       { key: "tipo", label: "Tipo", tipo: "select", opciones: ["eirl", "sac", "asociacion", "ong", "municipalidad", "otro"] },
       { key: "relacion", label: "Relación — solo las propias generan alertas", tipo: "select", opciones: ["propia", "aliada", "externa"] },
       { key: "region", label: "Región", tipo: "select", opciones: REGIONES },
-      { key: "estado", label: "Estado (interno)", tipo: "select", opciones: ["en_constitucion", "activa", "inactiva", "cerrada"] },
+      { key: "estado", label: "Estado (interno)", tipo: "select", opciones: ["en_constitucion", "activa", "inactiva", "en_proceso_de_cierre", "cerrada"] },
       { key: "fecha_constitucion", label: "Fecha de constitución", tipo: "date" },
       { key: "domicilio_fiscal", label: "Domicilio fiscal" },
       // — Registros: cada número con su PDF al lado —

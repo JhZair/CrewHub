@@ -116,7 +116,9 @@ export async function procesarSunatEmpresa(db: DB, emp: EmpSunat, autorId: strin
 export async function correrRondaSunat(db: DB, autorId: string | null) {
   const { data: emps } = await db.from("empresas")
     .select("id,nombre,ruc,estado,relacion,estado_sunat,condicion_sunat")
-    .eq("estado", "activa").not("ruc", "is", null);
+    // Las que están en proceso de cierre se siguen consultando (el trámite es
+    // largo y conviene ver el dato al día), pero no generan caso.
+    .in("estado", ["activa", "en_proceso_de_cierre"]).not("ruc", "is", null);
 
   let ok = 0; const alertas: string[] = []; const fallas: string[] = [];
   for (const emp of emps || []) {
