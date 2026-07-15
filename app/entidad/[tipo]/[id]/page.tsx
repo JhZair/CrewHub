@@ -395,7 +395,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               return null;
             })()}
 
-            {params.tipo === "empresa" && (() => {
+            {params.tipo === "empresa" && ent.estado === "activa" && (() => {
               const al: any[] = [];
               const est = ent.estado_sunat, cond = ent.condicion_sunat;
               if (est && est !== "activo") al.push(
