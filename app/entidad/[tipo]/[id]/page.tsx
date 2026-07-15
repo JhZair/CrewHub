@@ -351,10 +351,6 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                 <a href={ent.acta_url} target="_blank" rel="noopener noreferrer"
                   className="btn btn-ghost" style={{ fontSize: 12, padding: "7px 12px" }}>🖋 Acta</a>
               )}
-              {ent.ficha_ruc_url && (
-                <a href={ent.ficha_ruc_url} target="_blank" rel="noopener noreferrer"
-                  className="btn btn-ghost" style={{ fontSize: 12, padding: "7px 12px" }}>📄 Ficha RUC</a>
-              )}
               {ent.renca_url && (
                 <a href={ent.renca_url} target="_blank" rel="noopener noreferrer"
                   className="btn btn-ghost" style={{ fontSize: 12, padding: "7px 12px" }}>🎬 RENCA</a>

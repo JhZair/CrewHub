@@ -130,11 +130,11 @@ export function EntidadForm({ tipo, id, valores, onDone }:
     return undefined;
   };
 
-  return (
-    <div className="card" style={{ borderColor: "var(--accent)" }}>
-      <b style={{ fontSize: 15 }}>{id ? `✏️ Editar ${conf.titulo.toLowerCase()}` : `＋ Nuevo ${conf.titulo.toLowerCase()}`}</b>
-      <div className="f-grid">
-        {campos.map(c => (
+  // Los campos con `grupo` salen al final, cada grupo en su propio recuadro
+  const sueltos = campos.filter(c => !(c as any).grupo);
+  const grupos = [...new Set(campos.map(c => (c as any).grupo).filter(Boolean))] as string[];
+
+  const pintar = (c: any) => (
           <div key={c.key} className="f-campo" style={c.tipo === "textarea" ? { gridColumn: "1 / -1" } : undefined}>
             <span style={errores[c.key] ? { color: "var(--red)" } : undefined}>
               {c.label}{c.requerido && <b style={{ color: "var(--red)" }}> *</b>}
@@ -202,8 +202,22 @@ export function EntidadForm({ tipo, id, valores, onDone }:
             )}
             {errores[c.key] && <span style={{ color: "var(--red)", fontSize: 10.5, textTransform: "none", letterSpacing: 0 }}>{errores[c.key]}</span>}
           </div>
-        ))}
-      </div>
+  );
+
+  return (
+    <div className="card" style={{ borderColor: "var(--accent)" }}>
+      <b style={{ fontSize: 15 }}>{id ? `✏️ Editar ${conf.titulo.toLowerCase()}` : `＋ Nuevo ${conf.titulo.toLowerCase()}`}</b>
+      <div className="f-grid">{sueltos.map(pintar)}</div>
+
+      {grupos.map(g => (
+        <div key={g} style={{ marginTop: 16, padding: "10px 13px 13px", borderRadius: 12, border: "1px solid rgba(244,180,0,.3)", background: "rgba(244,180,0,.04)" }}>
+          <div style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: 1, color: "var(--yellow)", fontWeight: 700 }}>{g}</div>
+          <div className="f-grid" style={{ marginTop: 4 }}>
+            {campos.filter(c => (c as any).grupo === g).map(pintar)}
+          </div>
+        </div>
+      ))}
+
       {!id && parecidos.length > 0 && (
         <div style={{ marginTop: 12, padding: "9px 12px", background: "rgba(244,180,0,.08)", border: "1px solid rgba(244,180,0,.35)", borderRadius: 10, fontSize: 12.5, color: "var(--yellow)" }}>
           ⚠ Ya existen parecidos — verifica antes de crear un duplicado:{" "}

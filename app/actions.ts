@@ -1367,7 +1367,7 @@ export async function verificarLinksDrive() {
 
   const FUENTES: [string, string, string[]][] = [
     ["proyecto", "proyectos", ["carpeta_drive_url", "presupuesto_url"]],
-    ["empresa", "empresas", ["carpeta_drive_url", "ficha_ruc_url", "vigencia_poder_url"]],
+    ["empresa", "empresas", ["carpeta_drive_url", "renca_url", "vigencia_poder_url"]],
     ["persona", "personas", ["carpeta_drive_url", "cv_url", "dni_url", "firma_url"]],
     ["convocatoria", "convocatorias", ["bases_url", "carpeta_drive_url"]],
     ["postulacion", "postulaciones", ["acta_url", "matriz_jurado_url", "carpeta_drive_url"]],

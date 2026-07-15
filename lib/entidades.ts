@@ -17,6 +17,7 @@ export type CampoDef = {
   valida?: "dni" | "ruc" | "email" | "telefono" | "url" | "anio";
     // validación anti-humanos: formato exigido antes de guardar
   corto?: string;       // nombre breve para el historial (si la etiqueta es larga)
+  grupo?: string;       // agrupa el campo en un bloque destacado del formulario
 };
 
 /* Nombre breve de un campo para la bitácora: usa `corto` si existe; si no,
@@ -25,6 +26,10 @@ export type CampoDef = {
 export function nombreCorto(c: { label: string; corto?: string }): string {
   return c.corto || c.label.split("—")[0].replace(/\([^)]*\)/g, "").trim();
 }
+
+/* Bloques de campos agrupados en el formulario. Van al final, en su propio
+   recuadro ámbar: importan de verdad, pero no bloquean el alta. */
+export const DOCS_EMPRESA = "📎 Documentos — necesarios para postular, no para dar de alta";
 
 /* Validadores: el formato que cada tipo de dato exige */
 export const VALIDADORES: Record<string, [RegExp, string]> = {
@@ -124,18 +129,19 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
       { key: "estado", label: "Estado (interno)", tipo: "select", opciones: ["en_constitucion", "activa", "inactiva", "en_proceso_de_cierre", "cerrada"] },
       { key: "fecha_constitucion", label: "Fecha de constitución", tipo: "date" },
       { key: "domicilio_fiscal", label: "Domicilio fiscal" },
-      // — Registros: cada número con su PDF al lado —
+      // — Registros. La ficha RUC en PDF se retiró: se consulta en vivo en
+      //   SUNAT (el PDF guardado se desactualizaba y engañaba). —
       { key: "ruc", label: "RUC (11 dígitos)", valida: "ruc" },
-      { key: "ficha_ruc_url", label: "Ficha RUC — PDF (link Drive)", valida: "url" },
-      { key: "renca", label: "RENCA — N° de registro (obligatorio para postular)" },
-      { key: "renca_url", label: "RENCA — reconocimiento PDF (link Drive)", valida: "url" },
-      { key: "vigencia_poder_fecha", label: "Vigencia de poder — fecha de emisión", tipo: "date" },
-      { key: "vigencia_poder_url", label: "Vigencia de poder — PDF (link Drive)", valida: "url" },
+      { key: "renca", label: "RENCA — N° de registro (obligatorio para postular)", corto: "RENCA" },
+      { key: "vigencia_poder_fecha", label: "Vigencia de poder — fecha de emisión", corto: "Vigencia poder", tipo: "date" },
       // — SUNAT (lo llena el botón Verificar, pero editable) —
       { key: "estado_sunat", label: "Estado SUNAT", tipo: "select", opciones: ["activo", "suspension_temporal", "baja_provisional", "baja_definitiva"] },
       { key: "condicion_sunat", label: "Condición SUNAT", tipo: "select", opciones: ["habido", "no_habido"] },
       { key: "fecha_verificacion_sunat", label: "Última verificación SUNAT", tipo: "date" },
-      { key: "carpeta_drive_url", label: "Carpeta principal en Drive (link)", valida: "url" },
+      // — Documentos: importantes para postular, pero no bloquean el alta —
+      { key: "carpeta_drive_url", label: "Carpeta principal en Drive", corto: "Carpeta Drive", valida: "url", grupo: DOCS_EMPRESA },
+      { key: "renca_url", label: "RENCA — reconocimiento (PDF)", corto: "RENCA PDF", valida: "url", grupo: DOCS_EMPRESA },
+      { key: "vigencia_poder_url", label: "Vigencia de poder (PDF)", corto: "Vigencia PDF", valida: "url", grupo: DOCS_EMPRESA },
     ],
   },
   convocatoria: {
