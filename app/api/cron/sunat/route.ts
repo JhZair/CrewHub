@@ -30,5 +30,6 @@ export async function GET(req: Request) {
 
   const { data: bot } = await db.from("perfiles").select("id").eq("nombre", "Bot Qhaway").maybeSingle();
   const res = await correrRondaSunat(db, bot?.id || null);
-  return NextResponse.json({ corrida: true, ...res });
+  // Si el bot no existe no se puede firmar ningún caso: hay que saberlo.
+  return NextResponse.json({ corrida: true, bot: bot?.id ? "ok" : "NO ENCONTRADO", ...res });
 }

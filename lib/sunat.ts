@@ -88,14 +88,19 @@ export async function procesarSunatEmpresa(db: DB, emp: EmpSunat, autorId: strin
     || (emp.condicion_sunat || null) !== (r.condicion || null);
   const malo = esProblematico(r.estado, r.condicion);
 
+  // El historial solo registra cambios reales (sin ruido)...
   if (cambio) {
     await db.from("actividad").insert({
       entidad_tipo: "empresa", entidad_id: emp.id, tipo: "bot",
       detalle: { mensaje: `SUNAT cambió: ${r.estado || "—"} · ${r.condicion || "—"}`, regla: "sunat_api" },
     });
-    if (malo) await abrirProblemaSunat(db, emp, r, autorId);
-    else await cerrarProblemaSunat(db, emp);
   }
+  // ...pero el caso se abre/cierra según el estado ACTUAL, haya cambiado o
+  // no: una empresa que ya venía mal también necesita su caso. El
+  // deduplicado por título evita que se repita en cada ronda.
+  if (malo) await abrirProblemaSunat(db, emp, r, autorId);
+  else await cerrarProblemaSunat(db, emp);
+
   return { estado: r.estado, condicion: r.condicion, cambio, problematico: malo };
 }
 
