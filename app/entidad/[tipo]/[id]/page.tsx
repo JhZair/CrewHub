@@ -43,6 +43,10 @@ const CONF: Record<string, { tabla: string; icono: string; campos: [string, stri
     ["Alias", "alias"], ["Tipo", "tipo"], ["Equipo", "equipo"], ["Estado", "estado"],
     ["Región", "region"], ["Comunero/a", "es_comunero"], ["Rol", "rol"],
     ["DNI", "ruc_dni", DNI_PERSONA], ["DNI vence", "dni_vencimiento", DNI_PERSONA],
+    ["Verificado en RENIEC", "fecha_verificacion_reniec", DNI_PERSONA],
+    // El nombre oficial, a la vista: si no coincide con el de arriba, el que
+    // está mal es el nuestro — y las carpetas se arman con éste.
+    ["Nombre en RENIEC", "nombre_reniec", DNI_PERSONA],
     ["Estado SUNAT", "estado_sunat", SUNAT_PERSONA], ["Condición SUNAT", "condicion_sunat", SUNAT_PERSONA],
     ["Verificado", "fecha_verificacion_sunat", SUNAT_PERSONA],
     ["Suspensión 4ta", "suspension_4ta_anio", SUNAT_PERSONA],
@@ -422,8 +426,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
           const [col, bg] = t[ent.relacion] || t.externa;
           return <span className="badge" style={{ color: col, background: bg }}>{ent.relacion}</span>;
         })()}
-        <span style={{ flex: 1 }} />
-        <Link href={`/?link=${params.tipo}:${params.id}`} className="btn">＋ Publicar</Link>
+        {/* Aquí vivía un "＋ Publicar" que te mandaba al feed con la entidad
+            pre-vinculada. Lo hace el FAB flotante, sin sacarte de la ficha. */}
       </div>
 
       <div className="perfil-grid">

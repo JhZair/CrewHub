@@ -246,6 +246,9 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
       // — Identidad: el DNI es la llave para verificar en RENIEC y SUNAT —
       { key: "ruc_dni", label: "DNI (8 dígitos)", corto: "DNI", valida: "dni", grupo: DNI_PERSONA },
       { key: "dni_vencimiento", label: "DNI — fecha de vencimiento", corto: "DNI vence", tipo: "date", grupo: DNI_PERSONA },
+      // La pone el botón de RENIEC sola; editable por si se verificó a mano
+      // en la web de RENIEC y hay que dejar constancia de cuándo.
+      { key: "fecha_verificacion_reniec", label: "Última verificación RENIEC", corto: "Verificado RENIEC", tipo: "date", grupo: DNI_PERSONA },
       // El escaneo del DNI y la firma SON identidad, y el fondo los exige
       { key: "dni_url", label: "DNI escaneado (PDF)", corto: "DNI escaneado", valida: "url", grupo: DNI_PERSONA },
       { key: "firma_url", label: "Firma escaneada", corto: "Firma", valida: "url", grupo: DNI_PERSONA },

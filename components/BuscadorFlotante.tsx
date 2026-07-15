@@ -29,27 +29,33 @@ export default function BuscadorFlotante() {
 
   if (oculto || !esTop) return null;
 
+  /* Este componente vive en el layout: no se desmonta al navegar, así que
+     su estado sobrevive a todo. Si no vaciamos la caja al cerrarla, la
+     próxima vez que la abras te recibe con la búsqueda de hace media hora. */
+  const cerrar = () => { setAbierto(false); setQ(""); };
+
   const buscar = () => {
     const t = q.trim();
     if (!t) return;
-    setAbierto(false);
+    cerrar();
     router.push(`/buscar?q=${encodeURIComponent(t)}`);
   };
 
   return (
     <>
-      {abierto && <div className="bf-fondo" onClick={() => setAbierto(false)} />}
+      {abierto && <div className="bf-fondo" onClick={cerrar} />}
       <div className="buscar-flot-wrap">
         {abierto && (
           <div className="bf-caja">
             <span style={{ color: "var(--dim)" }}>🔍</span>
             <input ref={inputRef} value={q} placeholder="Buscar en todo…"
               onChange={e => setQ(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter") buscar(); if (e.key === "Escape") setAbierto(false); }} />
+              onKeyDown={e => { if (e.key === "Enter") buscar(); if (e.key === "Escape") cerrar(); }} />
             <button className="btn" style={{ padding: "5px 11px", fontSize: 13 }} onClick={buscar} disabled={!q.trim()}>→</button>
           </div>
         )}
-        <button className="buscar-flot" title="Buscar (Ctrl K)" onClick={() => setAbierto(o => !o)}>🔍</button>
+        <button className="buscar-flot" title="Buscar (Ctrl K)"
+          onClick={() => (abierto ? cerrar() : setAbierto(true))}>🔍</button>
       </div>
     </>
   );

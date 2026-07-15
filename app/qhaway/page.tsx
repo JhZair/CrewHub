@@ -3,6 +3,8 @@ import Volver from "@/components/Volver";
 import BotonCasoUrgente from "@/components/BotonCasoUrgente";
 import RondaLinks from "@/components/RondaLinks";
 import TabsPanel from "@/components/TabsPanel";
+import { alertaSunat, esProblematico, textoSunat } from "@/lib/sunat";
+import { TIPOS_EQUIPO } from "@/lib/personas";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -64,8 +66,9 @@ export default async function Qhaway({ searchParams }: { searchParams: { bit?: s
   const hace3d = new Date(Date.now() - 3 * 86400000).toISOString();
 
   const [{ data: porVencer }, { data: activasTodas }, { data: actividad3d },
-         { data: sunatMal }, { count: sunatSinVerif }, { data: dniPorVencer },
-         { data: vigenciasTodas }, { data: rendiciones }] = await Promise.all([
+         { data: activasSunat }, { count: sunatSinVerif }, { data: dniPorVencer },
+         { data: vigenciasTodas }, { data: rendiciones },
+         { data: nuestraGente }] = await Promise.all([
     supabase.from("publicaciones")
       .select("id,titulo,fecha_limite,estado,resp:perfiles!publicaciones_responsable_fkey(nombre)")
       .in("estado", ["abierta", "en_progreso"]).not("fecha_limite", "is", null)
@@ -74,8 +77,12 @@ export default async function Qhaway({ searchParams }: { searchParams: { bit?: s
       .in("estado", ["abierta", "en_progreso"]).limit(200),
     supabase.from("actividad").select("entidad_id").eq("entidad_tipo", "publicacion")
       .gte("creado_en", hace3d).limit(1000),
-    supabase.from("empresas").select("id,nombre,codigo,estado_sunat,condicion_sunat")
-      .eq("estado", "activa").not("estado_sunat", "is", null).neq("estado_sunat", "activo"),
+    /* Se filtra en JS con la regla compartida, no en la consulta. La versión
+       anterior pedía `estado_sunat != activo` y con eso jamás veía a una
+       empresa "activo · no habido" —que tampoco puede postular—, ni miraba
+       la relación, así que podía alertarte de una externa. */
+    supabase.from("empresas").select("id,nombre,codigo,estado,relacion,estado_sunat,condicion_sunat")
+      .eq("estado", "activa"),
     supabase.from("empresas").select("id", { count: "exact", head: true })
       .eq("estado", "activa")
       .or(`fecha_verificacion_sunat.is.null,fecha_verificacion_sunat.lt.${new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10)}`),
@@ -87,7 +94,37 @@ export default async function Qhaway({ searchParams }: { searchParams: { bit?: s
     supabase.from("postulaciones")
       .select("id,fecha_limite_rendicion,fecha_prorroga,proy:proyectos(nombre),conv:convocatorias(codigo)")
       .eq("estado", "ganadora").or("fecha_limite_rendicion.not.is.null,fecha_prorroga.not.is.null"),
+    // Gente nuestra (lib/personas.ts). Lo demás se filtra abajo en JS: son
+    // decenas de filas, y así el vigía y /personas usan la misma función en
+    // vez de dos consultas que se contradicen.
+    supabase.from("personas")
+      .select("id,nombre,alias,tipo,estado,ruc_dni,fecha_verificacion_sunat,estado_sunat,condicion_sunat,suspension_4ta_anio")
+      .in("tipo", TIPOS_EQUIPO).eq("estado", "activo").limit(300),
   ]);
+
+  // Mal en SUNAT y nuestro: misma regla que /empresas y que el bot
+  const sunatMal = (activasSunat || []).filter(alertaSunat);
+
+  /* Gente de baja o no habida en SUNAT: no puede girarnos un RHE. El dato
+     estaba desde siempre y nunca alertó en ninguna pantalla. */
+  const personasSunatMal = (nuestraGente || [])
+    .filter((p: any) => esProblematico(p.estado_sunat, p.condicion_sunat));
+
+  /* Suspensiones de 4ta caducadas: mueren el 31 de diciembre, todas juntas.
+     Sin este aviso, cada enero arranca con retenciones que nadie esperaba. */
+  const suspCaducada = (nuestraGente || [])
+    .filter((p: any) => p.suspension_4ta_anio && p.suspension_4ta_anio < new Date().getFullYear());
+
+  /* Personas con su SUNAT rancio. Las empresas tienen cron semanal; las
+     personas no —su estado cambia poco y la API de decolecta tiene cupo—,
+     así que el único que avisa es este panel. Sin esto, el dato envejece
+     callado hasta que lo necesitas para girar un RHE o armar la carpeta. */
+  const sunatPersonaVieja = (nuestraGente || [])
+    // Sin DNI no hay RUC que consultar: esa gente ya sale en "internos sin DNI"
+    .filter((p: any) => !!p.ruc_dni)
+    .filter((p: any) => !p.fecha_verificacion_sunat || diasDesde(p.fecha_verificacion_sunat) > 60)
+    .sort((a: any, b: any) =>
+      (a.fecha_verificacion_sunat || "").localeCompare(b.fecha_verificacion_sunat || ""));
 
   // ===== HIGIENE DE DATOS =====
   const [{ data: proySinTipo }, { data: postSinEmp }, { data: ganIncompletas },
@@ -104,7 +141,7 @@ export default async function Qhaway({ searchParams }: { searchParams: { bit?: s
       .or("monto_adjudicado.is.null,codigo_acta.is.null,fecha_limite_rendicion.is.null").limit(30),
     supabase.from("empresas").select("id,nombre,codigo").eq("estado", "activa").is("ruc", null).limit(30),
     supabase.from("personas").select("id,nombre,tipo")
-      .or("tipo.in.(personal,colaborador),usuario_id.not.is.null")
+      .in("tipo", TIPOS_EQUIPO).eq("estado", "activo")
       .is("dni_vencimiento", null)
       .order("tipo", { ascending: false })
       .order("nombre").limit(80),
@@ -116,7 +153,7 @@ export default async function Qhaway({ searchParams }: { searchParams: { bit?: s
   ]);
   const { count: dniSinFechaTotal } = await supabase.from("personas")
     .select("id", { count: "exact", head: true })
-    .or("tipo.in.(personal,colaborador),usuario_id.not.is.null")
+    .in("tipo", TIPOS_EQUIPO).eq("estado", "activo")
     .is("dni_vencimiento", null);
   // Datos de credenciales sin verificar o con 180+ días sin reverificar
   const credCutoff = new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10);
@@ -207,6 +244,7 @@ export default async function Qhaway({ searchParams }: { searchParams: { bit?: s
     .filter((r: any) => r.f && diasHasta(r.f) <= 90)
     .sort((a: any, b: any) => (a.f < b.f ? -1 : 1));
   const totalHallazgos = (porVencer?.length || 0) + dormidos.length + (sunatMal?.length || 0)
+    + personasSunatMal.length + suspCaducada.length
     + (dniPorVencer?.length || 0) + vigenciasAnejas.length + rendPronto.length;
 
   // Chips de resumen (solo los que tienen algo)
@@ -214,12 +252,16 @@ export default async function Qhaway({ searchParams }: { searchParams: { bit?: s
     { ico: "⏰", n: (porVencer || []).length, label: "vencen", color: "var(--red)" },
     { ico: "💤", n: dormidos.length, label: "dormidos", color: "var(--yellow)" },
     { ico: "🏢", n: (sunatMal || []).length, label: "SUNAT", color: "var(--red)" },
+    { ico: "🏛", n: personasSunatMal.length, label: "SUNAT personas", color: "var(--red)" },
+    { ico: "📄", n: suspCaducada.length, label: "susp. caducada", color: "var(--red)" },
     { ico: "🪪", n: (dniPorVencer || []).length, label: "DNI", color: "var(--yellow)" },
     { ico: "📜", n: vigenciasAnejas.length, label: "vigencias", color: "var(--yellow)" },
     { ico: "🧾", n: rendPronto.length, label: "rendiciones", color: "var(--red)" },
-    { ico: "🔍", n: sunatSinVerif || 0, label: "sin verif.", color: "var(--muted)" },
+    { ico: "🔍", n: sunatSinVerif || 0, label: "empresas s/ verif.", color: "var(--muted)" },
+    { ico: "🔍", n: sunatPersonaVieja.length, label: "personas s/ verif.", color: "var(--muted)" },
   ].filter(r => r.n > 0);
-  const sinAlertas = totalHallazgos === 0 && (sunatSinVerif || 0) === 0;
+  const sinAlertas = totalHallazgos === 0 && (sunatSinVerif || 0) === 0
+    && sunatPersonaVieja.length === 0;
 
   // ===== PANELES =====
   const panelAlertas = (
@@ -267,13 +309,53 @@ export default async function Qhaway({ searchParams }: { searchParams: { bit?: s
                 {x.codigo ? `${x.codigo} · ` : ""}{x.nombre} →
               </Link>
               <span style={{ color: "var(--red)", fontSize: 12, fontWeight: 700 }}>
-                {(x.estado_sunat || "").replace(/_/g, " ")}{x.condicion_sunat && x.condicion_sunat !== "habido" ? ` · ${x.condicion_sunat.replace(/_/g, " ")}` : ""}
+                {textoSunat(x)}
               </span>
               <span style={{ flex: 1 }} />
               <BotonCasoUrgente
-                titulo={`⚠ SUNAT: ${x.nombre} en ${(x.estado_sunat || "").replace(/_/g, " ")}`}
-                cuerpo={`Hallazgo de Bot Qhaway: la empresa ${x.nombre} figura en SUNAT como «${(x.estado_sunat || "").replace(/_/g, " ")}». Regularizar antes de postular, facturar o rendir con esta empresa.`}
+                titulo={`⚠ SUNAT: ${x.nombre} en ${textoSunat(x)}`}
+                cuerpo={`Hallazgo de Bot Qhaway: la empresa ${x.nombre} figura en SUNAT como «${textoSunat(x)}». Regularizar antes de postular, facturar o rendir con esta empresa.`}
                 entTipo="empresa" entId={x.id} />
+            </div>
+          ))}
+        </div>
+      )}
+      {personasSunatMal.length > 0 && (
+        <div className="card" style={{ borderColor: "rgba(255,77,94,.35)" }}>
+          <div className="panel-h" style={{ color: "var(--red)" }}>🏛 Personas con problema SUNAT — no pueden girar RHE</div>
+          {personasSunatMal.map((p: any) => (
+            <div className="info-row" key={p.id}>
+              <Link href={`/entidad/persona/${p.id}`} style={{ fontWeight: 600 }}>
+                {p.alias || p.nombre} →
+              </Link>
+              <span style={{ color: "var(--red)", fontSize: 12, fontWeight: 700 }}>{textoSunat(p)}</span>
+              <span style={{ flex: 1 }} />
+              <BotonCasoUrgente
+                titulo={`⚠ SUNAT: ${p.nombre} en ${textoSunat(p)}`}
+                cuerpo={`Hallazgo de Bot Qhaway: ${p.nombre} figura en SUNAT como «${textoSunat(p)}». En ese estado no puede emitir recibos por honorarios. Regularizar antes de girarle un RHE o incluirlo en una carpeta de postulación.`}
+                entTipo="persona" entId={p.id} />
+            </div>
+          ))}
+        </div>
+      )}
+      {suspCaducada.length > 0 && (
+        <div className="card" style={{ borderColor: "rgba(255,77,94,.35)" }}>
+          <div className="panel-h" style={{ color: "var(--red)" }}>
+            📄 Suspensiones de 4ta caducadas — volver a tramitar
+          </div>
+          {suspCaducada.map((p: any) => (
+            <div className="info-row" key={p.id}>
+              <Link href={`/entidad/persona/${p.id}`} style={{ fontWeight: 600 }}>
+                {p.alias || p.nombre} →
+              </Link>
+              <span style={{ color: "var(--red)", fontSize: 12, fontWeight: 700 }}>
+                suspensión {p.suspension_4ta_anio} · venció el 31 dic
+              </span>
+              <span style={{ flex: 1 }} />
+              <BotonCasoUrgente
+                titulo={`📄 Suspensión 4ta ${new Date().getFullYear()}: ${p.nombre}`}
+                cuerpo={`La suspensión de renta de 4ta de ${p.nombre} es del año ${p.suspension_4ta_anio} y caducó el 31 de diciembre. Sin renovarla, cada RHE que gire sobre el mínimo mensual sufre retención del 8%. Tramitar en SUNAT y cargar la constancia en su ficha.`}
+                entTipo="persona" entId={p.id} />
             </div>
           ))}
         </div>
@@ -484,6 +566,35 @@ export default async function Qhaway({ searchParams }: { searchParams: { bit?: s
                 <Link href="/empresas" className="btn btn-ghost" style={{ fontSize: 11.5, padding: "4px 11px" }}>
                   🔄 Correr ronda SUNAT →
                 </Link>
+              </div>
+            </div>
+          )}
+          {/* En empresas basta el número: un botón las verifica todas. Aquí no
+              hay ronda automática, así que el número solo no serviría —hay que
+              entrar ficha por ficha— y para eso necesitas los nombres. */}
+          {sunatPersonaVieja.length > 0 && (
+            <div className="card">
+              <div style={{ fontSize: 12.5, marginBottom: 7 }}>
+                🔍 <b>{sunatPersonaVieja.length}</b> persona{sunatPersonaVieja.length > 1 ? "s" : ""} sin
+                verificar en SUNAT (60+ días)
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                {sunatPersonaVieja.slice(0, 8).map((p: any) => (
+                  <Link key={p.id} href={`/entidad/persona/${p.id}`}
+                    style={{ display: "flex", gap: 6, alignItems: "baseline", fontSize: 11.5 }}>
+                    <span style={{ color: "var(--muted)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {p.alias || p.nombre}
+                    </span>
+                    <span style={{ color: "var(--dim)", fontSize: 10, whiteSpace: "nowrap" }}>
+                      {p.fecha_verificacion_sunat ? `hace ${diasDesde(p.fecha_verificacion_sunat)}d` : "nunca"}
+                    </span>
+                  </Link>
+                ))}
+                {sunatPersonaVieja.length > 8 && (
+                  <span style={{ color: "var(--dim)", fontSize: 10.5, marginTop: 2 }}>
+                    +{sunatPersonaVieja.length - 8} más
+                  </span>
+                )}
               </div>
             </div>
           )}

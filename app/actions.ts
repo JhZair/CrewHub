@@ -256,6 +256,13 @@ export async function asignarResponsable(pubId: string, perfilId: string | null)
 }
 
 const norm = (s: string) => (s || "").trim();
+/* Clave para comparar nombres al importar: sin tildes, sin dobles espacios,
+   en minúsculas. Es la misma regla que nrm_nombre() en la base.
+   Sin esto, "José Nelson Márquez" y "Jose Nelson Marquez" entran como dos
+   personas: así se colaron los duplicados de la migración de Seatable. */
+const clave = (s: string) =>
+  (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/\s+/g, " ").trim().toLowerCase();
 const normEstado = (s: string) => {
   const v = norm(s).toLowerCase();
   if (v.includes("vetado") || v.includes("no usar")) return "vetado";
@@ -284,12 +291,29 @@ export async function importarPersonas(filas: Record<string, string>[]) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
 
-  // Dedupe contra lo existente (por nombre, sin mayúsculas)
-  const { data: existentes } = await supabase.from("personas").select("nombre");
-  const ya = new Set((existentes || []).map((x: any) => x.nombre.trim().toLowerCase()));
+  /* Dedupe por nombre normalizado (sin tildes) y también por DNI/RUC, que
+     es la llave más fuerte: pesca a quien vino escrito distinto.
+     El `ya` crece con cada fila aceptada, así el archivo tampoco puede
+     duplicarse contra sí mismo — antes solo miraba la base, y un CSV con
+     la misma persona dos veces la insertaba dos veces. */
+  const { data: existentes } = await supabase.from("personas").select("nombre,ruc_dni");
+  const ya = new Set<string>();
+  (existentes || []).forEach((x: any) => {
+    ya.add("n:" + clave(x.nombre));
+    if (norm(x.ruc_dni)) ya.add("d:" + norm(x.ruc_dni));
+  });
 
   const nuevas = filas
-    .filter(f => norm(f.nombre) && !ya.has(norm(f.nombre).toLowerCase()))
+    .filter(f => {
+      const n = norm(f.nombre);
+      if (!n) return false;
+      const kn = "n:" + clave(n);
+      const kd = norm(f.ruc_dni) ? "d:" + norm(f.ruc_dni) : null;
+      if (ya.has(kn) || (kd && ya.has(kd))) return false;
+      ya.add(kn);
+      if (kd) ya.add(kd);
+      return true;
+    })
     .map(f => ({
       nombre: norm(f.nombre),
       alias: norm(f.alias) || null,
@@ -1222,6 +1246,16 @@ export async function desenlazarCuenta(personaId: string) {
 }
 
 /* --- Credenciales: SOLO metadatos; la clave vive en el gestor --- */
+/* Nombres cortos para el historial de credenciales: la columna se llama
+   `metodo_acceso`, pero en la bitácora se lee "Método de acceso". */
+const CRED_CAMPOS: Record<string, string> = {
+  plataforma: "Plataforma",
+  identificador: "Usuario",
+  ubicacion: "Dónde vive la clave",
+  metodo_acceso: "Método de acceso",
+  notas: "Notas",
+};
+
 export async function agregarCredencial(
   dueno: "empresa" | "persona", duenoId: string,
   plataforma: string, identificador: string, ubicacion: string, notas: string,
@@ -1240,6 +1274,10 @@ export async function agregarCredencial(
     actualizado_en: new Date().toISOString().slice(0, 10),
   });
   if (error) return { error: error.message };
+  await supabase.from("actividad").insert({
+    entidad_tipo: dueno, entidad_id: duenoId, actor_id: user.id, tipo: "dato",
+    detalle: { mensaje: `registró la credencial «${plataforma.trim()}»` },
+  });
   revalidatePath(`/entidad/${dueno}/${duenoId}`);
   return {};
 }
@@ -1252,15 +1290,37 @@ export async function editarCredencial(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
   if (!plataforma.trim()) return { error: "La plataforma es obligatoria." };
-  const { error } = await supabase.from("credenciales").update({
+  const { data: antes } = await supabase.from("credenciales")
+    .select("plataforma,identificador,ubicacion,notas,metodo_acceso")
+    .eq("id", id).maybeSingle();
+  const nuevo: Record<string, string | null> = {
     plataforma: plataforma.trim(),
     identificador: identificador.trim() || null,
     ubicacion: ubicacion.trim() || null,
     notas: notas.trim() || null,
     metodo_acceso: metodo.trim() || null,
-    actualizado_en: new Date().toISOString().slice(0, 10),
+  };
+  const { error } = await supabase.from("credenciales").update({
+    ...nuevo, actualizado_en: new Date().toISOString().slice(0, 10),
   }).eq("id", id);
   if (error) return { error: error.message };
+  // Mismo formato que la edición de la ficha: antes → después
+  if (antes) {
+    const cambios = (Object.entries(CRED_CAMPOS) as [string, string][])
+      .filter(([k]) => String((antes as any)[k] ?? "") !== String(nuevo[k] ?? ""))
+      .map(([k, etiqueta]) => ({
+        campo: etiqueta, de: (antes as any)[k] || "—", a: nuevo[k] || "—",
+      }));
+    if (cambios.length) {
+      await supabase.from("actividad").insert({
+        entidad_tipo: dueno, entidad_id: duenoId, actor_id: user.id, tipo: "editado",
+        detalle: {
+          mensaje: `actualizó la credencial «${plataforma.trim()}»`,
+          cambios,
+        },
+      });
+    }
+  }
   revalidatePath(`/entidad/${dueno}/${duenoId}`);
   return {};
 }
@@ -1269,8 +1329,14 @@ export async function borrarCredencial(id: string, dueno: string, duenoId: strin
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
+  const { data: prev } = await supabase.from("credenciales")
+    .select("plataforma").eq("id", id).maybeSingle();
   const { error } = await supabase.from("credenciales").delete().eq("id", id);
   if (error) return { error: error.message };
+  await supabase.from("actividad").insert({
+    entidad_tipo: dueno, entidad_id: duenoId, actor_id: user.id, tipo: "dato",
+    detalle: { mensaje: `borró la credencial «${prev?.plataforma || "—"}»` },
+  });
   revalidatePath(`/entidad/${dueno}/${duenoId}`);
   return {};
 }
@@ -1690,7 +1756,7 @@ export async function verificarRucSunat(empresaId: string) {
 
   // El caso que se genere lo firma el usuario que verifica (evita chocar
   // con RLS de autor); el cron sí lo firma el bot.
-  const r: any = await procesarSunatEmpresa(supabase, emp as any, user.id);
+  const r: any = await procesarSunatEmpresa(supabase, emp as any, user.id, true);
   if (r.error) return { error: r.error };
   revalidatePath(`/entidad/empresa/${empresaId}`);
   return { estado: r.estado, condicion: r.condicion, cambio: r.cambio };
@@ -1722,12 +1788,16 @@ export async function verificarRucPersona(personaId: string) {
 
   const cambio = (per?.estado_sunat || null) !== (r.estado || null)
     || (per?.condicion_sunat || null) !== (r.condicion || null);
-  if (cambio) {
-    await supabase.from("actividad").insert({
-      entidad_tipo: "persona", entidad_id: personaId, tipo: "bot",
-      detalle: { mensaje: `SUNAT (RUC ${ruc}): ${r.estado || "—"} · ${r.condicion || "—"}`, regla: "sunat_api" },
-    });
-  }
+  // Esto siempre lo aprieta una persona: siempre deja rastro, y firmado.
+  // Antes solo registraba si cambió algo, así que verificar y salir todo
+  // bien no dejaba constancia de que se revisó.
+  await supabase.from("actividad").insert({
+    entidad_tipo: "persona", entidad_id: personaId, actor_id: user.id, tipo: "dato",
+    detalle: {
+      mensaje: `verificó en SUNAT (RUC ${ruc}): ${(r.estado || "—").replace(/_/g, " ")} · ${(r.condicion || "—").replace(/_/g, " ")}${cambio ? " (¡cambió!)" : " (sin cambios)"}`,
+      regla: "sunat_api",
+    },
+  });
   revalidatePath(`/entidad/persona/${personaId}`);
   return { ruc, estado: r.estado, condicion: r.condicion, cambio };
 }
@@ -1778,10 +1848,22 @@ export async function verificarDniReniec(personaId: string) {
     const aciertos = palabras.filter(w => registrado.includes(w)).length;
     const coincide = aciertos >= Math.min(2, palabras.length);
 
+    /* Guardar la consulta, no solo contarla. Antes esto únicamente escribía
+       en el historial: para saber cuándo se verificó por última vez había
+       que bucear en la bitácora, y el nombre oficial se perdía apenas se
+       cerraba el aviso. */
+    const hoy = new Date().toISOString().slice(0, 10);
+    await supabase.from("personas").update({
+      fecha_verificacion_reniec: hoy,
+      nombre_reniec: nombreReniec,
+    }).eq("id", personaId);
+
     await supabase.from("actividad").insert({
-      entidad_tipo: "persona", entidad_id: personaId, tipo: "bot",
-      detalle: { mensaje: `Verificación RENIEC: «${nombreReniec}»${coincide ? " ✔ coincide" : " ⚠ NO coincide con lo registrado"}`, regla: "reniec_api" },
+      // Esto siempre lo aprieta una persona: va firmado, como el de SUNAT
+      entidad_tipo: "persona", entidad_id: personaId, actor_id: user.id, tipo: "dato",
+      detalle: { mensaje: `verificó el DNI en RENIEC: «${nombreReniec}»${coincide ? " ✔ coincide" : " ⚠ NO coincide con lo registrado"}`, regla: "reniec_api" },
     });
+    revalidatePath(`/entidad/persona/${personaId}`);
     return { nombreReniec, coincide };
   } catch (e: any) {
     return { error: "No se pudo consultar RENIEC: " + (e?.message || "error de red") };

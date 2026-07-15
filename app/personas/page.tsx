@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
+import { esDelEquipo } from "@/lib/personas";
+import { esProblematico, textoSunat } from "@/lib/sunat";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -32,7 +34,7 @@ export default async function Personas({ searchParams }: {
 
   const [{ data: pers }, { data: vincs }, { data: coms }, { data: equipoPost }] = await Promise.all([
     supabase.from("personas")
-      .select("id,nombre,alias,tipo,equipo,estado,rol,region,usuario_id,ruc_dni,dni_vencimiento")
+      .select("id,nombre,alias,tipo,equipo,estado,rol,region,usuario_id,ruc_dni,dni_vencimiento,estado_sunat,condicion_sunat,suspension_4ta_anio")
       .order("nombre"),
     supabase.from("publicacion_vinculos")
       .select("entidad_id,publicacion_id,pub:publicaciones(estado)").eq("entidad_tipo", "persona"),
@@ -65,15 +67,21 @@ export default async function Personas({ searchParams }: {
   const postDe = new Map<string, number>();
   (equipoPost || []).forEach((r: any) => postDe.set(r.persona_id, (postDe.get(r.persona_id) || 0) + 1));
 
-  // Atención: solo exigimos DNI a quien trabaja con nosotros
-  const delEquipo = (p: any) => p.estado === "activo"
-    && ["personal", "colaborador", "colaborador eventual"].includes(p.tipo || "");
+  // Atención: solo exigimos papeles a quien trabaja con nosotros (lib/personas.ts)
+  const delEquipo = esDelEquipo;
   const dniVence = (p: any) => p.dni_vencimiento ? dias(p.dni_vencimiento) : null;
+  const anio = new Date().getFullYear();
 
   const PRUEBA_A: Record<string, (p: any) => boolean> = {
     dni_vencido: p => delEquipo(p) && (dniVence(p) ?? 1) < 0,
     dni_pronto: p => delEquipo(p) && (dniVence(p) ?? 999) >= 0 && (dniVence(p) ?? 999) <= 60,
     sin_dni: p => delEquipo(p) && !p.ruc_dni,
+    // El dato existía, se verificaba y se pintaba en la ficha — pero nadie
+    // avisaba. Alguien de baja en SUNAT no puede girarte un RHE.
+    sunat_mal: p => delEquipo(p) && esProblematico(p.estado_sunat, p.condicion_sunat),
+    // La suspensión muere el 31 de diciembre. Si no se avisa, el 1 de enero
+    // caducan todas de golpe y te enteras cuando alguien gire con retención.
+    susp_vencida: p => delEquipo(p) && !!p.suspension_4ta_anio && p.suspension_4ta_anio < anio,
     interno: p => !!p.usuario_id,
   };
 
@@ -95,6 +103,8 @@ export default async function Personas({ searchParams }: {
     .filter((p: any) => delEquipo(p) && p.dni_vencimiento && dias(p.dni_vencimiento) <= 60)
     .sort((x: any, y: any) => (x.dni_vencimiento < y.dni_vencimiento ? -1 : 1));
   const sinDni = todas.filter(PRUEBA_A.sin_dni);
+  const sunatMalPers = todas.filter(PRUEBA_A.sunat_mal);
+  const suspVencida = todas.filter(PRUEBA_A.susp_vencida);
 
   const Fila = (p: any) => {
     const x = act.get(p.id) || VACIO;
@@ -208,6 +218,14 @@ export default async function Personas({ searchParams }: {
             title="Del equipo pero sin DNI registrado">
             ⚠ sin DNI · {cntA("sin_dni")}
           </Chip>
+          <Chip href="/personas?a=sunat_mal" on={a === "sunat_mal"} color="var(--red)"
+            title="De baja o no habido en SUNAT — no puede girar RHE">
+            🏛 SUNAT · {cntA("sunat_mal")}
+          </Chip>
+          <Chip href="/personas?a=susp_vencida" on={a === "susp_vencida"} color="var(--red)"
+            title="Su suspensión de 4ta es de un año anterior: caducó el 31 de diciembre">
+            📄 suspensión caducada · {cntA("susp_vencida")}
+          </Chip>
           <Chip href="/personas?a=interno" on={a === "interno"} color="var(--violet)"
             title="Tienen cuenta en CrewHub+">
             ⬡ con cuenta · {cntA("interno")}
@@ -229,6 +247,44 @@ export default async function Personas({ searchParams }: {
                   </Link>
                   <span style={{ color: "var(--dim)", fontSize: 11.5 }}>{p.tipo}</span>
                   <span style={{ color: "var(--red)", fontSize: 12, fontWeight: 700 }}>falta el DNI</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {sunatMalPers.length > 0 && (
+            <div className="card" style={{ borderColor: "rgba(255,77,94,.4)" }}>
+              <div className="panel-h" style={{ color: "var(--red)" }}>
+                🏛 Con problema en SUNAT — no pueden girar RHE
+              </div>
+              {sunatMalPers.map((p: any) => (
+                <div className="info-row" key={p.id}>
+                  <Link href={`/entidad/persona/${p.id}`} style={{ fontWeight: 600, flex: 1 }}>
+                    {p.nombre} →
+                  </Link>
+                  <span style={{ color: "var(--dim)", fontSize: 11.5 }}>{p.tipo}</span>
+                  <span style={{ color: "var(--red)", fontSize: 12.5, fontWeight: 700 }}>
+                    {textoSunat(p)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {suspVencida.length > 0 && (
+            <div className="card" style={{ borderColor: "rgba(255,77,94,.4)" }}>
+              <div className="panel-h" style={{ color: "var(--red)" }}>
+                📄 Suspensión de 4ta caducada — hay que volver a tramitarla
+              </div>
+              {suspVencida.map((p: any) => (
+                <div className="info-row" key={p.id}>
+                  <Link href={`/entidad/persona/${p.id}`} style={{ fontWeight: 600, flex: 1 }}>
+                    {p.nombre} →
+                  </Link>
+                  <span style={{ color: "var(--dim)", fontSize: 11.5 }}>{p.tipo}</span>
+                  <span style={{ color: "var(--red)", fontSize: 12.5, fontWeight: 700 }}>
+                    suspensión {p.suspension_4ta_anio} · venció el 31 dic
+                  </span>
                 </div>
               ))}
             </div>

@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { BotonVerificarLote } from "@/components/VerificarSunat";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
+import { alertaSunat, esNuestra, esProblematico, textoSunat } from "@/lib/sunat";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -26,8 +27,11 @@ const REL_META: Record<string, [string, string]> = {
 };
 
 /* Solo somos responsables de las propias y activas: son las únicas que
-   deben exigir acción. El resto es contexto, no tarea. */
-const nosCompete = (x: any) => x.estado === "activa" && (x.relacion || "propia") === "propia";
+   deben exigir acción. El resto es contexto, no tarea.
+   La regla vive en lib/sunat.ts, junto a la que decide si abrir un caso:
+   si aquí y allá no dijeran lo mismo, el sistema alertaría de cosas que no
+   te tocan, o te abriría casos que la lista no muestra. */
+const nosCompete = esNuestra;
 
 
 export default async function Empresas({ searchParams }: {
@@ -145,14 +149,15 @@ export default async function Empresas({ searchParams }: {
   };
 
   // Requiere atención = mal en SUNAT Y es nuestra responsabilidad
-  const alertas = todas.filter((x: any) =>
-    nosCompete(x) && ((x.estado_sunat && x.estado_sunat !== "activo") || x.condicion_sunat === "no_habido"));
+  const alertas = todas.filter(alertaSunat);
   const filtradas = todas.filter((x: any) =>
     (!e || x.estado === e) &&
     (!t || x.tipo === t) &&
     (!r || (x.relacion || "externa") === r) &&
     (!f || PRUEBA_F[f]?.(x)) &&
-    (!sunat || (x.estado_sunat && x.estado_sunat !== "activo")) &&
+    // Antes el chip contaba con una regla y el filtro listaba con otra: decía
+    // "⚠ SUNAT · 2" y al entrar te enseñaba una sola. Ahora es la misma.
+    (!sunat || alertaSunat(x)) &&
     (!q || nrm(x.nombre).includes(nrm(q)) || nrm(x.razon_social).includes(nrm(q)) ||
       nrm(x.codigo).includes(nrm(q)) || nrm(x.ruc).includes(nrm(q))));
   const cnt = (est: string) => todas.filter((x: any) => x.estado === est).length;
@@ -170,8 +175,7 @@ export default async function Empresas({ searchParams }: {
     const m = marca.get(emp.id);
     const esLibre = libre(emp);
     const casi = !esLibre && soloVigencia(emp);   // candidata: apagada, no descartada
-    const alerta = nosCompete(emp)
-      && ((emp.estado_sunat && emp.estado_sunat !== "activo") || emp.condicion_sunat === "no_habido");
+    const alerta = alertaSunat(emp);
     return (
       <Link key={emp.id} href={`/entidad/empresa/${emp.id}`}>
         <div className={`card link${casi ? " fila-tenue" : ""}`} style={{ cursor: "pointer", padding: "11px 16px" }}>
@@ -223,7 +227,7 @@ export default async function Empresas({ searchParams }: {
             )}
             {alerta && (
               <span className="badge" style={{ color: "var(--red)", background: "rgba(255,77,94,.12)" }}>
-                ⚠ {(emp.estado_sunat || emp.condicion_sunat || "").replace(/_/g, " ")}
+                ⚠ {textoSunat(emp)}
               </span>
             )}
             <span style={{ flex: 1 }} />
@@ -390,9 +394,11 @@ export default async function Empresas({ searchParams }: {
                     {x.codigo ? `${x.codigo} · ` : ""}{x.nombre}
                   </Link>
                   <span style={{ flex: 1 }} />
+                  {/* Ojo: aquí había un x.estado_sunat.replace() directo. Una
+                      empresa puede entrar a esta lista solo por "no habido",
+                      con estado_sunat en null, y eso tumbaba toda la página. */}
                   <span style={{ color: "var(--red)", fontSize: 12.5, fontWeight: 700 }}>
-                    {x.estado_sunat.replace(/_/g, " ")}
-                    {x.condicion_sunat && x.condicion_sunat !== "habido" ? ` · ${x.condicion_sunat.replace(/_/g, " ")}` : ""}
+                    {textoSunat(x)}
                   </span>
                 </div>
               ))}
@@ -492,8 +498,7 @@ export default async function Empresas({ searchParams }: {
             <div className="panel-h">🏢 Todas las empresas · {todas.length}</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {todas.map((x: any) => {
-                const alerta = nosCompete(x)
-                  && ((x.estado_sunat && x.estado_sunat !== "activo") || x.condicion_sunat === "no_habido");
+                const alerta = alertaSunat(x);
                 const col = REL_META[x.relacion]?.[1];
                 return (
                   <Link key={x.id} href={`/entidad/empresa/${x.id}`} className="vtab"

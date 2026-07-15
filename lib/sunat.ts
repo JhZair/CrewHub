@@ -13,8 +13,33 @@ type EmpSunat = {
 
 const ABIERTOS = ["abierta", "en_progreso", "seguimiento"];
 const tituloSunat = (nombre: string) => `❗ SUNAT: ${nombre}`;
-const esProblematico = (estado?: string | null, condicion?: string | null) =>
+
+/* ── Las dos preguntas de SUNAT, en un solo sitio ──
+   Estaban copiadas en /empresas, /qhaway y aquí, y ya habían divergido: una
+   olvidaba el "no habido", otra alertaba de empresas externas. Un dato así
+   no puede tener tres respuestas según la página que lo mire. */
+
+/* ¿Está mal? Activa pero no habida también está mal: no puede postular. */
+export const esProblematico = (estado?: string | null, condicion?: string | null) =>
   (!!estado && estado !== "activo") || condicion === "no_habido";
+
+/* ¿Es asunto nuestro? Solo las propias y activas exigen acción. De una
+   aliada o externa mantenemos el dato al día, pero su SUNAT no lo
+   arreglamos nosotros, así que no nos puede aparecer como tarea. */
+export const esNuestra = (x: { estado?: string | null; relacion?: string | null }) =>
+  (x.estado || "activa") === "activa" && (x.relacion || "propia") === "propia";
+
+/* Lo que el ojo debe ver: mal Y nuestro. */
+export const alertaSunat = (x: { estado?: string | null; relacion?: string | null;
+  estado_sunat?: string | null; condicion_sunat?: string | null }) =>
+  esNuestra(x) && esProblematico(x.estado_sunat, x.condicion_sunat);
+
+/* Texto del problema, tolerante a nulos: una empresa puede estar "no habida"
+   sin estado_sunat cargado, y ahí un .replace() directo tumba la página. */
+export const textoSunat = (x: { estado_sunat?: string | null; condicion_sunat?: string | null }) =>
+  [x.estado_sunat && x.estado_sunat !== "activo" ? x.estado_sunat : null,
+   x.condicion_sunat && x.condicion_sunat !== "habido" ? x.condicion_sunat : null]
+    .filter(Boolean).join(" · ").replace(/_/g, " ") || "revisar en SUNAT";
 
 /* Consulta el RUC en la API de decolecta (token en el entorno). */
 export async function consultarRucApi(ruc: string): Promise<{ estado?: string; condicion?: string; error?: string }> {
@@ -72,9 +97,18 @@ async function cerrarProblemaSunat(db: DB, emp: EmpSunat) {
     .eq("titulo", tituloSunat(emp.nombre)).in("estado", ABIERTOS);
 }
 
-/* Procesa UNA empresa: consulta, actualiza, y si cambió deja rastro +
-   abre/cierra el problema según corresponda. */
-export async function procesarSunatEmpresa(db: DB, emp: EmpSunat, autorId: string | null) {
+/* Procesa UNA empresa: consulta, actualiza, deja rastro y abre/cierra el
+   problema según corresponda.
+
+   `manual` distingue quién disparó la consulta, y eso cambia qué se registra:
+   una persona que aprieta "Verificar" ejecutó un acto y merece su línea en el
+   historial —aunque no haya cambiado nada, porque saber que se revisó y salió
+   bien ES la información que buscaba—. El cron consultando cada semana no es
+   un acto: si registrara siempre, enterraría el historial de cada empresa bajo
+   "todo igual" hasta hacerlo inservible. Por eso el bot solo habla si cambió. */
+export async function procesarSunatEmpresa(
+  db: DB, emp: EmpSunat, autorId: string | null, manual = false
+) {
   const r = await consultarRucApi(emp.ruc);
   if (r.error) return { error: r.error };
 
@@ -90,11 +124,21 @@ export async function procesarSunatEmpresa(db: DB, emp: EmpSunat, autorId: strin
     || (emp.condicion_sunat || null) !== (r.condicion || null);
   const malo = esProblematico(r.estado, r.condicion);
 
-  // El historial solo registra cambios reales (sin ruido)...
-  if (cambio) {
+  // Rastro: siempre que lo pidió una persona; el bot, solo si cambió algo.
+  const ficha = `${(r.estado || "—").replace(/_/g, " ")} · ${(r.condicion || "—").replace(/_/g, " ")}`;
+  if (cambio || manual) {
     await db.from("actividad").insert({
-      entidad_tipo: "empresa", entidad_id: emp.id, tipo: "bot",
-      detalle: { mensaje: `SUNAT cambió: ${r.estado || "—"} · ${r.condicion || "—"}`, regla: "sunat_api" },
+      entidad_tipo: "empresa", entidad_id: emp.id,
+      // Firmado por quien lo pidió. Antes iba sin actor_id y todo salía como
+      // "automática", incluso lo que habías apretado tú.
+      actor_id: manual ? autorId : null,
+      tipo: manual ? "dato" : "bot",
+      detalle: {
+        mensaje: manual
+          ? `verificó en SUNAT: ${ficha}${cambio ? " (¡cambió!)" : " (sin cambios)"}`
+          : `SUNAT cambió: ${ficha}`,
+        regla: "sunat_api",
+      },
     });
   }
   // ...pero el caso se abre/cierra según el estado ACTUAL, haya cambiado o
@@ -104,9 +148,7 @@ export async function procesarSunatEmpresa(db: DB, emp: EmpSunat, autorId: strin
   // activas. De una aliada/externa mantenemos el dato al día (informativo),
   // pero no podemos actuar sobre su SUNAT, así que no exigimos acción.
   // Si deja de ser propia o se cierra, su caso abierto se cierra solo.
-  const activa = (emp.estado || "activa") === "activa";
-  const propia = (emp.relacion || "propia") === "propia";
-  if (malo && activa && propia) await abrirProblemaSunat(db, emp, r, autorId);
+  if (malo && esNuestra(emp)) await abrirProblemaSunat(db, emp, r, autorId);
   else await cerrarProblemaSunat(db, emp);
 
   return { estado: r.estado, condicion: r.condicion, cambio, problematico: malo };
