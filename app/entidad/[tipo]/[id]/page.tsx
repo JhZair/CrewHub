@@ -1,7 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { Mantenimiento } from "@/components/EntidadForm";
-import { SUNAT_EMPRESA, DOCS_EMPRESA, GRUPO_TONO } from "@/lib/entidades";
+import { SUNAT_EMPRESA, DOCS_EMPRESA, DNI_PERSONA, DOCS_PERSONA, SUNAT_PERSONA, GRUPO_TONO } from "@/lib/entidades";
+import { rucDePersona } from "@/lib/ruc";
 import Miembros from "@/components/Miembros";
 import Credenciales from "@/components/Credenciales";
 import ClienteProyecto from "@/components/ClienteProyecto";
@@ -9,9 +10,11 @@ import Postulaciones from "@/components/Postulaciones";
 import EquipoPostulacion from "@/components/EquipoPostulacion";
 import PrestamoEquipo from "@/components/PrestamoEquipo";
 import CuentaAcceso from "@/components/CuentaAcceso";
-import { BotonVerificarRuc, BotonVerificarDni } from "@/components/VerificarSunat";
+import { BotonVerificarRuc, BotonVerificarDni, BotonRucPersona } from "@/components/VerificarSunat";
 import Alerta from "@/components/Alerta";
 import BotonFichaSunat from "@/components/BotonFichaSunat";
+import CVs from "@/components/CVs";
+import FotoPersona from "@/components/FotoPersona";
 import Materiales from "@/components/Materiales";
 import LineaTiempo from "@/components/LineaTiempo";
 import CronogramaProyecto from "@/components/CronogramaProyecto";
@@ -35,7 +38,14 @@ const CONF: Record<string, { tabla: string; icono: string; campos: [string, stri
     ["Verificado", "fecha_verificacion_sunat", SUNAT_EMPRESA],
     ["RENCA", "renca", DOCS_EMPRESA], ["Vigencia de poder", "vigencia_poder_fecha", DOCS_EMPRESA],
   ] },
-  persona: { tabla: "personas", icono: "👤", campos: [["Alias", "alias"], ["Tipo", "tipo"], ["Equipo", "equipo"], ["Estado", "estado"], ["Región", "region"], ["Rol", "rol"], ["DNI", "ruc_dni"], ["DNI vence", "dni_vencimiento"]] },
+  persona: { tabla: "personas", icono: "👤", campos: [
+    ["Alias", "alias"], ["Tipo", "tipo"], ["Equipo", "equipo"], ["Estado", "estado"],
+    ["Región", "region"], ["Comunero/a", "es_comunero"], ["Rol", "rol"],
+    ["DNI", "ruc_dni", DNI_PERSONA], ["DNI vence", "dni_vencimiento", DNI_PERSONA],
+    ["Estado SUNAT", "estado_sunat", SUNAT_PERSONA], ["Condición SUNAT", "condicion_sunat", SUNAT_PERSONA],
+    ["Verificado", "fecha_verificacion_sunat", SUNAT_PERSONA],
+    ["Suspensión 4ta", "suspension_4ta", SUNAT_PERSONA],
+  ] },
   equipamiento: { tabla: "equipamiento", icono: "🎥", campos: [["Folio", "folio"], ["Categoría", "categoria"], ["Subcategoría", "subcategoria"], ["Estado", "estado"], ["Valor (S/)", "valor_compra"], ["Comprado en", "comprado_en"]] },
   lugar: { tabla: "lugares", icono: "📍", campos: [] },
   postulacion: { tabla: "postulaciones", icono: "🎯", campos: [["Código", "codigo"], ["Código plataforma DAFO", "codigo_plataforma"], ["Código del acta", "codigo_acta"], ["Estado", "estado"], ["Lenguas originarias", "lenguas_originarias"], ["Puntaje jurado", "puntaje_jurado"], ["Monto adjudicado (S/)", "monto_adjudicado"], ["Firma del acta", "fecha_firma_acta"], ["Límite de rendición", "fecha_limite_rendicion"], ["Prórroga", "fecha_prorroga"]] },
@@ -64,7 +74,12 @@ const ICONO_ESTADO: Record<string, string> = {
   // empresas
   activa: "✅", en_constitucion: "🏗", inactiva: "💤",
 };
+/* ¿El dato de SUNAT está sano? Vale para empresas y personas por igual. */
+const sunatOk = (key: string, val: any) =>
+  key === "estado_sunat" ? val === "activo" : val === "habido";
+
 const verFicha = (key: string, val: any) => {
+  if (typeof val === "boolean") return val ? "✅ Sí" : "No";
   const s = String(val);
   if (CAMPOS_DINERO.includes(key)) {
     const n = parseFloat(s);
@@ -243,16 +258,19 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     personasCat = (pc.data || []).map((x: any) => ({ ...x, nombre: x.alias ? `${x.nombre} · ${x.alias}` : x.nombre }));
     postusEmp = pe.data || [];
   }
-  let postDe: any[] = [], equiposEnMano: any[] = [], clienteEnProy: any[] = [];
-  let cuentaDe: { id: string; nombre: string } | null = null;
+  let postDe: any[] = [], equiposEnMano: any[] = [], clienteEnProy: any[] = [], cvsDe: any[] = [];
+  let cuentaDe: { id: string; nombre: string; avatar_url?: string | null } | null = null;
   let cuentasLibres: { id: string; nombre: string }[] = [];
+  let pulso: { cerr: number; creo: number; coments: number; ab: number; venc: number; ultimo: string } | null = null;
   if (params.tipo === "persona") {
-    const [cg, pe, pr, cl] = await Promise.all([
+    const [cg, cv, pe, pr, cl] = await Promise.all([
       supabase.from("empresa_miembros")
         .select("id,cargo,estado,fecha_inicio,fecha_fin,empresa:empresas(id,nombre,codigo)")
         .eq("persona_id", params.id).order("estado"),
+      supabase.from("persona_cv").select("*").eq("persona_id", params.id).order("enfoque"),
+      // Con qué postuló, con quién y por cuál empresa: el contexto completo
       supabase.from("postulacion_equipo")
-        .select("id,cargo,post:postulaciones(id,codigo,estado,proy:proyectos(id,nombre),conv:convocatorias(anio))")
+        .select("id,cargo,post:postulaciones(id,codigo,estado,monto_adjudicado,proy:proyectos(id,nombre),conv:convocatorias(id,nombre,anio),emp:empresas(id,nombre),equipo:postulacion_equipo(cargo,persona:personas(id,nombre,alias)))")
         .eq("persona_id", params.id),
       supabase.from("equipo_prestamos")
         .select("id,desde,equipo:equipamiento(id,folio,nombre)")
@@ -262,6 +280,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         .eq("cliente_id", params.id).order("nombre"),
     ]);
     cargosDe = cg.data || [];
+    cvsDe = cv.data || [];
     postDe = (pe.data || []).sort((a: any, b: any) =>
       (b.post?.conv?.anio || 0) - (a.post?.conv?.anio || 0));
     equiposEnMano = pr.data || [];
@@ -269,13 +288,44 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
 
     // Cuenta de acceso: perfil enlazado + cuentas que aún no tienen persona
     const [pf, up] = await Promise.all([
-      supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
+      // avatar_url: quien ya tiene cuenta trae su foto del login
+      supabase.from("perfiles").select("id,nombre,avatar_url").eq("activo", true).order("nombre"),
       supabase.from("personas").select("usuario_id").not("usuario_id", "is", null),
     ]);
     const usadas = new Set((up.data || []).map((x: any) => x.usuario_id));
     const perfilesAll = (pf.data || []).filter((p: any) => p.nombre !== "Bot Qhaway");
     cuentaDe = ent.usuario_id ? perfilesAll.find((p: any) => p.id === ent.usuario_id) || null : null;
     cuentasLibres = perfilesAll.filter((p: any) => !usadas.has(p.id));
+
+    /* Pulso en CrewHub+: solo tiene sentido para quien tiene cuenta, porque
+       la actividad se registra contra el usuario, no contra la persona.
+       Mismas definiciones que /pulso, para no tener dos verdades. */
+    if (ent.usuario_id) {
+      const [ev, viv, co] = await Promise.all([
+        supabase.from("actividad")
+          .select("tipo,detalle,creado_en").eq("entidad_tipo", "publicacion")
+          .eq("actor_id", ent.usuario_id).limit(4000),
+        supabase.from("publicaciones").select("fecha_limite")
+          .eq("responsable", ent.usuario_id)
+          .in("estado", ["abierta", "en_progreso", "seguimiento", "en_pausa"]).limit(500),
+        supabase.from("comentarios").select("id", { count: "exact", head: true })
+          .eq("autor_id", ent.usuario_id),
+      ]);
+      const hoyStr = new Date().toISOString().slice(0, 10);
+      let cerr = 0, creo = 0, ultimo = "";
+      (ev.data || []).forEach((e: any) => {
+        const det: any = e.detalle || {};
+        if (e.tipo === "creado") creo++;
+        else if (e.tipo === "estado" && det.campo === "estado" && det.a === "resuelta") cerr++;
+        if (e.creado_en > ultimo) ultimo = e.creado_en;
+      });
+      pulso = {
+        cerr, creo, ultimo,
+        coments: co.count || 0,
+        ab: (viv.data || []).length,
+        venc: (viv.data || []).filter((p: any) => p.fecha_limite && p.fecha_limite < hoyStr).length,
+      };
+    }
   }
 
   let creds: any[] = [];
@@ -338,7 +388,18 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
-        <h1 className="title-lg" style={{ margin: 0 }}>{conf.icono} {nombre}</h1>
+        {/* A quien trabaja con nosotros le ponemos cara; a un contacto no */}
+        {params.tipo === "persona" && ["personal", "colaborador", "colaborador eventual"].includes(ent.tipo || "") ? (
+          <>
+            {/* Si ya tiene cuenta, su avatar del login sirve de foto: no hay
+                que pedirle otra. La subida solo la reemplaza si quiere. */}
+            <FotoPersona personaId={params.id} nombre={ent.nombre} size={52}
+              foto={ent.foto_url || cuentaDe?.avatar_url} propia={!!ent.foto_url} />
+            <h1 className="title-lg" style={{ margin: 0 }}>{nombre}</h1>
+          </>
+        ) : (
+          <h1 className="title-lg" style={{ margin: 0 }}>{conf.icono} {nombre}</h1>
+        )}
         {/* De quién es la empresa: se lee sin bajar a la ficha. Solo las
             propias generan alertas, así que conviene tenerlo a la vista. */}
         {params.tipo === "empresa" && ent.relacion && (() => {
@@ -361,7 +422,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: conf.campos.length ? 12 : 0 }}>
               {/* En empresa, Drive/RENCA/Vigencia se muestran dentro del
                   bloque 📎 Documentos, junto al dato que respaldan. */}
-              {params.tipo !== "empresa" && ent.carpeta_drive_url && (
+              {!["empresa", "persona"].includes(params.tipo) && ent.carpeta_drive_url && (
                 <a href={ent.carpeta_drive_url} target="_blank" rel="noopener noreferrer"
                   className="btn" style={{ background: "#1a73e8", fontSize: 12, padding: "7px 12px" }}>📂 Drive</a>
               )}
@@ -389,21 +450,50 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                 <a href={ent.vigencia_poder_url} target="_blank" rel="noopener noreferrer"
                   className="btn btn-ghost" style={{ fontSize: 12, padding: "7px 12px" }}>📜 Vigencia</a>
               )}
-              {ent.cv_url && (
-                <a href={ent.cv_url} target="_blank" rel="noopener noreferrer"
-                  className="btn btn-ghost" style={{ fontSize: 12, padding: "7px 12px" }}>📋 CV</a>
-              )}
-              {ent.dni_url && (
-                <a href={ent.dni_url} target="_blank" rel="noopener noreferrer"
-                  className="btn btn-ghost" style={{ fontSize: 12, padding: "7px 12px" }}>
-                  🪪 DNI{ent.dni_vencimiento && new Date(ent.dni_vencimiento) < new Date() ? " ⚠" : ""}
-                </a>
-              )}
-              {ent.firma_url && (
-                <a href={ent.firma_url} target="_blank" rel="noopener noreferrer"
-                  className="btn btn-ghost" style={{ fontSize: 12, padding: "7px 12px" }}>✍️ Firma</a>
-              )}
+              {/* En persona, CV/DNI/Firma/Drive van dentro del bloque 📎 Documentos */}
             </div>
+
+            {/* Al personal y colaboradores activos el fondo les exige DNI y
+                firma escaneados. A un contacto no se le pide nada. */}
+            {params.tipo === "persona" && ent.estado === "activo"
+              && ["personal", "colaborador", "colaborador eventual"].includes(ent.tipo || "")
+              && (() => {
+                const falta: string[] = [];
+                if (!ent.dni_url) falta.push("DNI escaneado");
+                if (!ent.firma_url) falta.push("firma escaneada");
+                return falta.length > 0 && (
+                  <Alerta tono="ambar"
+                    titulo={`📎 Falta ${falta.join(" y ")}`}
+                    detalle="Son obligatorios para postular a fondos. Cárgalos en ✏️ Editar." />
+                );
+              })()}
+
+            {/* El CV depende del rol: hace falta uno por cada cargo con el
+                que postula, y DAFO lo exige en la carpeta. */}
+            {params.tipo === "persona" && ent.estado === "activo"
+              && ["personal", "colaborador", "colaborador eventual"].includes(ent.tipo || "")
+              && (() => {
+                if (!cvsDe.length) return (
+                  <Alerta tono="ambar" titulo="📋 Sin ningún CV cargado"
+                    detalle="El fondo exige el CV de cada miembro del equipo, con el enfoque del rol al que postula." />
+                );
+                // ¿Postula con cargos para los que no tiene CV con ese enfoque?
+                const tiene = new Set(cvsDe.map((c: any) => c.enfoque));
+                const sinCv = [...new Set(postDe.map((r: any) => r.cargo).filter(Boolean))]
+                  .filter((c: any) => !tiene.has(c));
+                if (sinCv.length) return (
+                  <Alerta tono="ambar"
+                    titulo={`📋 Postula como ${sinCv.join(", ")} pero no tiene CV con ese enfoque`}
+                    detalle="Cada rol necesita su propio CV: el del director no sirve para presentarla como investigadora." />
+                );
+                const viejos = cvsDe.filter((c: any) =>
+                  c.actualizado && (Date.now() - new Date(c.actualizado + "T12:00:00").getTime()) / 86400000 > 365);
+                return viejos.length > 0 && (
+                  <Alerta tono="ambar"
+                    titulo={`📋 CV desactualizado: ${viejos.map((c: any) => c.enfoque).join(", ")}`}
+                    detalle="Lleva más de un año sin rehacerse. Conviene refrescarlo antes de la próxima postulación." />
+                );
+              })()}
 
             {params.tipo === "persona" && ent.dni_vencimiento && (() => {
               const v = new Date(ent.dni_vencimiento);
@@ -464,7 +554,14 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                 <div className="ficha-row" key={key}>
                   <span className="fk">{lbl}</span>
                   <span className="fv" style={
-                    key === "estado_sunat" && ent[key] !== "activo" ? { color: "var(--red)", fontWeight: 700 }
+                    // Estado y condición SUNAT: mismo código de color que su web
+                    // (fondo verde si está sano, rojo si no)
+                    key === "estado_sunat" || key === "condicion_sunat"
+                      ? {
+                          color: sunatOk(key, ent[key]) ? "var(--green)" : "var(--red)",
+                          background: sunatOk(key, ent[key]) ? "rgba(46,204,113,.10)" : "rgba(255,77,94,.10)",
+                          padding: "1px 8px", borderRadius: 6, fontWeight: 600,
+                        }
                       : key === "dni_vencimiento" && new Date(ent[key]) < new Date() ? { color: "var(--red)", fontWeight: 700 }
                       // Una vigencia de poder de más de 90 días ya no sirve para trámites
                       : key === "vigencia_poder_fecha"
@@ -488,11 +585,35 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             // Los botones viven en el bloque del dato al que pertenecen:
             // verificar/ficha con SUNAT, y los PDF con sus documentos.
             const lnk = { fontSize: 11.5, padding: "5px 10px" };
-            const extras: Record<string, any> = params.tipo !== "empresa" ? {} : {
+            const rucPer = params.tipo === "persona" ? rucDePersona(ent.ruc_dni) : null;
+            const extras: Record<string, any> = params.tipo === "persona" ? {
+              [DNI_PERSONA]: (
+                <>
+                  {ent.ruc_dni && <BotonVerificarDni personaId={params.id} />}
+                  {ent.dni_url && <a href={ent.dni_url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost" style={lnk}>🪪 DNI ↗</a>}
+                  {ent.firma_url && <a href={ent.firma_url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost" style={lnk}>✍️ Firma ↗</a>}
+                </>
+              ),
+              [SUNAT_PERSONA]: rucPer && (
+                <>
+                  <span style={{ color: "var(--dim)", fontSize: 11.5, alignSelf: "center" }}>
+                    RUC calculado: <b style={{ color: "var(--text)" }}>{rucPer}</b>
+                  </span>
+                  <BotonRucPersona personaId={params.id} />
+                  <BotonFichaSunat numero={ent.ruc_dni} tipo="DNI" />
+                </>
+              ),
+              [DOCS_PERSONA]: (ent.carpeta_drive_url || ent.cv_url) && (
+                <>
+                  {ent.carpeta_drive_url && <a href={ent.carpeta_drive_url} target="_blank" rel="noopener noreferrer" className="btn" style={{ ...lnk, background: "#1a73e8" }}>📂 Drive</a>}
+                  {ent.cv_url && <a href={ent.cv_url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost" style={lnk}>📋 CV ↗</a>}
+                </>
+              ),
+            } : params.tipo !== "empresa" ? {} : {
               [SUNAT_EMPRESA]: ent.ruc && (
                 <>
                   <BotonVerificarRuc empresaId={params.id} />
-                  <BotonFichaSunat ruc={ent.ruc} />
+                  <BotonFichaSunat numero={ent.ruc} />
                 </>
               ),
               [DOCS_EMPRESA]: (ent.carpeta_drive_url || ent.renca_url || ent.vigencia_poder_url) && (
@@ -505,7 +626,12 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             };
 
             const sueltos = conf.campos.filter(c => !c[2]);
-            const gruposF = [...new Set(conf.campos.map(c => c[2]).filter(Boolean))] as string[];
+            /* Hay grupos que solo traen botones y ningún campo (ej. 📎
+               Documentos de una persona): también deben pintarse. */
+            const gruposF = [...new Set([
+              ...conf.campos.map(c => c[2]).filter(Boolean),
+              ...Object.keys(extras),
+            ])] as string[];
             return (
               <>
                 {sueltos.map(pintarFila)}
@@ -550,7 +676,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
               <Mantenimiento tipo={params.tipo} id={params.id} valores={ent} />
               {/* Los de empresa (verificar / ficha SUNAT) van en el bloque 🏛 SUNAT */}
-              {params.tipo === "persona" && ent.ruc_dni && <BotonVerificarDni personaId={params.id} />}
+              {/* Verificar DNI vive ahora en el bloque 🪪 Identidad */}
             </div>
           </div>
 
@@ -679,47 +805,6 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             </div>
           )}
 
-          {params.tipo === "persona" && postDe.length > 0 && (() => {
-            const ganadas = postDe.filter((r: any) => r.post?.estado === "ganadora");
-            const finalistas = postDe.filter((r: any) =>
-              ["finalista", "finalista_no_ganadora"].includes(r.post?.estado));
-            const resto = postDe.filter((r: any) => r.post?.estado !== "ganadora");
-            const fila = (r: any) => (
-              <div key={r.id} className="eq-row" style={{ alignItems: "center" }}>
-                <span className="cargo">{r.cargo || "—"}</span>
-                <span style={{ flex: 1, textAlign: "right" }}>
-                  <Link href={`/entidad/postulacion/${r.post?.id}`} style={{ color: "var(--text)" }}>
-                    {ICONO_ESTADO[r.post?.estado] || "🎯"} {r.post?.proy?.nombre || r.post?.codigo} →
-                  </Link>
-                  {r.post?.conv?.anio && (
-                    <span style={{ color: "var(--dim)", fontSize: 11, marginLeft: 8 }}>{r.post.conv.anio}</span>
-                  )}
-                </span>
-              </div>
-            );
-            return (
-              <>
-                {ganadas.length > 0 && (
-                  <div className="linked" style={{ marginTop: 14, borderLeft: "3px solid var(--green)" }}>
-                    <h4 style={{ color: "var(--green)" }}>🏆 Palmarés · {ganadas.length}</h4>
-                    <div style={{ color: "var(--muted)", fontSize: 11.5, marginBottom: 8 }}>
-                      {ganadas.length} estímulo{ganadas.length === 1 ? "" : "s"} ganado{ganadas.length === 1 ? "" : "s"}
-                      {finalistas.length > 0 && ` · ${finalistas.length} finalista${finalistas.length === 1 ? "" : "s"}`}
-                      {` · ${postDe.length} postulaciones en total`}
-                    </div>
-                    {ganadas.map(fila)}
-                  </div>
-                )}
-                {resto.length > 0 && (
-                  <div className="linked" style={{ marginTop: 14 }}>
-                    <h4>🎯 En postulaciones · {resto.length}</h4>
-                    {resto.map(fila)}
-                  </div>
-                )}
-              </>
-            );
-          })()}
-
           {params.tipo === "persona" && equiposEnMano.length > 0 && (
             <div className="linked" style={{ marginTop: 14, borderLeft: "3px solid var(--yellow)" }}>
               <h4>🎥 Equipos en su poder · {equiposEnMano.length}</h4>
@@ -753,6 +838,12 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             </div>
           )}
 
+          {/* Un CV por cada rol con el que postula: el fondo lo exige así */}
+          {params.tipo === "persona" && (
+            <CVs personaId={params.id} cvs={cvsDe}
+              especialidades={String(ent.rol || "").split(",").map(s => s.trim()).filter(Boolean)} />
+          )}
+
           {(params.tipo === "empresa" || params.tipo === "persona") && (
             <Credenciales dueno={params.tipo as "empresa" | "persona"} duenoId={params.id} credenciales={creds} />
           )}
@@ -764,6 +855,126 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
 
         {/* ===== COLUMNA DERECHA: la vida ===== */}
         <main>
+          {/* Palmarés: lo primero que cuenta qué ha logrado esta persona */}
+          {params.tipo === "persona" && postDe.length > 0 && (() => {
+            const ganadas = postDe.filter((r: any) => r.post?.estado === "ganadora");
+            const finalistas = postDe.filter((r: any) =>
+              ["finalista", "finalista_no_ganadora"].includes(r.post?.estado));
+            const resto = postDe.filter((r: any) => r.post?.estado !== "ganadora");
+            const fila = (r: any) => {
+              const p = r.post || {};
+              // El resto del equipo: con quiénes lo sacó adelante
+              const otros = (p.equipo || []).filter((e: any) => e.persona?.id !== params.id);
+              return (
+                <div key={r.id} style={{ borderTop: "1px solid var(--border)", padding: "10px 0" }}>
+                  <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
+                    <Link href={`/entidad/postulacion/${p.id}`}
+                      style={{ color: "var(--text)", fontWeight: 600, fontSize: 13.5 }}>
+                      {ICONO_ESTADO[p.estado] || "🎯"} {p.proy?.nombre || p.codigo} →
+                    </Link>
+                    <span className="badge" style={{ color: "var(--violet)", background: "rgba(167,139,250,.10)", textTransform: "none", letterSpacing: 0, fontWeight: 700 }}>
+                      {r.cargo || "—"}
+                    </span>
+                    {p.conv?.anio && (
+                      <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{p.conv.anio}</span>
+                    )}
+                    {p.estado === "ganadora" && p.monto_adjudicado && (
+                      <span className="badge" style={{ color: "var(--teal)", background: "rgba(45,212,191,.12)", fontWeight: 700 }}>
+                        S/ {Number(p.monto_adjudicado).toLocaleString("es-PE")}
+                      </span>
+                    )}
+                    {p.estado !== "ganadora" && (
+                      <span style={{ color: "var(--dim)", fontSize: 11.5 }}>{(p.estado || "").replace(/_/g, " ")}</span>
+                    )}
+                    <span style={{ flex: 1 }} />
+                    {p.proy?.id && (
+                      <Link href={`/entidad/proyecto/${p.proy.id}`}
+                        style={{ color: "var(--dim)", fontSize: 11, textDecoration: "underline dotted", textUnderlineOffset: 3 }}>
+                        📁 ver proyecto →
+                      </Link>
+                    )}
+                  </div>
+                  {/* Con qué empresa y a qué concurso */}
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 5 }}>
+                    {p.emp?.id && (
+                      <Link href={`/entidad/empresa/${p.emp.id}`} className="badge"
+                        style={{ color: "var(--muted)", background: "#1c1c2c" }}>🏢 {p.emp.nombre}</Link>
+                    )}
+                    {p.conv?.nombre && <span style={{ color: "var(--dim)", fontSize: 11 }}>· {p.conv.nombre}</span>}
+                  </div>
+                  {/* Con quiénes */}
+                  {otros.length > 0 && (
+                    <div style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap", marginTop: 6 }}>
+                      <span style={{ color: "var(--dim)", fontSize: 11 }}>👥</span>
+                      {otros.map((e: any, i: number) => (
+                        <Link key={i} href={`/entidad/persona/${e.persona?.id}`} className="badge" title={e.cargo || ""}
+                          style={{ color: "var(--violet)", background: "rgba(167,139,250,.10)", textTransform: "none", letterSpacing: 0, fontWeight: 600 }}>
+                          {e.persona?.alias || e.persona?.nombre}
+                          {e.cargo && <span style={{ color: "var(--dim)", fontWeight: 400 }}> · {e.cargo}</span>}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            };
+            return (
+              <>
+                {ganadas.length > 0 && (
+                  <div className="card" style={{ marginBottom: 16, borderColor: "rgba(46,204,113,.3)" }}>
+                    <div className="panel-h" style={{ color: "var(--green)" }}>🏆 Palmarés · {ganadas.length}</div>
+                    <div style={{ color: "var(--muted)", fontSize: 11.5 }}>
+                      {ganadas.length} estímulo{ganadas.length === 1 ? "" : "s"} ganado{ganadas.length === 1 ? "" : "s"}
+                      {finalistas.length > 0 && ` · ${finalistas.length} finalista${finalistas.length === 1 ? "" : "s"}`}
+                      {` · ${postDe.length} postulaciones en total`}
+                    </div>
+                    {ganadas.map(fila)}
+                  </div>
+                )}
+                {resto.length > 0 && (
+                  <div className="card" style={{ marginBottom: 16 }}>
+                    <div className="panel-h">🎯 En postulaciones · {resto.length}</div>
+                    {resto.map(fila)}
+                  </div>
+                )}
+              </>
+            );
+          })()}
+
+          {/* Su trabajo dentro del sistema: solo para quien tiene cuenta */}
+          {pulso && (
+            <div className="card" style={{ marginBottom: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div className="panel-h" style={{ margin: 0 }}>📊 Pulso en CrewHub+</div>
+                <span style={{ flex: 1 }} />
+                <Link href="/pulso" style={{ color: "var(--dim)", fontSize: 11, textDecoration: "underline dotted", textUnderlineOffset: 3 }}>
+                  ver el del equipo →
+                </Link>
+              </div>
+              {/* Cinco cifras en una sola línea: se leen de un vistazo */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8, marginTop: 10 }}>
+                {([
+                  [pulso.cerr, "cerrados", "var(--green)", "Casos que llevó hasta resuelta"],
+                  [pulso.ab, "a su cargo", pulso.ab ? "var(--yellow)" : "var(--dim)", "Casos vivos donde es responsable"],
+                  [pulso.venc, "vencidos", pulso.venc ? "var(--red)" : "var(--green)", "A su cargo y con la fecha límite pasada"],
+                  [pulso.creo, "creados", "var(--violet)", "Casos que abrió"],
+                  [pulso.coments, "comentarios", "var(--blue)", "Comentarios escritos"],
+                ] as [number, string, string, string][]).map(([n, l, c, t], i) => (
+                  <div key={i} title={t}
+                    style={{ background: "var(--bg)", borderRadius: 10, padding: "9px 6px", textAlign: "center" }}>
+                    <div style={{ fontSize: 19, fontWeight: 800, color: c, lineHeight: 1.2 }}>{n}</div>
+                    <div style={{ fontSize: 9.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: .6 }}>{l}</div>
+                  </div>
+                ))}
+              </div>
+              {pulso.ultimo && (
+                <p style={{ color: "var(--dim)", fontSize: 11.5, margin: "10px 0 0" }}>
+                  Última actividad: {fecha(pulso.ultimo)}
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Palmarés: lo primero que cuenta qué ha logrado esta empresa */}
           {params.tipo === "empresa" && postusEmp.length > 0 && (
             <div className="card" style={{ marginBottom: 16 }}>

@@ -72,7 +72,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
         .select("id,cuerpo,creado_en,publicacion_id,autor:perfiles(nombre),pub:publicaciones(titulo)")
         .or(orDe(["cuerpo"]))
         .order("creado_en", { ascending: false }).limit(40),
-      supabase.from("personas").select("id,nombre,alias,rol,tipo,estado,notas,ruc_dni").limit(600),
+      supabase.from("personas").select("id,nombre,alias,rol,tipo,estado,ruc_dni").limit(600),
       supabase.from("proyectos").select("id,nombre,nombre_corto,folio,tipo,etapa,descripcion"),
       supabase.from("empresas").select("id,nombre,razon_social,codigo,ruc,estado_sunat"),
       supabase.from("equipamiento").select("id,nombre,folio,categoria,subcategoria,estado,descripcion").limit(600),
@@ -115,7 +115,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
 
     casos = (c1.data || []).filter((p: any) => coincide(`${p.titulo} ${p.cuerpo}`)).slice(0, 12);
     coms = (c2.data || []).filter((c: any) => coincide(`${c.cuerpo} ${(c.pub as any)?.titulo}`)).slice(0, 12);
-    pers = (c3.data || []).filter((p: any) => coincide(`persona ${p.nombre} ${p.alias} ${p.rol} ${p.notas} ${p.ruc_dni}`)).slice(0, 10);
+    pers = (c3.data || []).filter((p: any) => coincide(`persona ${p.nombre} ${p.alias} ${p.rol} ${p.ruc_dni}`)).slice(0, 10);
     proys = (c4.data || []).filter((p: any) => coincide(`proyecto ${p.nombre} ${p.nombre_corto} ${p.folio} ${p.descripcion}`)).slice(0, 10);
     emps = (c5.data || []).filter((e: any) => coincide(`empresa ${e.nombre} ${e.razon_social} ${e.codigo} ${e.ruc}`)).slice(0, 10);
     const equisTodos = (c6.data || []).filter((e: any) => coincide(`equipo ${e.nombre} ${e.folio} ${e.categoria} ${e.subcategoria} ${e.descripcion}`));

@@ -64,6 +64,11 @@ export function EntidadForm({ tipo, id, valores, onDone }:
   const [form, setForm] = useState<Record<string, string>>(() => {
     const f: Record<string, string> = {};
     campos.forEach(c => {
+      // Los booleanos viajan como "si"/"no" por el formulario
+      if (c.tipo === "bool") {
+        f[c.key] = valores?.[c.key] === true ? "si" : valores?.[c.key] === false ? "no" : "";
+        return;
+      }
       f[c.key] = valores?.[c.key]
         ?? (c.tipo === "color" ? PALETA[Math.floor(Math.random() * PALETA.length)] : "");
     });
@@ -153,6 +158,10 @@ export function EntidadForm({ tipo, id, valores, onDone }:
                     ? [[form[c.key], `${form[c.key].replace(/_/g, " ")} (valor actual)`]] : []),
                   ...c.opciones!.map(o => [o, o.replace(/_/g, " ")]),
                 ]} />
+            ) : c.tipo === "bool" ? (
+              <MiniSelect block value={form[c.key]} error={!!errores[c.key]}
+                onSelect={v => setCampo(c.key, v)}
+                options={[["", "—"], ["si", "Sí"], ["no", "No"]]} />
             ) : c.tipo === "textarea" ? (
               <textarea rows={3} value={form[c.key]} onChange={e => setCampo(c.key, e.target.value)}
                 style={errores[c.key] ? { borderColor: "var(--red)" } : undefined} />

@@ -43,7 +43,6 @@ const CONF_IMPORT: Record<string, { titulo: string; tabla: string; campos: [stri
       ["telefono", "Teléfono", ["teléfono", "telefono", "celular"]],
       ["email", "Email", ["email", "correo"]],
       ["ruc_dni", "RUC / DNI", ["ruc", "dni", "documento"]],
-      ["notas", "Notas", ["notas", "observaciones"]],
     ],
   },
   proyecto: {

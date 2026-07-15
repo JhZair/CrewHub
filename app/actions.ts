@@ -3,7 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { FORM_CONF, nombreCorto } from "@/lib/entidades";
 import { nrmQ } from "@/lib/quechua";
-import { procesarSunatEmpresa, correrRondaSunat } from "@/lib/sunat";
+import { procesarSunatEmpresa, correrRondaSunat, consultarRucApi } from "@/lib/sunat";
+import { rucDePersona } from "@/lib/ruc";
 
 /* Crear o actualizar una entidad núcleo (proyecto/empresa/persona).
    La config compartida actúa como whitelist de tabla y campos. */
@@ -16,9 +17,15 @@ export async function guardarEntidad(tipo: string, id: string | null, datos: Rec
 
   // Campos de dinero/puntaje: se limpia "S/ 400,000.00" → "400000.00"
   const NUMERICOS = ["monto_adjudicado", "puntaje_jurado", "valor_compra"];
-  const limpio: Record<string, string | null> = {};
+  const limpio: Record<string, string | boolean | null> = {};
   conf.campos.forEach(c => {
     if (!(c.key in datos)) return;
+    // Los booleanos llegan como "si"/"no" desde el formulario
+    if (c.tipo === "bool") {
+      const b = String(datos[c.key] ?? "").trim();
+      limpio[c.key] = b === "si" ? true : b === "no" ? false : null;
+      return;
+    }
     // String(...) porque los campos numéricos (año, monto) pueden llegar como número
     let v = String(datos[c.key] ?? "").trim();
     if (v && NUMERICOS.includes(c.key)) {
@@ -295,7 +302,6 @@ export async function importarPersonas(filas: Record<string, string>[]) {
       telefono: norm(f.telefono) || null,
       email: norm(f.email) || null,
       ruc_dni: norm(f.ruc_dni) || null,
-      notas: norm(f.notas) || null,
       origen: "seatable",
     }));
 
@@ -848,6 +854,74 @@ export async function editarTarifa(
   if (error) return { error: error.message };
   revalidatePath("/admin");
   revalidatePath("/jornadas");
+  return {};
+}
+
+/* Foto de la persona (pasar null la quita) */
+export async function guardarFotoPersona(personaId: string, url: string | null) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { error } = await supabase.from("personas")
+    .update({ foto_url: url || null }).eq("id", personaId);
+  if (error) return { error: error.message };
+  await supabase.from("actividad").insert({
+    entidad_tipo: "persona", entidad_id: personaId, actor_id: user.id, tipo: "dato",
+    detalle: { mensaje: url ? "cambió la foto" : "quitó la foto" },
+  });
+  revalidatePath(`/entidad/persona/${personaId}`);
+  return {};
+}
+
+/* --- CVs por enfoque: uno por rol al que postula la persona --- */
+export async function guardarCv(personaId: string, enfoque: string, url: string, id?: string | null) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const enf = enfoque.trim(), u = url.trim();
+  if (!enf) return { error: "Elige el enfoque del CV." };
+  if (!/^https?:\/\/\S+$/.test(u)) return { error: "El CV debe ser un link completo (https://...)." };
+
+  const hoy = new Date().toISOString().slice(0, 10);
+  if (id) {
+    const { data: prev } = await supabase.from("persona_cv").select("enfoque,url").eq("id", id).maybeSingle();
+    const { error } = await supabase.from("persona_cv")
+      .update({ enfoque: enf, url: u, actualizado: hoy }).eq("id", id);
+    if (error) return { error: error.message };
+    await supabase.from("actividad").insert({
+      entidad_tipo: "persona", entidad_id: personaId, actor_id: user.id, tipo: "dato",
+      detalle: {
+        mensaje: `actualizó el CV de ${enf}`,
+        ...(prev?.url !== u ? { cambios: [{ campo: `CV ${enf}`, de: "link anterior", a: "link nuevo" }] } : {}),
+      },
+    });
+  } else {
+    const { error } = await supabase.from("persona_cv")
+      .insert({ persona_id: personaId, enfoque: enf, url: u, actualizado: hoy });
+    if (error) {
+      return { error: error.code === "23505" ? `Ya existe un CV con enfoque «${enf}».` : error.message };
+    }
+    await supabase.from("actividad").insert({
+      entidad_tipo: "persona", entidad_id: personaId, actor_id: user.id, tipo: "dato",
+      detalle: { mensaje: `agregó el CV de ${enf}` },
+    });
+  }
+  revalidatePath(`/entidad/persona/${personaId}`);
+  return {};
+}
+
+export async function borrarCv(id: string, personaId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: prev } = await supabase.from("persona_cv").select("enfoque").eq("id", id).maybeSingle();
+  const { error } = await supabase.from("persona_cv").delete().eq("id", id);
+  if (error) return { error: error.message };
+  await supabase.from("actividad").insert({
+    entidad_tipo: "persona", entidad_id: personaId, actor_id: user.id, tipo: "dato",
+    detalle: { mensaje: `borró el CV de ${prev?.enfoque || "—"}` },
+  });
+  revalidatePath(`/entidad/persona/${personaId}`);
   return {};
 }
 
@@ -1461,6 +1535,42 @@ export async function verificarRucSunat(empresaId: string) {
   if (r.error) return { error: r.error };
   revalidatePath(`/entidad/empresa/${empresaId}`);
   return { estado: r.estado, condicion: r.condicion, cambio: r.cambio };
+}
+
+/* Verifica en SUNAT el RUC de una persona natural. El RUC no se guarda:
+   se deduce del DNI. Si no está inscrita, SUNAT no la encuentra y eso
+   también es información útil. */
+export async function verificarRucPersona(personaId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: per } = await supabase.from("personas")
+    .select("id,nombre,ruc_dni,estado_sunat,condicion_sunat").eq("id", personaId).single();
+
+  const ruc = rucDePersona(per?.ruc_dni);
+  if (!ruc) return { error: "Necesita un DNI de 8 dígitos para calcular su RUC." };
+
+  const r = await consultarRucApi(ruc);
+  if (r.error) return { error: r.error };
+
+  const hoy = new Date().toISOString().slice(0, 10);
+  const { error } = await supabase.from("personas").update({
+    estado_sunat: r.estado || null,
+    condicion_sunat: r.condicion || null,
+    fecha_verificacion_sunat: hoy,
+  }).eq("id", personaId);
+  if (error) return { error: error.message };
+
+  const cambio = (per?.estado_sunat || null) !== (r.estado || null)
+    || (per?.condicion_sunat || null) !== (r.condicion || null);
+  if (cambio) {
+    await supabase.from("actividad").insert({
+      entidad_tipo: "persona", entidad_id: personaId, tipo: "bot",
+      detalle: { mensaje: `SUNAT (RUC ${ruc}): ${r.estado || "—"} · ${r.condicion || "—"}`, regla: "sunat_api" },
+    });
+  }
+  revalidatePath(`/entidad/persona/${personaId}`);
+  return { ruc, estado: r.estado, condicion: r.condicion, cambio };
 }
 
 export async function verificarSunatLote() {

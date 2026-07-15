@@ -5,7 +5,7 @@
 export type CampoDef = {
   key: string;
   label: string;
-  tipo?: "text" | "select" | "textarea" | "date" | "color";
+  tipo?: "text" | "select" | "textarea" | "date" | "color" | "bool";
   opciones?: string[];
   requerido?: boolean;
   auto?: boolean;       // lo genera el sistema; solo lectura (folios inmutables)
@@ -32,10 +32,16 @@ export function nombreCorto(c: { label: string; corto?: string }): string {
    azul  = lo llena la verificación automática; no se edita a mano. */
 export const DOCS_EMPRESA = "📎 Documentos — necesarios para postular, no para dar de alta";
 export const SUNAT_EMPRESA = "🏛 SUNAT — lo llena la verificación automática";
+export const DNI_PERSONA = "🪪 Identidad — DNI y firma: obligatorios para postular";
+export const DOCS_PERSONA = "📎 Otros documentos";
+export const SUNAT_PERSONA = "🏛 SUNAT — su RUC sale del DNI; lo demás lo llena la verificación";
 
 export const GRUPO_TONO: Record<string, "ambar" | "azul"> = {
   [DOCS_EMPRESA]: "ambar",
   [SUNAT_EMPRESA]: "azul",
+  [DNI_PERSONA]: "azul",
+  [DOCS_PERSONA]: "ambar",
+  [SUNAT_PERSONA]: "azul",
 };
 
 /* Validadores: el formato que cada tipo de dato exige */
@@ -230,15 +236,27 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
       { key: "rol", label: "Especialidades / rol", corto: "Rol", sugerencias: ESPECIALIDADES, multiple: true },
       { key: "region", label: "Región", tipo: "select", opciones: REGIONES },
       { key: "genero", label: "Género", tipo: "select", opciones: ["femenino", "masculino", "otro"] },
+      { key: "es_comunero", label: "¿Es comunero/a?", corto: "Comunero/a", tipo: "bool" },
       { key: "telefono", label: "Teléfono", valida: "telefono" },
       { key: "email", label: "Email", valida: "email" },
-      { key: "ruc_dni", label: "DNI (8 dígitos)", valida: "dni" },
-      { key: "dni_vencimiento", label: "DNI — fecha de vencimiento", corto: "DNI vence", tipo: "date" },
-      { key: "carpeta_drive_url", label: "Carpeta en Drive (link)", corto: "Carpeta Drive", valida: "url" },
-      { key: "cv_url", label: "CV / hoja de vida (link Drive)", corto: "CV", valida: "url" },
-      { key: "dni_url", label: "DNI escaneado (link Drive)", corto: "DNI escaneado", valida: "url" },
-      { key: "firma_url", label: "Firma escaneada (link Drive)", corto: "Firma", valida: "url" },
-      { key: "notas", label: "Notas", tipo: "textarea" },
+      // "notas" se retiró: era un pozo sin fondo (sin autor, sin fecha y sin
+      // avisar a nadie). Lo que hay que decir de una persona va como caso o
+      // comentario, que sí deja rastro. La columna sigue en la BD y el
+      // buscador aún la lee, así que lo escrito no se pierde.
+      // — Identidad: el DNI es la llave para verificar en RENIEC y SUNAT —
+      { key: "ruc_dni", label: "DNI (8 dígitos)", corto: "DNI", valida: "dni", grupo: DNI_PERSONA },
+      { key: "dni_vencimiento", label: "DNI — fecha de vencimiento", corto: "DNI vence", tipo: "date", grupo: DNI_PERSONA },
+      // El escaneo del DNI y la firma SON identidad, y el fondo los exige
+      { key: "dni_url", label: "DNI escaneado (PDF)", corto: "DNI escaneado", valida: "url", grupo: DNI_PERSONA },
+      { key: "firma_url", label: "Firma escaneada", corto: "Firma", valida: "url", grupo: DNI_PERSONA },
+      // — SUNAT: el RUC se calcula del DNI; el resto lo trae la verificación —
+      { key: "estado_sunat", label: "Estado SUNAT", tipo: "select", opciones: ["activo", "suspension_temporal", "baja_provisional", "baja_definitiva"], grupo: SUNAT_PERSONA },
+      { key: "condicion_sunat", label: "Condición SUNAT", tipo: "select", opciones: ["habido", "no_habido"], grupo: SUNAT_PERSONA },
+      { key: "fecha_verificacion_sunat", label: "Última verificación SUNAT", corto: "Verificado SUNAT", tipo: "date", grupo: SUNAT_PERSONA },
+      { key: "suspension_4ta", label: "Suspensión de renta de 4ta", corto: "Suspensión 4ta", tipo: "bool", grupo: SUNAT_PERSONA },
+      // Los CV viven en su propia biblioteca (uno por enfoque), no aquí:
+      // un solo cv_url no alcanza cuando se postula con distintos roles.
+      { key: "carpeta_drive_url", label: "Carpeta en Drive", corto: "Carpeta Drive", valida: "url", grupo: DOCS_PERSONA },
     ],
   },
 };
