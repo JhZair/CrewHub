@@ -34,8 +34,19 @@ export const SECCIONES: Seccion[] = [
 export const seccionDe = (tipo: string) => SECCIONES.find(s => s.tipo === tipo);
 
 /* Íconos de cualquier entidad vinculable, incluidas las que no tienen
-   sección propia (lugares, etiquetas). */
+   sección propia (lugares, etiquetas) y los casos, que no son entidades
+   pero sí dejan rastro en la bitácora. */
 export const ICO_ENT: Record<string, string> = {
   ...Object.fromEntries(SECCIONES.map(s => [s.tipo, s.ico])),
-  lugar: "📍", etiqueta: "🏷️",
+  lugar: "📍", etiqueta: "🏷️", publicacion: "📌", empresa_miembro: "👥",
+};
+
+/* Dónde vive el nombre de CUALQUIER cosa que la bitácora registre — no solo
+   las que tienen sección. El historial global guarda ids de todo: sin esto,
+   una pantalla llena de "actualizó 1 campo" sin decir de qué. */
+export const TABLA_DE: Record<string, [string, string]> = {
+  ...Object.fromEntries(SECCIONES.map(s => [s.tipo, [s.tabla, s.campo]])),
+  publicacion: ["publicaciones", "titulo"],
+  lugar: ["lugares", "nombre"],
+  etiqueta: ["etiquetas", "nombre"],
 };

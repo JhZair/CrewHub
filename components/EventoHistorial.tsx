@@ -45,7 +45,10 @@ export default function EventoHistorial({ e, hora, conEntidad }:
         {/* En el acumulado hace falta decir de quién se habla: sin esto,
             "actualizó 1 campo" cien veces seguidas no informa nada. */}
         {conEntidad && e.entidadNombre && (
-          <Link href={`/entidad/${e.entidad_tipo}/${e.entidad_id}`}
+          // Un caso no vive en /entidad: tiene su propia página
+          <Link href={e.entidad_tipo === "publicacion"
+              ? `/caso/${e.entidad_id}`
+              : `/entidad/${e.entidad_tipo}/${e.entidad_id}`}
             title={e.entidadTitulo || undefined}
             style={{ color: "var(--violet)", fontWeight: 700 }}>
             {ICO_ENT[e.entidad_tipo || ""] || "🔗"} {e.entidadNombre}

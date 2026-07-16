@@ -500,6 +500,9 @@ export default async function Qhaway({ searchParams }: { searchParams: { bit?: s
     <div className="shell shell-ancho">
       <div className="topbar">
         <Volver />
+        {/* El diario es de Qhaway: él escribe la mayor parte de esa bitácora */}
+        <Link href="/historial" className="btn btn-ghost"
+          title="El diario: todo lo que pasó en el sistema, con filtros">🕐 El diario</Link>
         <Link href="/importar" className="btn btn-ghost" title="Importar desde Seatable">⬆ Importar</Link>
         <Link href="/wiki" className="btn btn-ghost" title="Wiki: los flujos de trabajo">📖 Wiki</Link>
         <span className="spacer" />
