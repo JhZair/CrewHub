@@ -32,6 +32,10 @@ export function nombreCorto(c: { label: string; corto?: string }): string {
    azul  = lo llena la verificación automática; no se edita a mano. */
 export const DOCS_EMPRESA = "📎 Documentos — necesarios para postular, no para dar de alta";
 export const SUNAT_EMPRESA = "🏛 SUNAT — lo llena la verificación automática";
+/* El DAFO aparta la mitad del concurso para empresas fuera de Lima Metrop. y
+   Callao, y lo mide con tres hechos distintos que hay que acreditar por
+   separado. No es lo mismo que «región», que es dónde opera. */
+export const RESERVA_EMPRESA = "🗺 Reserva regional — dónde figura la empresa ante SUNARP y SUNAT";
 export const DNI_PERSONA = "🪪 Identidad — DNI y firma: obligatorios para postular";
 export const DOCS_PERSONA = "📎 Otros documentos";
 export const SUNAT_PERSONA = "🏛 SUNAT — su RUC sale del DNI; lo demás lo llena la verificación";
@@ -48,6 +52,7 @@ export const DOCS_POST = "📎 Documentos";
 export const GRUPO_TONO: Record<string, "ambar" | "azul"> = {
   [DOCS_EMPRESA]: "ambar",
   [SUNAT_EMPRESA]: "azul",
+  [RESERVA_EMPRESA]: "ambar",
   [DNI_PERSONA]: "azul",
   [DOCS_PERSONA]: "ambar",
   [SUNAT_PERSONA]: "azul",
@@ -225,9 +230,23 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
       { key: "razon_social", label: "Razón social (nombre legal)" },
       { key: "tipo", label: "Tipo", tipo: "select", opciones: ["eirl", "sac", "asociacion", "ong", "municipalidad", "otro"] },
       { key: "relacion", label: "Relación (solo las propias generan alertas)", corto: "Relación", tipo: "select", opciones: ["propia", "aliada", "externa"] },
-      { key: "region", label: "Región", tipo: "select", opciones: REGIONES },
+      { key: "region", label: "Región donde opera", corto: "Región", tipo: "select", opciones: REGIONES },
       { key: "estado", label: "Estado (interno)", tipo: "select", opciones: ["en_constitucion", "activa", "inactiva", "en_proceso_de_cierre", "cerrada"] },
       { key: "fecha_constitucion", label: "Fecha de constitución", tipo: "date" },
+      /* La reserva regional del DAFO aparta la mitad del concurso para
+         empresas fuera de Lima Metropolitana y Callao, y exige TRES cosas
+         separadas: constitución en SUNARP, domicilio en SUNARP, domicilio en
+         SUNAT. Pueden no coincidir —una empresa constituida en Cusco puede
+         haber mudado su domicilio registral—, así que van en tres campos.
+         `region` (arriba) es dónde opera: otro hecho, no sirve para esto. */
+      { key: "sunarp_region_constitucion", label: "Constituida en (SUNARP) — para la reserva regional", corto: "Constituida en", tipo: "select", opciones: REGIONES, grupo: RESERVA_EMPRESA },
+      { key: "sunarp_region_domicilio", label: "Domicilio registral (SUNARP)", corto: "Domicilio SUNARP", tipo: "select", opciones: REGIONES, grupo: RESERVA_EMPRESA },
+      { key: "sunat_region_domicilio", label: "Región del domicilio fiscal (SUNAT)", corto: "Región SUNAT", tipo: "select", opciones: REGIONES, grupo: RESERVA_EMPRESA },
+      /* Solo si alguna de las tres dice «Lima». La reserva excluye Lima
+         METROPOLITANA, no el departamento: Huacho y Cañete sí entran. Con el
+         departamento solo, el sistema no puede decidir — y prefiere decirlo
+         antes que adivinar. */
+      { key: "provincia_lima", label: "¿Qué provincia de Lima? (solo si arriba dice «Lima»)", corto: "Provincia de Lima", grupo: RESERVA_EMPRESA },
       // — SUNAT: el RUC es la llave, y lo demás lo trae la verificación.
       //   La ficha RUC en PDF se retiró: se consulta en vivo en SUNAT (el
       //   PDF guardado se desactualizaba y engañaba). —

@@ -17,6 +17,8 @@
  * separado, un día dejan de coincidir sin que nadie se entere.
  */
 
+import { vigenciaVencida } from "@/lib/vigencia";
+
 /* La partida sigue viva: presentada y sin resolverse. */
 export const EN_JUEGO = ["en_preparacion", "enviada", "finalista"];
 export const enJuego = (p: { estado?: string | null }) => EN_JUEGO.includes(p.estado || "");
@@ -62,3 +64,165 @@ export const rendicionSinPlazo = (p: {
    `fecha_rendicion_real` faltando se lee igual que «no la ha entregado». */
 export const SEL_FONDO =
   "id,empresa_id,estado,monto_adjudicado,fecha_limite_rendicion,fecha_prorroga,fecha_rendicion_real";
+
+/* ── ¿Puede postular esta empresa? ──────────────────────────── */
+
+export type Compromiso = { juego: number; ejec: number; debe: number; sinPlazo: number };
+
+/* Lo que una empresa tiene encima, contado de sus propias postulaciones. */
+export const compromisoDe = (posts: any[]): Compromiso => ({
+  juego: posts.filter(enJuego).length,
+  ejec: posts.filter(ejecutando).length,
+  debe: posts.filter(rendicionVencida).length,
+  sinPlazo: posts.filter(rendicionSinPlazo).length,
+});
+export const SIN_COMPROMISO: Compromiso = { juego: 0, ejec: 0, debe: 0, sinPlazo: 0 };
+
+/* Libre = papeles en regla y sin fondo encima.
+   La vigencia de poder NO entra: sirve para pedir el RENCA, y con el RENCA
+   en mano ya cumplió. Exigirla aquí era pedir dos veces el mismo papel — el
+   sistema decía «1 libre» cuando había 9. */
+export const empresaLibre = (e: any, c: Compromiso = SIN_COMPROMISO) =>
+  e.estado === "activa"
+  && !!e.ruc
+  && e.estado_sunat === "activo" && e.condicion_sunat === "habido"
+  && !!e.renca
+  && c.juego === 0 && c.ejec === 0;
+
+/* Por qué NO puede: sirve para saber qué arreglar, así que cada línea
+   nombra el trámite, no el síntoma. */
+export const trabasEmpresa = (e: any, c: Compromiso = SIN_COMPROMISO): string[] => {
+  const t: string[] = [];
+  if (e.estado !== "activa") t.push("no activa");
+  if (!e.ruc) t.push("sin RUC");
+  if (e.estado_sunat !== "activo") t.push("SUNAT no activo");
+  if (e.condicion_sunat !== "habido") t.push("no habido");
+  /* La vigencia solo se nombra cuando de verdad estorba: sin RENCA, es lo que
+     hay que tener para poder pedirlo. Con RENCA en mano, que esté vencida no
+     impide postular y decirlo sería ruido. */
+  if (!e.renca) {
+    t.push("sin RENCA");
+    if (!e.vigencia_poder_fecha) t.push("sin vigencia para pedir el RENCA");
+    else if (vigenciaVencida(e.vigencia_poder_fecha)) t.push("vigencia vencida para pedir el RENCA");
+  }
+  if (c.juego > 0) t.push("en concurso");
+  if (c.debe > 0) t.push("debe una rendición vencida");
+  else if (c.sinPlazo > 0) t.push("ejecutando un fondo, sin plazo cargado");
+  else if (c.ejec > 0) t.push("ejecutando un fondo");
+  return t;
+};
+
+/* A un trámite: cumple todo menos el RENCA, y tiene la vigencia vigente con
+   la que pedirlo. Si le faltara también la vigencia serían dos trámites y
+   `trabasEmpresa` devolvería dos líneas — por eso el largo === 1. */
+export const puedePedirRenca = (e: any, c: Compromiso = SIN_COMPROMISO) => {
+  const t = trabasEmpresa(e, c);
+  return t.length === 1 && t[0] === "sin RENCA";
+};
+
+/* ── ¿Y sus responsables? ───────────────────────────────────── */
+
+/* Una empresa no postula sola: firma alguien. Un DNI vencido invalida la
+   firma, y un representante no habido arrastra a la empresa entera. Esto no
+   se veía en ningún lado: la ficha listaba los cargos y nada más.
+
+   `dni_vencimiento` vacío NO es una traba: hay gente mayor a la que el DNI
+   ya no le caduca. Sin fecha no se sabe, y no saber no es lo mismo que estar
+   mal — se dice aparte, como duda, no como falta. */
+export const trabasMiembro = (p: any): string[] => {
+  const t: string[] = [];
+  if (!p?.ruc_dni) { t.push("sin DNI registrado"); return t; }
+  const hoy = new Date().toISOString().slice(0, 10);
+  if (p.dni_vencimiento && p.dni_vencimiento < hoy) t.push("DNI vencido");
+  if (p.estado_sunat && p.estado_sunat !== "activo")
+    t.push(`SUNAT ${String(p.estado_sunat).replace(/_/g, " ")}`);
+  if (p.condicion_sunat === "no_habido") t.push("no habido en SUNAT");
+  return t;
+};
+
+/* Lo que NO sabemos de un miembro, que no es lo mismo que lo que está mal.
+ *
+ * `trabasMiembro` solo se queja de lo que puede ver: si `estado_sunat` está
+ * vacío, no hay nada que objetar y la persona pasa. Pero pasar por no haber
+ * mirado no es estar bien — y la hoja llegó a decir «sus 3 responsables con
+ * SUNAT sano» cuando a dos nunca se les consultó. Un hueco leído como
+ * aprobado, otra vez.
+ *
+ * Se devuelven aparte a propósito: una duda no bloquea, pero tampoco se
+ * pinta de verde. Ese es el tercer color.
+ */
+/* ── La reserva regional ────────────────────────────────────────
+ *
+ * No es un puntaje: es plata apartada. En Cortometrajes 2026 son
+ * S/ 279,000 de S/ 558,000 — la mitad del concurso— reservados para
+ * empresas fuera de Lima Metropolitana y Callao. No se compite mejor: se
+ * compite contra menos gente por otra bolsa.
+ *
+ * Bases 2026, numeral IV.3: hay que acreditar el lugar de constitución en
+ * SUNARP fuera de Lima Metrop. y Callao, Y el domicilio fuera de ahí ante
+ * SUNARP Y ante SUNAT. Tres hechos, los tres obligatorios.
+ *
+ * Ojo con «Lima»: la reserva excluye Lima METROPOLITANA, no el departamento.
+ * Huacho y Cañete son departamento de Lima y SÍ entran. Por eso «Lima» no
+ * decide nada por sí solo — hace falta la provincia. El sistema no adivina:
+ * lo dice.
+ */
+
+export type Veredicto = "si" | "no" | "falta";
+
+/* Qué dice una región sobre la reserva:
+     "no"    → Callao: excluido y punto
+     "falta" → "Lima" (¿Metropolitana o provincia?) o vacío (nadie lo cargó)
+     "si"    → cualquier otra región del país  */
+export const regionReserva = (r?: string | null, provinciaLima?: string | null): Veredicto => {
+  const s = String(r ?? "").trim();
+  if (!s) return "falta";
+  if (s === "Callao") return "no";
+  if (s !== "Lima") return "si";
+  /* Departamento de Lima: decide la provincia. «Lima» a secas es Lima
+     Metropolitana, que está excluida; cualquier otra provincia entra. */
+  const p = String(provinciaLima ?? "").trim();
+  if (!p) return "falta";
+  return /^lima$/i.test(p) ? "no" : "si";
+};
+
+/* Los tres requisitos regionales de la empresa, con su nombre en las bases.
+   Se devuelven los tres siempre —también los que están bien— porque quien
+   mira esto está por decidir si aplica a la reserva y necesita ver el
+   conjunto, no solo lo que falla. */
+export const reservaEmpresa = (e: any): { que: string; v: Veredicto; region: string }[] => [
+  { que: "Constituida fuera de Lima Metrop. y Callao (SUNARP)",
+    v: regionReserva(e.sunarp_region_constitucion, e.provincia_lima),
+    region: e.sunarp_region_constitucion || "" },
+  { que: "Domicilio fuera de Lima Metrop. y Callao (SUNARP)",
+    v: regionReserva(e.sunarp_region_domicilio, e.provincia_lima),
+    region: e.sunarp_region_domicilio || "" },
+  { que: "Domicilio fiscal fuera de Lima Metrop. y Callao (SUNAT)",
+    v: regionReserva(e.sunat_region_domicilio, e.provincia_lima),
+    region: e.sunat_region_domicilio || "" },
+];
+
+/* El veredicto de la empresa: basta un "no" para quedar fuera; si no hay
+   ningún "no" pero falta algo, no se puede afirmar que califique. */
+export const veredictoReserva = (partes: { v: Veredicto }[]): Veredicto =>
+  partes.some(p => p.v === "no") ? "no"
+  : partes.some(p => p.v === "falta") ? "falta"
+  : "si";
+
+/* Los responsables, por la dirección de su DNI —que es lo que exigen las
+   bases: «según los datos consignados en sus documentos de identidad»—.
+   `personas.region` se llena mirando el DNI (confirmado con el equipo), así
+   que aquí sí sirve tal cual. */
+export const reservaMiembro = (p: any): Veredicto => regionReserva(p?.region);
+
+export const dudasMiembro = (p: any): string[] => {
+  const d: string[] = [];
+  if (!p?.ruc_dni) return d;               // sin DNI ya es traba, no duda
+  if (!p.estado_sunat) d.push("SUNAT sin verificar");
+  if (!p.nombre_reniec) d.push("nombre sin verificar en RENIEC");
+  /* Sin fecha de vencimiento puede ser que el DNI no caduque (pasa con la
+     gente mayor) o que nadie la cargó. Son cosas opuestas y no se distinguen:
+     por eso es duda y no falta. */
+  if (!p.dni_vencimiento) d.push("DNI sin fecha de vencimiento");
+  return d;
+};

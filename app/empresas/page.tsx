@@ -5,7 +5,10 @@ import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import { alertaSunat, empresaDeCasa, esNuestra, esProblematico, textoSunat } from "@/lib/sunat";
 import { REL_EMPRESA, EST_EMPRESA } from "@/lib/entidades";
 import { fmtVence, vigenciaVencida } from "@/lib/vigencia";
-import { enJuego, ejecutando, rendicionVencida, rendicionSinPlazo, plazoRendicion, SEL_FONDO } from "@/lib/fondos";
+import {
+  enJuego, ejecutando, rendicionVencida, rendicionSinPlazo, plazoRendicion,
+  empresaLibre, trabasEmpresa, puedePedirRenca, SIN_COMPROMISO, SEL_FONDO,
+} from "@/lib/fondos";
 import { urlPlataforma, PLAT } from "@/lib/plataformas";
 import BotonFichaSunat from "@/components/BotonFichaSunat";
 import { buscadorDe, pal } from "@/lib/buscar";
@@ -61,7 +64,7 @@ export default async function Empresas({ searchParams }: {
        `fecha_rendicion_real`, `ejecutando()` leería el hueco como «ya
        entregó» y la empresa saldría libre sin serlo. */
     supabase.from("postulaciones")
-      .select(`${SEL_FONDO},proy:proyectos(nombre),conv:convocatorias(nombre,anio)`)
+      .select(`${SEL_FONDO},codigo,proy:proyectos(nombre),conv:convocatorias(codigo,nombre,anio)`)
       .not("empresa_id", "is", null),
     supabase.from("comentarios").select("publicacion_id"),
     // El link de SUNAT sale del admin, no del código: si SUNAT lo cambia
@@ -121,57 +124,22 @@ export default async function Empresas({ searchParams }: {
    * había 9 empresas que podían postular hoy mismo. Ocho oportunidades
    * apagadas por un papel que ya no hacía falta.
    */
-  const libre = (x: any) => {
-    const m = marca.get(x.id);
-    return x.estado === "activa"
-      && !!x.ruc
-      && x.estado_sunat === "activo" && x.condicion_sunat === "habido"
-      && !!x.renca
-      && (m?.juego || 0) === 0
-      && (m?.ejec || 0) === 0;
-  };
-  /* Por qué NO está libre: sirve para saber qué arreglar */
-  const trabas = (x: any) => {
-    const m = marca.get(x.id);
-    const t: string[] = [];
-    if (x.estado !== "activa") t.push("no activa");
-    if (!x.ruc) t.push("sin RUC");
-    if (x.estado_sunat !== "activo") t.push("SUNAT no activo");
-    if (x.condicion_sunat !== "habido") t.push("no habido");
-    /* La vigencia solo se nombra cuando de verdad estorba: sin RENCA, es lo
-       que hay que tener para poder pedirlo. Con RENCA en mano, que esté
-       vencida no impide postular y decirlo sería ruido. */
-    if (!x.renca) {
-      t.push("sin RENCA");
-      if (!x.vigencia_poder_fecha) t.push("sin vigencia para pedir el RENCA");
-      else if (vigenciaVencida(x.vigencia_poder_fecha)) t.push("vigencia vencida para pedir el RENCA");
-    }
-    if ((m?.juego || 0) > 0) t.push("en concurso");
-    /* Comprometida = ya tiene un fondo encima. Se dice distinto según el
-       caso porque lo que hay que hacer es distinto: si va tarde, entregar;
-       si no hay plazo cargado, cargarlo. «Ejecutando» a secas no dice ni
-       una cosa ni la otra. */
-    if ((m?.debe || 0) > 0) t.push("debe una rendición vencida");
-    else if ((m?.sinPlazo || 0) > 0) t.push("ejecutando un fondo, sin plazo cargado");
-    else if ((m?.ejec || 0) > 0) t.push("ejecutando un fondo");
-    return t;
-  };
+  /* Las reglas viven en lib/fondos.ts: las lee esta lista y también la hoja
+     de postulación de la ficha. Escritas dos veces, un día dirían cosas
+     distintas — que es como empezó todo esto. */
+  const compDe = (x: any) => marca.get(x.id) || SIN_COMPROMISO;
+  const libre = (x: any) => empresaLibre(x, compDe(x));
+  const trabas = (x: any) => trabasEmpresa(x, compDe(x));
   const enConcurso = (postsEmp || []).filter(enJuego);
   const empDe = new Map(todas.map((x: any) => [x.id, x]));
 
   // Filtro por fondos: cada opción con su prueba
-  /* A un trámite de distancia: cumple todo menos el RENCA, y tiene la
-     vigencia vigente con la que pedirlo. No es un descarte — es una empresa
-     que puede estar lista para el próximo concurso si alguien mueve el
-     papel. (Si le faltara también la vigencia serían dos trámites, y `trabas`
-     devolvería dos líneas: por eso el largo === 1.) */
-  const puedePedirRenca = (x: any) => {
-    const t = trabas(x);
-    return t.length === 1 && t[0] === "sin RENCA";
-  };
+  // A un trámite de distancia (lib/fondos.ts): le falta el RENCA y tiene con
+  // qué pedirlo. No es un descarte, es una candidata.
+  const casiLibre = (x: any) => puedePedirRenca(x, compDe(x));
 
   const PRUEBA_F: Record<string, (x: any) => boolean> = {
-    libre: x => libre(x) || puedePedirRenca(x),
+    libre: x => libre(x) || casiLibre(x),
     juego: x => (marca.get(x.id)?.juego || 0) > 0,
     ejecutando: x => (marca.get(x.id)?.ejec || 0) > 0,
     ganadoras: x => (marca.get(x.id)?.ganadas || 0) > 0,
@@ -209,7 +177,7 @@ export default async function Empresas({ searchParams }: {
     const a = act.get(emp.id) || VACIO;
     const m = marca.get(emp.id);
     const esLibre = libre(emp);
-    const casi = !esLibre && puedePedirRenca(emp);   // candidata: apagada, no descartada
+    const casi = !esLibre && casiLibre(emp);   // candidata: apagada, no descartada
     const alerta = alertaSunat(emp);
     /* Dos motivos distintos para bajarle la luz a una fila, y los dos son
        «mira aquí después», no «esto no sirve»:
@@ -219,9 +187,24 @@ export default async function Empresas({ searchParams }: {
        externas en el buscador. Si aquí la escribiera aparte, un día una
        empresa saldría apagada en una pantalla y encendida en la otra. */
     const tenue = casi || !empresaDeCasa(emp);
+    /* Lo que tiene encima, con nombre: las que están en concurso y las que
+       está ejecutando. El chip «⏳ 3 en concurso» decía cuántas y no cuáles, y
+       «cuáles» es lo único accionable: un número no se puede abrir. El dato ya
+       venía en la consulta —proyecto y convocatoria— y se tiraba.
+       Las dos juntas porque son los dos motivos por los que una empresa no
+       está libre, y quien mira la fila quiere ver de qué se trata. */
+    const suyas = (postsEmp || []).filter((p: any) =>
+      p.empresa_id === emp.id && (enJuego(p) || ejecutando(p)));
     return (
-      <Link key={emp.id} href={`/entidad/empresa/${emp.id}`}>
-        <div className={`card link${tenue ? " fila-tenue" : ""}`} style={{ cursor: "pointer", padding: "11px 16px" }}>
+      /* Enlace estirado: la tarjeta entera lleva a la empresa mediante una
+         capa invisible, y así los chips de dentro pueden ser enlaces propios.
+         Con <Link> envolviendo todo serían un <a> dentro de otro <a> — HTML
+         inválido: el navegador los reordena y React revienta al hidratar. */
+      <div key={emp.id} className={`card link fila-cap${tenue ? " fila-tenue" : ""}`}
+        style={{ cursor: "pointer", padding: "11px 16px" }}>
+        <Link href={`/entidad/empresa/${emp.id}`} className="fila-cubre"
+          aria-label={emp.nombre} />
+        <div>
           {/* línea 1: quién es */}
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <b style={{ fontSize: 14.5 }}>{emp.nombre}</b>
@@ -327,8 +310,58 @@ export default async function Empresas({ searchParams }: {
             {a.coments > 0 && <span style={{ color: "var(--muted)" }}>💬 {a.coments}</span>}
             {!a.total && <span style={{ color: "var(--dim)" }}>sin actividad</span>}
           </div>
+
+          {/* línea 3: con QUÉ. Solo aparece si hay algo encima — que es
+              cuando la pregunta existe. */}
+          {suyas.length > 0 && (
+            <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap",
+              marginTop: 7, paddingTop: 7, borderTop: "1px solid var(--border)", fontSize: 11.5 }}>
+              {suyas.map((p: any) => {
+                /* El chip dice en qué punto está, porque «ejecutando» a secas
+                   no distingue lo que hay que hacer: si va tarde, entregar;
+                   si no hay plazo, cargarlo; si está en plazo, nada. */
+                const ej = ejecutando(p);
+                const debe = rendicionVencida(p);
+                const sinPlazo = rendicionSinPlazo(p);
+                const f = plazoRendicion(p);
+                const d = ej && f ? -diasDesde(f) : null;   // + faltan, − pasaron
+                const col = debe ? "var(--red)" : sinPlazo ? "var(--yellow)"
+                  : ej ? "var(--teal)" : "var(--violet)";
+                const fondo = debe ? "rgba(255,77,94,.14)" : sinPlazo ? "rgba(244,180,0,.12)"
+                  : ej ? "rgba(45,212,191,.12)" : "rgba(167,139,250,.12)";
+                const cola = debe ? ` · 🔴 venció hace ${-d!}d`
+                  : sinPlazo ? " · ⚠ sin plazo cargado"
+                  : ej ? ` · rinde en ${d}d` : "";
+                return (
+                  <Link key={p.id} href={`/entidad/postulacion/${p.id}`}
+                    className="badge fila-encima"
+                    title={`${String(p.estado || "").replace(/_/g, " ")}`
+                      + `${(p.conv as any)?.nombre ? ` · ${(p.conv as any).nombre}` : ""}`
+                      + `${(p.conv as any)?.anio ? ` ${(p.conv as any).anio}` : ""}`
+                      + (debe ? "\nEl plazo pasó y no hay entrega registrada. Si ya se entregó, ponle la fecha en la postulación." : "")
+                      + (sinPlazo ? "\nGanó y nadie cargó para cuándo debe rendir." : "")
+                      + "\n— ir a la postulación"}
+                    style={{ color: col, background: fondo, fontWeight: debe ? 700 : 400,
+                      textTransform: "none", letterSpacing: 0, textDecoration: "none" }}>
+                    {/* El proyecto es lo que identifica la postulación en la
+                        cabeza de uno; la convocatoria en código, que es corta —
+                        con el nombre completo el chip no cabría. El nombre
+                        largo queda en el tooltip. */}
+                    {ej ? "🎬" : ICONO_POST[p.estado] || "⏳"} {(p.proy as any)?.nombre || p.codigo || "Postulación"}
+                    {(p.conv as any) && (
+                      <i style={{ opacity: .65, fontStyle: "normal" }}>
+                        {" · "}{(p.conv as any).codigo || (p.conv as any).nombre}
+                        {(p.conv as any).anio ? ` ${(p.conv as any).anio}` : ""}
+                      </i>
+                    )}
+                    {cola} ↗
+                  </Link>
+                );
+              })}
+            </div>
+          )}
         </div>
-      </Link>
+      </div>
     );
   };
 
@@ -388,16 +421,23 @@ export default async function Empresas({ searchParams }: {
           <Chip href="/empresas?f=libre" on={f === "libre"} color="var(--green)"
             title="Listas: RENCA en mano, papeles en regla y sin compromisos vivos. El +N son las que solo necesitan tramitar el RENCA — ya tienen la vigencia de poder con que pedirlo">
             ✅ libres para postular · {todas.filter(libre).length}
-            {todas.filter(puedePedirRenca).length > 0 && ` +${todas.filter(puedePedirRenca).length}`}
+            {todas.filter(casiLibre).length > 0 && ` +${todas.filter(casiLibre).length}`}
           </Chip>
           <Chip href="/empresas?f=juego" on={f === "juego"} color="var(--violet)">
             ⏳ en concurso · {cntF("juego")}
           </Chip>
+          {/* Ejecutando y ganadoras se parecen y no son lo mismo: la primera
+              es deuda viva, la segunda es palmarés. Dan el mismo número
+              mientras no haya ninguna rendición registrada como entregada —
+              y eso no es un empate, es un aviso: para el sistema ningún
+              fondo se cerró nunca. Los tooltips lo dicen, porque el número
+              solo no lo puede decir. */}
           <Chip href="/empresas?f=ejecutando" on={f === "ejecutando"} color="var(--teal)"
-            title="Con un fondo ganado cuya rendición aún no vence">
+            title="Ganó un fondo y todavía no entregó la rendición. Se cierra poniéndole la fecha de entrega a la postulación — no vence solo con el calendario.">
             🎬 ejecutando · {cntF("ejecutando")}
           </Chip>
-          <Chip href="/empresas?f=ganadoras" on={f === "ganadoras"} color="var(--green)">
+          <Chip href="/empresas?f=ganadoras" on={f === "ganadoras"} color="var(--green)"
+            title="Ganó algún fondo alguna vez. Es palmarés: no baja nunca, aunque ya haya rendido.">
             🏆 ganadoras · {cntF("ganadoras")}
           </Chip>
           <Chip href="/empresas?f=postularon" on={f === "postularon"} color="var(--blue)">

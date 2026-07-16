@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { Mantenimiento } from "@/components/EntidadForm";
-import { SUNAT_EMPRESA, DOCS_EMPRESA, DNI_PERSONA, DOCS_PERSONA, SUNAT_PERSONA, GRUPO_TONO } from "@/lib/entidades";
+import { SUNAT_EMPRESA, DOCS_EMPRESA, RESERVA_EMPRESA, DNI_PERSONA, DOCS_PERSONA, SUNAT_PERSONA, GRUPO_TONO } from "@/lib/entidades";
 import { rucDePersona } from "@/lib/ruc";
 import { estado4ta, money } from "@/lib/cuarta";
 import { diasDeVigencia, fmtVence, vigenciaVencida } from "@/lib/vigencia";
@@ -16,7 +16,12 @@ import CuentaAcceso from "@/components/CuentaAcceso";
 import { BotonVerificarRuc, BotonVerificarDni, BotonRucPersona } from "@/components/VerificarSunat";
 import Alerta from "@/components/Alerta";
 import { urlPlataforma, conPlataforma, PLAT } from "@/lib/plataformas";
-import { rendicionVencida, plazoRendicion } from "@/lib/fondos";
+import {
+  rendicionVencida, plazoRendicion, compromisoDe, empresaLibre,
+  trabasEmpresa, trabasMiembro, dudasMiembro, SIN_COMPROMISO,
+  reservaEmpresa, reservaMiembro, veredictoReserva,
+} from "@/lib/fondos";
+import HojaPostulacion from "@/components/HojaPostulacion";
 import BotonFichaSunat from "@/components/BotonFichaSunat";
 import Copiar from "@/components/Copiar";
 import CVs from "@/components/CVs";
@@ -43,6 +48,12 @@ const CONF: Record<string, { tabla: string; icono: string; campos: [string, stri
     ["Estado SUNAT", "estado_sunat", SUNAT_EMPRESA], ["Condición SUNAT", "condicion_sunat", SUNAT_EMPRESA],
     ["Verificado", "fecha_verificacion_sunat", SUNAT_EMPRESA],
     ["RENCA", "renca", DOCS_EMPRESA], ["Vigencia de poder vence", "vigencia_poder_fecha", DOCS_EMPRESA],
+    // La reserva del DAFO aparta media convocatoria para las de fuera de
+    // Lima Metrop. y Callao, y pide estos tres por separado. Ver lib/fondos.
+    ["Constituida en (SUNARP)", "sunarp_region_constitucion", RESERVA_EMPRESA],
+    ["Domicilio registral (SUNARP)", "sunarp_region_domicilio", RESERVA_EMPRESA],
+    ["Domicilio fiscal (SUNAT)", "sunat_region_domicilio", RESERVA_EMPRESA],
+    ["Provincia de Lima", "provincia_lima", RESERVA_EMPRESA],
   ] },
   persona: { tabla: "personas", icono: "👤", campos: [
     ["Alias", "alias"], ["Tipo", "tipo"], ["Equipo", "equipo"], ["Estado", "estado"],
@@ -106,7 +117,7 @@ const crudo = (val: any) => {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : s;
 };
 
-const verFicha = (key: string, val: any) => {
+const verFicha = (key: string, val: any, ent?: any) => {
   if (typeof val === "boolean") return val ? "✅ Sí" : "No";
   // La suspensión de 4ta vale por el año calendario y se pide de nuevo en enero
   if (key === "suspension_4ta_anio") {
@@ -115,11 +126,17 @@ const verFicha = (key: string, val: any) => {
   }
   /* La vigencia se guarda por su emisión (es lo que dice el papel) pero se
      lee por su vencimiento, que es lo que a uno le importa: nadie quiere
-     restar 90 días de cabeza para saber si el certificado todavía sirve. */
+     restar 90 días de cabeza para saber si el certificado todavía sirve.
+
+     El ⚠ solo si falta el RENCA: vencida es un hecho, pero «⚠» es un juicio
+     —dice «resuelve esto»— y con el RENCA ya sacado no hay nada que resolver.
+     La vigencia sirve para pedirlo; después, cumplió. */
   if (key === "vigencia_poder_fecha") {
     const d = diasDeVigencia(String(val));
-    return d < 0 ? `⚠ ${fmtVence(String(val))} — venció hace ${-d} d`
-      : `${fmtVence(String(val))} · en ${d} d`;
+    if (d >= 0) return `${fmtVence(String(val))} · en ${d} d`;
+    return ent && !ent.renca
+      ? `⚠ ${fmtVence(String(val))} — venció hace ${-d} d, y falta el RENCA`
+      : `${fmtVence(String(val))} — venció hace ${-d} d, ya cumplió`;
   }
   const s = String(val);
   if (CAMPOS_DINERO.includes(key)) {
@@ -216,6 +233,9 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
 
   // Relaciones societarias
   let miembros: any[] = [], personasCat: any[] = [], cargosDe: any[] = [], postusEmp: any[] = [];
+  // Lo que necesita la hoja para postular (solo se llena si es empresa)
+  let comp = SIN_COMPROMISO, empLibre = false, trabasEmp: string[] = [], miembrosHoja: any[] = [];
+  let partesReserva: any[] = [], reserva: "si" | "no" | "falta" = "falta";
   let clienteDe: { id: string; nombre: string } | null = null;
   let cronoActs: any[] = [], perfilesCat: any[] = [];
   let postusProy: any[] = [];
@@ -295,18 +315,50 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   }
   if (params.tipo === "empresa") {
     const [m, pc, pe] = await Promise.all([
+      /* Los datos que decide si esta empresa puede postular NO son solo los
+         suyos: firma un responsable, y un DNI vencido invalida esa firma.
+         Antes esto traía nombre y alias — por eso la ficha listaba cargos y
+         nadie veía que al presidente le había caducado el DNI. */
       supabase.from("empresa_miembros")
-        .select("id,cargo,fecha_inicio,fecha_fin,estado,persona:personas(id,nombre,alias)")
+        .select("id,cargo,fecha_inicio,fecha_fin,estado,persona:personas(id,nombre,alias,ruc_dni,dni_vencimiento,estado_sunat,condicion_sunat,nombre_reniec)")
         .eq("empresa_id", params.id).order("cargo"),
       supabase.from("personas").select("id,nombre,alias,tipo").order("nombre"),
-      // Con qué proyectos postuló esta empresa, qué ganó y con qué equipo
+      /* Con qué proyectos postuló, qué ganó y con qué equipo. Las fechas de
+         rendición entran porque deciden si tiene un fondo encima —y por tanto
+         si puede tomar otro—: sin `fecha_rendicion_real`, `ejecutando()`
+         leería el hueco como «ya entregó». */
       supabase.from("postulaciones")
-        .select("id,codigo,estado,monto_adjudicado,proy:proyectos(id,nombre),conv:convocatorias(id,nombre,anio),equipo:postulacion_equipo(cargo,persona:personas(id,nombre,alias))")
+        .select("id,codigo,estado,monto_adjudicado,fecha_limite_rendicion,fecha_prorroga,fecha_rendicion_real,proy:proyectos(id,nombre),conv:convocatorias(id,nombre,anio),equipo:postulacion_equipo(cargo,persona:personas(id,nombre,alias))")
         .eq("empresa_id", params.id).order("creado_en", { ascending: false }),
     ]);
     miembros = m.data || [];
     personasCat = (pc.data || []).map((x: any) => ({ ...x, nombre: x.alias ? `${x.nombre} · ${x.alias}` : x.nombre }));
     postusEmp = pe.data || [];
+
+    /* El veredicto se arma acá, en el servidor, con las mismas funciones que
+       usa el listado de /empresas (lib/fondos.ts). Si la hoja decidiera por
+       su cuenta, un día diría «lista» de una empresa que la lista muestra
+       trabada, y nadie sabría cuál de las dos miente. */
+    comp = compromisoDe(postusEmp);
+    /* `miembros.length > 0` no es un detalle: sin él, `every` sobre una lista
+       vacía devuelve true y la hoja declararía «lista para postular» a una
+       empresa de la que no sabemos quién firma. El vacío no es un aprobado. */
+    empLibre = empresaLibre(ent, comp)
+      && miembros.length > 0
+      && miembros.every(x => !trabasMiembro(x.persona).length);
+    trabasEmp = trabasEmpresa(ent, comp);
+    miembrosHoja = miembros.map((x: any) => ({
+      id: x.id, cargo: x.cargo, persona: x.persona,
+      // El RUC de una persona no se guarda: sale de su DNI (lib/ruc.ts)
+      ruc: rucDePersona(x.persona?.ruc_dni) || null,
+      trabas: trabasMiembro(x.persona),
+      // Aparte de las trabas: lo que nadie miró no está mal, pero tampoco bien
+      dudas: dudasMiembro(x.persona),
+      // Su DNI, para la reserva regional (las bases piden esa dirección)
+      reserva: reservaMiembro(x.persona),
+    }));
+    partesReserva = reservaEmpresa(ent);
+    reserva = veredictoReserva(partesReserva);
   }
   let postDe: any[] = [], equiposEnMano: any[] = [], clienteEnProy: any[] = [], cvsDe: any[] = [];
   let acum4ta = 0;   // lo girado este año en RHE
@@ -690,10 +742,14 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                   titulo="🎬 Sin RENCA registrado"
                   detalle="El RENCA es obligatorio para postular a fondos. Regístralo en ✏️ Editar." />
               );
-              if (vigenciaVencida(ent.vigencia_poder_fecha)) al.push(
+              /* Solo si además falta el RENCA. La vigencia sirve para PEDIR el
+                 RENCA; con el RENCA sacado ya cumplió, y esta alerta mandaba a
+                 SUNARP a sacar un papel que no hacía falta —a una empresa que
+                 podía postular ese mismo día—. */
+              if (!ent.renca && vigenciaVencida(ent.vigencia_poder_fecha)) al.push(
                 <Alerta key="vig" tono="ambar"
-                  titulo={`📜 La vigencia de poder venció el ${fmtVence(ent.vigencia_poder_fecha)}`}
-                  detalle="Ya no sirve para presentar documentos. Solicita una nueva en SUNARP antes de la próxima postulación." />
+                  titulo={`📜 Sin RENCA y con la vigencia vencida el ${fmtVence(ent.vigencia_poder_fecha)}`}
+                  detalle="Son dos trámites en fila: la vigencia se saca en SUNARP y con ella se pide el RENCA. Sin RENCA no se puede postular a ningún fondo." />
               );
               return al.length ? <>{al}</> : null;
             })()}
@@ -718,8 +774,10 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                           ? { color: "var(--green)", background: "rgba(46,204,113,.10)", padding: "1px 8px", borderRadius: 6, fontWeight: 600 }
                           : { color: "var(--red)", background: "rgba(255,77,94,.10)", padding: "1px 8px", borderRadius: 6, fontWeight: 600 }
                       : key === "dni_vencimiento" && new Date(ent[key]) < new Date() ? { color: "var(--red)", fontWeight: 700 }
-                      // Vencida = ya no sirve para trámites
-                      : key === "vigencia_poder_fecha" && vigenciaVencida(ent[key])
+                      /* Vencida en rojo SOLO si falta el RENCA: ahí es el
+                         trámite que bloquea. Con el RENCA en mano no estorba,
+                         y el rojo mandaría a resolver algo que no lo necesita. */
+                      : key === "vigencia_poder_fecha" && vigenciaVencida(ent[key]) && !ent.renca
                         ? { color: "var(--red)", fontWeight: 700 }
                       : CAMPOS_DINERO.includes(key) ? { color: "var(--teal)", fontWeight: 700 } : undefined
                   }>
@@ -735,7 +793,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                       </details>
                     ) : (
                       <Copiar valor={crudo(ent[key])} etiqueta={lbl.toLowerCase()}>
-                        {verFicha(key, ent[key])}
+                        {verFicha(key, ent[key], ent)}
                       </Copiar>
                     )}
                   </span>
@@ -797,11 +855,17 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                   <BotonFichaSunat numero={ent.ruc} url={urlSunat} />
                 </>
               ),
-              [DOCS_EMPRESA]: (ent.carpeta_drive_url || ent.renca_url || ent.vigencia_poder_url) && (
+              [DOCS_EMPRESA]: (
                 <>
                   {ent.carpeta_drive_url && <a href={ent.carpeta_drive_url} target="_blank" rel="noopener noreferrer" className="btn" style={{ ...lnk, background: "#1a73e8" }}>📂 Drive</a>}
                   {ent.renca_url && <a href={ent.renca_url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost" style={lnk}>🎬 RENCA ↗</a>}
                   {ent.vigencia_poder_url && <a href={ent.vigencia_poder_url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost" style={lnk}>📜 Vigencia ↗</a>}
+                  {/* Todo lo que pide el formulario, junto: la empresa y sus
+                      responsables. Vive aquí, con los papeles, porque es lo
+                      mismo que se va a buscar cuando toque postular. */}
+                  <HojaPostulacion empresa={ent} miembros={miembrosHoja}
+                    trabasEmp={trabasEmp} libre={empLibre}
+                    partesReserva={partesReserva} reserva={reserva} />
                 </>
               ),
             };
