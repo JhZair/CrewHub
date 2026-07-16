@@ -3,6 +3,7 @@ import {
   agregarCredencial, editarCredencial, borrarCredencial,
   agregarDato, editarDato, verificarDato, borrarDato,
 } from "@/app/actions";
+import Copiar from "@/components/Copiar";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -248,7 +249,14 @@ export default function Credenciales({ dueno, duenoId, credenciales }: {
                   {c.plataforma}
                 </span>
               )}
-              <span style={{ flex: 1, color: "#c6c6da" }}>{c.identificador || "—"}</span>
+              {/* El identificador es lo que se teclea para entrar: el RUC en
+                  DAFO, el correo en Gmail. Es el dato que más veces al día
+                  pasa de esta pantalla a otro formulario. */}
+              <span style={{ flex: 1, color: "#c6c6da" }}>
+                {c.identificador
+                  ? <Copiar valor={c.identificador} etiqueta={`el usuario de ${c.plataforma}`}>{c.identificador}</Copiar>
+                  : "—"}
+              </span>
               {c.metodo_acceso && (
                 <span className="badge" style={{
                   fontSize: 10.5,
@@ -294,7 +302,13 @@ export default function Credenciales({ dueno, duenoId, credenciales }: {
               ) : (
                 <div key={d.id} className="dato-row">
                   <span className="dato-et">{d.etiqueta}</span>
-                  <span className="dato-val">{d.valor || "—"}</span>
+                  {/* Códigos de afiliación, usuario SOL, N° de contrato: se
+                      guardan justamente para copiarlos meses después. */}
+                  <span className="dato-val">
+                    {d.valor
+                      ? <Copiar valor={d.valor} etiqueta={d.etiqueta}>{d.valor}</Copiar>
+                      : "—"}
+                  </span>
                   {(() => { const fr = frescura(d.verificado_en); return <span className={`dato-verif ${fr.cls}`}>{fr.cls === "verde" ? "✅" : fr.cls === "ambar" ? "⚠" : "⛔"} {fr.txt}</span>; })()}
                   <button className="dato-btn" title="Confirmé que sigue vigente" onClick={() => verificar(d.id)}>✓ verifiqué</button>
                   <button className="dato-btn" title="Editar dato" onClick={() => { setEdDatoId(d.id); setEd({ etiqueta: d.etiqueta || "", valor: d.valor || "" }); }}>✎</button>

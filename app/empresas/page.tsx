@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { BotonVerificarLote } from "@/components/VerificarSunat";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
-import { alertaSunat, esNuestra, esProblematico, textoSunat } from "@/lib/sunat";
+import { alertaSunat, empresaDeCasa, esNuestra, esProblematico, textoSunat } from "@/lib/sunat";
 import { REL_EMPRESA, EST_EMPRESA } from "@/lib/entidades";
 import { fmtVence, vigenciaVencida } from "@/lib/vigencia";
 import { enJuego, ejecutando, rendicionVencida, rendicionSinPlazo, plazoRendicion, SEL_FONDO } from "@/lib/fondos";
@@ -211,9 +211,17 @@ export default async function Empresas({ searchParams }: {
     const esLibre = libre(emp);
     const casi = !esLibre && puedePedirRenca(emp);   // candidata: apagada, no descartada
     const alerta = alertaSunat(emp);
+    /* Dos motivos distintos para bajarle la luz a una fila, y los dos son
+       «mira aquí después», no «esto no sirve»:
+         · casi     → todavía no puede postular, le falta un trámite
+         · externa  → puede, pero es segunda opción: primero las de casa
+       `empresaDeCasa` vive en lib/sunat.ts y es la misma que apaga las
+       externas en el buscador. Si aquí la escribiera aparte, un día una
+       empresa saldría apagada en una pantalla y encendida en la otra. */
+    const tenue = casi || !empresaDeCasa(emp);
     return (
       <Link key={emp.id} href={`/entidad/empresa/${emp.id}`}>
-        <div className={`card link${casi ? " fila-tenue" : ""}`} style={{ cursor: "pointer", padding: "11px 16px" }}>
+        <div className={`card link${tenue ? " fila-tenue" : ""}`} style={{ cursor: "pointer", padding: "11px 16px" }}>
           {/* línea 1: quién es */}
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <b style={{ fontSize: 14.5 }}>{emp.nombre}</b>

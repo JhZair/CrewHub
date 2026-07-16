@@ -18,6 +18,7 @@ import Alerta from "@/components/Alerta";
 import { urlPlataforma, conPlataforma, PLAT } from "@/lib/plataformas";
 import { rendicionVencida, plazoRendicion } from "@/lib/fondos";
 import BotonFichaSunat from "@/components/BotonFichaSunat";
+import Copiar from "@/components/Copiar";
 import CVs from "@/components/CVs";
 import FotoPersona from "@/components/FotoPersona";
 import Materiales from "@/components/Materiales";
@@ -86,6 +87,24 @@ const ICONO_ESTADO: Record<string, string> = {
 /* ¿El dato de SUNAT está sano? Vale para empresas y personas por igual. */
 const sunatOk = (key: string, val: any) =>
   key === "estado_sunat" ? val === "activo" : val === "habido";
+
+/* Lo que se COPIA, que no es lo que se lee.
+ *
+ * `verFicha` decora para mirar: «⚠ 15 oct. 2025 — venció hace 3 d», «✅
+ * vigente 2026», «en constitucion». Nada de eso sirve pegado en un formulario
+ * de DAFO. Aquí sale el hecho pelado, tal como está guardado — salvo las
+ * fechas, que se pasan a dd/mm/aaaa porque es lo que piden los formularios
+ * peruanos, y nadie va a reescribir a mano un 2025-10-15 (que es exactamente
+ * donde se pierde el dígito).
+ *
+ * El tooltip del componente muestra esta misma cadena, así que lo que se ve
+ * prometido es lo que cae en el portapapeles.
+ */
+const crudo = (val: any) => {
+  const s = String(val ?? "").trim();
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : s;
+};
 
 const verFicha = (key: string, val: any) => {
   if (typeof val === "boolean") return val ? "✅ Sí" : "No";
@@ -434,10 +453,17 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                 que pedirle otra. La subida solo la reemplaza si quiere. */}
             <FotoPersona personaId={params.id} nombre={ent.nombre} size={52}
               foto={ent.foto_url || cuentaDe?.avatar_url} propia={!!ent.foto_url} />
-            <h1 className="title-lg" style={{ margin: 0 }}>{nombre}</h1>
+            {/* El nombre también se copia: es de los que Wilfredo pasa a
+                mano a los formularios. El ícono queda fuera del valor —
+                copiar «🏢 Kawsay Pacha» sería copiar mal. */}
+            <h1 className="title-lg" style={{ margin: 0 }}>
+              <Copiar valor={nombre} etiqueta="el nombre">{nombre}</Copiar>
+            </h1>
           </>
         ) : (
-          <h1 className="title-lg" style={{ margin: 0 }}>{conf.icono} {nombre}</h1>
+          <h1 className="title-lg" style={{ margin: 0 }}>
+            {conf.icono} <Copiar valor={nombre} etiqueta="el nombre">{nombre}</Copiar>
+          </h1>
         )}
         {/* De quién es la empresa: se lee sin bajar a la ficha. Solo las
             propias generan alertas, así que conviene tenerlo a la vista. */}
@@ -697,6 +723,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                         ? { color: "var(--red)", fontWeight: 700 }
                       : CAMPOS_DINERO.includes(key) ? { color: "var(--teal)", fontWeight: 700 } : undefined
                   }>
+                    {/* El rol desplegable se queda fuera: ya es un botón (abre
+                        y cierra), y dos botones encimados no obedecen a nadie. */}
                     {key === "rol" && String(ent[key]).split(",").length > 3 ? (
                       <details style={{ display: "inline" }}>
                         <summary style={{ cursor: "pointer", listStyle: "none" }}>
@@ -705,7 +733,11 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                         </summary>
                         {String(ent[key]).split(",").slice(3).map(s => s.trim()).join(", ")}
                       </details>
-                    ) : verFicha(key, ent[key])}
+                    ) : (
+                      <Copiar valor={crudo(ent[key])} etiqueta={lbl.toLowerCase()}>
+                        {verFicha(key, ent[key])}
+                      </Copiar>
+                    )}
                   </span>
                 </div>
               ) : null;

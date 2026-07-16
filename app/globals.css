@@ -129,6 +129,29 @@ a{color:inherit;text-decoration:none}
 .fila-tenue{opacity:.32;transition:opacity .16s ease}
 .fila-tenue:hover{opacity:1}
 
+/* Dato copiable: el valor entero es el botón.
+   Lo normal sería mostrar el ⧉ solo al pasar el cursor, más limpio. Pero un
+   botón que hay que descubrir no existe para quien no sabe que está — y esto
+   se hizo justamente para quien copia a mano y se come un dígito. Así que se
+   ve siempre, en bajo; al pasar el cursor toma cuerpo. */
+.copiable{
+  display:inline-flex; align-items:center; gap:5px;
+  cursor:pointer; border-radius:5px; padding:0 4px; margin:0 -4px;
+  transition:background .14s ease, color .14s ease;
+}
+.copiable:hover{ background:rgba(124,92,255,.12) }
+.copiable:focus-visible{ outline:2px solid var(--accent); outline-offset:1px }
+.copiable-ico{ font-size:10.5px; color:var(--dim); transition:color .14s ease }
+.copiable:hover .copiable-ico{ color:var(--accent) }
+/* Confirmar de verdad: si no se ve que copió, se copia otra vez «por si
+   acaso» — y ahí es donde uno cree que copió y pegó lo de antes. */
+.copiable.copiado{ background:rgba(46,204,113,.14) }
+.copiable.copiado .copiable-ico{ color:var(--green) }
+.copiable-ok{
+  font-size:10px; font-weight:700; color:var(--green);
+  text-transform:uppercase; letter-spacing:.6px;
+}
+
 /* Banco de trabajo: lo que tengo EN PROGRESO, pegado al borde izquierdo.
    Vive en el layout, así que no se pierde al navegar. Colapsa a una
    pestaña para no estorbar. */

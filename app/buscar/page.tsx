@@ -286,6 +286,21 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
     // Credenciales: inventario de accesos (plataforma, usuario, dónde vive la clave)
     const empMap = new Map((c5.data || []).map((e: any) => [e.id, e.nombre]));
     const persMap = new Map((c3.data || []).map((p: any) => [p.id, p.nombre]));
+    /* El dueño, para el pajar — aparte del de arriba, que es para mostrar.
+     *
+     * Una credencial es «la de Kawsaycha» antes que «la de DAFO»: uno busca
+     * por la empresa, no por la plataforma. Y su pajar tenía plataforma,
+     * usuario, ubicación, notas… y nunca de quién era. Así, buscar el nombre
+     * de una empresa encontraba la empresa y no sus llaves.
+     *
+     * Van también razón social, código y RUC: son las otras formas de llamar
+     * a la misma empresa, y el que busca usa la que tiene a mano. */
+    const empPajar = new Map((c5.data || []).map((e: any) =>
+      [e.id, pal(e.nombre, e.razon_social, e.codigo, e.ruc)]));
+    const persPajar = new Map((c3.data || []).map((p: any) =>
+      [p.id, pal(p.nombre, p.alias, p.ruc_dni)]));
+    const duenoPajar = (c: any) =>
+      (c.empresa_id ? empPajar.get(c.empresa_id) : persPajar.get(c.persona_id)) || "";
     const textoDatos = (c: any) =>
       (c.datos || []).map((d: any) => `${d.etiqueta} ${d.valor}`).join(" ");
     /* Las puertas ANTES de filtrar, no después: "renta anual" y
@@ -300,6 +315,8 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
     creds = (c10.data || [])
       .filter((c: any) => coincide(pal(
         "credencial acceso clave usuario",
+        // De quién es: es la primera forma de buscarla
+        duenoPajar(c),
         c.plataforma, c.identificador, c.ubicacion, c.notas, c.metodo_acceso,
         // El dominio también se busca: a veces recuerdas la web, no el nombre
         c.url, textoDatos(c), textoPuertas(c))))
@@ -567,26 +584,35 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
                 {e.renca && (
                   <Doc href={e.renca_url} titulo="Constancia RENCA">🎬 {e.renca}</Doc>
                 )}
-                {e.vigencia_poder_fecha && (
+                {e.vigencia_poder_fecha && (() => {
+                  /* Vencida en rojo SOLO si no tiene RENCA. La vigencia sirve
+                     para pedir el RENCA; con el RENCA en mano ya cumplió, y
+                     pintarla de rojo manda a alguien a SUNARP a sacar un papel
+                     que no le hace falta. Con el RENCA pendiente, en cambio,
+                     es el trámite que hay que hacer primero. */
+                  const estorba = vigenciaVencida(e.vigencia_poder_fecha) && !e.renca;
+                  return (
                   <a href={e.vigencia_poder_url || undefined}
                     target={e.vigencia_poder_url ? "_blank" : undefined} rel="noopener noreferrer"
                     title={`Emitida el ${fechaLarga(e.vigencia_poder_fecha)} · ${haceOEn(e.vigencia_poder_fecha)}`
                       + `. Vale 90 días, así que ${vigenciaVencida(e.vigencia_poder_fecha)
                         ? `venció el ${fechaLarga(venceVigencia(e.vigencia_poder_fecha))}`
                         : `vence el ${fechaLarga(venceVigencia(e.vigencia_poder_fecha))}`}`
+                      + (estorba ? ". Sin RENCA y sin vigencia vigente no se puede ni pedirlo."
+                        : e.renca ? ". No estorba: con el RENCA ya sacado, la vigencia cumplió su trabajo." : "")
                       + `${e.vigencia_poder_url ? "" : " — sin archivo cargado"}`}
                     className={`badge${e.vigencia_poder_url ? " fila-encima" : ""}`}
                     style={{
-                      // Vencida en rojo: es lo que impide postular hoy
-                      color: vigenciaVencida(e.vigencia_poder_fecha) ? "var(--red)" : "var(--muted)",
-                      background: vigenciaVencida(e.vigencia_poder_fecha) ? "rgba(255,77,94,.12)" : "#1c1c2c",
+                      color: estorba ? "var(--red)" : "var(--muted)",
+                      background: estorba ? "rgba(255,77,94,.12)" : "#1c1c2c",
                       textTransform: "none", letterSpacing: 0,
                     }}>
                     📜 {vigenciaVencida(e.vigencia_poder_fecha)
                       ? "vigencia vencida" : `vigencia vence ${fmtVence(e.vigencia_poder_fecha)}`}
                     {e.vigencia_poder_url ? " ↗" : ""}
                   </a>
-                )}
+                  );
+                })()}
                 {e.carpeta_drive_url && (
                   <Doc href={e.carpeta_drive_url} color="var(--violet)" titulo="Carpeta en Drive">📁 Drive</Doc>
                 )}
