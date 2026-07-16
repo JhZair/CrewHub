@@ -124,6 +124,23 @@ a{color:inherit;text-decoration:none}
 /* Banco de trabajo: lo que tengo EN PROGRESO, pegado al borde izquierdo.
    Vive en el layout, así que no se pierde al navegar. Colapsa a una
    pestaña para no estorbar. */
+/* Quién más está trabajando. Abajo a la izquierda, discreto: es compañía,
+   no una alerta. Solo existe cuando hay alguien más — estar solo es normal.
+   El punto respira para que se note de reojo sin robar la atención. */
+.presencia{position:fixed;left:14px;bottom:14px;z-index:55;display:flex;align-items:center;gap:8px;
+  background:var(--panel);border:1px solid var(--border2);border-radius:999px;padding:5px 12px 5px 10px;
+  box-shadow:0 6px 22px rgba(0,0,0,.4);font-size:11.5px;color:var(--muted);
+  animation:presencia-entra .3s ease}
+@keyframes presencia-entra{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.presencia-pt{width:7px;height:7px;border-radius:50%;background:var(--green);flex:none;
+  animation:presencia-late 2.4s ease-in-out infinite}
+@keyframes presencia-late{0%,100%{opacity:1}50%{opacity:.35}}
+.presencia-avs{display:flex}
+.presencia-avs>span{margin-left:-7px}
+.presencia-avs>span:first-child{margin-left:0}
+.presencia-txt{white-space:nowrap}
+@media(max-width:760px){.presencia{display:none}}
+
 .banco-tab{position:fixed;left:0;top:50%;transform:translateY(-50%);z-index:60;
   background:var(--panel);border:1px solid var(--border2);border-left:none;
   border-radius:0 11px 11px 0;padding:11px 7px;font-size:13px;color:var(--muted);

@@ -4,6 +4,7 @@ import BotonNuevoCaso from "@/components/BotonNuevoCaso";
 import CampanitaGlobal from "@/components/CampanitaGlobal";
 import BuscadorFlotante from "@/components/BuscadorFlotante";
 import BancoTrabajo from "@/components/BancoTrabajo";
+import QuienEstaGlobal from "@/components/QuienEstaGlobal";
 
 export const metadata: Metadata = {
   title: "CrewHub+ by KAWSAY",
@@ -25,6 +26,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="es">
       <body>
         {children}
+        <QuienEstaGlobal />
         <BancoTrabajo />
         <BuscadorFlotante />
         <CampanitaGlobal />
