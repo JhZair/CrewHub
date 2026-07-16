@@ -136,9 +136,12 @@ a{color:inherit;text-decoration:none}
   animation:presencia-late 2.4s ease-in-out infinite}
 @keyframes presencia-late{0%,100%{opacity:1}50%{opacity:.35}}
 .presencia-avs{display:flex}
-.presencia-avs>span{margin-left:-7px}
+/* Se pisan entre ellos: una fila de caras, no una lista */
+.presencia-avs>span{margin-left:-8px;transition:margin-left .16s ease}
 .presencia-avs>span:first-child{margin-left:0}
-.presencia-txt{white-space:nowrap}
+/* Al pasar el cursor se separan, para poder mirar quién es quién */
+.presencia:hover .presencia-avs>span{margin-left:2px}
+.presencia:hover .presencia-avs>span:first-child{margin-left:0}
 @media(max-width:760px){.presencia{display:none}}
 
 .banco-tab{position:fixed;left:0;top:50%;transform:translateY(-50%);z-index:60;

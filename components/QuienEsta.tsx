@@ -67,19 +67,18 @@ export default function QuienEsta({ yo, token }: { yo: Quien; token?: string }) 
   return (
     <div className="presencia" title={`Trabajando ahora: ${otros.map(o => o.nombre).join(", ")}`}>
       <span className="presencia-pt" />
+      {/* Solo las caras. El nombre escrito sobraba: el avatar ya lo dice, y
+          el texto hacía crecer la píldora hasta convertir compañía en aviso.
+          Quién es cada uno está en el tooltip, para cuando haga falta.
+          Seis caben sin apretar —el equipo es de siete— y el resto cuenta. */}
       <span className="presencia-avs">
-        {otros.slice(0, 4).map(o => (
+        {otros.slice(0, 6).map(o => (
           <span key={o.id} title={o.nombre}>
             <Avatar nombre={o.nombre} color={o.color} src={o.avatar_url} size={24} />
           </span>
         ))}
       </span>
-      {otros.length > 4 && <b>+{otros.length - 4}</b>}
-      {/* Con una sola persona, decir el nombre: "Wilfredo está" es lo que
-          convierte el dato en una conversación. Con varias, sobra. */}
-      {otros.length === 1 && (
-        <span className="presencia-txt">{otros[0].nombre.split(" ")[0]} está trabajando</span>
-      )}
+      {otros.length > 6 && <b style={{ color: "var(--muted)" }}>+{otros.length - 6}</b>}
     </div>
   );
 }
