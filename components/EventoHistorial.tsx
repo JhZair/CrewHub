@@ -1,3 +1,4 @@
+import { ICO_ENT } from "@/lib/secciones";
 import Link from "next/link";
 
 /* Una línea del historial. Vive aquí y no dentro de la ficha porque ahora
@@ -20,10 +21,7 @@ export const ICO_EVENTO: Record<string, string> = {
 };
 export const icoDe = (t: string) => ICO_EVENTO[t] || "🤖";
 
-export const ICO_ENT: Record<string, string> = {
-  proyecto: "📁", empresa: "🏢", persona: "👤", postulacion: "🎯",
-  convocatoria: "📜", equipamiento: "🎥", lugar: "📍", etiqueta: "🏷️",
-};
+export { ICO_ENT } from "@/lib/secciones";
 
 /* Qué dice el evento. El bot no tiene actor: por eso "Sistema"/"Bot Qhaway"
    cuando `actor` viene vacío — y por eso importa que las acciones humanas

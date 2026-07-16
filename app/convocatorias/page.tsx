@@ -107,6 +107,8 @@ export default async function Convocatorias({ searchParams }: {
       <div className="topbar">
         <Volver />
         <span className="spacer" />
+        <Link href="/casos/convocatoria" className="btn btn-ghost"
+          title="Todos los casos, agrupados por convocatoria">🗂 Casos</Link>
         <Link href="/historial/convocatoria" className="btn btn-ghost"
           title="Todo lo que se movió en las convocatorias, por periodo">🕐 Historial</Link>
         <Link href="/entidad/convocatoria/nuevo" className="btn">＋ Nueva convocatoria</Link>

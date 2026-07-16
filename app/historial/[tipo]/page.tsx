@@ -3,6 +3,7 @@ import Volver from "@/components/Volver";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import EventoHistorial, { icoDe, type Evento } from "@/components/EventoHistorial";
 import { PERIODOS, desdeDe, diaLima, rotuloDia, type Periodo } from "@/lib/periodo";
+import { seccionDe } from "@/lib/secciones";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -11,20 +12,7 @@ import { notFound, redirect } from "next/navigation";
    "qué se ha estado moviendo en las empresas", que es la pregunta de quien
    coordina, no la de quien atiende un caso. */
 
-/* `corto` es el campo que se muestra si existe; `campo` es el respaldo.
-   En una lista de 263 movimientos, "Michael Net Oros Perez" repetido cuatro
-   veces es puro ruido: el alias ya está cargado, hay que usarlo. */
-const TIPOS: Record<string, { tabla: string; campo: string; corto?: string; ico: string; plural: string; volver: string }> = {
-  // En empresas, `nombre` YA es el corto: el largo es `razon_social`
-  empresa: { tabla: "empresas", campo: "nombre", ico: "🏢", plural: "empresas", volver: "/empresas" },
-  persona: { tabla: "personas", campo: "nombre", corto: "alias", ico: "👤", plural: "personas", volver: "/personas" },
-  proyecto: { tabla: "proyectos", campo: "nombre", corto: "nombre_corto", ico: "📁", plural: "proyectos", volver: "/proyectos" },
-  postulacion: { tabla: "postulaciones", campo: "codigo", ico: "🎯", plural: "postulaciones", volver: "/postulaciones" },
-  convocatoria: { tabla: "convocatorias", campo: "codigo", ico: "📜", plural: "convocatorias", volver: "/convocatorias" },
-  equipamiento: { tabla: "equipamiento", campo: "nombre", ico: "🎥", plural: "equipos", volver: "/equipamiento" },
-};
-
-/* El actor también se repite hasta el cansancio ("Wilfredo pedíaz" nueve
+/* El actor se repite hasta el cansancio ("Wilfredo pedíaz" nueve
    veces seguidas). Los perfiles no tienen alias, así que se recorta:
    "Wilfredo Pedíaz Quispe" → "Wilfredo P." */
 const cortoActor = (n?: string | null) => {
@@ -41,7 +29,7 @@ export default async function HistorialTipo({ params, searchParams }: {
   params: { tipo: string };
   searchParams: { p?: string; e?: string };
 }) {
-  const conf = TIPOS[params.tipo];
+  const conf = seccionDe(params.tipo);
   if (!conf) notFound();
 
   const p = (PERIODOS.some(([k]) => k === searchParams?.p) ? searchParams!.p : "mes") as Periodo;
@@ -109,7 +97,8 @@ export default async function HistorialTipo({ params, searchParams }: {
       <div className="topbar">
         <Volver />
         <span className="spacer" />
-        <Link href={conf.volver} className="btn btn-ghost">{conf.ico} Ver {conf.plural}</Link>
+        <Link href={`/casos/${params.tipo}`} className="btn btn-ghost">🗂 Casos</Link>
+        <Link href={conf.ruta} className="btn btn-ghost">{conf.ico} Ver {conf.plural}</Link>
       </div>
       <h1 className="title-lg">🕐 Historial de {conf.plural}</h1>
 

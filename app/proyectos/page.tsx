@@ -54,6 +54,8 @@ export default async function Proyectos({ searchParams }: {
         <Volver />
         <span className="spacer" />
         <Link href="/empresas" className="btn btn-ghost">🏢 Empresas</Link>
+        <Link href="/casos/proyecto" className="btn btn-ghost"
+          title="Todos los casos, agrupados por proyecto">🗂 Casos</Link>
         <Link href="/historial/proyecto" className="btn btn-ghost"
           title="Todo lo que se movió en los proyectos, por periodo">🕐 Historial</Link>
         <Link href="/entidad/proyecto/nuevo" className="btn">＋ Nuevo proyecto</Link>
