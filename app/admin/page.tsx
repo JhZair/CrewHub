@@ -5,6 +5,7 @@ import BitacoraJornadas from "@/components/BitacoraJornadas";
 import LiquidacionAdmin from "@/components/LiquidacionAdmin";
 import BotonDestacar from "@/components/BotonDestacar";
 import RheAdmin from "@/components/RheAdmin";
+import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import { estado4ta } from "@/lib/cuarta";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -20,9 +21,11 @@ const TIPO_COL: Record<string, string> = {
   pago: "#2dd4bf", idea: "#f4b400", archivo: "#3b82f6", conversacion: "#8b8ba3",
 };
 
-export default async function Admin({ searchParams }: { searchParams: { lm?: string; s?: string } }) {
+export default async function Admin({ searchParams }: { searchParams: { lm?: string; s?: string; fd?: string; qd?: string } }) {
   // Sección activa: por defecto lo más frecuente, aprobar jornadas
   const s = searchParams?.s || "jornadas";
+  const fd = searchParams?.fd || "";                  // filtro dentro de Destacados
+  const qd = (searchParams?.qd || "").trim();          // búsqueda dentro de Destacados
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
@@ -64,11 +67,17 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
     supabase.from("jornadas").select("persona_id,fraccion,monto,aprobada,per:personas(nombre,alias)")
       .gte("fecha", lInicio).lt("fecha", lFin).limit(3000),
     supabase.from("liquidaciones").select("persona_id,estado").eq("anio", lAnio).eq("mes", lMes + 1),
-    // Casos vivos, para elegir cuáles suben a la cabecera del feed
+    /* Casos vivos, para elegir cuáles suben a la cabecera del feed.
+       Estaba en 60 y ordenado por creación descendente: los que se caían
+       eran los MÁS VIEJOS, o sea los olvidados, los sin fecha — justo los
+       que esta pantalla existe para rescatar. Y los contadores del menú y
+       de los chips se calculaban sobre ese recorte, así que podían mentir.
+       300 cubre de sobra el tamaño real (unos 25 vivos) y el aviso de abajo
+       avisa si algún día no alcanza. */
     supabase.from("publicaciones")
       .select("id,tipo,titulo,fecha_limite,destacado_hasta")
       .in("estado", ["abierta", "en_progreso", "seguimiento"])
-      .order("creado_en", { ascending: false }).limit(60),
+      .order("creado_en", { ascending: false }).limit(300),
   ]);
 
   const tarifaLista = (personas || []).map((p: any) => ({
@@ -145,8 +154,20 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
         const ahora = Date.now();
         const dias = (f: string) => Math.ceil((new Date(f + "T23:59:59").getTime() - ahora) / 86400000);
         const fijado = (p: any) => !!p.destacado_hasta && new Date(p.destacado_hasta).getTime() > ahora;
+
+        const PRUEBA_D: Record<string, (p: any) => boolean> = {
+          fijados: fijado,
+          sin_fecha: p => !p.fecha_limite,
+          vencidos: p => !!p.fecha_limite && dias(p.fecha_limite) < 0,
+          avisos: p => p.tipo === "aviso",
+        };
+        const nrm = (x: any) => String(x || "").toLowerCase();
+        const filtrados = (vivos || []).filter((p: any) =>
+          (!fd || PRUEBA_D[fd]?.(p)) && (!qd || nrm(p.titulo).includes(nrm(qd))));
+        const cntD = (k: string) => (vivos || []).filter(PRUEBA_D[k]).length;
+
         // Los ya destacados primero; luego lo que vence antes
-        const lista = [...(vivos || [])].sort((a: any, b: any) => {
+        const lista = [...filtrados].sort((a: any, b: any) => {
           if (fijado(a) !== fijado(b)) return fijado(a) ? -1 : 1;
           if (!!a.fecha_limite !== !!b.fecha_limite) return a.fecha_limite ? -1 : 1;
           return (a.fecha_limite || "") < (b.fecha_limite || "") ? -1 : 1;
@@ -155,10 +176,48 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
           <>
             <div className="h4" style={{ marginTop: 0 }}>📌 Destacados del feed</div>
             <p style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 0 }}>
-              Suben a la cabecera del feed. Los casos con fecha límite en 15 días o menos ya suben
-              solos — aquí es para lo que no tiene fecha, o para adelantarse. El destacado
-              <b> caduca solo</b>: con la fecha límite del caso, o a las 2 semanas.
+              Lo que clavas aquí sube a la cabecera del feed. <b>Nada sube solo</b>: si todo
+              destaca, nada destaca — un caso con fecha ya se ve en el feed, en el tablero y en
+              el mensaje de la mañana. Esto es para lo que no te puedes permitir que se pierda.
+              El destacado <b>caduca solo</b>: con la fecha límite del caso, o a las 2 semanas.
             </p>
+            {/* Si algún día hay más de 300 vivos, decirlo — el recorte se
+                llevaría los más antiguos, que son los que hay que rescatar */}
+            {(vivos || []).length >= 300 && (
+              <div className="card" style={{ borderColor: "rgba(244,180,0,.4)", color: "var(--yellow)", fontSize: 12.5 }}>
+                ⚠ Hay 300 casos vivos o más y esta lista solo carga los 300 más recientes.
+                Los más antiguos no aparecen — avísame para paginar esto.
+              </div>
+            )}
+
+            {/* El único listado del sistema que no tenía buscador */}
+            <form className="card" style={{ display: "flex", gap: 10, padding: 10 }}>
+              <input type="hidden" name="s" value="destacados" />
+              {fd && <input type="hidden" name="fd" value={fd} />}
+              <input name="qd" defaultValue={qd} placeholder="Buscar el caso por título…"
+                style={{ flex: 1, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 10, padding: "8px 12px", outline: "none", fontSize: 13 }} />
+              <button className="btn" type="submit">Buscar</button>
+            </form>
+
+            <PanelFiltros limpiar="/admin?s=destacados" mostrarLimpiar={!!fd || !!qd}>
+              <FilaFiltro titulo="Ver">
+                <Chip href="/admin?s=destacados&fd=fijados" on={fd === "fijados"} color="var(--yellow)"
+                  title="Los que están arriba del feed ahora mismo">
+                  📌 destacados ahora · {cntD("fijados")}
+                </Chip>
+                <Chip href="/admin?s=destacados&fd=sin_fecha" on={fd === "sin_fecha"} color="var(--violet)"
+                  title="Sin fecha límite: nunca van a asomar por sí solos">
+                  📅 sin fecha · {cntD("sin_fecha")}
+                </Chip>
+                <Chip href="/admin?s=destacados&fd=vencidos" on={fd === "vencidos"} color="var(--red)">
+                  ⚠ vencidos · {cntD("vencidos")}
+                </Chip>
+                <Chip href="/admin?s=destacados&fd=avisos" on={fd === "avisos"} color="var(--violet)">
+                  📢 avisos · {cntD("avisos")}
+                </Chip>
+              </FilaFiltro>
+            </PanelFiltros>
+
             <div className="card">
               {lista.map((p: any) => {
                 const d = p.fecha_limite ? dias(p.fecha_limite) : null;
@@ -169,18 +228,25 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
                       background: `${TIPO_COL[p.tipo] || "#8b8ba3"}22`,
                     }}>{p.tipo}</span>
                     <Link href={`/caso/${p.id}`} style={{ fontWeight: 600, fontSize: 12.5 }}>{p.titulo}</Link>
+                    {fijado(p) && (
+                      <span className="badge" title="Está en la cabecera del feed"
+                        style={{ color: "var(--yellow)", background: "rgba(244,180,0,.12)" }}>📌 arriba</span>
+                    )}
                     <span style={{ flex: 1 }} />
-                    {d !== null && (
+                    {d !== null ? (
                       <span style={{ color: d <= 3 ? "var(--red)" : d <= 15 ? "var(--yellow)" : "var(--dim)", fontSize: 11.5, fontWeight: 700 }}>
                         {d < 0 ? `vencido hace ${-d} d` : d === 0 ? "vence hoy" : `en ${d} d`}
-                        {d >= 0 && d <= 15 && " · sube solo"}
                       </span>
+                    ) : (
+                      // Sin fecha, el caso no aparece en ningún radar por su cuenta:
+                      // es justo el que más se pierde, y para el que existe esto.
+                      <span style={{ color: "var(--dim)", fontSize: 11.5 }}>sin fecha</span>
                     )}
                     <BotonDestacar pubId={p.id} hasta={p.destacado_hasta} />
                   </div>
                 );
               })}
-              {!lista.length && <div className="empty">No hay casos vivos.</div>}
+              {!lista.length && <div className="empty">Sin casos con este filtro.</div>}
             </div>
           </>
         );

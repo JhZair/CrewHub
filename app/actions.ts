@@ -2153,9 +2153,20 @@ export async function toggleEnterado(pubId: string) {
     if (error) return { error: error.message };
   }
 
-  // ¿Todo el equipo se enteró? → archivar el aviso
-  const { data: pub } = await supabase.from("publicaciones").select("tipo,estado").eq("id", pubId).single();
-  if (pub?.tipo === "aviso" && !["archivada", "resuelta"].includes(pub.estado)) {
+  /* ¿Se enteró la mayoría? → archivar el aviso… PERO NUNCA si tiene fecha
+     límite por delante.
+     Enterarse no es hacer. Para "mañana no hay luz", que todos lo lean ES el
+     final del asunto. Para "subsanar Pampacucho antes del 20 de julio", no:
+     eso termina cuando alguien subsana. Esta regla archivó un aviso de un
+     fondo de S/ 160,000 a cuatro días de su plazo porque cuatro personas
+     dijeron "ya vi" — y con él se fue del feed, del tablero y de la ronda
+     matutina. Un aviso con fecha límite no es un aviso: es trabajo con reloj,
+     y se archiva a mano cuando el trabajo está hecho. */
+  const { data: pub } = await supabase.from("publicaciones")
+    .select("tipo,estado,fecha_limite").eq("id", pubId).single();
+  const conPlazoVivo = !!pub?.fecha_limite
+    && pub.fecha_limite >= new Date().toISOString().slice(0, 10);
+  if (pub?.tipo === "aviso" && !conPlazoVivo && !["archivada", "resuelta"].includes(pub.estado)) {
     const [{ data: team }, { data: vistos }] = await Promise.all([
       supabase.from("perfiles").select("id").eq("activo", true).neq("nombre", "Bot Qhaway"),
       supabase.from("reacciones").select("usuario_id")

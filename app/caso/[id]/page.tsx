@@ -207,6 +207,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
           userId={user.id}
           enteradosIds={rxPub.filter((r: any) => r.emoji === "👀").map((r: any) => r.usuario_id)}
           equipo={(perfiles || []).filter((x: any) => x.nombre !== "Bot Qhaway")}
+          fechaLimite={p.fecha_limite}
         />
       )}
 
