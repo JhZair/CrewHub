@@ -588,16 +588,28 @@ export async function importarEntidades(entidad: string, filas: Record<string, s
         insertadas++;
         convId = nueva.id;
 
-        /* Cuánto avisa cada hito depende de qué te exige.
-           Todos salían con 7 días: el mismo aviso para «Cierre de
-           postulación» —donde hay que entregar una carpeta— que para
-           «Revisión de postulaciones», donde DAFO revisa y tú miras.
-           Siete días para entregar es poco; siete para mirar es ruido. */
+        /* Cuánto avisa cada hito depende de qué te exige a TI.
+           Estos números salieron de mirar los hitos reales de las bases
+           (db/hitos-anticipacion.sql), no de suponer: todos nacían con 7
+           días, el mismo aviso para entregar una carpeta que para
+           enterarse de que DAFO publicó una lista.
+           Si cambian aquí, hay que correr también el SQL para los ya
+           cargados — y al revés. */
         const anticipacionDe = (nombre: string) => {
           const n = nombre.toLowerCase();
-          if (n.includes("cierre de postulaci")) return 15;   // entregas
-          if (n.includes("evaluaci") || n.includes("jurado")) return 10;  // te presentas
-          return 2;                                            // solo te enteras
+          // Entregas la carpeta. Dos nombres para el mismo día: algunos
+          // concursos lo llaman "Ventana de postulación (cierra 13:00)".
+          if (n.includes("cierre de postulaci") || n.includes("ventana de postulaci")) return 15;
+          // Trámites con fecha tope: RENCA, excepciones, regularizaciones.
+          // Y la ventana de consultas, que es la única chance de preguntarle
+          // a DAFO qué quiso decir en las bases: si nadie se entera, se pierde.
+          if (n.includes("límite") || n.includes("limite")
+              || n.includes("formulaci") && n.includes("consulta")) return 10;
+          /* Todo lo demás solo se mira: apertura, revisión, evaluación,
+             publicación de finalistas, declaración de ganadores. Ojo con
+             "Evaluación / Encuentro con Jurado": el nombre sugiere una
+             reunión, pero en estos concursos es DAFO evaluando sola. */
+          return 2;
         };
         const crearHito = async (nombre: string, d: string) => {
           await supabase.from("cronograma_actividades").insert({

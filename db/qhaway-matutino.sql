@@ -42,9 +42,20 @@ declare
   nueva_pub uuid; autor_defecto uuid; contexto text; es_hito boolean;
   sep text := E'\n' || '━━━━━━━━━━━━━━━━━━━━';
 begin
-  select id into autor_defecto from perfiles where nombre = 'Qhaway' limit 1;
+  /* El bot firma sus obras.
+     Buscaba 'Qhaway' a secas, pero la cuenta se renombró a 'Bot Qhaway'
+     (db/rename-bot-qhaway.sql) y esta función no se enteró: desde ese día
+     caía al respaldo —«el humano activo más antiguo»— y TODOS los casos
+     del cronograma quedaron firmados por esa persona. La bitácora decía
+     "Bot Qhaway creó la publicación" y la ficha decía otra cosa.
+     Ahora acepta los dos nombres. */
+  select id into autor_defecto from perfiles
+   where nombre in ('Bot Qhaway', 'Qhaway') order by nombre limit 1;
+  /* Sin respaldo humano: si el bot no tiene cuenta, que se note. Firmar
+     con el primer humano que aparezca es peor que fallar — le atribuye a
+     alguien un trabajo que no hizo, y nadie lo revisa nunca. */
   if autor_defecto is null then
-    select id into autor_defecto from perfiles where activo order by creado_en limit 1;
+    raise exception 'No existe el perfil del bot (Bot Qhaway). Corre db/rename-bot-qhaway.sql o crea la cuenta.';
   end if;
 
   -- 📅 MATERIALIZACIÓN (hitos de concurso solo si tenemos postulaciones en juego)
