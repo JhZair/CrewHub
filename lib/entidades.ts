@@ -282,6 +282,11 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
       { key: "acta_url", label: "Acta de compromiso (link)", corto: "Acta", valida: "url", grupo: FONDO_POST },
       { key: "fecha_limite_rendicion", label: "Límite de rendición", corto: "Límite rendición", tipo: "date", grupo: FONDO_POST },
       { key: "fecha_prorroga", label: "Prórroga (si existe)", corto: "Prórroga", tipo: "date", grupo: FONDO_POST },
+      /* El plazo dice para cuándo hay que rendir; este dice si se rindió.
+         Mientras esté vacío el fondo sigue abierto y su empresa no aparece
+         libre para postular — antes se deducía del calendario, y el
+         calendario no sabe si alguien entregó algo. */
+      { key: "fecha_rendicion_real", label: "Rendición entregada el (vacío = sigue ejecutando)", corto: "Rendición entregada", tipo: "date", grupo: FONDO_POST },
       { key: "carpeta_drive_url", label: "Carpeta en Drive (link)", corto: "Carpeta Drive", valida: "url", grupo: DOCS_POST },
     ],
   },

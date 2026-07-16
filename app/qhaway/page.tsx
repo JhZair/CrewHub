@@ -6,6 +6,7 @@ import TabsPanel from "@/components/TabsPanel";
 import { alertaSunat, esProblematico, textoSunat } from "@/lib/sunat";
 import { TIPOS_EQUIPO } from "@/lib/personas";
 import { fmtVence, vigenciaVencida } from "@/lib/vigencia";
+import { plazoRendicion } from "@/lib/fondos";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -90,11 +91,18 @@ export default async function Qhaway({ searchParams }: { searchParams: { bit?: s
     supabase.from("personas").select("id,nombre,dni_vencimiento")
       .not("dni_vencimiento", "is", null).lte("dni_vencimiento", en60)
       .order("dni_vencimiento").limit(10),
-    supabase.from("empresas").select("id,nombre,codigo,vigencia_poder_fecha")
+    /* `renca` entra a la consulta porque decide si la vigencia importa: es
+       el papel con que se pide el RENCA, no un requisito del fondo. */
+    supabase.from("empresas").select("id,nombre,codigo,renca,vigencia_poder_fecha")
       .eq("estado", "activa").not("vigencia_poder_fecha", "is", null),
+    /* Rendiciones pendientes de verdad: `fecha_rendicion_real` nula = no se
+       ha entregado. Sin ese filtro, el vigía seguiría reclamando una
+       rendición que ya se presentó — y a la tercera vez nadie le hace caso
+       a nada de lo que dice. */
     supabase.from("postulaciones")
-      .select("id,fecha_limite_rendicion,fecha_prorroga,proy:proyectos(nombre),conv:convocatorias(codigo)")
-      .eq("estado", "ganadora").or("fecha_limite_rendicion.not.is.null,fecha_prorroga.not.is.null"),
+      .select("id,estado,fecha_limite_rendicion,fecha_prorroga,fecha_rendicion_real,proy:proyectos(nombre),conv:convocatorias(codigo)")
+      .eq("estado", "ganadora").is("fecha_rendicion_real", null)
+      .or("fecha_limite_rendicion.not.is.null,fecha_prorroga.not.is.null"),
     // Gente nuestra (lib/personas.ts). Lo demás se filtra abajo en JS: son
     // decenas de filas, y así el vigía y /personas usan la misma función en
     // vez de dos consultas que se contradicen.
@@ -212,15 +220,24 @@ export default async function Qhaway({ searchParams }: { searchParams: { bit?: s
     const avisos: string[] = [];
     if (!p.emp) criticos.push("sin empresa asignada");
     else {
-      if (!p.emp.renca) criticos.push("empresa sin RENCA — obligatorio para postular");
+      /* El RENCA es lo que exige el fondo. La vigencia de poder no: sirve
+         para PEDIR el RENCA, y con el RENCA en mano ya cumplió.
+         Por eso la vigencia solo se nombra cuando falta el RENCA — ahí es el
+         papel que hay que sacar primero. Antes esto marcaba en rojo una
+         postulación de empresa con RENCA porque su vigencia había vencido:
+         reclamaba un trámite que no bloqueaba nada. */
+      if (!p.emp.renca) {
+        criticos.push("empresa sin RENCA — obligatorio para postular");
+        if (!p.emp.vigencia_poder_fecha)
+          avisos.push("sin vigencia de poder — es lo que se necesita para pedir el RENCA");
+        else if (vigenciaVencida(p.emp.vigencia_poder_fecha))
+          avisos.push(`vigencia vencida (${fmtVence(p.emp.vigencia_poder_fecha)}) — renovarla para pedir el RENCA`);
+      }
       if (p.emp.estado_sunat && p.emp.estado_sunat !== "activo")
         criticos.push(`SUNAT: ${p.emp.estado_sunat.replace(/_/g, " ")}`);
       if (p.emp.condicion_sunat === "no_habido") criticos.push("empresa no habida");
       if (!p.emp.fecha_verificacion_sunat || diasDesde(p.emp.fecha_verificacion_sunat) > 60)
         avisos.push("SUNAT sin verificar");
-      if (!p.emp.vigencia_poder_fecha) avisos.push("vigencia de poder sin registrar");
-      else if (vigenciaVencida(p.emp.vigencia_poder_fecha))
-        criticos.push(`vigencia de poder vencida (${fmtVence(p.emp.vigencia_poder_fecha)})`);
     }
     const llenos = Object.values(p.materiales || {}).filter(Boolean).length;
     if (llenos < 10) avisos.push(`materiales ${llenos}/10`);
@@ -239,10 +256,18 @@ export default async function Qhaway({ searchParams }: { searchParams: { bit?: s
   const dormidos = (activasTodas || []).filter((p: any) => !conActividad.has(p.id)).slice(0, 10);
 
   // (El "Pulso del equipo" se movió a la página /pulso)
+  /* Solo las que además NO tienen RENCA. Antes salían todas, y el bot abría
+     un caso pidiendo tramitar una vigencia nueva «antes de la próxima
+     postulación» — a empresas que ya podían postular. Trabajo inventado a
+     partir de una regla falsa, y firmado por el bot, que es peor: nadie
+     discute con el bot. */
   const vigenciasAnejas = (vigenciasTodas || [])
-    .filter((x: any) => vigenciaVencida(x.vigencia_poder_fecha));
+    .filter((x: any) => !x.renca && vigenciaVencida(x.vigencia_poder_fecha));
+  /* La consulta ya excluyó las entregadas. `plazoRendicion` respeta la
+     prórroga sobre el límite original — vive en lib/fondos.ts porque
+     /empresas decide lo mismo y antes cada uno lo escribía a su manera. */
   const rendPronto = (rendiciones || [])
-    .map((r: any) => ({ ...r, f: r.fecha_prorroga || r.fecha_limite_rendicion }))
+    .map((r: any) => ({ ...r, f: plazoRendicion(r) }))
     .filter((r: any) => r.f && diasHasta(r.f) <= 90)
     .sort((a: any, b: any) => (a.f < b.f ? -1 : 1));
   const totalHallazgos = (porVencer?.length || 0) + dormidos.length + (sunatMal?.length || 0)
@@ -385,7 +410,9 @@ export default async function Qhaway({ searchParams }: { searchParams: { bit?: s
       )}
       {vigenciasAnejas.length > 0 && (
         <div className="card" style={{ borderColor: "rgba(244,180,0,.3)" }}>
-          <div className="panel-h" style={{ color: "var(--yellow)" }}>📜 Vigencias de poder con 90+ días</div>
+          <div className="panel-h" style={{ color: "var(--yellow)" }}>
+            📜 Sin RENCA y con la vigencia vencida — no pueden ni pedirlo
+          </div>
           {vigenciasAnejas.map((x: any) => (
             <div className="info-row" key={x.id}>
               <Link href={`/entidad/empresa/${x.id}`} style={{ fontWeight: 600 }}>
@@ -395,7 +422,7 @@ export default async function Qhaway({ searchParams }: { searchParams: { bit?: s
               <span style={{ flex: 1 }} />
               <BotonCasoUrgente
                 titulo={`📜 Renovar vigencia de poder de ${x.nombre}`}
-                cuerpo={`Hallazgo de Bot Qhaway: la vigencia de poder de ${x.nombre} venció el ${fmtVence(x.vigencia_poder_fecha)} (se emitió el ${x.vigencia_poder_fecha} y DAFO la exige con menos de 3 meses). Tramitar una nueva en SUNARP antes de la próxima postulación.`}
+                cuerpo={`Hallazgo de Bot Qhaway: ${x.nombre} no tiene RENCA, y su vigencia de poder venció el ${fmtVence(x.vigencia_poder_fecha)} (se emitió el ${x.vigencia_poder_fecha} y vale 90 días).\n\nSon dos trámites en fila: la vigencia se saca en SUNARP y con ella se pide el RENCA. Sin RENCA la empresa no puede postular a ningún fondo.`}
                 entTipo="empresa" entId={x.id} />
             </div>
           ))}

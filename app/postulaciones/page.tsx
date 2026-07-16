@@ -3,6 +3,9 @@ import Volver from "@/components/Volver";
 import LineaTiempo, { type EventoLT } from "@/components/LineaTiempo";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import { TIPO_COLOR } from "@/lib/entidades";
+// EN_JUEGO y la regla de ejecución viven en lib/fondos.ts: /empresas las
+// tenía escritas aparte, y ya no decían lo mismo.
+import { EN_JUEGO, ejecutando, rendicionVencida, plazoRendicion } from "@/lib/fondos";
 import { buscadorDe, pal } from "@/lib/buscar";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -20,7 +23,6 @@ const dias = (f: string) => Math.ceil((new Date(f + "T12:00:00").getTime() - Dat
 const fmt = (f: string) => new Date(f + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short" });
 const colorD = (d: number) => (d <= 2 ? "var(--red)" : d <= 7 ? "var(--yellow)" : "var(--muted)");
 
-const EN_JUEGO = ["en_preparacion", "enviada", "finalista"];
 const ABIERTOS = ["abierta", "en_progreso", "seguimiento"];
 
 export default async function Postulaciones({ searchParams }: {
@@ -39,7 +41,7 @@ export default async function Postulaciones({ searchParams }: {
 
   const [{ data: postsAll, error: qErr }, { data: vincs }, { data: coms }] = await Promise.all([
     supabase.from("postulaciones")
-      .select("id,codigo,estado,monto_adjudicado,codigo_acta,fecha_limite_rendicion,fecha_prorroga,creado_en,conv:convocatorias(id,codigo,nombre,anio,estado,monto_adjudicado),proy:proyectos(id,nombre,tipo),emp:empresas(id,nombre)")
+      .select("id,codigo,estado,monto_adjudicado,codigo_acta,fecha_limite_rendicion,fecha_prorroga,fecha_rendicion_real,creado_en,conv:convocatorias(id,codigo,nombre,anio,estado,monto_adjudicado),proy:proyectos(id,nombre,tipo),emp:empresas(id,nombre)")
       .order("creado_en", { ascending: false }),
     supabase.from("publicacion_vinculos")
       .select("entidad_id,publicacion_id,pub:publicaciones(estado)").eq("entidad_tipo", "postulacion"),
@@ -75,6 +77,10 @@ export default async function Postulaciones({ searchParams }: {
       && (!p.codigo_acta || !p.monto_adjudicado || !p.fecha_limite_rendicion),
     sin_rendicion: p => p.estado === "ganadora"
       && !p.fecha_limite_rendicion && !p.fecha_prorroga,
+    /* Debiendo: el plazo pasó y no hay entrega. Lo más grave que le puede
+       pasar a la empresa ante DAFO, y hasta hoy no se podía listar porque el
+       sistema lo daba por cerrado. */
+    debiendo: rendicionVencida,
   };
 
   const filtradas = posts.filter((p: any) =>
@@ -99,19 +105,24 @@ export default async function Postulaciones({ searchParams }: {
   const efectividad = decididas > 0 ? Math.round((ganas.length / decididas) * 100) : null;
   const montoHist = ganas.reduce((s: number, g: any) => s + (parseFloat(g.monto_adjudicado) || 0), 0);
   const rutas = enJuego.sort((a: any, b: any) => ((b.conv?.anio || 0) - (a.conv?.anio || 0)));
-  // Ejecución viva = rendición aún no vencida (aunque el concurso esté cerrado)
-  const hoyS = new Date().toISOString().slice(0, 10);
-  const enEjecucion = ganas.filter((g: any) => {
-    const f = g.fecha_prorroga || g.fecha_limite_rendicion;
-    return f ? f >= hoyS : (g.conv && g.conv.estado !== "cerrada");
-  });
+  /* Ejecución viva = ganó y todavía no entregó la rendición (lib/fondos.ts).
+     Aquí había una tercera versión de la misma regla, y era la más rara: sin
+     fecha de rendición miraba si la CONVOCATORIA estaba cerrada, como si el
+     fondo se terminara porque el concurso terminó. Son cosas distintas — el
+     concurso cierra cuando se anuncian los ganadores; el fondo, cuando
+     rindes. Ninguna fecha ni ningún estado ajeno lo puede decir: lo dice la
+     entrega, que ahora se registra. */
+  const enEjecucion = ganas.filter(ejecutando);
   const anios = posts.map((p: any) => p.conv?.anio).filter(Boolean);
   const porAnio = [...new Set(anios)].sort((a: any, b: any) => b - a);
 
   const Fila = (p: any) => {
     const x = act.get(p.id) || VACIO;
-    const rend = p.fecha_prorroga || p.fecha_limite_rendicion;
-    const dRend = p.estado === "ganadora" && rend ? dias(rend) : null;
+    const rend = plazoRendicion(p);
+    /* Solo cuenta los días de las que siguen abiertas: una ganadora ya
+       rendida no «vence» nada, y pintarla en rojo por una fecha vieja manda
+       a alguien a resolver algo que ya está hecho. */
+    const dRend = ejecutando(p) && rend ? dias(rend) : null;
     return (
     <Link key={p.id} href={`/entidad/postulacion/${p.id}`}>
       <div className="card link" style={{ cursor: "pointer", padding: "12px 16px" }}>
@@ -148,14 +159,21 @@ export default async function Postulaciones({ searchParams }: {
         {/* línea 2: su vida en CrewHub+ */}
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 7, fontSize: 11.5 }}>
           {/* La rendición manda: es la única fecha con consecuencia legal */}
+          {p.fecha_rendicion_real && (
+            <span style={{ color: "var(--green)", fontWeight: 700 }}
+              title="Fondo cerrado: la empresa vuelve a estar libre para postular">
+              ✅ rendida el {p.fecha_rendicion_real}
+            </span>
+          )}
           {dRend !== null && (
             <span style={{ fontWeight: 700,
-              color: dRend < 0 ? "var(--red)" : dRend <= 60 ? "var(--yellow)" : "var(--dim)" }}>
+              color: dRend < 0 ? "var(--red)" : dRend <= 60 ? "var(--yellow)" : "var(--dim)" }}
+              title={dRend < 0 ? "El plazo pasó y no hay entrega registrada. Si ya se entregó, ponle la fecha en «Rendición entregada el»." : undefined}>
               🧾 {dRend < 0 ? `rendición vencida hace ${-dRend}d` : `rinde en ${dRend}d`}
               {p.fecha_prorroga ? " (prórroga)" : ""}
             </span>
           )}
-          {p.estado === "ganadora" && !rend && (
+          {ejecutando(p) && !rend && (
             <span style={{ color: "var(--yellow)", fontWeight: 700 }}>⚠ sin fecha de rendición</span>
           )}
           <span style={{ flex: 1 }} />
@@ -225,6 +243,10 @@ export default async function Postulaciones({ searchParams }: {
           ))}
         </FilaFiltro>
         <FilaFiltro titulo="Atención">
+          <Chip href="/postulaciones?f=debiendo" on={f === "debiendo"} color="var(--red)"
+            title="El plazo de rendición pasó y no hay entrega registrada. Mientras siga así, la empresa no puede postular a nada.">
+            🔴 rendición vencida · {cntF("debiendo")}
+          </Chip>
           <Chip href="/postulaciones?f=sin_empresa" on={f === "sin_empresa"} color="var(--red)"
             title="Sin empresa postulante: no puede firmar el acta ni cobrar">
             ⚠ sin empresa · {cntF("sin_empresa")}
@@ -301,9 +323,9 @@ export default async function Postulaciones({ searchParams }: {
             <div className="card">
               <div className="panel-h" style={{ color: "var(--green)" }}>🏆 Ganadoras en ejecución — camino a la rendición</div>
               <LineaTiempo eventos={enEjecucion
-                .filter((g: any) => g.fecha_prorroga || g.fecha_limite_rendicion)
+                .filter(plazoRendicion)
                 .map((g: any): EventoLT => {
-                  const f = g.fecha_prorroga || g.fecha_limite_rendicion;
+                  const f = plazoRendicion(g)!;
                   return {
                     fecha: f,
                     titulo: `Rendición: ${g.proy?.nombre || "Proyecto"}${g.monto_adjudicado ? ` · S/ ${parseFloat(g.monto_adjudicado).toLocaleString("es-PE")}` : ""}${g.fecha_prorroga ? " (prórroga)" : ""}`,
@@ -313,7 +335,7 @@ export default async function Postulaciones({ searchParams }: {
                     href: `/entidad/postulacion/${g.id}`,
                   };
                 })} />
-              {enEjecucion.filter((g: any) => !g.fecha_prorroga && !g.fecha_limite_rendicion).map((g: any) => (
+              {enEjecucion.filter((g: any) => !plazoRendicion(g)).map((g: any) => (
                 <div className="info-row" key={g.id} style={{ marginTop: 6 }}>
                   <Link href={`/entidad/postulacion/${g.id}`} style={{ fontWeight: 600 }}>
                     🏆 {g.proy?.nombre || "Proyecto"} →

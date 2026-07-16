@@ -16,6 +16,7 @@ import CuentaAcceso from "@/components/CuentaAcceso";
 import { BotonVerificarRuc, BotonVerificarDni, BotonRucPersona } from "@/components/VerificarSunat";
 import Alerta from "@/components/Alerta";
 import { urlPlataforma, conPlataforma, PLAT } from "@/lib/plataformas";
+import { rendicionVencida, plazoRendicion } from "@/lib/fondos";
 import BotonFichaSunat from "@/components/BotonFichaSunat";
 import CVs from "@/components/CVs";
 import FotoPersona from "@/components/FotoPersona";
@@ -56,7 +57,7 @@ const CONF: Record<string, { tabla: string; icono: string; campos: [string, stri
   ] },
   equipamiento: { tabla: "equipamiento", icono: "🎥", campos: [["Folio", "folio"], ["Categoría", "categoria"], ["Subcategoría", "subcategoria"], ["Estado", "estado"], ["Valor (S/)", "valor_compra"], ["Comprado en", "comprado_en"]] },
   lugar: { tabla: "lugares", icono: "📍", campos: [] },
-  postulacion: { tabla: "postulaciones", icono: "🎯", campos: [["Código", "codigo"], ["Código plataforma DAFO", "codigo_plataforma"], ["Código del acta", "codigo_acta"], ["Estado", "estado"], ["Lenguas originarias", "lenguas_originarias"], ["Puntaje jurado", "puntaje_jurado"], ["Monto adjudicado (S/)", "monto_adjudicado"], ["Firma del acta", "fecha_firma_acta"], ["Límite de rendición", "fecha_limite_rendicion"], ["Prórroga", "fecha_prorroga"]] },
+  postulacion: { tabla: "postulaciones", icono: "🎯", campos: [["Código", "codigo"], ["Código plataforma DAFO", "codigo_plataforma"], ["Código del acta", "codigo_acta"], ["Estado", "estado"], ["Lenguas originarias", "lenguas_originarias"], ["Puntaje jurado", "puntaje_jurado"], ["Monto adjudicado (S/)", "monto_adjudicado"], ["Firma del acta", "fecha_firma_acta"], ["Límite de rendición", "fecha_limite_rendicion"], ["Prórroga", "fecha_prorroga"], ["Rendición entregada", "fecha_rendicion_real"]] },
   convocatoria: { tabla: "convocatorias", icono: "📜", campos: [["Código", "codigo"], ["Institución", "institucion"], ["Año", "anio"], ["Estado", "estado"], ["Monto del estímulo (S/)", "monto_adjudicado"]] },
   etiqueta: { tabla: "etiquetas", icono: "🏷️", campos: [] },
 };
@@ -597,6 +598,18 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                   !ent.monto_adjudicado && "el monto adjudicado",
                   !ent.fecha_limite_rendicion && "la fecha límite de rendición",
                 ].filter(Boolean);
+                /* El plazo pasó y nadie registró la entrega. Es lo más grave
+                   que le puede pasar a la empresa ante DAFO, y hasta hoy el
+                   sistema lo leía como «fondo cerrado» y la daba por libre
+                   para postular. */
+                /* `verFicha("f", …)` y no `fmtVence`: el segundo le suma 90
+                   días porque nació para las vigencias de poder, y aquí
+                   diría una fecha tres meses más tarde. */
+                if (rendicionVencida(ent)) al.push(
+                  <Alerta key="debe" tono="roja"
+                    titulo={`🧾 La rendición venció el ${verFicha("f", plazoRendicion(ent))} y no hay entrega registrada`}
+                    detalle="Mientras esto siga así, la empresa figura comprometida y no aparece libre para postular. Si ya se entregó, ponle la fecha en «Rendición entregada el» con ✏️ Editar — eso cierra el fondo." />
+                );
                 if (falta.length) al.push(
                   <Alerta key="gan" tono="ambar"
                     titulo={`🏆 Ganadora, pero falta ${falta.join(", ")}`}
@@ -1227,6 +1240,9 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                 ent.fecha_firma_acta && { fecha: ent.fecha_firma_acta, titulo: "Firma del acta de compromiso", icono: "🖋", color: "var(--green)" },
                 ent.fecha_limite_rendicion && { fecha: ent.fecha_limite_rendicion, titulo: `Límite de rendición${ent.fecha_prorroga ? " (original)" : ""}`, icono: "🧾", color: ent.fecha_prorroga ? "#4a4a5e" : "var(--yellow)" },
                 ent.fecha_prorroga && { fecha: ent.fecha_prorroga, titulo: "Límite de rendición (prórroga)", icono: "⏳", color: "var(--yellow)" },
+                /* El final del camino. Sin este hito la ruta terminaba en un
+                   plazo, no en un hecho — y el plazo no dice si se entregó. */
+                ent.fecha_rendicion_real && { fecha: ent.fecha_rendicion_real, titulo: "Rendición entregada — fondo cerrado", icono: "✅", color: "var(--green)" },
               ].filter(Boolean) as any[] : [];
               return (
                 <>

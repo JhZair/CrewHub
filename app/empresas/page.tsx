@@ -5,6 +5,7 @@ import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import { alertaSunat, esNuestra, esProblematico, textoSunat } from "@/lib/sunat";
 import { REL_EMPRESA, EST_EMPRESA } from "@/lib/entidades";
 import { fmtVence, vigenciaVencida } from "@/lib/vigencia";
+import { enJuego, ejecutando, rendicionVencida, rendicionSinPlazo, plazoRendicion, SEL_FONDO } from "@/lib/fondos";
 import { urlPlataforma, PLAT } from "@/lib/plataformas";
 import BotonFichaSunat from "@/components/BotonFichaSunat";
 import { buscadorDe, pal } from "@/lib/buscar";
@@ -56,8 +57,11 @@ export default async function Empresas({ searchParams }: {
     supabase.from("empresas").select("*").order("codigo"),
     supabase.from("publicacion_vinculos")
       .select("entidad_id,publicacion_id,pub:publicaciones(estado)").eq("entidad_tipo", "empresa"),
+    /* SEL_FONDO trae todo lo que necesita la regla. Si faltara
+       `fecha_rendicion_real`, `ejecutando()` leería el hueco como «ya
+       entregó» y la empresa saldría libre sin serlo. */
     supabase.from("postulaciones")
-      .select("id,empresa_id,estado,monto_adjudicado,fecha_limite_rendicion,fecha_prorroga,proy:proyectos(nombre),conv:convocatorias(nombre,anio)")
+      .select(`${SEL_FONDO},proy:proyectos(nombre),conv:convocatorias(nombre,anio)`)
       .not("empresa_id", "is", null),
     supabase.from("comentarios").select("publicacion_id"),
     // El link de SUNAT sale del admin, no del código: si SUNAT lo cambia
@@ -86,36 +90,43 @@ export default async function Empresas({ searchParams }: {
   const todas = emps || [];
   const coincide = buscadorDe(q);   // el mismo motor que el buscador global
 
-  // En concurso = la partida sigue viva (mismo criterio que la ficha)
-  const EN_JUEGO = ["en_preparacion", "enviada", "finalista"];
-  /* Una ganadora sigue ejecutando mientras no venza su rendición (o su
-     prórroga). Pasada esa fecha se asume cerrada: el sistema no registra
-     la rendición efectiva, así que la fecha es el mejor indicio que hay. */
-  const ejecutando = (p: any) => {
-    if (p.estado !== "ganadora") return false;
-    const f = p.fecha_prorroga || p.fecha_limite_rendicion;
-    return !!f && diasDesde(f) <= 0;
-  };
-  const marca = new Map<string, { total: number; ganadas: number; casi: number; monto: number; juego: number; ejec: number }>();
+  /* En juego y ejecutando viven en lib/fondos.ts: la misma regla estaba
+     escrita aquí y en /qhaway, y ya empezaban a no decir lo mismo. */
+  const marca = new Map<string, {
+    total: number; ganadas: number; casi: number; monto: number;
+    juego: number; ejec: number; debe: number; sinPlazo: number;
+  }>();
   (postsEmp || []).forEach((p: any) => {
-    const m = marca.get(p.empresa_id) || { total: 0, ganadas: 0, casi: 0, monto: 0, juego: 0, ejec: 0 };
+    const m = marca.get(p.empresa_id) || { total: 0, ganadas: 0, casi: 0, monto: 0, juego: 0, ejec: 0, debe: 0, sinPlazo: 0 };
     m.total++;
     if (p.estado === "ganadora") { m.ganadas++; m.monto += parseFloat(p.monto_adjudicado) || 0; }
     if (p.estado === "finalista_no_ganadora") m.casi++;
-    if (EN_JUEGO.includes(p.estado)) m.juego++;
+    if (enJuego(p)) m.juego++;
     if (ejecutando(p)) m.ejec++;
+    if (rendicionVencida(p)) m.debe++;        // el plazo pasó y no hay entrega
+    if (rendicionSinPlazo(p)) m.sinPlazo++;   // ganó y nadie cargó para cuándo rinde
     marca.set(p.empresa_id, m);
   });
 
-  /* Libre para postular: sin compromisos vivos Y con los papeles en regla.
-     Cualquier "no" de esta lista la descalifica ante el fondo. */
+  /* La cadena de papeles, en el orden real:
+   *
+   *   vigencia de poder  →  sirve para PEDIR el RENCA
+   *   RENCA              →  sirve para POSTULAR
+   *
+   * La vigencia no es requisito del fondo: es requisito del trámite anterior.
+   * Una vez que el RENCA está, ya cumplió — exigirla para postular era pedir
+   * dos veces el mismo papel, en dos momentos distintos de la cadena.
+   *
+   * No era un detalle: con la regla vieja el sistema decía «1 libre» cuando
+   * había 9 empresas que podían postular hoy mismo. Ocho oportunidades
+   * apagadas por un papel que ya no hacía falta.
+   */
   const libre = (x: any) => {
     const m = marca.get(x.id);
     return x.estado === "activa"
       && !!x.ruc
       && x.estado_sunat === "activo" && x.condicion_sunat === "habido"
       && !!x.renca
-      && !!x.vigencia_poder_fecha && !vigenciaVencida(x.vigencia_poder_fecha)
       && (m?.juego || 0) === 0
       && (m?.ejec || 0) === 0;
   };
@@ -127,26 +138,40 @@ export default async function Empresas({ searchParams }: {
     if (!x.ruc) t.push("sin RUC");
     if (x.estado_sunat !== "activo") t.push("SUNAT no activo");
     if (x.condicion_sunat !== "habido") t.push("no habido");
-    if (!x.renca) t.push("sin RENCA");
-    if (!x.vigencia_poder_fecha) t.push("sin vigencia de poder");
-    else if (vigenciaVencida(x.vigencia_poder_fecha)) t.push("vigencia vencida");
+    /* La vigencia solo se nombra cuando de verdad estorba: sin RENCA, es lo
+       que hay que tener para poder pedirlo. Con RENCA en mano, que esté
+       vencida no impide postular y decirlo sería ruido. */
+    if (!x.renca) {
+      t.push("sin RENCA");
+      if (!x.vigencia_poder_fecha) t.push("sin vigencia para pedir el RENCA");
+      else if (vigenciaVencida(x.vigencia_poder_fecha)) t.push("vigencia vencida para pedir el RENCA");
+    }
     if ((m?.juego || 0) > 0) t.push("en concurso");
-    if ((m?.ejec || 0) > 0) t.push("ejecutando un fondo");
+    /* Comprometida = ya tiene un fondo encima. Se dice distinto según el
+       caso porque lo que hay que hacer es distinto: si va tarde, entregar;
+       si no hay plazo cargado, cargarlo. «Ejecutando» a secas no dice ni
+       una cosa ni la otra. */
+    if ((m?.debe || 0) > 0) t.push("debe una rendición vencida");
+    else if ((m?.sinPlazo || 0) > 0) t.push("ejecutando un fondo, sin plazo cargado");
+    else if ((m?.ejec || 0) > 0) t.push("ejecutando un fondo");
     return t;
   };
-  const enConcurso = (postsEmp || []).filter((p: any) => EN_JUEGO.includes(p.estado));
+  const enConcurso = (postsEmp || []).filter(enJuego);
   const empDe = new Map(todas.map((x: any) => [x.id, x]));
 
   // Filtro por fondos: cada opción con su prueba
-  /* Casi libre: cumple todo salvo la vigencia de poder. No es un descarte,
-     es un trámite de días — vale la pena tenerlas a la vista. */
-  const soloVigencia = (x: any) => {
+  /* A un trámite de distancia: cumple todo menos el RENCA, y tiene la
+     vigencia vigente con la que pedirlo. No es un descarte — es una empresa
+     que puede estar lista para el próximo concurso si alguien mueve el
+     papel. (Si le faltara también la vigencia serían dos trámites, y `trabas`
+     devolvería dos líneas: por eso el largo === 1.) */
+  const puedePedirRenca = (x: any) => {
     const t = trabas(x);
-    return t.length > 0 && t.every(z => z.includes("vigencia"));
+    return t.length === 1 && t[0] === "sin RENCA";
   };
 
   const PRUEBA_F: Record<string, (x: any) => boolean> = {
-    libre: x => libre(x) || soloVigencia(x),
+    libre: x => libre(x) || puedePedirRenca(x),
     juego: x => (marca.get(x.id)?.juego || 0) > 0,
     ejecutando: x => (marca.get(x.id)?.ejec || 0) > 0,
     ganadoras: x => (marca.get(x.id)?.ganadas || 0) > 0,
@@ -184,7 +209,7 @@ export default async function Empresas({ searchParams }: {
     const a = act.get(emp.id) || VACIO;
     const m = marca.get(emp.id);
     const esLibre = libre(emp);
-    const casi = !esLibre && soloVigencia(emp);   // candidata: apagada, no descartada
+    const casi = !esLibre && puedePedirRenca(emp);   // candidata: apagada, no descartada
     const alerta = alertaSunat(emp);
     return (
       <Link key={emp.id} href={`/entidad/empresa/${emp.id}`}>
@@ -200,19 +225,34 @@ export default async function Empresas({ searchParams }: {
             {emp.tipo && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{emp.tipo}</span>}
             {/* Lista para postular, o candidata a un trámite de distancia */}
             {esLibre && (
-              <span className="badge" title="Cumple todo: puede postular ya"
+              <span className="badge" title="RUC y SUNAT en regla, RENCA en mano y sin compromisos vivos: puede postular ya"
                 style={{ color: "var(--green)", background: "rgba(46,204,113,.14)", fontWeight: 700 }}>
                 ✅ libre para postular
               </span>
             )}
             {casi && (
-              <span className="badge" title="Cumple todo lo demás: basta sacar la vigencia de poder"
+              <span className="badge" title="Cumple todo lo demás y tiene la vigencia de poder vigente: falta tramitar el RENCA"
                 style={{ color: "var(--yellow)", background: "rgba(244,180,0,.12)", fontWeight: 700 }}>
-                📜 solo falta la vigencia
+                📋 puede pedir el RENCA
               </span>
             )}
-            {m && m.ejec > 0 && (
-              <span className="badge" title="Tiene un fondo ganado con rendición pendiente"
+            {/* Debiendo: el plazo pasó y nadie registró la entrega. Antes esto
+                era invisible —se daba por cerrada— y es justo lo que impide
+                postular. En rojo, delante de todo. */}
+            {m && m.debe > 0 && (
+              <span className="badge" title="El plazo de rendición pasó y no hay entrega registrada. Si ya se entregó, ponle la fecha en la postulación."
+                style={{ color: "var(--red)", background: "rgba(255,77,94,.14)", fontWeight: 700 }}>
+                🔴 rendición vencida
+              </span>
+            )}
+            {m && m.debe === 0 && m.sinPlazo > 0 && (
+              <span className="badge" title="Ganó un fondo y nadie cargó para cuándo debe rendir. Falta el dato — antes esto la dejaba pasar como libre."
+                style={{ color: "var(--yellow)", background: "rgba(244,180,0,.12)" }}>
+                🎬 ejecutando · sin plazo
+              </span>
+            )}
+            {m && m.debe === 0 && m.sinPlazo === 0 && m.ejec > 0 && (
+              <span className="badge" title="Tiene un fondo ganado con rendición pendiente, en plazo"
                 style={{ color: "var(--teal)", background: "rgba(45,212,191,.12)" }}>🎬 ejecutando</span>
             )}
             {/* En concurso: la partida sigue viva, es lo más accionable */}
@@ -338,9 +378,9 @@ export default async function Empresas({ searchParams }: {
         </FilaFiltro>
         <FilaFiltro titulo="Fondos">
           <Chip href="/empresas?f=libre" on={f === "libre"} color="var(--green)"
-            title="Listas: cumplen todo. El +N son candidatas a las que solo les falta sacar la vigencia de poder">
+            title="Listas: RENCA en mano, papeles en regla y sin compromisos vivos. El +N son las que solo necesitan tramitar el RENCA — ya tienen la vigencia de poder con que pedirlo">
             ✅ libres para postular · {todas.filter(libre).length}
-            {todas.filter(soloVigencia).length > 0 && ` +${todas.filter(soloVigencia).length}`}
+            {todas.filter(puedePedirRenca).length > 0 && ` +${todas.filter(puedePedirRenca).length}`}
           </Chip>
           <Chip href="/empresas?f=juego" on={f === "juego"} color="var(--violet)">
             ⏳ en concurso · {cntF("juego")}
@@ -424,13 +464,19 @@ export default async function Empresas({ searchParams }: {
           )}
 
           {(() => {
-            // Vigencia de poder: DAFO suele exigirla con < 3 meses de emisión
+            /* Vigencia vencida Y sin RENCA: ahí sí bloquea, y bloquea dos
+               veces. La vigencia es el papel con que se pide el RENCA, y sin
+               RENCA no se postula — o sea, dos trámites en fila y el primero
+               caducado.
+               Antes esta alerta salía para toda vigencia vencida y decía
+               «renovar antes de postular». Era falso: con el RENCA en mano
+               se postula igual. Reclamaba un papel que ya cumplió. */
             const anejas = todas.filter((x: any) =>
-              nosCompete(x) && vigenciaVencida(x.vigencia_poder_fecha));
+              nosCompete(x) && !x.renca && vigenciaVencida(x.vigencia_poder_fecha));
             return anejas.length > 0 && (
               <div className="card" style={{ borderColor: "rgba(244,180,0,.35)" }}>
                 <div className="panel-h" style={{ color: "var(--yellow)" }}>
-                  📜 Vigencias de poder vencidas — renovar antes de postular
+                  📜 Vigencia vencida y sin RENCA — hay que renovarla para poder pedirlo
                 </div>
                 {anejas.map((x: any) => (
                   <div className="info-row" key={x.id}>

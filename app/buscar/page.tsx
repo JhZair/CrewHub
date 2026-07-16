@@ -10,6 +10,7 @@ import { fechaLarga, haceOEn } from "@/lib/fechas";
 import { rucDePersona } from "@/lib/ruc";
 import { urlPlataforma, platPorNombre, PLAT } from "@/lib/plataformas";
 import { aplicarPlantilla } from "@/lib/puertas";
+import { ejecutando } from "@/lib/fondos";
 import BotonFichaSunat from "@/components/BotonFichaSunat";
 import Volver from "@/components/Volver";
 import BuscadorGlobal from "@/components/BuscadorGlobal";
@@ -40,12 +41,14 @@ const ANIO = new Date().getFullYear();
 const HOY_S = new Date().toISOString().slice(0, 10);
 
 /* ¿Queda algo por rendir? Es lo único que mantiene viva a una ganadora vieja:
-   mientras el plazo no venza, el fondo sigue encima aunque el concurso sea
-   de hace dos años. */
-const rendicionPendiente = (p: any) => {
-  const f = p.fecha_prorroga || p.fecha_limite_rendicion;
-  return p.estado === "ganadora" && !!f && f >= HOY_S;
-};
+   mientras no se entregue, el fondo sigue encima aunque el concurso sea de
+   hace dos años.
+
+   Antes esto era «mientras el plazo no venza», y se le daba la vuelta al
+   revés: una rendición vencida y sin entregar —la peor situación posible
+   ante DAFO— se apagaba como historia justo el día que empezaba a doler. La
+   regla vive en lib/fondos.ts, donde también la leen /empresas y /qhaway. */
+const rendicionPendiente = ejecutando;
 
 /* Una postulación de edición pasada es historia… salvo que aún le deba una
    rendición al Estado. El año solo no alcanza: mide cuándo empezó, no si
@@ -133,7 +136,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
       supabase.from("lugares").select("id,nombre"),
       supabase.from("convocatorias").select("id,codigo,nombre,anio,estado"),
       supabase.from("postulaciones")
-        .select("id,codigo,codigo_plataforma,codigo_acta,estado,feedback_jurado,acta_url,matriz_jurado_url,carpeta_drive_url,monto_adjudicado,fecha_limite_rendicion,fecha_prorroga,proy:proyectos(nombre),conv:convocatorias(codigo,nombre,anio)"),
+        .select("id,codigo,codigo_plataforma,codigo_acta,estado,feedback_jurado,acta_url,matriz_jurado_url,carpeta_drive_url,monto_adjudicado,fecha_limite_rendicion,fecha_prorroga,fecha_rendicion_real,proy:proyectos(nombre),conv:convocatorias(codigo,nombre,anio)"),
       /* Los datos sueltos de cada cuenta (código de afiliación, correo de
          recuperación, N° de contrato...) son justo lo que uno viene a
          buscar meses después. Estaban guardados y no se buscaban. */
