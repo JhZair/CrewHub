@@ -203,9 +203,6 @@ export default async function Convocatorias({ searchParams }: {
       {!listar && (() => {
         // La cancha, no el partido: temporada actual y frentes por CONCURSO
         // (el detalle por postulación vive en 🎯)
-        const anioActual = new Date().getFullYear();
-        const temporada = todas.filter((c: any) => c.anio === anioActual);
-        const abiertos = todas.filter((c: any) => c.estado === "postulacion");
         const frentes = new Map<string, { conv: any; n: number }>();
         enJuego.forEach((p: any) => {
           if (!p.conv) return;
@@ -217,15 +214,10 @@ export default async function Convocatorias({ searchParams }: {
           (hitos || []).find((h: any) => h.convocatoria_id === cid)?.fecha_inicio;
         return (
           <>
+            {/* «temporada 2026» y «en proceso ahora» eran filtros disfrazados
+                de tarjeta: ahora son chips en el panel, con el resto. Aquí
+                queda lo que solo informa. */}
             <div className="stat-grid">
-              <Link href={`/convocatorias?a=${anioActual}`} className="stat-card">
-                <div className="stat-n" style={{ color: "var(--violet)" }}>{temporada.length}</div>
-                <div className="stat-l">📜 concursos temporada {anioActual}</div>
-              </Link>
-              <Link href="/convocatorias?e=postulacion" className="stat-card">
-                <div className="stat-n" style={{ color: "var(--blue)" }}>{abiertos.length}</div>
-                <div className="stat-l">🔔 en proceso ahora</div>
-              </Link>
               <span className="stat-card" style={{ display: "block" }}>
                 <span className="stat-n" style={{ color: "var(--yellow)", display: "block" }}>{frentes.size}</span>
                 <span className="stat-l">🎪 frentes donde jugamos</span>

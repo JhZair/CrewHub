@@ -6,9 +6,19 @@ import { useEffect, useRef } from "react";
 /* Escucha cambios en las tablas indicadas y refresca la vista.
    El token viene del servidor (que sí tiene la sesión) para que
    el canal se autentique y las políticas RLS entreguen eventos. */
-export default function Realtime({ tablas, token }: { tablas: string[]; token?: string }) {
+export default function Realtime({ tablas, token, cadaSegundos }: {
+  tablas: string[]; token?: string;
+  cadaSegundos?: number;  // refresco de respaldo (TV): por si el canal se cae o la tabla no publica eventos
+}) {
   const router = useRouter();
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!cadaSegundos) return;
+    const int = setInterval(() => router.refresh(), cadaSegundos * 1000);
+    return () => clearInterval(int);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cadaSegundos]);
 
   useEffect(() => {
     const supabase = createClient();

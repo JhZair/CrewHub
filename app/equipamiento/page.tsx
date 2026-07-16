@@ -153,8 +153,17 @@ export default async function Equipamiento({ searchParams }: {
         <button className="btn" type="submit">Buscar</button>
       </form>
 
-      {/* El estado sigue en las tarjetas de arriba: no se duplica aquí */}
       <PanelFiltros limpiar="/equipamiento" mostrarLimpiar={listar}>
+        <FilaFiltro titulo="Estado">
+          {Object.entries(EST_META).map(([est, [lbl, col]]) => {
+            const n = cnt(est);
+            return n === 0 ? null : (
+              <Chip key={est} href={`/equipamiento?e=${est}`} on={e === est} color={col}>
+                {lbl} · {n}
+              </Chip>
+            );
+          })}
+        </FilaFiltro>
         <FilaFiltro titulo="Categoría">
           {[...porCat.entries()].sort((a, b) => b[1] - a[1]).map(([cat, n]) => (
             <Chip key={cat} href={`/equipamiento?c=${encodeURIComponent(cat)}`}
@@ -183,18 +192,12 @@ export default async function Equipamiento({ searchParams }: {
 
       {!listar && (
         <>
+          {/* Solo lo que informa: los conteos por estado y la ronda son
+              filtros y viven arriba, en el panel.
+              El total suma únicamente lo que tiene precio cargado; si faltan
+              muchos, el número es una fracción y hay que decirlo. */}
           <div className="stat-grid">
-            {Object.entries(EST_META).map(([est, [lbl, col]]) => (
-              <Link key={est} href={`/equipamiento?e=${est}`} className="stat-card">
-                <div className="stat-n" style={{ color: col }}>{cnt(est)}</div>
-                <div className="stat-l">{lbl}</div>
-              </Link>
-            ))}
-            {/* El total suma solo lo que tiene precio cargado. Si faltan
-                muchos, el número es una fracción de la realidad — y eso se
-                dice aquí, no se deja creer. */}
-            <Link href="/equipamiento?f=sin_valor" className="stat-card"
-              style={{ display: "block" }}>
+            <span className="stat-card" style={{ display: "block" }}>
               <span className="stat-n" style={{ color: "var(--teal)", fontSize: 19, display: "block" }}>
                 S/ {Math.round(valorTotal).toLocaleString("es-PE")}
               </span>
@@ -206,14 +209,11 @@ export default async function Equipamiento({ searchParams }: {
                   </b>
                 )}
               </span>
-            </Link>
-            <Link href="/equipamiento?ronda=1" className="stat-card"
-              style={pendientesRonda > 0 ? { borderColor: "rgba(244,180,0,.4)" } : undefined}>
-              <div className="stat-n" style={{ color: pendientesRonda > 0 ? "var(--yellow)" : "var(--green)" }}>
-                {pendientesRonda}
-              </div>
-              <div className="stat-l">🔍 por comprobar (90+ días)</div>
-            </Link>
+            </span>
+            <span className="stat-card" style={{ display: "block" }}>
+              <span className="stat-n" style={{ color: "var(--yellow)", display: "block" }}>{(enManos || []).length}</span>
+              <span className="stat-l">🤝 en manos de alguien ahora</span>
+            </span>
           </div>
 
           {(enManos || []).length > 0 && (

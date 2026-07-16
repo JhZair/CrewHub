@@ -431,6 +431,24 @@ input[type=file]{color:var(--muted);font-size:12.5px}
 .tv-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
 .tv-hora{color:var(--dim);font-size:13px;white-space:nowrap}
 
+/* ===== TV renovada: marcador, countdown DAFO, pulso ===== */
+.tv-cols3{display:grid;grid-template-columns:1.15fr 1.2fr 1fr;gap:34px;flex:1}
+.tv-cols3>div{min-width:0}
+.tv-marc{display:flex;gap:16px;align-items:center;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:10px 22px}
+.tv-marc .m-item{font-size:15px;white-space:nowrap}
+.tv-marc .m-item b{font-size:24px;font-weight:800;margin:0 2px}
+.tv-marc .m-sep{width:1px;height:26px;background:var(--border)}
+.tv-hito{background:var(--card);border:1px solid var(--border);border-left:4px solid var(--violet);border-radius:16px;padding:16px 20px;margin-bottom:10px;display:flex;gap:18px;align-items:center}
+.tv-hito .dias{font-size:44px;font-weight:800;line-height:1;min-width:92px;text-align:center}
+.tv-hito .dias small{display:block;font-size:12px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;margin-top:3px;color:var(--dim)}
+.tv-hito .que{flex:1;min-width:0}
+.tv-hito .que b{display:block;font-size:17.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tv-hito .que span{color:var(--muted);font-size:13px}
+.tv-pulso{display:flex;align-items:center;gap:12px;padding:7px 0;font-size:16px}
+.tv-pulso .n{width:76px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tv-pulso .bar{flex:1;height:10px;background:var(--card);border:1px solid var(--border);border-radius:6px;overflow:hidden}
+.tv-pulso .bar i{display:block;height:100%;background:linear-gradient(90deg,#3b82f6,#7c5cff);border-radius:6px}
+
 /* ===== Formulario de entidades ===== */
 .f-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;margin-top:14px}
 .f-campo{display:flex;flex-direction:column;gap:5px;font-size:11.5px;color:var(--dim)}

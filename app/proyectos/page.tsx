@@ -150,8 +150,19 @@ export default async function Proyectos({ searchParams }: {
         <button className="btn" type="submit">Buscar</button>
       </form>
 
-      {/* La etapa no va aquí: las tarjetas de arriba ya son ese filtro */}
       <PanelFiltros limpiar="/proyectos" mostrarLimpiar={listar}>
+        {/* La etapa es un filtro, así que vive aquí. Estaba arriba como
+            tarjetas grandes: el mismo trabajo con otro idioma visual. */}
+        <FilaFiltro titulo="Etapa">
+          {ETAPAS.map(([x, lbl]) => {
+            const n = cntEt(x);
+            return n === 0 ? null : (
+              <Chip key={x} href={`/proyectos?et=${x}`} on={et === x} color={ETAPA_COLOR[x]}>
+                {lbl} · {n}
+              </Chip>
+            );
+          })}
+        </FilaFiltro>
         <FilaFiltro titulo="Tipo">
           {tipos.map((tt: any) => (
             <Chip key={tt} href={`/proyectos?t=${tt}`} on={t === tt} color={TIPO_COLOR[tt]}>
@@ -185,15 +196,6 @@ export default async function Proyectos({ searchParams }: {
 
       {!listar && (
         <>
-          <div className="stat-grid">
-            {ETAPAS.map(([x, lbl]) => (
-              <Link key={x} href={`/proyectos?et=${x}`} className="stat-card">
-                <div className="stat-n" style={{ color: ETAPA_COLOR[x] }}>{cntEt(x)}</div>
-                <div className="stat-l">{lbl}</div>
-              </Link>
-            ))}
-          </div>
-
           {bloqueados.length > 0 && (
             <div className="card" style={{ borderColor: "rgba(255,77,94,.4)" }}>
               <div className="panel-h" style={{ color: "var(--red)" }}>🚧 Bloqueados — necesitan destrabe</div>

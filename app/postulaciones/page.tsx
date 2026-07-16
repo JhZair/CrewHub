@@ -193,10 +193,17 @@ export default async function Postulaciones({ searchParams }: {
         <button className="btn" type="submit">Buscar</button>
       </form>
 
-      {/* El estado no va aquí: las tarjetas de arriba ya son ese filtro, y
-          además traen efectividad y monto ganado. Repetirlo en chips sería
-          el mismo error que los atajos duplicados de la nav. */}
       <PanelFiltros limpiar="/postulaciones" mostrarLimpiar={listar}>
+        <FilaFiltro titulo="Estado">
+          {Object.entries(EST_META).map(([k, [lbl, col]]) => {
+            const n = cnt(k);
+            return n === 0 ? null : (
+              <Chip key={k} href={`/postulaciones?e=${k}`} on={e === k} color={col}>
+                {lbl} · {n}
+              </Chip>
+            );
+          })}
+        </FilaFiltro>
         <FilaFiltro titulo="Año del concurso">
           {porAnio.map((y: any) => (
             <Chip key={y} href={`/postulaciones?a=${y}`} on={a === String(y)} color="var(--violet)">
@@ -229,18 +236,24 @@ export default async function Postulaciones({ searchParams }: {
 
       {!listar && (
         <>
+          {/* Solo lo que informa: los conteos por estado son filtros y viven
+              arriba, en el panel. Esto no filtra nada — es el marcador. */}
           <div className="stat-grid">
-            {(["en_preparacion", "enviada", "finalista", "ganadora", "finalista_no_ganadora", "no_seleccionada"] as const).map(est => (
-              <Link key={est} href={`/postulaciones?e=${est}`} className="stat-card">
-                <div className="stat-n" style={{ color: EST_META[est][1] }}>{cnt(est)}</div>
-                <div className="stat-l">{EST_META[est][0]}</div>
-              </Link>
-            ))}
             <span className="stat-card" style={{ display: "block" }}>
               <span className="stat-n" style={{ color: "var(--teal)", fontSize: 19, display: "block" }}>
                 {efectividad != null ? `${efectividad}%` : "—"}
               </span>
-              <span className="stat-l">efectividad · S/ {montoHist.toLocaleString("es-PE")} ganado</span>
+              <span className="stat-l">efectividad · {ganas.length} de {decididas} decididas</span>
+            </span>
+            <span className="stat-card" style={{ display: "block" }}>
+              <span className="stat-n" style={{ color: "var(--teal)", fontSize: 19, display: "block" }}>
+                S/ {montoHist.toLocaleString("es-PE")}
+              </span>
+              <span className="stat-l">🏆 ganado en total</span>
+            </span>
+            <span className="stat-card" style={{ display: "block" }}>
+              <span className="stat-n" style={{ color: "var(--blue)", display: "block" }}>{enJuego.length}</span>
+              <span className="stat-l">🎯 en juego ahora</span>
             </span>
           </div>
 
