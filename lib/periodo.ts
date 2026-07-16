@@ -36,6 +36,11 @@ export function desdeDe(p: Periodo): string | null {
 export const diaLima = (iso: string) =>
   new Date(new Date(iso).getTime() - LIMA_OFFSET_MS).toISOString().slice(0, 10);
 
+/* Hora local (0-23) en Cusco. Con la hora del servidor daría todo corrido
+   cinco horas: el equipo parecería trabajar de madrugada. */
+export const horaLima = (iso: string) =>
+  new Date(new Date(iso).getTime() - LIMA_OFFSET_MS).getUTCHours();
+
 export const rotuloDia = (dia: string) => {
   const hoy = diaLima(new Date().toISOString());
   const ayer = diaLima(new Date(Date.now() - 86400000).toISOString());

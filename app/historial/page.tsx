@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import EventoHistorial, { icoDe, type Evento } from "@/components/EventoHistorial";
-import { PERIODOS, desdeDe, diaLima, rotuloDia, type Periodo } from "@/lib/periodo";
+import { PERIODOS, desdeDe, diaLima, horaLima, rotuloDia, type Periodo } from "@/lib/periodo";
 import { ICO_ENT, TABLA_DE } from "@/lib/secciones";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -90,6 +90,22 @@ export default async function HistorialTodo({ searchParams }: {
     (!filtroEnt || x.entidad_tipo === filtroEnt) &&
     (!filtroActor || (x.actor?.nombre || "🤖 Bot Qhaway") === filtroActor));
 
+  /* A qué hora se trabaja. El bot va aparte dentro de cada barra: escribe
+     decenas de eventos de una sentada en su ronda de las 7:30, y mezclado
+     dibujaría un pico que nadie trabajó. Separarlo hace que la barra diga
+     dos cosas ciertas en vez de una falsa. */
+  const HORAS = Array.from({ length: 24 }, (_, h) => h);
+  const porHora = HORAS.map(h => ({ h, humano: 0, bot: 0 }));
+  lista.forEach((x: any) => {
+    const c = porHora[horaLima(x.creado_en)];
+    if (x.actor) c.humano++; else c.bot++;
+  });
+  const pico = Math.max(1, ...porHora.map(x => x.humano + x.bot));
+  const horaAhora = horaLima(new Date().toISOString());
+  const totalHum = porHora.reduce((s, x) => s + x.humano, 0);
+  // La hora más viva del equipo (sin contar al bot): el dato que cuenta algo
+  const horaTop = [...porHora].sort((a, b) => b.humano - a.humano)[0];
+
   // Por jornadas, no 500 filas seguidas
   const dias: [string, Evento[]][] = [];
   lista.forEach(x => {
@@ -166,6 +182,43 @@ export default async function HistorialTodo({ searchParams }: {
           </span>
         )}
       </div>
+
+      {lista.length > 0 && (
+        <div className="card">
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+            <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 1.2, color: "var(--dim)", fontWeight: 700 }}>
+              🕗 A qué hora se trabaja
+            </span>
+            {totalHum > 0 && horaTop.humano > 0 && (
+              <span style={{ color: "var(--muted)", fontSize: 11.5 }}>
+                más movimiento a las <b style={{ color: "var(--teal)" }}>{String(horaTop.h).padStart(2, "0")}:00</b>
+              </span>
+            )}
+            <span style={{ flex: 1 }} />
+            <span style={{ display: "flex", gap: 10, fontSize: 10.5, color: "var(--dim)" }}>
+              <span><i className="hg-mx hg-hum" /> equipo</span>
+              <span><i className="hg-mx hg-bot" /> Qhaway</span>
+            </span>
+          </div>
+          <div className="hg">
+            {porHora.map(({ h, humano, bot }) => {
+              const total = humano + bot;
+              return (
+                <span key={h} className={`hg-col${h === horaAhora ? " ahora" : ""}`}
+                  title={`${String(h).padStart(2, "0")}:00 — ${humano} del equipo${bot ? ` · ${bot} de Qhaway` : ""}`}>
+                  <span className="hg-barra">
+                    {/* El bot abajo, el equipo arriba: lo que importa queda a la vista */}
+                    <span className="hg-bot" style={{ height: `${(bot / pico) * 100}%` }} />
+                    <span className="hg-hum" style={{ height: `${(humano / pico) * 100}%` }} />
+                  </span>
+                  {/* Solo cada 3 horas: 24 números no se leen */}
+                  <span className="hg-h">{h % 3 === 0 ? String(h).padStart(2, "0") : ""}</span>
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {!lista.length && (
         <div className="empty">
