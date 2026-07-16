@@ -588,13 +588,24 @@ export async function importarEntidades(entidad: string, filas: Record<string, s
         insertadas++;
         convId = nueva.id;
 
+        /* Cuánto avisa cada hito depende de qué te exige.
+           Todos salían con 7 días: el mismo aviso para «Cierre de
+           postulación» —donde hay que entregar una carpeta— que para
+           «Revisión de postulaciones», donde DAFO revisa y tú miras.
+           Siete días para entregar es poco; siete para mirar es ruido. */
+        const anticipacionDe = (nombre: string) => {
+          const n = nombre.toLowerCase();
+          if (n.includes("cierre de postulaci")) return 15;   // entregas
+          if (n.includes("evaluaci") || n.includes("jurado")) return 10;  // te presentas
+          return 2;                                            // solo te enteras
+        };
         const crearHito = async (nombre: string, d: string) => {
           await supabase.from("cronograma_actividades").insert({
             convocatoria_id: convId, nombre,
             clase: "hito_externo", etapa: "administracion",
             fecha_inicio: d, fecha_fin: d,
             estado: d <= hoyS ? "finalizada" : "planificada",
-            dias_anticipacion: 7,
+            dias_anticipacion: anticipacionDe(nombre),
           });
           hitosCreados++;
         };

@@ -87,13 +87,17 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
     supabase.from("lugares").select("id,nombre").order("nombre"),
     supabase.from("etiquetas").select("id,nombre").order("nombre"),
     supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
-    /* Cabecera del feed: lo que de verdad corre. Entra por dos vías —
-       destacado a mano por administración (vigente), o fecha límite
-       encima. Ambas caducan solas: nada que desdestacar. */
+    /* Cabecera del feed: SOLO lo que administración clavó a mano.
+       Antes también subía cualquier caso con la fecha límite a menos de 15
+       días, y eso no destacaba nada: esos casos ya están en el feed, en el
+       tablero, en el mensaje de Chat y con su chip rojo de vencimiento.
+       Subirlos aquí era repetirlos, y de paso le quitaba peso al ⭐ para
+       cuando de verdad hace falta clavar algo. Si todo destaca, nada destaca.
+       Sigue caducando solo: nada que desdestacar. */
     supabase.from("publicaciones")
       .select("id,tipo,titulo,estado,fecha_limite,destacado_hasta,resp:perfiles!publicaciones_responsable_fkey(nombre)")
       .in("estado", ["abierta", "en_progreso", "seguimiento"])
-      .or(`destacado_hasta.gt.${new Date().toISOString()},and(fecha_limite.gte.${new Date().toISOString().slice(0, 10)},fecha_limite.lte.${new Date(Date.now() + 15 * 86400000).toISOString().slice(0, 10)})`)
+      .gt("destacado_hasta", new Date().toISOString())
       .order("fecha_limite", { ascending: true, nullsFirst: false })
       .limit(5),
     (() => {
@@ -334,8 +338,9 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
         <Link href="/qhaway" title="Ver mi bitácora">bitácora →</Link>
       </div>
 
-      {/* Lo que corre: sube solo por fecha límite cercana, o lo sube
-          administración. En ambos casos baja solo. */}
+      {/* Lo que corre: lo clava administración, y baja solo al caducar.
+          Vacío es el estado normal — solo aparece cuando alguien decidió
+          que algo no se puede perder. */}
       {(destQ.data || []).length > 0 && (
         <div className="card" style={{ borderColor: "rgba(244,180,0,.35)", background: "rgba(244,180,0,.03)", padding: "8px 14px 10px" }}>
           <div style={{ fontSize: 9.5, textTransform: "uppercase", letterSpacing: 1.2, color: "var(--yellow)", fontWeight: 700, marginBottom: 2 }}>
@@ -354,10 +359,9 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
                     background: `${(TIPO_META[p.tipo] || TIPO_META.conversacion)[1]}22`,
                   }}>{(TIPO_META[p.tipo] || TIPO_META.conversacion)[0]}</span>
                   <b style={{ fontSize: 13, color: "var(--text)" }}>{p.titulo}</b>
-                  {p.destacado_hasta && new Date(p.destacado_hasta) > new Date() && (
-                    <span className="badge" title="Destacado por administración"
-                      style={{ color: "var(--yellow)", background: "rgba(244,180,0,.12)" }}>📌</span>
-                  )}
+                  {/* El 📌 servía para separar lo clavado a mano de lo que
+                      subía solo por fecha. Ya no sube nada solo: todo lo de
+                      aquí lo puso administración, y marcarlo todo no marca. */}
                   <span style={{ flex: 1 }} />
                   {(p.resp as any)?.nombre && (
                     <span className="tv-resp">{(p.resp as any).nombre.split(" ")[0]}</span>
