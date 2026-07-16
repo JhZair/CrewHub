@@ -5,6 +5,7 @@ import { FORM_CONF, nombreCorto } from "@/lib/entidades";
 import { nrmQ } from "@/lib/quechua";
 import { procesarSunatEmpresa, correrRondaSunat, consultarRucApi } from "@/lib/sunat";
 import { rucDePersona } from "@/lib/ruc";
+import { TOKEN } from "@/lib/puertas";
 
 /* Crear o actualizar una entidad núcleo (proyecto/empresa/persona).
    La config compartida actúa como whitelist de tabla y campos. */
@@ -1280,6 +1281,7 @@ export async function desenlazarCuenta(personaId: string) {
    la heredan: cambiar la puerta de DAFO es un solo cambio, no seis. */
 export async function guardarPlataforma(f: {
   id?: string; nombre: string; url: string; requiereCuenta: boolean; notas: string;
+  plantillaUrl?: string;
 }) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -1293,7 +1295,22 @@ export async function guardarPlataforma(f: {
   if (url && !/^https?:\/\/\S+$/.test(url))
     return { error: "El link debe ser completo (https://…)." };
 
-  const fila = { nombre, url: url || null, requiere_cuenta: f.requiereCuenta, notas: f.notas.trim() || null };
+  /* La plantilla arma el link con el usuario de cada credencial: Gmail con
+     seis cuentas necesita seis puertas y ninguna se guarda. Sin el hueco
+     {usuario} no hay nada que reemplazar — y una plantilla que no reemplaza
+     nada manda a todos al mismo sitio creyendo que van al suyo. */
+  const plantilla = (f.plantillaUrl || "").trim();
+  if (plantilla) {
+    if (!/^https?:\/\/\S+$/.test(plantilla))
+      return { error: "La plantilla debe ser un link completo (https://…)." };
+    if (!plantilla.includes(TOKEN))
+      return { error: `A la plantilla le falta ${TOKEN} — es el hueco donde entra el usuario de cada cuenta.` };
+  }
+
+  const fila = {
+    nombre, url: url || null, requiere_cuenta: f.requiereCuenta,
+    notas: f.notas.trim() || null, plantilla_url: plantilla || null,
+  };
   const { data, error } = f.id
     ? await supabase.from("plataformas").update(fila).eq("id", f.id).select("id").maybeSingle()
     : await supabase.from("plataformas").insert(fila).select("id").maybeSingle();

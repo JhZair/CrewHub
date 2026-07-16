@@ -9,6 +9,7 @@ import { fmtVence, venceVigencia, vigenciaVencida } from "@/lib/vigencia";
 import { fechaLarga, haceOEn } from "@/lib/fechas";
 import { rucDePersona } from "@/lib/ruc";
 import { urlPlataforma, platPorNombre, PLAT } from "@/lib/plataformas";
+import { aplicarPlantilla } from "@/lib/puertas";
 import BotonFichaSunat from "@/components/BotonFichaSunat";
 import Volver from "@/components/Volver";
 import BuscadorGlobal from "@/components/BuscadorGlobal";
@@ -307,11 +308,13 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
            afiliación y te sale una fila «DAFO-Estímulos» sin decirte que lo
            encontró — y no sabrías si es lo que buscabas. */
         const golpes = (c.datos || []).filter((d: any) => coincide(`${d.etiqueta} ${d.valor}`));
-        /* El link se resuelve aquí, no se copió al guardar: si la credencial
-           no tiene uno propio, es el de su plataforma. Un solo sitio manda. */
+        /* El link se resuelve aquí, no se copió al guardar. Propia >
+           calculada del identificador > la de su plataforma: lo dicho gana a
+           lo deducido, y lo deducido a lo genérico. */
+        const pl = platDe(c);
         return {
           ...c, dueno, duenoId, duenoNombre, golpes,
-          url: c.url || platDe(c)?.url || null,
+          url: c.url || aplicarPlantilla(pl?.plantilla, c.identificador) || pl?.url || null,
           puertas: puertasDe(c),
         };
       }).slice(0, 10);

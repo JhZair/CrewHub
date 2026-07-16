@@ -1,5 +1,6 @@
 "use client";
 import { guardarPlataforma, borrarPlataforma, guardarPuerta, borrarPuerta } from "@/app/actions";
+import { TOKEN, PLANTILLA_GMAIL, aplicarPlantilla } from "@/lib/puertas";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -14,8 +15,8 @@ import { useState } from "react";
    entradas —menú general, declaraciones y pagos, renta anual—. Nadie entra
    «a SUNAT»: entra a declarar el IGV. */
 
-type P = { id?: string; nombre: string; url: string; requiereCuenta: boolean; notas: string };
-const vacia: P = { nombre: "", url: "", requiereCuenta: true, notas: "" };
+type P = { id?: string; nombre: string; url: string; requiereCuenta: boolean; notas: string; plantillaUrl: string };
+const vacia: P = { nombre: "", url: "", requiereCuenta: true, notas: "", plantillaUrl: "" };
 type Q = { id?: string; titulo: string; url: string; notas: string };
 const puertaVacia: Q = { titulo: "", url: "", notas: "" };
 
@@ -88,6 +89,37 @@ function Form({ v, set, onSave, onCancel, guardando }: {
         {guardando ? "…" : "Guardar"}
       </button>
       <button className="btn btn-ghost" style={{ padding: "7px 10px", fontSize: 12 }} onClick={onCancel}>Cancelar</button>
+
+      {/* Para plataformas donde el link NO es uno para todos. Gmail con seis
+          cuentas te deja en la que estaba abierta: entrar «a Gmail» no es el
+          problema, caer en la bandeja equivocada sí. El correo ya está en la
+          credencial, así que el link se calcula y no se guarda. */}
+      <div style={{ width: "100%", display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap",
+        borderTop: "1px solid var(--border)", paddingTop: 8, marginTop: 2 }}>
+        <span style={{ color: "var(--dim)", fontSize: 11, width: "100%" }}>
+          ¿Cada cuenta entra por un link distinto? Pon la plantilla con <b>{TOKEN}</b> donde va el usuario.
+          Se calcula al abrir — no se guarda copia en ninguna credencial.
+        </span>
+        <input placeholder={`Plantilla por cuenta (opcional) — usa ${TOKEN}`} value={v.plantillaUrl}
+          onChange={e => set({ ...v, plantillaUrl: e.target.value })}
+          style={{ ...inp, flex: 1, minWidth: 260, fontSize: 12 }} />
+        {!v.plantillaUrl.trim() && (
+          <button className="btn btn-ghost" style={{ padding: "6px 10px", fontSize: 11 }}
+            title="Rellena la plantilla de Gmail — pruébala con el ↗ antes de darla por buena"
+            onClick={() => set({ ...v, plantillaUrl: PLANTILLA_GMAIL })}>
+            usar la de Gmail
+          </button>
+        )}
+        {v.plantillaUrl.trim() && (
+          <Probar url={aplicarPlantilla(v.plantillaUrl, "prueba@gmail.com") || ""} />
+        )}
+        {v.plantillaUrl.trim() && !v.plantillaUrl.includes(TOKEN) && (
+          <span style={{ color: "var(--red)", fontSize: 11, width: "100%" }}>
+            ⚠ Le falta {TOKEN}. Sin el hueco no reemplaza nada y mandaría a todos al mismo sitio
+            creyendo que van al suyo.
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -191,9 +223,22 @@ export default function PlataformasAdmin({ plataformas }: { plataformas: any[] }
             <span className="badge" title={`El código la busca por «${p.clave}» — si la renombras, sigue funcionando`}
               style={{ color: "var(--dim)", background: "#1c1c2c", fontSize: 10 }}>⚙ {p.clave}</span>
           )}
+          {/* Dice que sus links se arman con el usuario de cada cuenta: sin
+              esto, alguien ve «Gmail → mail.google.com» y no entiende por qué
+              cada credencial abre en un sitio distinto. */}
+          {p.plantilla_url && (
+            <span className="badge" title={`Cada cuenta entra por su propio link, armado con su usuario:\n${p.plantilla_url}`}
+              style={{ color: "var(--teal)", background: "rgba(45,212,191,.1)", fontSize: 10 }}>
+              👤 por cuenta
+            </span>
+          )}
           <button onClick={() => {
             setEditando(p.id);
-            setEf({ nombre: p.nombre || "", url: p.url || "", requiereCuenta: p.requiere_cuenta !== false, notas: p.notas || "" });
+            setEf({
+              nombre: p.nombre || "", url: p.url || "",
+              requiereCuenta: p.requiere_cuenta !== false, notas: p.notas || "",
+              plantillaUrl: p.plantilla_url || "",
+            });
           }} style={{ color: "var(--dim)", fontSize: 11.5, background: "none", border: "none", cursor: "pointer" }}>✎</button>
           {borrando === p.id ? (
             <span style={{ fontSize: 11.5, whiteSpace: "nowrap" }}>

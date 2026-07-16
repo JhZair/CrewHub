@@ -235,7 +235,10 @@ export default function Credenciales({ dueno, duenoId, credenciales }: {
               {/* La plataforma ES el enlace cuando se sabe dónde queda */}
               {c.url ? (
                 <a href={c.url} target="_blank" rel="noopener noreferrer" className="cargo"
-                  title={(c.heredado ? "Link de la plataforma (se administra en Admin → Plataformas)\n" : "Link propio de esta cuenta\n") + c.url}
+                  title={(c.calculada
+                    ? `Abre directo en ${c.identificador} — el link se arma con este mismo correo\n`
+                    : c.heredado ? "Link de la plataforma (se administra en Admin → Plataformas)\n"
+                    : "Link propio de esta cuenta\n") + c.url}
                   style={{ minWidth: 130, color: "var(--violet)", textDecoration: "none" }}>
                   {c.plataforma} ↗
                 </a>

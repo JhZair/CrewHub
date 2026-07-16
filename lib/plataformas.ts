@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
+import { aplicarPlantilla } from "@/lib/puertas";
 
 /* Las puertas del sistema, pedidas por su clave.
  *
@@ -28,7 +29,7 @@ export const urlPlataforma = cache(async (clave: string): Promise<string | undef
 });
 
 export type Puerta = { id: string; titulo: string; url: string; notas: string | null; orden: number | null };
-export type Plat = { url: string | null; puertas: Puerta[] };
+export type Plat = { url: string | null; plantilla: string | null; puertas: Puerta[] };
 
 /* Cada plataforma con su puerta principal y sus entradas adicionales. La
  * credencial guarda el nombre de su plataforma en texto, así que la llave es
@@ -42,10 +43,11 @@ export const platPorNombre = cache(async (): Promise<Map<string, Plat>> => {
   try {
     const supabase = createClient();
     const { data } = await supabase.from("plataformas")
-      .select("nombre,url,puertas:plataforma_puertas(id,titulo,url,notas,orden)");
+      .select("nombre,url,plantilla_url,puertas:plataforma_puertas(id,titulo,url,notas,orden)");
     (data || []).forEach((p: any) => {
       m.set(String(p.nombre || "").trim().toLowerCase(), {
         url: p.url || null,
+        plantilla: p.plantilla_url || null,
         puertas: [...(p.puertas || [])].sort((a: any, b: any) => (a.orden ?? 0) - (b.orden ?? 0)),
       });
     });
@@ -67,20 +69,31 @@ export const platPorNombre = cache(async (): Promise<Map<string, Plat>> => {
  * esta credencial entra por otra puerta. Si no, la de su plataforma. Sin
  * copias, sin propagación, sin nada que se pueda quedar atrás.
  */
-export async function conPlataforma<T extends { plataforma?: string | null; url?: string | null }>(creds: T[]) {
+export async function conPlataforma<T extends {
+  plataforma?: string | null; url?: string | null; identificador?: string | null;
+}>(creds: T[]) {
   const m = await platPorNombre();
   return creds.map(c => {
     const p = m.get(String(c.plataforma || "").trim().toLowerCase());
+    /* Armada con el identificador de ESTA credencial: seis correos, seis
+       puertas distintas, ninguna guardada. Ver lib/puertas.ts. */
+    const calculada = aplicarPlantilla(p?.plantilla, c.identificador);
     return {
       ...c,
-      url: c.url || p?.url || null,      // el que se abre
+      /* El orden manda y no es casual:
+         1. la propia    — alguien dijo expresamente que esta entra por otro lado
+         2. la calculada — la plataforma sabe armarla con el usuario
+         3. la general   — la puerta de todos
+         Lo dicho gana a lo deducido, y lo deducido a lo genérico. */
+      url: c.url || calculada || p?.url || null,
       /* El crudo, aparte. El formulario de edición tiene que cargar ESTE:
          si cargara el resuelto, abrir y guardar una credencial sin tocarla
          le grabaría el link de la plataforma como excepción propia — y la
          copia que acabo de matar volvería por la puerta de atrás, una
          credencial a la vez, cada vez que alguien edita. */
       urlPropia: c.url || "",
-      heredado: !c.url && !!p?.url,      // para decirle a quien mira de dónde salió
+      calculada: !c.url && !!calculada,  // el link salió de su propio correo
+      heredado: !c.url && !calculada && !!p?.url,
       puertas: p?.puertas || [],
     };
   });
