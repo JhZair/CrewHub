@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import { TIPO_COLOR } from "@/lib/entidades";
+import { buscadorDe, pal } from "@/lib/buscar";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -63,7 +64,7 @@ export default async function Proyectos({ searchParams }: {
   const VACIO: Act = { casos: 0, abiertos: 0, coments: 0 };
 
   const todos = proys || [];
-  const nrm = (s: any) => String(s || "").toLowerCase();
+  const coincide = buscadorDe(q);   // el mismo motor que el buscador global
   const tipos = [...new Set(todos.map((p: any) => p.tipo).filter(Boolean))];
 
   const PRUEBA_F: Record<string, (p: any) => boolean> = {
@@ -79,7 +80,12 @@ export default async function Proyectos({ searchParams }: {
     (!t || p.tipo === t) &&
     (!ac || (p.estado_actividad || "") === ac) &&
     (!f || PRUEBA_F[f]?.(p)) &&
-    (!q || nrm(p.nombre).includes(nrm(q)) || nrm(p.nombre_corto).includes(nrm(q)) || nrm(p.folio).includes(nrm(q))));
+    // La descripción también: en un catálogo de 100, la sinopsis es lo único
+    // que recuerdas de un proyecto que viste una vez
+    (!q || coincide(pal(
+      p.nombre, p.nombre_corto, p.folio, p.descripcion,
+      p.renca && `renca ${p.renca}`,
+      p.tipo, p.etapa, p.estado_actividad))));
   const cntEt = (x: string) => todos.filter((p: any) => p.etapa === x).length;
   const cntF = (k: string) => todos.filter(PRUEBA_F[k]).length;
 
@@ -145,8 +151,11 @@ export default async function Proyectos({ searchParams }: {
         {t && <input type="hidden" name="t" value={t} />}
         {ac && <input type="hidden" name="ac" value={ac} />}
         {f && <input type="hidden" name="f" value={f} />}
-        <input name="q" defaultValue={q} placeholder="Buscar por nombre o folio..."
-          style={{ flex: 1, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 14px", outline: "none", fontSize: 13.5 }} />
+        <span className="buscador-lista">
+          <span className="bg-lupa">🔍</span>
+          <input name="q" defaultValue={q}
+            placeholder="Nombre, folio, algo de la sinopsis, «bloqueado», «en pausa»…" />
+        </span>
         <button className="btn" type="submit">Buscar</button>
       </form>
 

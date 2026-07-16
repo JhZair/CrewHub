@@ -3,6 +3,7 @@ import Volver from "@/components/Volver";
 import LineaTiempo, { type EventoLT } from "@/components/LineaTiempo";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import { TIPO_COLOR } from "@/lib/entidades";
+import { buscadorDe, pal } from "@/lib/buscar";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -63,7 +64,7 @@ export default async function Convocatorias({ searchParams }: {
 
   const todas = convs || [];
   const listar = !!(q || e || a || j);
-  const nrm = (s: any) => String(s || "").toLowerCase();
+  const coincide = buscadorDe(q);   // el mismo motor que el buscador global
 
   const cnt = (est: string) => todas.filter((c: any) => c.estado === est).length;
   const enEjec = todas.filter((c: any) => ["en_ejecucion", "rendicion_pendiente"].includes(c.estado));
@@ -138,7 +139,7 @@ export default async function Convocatorias({ searchParams }: {
     // lista de una búsqueda. Nunca podían coincidir.
     (!a || String(c.anio || "") === a) &&
     (!j || PRUEBA_J[j]?.(c)) &&
-    (!q || nrm(c.codigo).includes(nrm(q)) || nrm(c.nombre).includes(nrm(q))));
+    (!q || coincide(pal("convocatoria concurso", c.codigo, c.nombre, c.anio, c.estado))));
 
   return (
     <div className="shell">
@@ -157,8 +158,11 @@ export default async function Convocatorias({ searchParams }: {
         {e && <input type="hidden" name="e" value={e} />}
         {a && <input type="hidden" name="a" value={a} />}
         {j && <input type="hidden" name="j" value={j} />}
-        <input name="q" defaultValue={q} placeholder="Buscar por concurso o código..."
-          style={{ flex: 1, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 14px", outline: "none", fontSize: 13.5 }} />
+        <span className="buscador-lista">
+          <span className="bg-lupa">🔍</span>
+          <input name="q" defaultValue={q}
+            placeholder="Concurso, código, año, «en ejecución», «cerrada»…" />
+        </span>
         <button className="btn" type="submit">Buscar</button>
       </form>
 

@@ -1,17 +1,23 @@
 "use client";
 import { useState } from "react";
 
-const SUNAT_URL = "https://e-consultaruc.sunat.gob.pe/cl-ti-itmrconsruc/FrameCriterioBusquedaWeb.jsp";
+/* Respaldo por si nadie cargó la plataforma en el admin. La fuente de verdad
+   es la fila con clave `sunat_consulta_ruc` en `plataformas` (se administra
+   en /admin?s=plataformas y llega por prop). Si SUNAT cambia su URL —lo ha
+   hecho— se corrige ahí sin tocar código ni esperar un deploy. */
+const SUNAT_FALLBACK = "https://e-consultaruc.sunat.gob.pe/cl-ti-itmrconsruc/FrameCriterioBusquedaWeb.jsp";
 
 /* Ver la ficha en SUNAT. Su buscador exige POST + captcha, así que no se
    puede enlazar el número directo: lo copiamos al portapapeles y abrimos
    la página para que solo quede pegar (Ctrl+V).
    Con DNI se consulta desde la pestaña "Por Documento". */
-export default function BotonFichaSunat({ numero, tipo = "RUC", compacto, nota }: {
+export default function BotonFichaSunat({ numero, tipo = "RUC", compacto, nota, url }: {
   numero: string; tipo?: "RUC" | "DNI";
   compacto?: boolean;   // versión chip, para las filas de una lista
   nota?: string;        // aclaración en el tooltip (ej. "se calcula del DNI")
+  url?: string;         // de `plataformas`; si falta, el respaldo de arriba
 }) {
+  const SUNAT_URL = url || SUNAT_FALLBACK;
   const [copiado, setCopiado] = useState(false);
   const esDni = tipo === "DNI";
 

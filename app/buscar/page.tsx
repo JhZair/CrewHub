@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
-import { coincideQ, nrmQ } from "@/lib/quechua";
+import { nrmQ } from "@/lib/quechua";
+import { buscadorDe, nrmB, pal, partir } from "@/lib/buscar";
 import { ESTADOS } from "@/lib/estados";
 import { REL_EMPRESA, EST_EMPRESA, TIPO_COLOR } from "@/lib/entidades";
 import { alertaSunat, empresaDeCasa, empresaViva, textoSunat } from "@/lib/sunat";
@@ -7,6 +8,7 @@ import { esDelEquipo } from "@/lib/personas";
 import { fmtVence, venceVigencia, vigenciaVencida } from "@/lib/vigencia";
 import { fechaLarga, haceOEn } from "@/lib/fechas";
 import { rucDePersona } from "@/lib/ruc";
+import { urlPlataforma, puertasPorPlataforma, PLAT } from "@/lib/plataformas";
 import BotonFichaSunat from "@/components/BotonFichaSunat";
 import Volver from "@/components/Volver";
 import BuscadorGlobal from "@/components/BuscadorGlobal";
@@ -64,23 +66,6 @@ const EST_ACT: Record<string, [string, string]> = {
   completado: ["✅ completado", "var(--green)"],
 };
 
-/* Los estados se guardan con guion bajo —«en_constitucion», «de_baja»— y así
-   no los encuentra nadie: la gente escribe «en constitución». Toda
-   clasificación entra al pajar en palabras. Aplica a TODAS las entidades: el
-   estado es de las primeras cosas que uno busca. */
-const pal = (...xs: any[]) =>
-  xs.map(x => String(x ?? "").replace(/_/g, " ")).join(" ");
-
-const STOP = new Set(["de", "del", "la", "las", "el", "los", "un", "una", "y", "en", "al", "con", "por", "para", "que"]);
-const nrmB = (s: any) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-/* Dos letras bastan. El corte estaba en 3 y se comía justo las siglas que
-   más se buscan —cv, tv, 3d, po— así que «cv pro» buscaba solo «pro» y
-   devolvía a todos los Productores, Programadores e Investigadores sin CV.
-   Los conectores ya los filtra STOP, que es lo que había que hacer. */
-const partir = (q: string) => {
-  const ws = nrmB(q).split(/\s+/).filter(w => w.length >= 2 && !STOP.has(w));
-  return ws.length ? ws : [nrmB(q)];
-};
 
 /* recorte con contexto alrededor de la primera palabra coincidente */
 function snippet(texto: string | null, palabras: string[]): string {
@@ -105,12 +90,14 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
   let statProy = new Map<string, any>(), statEmp = new Map<string, any>(),
       statConv = new Map<string, any>(), statPers = new Map<string, any>();
   let equisMas = 0, persMas = 0;
+  /* Fuera del `if (q)`: ahí dentro se cargan los resultados, pero se pintan
+     más abajo, ya fuera del bloque. */
+  let urlSunat: string | undefined;
   const palabras = q ? partir(q) : [];
 
   if (q) {
-    // Coincide si TODAS las palabras están en el "pajar" del registro
-    // (literal o por esqueleto fonético quechua: Mujunacuy = Mujunakuy)
-    const coincide = (hay: string) => coincideQ(hay, palabras);
+    // El mismo motor que usan los seis listados (lib/buscar)
+    const coincide = buscadorDe(q);
     // Para tablas grandes: pre-filtro OR en la BD (cualquier palabra en cualquier campo)
     const orDe = (campos: string[]) => palabras
       .map(w => w.replace(/[,%()]/g, ""))
@@ -150,15 +137,19 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
          recuperación, N° de contrato...) son justo lo que uno viene a
          buscar meses después. Estaban guardados y no se buscaban. */
       supabase.from("credenciales")
-        .select("id,plataforma,identificador,ubicacion,notas,empresa_id,persona_id,datos:credencial_datos(id,etiqueta,valor)")
+        .select("id,plataforma,identificador,ubicacion,notas,url,metodo_acceso,empresa_id,persona_id,datos:credencial_datos(id,etiqueta,valor)")
         .limit(600),
     ]);
 
     // El marcador en los resultados: 🏆 ganados · 🥈 casi · 🎯 intentos
-    const [{ data: postStats }, { data: equipoStats }] = await Promise.all([
+    const [{ data: postStats }, { data: equipoStats }, uSunat] = await Promise.all([
       supabase.from("postulaciones").select("estado,proyecto_id,empresa_id,convocatoria_id"),
       supabase.from("postulacion_equipo").select("persona_id,post:postulaciones(estado)"),
+      // El link de SUNAT sale del admin, no del código: si SUNAT lo cambia
+      // —lo ha hecho— se corrige ahí sin esperar un deploy.
+      urlPlataforma(PLAT.sunatConsultaRuc),
     ]);
+    urlSunat = uSunat;
     const marca = (key: "proyecto_id" | "empresa_id" | "convocatoria_id") => {
       const m = new Map<string, { t: number; g: number; c: number }>();
       (postStats || []).forEach((p: any) => {
@@ -293,9 +284,20 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
     const persMap = new Map((c3.data || []).map((p: any) => [p.id, p.nombre]));
     const textoDatos = (c: any) =>
       (c.datos || []).map((d: any) => `${d.etiqueta} ${d.valor}`).join(" ");
+    /* Las puertas ANTES de filtrar, no después: "renta anual" y
+       "declaraciones y pagos" son los nombres por los que uno busca —el que
+       va a declarar el IGV no piensa "SUNAT", piensa "declaraciones"—. Si se
+       colgaran después, saldrían en la fila pero no la encontrarían. */
+    const mapaPuertas = await puertasPorPlataforma();
+    const puertasDe = (c: any) => mapaPuertas.get(String(c.plataforma || "").trim().toLowerCase()) || [];
+    const textoPuertas = (c: any) =>
+      puertasDe(c).map((q: any) => `${q.titulo} ${q.notas || ""}`).join(" ");
     creds = (c10.data || [])
-      .filter((c: any) => coincide(
-        `credencial acceso clave usuario ${c.plataforma} ${c.identificador} ${c.ubicacion} ${c.notas} ${textoDatos(c)}`))
+      .filter((c: any) => coincide(pal(
+        "credencial acceso clave usuario",
+        c.plataforma, c.identificador, c.ubicacion, c.notas, c.metodo_acceso,
+        // El dominio también se busca: a veces recuerdas la web, no el nombre
+        c.url, textoDatos(c), textoPuertas(c))))
       .map((c: any) => {
         const dueno = c.empresa_id ? "empresa" : "persona";
         const duenoId = c.empresa_id || c.persona_id;
@@ -304,7 +306,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
            afiliación y te sale una fila «DAFO-Estímulos» sin decirte que lo
            encontró — y no sabrías si es lo que buscabas. */
         const golpes = (c.datos || []).filter((d: any) => coincide(`${d.etiqueta} ${d.valor}`));
-        return { ...c, dueno, duenoId, duenoNombre, golpes };
+        return { ...c, dueno, duenoId, duenoNombre, golpes, puertas: puertasDe(c) };
       }).slice(0, 10);
   }
 
@@ -422,7 +424,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
                     y es el número que hace falta para verificar en SUNAT. */}
                 {rucDePersona(p.ruc_dni) && (
                   <BotonFichaSunat numero={rucDePersona(p.ruc_dni)!} tipo="RUC"
-                    compacto nota="se calcula del DNI" />
+                    compacto nota="se calcula del DNI" url={urlSunat} />
                 )}
                 {(p.cvs || []).map((c: any) => (
                   <Doc key={c.id} href={c.url} titulo={`CV con enfoque ${c.enfoque}`}>
@@ -446,23 +448,53 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
 
       <Seccion titulo="🔑 Credenciales" n={creds.length}>
         {creds.map((c: any) => (
-          <Fila key={c.id} href={`/entidad/${c.dueno}/${c.duenoId}`}>
-            <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{c.plataforma}</span>
-            {c.identificador && <b>{c.identificador}</b>}
-            {c.ubicacion && <span style={{ color: "var(--dim)", fontSize: 11.5 }}>🔒 {c.ubicacion}</span>}
-            <span style={{ flex: 1 }} />
-            {c.duenoNombre && <span style={{ color: "var(--muted)", fontSize: 12 }}>{c.dueno === "empresa" ? "🏢" : "👤"} {c.duenoNombre}</span>}
-            {/* El dato que hizo el match, en su propia línea */}
-            {(c.golpes || []).length > 0 && (
-              <span style={{ width: "100%", display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
-                {c.golpes.map((d: any) => (
+          <Fila key={c.id} href={`/entidad/${c.dueno}/${c.duenoId}`}
+            docs={
+              <>
+                {/* La puerta primero: es a lo que se viene cuando buscas una
+                    credencial. Sin link, se dice —el hueco es el dato. */}
+                {c.url ? (
+                  <Doc href={c.url} color="var(--violet)" titulo={`Entrar a ${c.plataforma}`}>
+                    🔗 Entrar a {c.plataforma}
+                  </Doc>
+                ) : (
+                  <span className="badge" title="Nadie cargó el link de esta plataforma"
+                    style={{ color: "var(--dim)", background: "#1c1c2c", textTransform: "none", letterSpacing: 0 }}>
+                    🔗 sin link
+                  </span>
+                )}
+                {/* Las otras entradas de la misma cuenta: la Clave SOL abre
+                    en tres sitios y el link de arriba es solo el menú
+                    general. Quien busca "clave sol" a las 8 de la mañana va
+                    a declarar, no a mirar el menú. */}
+                {(c.puertas || []).map((q: any) => (
+                  <Doc key={q.id} href={q.url} color="var(--violet)" titulo={q.notas || `Entrar a ${q.titulo}`}>
+                    ↗ {q.titulo}
+                  </Doc>
+                ))}
+                {c.ubicacion && (
+                  <span className="badge" title="Dónde vive la contraseña real"
+                    style={{ color: "var(--muted)", background: "#1c1c2c", textTransform: "none", letterSpacing: 0 }}>
+                    🔒 {c.ubicacion}
+                  </span>
+                )}
+                {/* El dato que hizo el match: buscas un código de afiliación
+                    y aquí se ve cuál encontró */}
+                {(c.golpes || []).map((d: any) => (
                   <span key={d.id} className="badge"
                     style={{ color: "var(--teal)", background: "rgba(45,212,191,.12)", textTransform: "none", letterSpacing: 0 }}>
                     {d.etiqueta}: <b>{d.valor || "—"}</b>
                   </span>
                 ))}
-              </span>
+              </>
+            }>
+            <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{c.plataforma}</span>
+            {c.identificador && <b>{c.identificador}</b>}
+            {c.metodo_acceso && (
+              <span style={{ color: "var(--dim)", fontSize: 11 }}>{c.metodo_acceso}</span>
             )}
+            <span style={{ flex: 1 }} />
+            {c.duenoNombre && <span style={{ color: "var(--muted)", fontSize: 12 }}>{c.dueno === "empresa" ? "🏢" : "👤"} {c.duenoNombre}</span>}
           </Fila>
         ))}
       </Seccion>
@@ -516,7 +548,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
             tenue={!empresaViva(e) || !empresaDeCasa(e)}
             docs={
               <>
-                {e.ruc && <BotonFichaSunat numero={e.ruc} tipo="RUC" compacto />}
+                {e.ruc && <BotonFichaSunat numero={e.ruc} tipo="RUC" compacto url={urlSunat} />}
                 {/* RENCA y vigencia tienen su PDF guardado y los pintaba como
                     texto muerto: el papel estaba a un clic y no se ofrecía. */}
                 {e.renca && (

@@ -3,6 +3,7 @@ import Volver from "@/components/Volver";
 import BotonComprobar from "@/components/BotonComprobar";
 import BotonDevolver from "@/components/BotonDevolver";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
+import { buscadorDe, pal } from "@/lib/buscar";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -60,7 +61,7 @@ export default async function Equipamiento({ searchParams }: {
   });
 
   const todos = eqs || [];
-  const nrm = (s: any) => String(s || "").toLowerCase();
+  const coincide = buscadorDe(q);   // el mismo motor que el buscador global
   const porComprobar = (x: any) =>
     !["de_baja"].includes(x.estado) &&
     (!x.ultima_comprobacion || diasDesde(x.ultima_comprobacion) > 90);
@@ -81,8 +82,7 @@ export default async function Equipamiento({ searchParams }: {
     (!c || (x.categoria || "") === c) &&
     (!f || PRUEBA_F[f]?.(x)) &&
     (!ronda || porComprobar(x)) &&
-    (!q || nrm(x.nombre).includes(nrm(q)) || nrm(x.folio).includes(nrm(q)) ||
-      nrm(x.categoria).includes(nrm(q)) || nrm(x.subcategoria).includes(nrm(q))));
+    (!q || coincide(pal(x.nombre, x.folio, x.categoria, x.subcategoria, x.estado))));
   const filtrados = filtradosTodos.slice(0, TOPE);
   const pendientesRonda = todos.filter(porComprobar).length;
   const cntF = (k: string) => todos.filter(PRUEBA_F[k]).length;
@@ -148,8 +148,11 @@ export default async function Equipamiento({ searchParams }: {
         {c && <input type="hidden" name="c" value={c} />}
         {f && <input type="hidden" name="f" value={f} />}
         {ronda && <input type="hidden" name="ronda" value="1" />}
-        <input name="q" defaultValue={q} placeholder="Buscar por nombre, folio o categoría..."
-          style={{ flex: 1, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 14px", outline: "none", fontSize: 13.5 }} />
+        <span className="buscador-lista">
+          <span className="bg-lupa">🔍</span>
+          <input name="q" defaultValue={q}
+            placeholder="Nombre, folio, categoría, «en reparación», «perdido»…" />
+        </span>
         <button className="btn" type="submit">Buscar</button>
       </form>
 

@@ -5,7 +5,9 @@ import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import { alertaSunat, esNuestra, esProblematico, textoSunat } from "@/lib/sunat";
 import { REL_EMPRESA, EST_EMPRESA } from "@/lib/entidades";
 import { fmtVence, vigenciaVencida } from "@/lib/vigencia";
+import { urlPlataforma, PLAT } from "@/lib/plataformas";
 import BotonFichaSunat from "@/components/BotonFichaSunat";
+import { buscadorDe, pal } from "@/lib/buscar";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -50,7 +52,7 @@ export default async function Empresas({ searchParams }: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: emps }, { data: vincs }, { data: postsEmp }, { data: coms }] = await Promise.all([
+  const [{ data: emps }, { data: vincs }, { data: postsEmp }, { data: coms }, urlSunat] = await Promise.all([
     supabase.from("empresas").select("*").order("codigo"),
     supabase.from("publicacion_vinculos")
       .select("entidad_id,publicacion_id,pub:publicaciones(estado)").eq("entidad_tipo", "empresa"),
@@ -58,6 +60,9 @@ export default async function Empresas({ searchParams }: {
       .select("id,empresa_id,estado,monto_adjudicado,fecha_limite_rendicion,fecha_prorroga,proy:proyectos(nombre),conv:convocatorias(nombre,anio)")
       .not("empresa_id", "is", null),
     supabase.from("comentarios").select("publicacion_id"),
+    // El link de SUNAT sale del admin, no del código: si SUNAT lo cambia
+    // —lo ha hecho— se corrige ahí sin esperar un deploy.
+    urlPlataforma(PLAT.sunatConsultaRuc),
   ]);
 
   // Actividad real en CrewHub+: en qué estado están sus casos y cuánto se conversó
@@ -79,7 +84,7 @@ export default async function Empresas({ searchParams }: {
   const VACIO: Act = { abiertas: 0, progreso: 0, cerradas: 0, coments: 0, total: 0 };
 
   const todas = emps || [];
-  const nrm = (s: any) => String(s || "").toLowerCase();
+  const coincide = buscadorDe(q);   // el mismo motor que el buscador global
 
   // En concurso = la partida sigue viva (mismo criterio que la ficha)
   const EN_JUEGO = ["en_preparacion", "enviada", "finalista"];
@@ -159,8 +164,12 @@ export default async function Empresas({ searchParams }: {
     // Antes el chip contaba con una regla y el filtro listaba con otra: decía
     // "⚠ SUNAT · 2" y al entrar te enseñaba una sola. Ahora es la misma.
     (!sunat || alertaSunat(x)) &&
-    (!q || nrm(x.nombre).includes(nrm(q)) || nrm(x.razon_social).includes(nrm(q)) ||
-      nrm(x.codigo).includes(nrm(q)) || nrm(x.ruc).includes(nrm(q))));
+    // Región, domicilio, RENCA y la clasificación entran al pajar: son las
+    // otras formas de recordar una empresa cuando el nombre no viene
+    (!q || coincide(pal(
+      x.nombre, x.razon_social, x.codigo, x.region, x.domicilio_fiscal,
+      x.ruc && `ruc ${x.ruc}`, x.renca && `renca ${x.renca}`,
+      x.estado, x.relacion, x.tipo, x.estado_sunat, x.condicion_sunat))));
   const cnt = (est: string) => todas.filter((x: any) => x.estado === est).length;
   const cntF = (k: string) => todas.filter(PRUEBA_F[k]).length;
 
@@ -242,7 +251,7 @@ export default async function Empresas({ searchParams }: {
             {emp.codigo && <span style={{ color: "var(--dim)" }}>{emp.codigo}</span>}
             {/* Sin RUC solo alarma si figura activa: en constitución es normal */}
             {emp.ruc ? (
-              <BotonFichaSunat numero={emp.ruc} tipo="RUC" compacto />
+              <BotonFichaSunat numero={emp.ruc} tipo="RUC" compacto url={urlSunat} />
             ) : nosCompete(emp) ? (
               <span style={{ color: "var(--red)", fontWeight: 700 }}>⚠ sin RUC</span>
             ) : null}
@@ -296,8 +305,11 @@ export default async function Empresas({ searchParams }: {
         {r && <input type="hidden" name="r" value={r} />}
         {f && <input type="hidden" name="f" value={f} />}
         {sunat && <input type="hidden" name="sunat" value="1" />}
-        <input name="q" defaultValue={q} placeholder="Buscar por nombre, razón social, código o RUC..."
-          style={{ flex: 1, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 14px", outline: "none", fontSize: 13.5 }} />
+        <span className="buscador-lista">
+          <span className="bg-lupa">🔍</span>
+          <input name="q" defaultValue={q}
+            placeholder="Nombre, razón social, RUC, RENCA, «en cierre», «aliada»…" />
+        </span>
         <button className="btn" type="submit">Buscar</button>
       </form>
 

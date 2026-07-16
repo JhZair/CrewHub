@@ -5,7 +5,9 @@ import BitacoraJornadas from "@/components/BitacoraJornadas";
 import LiquidacionAdmin from "@/components/LiquidacionAdmin";
 import BotonDestacar from "@/components/BotonDestacar";
 import RheAdmin from "@/components/RheAdmin";
+import PlataformasAdmin from "@/components/PlataformasAdmin";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
+import { buscadorDe, pal } from "@/lib/buscar";
 import { estado4ta } from "@/lib/cuarta";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -50,7 +52,8 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
   const lFin = `${lMes === 11 ? lAnio + 1 : lAnio}-${pad(lMes === 11 ? 1 : lMes + 2)}-01`;
 
   const [{ data: personas }, { data: cobrables }, { data: rhes }, { data: jornsPend },
-         { data: proyectos }, { data: jornsMes }, { data: liqs }, { data: vivos }] = await Promise.all([
+         { data: proyectos }, { data: jornsMes }, { data: liqs }, { data: vivos },
+         { data: plats }, { data: credsPlat }] = await Promise.all([
     supabase.from("personas").select("id,nombre,alias,tarifa_dia,tarifa_rodaje,tarifa_noche")
       .eq("tipo", "personal").order("nombre"),
     // A quién se le puede girar un RHE, y los del año en curso
@@ -67,6 +70,13 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
     supabase.from("jornadas").select("persona_id,fraccion,monto,aprobada,per:personas(nombre,alias)")
       .gte("fecha", lInicio).lt("fecha", lFin).limit(3000),
     supabase.from("liquidaciones").select("persona_id,estado").eq("anio", lAnio).eq("mes", lMes + 1),
+    // Las puertas del sistema + qué credenciales entran por cada una.
+    // `puertas` son las entradas adicionales: Clave SOL es una cuenta con
+    // tres sitios distintos, y con un solo `url` entraba uno.
+    supabase.from("plataformas")
+      .select("*,puertas:plataforma_puertas(id,titulo,url,notas,orden)")
+      .order("nombre"),
+    supabase.from("credenciales").select("plataforma"),
     /* Casos vivos, para elegir cuáles suben a la cabecera del feed.
        Estaba en 60 y ordenado por creación descendente: los que se caían
        eran los MÁS VIEJOS, o sea los olvidados, los sin fecha — justo los
@@ -115,8 +125,26 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
   const ahoraMs = Date.now();
   const nDestacados = (vivos || []).filter((p: any) =>
     p.destacado_hasta && new Date(p.destacado_hasta).getTime() > ahoraMs).length;
+  /* Cuántas credenciales entran por cada puerta, y cuáles no tienen link:
+     una plataforma sin URL obliga a buscarla en Google, que es justo donde
+     aparecen las páginas falsas. Por eso el contador del menú cuenta las
+     que faltan, no las que hay. */
+  const usosPlat = new Map<string, number>();
+  (credsPlat || []).forEach((c: any) => {
+    const k = String(c.plataforma || "").trim().toLowerCase();
+    if (k) usosPlat.set(k, (usosPlat.get(k) || 0) + 1);
+  });
+  const plataformas = (plats || []).map((p: any) => ({
+    ...p, usos: usosPlat.get(String(p.nombre || "").trim().toLowerCase()) || 0,
+    // El `orden` se respeta acá y no en la consulta: ordenar una tabla
+    // embebida en PostgREST es frágil, y son tres filas.
+    puertas: [...(p.puertas || [])].sort((a: any, b: any) => (a.orden ?? 0) - (b.orden ?? 0)),
+  }));
+  const platSinLink = plataformas.filter((p: any) => !p.url).length;
+
   const SECCIONES: [string, string, number | null][] = [
     ["destacados", "📌 Destacados", nDestacados || null],
+    ["plataformas", "🔗 Plataformas", platSinLink || null],
     ["jornadas", "✅ Aprobar jornadas", porAprobar.length || null],
     ["liquidar", "🧾 Liquidar mes", filasLiq.filter(f => f.estado !== "liquidado").length || null],
     ["rhe", "🧾 RHE y tope 4ta", nCerca || null],
@@ -161,9 +189,9 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
           vencidos: p => !!p.fecha_limite && dias(p.fecha_limite) < 0,
           avisos: p => p.tipo === "aviso",
         };
-        const nrm = (x: any) => String(x || "").toLowerCase();
+        const coincide = buscadorDe(qd);   // el mismo motor que el resto
         const filtrados = (vivos || []).filter((p: any) =>
-          (!fd || PRUEBA_D[fd]?.(p)) && (!qd || nrm(p.titulo).includes(nrm(qd))));
+          (!fd || PRUEBA_D[fd]?.(p)) && (!qd || coincide(pal(p.titulo, p.tipo))));
         const cntD = (k: string) => (vivos || []).filter(PRUEBA_D[k]).length;
 
         // Los ya destacados primero; luego lo que vence antes
@@ -194,8 +222,10 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
             <form className="card" style={{ display: "flex", gap: 10, padding: 10 }}>
               <input type="hidden" name="s" value="destacados" />
               {fd && <input type="hidden" name="fd" value={fd} />}
-              <input name="qd" defaultValue={qd} placeholder="Buscar el caso por título…"
-                style={{ flex: 1, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 10, padding: "8px 12px", outline: "none", fontSize: 13 }} />
+              <span className="buscador-lista">
+                <span className="bg-lupa">🔍</span>
+                <input name="qd" defaultValue={qd} placeholder="Buscar el caso por título…" />
+              </span>
               <button className="btn" type="submit">Buscar</button>
             </form>
 
@@ -251,6 +281,24 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
           </>
         );
       })()}
+
+      {s === "plataformas" && (
+        <>
+          <div className="h4" style={{ marginTop: 0 }}>🔗 Plataformas</div>
+          <p style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 0 }}>
+            Dónde se entra. El link vive <b>aquí una vez</b>, no repetido en cada credencial:
+            al guardarlo, las credenciales de esa plataforma que no tengan uno propio lo heredan.
+            Sin link, el equipo busca la plataforma en Google y entra por el primer resultado —
+            que es exactamente donde viven las páginas falsas.
+          </p>
+          <p style={{ color: "var(--dim)", fontSize: 12, marginTop: -4 }}>
+            Si una cuenta abre en varios sitios, cuélgale <b>otra entrada</b> con el nombre de para
+            qué sirve: nadie entra «a SUNAT», entra a declarar el IGV. Y comprueba cada link con
+            su ↗ — un link que nadie abrió es un link que no sabemos si sirve.
+          </p>
+          <PlataformasAdmin plataformas={plataformas} />
+        </>
+      )}
 
       {s === "jornadas" && (
         <>

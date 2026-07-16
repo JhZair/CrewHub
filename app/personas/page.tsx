@@ -4,6 +4,8 @@ import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import { esDelEquipo } from "@/lib/personas";
 import { esProblematico, textoSunat } from "@/lib/sunat";
 import { rucDePersona } from "@/lib/ruc";
+import { buscadorDe, pal } from "@/lib/buscar";
+import { urlPlataforma, PLAT } from "@/lib/plataformas";
 import BotonFichaSunat from "@/components/BotonFichaSunat";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -34,7 +36,7 @@ export default async function Personas({ searchParams }: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: pers }, { data: vincs }, { data: coms }, { data: equipoPost }] = await Promise.all([
+  const [{ data: pers }, { data: vincs }, { data: coms }, { data: equipoPost }, urlSunat] = await Promise.all([
     supabase.from("personas")
       .select("id,nombre,alias,tipo,equipo,estado,rol,region,usuario_id,ruc_dni,dni_vencimiento,estado_sunat,condicion_sunat,suspension_4ta_anio")
       .order("nombre"),
@@ -42,10 +44,17 @@ export default async function Personas({ searchParams }: {
       .select("entidad_id,publicacion_id,pub:publicaciones(estado)").eq("entidad_tipo", "persona"),
     supabase.from("comentarios").select("publicacion_id"),
     supabase.from("postulacion_equipo").select("persona_id"),
+    // El link de SUNAT sale del admin, no del código: si SUNAT lo cambia
+    // —lo ha hecho— se corrige ahí sin esperar un deploy.
+    urlPlataforma(PLAT.sunatConsultaRuc),
   ]);
 
   const todas = pers || [];
-  const nrm = (s: any) => String(s || "").toLowerCase();
+  /* Mismo motor que el buscador global: sin tildes, por palabras y con
+     fonética andina. Antes era un .includes() de la frase entera en
+     minúsculas — «cespedes» no encontraba a Céspedes y «ugarte pavel» no
+     encontraba nada. */
+  const coincide = buscadorDe(q);
 
   // Actividad real en CrewHub+
   const comentPorPub = new Map<string, number>();
@@ -92,8 +101,12 @@ export default async function Personas({ searchParams }: {
     (!t || (p.tipo || "contacto") === t) &&
     (!eq || p.equipo === eq) &&
     (!a || PRUEBA_A[a]?.(p)) &&
-    (!q || nrm(p.nombre).includes(nrm(q)) || nrm(p.alias).includes(nrm(q)) ||
-      nrm(p.rol).includes(nrm(q)) || nrm(p.region).includes(nrm(q)))
+    // El DNI, el RUC deducido y la clasificación también se buscan aquí
+    (!q || coincide(pal(
+      p.nombre, p.alias, p.rol, p.region,
+      p.ruc_dni && `dni ${p.ruc_dni}`,
+      rucDePersona(p.ruc_dni) && `ruc ${rucDePersona(p.ruc_dni)}`,
+      p.tipo, p.estado, p.equipo)))
   ).slice(0, 150);
 
   const cnt = (est: string) => todas.filter((p: any) => p.estado === est).length;
@@ -134,7 +147,7 @@ export default async function Personas({ searchParams }: {
                 un clic: copia y abre SUNAT, sin entrar a cada persona. */}
             {rucDePersona(p.ruc_dni) && (
               <BotonFichaSunat numero={rucDePersona(p.ruc_dni)!} tipo="RUC"
-                compacto nota="se calcula del DNI" />
+                compacto nota="se calcula del DNI" url={urlSunat} />
             )}
             {d !== null && d < 0 && (
               <span className="badge" style={{ color: "var(--red)", background: "rgba(255,77,94,.12)" }}>
@@ -190,8 +203,11 @@ export default async function Personas({ searchParams }: {
         {t && <input type="hidden" name="t" value={t} />}
         {eq && <input type="hidden" name="eq" value={eq} />}
         {a && <input type="hidden" name="a" value={a} />}
-        <input name="q" defaultValue={q} placeholder="Buscar por nombre, alias, rol o región..."
-          style={{ flex: 1, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 14px", outline: "none", fontSize: 13.5 }} />
+        <span className="buscador-lista">
+          <span className="bg-lupa">🔍</span>
+          <input name="q" defaultValue={q}
+            placeholder="Nombre, alias, rol, DNI, RUC, «colaborador», «vetado»…" />
+        </span>
         <button className="btn" type="submit">Buscar</button>
       </form>
 

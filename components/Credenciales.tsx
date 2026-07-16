@@ -12,22 +12,33 @@ const PLATAFORMAS = [
 ];
 const UBICACIONES = ["KeePass (Drive)", "Bitwarden", "Custodia física", "Otro"];
 /* «Usuario y contraseña», no «Correo y contraseña»: en DAFO se entra con el
-   RUC, en SUNAT con RUC + clave SOL, en otras con el DNI. Decir «correo»
-   contradecía al propio identificador de la tarjeta —un RUC de once dígitos
-   con la etiqueta «correo» al lado— y hacía dudar de cuál era el bueno.
-   `usuario` no promete de qué tipo es: solo dice que hay uno.
+   RUC, en otras con el DNI. Decir «correo» contradecía al propio
+   identificador de la tarjeta —un RUC de once dígitos con la etiqueta
+   «correo» al lado— y hacía dudar de cuál era el bueno. `usuario` no
+   promete de qué tipo es: solo dice que hay uno.
 
    OJO: los ya guardados dicen «Correo y contraseña» tal cual. Este cambio
    es solo para los nuevos; los viejos se normalizan con
    db/credenciales-metodo-usuario.sql. */
 const METODO_CLASICO = "Usuario y contraseña";
-const METODOS = [METODO_CLASICO, "Con Google", "Con Facebook", "Con Apple", "Con Microsoft"];
+/* Clave SOL no entra en «usuario y contraseña»: pide TRES datos —RUC,
+   usuario SOL y contraseña— y esta ficha solo tiene un identificador. El
+   usuario SOL es el que se pierde: no se deduce del RUC ni del nombre, lo
+   asigna SUNAT o lo eligió alguien hace años. Va como dato de la cuenta
+   (abajo se reclama si falta), que además se puede verificar. */
+const METODO_SOL = "RUC + usuario SOL + contraseña";
+const METODOS = [METODO_CLASICO, METODO_SOL, "Con Google", "Con Facebook", "Con Apple", "Con Microsoft"];
 /* Lo guardado antes de renombrar: para que un chip viejo no se pinte como
    si fuera un acceso federado hasta que se corra el SQL. */
 const ES_CLASICO = (m?: string | null) =>
-  m === METODO_CLASICO || m === "Correo y contraseña";
+  m === METODO_CLASICO || m === METODO_SOL || m === "Correo y contraseña";
 // Sugerencias comunes para los datos de cada cuenta
+const DATO_SOL = "usuario SOL";
 const DATOS_SUG = ["correo de contacto", "teléfono de contacto", "correo de recuperación", "pregunta de seguridad", "quién administra", "PIN / token"];
+/* Con Clave SOL el usuario SOL encabeza las sugerencias: es el dato que
+   falta, no uno más de la lista. */
+const sugDe = (metodo?: string | null) => metodo === METODO_SOL ? [DATO_SOL, ...DATOS_SUG] : DATOS_SUG;
+const tieneSol = (c: any) => (c.datos || []).some((d: any) => /usuario\s*sol/i.test(d.etiqueta || ""));
 const STALE_DIAS = 180; // a partir de aquí, un dato pide reverificación
 
 const inp = { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, outline: "none" } as const;
@@ -41,20 +52,33 @@ const frescura = (verificado_en: string | null) => {
   return { txt: `verificado hace ${n}d`, cls: "verde" as const };
 };
 
-type Val = { plataforma: string; identificador: string; ubicacion: string; notas: string; metodo: string };
+type Val = { plataforma: string; identificador: string; ubicacion: string; notas: string; metodo: string; url: string };
 type DVal = { etiqueta: string; valor: string };
 
 /* Formulario de credencial (agregar y editar) — a nivel de módulo para que
    los inputs no pierdan el foco al escribir. */
-function FormFila({ v, set, onSave, onCancel, guardando }: {
+function FormFila({ v, set, onSave, onCancel, guardando, urlDe }: {
   v: Val; set: (x: Val) => void; onSave: () => void; onCancel: () => void; guardando: boolean;
+  urlDe?: (plataforma: string) => string | undefined;
 }) {
   return (
     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12, padding: 10, background: "var(--bg)", borderRadius: 10 }}>
       <input list="plat-lista" placeholder="Plataforma *" value={v.plataforma}
-        onChange={e => set({ ...v, plataforma: e.target.value })} style={{ ...inp, width: 160 }} />
+        onChange={e => {
+          /* La misma plataforma se repite en varias fichas —seis empresas
+             entran al mismo DAFO—, así que la URL se hereda de la primera
+             que ya la tenga. Teclearla seis veces es teclearla mal una. */
+          const p = e.target.value;
+          const heredada = !v.url && urlDe?.(p);
+          set({ ...v, plataforma: p, ...(heredada ? { url: heredada } : {}) });
+        }} style={{ ...inp, width: 160 }} />
       <datalist id="plat-lista">{PLATAFORMAS.map(p => <option key={p} value={p} />)}</datalist>
-      <input placeholder="Usuario / RUC / correo (no la clave)" value={v.identificador}
+      {/* Con Clave SOL este campo es el RUC y punto: el usuario SOL es otro
+          dato y no cabe aquí. Decirlo en el placeholder evita el «20601…/
+          MJOROS» metido a la fuerza en un solo campo, que después nadie sabe
+          leer. */}
+      <input placeholder={v.metodo === METODO_SOL ? "RUC (el usuario SOL va como dato)" : "Usuario / RUC / correo (no la clave)"}
+        value={v.identificador} inputMode={v.metodo === METODO_SOL ? "numeric" : undefined}
         onChange={e => set({ ...v, identificador: e.target.value })} style={{ ...inp, flex: 1, minWidth: 180 }} />
       <select value={v.metodo} onChange={e => set({ ...v, metodo: e.target.value })} title="Cómo se inicia sesión" style={inp}>
         {METODOS.map(m => <option key={m} value={m}>{m}</option>)}
@@ -62,6 +86,17 @@ function FormFila({ v, set, onSave, onCancel, guardando }: {
       <select value={v.ubicacion} onChange={e => set({ ...v, ubicacion: e.target.value })} style={inp}>
         {UBICACIONES.map(u => <option key={u} value={u}>{u}</option>)}
       </select>
+      {/* La puerta. Sin esto, entrar a DAFO empieza por buscarlo en Google —
+          y ahí es donde aparecen las páginas falsas. */}
+      <span style={{ display: "flex", gap: 6, flex: 1, minWidth: 200 }}>
+        <input placeholder="Link para entrar (https://…)" value={v.url} inputMode="url"
+          onChange={e => set({ ...v, url: e.target.value })} style={{ ...inp, flex: 1, minWidth: 0 }} />
+        <a href={/^https?:\/\/\S+/.test(v.url.trim()) ? v.url.trim() : undefined}
+          target="_blank" rel="noopener noreferrer" className="btn btn-ghost"
+          title={/^https?:\/\/\S+/.test(v.url.trim()) ? "Abrir para revisarlo" : "Pega un link completo (https://…)"}
+          style={{ padding: "0 10px", display: "inline-flex", alignItems: "center", fontSize: 14,
+            opacity: /^https?:\/\/\S+/.test(v.url.trim()) ? 1 : .4 }}>↗</a>
+      </span>
       <button className="btn" style={{ padding: "7px 14px", fontSize: 12 }} disabled={!v.plataforma.trim() || guardando} onClick={onSave}>
         {guardando ? "..." : "Guardar"}
       </button>
@@ -71,14 +106,15 @@ function FormFila({ v, set, onSave, onCancel, guardando }: {
 }
 
 /* Formulario de un dato (etiqueta + valor) */
-function DatoForm({ v, set, onSave, onCancel, guardando }: {
+function DatoForm({ v, set, onSave, onCancel, guardando, sug = DATOS_SUG }: {
   v: DVal; set: (x: DVal) => void; onSave: () => void; onCancel: () => void; guardando: boolean;
+  sug?: string[];   // varía con el método: Clave SOL pone «usuario SOL» primero
 }) {
   return (
     <div className="dato-form">
       <input list="dato-sug" placeholder="Dato (ej. correo de contacto) *" value={v.etiqueta}
         onChange={e => set({ ...v, etiqueta: e.target.value })} style={{ ...inp, width: 175 }} />
-      <datalist id="dato-sug">{DATOS_SUG.map(s => <option key={s} value={s} />)}</datalist>
+      <datalist id="dato-sug">{sug.map(s => <option key={s} value={s} />)}</datalist>
       <input placeholder="Valor (correo, número…)" value={v.valor}
         onChange={e => set({ ...v, valor: e.target.value })} style={{ ...inp, flex: 1, minWidth: 140 }} />
       <button className="btn" style={{ padding: "6px 12px", fontSize: 11.5 }} disabled={!v.etiqueta.trim() || guardando} onClick={onSave}>
@@ -92,7 +128,13 @@ function DatoForm({ v, set, onSave, onCancel, guardando }: {
 export default function Credenciales({ dueno, duenoId, credenciales }: {
   dueno: "empresa" | "persona"; duenoId: string; credenciales: any[];
 }) {
-  const vacio: Val = { plataforma: "", identificador: "", ubicacion: UBICACIONES[0], notas: "", metodo: METODOS[0] };
+  const vacio: Val = { plataforma: "", identificador: "", ubicacion: UBICACIONES[0], notas: "", metodo: METODOS[0], url: "" };
+  /* La URL de una plataforma ya conocida, para heredarla al agregar otra
+     credencial de la misma: seis empresas entran por la misma puerta. */
+  const urlDe = (p: string) => {
+    const k = p.trim().toLowerCase();
+    return k ? credenciales.find((c: any) => (c.plataforma || "").trim().toLowerCase() === k && c.url)?.url : undefined;
+  };
   const [agregando, setAgregando] = useState(false);
   const [f, setF] = useState<Val>(vacio);
   const [editando, setEditando] = useState<string | null>(null);
@@ -111,7 +153,7 @@ export default function Credenciales({ dueno, duenoId, credenciales }: {
   const guardar = async () => {
     if (!f.plataforma.trim() || guardando) return;
     setGuardando(true); setError("");
-    const res = await agregarCredencial(dueno, duenoId, f.plataforma, f.identificador, f.ubicacion, f.notas, f.metodo);
+    const res = await agregarCredencial(dueno, duenoId, f.plataforma, f.identificador, f.ubicacion, f.notas, f.metodo, f.url);
     setGuardando(false);
     if (res?.error) { setError(res.error); return; }
     setF(vacio); setAgregando(false); router.refresh();
@@ -123,12 +165,13 @@ export default function Credenciales({ dueno, duenoId, credenciales }: {
       plataforma: c.plataforma || "", identificador: c.identificador || "",
       ubicacion: c.ubicacion || UBICACIONES[0], notas: c.notas || "",
       metodo: c.metodo_acceso || METODOS[0],
+      url: c.url || "",
     });
   };
   const guardarEdicion = async (id: string) => {
     if (!ef.plataforma.trim() || guardando) return;
     setGuardando(true); setError("");
-    const res = await editarCredencial(id, dueno, duenoId, ef.plataforma, ef.identificador, ef.ubicacion, ef.notas, ef.metodo);
+    const res = await editarCredencial(id, dueno, duenoId, ef.plataforma, ef.identificador, ef.ubicacion, ef.notas, ef.metodo, ef.url);
     setGuardando(false);
     if (res?.error) { setError(res.error); return; }
     setEditando(null); router.refresh();
@@ -181,7 +224,7 @@ export default function Credenciales({ dueno, duenoId, credenciales }: {
       </p>
 
       {error && <div className="err-inline">⚠ {error}</div>}
-      {agregando && <FormFila v={f} set={setF} onSave={guardar} onCancel={() => setAgregando(false)} guardando={guardando} />}
+      {agregando && <FormFila v={f} set={setF} onSave={guardar} onCancel={() => setAgregando(false)} guardando={guardando} urlDe={urlDe} />}
 
       {credenciales.map(c => (
         <div key={c.id} className="cred-bloque">
@@ -189,7 +232,16 @@ export default function Credenciales({ dueno, duenoId, credenciales }: {
             <FormFila v={ef} set={setEf} onSave={() => guardarEdicion(c.id)} onCancel={() => setEditando(null)} guardando={guardando} />
           ) : (
             <div className="eq-row" style={{ alignItems: "center" }}>
-              <span className="cargo" style={{ minWidth: 130 }}>{c.plataforma}</span>
+              {/* La plataforma ES el enlace cuando se sabe dónde queda */}
+              {c.url ? (
+                <a href={c.url} target="_blank" rel="noopener noreferrer" className="cargo"
+                  title={`Entrar a ${c.plataforma} — ${c.url}`}
+                  style={{ minWidth: 130, color: "var(--violet)", textDecoration: "none" }}>
+                  {c.plataforma} ↗
+                </a>
+              ) : (
+                <span className="cargo" style={{ minWidth: 130 }}>{c.plataforma}</span>
+              )}
               <span style={{ flex: 1, color: "#c6c6da" }}>{c.identificador || "—"}</span>
               {c.metodo_acceso && (
                 <span className="badge" style={{
@@ -203,6 +255,17 @@ export default function Credenciales({ dueno, duenoId, credenciales }: {
               <span className="badge" style={{ color: "var(--teal)", background: "rgba(45,212,191,.1)" }}>
                 🔒 {c.ubicacion || "sin ubicar"}
               </span>
+              {/* Las otras entradas de la misma cuenta. Con Clave SOL son
+                  tres sitios distintos y el de arriba es solo el menú
+                  general: quien viene a declarar el IGV necesita el suyo. */}
+              {(c.puertas || []).map((q: any) => (
+                <a key={q.id} href={q.url} target="_blank" rel="noopener noreferrer"
+                  className="badge" title={q.notas || `Entrar a ${q.titulo}`}
+                  style={{ color: "var(--violet)", background: "rgba(167,139,250,.1)",
+                    textTransform: "none", letterSpacing: 0, textDecoration: "none" }}>
+                  ↗ {q.titulo}
+                </a>
+              ))}
               {c.actualizado_en && <span style={{ color: "var(--dim)", fontSize: 11 }}>{c.actualizado_en}</span>}
               <button title="Editar" style={{ color: "var(--dim)", marginLeft: 6 }} onClick={() => abrirEdicion(c)}>✎</button>
               {borrando === c.id ? (
@@ -221,7 +284,7 @@ export default function Credenciales({ dueno, duenoId, credenciales }: {
           <div className="cred-datos">
             {[...(c.datos || [])].sort((a: any, b: any) => (a.etiqueta || "").localeCompare(b.etiqueta || "")).map((d: any) => (
               edDatoId === d.id ? (
-                <DatoForm key={d.id} v={ed} set={setEd} onSave={() => guardarEd(d.id)} onCancel={() => setEdDatoId(null)} guardando={ocupadoDato} />
+                <DatoForm key={d.id} v={ed} set={setEd} onSave={() => guardarEd(d.id)} onCancel={() => setEdDatoId(null)} guardando={ocupadoDato} sug={sugDe(c.metodo_acceso)} />
               ) : (
                 <div key={d.id} className="dato-row">
                   <span className="dato-et">{d.etiqueta}</span>
@@ -233,8 +296,21 @@ export default function Credenciales({ dueno, duenoId, credenciales }: {
                 </div>
               )
             ))}
+            {/* Clave SOL sin usuario SOL es una credencial que no abre nada:
+                están el RUC y la clave, y falta el tercero. Se reclama con un
+                botón que ya deja el dato escrito, para que arreglarlo cueste
+                un clic y no haya que saber cómo se llama el campo. */}
+            {c.metodo_acceso === METODO_SOL && !tieneSol(c) && addDato !== c.id && (
+              <div className="dato-row" style={{ color: "var(--red)", fontSize: 11.5 }}>
+                <span>⛔ falta el <b>usuario SOL</b> — con el RUC y la clave solos no se entra</span>
+                <button className="dato-btn" style={{ color: "var(--red)", fontWeight: 700 }}
+                  onClick={() => { setAddDato(c.id); setNd({ etiqueta: DATO_SOL, valor: "" }); }}>
+                  ＋ agregarlo
+                </button>
+              </div>
+            )}
             {addDato === c.id ? (
-              <DatoForm v={nd} set={setNd} onSave={() => guardarNd(c.id)} onCancel={() => setAddDato(null)} guardando={ocupadoDato} />
+              <DatoForm v={nd} set={setNd} onSave={() => guardarNd(c.id)} onCancel={() => setAddDato(null)} guardando={ocupadoDato} sug={sugDe(c.metodo_acceso)} />
             ) : (
               <button className="dato-add" onClick={() => { setAddDato(c.id); setNd({ etiqueta: "", valor: "" }); }}>
                 ＋ dato de esta cuenta

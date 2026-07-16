@@ -1274,11 +1274,108 @@ export async function desenlazarCuenta(personaId: string) {
 }
 
 /* --- Credenciales: SOLO metadatos; la clave vive en el gestor --- */
+/* ── Plataformas: dónde se entra ──
+   La URL vive con la plataforma, no repetida en cada credencial. Al
+   guardarla, las credenciales de esa plataforma que no tengan una propia
+   la heredan: cambiar la puerta de DAFO es un solo cambio, no seis. */
+export async function guardarPlataforma(f: {
+  id?: string; nombre: string; url: string; requiereCuenta: boolean; notas: string;
+}) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: perfil } = await supabase.from("perfiles").select("es_admin").eq("id", user.id).single();
+  if (!perfil?.es_admin) return { error: "Solo administración gestiona las plataformas." };
+
+  const nombre = f.nombre.trim();
+  if (!nombre) return { error: "El nombre es obligatorio." };
+  const url = f.url.trim();
+  if (url && !/^https?:\/\/\S+$/.test(url))
+    return { error: "El link debe ser completo (https://…)." };
+
+  const fila = { nombre, url: url || null, requiere_cuenta: f.requiereCuenta, notas: f.notas.trim() || null };
+  const { data, error } = f.id
+    ? await supabase.from("plataformas").update(fila).eq("id", f.id).select("id").maybeSingle()
+    : await supabase.from("plataformas").insert(fila).select("id").maybeSingle();
+  if (error) return { error: error.message };
+  if (!data) return { error: "No se guardó: revisa que el nombre no esté repetido." };
+
+  /* Propagar a las credenciales que no tienen puerta propia. Sin esto, la
+     plataforma sabría el link y las seis credenciales seguirían sin él. */
+  if (url) {
+    await supabase.from("credenciales").update({ url })
+      .is("url", null).ilike("plataforma", nombre);
+  }
+  revalidatePath("/admin");
+  return {};
+}
+
+export async function borrarPlataforma(id: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: perfil } = await supabase.from("perfiles").select("es_admin").eq("id", user.id).single();
+  if (!perfil?.es_admin) return { error: "Solo administración gestiona las plataformas." };
+  const { error } = await supabase.from("plataformas").delete().eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath("/admin");
+  return {};
+}
+
+/* Puertas: las entradas ADICIONALES de una plataforma.
+   Clave SOL es una cuenta con tres entradas —menú general, declaraciones y
+   pagos, renta anual—, así que `plataformas.url` sola no alcanzaba. La
+   principal sigue en `plataformas.url` (es la que heredan las credenciales);
+   aquí viven las demás, con el nombre de para qué sirven. */
+export async function guardarPuerta(f: {
+  id?: string; plataformaId: string; titulo: string; url: string; notas: string; orden?: number;
+}) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: perfil } = await supabase.from("perfiles").select("es_admin").eq("id", user.id).single();
+  if (!perfil?.es_admin) return { error: "Solo administración gestiona las plataformas." };
+
+  const titulo = f.titulo.trim();
+  if (!titulo) return { error: "Ponle un nombre a la entrada — para qué sirve." };
+  const url = f.url.trim();
+  /* Aquí el link SÍ es obligatorio, al revés que en la plataforma: una
+     plataforma sin link todavía dice algo (que existe, que tiene cuenta).
+     Una puerta sin link no es nada. */
+  if (!/^https?:\/\/\S+$/.test(url))
+    return { error: "El link debe ser completo (https://…)." };
+
+  const fila = {
+    plataforma_id: f.plataformaId, titulo, url,
+    notas: f.notas.trim() || null, orden: f.orden ?? 0,
+  };
+  const { data, error } = f.id
+    ? await supabase.from("plataforma_puertas").update(fila).eq("id", f.id).select("id").maybeSingle()
+    : await supabase.from("plataforma_puertas").insert(fila).select("id").maybeSingle();
+  if (error) return { error: error.message };
+  if (!data) return { error: "No se guardó: revisa que el nombre no se repita en esta plataforma." };
+  revalidatePath("/admin");
+  return {};
+}
+
+export async function borrarPuerta(id: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: perfil } = await supabase.from("perfiles").select("es_admin").eq("id", user.id).single();
+  if (!perfil?.es_admin) return { error: "Solo administración gestiona las plataformas." };
+  const { error } = await supabase.from("plataforma_puertas").delete().eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath("/admin");
+  return {};
+}
+
 /* Nombres cortos para el historial de credenciales: la columna se llama
    `metodo_acceso`, pero en la bitácora se lee "Método de acceso". */
 const CRED_CAMPOS: Record<string, string> = {
   plataforma: "Plataforma",
   identificador: "Usuario",
+  url: "Link para entrar",
   ubicacion: "Dónde vive la clave",
   metodo_acceso: "Método de acceso",
   notas: "Notas",
@@ -1287,7 +1384,7 @@ const CRED_CAMPOS: Record<string, string> = {
 export async function agregarCredencial(
   dueno: "empresa" | "persona", duenoId: string,
   plataforma: string, identificador: string, ubicacion: string, notas: string,
-  metodo: string = ""
+  metodo: string = "", url: string = ""
 ) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -1299,6 +1396,7 @@ export async function agregarCredencial(
     ubicacion: ubicacion.trim() || null,
     notas: notas.trim() || null,
     metodo_acceso: metodo.trim() || null,
+    url: url.trim() || null,
     actualizado_en: new Date().toISOString().slice(0, 10),
   });
   if (error) return { error: error.message };
@@ -1312,14 +1410,15 @@ export async function agregarCredencial(
 
 export async function editarCredencial(
   id: string, dueno: string, duenoId: string,
-  plataforma: string, identificador: string, ubicacion: string, notas: string, metodo: string = ""
+  plataforma: string, identificador: string, ubicacion: string, notas: string,
+  metodo: string = "", url: string = ""
 ) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
   if (!plataforma.trim()) return { error: "La plataforma es obligatoria." };
   const { data: antes } = await supabase.from("credenciales")
-    .select("plataforma,identificador,ubicacion,notas,metodo_acceso")
+    .select("plataforma,identificador,ubicacion,notas,metodo_acceso,url")
     .eq("id", id).maybeSingle();
   const nuevo: Record<string, string | null> = {
     plataforma: plataforma.trim(),
@@ -1327,6 +1426,7 @@ export async function editarCredencial(
     ubicacion: ubicacion.trim() || null,
     notas: notas.trim() || null,
     metodo_acceso: metodo.trim() || null,
+    url: url.trim() || null,
   };
   const { error } = await supabase.from("credenciales").update({
     ...nuevo, actualizado_en: new Date().toISOString().slice(0, 10),

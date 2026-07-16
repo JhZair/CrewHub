@@ -743,6 +743,18 @@ img.av{border:1px solid var(--border2)}
 .buscador-glob input{flex:1;background:none;border:none;outline:none;font-size:13px;color:var(--text);min-width:0}
 .buscador-glob .kbd{font-size:10px;color:var(--dim);border:1px solid var(--border2);border-radius:5px;padding:2px 6px;white-space:nowrap}
 .bg-lupa{color:var(--dim);font-size:14px;line-height:1;flex:none}
+
+/* La caja de búsqueda de cada listado: mismo degradado, misma píldora.
+   Eran <input> sueltos con un borde gris — buscar se veía de dos maneras
+   según la pantalla, y buscar es una sola cosa. */
+.buscador-lista{display:flex;align-items:center;gap:10px;border-radius:999px;
+  border:1.5px solid transparent;padding:9px 16px;flex:1;min-width:0;
+  background:
+    linear-gradient(var(--card), var(--card)) padding-box,
+    var(--grad-buscar) border-box}
+.buscador-lista:focus-within{box-shadow:0 0 0 3px rgba(124,92,255,.14);filter:brightness(1.15)}
+.buscador-lista input{flex:1;background:none;border:none;outline:none;
+  font-size:13.5px;color:var(--text);min-width:0}
 .bg-x{color:var(--dim);background:none;border:none;cursor:pointer;font-size:13px;line-height:1;padding:2px 4px;flex:none}
 .bg-x:hover{color:var(--text)}
 

@@ -15,6 +15,7 @@ import PrestamoEquipo from "@/components/PrestamoEquipo";
 import CuentaAcceso from "@/components/CuentaAcceso";
 import { BotonVerificarRuc, BotonVerificarDni, BotonRucPersona } from "@/components/VerificarSunat";
 import Alerta from "@/components/Alerta";
+import { urlPlataforma, conPuertas, PLAT } from "@/lib/plataformas";
 import BotonFichaSunat from "@/components/BotonFichaSunat";
 import CVs from "@/components/CVs";
 import FotoPersona from "@/components/FotoPersona";
@@ -122,7 +123,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   const { data: ent } = await supabase.from(conf.tabla).select("*").eq("id", params.id).single();
   if (!ent) notFound();
 
-  const [{ data: vincs }, { data: eventos }] = await Promise.all([
+  const [{ data: vincs }, { data: eventos }, urlSunat] = await Promise.all([
     supabase.from("publicacion_vinculos")
       .select("publicacion_id")
       .eq("entidad_tipo", params.tipo).eq("entidad_id", params.id)
@@ -131,6 +132,9 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       .select("tipo,detalle,creado_en,actor:perfiles(nombre)")
       .eq("entidad_tipo", params.tipo).eq("entidad_id", params.id)
       .order("creado_en", { ascending: false }).limit(30),
+    // El link de SUNAT sale del admin, no del código: si SUNAT lo cambia
+    // —lo ha hecho— se corrige ahí sin esperar un deploy.
+    urlPlataforma(PLAT.sunatConsultaRuc),
   ]);
 
   // Historial sin ruido: los cambios de estado_sunat/condicion_sunat ya
@@ -365,7 +369,10 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       .select("*, datos:credencial_datos(id,etiqueta,valor,verificado_en)")
       .eq(params.tipo === "empresa" ? "empresa_id" : "persona_id", params.id)
       .order("plataforma");
-    creds = data || [];
+    /* Las entradas adicionales de la plataforma, colgadas de su credencial:
+       la Clave SOL de esta empresa abre en tres sitios, y quien viene a
+       declarar el IGV necesita el suyo, no el menú general. */
+    creds = await conPuertas(data || []);
   }
 
   const nombre = params.tipo === "postulacion"
@@ -708,7 +715,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                     RUC calculado: <b style={{ color: "var(--text)" }}>{rucPer}</b>
                   </span>
                   <BotonRucPersona personaId={params.id} />
-                  <BotonFichaSunat numero={ent.ruc_dni} tipo="DNI" />
+                  <BotonFichaSunat numero={ent.ruc_dni} tipo="DNI" url={urlSunat} />
                   {ent.suspension_4ta_url && (
                     <a href={ent.suspension_4ta_url} target="_blank" rel="noopener noreferrer"
                       className="btn btn-ghost" style={lnk}>🧾 Constancia 4ta ↗</a>
@@ -742,7 +749,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               [SUNAT_EMPRESA]: ent.ruc && (
                 <>
                   <BotonVerificarRuc empresaId={params.id} />
-                  <BotonFichaSunat numero={ent.ruc} />
+                  <BotonFichaSunat numero={ent.ruc} url={urlSunat} />
                 </>
               ),
               [DOCS_EMPRESA]: (ent.carpeta_drive_url || ent.renca_url || ent.vigencia_poder_url) && (

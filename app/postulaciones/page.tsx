@@ -3,6 +3,7 @@ import Volver from "@/components/Volver";
 import LineaTiempo, { type EventoLT } from "@/components/LineaTiempo";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import { TIPO_COLOR } from "@/lib/entidades";
+import { buscadorDe, pal } from "@/lib/buscar";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -63,7 +64,7 @@ export default async function Postulaciones({ searchParams }: {
   });
 
   const posts = postsAll || [];
-  const nrm = (s: any) => String(s || "").toLowerCase();
+  const coincide = buscadorDe(q);   // el mismo motor que el buscador global
 
   /* Lo que hay que arreglar. Son las mismas reglas que ya avisan en la ficha
      y en el vigía: si el sistema sabe señalarlas de a una, tiene que saber
@@ -83,9 +84,11 @@ export default async function Postulaciones({ searchParams }: {
     (!a || String(p.conv?.anio || "") === a) &&
     (!t || p.proy?.tipo === t) &&
     (!f || PRUEBA_F[f]?.(p)) &&
-    (!q || nrm(p.codigo).includes(nrm(q)) || nrm(p.proy?.nombre).includes(nrm(q)) ||
-      nrm(p.emp?.nombre).includes(nrm(q)) || nrm(p.conv?.codigo).includes(nrm(q)) ||
-      nrm(p.conv?.nombre).includes(nrm(q))));
+    // El código del acta y el de la plataforma DAFO también: son los números
+    // con los que llega un correo del Ministerio
+    (!q || coincide(pal(
+      p.codigo, p.codigo_plataforma, p.codigo_acta, p.proy?.nombre,
+      p.emp?.nombre, p.conv?.codigo, p.conv?.nombre, p.conv?.anio, p.estado))));
 
   const cnt = (est: string) => posts.filter((p: any) => p.estado === est).length;
   const cntF = (k: string) => posts.filter(PRUEBA_F[k]).length;
@@ -188,8 +191,11 @@ export default async function Postulaciones({ searchParams }: {
         {a && <input type="hidden" name="a" value={a} />}
         {t && <input type="hidden" name="t" value={t} />}
         {f && <input type="hidden" name="f" value={f} />}
-        <input name="q" defaultValue={q} placeholder="Buscar por proyecto, código, empresa o concurso..."
-          style={{ flex: 1, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 14px", outline: "none", fontSize: 13.5 }} />
+        <span className="buscador-lista">
+          <span className="bg-lupa">🔍</span>
+          <input name="q" defaultValue={q}
+            placeholder="Proyecto, código, empresa, concurso, código de acta…" />
+        </span>
         <button className="btn" type="submit">Buscar</button>
       </form>
 
