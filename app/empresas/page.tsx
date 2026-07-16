@@ -280,7 +280,8 @@ export default async function Empresas({ searchParams }: {
       <div className="topbar">
         <Volver />
         <span className="spacer" />
-        <Link href="/proyectos" className="btn btn-ghost">📁 Proyectos</Link>
+        {/* El atajo a 📁 Proyectos vivía aquí porque la nav solo estaba en el
+            feed. Ahora la nav está en todas: repetirlo al lado solo confunde. */}
         <Link href="/casos/empresa" className="btn btn-ghost"
           title="Todos los casos, agrupados por empresa">🗂 Casos</Link>
         <Link href="/historial/empresa" className="btn btn-ghost"

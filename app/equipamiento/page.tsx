@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import BotonComprobar from "@/components/BotonComprobar";
 import BotonDevolver from "@/components/BotonDevolver";
+import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -15,39 +16,76 @@ const EST_META: Record<string, [string, string]> = {
   de_baja: ["De baja", "var(--dim)"],
 };
 
+const TOPE = 200;
+const ABIERTOS = ["abierta", "en_progreso", "seguimiento"];
+
 export default async function Equipamiento({ searchParams }: {
-  searchParams: { q?: string; e?: string; ronda?: string };
+  searchParams: { q?: string; e?: string; c?: string; f?: string; ronda?: string };
 }) {
   const q = (searchParams?.q || "").trim();
   const e = searchParams?.e || "";
+  const c = searchParams?.c || "";
+  const f = searchParams?.f || "";
   const ronda = searchParams?.ronda === "1";
-  const listar = !!(q || e || ronda);
+  const listar = !!(q || e || c || f || ronda);
 
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: eqs }, { data: enManos }] = await Promise.all([
+  const [{ data: eqs }, { data: enManos }, { data: vincs }, { data: coms }] = await Promise.all([
     supabase.from("equipamiento")
       .select("id,folio,nombre,categoria,subcategoria,estado,valor_compra,ultima_comprobacion")
       .order("folio"),
     supabase.from("equipo_prestamos")
       .select("id,desde,equipo:equipamiento(id,folio,nombre),persona:personas(id,nombre,alias),proy:proyectos(id,nombre)")
       .is("hasta", null).order("desde", { ascending: false }),
+    supabase.from("publicacion_vinculos")
+      .select("entidad_id,publicacion_id,pub:publicaciones(estado)").eq("entidad_tipo", "equipamiento"),
+    supabase.from("comentarios").select("publicacion_id"),
   ]);
+
+  // Su vida en CrewHub+, igual que en empresas, personas y proyectos
+  const comentPorPub = new Map<string, number>();
+  (coms || []).forEach((x: any) => comentPorPub.set(x.publicacion_id, (comentPorPub.get(x.publicacion_id) || 0) + 1));
+  type Act = { casos: number; abiertos: number; coments: number };
+  const VACIO: Act = { casos: 0, abiertos: 0, coments: 0 };
+  const act = new Map<string, Act>();
+  (vincs || []).forEach((v: any) => {
+    const a = act.get(v.entidad_id) || { ...VACIO };
+    a.casos++;
+    if (ABIERTOS.includes((v.pub as any)?.estado)) a.abiertos++;
+    a.coments += comentPorPub.get(v.publicacion_id) || 0;
+    act.set(v.entidad_id, a);
+  });
 
   const todos = eqs || [];
   const nrm = (s: any) => String(s || "").toLowerCase();
   const porComprobar = (x: any) =>
     !["de_baja"].includes(x.estado) &&
     (!x.ultima_comprobacion || diasDesde(x.ultima_comprobacion) > 90);
-  const filtrados = todos.filter((x: any) =>
+
+  const PRUEBA_F: Record<string, (x: any) => boolean> = {
+    // Sin valor no suma al inventario: el total de arriba miente por omisión
+    sin_valor: x => !["de_baja", "perdido"].includes(x.estado) && !x.valor_compra,
+    sin_folio: x => !x.folio,
+    sin_categoria: x => !x.categoria,
+  };
+
+  const filtradosTodos = todos.filter((x: any) =>
     (!e || x.estado === e) &&
+    // Categoría de verdad. Antes los chips buscaban la categoría como TEXTO,
+    // así que "cámara" traía también "Cuerpo de cámara" de subcategoría y
+    // cualquier nombre que la mencionara: el número del chip nunca cuadraba
+    // con lo que salía al hacer clic.
+    (!c || (x.categoria || "") === c) &&
+    (!f || PRUEBA_F[f]?.(x)) &&
     (!ronda || porComprobar(x)) &&
     (!q || nrm(x.nombre).includes(nrm(q)) || nrm(x.folio).includes(nrm(q)) ||
-      nrm(x.categoria).includes(nrm(q)) || nrm(x.subcategoria).includes(nrm(q)))
-  ).slice(0, 200);
+      nrm(x.categoria).includes(nrm(q)) || nrm(x.subcategoria).includes(nrm(q))));
+  const filtrados = filtradosTodos.slice(0, TOPE);
   const pendientesRonda = todos.filter(porComprobar).length;
+  const cntF = (k: string) => todos.filter(PRUEBA_F[k]).length;
 
   const cnt = (est: string) => todos.filter((x: any) => x.estado === est).length;
   const valorTotal = todos
@@ -59,6 +97,38 @@ export default async function Equipamiento({ searchParams }: {
     const c = x.categoria || "sin categoría";
     porCat.set(c, (porCat.get(c) || 0) + 1);
   });
+
+  const Fila = (x: any) => {
+    const a = act.get(x.id) || VACIO;
+    return (
+      <Link key={x.id} href={`/entidad/equipamiento/${x.id}`}>
+        <div className="card link" style={{ cursor: "pointer", padding: "12px 16px" }}>
+          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+            {x.folio
+              ? <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{x.folio}</span>
+              : <span className="badge" style={{ color: "var(--yellow)", background: "rgba(244,180,0,.12)" }}>⚠ sin folio</span>}
+            <b style={{ fontSize: 14.5, flex: 1 }}>{x.nombre}</b>
+            {x.subcategoria && <span style={{ color: "var(--dim)", fontSize: 12 }}>{x.subcategoria}</span>}
+            {/* Lo que cuelga del equipo: una cámara con un caso abierto
+                puede ser una reparación a medias, y eso decide si sale a rodaje */}
+            {a.abiertos > 0 && (
+              <span style={{ color: "var(--red)", fontSize: 11.5, fontWeight: 700 }}>❗ {a.abiertos}</span>
+            )}
+            {a.casos > 0 && (
+              <span style={{ color: "var(--dim)", fontSize: 11.5 }} title="Casos vinculados">📌 {a.casos}</span>
+            )}
+            {a.coments > 0 && (
+              <span style={{ color: "var(--muted)", fontSize: 11.5 }} title="Comentarios">💬 {a.coments}</span>
+            )}
+            <BotonComprobar equipoId={x.id} ultima={x.ultima_comprobacion} compacto={!ronda} />
+            <span className="badge" style={{ color: EST_META[x.estado]?.[1] || "var(--muted)", background: "#1c1c2c" }}>
+              {(x.estado || "").replace(/_/g, " ")}
+            </span>
+          </div>
+        </div>
+      </Link>
+    );
+  };
 
   return (
     <div className="shell">
@@ -75,11 +145,41 @@ export default async function Equipamiento({ searchParams }: {
 
       <form className="card" style={{ display: "flex", gap: 10, padding: 12 }}>
         {e && <input type="hidden" name="e" value={e} />}
+        {c && <input type="hidden" name="c" value={c} />}
+        {f && <input type="hidden" name="f" value={f} />}
+        {ronda && <input type="hidden" name="ronda" value="1" />}
         <input name="q" defaultValue={q} placeholder="Buscar por nombre, folio o categoría..."
           style={{ flex: 1, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 14px", outline: "none", fontSize: 13.5 }} />
         <button className="btn" type="submit">Buscar</button>
-        {listar && <Link href="/equipamiento" className="btn btn-ghost">✕ Panel</Link>}
       </form>
+
+      {/* El estado sigue en las tarjetas de arriba: no se duplica aquí */}
+      <PanelFiltros limpiar="/equipamiento" mostrarLimpiar={listar}>
+        <FilaFiltro titulo="Categoría">
+          {[...porCat.entries()].sort((a, b) => b[1] - a[1]).map(([cat, n]) => (
+            <Chip key={cat} href={`/equipamiento?c=${encodeURIComponent(cat)}`}
+              on={c === cat} color="var(--violet)">{cat} · {n}</Chip>
+          ))}
+        </FilaFiltro>
+        <FilaFiltro titulo="Atención">
+          <Chip href="/equipamiento?ronda=1" on={ronda} color="var(--yellow)"
+            title="Nadie los ha visto físicamente en 90+ días">
+            🔍 por comprobar · {pendientesRonda}
+          </Chip>
+          <Chip href="/equipamiento?f=sin_valor" on={f === "sin_valor"} color="var(--yellow)"
+            title="Sin precio no suman al valor del inventario">
+            ⚠ sin precio · {cntF("sin_valor")}
+          </Chip>
+          <Chip href="/equipamiento?f=sin_folio" on={f === "sin_folio"} color="var(--yellow)"
+            title="Sin folio no se puede citar en un acta ni etiquetar">
+            ⚠ sin folio · {cntF("sin_folio")}
+          </Chip>
+          <Chip href="/equipamiento?f=sin_categoria" on={f === "sin_categoria"} color="var(--dim)"
+            title="Sin categoría no entra en el inventario por categoría">
+            ⚠ sin categoría · {cntF("sin_categoria")}
+          </Chip>
+        </FilaFiltro>
+      </PanelFiltros>
 
       {!listar && (
         <>
@@ -90,12 +190,23 @@ export default async function Equipamiento({ searchParams }: {
                 <div className="stat-l">{lbl}</div>
               </Link>
             ))}
-            <span className="stat-card" style={{ display: "block" }}>
+            {/* El total suma solo lo que tiene precio cargado. Si faltan
+                muchos, el número es una fracción de la realidad — y eso se
+                dice aquí, no se deja creer. */}
+            <Link href="/equipamiento?f=sin_valor" className="stat-card"
+              style={{ display: "block" }}>
               <span className="stat-n" style={{ color: "var(--teal)", fontSize: 19, display: "block" }}>
                 S/ {Math.round(valorTotal).toLocaleString("es-PE")}
               </span>
-              <span className="stat-l">valor del inventario activo</span>
-            </span>
+              <span className="stat-l">
+                valor del inventario activo
+                {cntF("sin_valor") > 0 && (
+                  <b style={{ color: "var(--yellow)", display: "block" }}>
+                    ⚠ {cntF("sin_valor")} sin precio — el total va corto
+                  </b>
+                )}
+              </span>
+            </Link>
             <Link href="/equipamiento?ronda=1" className="stat-card"
               style={pendientesRonda > 0 ? { borderColor: "rgba(244,180,0,.4)" } : undefined}>
               <div className="stat-n" style={{ color: pendientesRonda > 0 ? "var(--yellow)" : "var(--green)" }}>
@@ -147,19 +258,8 @@ export default async function Equipamiento({ searchParams }: {
             </div>
           )}
 
-          <div className="card">
-            <div className="panel-h">📦 Inventario por categoría · {todos.length} activos</div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {[...porCat.entries()].sort((a, b) => b[1] - a[1]).map(([c, n]) => (
-                <Link key={c} href={`/equipamiento?q=${encodeURIComponent(c)}`} className="vtab">
-                  {c} · {n}
-                </Link>
-              ))}
-            </div>
-          </div>
-
           <div style={{ color: "var(--dim)", fontSize: 12.5, textAlign: "center", margin: "6px 0 14px" }}>
-            Usa el buscador, un estado o una categoría para ver la lista.
+            {todos.length} equipos en total — usa el buscador, un estado o una categoría para ver la lista.
           </div>
         </>
       )}
@@ -168,27 +268,37 @@ export default async function Equipamiento({ searchParams }: {
         <>
           <div style={{ color: "var(--muted)", fontSize: 13, margin: "2px 4px 10px" }}>
             {ronda && <b style={{ color: "var(--yellow)" }}>🔍 MODO RONDA — marca cada equipo que veas físicamente · </b>}
-            {filtrados.length} resultado{filtrados.length === 1 ? "" : "s"}
-            {e && ` · ${(EST_META[e]?.[0] || e).toLowerCase()}`}{q && ` · «${q}»`}
+            {filtradosTodos.length} resultado{filtradosTodos.length === 1 ? "" : "s"}
+            {e && ` · ${(EST_META[e]?.[0] || e).toLowerCase()}`}
+            {c && ` · ${c}`}{f && ` · ${f.replace(/_/g, " ")}`}{q && ` · «${q}»`}
           </div>
-          {filtrados.map((x: any) => (
-            <Link key={x.id} href={`/entidad/equipamiento/${x.id}`}>
-              <div className="card link" style={{ cursor: "pointer", padding: "12px 16px" }}>
-                <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                  {x.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{x.folio}</span>}
-                  <b style={{ fontSize: 14.5, flex: 1 }}>{x.nombre}</b>
-                  {x.categoria && <span className="badge" style={{ color: "var(--violet)", background: "rgba(167,139,250,.12)" }}>{x.categoria}</span>}
-                  {x.subcategoria && <span style={{ color: "var(--dim)", fontSize: 12 }}>{x.subcategoria}</span>}
-                  <BotonComprobar equipoId={x.id} ultima={x.ultima_comprobacion} compacto={!ronda} />
-                  <span className="badge" style={{ color: EST_META[x.estado]?.[1] || "var(--muted)", background: "#1c1c2c" }}>
-                    {(x.estado || "").replace(/_/g, " ")}
-                  </span>
+          {/* Agrupados por categoría: los lentes con los lentes */}
+          {(() => {
+            const cats = [...new Set(filtrados.map((x: any) => x.categoria || ""))]
+              .sort((a: any, b: any) => (a ? 0 : 1) - (b ? 0 : 1) || String(a).localeCompare(String(b)));
+            return cats.map((cat: any) => {
+              const filas = filtrados.filter((x: any) => (x.categoria || "") === cat);
+              return (
+                <div key={cat || "sin"} style={{ marginTop: 6 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "12px 4px 6px" }}>
+                    <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 1.2, color: "var(--dim)", fontWeight: 700 }}>
+                      {cat || "sin categoría"} · {filas.length}
+                    </span>
+                    <span style={{ flex: 1, height: 1, background: "var(--border)" }} />
+                  </div>
+                  {filas.map(Fila)}
                 </div>
-              </div>
-            </Link>
-          ))}
+              );
+            });
+          })()}
           {!filtrados.length && <div className="empty">Sin equipos {q && `para «${q}»`}.</div>}
-          {filtrados.length === 150 && <div className="empty">Mostrando 150 — afina la búsqueda.</div>}
+          {/* Antes el aviso saltaba en 150 pero el corte era 200: pasando de
+              200 la lista se recortaba en silencio y nadie se enteraba. */}
+          {filtradosTodos.length > TOPE && (
+            <div className="empty" style={{ color: "var(--yellow)" }}>
+              ⚠ Mostrando {TOPE} de {filtradosTodos.length} — afina la búsqueda o filtra por categoría.
+            </div>
+          )}
         </>
       )}
     </div>

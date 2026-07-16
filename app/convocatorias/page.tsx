@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import LineaTiempo, { type EventoLT } from "@/components/LineaTiempo";
+import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import { TIPO_COLOR } from "@/lib/entidades";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -15,17 +16,21 @@ const dias = (f: string) => Math.ceil((new Date(f + "T12:00:00").getTime() - Dat
 const fmt = (f: string) => new Date(f + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short" });
 const colorD = (d: number) => (d <= 2 ? "var(--red)" : d <= 7 ? "var(--yellow)" : "var(--muted)");
 
+const ABIERTOS = ["abierta", "en_progreso", "seguimiento"];
+
 export default async function Convocatorias({ searchParams }: {
-  searchParams: { q?: string; e?: string };
+  searchParams: { q?: string; e?: string; a?: string; j?: string };
 }) {
   const q = (searchParams?.q || "").trim();
   const e = searchParams?.e || "";
+  const a = searchParams?.a || "";
+  const j = searchParams?.j || "";
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
   const hoyS = new Date().toISOString().slice(0, 10);
 
-  const [{ data: convs }, { data: hitos }, { data: postsAll }] = await Promise.all([
+  const [{ data: convs }, { data: hitos }, { data: postsAll }, { data: vincs }, { data: coms }] = await Promise.all([
     supabase.from("convocatorias")
       .select("id,codigo,nombre,anio,estado,monto_adjudicado,fecha_limite_rendicion")
       .order("anio", { ascending: false }).order("codigo"),
@@ -37,14 +42,28 @@ export default async function Convocatorias({ searchParams }: {
       .order("fecha_inicio").limit(10),
     supabase.from("postulaciones")
       .select("id,codigo,estado,monto_adjudicado,fecha_limite_rendicion,fecha_prorroga,conv:convocatorias(id,codigo,nombre,estado,anio,monto_adjudicado),proy:proyectos(id,nombre,tipo)"),
+    supabase.from("publicacion_vinculos")
+      .select("entidad_id,publicacion_id,pub:publicaciones(estado)").eq("entidad_tipo", "convocatoria"),
+    supabase.from("comentarios").select("publicacion_id"),
   ]);
 
+  // Su vida en CrewHub+, igual que en el resto de los listados
+  const comentPorPub = new Map<string, number>();
+  (coms || []).forEach((x: any) => comentPorPub.set(x.publicacion_id, (comentPorPub.get(x.publicacion_id) || 0) + 1));
+  type Act = { casos: number; abiertos: number; coments: number };
+  const VACIO: Act = { casos: 0, abiertos: 0, coments: 0 };
+  const act = new Map<string, Act>();
+  (vincs || []).forEach((v: any) => {
+    const x = act.get(v.entidad_id) || { ...VACIO };
+    x.casos++;
+    if (ABIERTOS.includes((v.pub as any)?.estado)) x.abiertos++;
+    x.coments += comentPorPub.get(v.publicacion_id) || 0;
+    act.set(v.entidad_id, x);
+  });
+
   const todas = convs || [];
-  const listar = !!(q || e);
+  const listar = !!(q || e || a || j);
   const nrm = (s: any) => String(s || "").toLowerCase();
-  const filtradas = todas.filter((c: any) =>
-    (!e || c.estado === e) &&
-    (!q || nrm(c.codigo).includes(nrm(q)) || nrm(c.nombre).includes(nrm(q)) || String(c.anio || "").includes(q)));
 
   const cnt = (est: string) => todas.filter((c: any) => c.estado === est).length;
   const enEjec = todas.filter((c: any) => ["en_ejecucion", "rendicion_pendiente"].includes(c.estado));
@@ -102,6 +121,25 @@ export default async function Convocatorias({ searchParams }: {
   });
   const ganamosEn = { has: (id: string) => ganamosCnt.has(id) };
 
+  /* Nuestra relación con cada concurso. Va después de los mapas porque los
+     necesita: "dónde ganamos" no se puede saber mirando la convocatoria. */
+  const PRUEBA_J: Record<string, (c: any) => boolean> = {
+    ganamos: c => ganamosCnt.has(c.id),
+    finalistas: c => finalistasEn.has(c.id),
+    postulamos: c => postulamosEn.has(c.id),
+    nunca: c => !postulamosEn.has(c.id),
+  };
+  const cntJ = (k: string) => todas.filter(PRUEBA_J[k]).length;
+
+  const filtradas = todas.filter((c: any) =>
+    (!e || c.estado === e) &&
+    // Año de verdad. La tarjeta de "temporada 2026" y los chips de año iban
+    // a ?q=2026, o sea buscaban el texto: el contador salía de c.anio y la
+    // lista de una búsqueda. Nunca podían coincidir.
+    (!a || String(c.anio || "") === a) &&
+    (!j || PRUEBA_J[j]?.(c)) &&
+    (!q || nrm(c.codigo).includes(nrm(q)) || nrm(c.nombre).includes(nrm(q))));
+
   return (
     <div className="shell">
       <div className="topbar">
@@ -117,11 +155,50 @@ export default async function Convocatorias({ searchParams }: {
 
       <form className="card" style={{ display: "flex", gap: 10, padding: 12 }}>
         {e && <input type="hidden" name="e" value={e} />}
-        <input name="q" defaultValue={q} placeholder="Buscar por concurso, código o año..."
+        {a && <input type="hidden" name="a" value={a} />}
+        {j && <input type="hidden" name="j" value={j} />}
+        <input name="q" defaultValue={q} placeholder="Buscar por concurso o código..."
           style={{ flex: 1, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 14px", outline: "none", fontSize: 13.5 }} />
         <button className="btn" type="submit">Buscar</button>
-        {listar && <Link href="/convocatorias" className="btn btn-ghost">✕ Panel</Link>}
       </form>
+
+      <PanelFiltros limpiar="/convocatorias" mostrarLimpiar={listar}>
+        <FilaFiltro titulo="Temporada">
+          {porAnio.map((y: any) => (
+            <Chip key={y} href={`/convocatorias?a=${y}`} on={a === String(y)} color="var(--violet)">
+              {y} · {anios.filter((x: any) => x === y).length}
+            </Chip>
+          ))}
+        </FilaFiltro>
+        <FilaFiltro titulo="Estado">
+          {Object.entries(EST_META).map(([est, [lbl, col]]) => {
+            const n = cnt(est);
+            return n === 0 ? null : (
+              <Chip key={est} href={`/convocatorias?e=${est}`} on={e === est} color={col}>
+                {lbl} · {n}
+              </Chip>
+            );
+          })}
+        </FilaFiltro>
+        {/* Lo que hace única a esta página: el catálogo DAFO es enorme y lo
+            que importa es dónde jugamos nosotros */}
+        <FilaFiltro titulo="Nuestra historia">
+          <Chip href="/convocatorias?j=ganamos" on={j === "ganamos"} color="var(--green)">
+            🏆 ganamos · {cntJ("ganamos")}
+          </Chip>
+          <Chip href="/convocatorias?j=finalistas" on={j === "finalistas"} color="var(--yellow)"
+            title="Llegamos a finalistas pero no ganamos">
+            🥈 rozamos · {cntJ("finalistas")}
+          </Chip>
+          <Chip href="/convocatorias?j=postulamos" on={j === "postulamos"} color="var(--blue)">
+            🎯 postulamos · {cntJ("postulamos")}
+          </Chip>
+          <Chip href="/convocatorias?j=nunca" on={j === "nunca"}
+            title="Del catálogo DAFO, los que nunca tocamos">
+            nunca postulamos · {cntJ("nunca")}
+          </Chip>
+        </FilaFiltro>
+      </PanelFiltros>
 
       {!listar && (() => {
         // La cancha, no el partido: temporada actual y frentes por CONCURSO
@@ -141,7 +218,7 @@ export default async function Convocatorias({ searchParams }: {
         return (
           <>
             <div className="stat-grid">
-              <Link href={`/convocatorias?q=${anioActual}`} className="stat-card">
+              <Link href={`/convocatorias?a=${anioActual}`} className="stat-card">
                 <div className="stat-n" style={{ color: "var(--violet)" }}>{temporada.length}</div>
                 <div className="stat-l">📜 concursos temporada {anioActual}</div>
               </Link>
@@ -217,22 +294,8 @@ export default async function Convocatorias({ searchParams }: {
             ]} />
           </div>
 
-          <div className="card">
-            <div className="panel-h">🗂 Historia · {todas.length} concursos{desde ? ` desde ${desde}` : ""}</div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {porAnio.map((a: any) => (
-                <Link key={a} href={`/convocatorias?q=${a}`} className="vtab">
-                  {a} · {anios.filter((x: any) => x === a).length}
-                </Link>
-              ))}
-            </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-              {Object.entries(EST_META).map(([est, [lbl, col]]) => (
-                <Link key={est} href={`/convocatorias?e=${est}`} className="vtab" style={{ color: col }}>
-                  {lbl} · {cnt(est)}
-                </Link>
-              ))}
-            </div>
+          <div style={{ color: "var(--dim)", fontSize: 12.5, textAlign: "center", margin: "6px 0 14px" }}>
+            {todas.length} concursos{desde ? ` desde ${desde}` : ""} — filtra arriba para ver la lista.
           </div>
         </>
         );
@@ -276,6 +339,21 @@ export default async function Convocatorias({ searchParams }: {
                       </span>
                     )}
                     <span style={{ flex: 1 }} />
+                    {(act.get(c.id)?.abiertos || 0) > 0 && (
+                      <span style={{ color: "var(--red)", fontSize: 11.5, fontWeight: 700 }}>
+                        ❗ {act.get(c.id)!.abiertos}
+                      </span>
+                    )}
+                    {(act.get(c.id)?.casos || 0) > 0 && (
+                      <span style={{ color: "var(--dim)", fontSize: 11.5 }} title="Casos vinculados">
+                        📌 {act.get(c.id)!.casos}
+                      </span>
+                    )}
+                    {(act.get(c.id)?.coments || 0) > 0 && (
+                      <span style={{ color: "var(--muted)", fontSize: 11.5 }} title="Comentarios">
+                        💬 {act.get(c.id)!.coments}
+                      </span>
+                    )}
                     {c.monto_adjudicado && (
                       <span style={{ color: "var(--teal)", fontSize: 12.5 }}>
                         S/ {parseFloat(c.monto_adjudicado).toLocaleString("es-PE")}
@@ -298,7 +376,9 @@ export default async function Convocatorias({ searchParams }: {
                 )}
                 {resto.map((c: any) => (
                   <Link key={c.id} href={`/entidad/convocatoria/${c.id}`}>
-                    <div className="card link" style={{ cursor: "pointer", padding: "8px 16px", opacity: .55, marginBottom: 8 }}>
+                    {/* fila-tenue: apagado, y se prende al pasar el cursor —
+                        el mismo gesto de las empresas candidatas */}
+                    <div className="card link fila-tenue" style={{ cursor: "pointer", padding: "8px 16px", marginBottom: 8 }}>
                       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 12.5 }}>
                         <b>{c.codigo}</b>
                         <span style={{ color: "var(--muted)" }}>{c.nombre}</span>
