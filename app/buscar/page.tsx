@@ -8,7 +8,7 @@ import { esDelEquipo } from "@/lib/personas";
 import { fmtVence, venceVigencia, vigenciaVencida } from "@/lib/vigencia";
 import { fechaLarga, haceOEn } from "@/lib/fechas";
 import { rucDePersona } from "@/lib/ruc";
-import { urlPlataforma, puertasPorPlataforma, PLAT } from "@/lib/plataformas";
+import { urlPlataforma, platPorNombre, PLAT } from "@/lib/plataformas";
 import BotonFichaSunat from "@/components/BotonFichaSunat";
 import Volver from "@/components/Volver";
 import BuscadorGlobal from "@/components/BuscadorGlobal";
@@ -288,8 +288,9 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
        "declaraciones y pagos" son los nombres por los que uno busca —el que
        va a declarar el IGV no piensa "SUNAT", piensa "declaraciones"—. Si se
        colgaran después, saldrían en la fila pero no la encontrarían. */
-    const mapaPuertas = await puertasPorPlataforma();
-    const puertasDe = (c: any) => mapaPuertas.get(String(c.plataforma || "").trim().toLowerCase()) || [];
+    const mapaPlat = await platPorNombre();
+    const platDe = (c: any) => mapaPlat.get(String(c.plataforma || "").trim().toLowerCase());
+    const puertasDe = (c: any) => platDe(c)?.puertas || [];
     const textoPuertas = (c: any) =>
       puertasDe(c).map((q: any) => `${q.titulo} ${q.notas || ""}`).join(" ");
     creds = (c10.data || [])
@@ -306,7 +307,13 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
            afiliación y te sale una fila «DAFO-Estímulos» sin decirte que lo
            encontró — y no sabrías si es lo que buscabas. */
         const golpes = (c.datos || []).filter((d: any) => coincide(`${d.etiqueta} ${d.valor}`));
-        return { ...c, dueno, duenoId, duenoNombre, golpes, puertas: puertasDe(c) };
+        /* El link se resuelve aquí, no se copió al guardar: si la credencial
+           no tiene uno propio, es el de su plataforma. Un solo sitio manda. */
+        return {
+          ...c, dueno, duenoId, duenoNombre, golpes,
+          url: c.url || platDe(c)?.url || null,
+          puertas: puertasDe(c),
+        };
       }).slice(0, 10);
   }
 

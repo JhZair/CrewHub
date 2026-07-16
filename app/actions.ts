@@ -1300,13 +1300,13 @@ export async function guardarPlataforma(f: {
   if (error) return { error: error.message };
   if (!data) return { error: "No se guardó: revisa que el nombre no esté repetido." };
 
-  /* Propagar a las credenciales que no tienen puerta propia. Sin esto, la
-     plataforma sabría el link y las seis credenciales seguirían sin él. */
-  if (url) {
-    await supabase.from("credenciales").update({ url })
-      .is("url", null).ilike("plataforma", nombre);
-  }
+  /* Nada que propagar: la credencial NO guarda copia del link. Lo resuelve
+     al leer (lib/plataformas.ts → conPlataforma). Antes esto copiaba el link
+     a las credenciales con url nula, y era el mismo dato en dos sitios: solo
+     rellenaba los huecos, nunca corregía. Cambiar el link de DAFO habría
+     dejado a las cinco que ya lo heredaron con el viejo, sin avisar. */
   revalidatePath("/admin");
+  revalidatePath("/buscar");
   return {};
 }
 

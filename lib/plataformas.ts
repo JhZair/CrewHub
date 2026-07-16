@@ -28,35 +28,62 @@ export const urlPlataforma = cache(async (clave: string): Promise<string | undef
 });
 
 export type Puerta = { id: string; titulo: string; url: string; notas: string | null; orden: number | null };
+export type Plat = { url: string | null; puertas: Puerta[] };
 
-/* Las entradas adicionales de cada plataforma, listas para colgarlas de una
- * credencial. La credencial guarda el nombre de la plataforma en texto, así
- * que la llave es ese nombre normalizado —igual que hace el admin para
- * contar usos—.
+/* Cada plataforma con su puerta principal y sus entradas adicionales. La
+ * credencial guarda el nombre de su plataforma en texto, así que la llave es
+ * ese nombre normalizado —igual que hace el admin para contar usos—.
  *
  * Devuelve un Map vacío si la tabla no está: una ficha de empresa no puede
  * caerse porque nadie corrió el SQL todavía.
  */
-export const puertasPorPlataforma = cache(async (): Promise<Map<string, Puerta[]>> => {
-  const m = new Map<string, Puerta[]>();
+export const platPorNombre = cache(async (): Promise<Map<string, Plat>> => {
+  const m = new Map<string, Plat>();
   try {
     const supabase = createClient();
     const { data } = await supabase.from("plataformas")
-      .select("nombre,puertas:plataforma_puertas(id,titulo,url,notas,orden)");
+      .select("nombre,url,puertas:plataforma_puertas(id,titulo,url,notas,orden)");
     (data || []).forEach((p: any) => {
-      const ps = [...(p.puertas || [])].sort((a: any, b: any) => (a.orden ?? 0) - (b.orden ?? 0));
-      if (ps.length) m.set(String(p.nombre || "").trim().toLowerCase(), ps);
+      m.set(String(p.nombre || "").trim().toLowerCase(), {
+        url: p.url || null,
+        puertas: [...(p.puertas || [])].sort((a: any, b: any) => (a.orden ?? 0) - (b.orden ?? 0)),
+      });
     });
   } catch {}
   return m;
 });
 
-/* Cuelga las puertas de cada credencial, por el nombre de su plataforma. */
-export async function conPuertas<T extends { plataforma?: string | null }>(creds: T[]) {
-  const m = await puertasPorPlataforma();
-  return creds.map(c => ({
-    ...c, puertas: m.get(String(c.plataforma || "").trim().toLowerCase()) || [],
-  }));
+/* El link de una credencial se RESUELVE al leer; no se copia al guardar.
+ *
+ * Antes `credenciales.url` guardaba una copia del link de su plataforma, y
+ * eso era el mismo dato en dos sitios divergiendo en silencio: el backfill
+ * copió cuando SUNAT-ClaveSOL aún no tenía link y nunca volvió a mirar, así
+ * que la plataforma sabía y la credencial decía «sin link». Peor: al editar
+ * una plataforma solo se rellenaban las credenciales con url nula — cambiar
+ * el link de DAFO habría dejado a las cinco que ya heredaron con el viejo,
+ * para siempre.
+ *
+ * Ahora `credenciales.url` significa una sola cosa: la EXCEPCIÓN. Si está,
+ * esta credencial entra por otra puerta. Si no, la de su plataforma. Sin
+ * copias, sin propagación, sin nada que se pueda quedar atrás.
+ */
+export async function conPlataforma<T extends { plataforma?: string | null; url?: string | null }>(creds: T[]) {
+  const m = await platPorNombre();
+  return creds.map(c => {
+    const p = m.get(String(c.plataforma || "").trim().toLowerCase());
+    return {
+      ...c,
+      url: c.url || p?.url || null,      // el que se abre
+      /* El crudo, aparte. El formulario de edición tiene que cargar ESTE:
+         si cargara el resuelto, abrir y guardar una credencial sin tocarla
+         le grabaría el link de la plataforma como excepción propia — y la
+         copia que acabo de matar volvería por la puerta de atrás, una
+         credencial a la vez, cada vez que alguien edita. */
+      urlPropia: c.url || "",
+      heredado: !c.url && !!p?.url,      // para decirle a quien mira de dónde salió
+      puertas: p?.puertas || [],
+    };
+  });
 }
 
 /* Claves que el código conoce. Escritas aquí y no sueltas en cada página:

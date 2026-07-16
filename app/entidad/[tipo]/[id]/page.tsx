@@ -15,7 +15,7 @@ import PrestamoEquipo from "@/components/PrestamoEquipo";
 import CuentaAcceso from "@/components/CuentaAcceso";
 import { BotonVerificarRuc, BotonVerificarDni, BotonRucPersona } from "@/components/VerificarSunat";
 import Alerta from "@/components/Alerta";
-import { urlPlataforma, conPuertas, PLAT } from "@/lib/plataformas";
+import { urlPlataforma, conPlataforma, PLAT } from "@/lib/plataformas";
 import BotonFichaSunat from "@/components/BotonFichaSunat";
 import CVs from "@/components/CVs";
 import FotoPersona from "@/components/FotoPersona";
@@ -369,10 +369,10 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       .select("*, datos:credencial_datos(id,etiqueta,valor,verificado_en)")
       .eq(params.tipo === "empresa" ? "empresa_id" : "persona_id", params.id)
       .order("plataforma");
-    /* Las entradas adicionales de la plataforma, colgadas de su credencial:
-       la Clave SOL de esta empresa abre en tres sitios, y quien viene a
-       declarar el IGV necesita el suyo, no el menú general. */
-    creds = await conPuertas(data || []);
+    /* El link y las entradas salen de la plataforma al leer, no de una copia
+       guardada: la Clave SOL de esta empresa abre en tres sitios, y quien
+       viene a declarar el IGV necesita el suyo, no el menú general. */
+    creds = await conPlataforma(data || []);
   }
 
   const nombre = params.tipo === "postulacion"

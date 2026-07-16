@@ -57,21 +57,18 @@ type DVal = { etiqueta: string; valor: string };
 
 /* Formulario de credencial (agregar y editar) — a nivel de módulo para que
    los inputs no pierdan el foco al escribir. */
-function FormFila({ v, set, onSave, onCancel, guardando, urlDe }: {
+function FormFila({ v, set, onSave, onCancel, guardando }: {
   v: Val; set: (x: Val) => void; onSave: () => void; onCancel: () => void; guardando: boolean;
-  urlDe?: (plataforma: string) => string | undefined;
 }) {
   return (
     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12, padding: 10, background: "var(--bg)", borderRadius: 10 }}>
+      {/* El nombre de la plataforma es la llave: por él se resuelve su link
+          y sus entradas al leer. Escribirlo distinto («SUNAT ClaveSOL») deja
+          la credencial huérfana, sin link y sin puertas — por eso la lista
+          sugerida. */}
       <input list="plat-lista" placeholder="Plataforma *" value={v.plataforma}
-        onChange={e => {
-          /* La misma plataforma se repite en varias fichas —seis empresas
-             entran al mismo DAFO—, así que la URL se hereda de la primera
-             que ya la tenga. Teclearla seis veces es teclearla mal una. */
-          const p = e.target.value;
-          const heredada = !v.url && urlDe?.(p);
-          set({ ...v, plataforma: p, ...(heredada ? { url: heredada } : {}) });
-        }} style={{ ...inp, width: 160 }} />
+        onChange={e => set({ ...v, plataforma: e.target.value })}
+        style={{ ...inp, width: 160 }} />
       <datalist id="plat-lista">{PLATAFORMAS.map(p => <option key={p} value={p} />)}</datalist>
       {/* Con Clave SOL este campo es el RUC y punto: el usuario SOL es otro
           dato y no cabe aquí. Decirlo en el placeholder evita el «20601…/
@@ -86,10 +83,15 @@ function FormFila({ v, set, onSave, onCancel, guardando, urlDe }: {
       <select value={v.ubicacion} onChange={e => set({ ...v, ubicacion: e.target.value })} style={inp}>
         {UBICACIONES.map(u => <option key={u} value={u}>{u}</option>)}
       </select>
-      {/* La puerta. Sin esto, entrar a DAFO empieza por buscarlo en Google —
-          y ahí es donde aparecen las páginas falsas. */}
+      {/* Vacío es lo normal y lo correcto: el link sale de la plataforma
+          (⚙ Admin → 🔗 Plataformas), y se resuelve al leer. Esto es solo la
+          excepción — esta cuenta entra por otra puerta que las demás de su
+          plataforma. Llenarlo «por si acaso» congela una copia que nadie
+          va a actualizar cuando la plataforma cambie. */}
       <span style={{ display: "flex", gap: 6, flex: 1, minWidth: 200 }}>
-        <input placeholder="Link para entrar (https://…)" value={v.url} inputMode="url"
+        <input placeholder="Link propio (solo si entra por otra puerta)"
+          title="Déjalo vacío: hereda el de su plataforma. Solo llénalo si esta cuenta entra por un sitio distinto."
+          value={v.url} inputMode="url"
           onChange={e => set({ ...v, url: e.target.value })} style={{ ...inp, flex: 1, minWidth: 0 }} />
         <a href={/^https?:\/\/\S+/.test(v.url.trim()) ? v.url.trim() : undefined}
           target="_blank" rel="noopener noreferrer" className="btn btn-ghost"
@@ -129,12 +131,6 @@ export default function Credenciales({ dueno, duenoId, credenciales }: {
   dueno: "empresa" | "persona"; duenoId: string; credenciales: any[];
 }) {
   const vacio: Val = { plataforma: "", identificador: "", ubicacion: UBICACIONES[0], notas: "", metodo: METODOS[0], url: "" };
-  /* La URL de una plataforma ya conocida, para heredarla al agregar otra
-     credencial de la misma: seis empresas entran por la misma puerta. */
-  const urlDe = (p: string) => {
-    const k = p.trim().toLowerCase();
-    return k ? credenciales.find((c: any) => (c.plataforma || "").trim().toLowerCase() === k && c.url)?.url : undefined;
-  };
   const [agregando, setAgregando] = useState(false);
   const [f, setF] = useState<Val>(vacio);
   const [editando, setEditando] = useState<string | null>(null);
@@ -165,7 +161,11 @@ export default function Credenciales({ dueno, duenoId, credenciales }: {
       plataforma: c.plataforma || "", identificador: c.identificador || "",
       ubicacion: c.ubicacion || UBICACIONES[0], notas: c.notas || "",
       metodo: c.metodo_acceso || METODOS[0],
-      url: c.url || "",
+      /* `urlPropia`, NO `url`: el segundo es el resuelto —si esta credencial
+         no tiene link propio, trae el de su plataforma—. Cargar el resuelto
+         haría que abrir y guardar sin tocar nada le grabe el link de la
+         plataforma como excepción propia, y la copia volvería sola. */
+      url: c.urlPropia || "",
     });
   };
   const guardarEdicion = async (id: string) => {
@@ -224,7 +224,7 @@ export default function Credenciales({ dueno, duenoId, credenciales }: {
       </p>
 
       {error && <div className="err-inline">⚠ {error}</div>}
-      {agregando && <FormFila v={f} set={setF} onSave={guardar} onCancel={() => setAgregando(false)} guardando={guardando} urlDe={urlDe} />}
+      {agregando && <FormFila v={f} set={setF} onSave={guardar} onCancel={() => setAgregando(false)} guardando={guardando} />}
 
       {credenciales.map(c => (
         <div key={c.id} className="cred-bloque">
@@ -235,12 +235,15 @@ export default function Credenciales({ dueno, duenoId, credenciales }: {
               {/* La plataforma ES el enlace cuando se sabe dónde queda */}
               {c.url ? (
                 <a href={c.url} target="_blank" rel="noopener noreferrer" className="cargo"
-                  title={`Entrar a ${c.plataforma} — ${c.url}`}
+                  title={(c.heredado ? "Link de la plataforma (se administra en Admin → Plataformas)\n" : "Link propio de esta cuenta\n") + c.url}
                   style={{ minWidth: 130, color: "var(--violet)", textDecoration: "none" }}>
                   {c.plataforma} ↗
                 </a>
               ) : (
-                <span className="cargo" style={{ minWidth: 130 }}>{c.plataforma}</span>
+                <span className="cargo" style={{ minWidth: 130 }}
+                  title="Nadie cargó el link de esta plataforma — se hace una vez en Admin → Plataformas y lo heredan todas">
+                  {c.plataforma}
+                </span>
               )}
               <span style={{ flex: 1, color: "#c6c6da" }}>{c.identificador || "—"}</span>
               {c.metodo_acceso && (

@@ -57,14 +57,20 @@ insert into plataformas (nombre, url, requiere_cuenta, clave, notas) values
    'Pide TRES datos: RUC + usuario SOL + contraseña. El usuario SOL se guarda como dato de la credencial.')
 on conflict (nombre) do nothing;
 
--- Las credenciales heredan el link de su plataforma: la columna `url` de
--- credenciales queda como excepción (una empresa que entra por otra puerta),
--- no como el sitio donde vive el dato.
-update credenciales c
-   set url = p.url
-  from plataformas p
- where c.url is null
-   and lower(btrim(c.plataforma)) = lower(btrim(p.nombre));
+-- ⛔ ANULADO — no lo descomentes.
+-- Esto copiaba el link de la plataforma a cada credencial, y era el mismo
+-- dato en dos sitios. Se notó enseguida: cuando corrió, SUNAT-ClaveSOL aún
+-- no tenía link, la copia se quedó nula, después la plataforma sí lo tuvo y
+-- la credencial siguió diciendo «sin link» para siempre.
+-- Hoy el link se resuelve al leer (lib/plataformas.ts → conPlataforma) y
+-- `credenciales.url` es solo la excepción. Para limpiar las copias que este
+-- update ya sembró: db/credenciales-url-solo-excepcion.sql
+--
+-- update credenciales c
+--    set url = p.url
+--   from plataformas p
+--  where c.url is null
+--    and lower(btrim(c.plataforma)) = lower(btrim(p.nombre));
 
 -- Ver cómo quedó
 select p.nombre, p.url, p.requiere_cuenta,
