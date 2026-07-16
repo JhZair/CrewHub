@@ -9,6 +9,8 @@
    esta constante; con el vencimiento guardado habría que recargar todas
    las fichas a mano. */
 
+import { fechaCorta } from "@/lib/fechas";
+
 export const DIAS_VIGENCIA = 90;   // DAFO suele exigirla con menos de 3 meses
 
 const D = 86400000;
@@ -25,9 +27,7 @@ export const diasDeVigencia = (emision: string) =>
 export const vigenciaVencida = (emision?: string | null) =>
   !!emision && diasDeVigencia(emision) < 0;
 
-export const fmtVence = (emision: string) =>
-  venceVigencia(emision).toLocaleDateString("es-PE",
-    { day: "numeric", month: "short", year: "numeric" });
+export const fmtVence = (emision: string) => fechaCorta(venceVigencia(emision));
 
 /* Frase lista para pintar: "vence en 12 d" / "venció hace 40 d" */
 export const textoVigencia = (emision: string) => {

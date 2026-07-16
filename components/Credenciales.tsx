@@ -11,7 +11,21 @@ const PLATAFORMAS = [
   "TikTok", "YouTube", "Vimeo", "WhatsApp Business", "Banco", "Hosting/Web",
 ];
 const UBICACIONES = ["KeePass (Drive)", "Bitwarden", "Custodia física", "Otro"];
-const METODOS = ["Correo y contraseña", "Con Google", "Con Facebook", "Con Apple", "Con Microsoft"];
+/* «Usuario y contraseña», no «Correo y contraseña»: en DAFO se entra con el
+   RUC, en SUNAT con RUC + clave SOL, en otras con el DNI. Decir «correo»
+   contradecía al propio identificador de la tarjeta —un RUC de once dígitos
+   con la etiqueta «correo» al lado— y hacía dudar de cuál era el bueno.
+   `usuario` no promete de qué tipo es: solo dice que hay uno.
+
+   OJO: los ya guardados dicen «Correo y contraseña» tal cual. Este cambio
+   es solo para los nuevos; los viejos se normalizan con
+   db/credenciales-metodo-usuario.sql. */
+const METODO_CLASICO = "Usuario y contraseña";
+const METODOS = [METODO_CLASICO, "Con Google", "Con Facebook", "Con Apple", "Con Microsoft"];
+/* Lo guardado antes de renombrar: para que un chip viejo no se pinte como
+   si fuera un acceso federado hasta que se corra el SQL. */
+const ES_CLASICO = (m?: string | null) =>
+  m === METODO_CLASICO || m === "Correo y contraseña";
 // Sugerencias comunes para los datos de cada cuenta
 const DATOS_SUG = ["correo de contacto", "teléfono de contacto", "correo de recuperación", "pregunta de seguridad", "quién administra", "PIN / token"];
 const STALE_DIAS = 180; // a partir de aquí, un dato pide reverificación
@@ -180,10 +194,10 @@ export default function Credenciales({ dueno, duenoId, credenciales }: {
               {c.metodo_acceso && (
                 <span className="badge" style={{
                   fontSize: 10.5,
-                  color: c.metodo_acceso === "Correo y contraseña" ? "var(--muted)" : "var(--violet)",
-                  background: c.metodo_acceso === "Correo y contraseña" ? "#1c1c2c" : "rgba(167,139,250,.12)",
+                  color: ES_CLASICO(c.metodo_acceso) ? "var(--muted)" : "var(--violet)",
+                  background: ES_CLASICO(c.metodo_acceso) ? "#1c1c2c" : "rgba(167,139,250,.12)",
                 }}>
-                  {c.metodo_acceso === "Correo y contraseña" ? "🔑" : "🔗"} {c.metodo_acceso}
+                  {ES_CLASICO(c.metodo_acceso) ? "🔑" : "🔗"} {c.metodo_acceso}
                 </span>
               )}
               <span className="badge" style={{ color: "var(--teal)", background: "rgba(45,212,191,.1)" }}>

@@ -4,6 +4,8 @@
    de anoche mezclados con los de hoy y faltarían las últimas cinco horas.
    Perú no tiene horario de verano, así que basta con el desfase fijo. */
 
+import { fechaConDia } from "@/lib/fechas";
+
 const LIMA_OFFSET_MS = 5 * 3600000;   // UTC-5, todo el año
 
 export type Periodo = "hoy" | "semana" | "mes" | "anio" | "todo";
@@ -46,6 +48,5 @@ export const rotuloDia = (dia: string) => {
   const ayer = diaLima(new Date(Date.now() - 86400000).toISOString());
   if (dia === hoy) return "Hoy";
   if (dia === ayer) return "Ayer";
-  return new Date(dia + "T12:00:00").toLocaleDateString("es-PE",
-    { weekday: "long", day: "numeric", month: "long" });
+  return fechaConDia(dia);
 };

@@ -3,29 +3,29 @@ import Volver from "@/components/Volver";
 import { BotonVerificarLote } from "@/components/VerificarSunat";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import { alertaSunat, esNuestra, esProblematico, textoSunat } from "@/lib/sunat";
+import { REL_EMPRESA, EST_EMPRESA } from "@/lib/entidades";
 import { fmtVence, vigenciaVencida } from "@/lib/vigencia";
+import BotonFichaSunat from "@/components/BotonFichaSunat";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
 const diasDesde = (f: string) => Math.floor((Date.now() - new Date(f + "T12:00:00").getTime()) / 86400000);
 
+/* Los rótulos van en plural porque aquí titulan filtros («Activas · 8»);
+   el color y el vocabulario salen de lib/entidades, que es donde viven. */
 const EST_META: Record<string, [string, string]> = {
-  activa: ["Activas", "var(--green)"],
-  en_constitucion: ["En constitución", "var(--yellow)"],
-  inactiva: ["Inactivas", "var(--dim)"],
-  en_proceso_de_cierre: ["En cierre", "var(--dim)"],
-  cerrada: ["Cerradas", "var(--dim)"],
+  activa: ["Activas", EST_EMPRESA.activa[1]],
+  en_constitucion: ["En constitución", EST_EMPRESA.en_constitucion[1]],
+  inactiva: ["Inactivas", EST_EMPRESA.inactiva[1]],
+  en_proceso_de_cierre: ["En cierre", EST_EMPRESA.en_proceso_de_cierre[1]],
+  cerrada: ["Cerradas", EST_EMPRESA.cerrada[1]],
 };
 
 const TIPOS = ["eirl", "sac", "asociacion", "ong", "municipalidad", "otro"];
 const ICONO_POST: Record<string, string> = {
   en_preparacion: "🛠", enviada: "📨", finalista: "⭐",
 };
-const REL_META: Record<string, [string, string]> = {
-  propia: ["propia", "var(--violet)"],
-  aliada: ["aliada", "var(--teal)"],
-  externa: ["externa", "var(--dim)"],
-};
+const REL_META = REL_EMPRESA;   // vive en lib/entidades: lo usan varias pantallas
 
 /* Solo somos responsables de las propias y activas: son las únicas que
    deben exigir acción. El resto es contexto, no tarea.
@@ -242,7 +242,7 @@ export default async function Empresas({ searchParams }: {
             {emp.codigo && <span style={{ color: "var(--dim)" }}>{emp.codigo}</span>}
             {/* Sin RUC solo alarma si figura activa: en constitución es normal */}
             {emp.ruc ? (
-              <span style={{ color: "var(--dim)" }}>RUC {emp.ruc}</span>
+              <BotonFichaSunat numero={emp.ruc} tipo="RUC" compacto />
             ) : nosCompete(emp) ? (
               <span style={{ color: "var(--red)", fontWeight: 700 }}>⚠ sin RUC</span>
             ) : null}

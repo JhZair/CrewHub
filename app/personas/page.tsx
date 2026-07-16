@@ -3,6 +3,8 @@ import Volver from "@/components/Volver";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import { esDelEquipo } from "@/lib/personas";
 import { esProblematico, textoSunat } from "@/lib/sunat";
+import { rucDePersona } from "@/lib/ruc";
+import BotonFichaSunat from "@/components/BotonFichaSunat";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -127,6 +129,12 @@ export default async function Personas({ searchParams }: {
             )}
             {delEquipo(p) && !p.ruc_dni && (
               <span className="badge" style={{ color: "var(--red)", background: "rgba(255,77,94,.12)" }}>⚠ sin DNI</span>
+            )}
+            {/* El RUC sale del DNI y solo se veía dentro de la ficha. Aquí es
+                un clic: copia y abre SUNAT, sin entrar a cada persona. */}
+            {rucDePersona(p.ruc_dni) && (
+              <BotonFichaSunat numero={rucDePersona(p.ruc_dni)!} tipo="RUC"
+                compacto nota="se calcula del DNI" />
             )}
             {d !== null && d < 0 && (
               <span className="badge" style={{ color: "var(--red)", background: "rgba(255,77,94,.12)" }}>

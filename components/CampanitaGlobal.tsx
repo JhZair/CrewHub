@@ -9,25 +9,10 @@ import { createClient } from "@/lib/supabase/client";
    que ya tiene la suya, ni dentro de los paneles del Monitor). Trae las
    notificaciones bajo demanda y se actualiza en tiempo real. */
 
-const ICONO: Record<string, string> = {
-  asignacion: "👤", comentario: "💬", vencimiento: "⏰",
-  cambio_estado: "🔄", mencion: "🔗", reaccion: "👍", bot: "🤖",
-};
-const ETIQ: Record<string, string> = {
-  asignacion: "te asignó", comentario: "comentó", vencimiento: "vence",
-  cambio_estado: "cambió el estado", mencion: "te mencionó", reaccion: "reaccionó",
-};
+import { ICONO, ETIQ, anclaDe, hace, tituloDe } from "@/lib/notificaciones";
 const ENT_ICO: Record<string, string> = {
   proyecto: "📁", empresa: "🏢", persona: "👤", convocatoria: "📜",
   postulacion: "🎯", equipamiento: "🎥", lugar: "📍", etiqueta: "🏷️",
-};
-const tituloDe = (m: string) => { const x = (m || "").match(/«([^»]+)»/); return x ? x[1] : (m || ""); };
-const hace = (d: string) => {
-  const min = Math.floor((Date.now() - new Date(d).getTime()) / 60000);
-  if (min < 1) return "ahora";
-  if (min < 60) return `${min}m`;
-  const h = Math.floor(min / 60);
-  return h < 24 ? `${h}h` : `${Math.floor(h / 24)}d`;
 };
 
 export default function CampanitaGlobal() {
@@ -111,7 +96,7 @@ export default function CampanitaGlobal() {
             )}
             {items.map((n: any) => (
               n.publicacion_id ? (
-                <Link key={n.id} href={`/caso/${n.publicacion_id}`}
+                <Link key={n.id} href={`/caso/${n.publicacion_id}${anclaDe(n.tipo)}`}
                   className={`camp-item ${!n.leida ? "nueva" : ""}`}
                   onClick={() => { marcarUna(n); setAbierta(false); }}>{fila(n)}</Link>
               ) : (

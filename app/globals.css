@@ -3,6 +3,14 @@
   --text:#e8e8f2; --muted:#8b8ba3; --dim:#5d5d78;
   --accent:#7c5cff; --yellow:#f4b400; --red:#ff4d5e; --green:#2ecc71;
   --blue:#3b82f6; --violet:#a78bfa; --teal:#2dd4bf; --orange:#f59e0b;
+
+  /* ⭐ La identidad de BUSCAR en CrewHub+ (decidida el 16 jul 2026).
+     Vive aquí y no dentro de una clase porque hay dos buscadores —el de la
+     barra y el grande de /buscar— y va a haber más. Escribí este degradado
+     dentro de `.grande` y a los cinco minutos el del feed ya se había
+     quedado fuera de su propia identidad: exactamente el error que este
+     archivo lleva todo el día documentando. Se referencia, no se copia. */
+  --grad-buscar: linear-gradient(95deg, var(--teal) 0%, var(--blue) 42%, var(--accent) 78%, var(--violet) 100%);
 }
 *{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',system-ui,sans-serif}
 body{background:var(--bg);color:var(--text);font-size:14px;min-height:100vh}
@@ -124,6 +132,19 @@ a{color:inherit;text-decoration:none}
 /* Banco de trabajo: lo que tengo EN PROGRESO, pegado al borde izquierdo.
    Vive en el layout, así que no se pierde al navegar. Colapsa a una
    pestaña para no estorbar. */
+/* ===== Fila clickable con enlaces propios dentro =====
+   El enlace de la fila cubre la tarjeta en vez de envolverla: así un <a>
+   interno (el CV de una persona) no queda anidado dentro de otro <a>, que
+   es HTML inválido y rompe la hidratación de React. */
+.fila-cap{position:relative}
+.fila-cubre{position:absolute;inset:0;z-index:1;border-radius:inherit}
+.fila-encima{position:relative;z-index:2}
+/* Segunda línea de la fila: los papeles. Separada por una línea fina, como
+   el resto del sistema — arriba quién es, abajo con qué se le abre la
+   puerta a un fondo. */
+.fila-docs{display:flex;gap:6px;flex-wrap:wrap;align-items:center;
+  margin-top:7px;padding-top:7px;border-top:1px solid var(--border)}
+
 /* ===== El diario: a qué hora se trabaja =====
    24 barras, hora de Cusco. El bot va apilado abajo y el equipo arriba:
    Qhaway escribe decenas de eventos de golpe en su ronda de las 7:30 y,
@@ -319,7 +340,14 @@ a{color:inherit;text-decoration:none}
 .buscar-flot-wrap{position:fixed;right:24px;bottom:150px;z-index:60;display:flex;align-items:center;gap:8px}
 .buscar-flot{width:44px;height:44px;border-radius:50%;background:var(--card);border:1px solid var(--border2);color:var(--text);font-size:18px;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .buscar-flot:hover{border-color:var(--accent)}
-.bf-caja{display:flex;align-items:center;gap:7px;background:var(--panel);border:1px solid var(--border2);border-radius:12px;padding:6px 8px 6px 12px;box-shadow:0 10px 28px rgba(0,0,0,.45)}
+/* El flotante también es buscar: misma píldora, mismo degradado */
+.bf-caja{display:flex;align-items:center;gap:7px;border-radius:999px;
+  border:1.5px solid transparent;padding:6px 8px 6px 14px;
+  background:
+    linear-gradient(var(--panel), var(--panel)) padding-box,
+    var(--grad-buscar) border-box;
+  box-shadow:0 10px 28px rgba(0,0,0,.45)}
+.bf-caja:focus-within{filter:brightness(1.15)}
 .bf-caja input{background:transparent;border:none;outline:none;color:var(--text);font-size:13px;width:210px;font-family:inherit}
 .bf-fondo{position:fixed;inset:0;z-index:59}
 .camp-flot-btn{position:relative;width:50px;height:50px;border-radius:50%;background:var(--card);border:1px solid var(--border2);color:var(--text);font-size:20px;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center}
@@ -703,7 +731,41 @@ img.av{border:1px solid var(--border2)}
 @media(max-width:600px){.kb{grid-template-columns:1fr}}
 
 /* ===== Buscador global ===== */
-.buscador-glob{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:7px 12px;width:100%;max-width:280px;min-width:130px;flex-shrink:1}
-.buscador-glob:focus-within{border-color:var(--accent)}
+/* Buscar se ve igual en todo el sistema: píldora con el borde en degradado.
+   Lo único que cambia entre sitios es el tamaño (ver .grande). */
+.buscador-glob{display:flex;align-items:center;gap:8px;border-radius:999px;padding:7px 13px;
+  width:100%;max-width:280px;min-width:130px;flex-shrink:1;
+  border:1.5px solid transparent;
+  background:
+    linear-gradient(var(--card), var(--card)) padding-box,
+    var(--grad-buscar) border-box}
+.buscador-glob:focus-within{box-shadow:0 0 0 3px rgba(124,92,255,.14);filter:brightness(1.15)}
 .buscador-glob input{flex:1;background:none;border:none;outline:none;font-size:13px;color:var(--text);min-width:0}
 .buscador-glob .kbd{font-size:10px;color:var(--dim);border:1px solid var(--border2);border-radius:5px;padding:2px 6px;white-space:nowrap}
+.bg-lupa{color:var(--dim);font-size:14px;line-height:1;flex:none}
+.bg-x{color:var(--dim);background:none;border:none;cursor:pointer;font-size:13px;line-height:1;padding:2px 4px;flex:none}
+.bg-x:hover{color:var(--text)}
+
+/* En /buscar el buscador ES la pantalla, no un accesorio de la barra: solo
+   crece. El degradado, la píldora y el halo ya vienen de arriba — aquí no
+   se repite ni uno. El max-width de 280px es lo único que estorbaba. */
+.buscador-glob.grande{max-width:none;padding:12px 18px;gap:12px;
+  background:
+    linear-gradient(var(--panel), var(--panel)) padding-box,
+    var(--grad-buscar) border-box;
+  box-shadow:0 10px 34px rgba(0,0,0,.32)}
+.buscador-glob.grande .bg-lupa{font-size:17px}
+.buscador-glob.grande input{font-size:15px}
+.buscador-glob.grande input::placeholder{color:var(--dim)}
+.buscador-glob.grande:focus-within{
+  box-shadow:0 0 0 3px rgba(124,92,255,.15), 0 10px 34px rgba(0,0,0,.32),
+             0 0 22px rgba(124,92,255,.18)}
+.buscador-glob.grande .kbd{border-radius:7px}
+.buscador-glob.grande .bg-ir{border-radius:999px;padding:7px 16px}
+.bg-ir{background:var(--accent);color:#fff;border:none;border-radius:9px;padding:6px 14px;
+  font-size:12.5px;font-weight:700;cursor:pointer;flex:none}
+.bg-ir:hover{filter:brightness(1.1)}
+@media(max-width:760px){
+  .buscador-glob.grande input{font-size:14px}
+  .buscador-glob.grande input::placeholder{font-size:12.5px}
+}

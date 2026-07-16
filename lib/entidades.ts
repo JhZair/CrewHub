@@ -159,6 +159,24 @@ export const ESPECIALIDADES = [
   "Contador/a", "Abogado/a",
 ];
 
+/* De quién es una empresa y cómo está — el mismo par en todo el sistema.
+   Vivía suelto dentro de /empresas, y el buscador terminó sin mostrarlo:
+   por eso ahí una empresa en proceso de cierre parecía tener un problema
+   de SUNAT sin resolver. La relación y el estado no son adornos — son lo
+   que decide si algo te toca. */
+export const REL_EMPRESA: Record<string, [string, string]> = {
+  propia: ["propia", "var(--violet)"],
+  aliada: ["aliada", "var(--teal)"],
+  externa: ["externa", "var(--dim)"],
+};
+export const EST_EMPRESA: Record<string, [string, string]> = {
+  activa: ["activa", "var(--green)"],
+  en_constitucion: ["en constitución", "var(--yellow)"],
+  inactiva: ["inactiva", "var(--dim)"],
+  en_proceso_de_cierre: ["en cierre", "var(--orange)"],
+  cerrada: ["cerrada", "var(--dim)"],
+};
+
 /* Color por tipo de proyecto — el mismo en todo el sistema */
 export const TIPO_COLOR: Record<string, string> = {
   documental: "#2dd4bf",   // teal

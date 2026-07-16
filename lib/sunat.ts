@@ -34,6 +34,24 @@ export const alertaSunat = (x: { estado?: string | null; relacion?: string | nul
   estado_sunat?: string | null; condicion_sunat?: string | null }) =>
   esNuestra(x) && esProblematico(x.estado_sunat, x.condicion_sunat);
 
+/* ¿Sigue en juego? No es lo mismo que `esNuestra`: una aliada no es nuestra
+   pero está viva —se postula con ella—, y una propia en cierre es nuestra
+   pero ya no sirve para postular. Sirve para apagar en las listas lo que
+   existe y tiene historia, pero con lo que ya no se juega. */
+export const empresaViva = (x: { estado?: string | null }) =>
+  ["activa", "en_constitucion"].includes(x.estado || "activa");
+
+/* ¿Jugamos con ella? Propia o aliada. Es la TERCERA pregunta distinta sobre
+   lo mismo, y las tres dan respuestas diferentes para la misma empresa:
+     · Black Horse — activa (viva), externa (no de casa), no nuestra
+     · AsocHuaynasP — activa, aliada (de casa), no nuestra
+     · Asoc iCr3a   — en cierre (no viva), propia (de casa), no nuestra
+   Por eso son tres funciones y no un booleano «relevante»: cada pantalla
+   pregunta lo que necesita. Una externa aparece porque tiene historia con
+   nosotros, pero no es cancha nuestra. */
+export const empresaDeCasa = (x: { relacion?: string | null }) =>
+  ["propia", "aliada"].includes(x.relacion || "propia");
+
 /* Texto del problema, tolerante a nulos: una empresa puede estar "no habida"
    sin estado_sunat cargado, y ahí un .replace() directo tumba la página. */
 export const textoSunat = (x: { estado_sunat?: string | null; condicion_sunat?: string | null }) =>

@@ -3,14 +3,7 @@ import { marcarNotifsLeidas, marcarNotifLeida } from "@/app/actions";
 import Link from "next/link";
 import { useState, useEffect } from "react";
 
-const ICONO: Record<string, string> = {
-  asignacion: "👤", comentario: "💬", vencimiento: "⏰",
-  cambio_estado: "🔄", mencion: "🔗", reaccion: "👍", bot: "🤖",
-};
-const ETIQ: Record<string, string> = {
-  asignacion: "te asignó", comentario: "comentó", vencimiento: "vence",
-  cambio_estado: "cambió el estado", mencion: "te mencionó", reaccion: "reaccionó",
-};
+import { ICONO, ETIQ, anclaDe } from "@/lib/notificaciones";
 const ENT_ICO: Record<string, string> = {
   proyecto: "📁", empresa: "🏢", persona: "👤", convocatoria: "📜",
   postulacion: "🎯", equipamiento: "🎥", lugar: "📍", etiqueta: "🏷️",
@@ -86,7 +79,7 @@ export default function Campanita({ items: itemsProp, sinLeer: sinLeerProp }: { 
             )}
             {items.map((n: any) => (
               n.publicacion_id ? (
-                <Link key={n.id} href={`/caso/${n.publicacion_id}`}
+                <Link key={n.id} href={`/caso/${n.publicacion_id}${anclaDe(n.tipo)}`}
                   className={`camp-item ${!n.leida ? "nueva" : ""}`}
                   onClick={() => { marcarUna(n); setAbierta(false); }}>
                   {contenido(n)}

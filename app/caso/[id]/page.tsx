@@ -269,7 +269,15 @@ export default async function Caso({ params }: { params: { id: string } }) {
         })}
       </div>
 
-      <CommentBox pubId={p.id} userId={user.id} perfiles={perfiles || []} />
+      {/* Ancla del final. Las notificaciones de comentario y mención enlazan
+          a /caso/{id}#comentarios: el aviso dice «Michel comentó» y ahora
+          entrega el comentario, no la cabecera de un caso largo.
+          Va en el ÚLTIMO elemento a propósito: al no haber nada debajo, el
+          navegador scrollea hasta el tope y deja a la vista la cola de la
+          conversación —lo nuevo está abajo— con el cuadro de responder. */}
+      <div id="comentarios" style={{ scrollMarginTop: 16 }}>
+        <CommentBox pubId={p.id} userId={user.id} perfiles={perfiles || []} />
+      </div>
     </div>
   );
 }
