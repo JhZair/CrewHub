@@ -67,13 +67,49 @@ select codigo, nombre,
  where estado = 'activa' and relacion = 'propia'
  order by codigo;
 
--- 💡 Atajo para arrancar: si sabes que una empresa tiene los tres en el
---    mismo sitio, cárgalos de una. NO lo corras a ciegas sobre todas —
---    copiar `region` a las tres sería inventar tres hechos a partir de uno
---    que significa otra cosa (dónde opera), y es justo el error que este
---    archivo vino a evitar.
+-- ── Carga inicial: las 14 propias ───────────────────────────
+--
+--  Al 16/07/2026 las catorce activas propias tienen su domicilio fiscal en
+--  Cusco. Se comprobó una por una contra el texto de `domicilio_fiscal`:
+--  Wanchaq, Santiago, Acomayo, San Jerónimo, Checacupe (Canchis),
+--  Paucartambo, Miraflores (Cusco).
+--
+--  NO se escribió un update que dedujera la región del texto, y estas dos son
+--  la razón:
+--      E-010  "Calle Union S/N. Pomacanchi- Acomayo"
+--      E-020  "Calle Union S/N. Pomacanchi - Acomayo"
+--  No dicen "Cusco" en ninguna parte. Acomayo es provincia de Cusco, pero eso
+--  lo sabe el equipo, no la cadena. Un `ilike '%cusco%'` las habría dejado
+--  fuera de media convocatoria en silencio. Y "Miraflores" o "Paucartambo",
+--  al revés, existen también fuera de Cusco: adivinar por texto falla en los
+--  dos sentidos.
+--
+--  ⚠ LEE ESTO ANTES DE CORRERLO:
+--  · `sunat_region_domicilio` = 'Cusco' → lo respalda el domicilio fiscal que
+--    ya está en el sistema. Es lectura de un dato existente.
+--  · Los dos de SUNARP → NO los respalda nada de lo que tenemos. La partida
+--    registral no está en el sistema. Al correr esto estás DECLARANDO que las
+--    catorce se constituyeron y domicilian en Cusco ante SUNARP. Si de alguna
+--    no estás seguro, sácala del `in (...)` y cárgala a mano mirando su
+--    partida.
+--
+--  Es tu palabra, no una verificación. El sistema no puede distinguirlas —
+--  por eso lo digo aquí.
+
 -- update empresas
 --    set sunarp_region_constitucion = 'Cusco',
 --        sunarp_region_domicilio    = 'Cusco',
 --        sunat_region_domicilio     = 'Cusco'
---  where codigo = 'E-0XX';
+--  where codigo in (
+--    'E-006','E-007','E-008','E-009','E-010','E-011','E-012',
+--    'E-013','E-015','E-016','E-018','E-019','E-020','E-021'
+--  );
+
+-- 🔎 Control: ninguna debería quedar en null
+-- select codigo, nombre, sunarp_region_constitucion, sunarp_region_domicilio,
+--        sunat_region_domicilio
+--   from empresas
+--  where estado = 'activa' and relacion = 'propia'
+--    and (sunarp_region_constitucion is null
+--      or sunarp_region_domicilio is null
+--      or sunat_region_domicilio is null);

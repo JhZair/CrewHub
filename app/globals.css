@@ -233,9 +233,46 @@ a{color:inherit;text-decoration:none}
   font-size:12.5px;color:var(--muted);cursor:pointer}
 .adm-nav:hover{background:#1c1c2c;color:var(--text)}
 .adm-nav.on{background:rgba(124,92,255,.14);color:var(--text);font-weight:700}
+/* Título de grupo en la barra: separa lo que se hace cada semana de lo que se
+   toca una vez al año. Ya dice por dónde empezar, y eso no lo hace una lista
+   plana de seis enlaces iguales. */
+.adm-grupo{font-size:9.5px;text-transform:uppercase;letter-spacing:1.2px;
+  color:var(--dim);font-weight:800;padding:10px 11px 4px}
+.adm-grupo:first-child{padding-top:4px}
+
+/* ===== Portada del admin ===== */
+/* Las tarjetas cuentan TRABAJO, no tráfico: cada número es algo que alguien
+   tiene que hacer, y por eso cada una es un enlace. Un número que no lleva a
+   ninguna parte es un adorno. */
+.adm-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));
+  gap:10px;margin-bottom:16px}
+.adm-kpi{display:flex;flex-direction:column;gap:2px;padding:13px 15px;border-radius:13px;
+  background:var(--card);border:1px solid var(--border);text-decoration:none;
+  transition:border-color .15s ease,transform .15s ease}
+.adm-kpi:hover{border-color:var(--accent);transform:translateY(-2px)}
+/* Solo se ilumina lo que espera acción. Si todo brilla, nada destaca — y una
+   tarjeta en cero no tiene por qué pedir tu atención. */
+.adm-kpi.urge{border-color:rgba(124,92,255,.4)}
+.adm-kpi-ico{width:30px;height:30px;border-radius:9px;display:flex;
+  align-items:center;justify-content:center;font-size:15px;margin-bottom:5px}
+.adm-kpi-n{font-size:27px;font-weight:800;line-height:1.05}
+.adm-kpi-lbl{font-size:12px;color:var(--muted)}
+.adm-kpi-pie{font-size:10.5px;color:var(--dim)}
+
+.adm-portada{display:grid;grid-template-columns:1.7fr 1fr;gap:14px;align-items:start}
+.adm-alerta,.adm-act{display:flex;gap:8px;align-items:center;padding:7px 4px;
+  font-size:11.5px;color:var(--muted);border-bottom:1px solid var(--border);
+  text-decoration:none}
+.adm-alerta:last-child,.adm-act:last-child{border-bottom:none}
+.adm-alerta:hover,.adm-act:hover{color:var(--text)}
+.adm-acc{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.adm-acc .btn{font-size:11.5px;padding:9px 8px;text-align:center;justify-content:center}
+
+@media(max-width:900px){ .adm-portada{grid-template-columns:1fr} }
 @media(max-width:760px){
   .adm-grid{grid-template-columns:1fr}
   .adm-grid aside .card{display:flex;flex-wrap:wrap;gap:4px}
+  .adm-grupo{width:100%}
 }
 
 /* La ✕ de quitar la foto solo asoma al pasar el cursor: no estorba */

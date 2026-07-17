@@ -72,7 +72,8 @@ export default async function Caso({ params }: { params: { id: string } }) {
     supabase.from("proyectos").select("id,nombre"),
     supabase.from("empresas").select("id,nombre"),
     supabase.from("personas").select("id,nombre"),
-    supabase.from("convocatorias").select("id,codigo"),
+    supabase.from("convocatorias").select("id,codigo,nombre,anio")
+      .order("anio", { ascending: false }).order("codigo"),
     supabase.from("equipamiento").select("id,nombre,folio"),
     supabase.from("lugares").select("id,nombre"),
     supabase.from("etiquetas").select("id,nombre"),
@@ -106,7 +107,8 @@ export default async function Caso({ params }: { params: { id: string } }) {
   (proy.data || []).forEach((x: any) => nombres.set(`proyecto:${x.id}`, x.nombre));
   (emp.data || []).forEach((x: any) => nombres.set(`empresa:${x.id}`, x.nombre));
   (pers.data || []).forEach((x: any) => nombres.set(`persona:${x.id}`, x.nombre));
-  (conv.data || []).forEach((x: any) => nombres.set(`convocatoria:${x.id}`, x.codigo));
+  (conv.data || []).forEach((x: any) =>
+    nombres.set(`convocatoria:${x.id}`, x.nombre ? `${x.nombre} ${x.anio || ""}`.trim() : x.codigo));
   (equi.data || []).forEach((x: any) =>
     nombres.set(`equipamiento:${x.id}`, x.folio ? `${x.folio} · ${x.nombre}` : x.nombre));
   (luga.data || []).forEach((x: any) => nombres.set(`lugar:${x.id}`, x.nombre));
@@ -130,7 +132,10 @@ export default async function Caso({ params }: { params: { id: string } }) {
     proyecto: (proy.data || []).map((x: any) => ({ id: x.id, nombre: x.nombre })),
     empresa: (emp.data || []).map((x: any) => ({ id: x.id, nombre: x.nombre })),
     persona: (pers.data || []).map((x: any) => ({ id: x.id, nombre: x.nombre })),
-    convocatoria: (conv.data || []).map((x: any) => ({ id: x.id, nombre: x.codigo })),
+    convocatoria: (conv.data || []).map((x: any) => ({
+      id: x.id,
+      nombre: `${x.anio ? `${x.anio} · ` : ""}${x.nombre || ""} · ${x.codigo}`.replace(/^ · /, ""),
+    })),
     postulacion: (postu.data || []).map((x: any) => ({
       id: x.id, nombre: `${x.codigo || x.conv?.codigo || "🎯"} · ${x.proy?.nombre || "postulación"}`,
     })),

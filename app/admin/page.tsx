@@ -9,6 +9,9 @@ import PlataformasAdmin from "@/components/PlataformasAdmin";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import { buscadorDe, pal } from "@/lib/buscar";
 import { estado4ta } from "@/lib/cuarta";
+import { ejecutando, rendicionVencida, SEL_FONDO } from "@/lib/fondos";
+import { haceOEn } from "@/lib/fechas";
+import { ICO_ENT } from "@/lib/secciones";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -23,9 +26,47 @@ const TIPO_COL: Record<string, string> = {
   pago: "#2dd4bf", idea: "#f4b400", archivo: "#3b82f6", conversacion: "#8b8ba3",
 };
 
+/* Dona de jornadas: SVG a mano, sin librería.
+   Un anillo de dos tramos no justifica traerse Chart.js —200 KB para dibujar
+   dos arcos—, y una librería más es una cosa más que actualizar. El truco es
+   `stroke-dasharray` sobre un círculo: el primer tramo mide lo aprobado y el
+   resto queda al descubierto. */
+function Dona({ aprobadas, pendientes }: { aprobadas: number; pendientes: number }) {
+  const total = aprobadas + pendientes;
+  const R = 52, C = 2 * Math.PI * R;
+  const pct = total ? aprobadas / total : 0;
+  return (
+    <svg width="128" height="128" viewBox="0 0 128 128" role="img"
+      aria-label={`${aprobadas} de ${total} jornadas aprobadas`}>
+      <circle cx="64" cy="64" r={R} fill="none" stroke="var(--yellow)" strokeWidth="14" opacity=".85" />
+      <circle cx="64" cy="64" r={R} fill="none" stroke="var(--green)" strokeWidth="14"
+        strokeDasharray={`${C * pct} ${C}`} strokeLinecap="butt"
+        transform="rotate(-90 64 64)" />
+      <text x="64" y="61" textAnchor="middle" fill="var(--text)" fontSize="24" fontWeight="800">{total}</text>
+      <text x="64" y="78" textAnchor="middle" fill="var(--dim)" fontSize="10"
+        letterSpacing="1" style={{ textTransform: "uppercase" }}>jornadas</text>
+    </svg>
+  );
+}
+
+function Leyenda({ col, n, txt, total }: { col: string; n: number; txt: string; total: number }) {
+  const pct = total ? Math.round((n / total) * 100) : 0;
+  return (
+    <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 5, whiteSpace: "nowrap" }}>
+      <span style={{ width: 9, height: 9, borderRadius: 2, background: col, display: "inline-block" }} />
+      <b style={{ color: "var(--text)" }}>{n}</b>
+      <span style={{ color: "var(--muted)" }}>{txt}</span>
+      <span style={{ color: "var(--dim)" }}>· {pct}%</span>
+    </div>
+  );
+}
+
 export default async function Admin({ searchParams }: { searchParams: { lm?: string; s?: string; fd?: string; qd?: string } }) {
-  // Sección activa: por defecto lo más frecuente, aprobar jornadas
-  const s = searchParams?.s || "jornadas";
+  /* Sección activa. Antes entraba directo a «aprobar jornadas» porque era lo
+     más frecuente; ahora abre la portada, que dice si hay jornadas por
+     aprobar y además todo lo demás que espera. Entrar a una tarea concreta
+     escondía las otras cinco. */
+  const s = searchParams?.s || "portada";
   const fd = searchParams?.fd || "";                  // filtro dentro de Destacados
   const qd = (searchParams?.qd || "").trim();          // búsqueda dentro de Destacados
   const supabase = createClient();
@@ -53,7 +94,7 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
 
   const [{ data: personas }, { data: cobrables }, { data: rhes }, { data: jornsPend },
          { data: proyectos }, { data: jornsMes }, { data: liqs }, { data: vivos },
-         { data: plats }, { data: credsPlat }] = await Promise.all([
+         { data: plats }, { data: credsPlat }, { data: ganadoras }, { data: activid }] = await Promise.all([
     supabase.from("personas").select("id,nombre,alias,tarifa_dia,tarifa_rodaje,tarifa_noche")
       .eq("tipo", "personal").order("nombre"),
     // A quién se le puede girar un RHE, y los del año en curso
@@ -67,7 +108,10 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
       .select("id,persona_id,fecha,proyecto_id,tipo,fraccion,noche,monto,aprobada,per:personas(nombre,alias),proy:proyectos(nombre)")
       .eq("aprobada", false).order("fecha", { ascending: false }).limit(400),
     supabase.from("proyectos").select("id,nombre").order("nombre"),
-    supabase.from("jornadas").select("persona_id,fraccion,monto,aprobada,per:personas(nombre,alias)")
+    /* `proy` y `fecha` entran para la portada: sin proyecto no se puede decir
+       en qué se fue el mes, que es la única pregunta que un gráfico de barras
+       contesta mejor que una tabla. */
+    supabase.from("jornadas").select("persona_id,fecha,fraccion,monto,aprobada,per:personas(nombre,alias),proy:proyectos(nombre)")
       .gte("fecha", lInicio).lt("fecha", lFin).limit(3000),
     supabase.from("liquidaciones").select("persona_id,estado").eq("anio", lAnio).eq("mes", lMes + 1),
     // Las puertas del sistema + qué credenciales entran por cada una.
@@ -88,6 +132,16 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
       .select("id,tipo,titulo,fecha_limite,destacado_hasta")
       .in("estado", ["abierta", "en_progreso", "seguimiento"])
       .order("creado_en", { ascending: false }).limit(300),
+    /* Para la portada: lo que espera acción en dinero de fondos. Las
+       rendiciones vencidas son lo más caro que hay callado en el sistema —
+       una empresa que le debe una rendición a DAFO no puede postular. */
+    supabase.from("postulaciones")
+      .select(`${SEL_FONDO},proy:proyectos(nombre),emp:empresas(id,nombre)`)
+      .eq("estado", "ganadora"),
+    // Los últimos movimientos, de quien sea: es el pulso del sistema
+    supabase.from("actividad")
+      .select("tipo,detalle,creado_en,entidad_tipo,entidad_id,actor:perfiles(nombre)")
+      .order("creado_en", { ascending: false }).limit(12),
   ]);
 
   const tarifaLista = (personas || []).map((p: any) => ({
@@ -142,14 +196,95 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
   }));
   const platSinLink = plataformas.filter((p: any) => !p.url).length;
 
+  /* ── Portada ──
+     Las tarjetas cuentan TRABAJO, no tráfico. La referencia contaba
+     incidencias, tendencias y cumplimiento SLA porque monitorea un flujo de
+     cientos; aquí somos seis y lo que importa no es cuánto pasó sino qué
+     espera a alguien. Cada número es algo que se hace, y por eso cada tarjeta
+     lleva a donde se hace. */
+  const sinLiquidar = filasLiq.filter(f => f.estado !== "liquidado").length;
+  const debiendo = (ganadoras || []).filter(rendicionVencida);
+  const montoDebiendo = debiendo.reduce((s, p: any) => s + (parseFloat(p.monto_adjudicado) || 0), 0);
+  const ejecutandoN = (ganadoras || []).filter(ejecutando).length;
+  const montoPorAprobar = porAprobar.reduce((s, j) => s + (Number(j.monto) || 0), 0);
+
+  const KPIS: {
+    k: string; ico: string; col: string; n: number | string; label: string;
+    pie?: string; href: string; urge?: boolean;
+  }[] = [
+    { k: "jornadas", ico: "✅", col: "var(--yellow)", n: porAprobar.length,
+      label: "Jornadas por aprobar",
+      pie: montoPorAprobar > 0 ? `S/ ${montoPorAprobar.toLocaleString("es-PE")} en juego` : "nada pendiente",
+      href: "/admin?s=jornadas", urge: porAprobar.length > 0 },
+    { k: "liquidar", ico: "🧾", col: "var(--teal)", n: sinLiquidar,
+      label: `Por liquidar · ${MESES[lMes]}`,
+      pie: filasLiq.length ? `de ${filasLiq.length} con jornadas` : "sin jornadas este mes",
+      href: `/admin?s=liquidar&lm=${lmOff}`, urge: sinLiquidar > 0 },
+    { k: "rhe", ico: "📊", col: nCerca > 0 ? "var(--red)" : "var(--green)", n: nCerca,
+      label: "Cerca o sobre el tope de 4ta",
+      pie: `tope ${anioHoy}`, href: "/admin?s=rhe", urge: nCerca > 0 },
+    /* Lo más caro que el sistema tenía callado: una rendición vencida impide
+       postular a esa empresa. Hasta hoy se daba por cerrada sola. */
+    { k: "debiendo", ico: "🔴", col: "var(--red)", n: debiendo.length,
+      label: "Rendiciones vencidas",
+      pie: debiendo.length ? `S/ ${montoDebiendo.toLocaleString("es-PE")} sin rendir` : "ninguna",
+      href: "/postulaciones?f=debiendo", urge: debiendo.length > 0 },
+    { k: "ejecutando", ico: "🎬", col: "var(--violet)", n: ejecutandoN,
+      label: "Fondos en ejecución",
+      pie: "ganados y sin entregar", href: "/postulaciones?f=ejecutando" },
+    { k: "plataformas", ico: "🔗", col: platSinLink > 0 ? "var(--yellow)" : "var(--dim)", n: platSinLink,
+      label: "Plataformas sin link",
+      pie: platSinLink ? "se busca en Google, ahí viven las falsas" : "todas con puerta",
+      href: "/admin?s=plataformas", urge: platSinLink > 0 },
+  ];
+
+  // Jornadas del mes: la dona de aprobadas vs pendientes
+  const jAprob = (jornsMes || []).filter((j: any) => j.aprobada).length;
+  const jPend = (jornsMes || []).length - jAprob;
+
+  /* En qué se fue el mes. Barras y no tabla porque la pregunta es
+     comparativa: cuál se llevó más días, no cuántos exactamente. */
+  const porProy = new Map<string, number>();
+  (jornsMes || []).forEach((j: any) => {
+    const n = (j.proy as any)?.nombre || "Sin proyecto";
+    porProy.set(n, (porProy.get(n) || 0) + Number(j.fraccion || 0));
+  });
+  const barras = [...porProy.entries()]
+    .map(([nombre, dias]) => ({ nombre, dias }))
+    .sort((a, b) => b.dias - a.dias).slice(0, 6);
+  const maxBarra = Math.max(1, ...barras.map(b => b.dias));
+
+  /* Las alertas salen de reglas que ya existen en otras pantallas: si aquí
+     escribiera otras, un día el admin diría que todo está bien mientras el
+     vigía grita. */
+  const ALERTAS: { txt: string; col: string; href: string }[] = [
+    debiendo.length > 0 && { txt: `${debiendo.length} rendición(es) vencida(s) — esas empresas no pueden postular`, col: "var(--red)", href: "/postulaciones?f=debiendo" },
+    nCerca > 0 && { txt: `${nCerca} persona(s) cerca o sobre el tope de 4ta ${anioHoy}`, col: "var(--red)", href: "/admin?s=rhe" },
+    porAprobar.length > 0 && { txt: `${porAprobar.length} jornada(s) esperando aprobación`, col: "var(--yellow)", href: "/admin?s=jornadas" },
+    sinLiquidar > 0 && { txt: `${sinLiquidar} persona(s) sin liquidar en ${MESES[lMes]}`, col: "var(--yellow)", href: `/admin?s=liquidar&lm=${lmOff}` },
+    platSinLink > 0 && { txt: `${platSinLink} plataforma(s) sin link cargado`, col: "var(--yellow)", href: "/admin?s=plataformas" },
+  ].filter(Boolean) as any[];
+
   const SECCIONES: [string, string, number | null][] = [
     ["destacados", "📌 Destacados", nDestacados || null],
     ["plataformas", "🔗 Plataformas", platSinLink || null],
     ["jornadas", "✅ Aprobar jornadas", porAprobar.length || null],
-    ["liquidar", "🧾 Liquidar mes", filasLiq.filter(f => f.estado !== "liquidado").length || null],
+    ["liquidar", "🧾 Liquidar mes", sinLiquidar || null],
     ["rhe", "🧾 RHE y tope 4ta", nCerca || null],
     ["tarifas", "💰 Tarifas", null],
   ];
+  /* La barra en grupos, como la referencia. No es decoración: separa lo que
+     se hace cada semana de lo que se toca una vez al año, y eso ya dice por
+     dónde empezar. */
+  const GRUPOS: [string, string[]][] = [
+    ["Hoy", ["portada", "jornadas", "destacados"]],
+    ["Dinero", ["liquidar", "rhe", "tarifas"]],
+    ["Configuración", ["plataformas"]],
+  ];
+  const META: Record<string, [string, number | null]> = Object.fromEntries(
+    SECCIONES.map(([k, l, n]) => [k, [l, n]])
+  );
+  META["portada"] = ["🏠 Portada", null];
 
   return (
     <div className="shell">
@@ -163,21 +298,152 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
       <div className="adm-grid">
         <aside>
           <div className="card" style={{ padding: 6 }}>
-            {SECCIONES.map(([k, label, n]) => (
-              <Link key={k} href={`/admin?s=${k}`} className={`adm-nav${s === k ? " on" : ""}`}>
-                <span style={{ flex: 1 }}>{label}</span>
-                {n ? (
-                  <span className="badge" style={{
-                    color: k === "jornadas" ? "var(--yellow)" : "var(--muted)",
-                    background: "#1c1c2c", fontSize: 10,
-                  }}>{n}</span>
-                ) : null}
-              </Link>
+            {GRUPOS.map(([titulo, claves]) => (
+              <div key={titulo}>
+                {/* El título del grupo separa lo que se hace cada semana de lo
+                    que se toca una vez al año. No es adorno: ya dice por dónde
+                    empezar. */}
+                <div className="adm-grupo">{titulo}</div>
+                {claves.map(k => {
+                  const [label, n] = META[k] || ["", null];
+                  return (
+                    <Link key={k} href={`/admin?s=${k}`} className={`adm-nav${s === k ? " on" : ""}`}>
+                      <span style={{ flex: 1 }}>{label}</span>
+                      {n ? (
+                        <span className="badge" style={{
+                          color: k === "jornadas" ? "var(--yellow)" : "var(--muted)",
+                          background: "#1c1c2c", fontSize: 10,
+                        }}>{n}</span>
+                      ) : null}
+                    </Link>
+                  );
+                })}
+              </div>
             ))}
           </div>
         </aside>
 
         <main>
+      {s === "portada" && (
+        <>
+          {/* ── Tarjetas: lo que espera acción ──
+              Cada número es algo que alguien tiene que hacer, y por eso cada
+              tarjeta es un enlace a donde se hace. Un número que no lleva a
+              ninguna parte es un adorno. */}
+          <div className="adm-kpis">
+            {KPIS.map(k => (
+              <Link key={k.k} href={k.href} className={`adm-kpi${k.urge ? " urge" : ""}`}>
+                <span className="adm-kpi-ico" style={{ color: k.col, background: `color-mix(in srgb, ${k.col} 14%, transparent)` }}>
+                  {k.ico}
+                </span>
+                <span className="adm-kpi-n" style={{ color: k.n === 0 ? "var(--dim)" : k.col }}>{k.n}</span>
+                <span className="adm-kpi-lbl">{k.label}</span>
+                {k.pie && <span className="adm-kpi-pie">{k.pie}</span>}
+              </Link>
+            ))}
+          </div>
+
+          <div className="adm-portada">
+            <div>
+              {/* ── Jornadas del mes ── */}
+              <div className="card">
+                <div className="panel-h">📅 Jornadas de {MESES[lMes]} · {(jornsMes || []).length}</div>
+                {(jornsMes || []).length === 0 ? (
+                  <div className="empty">Sin jornadas registradas este mes.</div>
+                ) : (
+                  <div style={{ display: "flex", gap: 22, alignItems: "center", flexWrap: "wrap" }}>
+                    <Dona aprobadas={jAprob} pendientes={jPend} />
+                    <div style={{ fontSize: 12.5 }}>
+                      <Leyenda col="var(--green)" n={jAprob} txt="aprobadas" total={(jornsMes || []).length} />
+                      <Leyenda col="var(--yellow)" n={jPend} txt="por aprobar" total={(jornsMes || []).length} />
+                      {jPend > 0 && (
+                        <Link href="/admin?s=jornadas" style={{ color: "var(--accent)", fontSize: 11.5, display: "block", marginTop: 8 }}>
+                          → aprobarlas
+                        </Link>
+                      )}
+                    </div>
+                    {/* En qué se fue el mes. Barras porque la pregunta es
+                        comparativa: cuál se llevó más, no cuántos exactos. */}
+                    {barras.length > 0 && (
+                      <div style={{ flex: 1, minWidth: 240 }}>
+                        <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: "var(--dim)", fontWeight: 700, marginBottom: 8 }}>
+                          Días por proyecto
+                        </div>
+                        {barras.map(b => (
+                          <div key={b.nombre} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 5, fontSize: 11.5 }}>
+                            <span style={{ width: 110, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {b.nombre}
+                            </span>
+                            <span style={{ flex: 1, height: 8, background: "var(--bg)", borderRadius: 4, overflow: "hidden" }}>
+                              <span style={{ display: "block", height: "100%", borderRadius: 4,
+                                width: `${(b.dias / maxBarra) * 100}%`, background: "var(--accent)" }} />
+                            </span>
+                            <b style={{ width: 34, textAlign: "right", color: "var(--text)" }}>{b.dias}</b>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div>
+              {/* ── Alertas ── */}
+              <div className="card">
+                <div className="panel-h">🔔 Alertas</div>
+                {ALERTAS.length === 0 ? (
+                  <div className="empty" style={{ padding: "10px 0" }}>Nada pendiente. Buena señal.</div>
+                ) : ALERTAS.map((a, i) => (
+                  <Link key={i} href={a.href} className="adm-alerta">
+                    <span style={{ color: a.col }}>●</span>
+                    <span style={{ flex: 1 }}>{a.txt}</span>
+                    <span style={{ color: "var(--dim)" }}>›</span>
+                  </Link>
+                ))}
+              </div>
+
+              {/* ── Actividad reciente ── */}
+              <div className="card">
+                <div className="panel-h">🕐 Últimos movimientos</div>
+                {(activid || []).length === 0 ? (
+                  <div className="empty" style={{ padding: "10px 0" }}>Sin actividad.</div>
+                ) : (activid || []).map((a: any, i: number) => (
+                  <Link key={i} href={`/entidad/${a.entidad_tipo}/${a.entidad_id}`} className="adm-act">
+                    <span>{ICO_ENT[a.entidad_tipo] || "•"}</span>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <b style={{ color: a.actor ? "var(--text)" : "var(--teal)" }}>
+                        {a.actor?.nombre || "Bot Qhaway"}
+                      </b>
+                      <i style={{ color: "var(--dim)", fontStyle: "normal" }}>
+                        {" "}{a.detalle?.campo ? `cambió ${a.detalle.campo.replace(/_/g, " ")}` : a.tipo}
+                      </i>
+                    </span>
+                    <span style={{ color: "var(--dim)", fontSize: 10.5, whiteSpace: "nowrap" }}>
+                      {haceOEn(a.creado_en)}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+
+              {/* ── Acciones rápidas ── */}
+              <div className="card">
+                <div className="panel-h">⚡ Acciones rápidas</div>
+                <div className="adm-acc">
+                  <Link href="/jornadas" className="btn btn-ghost">📅 Registrar jornada</Link>
+                  <Link href="/entidad/empresa/nuevo" className="btn btn-ghost">🏢 Nueva empresa</Link>
+                  <Link href="/entidad/persona/nuevo" className="btn btn-ghost">👤 Nueva persona</Link>
+                  {/* `/historial` es el global; `/historial/[tipo]` espera un
+                      tipo real de entidad — «todo» le habría dado una página
+                      vacía sin decir por qué. */}
+                  <Link href="/historial" className="btn btn-ghost">🕐 Historial completo</Link>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
       {s === "destacados" && (() => {
         const ahora = Date.now();
         const dias = (f: string) => Math.ceil((new Date(f + "T23:59:59").getTime() - ahora) / 86400000);
