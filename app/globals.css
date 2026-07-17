@@ -36,6 +36,8 @@ a{color:inherit;text-decoration:none}
 .st-abierta{background:rgba(255,77,94,.13);color:var(--red)}
 .st-en_progreso{background:rgba(244,180,0,.13);color:var(--yellow)}
 .st-seguimiento{background:rgba(45,212,191,.12);color:var(--teal)}
+/* Un aviso vigente: ni rojo (no es deuda) ni verde (no terminó). Rige. */
+.st-vigente{background:rgba(167,139,250,.14);color:var(--violet)}
 .st-resuelta{background:rgba(46,204,113,.13);color:var(--green)}
 .st-archivada{background:#1c1c2c;color:var(--dim)}
 .av{border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;color:#fff;flex-shrink:0}
@@ -59,6 +61,7 @@ a{color:inherit;text-decoration:none}
 .gm input[type=date]::-webkit-calendar-picker-indicator{filter:invert(.7)}
 .desc{color:#d2d2e2;line-height:1.6;font-size:13.5px;margin:8px 0 16px;white-space:pre-wrap;padding:12px 16px;background:var(--card);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:12px}
 .desc.est-abierta{border-left-color:rgba(255,77,94,.6)}
+.desc.est-vigente{border-left-color:rgba(167,139,250,.6)}
 .desc.est-en_progreso{border-left-color:rgba(244,180,0,.6)}
 .desc.est-seguimiento{border-left-color:rgba(45,212,191,.55)}
 .desc.est-en_pausa{border-left-color:rgba(59,130,246,.55)}
@@ -170,6 +173,26 @@ a{color:inherit;text-decoration:none}
 .fila-cap{position:relative}
 .fila-cubre{position:absolute;inset:0;z-index:1;border-radius:inherit}
 .fila-encima{position:relative;z-index:2}
+/* El cuerpo de un aviso dentro de una tarjeta: en un aviso el título es el
+   asunto y esto es la indicación — o sea, lo que de verdad se viene a leer.
+   El filete violeta lo separa del título sin gritar. */
+.aviso-cuerpo{color:#c6c6da;font-size:13px;line-height:1.55;margin:8px 0 2px;
+  padding-left:10px;border-left:2px solid rgba(167,139,250,.35);white-space:pre-wrap}
+/* Solo los ENLACES del cuerpo suben sobre la capa del enlace estirado, no el
+   cuerpo entero: así el texto sigue abriendo el caso al tocarlo y una URL
+   sigue abriendo la URL. Ojo: el `stopPropagation` que trae TextoRico no
+   alcanza aquí — sirve contra un clic que burbujea (el feed navega con
+   router.push), pero contra una capa que TAPA el enlace no hay propagación
+   que parar: el clic nunca llega al <a>. Hay que levantarlo. */
+.aviso-cuerpo .tx-link{position:relative;z-index:2}
+/* «ver más»: es un botón, pero se lee como parte del texto — va pegado al
+   final del párrafo, no suelto abajo como una acción más de la tarjeta. */
+.ver-mas{background:none;border:none;color:var(--violet);font-size:12px;
+  font-weight:700;cursor:pointer;padding:0;white-space:nowrap}
+.ver-mas:hover{text-decoration:underline}
+/* Pie del aviso: enterarse y reaccionar sin abrir el caso */
+.aviso-pie{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:9px;
+  padding-top:8px;border-top:1px solid var(--border)}
 /* Segunda línea de la fila: los papeles. Separada por una línea fina, como
    el resto del sistema — arriba quién es, abajo con qué se le abre la
    puerta a un fondo. */
@@ -389,6 +412,7 @@ a{color:inherit;text-decoration:none}
 
 /* Identidad de color por estado (tono tenue) en las tarjetas del feed */
 .card.est-abierta{border-left:3px solid rgba(255,77,94,.55);background-image:linear-gradient(90deg,rgba(255,77,94,.03),transparent 55%)}
+.card.est-vigente{border-left:3px solid rgba(167,139,250,.55);background-image:linear-gradient(90deg,rgba(167,139,250,.035),transparent 55%)}
 .card.est-en_progreso{border-left:3px solid rgba(244,180,0,.55);background-image:linear-gradient(90deg,rgba(244,180,0,.03),transparent 55%)}
 .card.est-seguimiento{border-left:3px solid rgba(45,212,191,.5);background-image:linear-gradient(90deg,rgba(45,212,191,.03),transparent 55%)}
 .card.est-en_pausa{border-left:3px solid rgba(59,130,246,.5);background-image:linear-gradient(90deg,rgba(59,130,246,.03),transparent 55%)}
@@ -397,6 +421,7 @@ a{color:inherit;text-decoration:none}
 
 /* Misma identidad de estado, solo en la cabecera del caso (grid-meta) */
 .grid-meta.est-abierta{border-color:rgba(255,77,94,.28);border-left:3px solid rgba(255,77,94,.6);background:linear-gradient(180deg,rgba(255,77,94,.09),transparent 130px),var(--card)}
+.grid-meta.est-vigente{border-color:rgba(167,139,250,.28);border-left:3px solid rgba(167,139,250,.6);background:linear-gradient(180deg,rgba(167,139,250,.09),transparent 130px),var(--card)}
 .grid-meta.est-en_progreso{border-color:rgba(244,180,0,.28);border-left:3px solid rgba(244,180,0,.6);background:linear-gradient(180deg,rgba(244,180,0,.09),transparent 130px),var(--card)}
 .grid-meta.est-seguimiento{border-color:rgba(45,212,191,.26);border-left:3px solid rgba(45,212,191,.55);background:linear-gradient(180deg,rgba(45,212,191,.09),transparent 130px),var(--card)}
 .grid-meta.est-en_pausa{border-color:rgba(59,130,246,.26);border-left:3px solid rgba(59,130,246,.55);background:linear-gradient(180deg,rgba(59,130,246,.09),transparent 130px),var(--card)}
@@ -518,6 +543,7 @@ a{color:inherit;text-decoration:none}
 .drill-est.st-resuelta{background:rgba(46,204,113,.13);color:var(--green)}
 .drill-est.st-archivada{background:#1c1c2c;color:var(--dim)}
 .drill-est.st-abierta{background:rgba(255,77,94,.13);color:var(--red)}
+.drill-est.st-vigente{background:rgba(167,139,250,.14);color:var(--violet)}
 .drill-est.st-en_progreso{background:rgba(244,180,0,.13);color:var(--yellow)}
 .drill-fl{font-size:10.5px;color:var(--red)}
 .drill-empty{color:var(--dim);font-size:12.5px}
@@ -626,6 +652,15 @@ input[type=file]{color:var(--muted);font-size:12.5px}
 /* ===== Edición en ventana modal amplia ===== */
 .modal-fondo{position:fixed;inset:0;background:rgba(4,4,10,.72);backdrop-filter:blur(3px);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;z-index:80;overflow-y:auto}
 .modal-ed{width:100%;max-width:780px}
+/* Ventana ancha: para lo que se COMPARA, no para lo que se lee.
+   El feed y las fichas se quedan en 860 px porque ésa es la medida en que el
+   ojo no se pierde al saltar de renglón. Un cronograma de dos años no se lee
+   — se compara— y en media columna de 860 no cabe: se adivina.
+   El modal es `position:fixed`, así que escapa del ancho de la página sin
+   tener que tocarlo. La discusión de los 912 px se resuelve aquí, donde el
+   problema existe, y no cambiando la medida de todo lo demás. */
+.modal-ancho{width:100%;max-width:1280px}
+@media(max-width:1340px){ .modal-ancho{max-width:calc(100vw - 32px)} }
 .perfil-grid aside .modal-ed .card{border:1px solid var(--border2);background:var(--panel);padding:18px 22px;margin:0;border-radius:16px}
 .perfil-grid aside .modal-ed .f-grid{grid-template-columns:1fr 1fr}
 @media(max-width:700px){.perfil-grid aside .modal-ed .f-grid{grid-template-columns:1fr}}

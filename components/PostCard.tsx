@@ -3,11 +3,12 @@ import Avatar from "@/components/Avatar";
 import Reacciones, { type Reaccion } from "@/components/Reacciones";
 import NuevoBadge from "@/components/NuevoBadge";
 import MiniSelect from "@/components/MiniSelect";
-import TextoRico from "@/components/TextoRico";
-import { cambiarTipo, cambiarEstado, ocultarDelFeed, toggleEnterado } from "@/app/actions";
+import TextoCorto from "@/components/TextoCorto";
+import AvisoMini from "@/components/AvisoMini";
+import { cambiarTipo, cambiarEstado, ocultarDelFeed } from "@/app/actions";
 import { celebrarResuelto } from "@/lib/celebra";
 import Foto from "@/components/Foto";
-import { ESTADOS_SEL } from "@/lib/estados";
+import { opcionesEstado, claseEstado, rotuloEstado, esAviso } from "@/lib/estados";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -20,13 +21,17 @@ const TIPOS_SEL = [
 
 /* Tarjeta del feed: la tarjeta navega al caso; los chips, a su entidad. */
 export default function PostCard({
-  href, titulo, tipo, tipoLabel, tipoColor, estado, estadoTxt,
+  href, titulo, tipo, tipoLabel, tipoColor, estado,
   autorNombre, autorColor, autorSrc, fechaStr, respNombre, avisaSinResp,
   nc, venc, cuerpo, chips, pubId, userId, reacciones, imagenes,
   padreId, padreTitulo, hijos, creadoEn, equipoTotal, fechaLimite,
 }: {
   href: string; titulo: string; tipo?: string; tipoLabel: string; tipoColor: string;
-  estado: string; estadoTxt: string;
+  /* El rótulo NO se recibe: se deduce de estado+tipo. Venía por prop y el feed
+     lo calculaba con un mapa que no sabía de avisos — así un aviso llegaba
+     aquí ya rotulado "Sin Resolver" y la tarjeta no tenía cómo saber que era
+     mentira, aunque tuviera el `tipo` en la mano. */
+  estado: string;
   autorNombre?: string | null; autorColor?: string | null; autorSrc?: string | null;
   fechaStr: string; respNombre?: string | null; avisaSinResp: boolean;
   nc: number; venc: [string, string] | null; cuerpo?: string | null;
@@ -50,7 +55,7 @@ export default function PostCard({
   })() : null;
   const enterMio = (reacciones || []).some(r => r.emoji === "👀" && r.usuario_id === userId);
   return (
-    <div className={`card link est-${estado} ${estado === "resuelta" ? "card-apagada" : ""}`} style={{ cursor: "pointer" }} onClick={() => router.push(href)}>
+    <div className={`card link est-${claseEstado(estado, tipo)} ${estado === "resuelta" ? "card-apagada" : ""}`} style={{ cursor: "pointer" }} onClick={() => router.push(href)}>
       <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
         <Avatar nombre={autorNombre} color={autorColor} size={38} src={autorSrc} />
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -79,10 +84,21 @@ export default function PostCard({
             <span style={{ marginLeft: "auto" }}>{fechaStr}</span>
           </div>
           <div className="post-divisor" />
+          {/* Un aviso se muestra igual en TODO el sistema: el cuerpo a la
+              vista con su filete violeta y «ver más» aquí mismo. Lo que
+              importa de un aviso es lo que DICE — el título es el asunto.
+              El resto de tipos conserva el corte corto del feed: esto es una
+              lista para barrer con el ojo, y el cuerpo de una tarea es
+              contexto, no el mensaje. Pero «ver más» lo tienen todos: cortar
+              con «…» y obligar a abrir otra página era el viaje de más. */}
           {cuerpo && (
-            <p style={{ color: "#c6c6da", fontSize: 13, marginTop: 8, lineHeight: 1.5 }}>
-              <TextoRico texto={cuerpo.slice(0, 180)} />{cuerpo.length > 180 ? "…" : ""}
-            </p>
+            esAviso(tipo)
+              ? <TextoCorto texto={cuerpo} className="aviso-cuerpo" />
+              : (
+                <p style={{ color: "#c6c6da", fontSize: 13, marginTop: 8, lineHeight: 1.5 }}>
+                  <TextoCorto texto={cuerpo} corte={180} />
+                </p>
+              )
           )}
           {(imagenes || []).length > 0 && (
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 9 }}>
@@ -107,13 +123,7 @@ export default function PostCard({
           <div className="post-pie" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <span style={{ color: "var(--muted)", fontSize: 12.5, flexShrink: 0 }}>💬 {nc}</span>
             {tipo === "aviso" && pubId && userId && (
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                <span style={{ color: "var(--violet)", fontSize: 12 }}>👀 Enterados {enterN}/{equipoTotal ?? "—"}</span>
-                <button className="ae-mini" title={enterMio ? "Ya te enteraste" : "Marcar que me enteré"}
-                  onClick={async e => { e.stopPropagation(); await toggleEnterado(pubId); router.refresh(); }}>
-                  {enterMio ? "✓ enterado" : "me enteré"}
-                </button>
-              </span>
+              <AvisoMini pubId={pubId} enterados={enterN} total={equipoTotal} mio={enterMio} />
             )}
             {pubId && userId && (
               <span style={{ flex: 1, minWidth: 0 }} onClick={e => e.stopPropagation()}>
@@ -130,12 +140,14 @@ export default function PostCard({
                 <span className="badge" style={{ color: tipoColor, background: `${tipoColor}22` }}>{tipoLabel}</span>
               )}
               {pubId ? (
-                <MiniSelect value={estado} options={ESTADOS_SEL}
+                /* Las opciones dependen del tipo: a un aviso no se le ofrece
+                   "Resuelta" — no hay nada que resolver. Antes se le ofrecía. */
+                <MiniSelect value={estado} options={opcionesEstado(tipo, estado)}
                   onSelect={async v => { await cambiarEstado(pubId, v); if (v === "resuelta" && estado !== "resuelta") celebrarResuelto(); router.refresh(); }}
-                  buttonClass={`pill st-${estado}`}
+                  buttonClass={`pill st-${claseEstado(estado, tipo)}`}
                   buttonStyle={{ border: "none" }} />
               ) : (
-                <span className={`pill st-${estado}`}>{estadoTxt}</span>
+                <span className={`pill st-${claseEstado(estado, tipo)}`}>{rotuloEstado(estado, tipo)}</span>
               )}
               {pubId && estado === "resuelta" && (
                 <button title="Ocultar de mi feed (sigue en el tablero)"

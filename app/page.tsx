@@ -6,8 +6,8 @@ import PostCard from "@/components/PostCard";
 import BuscadorGlobal from "@/components/BuscadorGlobal";
 import NavIconos from "@/components/NavIconos";
 import MenuUsuario from "@/components/MenuUsuario";
-import { ESTADOS } from "@/lib/estados";
 import { ICO_ENT } from "@/lib/secciones";
+import { contarHijos } from "@/lib/familia";
 import FiltroMas from "@/components/FiltroMas";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -145,13 +145,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
   const { data: hijosData } = idsPubs.length
     ? await supabase.from("publicaciones").select("padre_id,estado").in("padre_id", idsPubs)
     : { data: [] };
-  const hijosDe = new Map<string, { total: number; ok: number }>();
-  (hijosData || []).forEach((h: any) => {
-    const m = hijosDe.get(h.padre_id) || { total: 0, ok: 0 };
-    m.total++;
-    if (["resuelta", "archivada"].includes(h.estado)) m.ok++;
-    hijosDe.set(h.padre_id, m);
-  });
+  const hijosDe = contarHijos(hijosData);
   // Títulos de padres que no están en la página del feed
   const idsPadres = [...new Set((postsQ.data || [])
     .map((p: any) => p.padre_id).filter(Boolean)
@@ -445,7 +439,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
             href={`/caso/${p.id}`}
             titulo={p.titulo}
             tipo={p.tipo} tipoLabel={tl} tipoColor={tc}
-            estado={p.estado} estadoTxt={ESTADOS[p.estado] || p.estado}
+            estado={p.estado}
             autorNombre={p.autor?.nombre} autorColor={p.autor?.color} autorSrc={p.autor?.avatar_url}
             fechaStr={new Date(p.creado_en).toLocaleString("es-PE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "America/Lima" })}
             respNombre={p.resp?.nombre || null}

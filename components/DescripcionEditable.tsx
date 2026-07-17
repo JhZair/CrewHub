@@ -4,12 +4,15 @@ import TextoRico from "@/components/TextoRico";
 import Foto from "@/components/Foto";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { claseEstado } from "@/lib/estados";
 
 /* Descripción del caso con lápiz: clic, corriges, Guardar. Si está vacía,
    muestra "+ Agregar descripción". Enter hace salto de línea (no guarda),
    Escape cancela. La bitácora recuerda la edición. */
-export default function DescripcionEditable({ pubId, cuerpo, estado, imagenes }: {
-  pubId: string; cuerpo: string; estado?: string; imagenes?: string[];
+export default function DescripcionEditable({ pubId, cuerpo, estado, tipo, imagenes }: {
+  /* `tipo` solo sirve para el filete de color de la izquierda: el cuerpo de un
+     aviso vigente no se ribetea de rojo, que aquí significa "resuelve esto". */
+  pubId: string; cuerpo: string; estado?: string; tipo?: string; imagenes?: string[];
 }) {
   const [editando, setEditando] = useState(false);
   const [valor, setValor] = useState(cuerpo);
@@ -30,7 +33,7 @@ export default function DescripcionEditable({ pubId, cuerpo, estado, imagenes }:
   if (!editando) {
     const imgs = imagenes || [];
     return (cuerpo || imgs.length > 0) ? (
-      <div className={`desc est-${estado || ""}`}>
+      <div className={`desc est-${estado ? claseEstado(estado, tipo) : ""}`}>
         <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
           <span style={{ flex: 1, whiteSpace: "pre-wrap" }}>
             {cuerpo ? <TextoRico texto={cuerpo} /> : <span style={{ color: "var(--muted)", fontStyle: "italic" }}>Sin texto</span>}

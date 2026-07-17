@@ -16,6 +16,7 @@ import RespuestaBox from "@/components/RespuestaBox";
 import Realtime from "@/components/Realtime";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { claseEstado, rotuloEstado } from "@/lib/estados";
 
 const TIPO_META: Record<string, [string, string]> = {
   aviso: ["📢 Aviso", "#a78bfa"], tarea: ["✅ Tarea", "#22c55e"],
@@ -31,10 +32,8 @@ const ENT_ICO: Record<string, string> = {
   proyecto: "📁", empresa: "🏢", persona: "👤", convocatoria: "📜",
   postulacion: "🎯", equipamiento: "🎥", lugar: "📍", etiqueta: "🏷️",
 };
-const ESTADOS_TXT: Record<string, string> = {
-  abierta: "📥 Sin Resolver", en_progreso: "🛠 En Progreso", seguimiento: "🔭 Seguimiento",
-  en_pausa: "En Pausa", resuelta: "Resuelta", archivada: "Archivada",
-};
+/* El mapa de estados salió de aquí: era otra copia divergente de lib/estados
+   (le faltaban íconos) y encima no sabía que un aviso no se resuelve. */
 
 const fecha = (d: string) =>
   new Date(d).toLocaleString("es-PE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "America/Lima" });
@@ -86,7 +85,11 @@ export default async function Caso({ params }: { params: { id: string } }) {
       ? supabase.from("publicaciones").select("id,titulo").eq("id", p.padre_id).single()
       : Promise.resolve({ data: null }),
     supabase.from("publicaciones")
-      .select("id,titulo,estado,resp:perfiles!publicaciones_responsable_fkey(nombre)")
+      /* `tipo` va aquí porque SubCasos rotula el estado, y sin el tipo un
+         sub-aviso volvería a decir "Sin Resolver": el campo que no se pide
+         llega undefined y se lee como "no es aviso". Mismo agujero que el
+         `region` que faltaba en los miembros. */
+      .select("id,titulo,estado,tipo,resp:perfiles!publicaciones_responsable_fkey(nombre)")
       .eq("padre_id", p.id).order("creado_en"),
   ]);
 
@@ -169,8 +172,10 @@ export default async function Caso({ params }: { params: { id: string } }) {
         const a = e.detalle?.a ? (perfilNombre.get(e.detalle.a) || "alguien") : "sin asignar";
         return `${quien} cambió el responsable → ${a}`;
       }
-      const de = ESTADOS_TXT[e.detalle?.de] || e.detalle?.de || "—";
-      const a = ESTADOS_TXT[e.detalle?.a] || e.detalle?.a || "—";
+      /* El historial de un aviso también habla su idioma: «Vigente →
+         Archivada», no «Sin Resolver → Archivada» de algo que nadie resolvió. */
+      const de = e.detalle?.de ? rotuloEstado(e.detalle.de, p.tipo) : "—";
+      const a = e.detalle?.a ? rotuloEstado(e.detalle.a, p.tipo) : "—";
       return `${quien} · ${campo}: ${de} → ${a}`;
     }
     return `${quien} · ${e.detalle?.mensaje || e.tipo}`;
@@ -194,7 +199,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
       )}
       <TituloEditable pubId={p.id} titulo={p.titulo} />
 
-      <div className={`grid-meta est-${p.estado}`}>
+      <div className={`grid-meta est-${claseEstado(p.estado, p.tipo)}`}>
         <div className="gm"><span className="k">Estado</span><EstadoSelect pubId={p.id} estado={p.estado} tipo={p.tipo} /></div>
         <div className="gm"><span className="k">Responsable</span>
           <RespSelect pubId={p.id} actual={p.responsable} perfiles={perfiles || []} /></div>
@@ -204,7 +209,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
           <span className="v">{fecha(p.creado_en)}<br /><span style={{ color: "var(--muted)", fontWeight: 400 }}>por {p.autor?.nombre}</span></span></div>
       </div>
 
-      <DescripcionEditable pubId={p.id} cuerpo={p.cuerpo || ""} estado={p.estado} imagenes={p.imagenes || []} />
+      <DescripcionEditable pubId={p.id} cuerpo={p.cuerpo || ""} estado={p.estado} tipo={p.tipo} imagenes={p.imagenes || []} />
 
       {p.tipo === "aviso" && (
         <AvisoEnterado

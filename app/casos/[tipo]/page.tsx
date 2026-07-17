@@ -1,7 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
-import { ESTADO_ICO, ESTADO_TXT, ESTADO_COL } from "@/lib/estados";
+import { ESTADO_ICO, ESTADO_TXT, ESTADO_COL, claseEstado, rotuloEstado } from "@/lib/estados";
+import { contarHijos, colorFamilia } from "@/lib/familia";
 import { PERIODOS, desdeDe, type Periodo } from "@/lib/periodo";
 import { seccionDe } from "@/lib/secciones";
 import Link from "next/link";
@@ -51,6 +52,14 @@ export default async function CasosPorEntidad({ params, searchParams }: {
     pubs = data || [];
   }
   const pubDe = new Map(pubs.map((x: any) => [x.id, x]));
+
+  /* Que un caso tenga sub-casos cambia lo que es: no es una fila suelta, es
+     trabajo repartido. Este listado no lo decía. */
+  const idsPub2 = pubs.map((x: any) => x.id);
+  const { data: hijosData } = idsPub2.length
+    ? await supabase.from("publicaciones").select("padre_id,estado").in("padre_id", idsPub2)
+    : { data: [] };
+  const hijosDe = contarHijos(hijosData);
 
   // Nombres de las fichas (solo las que tienen casos)
   const idsEnt = [...new Set((vincs || []).map((v: any) => v.entidad_id))];
@@ -177,14 +186,21 @@ export default async function CasosPorEntidad({ params, searchParams }: {
                       </span>
                     )}
                     {nc > 0 && <span style={{ color: "var(--dim)", fontSize: 11 }}>💬 {nc}</span>}
+                    {hijosDe.get(c.id) && (() => {
+                      const h = hijosDe.get(c.id)!;
+                      return <span style={{ color: colorFamilia(h), fontSize: 11, whiteSpace: "nowrap" }}
+                        title={`${h.ok} de ${h.total} sub-casos cerrados`}>🧩 {h.ok}/{h.total}</span>;
+                    })()}
                     {d !== null && (
                       <span style={{ fontSize: 10.5, fontWeight: 700, whiteSpace: "nowrap",
                         color: d < 0 ? "var(--red)" : d <= 3 ? "var(--yellow)" : "var(--dim)" }}>
                         {d < 0 ? `${-d}d ⚠` : d === 0 ? "hoy" : `${d}d`}
                       </span>
                     )}
-                    <span className={`pill st-${c.estado}`} style={{ fontSize: 10 }}>
-                      {ESTADO_ICO[c.estado]} {ESTADO_TXT[c.estado]}
+                    {/* c.tipo es el tipo de la publicación (params.tipo es la
+                        entidad): un aviso de esta lista dice «Vigente». */}
+                    <span className={`pill st-${claseEstado(c.estado, c.tipo)}`} style={{ fontSize: 10 }}>
+                      {rotuloEstado(c.estado, c.tipo)}
                     </span>
                   </div>
                 </Link>

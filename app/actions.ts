@@ -1869,6 +1869,244 @@ export async function agregarActividadCrono(
   return {};
 }
 
+/* ── Plantillas de cronograma ──
+ *
+ * «Las coberturas generalmente son las mismas.» Y lo son: P-086 tiene siete
+ * actividades que se van a repetir en la próxima y en la siguiente.
+ *
+ * La plantilla NO se teclea: se guarda desde un cronograma que ya funcionó.
+ * Pedirle a alguien que reescriba lo que ya está escrito, calculando los
+ * offsets de cabeza, es pedirle que se equivoque.
+ *
+ * Y no guarda fechas: guarda DESPLAZAMIENTOS desde la primera actividad. Un
+ * cronograma con fechas solo sirve para el proyecto que lo tuvo; con
+ * desplazamientos sirve para todos los que vengan.
+ */
+export async function guardarComoPlantilla(
+  dueno: "proyecto" | "convocatoria", duenoId: string, nombre: string, tipoProyecto: string
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const nom = nombre.trim();
+  if (!nom) return { error: "Ponle un nombre a la plantilla." };
+
+  const col = dueno === "proyecto" ? "proyecto_id" : "convocatoria_id";
+  const { data: acts } = await supabase.from("cronograma_actividades")
+    .select("nombre,etapa,clase,fecha_inicio,fecha_fin,responsable,dias_anticipacion,orden,creado_en")
+    .eq(col, duenoId).neq("estado", "cancelada").not("fecha_inicio", "is", null)
+    .order("fecha_inicio").order("orden").order("creado_en");
+  const l = acts || [];
+  if (!l.length) return { error: "Este cronograma no tiene actividades que guardar." };
+
+  /* La primera actividad es el día 0. No el rodaje ni la entrega: la primera.
+     Es lo más simple de explicar y no decide por nadie cuál fecha «manda» —
+     al aplicarla eliges cuándo empieza y todo lo demás se acomoda. */
+  const D = 86400000;
+  const dia = (s: string) => new Date(s + "T12:00:00").getTime();
+  const cero = dia(l[0].fecha_inicio);
+  const off = (s: string) => Math.round((dia(s) - cero) / D);
+
+  const { data: pl, error: e1 } = await supabase.from("plantillas_cronograma")
+    .insert({ nombre: nom, tipo_proyecto: tipoProyecto || null }).select("id").maybeSingle();
+  if (e1) return { error: e1.message };
+  if (!pl) return { error: "No se creó la plantilla." };
+
+  const filas = l.map((a: any, i: number) => ({
+    plantilla_id: pl.id,
+    orden: (i + 1) * 10,          // ×10: deja hueco para intercalar sin renumerar
+    nombre: a.nombre,
+    etapa: a.etapa,
+    clase: a.clase || "trabajo",
+    offset_dias: off(a.fecha_inicio),
+    duracion_dias: a.fecha_fin ? Math.max(0, off(a.fecha_fin) - off(a.fecha_inicio)) : 0,
+    responsable: a.responsable || null,
+    dias_anticipacion: a.dias_anticipacion ?? 7,
+  }));
+  const { error: e2 } = await supabase.from("plantilla_actividades").insert(filas);
+  if (e2) {
+    // Sin las actividades, la plantilla es una cáscara que va a confundir
+    await supabase.from("plantillas_cronograma").delete().eq("id", pl.id);
+    return { error: e2.message };
+  }
+
+  await supabase.from("actividad").insert({
+    entidad_tipo: dueno, entidad_id: duenoId, actor_id: user.id, tipo: "editado",
+    detalle: { mensaje: `guardó este cronograma como plantilla «${nom}» (${filas.length} actividades)` },
+  });
+  revalidatePath(`/entidad/${dueno}/${duenoId}`);
+  return { id: pl.id, n: filas.length };
+}
+
+/* Aplicar una plantilla: los desplazamientos se vuelven fechas.
+   SUMA, no reemplaza: si el cronograma ya tiene algo, se agrega. Borrar lo que
+   hay para poner una plantilla sería tirar trabajo por un clic. */
+export async function aplicarPlantilla(
+  plantillaId: string, dueno: "proyecto" | "convocatoria", duenoId: string, desde: string
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(desde)) return { error: "Elige la fecha de inicio." };
+
+  const { data: pl } = await supabase.from("plantillas_cronograma")
+    .select("nombre").eq("id", plantillaId).maybeSingle();
+  const { data: acts } = await supabase.from("plantilla_actividades")
+    .select("*").eq("plantilla_id", plantillaId).order("orden");
+  const l = acts || [];
+  if (!l.length) return { error: "Esa plantilla no tiene actividades." };
+
+  const D = 86400000;
+  const base = new Date(desde + "T12:00:00").getTime();
+  const fecha = (n: number) => new Date(base + n * D).toISOString().slice(0, 10);
+
+  const filas = l.map((a: any) => ({
+    [dueno === "proyecto" ? "proyecto_id" : "convocatoria_id"]: duenoId,
+    plantilla_act: a.id,          // de dónde nació: sirve para saber qué se cambió después
+    nombre: a.nombre,
+    etapa: a.etapa,
+    clase: a.clase || "trabajo",
+    fecha_inicio: fecha(a.offset_dias || 0),
+    fecha_fin: fecha((a.offset_dias || 0) + (a.duracion_dias || 0)),
+    responsable: a.responsable || null,
+    dias_anticipacion: a.dias_anticipacion ?? 7,
+    orden: a.orden ?? 0,
+    estado: "planificada",
+  }));
+  const { error } = await supabase.from("cronograma_actividades").insert(filas);
+  if (error) return { error: error.message };
+
+  await supabase.from("actividad").insert({
+    entidad_tipo: dueno, entidad_id: duenoId, actor_id: user.id, tipo: "editado",
+    detalle: { mensaje: `aplicó la plantilla «${pl?.nombre || "—"}» desde el ${desde} · ${filas.length} actividades` },
+  });
+  revalidatePath(`/entidad/${dueno}/${duenoId}`);
+  return { n: filas.length };
+}
+
+export async function borrarPlantilla(id: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { error } = await supabase.from("plantillas_cronograma").delete().eq("id", id);
+  if (error) return { error: error.message };
+  return {};
+}
+
+/* Editar una actividad ya creada.
+ *
+ * Faltaba, y no era un olvido menor: el cronograma solo tenía `agregar`,
+ * `cancelar` y `materializar`. O sea que una fecha mal puesta se arreglaba
+ * cancelando la actividad y creándola de nuevo — perdiendo su historia y su
+ * caso si ya se había materializado. Un cronograma de dos años que no se
+ * puede corregir no se corrige: se abandona.
+ */
+export async function editarActividadCrono(
+  actId: string, dueno: "proyecto" | "convocatoria", duenoId: string,
+  d: { nombre: string; etapa: string; ini: string; fin: string;
+       responsable: string; antic: string; clase: string; }
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!d.nombre.trim() || !d.ini) return { error: "Nombre y fecha de inicio son obligatorios." };
+  const fin = d.fin || d.ini;
+  if (fin < d.ini) return { error: "La fecha de fin no puede ser anterior al inicio." };
+
+  const { data: antes } = await supabase.from("cronograma_actividades")
+    .select("nombre,etapa,clase,fecha_inicio,fecha_fin,responsable,dias_anticipacion")
+    .eq("id", actId).maybeSingle();
+
+  const fila = {
+    nombre: d.nombre.trim(),
+    etapa: d.etapa || null,
+    clase: d.clase === "hito_externo" ? "hito_externo" : "trabajo",
+    fecha_inicio: d.ini,
+    fecha_fin: fin,
+    responsable: d.responsable || null,
+    dias_anticipacion: parseInt(d.antic) || 7,
+  };
+  // El .select() otra vez: un UPDATE bloqueado por RLS no da error, afecta
+  // cero filas y responde OK — y la bitácora contaría un cambio que no pasó.
+  const { data: post, error } = await supabase.from("cronograma_actividades")
+    .update(fila).eq("id", actId).select("id");
+  if (error) return { error: error.message };
+  if (!post?.length) return { error: "No se guardó: no tienes permiso para editar esta actividad." };
+
+  /* Mover una fecha de un cronograma de dos años es una decisión, no un
+     tecleo: queda escrito quién la movió y desde dónde. */
+  if (antes) {
+    const ETIQ: Record<string, string> = {
+      nombre: "Nombre", etapa: "Etapa", clase: "Clase",
+      fecha_inicio: "Inicio", fecha_fin: "Fin",
+      responsable: "Responsable", dias_anticipacion: "Anticipación",
+    };
+    const cambios = Object.keys(fila)
+      .filter(k => String((antes as any)[k] ?? "") !== String((fila as any)[k] ?? ""))
+      .map(k => ({ campo: ETIQ[k] || k, de: String((antes as any)[k] ?? "—"), a: String((fila as any)[k] ?? "—") }));
+    if (cambios.length) {
+      await supabase.from("actividad").insert({
+        entidad_tipo: dueno, entidad_id: duenoId, actor_id: user.id, tipo: "editado",
+        detalle: { mensaje: `cambió la actividad «${antes.nombre}» del cronograma`, cambios },
+      });
+    }
+  }
+  revalidatePath(`/entidad/${dueno}/${duenoId}`);
+  return {};
+}
+
+/* Mover una actividad arriba o abajo dentro de su día.
+ *
+ * `orden` desempata lo que cae en la misma fecha: la fecha dice cuándo, el
+ * orden dice en qué secuencia. Un día de rodaje tiene secuencia —primero se
+ * alistan los equipos, después rueda cámara A, después B— y sin esto la
+ * decidía Postgres, que no promete ninguna.
+ *
+ * Se intercambia con la vecina en vez de renumerar todo: es una operación,
+ * no una migración, y así dos personas moviendo cosas a la vez no se pisan.
+ */
+export async function moverActividadCrono(
+  actId: string, dueno: "proyecto" | "convocatoria", duenoId: string, dir: "sube" | "baja"
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  const col = dueno === "proyecto" ? "proyecto_id" : "convocatoria_id";
+  const { data: act } = await supabase.from("cronograma_actividades")
+    .select("id,fecha_inicio,etapa,orden,creado_en").eq("id", actId).maybeSingle();
+  if (!act) return { error: "No se encontró la actividad." };
+
+  /* Se mueve dentro de su día Y de su etapa, porque así es como se ve: la
+     lista ordena fecha → etapa → orden. Si permutara ignorando la etapa, el
+     botón haría un UPDATE real y en pantalla no pasaría nada — el peor tipo
+     de botón. Cambiar de día o de etapa es editar la actividad, no moverla. */
+  const { data: hermanas } = await supabase.from("cronograma_actividades")
+    .select("id,orden,creado_en").eq(col, duenoId)
+    .eq("fecha_inicio", act.fecha_inicio).eq("etapa", act.etapa)
+    .neq("estado", "cancelada")
+    .order("orden").order("creado_en");
+  const l = hermanas || [];
+  const i = l.findIndex((x: any) => x.id === actId);
+  const j = dir === "sube" ? i - 1 : i + 1;
+  if (i < 0 || j < 0 || j >= l.length) {
+    return { error: "Ya está en el extremo de su día. Para moverla de sitio, cámbiale la fecha o la etapa con ✎." };
+  }
+
+  /* Si empatan en `orden` —o los dos son 0— intercambiarlos no cambiaría
+     nada: se reasignan por posición antes de permutar. */
+  const a = l[i], b = l[j];
+  const oa = a.orden ?? 0, ob = b.orden ?? 0;
+  const [nuevoA, nuevoB] = oa === ob ? [(j + 1) * 10, (i + 1) * 10] : [ob, oa];
+  const r1 = await supabase.from("cronograma_actividades").update({ orden: nuevoA }).eq("id", a.id).select("id");
+  const r2 = await supabase.from("cronograma_actividades").update({ orden: nuevoB }).eq("id", b.id).select("id");
+  if (r1.error || r2.error) return { error: r1.error?.message || r2.error?.message };
+  if (!r1.data?.length || !r2.data?.length) return { error: "No se movió: no tienes permiso." };
+
+  revalidatePath(`/entidad/${dueno}/${duenoId}`);
+  return {};
+}
+
 export async function cancelarActividadCrono(actId: string, dueno: string, duenoId: string) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();

@@ -3,13 +3,12 @@ import { crearSubCaso } from "@/app/actions";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
+import { claseEstado, textoEstado } from "@/lib/estados";
+import { CERRADOS } from "@/lib/familia";
 
-const EST_TXT: Record<string, string> = {
-  abierta: "Sin Resolver", en_progreso: "En Progreso", en_pausa: "En Pausa",
-  seguimiento: "Seguimiento", resuelta: "Resuelta", archivada: "Archivada",
-};
-
-/* Los hijos de un caso largo: lista con progreso + alta rápida */
+/* Los hijos de un caso largo: lista con progreso + alta rápida.
+   (Tenía su propio mapa de estados —otra copia de lib/estados, sin íconos y
+   sin saber de avisos—. Ahora se importa.) */
 export default function SubCasos({ padreId, hijos }: {
   padreId: string;
   hijos: any[];
@@ -19,7 +18,10 @@ export default function SubCasos({ padreId, hijos }: {
   const [error, setError] = useState("");
   const router = useRouter();
 
-  const resueltos = hijos.filter(h => ["resuelta", "archivada"].includes(h.estado)).length;
+  /* «Cerrado» = resuelta O archivada, y esa decisión vive en lib/familia:
+     archivar es una forma de cerrar, no de olvidar. Estaba escrita a mano
+     dos veces en este mismo archivo. */
+  const resueltos = hijos.filter(h => CERRADOS.includes(h.estado)).length;
 
   const crear = async () => {
     if (!titulo.trim() || creando) return;
@@ -47,10 +49,10 @@ export default function SubCasos({ padreId, hijos }: {
       {hijos.map((h: any) => (
         <div className="info-row" key={h.id}>
           <Link href={`/caso/${h.id}`} style={{ fontWeight: 600, flex: 1, minWidth: 0 }}>
-            {["resuelta", "archivada"].includes(h.estado) ? "✅ " : "○ "}{h.titulo} →
+            {CERRADOS.includes(h.estado) ? "✅ " : "○ "}{h.titulo} →
           </Link>
           {h.resp?.nombre && <span style={{ color: "var(--teal)", fontSize: 12 }}>{h.resp.nombre}</span>}
-          <span className={`pill st-${h.estado}`} style={{ fontSize: 10 }}>{EST_TXT[h.estado] || h.estado}</span>
+          <span className={`pill st-${claseEstado(h.estado, h.tipo)}`} style={{ fontSize: 10 }}>{textoEstado(h.estado, h.tipo)}</span>
         </div>
       ))}
 

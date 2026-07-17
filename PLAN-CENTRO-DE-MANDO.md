@@ -1068,6 +1068,110 @@ descrito por los documentos.
 
 ---
 
+## 9 bis. «Dirección»: la cuarta naturaleza · *aporte de John, 16/07*
+
+Una observación de diseño que no salió de una pantalla rota, sino de mirar el
+trabajo:
+
+> *«En un rodaje hay cuatro cosas de naturaleza distinta:*
+> - ***Actividad** → qué se hará*
+> - ***Dirección** → cómo debe ejecutarse*
+> - ***Caso / incidencia** → qué requiere atención o algo salió mal*
+> - ***Idea / consulta** → comunicación y colaboración*
+>
+> *Esto evita convertir instrucciones momentáneas en tareas innecesarias.»*
+
+Una **Dirección**, en sus palabras: se cuelga de una actividad concreta, es
+Vigente o Finalizada, se puede notificar al equipo asignado, admite checklist
+(«Cámara A lista», «Sonido listo», «Drone listo»), se muestra encima de la
+actividad y se archiva al terminar.
+
+**El sistema tiene tres de las cuatro.** Actividad = `cronograma_actividades`.
+Caso e Idea = `publicaciones` con su tipo. Dirección no existe.
+
+### Lo que ya está más cerca de lo que parece
+
+El **aviso** ya distingue *saber* de *hacer*: no se resuelve, se lee, y el «me
+enteré» registra quién lo vio. Ése es exactamente el argumento de «no convertir
+instrucciones en tareas», resuelto hace tiempo para otra cosa. Una Dirección se
+parece mucho más a un aviso que a una tarea.
+
+Así que lo que falta no es un objeto entero: son **dos piezas**.
+
+1. **Colgar una publicación de una ACTIVIDAD.** Hoy `publicacion_vinculos`
+   apunta a entidades (proyecto, empresa, persona). Una actividad del cronograma
+   no es enganchable — y la Dirección vive pegada a «Rodaje Cámara Principal ·
+   18 jul», no al proyecto entero.
+2. **El checklist.** «Cámara A lista · Sonido listo · Drone listo» no es texto:
+   son tres estados que alguien pone en verde. El `enterado` se le parece, pero
+   dice «leí esto», no «mi cámara está lista».
+
+### La pregunta era «¿contra qué compite?» — y John la contestó
+
+Yo había escrito que una Dirección compite con la voz y con un WhatsApp, y que
+casi siempre pierde: a las 5 de la mañana la directora **habla**. Eso sigue
+siendo cierto **para la instrucción** y falso para el checklist. Respuesta del
+16/07:
+
+> *«El checklist sí puede ayudar: es una **técnica de repaso de memoria**
+> importante antes de salir al campo. Y al parecer es como una **plantilla
+> colgada de una actividad**.»*
+
+Tres cosas quedan claras con eso:
+
+**1. Un checklist no es comunicación: es recuerdo.** Y ahí el WhatsApp no
+compite — no se acuerda de los doce ítems que siempre hay que revisar. Nadie
+escribe la lista completa a las cinco de la mañana; por eso se olvida el
+cargador. La pantalla no le gana a la voz comunicando; le gana **recordando**,
+que es lo único que una máquina hace mejor que una persona con sueño.
+
+**2. Es una plantilla, no un texto.** Y eso lo vuelve barato: el checklist
+viaja con la plantilla de cronograma que ya existe. Se escribe una vez en
+«Cobertura — un día de rodaje» y cada rodaje lo trae puesto. Sin capturar nada
+nuevo: es el modelo de §2 otra vez.
+
+**3. «Antes de salir al campo» es en Cusco, con señal.** El problema de la puna
+—el que hunde cualquier idea de capturar en campo— no aplica: el repaso se hace
+antes de subir.
+
+### Lo que sí queda descartado
+
+**La Dirección como instrucción** («cámara A entra por la izquierda»). Eso se
+dice hablando y se dice mejor hablando. Escribirlo en una pantalla para que
+alguien lo lea en el mismo cuarto es ceremonia.
+
+### Prioridad
+
+**El checklist: media, y con forma clara** — un `checklist` en
+`plantilla_actividades`, que al aplicar la plantilla baja a la actividad. Antes
+van el saldo de DJ y el presupuesto, que son plata; pero esto es chico y se
+apoya en algo que ya está.
+
+**La Dirección como objeto: no.** Si algún día vuelve, que sea por el
+checklist. Completar el cuadro de las cuatro naturalezas es una simetría bonita
+y las simetrías no son razones.
+
+### El hallazgo que dejó, y vale más que ella
+
+**Nada se puede colgar de una ACTIVIDAD del cronograma.** `publicacion_vinculos`
+apunta a proyecto, empresa, persona — no a «Rodaje Cámara Principal · 18 jul».
+Y eso limita mucho más que un checklist:
+
+- **Un caso que pasó EN una actividad.** Hoy se cuelga del proyecto, y el
+  informe de ejecución pide «problemas y dificultades **del rodaje**» — que se
+  deduce por fechas, no porque alguien lo dijera.
+- **Una jornada que corresponde A un día de rodaje.** Hoy la jornada sabe su
+  proyecto y su fecha; que sea *de esa actividad* se infiere.
+- **Un gasto DE esa actividad.** Y aquí está lo gordo: el informe económico se
+  organiza **por actividad** (§ Pieza 3). Ese segundo eje que hay que anotar al
+  momento del gasto **es esta arista**. Sin ella, el reparto se hace a mano dos
+  años después — que es exactamente el dolor que encontramos.
+
+O sea: la Dirección puede no construirse nunca y aun así **haber sido útil**,
+porque destapó el enganche que le falta al informe económico.
+
+---
+
 ## 10. Estado del plan
 
 **Cerrado:** el modelo. Los documentos lo describen entero; no queda nada que

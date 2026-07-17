@@ -4,6 +4,7 @@ import Tablero from "@/components/Tablero";
 import TableroTimeline from "@/components/TableroTimeline";
 import Realtime from "@/components/Realtime";
 import FiltroPersona from "@/components/FiltroPersona";
+import { contarHijos } from "@/lib/familia";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -77,10 +78,11 @@ export default async function TableroPage({ searchParams }: {
   // Indicadores sociales: sub-casos (hijos) y reacciones (comentarios ya vienen en el select)
   const idsPubs = (pubs || []).map((p: any) => p.id);
   const { data: hijosData } = idsPubs.length
-    ? await supabase.from("publicaciones").select("padre_id").in("padre_id", idsPubs)
+    // `estado` faltaba: este era el conteo que había divergido — solo sabía
+    // cuántos hijos hay, nunca cuántos están cerrados.
+    ? await supabase.from("publicaciones").select("padre_id,estado").in("padre_id", idsPubs)
     : { data: [] };
-  const subDe = new Map<string, number>();
-  (hijosData || []).forEach((h: any) => subDe.set(h.padre_id, (subDe.get(h.padre_id) || 0) + 1));
+  const subDe = contarHijos(hijosData);
   const { data: reaccs } = idsPubs.length
     ? await supabase.from("reacciones").select("publicacion_id,emoji").is("comentario_id", null).in("publicacion_id", idsPubs)
     : { data: [] };
@@ -137,7 +139,9 @@ export default async function TableroPage({ searchParams }: {
   const pubsE = (pubs || []).map((p: any) => ({
     ...p,
     nc: p.comentarios?.[0]?.count ?? 0,
-    sub: subDe.get(p.id) || 0,
+    // El kanban sigue mostrando solo el total, como siempre: cambiar la
+    // tarjeta del tablero no toca hoy. Pero `ok` ya está calculado aquí.
+    sub: subDe.get(p.id)?.total || 0,
     reac: reacDe.get(p.id) || {},
     vinc: vincDe.get(p.id) || [],
     marca: marcaFoco(p),

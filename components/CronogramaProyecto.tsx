@@ -1,8 +1,12 @@
 "use client";
-import { agregarActividadCrono, cancelarActividadCrono, materializarActividad } from "@/app/actions";
+import {
+  agregarActividadCrono, editarActividadCrono, moverActividadCrono,
+  cancelarActividadCrono, materializarActividad,
+  guardarComoPlantilla, aplicarPlantilla,
+} from "@/app/actions";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const ETAPA_ORDEN = ["preproduccion", "produccion", "postproduccion", "entrega", "administracion"];
 
@@ -32,27 +36,187 @@ const pd = (s: string) => new Date(s + "T12:00:00").getTime();
 const fmt = (s: string) =>
   new Date(s + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short" });
 
-export default function CronogramaProyecto({ dueno = "proyecto", duenoId, actividades, perfiles }: {
+type Campos = { nombre: string; etapa: string; ini: string; fin: string;
+  responsable: string; antic: string; clase: string };
+
+const inp = { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8,
+  padding: "7px 10px", fontSize: 12.5, outline: "none", color: "var(--text)" } as const;
+
+/* Un solo formulario para crear y para editar.
+   Antes solo existía el de crear —el cronograma no se podía corregir— y la
+   tentación era escribir otro igual para editar. Dos formularios del mismo
+   objeto es el error del día: el día que se agregue un campo, se agrega en
+   uno solo. */
+function FormAct({ f, setF, perfiles, onSave, onCancel, ocupado, editar }: {
+  f: Campos; setF: (x: Campos) => void;
+  perfiles: { id: string; nombre: string }[];
+  onSave: () => void; onCancel: () => void; ocupado: boolean; editar?: boolean;
+}) {
+  /* Antes se podía pulsar Guardar con la fecha vacía: el servidor lo rechazaba
+     y el navegador escupía un alert(). Dejar pulsar algo que ya sabemos que va
+     a fallar es hacerle perder el tiempo a alguien para después regañarlo.
+     El botón dice qué falta y no deja. */
+  const falta = !f.nombre.trim() ? "Ponle nombre a la actividad"
+    : !f.ini ? "Falta la fecha de inicio"
+    : f.fin && f.fin < f.ini ? "El fin no puede ser antes del inicio"
+    : "";
+  return (
+    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "12px 0", padding: 10, background: "var(--bg)", borderRadius: 10 }}>
+      <select style={{ ...inp, borderColor: f.clase === "hito_externo" ? "var(--blue)" : "var(--border)" }}
+        value={f.clase} onChange={e => setF({ ...f, clase: e.target.value })}>
+        <option value="trabajo">✅ Trabajo nuestro</option>
+        <option value="hito_externo">🏛 Hito del concurso</option>
+      </select>
+      <input style={{ ...inp, flex: 1, minWidth: 180 }} placeholder="Actividad *"
+        value={f.nombre} onChange={e => setF({ ...f, nombre: e.target.value })} />
+      <select style={inp} value={f.etapa} onChange={e => setF({ ...f, etapa: e.target.value })}>
+        {ETAPA_ORDEN.map(x => <option key={x} value={x}>{x.replace(/_/g, " ")}</option>)}
+      </select>
+      {/* El inicio en rojo cuando falta: la fecha vacía es lo que más frena
+          este formulario y hasta ahora no se distinguía de la de fin. */}
+      <input type="date" title="Inicio *" value={f.ini}
+        style={{ ...inp, borderColor: f.ini ? "var(--border)" : "var(--red)" }}
+        onChange={e => setF({ ...f, ini: e.target.value })} />
+      <input type="date" style={inp} title="Fin (si dura más de un día)" value={f.fin}
+        onChange={e => setF({ ...f, fin: e.target.value })} />
+      <select style={inp} value={f.responsable} onChange={e => setF({ ...f, responsable: e.target.value })}>
+        <option value="">Responsable...</option>
+        {perfiles.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+      </select>
+      <label style={{ color: "var(--dim)", fontSize: 11, display: "flex", alignItems: "center", gap: 5 }}>
+        avisar <input type="number" min={0} max={60} style={{ ...inp, width: 54 }}
+          value={f.antic} onChange={e => setF({ ...f, antic: e.target.value })} /> días antes
+      </label>
+      <button className="btn" style={{ padding: "7px 14px", fontSize: 12 }}
+        title={falta || undefined} disabled={!!falta || ocupado} onClick={onSave}>
+        {ocupado ? "…" : editar ? "Guardar cambios" : "Guardar"}
+      </button>
+      <button className="btn btn-ghost" style={{ padding: "7px 10px", fontSize: 12 }} onClick={onCancel}>Cancelar</button>
+      {/* Y se dice en voz alta, no solo en el tooltip: un botón apagado sin
+          explicación es un botón roto. */}
+      {falta && <span style={{ color: "var(--yellow)", fontSize: 11.5, width: "100%" }}>⚠ {falta}</span>}
+    </div>
+  );
+}
+
+export default function CronogramaProyecto({ dueno = "proyecto", duenoId, actividades, perfiles, plantillas = [], tipoProyecto = "" }: {
   dueno?: "proyecto" | "convocatoria";
   duenoId: string;
   actividades: any[];
   perfiles: { id: string; nombre: string }[];
+  plantillas?: { id: string; nombre: string; tipo_proyecto: string | null; n: number }[];
+  tipoProyecto?: string;
 }) {
   const [vista, setVista] = useState<"lista" | "gantt">("lista");
+  const [ancho, setAncho] = useState(false);
   const [confirmando, setConfirmando] = useState<{ id: string; accion: "mat" | "del" } | null>(null);
   const [agregando, setAgregando] = useState(false);
-  const [f, setF] = useState({ nombre: "", etapa: dueno === "convocatoria" ? "administracion" : "produccion", ini: "", fin: "", responsable: "", antic: "7", clase: "trabajo" });
+  const VACIO: Campos = { nombre: "", etapa: dueno === "convocatoria" ? "administracion" : "produccion", ini: "", fin: "", responsable: "", antic: "7", clase: "trabajo" };
+  const [f, setF] = useState<Campos>(VACIO);
+  // Editar: faltaba entero. Una fecha mal puesta solo se podía arreglar
+  // cancelando la actividad y creándola de nuevo, perdiendo su historia.
+  const [editando, setEditando] = useState<string | null>(null);
+  const [ef, setEf] = useState<Campos>(VACIO);
+  // Plantillas: el panel se declara aquí y no junto a sus funciones porque el
+  // Escape de más abajo lo lee, y un `const` no existe antes de su línea.
+  const [panel, setPanel] = useState<"" | "guardar" | "aplicar">("");
+  const [nomPl, setNomPl] = useState("");
+  const [plSel, setPlSel] = useState("");
+  const [desde, setDesde] = useState("");
   const [ocupado, setOcupado] = useState(false);
+  /* Los avisos, dentro de la tarjeta — como en Miembros, Credenciales y el
+     formulario de entidades. Este componente usaba `alert()` del navegador:
+     una caja gris que dice «localhost:3000 dice», que tapa la pantalla, que
+     hay que aceptar, y que no se parece en nada al resto del sistema. Un
+     error no es una interrupción del navegador: es algo que la pantalla tiene
+     que decir sin dejar de ser ella. */
+  const [error, setError] = useState("");
+  const [ok, setOk] = useState("");
   const router = useRouter();
+  const fallo = (r: any) => { if (r?.error) { setError(r.error); return true; } setError(""); return false; };
+
+  /* Escape cierra. Pero no si hay algo abierto encima —editando, agregando o
+     una plantilla a medias—: ahí Escape cancela ESO, y cerrar la ventana
+     entera tiraría lo que estaba escribiendo. Un atajo que borra trabajo se
+     usa una vez. */
+  useEffect(() => {
+    if (!ancho) return;
+    const f = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (editando) { setEditando(null); return; }
+      if (agregando) { setAgregando(false); return; }
+      if (panel) { setPanel(""); return; }
+      setAncho(false);
+    };
+    window.addEventListener("keydown", f);
+    return () => window.removeEventListener("keydown", f);
+  }, [ancho, editando, agregando, panel]);
 
   const guardar = async () => {
     if (ocupado) return;
     setOcupado(true);
     const res = await agregarActividadCrono(dueno, duenoId, f);
     setOcupado(false);
-    if (res?.error) { alert(res.error); return; }
+    if (fallo(res)) return;
     setF({ ...f, nombre: "", ini: "", fin: "", responsable: "" });
     setAgregando(false);
+    router.refresh();
+  };
+
+  const abrirEdicion = (a: any) => {
+    setEditando(a.id);
+    setEf({
+      nombre: a.nombre || "", etapa: a.etapa || "produccion",
+      ini: a.fecha_inicio || "", fin: a.fecha_fin || "",
+      responsable: a.responsable || "", antic: String(a.dias_anticipacion ?? 7),
+      clase: a.clase || "trabajo",
+    });
+  };
+  const guardarEdicion = async () => {
+    if (ocupado || !editando) return;
+    setOcupado(true);
+    const res: any = await editarActividadCrono(editando, dueno, duenoId, ef);
+    setOcupado(false);
+    if (fallo(res)) return;
+    setEditando(null);
+    router.refresh();
+  };
+
+  /* Mover dentro del día. El cronograma se ordena por fecha, y cuando varias
+     caen el mismo día el orden lo decidía Postgres — por eso «Rodaje cámara
+     secundaria» salía antes que «Rodaje Cámara Principal». Un día de rodaje
+     tiene secuencia y ahora se puede decir cuál. */
+  const mover = async (id: string, dir: "sube" | "baja") => {
+    if (ocupado) return;
+    setOcupado(true);
+    const res: any = await moverActividadCrono(id, dueno, duenoId, dir);
+    setOcupado(false);
+    if (!fallo(res)) router.refresh();
+  };
+
+  /* Plantillas. Aplicar suma, no reemplaza — por eso el panel solo se ofrece
+     cuando el cronograma está vacío: aplicar sobre uno lleno duplicaría todo,
+     y ése no es el momento en que a nadie se le ocurre usar una plantilla.
+     (Su estado se declara arriba, junto al resto: el Escape lo necesita.) */
+  const guardarPl = async () => {
+    if (ocupado) return;
+    setOcupado(true);
+    const res: any = await guardarComoPlantilla(dueno, duenoId, nomPl, tipoProyecto);
+    setOcupado(false);
+    if (fallo(res)) return;
+    setPanel(""); setNomPl("");
+    // Se confirma en la tarjeta y se va solo: guardar bien no merece un clic
+    setOk(`Plantilla «${nomPl}» guardada con ${res.n} actividades — ya se puede usar en otro proyecto.`);
+    setTimeout(() => setOk(""), 6000);
+    router.refresh();
+  };
+  const aplicarPl = async () => {
+    if (ocupado || !plSel || !desde) return;
+    setOcupado(true);
+    const res: any = await aplicarPlantilla(plSel, dueno, duenoId, desde);
+    setOcupado(false);
+    if (fallo(res)) return;
+    setPanel(""); setPlSel(""); setDesde("");
     router.refresh();
   };
 
@@ -61,17 +225,16 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
     setOcupado(true);
     const res = await materializarActividad(id, dueno, duenoId);
     setOcupado(false);
-    if (res?.error) alert(res.error); else router.refresh();
+    if (!fallo(res)) router.refresh();
   };
 
   const cancelar = async (id: string) => {
     setConfirmando(null);
     const res = await cancelarActividadCrono(id, dueno, duenoId);
-    if (res?.error) alert(res.error); else router.refresh();
+    if (!fallo(res)) router.refresh();
   };
 
   const visibles = actividades.filter(a => a.estado !== "cancelada" && a.fecha_inicio);
-  const inp = { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, outline: "none", color: "var(--text)" } as const;
 
   /* --- cálculo del Gantt --- */
   const minT = visibles.length ? Math.min(...visibles.map(a => pd(a.fecha_inicio))) : 0;
@@ -80,49 +243,102 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
   const pct = (t: number) => Math.min(100, Math.max(0, ((t - minT) / span) * 100));
   const hoyT = Date.now();
   const hoyPct = pct(hoyT);
+  /* Tres desempates, en este orden: la fecha manda; después la etapa (no se
+     rueda antes de alistar); después `orden`, que es lo único que una persona
+     decide a mano. Sin el tercero, dos actividades del mismo día y la misma
+     etapa quedaban en el orden que quisiera Postgres — y ese cambia entre
+     recargas sin que nadie lo toque. */
   const ordenadas = [...visibles].sort((a, b) =>
-    a.fecha_inicio === b.fecha_inicio
-      ? ETAPA_ORDEN.indexOf(a.etapa) - ETAPA_ORDEN.indexOf(b.etapa)
-      : (a.fecha_inicio < b.fecha_inicio ? -1 : 1));
+    a.fecha_inicio !== b.fecha_inicio ? (a.fecha_inicio < b.fecha_inicio ? -1 : 1)
+    : a.etapa !== b.etapa ? ETAPA_ORDEN.indexOf(a.etapa) - ETAPA_ORDEN.indexOf(b.etapa)
+    : (a.orden ?? 0) - (b.orden ?? 0));
 
-  return (
-    <div className="card" style={{ marginBottom: 16 }}>
+  const cuerpo = (
+    <div className="card" style={{ marginBottom: ancho ? 0 : 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <b style={{ fontSize: 13.5 }}>📅 Cronograma · {visibles.length}</b>
         <div className="vtabs" style={{ margin: 0 }}>
           <button className={`vtab ${vista === "lista" ? "on" : ""}`} onClick={() => setVista("lista")}>☰ Lista</button>
           <button className={`vtab ${vista === "gantt" ? "on" : ""}`} onClick={() => setVista("gantt")}>📊 Gantt</button>
         </div>
+        {/* Un cronograma de dos años en la mitad de una columna de 860 px no
+            se lee: se adivina. El modal es `position:fixed`, así que escapa
+            del ancho de la página sin tener que cambiarlo — el feed sigue en
+            su medida de lectura y esto se abre a pantalla completa. */}
+        <button className="btn btn-ghost" style={{ padding: "4px 9px", fontSize: 12 }}
+          title={ancho ? "Volver a la ficha" : "Abrir a pantalla completa"}
+          onClick={() => setAncho(!ancho)}>{ancho ? "✕ Cerrar" : "⛶ Ampliar"}</button>
         <span style={{ flex: 1 }} />
+        {/* Aplicar solo con el cronograma vacío: suma, no reemplaza, y nadie
+            va a querer duplicar siete actividades sobre siete que ya están.
+            Guardar solo con algo que guardar. */}
+        {!visibles.length && plantillas.length > 0 && !panel && (
+          <button className="btn btn-ghost" style={{ padding: "5px 12px", fontSize: 12, color: "var(--accent)" }}
+            title="Cargar un cronograma que ya se usó antes"
+            onClick={() => setPanel("aplicar")}>📋 Usar plantilla</button>
+        )}
+        {visibles.length > 0 && !panel && (
+          <button className="btn btn-ghost" style={{ padding: "5px 12px", fontSize: 12 }}
+            title="Guardar este cronograma para reusarlo en el próximo proyecto"
+            onClick={() => setPanel("guardar")}>📋 Guardar como plantilla</button>
+        )}
         {!agregando && <button className="btn btn-ghost" style={{ padding: "5px 12px", fontSize: 12 }}
           onClick={() => setAgregando(true)}>＋ Actividad</button>}
       </div>
 
-      {agregando && (
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "12px 0", padding: 10, background: "var(--bg)", borderRadius: 10 }}>
-          <select style={{ ...inp, borderColor: f.clase === "hito_externo" ? "var(--blue)" : "var(--border)" }}
-            value={f.clase} onChange={e => setF({ ...f, clase: e.target.value })}>
-            <option value="trabajo">✅ Trabajo nuestro</option>
-            <option value="hito_externo">🏛 Hito del concurso</option>
-          </select>
-          <input style={{ ...inp, flex: 1, minWidth: 180 }} placeholder="Actividad *"
-            value={f.nombre} onChange={e => setF({ ...f, nombre: e.target.value })} />
-          <select style={inp} value={f.etapa} onChange={e => setF({ ...f, etapa: e.target.value })}>
-            {ETAPA_ORDEN.map(x => <option key={x} value={x}>{x.replace(/_/g, " ")}</option>)}
-          </select>
-          <input type="date" style={inp} title="Inicio *" value={f.ini} onChange={e => setF({ ...f, ini: e.target.value })} />
-          <input type="date" style={inp} title="Fin" value={f.fin} onChange={e => setF({ ...f, fin: e.target.value })} />
-          <select style={inp} value={f.responsable} onChange={e => setF({ ...f, responsable: e.target.value })}>
-            <option value="">Responsable...</option>
-            {perfiles.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-          </select>
-          <label style={{ color: "var(--dim)", fontSize: 11, display: "flex", alignItems: "center", gap: 5 }}>
-            avisar <input type="number" min={0} max={60} style={{ ...inp, width: 54 }}
-              value={f.antic} onChange={e => setF({ ...f, antic: e.target.value })} /> días antes
-          </label>
-          <button className="btn" style={{ padding: "7px 14px", fontSize: 12 }} disabled={ocupado} onClick={guardar}>Guardar</button>
-          <button className="btn btn-ghost" style={{ padding: "7px 10px", fontSize: 12 }} onClick={() => setAgregando(false)}>Cancelar</button>
+      {/* Aquí, en la tarjeta, donde pasó — no en una caja gris del navegador
+          que dice «localhost:3000 dice» y hay que aceptar para seguir. */}
+      {error && (
+        <div className="err-inline" style={{ marginTop: 10 }}>
+          ⚠ {error}
+          <button style={{ color: "var(--dim)", marginLeft: 8, fontSize: 11 }}
+            onClick={() => setError("")}>✕</button>
         </div>
+      )}
+      {ok && (
+        <div style={{ color: "var(--green)", fontSize: 12, marginTop: 10 }}>✅ {ok}</div>
+      )}
+
+      {panel === "guardar" && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "12px 0", padding: 10, background: "var(--bg)", borderRadius: 10 }}>
+          <span style={{ color: "var(--dim)", fontSize: 11.5, width: "100%" }}>
+            Se guardan las {visibles.length} actividades con sus etapas y responsables, pero
+            <b> sin fechas</b>: la primera es el día 0 y el resto se cuenta desde ahí. Al usarla
+            eliges cuándo empieza y todo se acomoda solo.
+          </span>
+          <input style={{ ...inp, flex: 1, minWidth: 220 }} placeholder="Nombre de la plantilla *"
+            value={nomPl} onChange={e => setNomPl(e.target.value)} />
+          <button className="btn" style={{ padding: "7px 14px", fontSize: 12 }}
+            disabled={!nomPl.trim() || ocupado} onClick={guardarPl}>{ocupado ? "…" : "Guardar"}</button>
+          <button className="btn btn-ghost" style={{ padding: "7px 10px", fontSize: 12 }}
+            onClick={() => setPanel("")}>Cancelar</button>
+        </div>
+      )}
+
+      {panel === "aplicar" && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "12px 0", padding: 10, background: "var(--bg)", borderRadius: 10 }}>
+          <select style={{ ...inp, flex: 1, minWidth: 200 }} value={plSel} onChange={e => setPlSel(e.target.value)}>
+            <option value="">— elegir plantilla —</option>
+            {plantillas.map(p => (
+              <option key={p.id} value={p.id}>
+                {p.nombre} · {p.n} actividades{p.tipo_proyecto ? ` · ${p.tipo_proyecto}` : ""}
+              </option>
+            ))}
+          </select>
+          <label style={{ color: "var(--dim)", fontSize: 11.5, display: "flex", alignItems: "center", gap: 6 }}>
+            empieza el
+            <input type="date" style={inp} value={desde} onChange={e => setDesde(e.target.value)} />
+          </label>
+          <button className="btn" style={{ padding: "7px 14px", fontSize: 12 }}
+            disabled={!plSel || !desde || ocupado} onClick={aplicarPl}>{ocupado ? "…" : "Cargar"}</button>
+          <button className="btn btn-ghost" style={{ padding: "7px 10px", fontSize: 12 }}
+            onClick={() => setPanel("")}>Cancelar</button>
+        </div>
+      )}
+
+      {agregando && (
+        <FormAct f={f} setF={setF} perfiles={perfiles} ocupado={ocupado}
+          onSave={guardar} onCancel={() => setAgregando(false)} />
       )}
 
       {/* ===== VISTA LISTA, agrupada por etapa ===== */}
@@ -134,6 +350,17 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
             <div className="cr-etapa-h">{et.replace(/_/g, " ")}</div>
             {grupo.map(a => {
               const [txt, col] = CHIP[a.estado] || CHIP.planificada;
+              // Solo se mueve entre las de su mismo día dentro de esta etapa
+              const mismoDia = grupo.filter(x => x.fecha_inicio === a.fecha_inicio);
+              const pos = mismoDia.findIndex(x => x.id === a.id);
+              const puedeSubir = pos > 0;
+              const puedeBajar = pos >= 0 && pos < mismoDia.length - 1;
+              if (editando === a.id) {
+                return (
+                  <FormAct key={a.id} f={ef} setF={setEf} perfiles={perfiles} ocupado={ocupado} editar
+                    onSave={guardarEdicion} onCancel={() => setEditando(null)} />
+                );
+              }
               return (
                 <div key={a.id} className="cr-item" style={{
                   opacity: a.estado === "finalizada" ? .6 : 1,
@@ -169,6 +396,28 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
                         <button className="btn btn-ghost" style={{ padding: "3px 8px", fontSize: 11 }}
                           onClick={() => setConfirmando(null)}>No</button>
                       </span>
+                    )}
+                    {confirmando?.id !== a.id && (
+                      <>
+                        {/* Mover dentro del día. Solo asoman cuando hay con
+                            quién intercambiar: un botón que no puede hacer
+                            nada es peor que no tenerlo. */}
+                        {(puedeSubir || puedeBajar) && (
+                          <span style={{ display: "flex", flexDirection: "column", lineHeight: .8 }}>
+                            <button title="Subir dentro de este día" disabled={!puedeSubir || ocupado}
+                              style={{ color: puedeSubir ? "var(--dim)" : "transparent", fontSize: 9, padding: 0 }}
+                              onClick={() => mover(a.id, "sube")}>▲</button>
+                            <button title="Bajar dentro de este día" disabled={!puedeBajar || ocupado}
+                              style={{ color: puedeBajar ? "var(--dim)" : "transparent", fontSize: 9, padding: 0 }}
+                              onClick={() => mover(a.id, "baja")}>▼</button>
+                          </span>
+                        )}
+                        {/* Editar vale SIEMPRE, no solo mientras está
+                            planificada: una fecha mal puesta en algo ya
+                            materializado es justo la que más urge corregir. */}
+                        <button title="Editar" style={{ color: "var(--dim)" }}
+                          onClick={() => abrirEdicion(a)}>✎</button>
+                      </>
                     )}
                     {a.estado === "planificada" && confirmando?.id !== a.id && (
                       <>
@@ -241,6 +490,18 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
       {!visibles.length && !agregando && (
         <div style={{ color: "var(--dim)", fontSize: 12.5, marginTop: 8 }}>Sin actividades — planifica la primera.</div>
       )}
+    </div>
+  );
+
+  /* El MISMO cuerpo, en la ficha o a pantalla completa. No es un cronograma
+     de escritorio y otro de modal: es uno solo con más sitio. Dos versiones
+     de esto serían dos sitios donde arreglar el próximo bug. */
+  if (!ancho) return cuerpo;
+  return (
+    <div className="modal-fondo" onClick={() => setAncho(false)}>
+      {/* stopPropagation: sin esto, editar una fecha cierra la ventana —
+          el clic en cualquier input llegaría al fondo. */}
+      <div className="modal-ancho" onClick={e => e.stopPropagation()}>{cuerpo}</div>
     </div>
   );
 }

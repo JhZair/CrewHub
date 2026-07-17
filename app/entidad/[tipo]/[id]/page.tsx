@@ -26,6 +26,11 @@ import HojaPostulacion from "@/components/HojaPostulacion";
 import BotonFichaSunat from "@/components/BotonFichaSunat";
 import Copiar from "@/components/Copiar";
 import EventoHistorial from "@/components/EventoHistorial";
+import { claseEstado, rotuloEstado, esAviso } from "@/lib/estados";
+import { contarHijos, type Familia } from "@/lib/familia";
+import Reacciones, { type Reaccion } from "@/components/Reacciones";
+import AvisoMini from "@/components/AvisoMini";
+import TextoCorto from "@/components/TextoCorto";
 import CVs from "@/components/CVs";
 import FotoPersona from "@/components/FotoPersona";
 import Materiales from "@/components/Materiales";
@@ -76,10 +81,10 @@ const CONF: Record<string, { tabla: string; icono: string; campos: [string, stri
   etiqueta: { tabla: "etiquetas", icono: "🏷️", campos: [] },
 };
 
-const ESTADOS: Record<string, string> = {
-  abierta: "📥 Sin Resolver", en_progreso: "🛠 En Progreso", seguimiento: "🔭 Seguimiento",
-  en_pausa: "En Pausa", resuelta: "Resuelta", archivada: "Archivada",
-};
+/* El rótulo de estado ya no se escribe aquí: era la novena copia de un mapa
+   que en lib/estados.ts arranca diciendo «estaban duplicados en ocho archivos
+   y ya habían empezado a divergir». Y había divergido otra vez —a esta copia
+   le faltaban los íconos de en_pausa/resuelta/archivada—. Se importa. */
 const TIPO_META: Record<string, string> = {
   aviso: "📢", tarea: "✅", problema: "❗", consulta: "❓", pago: "💰", idea: "💡", archivo: "📎",
 };
@@ -182,7 +187,10 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     !(e.tipo === "estado" && ["estado_sunat", "condicion_sunat"].includes(e.detalle?.campo)));
 
   const ids = (vincs || []).map((v: any) => v.publicacion_id);
-  const SEL_PUB = "id,titulo,tipo,estado,creado_en,fecha_limite,autor:perfiles!publicaciones_autor_id_fkey(nombre),resp:perfiles!publicaciones_responsable_fkey(nombre),comentarios(count)";
+  /* `cuerpo` va aquí porque en un aviso el título es solo el asunto: lo que
+     hay que hacer está en el cuerpo. Sin él, la tarjeta obligaba a entrar al
+     caso para leer la indicación — y a volver para darse por enterado. */
+  const SEL_PUB = "id,titulo,cuerpo,tipo,estado,creado_en,fecha_limite,autor:perfiles!publicaciones_autor_id_fkey(nombre),resp:perfiles!publicaciones_responsable_fkey(nombre),comentarios(count)";
   // Si la persona tiene cuenta, su vida también son los casos que creó o le asignaron
   const uid = params.tipo === "persona" ? ent.usuario_id : null;
   const [porVinculo, porUsuario, misComs] = await Promise.all([
@@ -213,25 +221,31 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
 
   // Los datos importantes de cada caso: sub-casos y reacciones
   const idsP = pubs.map((p: any) => p.id);
-  const hijosDe = new Map<string, { total: number; ok: number }>();
-  const reaccDe = new Map<string, Map<string, number>>();
+  let hijosDe = new Map<string, Familia>();
+  /* Las reacciones se guardan en crudo —con `usuario_id`— y no contadas.
+     El conteo se saca de aquí cuando hace falta, pero al revés no se puede:
+     con solo el número, la tarjeta no sabe si el 👀 es TUYO, y sin eso no hay
+     botón "me enteré" que valga. Contar es tirar el dato que importa. */
+  const reaccDe = new Map<string, Reaccion[]>();
   if (idsP.length) {
     const [hj, rc] = await Promise.all([
       supabase.from("publicaciones").select("padre_id,estado").in("padre_id", idsP),
-      supabase.from("reacciones").select("publicacion_id,emoji").is("comentario_id", null).in("publicacion_id", idsP),
+      supabase.from("reacciones").select("publicacion_id,emoji,usuario_id").is("comentario_id", null).in("publicacion_id", idsP),
     ]);
-    (hj.data || []).forEach((h: any) => {
-      const m = hijosDe.get(h.padre_id) || { total: 0, ok: 0 };
-      m.total++;
-      if (["resuelta", "archivada"].includes(h.estado)) m.ok++;
-      hijosDe.set(h.padre_id, m);
-    });
+    hijosDe = contarHijos(hj.data);
     (rc.data || []).forEach((r: any) => {
-      const m = reaccDe.get(r.publicacion_id) || new Map<string, number>();
-      m.set(r.emoji, (m.get(r.emoji) || 0) + 1);
-      reaccDe.set(r.publicacion_id, m);
+      const l = reaccDe.get(r.publicacion_id) || [];
+      l.push({ emoji: r.emoji, usuario_id: r.usuario_id });
+      reaccDe.set(r.publicacion_id, l);
     });
   }
+  /* El equipo es el denominador de "Enterados N/M". Solo se pide si hay algún
+     aviso a la vista: en una ficha sin avisos sería una consulta de más. */
+  const equipoAvisos = pubs.some((p: any) => p.tipo === "aviso")
+    ? ((await supabase.from("perfiles").select("id,nombre").eq("activo", true)).data || [])
+        // Qhaway no se entera de nada: reparte, no lee.
+        .filter((x: any) => x.nombre !== "Bot Qhaway")
+    : [];
 
   // Relaciones societarias
   let miembros: any[] = [], personasCat: any[] = [], cargosDe: any[] = [], postusEmp: any[] = [];
@@ -240,16 +254,19 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   let partesReserva: any[] = [], reserva: "si" | "no" | "falta" = "falta";
   let clienteDe: { id: string; nombre: string } | null = null;
   let cronoActs: any[] = [], perfilesCat: any[] = [];
-  let postusProy: any[] = [], equipoProy: any[] = [];
+  let postusProy: any[] = [], equipoProy: any[] = [], plantillas: any[] = [];
   if (params.tipo === "proyecto") {
-    const [pc, cl, ca, pf, pp, eq] = await Promise.all([
+    const [pc, cl, ca, pf, pp, eq, pl] = await Promise.all([
       supabase.from("personas").select("id,nombre,alias,tipo").order("nombre"),
       ent.cliente_id
         ? supabase.from("personas").select("id,nombre,alias").eq("id", ent.cliente_id).single()
         : Promise.resolve({ data: null }),
       supabase.from("cronograma_actividades")
         .select("*, resp:perfiles(nombre)")
-        .eq("proyecto_id", params.id).order("fecha_inicio"),
+        /* La fecha manda; `orden` desempata lo que cae el mismo día —un día
+           de rodaje tiene secuencia— y `creado_en` desempata el desempate,
+           para que dos con el mismo orden no bailen entre recargas. */
+        .eq("proyecto_id", params.id).order("fecha_inicio").order("orden").order("creado_en"),
       supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
       supabase.from("postulaciones")
         .select("id,codigo,estado,codigo_acta,monto_adjudicado,fecha_firma_acta,fecha_limite_rendicion,fecha_prorroga,acta_url,conv:convocatorias(id,codigo,nombre,anio)")
@@ -259,6 +276,10 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       supabase.from("proyecto_equipo")
         .select("id,cargo,desde,hasta,persona:personas(id,nombre,alias)")
         .eq("proyecto_id", params.id).order("cargo"),
+      // Cronogramas que ya se usaron antes: «las coberturas son casi la misma»
+      supabase.from("plantillas_cronograma")
+        .select("id,nombre,tipo_proyecto,acts:plantilla_actividades(count)")
+        .order("nombre"),
     ]);
     personasCat = (pc.data || []).map((x: any) => ({ ...x, nombre: x.alias ? `${x.nombre} · ${x.alias}` : x.nombre }));
     const _cl = (cl as any).data; clienteDe = _cl ? { id: _cl.id, nombre: _cl.alias || _cl.nombre } : null;
@@ -266,13 +287,17 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     perfilesCat = pf.data || [];
     postusProy = pp.data || [];
     equipoProy = eq.data || [];
+    plantillas = (pl.data || []).map((x: any) => ({
+      id: x.id, nombre: x.nombre, tipo_proyecto: x.tipo_proyecto,
+      n: x.acts?.[0]?.count ?? 0,
+    }));
   }
   let postus: any[] = [], proyectosCat: any[] = [], empresasCat: any[] = [];
   if (params.tipo === "convocatoria") {
     const [ca, pf, po, pr, em] = await Promise.all([
       supabase.from("cronograma_actividades")
         .select("*, resp:perfiles(nombre)")
-        .eq("convocatoria_id", params.id).order("fecha_inicio"),
+        .eq("convocatoria_id", params.id).order("fecha_inicio").order("orden").order("creado_en"),
       supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
       supabase.from("postulaciones")
         .select("*, proy:proyectos(id,nombre), emp:empresas(id,nombre,codigo)")
@@ -484,35 +509,71 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
 
   const cardPub = (p: any) => {
     const hj = hijosDe.get(p.id);
-    const rx = reaccDe.get(p.id);
+    const rx = reaccDe.get(p.id) || [];
     const nComs = (p.comentarios as any)?.[0]?.count || 0;
+    const esAv = esAviso(p.tipo);
+    // Conteo por emoji, solo para la línea de meta de un caso normal: ahí las
+    // reacciones son un dato que se lee, no un botón que se toca.
+    const cuenta = new Map<string, number>();
+    rx.forEach(r => cuenta.set(r.emoji, (cuenta.get(r.emoji) || 0) + 1));
     return (
-      <Link key={p.id} href={`/caso/${p.id}`}>
-        {/* est-* aporta el tinte de identidad del estado, igual que en el feed */}
-        <div className={`card link est-${p.estado}`} style={{ cursor: "pointer", padding: "12px 15px" }}>
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <span>{TIPO_META[p.tipo] || "💬"}</span>
-            <b style={{ flex: 1, fontSize: 13.5 }}>{p.titulo}</b>
-            {(p.resp as any)?.nombre && <span className="tv-resp">{(p.resp as any).nombre.split(" ")[0]}</span>}
-            <span className={`pill st-${p.estado}`}>{ESTADOS[p.estado] || p.estado}</span>
-          </div>
-          <div className="meta" style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-            {(p.autor as any)?.nombre && <span>✍ {(p.autor as any).nombre.split(" ")[0]}</span>}
-            <span>{fecha(p.creado_en)}</span>
-            {nComs > 0 && <span>💬 {nComs}</span>}
-            {hj && (
-              <span style={{ color: hj.ok === hj.total ? "var(--green)" : "var(--yellow)" }}>
-                🧩 {hj.ok}/{hj.total} sub-casos
-              </span>
-            )}
-            {rx && (
-              <span style={{ letterSpacing: .5 }}>
-                {[...rx.entries()].map(([e, n]) => `${e}${n > 1 ? ` ${n}` : ""}`).join("  ")}
-              </span>
-            )}
-          </div>
+      /* Enlace ESTIRADO, no <Link> envolviendo. Un aviso lleva dentro cosas
+         que se tocan —«me enteré», reaccionar— y el cuerpo puede traer una
+         URL que TextoRico convierte en <a>. Un <button> o un <a> dentro de
+         otro <a> es HTML inválido: el navegador reordena el árbol al parsear
+         y React revienta al hidratar porque el DOM ya no es el que mandó el
+         servidor. Con la capa, lo interactivo solo necesita `fila-encima`.
+         est-* aporta el tinte de identidad del estado, igual que en el feed. */
+      <div key={p.id} className={`card link fila-cap est-${claseEstado(p.estado, p.tipo)}`}
+        style={{ cursor: "pointer", padding: "12px 15px" }}>
+        <Link href={`/caso/${p.id}`} className="fila-cubre" aria-label={p.titulo} />
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <span>{TIPO_META[p.tipo] || "💬"}</span>
+          <b style={{ flex: 1, fontSize: 13.5 }}>{p.titulo}</b>
+          {(p.resp as any)?.nombre && <span className="tv-resp">{(p.resp as any).nombre.split(" ")[0]}</span>}
+          {/* Un aviso dice «Vigente», no «Sin Resolver»: nadie lo va a resolver */}
+          <span className={`pill st-${claseEstado(p.estado, p.tipo)}`}>{rotuloEstado(p.estado, p.tipo)}</span>
         </div>
-      </Link>
+
+        {/* En un aviso el título es el asunto; la indicación está en el
+            cuerpo. Mostrarlo aquí es el punto: un aviso se lee, no se abre.
+            Y si es largo, «ver más» lo abre aquí mismo — mandarte a otra
+            página a leer el final es el viaje que este bloque vino a
+            ahorrar. */}
+        {esAv && p.cuerpo && (
+          <TextoCorto texto={p.cuerpo} className="aviso-cuerpo" />
+        )}
+
+        <div className="meta" style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+          {(p.autor as any)?.nombre && <span>✍ {(p.autor as any).nombre.split(" ")[0]}</span>}
+          <span>{fecha(p.creado_en)}</span>
+          {nComs > 0 && <span>💬 {nComs}</span>}
+          {hj && (
+            <span style={{ color: hj.ok === hj.total ? "var(--green)" : "var(--yellow)" }}>
+              🧩 {hj.ok}/{hj.total} sub-casos
+            </span>
+          )}
+          {/* En un aviso las reacciones bajan al pie, donde se pueden tocar */}
+          {!esAv && cuenta.size > 0 && (
+            <span style={{ letterSpacing: .5 }}>
+              {[...cuenta.entries()].map(([e, n]) => `${e}${n > 1 ? ` ${n}` : ""}`).join("  ")}
+            </span>
+          )}
+        </div>
+
+        {/* El pie del aviso: enterarse y reaccionar sin salir de aquí. Era lo
+            que faltaba — un aviso que obliga a abrir otra página para decir
+            "ya lo vi" no se lee: se ignora. */}
+        {esAv && (
+          <div className="fila-encima aviso-pie">
+            <AvisoMini pubId={p.id}
+              enterados={rx.filter(r => r.emoji === "👀").length}
+              total={equipoAvisos.length || undefined}
+              mio={rx.some(r => r.emoji === "👀" && r.usuario_id === user.id)} />
+            <Reacciones pubId={p.id} reacciones={rx} userId={user.id} />
+          </div>
+        )}
+      </div>
     );
   };
 
@@ -1438,7 +1499,9 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                 labels={[`🔥 Actividad viva · ${activas.length}`, etiquetaCrono]}
                 paneles={[
                   vida,
-                  <CronogramaProyecto key="crono" dueno={params.tipo as "proyecto" | "convocatoria"} duenoId={params.id} actividades={cronoActs} perfiles={perfilesCat} />,
+                  <CronogramaProyecto key="crono" dueno={params.tipo as "proyecto" | "convocatoria"}
+                    duenoId={params.id} actividades={cronoActs} perfiles={perfilesCat}
+                    plantillas={plantillas} tipoProyecto={ent.tipo || ""} />,
                 ]}
               />
             );

@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import Realtime from "@/components/Realtime";
 import Reloj from "@/components/Reloj";
 import { redirect } from "next/navigation";
+import { textoEstado } from "@/lib/estados";
 
 /* MODO PANTALLA — information radiator para la TV de la oficina.
    Solo lectura, tipografía grande, se actualiza sola (Realtime).
@@ -12,11 +13,7 @@ import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
-const ESTADOS_TXT: Record<string, string> = {
-  abierta: "Sin Resolver", en_progreso: "En Progreso",
-  seguimiento: "Seguimiento", en_pausa: "En Pausa",
-  resuelta: "Resuelta", archivada: "Archivada",
-};
+/* (El mapa de estados salió de aquí: era otra copia de lib/estados.) */
 
 function dias(fecha: string) {
   return Math.ceil((new Date(fecha + "T12:00:00").getTime() - Date.now()) / 86400000);
@@ -45,8 +42,14 @@ export default async function Pantalla() {
   ]);
 
   const abiertos = pubsQ.data || [];
-  const sinres = abiertos.filter(p => p.estado === "abierta");
-  const enprog = abiertos.filter(p => p.estado === "en_progreso");
+  /* Los avisos salen de «Sin resolver»: nadie los va a resolver. Un aviso
+     abierto es una indicación que rige —«Hoy contamos una historia, no solo
+     grabamos una fiesta»— y este muro la mostraba en rojo, a toda la
+     oficina, como si fuera un problema pendiente. Tienen su propia línea
+     abajo: en una pared es donde una indicación sirve de verdad. */
+  const vigentes = abiertos.filter(p => p.tipo === "aviso" && p.estado === "abierta");
+  const sinres = abiertos.filter(p => p.estado === "abierta" && p.tipo !== "aviso");
+  const enprog = abiertos.filter(p => p.estado === "en_progreso" && p.tipo !== "aviso");
   const conFecha = abiertos.filter(p => p.fecha_limite).sort(
     (a, b) => (a.fecha_limite! < b.fecha_limite! ? -1 : 1)
   );
@@ -84,9 +87,11 @@ export default async function Pantalla() {
   // Títulos para el ticker de actividad
   const ids = Array.from(new Set((actQ.data || []).map((a: any) => a.entidad_id)));
   const { data: titulos } = ids.length
-    ? await supabase.from("publicaciones").select("id,titulo").in("id", ids)
+    // `tipo` para que el ticker no anuncie «→ Sin Resolver» de un aviso
+    ? await supabase.from("publicaciones").select("id,titulo,tipo").in("id", ids)
     : { data: [] };
   const tituloDe = new Map((titulos || []).map((t: any) => [t.id, t.titulo]));
+  const tipoDe = new Map((titulos || []).map((t: any) => [t.id, t.tipo]));
 
   const textoAct = (a: any) => {
     const quien = a.actor?.nombre?.split(" ")[0] || "Bot Qhaway 🤖";
@@ -97,7 +102,7 @@ export default async function Pantalla() {
     if (a.tipo === "estado") {
       const campo = a.detalle?.campo;
       if (campo === "responsable") return `${quien} asignó responsable en «${sobre}»`;
-      return `${quien} · «${sobre}» → ${ESTADOS_TXT[a.detalle?.a] || a.detalle?.a}`;
+      return `${quien} · «${sobre}» → ${textoEstado(a.detalle?.a, tipoDe.get(a.entidad_id))}`;
     }
     return `${quien} · ${a.tipo} en «${sobre}»`;
   };
@@ -183,7 +188,16 @@ export default async function Pantalla() {
 
         {/* ===== ACTO 2: el kanban vivo ===== */}
         <div>
-          <div className="tv-h" style={{ color: "var(--red)" }}>🔴 Sin resolver · {sinres.length}</div>
+          {/* Las indicaciones vigentes van primero y en violeta: no son deuda,
+              son cómo se trabaja hoy. Si no hay, no se ocupa pared. */}
+          {vigentes.length > 0 && (
+            <>
+              <div className="tv-h" style={{ color: "var(--violet)" }}>📢 Vigente · {vigentes.length}</div>
+              {vigentes.slice(0, 3).map(filaCaso)}
+            </>
+          )}
+
+          <div className="tv-h" style={{ color: "var(--red)", marginTop: vigentes.length ? 24 : 0 }}>🔴 Sin resolver · {sinres.length}</div>
           {sinres.slice(0, 5).map(filaCaso)}
           {!sinres.length && <div className="empty">Nada sin resolver 🎉</div>}
 

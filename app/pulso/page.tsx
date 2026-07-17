@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { claseEstado, textoEstado } from "@/lib/estados";
 
 /* ── PULSO ──────────────────────────────────────────────────────────
    El ritmo del equipo mes a mes, semana por semana. Detrás está
@@ -22,10 +23,8 @@ const TIPO_LBL: Record<string, string> = {
   aviso: "Avisos", tarea: "Tareas", problema: "Problemas", consulta: "Consultas",
   pago: "Pagos", idea: "Ideas", archivo: "Archivos", conversacion: "Otros", otro: "Otros",
 };
-const ESTADO_LBL: Record<string, string> = {
-  abierta: "Sin Resolver", en_progreso: "En Progreso", seguimiento: "Seguimiento",
-  en_pausa: "En Pausa", resuelta: "Resuelta", archivada: "Archivada",
-};
+/* (El mapa de estados salió de aquí: era otra copia de lib/estados y no sabía
+   que un aviso no se resuelve. Se importa.) */
 const KIND_LBL: Record<string, string> = {
   cerr: "cerrados", creo: "abiertos", avanzo: "movidos a En Progreso",
   ab: "abiertos ahora", venc: "vencidos ahora",
@@ -273,7 +272,7 @@ export default async function PulsoPage({ searchParams }: {
               {drillCasos.map((c: any) => (
                 <li key={c.id}>
                   <Link href={`/caso/${c.id}`}>{TIPO_ICO[c.tipo] || "💬"} {c.titulo}</Link>
-                  <span className={`drill-est st-${c.estado}`}>{ESTADO_LBL[c.estado] || c.estado}</span>
+                  <span className={`drill-est st-${claseEstado(c.estado, c.tipo)}`}>{textoEstado(c.estado, c.tipo)}</span>
                   {c.fecha_limite && <span className="drill-fl">vence {c.fecha_limite}</span>}
                 </li>
               ))}

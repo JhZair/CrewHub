@@ -1,6 +1,7 @@
 "use client";
 import { comentar, cambiarEstado, asignarResponsable, cambiarFechaLimite } from "@/app/actions";
 import { celebrarResuelto } from "@/lib/celebra";
+import { opcionesEstado } from "@/lib/estados";
 import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
 import { useRouter } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
@@ -31,6 +32,11 @@ export function FechaSelect({ pubId, fecha }: { pubId: string; fecha: string | n
   );
 }
 
+/* Un aviso no se "resuelve": se difunde, la gente se entera y se archiva.
+   Este combo fue el ÚNICO sitio del sistema que dijo «📢 Vigente»; el resto
+   lo rotulaba «Sin Resolver» en rojo. Ni los textos ni las opciones se
+   escriben ya aquí —salen de lib/estados— justamente para que no vuelva a
+   pasar que una pantalla sepa algo que las otras cinco no. */
 export function EstadoSelect({ pubId, estado, tipo }: { pubId: string; estado: string; tipo?: string }) {
   const router = useRouter();
   const cambiar = async (nuevo: string) => {
@@ -39,24 +45,9 @@ export function EstadoSelect({ pubId, estado, tipo }: { pubId: string; estado: s
     if (res?.error) alert(res.error);
     else { if (nuevo === "resuelta" && estado !== "resuelta") celebrarResuelto(); router.refresh(); }
   };
-  // Un aviso no se "resuelve": se difunde, la gente se entera y se archiva.
-  if (tipo === "aviso") {
-    return (
-      <select defaultValue={estado} onChange={e => cambiar(e.target.value)}>
-        <option value="abierta">📢 Vigente</option>
-        <option value="en_pausa">En Pausa</option>
-        <option value="archivada">🗄 Archivado</option>
-      </select>
-    );
-  }
   return (
     <select defaultValue={estado} onChange={e => cambiar(e.target.value)}>
-      <option value="abierta">📥 Sin Resolver</option>
-      <option value="en_progreso">🛠 En Progreso</option>
-      <option value="seguimiento">🔭 Seguimiento (caso largo)</option>
-      <option value="en_pausa">En Pausa</option>
-      <option value="resuelta">Resuelta</option>
-      <option value="archivada">Archivada</option>
+      {opcionesEstado(tipo, estado).map(([v, txt]) => <option key={v} value={v}>{txt}</option>)}
     </select>
   );
 }

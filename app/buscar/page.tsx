@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
-import { nrmQ } from "@/lib/quechua";
 import { buscadorDe, nrmB, pal, partir } from "@/lib/buscar";
-import { ESTADOS } from "@/lib/estados";
+import { contarHijos, colorFamilia, type Familia } from "@/lib/familia";
+import { claseEstado, rotuloEstado } from "@/lib/estados";
 import { REL_EMPRESA, EST_EMPRESA, TIPO_COLOR } from "@/lib/entidades";
 import { alertaSunat, empresaDeCasa, empresaViva, textoSunat } from "@/lib/sunat";
 import { esDelEquipo } from "@/lib/personas";
@@ -94,28 +94,49 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
   let statProy = new Map<string, any>(), statEmp = new Map<string, any>(),
       statConv = new Map<string, any>(), statPers = new Map<string, any>();
   let equisMas = 0, persMas = 0;
+  /* Título del padre de cada sub-caso encontrado: «Cámara A lista» a secas no
+     dice nada — la mitad de un sub-caso es de quién es hijo. */
+  let padreDe = new Map<string, string>();
+  // Y al revés: cuántos sub-casos tiene un caso, y cuántos ya están cerrados
+  let hijosDe = new Map<string, Familia>();
   /* Fuera del `if (q)`: ahí dentro se cargan los resultados, pero se pintan
      más abajo, ya fuera del bloque. */
   let urlSunat: string | undefined;
   const palabras = q ? partir(q) : [];
 
   if (q) {
-    // El mismo motor que usan los seis listados (lib/buscar)
+    // El mismo motor que usan los seis listados (lib/buscar). Ahora TODO pasa
+    // por él: era el único que ignora tildes y sabe quechua, y sin embargo
+    // había un ilike de Postgres decidiendo antes qué le llegaba.
     const coincide = buscadorDe(q);
-    // Para tablas grandes: pre-filtro OR en la BD (cualquier palabra en cualquier campo)
-    const orDe = (campos: string[]) => palabras
-      .map(w => w.replace(/[,%()]/g, ""))
-      .flatMap(w => campos.map(f => `${f}.ilike.%${w}%`)).join(",");
 
+    /* ⚠ CASOS Y COMENTARIOS: se traen y se filtran en JS, como TODO lo demás
+       de esta página. Antes eran los dos únicos con pre-filtro `.or(ilike)`
+       en la base, y ése era el agujero:
+
+       1. TILDES. `partir()` quita las tildes de lo que escribes («cámara» →
+          «camara»), pero el ILIKE de Postgres SÍ las distingue: `'Cámara A'
+          ILIKE '%camara%'` es FALSO. Nada con tilde en el título se podía
+          encontrar. El motor de lib/buscar sí ignora tildes —y sabe quechua—
+          pero nunca llegaba a ver lo que el pre-filtro ya había tirado.
+       2. ESTADO Y TIPO. El pre-filtro solo mira título y cuerpo, así que
+          «en progreso» o «aviso» no traían nada aunque el filtro de JS de
+          abajo sepa buscarlos. El comentario viejo documentaba este hueco y
+          lo daba por bueno.
+
+       El pre-filtro existía «para tablas grandes». Pero `personas` (600),
+       `credenciales` (600) y `equipamiento` (600) ya se traen enteras: aquí
+       el pajar lo arma el servidor y al navegador solo viajan 12 resultados.
+       Somos seis personas; si algún día esto pesa, el arreglo de verdad es
+       `unaccent` con índice en Postgres, no un ilike que miente. */
     const [c1, c2, c3, c4, c5, c6, c7, c8, c9, c10] = await Promise.all([
       supabase.from("publicaciones")
-        .select("id,titulo,cuerpo,tipo,estado,creado_en")
-        .or(orDe(["titulo", "cuerpo"]))
-        .order("creado_en", { ascending: false }).limit(40),
+        // padre_id: un sub-caso sin su padre es un título huérfano
+        .select("id,titulo,cuerpo,tipo,estado,creado_en,padre_id")
+        .order("creado_en", { ascending: false }).limit(1500),
       supabase.from("comentarios")
         .select("id,cuerpo,creado_en,publicacion_id,autor:perfiles(nombre),pub:publicaciones(titulo)")
-        .or(orDe(["cuerpo"]))
-        .order("creado_en", { ascending: false }).limit(40),
+        .order("creado_en", { ascending: false }).limit(1500),
       /* Los CVs viajan con la persona: se guardan por enfoque justo para
          poder pedir "el CV de Yajaida como Investigadora", y hasta hoy no
          había forma de encontrarlos. */
@@ -180,14 +201,45 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
       statPers.set(e.persona_id, s);
     });
 
-    /* Ojo: la consulta de casos SÍ pre-filtra en la base por título y cuerpo
-       (orDe), así que buscar «en progreso» a secas no puede traerlos — no
-       hay pre-filtro por estado. Aquí el estado solo afina lo ya traído:
-       «linderaje en progreso» funciona, «en progreso» solo, no. Para eso
-       está el tablero, que es donde se mira por estado. */
+    /* Con los 1500 en mano ya se sabe todo de la familia sin pedir nada más:
+       quién es hijo de quién sale del propio `padre_id`. */
+    const tituloEn = new Map((c1.data || []).map((p: any) => [p.id, p.titulo]));
+    hijosDe = contarHijos(c1.data);
+
+    /* UN SUB-CASO HEREDA EL PAJAR DE SU PADRE.
+       Nadie busca «corregir documento de Directora»: se busca «pampacucho»,
+       que es de lo que trata. Un sub-caso existe PORQUE cuelga de algo — esa
+       es la mitad de lo que es, y sin embargo su pajar solo llevaba lo suyo.
+       Palabras de John (17/07): «como buscamos sub-casos rápidamente, ahora
+       tenemos que poner algo del título del sub-caso para encontrarlo».
+       Ojo: esto ya estaba inventado aquí mismo, dos líneas más abajo — el
+       pajar de un comentario lleva el título de SU publicación desde
+       siempre. La misma herencia, y los sub-casos no la tenían.
+
+       Todo campo pasa por `pal()`. Esto era `${p.titulo} ${p.cuerpo} ...` en
+       crudo, y es justo contra lo que avisa lib/buscar en su cabecera: un
+       campo vacío en una plantilla no desaparece, se convierte en el TEXTO
+       "null". Un sub-caso nace sin cuerpo, así que su pajar decía
+       «Título null tarea abierta» — con la palabra `null` dentro, buscable.
+       `pal` además cambia los guiones bajos por espacios: «en_progreso» se
+       encuentra escribiendo «en progreso», que es como lo escribe la gente. */
     casos = (c1.data || []).filter((p: any) =>
-      coincide(`${p.titulo} ${p.cuerpo} ${pal(p.tipo, p.estado)}`)).slice(0, 12);
-    coms = (c2.data || []).filter((c: any) => coincide(`${c.cuerpo} ${(c.pub as any)?.titulo}`)).slice(0, 12);
+      coincide(pal(p.titulo, p.cuerpo, p.tipo, p.estado,
+        p.padre_id ? tituloEn.get(p.padre_id) : ""))).slice(0, 12);
+    coms = (c2.data || []).filter((c: any) =>
+      coincide(pal(c.cuerpo, (c.pub as any)?.titulo))).slice(0, 12);
+
+    /* El título del padre para pintarlo. Casi siempre ya vino en c1; si el
+       padre es más viejo que los 1500 se pide aparte — son 12 filas. */
+    const idsPadre = [...new Set(casos.map((p: any) => p.padre_id).filter(Boolean))];
+    if (idsPadre.length) {
+      const faltan = idsPadre.filter((id: any) => !tituloEn.has(id));
+      const { data: px } = faltan.length
+        ? await supabase.from("publicaciones").select("id,titulo").in("id", faltan)
+        : { data: [] };
+      (px || []).forEach((p: any) => tituloEn.set(p.id, p.titulo));
+      idsPadre.forEach((id: any) => { const t = tituloEn.get(id); if (t) padreDe.set(id, t as string); });
+    }
     /* El pajar lleva el número Y la palabra del documento: así «RENCA-1-PJ-…»
        encuentra la empresa, y «renca» sola encuentra a las que lo tienen.
        Un papel se busca de las dos formas: por su código cuando lo tienes a
@@ -770,9 +822,28 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
       <Seccion titulo="📌 Casos" n={casos.length}>
         {casos.map((p: any) => (
           <Fila key={p.id} href={`/caso/${p.id}`}>
-            <span>{TIPO_ICO[p.tipo] || "💬"}</span>
+            <span>{p.padre_id ? "🧩" : (TIPO_ICO[p.tipo] || "💬")}</span>
             <b>{p.titulo}</b>
-            <span className={`pill st-${p.estado}`} style={{ fontSize: 10 }}>{ESTADOS[p.estado] || p.estado}</span>
+            {/* Que tiene hijos cambia lo que es: no es un caso suelto, es uno
+                largo con trabajo dentro. Verde solo cuando están todos. */}
+            {hijosDe.get(p.id) && (() => {
+              const h = hijosDe.get(p.id)!;
+              return (
+                <span className="badge" title={`${h.ok} de ${h.total} sub-casos cerrados`}
+                  style={{ color: colorFamilia(h), background: "rgba(45,212,191,.1)" }}>
+                  🧩 {h.ok}/{h.total}
+                </span>
+              );
+            })()}
+            <span className={`pill st-${claseEstado(p.estado, p.tipo)}`} style={{ fontSize: 10 }}>{rotuloEstado(p.estado, p.tipo)}</span>
+            {/* Un sub-caso sin su padre es un título huérfano: «Cámara A
+                lista» no dice de qué rodaje habla. El padre no es adorno, es
+                la mitad del dato. */}
+            {p.padre_id && padreDe.get(p.padre_id) && (
+              <span style={{ color: "var(--dim)", fontSize: 11, width: "100%" }}>
+                ↑ parte de: <b style={{ color: "var(--violet)" }}>{padreDe.get(p.padre_id)}</b>
+              </span>
+            )}
             {p.cuerpo && <span style={{ color: "var(--muted)", fontSize: 11.5, width: "100%" }}>{snippet(p.cuerpo, palabras)}</span>}
           </Fila>
         ))}
