@@ -4,6 +4,7 @@ import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
 import { celebrarResuelto } from "@/lib/celebra";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
+import { plazoDe } from "@/lib/plazo";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /* Banco de trabajo: lo que tengo EN PROGRESO, siempre a mano.
@@ -183,9 +184,7 @@ export default function BancoTrabajo() {
         )}
 
         {casos.map(c => {
-          const d = c.fecha_limite
-            ? Math.ceil((new Date(c.fecha_limite + "T23:59:59").getTime() - Date.now()) / 86400000)
-            : null;
+          const pl = plazoDe(c.fecha_limite);
           const activo = abierto === c.id;
           return (
             <div key={c.id} className={`banco-item${activo ? " on" : ""}`}>
@@ -194,9 +193,9 @@ export default function BancoTrabajo() {
                 <span style={{ fontSize: 12 }}>{TIPO_ICO[c.tipo] || "💬"}</span>
                 <span style={{ flex: 1, fontSize: 12.5, lineHeight: 1.4, color: "var(--text)" }}>{c.titulo}</span>
                 <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
-                  {d !== null && (
-                    <span style={{ fontSize: 10, fontWeight: 700, whiteSpace: "nowrap", color: d < 0 ? "var(--red)" : d <= 3 ? "var(--yellow)" : "var(--dim)" }}>
-                      {d < 0 ? `${-d}d ⚠` : d === 0 ? "hoy" : `${d}d`}
+                  {pl && (
+                    <span style={{ fontSize: 10, fontWeight: 700, whiteSpace: "nowrap", color: pl.color }}>
+                      {pl.vencido ? `${-pl.d}d ⚠` : pl.d === 0 ? "hoy" : `${pl.d}d`}
                     </span>
                   )}
                   {/* El contador es el acuse: si sube, tu avance quedó */}
@@ -281,9 +280,7 @@ export default function BancoTrabajo() {
               <span style={{ flex: 1, textAlign: "left" }}>🔭 En seguimiento · {segui.length}</span>
             </button>
             {verSeg && segui.map(c => {
-              const d = c.fecha_limite
-                ? Math.ceil((new Date(c.fecha_limite + "T23:59:59").getTime() - Date.now()) / 86400000)
-                : null;
+              const pl = plazoDe(c.fecha_limite);
               return (
                 <div key={c.id} className="banco-item" style={{ paddingLeft: 14 }}>
                   <div style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
@@ -298,9 +295,9 @@ export default function BancoTrabajo() {
                         </span>
                       )}
                     </span>
-                    {d !== null && (
-                      <span style={{ fontSize: 9.5, fontWeight: 700, whiteSpace: "nowrap", color: d < 0 ? "var(--red)" : d <= 3 ? "var(--yellow)" : "var(--dim)" }}>
-                        {d < 0 ? `${-d}d ⚠` : d === 0 ? "hoy" : `${d}d`}
+                    {pl && (
+                      <span style={{ fontSize: 9.5, fontWeight: 700, whiteSpace: "nowrap", color: pl.color }}>
+                        {pl.vencido ? `${-pl.d}d ⚠` : pl.d === 0 ? "hoy" : `${pl.d}d`}
                       </span>
                     )}
                     <button onClick={() => activar(c.id)} disabled={ocupado}

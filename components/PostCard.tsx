@@ -9,6 +9,7 @@ import { cambiarTipo, cambiarEstado, ocultarDelFeed } from "@/app/actions";
 import { celebrarResuelto } from "@/lib/celebra";
 import Foto from "@/components/Foto";
 import { opcionesEstado, claseEstado, rotuloEstado, esAviso } from "@/lib/estados";
+import { type Plazo } from "@/lib/plazo";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -23,8 +24,8 @@ const TIPOS_SEL = [
 export default function PostCard({
   href, titulo, tipo, tipoLabel, tipoColor, estado,
   autorNombre, autorColor, autorSrc, fechaStr, respNombre, avisaSinResp,
-  nc, venc, cuerpo, chips, pubId, userId, reacciones, imagenes,
-  padreId, padreTitulo, hijos, creadoEn, equipoTotal, fechaLimite,
+  nc, plazo, cuerpo, chips, pubId, userId, reacciones, imagenes,
+  padreId, padreTitulo, hijos, creadoEn, equipoTotal,
 }: {
   href: string; titulo: string; tipo?: string; tipoLabel: string; tipoColor: string;
   /* El rótulo NO se recibe: se deduce de estado+tipo. Venía por prop y el feed
@@ -34,25 +35,20 @@ export default function PostCard({
   estado: string;
   autorNombre?: string | null; autorColor?: string | null; autorSrc?: string | null;
   fechaStr: string; respNombre?: string | null; avisaSinResp: boolean;
-  nc: number; venc: [string, string] | null; cuerpo?: string | null;
+  /* El plazo entero, no [texto, color]: el texto de arriba y la barra de
+     abajo son la MISMA cuenta y llegan juntos. `fechaLimite` ya no se recibe
+     —era solo para que la barra hiciera su propio cálculo, que es de donde
+     salía la contradicción—. */
+  nc: number; plazo?: Plazo | null; cuerpo?: string | null;
   chips: { tipo: string; id: string; nombre: string; ico: string }[];
   pubId?: string; userId?: string; reacciones?: Reaccion[];
   imagenes?: string[];
   padreId?: string | null; padreTitulo?: string | null;
   hijos?: { total: number; ok: number } | null;
-  creadoEn?: string; equipoTotal?: number; fechaLimite?: string | null;
+  creadoEn?: string; equipoTotal?: number;
 }) {
   const router = useRouter();
   const enterN = (reacciones || []).filter(r => r.emoji === "👀").length;
-  // Progreso de tiempo: de la creación al vencimiento (solo casos activos con fecha límite)
-  const prog = (fechaLimite && estado !== "resuelta" && estado !== "archivada") ? (() => {
-    const ini = new Date(creadoEn || fechaLimite).getTime();
-    const fin = new Date(fechaLimite + "T23:59:59").getTime();
-    const pct = Math.max(0, Math.min(1, (Date.now() - ini) / Math.max(1, fin - ini)));
-    const vencido = Date.now() > fin;
-    const color = vencido ? "var(--red)" : pct >= 0.85 ? "var(--yellow)" : pct >= 0.5 ? "var(--teal)" : "var(--green)";
-    return { pct: Math.round(pct * 100), color, vencido };
-  })() : null;
   const enterMio = (reacciones || []).some(r => r.emoji === "👀" && r.usuario_id === userId);
   return (
     <div className={`card link est-${claseEstado(estado, tipo)} ${estado === "resuelta" ? "card-apagada" : ""}`} style={{ cursor: "pointer" }} onClick={() => router.push(href)}>
@@ -80,7 +76,7 @@ export default function PostCard({
             {respNombre
               ? <span>→ Responsable <b style={{ color: "var(--teal)" }}>{respNombre}</b></span>
               : avisaSinResp && <span style={{ color: "var(--yellow)" }}>⚠ sin responsable</span>}
-            {venc && <><span>•</span><b style={{ color: venc[1] }}>{venc[0]}</b></>}
+            {plazo && <><span>•</span><b style={{ color: plazo.color }}>{plazo.texto}</b></>}
             <span style={{ marginLeft: "auto" }}>{fechaStr}</span>
           </div>
           <div className="post-divisor" />
@@ -91,14 +87,17 @@ export default function PostCard({
               lista para barrer con el ojo, y el cuerpo de una tarea es
               contexto, no el mensaje. Pero «ver más» lo tienen todos: cortar
               con «…» y obligar a abrir otra página era el viaje de más. */}
+          {/* Sin <p> envolviendo: TextoCorto ES un <div> y un <div> dentro de
+              un <p> es HTML inválido — el navegador cierra el <p> solo, el DOM
+              deja de ser el que mandó el servidor y React revienta al
+              hidratar. El <p> estaba bien cuando dentro iba TextoRico, que
+              devuelve <span>; al cambiar el componente, el envoltorio quedó
+              ilegal. El estilo va al propio componente, que para eso recibe
+              className. */}
           {cuerpo && (
-            esAviso(tipo)
-              ? <TextoCorto texto={cuerpo} className="aviso-cuerpo" />
-              : (
-                <p style={{ color: "#c6c6da", fontSize: 13, marginTop: 8, lineHeight: 1.5 }}>
-                  <TextoCorto texto={cuerpo} corte={180} />
-                </p>
-              )
+            <TextoCorto texto={cuerpo}
+              className={esAviso(tipo) ? "aviso-cuerpo" : "post-cuerpo"}
+              corte={esAviso(tipo) ? undefined : 180} />
           )}
           {(imagenes || []).length > 0 && (
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 9 }}>
@@ -169,9 +168,13 @@ export default function PostCard({
           </div>
         </div>
       </div>
-      {prog && (
-        <div className="post-progreso" title={prog.vencido ? "Plazo vencido" : `${prog.pct}% del plazo transcurrido`}>
-          <span style={{ width: `${prog.pct}%`, background: prog.color }} />
+      {/* La barra y el texto de arriba salen del MISMO plazo: misma anchura,
+          mismo color, imposible que se contradigan. Antes el texto decía
+          «vence en 1 día» en rojo y la barra estaba verde. */}
+      {plazo && plazo.pct > 0 && (
+        <div className="post-progreso"
+          title={plazo.vencido ? "Plazo vencido" : `Vence en ${plazo.d} día${plazo.d === 1 ? "" : "s"}`}>
+          <span style={{ width: `${plazo.pct}%`, background: plazo.color }} />
         </div>
       )}
     </div>

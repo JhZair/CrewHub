@@ -3,6 +3,7 @@ import { cambiarEstado } from "@/app/actions";
 import { celebrarResuelto } from "@/lib/celebra";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { plazoDe } from "@/lib/plazo";
 import { useState } from "react";
 
 const TIPO_ICO: Record<string, string> = {
@@ -13,10 +14,7 @@ const ENT_ICO: Record<string, string> = {
   postulacion: "🎯", equipamiento: "🎥", lugar: "📍", etiqueta: "🏷️",
 };
 
-function dias(fecha: string | null) {
-  if (!fecha) return null;
-  return Math.ceil((new Date(fecha + "T12:00:00").getTime() - Date.now()) / 86400000);
-}
+/* (La cuenta regresiva salió a lib/plazo: estaba escrita en nueve sitios.) */
 
 function reacStr(reac?: Record<string, number>) {
   if (!reac) return "";
@@ -61,8 +59,12 @@ export default function Tablero({ columnas }: {
             {col.titulo} <span className="kb-n">{col.items.length}</span>
           </div>
           {col.items.map(p => {
-            const d = dias(p.fecha_limite);
-            const vencColor = d === null ? null : d < 0 || d <= 2 ? "var(--red)" : d <= 7 ? "var(--yellow)" : "var(--dim)";
+            /* Sin `estado`: en el kanban la columna YA dice el estado, y una
+               tarjeta de la columna Resuelta no necesita cuenta regresiva —
+               pero tampoco estorba, y el filtro lo hace la columna. */
+            const pl = plazoDe(p.fecha_limite);
+            const d = pl?.d ?? null;
+            const vencColor = pl?.color ?? null;
             return (
               <div key={p.id} className={`kb-card${p.marca ? " kb-ajena" : ""}`}
                 title={p.marca === "delegado" ? "Lo pediste tú — lo trabaja otra persona"

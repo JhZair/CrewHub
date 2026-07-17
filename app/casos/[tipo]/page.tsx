@@ -3,6 +3,7 @@ import Volver from "@/components/Volver";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import { ESTADO_ICO, ESTADO_TXT, ESTADO_COL, claseEstado, rotuloEstado } from "@/lib/estados";
 import { contarHijos, colorFamilia } from "@/lib/familia";
+import { plazoDe } from "@/lib/plazo";
 import { PERIODOS, desdeDe, type Periodo } from "@/lib/periodo";
 import { seccionDe } from "@/lib/secciones";
 import Link from "next/link";
@@ -106,8 +107,9 @@ export default async function CasosPorEntidad({ params, searchParams }: {
 
   const url = (ne: string, np: string) =>
     `/casos/${params.tipo}?${ne ? `e=${ne}&` : ""}p=${np}`;
-  const dias = (f: string | null) => f
-    ? Math.ceil((new Date(f + "T23:59:59").getTime() - Date.now()) / 86400000) : null;
+  /* (`dias()` vivía aquí, con `T23:59:59` y su propio umbral —amarillo a los
+     3 días, cuando el feed lo pone a los 7—. Ahora sale de lib/plazo: el
+     mismo caso ya no puede ser urgente en una pantalla y tranquilo en otra.) */
 
   return (
     <div className="shell">
@@ -169,7 +171,8 @@ export default async function CasosPorEntidad({ params, searchParams }: {
           </div>
           <div className="card" style={{ padding: "6px 0" }}>
             {g.casos.map((c: any) => {
-              const d = ABIERTOS.includes(c.estado) ? dias(c.fecha_limite) : null;
+              // plazoDe ya devuelve null si el caso está cerrado
+              const pl = plazoDe(c.fecha_limite, c.estado);
               const nc = c.comentarios?.[0]?.count || 0;
               return (
                 <Link key={c.id} href={`/caso/${c.id}`}>
@@ -191,10 +194,9 @@ export default async function CasosPorEntidad({ params, searchParams }: {
                       return <span style={{ color: colorFamilia(h), fontSize: 11, whiteSpace: "nowrap" }}
                         title={`${h.ok} de ${h.total} sub-casos cerrados`}>🧩 {h.ok}/{h.total}</span>;
                     })()}
-                    {d !== null && (
-                      <span style={{ fontSize: 10.5, fontWeight: 700, whiteSpace: "nowrap",
-                        color: d < 0 ? "var(--red)" : d <= 3 ? "var(--yellow)" : "var(--dim)" }}>
-                        {d < 0 ? `${-d}d ⚠` : d === 0 ? "hoy" : `${d}d`}
+                    {pl && (
+                      <span style={{ fontSize: 10.5, fontWeight: 700, whiteSpace: "nowrap", color: pl.color }}>
+                        {pl.vencido ? `${-pl.d}d ⚠` : pl.d === 0 ? "hoy" : `${pl.d}d`}
                       </span>
                     )}
                     {/* c.tipo es el tipo de la publicación (params.tipo es la

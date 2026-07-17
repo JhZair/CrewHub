@@ -223,9 +223,33 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
        «Título null tarea abierta» — con la palabra `null` dentro, buscable.
        `pal` además cambia los guiones bajos por espacios: «en_progreso» se
        encuentra escribiendo «en progreso», que es como lo escribe la gente. */
-    casos = (c1.data || []).filter((p: any) =>
-      coincide(pal(p.titulo, p.cuerpo, p.tipo, p.estado,
-        p.padre_id ? tituloEn.get(p.padre_id) : ""))).slice(0, 12);
+    const marcados = (c1.data || []).map((p: any) => {
+      const pajar = pal(p.titulo, p.cuerpo, p.tipo, p.estado);
+      const propio = coincide(pajar);
+      // Solo se paga el segundo `coincide` si el primero no bastó
+      const heredado = !propio && !!p.padre_id
+        && coincide(pal(pajar, tituloEn.get(p.padre_id)));
+      return { p, propio, heredado };
+    }).filter((x: any) => x.propio || x.heredado);
+
+    /* UNA CABEZA DE FAMILIA PESA MÁS QUE SUS HIJOS.
+       La herencia de arriba funcionó demasiado bien: al buscar «pampacucho»
+       coincidían los DOCE sub-casos de la misma notificación, y como se
+       crearon DESPUÉS que ella y el orden es por fecha, llenaban el cupo de
+       12 y empujaban al padre fuera. O sea que la notificación —lo que de
+       verdad buscabas— era lo único que no salía. Lo dijo John (17/07):
+       «salen los sub-casos, pero no sale el caso padre».
+         3 · coincide por sí mismo Y tiene hijos entre los resultados
+         2 · coincide por sí mismo
+         1 · coincide solo porque su padre coincide
+       Un hijo que solo coincide por herencia nunca puede tapar a su padre:
+       si estás ahí es por él. */
+    const conHijoAqui = new Set(marcados.map((x: any) => x.p.padre_id).filter(Boolean));
+    const peso = (x: any) => x.propio ? (conHijoAqui.has(x.p.id) ? 3 : 2) : 1;
+    marcados.sort((a: any, b: any) =>
+      peso(b) - peso(a) || (b.p.creado_en || "").localeCompare(a.p.creado_en || ""));
+    casos = marcados.slice(0, 12).map((x: any) => x.p);
+
     coms = (c2.data || []).filter((c: any) =>
       coincide(pal(c.cuerpo, (c.pub as any)?.titulo))).slice(0, 12);
 

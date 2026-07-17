@@ -8,6 +8,7 @@ import NavIconos from "@/components/NavIconos";
 import MenuUsuario from "@/components/MenuUsuario";
 import { ICO_ENT } from "@/lib/secciones";
 import { contarHijos } from "@/lib/familia";
+import { plazoDe } from "@/lib/plazo";
 import FiltroMas from "@/components/FiltroMas";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -26,16 +27,9 @@ const TIPO_META: Record<string, [string, string]> = {
    de un mapa de íconos en el feed. */
 const ENT_ICO = ICO_ENT;
 
-/* Cuenta regresiva de fecha límite: [texto, color] */
-function vencimiento(fecha: string | null, estado: string): [string, string] | null {
-  if (!fecha || ["resuelta", "archivada"].includes(estado)) return null;
-  const d = Math.ceil((new Date(fecha + "T12:00:00").getTime() - Date.now()) / 86400000);
-  if (d < 0) return [`⏱ VENCIDO hace ${Math.abs(d)} día${Math.abs(d) === 1 ? "" : "s"}`, "var(--red)"];
-  if (d === 0) return ["⏱ VENCE HOY", "var(--red)"];
-  if (d <= 2) return [`⏱ vence en ${d} día${d === 1 ? "" : "s"}`, "var(--red)"];
-  if (d <= 7) return [`⏱ vence en ${d} días`, "var(--yellow)"];
-  return [`⏱ vence en ${d} días`, "var(--dim)"];
-}
+/* (La cuenta regresiva salió de aquí a lib/plazo: estaba escrita cuatro veces
+   con tres umbrales distintos, y la barra del pie de la tarjeta ni miraba los
+   días — medía cuánto hacía que se escribió el caso.) */
 
 const VISTAS: [string, string][] = [
   ["mios", "🙋 Mis asuntos"], ["tarea", "✅ Tareas"], ["problema", "❗ Problemas"],
@@ -352,10 +346,11 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
             📌 Lo que corre
           </div>
           {(destQ.data || []).map((p: any) => {
-            const d = p.fecha_limite
-              ? Math.ceil((new Date(p.fecha_limite + "T23:59:59").getTime() - Date.now()) / 86400000)
-              : null;
-            const urge = d !== null && d <= 3;
+            /* Este bloque tenía su propia cuenta —con T23:59:59 y el rojo a
+               los 3 días— a trescientas líneas de la del feed, que usaba
+               T12:00:00 y el rojo a los 2. El mismo caso, en la misma
+               pantalla, con dos urgencias distintas según el bloque. */
+            const pl = plazoDe(p.fecha_limite, p.estado);
             /* De qué habla. Mismo mecanismo que las tarjetas del feed —el mapa
                `nombres` y `ENT_ICO` ya estaban armados a diez líneas de aquí—,
                solo que este bloque no los usaba. */
@@ -389,9 +384,10 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
                   {(p.resp as any)?.nombre && (
                     <span className="tv-resp">{(p.resp as any).nombre.split(" ")[0]}</span>
                   )}
-                  {d !== null && (
-                    <span style={{ color: urge ? "var(--red)" : "var(--yellow)", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>
-                      {d === 0 ? "vence hoy" : d === 1 ? "vence mañana" : `en ${d} días`}
+                  {pl && (
+                    <span style={{ color: pl.color, fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>
+                      {pl.vencido ? `vencido hace ${-pl.d}d`
+                        : pl.d === 0 ? "vence hoy" : pl.d === 1 ? "vence mañana" : `en ${pl.d} días`}
                     </span>
                   )}
                 </div>
@@ -445,13 +441,12 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
             respNombre={p.resp?.nombre || null}
             avisaSinResp={["tarea", "problema", "pago"].includes(p.tipo)}
             nc={nc}
-            venc={vencimiento(p.fecha_limite, p.estado)}
+            plazo={plazoDe(p.fecha_limite, p.estado)}
             cuerpo={p.cuerpo}
             chips={chips}
             pubId={p.id} userId={user.id} reacciones={reaccsDe.get(p.id) || []}
             imagenes={p.imagenes || []}
             creadoEn={p.creado_en}
-            fechaLimite={p.fecha_limite}
             equipoTotal={(perfs.data || []).filter((x: any) => x.nombre !== "Bot Qhaway").length}
             padreId={p.padre_id || null}
             padreTitulo={p.padre_id ? (tituloPadre.get(p.padre_id) || null) : null}

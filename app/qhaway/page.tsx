@@ -7,11 +7,14 @@ import { alertaSunat, esProblematico, textoSunat } from "@/lib/sunat";
 import { TIPOS_EQUIPO } from "@/lib/personas";
 import { fmtVence, vigenciaVencida } from "@/lib/vigencia";
 import { plazoRendicion } from "@/lib/fondos";
+import { plazoDe, diasHasta } from "@/lib/plazo";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
 // Qhaway — vista rediseñada: carné compacto + resumen + pestañas.
-const diasHasta = (f: string) => Math.ceil((new Date(f + "T12:00:00").getTime() - Date.now()) / 86400000);
+/* `diasHasta` era idéntica a la de lib/plazo —misma fórmula, mismo mediodía—
+   así que se importa. Aquí sirve para DNIs y rendiciones además de casos:
+   «cuántos días faltan para una fecha» es una sola cuenta. */
 const diasDesde = (f: string) => -diasHasta(f);
 
 /* El perfil de Qhaway — carné compacto a la izquierda; a la derecha,
@@ -304,13 +307,18 @@ export default async function Qhaway({ searchParams }: { searchParams: { bit?: s
         <div className="card" style={{ borderColor: "rgba(255,77,94,.35)" }}>
           <div className="panel-h" style={{ color: "var(--red)" }}>⏰ Vencidos y por vencer (7 días)</div>
           {(porVencer || []).map((p: any) => {
-            const d = diasHasta(p.fecha_limite);
+            /* Aquí el color estaba INVERTIDO respecto a todo el sistema:
+               `d <= 2` pintaba AMARILLO cuando el feed lo pinta ROJO. O sea
+               que el panel del bot que vigila los vencimientos era el que
+               peor los pintaba: marcaba tranquilo lo que el feed gritaba. */
+            const pl = plazoDe(p.fecha_limite, p.estado);
+            if (!pl) return null;
             return (
               <div className="info-row" key={p.id}>
                 <Link href={`/caso/${p.id}`} style={{ fontWeight: 600, flex: 1, minWidth: 0 }}>{p.titulo} →</Link>
                 {(p.resp as any)?.nombre && <span style={{ color: "var(--teal)", fontSize: 12 }}>{(p.resp as any).nombre.split(" ")[0]}</span>}
-                <span style={{ color: d < 0 ? "var(--red)" : d <= 2 ? "var(--yellow)" : "var(--muted)", fontSize: 12, fontWeight: 700 }}>
-                  {d < 0 ? `vencido hace ${-d}d` : d === 0 ? "HOY" : `en ${d}d`}
+                <span style={{ color: pl.color, fontSize: 12, fontWeight: 700 }}>
+                  {pl.vencido ? `vencido hace ${-pl.d}d` : pl.d === 0 ? "HOY" : `en ${pl.d}d`}
                 </span>
               </div>
             );

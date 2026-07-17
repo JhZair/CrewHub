@@ -13,7 +13,15 @@ import { useState } from "react";
    El corte va por ESPACIO, no por número exacto de caracteres. Cortar en
    seco parte la última palabra («Bus…») y, peor, puede partir una URL por
    la mitad: TextoRico la reconocería igual y armaría un enlace roto a una
-   dirección que no existe. */
+   dirección que no existe.
+
+   ⚠ SU RAÍZ ES UN <div>: NO LO METAS DENTRO DE UN <p>.
+   Un <div> dentro de un <p> es HTML inválido — el navegador cierra el <p>
+   por su cuenta al parsear, el DOM deja de ser el que mandó el servidor y
+   React revienta al hidratar. Pasó el mismo día que nació: en PostCard había
+   un <p> que envolvía a TextoRico (que devuelve <span>, y ahí era legal), se
+   cambió el componente de dentro y el envoltorio quedó ilegal. Por eso este
+   componente recibe `className`: se estiliza él, no se envuelve. */
 
 const CORTE = 400;
 

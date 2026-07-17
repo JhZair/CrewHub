@@ -13,6 +13,7 @@ import { ejecutando, rendicionVencida, SEL_FONDO } from "@/lib/fondos";
 import { haceOEn } from "@/lib/fechas";
 import { ICO_ENT } from "@/lib/secciones";
 import Link from "next/link";
+import { plazoDe, diasHasta } from "@/lib/plazo";
 import { redirect } from "next/navigation";
 
 /* Administración — temas de gestión que el usuario común no toca:
@@ -446,13 +447,15 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
 
       {s === "destacados" && (() => {
         const ahora = Date.now();
-        const dias = (f: string) => Math.ceil((new Date(f + "T23:59:59").getTime() - ahora) / 86400000);
+        /* `dias()` vivía aquí con `T23:59:59` y umbrales propios —rojo a los
+           3 días, amarillo a los 15— mientras el feed pone el rojo a los 2 y
+           el amarillo a los 7. Sale de lib/plazo. */
         const fijado = (p: any) => !!p.destacado_hasta && new Date(p.destacado_hasta).getTime() > ahora;
 
         const PRUEBA_D: Record<string, (p: any) => boolean> = {
           fijados: fijado,
           sin_fecha: p => !p.fecha_limite,
-          vencidos: p => !!p.fecha_limite && dias(p.fecha_limite) < 0,
+          vencidos: p => !!p.fecha_limite && diasHasta(p.fecha_limite) < 0,
           avisos: p => p.tipo === "aviso",
         };
         const coincide = buscadorDe(qd);   // el mismo motor que el resto
@@ -516,7 +519,9 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
 
             <div className="card">
               {lista.map((p: any) => {
-                const d = p.fecha_limite ? dias(p.fecha_limite) : null;
+                // Sin `estado`: aquí un caso resuelto CON fecha debe seguir
+                // mostrando su fecha, no caer en la rama de «sin fecha».
+                const pl = plazoDe(p.fecha_limite);
                 return (
                   <div className="info-row" key={p.id} style={{ gap: 10, flexWrap: "wrap" }}>
                     <span className="badge" style={{
@@ -529,9 +534,9 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
                         style={{ color: "var(--yellow)", background: "rgba(244,180,0,.12)" }}>📌 arriba</span>
                     )}
                     <span style={{ flex: 1 }} />
-                    {d !== null ? (
-                      <span style={{ color: d <= 3 ? "var(--red)" : d <= 15 ? "var(--yellow)" : "var(--dim)", fontSize: 11.5, fontWeight: 700 }}>
-                        {d < 0 ? `vencido hace ${-d} d` : d === 0 ? "vence hoy" : `en ${d} d`}
+                    {pl ? (
+                      <span style={{ color: pl.color, fontSize: 11.5, fontWeight: 700 }}>
+                        {pl.vencido ? `vencido hace ${-pl.d} d` : pl.d === 0 ? "vence hoy" : `en ${pl.d} d`}
                       </span>
                     ) : (
                       // Sin fecha, el caso no aparece en ningún radar por su cuenta:

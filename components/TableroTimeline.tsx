@@ -3,6 +3,7 @@ import { Fragment, useState } from "react";
 import { useRouter } from "next/navigation";
 import { cambiarEstado } from "@/app/actions";
 import { celebrarResuelto } from "@/lib/celebra";
+import { plazoDe } from "@/lib/plazo";
 
 // Nombre corto que distingue homónimos: "John Oros" → "John O."
 function corto(n?: string | null) {
@@ -47,10 +48,8 @@ const N = 21;       // total de columnas visibles
 const pad = (n: number) => String(n).padStart(2, "0");
 const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
-function diasHasta(fecha: string | null): number | null {
-  if (!fecha) return null;
-  return Math.ceil((new Date(fecha + "T12:00:00").getTime() - Date.now()) / 86400000);
-}
+/* (La cuenta regresiva salió a lib/plazo.) */
+
 
 export default function TableroTimeline({ casos }: { casos: Caso[] }) {
   const router = useRouter();
@@ -124,9 +123,9 @@ export default function TableroTimeline({ casos }: { casos: Caso[] }) {
                     onDragLeave={() => setSobre(s => (s === f.estado ? null : s))}
                     onDrop={e => soltar(f.estado, e.dataTransfer.getData("text/plain"))}>
                     {items.map(c => {
-                      const dd = diasHasta(c.fecha_limite);
-                      const cerr = ["resuelta", "archivada"].includes(c.estado);
-                      const col = dd === null ? null : dd < 0 || dd <= 2 ? "var(--red)" : dd <= 7 ? "var(--yellow)" : "var(--dim)";
+                      // `plazoDe` ya devuelve null si está cerrado: eso era el
+                      // `!cerr` de aquí abajo, y su lista literal de estados.
+                      const pl = plazoDe(c.fecha_limite, c.estado);
                       return (
                         <div key={c.id} className="tl-card" draggable
                           style={{ ["--st" as any]: f.color }}
@@ -135,9 +134,9 @@ export default function TableroTimeline({ casos }: { casos: Caso[] }) {
                           <div className="tt">{TIPO_ICO[c.tipo] || "💬"} {c.titulo}</div>
                           <div className="mt">
                             {c.resp && <span className="tl-resp">{corto(c.resp)}</span>}
-                            {dd !== null && !cerr && (
-                              <span style={{ color: col!, fontWeight: 800 }}>
-                                {dd < 0 ? `venc. ${Math.abs(dd)}d` : dd === 0 ? "HOY" : `${dd}d`}
+                            {pl && (
+                              <span style={{ color: pl.color, fontWeight: 800 }}>
+                                {pl.vencido ? `venc. ${-pl.d}d` : pl.d === 0 ? "HOY" : `${pl.d}d`}
                               </span>
                             )}
                             {!!c.nc && <span className="mini-ind">💬 {c.nc}</span>}

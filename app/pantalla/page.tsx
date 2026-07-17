@@ -3,6 +3,7 @@ import Realtime from "@/components/Realtime";
 import Reloj from "@/components/Reloj";
 import { redirect } from "next/navigation";
 import { textoEstado } from "@/lib/estados";
+import { plazoDe, diasHasta } from "@/lib/plazo";
 
 /* MODO PANTALLA — information radiator para la TV de la oficina.
    Solo lectura, tipografía grande, se actualiza sola (Realtime).
@@ -15,9 +16,8 @@ export const dynamic = "force-dynamic";
 
 /* (El mapa de estados salió de aquí: era otra copia de lib/estados.) */
 
-function dias(fecha: string) {
-  return Math.ceil((new Date(fecha + "T12:00:00").getTime() - Date.now()) / 86400000);
-}
+// (`dias()` vivía aquí; es `diasHasta` de lib/plazo, idéntica.)
+const dias = diasHasta;
 
 export default async function Pantalla() {
   const supabase = createClient();
@@ -113,11 +113,14 @@ export default async function Pantalla() {
       {(p.resp as any)?.nombre
         ? <span className="tv-resp">{(p.resp as any).nombre.split(" ")[0]}</span>
         : <span style={{ color: "var(--yellow)", fontSize: 13 }}>⚠ sin responsable</span>}
-      {p.fecha_limite && (() => {
-        const d = dias(p.fecha_limite);
-        const col = d < 0 || d <= 2 ? "var(--red)" : d <= 7 ? "var(--yellow)" : "var(--muted)";
-        return <b style={{ color: col, whiteSpace: "nowrap", fontSize: 14 }}>
-          {d < 0 ? `vencido ${Math.abs(d)}d` : d === 0 ? "HOY" : `${d}d`}
+      {/* El texto es corto a propósito —esto se lee de lejos, «vence en 3
+          días» no cabe— pero el conteo y el color salen de lib/plazo, como
+          en el feed. Antes esta pared tenía su propio umbral. */}
+      {(() => {
+        const pl = plazoDe(p.fecha_limite, p.estado);
+        if (!pl) return null;
+        return <b style={{ color: pl.color, whiteSpace: "nowrap", fontSize: 14 }}>
+          {pl.vencido ? `vencido ${-pl.d}d` : pl.d === 0 ? "HOY" : `${pl.d}d`}
         </b>;
       })()}
     </div>
