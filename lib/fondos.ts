@@ -124,7 +124,17 @@ export const empresaLibre = (e: any, c: Compromiso = SIN_COMPROMISO) =>
    nombra el trámite, no el síntoma. */
 export const trabasEmpresa = (e: any, c: Compromiso = SIN_COMPROMISO): string[] => {
   const t: string[] = [];
-  if (e.estado !== "activa") t.push("no activa");
+  /* Si no está activa, su estado ES la única traba y lo demás no viene al
+     caso: a una empresa en constitución no le falta el RENCA — todavía no
+     puede tenerlo, ni tiene RUC con qué pedirlo. Y a una que está cerrando no
+     se le reclama un papel que ya no va a usar.
+     Reclamar un trámite a quien no puede hacerlo es el mismo error que
+     pedirle la vigencia de poder a una empresa que ya tiene su RENCA: una
+     regla correcta aplicada a un caso que nadie pensó. */
+  if (e.estado !== "activa") {
+    t.push(e.estado === "en_constitucion" ? "en constitución" : String(e.estado || "no activa").replace(/_/g, " "));
+    return t;
+  }
   if (!e.ruc) t.push("sin RUC");
   if (e.estado_sunat !== "activo") t.push("SUNAT no activo");
   if (e.condicion_sunat !== "habido") t.push("no habido");

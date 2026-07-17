@@ -194,20 +194,28 @@ export default async function Empresas({ searchParams }: {
     const esLibre = libre(emp);
     const casi = !esLibre && casiLibre(emp);   // candidata: apagada, no descartada
     const alerta = alertaSunat(emp);
-    /* Dos motivos distintos para bajarle la luz a una fila, y los dos son
-       «mira aquí después», no «esto no sirve»:
-         · casi     → todavía no puede postular, le falta un trámite
-         · externa  → puede, pero es segunda opción: primero las de casa
+    /* Tres motivos para bajarle la luz a una fila, y ninguno es «esto no
+       sirve» — son «mira aquí después»:
+         · casi       → todavía no puede postular, le falta un trámite
+         · externa    → puede, pero es segunda opción: primero las de casa
+         · no activa  → en constitución, inactiva, cerrando o cerrada
        `empresaDeCasa` vive en lib/sunat.ts y es la misma que apaga las
        externas en el buscador. Si aquí la escribiera aparte, un día una
-       empresa saldría apagada en una pantalla y encendida en la otra. */
-    const tenue = casi || !empresaDeCasa(emp);
+       empresa saldría apagada en una pantalla y encendida en la otra.
+
+       Y la regla que las cruza a las tres: NO SE APAGA LO QUE EL FILTRO
+       PIDIÓ. Si entras a «En constitución · 5» y las cinco salen al 32%, la
+       pantalla te está diciendo que lo que buscaste no importa. Apagar es
+       para lo que aparece sin que lo llames. */
+    const porEstado = emp.estado !== "activa" && e !== emp.estado;
+    const porRelacion = !empresaDeCasa(emp) && r !== emp.relacion;
+    const tenue = casi || porRelacion || porEstado;
     /* Las trabas que YA tienen su chip arriba: repetirlas es ruido. Se filtran
        aquí y no en `trabasEmpresa` porque la función decide —la usan la hoja
        de postulación y el filtro `casiLibre`, donde no hay chips que las
        cuenten—; esto es solo cómo se ve una fila. La regla, una vez; la
        pantalla, la que corresponda. */
-    const CON_CHIP = /en concurso|ejecutando|rendición vencida|SUNAT|no habido|no activa|sin RUC/i;
+    const CON_CHIP = /en concurso|ejecutando|rendición vencida|SUNAT|no habido|sin RUC|^(no activa|en constitución|inactiva|en proceso de cierre|cerrada)$/i;
     const sinChip = trabas(emp).filter(t => !CON_CHIP.test(t));
     /* Lo que tiene encima, con nombre: las que están en concurso y las que
        está ejecutando. El chip «⏳ 3 en concurso» decía cuántas y no cuáles, y
