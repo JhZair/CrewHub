@@ -295,7 +295,15 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
       // — Lo que existe desde que se prepara —
       { key: "codigo", label: "Código", auto: true },
       { key: "codigo_plataforma", label: "Código en la plataforma DAFO (ej. CDO-P-00094-26)", corto: "Código DAFO" },
-      { key: "estado", label: "Estado", tipo: "select", opciones: ["en_preparacion", "enviada", "finalista", "ganadora", "finalista_no_ganadora", "no_seleccionada", "retirada"] },
+      /* El camino real, con sus dos jueces:
+           en_preparacion → enviada → APTA → finalista → ganadora
+         «Apta» es el primer filtro y no lo pone el jurado: lo pone DAFO, y es
+         administrativo (bases 5.2, «NO PODRÁN SER DECLARADAS APTAS»). Elimina
+         proyectos antes de que nadie lea el tratamiento — por RUC, por
+         rendiciones vencidas, por papeles. Faltaba, y sin él «no seleccionada»
+         mezclaba dos cosas: al que descartó un revisor por un papel y al que
+         no eligió un jurado por su película. */
+      { key: "estado", label: "Estado", tipo: "select", opciones: ["en_preparacion", "enviada", "apta", "no_apta", "finalista", "ganadora", "finalista_no_ganadora", "no_seleccionada", "retirada"] },
       { key: "lenguas_originarias", label: "¿Uso de lenguas originarias?", tipo: "select", opciones: ["no", "quechua", "aymara", "mixto"] },
       // — Lo que aparece cuando el jurado publica —
       { key: "puntaje_jurado", label: "Puntaje matriz del jurado", valida: "puntaje", grupo: JURADO_POST },

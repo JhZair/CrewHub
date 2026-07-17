@@ -10,9 +10,15 @@ import { buscadorDe, pal } from "@/lib/buscar";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+/* El camino tiene DOS jueces: primero DAFO revisa papeles y declara aptas
+   (bases 5.2, administrativo), después el jurado elige. Por eso «apta» y
+   «no apta» son estados propios: sacar a alguien por su RUC no es lo mismo
+   que no elegirlo por su película. */
 const EST_META: Record<string, [string, string]> = {
   en_preparacion: ["🛠 En preparación", "var(--violet)"],
   enviada: ["📨 Enviadas", "var(--blue)"],
+  apta: ["✅ Aptas", "var(--teal)"],
+  no_apta: ["🚫 No aptas", "var(--red)"],
   finalista: ["⭐ Finalistas", "var(--yellow)"],
   ganadora: ["🏆 Ganadoras", "var(--green)"],
   finalista_no_ganadora: ["🥈 Finalistas (no ganaron)", "var(--yellow)"],
@@ -26,7 +32,7 @@ const colorD = (d: number) => (d <= 2 ? "var(--red)" : d <= 7 ? "var(--yellow)" 
 const ABIERTOS = ["abierta", "en_progreso", "seguimiento"];
 
 export default async function Postulaciones({ searchParams }: {
-  searchParams: { q?: string; e?: string; a?: string; t?: string; f?: string };
+  searchParams: { q?: string; e?: string; a?: string; t?: string; f?: string; y?: string };
 }) {
   const q = (searchParams?.q || "").trim();
   const e = searchParams?.e || "";
@@ -104,7 +110,6 @@ export default async function Postulaciones({ searchParams }: {
   const decididas = posts.length - enJuego.length;
   const efectividad = decididas > 0 ? Math.round((ganas.length / decididas) * 100) : null;
   const montoHist = ganas.reduce((s: number, g: any) => s + (parseFloat(g.monto_adjudicado) || 0), 0);
-  const rutas = enJuego.sort((a: any, b: any) => ((b.conv?.anio || 0) - (a.conv?.anio || 0)));
   /* Ejecución viva = ganó y todavía no entregó la rendición (lib/fondos.ts).
      Aquí había una tercera versión de la misma regla, y era la más rara: sin
      fecha de rendición miraba si la CONVOCATORIA estaba cerrada, como si el
@@ -115,6 +120,67 @@ export default async function Postulaciones({ searchParams }: {
   const enEjecucion = ganas.filter(ejecutando);
   const anios = posts.map((p: any) => p.conv?.anio).filter(Boolean);
   const porAnio = [...new Set(anios)].sort((a: any, b: any) => b - a);
+
+  /* ── El embudo del año ──
+   *
+   * «Entran varios, según las fechas del cronograma avanzan, solo algunos
+   *  pasan, y al final unos cuantos ganan.»
+   *
+   * La lista de «rutas activas» no era eso: mostraba las 20 que siguen vivas
+   * y escondía a las que quedaron en el camino. **Un embudo se entiende por lo
+   * que se cae.** Sin los caídos es una lista con forma de lista.
+   *
+   * Los cuatro escalones son acumulativos y por eso se estrechan: toda
+   * ganadora fue finalista, toda finalista fue enviada, toda enviada se
+   * preparó. El número de cada banda cuenta a las que LLEGARON hasta ahí,
+   * incluidas las que siguieron. Así el ancho significa algo.
+   */
+  const anioEmbudo = Number(searchParams?.y) || Math.max(...(anios.length ? anios : [new Date().getFullYear()]));
+  const delAnio = posts.filter((p: any) => p.conv?.anio === anioEmbudo);
+
+  /* Hasta dónde llegó cada una. Hay DOS jueces y no uno, y por eso son cinco
+     escalones: primero DAFO revisa papeles y declara APTAS —un revisor,
+     administrativo, antes de que nadie lea el tratamiento— y recién después
+     el jurado elige. Sin ese paso, «no seleccionada» mezclaba al descartado
+     por un RUC con el que no convenció con su película. */
+  const LLEGO: Record<string, number> = {
+    en_preparacion: 1, retirada: 1,
+    enviada: 2, no_apta: 2,
+    apta: 3, no_seleccionada: 3,
+    finalista: 4, finalista_no_ganadora: 4,
+    ganadora: 5,
+  };
+  const CAE: Record<string, string> = {
+    retirada: "se retiraron",
+    no_apta: "no aptas — DAFO las sacó por papeles",
+    no_seleccionada: "no las eligió el jurado",
+    finalista_no_ganadora: "finalistas que no ganaron",
+  };
+  /* Dos dineros distintos, y antes eran uno solo —por eso «S/ 400,000»
+     aparecía en las cuatro bandas—: `monto_adjudicado` solo lo tienen las
+     ganadoras, así que las trece preparadas «valían» los 400 mil de la única
+     que ganó. Arriba lo que hay EN JUEGO (el estímulo de su convocatoria);
+     abajo, lo GANADO. */
+  const enJuegoDe = (l: any[]) => l.reduce((s, p) => s + (parseFloat(p.conv?.monto_adjudicado) || 0), 0);
+  const monto = (l: any[]) => l.reduce((s, p) => s + (parseFloat(p.monto_adjudicado) || 0), 0);
+
+  const ESCALONES: [number, string, string, string][] = [
+    [1, "🛠", "Se prepararon", "var(--violet)"],
+    [2, "📨", "Se enviaron", "var(--blue)"],
+    [3, "✅", "Aptas — pasaron el filtro de DAFO", "var(--teal)"],
+    [4, "⭐", "Finalistas", "var(--yellow)"],
+    [5, "🏆", "Ganaron", "var(--green)"],
+  ];
+  const embudo = ESCALONES.map(([n, ico, txt, col]) => {
+    const llegaron = delAnio.filter((p: any) => (LLEGO[p.estado] ?? 0) >= n);
+    // Se cayeron EN este escalón: llegaron hasta aquí y no siguieron
+    const caidos = delAnio.filter((p: any) => (LLEGO[p.estado] ?? 0) === n && !!CAE[p.estado]);
+    const vivos = delAnio.filter((p: any) => (LLEGO[p.estado] ?? 0) === n && !CAE[p.estado]);
+    return { n, ico, txt, col, llegaron, caidos, vivos };
+  });
+  const base = Math.max(1, embudo[0].llegaron.length);
+  const ganaronAnio = delAnio.filter((p: any) => p.estado === "ganadora");
+  const decidióAnio = delAnio.filter((p: any) => !EN_JUEGO.includes(p.estado)).length;
 
   const Fila = (p: any) => {
     const x = act.get(p.id) || VACIO;
@@ -285,37 +351,98 @@ export default async function Postulaciones({ searchParams }: {
             </span>
           </div>
 
-          {rutas.length > 0 && (
+          {/* ── El embudo del año ──
+              Antes esto era «🎯 Rutas activas»: una lista plana de las 20 que
+              siguen vivas. Un embudo se entiende por lo que se cae, y los
+              caídos no estaban. Ahora el ancho de cada banda dice cuántas
+              llegaron hasta ahí, y al costado, en gris, las que se quedaron. */}
+          {delAnio.length > 0 && (
             <div className="card" style={{ borderColor: "rgba(59,130,246,.35)" }}>
-              <div className="panel-h" style={{ color: "var(--blue)" }}>🎯 Rutas activas — en juego ahora</div>
-              {rutas.map((p: any) => (
-                <div className="info-row" key={p.id}>
-                  <Link href={`/entidad/postulacion/${p.id}`} style={{ fontWeight: 600 }}>
-                    {p.codigo ? `${p.codigo} · ` : ""}{p.proy?.nombre || "Proyecto"} →
-                  </Link>
-                  {p.proy?.tipo && (
-                    <span className="badge" style={{
-                      color: TIPO_COLOR[p.proy.tipo] || "var(--muted)",
-                      background: `${TIPO_COLOR[p.proy.tipo] || "#8b8ba3"}1c`,
-                    }}>{p.proy.tipo.replace(/_/g, " ")}</span>
-                  )}
-                  {p.conv && (
-                    <Link href={`/entidad/convocatoria/${p.conv.id}`} className="badge"
-                      style={{ color: "var(--violet)", background: "rgba(167,139,250,.12)" }}>
-                      📜 {p.conv.codigo}
-                    </Link>
-                  )}
-                  <span style={{ flex: 1 }} />
-                  {p.conv?.monto_adjudicado && (
-                    <span style={{ color: "var(--teal)", fontSize: 12.5, fontWeight: 700 }}>
-                      S/ {parseFloat(p.conv.monto_adjudicado).toLocaleString("es-PE")} en juego
-                    </span>
-                  )}
-                  <span className="badge" style={{
-                    color: EST_META[p.estado]?.[1] || "var(--blue)", background: "#1c1c2c",
-                  }}>{(EST_META[p.estado]?.[0] || p.estado).toLowerCase()}</span>
+              <div className="panel-h" style={{ color: "var(--blue)", display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ flex: 1 }}>🎯 Embudo {anioEmbudo} · {delAnio.length} postulaciones</span>
+                {/* Navegar años: el embudo de un año es una historia cerrada */}
+                {porAnio.filter((y: any) => y !== anioEmbudo).map((y: any) => (
+                  <Link key={y} href={`/postulaciones?y=${y}`} className="badge"
+                    style={{ color: "var(--dim)", background: "#1c1c2c", textDecoration: "none" }}>{y}</Link>
+                ))}
+              </div>
+
+              {embudo.map(({ n, ico, txt, col, llegaron, caidos, vivos }) => {
+                const pct = Math.round((llegaron.length / base) * 100);
+                return (
+                  <div key={n} style={{ marginBottom: 10 }}>
+                    <div style={{ display: "flex", gap: 8, alignItems: "baseline", fontSize: 12.5, marginBottom: 3 }}>
+                      <b style={{ color: col }}>{ico} {llegaron.length}</b>
+                      <span style={{ color: "var(--muted)" }}>{txt}</span>
+                      <span style={{ color: "var(--dim)", fontSize: 11 }}>· {pct}%</span>
+                      <span style={{ flex: 1 }} />
+                      {/* En juego arriba, ganado abajo: no son lo mismo y
+                          mezclarlos hacía que las trece preparadas «valieran»
+                          los 400 mil de la única que ganó. */}
+                      {n < 5 && enJuegoDe(llegaron) > 0 && (
+                        <span style={{ color: "var(--dim)", fontSize: 11 }}>
+                          S/ {enJuegoDe(llegaron).toLocaleString("es-PE")} en juego
+                        </span>
+                      )}
+                      {n === 5 && monto(llegaron) > 0 && (
+                        <span style={{ color: "var(--teal)", fontSize: 11.5, fontWeight: 700 }}>
+                          S/ {monto(llegaron).toLocaleString("es-PE")} ganados
+                        </span>
+                      )}
+                    </div>
+                    {/* La barra ES el embudo: se estrecha sola porque toda
+                        ganadora fue finalista, toda finalista fue enviada.
+                        Por eso el CARRIL tiene que medir lo mismo en todas las
+                        filas. Antes era `flex:1` y compartía la fila con el
+                        texto de los caídos, así que una banda con caídos tenía
+                        menos sitio: «Se enviaron · 100%» y «Aptas · 100%»
+                        salían de distinto largo siendo las dos 100%. Un embudo
+                        cuyo ancho no se puede comparar entre filas no es un
+                        embudo, es un adorno.
+                        La columna de la derecha va con ancho fijo y se reserva
+                        aunque esté vacía. */}
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <span style={{ flex: 1, height: 10, background: "var(--bg)", borderRadius: 5, overflow: "hidden" }}>
+                        <span style={{ display: "block", height: "100%", borderRadius: 5,
+                          width: `${Math.max(pct, llegaron.length ? 3 : 0)}%`, background: col, opacity: .85 }} />
+                      </span>
+                      {/* Los que se cayeron aquí: el embudo se explica por ellos */}
+                      <span style={{ width: 190, flex: "0 0 190px", color: "var(--dim)", fontSize: 11,
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                        title={caidos.length
+                          ? caidos.map((p: any) => `${p.codigo || ""} ${p.proy?.nombre || ""}`.trim()).join("\n")
+                          : undefined}>
+                        {caidos.length > 0 && <>↘ {caidos.length} {CAE[caidos[0].estado]}</>}
+                      </span>
+                    </div>
+                    {/* Quiénes están parados en este escalón ahora mismo */}
+                    {vivos.length > 0 && (
+                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 5 }}>
+                        {vivos.map((p: any) => (
+                          <Link key={p.id} href={`/entidad/postulacion/${p.id}`} className="badge"
+                            title={`${p.conv?.nombre || ""} ${p.conv?.anio || ""} · ${p.emp?.nombre || "sin empresa"}`}
+                            style={{ color: col, background: `color-mix(in srgb, ${col} 12%, transparent)`,
+                              textTransform: "none", letterSpacing: 0, textDecoration: "none", fontSize: 11 }}>
+                            {p.proy?.nombre || p.codigo}
+                            {p.conv?.codigo && <i style={{ opacity: .55, fontStyle: "normal" }}> · {p.conv.codigo}</i>}
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* El resultado, cuando ya se sabe */}
+              {decidióAnio > 0 && (
+                <div style={{ borderTop: "1px solid var(--border)", paddingTop: 8, marginTop: 4,
+                  fontSize: 11.5, color: "var(--dim)" }}>
+                  {ganaronAnio.length > 0
+                    ? <>🏆 <b style={{ color: "var(--green)" }}>{ganaronAnio.length} de {decidióAnio}</b> decididas
+                        {monto(ganaronAnio) > 0 && <> · <b style={{ color: "var(--teal)" }}>S/ {monto(ganaronAnio).toLocaleString("es-PE")}</b> ganados</>}</>
+                    : <>{decidióAnio} decididas, ninguna ganó todavía</>}
                 </div>
-              ))}
+              )}
             </div>
           )}
 
