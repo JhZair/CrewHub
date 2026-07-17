@@ -18,7 +18,17 @@ export type CampoDef = {
     // validación anti-humanos: formato exigido antes de guardar
   corto?: string;       // nombre breve para el historial (si la etiqueta es larga)
   grupo?: string;       // agrupa el campo en un bloque destacado del formulario
+  /* Solo aparece si otro campo tiene cierto valor. Existe para no pedir lo
+     que no puede existir: a una cobertura por encargo no le falta el RENCA —
+     el RENCA es el registro de una obra cinematográfica, y una cobertura no
+     lo es. Un campo vacío se lee como «pendiente», y eso convierte una
+     imposibilidad en una tarea. */
+  soloSi?: { campo: string; en: string[] };
 };
+
+/* ¿Este campo aplica, dados los valores actuales del formulario? */
+export const campoAplica = (c: CampoDef, valores: Record<string, any>) =>
+  !c.soloSi || c.soloSi.en.includes(String(valores[c.soloSi.campo] ?? ""));
 
 /* Nombre breve de un campo para la bitácora: usa `corto` si existe; si no,
    recorta la etiqueta en el guion largo y quita los paréntesis explicativos.
@@ -45,11 +55,22 @@ export const SUNAT_PERSONA = "🏛 SUNAT — su RUC sale del DNI; lo demás lo l
    pida datos que todavía NO EXISTEN —el acta de algo que aún no ganas—, y
    quien la edita no sabe si está olvidando algo o si aún no toca.
    Los bloques cuentan ese orden. */
+/* Qué proyectos pueden ir a un concurso del DAFO. Sale de lo que ya postulan:
+   documentales, animaciones, videojuegos y gestión cultural están en el
+   embudo 2026 (C-062, C-068, C-072, C-076, C-071). Los que faltan aquí no es
+   que no puedan nunca — es que hoy no van, y cuando vayan se agregan a esta
+   lista y sus campos aparecen solos.
+   Una COBERTURA por encargo nunca va: es un trabajo para un cliente, no una
+   obra que se registre ni un proyecto que se postule. */
+export const TIPOS_A_CONCURSO = ["documental", "animacion", "videojuego", "ficcion", "experimental", "gestion_cultural"];
+export const FONDO_PROY = "🏆 Fondos — solo si el proyecto va a concurso";
+
 export const JURADO_POST = "⚖️ Resultado del jurado — recién cuando DAFO publica";
 export const FONDO_POST = "🏆 Si ganó — el fondo adjudicado; se llena al firmar el acta";
 export const DOCS_POST = "📎 Documentos";
 
 export const GRUPO_TONO: Record<string, "ambar" | "azul"> = {
+  [FONDO_PROY]: "ambar",
   [DOCS_EMPRESA]: "ambar",
   [SUNAT_EMPRESA]: "azul",
   [RESERVA_EMPRESA]: "ambar",
@@ -220,11 +241,21 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
       { key: "etapa", label: "Etapa", tipo: "select", opciones: ["idea", "en_carpeta", "desarrollo", "preproduccion", "produccion", "postproduccion", "festivales", "distribucion", "finalizado"] },
       { key: "estado_actividad", label: "Estado de actividad", tipo: "select", opciones: ["activo", "bloqueado", "en_pausa", "completado"] },
       { key: "color", label: "Color del proyecto", tipo: "color" },
-      { key: "renca", label: "RENCA — N° de registro de la obra (opcional)" },
-      { key: "renca_url", label: "RENCA — reconocimiento PDF (link Drive)", valida: "url" },
       { key: "carpeta_drive_url", label: "Carpeta principal en Drive (link)", valida: "url" },
-      { key: "presupuesto_url", label: "Presupuesto vigente (link) — el reajustado, no el postulado", soloEditar: true, valida: "url" },
       { key: "descripcion", label: "Descripción", tipo: "textarea" },
+      /* — Lo del fondo. Solo aparece si el proyecto puede ir a un concurso.
+           Una cobertura por encargo no tiene RENCA ni presupuesto reajustado:
+           no es que le falten — es que no existen. El RENCA registra una OBRA
+           cinematográfica; una cobertura no lo es, y «reajustado» solo tiene
+           sentido cuando hubo un jurado que recortó.
+           Antes estaban siempre, y un campo vacío se lee como pendiente: el
+           formulario convertía una imposibilidad en una tarea. — */
+      { key: "renca", label: "RENCA — N° de registro de la obra (opcional)", corto: "RENCA", grupo: FONDO_PROY,
+        soloSi: { campo: "tipo", en: TIPOS_A_CONCURSO } },
+      { key: "renca_url", label: "RENCA — reconocimiento PDF (link Drive)", corto: "RENCA PDF", valida: "url", grupo: FONDO_PROY,
+        soloSi: { campo: "tipo", en: TIPOS_A_CONCURSO } },
+      { key: "presupuesto_url", label: "Presupuesto vigente (link) — el reajustado, no el postulado", corto: "Presupuesto", soloEditar: true, valida: "url", grupo: FONDO_PROY,
+        soloSi: { campo: "tipo", en: TIPOS_A_CONCURSO } },
     ],
   },
   empresa: {

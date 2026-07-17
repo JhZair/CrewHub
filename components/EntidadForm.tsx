@@ -1,7 +1,7 @@
 "use client";
 import { guardarEntidad, buscarParecidos } from "@/app/actions";
 import MiniSelect from "@/components/MiniSelect";
-import { FORM_CONF, VALIDADORES, GRUPO_TONO, nombreCorto } from "@/lib/entidades";
+import { FORM_CONF, VALIDADORES, GRUPO_TONO, campoAplica, nombreCorto } from "@/lib/entidades";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 
@@ -111,7 +111,7 @@ export function EntidadForm({ tipo, id, valores, onDone }:
     // Nunca asumir que el estado es texto: un solo .trim() sobre un número
     // tumba el guardado entero y en silencio.
     const txt = (k: string) => String(arreglado[k] ?? "").trim();
-    campos.forEach(c => {
+    vivos.forEach(c => {
       if (c.valida !== "url") return;
       const v = txt(c.key);
       if (v && !/^https?:\/\//i.test(v) && /^[\w-]+(\.[\w-]+)+\//.test(v))
@@ -120,7 +120,9 @@ export function EntidadForm({ tipo, id, valores, onDone }:
     if (JSON.stringify(arreglado) !== JSON.stringify(form)) setForm(arreglado);
 
     const errs: Record<string, string> = {};
-    campos.forEach(c => {
+    // Solo lo que aplica: exigirle formato a un campo que ni se ve sería
+    // negarse a guardar por algo que el usuario no puede ni ver ni arreglar.
+    vivos.forEach(c => {
       const v = txt(c.key);
       if (c.requerido && !v) { errs[c.key] = "Este campo es obligatorio"; return; }
       // validación anti-humanos: si hay valor, debe tener el formato correcto
@@ -143,8 +145,16 @@ export function EntidadForm({ tipo, id, valores, onDone }:
     }
     setAviso("");
 
+    /* Solo se manda lo que aplica. `guardarEntidad` ignora las claves que no
+       vengan, así que lo oculto NO se toca: si un documental con RENCA pasa a
+       cobertura, su RENCA se queda guardado y vuelve a aparecer si lo cambias
+       de nuevo. Ocultar no es borrar — un formulario no debe tirar un dato
+       por un cambio de tipo, y menos en silencio. */
+    const aGuardar: Record<string, string> = {};
+    vivos.forEach(c => { if (c.key in arreglado) aGuardar[c.key] = arreglado[c.key]; });
+
     setGuardando(true);
-    const res = await guardarEntidad(tipo, id || null, arreglado);
+    const res = await guardarEntidad(tipo, id || null, aGuardar);
     setGuardando(false);
     if (res?.error) { alert(res.error); return; }
     if (!id && res?.id) { router.push(`/entidad/${tipo}/${res.id}`); return; }
@@ -171,9 +181,14 @@ export function EntidadForm({ tipo, id, valores, onDone }:
     return undefined;
   };
 
+  /* Lo que NO aplica según lo que ya eligió: a una cobertura por encargo no
+     le falta el RENCA — no existe. Se recalcula en cada render porque depende
+     de `form`: cambias «tipo» a cobertura y el bloque de fondos desaparece
+     sin recargar. */
+  const vivos = campos.filter(c => campoAplica(c as any, form));
   // Los campos con `grupo` salen al final, cada grupo en su propio recuadro
-  const sueltos = campos.filter(c => !(c as any).grupo);
-  const grupos = [...new Set(campos.map(c => (c as any).grupo).filter(Boolean))] as string[];
+  const sueltos = vivos.filter(c => !(c as any).grupo);
+  const grupos = [...new Set(vivos.map(c => (c as any).grupo).filter(Boolean))] as string[];
 
   const pintar = (c: any) => (
           <div key={c.key} id={`campo-${c.key}`} className="f-campo" style={c.tipo === "textarea" ? { gridColumn: "1 / -1" } : undefined}>
@@ -261,7 +276,7 @@ export function EntidadForm({ tipo, id, valores, onDone }:
           <div key={g} style={{ marginTop: 16, padding: "10px 13px 13px", borderRadius: 12, border: `1px solid rgba(${c1},.3)`, background: `rgba(${c1},.04)` }}>
             <div style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: 1, color: azul ? "var(--blue)" : "var(--yellow)", fontWeight: 700 }}>{g}</div>
             <div className="f-grid" style={{ marginTop: 4 }}>
-              {campos.filter(c => (c as any).grupo === g).map(pintar)}
+              {vivos.filter(c => (c as any).grupo === g).map(pintar)}
             </div>
           </div>
         );

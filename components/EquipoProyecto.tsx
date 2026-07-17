@@ -22,11 +22,18 @@ import { useState } from "react";
  *     figura en SUNARP.
  */
 
+/* El orden no es alfabético: sigue el rodaje. Dirección arriba, después
+   producción, después los oficios — y dentro de los oficios, la cámara junta.
+   Buscar «segunda cámara» debajo de «dirección de fotografía» es donde la
+   mano la va a buscar. */
 const CARGOS = [
   "Directora", "Director", "Codirección",
   "Productora", "Productor", "Producción ejecutiva", "Jefatura de producción",
   "Guion", "Investigación",
-  "Dirección de fotografía", "Sonido", "Montaje", "Música original",
+  "Dirección de fotografía", "Segunda cámara (cámara B)",
+  // Un solo cargo, no dos: la misma persona hace la foto fija y el BTS
+  "Foto fija y detrás de cámaras (BTS)",
+  "Sonido", "Montaje", "Música original",
   "Dirección de arte", "Asistencia de dirección", "Asistencia de producción",
 ];
 

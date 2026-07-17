@@ -7,6 +7,7 @@ import BuscadorGlobal from "@/components/BuscadorGlobal";
 import NavIconos from "@/components/NavIconos";
 import MenuUsuario from "@/components/MenuUsuario";
 import { ESTADOS } from "@/lib/estados";
+import { ICO_ENT } from "@/lib/secciones";
 import FiltroMas from "@/components/FiltroMas";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -17,10 +18,13 @@ const TIPO_META: Record<string, [string, string]> = {
   pago: ["💰 Pago", "#2dd4bf"], idea: ["💡 Idea", "#f4b400"],
   archivo: ["📎 Archivo", "#3b82f6"], conversacion: ["💬 Conversación", "#8b8ba3"],
 };
-const ENT_ICO: Record<string, string> = {
-  proyecto: "📁", empresa: "🏢", persona: "👤", convocatoria: "📜",
-  postulacion: "🎯", equipamiento: "🎥", lugar: "📍", etiqueta: "🏷️",
-};
+/* El mismo mapa vivía dos veces con el nombre al revés: `ENT_ICO` aquí e
+   `ICO_ENT` en lib/secciones.ts. Y no eran iguales — el de allá sabe que una
+   publicación es 📌 y éste no, así que un caso vinculado a otro caso salía con
+   el 🔗 de «no sé qué es esto». Se queda el de lib, que además se arma solo
+   desde SECCIONES: agregar una entidad nueva no debería obligar a acordarse
+   de un mapa de íconos en el feed. */
+const ENT_ICO = ICO_ENT;
 
 /* Cuenta regresiva de fecha límite: [texto, color] */
 function vencimiento(fecha: string | null, estado: string): [string, string] | null {
@@ -94,8 +98,15 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
        Subirlos aquí era repetirlos, y de paso le quitaba peso al ⭐ para
        cuando de verdad hace falta clavar algo. Si todo destaca, nada destaca.
        Sigue caducando solo: nada que desdestacar. */
+    /* `vinculos` es lo que le faltaba: sin ellos, «Cargar PDF de
+       Observaciones» no dice de qué proyecto, y «Pampacucho» solo se entiende
+       porque alguien tuvo el reflejo de escribirlo en el título. Un caso
+       clavado en la cabecera del feed es justo el que menos puede depender de
+       que el título esté bien redactado. */
     supabase.from("publicaciones")
-      .select("id,tipo,titulo,estado,fecha_limite,destacado_hasta,resp:perfiles!publicaciones_responsable_fkey(nombre)")
+      .select(`id,tipo,titulo,estado,fecha_limite,destacado_hasta,
+        resp:perfiles!publicaciones_responsable_fkey(nombre),
+        vinculos:publicacion_vinculos(entidad_tipo, entidad_id)`)
       .in("estado", ["abierta", "en_progreso", "seguimiento"])
       .gt("destacado_hasta", new Date().toISOString())
       .order("fecha_limite", { ascending: true, nullsFirst: false })
@@ -351,17 +362,35 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
               ? Math.ceil((new Date(p.fecha_limite + "T23:59:59").getTime() - Date.now()) / 86400000)
               : null;
             const urge = d !== null && d <= 3;
+            /* De qué habla. Mismo mecanismo que las tarjetas del feed —el mapa
+               `nombres` y `ENT_ICO` ya estaban armados a diez líneas de aquí—,
+               solo que este bloque no los usaba. */
+            const chips = (p.vinculos || [])
+              .map((v: any) => ({
+                tipo: v.entidad_tipo, id: v.entidad_id,
+                nombre: nombres.get(`${v.entidad_tipo}:${v.entidad_id}`),
+                ico: ENT_ICO[v.entidad_tipo] || "🔗",
+              }))
+              .filter((v: any) => v.nombre);
             return (
-              <Link key={p.id} href={`/caso/${p.id}`}>
-                <div className="info-row" style={{ cursor: "pointer", gap: 8 }}>
+              /* Dos líneas, como el buscador y los listados: arriba qué es y
+                 cuándo vence; abajo, de qué habla. Los chips en la misma línea
+                 competían con el título — que es lo que uno lee primero— y
+                 empujaban la fecha al borde.
+                 Enlace estirado: la fila entera abre el caso, y cada chip abre
+                 su entidad. */
+              <div key={p.id} className="info-row fila-cap"
+                style={{ cursor: "pointer", flexDirection: "column", alignItems: "stretch", gap: 0 }}>
+                <Link href={`/caso/${p.id}`} className="fila-cubre" aria-label={p.titulo} />
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                   <span className="badge" style={{
                     color: (TIPO_META[p.tipo] || TIPO_META.conversacion)[1],
                     background: `${(TIPO_META[p.tipo] || TIPO_META.conversacion)[1]}22`,
                   }}>{(TIPO_META[p.tipo] || TIPO_META.conversacion)[0]}</span>
-                  <b style={{ fontSize: 13, color: "var(--text)" }}>{p.titulo}</b>
                   {/* El 📌 servía para separar lo clavado a mano de lo que
                       subía solo por fecha. Ya no sube nada solo: todo lo de
                       aquí lo puso administración, y marcarlo todo no marca. */}
+                  <b style={{ fontSize: 13, color: "var(--text)" }}>{p.titulo}</b>
                   <span style={{ flex: 1 }} />
                   {(p.resp as any)?.nombre && (
                     <span className="tv-resp">{(p.resp as any).nombre.split(" ")[0]}</span>
@@ -372,7 +401,20 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
                     </span>
                   )}
                 </div>
-              </Link>
+                {chips.length > 0 && (
+                  <div className="fila-docs">
+                    {chips.map((c: any) => (
+                      <Link key={`${c.tipo}:${c.id}`}
+                        href={c.tipo === "publicacion" ? `/caso/${c.id}` : `/entidad/${c.tipo}/${c.id}`}
+                        className="badge fila-encima" title={`${c.tipo} · ${c.nombre}`}
+                        style={{ color: "var(--violet)", background: "rgba(167,139,250,.12)",
+                          textTransform: "none", letterSpacing: 0, textDecoration: "none" }}>
+                        {c.ico} {c.nombre}
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>
