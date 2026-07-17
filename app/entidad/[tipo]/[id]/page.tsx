@@ -8,6 +8,7 @@ import { diasDeVigencia, fmtVence, vigenciaVencida } from "@/lib/vigencia";
 import Miembros from "@/components/Miembros";
 import Credenciales from "@/components/Credenciales";
 import ClienteProyecto from "@/components/ClienteProyecto";
+import EquipoProyecto from "@/components/EquipoProyecto";
 import Postulaciones from "@/components/Postulaciones";
 import EmpresaPostulacion from "@/components/EmpresaPostulacion";
 import EquipoPostulacion from "@/components/EquipoPostulacion";
@@ -19,11 +20,12 @@ import { urlPlataforma, conPlataforma, PLAT } from "@/lib/plataformas";
 import {
   rendicionVencida, plazoRendicion, compromisoDe, empresaLibre,
   trabasEmpresa, trabasMiembro, dudasMiembro, SIN_COMPROMISO,
-  reservaEmpresa, reservaMiembro, veredictoReserva,
+  reservaEmpresa, reservaMiembro, reservaCompleta,
 } from "@/lib/fondos";
 import HojaPostulacion from "@/components/HojaPostulacion";
 import BotonFichaSunat from "@/components/BotonFichaSunat";
 import Copiar from "@/components/Copiar";
+import EventoHistorial from "@/components/EventoHistorial";
 import CVs from "@/components/CVs";
 import FotoPersona from "@/components/FotoPersona";
 import Materiales from "@/components/Materiales";
@@ -238,9 +240,9 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   let partesReserva: any[] = [], reserva: "si" | "no" | "falta" = "falta";
   let clienteDe: { id: string; nombre: string } | null = null;
   let cronoActs: any[] = [], perfilesCat: any[] = [];
-  let postusProy: any[] = [];
+  let postusProy: any[] = [], equipoProy: any[] = [];
   if (params.tipo === "proyecto") {
-    const [pc, cl, ca, pf, pp] = await Promise.all([
+    const [pc, cl, ca, pf, pp, eq] = await Promise.all([
       supabase.from("personas").select("id,nombre,alias,tipo").order("nombre"),
       ent.cliente_id
         ? supabase.from("personas").select("id,nombre,alias").eq("id", ent.cliente_id).single()
@@ -252,12 +254,18 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       supabase.from("postulaciones")
         .select("id,codigo,estado,codigo_acta,monto_adjudicado,fecha_firma_acta,fecha_limite_rendicion,fecha_prorroga,acta_url,conv:convocatorias(id,codigo,nombre,anio)")
         .eq("proyecto_id", params.id).order("creado_en", { ascending: false }),
+      /* Quién hace esta película, desde «idea». Distinto de
+         `postulacion_equipo`: ese es quién se presentó a UN concurso. */
+      supabase.from("proyecto_equipo")
+        .select("id,cargo,desde,hasta,persona:personas(id,nombre,alias)")
+        .eq("proyecto_id", params.id).order("cargo"),
     ]);
     personasCat = (pc.data || []).map((x: any) => ({ ...x, nombre: x.alias ? `${x.nombre} · ${x.alias}` : x.nombre }));
     const _cl = (cl as any).data; clienteDe = _cl ? { id: _cl.id, nombre: _cl.alias || _cl.nombre } : null;
     cronoActs = ca.data || [];
     perfilesCat = pf.data || [];
     postusProy = pp.data || [];
+    equipoProy = eq.data || [];
   }
   let postus: any[] = [], proyectosCat: any[] = [], empresasCat: any[] = [];
   if (params.tipo === "convocatoria") {
@@ -312,6 +320,18 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     equipoPost = eq.data || [];
     personasCat = (pc.data || []).map((x: any) => ({ ...x, nombre: x.alias ? `${x.nombre} · ${x.alias}` : x.nombre }));
     empresasCat = (ec.data || []).map((x: any) => ({ ...x, nombre: x.codigo ? `${x.codigo} · ${x.nombre}` : x.nombre }));
+
+    /* El equipo del PROYECTO, que la postulación hereda y no repite.
+       La directora no se teclea aquí: nace con el proyecto y viene con él.
+       Esta consulta va aparte porque necesita el proyecto_id, que sale de la
+       consulta de arriba — encadenada a propósito, es una sola fila. */
+    const proyId = (postCtx?.proy as any)?.id;
+    if (proyId) {
+      const { data: pe } = await supabase.from("proyecto_equipo")
+        .select("id,cargo,persona:personas(id,nombre,alias)")
+        .eq("proyecto_id", proyId).order("cargo");
+      equipoProy = pe || [];
+    }
   }
   if (params.tipo === "empresa") {
     const [m, pc, pe] = await Promise.all([
@@ -320,7 +340,12 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
          Antes esto traía nombre y alias — por eso la ficha listaba cargos y
          nadie veía que al presidente le había caducado el DNI. */
       supabase.from("empresa_miembros")
-        .select("id,cargo,fecha_inicio,fecha_fin,estado,persona:personas(id,nombre,alias,ruc_dni,dni_vencimiento,estado_sunat,condicion_sunat,nombre_reniec)")
+        /* `region` es la dirección del DNI y decide la reserva regional. Sin
+           ella en el select, `reservaMiembro()` lee `undefined` y responde
+           «sin región» aunque la ficha la tenga cargada — un hueco de consulta
+           que se lee igual que un hueco de dato. Es exactamente contra lo que
+           existe `SEL_FONDO` en lib/fondos.ts, y lo repetí aquí igual. */
+        .select("id,cargo,fecha_inicio,fecha_fin,estado,persona:personas(id,nombre,alias,region,ruc_dni,dni_vencimiento,estado_sunat,condicion_sunat,nombre_reniec)")
         .eq("empresa_id", params.id).order("cargo"),
       supabase.from("personas").select("id,nombre,alias,tipo").order("nombre"),
       /* Con qué proyectos postuló, qué ganó y con qué equipo. Las fechas de
@@ -358,7 +383,11 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       reserva: reservaMiembro(x.persona),
     }));
     partesReserva = reservaEmpresa(ent);
-    reserva = veredictoReserva(partesReserva);
+    /* La empresa Y su gente: las bases piden que los responsables acrediten
+       domicilio de región con su DNI. Antes esto era `veredictoReserva(partes)`
+       —solo la empresa— y la hoja decía «✅ puede aplicar» con los tres
+       responsables en «sin región», tres líneas más abajo. */
+    reserva = reservaCompleta(partesReserva, miembrosHoja);
   }
   let postDe: any[] = [], equiposEnMano: any[] = [], clienteEnProy: any[] = [], cvsDe: any[] = [];
   let acum4ta = 0;   // lo girado este año en RHE
@@ -972,7 +1001,12 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
           )}
 
           {params.tipo === "proyecto" && (
-            <ClienteProyecto proyectoId={params.id} cliente={clienteDe} personas={personasCat} />
+            <>
+              {/* Antes que el cliente: la directora es con quien nace el
+                  proyecto; el cliente solo existe si es un encargo. */}
+              <EquipoProyecto proyectoId={params.id} equipo={equipoProy} personas={personasCat} />
+              <ClienteProyecto proyectoId={params.id} cliente={clienteDe} personas={personasCat} />
+            </>
           )}
 
           {params.tipo === "convocatoria" && (
@@ -983,7 +1017,12 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
           {params.tipo === "postulacion" && (
             <div style={{ marginTop: 14 }}>
               <TabsPanel
-                labels={["🧭 Contexto", `👥 Equipo · ${equipoPost.length}`, "📎 Materiales"]}
+                /* Cuenta los dos: el del proyecto más el de esta postulación.
+                   Si contara solo el de abajo, diría «Equipo · 4» de una
+                   película que tiene nueve personas — y al quitar a la
+                   directora de la postulación el número bajaría, como si se
+                   hubiera ido. */
+                labels={["🧭 Contexto", `👥 Equipo · ${equipoProy.length + equipoPost.length}`, "📎 Materiales"]}
                 paneles={[
                   <div className="linked" key="ctx">
                     {postCtx?.proy && (
@@ -1015,7 +1054,42 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                         </span></div>
                     )}
                   </div>,
-                  <EquipoPostulacion key="eq" postulacionId={params.id} equipo={equipoPost} personas={personasCat} />,
+                  <div key="eq">
+                    {/* El equipo del PROYECTO va primero y no se edita aquí:
+                        la directora nace con el proyecto y la postulación la
+                        hereda. Repetirla abajo sería tenerla en dos sitios —y
+                        el día que cambie, cambiaría en uno solo.
+                        Abajo, el equipo de ESTA postulación: quienes se suman
+                        para este concurso en concreto. */}
+                    {equipoProy.length > 0 && (
+                      <div className="linked" style={{ marginBottom: 14 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                          <h4 style={{ margin: 0, fontSize: 11, letterSpacing: 1.2, textTransform: "uppercase", color: "var(--dim)" }}>
+                            🎬 Equipo del proyecto · {equipoProy.length}
+                          </h4>
+                          <span style={{ flex: 1 }} />
+                          {postCtx?.proy && (
+                            <Link href={`/entidad/proyecto/${(postCtx.proy as any).id}`}
+                              style={{ color: "var(--accent)", fontSize: 11.5 }}>editarlo en el proyecto →</Link>
+                          )}
+                        </div>
+                        <p style={{ color: "var(--dim)", fontSize: 11, marginTop: 0, marginBottom: 8 }}>
+                          Viene con el proyecto: no hace falta repetirlo aquí.
+                        </p>
+                        {equipoProy.map((m: any) => (
+                          <div className="eq-row" key={m.id} style={{ alignItems: "center" }}>
+                            <span className="cargo">{m.cargo}</span>
+                            <span style={{ flex: 1, textAlign: "right" }}>
+                              <Link href={`/entidad/persona/${m.persona?.id}`} style={{ color: "var(--text)" }}>
+                                {m.persona?.alias || m.persona?.nombre} →
+                              </Link>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <EquipoPostulacion postulacionId={params.id} equipo={equipoPost} personas={personasCat} />
+                  </div>,
                   <Materiales key="mat" postulacionId={params.id} materiales={ent.materiales || {}} />,
                 ]}
               />
@@ -1295,30 +1369,14 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                     <summary style={{ color: "var(--muted)", fontSize: 13, cursor: "pointer", padding: "6px 0" }}>
                       🕐 Historial de {nombre} · {eventosVis.length} eventos
                     </summary>
+                    {/* El mismo componente que usa el historial acumulado. Esta
+                        ficha tenía su copia inline —idéntica palabra por
+                        palabra— aunque el componente ya existía y su comentario
+                        pide justo lo contrario. Dos copias que hoy dicen lo
+                        mismo son dos copias que mañana no. */}
                     <div className="tl" style={{ marginTop: 12 }}>
                       {eventosVis.map((e: any, i: number) => (
-                        <div className={`tl-ev ${e.actor ? e.tipo : "bot"}`} key={i}>
-                          <span>{e.tipo === "creado" ? "📝" : e.tipo === "estado" ? "🔄" : e.tipo === "editado" ? "✏️" : e.tipo === "dato" ? "🔑" : e.tipo === "miembro" ? "👥" : "🤖"}</span>
-                          <span>
-                            {e.tipo === "creado" && `${e.actor?.nombre || "Sistema"} registró esta entidad`}
-                            {e.tipo === "estado" && `${e.actor?.nombre || "Bot Qhaway"} · ${e.detalle?.campo}: ${String(e.detalle?.de ?? "—").replace(/_/g, " ")} → ${String(e.detalle?.a ?? "—").replace(/_/g, " ")}`}
-                            {["editado", "dato", "miembro"].includes(e.tipo) && (
-                              <>
-                                {`${e.actor?.nombre || "Alguien"} ${e.detalle?.mensaje || "editó la ficha"}`}
-                                {(e.detalle?.cambios || []).map((c: any, j: number) => (
-                                  <span key={j} style={{ display: "block", marginTop: 3, fontSize: 12 }}>
-                                    <b style={{ color: "var(--muted)" }}>{c.campo}:</b>{" "}
-                                    <s style={{ color: "var(--red)", opacity: .75 }}>{String(c.de).replace(/_/g, " ")}</s>
-                                    {" → "}
-                                    <span style={{ color: "var(--green)" }}>{String(c.a).replace(/_/g, " ")}</span>
-                                  </span>
-                                ))}
-                              </>
-                            )}
-                            {!["creado", "estado", "editado", "dato", "miembro"].includes(e.tipo) && (e.detalle?.mensaje || e.tipo)}
-                          </span>
-                          <span className="t">{fecha(e.creado_en)}</span>
-                        </div>
+                        <EventoHistorial key={i} e={e} hora={fecha(e.creado_en)} />
                       ))}
                     </div>
                   </details>

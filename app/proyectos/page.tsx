@@ -38,11 +38,20 @@ export default async function Proyectos({ searchParams }: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: proys }, { data: vincs }, { data: coms }] = await Promise.all([
+  const [{ data: proys }, { data: vincs }, { data: coms }, { data: equipos }, { data: postsProy }] = await Promise.all([
     supabase.from("proyectos").select("*").order("folio"),
     supabase.from("publicacion_vinculos")
       .select("entidad_id,publicacion_id,pub:publicaciones(estado)").eq("entidad_tipo", "proyecto"),
     supabase.from("comentarios").select("publicacion_id"),
+    /* El triángulo que no se veía: proyecto — directora — empresa.
+       «Para una convocatoria se comprometen la directora + su proyecto con la
+       empresa postulante; esa relación pasa a matrimonio cuando ganan.» Hasta
+       hoy el listado mostraba un vértice y medio. */
+    supabase.from("proyecto_equipo")
+      .select("proyecto_id,cargo,persona:personas(id,nombre,alias)"),
+    supabase.from("postulaciones")
+      .select("proyecto_id,estado,emp:empresas(id,nombre)")
+      .not("empresa_id", "is", null),
   ]);
 
   /* Casos y comentarios son cosas distintas y se contaban como una sola:
@@ -62,6 +71,28 @@ export default async function Proyectos({ searchParams }: {
     act.set(v.entidad_id, x);
   });
   const VACIO: Act = { casos: 0, abiertos: 0, coments: 0 };
+
+  /* El triángulo, por proyecto.
+     La directora primero: es con quien nace el proyecto —«no ponemos
+     directores, los directores nacen con sus proyectos»—, así que si hay una,
+     es lo primero que hay que ver. El resto del equipo va detrás. */
+  const DIRIGE = /direc|codirec/i;
+  const equipoDe = new Map<string, any[]>();
+  (equipos || []).forEach((e: any) => {
+    const l = equipoDe.get(e.proyecto_id) || [];
+    l.push(e); equipoDe.set(e.proyecto_id, l);
+  });
+  const dirigeDe = (id: string) =>
+    (equipoDe.get(id) || []).filter(e => DIRIGE.test(e.cargo || ""));
+
+  // Con qué empresas se ha presentado este proyecto, sin repetir
+  const empresasDe = new Map<string, Map<string, string>>();
+  (postsProy || []).forEach((p: any) => {
+    if (!p.emp) return;
+    const m = empresasDe.get(p.proyecto_id) || new Map<string, string>();
+    m.set(p.emp.id, p.emp.nombre);
+    empresasDe.set(p.proyecto_id, m);
+  });
 
   const todos = proys || [];
   const coincide = buscadorDe(q);   // el mismo motor que el buscador global
@@ -100,9 +131,16 @@ export default async function Proyectos({ searchParams }: {
 
   const Fila = (p: any) => {
     const x = act.get(p.id) || VACIO;
+    const dirige = dirigeDe(p.id);
+    const emps = [...(empresasDe.get(p.id) || new Map()).entries()];
+    const equipo = (equipoDe.get(p.id) || []).filter(e => !DIRIGE.test(e.cargo || ""));
     return (
-      <Link key={p.id} href={`/entidad/proyecto/${p.id}`}>
-        <div className="card link" style={{ cursor: "pointer", padding: "12px 16px" }}>
+      /* Enlace estirado: la tarjeta entera lleva al proyecto por una capa
+         invisible, y así la directora y las empresas pueden ser enlaces
+         propios. Con <Link> envolviendo todo serían un <a> dentro de otro. */
+      <div key={p.id} className="card link fila-cap" style={{ cursor: "pointer", padding: "12px 16px" }}>
+        <Link href={`/entidad/proyecto/${p.id}`} className="fila-cubre" aria-label={p.nombre} />
+        <div>
           <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
             <span className="av" style={{ width: 14, height: 14, background: p.color || "#8b8ba3" }} />
             <b style={{ fontSize: 15 }}>{p.nombre}</b>
@@ -128,8 +166,47 @@ export default async function Proyectos({ searchParams }: {
               background: "#1c1c2c",
             }}>{(p.estado_actividad || "—").replace(/_/g, " ")}</span>
           </div>
+
+          {/* Línea 2: el triángulo. Quién lo dirige, con qué empresa se
+              presentó, y quién más lo hace. Sin esto, un listado de proyectos
+              es una lista de nombres — y una película es una directora, un
+              equipo y una empresa que la respalda. */}
+          {(dirige.length > 0 || emps.length > 0 || equipo.length > 0) && (
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap",
+              marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--border)", fontSize: 11.5 }}>
+              {dirige.map((d: any) => (
+                <Link key={d.persona?.id} href={`/entidad/persona/${d.persona?.id}`}
+                  className="badge fila-encima" title={`${d.cargo} — con quien nace el proyecto`}
+                  style={{ color: "var(--accent)", background: "rgba(124,92,255,.14)", fontWeight: 700,
+                    textTransform: "none", letterSpacing: 0, textDecoration: "none" }}>
+                  🎬 {d.persona?.alias || d.persona?.nombre} ↗
+                </Link>
+              ))}
+              {emps.map(([id, nombre]: any) => (
+                <Link key={id} href={`/entidad/empresa/${id}`}
+                  className="badge fila-encima" title="Se presentó con esta empresa"
+                  style={{ color: "var(--teal)", background: "rgba(45,212,191,.1)",
+                    textTransform: "none", letterSpacing: 0, textDecoration: "none" }}>
+                  🏢 {nombre} ↗
+                </Link>
+              ))}
+              {/* El resto del equipo, en bajo: informa sin competir con el
+                  triángulo, que es lo que se vino a ver. */}
+              {equipo.length > 0 && (
+                <span style={{ color: "var(--dim)" }}
+                  title={equipo.map((e: any) => `${e.cargo}: ${e.persona?.alias || e.persona?.nombre}`).join("\n")}>
+                  👥 +{equipo.length}
+                </span>
+              )}
+              {!dirige.length && (
+                <span style={{ color: "var(--dim)" }} title="Un proyecto nace con su directora — cárgala en su ficha">
+                  ⚠ sin dirección
+                </span>
+              )}
+            </div>
+          )}
         </div>
-      </Link>
+      </div>
     );
   };
 

@@ -119,8 +119,10 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
       /* Los CVs viajan con la persona: se guardan por enfoque justo para
          poder pedir "el CV de Yajaida como Investigadora", y hasta hoy no
          había forma de encontrarlos. */
+      /* Y sus películas. El buscador encontraba a alguien por su DNI, su RUC
+         y su CV — toda su papelería— y no por el documental que dirige. */
       supabase.from("personas")
-        .select("id,nombre,alias,rol,tipo,estado,ruc_dni,region,dni_url,firma_url,carpeta_drive_url,cvs:persona_cv(id,enfoque,url)")
+        .select("id,nombre,alias,rol,tipo,estado,ruc_dni,region,dni_url,firma_url,carpeta_drive_url,cvs:persona_cv(id,enfoque,url),proys:proyecto_equipo(cargo,proy:proyectos(id,nombre,nombre_corto))")
         .limit(600),
       // RENCA, presupuesto y Drive del proyecto: guardados desde siempre y
       // nunca seleccionados aquí
@@ -201,6 +203,11 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
       p.dni_url ? "dni escaneado" : "",
       p.firma_url ? "firma escaneada" : "",
       p.carpeta_drive_url ? "carpeta drive" : "",
+      /* Sus películas. El pajar tenía DNI, RUC, CV, firma y carpeta —toda su
+         papelería— y nada de su obra: «Mujeres del Ande» no encontraba a
+         Yajaida. Alguien es sus películas antes que sus papeles. */
+      ...(p.proys || []).map((r: any) =>
+        pal(r.cargo, r.proy?.nombre, r.proy?.nombre_corto)),
     ].filter(Boolean).join(" ");
 
     const persTodas = (c3.data || [])
@@ -212,12 +219,16 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
         // fila con el nombre a secas, sin decirte que lo encontró
         ...p, cvsHit: (p.cvs || []).filter((c: any) => coincide(`cv hoja de vida ${c.enfoque}`)),
       }))
-      /* Un puntaje, no una regla suelta: trae el papel que pediste (2) y es
-         gente del equipo (1). Así arriba queda «del equipo y con el CV», y
-         al final el contacto que solo coincide de refilón — que se muestra
-         apagado, no se esconde: buscaste algo y ahí está. */
+      /* Un puntaje, no una regla suelta: trae el papel que pediste (2), dirige
+         algo (2), y es gente del equipo (1). Así arriba queda «del equipo, con
+         el CV y dirigiendo», y al final el contacto que solo coincide de
+         refilón — que se muestra apagado, no se esconde: buscaste algo y ahí
+         está.
+         Dirigir pesa igual que el CV: si buscas «narda» probablemente vengas
+         por su película, no por su papelería. */
       .sort((a: any, b: any) => {
-        const pt = (x: any) => (x.cvsHit.length ? 2 : 0) + (esDelEquipo(x) ? 1 : 0);
+        const dirige = (x: any) => (x.proys || []).some((r: any) => /direc|codirec/i.test(r.cargo || ""));
+        const pt = (x: any) => (x.cvsHit.length ? 2 : 0) + (dirige(x) ? 2 : 0) + (esDelEquipo(x) ? 1 : 0);
         return pt(b) - pt(a) || String(a.nombre).localeCompare(String(b.nombre));
       });
     /* 25, no 10. El corte estaba para que la página no se hiciera eterna,
@@ -448,6 +459,27 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
             tenue={!esDelEquipo(p)}
             docs={
               <>
+                {/* Sus películas PRIMERO, antes que los papeles. Esta línea es
+                    «todo lo clickable de una persona», y hasta hoy era su DNI,
+                    su RUC, su CV, su firma y su carpeta — su papelería entera y
+                    ni una obra. Alguien es sus películas antes que sus
+                    trámites; el orden de la fila debería decirlo. */}
+                {(p.proys || []).filter((r: any) => r.proy).map((r: any, i: number) => {
+                  const dir = /direc|codirec/i.test(r.cargo || "");
+                  return (
+                    <Link key={i} href={`/entidad/proyecto/${r.proy.id}`}
+                      className="badge fila-encima" title={`${r.cargo} · ${r.proy.nombre}`}
+                      style={{
+                        color: dir ? "var(--accent)" : "var(--muted)",
+                        background: dir ? "rgba(124,92,255,.14)" : "#1c1c2c",
+                        fontWeight: dir ? 700 : 400,
+                        textTransform: "none", letterSpacing: 0, textDecoration: "none",
+                      }}>
+                      {dir ? "🎬 " : "📁 "}{r.proy.nombre_corto || r.proy.nombre}
+                      {!dir && <i style={{ opacity: .6, fontStyle: "normal" }}> · {r.cargo}</i>} ↗
+                    </Link>
+                  );
+                })}
                 {/* El número enlaza a su escaneo; el botón abre SUNAT */}
                 {p.ruc_dni && <Doc href={p.dni_url} titulo="DNI escaneado">🪪 DNI {p.ruc_dni}</Doc>}
                 {/* El RUC no se guarda: sale del DNI. Vivía solo en su ficha,

@@ -1651,14 +1651,102 @@ export async function borrarPostulacion(id: string, convocatoriaId: string) {
   return {};
 }
 
+/* ── El equipo de un PROYECTO ──
+ *
+ * Distinto de `postulacion_equipo`, y la diferencia es el punto:
+ *   · proyecto_equipo   → quién hace esta película. Existe desde «idea», un
+ *                         año antes de postular. La directora nace con él.
+ *   · postulacion_equipo → quién se presentó a UN concurso con ella.
+ *
+ * Hasta hoy solo existía el segundo, así que para el sistema una directora
+ * nacía al postular. El año anterior —el que John llama «abrirles el camino»,
+ * el que de verdad forma al equipo— era invisible.
+ */
+export async function agregarEquipoProyecto(proyectoId: string, personaId: string, cargo: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const cargoOk = cargo.trim();
+  if (!cargoOk) return { error: "Elige el cargo." };
+  const { error } = await supabase.from("proyecto_equipo").insert({
+    proyecto_id: proyectoId, persona_id: personaId, cargo: cargoOk,
+  });
+  if (error) return { error: error.message };
+  const { data: per } = await supabase.from("personas")
+    .select("nombre,alias").eq("id", personaId).maybeSingle();
+  await supabase.from("actividad").insert({
+    entidad_tipo: "proyecto", entidad_id: proyectoId, actor_id: user.id, tipo: "miembro",
+    detalle: { mensaje: `sumó a ${per?.alias || per?.nombre || "alguien"} como ${cargoOk}` },
+  });
+  revalidatePath(`/entidad/proyecto/${proyectoId}`);
+  return {};
+}
+
+export async function editarCargoProyecto(id: string, proyectoId: string, cargo: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const nuevo = cargo.trim();
+  if (!nuevo) return { error: "El cargo no puede quedar vacío." };
+  const { data: prev } = await supabase.from("proyecto_equipo")
+    .select("cargo,per:personas(nombre,alias)").eq("id", id).maybeSingle();
+  const { data: post, error } = await supabase.from("proyecto_equipo")
+    .update({ cargo: nuevo }).eq("id", id).select("id");
+  if (error) return { error: error.message };
+  if (!post?.length) return { error: "No se guardó: no tienes permiso." };
+  const quien = (prev?.per as any)?.alias || (prev?.per as any)?.nombre || "alguien";
+  await supabase.from("actividad").insert({
+    entidad_tipo: "proyecto", entidad_id: proyectoId, actor_id: user.id, tipo: "miembro",
+    detalle: {
+      mensaje: `cambió el cargo de ${quien}`,
+      cambios: [{ campo: quien, de: prev?.cargo || "—", a: nuevo }],
+    },
+  });
+  revalidatePath(`/entidad/proyecto/${proyectoId}`);
+  return {};
+}
+
+export async function quitarEquipoProyecto(id: string, proyectoId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  // Se lee antes de borrar: después ya no hay a quién nombrar en la bitácora
+  const { data: prev } = await supabase.from("proyecto_equipo")
+    .select("cargo,per:personas(nombre,alias)").eq("id", id).maybeSingle();
+  const { data: fuera, error } = await supabase.from("proyecto_equipo")
+    .delete().eq("id", id).select("id");
+  if (error) return { error: error.message };
+  if (!fuera?.length) return { error: "No se quitó: no tienes permiso, o ya no estaba." };
+  const quien = (prev?.per as any)?.alias || (prev?.per as any)?.nombre || "alguien";
+  await supabase.from("actividad").insert({
+    entidad_tipo: "proyecto", entidad_id: proyectoId, actor_id: user.id, tipo: "miembro",
+    detalle: { mensaje: `quitó a ${quien} del equipo${prev?.cargo ? ` (${prev.cargo})` : ""}` },
+  });
+  revalidatePath(`/entidad/proyecto/${proyectoId}`);
+  return {};
+}
+
+/* Quién postula con qué proyecto queda escrito, igual que los miembros de una
+   empresa. No es simetría por gusto: el equipo es criterio del jurado
+   —«COMPETENCIA DEL PERSONAL DEL PROYECTO», hasta 5 puntos en la matriz— y
+   además decide la reserva regional. Que alguien entre o salga de una
+   postulación es exactamente el tipo de cosa que dos años después nadie
+   recuerda quién movió ni cuándo. */
 export async function agregarEquipoPostulacion(postulacionId: string, personaId: string, rol: string) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
+  const cargoOk = rol.trim() || "Integrante";
   const { error } = await supabase.from("postulacion_equipo").insert({
-    postulacion_id: postulacionId, persona_id: personaId, cargo: rol.trim() || "Integrante",
+    postulacion_id: postulacionId, persona_id: personaId, cargo: cargoOk,
   });
   if (error) return { error: error.message };
+  const { data: per } = await supabase.from("personas")
+    .select("nombre,alias").eq("id", personaId).maybeSingle();
+  await supabase.from("actividad").insert({
+    entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "miembro",
+    detalle: { mensaje: `sumó a ${per?.alias || per?.nombre || "alguien"} al equipo como ${cargoOk}` },
+  });
   revalidatePath(`/entidad/postulacion/${postulacionId}`);
   return {};
 }
@@ -1667,8 +1755,20 @@ export async function quitarEquipoPostulacion(id: string, postulacionId: string)
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
-  const { error } = await supabase.from("postulacion_equipo").delete().eq("id", id);
+  /* Se lee ANTES de borrar: después de la baja ya no hay a quién nombrar, y
+     «quitó a alguien» no sirve de nada en una bitácora. */
+  const { data: prev } = await supabase.from("postulacion_equipo")
+    .select("cargo,per:personas(nombre,alias)").eq("id", id).maybeSingle();
+  // Un DELETE bloqueado por RLS tampoco da error: borra cero filas y dice OK
+  const { data: fuera, error } = await supabase.from("postulacion_equipo")
+    .delete().eq("id", id).select("id");
   if (error) return { error: error.message };
+  if (!fuera?.length) return { error: "No se quitó: no tienes permiso, o ya no estaba." };
+  const quien = (prev?.per as any)?.alias || (prev?.per as any)?.nombre || "alguien";
+  await supabase.from("actividad").insert({
+    entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "miembro",
+    detalle: { mensaje: `quitó a ${quien} del equipo${prev?.cargo ? ` (${prev.cargo})` : ""}` },
+  });
   revalidatePath(`/entidad/postulacion/${postulacionId}`);
   return {};
 }
@@ -1683,9 +1783,51 @@ export async function guardarMateriales(postulacionId: string, materiales: Recor
     const s = String(v ?? "").trim();
     if (s) limpio[k.slice(0, 60)] = s.slice(0, 500);
   });
-  const { error } = await supabase.from("postulaciones")
-    .update({ materiales: limpio }).eq("id", postulacionId);
+
+  /* Hay que leer ANTES de escribir, y aquí no es opcional como en una tabla
+     normal: `materiales` es un JSON que se reemplaza entero. Sin la foto
+     previa, después del update no queda rastro de qué había — el expediente
+     pasaría de 3/10 a 4/10 y nadie sabría cuál llegó ni quién lo trajo. */
+  const { data: antes } = await supabase.from("postulaciones")
+    .select("materiales").eq("id", postulacionId).maybeSingle();
+  const prev: Record<string, string> = (antes?.materiales as any) || {};
+
+  /* El `.select()` no es decorativo: si una política de RLS impide el UPDATE,
+     PostgREST no devuelve error — afecta cero filas y responde OK. Sin exigir
+     que la fila vuelva, escribiríamos en la bitácora un cambio que nunca
+     ocurrió, que es peor que no escribir nada. */
+  const { data: post, error } = await supabase.from("postulaciones")
+    .update({ materiales: limpio }).eq("id", postulacionId).select("id");
   if (error) return { error: error.message };
+  if (!post?.length) return { error: "No se guardó: no tienes permiso para editar esta postulación." };
+
+  // Mismo corte que el resto de la bitácora: los links son kilométricos
+  const vis = (v: any) => {
+    const s = String(v ?? "").trim();
+    if (!s) return "—";
+    return s.length > 70 ? s.slice(0, 70) + "…" : s;
+  };
+  const cambios = [...new Set([...Object.keys(prev), ...Object.keys(limpio)])]
+    .filter(k => String(prev[k] ?? "") !== String(limpio[k] ?? ""))
+    .map(k => ({ campo: k, de: vis(prev[k]), a: vis(limpio[k]) }));
+
+  if (cambios.length) {
+    /* El mensaje dice el HECHO, no la cuenta: sumar un cronograma, cambiarle
+       el link o quitarlo son tres cosas distintas y «actualizó 1 campo» las
+       tapa a las tres. Con varios a la vez ya no hay verbo único y ahí sí
+       toca contar. */
+    const sumo = cambios.filter(c => c.de === "—");
+    const quito = cambios.filter(c => c.a === "—");
+    const mensaje =
+      cambios.length > 1 ? `actualizó el expediente · ${cambios.length} cambios`
+      : sumo.length ? `sumó ${cambios[0].campo} al expediente`
+      : quito.length ? `quitó ${cambios[0].campo} del expediente`
+      : `cambió el link de ${cambios[0].campo}`;
+    await supabase.from("actividad").insert({
+      entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id,
+      tipo: "editado", detalle: { mensaje, cambios },
+    });
+  }
   revalidatePath(`/entidad/postulacion/${postulacionId}`);
   return {};
 }

@@ -56,7 +56,8 @@ export default async function Empresas({ searchParams }: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: emps }, { data: vincs }, { data: postsEmp }, { data: coms }, urlSunat] = await Promise.all([
+  const [{ data: emps }, { data: vincs }, { data: postsEmp }, { data: coms }, urlSunat,
+         { data: directoras }] = await Promise.all([
     supabase.from("empresas").select("*").order("codigo"),
     supabase.from("publicacion_vinculos")
       .select("entidad_id,publicacion_id,pub:publicaciones(estado)").eq("entidad_tipo", "empresa"),
@@ -64,12 +65,18 @@ export default async function Empresas({ searchParams }: {
        `fecha_rendicion_real`, `ejecutando()` leería el hueco como «ya
        entregó» y la empresa saldría libre sin serlo. */
     supabase.from("postulaciones")
-      .select(`${SEL_FONDO},codigo,proy:proyectos(nombre),conv:convocatorias(codigo,nombre,anio)`)
+      .select(`${SEL_FONDO},codigo,proyecto_id,proy:proyectos(id,nombre,nombre_corto),conv:convocatorias(codigo,nombre,anio)`)
       .not("empresa_id", "is", null),
     supabase.from("comentarios").select("publicacion_id"),
     // El link de SUNAT sale del admin, no del código: si SUNAT lo cambia
     // —lo ha hecho— se corrige ahí sin esperar un deploy.
     urlPlataforma(PLAT.sunatConsultaRuc),
+    /* Quién dirige cada proyecto. Cierra el triángulo en este listado: la
+       fila ya decía con qué proyecto está en concurso, y le faltaba con quién
+       — que es la mitad del compromiso. */
+    supabase.from("proyecto_equipo")
+      .select("proyecto_id,cargo,persona:personas(id,nombre,alias)")
+      .or("cargo.ilike.%direc%,cargo.ilike.%codirec%"),
   ]);
 
   // Actividad real en CrewHub+: en qué estado están sus casos y cuánto se conversó
@@ -127,6 +134,14 @@ export default async function Empresas({ searchParams }: {
   /* Las reglas viven en lib/fondos.ts: las lee esta lista y también la hoja
      de postulación de la ficha. Escritas dos veces, un día dirían cosas
      distintas — que es como empezó todo esto. */
+  // Quién dirige cada proyecto, para cerrar el triángulo en cada fila
+  const dirigeProy = new Map<string, any[]>();
+  (directoras || []).forEach((d: any) => {
+    if (!d.persona) return;
+    const l = dirigeProy.get(d.proyecto_id) || [];
+    l.push(d.persona); dirigeProy.set(d.proyecto_id, l);
+  });
+
   const compDe = (x: any) => marca.get(x.id) || SIN_COMPROMISO;
   const libre = (x: any) => empresaLibre(x, compDe(x));
   const trabas = (x: any) => trabasEmpresa(x, compDe(x));
@@ -187,6 +202,13 @@ export default async function Empresas({ searchParams }: {
        externas en el buscador. Si aquí la escribiera aparte, un día una
        empresa saldría apagada en una pantalla y encendida en la otra. */
     const tenue = casi || !empresaDeCasa(emp);
+    /* Las trabas que YA tienen su chip arriba: repetirlas es ruido. Se filtran
+       aquí y no en `trabasEmpresa` porque la función decide —la usan la hoja
+       de postulación y el filtro `casiLibre`, donde no hay chips que las
+       cuenten—; esto es solo cómo se ve una fila. La regla, una vez; la
+       pantalla, la que corresponda. */
+    const CON_CHIP = /en concurso|ejecutando|rendición vencida|SUNAT|no habido|no activa|sin RUC/i;
+    const sinChip = trabas(emp).filter(t => !CON_CHIP.test(t));
     /* Lo que tiene encima, con nombre: las que están en concurso y las que
        está ejecutando. El chip «⏳ 3 en concurso» decía cuántas y no cuáles, y
        «cuáles» es lo único accionable: un número no se puede abrir. El dato ya
@@ -216,7 +238,7 @@ export default async function Empresas({ searchParams }: {
             {emp.tipo && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{emp.tipo}</span>}
             {/* Lista para postular, o candidata a un trámite de distancia */}
             {esLibre && (
-              <span className="badge" title="RUC y SUNAT en regla, RENCA en mano y sin compromisos vivos: puede postular ya"
+              <span className="badge" title="RUC y SUNAT en regla, RENCA en mano y sin nada encima: ni en concurso ni ejecutando. Las bases dejarían presentar dos con la misma empresa, pero solo se premia una al año — por eso aquí «libre» significa sin comprometer."
                 style={{ color: "var(--green)", background: "rgba(46,204,113,.14)", fontWeight: 700 }}>
                 ✅ libre para postular
               </span>
@@ -292,11 +314,15 @@ export default async function Empresas({ searchParams }: {
               </span>
             )}
             <span style={{ flex: 1 }} />
-            {/* Qué le falta para poder postular */}
-            {!esLibre && (
+            {/* Qué le falta para poder postular — pero solo lo que no está ya
+                dicho arriba. La fila llegó a decir «3 en concurso» tres veces:
+                el chip ⏳ de la línea 1, esta línea, y los tres proyectos por
+                su nombre en la línea 3. Repetir un dato no lo hace más cierto;
+                solo tapa al que sí es nuevo, que suele ser «sin RENCA». */}
+            {!esLibre && sinChip.length > 0 && (
               <span style={{ color: casi ? "var(--yellow)" : "var(--dim)" }}
-                title="Requisitos que no cumple para postular">
-                🚫 {trabas(emp).join(" · ")}
+                title={`Requisitos que no cumple para postular:\n${trabas(emp).join("\n")}`}>
+                🚫 {sinChip.join(" · ")}
               </span>
             )}
             {m && m.monto > 0 && (
@@ -347,7 +373,15 @@ export default async function Empresas({ searchParams }: {
                         cabeza de uno; la convocatoria en código, que es corta —
                         con el nombre completo el chip no cabría. El nombre
                         largo queda en el tooltip. */}
-                    {ej ? "🎬" : ICONO_POST[p.estado] || "⏳"} {(p.proy as any)?.nombre || p.codigo || "Postulación"}
+                    {ej ? "🎬" : ICONO_POST[p.estado] || "⏳"} {(p.proy as any)?.nombre_corto || (p.proy as any)?.nombre || p.codigo || "Postulación"}
+                    {/* Con quién: el tercer vértice. La fila decía con qué
+                        proyecto está comprometida esta empresa y callaba con
+                        quién — que es la mitad del matrimonio. */}
+                    {(dirigeProy.get(p.proyecto_id) || []).map((d: any) => (
+                      <i key={d.id} style={{ color: "var(--accent)", fontStyle: "normal", fontWeight: 700 }}>
+                        {" · 🎬 "}{d.alias || d.nombre}
+                      </i>
+                    ))}
                     {(p.conv as any) && (
                       <i style={{ opacity: .65, fontStyle: "normal" }}>
                         {" · "}{(p.conv as any).codigo || (p.conv as any).nombre}
@@ -419,7 +453,7 @@ export default async function Empresas({ searchParams }: {
         </FilaFiltro>
         <FilaFiltro titulo="Fondos">
           <Chip href="/empresas?f=libre" on={f === "libre"} color="var(--green)"
-            title="Listas: RENCA en mano, papeles en regla y sin compromisos vivos. El +N son las que solo necesitan tramitar el RENCA — ya tienen la vigencia de poder con que pedirlo">
+            title="Listas: RENCA en mano, papeles en regla y sin nada encima — ni en concurso ni ejecutando. El +N son las que solo necesitan tramitar el RENCA: ya tienen la vigencia de poder con que pedirlo.">
             ✅ libres para postular · {todas.filter(libre).length}
             {todas.filter(casiLibre).length > 0 && ` +${todas.filter(casiLibre).length}`}
           </Chip>

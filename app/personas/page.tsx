@@ -36,7 +36,8 @@ export default async function Personas({ searchParams }: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: pers }, { data: vincs }, { data: coms }, { data: equipoPost }, urlSunat] = await Promise.all([
+  const [{ data: pers }, { data: vincs }, { data: coms }, { data: equipoPost }, urlSunat,
+         { data: equipoProy }] = await Promise.all([
     supabase.from("personas")
       .select("id,nombre,alias,tipo,equipo,estado,rol,region,usuario_id,ruc_dni,dni_vencimiento,estado_sunat,condicion_sunat,suspension_4ta_anio")
       .order("nombre"),
@@ -47,6 +48,11 @@ export default async function Personas({ searchParams }: {
     // El link de SUNAT sale del admin, no del código: si SUNAT lo cambia
     // —lo ha hecho— se corrige ahí sin esperar un deploy.
     urlPlataforma(PLAT.sunatConsultaRuc),
+    /* Qué películas hace cada quien. Este listado sabía el DNI, el RUC, el
+       estado SUNAT y el tope de 4ta de cada persona — y no sabía que Yajaida
+       dirige un documental. Sabía todo de su papelería y nada de su trabajo. */
+    supabase.from("proyecto_equipo")
+      .select("persona_id,cargo,proy:proyectos(id,nombre,nombre_corto,color,etapa)"),
   ]);
 
   const todas = pers || [];
@@ -78,6 +84,17 @@ export default async function Personas({ searchParams }: {
   const postDe = new Map<string, number>();
   (equipoPost || []).forEach((r: any) => postDe.set(r.persona_id, (postDe.get(r.persona_id) || 0) + 1));
 
+  /* Qué películas hace cada quien. Dirigir se separa del resto a propósito:
+     un director no es «alguien más del equipo» — el proyecto nace con él, y
+     ante el jurado da la cara por él. El resto de cargos van juntos. */
+  const DIRIGE = /direc|codirec/i;
+  const proysDe = new Map<string, any[]>();
+  (equipoProy || []).forEach((r: any) => {
+    if (!r.proy) return;
+    const l = proysDe.get(r.persona_id) || [];
+    l.push(r); proysDe.set(r.persona_id, l);
+  });
+
   // Atención: solo exigimos papeles a quien trabaja con nosotros (lib/personas.ts)
   const delEquipo = esDelEquipo;
   const dniVence = (p: any) => p.dni_vencimiento ? dias(p.dni_vencimiento) : null;
@@ -106,7 +123,12 @@ export default async function Personas({ searchParams }: {
       p.nombre, p.alias, p.rol, p.region,
       p.ruc_dni && `dni ${p.ruc_dni}`,
       rucDePersona(p.ruc_dni) && `ruc ${rucDePersona(p.ruc_dni)}`,
-      p.tipo, p.estado, p.equipo)))
+      p.tipo, p.estado, p.equipo,
+      /* Y sus películas. Este buscador encontraba a alguien por su DNI y su
+         RUC, y no por el documental que dirige — sabía su papelería y no su
+         obra. «Mujeres del Ande» tiene que encontrar a Yajaida. */
+      ...(proysDe.get(p.id) || []).map((r: any) =>
+        pal(r.cargo, r.proy?.nombre, r.proy?.nombre_corto)))))
   ).slice(0, 150);
 
   const cnt = (est: string) => todas.filter((p: any) => p.estado === est).length;
@@ -125,9 +147,15 @@ export default async function Personas({ searchParams }: {
     const x = act.get(p.id) || VACIO;
     const d = dniVence(p);
     const nPost = postDe.get(p.id) || 0;
+    const suyos = proysDe.get(p.id) || [];
+    const dirige = suyos.filter((r: any) => DIRIGE.test(r.cargo || ""));
+    const enOtros = suyos.filter((r: any) => !DIRIGE.test(r.cargo || ""));
     return (
-      <Link key={p.id} href={`/entidad/persona/${p.id}`}>
-        <div className="card link" style={{ cursor: "pointer", padding: "11px 16px" }}>
+      /* Enlace estirado: la tarjeta lleva a la persona por una capa
+         invisible, para que sus películas sean enlaces propios. */
+      <div key={p.id} className="card link fila-cap" style={{ cursor: "pointer", padding: "11px 16px" }}>
+        <Link href={`/entidad/persona/${p.id}`} className="fila-cubre" aria-label={p.alias || p.nombre} />
+        <div>
           {/* línea 1: quién es */}
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <b style={{ fontSize: 14.5 }}>{p.alias || p.nombre}</b>
@@ -180,8 +208,35 @@ export default async function Personas({ searchParams }: {
             {x.coments > 0 && <span style={{ color: "var(--muted)" }}>💬 {x.coments}</span>}
             {!x.total && <span style={{ color: "var(--dim)" }}>sin actividad</span>}
           </div>
+
+          {/* línea 3: su obra. Este listado sabía el DNI, el RUC, el estado
+              SUNAT y el tope de 4ta de cada persona — toda su papelería— y no
+              sabía que Yajaida dirige un documental. Dirigir va aparte y en
+              violeta: un director no es «alguien más del equipo». */}
+          {suyos.length > 0 && (
+            <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap",
+              marginTop: 7, paddingTop: 7, borderTop: "1px solid var(--border)", fontSize: 11.5 }}>
+              {dirige.map((r: any) => (
+                <Link key={r.proy.id} href={`/entidad/proyecto/${r.proy.id}`}
+                  className="badge fila-encima" title={`${r.cargo} · ${(r.proy.etapa || "").replace(/_/g, " ")}`}
+                  style={{ color: "var(--accent)", background: "rgba(124,92,255,.14)", fontWeight: 700,
+                    textTransform: "none", letterSpacing: 0, textDecoration: "none" }}>
+                  🎬 {r.proy.nombre_corto || r.proy.nombre} ↗
+                </Link>
+              ))}
+              {enOtros.map((r: any) => (
+                <Link key={`${r.proy.id}-${r.cargo}`} href={`/entidad/proyecto/${r.proy.id}`}
+                  className="badge fila-encima" title={`${r.cargo} · ${(r.proy.etapa || "").replace(/_/g, " ")}`}
+                  style={{ color: "var(--muted)", background: "#1c1c2c",
+                    textTransform: "none", letterSpacing: 0, textDecoration: "none" }}>
+                  {r.proy.nombre_corto || r.proy.nombre}
+                  <i style={{ opacity: .6, fontStyle: "normal" }}> · {r.cargo}</i> ↗
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
-      </Link>
+      </div>
     );
   };
 

@@ -78,10 +78,41 @@ export const compromisoDe = (posts: any[]): Compromiso => ({
 });
 export const SIN_COMPROMISO: Compromiso = { juego: 0, ejec: 0, debe: 0, sinPlazo: 0 };
 
-/* Libre = papeles en regla y sin fondo encima.
-   La vigencia de poder NO entra: sirve para pedir el RENCA, y con el RENCA
-   en mano ya cumplió. Exigirla aquí era pedir dos veces el mismo papel — el
-   sistema decía «1 libre» cuando había 9. */
+/* Libre = papeles en regla y sin ningún fondo encima: ni en concurso, ni
+ * ejecutándose.
+ *
+ * La vigencia de poder NO entra: sirve para pedir el RENCA, y con el RENCA en
+ * mano ya cumplió. Exigirla aquí era pedir dos veces el mismo papel — el
+ * sistema decía «1 libre» cuando había 9.
+ *
+ * ⚠ AVISO A QUIEN LEA LAS BASES Y QUIERA "CORREGIR" ESTO:
+ *
+ * Las bases 2026 dicen, textual:
+ *   «Las personas jurídicas postulantes pueden presentar uno (1) o más
+ *    proyectos […] Sin embargo, no se premiará más de un (1) proyecto u obra
+ *    de la misma persona jurídica, representante legal o director(a) en un (1)
+ *    mismo año.»
+ *
+ * O sea: presentar dos está PERMITIDO. Y aun así `c.juego === 0` se queda,
+ * a propósito.
+ *
+ * Porque esto no es el reglamento del Ministerio: es la estrategia de la
+ * productora, y es más estricta a propósito. Palabras de John (16/07):
+ *
+ *   «Una cosa es que las bases lo permiten, pero según mi estrategia no puedo
+ *    acumular varias postulaciones en una empresa. En algunos casos lo hago
+ *    cuando no tengo de otra — por ejemplo Aynicha Films, con tres proyectos
+ *    de la misma directora: sabemos que solo una gana.»
+ *
+ * Para eso existen nueve empresas propias: para repartir, no para apilar. Una
+ * empresa con algo en concurso ya está comprometida, aunque el Estado la deje
+ * presentar otra. Y las que apilan —Aynicha— son la excepción que se toma
+ * sabiendo el costo, no el caso normal que el sistema deba sugerir.
+ *
+ * Yo ya "corregí" esto una vez leyendo las bases, y estaba mal. Si vuelves a
+ * tener la tentación: la regla del concurso dice qué se puede; ésta dice qué
+ * conviene. El sistema es de la productora.
+ */
 export const empresaLibre = (e: any, c: Compromiso = SIN_COMPROMISO) =>
   e.estado === "activa"
   && !!e.ruc
@@ -105,7 +136,11 @@ export const trabasEmpresa = (e: any, c: Compromiso = SIN_COMPROMISO): string[] 
     if (!e.vigencia_poder_fecha) t.push("sin vigencia para pedir el RENCA");
     else if (vigenciaVencida(e.vigencia_poder_fecha)) t.push("vigencia vencida para pedir el RENCA");
   }
+  // Compromiso propio, no del Ministerio: ver el aviso en `empresaLibre`
   if (c.juego > 0) t.push("en concurso");
+  /* Ejecutando se dice distinto según el caso porque lo que hay que hacer es
+     distinto: si va tarde, entregar; si no hay plazo cargado, cargarlo.
+     «Ejecutando» a secas no dice ni una cosa ni la otra. */
   if (c.debe > 0) t.push("debe una rendición vencida");
   else if (c.sinPlazo > 0) t.push("ejecutando un fondo, sin plazo cargado");
   else if (c.ejec > 0) t.push("ejecutando un fondo");
@@ -202,12 +237,36 @@ export const reservaEmpresa = (e: any): { que: string; v: Veredicto; region: str
     region: e.sunat_region_domicilio || "" },
 ];
 
-/* El veredicto de la empresa: basta un "no" para quedar fuera; si no hay
-   ningún "no" pero falta algo, no se puede afirmar que califique. */
+/* El veredicto: basta un "no" para quedar fuera; si no hay ningún "no" pero
+   falta algo, no se puede afirmar que califique. */
 export const veredictoReserva = (partes: { v: Veredicto }[]): Veredicto =>
-  partes.some(p => p.v === "no") ? "no"
+  !partes.length ? "falta"
+  : partes.some(p => p.v === "no") ? "no"
   : partes.some(p => p.v === "falta") ? "falta"
   : "si";
+
+/* El veredicto COMPLETO: la empresa Y sus responsables.
+ *
+ * Las bases no piden solo que la empresa figure en región — piden que
+ * «el(la/los/las) responsable(s) del proyecto cuenten con domicilio fuera de
+ * Lima Metropolitana y Callao, según los datos consignados en sus documentos
+ * de identidad». Son dos requisitos y hay que cumplir los dos.
+ *
+ * Esta función existe porque la hoja llegó a decir «✅ Puede aplicar a la
+ * reserva» con los tres responsables en «sin región» — el veredicto miraba
+ * solo las filas de la empresa mientras las de abajo lo desmentían. Es el
+ * mismo error que decir «SUNAT sano» de quien nadie consultó: afirmar de más
+ * mirando de menos.
+ *
+ * Y sin responsables cargados tampoco se puede afirmar: alguien tiene que
+ * acreditar ese domicilio.
+ */
+export const reservaCompleta = (
+  partesEmpresa: { v: Veredicto }[],
+  miembros: { reserva: Veredicto }[],
+): Veredicto =>
+  !miembros.length ? "falta"
+  : veredictoReserva([...partesEmpresa, ...miembros.map(m => ({ v: m.reserva }))]);
 
 /* Los responsables, por la dirección de su DNI —que es lo que exigen las
    bases: «según los datos consignados en sus documentos de identidad»—.

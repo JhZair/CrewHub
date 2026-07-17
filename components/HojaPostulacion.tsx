@@ -154,6 +154,25 @@ export default function HojaPostulacion({
                   : reserva === "no" ? "— No aplica: figura en Lima Metropolitana o Callao"
                   : "⚠ No se puede saber todavía"}
               </div>
+              {/* Decir QUÉ falta, no solo que falta. Un «⚠ no se puede saber»
+                  encima de quince filas deja a alguien buscando cuál está en
+                  gris. */}
+              {reserva === "falta" && (() => {
+                const sinDni = miembros.filter(m => m.reserva === "falta");
+                const sinEmp = partesReserva.filter(p => p.v === "falta");
+                return (
+                  <div style={{ color: "var(--yellow)", fontSize: 11.5, marginBottom: 6 }}>
+                    Falta{" "}
+                    {[
+                      sinEmp.length && `${sinEmp.length} dato(s) de la empresa`,
+                      !miembros.length && "cargar quién firma",
+                      sinDni.length && `la región del DNI de ${sinDni.map(m => m.persona?.alias || m.persona?.nombre?.split(" ")[0]).join(", ")}`,
+                    ].filter(Boolean).join(" · ")}
+                    . Las bases piden que los responsables acrediten domicilio de región
+                    con su documento de identidad.
+                  </div>
+                );
+              })()}
               {partesReserva.map((p, i) => (
                 <div className="ficha-row" key={i}>
                   <span className="fk" style={{ fontSize: 10.5 }}>{p.que}</span>

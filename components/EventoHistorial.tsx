@@ -16,8 +16,20 @@ export type Evento = {
   entidadTitulo?: string;   // el nombre completo, para el tooltip
 };
 
+/* «edicion» y «editado» son la MISMA cosa con dos nombres: el código escribe
+   `edicion` desde casos y equipamiento, y `editado` desde las fichas, las
+   credenciales y los materiales. Nadie lo decidió; se fue dando.
+
+   No se puede renombrar sin migrar los eventos ya escritos, así que aquí se
+   aceptan los dos. Lo que NO se puede es que el lector conozca solo uno: hasta
+   hoy, una comprobación física de equipo —hecha por una persona— caía al
+   `else`, se pintaba con 🤖 y perdía el nombre de quien la hizo. El bot
+   firmando el trabajo de un humano, otra vez. */
+const HUMANOS = ["editado", "edicion", "dato", "miembro"];
+
 export const ICO_EVENTO: Record<string, string> = {
-  creado: "📝", estado: "🔄", editado: "✏️", dato: "🔑", miembro: "👥", bot: "🤖",
+  creado: "📝", estado: "🔄", editado: "✏️", edicion: "✏️",
+  dato: "🔑", miembro: "👥", bot: "🤖",
 };
 export const icoDe = (t: string) => ICO_EVENTO[t] || "🤖";
 
@@ -31,7 +43,7 @@ export function textoEvento(e: Evento): string {
   if (e.tipo === "creado") return `${quien || "Sistema"} registró esta entidad`;
   if (e.tipo === "estado")
     return `${quien || "Bot Qhaway"} · ${e.detalle?.campo}: ${String(e.detalle?.de ?? "—").replace(/_/g, " ")} → ${String(e.detalle?.a ?? "—").replace(/_/g, " ")}`;
-  if (["editado", "dato", "miembro"].includes(e.tipo))
+  if (HUMANOS.includes(e.tipo))
     return `${quien || "Alguien"} ${e.detalle?.mensaje || "editó la ficha"}`;
   return e.detalle?.mensaje || e.tipo;
 }
