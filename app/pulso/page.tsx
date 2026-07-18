@@ -4,6 +4,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { claseEstado, textoEstado } from "@/lib/estados";
 import { icoTipo, rotuloMonton } from "@/lib/tipos";
+import { BOT } from "@/lib/personas";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "📊 Pulso del equipo" };
@@ -65,7 +66,7 @@ export default async function PulsoPage({ searchParams }: {
 
   // Equipo (Qhaway fuera: él reparte, no carga casos)
   const { data: equipo } = await supabase.from("perfiles")
-    .select("id,nombre").eq("activo", true).neq("nombre", "Bot Qhaway").order("nombre");
+    .select("id,nombre").eq("activo", true).neq("nombre", BOT).order("nombre");
 
   // Bitácora del mes sobre publicaciones
   const { data: eventos } = await supabase.from("actividad")

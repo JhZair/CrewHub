@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { correrRondaSunat } from "@/lib/sunat";
+import { BOT } from "@/lib/personas";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -28,7 +29,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Falta SUPABASE_SERVICE_ROLE_KEY en el entorno." }, { status: 500 });
   }
 
-  const { data: bot } = await db.from("perfiles").select("id").eq("nombre", "Bot Qhaway").maybeSingle();
+  const { data: bot } = await db.from("perfiles").select("id").eq("nombre", BOT).maybeSingle();
   const res = await correrRondaSunat(db, bot?.id || null);
   // Si el bot no existe no se puede firmar ningún caso: hay que saberlo.
   return NextResponse.json({ corrida: true, bot: bot?.id ? "ok" : "NO ENCONTRADO", ...res });

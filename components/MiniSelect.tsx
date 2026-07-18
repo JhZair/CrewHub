@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 /* Desplegable propio (reemplaza al <select> nativo, cuyo menú no se puede
    estilizar y muestra un resaltado celeste ajeno a la paleta). Mantiene el
    look de badge/pill del disparador y abre un menú con la identidad del app. */
-export default function MiniSelect({ value, options, onSelect, buttonClass, buttonStyle, block, error }: {
+export default function MiniSelect({ value, options, onSelect, buttonClass, buttonStyle, block, error, etiqueta }: {
   value: string;
   options: string[][];
   onSelect: (v: string) => void;
@@ -12,11 +12,17 @@ export default function MiniSelect({ value, options, onSelect, buttonClass, butt
   buttonStyle?: React.CSSProperties;
   block?: boolean;   // ancho completo, con look de campo de formulario
   error?: boolean;
+  /** Qué dice el BOTÓN, cuando no es lo mismo que dice el menú. En una lista
+   *  de veinte sub-casos el botón necesita «MichelM» y un 👤 cuando está
+   *  vacío; el menú, en cambio, necesita nombres que se puedan elegir. Sin
+   *  esto habría que meter el ícono dentro de la opción y leerlo en los dos
+   *  sitios. Si no se pasa, manda la opción — como siempre. */
+  etiqueta?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [arriba, setArriba] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
-  const label = options.find(o => o[0] === value)?.[1] || value;
+  const label = etiqueta ?? (options.find(o => o[0] === value)?.[1] || value);
 
   const toggle = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -41,7 +47,11 @@ export default function MiniSelect({ value, options, onSelect, buttonClass, butt
       ...(block ? { textTransform: "none" as const, letterSpacing: "normal", fontSize: 13 } : {}) }}
       onClick={e => e.stopPropagation()}>
       <button ref={btnRef} className={buttonClass} type="button"
-        style={{ ...estiloCampo, ...buttonStyle, cursor: "pointer", display: block ? "flex" : "inline-flex", alignItems: "center", gap: 5 }}
+        /* `buttonStyle` va AL FINAL: es lo que pide quien llama, y quien llama
+           manda. Estaba en medio, así que el `gap:5` de aquí abajo ganaba
+           siempre y nadie podía apretar el botón — un default que no se deja
+           cambiar no es un default, es una imposición. */
+        style={{ ...estiloCampo, cursor: "pointer", display: block ? "flex" : "inline-flex", alignItems: "center", gap: 5, ...buttonStyle }}
         onClick={toggle}>
         {label} <span style={{ fontSize: 9, opacity: .75 }}>▾</span>
       </button>

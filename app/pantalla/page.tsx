@@ -4,6 +4,7 @@ import Reloj from "@/components/Reloj";
 import { redirect } from "next/navigation";
 import { textoEstado } from "@/lib/estados";
 import { plazoDe, diasHasta } from "@/lib/plazo";
+import { BOT, sinBot } from "@/lib/personas";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "📺 Pantalla" };
@@ -77,8 +78,11 @@ export default async function Pantalla() {
   const hitos = hitosQ || [];
 
   // ===== PULSO 🫀: carga por persona — para repartir, nunca ranking =====
-  const pulso = (perfQ.data || [])
-    .filter((pf: any) => pf.nombre !== "Qhaway")
+  /* Aquí el bot llevaba meses saliendo en el pulso del equipo, con su barra de
+     carga, en la TV de la oficina: este filtro decía «Qhaway» y la cuenta se
+     renombró a «Bot Qhaway» (db/rename-bot-qhaway.sql). El filtro dejó de
+     coincidir con nada y nadie lo vio — es una pared, se mira de lejos. */
+  const pulso = sinBot(perfQ.data)
     .map((pf: any) => ({
       nombre: pf.nombre.split(" ")[0],
       carga: abiertos.filter((p: any) => p.responsable === pf.id).length,
@@ -97,7 +101,9 @@ export default async function Pantalla() {
   const tipoDe = new Map((titulos || []).map((t: any) => [t.id, t.tipo]));
 
   const textoAct = (a: any) => {
-    const quien = a.actor?.nombre?.split(" ")[0] || "Bot Qhaway 🤖";
+    // Sin actor = lo hizo el bot. El nombre sale de lib/personas: este mismo
+    // archivo ya se quedó una vez con el nombre viejo tras un rename.
+    const quien = a.actor?.nombre?.split(" ")[0] || `${BOT} 🤖`;
     const sobre = tituloDe.get(a.entidad_id) || "";
     if (a.tipo === "bot") return `Bot Qhaway en «${sobre}»: ${a.detalle?.mensaje || ""}`;
     if (a.tipo === "comentario") return `${quien} comentó en «${sobre}»`;

@@ -2,6 +2,7 @@
 import { comentar, cambiarEstado, asignarResponsable, cambiarFechaLimite } from "@/app/actions";
 import { celebrarResuelto } from "@/lib/celebra";
 import { opcionesEstado } from "@/lib/estados";
+import { sinBot } from "@/lib/personas";
 import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
 import { useRouter } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
@@ -13,10 +14,13 @@ export function RespSelect({ pubId, actual, perfiles }:
     const res = await asignarResponsable(pubId, v || null);
     if (res?.error) alert(res.error); else router.refresh();
   };
+  /* `sinBot`: este combo ofrecía a Bot Qhaway como responsable y el de los
+     sub-casos no — el mismo sistema, dos respuestas a «¿se le puede asignar
+     un caso al bot?». No: «él reparte, no carga casos» (lo dice /pulso). */
   return (
     <select defaultValue={actual || ""} onChange={e => cambiar(e.target.value)}>
       <option value="">Sin asignar</option>
-      {perfiles.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+      {sinBot(perfiles).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
     </select>
   );
 }

@@ -12,6 +12,7 @@ import { estado4ta } from "@/lib/cuarta";
 import { ejecutando, rendicionVencida, SEL_FONDO } from "@/lib/fondos";
 import { haceOEn } from "@/lib/fechas";
 import { ICO_ENT } from "@/lib/secciones";
+import { BOT } from "@/lib/personas";
 import Link from "next/link";
 import { plazoDe, diasHasta } from "@/lib/plazo";
 import { colorTipo, rotuloTipo } from "@/lib/tipos";
@@ -417,7 +418,7 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
                     <span>{ICO_ENT[a.entidad_tipo] || "•"}</span>
                     <span style={{ flex: 1, minWidth: 0 }}>
                       <b style={{ color: a.actor ? "var(--text)" : "var(--teal)" }}>
-                        {a.actor?.nombre || "Bot Qhaway"}
+                        {a.actor?.nombre || BOT}
                       </b>
                       <i style={{ color: "var(--dim)", fontStyle: "normal" }}>
                         {" "}{a.detalle?.campo ? `cambió ${a.detalle.campo.replace(/_/g, " ")}` : a.tipo}

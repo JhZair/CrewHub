@@ -456,6 +456,63 @@ a{color:inherit;text-decoration:none}
 .fab-nuevo:hover{filter:brightness(1.1);transform:translateY(-1px)}
 .modal-fondo{position:fixed;inset:0;z-index:70;background:rgba(4,4,10,.72);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto}
 .modal-caja{background:linear-gradient(180deg,rgba(124,92,255,.07),transparent 170px),var(--panel);border:1px solid rgba(124,92,255,.5);border-radius:16px;padding:16px 18px;width:100%;max-width:720px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+/* El modal del compositor va tan ancho como el feed, y no por gusto: dentro
+   vive el MISMO Composer, y su bandeja de vincular está calculada al límite
+   del ancho del feed. A 720 px se parte y «📍 Lugar» cae a una segunda línea
+   — pasó, y solo ahí.
+     feed   .shell 860 − 32 de padding = 828 · .composer padding 36 → 792 útiles
+     modal  .modal-caja 828 − 36 de padding = 792 · .composer padding 0 → 792
+   Los mismos 792 px en los dos sitios. Cuadra porque el padding del modal y
+   el del composer en el feed son el mismo: si alguien toca uno, esto se
+   descuadra en silencio.
+   Va como modificador y no en `.modal-caja` porque la hoja para postular usa
+   la misma caja y no tiene por qué crecer porque crezca el compositor. */
+.modal-caja.modal-compositor{max-width:828px}
+
+/* ===== Sub-casos: responsable y fecha AL VUELO =====
+   Veinte sub-casos se reparten yendo de fila en fila. Entrar en cada uno para
+   asignar y volver son cuarenta viajes. La referencia es Trello: un reloj y
+   un nombre al final de la línea, del tamaño de la línea.
+   Vacío = fantasma (un hueco). Puesto = dato. Esa es toda la gramática. */
+/* `.info-row` se define 370 líneas MÁS ABAJO y trae su propio `gap`. A misma
+   especificidad gana el último, así que `.sc-fila{gap}` a secas no se aplicaba
+   nunca. Con `.info-row.sc-fila` sí: dos clases pesan más que una. */
+.info-row.sc-fila{gap:8px}
+/* SIN CAJA hasta que la tocas. Veinte filas × tres controles eran sesenta
+   recuadros: la lista pesaba más que lo que dice. Un dato no necesita marco
+   —se lee—, y un hueco tampoco: se ve que está vacío. El borde aparece al
+   pasar el cursor, que es cuando informa de algo («esto se puede tocar»). */
+.sc-btn{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;
+  font-size:10.5px;font-weight:700;padding:3px 7px;border-radius:7px;
+  border:1px solid transparent;background:none;color:var(--dim);cursor:pointer}
+.sc-btn:hover{border-color:var(--border2);color:var(--text);background:var(--bg)}
+.sc-btn:disabled{opacity:.4;cursor:default}
+/* Puesto: es un dato, no un hueco. Solo cambia el color — la fecha lo saca de
+   lib/plazo con un `style` en línea; el responsable, el teal de siempre. */
+.sc-btn.puesto{color:var(--muted)}
+.sc-btn.puesto.resp{color:var(--teal)}
+/* Asignado a alguien que ya no está: no es «sin dueño», es peor — hay dueño
+   y no va a venir. Amarillo, no teal. */
+.sc-btn.puesto.baja{color:var(--yellow)}
+/* El estado, a la izquierda y mandando: el ícono ES el control. Ancho fijo
+   para que los veinte queden en columna — si bailan, el ojo deja de poder
+   bajar por ellos, que es justo para lo que sirve estar a la izquierda.
+   El color sale de `st-*`, el mismo que pintaba la pastilla que sustituye. */
+/* `button.sc-est` y no `.sc-est` a secas: al botón se le pone también
+   `st-{estado}`, que trae `background`. Con una sola clase gana el que esté
+   más abajo en el archivo — y `.st-en_pausa` vive 400 líneas DESPUÉS que
+   esto, así que cinco estados salían sin fondo y `en_pausa` con píldora
+   azul. Un solo estado distinto a los otros cinco por el orden del archivo.
+   Con `button.` (0,1,1) gana siempre, sin depender de dónde caiga nadie. */
+button.sc-est{display:inline-flex;align-items:center;justify-content:center;
+  width:38px;flex:none;font-size:12px;padding:3px 0;border-radius:7px;
+  white-space:nowrap;border:1px solid transparent;background:none;cursor:pointer}
+button.sc-est:hover{border-color:var(--border2);background:var(--bg)}
+/* El campo de fecha no se ve: lo abre el botón con showPicker(). Ocupa 0 y no
+   se puede tabular — el botón es quien recibe el foco. */
+.sc-fecha{position:relative;display:inline-flex}
+.sc-fecha-inp{position:absolute;left:0;bottom:0;width:0;height:0;padding:0;margin:0;
+  border:none;opacity:0;pointer-events:none}
 .modal-cab{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid rgba(124,92,255,.22)}
 .modal-cab b{font-size:15px;color:var(--text)}
 .modal-x{background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer}
@@ -477,8 +534,65 @@ a{color:inherit;text-decoration:none}
 .etq-lista button:hover{background:rgba(124,92,255,.14)}
 .etq-lista .etq-crear{color:var(--accent);font-weight:600}
 .etq-vacio{color:var(--dim);font-size:11.5px;padding:4px 8px}
+/* ===== Vínculos de un caso: lo que ESTÁ vs lo que se PUEDE =====
+   Un vínculo que existe («👤 John Oros Condori ×») y un botón para crear uno
+   («👤 Persona ▾») son cosas de naturaleza distinta y se veían casi igual:
+   dos píldoras oscuras con borde de 1px. La diferencia YA existía —.echip es
+   sólido y radio 20; .ent-btn es punteado y radio 9— pero a ese tamaño,
+   sobre negro, no llega: con ocho vínculos son quince píldoras seguidas y el
+   ojo no encuentra el borde entre los hechos y los botones.
+   Lo pidió Wilfredo, que es quien más los mira.
+
+   Ojo: esto vive bajo `.vinc-editor`, NO en `.ent-btn`. El mismo picker en el
+   Composer está solo y no compite con nada; el problema no es el botón, es
+   el contexto. */
 .vinc-editor{margin-bottom:10px}
-.vinc-pickers{display:flex;gap:6px;flex-wrap:wrap}
+/* Los vínculos ya PUESTOS: hechos, no controles. Un punto más de presencia
+   que la bandeja de la que salieron. Lo usan la ficha del caso y el Composer
+   (y por tanto el FAB «+»): el motivo es el mismo en los tres. */
+.vinc-editor .vinc-puestos{margin-top:0;margin-bottom:2px}
+/* Los hechos: un punto más de presencia que un control cualquiera */
+.vinc-puestos .echip{background:#1e1e30;border-color:var(--border2);color:#dcdcf0}
+/* ⭐ LA BANDEJA DE VINCULAR — la identidad de «aquí se engancha algo».
+   Vive aquí y NO dentro de `.vinc-editor` porque hay tres sitios donde se
+   vincula —la ficha del caso, el Composer del feed y el mismo Composer en el
+   FAB «+»— y John lo pidió con todas las letras: «tiene que ser igual».
+   Es el mismo error que este archivo documenta dos veces: escribí la bandeja
+   dentro del rincón donde nació y a los diez minutos ya había un segundo
+   sitio que se quedaba fuera de su propia identidad. Se referencia, no se
+   copia. Ver `--grad-buscar` arriba, que aprendió lo mismo.
+
+   Por qué así:
+   · UNA bandeja, no siete botones: una línea punteada arriba separaba pero no
+     NOMBRABA. Envolverla la convierte en un objeto — el sitio donde se actúa.
+   · El punteado va en el CONTORNO: es la señal de «aquí falta algo, ponlo».
+   · El lavado de acento al 5% es el gesto con que el sistema marca acción.
+   · Las teclas de dentro van con borde SÓLIDO: punteado dentro de punteado es
+     ruido, y quien lleva el mensaje es la bandeja. Además así no se parecen a
+     una píldora de vínculo —redonda, llena y clara—, que era la queja de
+     Wilfredo: no distinguía los chips que SON de los botones que HACEN.
+   `gap:7px` para no pelearse con `.meta-linea` del Composer, que la lleva.
+
+   ⚠ LOS SIETE ENTRAN EN UNA LÍNEA, y por poco. La fila iba al 95% de ancho
+   antes de existir la bandeja; la caja le cobró ~26 px (18 de padding, 2 de
+   borde, 1 más en cada uno de los seis huecos) y «📍 Lugar» se cayó a una
+   segunda línea. Se recuperan apretando las teclas (padding 9→7 = 28 px en
+   siete botones). Si alguien alarga un rótulo —«Convocatoria» ya es el más
+   largo— o engorda esta caja, vuelve a partirse. No es grave: envuelve como
+   caja y se lee igual. Pero avisa. */
+.bandeja-vinc{display:flex;gap:7px;flex-wrap:wrap;align-items:center;
+  padding:6px 8px;border-radius:12px;
+  border:1px dashed var(--border2);
+  background:linear-gradient(92deg,rgba(124,92,255,.05),rgba(124,92,255,.015) 55%,transparent)}
+.vinc-add-lbl{font-size:10px;font-weight:800;letter-spacing:.7px;
+  text-transform:uppercase;color:var(--accent);opacity:.85;
+  margin:0 2px 0 1px;user-select:none;white-space:nowrap}
+.bandeja-vinc .ent-btn{font-size:11px;padding:4px 7px;border-radius:8px;
+  color:var(--dim);border:1px solid var(--border);background:var(--bg)}
+.bandeja-vinc .ent-btn:hover{color:var(--text);border-color:var(--accent);background:var(--card)}
+/* Solo en la ficha del caso: ahí la bandeja va DEBAJO de los vínculos que ya
+   existen y necesita separarse de ellos. En el Composer no hay nada encima. */
+.vinc-editor .bandeja-vinc{margin-top:9px}
 .tl-leyenda{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-top:12px;color:var(--muted);font-size:11.5px}
 .tl-leyenda span{display:flex;align-items:center;gap:6px}
 .tl-leyenda i{width:9px;height:9px;border-radius:50%;display:inline-block}

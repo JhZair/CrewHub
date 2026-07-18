@@ -4,6 +4,7 @@ import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import EventoHistorial, { icoDe, type Evento } from "@/components/EventoHistorial";
 import { PERIODOS, desdeDe, diaLima, horaLima, rotuloDia, type Periodo } from "@/lib/periodo";
 import { ICO_ENT, TABLA_DE } from "@/lib/secciones";
+import { BOT } from "@/lib/personas";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
@@ -86,12 +87,12 @@ export default async function HistorialTodo({ searchParams }: {
   };
   const porEvento = cuenta((x: any) => x.tipo);
   const porEntidad = cuenta((x: any) => x.entidad_tipo);
-  const porActor = cuenta((x: any) => (x as any).actor?.nombre || "🤖 Bot Qhaway");
+  const porActor = cuenta((x: any) => (x as any).actor?.nombre || `🤖 ${BOT}`);
 
   const lista = todos.filter((x: any) =>
     (!filtroEv || x.tipo === filtroEv) &&
     (!filtroEnt || x.entidad_tipo === filtroEnt) &&
-    (!filtroActor || (x.actor?.nombre || "🤖 Bot Qhaway") === filtroActor));
+    (!filtroActor || (x.actor?.nombre || `🤖 ${BOT}`) === filtroActor));
 
   /* A qué hora se trabaja. El bot va aparte dentro de cada barra: escribe
      decenas de eventos de una sentada en su ronda de las 7:30, y mezclado

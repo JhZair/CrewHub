@@ -1,5 +1,6 @@
 import { ICO_ENT } from "@/lib/secciones";
 import Link from "next/link";
+import { BOT } from "@/lib/personas";
 
 /* Una línea del historial. Vive aquí y no dentro de la ficha porque ahora
    la usan dos pantallas: el historial de UNA entidad y el acumulado de
@@ -42,7 +43,7 @@ export function textoEvento(e: Evento): string {
   const quien = e.actor?.nombre;
   if (e.tipo === "creado") return `${quien || "Sistema"} registró esta entidad`;
   if (e.tipo === "estado")
-    return `${quien || "Bot Qhaway"} · ${e.detalle?.campo}: ${String(e.detalle?.de ?? "—").replace(/_/g, " ")} → ${String(e.detalle?.a ?? "—").replace(/_/g, " ")}`;
+    return `${quien || BOT} · ${e.detalle?.campo}: ${String(e.detalle?.de ?? "—").replace(/_/g, " ")} → ${String(e.detalle?.a ?? "—").replace(/_/g, " ")}`;
   if (HUMANOS.includes(e.tipo))
     return `${quien || "Alguien"} ${e.detalle?.mensaje || "editó la ficha"}`;
   return e.detalle?.mensaje || e.tipo;

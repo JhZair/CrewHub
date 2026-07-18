@@ -5,6 +5,7 @@ import TableroTimeline from "@/components/TableroTimeline";
 import Realtime from "@/components/Realtime";
 import FiltroPersona from "@/components/FiltroPersona";
 import { contarHijos } from "@/lib/familia";
+import { BOT } from "@/lib/personas";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
@@ -34,7 +35,7 @@ export default async function TableroPage({ searchParams }: {
 
   // El equipo, para poder mirar los asuntos de cada quien
   const { data: equipoPerf } = await supabase.from("perfiles")
-    .select("id,nombre").eq("activo", true).neq("nombre", "Bot Qhaway").order("nombre");
+    .select("id,nombre").eq("activo", true).neq("nombre", BOT).order("nombre");
 
   // Vínculos de persona del USUARIO logueado (para "Mis asuntos" y su contador)
   let misVinc: string[] = [];

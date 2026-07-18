@@ -10,6 +10,7 @@ import { ICO_ENT } from "@/lib/secciones";
 import { contarHijos } from "@/lib/familia";
 import { plazoDe } from "@/lib/plazo";
 import { rotuloTipo, colorTipo } from "@/lib/tipos";
+import { sinBot } from "@/lib/personas";
 import FiltroMas from "@/components/FiltroMas";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -452,7 +453,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
             pubId={p.id} userId={user.id} reacciones={reaccsDe.get(p.id) || []}
             imagenes={p.imagenes || []}
             creadoEn={p.creado_en}
-            equipoTotal={(perfs.data || []).filter((x: any) => x.nombre !== "Bot Qhaway").length}
+            equipoTotal={sinBot(perfs.data).length}
             padreId={p.padre_id || null}
             padreTitulo={p.padre_id ? (tituloPadre.get(p.padre_id) || null) : null}
             hijos={hijosDe.get(p.id) || null}

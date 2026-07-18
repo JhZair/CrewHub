@@ -23,6 +23,7 @@ import {
   reservaEmpresa, reservaMiembro, reservaCompleta,
 } from "@/lib/fondos";
 import HojaPostulacion from "@/components/HojaPostulacion";
+import { sinBot } from "@/lib/personas";
 import BotonFichaSunat from "@/components/BotonFichaSunat";
 import Copiar from "@/components/Copiar";
 import EventoHistorial from "@/components/EventoHistorial";
@@ -260,9 +261,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   /* El equipo es el denominador de "Enterados N/M". Solo se pide si hay algún
      aviso a la vista: en una ficha sin avisos sería una consulta de más. */
   const equipoAvisos = pubs.some((p: any) => p.tipo === "aviso")
-    ? ((await supabase.from("perfiles").select("id,nombre").eq("activo", true)).data || [])
-        // Qhaway no se entera de nada: reparte, no lee.
-        .filter((x: any) => x.nombre !== "Bot Qhaway")
+    // Qhaway no se entera de nada: reparte, no lee.
+    ? sinBot((await supabase.from("perfiles").select("id,nombre").eq("activo", true)).data)
     : [];
 
   // Relaciones societarias
@@ -472,7 +472,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       supabase.from("personas").select("usuario_id").not("usuario_id", "is", null),
     ]);
     const usadas = new Set((up.data || []).map((x: any) => x.usuario_id));
-    const perfilesAll = (pf.data || []).filter((p: any) => p.nombre !== "Bot Qhaway");
+    const perfilesAll = sinBot(pf.data);
     cuentaDe = ent.usuario_id ? perfilesAll.find((p: any) => p.id === ent.usuario_id) || null : null;
     cuentasLibres = perfilesAll.filter((p: any) => !usadas.has(p.id));
 

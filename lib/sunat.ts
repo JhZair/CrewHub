@@ -2,6 +2,8 @@
    (botón humano) y por el cron semanal. Recibe el cliente Supabase ya
    creado (de usuario o service-role) y quién firma los casos que genere. */
 
+import { BOT } from "@/lib/personas";
+
 type DB = any; // SupabaseClient (evitamos acoplar tipos entre clientes)
 
 type EmpSunat = {
@@ -100,7 +102,7 @@ async function abrirProblemaSunat(db: DB, emp: EmpSunat, r: { estado?: string; c
   }).select("id").single();
   if (!pub) return;
   await db.from("publicacion_vinculos").insert({ publicacion_id: pub.id, entidad_tipo: "empresa", entidad_id: emp.id });
-  const { data: activos } = await db.from("perfiles").select("id").eq("activo", true).neq("nombre", "Bot Qhaway");
+  const { data: activos } = await db.from("perfiles").select("id").eq("activo", true).neq("nombre", BOT);
   if (activos?.length) {
     await db.from("notificaciones").insert(activos.map((p: any) => ({
       usuario_id: p.id, publicacion_id: pub.id, tipo: "aviso",

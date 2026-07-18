@@ -227,7 +227,12 @@ export default function Composer({ userId, catalogos, perfiles, inicial, onListo
 
       <div className="meta-bar">
         <div className="meta-linea">
-          <span className="ent-lbl" title="Responsable" style={{ minWidth: "auto" }}>👤</span>
+          {/* 🙋, no 👤: el 👤 es la persona VINCULADA (ICO_ENT.persona, el
+              picker de la bandeja de abajo) y aquí se elige a quien LLEVA el
+              caso. Son dos cosas y tenían el mismo ícono, en la misma
+              pantalla, a veinte líneas de distancia. 🙋 es el glifo que el
+              sistema ya usaba para esto en el feed, el tablero y /pulso. */}
+          <span className="ent-lbl" title="Responsable" style={{ minWidth: "auto" }}>🙋</span>
           <MiniSelect
             value={resp}
             options={[["", "Sin asignar"], ...perfiles.map(p => [p.id, p.nombre])]}
@@ -245,7 +250,11 @@ export default function Composer({ userId, catalogos, perfiles, inicial, onListo
               onPick={id => agregar("etiqueta", id)} onCrear={crearYAgregarEtiqueta} />
           </span>
         </div>
-        <div className="meta-linea">
+        {/* La MISMA bandeja que la ficha del caso, y por tanto la misma que
+            el FAB «+» —que monta este Composer—. Vincular se ve igual en los
+            tres sitios donde se vincula: `.bandeja-vinc` en globals. */}
+        <div className="meta-linea bandeja-vinc">
+          <span className="vinc-add-lbl">+ vincular</span>
           {Object.keys(ENT_META).filter(t => t !== "etiqueta").map(t => (
             <EntPicker key={t} etiqueta={ENT_META[t]} items={itemsDe(t)}
               onPick={id => agregar(t, id)}
@@ -253,8 +262,11 @@ export default function Composer({ userId, catalogos, perfiles, inicial, onListo
           ))}
         </div>
       </div>
+      {/* `vinc-puestos`: los vínculos ya puestos pesan un punto más que la
+          bandeja de la que salieron. Misma clase que la ficha del caso — el
+          motivo es el mismo, así que la regla es la misma. */}
       {links.length > 0 && (
-        <div className="sel-chips">
+        <div className="sel-chips vinc-puestos">
           {links.map(l => (
             <span key={l.tipo + l.id} className="echip">
               {ENT_META[l.tipo].split(" ")[0]} {l.nombre}

@@ -67,7 +67,9 @@ export default function BotonNuevoCaso() {
       <button className="fab-nuevo" title="Nuevo caso · tecla C" onClick={abrir}>＋</button>
       {abierto && (
         <div className="modal-fondo" onClick={() => setAbierto(false)}>
-          <div className="modal-caja" onClick={e => e.stopPropagation()}>
+          {/* `modal-compositor`: tan ancho como el feed. Dentro va el mismo
+              Composer y su bandeja de vincular no entra en 720 px. */}
+          <div className="modal-caja modal-compositor" onClick={e => e.stopPropagation()}>
             <div className="modal-cab">
               <b>➕ Nuevo caso</b>
               <button className="modal-x" title="Cerrar (Esc)" onClick={() => setAbierto(false)}>✕</button>

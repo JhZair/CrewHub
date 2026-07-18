@@ -18,6 +18,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { claseEstado, rotuloEstado } from "@/lib/estados";
+import { BOT, sinBot } from "@/lib/personas";
 import { rotuloTipo, colorTipo, icoTipo } from "@/lib/tipos";
 
 /* EV_ICO es de aquí: son los eventos de la bitácora de un caso, no los tipos
@@ -85,7 +86,9 @@ export default async function Caso({ params }: { params: { id: string } }) {
     supabase.from("perfiles").select("es_admin").eq("id", user.id).single(),
     supabase.from("proyectos").select("id,nombre"),
     supabase.from("empresas").select("id,nombre"),
-    supabase.from("personas").select("id,nombre"),
+    /* `usuario_id,alias` además del catálogo: es el único cruce que da el
+       nombre corto de quien tiene cuenta. Ver `perfilesCortos` más abajo. */
+    supabase.from("personas").select("id,nombre,usuario_id,alias"),
     supabase.from("convocatorias").select("id,codigo,nombre,anio")
       .order("anio", { ascending: false }).order("codigo"),
     supabase.from("equipamiento").select("id,nombre,folio"),
@@ -104,7 +107,10 @@ export default async function Caso({ params }: { params: { id: string } }) {
          sub-aviso volvería a decir "Sin Resolver": el campo que no se pide
          llega undefined y se lee como "no es aviso". Mismo agujero que el
          `region` que faltaba en los miembros. */
-      .select("id,titulo,estado,tipo,resp:perfiles!publicaciones_responsable_fkey(nombre)")
+      /* `responsable` y `fecha_limite` en crudo: la fila ya no solo los
+         muestra, los EDITA. Sin el id del responsable el combo no sabe qué
+         tiene puesto, y `resp:perfiles(nombre)` solo trae el nombre. */
+      .select("id,titulo,estado,tipo,responsable,fecha_limite,resp:perfiles!publicaciones_responsable_fkey(nombre)")
       .eq("padre_id", p.id).order("creado_en"),
   ]);
 
@@ -134,6 +140,23 @@ export default async function Caso({ params }: { params: { id: string } }) {
   (postu.data || []).forEach((x: any) =>
     nombres.set(`postulacion:${x.id}`, `${x.codigo || x.conv?.codigo || "🎯"} · ${x.proy?.nombre || "postulación"}`));
   const perfilNombre = new Map((perfiles || []).map((x: any) => [x.id, x.nombre]));
+
+  /* EL NOMBRE CORTO DE UN COMPAÑERO — «MichelM», no «Michel Oros».
+     Vive en `personas.alias`, y `perfiles` (la cuenta) solo guarda el nombre
+     largo. Nadie había cruzado las dos tablas, así que cada pantalla se
+     inventó su abreviatura: el historial recorta a mano —«Wilfredo P.», y su
+     comentario dice «los perfiles no tienen alias» dando el alias por
+     inexistente— y el feed muestra el primer nombre. Tres formas de decir lo
+     mismo, y ninguna es la que el equipo usa de verdad.
+     Aquí se cruza. `usuario_id` es la única llave entre cuenta y persona. */
+  const aliasDe = new Map((pers.data || [])
+    .filter((x: any) => x.usuario_id && x.alias)
+    .map((x: any) => [x.usuario_id, x.alias]));
+  const perfilesCortos = (perfiles || []).map((x: any) => ({
+    ...x,
+    // Sin alias cargado, el primer nombre: mejor «Michel» que «Michel Oros»
+    corto: aliasDe.get(x.id) || String(x.nombre || "").split(" ")[0],
+  }));
 
   const chips = (p.vinculos || [])
     .filter((v: any) => v.entidad_tipo !== "etiqueta")
@@ -178,7 +201,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
   const tl = rotuloTipo(p.tipo), tc = colorTipo(p.tipo);
 
   const textoEvento = (e: any) => {
-    const quien = e.actor?.nombre || "Bot Qhaway";
+    const quien = e.actor?.nombre || BOT;
     if (e.tipo === "bot") return `Bot Qhaway: "${e.detalle?.mensaje || "evento automático"}"`;
     if (e.tipo === "creado") return `${quien} creó la publicación`;
     if (e.tipo === "estado") {
@@ -231,7 +254,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
           pubId={p.id}
           userId={user.id}
           enteradosIds={rxPub.filter((r: any) => r.emoji === "👀").map((r: any) => r.usuario_id)}
-          equipo={(perfiles || []).filter((x: any) => x.nombre !== "Bot Qhaway")}
+          equipo={sinBot(perfiles)}
           fechaLimite={p.fecha_limite}
         />
       )}
@@ -249,7 +272,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
       </div>
 
       {(!p.padre_id || (hijos || []).length > 0) && (
-        <SubCasos padreId={p.id} hijos={hijos || []} />
+        <SubCasos padreId={p.id} hijos={hijos || []} perfiles={perfilesCortos} />
       )}
 
       <div className="h4">🕐 Actividad · {linea.length} eventos</div>

@@ -6,6 +6,7 @@ import { nrmQ } from "@/lib/quechua";
 import { procesarSunatEmpresa, correrRondaSunat, consultarRucApi } from "@/lib/sunat";
 import { rucDePersona } from "@/lib/ruc";
 import { TOKEN } from "@/lib/puertas";
+import { BOT } from "@/lib/personas";
 
 /* Crear o actualizar una entidad núcleo (proyecto/empresa/persona).
    La config compartida actúa como whitelist de tabla y campos. */
@@ -2665,7 +2666,7 @@ export async function toggleEnterado(pubId: string) {
     && pub.fecha_limite >= new Date().toISOString().slice(0, 10);
   if (pub?.tipo === "aviso" && !conPlazoVivo && !["archivada", "resuelta"].includes(pub.estado)) {
     const [{ data: team }, { data: vistos }] = await Promise.all([
-      supabase.from("perfiles").select("id").eq("activo", true).neq("nombre", "Bot Qhaway"),
+      supabase.from("perfiles").select("id").eq("activo", true).neq("nombre", BOT),
       supabase.from("reacciones").select("usuario_id")
         .eq("publicacion_id", pubId).is("comentario_id", null).eq("emoji", "👀"),
     ]);

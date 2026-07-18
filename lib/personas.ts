@@ -17,3 +17,25 @@ export const esDelEquipo = (p: { estado?: string | null; tipo?: string | null })
 
 /* Para las consultas a PostgREST, que no pueden llamar a la función. */
 export const FILTRO_EQUIPO = `(${TIPOS_EQUIPO.join(",")})`;
+
+/* ── EL BOT NO ES GENTE ──
+   Bot Qhaway tiene una cuenta como cualquiera, así que hay que apartarlo a
+   mano de todo lo que signifique «el equipo»: no carga casos —«él reparte, no
+   carga casos», dice /pulso—, no se entera de avisos, no tiene carga de
+   trabajo, no se le asigna nada.
+
+   Eso estaba escrito con el nombre a pelo en DOCE sitios. Y uno se quedó con
+   el nombre VIEJO: /pantalla filtraba «Qhaway» y la cuenta se llama «Bot
+   Qhaway» desde que se corrió db/rename-bot-qhaway.sql. Ese filtro no
+   coincide con nada, así que el muro de la oficina lleva desde entonces
+   pintando al bot en el pulso del equipo —con su barra de carga— como si
+   fuera una persona. Nadie lo reportó: es una TV, se mira de lejos.
+
+   Renombrar una cuenta no debería obligar a acordarse de doce archivos. */
+export const BOT = "Bot Qhaway";
+
+export const esBot = (p?: { nombre?: string | null } | null) => p?.nombre === BOT;
+
+/** El equipo sin el bot. Lo que casi siempre se quiere. */
+export const sinBot = <T extends { nombre?: string | null }>(xs: T[] | null | undefined): T[] =>
+  (xs || []).filter(x => !esBot(x));
