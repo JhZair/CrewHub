@@ -1,5 +1,5 @@
 "use client";
-import { cambiarEstado } from "@/app/actions";
+import { cambiarEstado, archivar } from "@/app/actions";
 import { celebrarResuelto } from "@/lib/celebra";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -23,13 +23,35 @@ function corto(n?: string | null) {
   return p.length > 1 ? `${p[0]} ${p[1][0]}.` : (p[0] || "");
 }
 
-export default function Tablero({ columnas }: {
+export default function Tablero({ columnas, archivado = false }: {
   columnas: { estado: string; titulo: string; color: string; items: any[] }[];
+  /** ¿Estamos mirando el archivo? Cambia lo que hace la zona de arrastre:
+   *  en lo vivo archiva, en el archivo despierta. */
+  archivado?: boolean;
 }) {
   const [arrastrando, setArrastrando] = useState<string | null>(null);
   const [sobre, setSobre] = useState<string | null>(null);
   const [moviendo, setMoviendo] = useState(false);
+  const [sobreZona, setSobreZona] = useState(false);
   const router = useRouter();
+
+  /* LA ZONA DE ARRASTRE — el eje archivado, hecho físico.
+     Las columnas son el eje ESTADO (arrastras entre ellas para cambiar cómo
+     va); esta zona es el eje ARCHIVADO (arrastras a ella para guardar o
+     traer de vuelta). Los dos ejes que se partieron en la base, aquí se ven
+     como dos gestos distintos. `archivar(id, !archivado)`: en lo vivo
+     archiva, en el archivo despierta. Bulk = arrastrar varias, una tras otra. */
+  const alaZona = async () => {
+    setSobreZona(false);
+    if (!arrastrando || moviendo) return;
+    const id = arrastrando;
+    setArrastrando(null);
+    setMoviendo(true);
+    const res: any = await archivar(id, !archivado);
+    setMoviendo(false);
+    if (res?.error) alert(res.error);
+    else router.refresh();
+  };
 
   /* COLUMNAS COLAPSABLES — como Trello.
      Con seis columnas (entró «Descartadas»), en una pantalla normal la última
@@ -81,6 +103,13 @@ export default function Tablero({ columnas }: {
   };
 
   return (
+    <>
+    {/* Archivo filtrado a cero: en vez de un tablero en blanco, decirlo. */}
+    {!columnas.length && (
+      <div className="kb-vacia-todo">
+        {archivado ? "Nada archivado con estos filtros." : "Nada por aquí."}
+      </div>
+    )}
     <div className="kb">
       {columnas.map(col => {
         const plegada = colapsadas.has(col.estado);
@@ -191,5 +220,20 @@ export default function Tablero({ columnas }: {
         );
       })}
     </div>
+
+    {/* La zona del eje archivado. Aparece solo al arrastrar y el COLOR dice el
+        sentido desde ya, no solo el texto: violeta = archivar, verde =
+        despertar. Aprendido a la mala —alguien (John, 18/07) arrastró aquí
+        creyendo que archivaba y estaba despertando; el texto lo decía pero en
+        caliente no se lee—. El color se ve sin leer. */}
+    <div className={`kb-zona ${archivado ? "despertar" : "archivar"} ${sobreZona ? "kb-sobre" : ""} ${arrastrando ? "activa" : ""}`}
+      onDragOver={e => { e.preventDefault(); setSobreZona(true); }}
+      onDragLeave={() => setSobreZona(false)}
+      onDrop={alaZona}>
+      {archivado
+        ? "↩ DESPERTAR — vuelve al tablero vivo"
+        : "🗄 ARCHIVAR — sale de la vista, queda en la memoria"}
+    </div>
+    </>
   );
 }

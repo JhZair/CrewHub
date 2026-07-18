@@ -1001,9 +1001,30 @@ img.av{border:1px solid var(--border2)}
 .kb-ajena:hover{opacity:1}
 .kb-card:active{cursor:grabbing;opacity:.7}
 .kb-vacia{color:var(--dim);font-size:10.5px;text-align:center;padding:12px 0}
+.kb-vacia-todo{color:var(--dim);font-size:13px;text-align:center;padding:48px 0}
 .kb-chips{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
 .kb-chip{font-size:9.5px;color:var(--muted);background:#1c1c2c;border:1px solid var(--border);border-radius:6px;padding:1px 6px;max-width:118px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:none}
 .kb-chip:hover{border-color:var(--accent);color:var(--text)}
+
+/* La zona de arrastre (archivar/despertar). Invisible hasta que arrastras
+   —`.activa`—; entonces se fija abajo para llegar sin scroll, aunque el
+   tablero sea largo. `pointer-events:none` cuando no arrastras: no estorba
+   los clics de las tarjetas de la fila inferior. */
+.kb-zona{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);
+  z-index:60;opacity:0;pointer-events:none;transition:opacity .15s;
+  font-size:15px;font-weight:800;letter-spacing:.3px;color:var(--dim);
+  text-align:center;min-width:min(520px,80vw);
+  border:2px dashed var(--border2);border-radius:16px;
+  padding:26px 44px;background:rgba(20,20,31,.96);backdrop-filter:blur(5px);
+  box-shadow:0 14px 50px rgba(0,0,0,.55)}
+.kb-zona.activa{opacity:1;pointer-events:auto}
+/* El color dice el sentido DESDE que aparece, no solo al pasar por encima:
+   violeta = archivar, verde = despertar. Que no haga falta leer para saber
+   qué va a pasar. */
+.kb-zona.archivar{border-color:rgba(124,92,255,.6);color:var(--violet)}
+.kb-zona.archivar.kb-sobre{border-style:solid;color:var(--text);background:rgba(124,92,255,.18)}
+.kb-zona.despertar{border-color:rgba(46,204,113,.6);color:var(--green)}
+.kb-zona.despertar.kb-sobre{border-style:solid;color:var(--text);background:rgba(46,204,113,.18)}
 /* Antes `.kb` era grid y estas queries reducían columnas por fila. Ahora es
    flex: sin envolver, seis columnas en 600px quedan ilegibles. `flex-wrap` +
    una base mínima las apila cuando ya no caben —el apilado que hacía el grid,

@@ -2762,16 +2762,22 @@ export async function archivar(pubId: string, archivar = true) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
-  const { error } = await supabase.from("publicaciones")
+  /* `.select("id")` para VER lo que pasó: un UPDATE bloqueado por RLS no da
+     error, devuelve 0 filas. Sin mirar `data.length`, la función diría «ok»
+     sin haber archivado nada —el fallo silencioso que el .select decía evitar
+     y no evitaba, porque nadie leía el data—. */
+  const { data, error } = await supabase.from("publicaciones")
     .update({ archivado_en: archivar ? new Date().toISOString() : null })
-    .eq("id", pubId).select("id");   // .select para no fallar en silencio si RLS bloquea
+    .eq("id", pubId).select("id");
   if (error) return { error: error.message };
+  if (!data?.length) return { error: "No se pudo archivar (sin permiso o el caso ya no existe)." };
   await supabase.from("actividad").insert({
     entidad_tipo: "publicacion", entidad_id: pubId, actor_id: user.id, tipo: "archivo",
     detalle: { a: archivar ? "archivado" : "despertado" },
   });
   revalidatePath(`/caso/${pubId}`);
   revalidatePath("/");
+  revalidatePath("/tablero");
   return {};
 }
 

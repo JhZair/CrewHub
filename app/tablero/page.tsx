@@ -52,10 +52,15 @@ const EJES_VINC: { param: string; tipo: string; ico: string; titulo: string }[] 
 ];
 
 export default async function TableroPage({ searchParams }: {
-  searchParams: { v?: string; p?: string; modo?: string;
+  searchParams: { v?: string; p?: string; modo?: string; arch?: string;
     etq?: string; proy?: string; emp?: string; conv?: string; post?: string };
 }) {
   const modo = searchParams?.modo === "timeline" ? "timeline" : "columnas";
+  /* Modo ARCHIVADAS: el mismo tablero, mirando lo guardado en vez de lo vivo.
+     Las columnas siguen siendo el eje ESTADO —una archivada resuelta cae en
+     Resueltas—; lo único que cambia es qué dataset se trae. `archivado_en is
+     not null` en vez de `is null`. */
+  const arch = searchParams?.arch === "1";
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
@@ -80,6 +85,7 @@ export default async function TableroPage({ searchParams }: {
     conv: searchParams?.conv || "",
     post: searchParams?.post || "",
     modo: modo === "timeline" ? "timeline" : "",
+    arch: arch ? "1" : "",   // viaja en la URL como los demás, para preservarse
   };
   /* «Nunca lo toqué» y «quiero verlo TODO» son dos cosas, y una URL vacía
      solo sabe decir una. Sin un valor explícito para la segunda, el chip
@@ -87,9 +93,13 @@ export default async function TableroPage({ searchParams }: {
      le devolvía «Mis asuntos»: era IMPOSIBLE ver el tablero entero: el botón
      que existe justo para eso te regresaba a lo tuyo, sin decir nada. */
   const P_TODOS = "todos";
-  // ¿Se entró en limpio? Entonces «Mis asuntos», como siempre. `modo` no cuenta.
-  const enLimpio = !Object.entries(F).some(([k, x]) => k !== "modo" && x);
-  if (enLimpio) F.p = user.id;   // el default, y `vivos` lo tiene que llevar
+  const enLimpio = !Object.entries(F).some(([k, x]) => k !== "modo" && k !== "arch" && x);
+  /* El default depende de la VISTA:
+     · vivo    → «Mis asuntos» (tu trabajo de hoy)
+     · archivo → «Todo el equipo». El archivo es memoria compartida —«no soy
+       el único que archiva», dijo John—, así que abrirlo mostrando solo lo
+       tuyo esconde lo de los demás. */
+  if (enLimpio) F.p = arch ? P_TODOS : user.id;
   const pFiltro = F.p;
   const v = F.v;
 
@@ -158,9 +168,10 @@ export default async function TableroPage({ searchParams }: {
   let q = supabase.from("publicaciones")
     .select("id,titulo,tipo,estado,fecha_limite,creado_en,autor_id,responsable,comentarios(count),resp:perfiles!publicaciones_responsable_fkey(nombre)")
     .in("estado", ESTADOS)
-    .is("archivado_en", null)   // lo archivado es memoria, no vive en el tablero
     .order("creado_en", { ascending: false })
     .limit(TOPE);
+  // El eje archivado: vivo (`is null`) o guardado (`not null`), según el modo.
+  q = arch ? q.not("archivado_en", "is", null) : q.is("archivado_en", null);
   /* Los tres ejes se APILAN. Antes era `if (uidFoco) ... else if (v)`: el
      `else` es literalmente el motivo de que «mis tareas» no existiera. */
   if (uidFoco) {
@@ -254,11 +265,14 @@ export default async function TableroPage({ searchParams }: {
     marca: marcaFoco(p),
   }));
 
-  // Universo para los contadores de cada pestaña (independiente del filtro activo).
-  // Mismo filtro que las tarjetas: sin lo archivado, o «Todo 170» mentiría.
-  const { data: universo } = await supabase.from("publicaciones")
+  /* Universo para los contadores y los catálogos de filtros. Sigue al MODO:
+     en archivadas cuenta lo archivado, o «Todo» y los desplegables de etiqueta
+     mostrarían lo vivo mientras las columnas muestran lo guardado. */
+  let qUniv = supabase.from("publicaciones")
     .select("id,tipo,autor_id,responsable")
-    .in("estado", ESTADOS).is("archivado_en", null).limit(TOPE);
+    .in("estado", ESTADOS).limit(TOPE);
+  qUniv = arch ? qUniv.not("archivado_en", "is", null) : qUniv.is("archivado_en", null);
+  const { data: universo } = await qUniv;
   const U = universo || [];
   const misSet = new Set(misVinc);
   /* Los contadores son del UNIVERSO, no del filtro: dicen cuánto hay de cada
@@ -300,10 +314,12 @@ export default async function TableroPage({ searchParams }: {
   /* Hay filtro si algo recorta el tablero. `p=todos` NO recorta: es la
      ausencia de filtro dicha en voz alta. */
   const hayFiltro = !!(v || ejesPuestos.length || uidFoco);
-  // La URL de «sin nada»: los siete ejes fuera y el «todo el equipo» explícito
+  // La URL de «sin nada»: los siete ejes fuera y el «todo el equipo» explícito.
+  // `modo` y `arch` se preservan: limpiar filtros no debe sacarte de la vista.
   const urlLimpia = (() => {
     const u = new URLSearchParams({ p: P_TODOS });
     if (modo === "timeline") u.set("modo", "timeline");
+    if (arch) u.set("arch", "1");
     return `/tablero?${u.toString()}`;
   })();
 
@@ -319,11 +335,17 @@ export default async function TableroPage({ searchParams }: {
     { estado: "en_progreso", titulo: "🛠 En Progreso", color: "var(--yellow)", items: de("en_progreso") },
     { estado: "seguimiento", titulo: "🔭 Seguimiento", color: "var(--teal)", items: de("seguimiento") },
     { estado: "en_pausa", titulo: "⏸ En Pausa", color: "var(--blue)", items: de("en_pausa") },
-    { estado: "resuelta", titulo: "✅ Resueltas", color: "var(--green)", items: de("resuelta", 12) },
-    // Descartadas: se hicieron humo, no se hicieron. Última columna, gris y
-    // corta —12— porque lo normal es archivarlas; ésta es la sala de espera.
-    { estado: "descartada", titulo: "🚫 Descartadas", color: "var(--dim)", items: de("descartada", 12) },
+    // Resueltas SIN tope: para archivar en lote hay que verlas todas. El cap
+    // de 12 escondía justo las que ibas a arrastrar a la zona. (Acotado por
+    // TOPE=500 de la consulta, como todo el tablero.)
+    { estado: "resuelta", titulo: "✅ Resueltas", color: "var(--green)", items: de("resuelta") },
+    { estado: "descartada", titulo: "🚫 Descartadas", color: "var(--dim)", items: de("descartada") },
   ];
+  /* En el archivo, ocultar las columnas vacías. Casi todo lo archivado es
+     Resueltas/Descartadas/avisos Vigentes —«En Progreso» archivado no existe—,
+     así que cinco columnas vacías hacían parecer roto el tablero. En la vista
+     VIVA se quedan todas: ahí «En Progreso · 0» sí informa. */
+  const columnasVista = arch ? columnas.filter(c => c.items.length > 0) : columnas;
 
   // Casos para la vista de línea de tiempo
   const casosTL = pubsE.map((p: any) => ({
@@ -343,10 +365,26 @@ export default async function TableroPage({ searchParams }: {
       <div className="topbar" style={{ gap: 10, flexWrap: "wrap" }}>
         <Volver />
         <h1 className="title-lg" style={{ margin: 0, fontSize: 20 }}>🗂 Tablero</h1>
-        <div className="tl-toggle">
-          <Link href={urlCols} className={modo === "columnas" ? "on" : ""}>🗂 Columnas</Link>
-          <Link href={urlTime} className={modo === "timeline" ? "on" : ""}>🗓 Línea de tiempo</Link>
-        </div>
+        {/* El toggle de vista no aparece en el archivo: la línea de tiempo no
+            tiene fila para Descartadas —las escondería— y el archivo se
+            gestiona por columnas y la zona de arrastre. Sin esto, «Línea de
+            tiempo» preservaba `arch` y te metía en la combinación prohibida. */}
+        {!arch && (
+          <div className="tl-toggle">
+            <Link href={urlCols} className={modo === "columnas" ? "on" : ""}>🗂 Columnas</Link>
+            <Link href={urlTime} className={modo === "timeline" ? "on" : ""}>🗓 Línea de tiempo</Link>
+          </div>
+        )}
+        {/* Vivo ↔ archivado. A PIZARRA LIMPIA en ambos sentidos, sin arrastrar
+            los filtros de la otra vista: entrar al archivo con la etiqueta que
+            usabas en el tablero vivo mostraba «1 de 16» y parecía roto. Entrar
+            limpio + el default por vista (arriba) = el archivo entero del
+            equipo de un vistazo. La línea de tiempo no aplica al archivo. */}
+        <Link href={arch ? "/tablero" : "/tablero?arch=1"}
+          className={`vtab ${arch ? "on" : ""}`}
+          title={arch ? "Volver a lo vivo" : "Ver lo archivado: la memoria del equipo"}>
+          🗄 Archivadas
+        </Link>
         <span className="spacer" />
         {/* Persona, Pulso y TV suben aquí: en el topbar sobraba hueco y abajo
             costaban una fila entera. Y de paso el menú queda agrupado por
@@ -406,8 +444,11 @@ export default async function TableroPage({ searchParams }: {
             actual={F[e.param]} items={catalogos[e.param] || []} vivos={vivos} ancho={168} />
         ))}
         {hayFiltro && (
-          <Link href={`/tablero${modo === "timeline" ? "?modo=timeline" : ""}`}
-            className="barra-limpiar" title="Quitar todos los filtros">✕ limpiar</Link>
+          // `urlLimpia`, no una URL a mano: preserva `modo` y `arch`. Escrito
+          // a pelo, «limpiar» te sacaba del archivo —el mismo bicho de «cada
+          // control se inventa su URL» que urlCon vino a matar—.
+          <Link href={urlLimpia} className="barra-limpiar"
+            title="Quitar todos los filtros">✕ limpiar</Link>
         )}
         <span className="spacer" />
         <span className="barra-cuenta">
@@ -417,7 +458,7 @@ export default async function TableroPage({ searchParams }: {
 
       {modo === "timeline"
         ? <TableroTimeline casos={casosTL} />
-        : <Tablero columnas={columnas} />}
+        : <Tablero columnas={columnasVista} archivado={arch} />}
     </div>
   );
 }
