@@ -16,24 +16,39 @@ import RespuestaBox from "@/components/RespuestaBox";
 import Realtime from "@/components/Realtime";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import type { Metadata } from "next";
 import { claseEstado, rotuloEstado } from "@/lib/estados";
+import { rotuloTipo, colorTipo, icoTipo } from "@/lib/tipos";
 
-const TIPO_META: Record<string, [string, string]> = {
-  aviso: ["📢 Aviso", "#a78bfa"], tarea: ["✅ Tarea", "#22c55e"],
-  problema: ["❗ Problema", "#ff4d5e"], consulta: ["❓ Consulta", "#60a5fa"],
-  pago: ["💰 Pago", "#2dd4bf"], idea: ["💡 Idea", "#f4b400"],
-  archivo: ["📎 Archivo", "#3b82f6"], conversacion: ["💬 Conversación", "#8b8ba3"],
-};
+/* EV_ICO es de aquí: son los eventos de la bitácora de un caso, no los tipos
+   de publicación. Los que SÍ eran copias —el mapa de tipos y el de entidades—
+   salieron a lib/tipos y lib/secciones. */
 const EV_ICO: Record<string, string> = {
   creado: "📝", estado: "🔄", asignacion: "👤", archivo: "📎",
   prioridad: "⚡", tarea: "✅", bot: "🤖", cierre: "✔️", vinculo: "🔗", edicion: "✏️",
 };
-const ENT_ICO: Record<string, string> = {
-  proyecto: "📁", empresa: "🏢", persona: "👤", convocatoria: "📜",
-  postulacion: "🎯", equipamiento: "🎥", lugar: "📍", etiqueta: "🏷️",
-};
+/* (Aquí había un ENT_ICO copiado. Lo apunté a ICO_ENT y resultó que no lo
+   usaba nadie: los chips de esta página los pinta VinculosEditor. Fuera.) */
 /* El mapa de estados salió de aquí: era otra copia divergente de lib/estados
    (le faltaban íconos) y encima no sabía que un aviso no se resuelve. */
+
+/* EL NOMBRE DE LA PESTAÑA
+   John trabaja con tres ventanas y ~10 pestañas: mientras está en un caso
+   tiene que mirar la ficha de su empresa, el buscador y otro caso a la vez.
+   Todas se llamaban «CrewHub+ by KAWSAY», así que había que hacer clic para
+   acordarse de cuál era cuál. El ícono va PRIMERO porque Chrome recorta por
+   el final: en una pestaña estrecha lo único que sobrevive es «📢 Llegó…»,
+   y con eso ya sabes que ésa es la del aviso.
+
+   Cuesta una consulta de dos campos. Vale la pena: es el único sitio del
+   sistema que se lee sin abrirlo. */
+export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
+  const supabase = createClient();
+  const { data } = await supabase.from("publicaciones")
+    .select("titulo,tipo").eq("id", params.id).single();
+  // Sin sesión o con un id inventado, `data` es null: no reventar por un título
+  return { title: data ? `${icoTipo(data.tipo)} ${data.titulo}` : "Caso" };
+}
 
 const fecha = (d: string) =>
   new Date(d).toLocaleString("es-PE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "America/Lima" });
@@ -160,7 +175,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
     (a: any, b: any) => new Date(a.creado_en).getTime() - new Date(b.creado_en).getTime()
   );
 
-  const [tl, tc] = TIPO_META[p.tipo] || TIPO_META.conversacion;
+  const tl = rotuloTipo(p.tipo), tc = colorTipo(p.tipo);
 
   const textoEvento = (e: any) => {
     const quien = e.actor?.nombre || "Bot Qhaway";

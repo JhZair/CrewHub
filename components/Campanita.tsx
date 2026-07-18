@@ -4,10 +4,10 @@ import Link from "next/link";
 import { useState, useEffect } from "react";
 
 import { ICONO, ETIQ, anclaDe } from "@/lib/notificaciones";
-const ENT_ICO: Record<string, string> = {
-  proyecto: "📁", empresa: "🏢", persona: "👤", convocatoria: "📜",
-  postulacion: "🎯", equipamiento: "🎥", lugar: "📍", etiqueta: "🏷️",
-};
+import { ICO_ENT } from "@/lib/secciones";
+/* (El mapa vivía aquí con el nombre invertido —ENT_ICO vs el ICO_ENT de
+   lib/secciones— y sin saber que una publicación es 📌.) */
+const ENT_ICO = ICO_ENT;
 
 // Título del caso: el texto entre « » (o el mensaje completo si no hay)
 const tituloDe = (mensaje: string) => {

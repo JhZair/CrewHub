@@ -4,21 +4,26 @@ import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import { ESTADO_ICO, ESTADO_TXT, ESTADO_COL, claseEstado, rotuloEstado } from "@/lib/estados";
 import { contarHijos, colorFamilia } from "@/lib/familia";
 import { plazoDe } from "@/lib/plazo";
+import { icoTipo } from "@/lib/tipos";
 import { PERIODOS, desdeDe, type Periodo } from "@/lib/periodo";
 import { seccionDe } from "@/lib/secciones";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import type { Metadata } from "next";
 
 /* CASOS POR ENTIDAD — el flujo de trabajo completo de cada ficha, junto.
    La ficha responde "qué pasa con ESTA empresa" y hay que entrar una por
    una; el tablero ordena por estado y mezcla a todo el mundo. Esto ordena
    por entidad: de un vistazo se ve quién acumula trabajo sin resolver. */
 
-const TIPO_ICO: Record<string, string> = {
-  aviso: "📢", tarea: "✅", problema: "❗", consulta: "❓",
-  pago: "💰", idea: "💡", archivo: "📎", conversacion: "💬",
-};
+/* (El mapa de tipos salió a lib/tipos.) */
 const ABIERTOS = ["abierta", "en_progreso", "seguimiento"];
+
+export function generateMetadata({ params }: { params: { tipo: string } }): Metadata {
+  const s = seccionDe(params.tipo);
+  // Mismo texto que el h1 de la página: la pestaña dice lo que vas a leer
+  return { title: `🗂 Casos por ${s ? s.singular : params.tipo}` };
+}
 
 export default async function CasosPorEntidad({ params, searchParams }: {
   params: { tipo: string };
@@ -119,7 +124,8 @@ export default async function CasosPorEntidad({ params, searchParams }: {
         <Link href={`/historial/${params.tipo}`} className="btn btn-ghost">🕐 Historial</Link>
         <Link href={conf.ruta} className="btn btn-ghost">{conf.ico} Ver {conf.plural}</Link>
       </div>
-      <h1 className="title-lg">🗂 Casos por {conf.plural.replace(/s$/, "")}</h1>
+      {/* `plural.replace(/s$/,"")` decía «Casos por postulacione» */}
+      <h1 className="title-lg">🗂 Casos por {conf.singular}</h1>
 
       <PanelFiltros limpiar={`/casos/${params.tipo}`}
         mostrarLimpiar={!!filtroEst || p !== "todo"}>
@@ -177,7 +183,7 @@ export default async function CasosPorEntidad({ params, searchParams }: {
               return (
                 <Link key={c.id} href={`/caso/${c.id}`}>
                   <div className="info-row" style={{ cursor: "pointer", padding: "7px 14px" }}>
-                    <span style={{ fontSize: 12 }}>{TIPO_ICO[c.tipo] || "💬"}</span>
+                    <span style={{ fontSize: 12 }}>{icoTipo(c.tipo)}</span>
                     <span style={{ flex: 1, fontSize: 12.5,
                       // Lo cerrado se apaga: el ojo va a lo que sigue vivo
                       color: ABIERTOS.includes(c.estado) ? "var(--text)" : "var(--dim)" }}>

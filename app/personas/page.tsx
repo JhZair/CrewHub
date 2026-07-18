@@ -9,6 +9,9 @@ import { urlPlataforma, PLAT } from "@/lib/plataformas";
 import BotonFichaSunat from "@/components/BotonFichaSunat";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "👤 Personas" };
 
 const EST_META: Record<string, [string, string]> = {
   activo: ["Activos", "var(--green)"],

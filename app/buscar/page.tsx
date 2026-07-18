@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
+import type { Metadata } from "next";
 import { buscadorDe, nrmB, pal, partir } from "@/lib/buscar";
 import { contarHijos, colorFamilia, type Familia } from "@/lib/familia";
+import { icoTipo } from "@/lib/tipos";
 import { claseEstado, rotuloEstado } from "@/lib/estados";
 import { REL_EMPRESA, EST_EMPRESA, TIPO_COLOR } from "@/lib/entidades";
 import { alertaSunat, empresaDeCasa, empresaViva, textoSunat } from "@/lib/sunat";
@@ -21,9 +23,7 @@ import { redirect } from "next/navigation";
    casos, comentarios, personas, proyectos, empresas, equipos,
    lugares y convocatorias. Una caja, todo el sistema. */
 
-const TIPO_ICO: Record<string, string> = {
-  aviso: "📢", tarea: "✅", problema: "❗", consulta: "❓", pago: "💰", idea: "💡", archivo: "📎",
-};
+/* (El mapa de tipos salió a lib/tipos.) */
 
 /* ===== búsqueda por palabras =====
    La frase se parte en palabras (sin conectores) y un registro
@@ -80,6 +80,13 @@ function snippet(texto: string | null, palabras: string[]): string {
   const ini = Math.max(0, i - 50);
   const fin = Math.min(texto.length, i + 80);
   return (ini > 0 ? "…" : "") + texto.slice(ini, fin) + (fin < texto.length ? "…" : "");
+}
+
+/* La pestaña dice QUÉ buscaste: «🔍 pampacucho». Sin esto, tres buscadores
+   abiertos a la vez son tres pestañas idénticas. No cuesta consulta. */
+export function generateMetadata({ searchParams }: { searchParams: { q?: string } }): Metadata {
+  const q = (searchParams?.q || "").trim();
+  return { title: q ? `🔍 ${q}` : "🔍 Buscar" };
 }
 
 export default async function Buscar({ searchParams }: { searchParams: { q?: string } }) {
@@ -846,7 +853,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
       <Seccion titulo="📌 Casos" n={casos.length}>
         {casos.map((p: any) => (
           <Fila key={p.id} href={`/caso/${p.id}`}>
-            <span>{p.padre_id ? "🧩" : (TIPO_ICO[p.tipo] || "💬")}</span>
+            <span>{p.padre_id ? "🧩" : icoTipo(p.tipo)}</span>
             <b>{p.titulo}</b>
             {/* Que tiene hijos cambia lo que es: no es un caso suelto, es uno
                 largo con trabajo dentro. Verde solo cuando están todos. */}

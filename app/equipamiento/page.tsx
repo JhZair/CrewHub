@@ -6,6 +6,9 @@ import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import { buscadorDe, pal } from "@/lib/buscar";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "🎥 Equipos" };
 
 const diasDesde = (f: string) => Math.floor((Date.now() - new Date(f + "T12:00:00").getTime()) / 86400000);
 

@@ -9,17 +9,22 @@ import MenuUsuario from "@/components/MenuUsuario";
 import { ICO_ENT } from "@/lib/secciones";
 import { contarHijos } from "@/lib/familia";
 import { plazoDe } from "@/lib/plazo";
+import { rotuloTipo, colorTipo } from "@/lib/tipos";
 import FiltroMas from "@/components/FiltroMas";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import type { Metadata } from "next";
 
-const TIPO_META: Record<string, [string, string]> = {
-  aviso: ["📢 Aviso", "#a78bfa"], tarea: ["✅ Tarea", "#22c55e"],
-  problema: ["❗ Problema", "#ff4d5e"], consulta: ["❓ Consulta", "#60a5fa"],
-  pago: ["💰 Pago", "#2dd4bf"], idea: ["💡 Idea", "#f4b400"],
-  archivo: ["📎 Archivo", "#3b82f6"], conversacion: ["💬 Conversación", "#8b8ba3"],
-};
-/* El mismo mapa vivía dos veces con el nombre al revés: `ENT_ICO` aquí e
+/* El feed también se nombra, y no por simetría: es la pestaña que John tiene
+   abierta SIEMPRE, así que es la que más se confunde con las otras nueve. Se
+   quedó sin título en la primera pasada —hice 24 rutas y me salté la que
+   originó el encargo—. El ⬡ es el logo: en una pestaña recortada al mínimo,
+   ése es «la casa». */
+export const metadata: Metadata = { title: "⬡ Feed" };
+
+/* (TIPO_META salió a lib/tipos: era una de diez copias del mismo mapa.)
+
+   El mismo mapa vivía dos veces con el nombre al revés: `ENT_ICO` aquí e
    `ICO_ENT` en lib/secciones.ts. Y no eran iguales — el de allá sabe que una
    publicación es 📌 y éste no, así que un caso vinculado a otro caso salía con
    el 🔗 de «no sé qué es esto». Se queda el de lib, que además se arma solo
@@ -373,9 +378,9 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
                 <Link href={`/caso/${p.id}`} className="fila-cubre" aria-label={p.titulo} />
                 <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                   <span className="badge" style={{
-                    color: (TIPO_META[p.tipo] || TIPO_META.conversacion)[1],
-                    background: `${(TIPO_META[p.tipo] || TIPO_META.conversacion)[1]}22`,
-                  }}>{(TIPO_META[p.tipo] || TIPO_META.conversacion)[0]}</span>
+                    color: colorTipo(p.tipo),
+                    background: `${colorTipo(p.tipo)}22`,
+                  }}>{rotuloTipo(p.tipo)}</span>
                   {/* El 📌 servía para separar lo clavado a mano de lo que
                       subía solo por fecha. Ya no sube nada solo: todo lo de
                       aquí lo puso administración, y marcarlo todo no marca. */}
@@ -421,7 +426,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
       </div>
 
       {posts.map((p: any) => {
-        const [tl, tc] = TIPO_META[p.tipo] || TIPO_META.conversacion;
+        const tl = rotuloTipo(p.tipo), tc = colorTipo(p.tipo);
         const nc = p.comentarios?.[0]?.count ?? 0;
         const chips = (p.vinculos || [])
           .map((v: any) => ({

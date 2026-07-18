@@ -10,15 +10,13 @@ import { celebrarResuelto } from "@/lib/celebra";
 import Foto from "@/components/Foto";
 import { opcionesEstado, claseEstado, rotuloEstado, esAviso } from "@/lib/estados";
 import { type Plazo } from "@/lib/plazo";
+import { TIPOS_SEL } from "@/lib/tipos";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-const TIPOS_SEL = [
-  ["tarea", "✅ Tarea"], ["problema", "❗ Problema"], ["consulta", "❓ Consulta"],
-  ["pago", "💰 Pago"], ["idea", "💡 Idea"], ["archivo", "📎 Archivo"],
-  ["aviso", "📢 Aviso"],
-];
-
+/* (TIPOS_SEL salió a lib/tipos, con el mismo orden y la misma decisión: no
+   se ofrece «conversación» — es el cajón donde cae lo que nadie clasificó,
+   no algo que uno elija.) */
 
 /* Tarjeta del feed: la tarjeta navega al caso; los chips, a su entidad. */
 export default function PostCard({

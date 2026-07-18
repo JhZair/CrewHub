@@ -4,6 +4,12 @@ import { EntidadForm } from "@/components/EntidadForm";
 import { FORM_CONF } from "@/lib/entidades";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import type { Metadata } from "next";
+import { ICO_ENT } from "@/lib/secciones";
+
+export function generateMetadata({ params }: { params: { tipo: string } }): Metadata {
+  return { title: `${ICO_ENT[params.tipo] || "📄"} Nuevo ${params.tipo}` };
+}
 
 export default async function Nueva({ params }: { params: { tipo: string } }) {
   if (!FORM_CONF[params.tipo]) notFound();

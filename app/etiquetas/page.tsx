@@ -3,6 +3,9 @@ import Volver from "@/components/Volver";
 import EtiquetaBorrable from "@/components/EtiquetaBorrable";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "🏷 Etiquetas" };
 
 /* Índice de etiquetas: todas las etiquetas con su conteo de casos.
    Cada chip lleva a /entidad/etiqueta/{id}, donde viven sus casos. */

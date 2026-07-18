@@ -14,6 +14,9 @@ import BotonFichaSunat from "@/components/BotonFichaSunat";
 import { buscadorDe, pal } from "@/lib/buscar";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "🏢 Empresas" };
 
 const diasDesde = (f: string) => Math.floor((Date.now() - new Date(f + "T12:00:00").getTime()) / 86400000);
 

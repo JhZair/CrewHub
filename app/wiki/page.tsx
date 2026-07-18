@@ -1,6 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "📖 Wiki" };
 
 /* 📖 LA WIKI DE CREWHUB+ — el manual vive junto a la herramienta.
    Si un flujo cambia, esta página cambia en el mismo commit. */

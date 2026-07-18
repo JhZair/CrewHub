@@ -4,6 +4,9 @@ import Reloj from "@/components/Reloj";
 import { redirect } from "next/navigation";
 import { textoEstado } from "@/lib/estados";
 import { plazoDe, diasHasta } from "@/lib/plazo";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "📺 Pantalla" };
 
 /* MODO PANTALLA — information radiator para la TV de la oficina.
    Solo lectura, tipografía grande, se actualiza sola (Realtime).

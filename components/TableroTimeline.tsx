@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { cambiarEstado } from "@/app/actions";
 import { celebrarResuelto } from "@/lib/celebra";
 import { plazoDe } from "@/lib/plazo";
+import { icoTipo } from "@/lib/tipos";
 
 // Nombre corto que distingue homónimos: "John Oros" → "John O."
 function corto(n?: string | null) {
@@ -28,9 +29,7 @@ function reacStr(reac?: Record<string, number>) {
   return Object.entries(reac).slice(0, 3).map(([em, n]) => `${em}${n}`).join(" ");
 }
 
-const TIPO_ICO: Record<string, string> = {
-  aviso: "📢", tarea: "✅", problema: "❗", consulta: "❓", pago: "💰", idea: "💡", archivo: "📎",
-};
+/* (El mapa de tipos salió a lib/tipos: eran diez copias.) */
 const FILAS: { estado: string; label: string; color: string; icon: string }[] = [
   { estado: "abierta", label: "SIN RESOLVER", color: "var(--red)", icon: "🔴" },
   { estado: "en_progreso", label: "EN PROGRESO", color: "var(--yellow)", icon: "🟡" },
@@ -131,7 +130,7 @@ export default function TableroTimeline({ casos }: { casos: Caso[] }) {
                           style={{ ["--st" as any]: f.color }}
                           onDragStart={e => e.dataTransfer.setData("text/plain", c.id)}
                           onClick={() => router.push(`/caso/${c.id}`)}>
-                          <div className="tt">{TIPO_ICO[c.tipo] || "💬"} {c.titulo}</div>
+                          <div className="tt">{icoTipo(c.tipo)} {c.titulo}</div>
                           <div className="mt">
                             {c.resp && <span className="tl-resp">{corto(c.resp)}</span>}
                             {pl && (

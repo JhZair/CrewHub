@@ -6,6 +6,9 @@ import { PERIODOS, desdeDe, diaLima, horaLima, rotuloDia, type Periodo } from "@
 import { ICO_ENT, TABLA_DE } from "@/lib/secciones";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "🕐 Historial" };
 
 /* EL DIARIO — todo lo que pasó en el sistema, de todo, junto.
    El historial por tipo responde "qué se movió en las empresas"; la ficha,

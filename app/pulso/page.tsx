@@ -3,6 +3,10 @@ import Volver from "@/components/Volver";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { claseEstado, textoEstado } from "@/lib/estados";
+import { icoTipo, rotuloMonton } from "@/lib/tipos";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "📊 Pulso del equipo" };
 
 /* ── PULSO ──────────────────────────────────────────────────────────
    El ritmo del equipo mes a mes, semana por semana. Detrás está
@@ -15,14 +19,9 @@ import { claseEstado, textoEstado } from "@/lib/estados";
 const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio",
   "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 
-const TIPO_ICO: Record<string, string> = {
-  aviso: "📢", tarea: "✅", problema: "❗", consulta: "❓",
-  pago: "💰", idea: "💡", archivo: "📎", conversacion: "🗂", otro: "🗂",
-};
-const TIPO_LBL: Record<string, string> = {
-  aviso: "Avisos", tarea: "Tareas", problema: "Problemas", consulta: "Consultas",
-  pago: "Pagos", idea: "Ideas", archivo: "Archivos", conversacion: "Otros", otro: "Otros",
-};
+/* (El mapa de tipos y los rótulos de la gráfica salieron a lib/tipos. Los
+   rótulos, porque /jornadas tiene LA MISMA gráfica y había tomado la misma
+   decisión por su cuenta, con su propio mapa. Ver `rotuloMonton`.) */
 /* (El mapa de estados salió de aquí: era otra copia de lib/estados y no sabía
    que un aviso no se resuelve. Se importa.) */
 const KIND_LBL: Record<string, string> = {
@@ -271,7 +270,7 @@ export default async function PulsoPage({ searchParams }: {
             <ul className="drill-list">
               {drillCasos.map((c: any) => (
                 <li key={c.id}>
-                  <Link href={`/caso/${c.id}`}>{TIPO_ICO[c.tipo] || "💬"} {c.titulo}</Link>
+                  <Link href={`/caso/${c.id}`}>{icoTipo(c.tipo)} {c.titulo}</Link>
                   <span className={`drill-est st-${claseEstado(c.estado, c.tipo)}`}>{textoEstado(c.estado, c.tipo)}</span>
                   {c.fecha_limite && <span className="drill-fl">vence {c.fecha_limite}</span>}
                 </li>
@@ -451,7 +450,7 @@ export default async function PulsoPage({ searchParams }: {
         <span className="tend-tit">En qué se cerró el esfuerzo</span>
         {tiposOrden.length ? tiposOrden.map(([t, n]) => (
           <div key={t} className="tipo-row">
-            <span className="tipo-lbl">{TIPO_ICO[t] || "💬"} {TIPO_LBL[t] || t}</span>
+            <span className="tipo-lbl">{rotuloMonton(t)}</span>
             <span className="tipo-bar"><span className="tipo-fill" style={{ width: `${100 * (n / maxTipo)}%` }} /></span>
             <span className="tipo-n">{n}</span>
           </div>

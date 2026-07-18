@@ -6,6 +6,7 @@ import { PERIODOS, desdeDe, diaLima, rotuloDia, type Periodo } from "@/lib/perio
 import { seccionDe } from "@/lib/secciones";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import type { Metadata } from "next";
 
 /* ACUMULADO — todo lo que pasó con las entidades de un tipo, junto y por
    periodo. La ficha responde "qué pasó con ESTA empresa"; esto responde
@@ -24,6 +25,11 @@ const ROTULO_EV: Record<string, string> = {
   creado: "altas", estado: "cambios de estado", editado: "ediciones",
   dato: "datos y verificaciones", miembro: "cargos", bot: "del bot",
 };
+
+export function generateMetadata({ params }: { params: { tipo: string } }): Metadata {
+  const s = seccionDe(params.tipo);
+  return { title: `🕐 Historial de ${s ? s.plural : params.tipo}` };
+}
 
 export default async function HistorialTipo({ params, searchParams }: {
   params: { tipo: string };

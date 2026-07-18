@@ -10,10 +10,10 @@ import { createClient } from "@/lib/supabase/client";
    notificaciones bajo demanda y se actualiza en tiempo real. */
 
 import { ICONO, ETIQ, anclaDe, hace, tituloDe } from "@/lib/notificaciones";
-const ENT_ICO: Record<string, string> = {
-  proyecto: "📁", empresa: "🏢", persona: "👤", convocatoria: "📜",
-  postulacion: "🎯", equipamiento: "🎥", lugar: "📍", etiqueta: "🏷️",
-};
+import { ICO_ENT } from "@/lib/secciones";
+/* (Igual que en Campanita: el mismo mapa, copiado, sin el 📌 de publicación.
+   Las dos campanitas ya compartían lib/notificaciones y no este.) */
+const ENT_ICO = ICO_ENT;
 
 export default function CampanitaGlobal() {
   const pathname = usePathname() || "";

@@ -28,6 +28,7 @@ import Copiar from "@/components/Copiar";
 import EventoHistorial from "@/components/EventoHistorial";
 import { claseEstado, rotuloEstado, esAviso } from "@/lib/estados";
 import { contarHijos, type Familia } from "@/lib/familia";
+import { icoTipo } from "@/lib/tipos";
 import Reacciones, { type Reaccion } from "@/components/Reacciones";
 import AvisoMini from "@/components/AvisoMini";
 import TextoCorto from "@/components/TextoCorto";
@@ -39,6 +40,8 @@ import CronogramaProyecto from "@/components/CronogramaProyecto";
 import TabsPanel from "@/components/TabsPanel";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import type { Metadata } from "next";
+import { ICO_ENT, nombreDe } from "@/lib/secciones";
 
 /* PERFIL DE ENTIDAD VIVA — dos columnas:
    izquierda = el carné (datos estáticos, relaciones, credenciales)
@@ -85,9 +88,8 @@ const CONF: Record<string, { tabla: string; icono: string; campos: [string, stri
    que en lib/estados.ts arranca diciendo «estaban duplicados en ocho archivos
    y ya habían empezado a divergir». Y había divergido otra vez —a esta copia
    le faltaban los íconos de en_pausa/resuelta/archivada—. Se importa. */
-const TIPO_META: Record<string, string> = {
-  aviso: "📢", tarea: "✅", problema: "❗", consulta: "❓", pago: "💰", idea: "💡", archivo: "📎",
-};
+/* (El mapa de tipos salió a lib/tipos: eran diez copias, y a ésta le faltaba
+   `conversacion`, así que caía al 💬 del `||` por accidente.) */
 
 const fecha = (d: string) =>
   new Date(d).toLocaleString("es-PE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "America/Lima" });
@@ -155,6 +157,22 @@ const verFicha = (key: string, val: any, ent?: any) => {
   if (key === "estado" && ICONO_ESTADO[s]) return `${ICONO_ESTADO[s]} ${s.replace(/_/g, " ")}`;
   return s.replace(/_/g, " ");
 };
+
+/* El nombre de la pestaña: «🏢 Aynicha Films», «📁 15 Emi».
+   Se pide el nombre CORTO cuando lo hay (alias, nombre_corto) porque en una
+   pestaña no cabe la razón social — y ésta es una ficha que John tiene
+   abierta al lado del caso mientras trabaja. El ícono va primero: Chrome
+   recorta por el final. */
+export async function generateMetadata({ params }: { params: { tipo: string; id: string } }): Promise<Metadata> {
+  const n = nombreDe(params.tipo);
+  if (!n) return { title: "Ficha" };
+  const supabase = createClient();
+  const sel = ["id", n.campo, n.corto].filter(Boolean).join(",");
+  const { data } = await supabase.from(n.tabla).select(sel).eq("id", params.id).single();
+  const d = data as any;
+  const nombre = d ? ((n.corto && d[n.corto]) || d[n.campo]) : null;
+  return { title: `${ICO_ENT[params.tipo] || "📄"} ${nombre || "Ficha"}` };
+}
 
 export default async function Entidad({ params }: { params: { tipo: string; id: string } }) {
   const conf = CONF[params.tipo];
@@ -528,7 +546,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         style={{ cursor: "pointer", padding: "12px 15px" }}>
         <Link href={`/caso/${p.id}`} className="fila-cubre" aria-label={p.titulo} />
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <span>{TIPO_META[p.tipo] || "💬"}</span>
+          <span>{icoTipo(p.tipo)}</span>
           <b style={{ flex: 1, fontSize: 13.5 }}>{p.titulo}</b>
           {(p.resp as any)?.nombre && <span className="tv-resp">{(p.resp as any).nombre.split(" ")[0]}</span>}
           {/* Un aviso dice «Vigente», no «Sin Resolver»: nadie lo va a resolver */}

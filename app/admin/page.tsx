@@ -14,7 +14,11 @@ import { haceOEn } from "@/lib/fechas";
 import { ICO_ENT } from "@/lib/secciones";
 import Link from "next/link";
 import { plazoDe, diasHasta } from "@/lib/plazo";
+import { colorTipo, rotuloTipo } from "@/lib/tipos";
 import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "⚙ Administración" };
 
 /* Administración — temas de gestión que el usuario común no toca:
    aprobar jornadas, liquidar el mes (recibos) y tarifas del personal. */
@@ -22,10 +26,9 @@ import { redirect } from "next/navigation";
 const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio",
   "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 
-const TIPO_COL: Record<string, string> = {
-  aviso: "#a78bfa", tarea: "#22c55e", problema: "#ff4d5e", consulta: "#60a5fa",
-  pago: "#2dd4bf", idea: "#f4b400", archivo: "#3b82f6", conversacion: "#8b8ba3",
-};
+/* (Los colores salieron a lib/tipos. Éste era el caso más raro de los diez:
+   guardaba SOLO los colores, en un mapa aparte, con los mismos nombres y los
+   mismos valores hexadecimales que los otros nueve.) */
 
 /* Dona de jornadas: SVG a mano, sin librería.
    Un anillo de dos tramos no justifica traerse Chart.js —200 KB para dibujar
@@ -524,10 +527,12 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
                 const pl = plazoDe(p.fecha_limite);
                 return (
                   <div className="info-row" key={p.id} style={{ gap: 10, flexWrap: "wrap" }}>
+                    {/* Con su ícono: esta lista es de administración y el
+                        tipo se leía en texto crudo, «aviso», sin el 📢. */}
                     <span className="badge" style={{
-                      color: TIPO_COL[p.tipo] || "var(--muted)",
-                      background: `${TIPO_COL[p.tipo] || "#8b8ba3"}22`,
-                    }}>{p.tipo}</span>
+                      color: colorTipo(p.tipo),
+                      background: `${colorTipo(p.tipo)}22`,
+                    }}>{rotuloTipo(p.tipo)}</span>
                     <Link href={`/caso/${p.id}`} style={{ fontWeight: 600, fontSize: 12.5 }}>{p.titulo}</Link>
                     {fijado(p) && (
                       <span className="badge" title="Está en la cabecera del feed"

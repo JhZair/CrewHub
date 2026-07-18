@@ -10,6 +10,9 @@ import { plazoRendicion } from "@/lib/fondos";
 import { plazoDe, diasHasta } from "@/lib/plazo";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "🤖 Bot Qhaway" };
 
 // Qhaway — vista rediseñada: carné compacto + resumen + pestañas.
 /* `diasHasta` era idéntica a la de lib/plazo —misma fórmula, mismo mediodía—

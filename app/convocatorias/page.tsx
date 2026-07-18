@@ -6,6 +6,9 @@ import { TIPO_COLOR } from "@/lib/entidades";
 import { buscadorDe, pal } from "@/lib/buscar";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "📜 Convocatorias" };
 
 const EST_META: Record<string, [string, string]> = {
   postulacion: ["En postulación", "var(--blue)"],

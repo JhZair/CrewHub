@@ -5,6 +5,8 @@ import { celebrarResuelto } from "@/lib/celebra";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { plazoDe } from "@/lib/plazo";
+import { icoTipo } from "@/lib/tipos";
+import { ICO_ENT } from "@/lib/secciones";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /* Banco de trabajo: lo que tengo EN PROGRESO, siempre a mano.
@@ -15,14 +17,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 type Ctx = { tipo: string; id: string; nombre: string };
 type Caso = { id: string; tipo: string; titulo: string; fecha_limite: string | null; nComs: number; ctx: Ctx[]; pidio: string | null };
 
-const TIPO_ICO: Record<string, string> = {
-  aviso: "📢", tarea: "✅", problema: "❗", consulta: "❓",
-  pago: "💰", idea: "💡", archivo: "📎", conversacion: "💬",
-};
-const CTX_ICO: Record<string, string> = {
-  proyecto: "📁", empresa: "🏢", persona: "👤", postulacion: "🎯",
-  convocatoria: "📋", etiqueta: "🏷️",
-};
+/* (Dos mapas copiados salieron de aquí: el de tipos a lib/tipos, y el de
+   entidades a lib/secciones. El de entidades ya había divergido: aquí la
+   convocatoria era 📋 y en todo el resto del sistema es 📜.) */
 
 export default function BancoTrabajo() {
   const pathname = usePathname() || "";
@@ -152,7 +149,7 @@ export default function BancoTrabajo() {
             {verPend && abiertas.map(c => (
               <div key={c.id} className="banco-item" style={{ paddingLeft: 14 }}>
                 <div style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
-                  <span style={{ fontSize: 11 }}>{TIPO_ICO[c.tipo] || "💬"}</span>
+                  <span style={{ fontSize: 11 }}>{icoTipo(c.tipo)}</span>
                   <span style={{ flex: 1 }}>
                     <Link href={`/caso/${c.id}`} style={{ fontSize: 11.5, lineHeight: 1.3, color: "var(--muted)" }}>
                       {c.titulo}
@@ -161,7 +158,7 @@ export default function BancoTrabajo() {
                         sueltos y hay que abrir cada uno para saber de qué va */}
                     {(c.pidio || c.ctx.length > 0) && (
                       <span style={{ color: "var(--dim)", fontSize: 10, display: "block", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {[c.pidio && `✍ ${c.pidio}`, ...c.ctx.map(v => `${CTX_ICO[v.tipo] || "🔗"} ${v.nombre}`)]
+                        {[c.pidio && `✍ ${c.pidio}`, ...c.ctx.map(v => `${ICO_ENT[v.tipo] || "🔗"} ${v.nombre}`)]
                           .filter(Boolean).join("  ")}
                       </span>
                     )}
@@ -190,7 +187,7 @@ export default function BancoTrabajo() {
             <div key={c.id} className={`banco-item${activo ? " on" : ""}`}>
               <div style={{ display: "flex", gap: 6, alignItems: "flex-start", cursor: "pointer" }}
                 onClick={() => { setAbierto(activo ? null : c.id); setTxt(""); setImgs([]); }}>
-                <span style={{ fontSize: 12 }}>{TIPO_ICO[c.tipo] || "💬"}</span>
+                <span style={{ fontSize: 12 }}>{icoTipo(c.tipo)}</span>
                 <span style={{ flex: 1, fontSize: 12.5, lineHeight: 1.4, color: "var(--text)" }}>{c.titulo}</span>
                 <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
                   {pl && (
@@ -223,7 +220,7 @@ export default function BancoTrabajo() {
                         color: v.tipo === "etiqueta" ? "var(--violet)" : "var(--dim)",
                         background: v.tipo === "etiqueta" ? "rgba(167,139,250,.10)" : "#1c1c2c",
                       }}>
-                      {CTX_ICO[v.tipo] || "🔗"} {v.nombre}
+                      {ICO_ENT[v.tipo] || "🔗"} {v.nombre}
                     </Link>
                   ))}
                 </div>
@@ -284,14 +281,14 @@ export default function BancoTrabajo() {
               return (
                 <div key={c.id} className="banco-item" style={{ paddingLeft: 14 }}>
                   <div style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
-                    <span style={{ fontSize: 11 }}>{TIPO_ICO[c.tipo] || "💬"}</span>
+                    <span style={{ fontSize: 11 }}>{icoTipo(c.tipo)}</span>
                     <span style={{ flex: 1 }}>
                       <Link href={`/caso/${c.id}`} style={{ fontSize: 12, lineHeight: 1.35, color: "var(--muted)" }}>
                         {c.titulo}
                       </Link>
                       {c.ctx.length > 0 && (
                         <span style={{ display: "block", color: "var(--dim)", fontSize: 9.5, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {c.ctx.map(v => `${CTX_ICO[v.tipo] || "🔗"} ${v.nombre}`).join("  ")}
+                          {c.ctx.map(v => `${ICO_ENT[v.tipo] || "🔗"} ${v.nombre}`).join("  ")}
                         </span>
                       )}
                     </span>

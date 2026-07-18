@@ -3,6 +3,9 @@ import Volver from "@/components/Volver";
 import Importador from "@/components/Importador";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "📥 Importar" };
 
 export default async function Importar() {
   const supabase = createClient();

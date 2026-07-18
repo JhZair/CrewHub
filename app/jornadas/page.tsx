@@ -5,6 +5,10 @@ import BitacoraJornadas from "@/components/BitacoraJornadas";
 import CicloMes from "@/components/CicloMes";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+import { rotuloMonton } from "@/lib/tipos";
+
+export const metadata: Metadata = { title: "⏱ Jornadas" };
 
 /* JORNADAS — el cuaderno de Katy, hecho entidad. Registro personal,
    panel "Mi trabajo" (por semana), matriz del equipo por semana, y
@@ -13,10 +17,10 @@ import { redirect } from "next/navigation";
 const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio",
   "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 const TIPO_LBL: [string, string][] = [["rodaje", "🎬 Rodaje"], ["oficina", "🏢 Oficina"], ["scouting", "🚙 Scouting"]];
-const TIPO_CASO: Record<string, string> = {
-  aviso: "📢 Avisos", tarea: "✅ Tareas", problema: "❗ Problemas", consulta: "❓ Consultas",
-  pago: "💰 Pagos", idea: "💡 Ideas", archivo: "📎 Archivos", conversacion: "🗂 Otros", otro: "🗂 Otros",
-};
+/* (Los rótulos de la gráfica salieron a lib/tipos: `rotuloMonton`. Esta era
+   la copia ONCE del mapa de tipos, y /pulso tiene la MISMA gráfica con el
+   mismo mapa. `TIPO_LBL` de arriba se queda: son los tipos de JORNADA
+   —rodaje, oficina, scouting—, que no tienen nada que ver.) */
 const soles = (n: number) => `S/ ${Math.round(n).toLocaleString("es-PE")}`;
 const heat = (n: number, max: number) => n === 0 ? undefined : `rgba(46,204,113,${(0.12 + 0.6 * (n / max)).toFixed(2)})`;
 const heatRed = (n: number, max: number) => n === 0 ? undefined : `rgba(255,77,94,${(0.12 + 0.6 * (n / max)).toFixed(2)})`;
@@ -310,7 +314,7 @@ export default async function Jornadas({ searchParams }: { searchParams: { m?: s
         <span className="tend-tit">Casos que cerré · por tipo</span>
         {tiposOrden.length ? tiposOrden.map(([t, n]) => (
           <div key={t} className="tipo-row">
-            <span className="tipo-lbl">{TIPO_CASO[t] || `💬 ${t}`}</span>
+            <span className="tipo-lbl">{rotuloMonton(t)}</span>
             <span className="tipo-bar"><span className="tipo-fill" style={{ width: `${100 * (n / maxTipoCerr)}%` }} /></span>
             <span className="tipo-n">{n}</span>
           </div>

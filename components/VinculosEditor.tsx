@@ -4,6 +4,7 @@ import { agregarVinculo, quitarVinculo } from "@/app/actions";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { ICO_ENT } from "@/lib/secciones";
 
 /* Editor de vínculos de entidad de un caso: chips actuales con ✕ para quitar,
    y un picker por tipo para agregar. Reusa el EntPicker del Composer y las
@@ -15,10 +16,8 @@ const ENT_META: Record<string, string> = {
   convocatoria: "📜 Convocatoria", postulacion: "🎯 Postulación",
   equipamiento: "🎥 Equipo", lugar: "📍 Lugar",
 };
-const ENT_ICO: Record<string, string> = {
-  proyecto: "📁", empresa: "🏢", persona: "👤", convocatoria: "📜",
-  postulacion: "🎯", equipamiento: "🎥", lugar: "📍",
-};
+/* (Otra copia: a ésta le faltaban `etiqueta` y `publicacion`.) */
+const ENT_ICO = ICO_ENT;
 
 export default function VinculosEditor({ pubId, actuales, catalogos }: {
   pubId: string;

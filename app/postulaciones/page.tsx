@@ -9,6 +9,9 @@ import { EN_JUEGO, ejecutando, rendicionVencida, plazoRendicion } from "@/lib/fo
 import { buscadorDe, pal } from "@/lib/buscar";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "🎯 Postulaciones" };
 
 /* El camino tiene DOS jueces: primero DAFO revisa papeles y declara aptas
    (bases 5.2, administrativo), después el jurado elige. Por eso «apta» y

@@ -4,17 +4,12 @@ import { celebrarResuelto } from "@/lib/celebra";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { plazoDe } from "@/lib/plazo";
+import { icoTipo } from "@/lib/tipos";
+import { ICO_ENT } from "@/lib/secciones";
 import { useState } from "react";
 
-const TIPO_ICO: Record<string, string> = {
-  aviso: "📢", tarea: "✅", problema: "❗", consulta: "❓", pago: "💰", idea: "💡", archivo: "📎",
-};
-const ENT_ICO: Record<string, string> = {
-  proyecto: "📁", empresa: "🏢", persona: "👤", convocatoria: "📜",
-  postulacion: "🎯", equipamiento: "🎥", lugar: "📍", etiqueta: "🏷️",
-};
-
-/* (La cuenta regresiva salió a lib/plazo: estaba escrita en nueve sitios.) */
+/* (Los íconos salieron a lib/tipos y lib/secciones; la cuenta regresiva, a
+   lib/plazo. Este archivo tenía tres mapas copiados de otros sitios.) */
 
 function reacStr(reac?: Record<string, number>) {
   if (!reac) return "";
@@ -74,7 +69,7 @@ export default function Tablero({ columnas }: {
                 onDragEnd={() => { setArrastrando(null); setSobre(null); }}
                 onClick={() => router.push(`/caso/${p.id}`)}>
                 <div style={{ fontSize: 12, fontWeight: 600, lineHeight: 1.3 }}>
-                  {TIPO_ICO[p.tipo] || "💬"} {p.titulo}
+                  {icoTipo(p.tipo)} {p.titulo}
                 </div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 5, flexWrap: "wrap" }}>
                   {/* Por qué este caso está en "Mis asuntos" si no es mío:
@@ -106,7 +101,7 @@ export default function Tablero({ columnas }: {
                     {p.vinc.slice(0, 4).map((c: any, i: number) => (
                       <Link key={i} href={`/entidad/${c.tipo}/${c.id}`}
                         onClick={e => e.stopPropagation()} className="kb-chip">
-                        {ENT_ICO[c.tipo] || "🔗"} {c.nombre}
+                        {ICO_ENT[c.tipo] || "🔗"} {c.nombre}
                       </Link>
                     ))}
                     {p.vinc.length > 4 && <span className="kb-chip">+{p.vinc.length - 4}</span>}
