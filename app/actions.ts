@@ -2815,11 +2815,19 @@ export async function misNotificaciones() {
   const [{ data: notifs }, { count: sinLeer }] = await Promise.all([
     supabase.from("notificaciones")
       .select("id,tipo,mensaje,actor_nombre,publicacion_id,leida,creado_en")
-      .eq("usuario_id", user.id).order("creado_en", { ascending: false }).limit(12),
+      .eq("usuario_id", user.id).order("creado_en", { ascending: false }).order("id", { ascending: false }).limit(12),
     supabase.from("notificaciones").select("id", { count: "exact", head: true })
       .eq("usuario_id", user.id).eq("leida", false),
   ]);
-  const ids = [...new Set((notifs || []).map((n: any) => n.publicacion_id).filter(Boolean))];
+  return { items: await conVinculos(supabase, notifs || []), sinLeer: sinLeer || 0 };
+}
+
+/* Enriquecer notificaciones con los chips de sus vínculos. Lo usan
+   misNotificaciones (la campanita, 12) y notificacionesTodas (la página,
+   paginada): mismo trabajo, un solo sitio. Antes vivía inline dentro de
+   misNotificaciones; al nacer la página iba a ser la segunda copia. */
+async function conVinculos(supabase: any, notifs: any[]) {
+  const ids = [...new Set(notifs.map((n: any) => n.publicacion_id).filter(Boolean))];
   const vincDe = new Map<string, { tipo: string; nombre: string }[]>();
   if (ids.length) {
     const { data: vincs } = await supabase.from("publicacion_vinculos")
@@ -2849,10 +2857,39 @@ export async function misNotificaciones() {
       vincDe.set(v.publicacion_id, l);
     });
   }
-  const items = (notifs || []).map((n: any) => ({
+  return notifs.map((n: any) => ({
     ...n, vinculos: n.publicacion_id ? (vincDe.get(n.publicacion_id) || []) : [],
   }));
-  return { items, sinLeer: sinLeer || 0 };
+}
+
+/* LA PÁGINA /notificaciones — el historial completo, en tandas.
+   La campanita corta en 12 ("lo de ahora"); aquí se baja hasta el fondo con
+   "ver más", de NOTIF_PAGINA en NOTIF_PAGINA. `range(desde, desde+N-1)` es
+   inclusivo en Supabase. `total` alimenta la cabecera y decide `hayMas`.
+   Ojo: paginar por creado_en descendente asume que no llegan notifs nuevas
+   entre tanda y tanda; si llegan, la primera de la siguiente tanda podría
+   repetir una. Es raro (mirar el historial no es tiempo real) y el peor caso
+   es una fila duplicada, no un hueco — se acepta por simplicidad. */
+const NOTIF_PAGINA = 30;
+export async function notificacionesTodas(desde = 0) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { items: [], hayMas: false, total: 0 };
+  const [{ data: notifs }, { count: total }] = await Promise.all([
+    supabase.from("notificaciones")
+      .select("id,tipo,mensaje,actor_nombre,publicacion_id,leida,creado_en")
+      .eq("usuario_id", user.id)
+      /* Desempate por id: dos notifs con el MISMO creado_en (p.ej. un insert
+         múltiple a varios destinatarios) no tienen orden estable entre dos
+         SELECT paginados sin segundo criterio → una podría saltarse (hueco).
+         El dedup del cliente tapa duplicados, no huecos; esto los evita. */
+      .order("creado_en", { ascending: false }).order("id", { ascending: false })
+      .range(desde, desde + NOTIF_PAGINA - 1),
+    supabase.from("notificaciones").select("id", { count: "exact", head: true })
+      .eq("usuario_id", user.id),
+  ]);
+  const items = await conVinculos(supabase, notifs || []);
+  return { items, hayMas: desde + items.length < (total || 0), total: total || 0 };
 }
 
 // Catálogos + perfiles para el compositor global (FAB "+"), bajo demanda.

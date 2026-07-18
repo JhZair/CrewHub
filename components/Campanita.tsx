@@ -3,26 +3,10 @@ import { marcarNotifsLeidas, marcarNotifLeida } from "@/app/actions";
 import Link from "next/link";
 import { useState, useEffect } from "react";
 
-import { ICONO, ETIQ, anclaDe } from "@/lib/notificaciones";
-import { ICO_ENT } from "@/lib/secciones";
-/* (El mapa vivía aquí con el nombre invertido —ENT_ICO vs el ICO_ENT de
-   lib/secciones— y sin saber que una publicación es 📌.) */
-const ENT_ICO = ICO_ENT;
-
-// Título del caso: el texto entre « » (o el mensaje completo si no hay)
-const tituloDe = (mensaje: string) => {
-  const m = (mensaje || "").match(/«([^»]+)»/);
-  return m ? m[1] : (mensaje || "");
-};
-
-const hace = (d: string) => {
-  const min = Math.floor((Date.now() - new Date(d).getTime()) / 60000);
-  if (min < 1) return "ahora";
-  if (min < 60) return `${min}m`;
-  const h = Math.floor(min / 60);
-  if (h < 24) return `${h}h`;
-  return `${Math.floor(h / 24)}d`;
-};
+import { anclaDe } from "@/lib/notificaciones";
+import NotifFila from "./NotifFila";
+/* La fila (ícono/título/cuándo/chips) salió a NotifFila: la pintaban idéntica
+   esta campanita, la flotante y ahora la página /notificaciones. */
 
 export default function Campanita({ items: itemsProp, sinLeer: sinLeerProp }: { items: any[]; sinLeer: number }) {
   const [abierta, setAbierta] = useState(false);
@@ -47,17 +31,7 @@ export default function Campanita({ items: itemsProp, sinLeer: sinLeerProp }: { 
     await marcarNotifsLeidas();
   };
 
-  const contenido = (n: any) => (
-    <>
-      <div className="camp-tt">{ICONO[n.tipo] || "•"} {tituloDe(n.mensaje)}</div>
-      <div className="cuando">
-        <span>{(() => { const a = [n.actor_nombre, ETIQ[n.tipo]].filter(Boolean).join(" "); return a ? `${a} · ` : ""; })()}{hace(n.creado_en)}</span>
-        {(n.vinculos || []).slice(0, 3).map((v: any, i: number) => (
-          <span key={i} className="camp-vinc">{ENT_ICO[v.tipo] || "🔗"} {v.nombre}</span>
-        ))}
-      </div>
-    </>
-  );
+  const contenido = (n: any) => <NotifFila n={n} />;
 
   return (
     <span className="campanita">
@@ -91,6 +65,12 @@ export default function Campanita({ items: itemsProp, sinLeer: sinLeerProp }: { 
                 </div>
               )
             ))}
+            {/* La campanita muestra las 12 recientes; el historial completo
+                vive en su página. Como Gmail/GitHub: el timbre para lo de
+                ahora, la página para buscar lo viejo. */}
+            <Link href="/notificaciones" className="camp-vertodas" onClick={() => setAbierta(false)}>
+              ver todas →
+            </Link>
           </div>
         </>
       )}

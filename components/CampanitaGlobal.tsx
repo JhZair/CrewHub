@@ -9,11 +9,10 @@ import { createClient } from "@/lib/supabase/client";
    que ya tiene la suya, ni dentro de los paneles del Monitor). Trae las
    notificaciones bajo demanda y se actualiza en tiempo real. */
 
-import { ICONO, ETIQ, anclaDe, hace, tituloDe } from "@/lib/notificaciones";
-import { ICO_ENT } from "@/lib/secciones";
-/* (Igual que en Campanita: el mismo mapa, copiado, sin el 📌 de publicación.
-   Las dos campanitas ya compartían lib/notificaciones y no este.) */
-const ENT_ICO = ICO_ENT;
+import { anclaDe } from "@/lib/notificaciones";
+import NotifFila from "./NotifFila";
+/* La fila salió a NotifFila: la pintaban idéntica esta campanita, la del feed
+   y la página /notificaciones. */
 
 export default function CampanitaGlobal() {
   const pathname = usePathname() || "";
@@ -64,17 +63,7 @@ export default function CampanitaGlobal() {
     await marcarNotifsLeidas();
   };
 
-  const fila = (n: any) => (
-    <>
-      <div className="camp-tt">{ICONO[n.tipo] || "•"} {tituloDe(n.mensaje)}</div>
-      <div className="cuando">
-        <span>{(() => { const a = [n.actor_nombre, ETIQ[n.tipo]].filter(Boolean).join(" "); return a ? `${a} · ` : ""; })()}{hace(n.creado_en)}</span>
-        {(n.vinculos || []).slice(0, 3).map((v: any, i: number) => (
-          <span key={i} className="camp-vinc">{ENT_ICO[v.tipo] || "🔗"} {v.nombre}</span>
-        ))}
-      </div>
-    </>
-  );
+  const fila = (n: any) => <NotifFila n={n} />;
 
   return (
     <div className="camp-flot">
@@ -104,6 +93,9 @@ export default function CampanitaGlobal() {
                   onClick={() => marcarUna(n)} style={{ cursor: n.leida ? "default" : "pointer" }}>{fila(n)}</div>
               )
             ))}
+            <Link href="/notificaciones" className="camp-vertodas" onClick={() => setAbierta(false)}>
+              ver todas →
+            </Link>
           </div>
         </>
       )}
