@@ -28,7 +28,7 @@ import BotonFichaSunat from "@/components/BotonFichaSunat";
 import Copiar from "@/components/Copiar";
 import EventoHistorial from "@/components/EventoHistorial";
 import { claseEstado, rotuloEstado, esAviso } from "@/lib/estados";
-import { contarHijos, type Familia } from "@/lib/familia";
+import { contarHijos, CERRADOS, type Familia } from "@/lib/familia";
 import { icoTipo } from "@/lib/tipos";
 import Reacciones, { type Reaccion } from "@/components/Reacciones";
 import AvisoMini from "@/components/AvisoMini";
@@ -209,7 +209,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   /* `cuerpo` va aquí porque en un aviso el título es solo el asunto: lo que
      hay que hacer está en el cuerpo. Sin él, la tarjeta obligaba a entrar al
      caso para leer la indicación — y a volver para darse por enterado. */
-  const SEL_PUB = "id,titulo,cuerpo,tipo,estado,creado_en,fecha_limite,autor:perfiles!publicaciones_autor_id_fkey(nombre),resp:perfiles!publicaciones_responsable_fkey(nombre),comentarios(count)";
+  const SEL_PUB = "id,titulo,cuerpo,tipo,estado,archivado_en,creado_en,fecha_limite,autor:perfiles!publicaciones_autor_id_fkey(nombre),resp:perfiles!publicaciones_responsable_fkey(nombre),comentarios(count)";
   // Si la persona tiene cuenta, su vida también son los casos que creó o le asignaron
   const uid = params.tipo === "persona" ? ent.usuario_id : null;
   const [porVinculo, porUsuario, misComs] = await Promise.all([
@@ -486,7 +486,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
           .eq("actor_id", ent.usuario_id).limit(4000),
         supabase.from("publicaciones").select("fecha_limite")
           .eq("responsable", ent.usuario_id)
-          .in("estado", ["abierta", "en_progreso", "seguimiento", "en_pausa"]).limit(500),
+          .in("estado", ["abierta", "en_progreso", "seguimiento", "en_pausa"])
+          .is("archivado_en", null).limit(500),
         supabase.from("comentarios").select("id", { count: "exact", head: true })
           .eq("autor_id", ent.usuario_id),
       ]);
@@ -522,8 +523,12 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   const nombre = params.tipo === "postulacion"
     ? `${ent.codigo || postCtx?.conv?.codigo || "Postulación"} · ${postCtx?.proy?.nombre || ""}`.replace(/ · $/, "")
     : ent.nombre || ent.codigo || "—";
-  const activas = (pubs || []).filter((p: any) => ["abierta", "en_progreso", "seguimiento"].includes(p.estado));
-  const cerradas = (pubs || []).filter((p: any) => !["abierta", "en_progreso", "seguimiento"].includes(p.estado));
+  /* Activas = vivas y a la vista. Cerradas = terminadas (resuelta/descartada)
+     O archivadas —lo archivado es memoria de esta entidad y aquí sí se ve, en
+     su cajón—. Ojo: `en_pausa` ahora cae en activas, que es lo correcto —está
+     detenido, no cerrado—; antes caía en «cerradas» por descarte. */
+  const activas = (pubs || []).filter((p: any) => !p.archivado_en && !CERRADOS.includes(p.estado));
+  const cerradas = (pubs || []).filter((p: any) => p.archivado_en || CERRADOS.includes(p.estado));
 
   const cardPub = (p: any) => {
     const hj = hijosDe.get(p.id);
@@ -1435,7 +1440,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                 {cerradas.length > 0 && (
                   <details style={{ marginTop: 16 }}>
                     <summary style={{ color: "var(--muted)", fontSize: 13, cursor: "pointer", padding: "6px 0" }}>
-                      ✅ Resueltas y archivadas · {cerradas.length}
+                      ✅ Cerradas y archivadas · {cerradas.length}
                     </summary>
                     <div style={{ marginTop: 10 }}>{cerradas.map(cardPub)}</div>
                   </details>

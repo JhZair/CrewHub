@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import Avatar from "@/components/Avatar";
-import { EstadoSelect, CommentBox, RespSelect, FechaSelect } from "@/components/CaseActions";
+import { EstadoSelect, CommentBox, RespSelect, FechaSelect, BotonArchivar } from "@/components/CaseActions";
 import Reacciones from "@/components/Reacciones";
 import AvisoEnterado from "@/components/AvisoEnterado";
 import SubCasos from "@/components/SubCasos";
@@ -19,13 +19,14 @@ import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { claseEstado, rotuloEstado } from "@/lib/estados";
 import { BOT, sinBot } from "@/lib/personas";
+import { CERRADOS } from "@/lib/familia";
 import { rotuloTipo, colorTipo, icoTipo } from "@/lib/tipos";
 
 /* EV_ICO es de aquí: son los eventos de la bitácora de un caso, no los tipos
    de publicación. Los que SÍ eran copias —el mapa de tipos y el de entidades—
    salieron a lib/tipos y lib/secciones. */
 const EV_ICO: Record<string, string> = {
-  creado: "📝", estado: "🔄", asignacion: "👤", archivo: "📎",
+  creado: "📝", estado: "🔄", asignacion: "👤", archivo: "🗄",   // archivar/despertar
   prioridad: "⚡", tarea: "✅", bot: "🤖", cierre: "✔️", vinculo: "🔗", edicion: "✏️",
 };
 /* (Aquí había un ENT_ICO copiado. Lo apunté a ICO_ENT y resultó que no lo
@@ -216,6 +217,10 @@ export default async function Caso({ params }: { params: { id: string } }) {
       const a = e.detalle?.a ? rotuloEstado(e.detalle.a, p.tipo) : "—";
       return `${quien} · ${campo}: ${de} → ${a}`;
     }
+    // Archivar/despertar: el bot trae su mensaje; una persona, solo `a`.
+    if (e.tipo === "archivo")
+      return `${quien} ${e.detalle?.mensaje
+        || (e.detalle?.a === "despertado" ? "despertó este caso del archivo" : "archivó este caso")}`;
     return `${quien} · ${e.detalle?.mensaje || e.tipo}`;
   };
 
@@ -236,6 +241,16 @@ export default async function Caso({ params }: { params: { id: string } }) {
         </Link>
       )}
       <TituloEditable pubId={p.id} titulo={p.titulo} />
+
+      {/* Si está archivado, decirlo antes que nada: quien llega aquí desde el
+          buscador tiene que saber que esto NO está en el feed ni el tablero,
+          y poder traerlo de vuelta de un clic. */}
+      {p.archivado_en && (
+        <div className="err-inline" style={{ background: "#1c1c2c", borderColor: "var(--border2)", color: "var(--muted)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          🗄 Archivado el {fecha(p.archivado_en)} — fuera del feed y del tablero, pero en la memoria.
+          <BotonArchivar pubId={p.id} archivado cerrado />
+        </div>
+      )}
 
       <div className={`grid-meta est-${claseEstado(p.estado, p.tipo)}`}>
         <div className="gm"><span className="k">Estado</span><EstadoSelect pubId={p.id} estado={p.estado} tipo={p.tipo} /></div>
@@ -259,8 +274,15 @@ export default async function Caso({ params }: { params: { id: string } }) {
         />
       )}
 
-      <div style={{ margin: "4px 0 12px" }}>
+      <div style={{ margin: "4px 0 12px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <Reacciones pubId={p.id} reacciones={rxPub} userId={user.id} />
+        <span style={{ flex: 1 }} />
+        {/* Archivar solo se ofrece si el caso ya está cerrado (resuelta o
+            descartada) — no se guarda algo vivo. Si ya está archivado, el
+            aviso de arriba lleva el «despertar»; aquí no se repite. */}
+        {!p.archivado_en && (
+          <BotonArchivar pubId={p.id} archivado={false} cerrado={CERRADOS.includes(p.estado)} />
+        )}
       </div>
 
       <div className="linked" style={{ marginTop: 4 }}>

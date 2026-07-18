@@ -1,11 +1,46 @@
 "use client";
-import { comentar, cambiarEstado, asignarResponsable, cambiarFechaLimite } from "@/app/actions";
+import { comentar, cambiarEstado, asignarResponsable, cambiarFechaLimite, archivar } from "@/app/actions";
 import { celebrarResuelto } from "@/lib/celebra";
 import { opcionesEstado } from "@/lib/estados";
 import { sinBot } from "@/lib/personas";
 import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
 import { useRouter } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
+
+/* ARCHIVAR / DESPERTAR — la puerta de vuelta.
+   Archivar era un estado de una sola dirección: al archivar borrabas cómo
+   terminó el caso y no había forma fácil de traerlo de vuelta. Ahora es un
+   interruptor sobre `archivado_en`, y el caso conserva su estado. Se muestra
+   solo si el caso ya está CERRADO —no se archiva algo vivo, se cierra
+   primero— salvo que ya esté archivado, donde lo único que ofrece es
+   despertar. La memoria se guarda y se recupera; no se pierde al guardarla. */
+export function BotonArchivar({ pubId, archivado, cerrado }:
+  { pubId: string; archivado: boolean; cerrado: boolean }) {
+  const router = useRouter();
+  const [ocupado, setOcupado] = useState(false);
+  const [error, setError] = useState("");
+  if (!archivado && !cerrado) return null;   // un caso vivo no se archiva: se cierra
+  const hacer = async () => {
+    if (ocupado) return;
+    setOcupado(true); setError("");
+    const res: any = await archivar(pubId, !archivado);
+    setOcupado(false);
+    if (res?.error) { setError(res.error); return; }
+    router.refresh();
+  };
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+      <button className="btn-ghost" onClick={hacer} disabled={ocupado}
+        style={{ fontSize: 12.5, padding: "6px 12px" }}
+        title={archivado
+          ? "Traerlo de vuelta al feed y al tablero"
+          : "Guardarlo fuera de la vista. Sigue en la memoria y en el buscador."}>
+        {ocupado ? "…" : archivado ? "↩ Despertar" : "🗄 Archivar"}
+      </button>
+      {error && <span style={{ color: "var(--red)", fontSize: 12 }}>⚠ {error}</span>}
+    </span>
+  );
+}
 
 export function RespSelect({ pubId, actual, perfiles }:
   { pubId: string; actual: string | null; perfiles: { id: string; nombre: string }[] }) {

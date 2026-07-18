@@ -123,7 +123,7 @@ export default async function Jornadas({ searchParams }: { searchParams: { m?: s
       .eq("entidad_tipo", "publicacion").eq("tipo", "estado").eq("detalle->>a", "en_progreso")
       .eq("actor_id", user.id).gte("creado_en", desdeISO).lt("creado_en", hastaISO).limit(1000),
     supabase.from("publicaciones").select("fecha_limite")
-      .eq("responsable", user.id).in("estado", ["abierta", "en_progreso", "seguimiento", "en_pausa"]).limit(1000),
+      .eq("responsable", user.id).in("estado", ["abierta", "en_progreso", "seguimiento", "en_pausa"]).is("archivado_en", null).limit(1000),
     supabase.from("comentarios").select("id", { count: "exact", head: true })
       .eq("autor_id", user.id).gte("creado_en", desdeISO).lt("creado_en", hastaISO),
   ]);

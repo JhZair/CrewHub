@@ -50,6 +50,9 @@ export default async function CasosPorEntidad({ params, searchParams }: {
     let q = supabase.from("publicaciones")
       .select("id,titulo,tipo,estado,fecha_limite,creado_en,comentarios(count),resp:perfiles!publicaciones_responsable_fkey(nombre)")
       .in("id", idsPub)
+      // Vista operativa: quién acumula trabajo. Lo archivado no es trabajo —y
+      // un aviso archivado sumaba a «sin cerrar». La memoria está en la ficha.
+      .is("archivado_en", null)
       .order("creado_en", { ascending: false })
       .limit(1000);
     const desde = desdeDe(p);

@@ -6,7 +6,8 @@ import Link from "next/link";
 import { plazoDe } from "@/lib/plazo";
 import { icoTipo } from "@/lib/tipos";
 import { ICO_ENT } from "@/lib/secciones";
-import { useState } from "react";
+import { CERRADOS } from "@/lib/familia";
+import { useState, useEffect } from "react";
 
 /* (Los íconos salieron a lib/tipos y lib/secciones; la cuenta regresiva, a
    lib/plazo. Este archivo tenía tres mapas copiados de otros sitios.) */
@@ -30,6 +31,43 @@ export default function Tablero({ columnas }: {
   const [moviendo, setMoviendo] = useState(false);
   const router = useRouter();
 
+  /* COLUMNAS COLAPSABLES — como Trello.
+     Con seis columnas (entró «Descartadas»), en una pantalla normal la última
+     se caía de fila. Poder plegar las que uno no mira —«En Pausa»,
+     «Descartadas»— devuelve el ancho a las que sí.
+     El estado vive en localStorage, no en la URL: es una preferencia de vista
+     PERSONAL —cada quien pliega lo suyo— y no algo que quieras compartir por
+     enlace ni que recargue la página al plegar.
+     Se lee en useEffect y no en el render inicial a propósito: leer
+     localStorage durante la hidratación da un desajuste servidor/cliente.
+     El precio es un parpadeo mínimo al cargar; la alternativa —no pintar el
+     tablero hasta leer— es peor. */
+  const CLAVE = "kb-colapsadas";
+  /* Plegadas de fábrica: «Descartadas» casi siempre está vacía, así que
+     arranca plegada y quien la necesita la abre. */
+  const PLEGADAS_DEFECTO = ["descartada"];
+  const [colapsadas, setColapsadas] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(CLAVE);
+      /* El default vale SOLO la primera vez. En cuanto alguien pliega o
+         despliega algo, se guarda su elección —aunque sea un Set vacío— y a
+         partir de ahí manda ella: si abrió Descartadas y recarga, sigue
+         abierta. «Nunca lo toqué» (no hay clave) ≠ «lo dejé todo abierto»
+         (clave = []); sin esa distinción el default volvería a plegarla y
+         pisaría su decisión. */
+      setColapsadas(new Set(raw !== null ? JSON.parse(raw) : PLEGADAS_DEFECTO));
+    } catch { /* localStorage puede fallar en modo privado: sin plegado, no rompe */ }
+  }, []);
+  const plegar = (estado: string) => {
+    setColapsadas(prev => {
+      const next = new Set(prev);
+      next.has(estado) ? next.delete(estado) : next.add(estado);
+      try { localStorage.setItem(CLAVE, JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  };
+
   const soltar = async (estado: string) => {
     setSobre(null);
     if (!arrastrando || moviendo) return;
@@ -44,14 +82,48 @@ export default function Tablero({ columnas }: {
 
   return (
     <div className="kb">
-      {columnas.map(col => (
+      {columnas.map(col => {
+        const plegada = colapsadas.has(col.estado);
+        // «🚫 Descartadas» → ["🚫", "Descartadas"] para pintar el título de lado
+        const espacio = col.titulo.indexOf(" ");
+        const ico = col.titulo.slice(0, espacio);
+        const nombre = col.titulo.slice(espacio + 1);
+
+        /* Columna PLEGADA: una barra fina. Acepta drop igual que abierta —en
+           Trello también se puede soltar en una columna plegada— y un clic en
+           la barra la despliega. El título va de lado; el contador, arriba. */
+        if (plegada) return (
+          <div key={col.estado}
+            className={`kb-col kb-plegada est-${col.estado} ${sobre === col.estado ? "kb-sobre" : ""}`}
+            style={{ ["--kb-c" as any]: col.color }}
+            title={`${nombre} · clic para desplegar`}
+            onClick={() => plegar(col.estado)}
+            onDragOver={e => { e.preventDefault(); setSobre(col.estado); }}
+            onDragLeave={() => setSobre(s => (s === col.estado ? null : s))}
+            onDrop={() => soltar(col.estado)}>
+            <span className="kb-n">{col.items.length}</span>
+            <span className="kb-plegada-tit" style={{ color: col.color }}>{ico} {nombre}</span>
+          </div>
+        );
+
+        return (
         <div key={col.estado}
           className={`kb-col est-${col.estado} ${sobre === col.estado ? "kb-sobre" : ""}`}
           onDragOver={e => { e.preventDefault(); setSobre(col.estado); }}
           onDragLeave={() => setSobre(s => (s === col.estado ? null : s))}
           onDrop={() => soltar(col.estado)}>
-          <div className="kb-head" style={{ color: col.color }}>
+          {/* La cabecera explica el arrastre. Vivía como una frase suelta en
+              el topbar del tablero, ocupando media fila para siempre por algo
+              que se aprende una vez — y al quitarla de allí había que ponerla
+              DONDE se pregunta: encima de la columna a la que uno suelta. */}
+          <div className="kb-head" style={{ color: col.color }}
+            title={`Arrastra una tarjeta aquí para pasarla a ${nombre}`}>
             {col.titulo} <span className="kb-n">{col.items.length}</span>
+            <span style={{ flex: 1 }} />
+            {/* Plegar: el ⟨⟩ de Trello. stopPropagation para no disparar el
+                drop de la columna al pulsarlo. */}
+            <button className="kb-plegar" title={`Plegar ${nombre}`}
+              onClick={e => { e.stopPropagation(); plegar(col.estado); }}>⟨⟩</button>
           </div>
           {col.items.map(p => {
             /* Sin `estado`: en el kanban la columna YA dice el estado, y una
@@ -62,8 +134,12 @@ export default function Tablero({ columnas }: {
             const vencColor = pl?.color ?? null;
             return (
               <div key={p.id} className={`kb-card${p.marca ? " kb-ajena" : ""}`}
+                /* Sin marca, la tarjeta no tenía `title` y no había forma de
+                   descubrir que se arrastra: la única pista era una frase en
+                   el topbar. Ahora lo dice la propia pieza que se arrastra. */
                 title={p.marca === "delegado" ? "Lo pediste tú — lo trabaja otra persona"
-                  : p.marca === "mencion" ? "Te menciona, pero no es tu responsabilidad" : undefined}
+                  : p.marca === "mencion" ? "Te menciona, pero no es tu responsabilidad"
+                  : "Arrástrala a otra columna para cambiar su estado"}
                 draggable
                 onDragStart={() => setArrastrando(p.id)}
                 onDragEnd={() => { setArrastrando(null); setSobre(null); }}
@@ -87,7 +163,7 @@ export default function Tablero({ columnas }: {
                     ? <span className="tv-resp" style={{ fontSize: 10, padding: "1px 8px" }}>{corto((p.resp as any).nombre)}</span>
                     : ["tarea", "problema", "pago"].includes(p.tipo) &&
                       <span style={{ color: "var(--yellow)", fontSize: 10.5 }}>⚠ sin resp.</span>}
-                  {d !== null && !["resuelta", "archivada"].includes(p.estado) && (
+                  {d !== null && !CERRADOS.includes(p.estado) && (
                     <span style={{ color: vencColor!, fontSize: 10.5, fontWeight: 700 }}>
                       {d < 0 ? `vencido ${Math.abs(d)}d` : d === 0 ? "HOY" : `${d}d`}
                     </span>
@@ -112,7 +188,8 @@ export default function Tablero({ columnas }: {
           })}
           {!col.items.length && <div className="kb-vacia">— vacío —</div>}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

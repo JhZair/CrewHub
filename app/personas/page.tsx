@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import { esDelEquipo } from "@/lib/personas";
+import { CERRADOS } from "@/lib/familia";
 import { esProblematico, textoSunat } from "@/lib/sunat";
 import { rucDePersona } from "@/lib/ruc";
 import { buscadorDe, pal } from "@/lib/buscar";
@@ -78,7 +79,7 @@ export default async function Personas({ searchParams }: {
     x.total++;
     if (est === "abierta") x.abiertas++;
     else if (["en_progreso", "seguimiento", "en_pausa"].includes(est)) x.progreso++;
-    else if (["resuelta", "archivada"].includes(est)) x.cerradas++;
+    else if (CERRADOS.includes(est)) x.cerradas++;   // resuelta | descartada
     x.coments += comentPorPub.get(v.publicacion_id) || 0;
     act.set(v.entidad_id, x);
   });

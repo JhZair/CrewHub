@@ -1,23 +1,33 @@
 /* Los estados de un caso, en un solo sitio.
-   Estaban duplicados en ocho archivos y ya habían empezado a divergir:
-   unos con ícono, otros sin él. Cada ícono cuenta qué es el estado:
+   El estado dice CÓMO VA o CÓMO TERMINÓ. Nada más — «si estorba» es otro eje
+   (`archivado_en`), ver más abajo. Cada ícono cuenta qué es:
      📥 entró y espera turno   🛠 se está trabajando
      🔭 se vigila, no se cierra hoy   ⏸ está detenido a propósito
-     ✅ terminó   🗄 descansa fuera del feed */
+     ✅ se hizo   🚫 ya no aplica (se cayó, cambió, se descartó)
+
+   ⚠ «archivada» ya NO es un estado. Era tres cosas a la vez —«se hizo»,
+   «ya no aplica», «quítamelo de la vista»— y por eso no decía ninguna bien:
+   el «✅ 2/20» de los sub-casos sumaba lo hecho con lo abandonado. Se partió
+   en dos ejes el 17/07 (db/archivo-dos-ejes.sql):
+     estado        → resuelta | descartada  (cómo terminó)
+     archivado_en  → si estorba o no        (ver lib/familia)
+   «descartada» es el estado que faltaba: el opuesto de «resuelta». */
 
 export const ESTADO_ICO: Record<string, string> = {
   abierta: "📥", en_progreso: "🛠", seguimiento: "🔭",
-  en_pausa: "⏸", resuelta: "✅", archivada: "🗄",
+  en_pausa: "⏸", resuelta: "✅", descartada: "🚫",
 };
 
 export const ESTADO_TXT: Record<string, string> = {
   abierta: "Sin Resolver", en_progreso: "En Progreso", seguimiento: "Seguimiento",
-  en_pausa: "En Pausa", resuelta: "Resuelta", archivada: "Archivada",
+  en_pausa: "En Pausa", resuelta: "Resuelta", descartada: "Descartada",
 };
 
 export const ESTADO_COL: Record<string, string> = {
   abierta: "var(--red)", en_progreso: "var(--yellow)", seguimiento: "var(--teal)",
-  en_pausa: "var(--blue)", resuelta: "var(--green)", archivada: "var(--dim)",
+  // Descartada en gris, no en rojo: no es un problema, es un final. Terminó
+  // sin hacerse, y ya está — no reclama nada.
+  en_pausa: "var(--blue)", resuelta: "var(--green)", descartada: "var(--dim)",
 };
 
 /* (Aquí vivían ESTADOS —ícono + texto— y ESTADOS_SEL —la lista fija para los
@@ -53,10 +63,30 @@ export const ESTADO_COL: Record<string, string> = {
    partiría en dos los filtros, el kanban y las consultas. Lo único que
    estaba mal era lo que se muestra, así que es lo único que cambia. */
 
-const AVISO_ICO: Record<string, string> = { abierta: "📢", resuelta: "✔" };
-const AVISO_TXT: Record<string, string> = { abierta: "Vigente", resuelta: "Finalizada" };
+/* Un aviso no termina «resuelto» ni «descartado»: rige y deja de regir. Solo
+   tiene un estado vivo —Vigente— y se guarda archivándolo, no cerrándolo. */
+const AVISO_ICO: Record<string, string> = { abierta: "📢" };
+const AVISO_TXT: Record<string, string> = { abierta: "Vigente" };
 
 export const esAviso = (tipo?: string | null) => tipo === "aviso";
+
+/* LOS ESTADOS VIVOS — para las consultas de «qué está en curso».
+   ⚠ Filtrar por ESTOS ya NO basta para excluir lo archivado. Antes sí:
+   `estado='archivada'` sacaba gratis lo archivado de cualquier `.in(estado)`.
+   Ahora archivar es `archivado_en`, y un AVISO archivado se queda en 'abierta'
+   (Vigente) — así que sigue pasando el filtro de estado. Toda consulta de
+   «vivos» tiene que añadir `.is("archivado_en", null)`, o cuenta avisos ya
+   archivados como vigentes/pendientes/vencidos. Le pasó a ocho pantallas el
+   día que se partió el eje; el muro de la oficina mostraba un aviso archivado
+   como «Vigente» para siempre. */
+export const ESTADOS_VIVOS = ["abierta", "en_progreso", "seguimiento", "en_pausa"];
+/* ⚠ Este export está de momento HUÉRFANO a propósito. Nueve consultas siguen
+   escribiendo el array a mano —y por eso a nueve se les olvidó el
+   `.is("archivado_en", null)` cuando se partió el eje—. Migrarlas todas a
+   `ESTADOS_VIVOS` (y a un helper que ya traiga el filtro de archivado) es la
+   forma de que no vuelva a pasar, pero es otra ronda: tocar nueve queries de
+   lectura no cabía en ésta sin volverla ingobernable. Queda dicho para que el
+   siguiente no crea que ya está hecho. */
 
 /** Texto del estado tal como debe leerse para ESTE tipo de publicación. */
 export const textoEstado = (estado: string, tipo?: string | null) =>
@@ -75,13 +105,18 @@ export const rotuloEstado = (estado: string, tipo?: string | null) =>
 export const claseEstado = (estado: string, tipo?: string | null) =>
   esAviso(tipo) && estado === "abierta" ? "vigente" : estado;
 
-/* Qué estados se le pueden PONER a esto. Un aviso no pasa por "En Progreso"
-   ni por "Resuelta": rige, se pausa o se archiva. Vive aquí y no en cada
-   combo porque ya había dos listas —una en CaseActions y otra en PostCard—
-   y la del feed le ofrecía "Resuelta" a un aviso. */
-const OPC_AVISO = ["abierta", "en_pausa", "archivada"];
-const OPC_CASO = ["abierta", "en_progreso", "seguimiento", "en_pausa", "resuelta", "archivada"];
-const HINT: Record<string, string> = { seguimiento: " (caso largo)" };
+/* Qué estados se le pueden PONER a esto. «archivada» ya no está: archivar es
+   una acción aparte (lib/familia · archivado_en), no un estado. Un caso puede
+   terminar de dos formas —se hizo (resuelta) o ya no aplica (descartada)—; un
+   aviso no pasa por ninguna, solo rige o se pausa.
+   Vive aquí y no en cada combo porque ya había dos listas —CaseActions y
+   PostCard— y la del feed le ofrecía "Resuelta" a un aviso. */
+const OPC_AVISO = ["abierta", "en_pausa"];
+const OPC_CASO = ["abierta", "en_progreso", "seguimiento", "en_pausa", "resuelta", "descartada"];
+const HINT: Record<string, string> = {
+  seguimiento: " (caso largo)",
+  descartada: " (ya no aplica)",   // que nadie la confunda con "resuelta"
+};
 
 /** [valor, etiqueta] en el orden del ciclo de vida, para ESTE tipo.
  *  Si `estado` no está entre las opciones —un aviso viejo marcado "resuelta"—

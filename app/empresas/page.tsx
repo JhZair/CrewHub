@@ -4,6 +4,7 @@ import { BotonVerificarLote } from "@/components/VerificarSunat";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import { alertaSunat, empresaDeCasa, esNuestra, esProblematico, textoSunat } from "@/lib/sunat";
 import { REL_EMPRESA, EST_EMPRESA } from "@/lib/entidades";
+import { CERRADOS } from "@/lib/familia";
 import { fmtVence, vigenciaVencida } from "@/lib/vigencia";
 import {
   enJuego, ejecutando, rendicionVencida, rendicionSinPlazo, plazoRendicion,
@@ -94,7 +95,7 @@ export default async function Empresas({ searchParams }: {
     a.total++;
     if (est === "abierta") a.abiertas++;
     else if (["en_progreso", "seguimiento", "en_pausa"].includes(est)) a.progreso++;
-    else if (["resuelta", "archivada"].includes(est)) a.cerradas++;
+    else if (CERRADOS.includes(est)) a.cerradas++;   // resuelta | descartada
     a.coments += comentPorPub.get(v.publicacion_id) || 0;
     act.set(v.entidad_id, a);
   });

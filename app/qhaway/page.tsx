@@ -79,10 +79,10 @@ export default async function Qhaway({ searchParams }: { searchParams: { bit?: s
          { data: nuestraGente }] = await Promise.all([
     supabase.from("publicaciones")
       .select("id,titulo,fecha_limite,estado,resp:perfiles!publicaciones_responsable_fkey(nombre)")
-      .in("estado", ["abierta", "en_progreso"]).not("fecha_limite", "is", null)
+      .in("estado", ["abierta", "en_progreso"]).is("archivado_en", null).not("fecha_limite", "is", null)
       .lte("fecha_limite", en7).order("fecha_limite").limit(12),
     supabase.from("publicaciones").select("id,titulo,responsable,fecha_limite")
-      .in("estado", ["abierta", "en_progreso"]).limit(200),
+      .in("estado", ["abierta", "en_progreso"]).is("archivado_en", null).limit(200),
     supabase.from("actividad").select("entidad_id").eq("entidad_tipo", "publicacion")
       .gte("creado_en", hace3d).limit(1000),
     /* Se filtra en JS con la regla compartida, no en la consulta. La versión

@@ -998,6 +998,9 @@ export async function misEnProgreso() {
     .select("id,tipo,titulo,estado,fecha_limite,creado_en,autor_id,comentarios(count),autor:perfiles!publicaciones_autor_id_fkey(nombre),vinculos:publicacion_vinculos(entidad_tipo,entidad_id)")
     .in("estado", ["abierta", "en_progreso", "seguimiento"])
     .eq("responsable", user.id)
+    // Un aviso archivado se queda 'abierta' y con responsable: sin esto,
+    // seguiría en el banco de trabajo de esa persona para siempre.
+    .is("archivado_en", null)
     // Lo más nuevo arriba: lo recién llegado es lo que aún no tiene lugar en
     // tu cabeza. Lo viejo baja, pero su plazo sigue avisando en rojo.
     .order("creado_en", { ascending: false })
@@ -2661,10 +2664,14 @@ export async function toggleEnterado(pubId: string) {
      matutina. Un aviso con fecha límite no es un aviso: es trabajo con reloj,
      y se archiva a mano cuando el trabajo está hecho. */
   const { data: pub } = await supabase.from("publicaciones")
-    .select("tipo,estado,fecha_limite").eq("id", pubId).single();
+    .select("tipo,estado,fecha_limite,archivado_en").eq("id", pubId).single();
   const conPlazoVivo = !!pub?.fecha_limite
     && pub.fecha_limite >= new Date().toISOString().slice(0, 10);
-  if (pub?.tipo === "aviso" && !conPlazoVivo && !["archivada", "resuelta"].includes(pub.estado)) {
+  /* Ahora archivar es ARCHIVAR, no cambiar de estado: el aviso se queda
+     Vigente (abierta) y solo se le pone `archivado_en`. Antes lo mandaba a
+     `estado:"archivada"` —el estado que ya no existe— y de paso lo sacaba de
+     los conteos de «resuelto». Guard: no re-archivar lo ya archivado. */
+  if (pub?.tipo === "aviso" && !conPlazoVivo && !pub.archivado_en) {
     const [{ data: team }, { data: vistos }] = await Promise.all([
       supabase.from("perfiles").select("id").eq("activo", true).neq("nombre", BOT),
       supabase.from("reacciones").select("usuario_id")
@@ -2674,10 +2681,10 @@ export async function toggleEnterado(pubId: string) {
     const enterados = new Set((vistos || []).map((v: any) => v.usuario_id).filter((id: string) => teamIds.has(id)));
     // Basta con que se entere MÁS DE LA MITAD del equipo
     if (teamIds.size > 0 && enterados.size * 2 > teamIds.size) {
-      await supabase.from("publicaciones").update({ estado: "archivada" }).eq("id", pubId);
+      await supabase.from("publicaciones").update({ archivado_en: new Date().toISOString() }).eq("id", pubId);
       await supabase.from("actividad").insert({
-        entidad_tipo: "publicacion", entidad_id: pubId, actor_id: user.id, tipo: "estado",
-        detalle: { campo: "estado", a: "archivada", mensaje: "aviso archivado — se enteró la mayoría del equipo" },
+        entidad_tipo: "publicacion", entidad_id: pubId, actor_id: user.id, tipo: "archivo",
+        detalle: { a: "archivado", mensaje: "aviso archivado — se enteró la mayoría del equipo" },
       });
     }
   }
@@ -2740,6 +2747,30 @@ export async function ocultarDelFeed(pubId: string) {
     { usuario_id: user.id, publicacion_id: pubId },
     { onConflict: "usuario_id,publicacion_id", ignoreDuplicates: true });
   if (error) return { error: error.message };
+  revalidatePath("/");
+  return {};
+}
+
+/* ARCHIVAR / DESPERTAR — el eje `archivado_en`, no el estado.
+   Archivar es GLOBAL (sale de la vista de todos) y distinto de `feed_ocultos`,
+   que es personal («quítalo de MI feed»). Un caso se archiva cuando ya está
+   cerrado —resuelta o descartada— y no queremos verlo, pero SÍ tenerlo: es la
+   memoria. Despertar es quitar la fecha; el caso vuelve con el estado que
+   tenía, porque archivar nunca lo cambió. Ésa es la razón de partir los ejes:
+   antes archivar borraba cómo terminó el caso. */
+export async function archivar(pubId: string, archivar = true) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { error } = await supabase.from("publicaciones")
+    .update({ archivado_en: archivar ? new Date().toISOString() : null })
+    .eq("id", pubId).select("id");   // .select para no fallar en silencio si RLS bloquea
+  if (error) return { error: error.message };
+  await supabase.from("actividad").insert({
+    entidad_tipo: "publicacion", entidad_id: pubId, actor_id: user.id, tipo: "archivo",
+    detalle: { a: archivar ? "archivado" : "despertado" },
+  });
+  revalidatePath(`/caso/${pubId}`);
   revalidatePath("/");
   return {};
 }

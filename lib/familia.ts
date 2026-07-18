@@ -6,12 +6,24 @@
  * estaban cerrados, así que un caso con todo terminado se veía igual que uno
  * sin empezar.
  *
- * Y «cerrado» es la otra decisión que andaba suelta: un sub-caso cuenta como
- * hecho si está `resuelta` O `archivada` — archivar es una forma de cerrar,
- * no de olvidar. Esa lista literal aparecía en cada copia.
+ * Y «cerrado» es la otra decisión que andaba suelta. Ojo con lo que cambió el
+ * 17/07: era `["resuelta", "archivada"]` — y ahí estaba el número que mentía.
+ * «archivada» mezclaba lo hecho con lo abandonado, así que el «✅ 2/20» de los
+ * sub-casos contaba como avance un sub-caso que se canceló igual que uno que
+ * se terminó. Un rodaje entero cancelado se veía «completo».
+ *
+ * Ahora cerrado = terminado, de las DOS formas de terminar: `resuelta` (se
+ * hizo) o `descartada` (ya no aplica). Las dos sacan el sub-caso de lo
+ * pendiente —nadie tiene que hacer nada con ninguna— pero significan cosas
+ * opuestas. `CERRADOS` sirve para «¿queda trabajo?»; para «¿cuánto se logró?»
+ * hay que mirar solo `resuelta`, y ese conteo es otro (no vive aquí todavía).
+ *
+ * `archivado_en` NO entra en esto: archivar es esconder, no cerrar. Un caso
+ * archivado ya estaba cerrado —por eso se archiva—; su estado es el que dice
+ * cómo terminó.
  */
 
-export const CERRADOS = ["resuelta", "archivada"];
+export const CERRADOS = ["resuelta", "descartada"];
 
 export type Familia = { total: number; ok: number };
 

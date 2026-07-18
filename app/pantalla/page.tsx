@@ -35,6 +35,9 @@ export default async function Pantalla() {
     supabase.from("publicaciones")
       .select("id,titulo,tipo,estado,fecha_limite,responsable,resp:perfiles!publicaciones_responsable_fkey(nombre)")
       .in("estado", ["abierta", "en_progreso"])
+      // Sin lo archivado: si no, un aviso archivado sigue «Vigente» en la TV
+      // para siempre — un aviso archivado es leído, no vigente.
+      .is("archivado_en", null)
       .order("creado_en", { ascending: false }).limit(200),
     supabase.from("actividad")
       .select("tipo,detalle,creado_en,entidad_tipo,entidad_id,actor:perfiles(nombre)")

@@ -26,11 +26,11 @@ export type Evento = {
    hoy, una comprobación física de equipo —hecha por una persona— caía al
    `else`, se pintaba con 🤖 y perdía el nombre de quien la hizo. El bot
    firmando el trabajo de un humano, otra vez. */
-const HUMANOS = ["editado", "edicion", "dato", "miembro"];
+const HUMANOS = ["editado", "edicion", "dato", "miembro", "archivo"];
 
 export const ICO_EVENTO: Record<string, string> = {
   creado: "📝", estado: "🔄", editado: "✏️", edicion: "✏️",
-  dato: "🔑", miembro: "👥", bot: "🤖",
+  dato: "🔑", miembro: "👥", bot: "🤖", archivo: "🗄",
 };
 export const icoDe = (t: string) => ICO_EVENTO[t] || "🤖";
 
@@ -44,6 +44,12 @@ export function textoEvento(e: Evento): string {
   if (e.tipo === "creado") return `${quien || "Sistema"} registró esta entidad`;
   if (e.tipo === "estado")
     return `${quien || BOT} · ${e.detalle?.campo}: ${String(e.detalle?.de ?? "—").replace(/_/g, " ")} → ${String(e.detalle?.a ?? "—").replace(/_/g, " ")}`;
+  /* Archivar/despertar: el mensaje ya lo trae el bot («aviso archivado —…»);
+     una acción humana solo trae `a`. Se dice sin ambigüedad para que el
+     historial no muestre «archivo» a secas. */
+  if (e.tipo === "archivo")
+    return `${quien || BOT} ${e.detalle?.mensaje
+      || (e.detalle?.a === "despertado" ? "despertó este caso del archivo" : "archivó este caso")}`;
   if (HUMANOS.includes(e.tipo))
     return `${quien || "Alguien"} ${e.detalle?.mensaje || "editó la ficha"}`;
   return e.detalle?.mensaje || e.tipo;

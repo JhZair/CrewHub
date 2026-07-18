@@ -108,6 +108,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
         resp:perfiles!publicaciones_responsable_fkey(nombre),
         vinculos:publicacion_vinculos(entidad_tipo, entidad_id)`)
       .in("estado", ["abierta", "en_progreso", "seguimiento"])
+      .is("archivado_en", null)
       .gt("destacado_hasta", new Date().toISOString())
       .order("fecha_limite", { ascending: true, nullsFirst: false })
       .limit(5),
@@ -120,7 +121,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
           comentarios(count),
           vinculos:publicacion_vinculos(entidad_tipo, entidad_id)
         `)
-        .neq("estado", "archivada")   // lo archivado descansa fuera del feed
+        .is("archivado_en", null)   // lo archivado descansa fuera del feed (ya no es un estado)
         .order("creado_en", { ascending: false })
         .limit(50);
       if (idsOcultos.length) q = q.not("id", "in", `(${idsOcultos.join(",")})`);
@@ -134,7 +135,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
     })(),
     (() => {
       // Universo para los contadores de cada pestaña (independiente del filtro activo)
-      let q = supabase.from("publicaciones").select("id,tipo,autor_id,responsable").neq("estado", "archivada");
+      let q = supabase.from("publicaciones").select("id,tipo,autor_id,responsable").is("archivado_en", null);
       if (idsOcultos.length) q = q.not("id", "in", `(${idsOcultos.join(",")})`);
       return q.limit(2000);
     })(),
@@ -188,9 +189,11 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
     await Promise.all([
       supabase.from("publicaciones").select("id", { count: "exact", head: true })
         .in("estado", ["abierta", "en_progreso", "seguimiento", "en_pausa"])
+        .is("archivado_en", null)   // un aviso archivado con fecha vencida NO es un vencido
         .not("fecha_limite", "is", null).lt("fecha_limite", hoyISO),
       supabase.from("publicaciones").select("id", { count: "exact", head: true })
-        .in("estado", ["abierta", "en_progreso", "seguimiento", "en_pausa"]).is("responsable", null),
+        .in("estado", ["abierta", "en_progreso", "seguimiento", "en_pausa"])
+        .is("archivado_en", null).is("responsable", null),
       supabase.from("empresas").select("id", { count: "exact", head: true })
         .eq("estado", "activa").not("estado_sunat", "is", null).neq("estado_sunat", "activo"),
       supabase.from("personas").select("id", { count: "exact", head: true })
