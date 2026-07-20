@@ -3,10 +3,14 @@ import {
   agregarActividadCrono, editarActividadCrono, moverActividadCrono,
   cancelarActividadCrono, materializarActividad,
   guardarComoPlantilla, aplicarPlantilla,
+  asignarResponsableActividad, cambiarFechaActividad, fijarEquipoActividad,
 } from "@/app/actions";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import MiniSelect from "@/components/MiniSelect";
+import FechaMini from "@/components/FechaMini";
+import { sinBot } from "@/lib/personas";
 
 const ETAPA_ORDEN = ["preproduccion", "produccion", "postproduccion", "entrega", "administracion"];
 
@@ -37,7 +41,7 @@ const fmt = (s: string) =>
   new Date(s + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short" });
 
 type Campos = { nombre: string; etapa: string; ini: string; fin: string;
-  responsable: string; antic: string; clase: string };
+  responsable: string; antic: string; clase: string; descripcion: string; equipo: string[] };
 
 const inp = { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8,
   padding: "7px 10px", fontSize: 12.5, outline: "none", color: "var(--text)" } as const;
@@ -60,6 +64,9 @@ function FormAct({ f, setF, perfiles, onSave, onCancel, ocupado, editar }: {
     : !f.ini ? "Falta la fecha de inicio"
     : f.fin && f.fin < f.ini ? "El fin no puede ser antes del inicio"
     : "";
+  /* Nómina para el equipo de apoyo (sin el bot). El corto = primer nombre. */
+  const plantelF = sinBot(perfiles);
+  const cortoF = (id: string) => (plantelF.find(p => p.id === id)?.nombre || "").split(" ")[0];
   return (
     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "12px 0", padding: 10, background: "var(--bg)", borderRadius: 10 }}>
       <select style={{ ...inp, borderColor: f.clase === "hito_externo" ? "var(--blue)" : "var(--border)" }}
@@ -79,9 +86,12 @@ function FormAct({ f, setF, perfiles, onSave, onCancel, ocupado, editar }: {
         onChange={e => setF({ ...f, ini: e.target.value })} />
       <input type="date" style={inp} title="Fin (si dura más de un día)" value={f.fin}
         onChange={e => setF({ ...f, fin: e.target.value })} />
-      <select style={inp} value={f.responsable} onChange={e => setF({ ...f, responsable: e.target.value })}>
+      {/* Al elegir responsable, se le saca del equipo de apoyo: es líder, no
+          apoyo — nadie en los dos a la vez. */}
+      <select style={inp} value={f.responsable}
+        onChange={e => setF({ ...f, responsable: e.target.value, equipo: f.equipo.filter(x => x !== e.target.value) })}>
         <option value="">Responsable...</option>
-        {perfiles.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+        {plantelF.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
       </select>
       <label style={{ color: "var(--dim)", fontSize: 11, display: "flex", alignItems: "center", gap: 5 }}>
         avisar <input type="number" min={0} max={60} style={{ ...inp, width: 54 }}
@@ -92,6 +102,33 @@ function FormAct({ f, setF, perfiles, onSave, onCancel, ocupado, editar }: {
         {ocupado ? "…" : editar ? "Guardar cambios" : "Guardar"}
       </button>
       <button className="btn btn-ghost" style={{ padding: "7px 10px", fontSize: 12 }} onClick={onCancel}>Cancelar</button>
+      {/* Equipo de apoyo (opcional), en su propia fila: el responsable rinde
+          cuentas; estos son los demás que trabajan la actividad. Chips con ✕ y
+          un ＋ para sumar (sin el responsable ni los que ya están). */}
+      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", width: "100%" }}>
+        <span style={{ color: "var(--dim)", fontSize: 11.5 }}>👥 Equipo de apoyo:</span>
+        {f.equipo.length === 0 && <span style={{ color: "var(--dim)", fontSize: 11 }}>— opcional —</span>}
+        {f.equipo.map(pid => (
+          <span key={pid} className="sc-btn puesto resp" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+            👤 {cortoF(pid) || "⚠"}
+            <button type="button" title="Quitar del equipo" style={{ color: "var(--dim)", padding: 0, lineHeight: 1 }}
+              onClick={() => setF({ ...f, equipo: f.equipo.filter(x => x !== pid) })}>✕</button>
+          </span>
+        ))}
+        <select style={{ ...inp, padding: "5px 8px" }} value=""
+          onChange={e => { const v = e.target.value; if (v) setF({ ...f, equipo: [...f.equipo, v] }); }}>
+          <option value="">＋ apoyo…</option>
+          {plantelF.filter(p => p.id !== f.responsable && !f.equipo.includes(p.id))
+            .map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+        </select>
+      </div>
+      {/* La descripción va en su propia fila completa: es texto, no un dato de
+          una línea, y un input estrecho junto a las fechas invitaría a
+          resumirla. Opcional — el nombre basta para planificar; esto es el
+          «cómo» para quien la ejecuta. */}
+      <textarea style={{ ...inp, width: "100%", minHeight: 56, resize: "vertical", lineHeight: 1.5 }}
+        placeholder="Descripción (opcional): qué se espera, cómo hacerla, qué entregar…"
+        value={f.descripcion} onChange={e => setF({ ...f, descripcion: e.target.value })} />
       {/* Y se dice en voz alta, no solo en el tooltip: un botón apagado sin
           explicación es un botón roto. */}
       {falta && <span style={{ color: "var(--yellow)", fontSize: 11.5, width: "100%" }}>⚠ {falta}</span>}
@@ -111,7 +148,7 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
   const [ancho, setAncho] = useState(false);
   const [confirmando, setConfirmando] = useState<{ id: string; accion: "mat" | "del" } | null>(null);
   const [agregando, setAgregando] = useState(false);
-  const VACIO: Campos = { nombre: "", etapa: dueno === "convocatoria" ? "administracion" : "produccion", ini: "", fin: "", responsable: "", antic: "7", clase: "trabajo" };
+  const VACIO: Campos = { nombre: "", etapa: dueno === "convocatoria" ? "administracion" : "produccion", ini: "", fin: "", responsable: "", antic: "7", clase: "trabajo", descripcion: "", equipo: [] };
   const [f, setF] = useState<Campos>(VACIO);
   // Editar: faltaba entero. Una fecha mal puesta solo se podía arreglar
   // cancelando la actividad y creándola de nuevo, perdiendo su historia.
@@ -134,6 +171,33 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
   const [ok, setOk] = useState("");
   const router = useRouter();
   const fallo = (r: any) => { if (r?.error) { setError(r.error); return true; } setError(""); return false; };
+
+  /* CAMBIOS AL VUELO (responsable / fecha), como en sub-casos: repartir sin
+     abrir el editor entero. Candado POR FILA —lista, no un booleano global—:
+     tocar la fila B mientras la A guarda no se come el clic en silencio. */
+  const [guardandoFila, setGuardandoFila] = useState<string[]>([]);
+  const alVuelo = async (id: string, fn: () => Promise<any>) => {
+    if (guardandoFila.includes(id)) return;
+    setGuardandoFila(g => [...g, id]); setError("");
+    const res: any = await fn();
+    setGuardandoFila(g => g.filter(x => x !== id));
+    if (res?.error) { setError(res.error); return; }
+    router.refresh();
+  };
+  /* El menú lleva el nombre largo —ahí se elige, hay que reconocer a quién—; el
+     botón, el corto (primer nombre). `perfiles` viene filtrado por activo: uno
+     asignado a alguien dado de baja no se encuentra, y eso se dice (⚠ de baja),
+     no se pinta como un dato normal. */
+  /* `plantel` es la nómina del equipo (los perfiles), para elegir responsable
+     y apoyo. Se llama así y no `equipo` para no chocar con `a.equipo`, que es
+     el equipo de apoyo YA puesto en cada actividad. */
+  const plantel = sinBot(perfiles);
+  const OPC_RESP: [string, string][] = [
+    ["", "Sin asignar"],
+    ...plantel.map(p => [p.id, p.nombre] as [string, string]),
+  ];
+  const cortoResp = (id: string) => (plantel.find(p => p.id === id)?.nombre || "").split(" ")[0];
+  const respInactivo = (id: string) => !!id && !plantel.some(p => p.id === id);
 
   /* Escape cierra. Pero no si hay algo abierto encima —editando, agregando o
      una plantilla a medias—: ahí Escape cancela ESO, y cerrar la ventana
@@ -158,7 +222,7 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
     const res = await agregarActividadCrono(dueno, duenoId, f);
     setOcupado(false);
     if (fallo(res)) return;
-    setF({ ...f, nombre: "", ini: "", fin: "", responsable: "" });
+    setF({ ...f, nombre: "", ini: "", fin: "", responsable: "", descripcion: "", equipo: [] });
     setAgregando(false);
     router.refresh();
   };
@@ -169,7 +233,8 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
       nombre: a.nombre || "", etapa: a.etapa || "produccion",
       ini: a.fecha_inicio || "", fin: a.fecha_fin || "",
       responsable: a.responsable || "", antic: String(a.dias_anticipacion ?? 7),
-      clase: a.clase || "trabajo",
+      clase: a.clase || "trabajo", descripcion: a.descripcion || "",
+      equipo: a.equipo || [],
     });
   };
   const guardarEdicion = async () => {
@@ -182,10 +247,10 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
     router.refresh();
   };
 
-  /* Mover dentro del día. El cronograma se ordena por fecha, y cuando varias
-     caen el mismo día el orden lo decidía Postgres — por eso «Rodaje cámara
-     secundaria» salía antes que «Rodaje Cámara Principal». Un día de rodaje
-     tiene secuencia y ahora se puede decir cuál. */
+  /* Mover DENTRO DE LA ETAPA (a cualquier fecha). La secuencia de una etapa
+     —Sincronización → Color → Logging→…— la decide una persona, no la fecha;
+     dentro de la etapa manda el orden manual y la fecha es solo el desempate
+     por defecto. (La acción renumera la etapa; ver moverActividadCrono.) */
   const mover = async (id: string, dir: "sube" | "baja") => {
     if (ocupado) return;
     setOcupado(true);
@@ -243,15 +308,18 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
   const pct = (t: number) => Math.min(100, Math.max(0, ((t - minT) / span) * 100));
   const hoyT = Date.now();
   const hoyPct = pct(hoyT);
-  /* Tres desempates, en este orden: la fecha manda; después la etapa (no se
-     rueda antes de alistar); después `orden`, que es lo único que una persona
-     decide a mano. Sin el tercero, dos actividades del mismo día y la misma
-     etapa quedaban en el orden que quisiera Postgres — y ese cambia entre
-     recargas sin que nadie lo toque. */
+  /* El orden, en este orden: primero la ETAPA (no se rueda antes de alistar);
+     dentro de la etapa manda el `orden` MANUAL —la secuencia que decide una
+     persona: Sincronización → Color → Logging→…—; la fecha es el desempate por
+     defecto (una etapa recién hecha, con todo en orden 0, sale cronológica); y
+     `creado_en` desempata el desempate, para que dos no bailen entre recargas.
+     ⚠ Este comparador dentro de la etapa TIENE que ser idéntico a `cmpEtapa`
+     de actions.ts (moverActividadCrono), o «subir» movería otra cosa. */
   const ordenadas = [...visibles].sort((a, b) =>
-    a.fecha_inicio !== b.fecha_inicio ? (a.fecha_inicio < b.fecha_inicio ? -1 : 1)
-    : a.etapa !== b.etapa ? ETAPA_ORDEN.indexOf(a.etapa) - ETAPA_ORDEN.indexOf(b.etapa)
-    : (a.orden ?? 0) - (b.orden ?? 0));
+    a.etapa !== b.etapa ? ETAPA_ORDEN.indexOf(a.etapa) - ETAPA_ORDEN.indexOf(b.etapa)
+    : (a.orden ?? 0) !== (b.orden ?? 0) ? (a.orden ?? 0) - (b.orden ?? 0)
+    : a.fecha_inicio !== b.fecha_inicio ? (a.fecha_inicio < b.fecha_inicio ? -1 : 1)
+    : (a.creado_en < b.creado_en ? -1 : a.creado_en > b.creado_en ? 1 : 0));
 
   const cuerpo = (
     <div className="card" style={{ marginBottom: ancho ? 0 : 16 }}>
@@ -350,11 +418,12 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
             <div className="cr-etapa-h">{et.replace(/_/g, " ")}</div>
             {grupo.map(a => {
               const [txt, col] = CHIP[a.estado] || CHIP.planificada;
-              // Solo se mueve entre las de su mismo día dentro de esta etapa
-              const mismoDia = grupo.filter(x => x.fecha_inicio === a.fecha_inicio);
-              const pos = mismoDia.findIndex(x => x.id === a.id);
+              /* Se reordena dentro de toda la ETAPA (a cualquier fecha), no ya
+                 solo entre las del mismo día. `grupo` ya viene en el orden de
+                 pantalla; la posición aquí es la misma que usa la acción. */
+              const pos = grupo.findIndex(x => x.id === a.id);
               const puedeSubir = pos > 0;
-              const puedeBajar = pos >= 0 && pos < mismoDia.length - 1;
+              const puedeBajar = pos >= 0 && pos < grupo.length - 1;
               if (editando === a.id) {
                 return (
                   <FormAct key={a.id} f={ef} setF={setEf} perfiles={perfiles} ocupado={ocupado} editar
@@ -373,11 +442,50 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
                     <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {a.nombre}
                     </div>
-                    <div style={{ fontSize: 11, color: "var(--dim)" }}>
-                      {fmt(a.fecha_inicio)} → {a.fecha_fin ? fmt(a.fecha_fin) : "—"}
-                      {(a.resp as any)?.nombre && <> · {(a.resp as any).nombre.split(" ")[0]}</>}
-                      {a.estado === "planificada" && <> · 🔕 −{a.dias_anticipacion ?? 7}d</>}
+                    {/* Fecha y responsable AL VUELO —como en sub-casos—: se
+                        cambian sin abrir el editor entero. Van pegados al
+                        nombre, que son atributos de la actividad; a la derecha
+                        quedan las acciones (mover, editar, materializar).
+                        La FechaMini toca el INICIO; el fin fino, con ✎. */}
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 3, fontSize: 11, color: "var(--dim)" }}>
+                      <FechaMini valor={a.fecha_inicio || null} ocupado={guardandoFila.includes(a.id)}
+                        tituloVacio="Poner fecha de inicio"
+                        onCambia={v => alVuelo(a.id, () => cambiarFechaActividad(a.id, dueno, duenoId, v))} />
+                      {a.fecha_fin && a.fecha_fin !== a.fecha_inicio && <span>→ {fmt(a.fecha_fin)}</span>}
+                      <MiniSelect value={a.responsable || ""} options={OPC_RESP}
+                        etiqueta={!a.responsable ? "🙋" : respInactivo(a.responsable) ? "⚠ de baja" : cortoResp(a.responsable)}
+                        onSelect={v => alVuelo(a.id, () => asignarResponsableActividad(a.id, dueno, duenoId, v || null))}
+                        buttonClass={`sc-btn${a.responsable ? (respInactivo(a.responsable) ? " puesto baja" : " puesto resp") : ""}`} />
+                      {/* EQUIPO DE APOYO: el responsable rinde cuentas; estos son
+                          los demás que trabajan la actividad («entrevistas» =
+                          entrevistador + camarógrafo). Chips con ✕ para quitar,
+                          y un 👥+ para sumar (sin el responsable ni los que ya
+                          están). El componente arma el arreglo; la acción lo fija. */}
+                      {(a.equipo || []).map((pid: string) => (
+                        <span key={pid} className="sc-btn puesto resp" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          👤 {cortoResp(pid) || "⚠"}
+                          <button title="Quitar del equipo" disabled={guardandoFila.includes(a.id)}
+                            style={{ color: "var(--dim)", padding: 0, lineHeight: 1 }}
+                            onClick={() => alVuelo(a.id, () => fijarEquipoActividad(a.id, dueno, duenoId, (a.equipo || []).filter((x: string) => x !== pid)))}>✕</button>
+                        </span>
+                      ))}
+                      <MiniSelect value=""
+                        options={[["", "＋ apoyo"], ...plantel
+                          .filter(p => p.id !== a.responsable && !(a.equipo || []).includes(p.id))
+                          .map(p => [p.id, p.nombre] as [string, string])]}
+                        etiqueta="👥﹢"
+                        onSelect={v => { if (v) alVuelo(a.id, () => fijarEquipoActividad(a.id, dueno, duenoId, [...(a.equipo || []), v])); }}
+                        buttonClass="sc-btn" />
+                      {a.estado === "planificada" && <span>🔕 −{a.dias_anticipacion ?? 7}d</span>}
                     </div>
+                    {/* La descripción, si la hay: el «cómo» de la actividad,
+                        debajo del «cuándo/quién». whiteSpace pre-wrap respeta
+                        los saltos de línea que puso quien la escribió. */}
+                    {a.descripcion && (
+                      <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 4, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>
+                        {a.descripcion}
+                      </div>
+                    )}
                   </div>
                   <span className="badge" style={{ color: col, background: "#1c1c2c", whiteSpace: "nowrap", flexShrink: 0 }}>{txt}</span>
                   <span style={{ display: "flex", gap: 8, flexShrink: 0, alignItems: "center" }}>
@@ -399,15 +507,16 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
                     )}
                     {confirmando?.id !== a.id && (
                       <>
-                        {/* Mover dentro del día. Solo asoman cuando hay con
-                            quién intercambiar: un botón que no puede hacer
-                            nada es peor que no tenerlo. */}
+                        {/* Mover dentro de la etapa. Solo asoman cuando hay a
+                            dónde: una etapa de una sola actividad no las
+                            muestra —un botón que no puede hacer nada es peor
+                            que no tenerlo—. */}
                         {(puedeSubir || puedeBajar) && (
                           <span style={{ display: "flex", flexDirection: "column", lineHeight: .8 }}>
-                            <button title="Subir dentro de este día" disabled={!puedeSubir || ocupado}
+                            <button title="Subir en la etapa" disabled={!puedeSubir || ocupado}
                               style={{ color: puedeSubir ? "var(--dim)" : "transparent", fontSize: 9, padding: 0 }}
                               onClick={() => mover(a.id, "sube")}>▲</button>
-                            <button title="Bajar dentro de este día" disabled={!puedeBajar || ocupado}
+                            <button title="Bajar en la etapa" disabled={!puedeBajar || ocupado}
                               style={{ color: puedeBajar ? "var(--dim)" : "transparent", fontSize: 9, padding: 0 }}
                               onClick={() => mover(a.id, "baja")}>▼</button>
                           </span>

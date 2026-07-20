@@ -25,7 +25,7 @@ const ROTULO_ENT: Record<string, string> = {
   publicacion: "casos", proyecto: "proyectos", empresa: "empresas",
   persona: "personas", postulacion: "postulaciones", convocatoria: "convocatorias",
   equipamiento: "equipos", lugar: "lugares", etiqueta: "etiquetas",
-  empresa_miembro: "cargos de empresa",
+  empresa_miembro: "cargos de empresa", cronograma_actividades: "cronograma",
 };
 const TOPE = 500;
 
@@ -73,8 +73,29 @@ export default async function HistorialTodo({ searchParams }: {
       nombre.set(`${tipo}:${r.id}`, r.alias || r.nombre_corto || r[campo] || "—"));
   }));
 
+  /* Los cambios de RESPONSABLE los escribe el trigger con el id del perfil en
+     `de`/`a`, no el nombre — antes salían como UUID crudo. Se resuelven aquí,
+     igual que los nombres de entidad: se juntan los ids y una sola consulta. */
+  const perfilIds = new Set<string>();
+  (evs || []).forEach((x: any) => {
+    if (x.tipo === "estado" && x.detalle?.campo === "responsable") {
+      if (x.detalle.de) perfilIds.add(x.detalle.de);
+      if (x.detalle.a) perfilIds.add(x.detalle.a);
+    }
+  });
+  const perfilNom = new Map<string, string>();
+  if (perfilIds.size) {
+    const { data } = await supabase.from("perfiles").select("id,nombre").in("id", [...perfilIds]);
+    (data || []).forEach((r: any) => perfilNom.set(r.id, r.nombre));
+  }
+  // Un id que ya no existe (perfil borrado) se muestra tal cual antes que romper.
+  const persDe = (v: any) => v ? (perfilNom.get(v) || v) : "sin asignar";
+
   const todos: Evento[] = (evs || []).map((x: any) => ({
     ...x,
+    detalle: x.tipo === "estado" && x.detalle?.campo === "responsable"
+      ? { ...x.detalle, de: persDe(x.detalle.de), a: persDe(x.detalle.a) }
+      : x.detalle,
     entidadNombre: nombre.get(`${x.entidad_tipo}:${x.entidad_id}`),
     actor: x.actor ? { ...x.actor, nombre: cortoActor(x.actor.nombre) } : x.actor,
   }));

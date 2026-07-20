@@ -1851,21 +1851,38 @@ export async function asignarClienteProyecto(proyectoId: string, personaId: stri
 export async function agregarActividadCrono(
   dueno: "proyecto" | "convocatoria", duenoId: string,
   d: { nombre: string; etapa: string; ini: string; fin: string;
-       responsable: string; antic: string; clase: string; }
+       responsable: string; antic: string; clase: string; descripcion?: string; equipo?: string[]; }
 ) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
   if (!d.nombre.trim() || !d.ini) return { error: "Nombre y fecha de inicio son obligatorios." };
+  /* Orden = al final de su etapa (max + 10). Como el orden manual manda dentro
+     de la etapa, una actividad nueva sin orden (0) saltaría al TOPE de una
+     etapa ya ordenada a mano. Se anexa al final —es lo que uno espera al
+     «agregar»— y de ahí se arrastra con las flechas si va en otro sitio. */
+  const colDueno = dueno === "proyecto" ? "proyecto_id" : "convocatoria_id";
+  /* `.eq(col, null)` NO matchea NULL en PostgREST (hay que usar `.is`). La
+     etapa siempre viene del <select>, pero se blinda por si acaso. */
+  let qUlt = supabase.from("cronograma_actividades")
+    .select("orden").eq(colDueno, duenoId).neq("estado", "cancelada");
+  qUlt = d.etapa ? qUlt.eq("etapa", d.etapa) : qUlt.is("etapa", null);
+  const { data: ultima } = await qUlt.order("orden", { ascending: false }).limit(1).maybeSingle();
+  const orden = ((ultima?.orden ?? 0) as number) + 10;
+  // Equipo de apoyo: sin duplicados y sin el responsable (es líder, no apoyo).
+  const equipo = [...new Set((d.equipo || []).filter(id => id && id !== d.responsable))];
   const { error } = await supabase.from("cronograma_actividades").insert({
-    [dueno === "proyecto" ? "proyecto_id" : "convocatoria_id"]: duenoId,
+    [colDueno]: duenoId,
     nombre: d.nombre.trim(),
     etapa: d.etapa || null,
     clase: d.clase === "hito_externo" ? "hito_externo" : "trabajo",
     fecha_inicio: d.ini,
     fecha_fin: d.fin || d.ini,
     responsable: d.responsable || null,
+    descripcion: d.descripcion?.trim() || null,
+    equipo: equipo.length ? equipo : null,
     dias_anticipacion: parseInt(d.antic) || 7,
+    orden,
     estado: "planificada",
   });
   if (error) return { error: error.message };
@@ -2008,7 +2025,7 @@ export async function borrarPlantilla(id: string) {
 export async function editarActividadCrono(
   actId: string, dueno: "proyecto" | "convocatoria", duenoId: string,
   d: { nombre: string; etapa: string; ini: string; fin: string;
-       responsable: string; antic: string; clase: string; }
+       responsable: string; antic: string; clase: string; descripcion?: string; equipo?: string[]; }
 ) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -2016,6 +2033,7 @@ export async function editarActividadCrono(
   if (!d.nombre.trim() || !d.ini) return { error: "Nombre y fecha de inicio son obligatorios." };
   const fin = d.fin || d.ini;
   if (fin < d.ini) return { error: "La fecha de fin no puede ser anterior al inicio." };
+  const equipoEd = [...new Set((d.equipo || []).filter(id => id && id !== d.responsable))];
 
   const { data: antes } = await supabase.from("cronograma_actividades")
     .select("nombre,etapa,clase,fecha_inicio,fecha_fin,responsable,dias_anticipacion")
@@ -2028,6 +2046,8 @@ export async function editarActividadCrono(
     fecha_inicio: d.ini,
     fecha_fin: fin,
     responsable: d.responsable || null,
+    descripcion: d.descripcion?.trim() || null,
+    equipo: equipoEd.length ? equipoEd : null,
     dias_anticipacion: parseInt(d.antic) || 7,
   };
   // El .select() otra vez: un UPDATE bloqueado por RLS no da error, afecta
@@ -2046,7 +2066,11 @@ export async function editarActividadCrono(
       responsable: "Responsable", dias_anticipacion: "Anticipación",
     };
     const cambios = Object.keys(fila)
-      .filter(k => String((antes as any)[k] ?? "") !== String((fila as any)[k] ?? ""))
+      /* La descripción queda fuera del historial a propósito: es una nota
+         libre que puede ser un párrafo, y volcarla como «de X → a Y» ahogaría
+         las decisiones que el log SÍ debe guardar (fechas, responsable). Se
+         guarda igual en la fila; solo no se cuenta como cambio registrado. */
+      .filter(k => k !== "descripcion" && k !== "equipo" && String((antes as any)[k] ?? "") !== String((fila as any)[k] ?? ""))
       .map(k => ({ campo: ETIQ[k] || k, de: String((antes as any)[k] ?? "—"), a: String((fila as any)[k] ?? "—") }));
     if (cambios.length) {
       await supabase.from("actividad").insert({
@@ -2059,16 +2083,30 @@ export async function editarActividadCrono(
   return {};
 }
 
-/* Mover una actividad arriba o abajo dentro de su día.
+/* Comparador de secuencia DENTRO de una etapa. TIENE que ser idéntico al del
+   componente (CronogramaProyecto: `ordenadas`), o «subir una posición» movería
+   una cosa distinta a la que se ve. El orden manual manda; la fecha es el
+   desempate por defecto (una etapa recién creada, con todo en orden 0, sale
+   cronológica); `creado_en` desempata el desempate. */
+function cmpEtapa(a: any, b: any) {
+  return (a.orden ?? 0) - (b.orden ?? 0)
+    || (a.fecha_inicio < b.fecha_inicio ? -1 : a.fecha_inicio > b.fecha_inicio ? 1 : 0)
+    || (a.creado_en < b.creado_en ? -1 : a.creado_en > b.creado_en ? 1 : 0);
+}
+
+/* Mover una actividad arriba o abajo DENTRO DE SU ETAPA (a cualquier fecha).
  *
- * `orden` desempata lo que cae en la misma fecha: la fecha dice cuándo, el
- * orden dice en qué secuencia. Un día de rodaje tiene secuencia —primero se
- * alistan los equipos, después rueda cámara A, después B— y sin esto la
- * decidía Postgres, que no promete ninguna.
+ * Antes solo se movía entre las del mismo DÍA: por eso solo algunas filas
+ * tenían flechas —las que compartían fecha con otra— y el resto no, que se
+ * veía como un botón roto. Ahora la secuencia de la etapa es lo que manda
+ * (una postproducción es Sincronización → Color → Logging →…, con fechas
+ * aproximadas), y se reordena toda la etapa.
  *
- * Se intercambia con la vecina en vez de renumerar todo: es una operación,
- * no una migración, y así dos personas moviendo cosas a la vez no se pisan.
- */
+ * Se renumera DENSO (10,20,30…) toda la etapa en su orden actual con la
+ * permuta aplicada, y se actualiza solo lo que cambió. La primera vez que se
+ * mueve algo en una etapa que estaba toda en orden 0, se numeran todas de una
+ * (dejan de empatar); las siguientes veces cambian solo dos. Renumerar una
+ * lista de ~15 no es una migración, y evita el lío de permutar ceros. */
 export async function moverActividadCrono(
   actId: string, dueno: "proyecto" | "convocatoria", duenoId: string, dir: "sube" | "baja"
 ) {
@@ -2078,35 +2116,124 @@ export async function moverActividadCrono(
 
   const col = dueno === "proyecto" ? "proyecto_id" : "convocatoria_id";
   const { data: act } = await supabase.from("cronograma_actividades")
-    .select("id,fecha_inicio,etapa,orden,creado_en").eq("id", actId).maybeSingle();
+    .select("id,etapa").eq("id", actId).maybeSingle();
   if (!act) return { error: "No se encontró la actividad." };
 
-  /* Se mueve dentro de su día Y de su etapa, porque así es como se ve: la
-     lista ordena fecha → etapa → orden. Si permutara ignorando la etapa, el
-     botón haría un UPDATE real y en pantalla no pasaría nada — el peor tipo
-     de botón. Cambiar de día o de etapa es editar la actividad, no moverla. */
-  const { data: hermanas } = await supabase.from("cronograma_actividades")
-    .select("id,orden,creado_en").eq(col, duenoId)
-    .eq("fecha_inicio", act.fecha_inicio).eq("etapa", act.etapa)
-    .neq("estado", "cancelada")
-    .order("orden").order("creado_en");
-  const l = hermanas || [];
+  // `.eq(col, null)` no matchea NULL en PostgREST → conmutar a `.is` si toca.
+  let qHer = supabase.from("cronograma_actividades")
+    .select("id,orden,fecha_inicio,creado_en").eq(col, duenoId).neq("estado", "cancelada");
+  qHer = act.etapa ? qHer.eq("etapa", act.etapa) : qHer.is("etapa", null);
+  const { data: hermanas } = await qHer;
+  const l = (hermanas || []).slice().sort(cmpEtapa);
   const i = l.findIndex((x: any) => x.id === actId);
   const j = dir === "sube" ? i - 1 : i + 1;
   if (i < 0 || j < 0 || j >= l.length) {
-    return { error: "Ya está en el extremo de su día. Para moverla de sitio, cámbiale la fecha o la etapa con ✎." };
+    return { error: "Ya está en el extremo de su etapa. Para pasarla a otra etapa, edítala con ✎." };
   }
 
-  /* Si empatan en `orden` —o los dos son 0— intercambiarlos no cambiaría
-     nada: se reasignan por posición antes de permutar. */
-  const a = l[i], b = l[j];
-  const oa = a.orden ?? 0, ob = b.orden ?? 0;
-  const [nuevoA, nuevoB] = oa === ob ? [(j + 1) * 10, (i + 1) * 10] : [ob, oa];
-  const r1 = await supabase.from("cronograma_actividades").update({ orden: nuevoA }).eq("id", a.id).select("id");
-  const r2 = await supabase.from("cronograma_actividades").update({ orden: nuevoB }).eq("id", b.id).select("id");
-  if (r1.error || r2.error) return { error: r1.error?.message || r2.error?.message };
-  if (!r1.data?.length || !r2.data?.length) return { error: "No se movió: no tienes permiso." };
+  // Permuta y renumera denso; actualiza solo las filas cuyo orden cambió.
+  [l[i], l[j]] = [l[j], l[i]];
+  const cambios = l
+    .map((x: any, idx: number) => ({ id: x.id, nuevo: (idx + 1) * 10, viejo: x.orden ?? 0 }))
+    .filter(u => u.nuevo !== u.viejo);
+  const res = await Promise.all(cambios.map(u =>
+    supabase.from("cronograma_actividades").update({ orden: u.nuevo }).eq("id", u.id).select("id")));
+  const conError = res.find(r => r.error);
+  if (conError?.error) return { error: conError.error.message };
+  /* RLS: un UPDATE bloqueado no da error, afecta cero filas. Si la fila que se
+     movió debía cambiar y no cambió, es permiso. */
+  const kMovida = cambios.findIndex(u => u.id === actId);
+  if (kMovida >= 0 && !res[kMovida].data?.length) {
+    return { error: "No se movió: no tienes permiso para editar esta actividad." };
+  }
 
+  revalidatePath(`/entidad/${dueno}/${duenoId}`);
+  return {};
+}
+
+/* ── Los dos cambios «al vuelo» del cronograma ──
+   Como en sub-casos: repartir responsables y ajustar fechas sin abrir el
+   editor entero de la actividad. Cada uno toca UN campo. */
+
+/* Responsable al vuelo. No registra a mano en la bitácora: el trigger
+   `registrar_evento_estado` ya vigila `responsable` en cronograma_actividades
+   y lo deja escrito solo. Si lo escribiéramos otra vez aquí, saldría doble. */
+export async function asignarResponsableActividad(
+  actId: string, dueno: "proyecto" | "convocatoria", duenoId: string, respId: string | null
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  /* Si el nuevo responsable estaba en el equipo de apoyo, sale de ahí: es
+     líder, no apoyo — nadie debe figurar en los dos a la vez, o saldría
+     duplicado en la fila. */
+  const { data: act } = await supabase.from("cronograma_actividades")
+    .select("equipo").eq("id", actId).maybeSingle();
+  const equipo = ((act?.equipo as string[] | null) || []).filter(id => id && id !== respId);
+  const { data, error } = await supabase.from("cronograma_actividades")
+    .update({ responsable: respId || null, equipo: equipo.length ? equipo : null })
+    .eq("id", actId).select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "No se guardó: no tienes permiso." };
+  revalidatePath(`/entidad/${dueno}/${duenoId}`);
+  return {};
+}
+
+/* Fecha al vuelo. Edita el INICIO —la fecha por la que se ordena y se lee la
+   lista— y arrastra el fin: si la actividad era de un día (inicio = fin), el
+   fin sigue al inicio; si era de varios, solo se mueve el fin cuando quedaría
+   antes del nuevo inicio. El fin fino se sigue tocando con el editor ✎.
+   La fecha SÍ se registra a mano: el trigger no vigila fechas, y mover una
+   fecha de un cronograma es una decisión, no un tecleo — igual que en el
+   editor completo. */
+export async function cambiarFechaActividad(
+  actId: string, dueno: "proyecto" | "convocatoria", duenoId: string, fecha: string
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!fecha) return { error: "Falta la fecha." };
+
+  const { data: antes } = await supabase.from("cronograma_actividades")
+    .select("nombre,fecha_inicio,fecha_fin").eq("id", actId).maybeSingle();
+  if (!antes) return { error: "No se encontró la actividad." };
+
+  const eraUnDia = !antes.fecha_fin || antes.fecha_fin === antes.fecha_inicio;
+  const nuevoFin = eraUnDia ? fecha : (antes.fecha_fin < fecha ? fecha : antes.fecha_fin);
+
+  const { data, error } = await supabase.from("cronograma_actividades")
+    .update({ fecha_inicio: fecha, fecha_fin: nuevoFin }).eq("id", actId).select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "No se guardó: no tienes permiso." };
+
+  if (antes.fecha_inicio !== fecha) {
+    await supabase.from("actividad").insert({
+      entidad_tipo: dueno, entidad_id: duenoId, actor_id: user.id, tipo: "editado",
+      detalle: {
+        mensaje: `movió la actividad «${antes.nombre}» del cronograma`,
+        cambios: [{ campo: "Inicio", de: antes.fecha_inicio ?? "—", a: fecha }],
+      },
+    });
+  }
+  revalidatePath(`/entidad/${dueno}/${duenoId}`);
+  return {};
+}
+
+/* Equipo de apoyo al vuelo. Recibe la lista COMPLETA (el componente arma el
+   arreglo con la persona agregada o quitada) y la fija. `perfiles.equipo` no
+   lo vigila el trigger de bitácora, y es un detalle de planificación —quién
+   más ayuda—, no una decisión de estado: no se registra a mano. */
+export async function fijarEquipoActividad(
+  actId: string, dueno: "proyecto" | "convocatoria", duenoId: string, equipo: string[]
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const limpio = [...new Set((equipo || []).filter(Boolean))];
+  const { data, error } = await supabase.from("cronograma_actividades")
+    .update({ equipo: limpio.length ? limpio : null }).eq("id", actId).select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "No se guardó: no tienes permiso." };
   revalidatePath(`/entidad/${dueno}/${duenoId}`);
   return {};
 }
@@ -2137,14 +2264,27 @@ export async function materializarActividad(actId: string, dueno: string, duenoI
     || `${(act.convocatoria as any)?.codigo || ""} ${(act.convocatoria as any)?.nombre || ""}`.trim()
     || "el cronograma";
 
+  /* El equipo de apoyo viaja al caso: el responsable es quien rinde cuentas
+     (va en `responsable`), pero el caso debe decir con quién MÁS se hace, o se
+     pierde al materializar. Van al cuerpo (no como vínculos: el equipo son
+     ids de perfiles, y los vínculos-persona apuntan a la tabla `personas`,
+     que es otra cosa) y se les notifica. */
+  const equipoIds = ((act.equipo as string[] | null) || []).filter(Boolean);
+  let equipoTxt = "";
+  if (equipoIds.length) {
+    const { data: eqs } = await supabase.from("perfiles").select("id,nombre").in("id", equipoIds);
+    const nombres = (eqs || []).map((p: any) => p.nombre).filter(Boolean);
+    if (nombres.length) equipoTxt = ` 👥 Equipo de apoyo: ${nombres.join(", ")}.`;
+  }
+
   const { data: pub, error } = await supabase.from("publicaciones").insert({
     autor_id: user.id,
     responsable: act.responsable || null,
     tipo: esHito ? "aviso" : "tarea",
     titulo: esHito ? `🏛 ${act.nombre}` : act.nombre,
-    cuerpo: esHito
+    cuerpo: (esHito
       ? `Hito del concurso (${contexto}): ${act.fecha_inicio}${act.fecha_fin && act.fecha_fin !== act.fecha_inicio ? ` → ${act.fecha_fin}` : ""}. Fecha fijada por la institución — dar seguimiento.`
-      : `Generada desde el cronograma de ${contexto}. Ventana planificada: ${act.fecha_inicio} → ${act.fecha_fin || "—"}.`,
+      : `Generada desde el cronograma de ${contexto}. Ventana planificada: ${act.fecha_inicio} → ${act.fecha_fin || "—"}.`) + equipoTxt,
     estado: "en_progreso",
     fecha_limite: act.fecha_fin || act.fecha_inicio,
   }).select("id").single();
@@ -2167,6 +2307,15 @@ export async function materializarActividad(actId: string, dueno: string, duenoI
       usuario_id: act.responsable, publicacion_id: pub.id,
       tipo: "asignacion", mensaje: `📅 Del cronograma: «${act.nombre}»`,
     });
+  }
+  // Al equipo de apoyo también se le avisa — sin repetir al que lo hizo ni al
+  // responsable (que ya recibió la suya arriba).
+  const equipoAvisar = equipoIds.filter(id => id !== user.id && id !== act.responsable);
+  if (equipoAvisar.length) {
+    await supabase.from("notificaciones").insert(equipoAvisar.map(id => ({
+      usuario_id: id, publicacion_id: pub.id,
+      tipo: "asignacion", mensaje: `📅 Del cronograma, en el equipo de: «${act.nombre}»`,
+    })));
   }
   revalidatePath(`/entidad/${dueno}/${duenoId}`);
   revalidatePath("/");

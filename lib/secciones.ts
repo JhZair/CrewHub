@@ -45,7 +45,42 @@ export const seccionDe = (tipo: string) => SECCIONES.find(s => s.tipo === tipo);
 export const ICO_ENT: Record<string, string> = {
   ...Object.fromEntries(SECCIONES.map(s => [s.tipo, s.ico])),
   lugar: "📍", etiqueta: "🏷️", publicacion: "📌", empresa_miembro: "👥",
+  cronograma_actividades: "📅",
 };
+
+/* El trigger de bitácora (schema.sql) escribe entidad_tipo con el nombre
+   FÍSICO de la tabla —plural: "proyectos", "publicaciones", "empresa_miembros"—
+   mientras las acciones a mano y las rutas usan el SINGULAR ("proyecto",
+   "publicacion", "empresa_miembro"). Este mapa reconcilia plural→singular; un
+   tipo que ya viene singular (o que es igual a su tabla, como "equipamiento" o
+   "cronograma_actividades") se devuelve tal cual. */
+const SINGULAR_DE: Record<string, string> = {
+  proyectos: "proyecto", empresas: "empresa", personas: "persona",
+  convocatorias: "convocatoria", vehiculos: "vehiculo", lugares: "lugar",
+  etiquetas: "etiqueta", publicaciones: "publicacion",
+  empresa_miembros: "empresa_miembro", postulaciones: "postulacion",
+};
+export const tipoCanonico = (t: string) => SINGULAR_DE[t] || t;
+
+/* Los tipos con ficha en /entidad/[tipo]/[id] — las claves de CONF en esa
+   página. No incluye `publicacion` (vive en /caso) ni los que no tienen
+   página (empresa_miembro, cronograma_actividades, vehiculo). */
+const CON_FICHA = new Set([
+  "proyecto", "empresa", "persona", "equipamiento",
+  "lugar", "postulacion", "convocatoria", "etiqueta",
+]);
+
+/* A dónde lleva una entidad de la bitácora, o `null` si no tiene página.
+   Acepta el tipo en singular o en el plural que escribe el trigger. Es el
+   único sitio que decide esto: antes /admin y el historial lo hacían cada uno
+   por su cuenta y enlazaban a /entidad/publicaciones/… o /entidad/proyectos/…,
+   que son 404. */
+export function rutaEntidad(tipo: string, id: string): string | null {
+  const t = tipoCanonico(tipo);
+  if (t === "publicacion") return `/caso/${id}`;
+  if (CON_FICHA.has(t)) return `/entidad/${t}/${id}`;
+  return null;
+}
 
 /* Dónde vive el nombre de CUALQUIER cosa que la bitácora registre — no solo
    las que tienen sección. El historial global guarda ids de todo: sin esto,
@@ -55,6 +90,8 @@ export const TABLA_DE: Record<string, [string, string]> = {
   publicacion: ["publicaciones", "titulo"],
   lugar: ["lugares", "nombre"],
   etiqueta: ["etiquetas", "nombre"],
+  // Para que el historial nombre la actividad (aunque no tenga página: SIN_PAGINA_PROPIA)
+  cronograma_actividades: ["cronograma_actividades", "nombre"],
 };
 
 /** Dónde vive el nombre de una entidad, con su versión corta si la tiene.

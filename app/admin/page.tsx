@@ -11,7 +11,7 @@ import { buscadorDe, pal } from "@/lib/buscar";
 import { estado4ta } from "@/lib/cuarta";
 import { ejecutando, rendicionVencida, SEL_FONDO } from "@/lib/fondos";
 import { haceOEn } from "@/lib/fechas";
-import { ICO_ENT } from "@/lib/secciones";
+import { ICO_ENT, rutaEntidad, tipoCanonico } from "@/lib/secciones";
 import { BOT } from "@/lib/personas";
 import Link from "next/link";
 import { plazoDe, diasHasta } from "@/lib/plazo";
@@ -414,22 +414,31 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
                 <div className="panel-h">🕐 Últimos movimientos</div>
                 {(activid || []).length === 0 ? (
                   <div className="empty" style={{ padding: "10px 0" }}>Sin actividad.</div>
-                ) : (activid || []).map((a: any, i: number) => (
-                  <Link key={i} href={`/entidad/${a.entidad_tipo}/${a.entidad_id}`} className="adm-act">
-                    <span>{ICO_ENT[a.entidad_tipo] || "•"}</span>
-                    <span style={{ flex: 1, minWidth: 0 }}>
-                      <b style={{ color: a.actor ? "var(--text)" : "var(--teal)" }}>
-                        {a.actor?.nombre || BOT}
-                      </b>
-                      <i style={{ color: "var(--dim)", fontStyle: "normal" }}>
-                        {" "}{a.detalle?.campo ? `cambió ${a.detalle.campo.replace(/_/g, " ")}` : a.tipo}
-                      </i>
-                    </span>
-                    <span style={{ color: "var(--dim)", fontSize: 10.5, whiteSpace: "nowrap" }}>
-                      {haceOEn(a.creado_en)}
-                    </span>
-                  </Link>
-                ))}
+                ) : (activid || []).map((a: any, i: number) => {
+                  const cuerpo = (
+                    <>
+                      <span>{ICO_ENT[tipoCanonico(a.entidad_tipo)] || "•"}</span>
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <b style={{ color: a.actor ? "var(--text)" : "var(--teal)" }}>
+                          {a.actor?.nombre || BOT}
+                        </b>
+                        <i style={{ color: "var(--dim)", fontStyle: "normal" }}>
+                          {" "}{a.detalle?.campo ? `cambió ${a.detalle.campo.replace(/_/g, " ")}` : a.tipo}
+                        </i>
+                      </span>
+                      <span style={{ color: "var(--dim)", fontSize: 10.5, whiteSpace: "nowrap" }}>
+                        {haceOEn(a.creado_en)}
+                      </span>
+                    </>
+                  );
+                  /* rutaEntidad decide: casos → /caso, entidades con ficha →
+                     /entidad, y lo que no tiene página (o los nombres en plural
+                     que escribe el trigger) → sin enlace, para no caer en 404. */
+                  const ruta = rutaEntidad(a.entidad_tipo, a.entidad_id);
+                  return ruta
+                    ? <Link key={i} href={ruta} className="adm-act">{cuerpo}</Link>
+                    : <div key={i} className="adm-act">{cuerpo}</div>;
+                })}
               </div>
 
               {/* ── Acciones rápidas ── */}

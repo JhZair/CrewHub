@@ -1,4 +1,4 @@
-import { ICO_ENT } from "@/lib/secciones";
+import { ICO_ENT, rutaEntidad, tipoCanonico } from "@/lib/secciones";
 import Link from "next/link";
 import { BOT } from "@/lib/personas";
 
@@ -63,16 +63,17 @@ export default function EventoHistorial({ e, hora, conEntidad }:
       <span>
         {/* En el acumulado hace falta decir de quién se habla: sin esto,
             "actualizó 1 campo" cien veces seguidas no informa nada. */}
-        {conEntidad && e.entidadNombre && (
-          // Un caso no vive en /entidad: tiene su propia página
-          <Link href={e.entidad_tipo === "publicacion"
-              ? `/caso/${e.entidad_id}`
-              : `/entidad/${e.entidad_tipo}/${e.entidad_id}`}
-            title={e.entidadTitulo || undefined}
-            style={{ color: "var(--violet)", fontWeight: 700 }}>
-            {ICO_ENT[e.entidad_tipo || ""] || "🔗"} {e.entidadNombre}
-          </Link>
-        )}
+        {conEntidad && e.entidadNombre && (() => {
+          /* Una sola decisión de ruta (rutaEntidad): un caso va a /caso, las
+             entidades con ficha a /entidad, y lo que no tiene página —una
+             actividad del cronograma— se nombra pero no se enlaza (si no, 404). */
+          const ruta = rutaEntidad(e.entidad_tipo || "", e.entidad_id || "");
+          const cont = <>{ICO_ENT[tipoCanonico(e.entidad_tipo || "")] || "🔗"} {e.entidadNombre}</>;
+          const estilo = { color: "var(--violet)", fontWeight: 700 } as const;
+          return ruta
+            ? <Link href={ruta} title={e.entidadTitulo || undefined} style={estilo}>{cont}</Link>
+            : <span title={e.entidadTitulo || undefined} style={estilo}>{cont}</span>;
+        })()}
         {conEntidad && e.entidadNombre && " · "}
         {textoEvento(e)}
         {(e.detalle?.cambios || []).map((c: any, j: number) => (

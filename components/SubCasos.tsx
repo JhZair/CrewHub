@@ -2,13 +2,13 @@
 import { crearSubCaso, asignarResponsable, cambiarFechaLimite, cambiarEstado } from "@/app/actions";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { claseEstado, textoEstado, icoEstado, opcionesEstado } from "@/lib/estados";
 import { celebrarResuelto } from "@/lib/celebra";
 import { CERRADOS } from "@/lib/familia";
 import { plazoDe } from "@/lib/plazo";
-import { fechaDia, fechaLarga } from "@/lib/fechas";
 import MiniSelect from "@/components/MiniSelect";
+import FechaMini from "@/components/FechaMini";
 import { sinBot } from "@/lib/personas";
 
 /* Los hijos de un caso largo: lista con progreso + alta rápida.
@@ -20,48 +20,6 @@ import { sinBot } from "@/lib/personas";
    son veinte) y repartirlos obligaba a entrar en cada uno, asignar, volver.
    Veinte veces dos viajes. La referencia es Trello: un reloj y un avatar al
    final de la línea, del tamaño de la línea — no un formulario. */
-
-/* Fecha límite sin sacar un campo a la fila: el <input type="date"> vive
-   escondido y el botón le abre el calendario nativo. Un input visible en
-   veinte filas es un muro de «dd/mm/aaaa» que no dice nada; el reloj se lee
-   como lo que es —un hueco— y la fecha puesta se lee como un dato. */
-function FechaMini({ valor, estado, onCambia, ocupado }: {
-  valor: string | null; estado: string; onCambia: (v: string) => void; ocupado: boolean;
-}) {
-  const ref = useRef<HTMLInputElement>(null);
-  /* `estado` NO es opcional aquí, y por eso va sin `?`: sin él, `plazoDe`
-     no puede saber que un sub-caso cerrado ya no vence y pintaría en ROJO
-     «vencido» algo que se resolvió hace un mes. Es el agujero exacto que
-     lib/plazo vino a tapar — y lo abrí yo al llamarlo con un solo argumento
-     mientras las otras seis pantallas sí le pasan los dos. */
-  const pl = plazoDe(valor, estado);
-  const abrir = () => {
-    const el = ref.current;
-    if (!el) return;
-    /* `showPicker` abre el calendario sin que el campo esté a la vista. Pide
-       gesto del usuario —este clic lo es— y no está en todos los navegadores:
-       si falta, se enfoca y se escribe con el teclado. Nunca se queda mudo. */
-    const abrePicker = (el as any).showPicker;
-    if (typeof abrePicker === "function") {
-      try { abrePicker.call(el); return; } catch { /* cae al focus */ }
-    }
-    el.focus();
-  };
-  return (
-    <span className="sc-fecha">
-      <button type="button" className={`sc-btn${valor ? " puesto" : ""}`}
-        disabled={ocupado} onClick={abrir}
-        title={valor ? `Vence ${fechaLarga(valor)} — clic para cambiar` : "Poner fecha límite"}
-        /* Solo el color del texto: el borde lo pone el hover. Pintarlo aquí
-           devolvía la cajita que la lista acaba de perder. */
-        style={pl ? { color: pl.color } : undefined}>
-        {valor ? fechaDia(valor) : "🕐"}
-      </button>
-      <input ref={ref} type="date" className="sc-fecha-inp" value={valor || ""}
-        onChange={e => onCambia(e.target.value)} />
-    </span>
-  );
-}
 
 export default function SubCasos({ padreId, hijos, perfiles = [] }: {
   padreId: string;
@@ -162,7 +120,11 @@ export default function SubCasos({ padreId, hijos, perfiles = [] }: {
               después quién. Se ven siempre —no escondidos tras un hover—:
               repartir veinte sub-casos es ir de fila en fila, y algo que solo
               aparece al pasar el cursor no se puede recorrer. */}
-          <FechaMini valor={h.fecha_limite || null} estado={h.estado} ocupado={guardando.includes(h.id)}
+          <FechaMini valor={h.fecha_limite || null} ocupado={guardando.includes(h.id)}
+            tituloVacio="Poner fecha límite"
+            /* El color de plazo se calcula AQUÍ y se pasa: con el estado, para
+               que un sub-caso cerrado no pinte «vencido» en rojo. */
+            color={plazoDe(h.fecha_limite || null, h.estado)?.color ?? null}
             onCambia={v => alVuelo(h.id, () => cambiarFechaLimite(h.id, v))} />
           {/* Vacío: un 🙋 fantasma, no un 👤. El 👤 ya está tomado — es
               `ICO_ENT.persona`, la persona VINCULADA al caso, y es el ícono
