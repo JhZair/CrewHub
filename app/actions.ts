@@ -2482,9 +2482,14 @@ export async function materializarActividad(actId: string, dueno: string, duenoI
   await supabase.from("cronograma_actividades")
     .update({ estado: "materializada", publicacion_id: pub.id }).eq("id", actId);
 
+  /* Materializar lo dispara una PERSONA (clic en "Materializar"), no el cron.
+     Por eso lleva actor_nombre: sin él, la notificación caería como "del Bot" y
+     no sumaría al timbre —al asignado podría pasársele que le encargaron algo—. */
+  const { data: miMat } = await supabase.from("perfiles").select("nombre").eq("id", user.id).single();
+  const actorMat = miMat?.nombre || "Alguien";
   if (act.responsable && act.responsable !== user.id) {
     await supabase.from("notificaciones").insert({
-      usuario_id: act.responsable, publicacion_id: pub.id,
+      usuario_id: act.responsable, publicacion_id: pub.id, actor_nombre: actorMat,
       tipo: "asignacion", mensaje: `📅 Del cronograma: «${act.nombre}»`,
     });
   }
@@ -2493,7 +2498,7 @@ export async function materializarActividad(actId: string, dueno: string, duenoI
   const equipoAvisar = equipoIds.filter(id => id !== user.id && id !== act.responsable);
   if (equipoAvisar.length) {
     await supabase.from("notificaciones").insert(equipoAvisar.map(id => ({
-      usuario_id: id, publicacion_id: pub.id,
+      usuario_id: id, publicacion_id: pub.id, actor_nombre: actorMat,
       tipo: "asignacion", mensaje: `📅 Del cronograma, en el equipo de: «${act.nombre}»`,
     })));
   }
@@ -3037,12 +3042,17 @@ export async function toggleEnterado(pubId: string) {
   return {};
 }
 
-export async function marcarNotifsLeidas() {
+/* Marcar todas como leídas. `filtro` acota a una pestaña: "personal" (las que
+   pide acción) o "bot" (las automáticas). Sin filtro, marca ambas. */
+export async function marcarNotifsLeidas(filtro?: "personal" | "bot") {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return {};
-  await supabase.from("notificaciones").update({ leida: true })
+  let q = supabase.from("notificaciones").update({ leida: true })
     .eq("usuario_id", user.id).eq("leida", false);
+  if (filtro === "personal") q = q.not("actor_nombre", "is", null);  // solo con actor
+  else if (filtro === "bot") q = q.is("actor_nombre", null);         // solo del Bot
+  await q;
   revalidatePath("/");
   return {};
 }
@@ -3170,18 +3180,57 @@ export async function cambiarFechaLimite(pubId: string, fecha: string) {
 }
 
 // Notificaciones del usuario (con vínculos de entidad) para la campanita global.
+// Trae las recientes de CADA tipo por separado (12 y 12), no 20 mezcladas: así
+// la pestaña "Del Bot" del desplegable no queda con las pocas que se colaron.
+const CAMP_LIM = 12;
 export async function misNotificaciones() {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { items: [], sinLeer: 0 };
-  const [{ data: notifs }, { count: sinLeer }] = await Promise.all([
-    supabase.from("notificaciones")
-      .select("id,tipo,mensaje,actor_nombre,publicacion_id,leida,creado_en")
-      .eq("usuario_id", user.id).order("creado_en", { ascending: false }).order("id", { ascending: false }).limit(12),
+  if (!user) return { items: [], sinLeer: 0, sinLeerBot: 0 };
+  const cols = "id,tipo,mensaje,actor_nombre,publicacion_id,leida,creado_en";
+  const [{ data: pers }, { data: bot }, { count: sinLeer }, { count: sinLeerBot }] = await Promise.all([
+    supabase.from("notificaciones").select(cols)
+      .eq("usuario_id", user.id).not("actor_nombre", "is", null)
+      .order("creado_en", { ascending: false }).order("id", { ascending: false }).limit(CAMP_LIM),
+    supabase.from("notificaciones").select(cols)
+      .eq("usuario_id", user.id).is("actor_nombre", null)
+      .order("creado_en", { ascending: false }).order("id", { ascending: false }).limit(CAMP_LIM),
+    // Timbre = solo lo personal sin leer (lo que pide tu acción).
     supabase.from("notificaciones").select("id", { count: "exact", head: true })
-      .eq("usuario_id", user.id).eq("leida", false),
+      .eq("usuario_id", user.id).eq("leida", false).not("actor_nombre", "is", null),
+    // Contador propio de las automáticas del Bot sin leer.
+    supabase.from("notificaciones").select("id", { count: "exact", head: true })
+      .eq("usuario_id", user.id).eq("leida", false).is("actor_nombre", null),
   ]);
-  return { items: await conVinculos(supabase, notifs || []), sinLeer: sinLeer || 0 };
+  const items = await conVinculos(supabase, [...(pers || []), ...(bot || [])]);
+  return { items, sinLeer: sinLeer || 0, sinLeerBot: sinLeerBot || 0 };
+}
+
+/* Detalle para el panel de la página de notificaciones: el caso al que apunta
+   la notificación + sus últimos eventos de bitácora (quién hizo qué y cuándo).
+   Read-only; formato final lo arma el cliente. */
+export async function actividadDeCaso(pubId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { caso: null, eventos: [], nComentarios: 0, reacciones: [] };
+  const [{ data: caso }, { data: evs }, { count: nComentarios }, { data: reacs }] = await Promise.all([
+    supabase.from("publicaciones")
+      .select("id,titulo,tipo,estado,prioridad,fecha_limite,creado_en," +
+        "autor:perfiles!publicaciones_autor_id_fkey(nombre)," +
+        "resp:perfiles!publicaciones_responsable_fkey(nombre)")
+      .eq("id", pubId).single(),
+    supabase.from("actividad")
+      .select("id,tipo,detalle,creado_en,actor:perfiles(nombre)")
+      .eq("entidad_tipo", "publicacion").eq("entidad_id", pubId)
+      .order("creado_en", { ascending: false }).limit(12),
+    supabase.from("comentarios").select("id", { count: "exact", head: true }).eq("publicacion_id", pubId),
+    supabase.from("reacciones").select("emoji").eq("publicacion_id", pubId).is("comentario_id", null),
+  ]);
+  // Reacciones agrupadas por emoji.
+  const rc = new Map<string, number>();
+  (reacs || []).forEach((r: any) => rc.set(r.emoji, (rc.get(r.emoji) || 0) + 1));
+  const reacciones = [...rc.entries()].map(([emoji, n]) => ({ emoji, n }));
+  return { caso: caso || null, eventos: evs || [], nComentarios: nComentarios || 0, reacciones };
 }
 
 /* Enriquecer notificaciones con los chips de sus vínculos. Lo usan
@@ -3236,25 +3285,49 @@ async function conVinculos(supabase: any, notifs: any[]) {
    repetir una. Es raro (mirar el historial no es tiempo real) y el peor caso
    es una fila duplicada, no un hueco — se acepta por simplicidad. */
 const NOTIF_PAGINA = 30;
-export async function notificacionesTodas(desde = 0) {
+/* `filtro` acota a una pestaña y —clave— PAGINA dentro de ese tipo, no sobre la
+   mezcla: así "Del Bot" trae de bot en bot y no depende de cuántas personales se
+   colaron en la tanda. Los contadores (totales y sin leer, por tipo) van siempre,
+   para que ambas pestañas muestren su número sin recargar. */
+export async function notificacionesTodas(desde = 0, filtro?: "personal" | "bot", chip?: string) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { items: [], hayMas: false, total: 0 };
-  const [{ data: notifs }, { count: total }] = await Promise.all([
-    supabase.from("notificaciones")
-      .select("id,tipo,mensaje,actor_nombre,publicacion_id,leida,creado_en")
-      .eq("usuario_id", user.id)
-      /* Desempate por id: dos notifs con el MISMO creado_en (p.ej. un insert
-         múltiple a varios destinatarios) no tienen orden estable entre dos
-         SELECT paginados sin segundo criterio → una podría saltarse (hueco).
-         El dedup del cliente tapa duplicados, no huecos; esto los evita. */
-      .order("creado_en", { ascending: false }).order("id", { ascending: false })
+  if (!user) return { items: [], hayMas: false, total: 0, totalBot: 0, sinLeer: 0, sinLeerBot: 0 };
+  let q = supabase.from("notificaciones")
+    .select("id,tipo,mensaje,actor_nombre,publicacion_id,leida,creado_en")
+    .eq("usuario_id", user.id);
+  if (filtro === "personal") q = q.not("actor_nombre", "is", null);
+  else if (filtro === "bot") q = q.is("actor_nombre", null);
+  // Chips: afinan dentro de la pestaña. "todas"/undefined no filtra.
+  if (chip === "no_leidas") q = q.eq("leida", false);
+  else if (chip === "mencion") q = q.eq("tipo", "mencion");
+  else if (chip === "comentario") q = q.eq("tipo", "comentario");
+  else if (chip === "asignacion") q = q.eq("tipo", "asignacion");
+  const [{ data: notifs }, { count: total }, { count: totalBot }, { count: sinLeer }, { count: sinLeerBot }] = await Promise.all([
+    /* Desempate por id: dos notifs con el MISMO creado_en (p.ej. un insert
+       múltiple a varios destinatarios) no tienen orden estable entre dos SELECT
+       paginados sin segundo criterio → una podría saltarse (hueco). */
+    q.order("creado_en", { ascending: false }).order("id", { ascending: false })
       .range(desde, desde + NOTIF_PAGINA - 1),
     supabase.from("notificaciones").select("id", { count: "exact", head: true })
       .eq("usuario_id", user.id),
+    supabase.from("notificaciones").select("id", { count: "exact", head: true })
+      .eq("usuario_id", user.id).is("actor_nombre", null),
+    supabase.from("notificaciones").select("id", { count: "exact", head: true })
+      .eq("usuario_id", user.id).eq("leida", false).not("actor_nombre", "is", null),
+    supabase.from("notificaciones").select("id", { count: "exact", head: true })
+      .eq("usuario_id", user.id).eq("leida", false).is("actor_nombre", null),
   ]);
   const items = await conVinculos(supabase, notifs || []);
-  return { items, hayMas: desde + items.length < (total || 0), total: total || 0 };
+  /* hayMas heurístico: si vino una página completa, probablemente hay más. Con
+     chips no tenemos un total exacto por combinación, y esto funciona igual para
+     todas (el peor caso es un "ver más" que trae 0 cuando el total es múltiplo
+     exacto de la página). Los contadores de arriba (totales/sin leer) van aparte. */
+  return {
+    items, hayMas: (notifs?.length || 0) === NOTIF_PAGINA,
+    total: total || 0, totalBot: totalBot || 0,
+    sinLeer: sinLeer || 0, sinLeerBot: sinLeerBot || 0,
+  };
 }
 
 // Catálogos + perfiles para el compositor global (FAB "+"), bajo demanda.

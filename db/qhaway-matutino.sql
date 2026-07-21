@@ -117,14 +117,30 @@ begin
     materializadas := materializadas + 1;
   end loop;
 
-  select count(*) into sinres from publicaciones where estado = 'abierta';
-  select count(*) into enprog from publicaciones where estado = 'en_progreso';
+  select count(*) into sinres from publicaciones where estado = 'abierta' and archivado_en is null;
+  select count(*) into enprog from publicaciones where estado = 'en_progreso' and archivado_en is null;
 
-  -- ⏰ VENCIMIENTOS
+  -- 📢 AVISOS con el plazo ya pasado → se archivan solos (su momento pasó).
+  --    Un aviso "rige y deja de regir"; no se resuelve. Con esto el Bot deja de
+  --    marcarlo "VENCIDO hace N días" a diario. Es reversible ("despertar").
+  --    Va ANTES de los vencimientos para que el aviso archivado no se nagee.
+  for r in
+    select id, titulo from publicaciones
+    where tipo = 'aviso' and archivado_en is null
+      and fecha_limite is not null and fecha_limite < current_date
+  loop
+    update publicaciones set archivado_en = now() where id = r.id;
+    insert into actividad (entidad_tipo, entidad_id, tipo, detalle)
+    values ('publicacion', r.id, 'bot', jsonb_build_object(
+      'mensaje', 'El plazo del aviso pasó — lo archivé por ti', 'regla', 'aviso_vencido'));
+  end loop;
+
+  -- ⏰ VENCIMIENTOS (sin lo archivado: un aviso recién archivado ya no se nagea)
   for r in
     select p.id, p.titulo, p.responsable, p.autor_id, (p.fecha_limite - current_date) as dias
     from publicaciones p
-    where p.estado in ('abierta','en_progreso') and p.fecha_limite is not null
+    where p.estado in ('abierta','en_progreso') and p.archivado_en is null
+      and p.fecha_limite is not null
       and (p.fecha_limite - current_date) <= 7
     order by p.fecha_limite
   loop
@@ -155,7 +171,7 @@ begin
   -- 💤 DORMIDOS
   for r in
     select p.id, p.titulo, p.responsable, p.autor_id from publicaciones p
-    where p.estado in ('abierta','en_progreso')
+    where p.estado in ('abierta','en_progreso') and p.archivado_en is null
       and not exists (select 1 from actividad a
         where a.entidad_tipo = 'publicacion' and a.entidad_id = p.id
           and a.creado_en > now() - interval '3 days')

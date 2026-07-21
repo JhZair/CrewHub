@@ -361,7 +361,9 @@ export default async function TableroPage({ searchParams }: {
 
   return (
     <div className="shell" style={{ maxWidth: "96vw" }}>
-      <Realtime tablas={["publicaciones"]} token={session?.access_token} />
+      {/* Además de las publicaciones (estado, responsable, padre): sus vínculos
+          —chips— y reacciones, que no tocan la fila del caso pero sí la tarjeta. */}
+      <Realtime tablas={["publicaciones", "publicacion_vinculos", "reacciones"]} token={session?.access_token} />
       <div className="topbar" style={{ gap: 10, flexWrap: "wrap" }}>
         <Volver />
         <h1 className="title-lg" style={{ margin: 0, fontSize: 20 }}>🗂 Tablero</h1>

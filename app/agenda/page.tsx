@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import Agenda, { type ItemAgenda } from "@/components/Agenda";
+import Realtime from "@/components/Realtime";
 import { sinBot } from "@/lib/personas";
 
 export const metadata: Metadata = { title: "📅 Agenda" };
@@ -21,6 +22,7 @@ export default async function AgendaPage() {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+  const { data: { session } } = await supabase.auth.getSession();
 
   const [{ data: acts }, { data: casos }, { data: perfs }] = await Promise.all([
     supabase.from("cronograma_actividades")
@@ -67,6 +69,8 @@ export default async function AgendaPage() {
 
   return (
     <div className="shell" style={{ maxWidth: "min(1800px, 98vw)" }}>
+      {/* Refresco en vivo: la agenda sale de cronograma + casos con fecha. */}
+      <Realtime tablas={["cronograma_actividades", "publicaciones"]} token={session?.access_token} />
       <div className="topbar">
         <Volver />
         <span className="spacer" />

@@ -181,19 +181,29 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
 
   // Notificaciones + actividad de Qhaway hoy
   const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
-  const [{ data: notifs }, { count: sinLeer }, { count: botHoy }] = await Promise.all([
+  // Recientes de cada tipo por separado (12 y 12), no 20 mezcladas: así la
+  // pestaña "Del Bot" del desplegable tiene contenido aunque lo último sea
+  // personal. Desempate por id (varias del mismo lote comparten creado_en).
+  const NCAMP = 12;
+  const [{ data: notifPers }, { data: notifBot }, { count: sinLeer }, { count: sinLeerBot }, { count: botHoy }] = await Promise.all([
     supabase.from("notificaciones")
       .select("id,tipo,mensaje,actor_nombre,publicacion_id,leida,creado_en")
-      .eq("usuario_id", user.id)
-      // Desempate por id: varias notifs del mismo lote comparten creado_en
-      // (p.ej. avisar a varios vinculados de una). Sin esto, el orden de la
-      // campanita del feed podría diferir del de la global y la página.
-      .order("creado_en", { ascending: false }).order("id", { ascending: false }).limit(12),
+      .eq("usuario_id", user.id).not("actor_nombre", "is", null)
+      .order("creado_en", { ascending: false }).order("id", { ascending: false }).limit(NCAMP),
+    supabase.from("notificaciones")
+      .select("id,tipo,mensaje,actor_nombre,publicacion_id,leida,creado_en")
+      .eq("usuario_id", user.id).is("actor_nombre", null)
+      .order("creado_en", { ascending: false }).order("id", { ascending: false }).limit(NCAMP),
+    // Timbre = solo lo personal sin leer (lo que pide tu acción).
     supabase.from("notificaciones").select("id", { count: "exact", head: true })
-      .eq("usuario_id", user.id).eq("leida", false),
+      .eq("usuario_id", user.id).eq("leida", false).not("actor_nombre", "is", null),
+    // Contador propio de las automáticas del Bot sin leer.
+    supabase.from("notificaciones").select("id", { count: "exact", head: true })
+      .eq("usuario_id", user.id).eq("leida", false).is("actor_nombre", null),
     supabase.from("actividad").select("id", { count: "exact", head: true })
       .eq("tipo", "bot").gte("creado_en", hoy.toISOString()),
   ]);
+  const notifs = [...(notifPers || []), ...(notifBot || [])];
 
   // ── Mensaje de Qhaway: combina hallazgos reales + cumpleaños + frases decorativas,
   //    elegido al azar (los cumpleaños tienen prioridad). No crea tarjetas: solo informa. ──
@@ -353,7 +363,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
         <NavIconos />
         <span className="spacer" />
         <BuscadorGlobal />
-        <Campanita items={notifsEnriq} sinLeer={sinLeer || 0} />
+        <Campanita items={notifsEnriq} sinLeer={sinLeer || 0} sinLeerBot={sinLeerBot || 0} />
         <MenuUsuario nombre={perfil?.nombre} rol={perfil?.rol}
           color={perfil?.color} src={perfil?.avatar_url} esAdmin={perfil?.es_admin}
           personaId={miPersonaId} />

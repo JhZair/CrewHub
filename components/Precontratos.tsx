@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { guardarPrecontratos } from "@/app/actions";
 import { montoDeItems, rotuloItem, precontratoNuevo, normalizarPre, type Precontrato } from "@/lib/precontratos";
 import { nombreRubro, type ItemPre } from "@/lib/rubros";
@@ -52,6 +52,28 @@ export default function Precontratos({ postulacionId, equipo, items, inicial }: 
     })
   );
   const [estado, setEstado] = useState<"ok" | "guardando" | "error">("ok");
+
+  /* Reconciliar las filas con el equipo ACTUAL. Si el equipo cambió después de
+     montar —agregaste o quitaste a alguien y hubo refresh—, `filas` se quedaba
+     sin esa persona y el render reventaba (fila undefined). Aquí se agrega la
+     fila que falte y se descarta la de quien ya no está, SIN perder lo editado
+     de los demás. El guardia evita re-render en bucle cuando nada cambió. */
+  useEffect(() => {
+    setFilas(prev => {
+      const porId = new Map(prev.map(f => [f.persona_id, f]));
+      const next = personas.map(({ persona, cargo }) => {
+        const ex = porId.get(persona.id);
+        if (ex) return ex;
+        const g = guardadas.find(f => f.persona_id === persona.id);
+        return g ? { ...g, id: g.id || uid() } : { ...precontratoNuevo(persona.id, cargo), id: uid() };
+      });
+      const igual = next.length === prev.length && next.every((f, i) => f === prev[i]);
+      return igual ? prev : next;
+    });
+    // guardadas se recalcula cada render; basta con reaccionar a `personas`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [personas]);
+
   const itemDe = (id: string) => items.find(i => i.id === id) || null;
   // Solo los ítems que TODAVÍA existen en el presupuesto (los demás son huérfanos).
   const idsValidos = (f: Precontrato) => f.item_ids.filter(id => itemDe(id));
@@ -88,7 +110,8 @@ export default function Precontratos({ postulacionId, equipo, items, inicial }: 
 
   // Marca/desmarca un ítem en la fila (el honorario es la suma de los marcados).
   const toggleItem = (id: string, itemId: string) => {
-    const f = filas.find(x => x.id === id)!;
+    const f = filas.find(x => x.id === id);
+    if (!f) return;
     const next = f.item_ids.includes(itemId)
       ? f.item_ids.filter(x => x !== itemId)
       : [...f.item_ids, itemId];
@@ -96,7 +119,8 @@ export default function Precontratos({ postulacionId, equipo, items, inicial }: 
   };
   // Deja solo los ítems que siguen en el presupuesto (limpia los huérfanos).
   const quitarHuerfanos = (id: string) => {
-    const f = filas.find(x => x.id === id)!;
+    const f = filas.find(x => x.id === id);
+    if (!f) return;
     const next = f.item_ids.filter(x => itemDe(x));
     setF(id, { item_ids: next });
     persistir(filas.map(x => x.id === id ? { ...x, item_ids: next } : x));
@@ -137,7 +161,10 @@ export default function Precontratos({ postulacionId, equipo, items, inicial }: 
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {personas.map(({ persona }) => {
-          const f = filas.find(x => x.persona_id === persona.id)!;
+          // Fallback por si el equipo creció en este mismo render y el efecto
+          // de reconciliación aún no corrió: nunca undefined (no revienta).
+          const f = filas.find(x => x.persona_id === persona.id)
+            ?? { ...precontratoNuevo(persona.id, ""), id: persona.id };
           const monto = montoDeItems(items, f.item_ids);
           const validos = f.item_ids.filter(id => itemDe(id));
           const huerfanos = f.item_ids.length - validos.length;   // ítems ya borrados del presupuesto

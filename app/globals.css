@@ -953,6 +953,14 @@ a.stat-card:hover{border-color:var(--border2)}
    mouse vuelven a plena, como en el feed y el tablero. */
 .camp-item.leida{opacity:.5;transition:opacity .16s ease}
 .camp-item.leida:hover{opacity:1}
+/* Pestañas de la campanita/página: 👤 Para ti · 🤖 Del Bot */
+.camp-tabs{display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid var(--border)}
+.camp-tab{background:transparent;border:1px solid transparent;border-radius:8px;padding:4px 9px;font-size:12px;color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.camp-tab:hover{background:var(--bg)}
+.camp-tab.on{background:var(--bg);color:var(--text);border-color:var(--border);font-weight:600}
+.camp-tabn{background:#2a2a42;color:var(--muted);border-radius:999px;font-size:10px;padding:0 6px;min-width:16px;text-align:center}
+.camp-tab.on .camp-tabn{background:var(--accent);color:#fff}
+.camp-tabs .camp-marcar{margin-left:auto}
 /* "ver todas →" al pie de las dos campanitas: lleva al historial completo */
 .camp-vertodas{display:block;text-align:center;padding:9px 0 5px;margin-top:4px;border-top:1px solid var(--border);color:var(--muted);font-size:11.5px;font-weight:600}
 .camp-vertodas:hover{color:var(--accent)}
@@ -970,6 +978,42 @@ a.stat-card:hover{border-color:var(--border2)}
 .notif-mas:hover{border-color:var(--accent);color:var(--text)}
 .notif-mas:disabled{opacity:.5;cursor:default}
 .notif-fin{text-align:center;color:var(--dim);font-size:11px;padding:16px 0 4px}
+
+/* ── Historial en dos columnas (lista + detalle) ── */
+.notif-2col{display:flex;gap:16px;align-items:flex-start}
+.notif-col-lista{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px}
+.notif-col-detalle{flex:0 0 400px;width:400px;position:sticky;top:14px;align-self:flex-start;max-height:calc(100vh - 40px);overflow:auto}
+/* Chips de filtro fino */
+.notif-chips{display:flex;gap:6px;flex-wrap:wrap;padding:8px 4px 10px}
+.nchip{background:var(--bg);border:1px solid var(--border);border-radius:999px;padding:4px 11px;font-size:12px;color:var(--muted);cursor:pointer;white-space:nowrap}
+.nchip:hover{color:var(--text)}
+.nchip.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+/* Encabezado de bloque de fecha */
+.notif-bloque{font-size:10.5px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);font-weight:700;padding:14px 12px 5px}
+/* Fila seleccionada */
+.notif-pag .camp-item.sel,.notif-col-lista .camp-item.sel{background:rgba(167,139,250,.12);border-left:2px solid var(--accent)}
+/* Panel de detalle */
+.notif-det-vacio{color:var(--dim);font-size:12.5px;text-align:center;padding:40px 18px;border:1px dashed var(--border);border-radius:12px;line-height:1.6}
+.notif-det{border:1px solid var(--border);border-radius:12px;padding:14px;background:var(--card)}
+.notif-det-top .camp-tt{font-size:14px;color:var(--text);font-weight:600}
+.notif-det-msg{font-size:12.5px;color:var(--muted);line-height:1.55;margin:8px 0 0;white-space:pre-wrap}
+.notif-det-ctx{margin-top:12px;border-top:1px solid var(--border);padding-top:10px;display:flex;flex-direction:column;gap:5px}
+.ndx{display:flex;align-items:baseline;gap:8px;font-size:12px}
+.ndx>span:first-child{color:var(--dim);flex:0 0 108px}
+.ndx>b{color:var(--text);font-weight:600}
+.ndx-t{color:var(--dim);margin-left:auto;font-size:11px}
+.ndx-reac{color:var(--muted)}
+.notif-det-abrir{display:inline-block;margin-top:12px;font-size:12.5px;padding:6px 14px}
+.notif-det-act{margin-top:14px;border-top:1px solid var(--border);padding-top:12px}
+.notif-det-h{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);font-weight:700;margin-bottom:8px}
+.notif-ev{display:flex;gap:8px;align-items:baseline;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.notif-ev:last-child{border-bottom:none}
+.notif-ev-txt{flex:1;font-size:12px;color:var(--muted);line-height:1.4}
+.notif-ev-t{font-size:10.5px;color:var(--dim);white-space:nowrap;flex-shrink:0}
+@media(max-width:820px){
+  .notif-2col{flex-direction:column}
+  .notif-col-detalle{position:static;width:100%;flex-basis:auto;max-height:none}
+}
 
 /* ===== Presupuesto (Sección D) ===== */
 .pre-grid{margin-top:6px;overflow-x:auto}

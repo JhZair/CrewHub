@@ -36,6 +36,38 @@ export const hace = (d: string) => {
   return h < 24 ? `${h}h` : `${Math.floor(h / 24)}d`;
 };
 
+/* ¿La generó el Bot (automática) o una persona? Las del Bot Qhaway —de
+   cronograma y vencimientos— se insertan SIN actor (actor_nombre = null); toda
+   notificación humana (te asignó, comentó, mencionó, vinculó) trae actor. Ese
+   es el discriminador, sin depender de enumerar tipos.
+   ⚠ MISMA regla que el SQL de los contadores (`.is/.not("actor_nombre",null)`):
+   automática = actor_nombre NULL. No usamos trim()≡vacío para no descuadrar el
+   badge (SQL, por null) con la pestaña (cliente): una sola definición de "sin
+   actor". */
+export const esAutomatica = (n: any): boolean => n?.actor_nombre == null;
+
+/* Bloque de fecha para agrupar el historial: Hoy · Ayer · Esta semana · … */
+export function bucketFecha(iso: string): string {
+  const d = new Date(iso); d.setHours(0, 0, 0, 0);
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  const dias = Math.round((hoy.getTime() - d.getTime()) / 86400000);
+  if (dias <= 0) return "Hoy";
+  if (dias === 1) return "Ayer";
+  if (dias < 7) return "Esta semana";
+  if (dias < 31) return "Este mes";
+  return "Más antiguas";
+}
+
+/* Chips que afinan dentro de la pestaña (Para ti / Del Bot). `clave` va a la
+   server action; "todas" no filtra. */
+export const CHIPS: { clave: string; label: string }[] = [
+  { clave: "todas", label: "Todas" },
+  { clave: "no_leidas", label: "No leídas" },
+  { clave: "mencion", label: "Menciones" },
+  { clave: "comentario", label: "Comentarios" },
+  { clave: "asignacion", label: "Asignaciones" },
+];
+
 /* El título entre comillas angulares del mensaje del bot */
 export const tituloDe = (m: string) => {
   const x = (m || "").match(/«([^»]+)»/);

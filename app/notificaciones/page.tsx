@@ -11,15 +11,17 @@ export const metadata: Metadata = { title: "🔔 Notificaciones" };
    "lo de ahora"; esta página es para bajar a buscar lo viejo. La primera
    tanda se pinta en el servidor (rápido, sin parpadeo); "ver más" ya es
    cliente. */
-export default async function Notificaciones() {
+export default async function Notificaciones({ searchParams }: { searchParams: { t?: string } }) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { items, hayMas, total } = await notificacionesTodas(0);
+  const tabIni: "mias" | "bot" = searchParams?.t === "bot" ? "bot" : "mias";
+  const { items, hayMas, total, totalBot, sinLeer, sinLeerBot } =
+    await notificacionesTodas(0, tabIni === "bot" ? "bot" : "personal") as any;
 
   return (
-    <div className="shell" style={{ maxWidth: "min(720px, 96vw)" }}>
+    <div className="shell" style={{ maxWidth: "min(1180px, 97vw)" }}>
       <div className="topbar">
         <Volver />
         <span className="spacer" />
@@ -28,7 +30,8 @@ export default async function Notificaciones() {
 
       <h1 className="title-lg">🔔 Notificaciones</h1>
 
-      <NotificacionesLista inicial={items} hayMas={hayMas} total={total} />
+      <NotificacionesLista inicial={items} hayMas={hayMas} total={total} totalBot={totalBot || 0}
+        sinLeer={sinLeer || 0} sinLeerBot={sinLeerBot || 0} tabIni={tabIni} />
     </div>
   );
 }

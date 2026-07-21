@@ -23,7 +23,10 @@ export default function Realtime({ tablas, token, cadaSegundos }: {
   useEffect(() => {
     const supabase = createClient();
     if (token) supabase.realtime.setAuth(token);
-    const canal = supabase.channel("crewhub-vivo");
+    // Nombre único por montaje: `createClient` es singleton; un nombre fijo puede
+    // reutilizar un canal ya suscrito (p. ej. doble montaje en dev) y `.on()`
+    // reventaría con "cannot add postgres_changes callbacks after subscribe()".
+    const canal = supabase.channel(`crewhub-vivo-${Math.random().toString(36).slice(2)}`);
     tablas.forEach(t =>
       canal.on(
         "postgres_changes",
