@@ -3,6 +3,7 @@ import { useState, useEffect, type Dispatch, type SetStateAction } from "react";
 import Link from "next/link";
 import { plazoDe } from "@/lib/plazo";
 import { icoTipo } from "@/lib/tipos";
+import { colorEtapa, ETAPAS_CINE } from "@/lib/etapas";
 
 /* AGENDA — todo lo que tiene fecha, en dos vistas.
    Línea de tiempo (barras por proyecto, con la duración inicio→fin de cada
@@ -39,11 +40,6 @@ const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.ge
 const pd = (s: string) => new Date(s + "T12:00:00").getTime();
 const fmtCorto = (s: string) => new Date(s + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short" });
 
-/* Colores de etapa: los mismos que el Gantt del cronograma. */
-const ETAPA_COLOR: Record<string, string> = {
-  preproduccion: "#8b8ba3", produccion: "#f59e0b", postproduccion: "#2dd4bf",
-  entrega: "#2ecc71", administracion: "#a78bfa",
-};
 
 export default function Agenda({ items, perfiles, miId }: {
   items: ItemAgenda[];
@@ -64,7 +60,7 @@ export default function Agenda({ items, perfiles, miId }: {
      (plazoDe pinta rojo si vencido, amarillo si cerca). */
   const colorDe = (it: ItemAgenda) =>
     it.kind === "act"
-      ? (ETAPA_COLOR[it.etapa || ""] || "#8b8ba3")
+      ? colorEtapa(it.etapa || "")
       : (plazoDe(it.fin, it.estado)?.color || "var(--violet)");
 
   const icoDe = (it: ItemAgenda) => it.kind === "caso" ? icoTipo(it.tipo || "") : "▬";
@@ -96,10 +92,12 @@ export default function Agenda({ items, perfiles, miId }: {
         ? <Timeline vis={vis} shift={shift} setShift={setShift} colorDe={colorDe} icoDe={icoDe} cortoDe={cortoDe} />
         : <Calendario vis={vis} mesOff={mesOff} setMesOff={setMesOff} colorDe={colorDe} icoDe={icoDe} />}
 
-      {/* Leyenda de etapas (compartida con el Gantt) */}
+      {/* Leyenda de etapas. Muestra las de cine (las comunes); cada categoría
+          reusa esta paleta, así que sirve de referencia aunque los nombres
+          exactos varíen por categoría. */}
       <div className="card" style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 10.5, color: "var(--dim)", marginTop: 12 }}>
-        {Object.entries(ETAPA_COLOR).map(([et, c]) => (
-          <span key={et}><i style={{ display: "inline-block", width: 16, height: 7, background: c, borderRadius: 4, verticalAlign: "middle", marginRight: 4 }} />{et.replace(/_/g, " ")}</span>
+        {ETAPAS_CINE.map(e => (
+          <span key={e.clave}><i style={{ display: "inline-block", width: 16, height: 7, background: e.color, borderRadius: 4, verticalAlign: "middle", marginRight: 4 }} />{e.nombre}</span>
         ))}
         <span style={{ marginLeft: 6 }}>· los <b style={{ color: "var(--violet)" }}>casos</b> se colorean por urgencia (rojo = vencido)</span>
       </div>
@@ -150,7 +148,8 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe }: {
      prefijo del grupoId dice el tipo: p: proyecto, c: convocatoria. Dentro de
      cada bloque, alfabético (las convocatorias, por su código). */
   const rango = (gid: string) =>
-    gid === "__casos__" ? 0 : gid.startsWith("p:") ? 1 : gid.startsWith("c:") ? 2 : 3;
+    gid === "__casos__" ? 0 : gid.startsWith("postu:") ? 2
+      : gid.startsWith("p:") ? 1 : gid.startsWith("c:") ? 3 : 4;
   const grupos = [...byGroup.entries()].sort((a, b) =>
     rango(a[0]) - rango(b[0]) || a[1].label.localeCompare(b[1].label));
   grupos.forEach(([, g]) => g.items.sort((x, y) => x.ini < y.ini ? -1 : x.ini > y.ini ? 1 : 0));
@@ -194,7 +193,8 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe }: {
             /* Acceso rápido al cronograma: el título del proyecto/convocatoria
                enlaza a su ficha (donde vive el cronograma completo). La flecha
                ▾ sigue siendo solo el plegar. Casos no tiene ficha → sin link. */
-            const hrefGrupo = gid.startsWith("p:") ? `/entidad/proyecto/${gid.slice(2)}`
+            const hrefGrupo = gid.startsWith("postu:") ? `/entidad/postulacion/${gid.slice(6)}`
+              : gid.startsWith("p:") ? `/entidad/proyecto/${gid.slice(2)}`
               : gid.startsWith("c:") ? `/entidad/convocatoria/${gid.slice(2)}` : null;
             const titulo = gid === "__casos__" ? "🗂 Casos" : `📁 ${g.label}`;
             return (

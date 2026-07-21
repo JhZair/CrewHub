@@ -1,6 +1,7 @@
 /* Configuración de mantenimiento de entidades núcleo.
    Compartida por el formulario (cliente) y la acción (servidor,
    como whitelist de tablas y campos). */
+import { CATEGORIAS_OPC } from "@/lib/etapas";
 
 export type CampoDef = {
   key: string;
@@ -312,6 +313,8 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
     campos: [
       { key: "codigo", label: "Código", auto: true },
       { key: "nombre", label: "Nombre del concurso", requerido: true },
+      // La categoría decide las etapas del cronograma de sus postulaciones.
+      { key: "categoria", label: "Categoría del concurso", tipo: "select", opciones: CATEGORIAS_OPC },
       { key: "institucion", label: "Institución" },
       { key: "anio", label: "Año", valida: "anio" },
       { key: "estado", label: "Estado", tipo: "select", opciones: ["postulacion", "en_ejecucion", "rendicion_pendiente", "cerrada"] },

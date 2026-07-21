@@ -11,16 +11,11 @@ import { useEffect, useState } from "react";
 import MiniSelect from "@/components/MiniSelect";
 import FechaMini from "@/components/FechaMini";
 import { sinBot } from "@/lib/personas";
+import { type Etapa, ETAPAS_CINE, nombreEtapa } from "@/lib/etapas";
 
-const ETAPA_ORDEN = ["preproduccion", "produccion", "postproduccion", "entrega", "administracion"];
-
-const ETAPA_COLOR: Record<string, string> = {
-  preproduccion: "#8b8ba3",
-  produccion: "#f59e0b",
-  postproduccion: "#2dd4bf",
-  entrega: "#2ecc71",
-  administracion: "#a78bfa",
-};
+/* Las etapas ya no son fijas: llegan por prop (la categoría de la convocatoria
+   las decide; ver lib/etapas). Por defecto, las de cine. El ORDEN y el mapa de
+   COLOR se derivan de esa lista dentro del componente. */
 
 const CHIP: Record<string, [string, string]> = {
   planificada: ["PLANIFICADA", "var(--dim)"],
@@ -51,9 +46,10 @@ const inp = { background: "var(--card)", border: "1px solid var(--border)", bord
    tentación era escribir otro igual para editar. Dos formularios del mismo
    objeto es el error del día: el día que se agregue un campo, se agrega en
    uno solo. */
-function FormAct({ f, setF, perfiles, onSave, onCancel, ocupado, editar }: {
+function FormAct({ f, setF, perfiles, etapas, onSave, onCancel, ocupado, editar }: {
   f: Campos; setF: (x: Campos) => void;
   perfiles: { id: string; nombre: string }[];
+  etapas: Etapa[];
   onSave: () => void; onCancel: () => void; ocupado: boolean; editar?: boolean;
 }) {
   /* Antes se podía pulsar Guardar con la fecha vacía: el servidor lo rechazaba
@@ -77,7 +73,7 @@ function FormAct({ f, setF, perfiles, onSave, onCancel, ocupado, editar }: {
       <input style={{ ...inp, flex: 1, minWidth: 180 }} placeholder="Actividad *"
         value={f.nombre} onChange={e => setF({ ...f, nombre: e.target.value })} />
       <select style={inp} value={f.etapa} onChange={e => setF({ ...f, etapa: e.target.value })}>
-        {ETAPA_ORDEN.map(x => <option key={x} value={x}>{x.replace(/_/g, " ")}</option>)}
+        {etapas.map(x => <option key={x.clave} value={x.clave}>{x.nombre}</option>)}
       </select>
       {/* El inicio en rojo cuando falta: la fecha vacía es lo que más frena
           este formulario y hasta ahora no se distinguía de la de fin. */}
@@ -136,19 +132,30 @@ function FormAct({ f, setF, perfiles, onSave, onCancel, ocupado, editar }: {
   );
 }
 
-export default function CronogramaProyecto({ dueno = "proyecto", duenoId, actividades, perfiles, plantillas = [], tipoProyecto = "" }: {
-  dueno?: "proyecto" | "convocatoria";
+export default function CronogramaProyecto({ dueno = "proyecto", duenoId, actividades, perfiles, plantillas = [], tipoProyecto = "", etapas = ETAPAS_CINE }: {
+  dueno?: "proyecto" | "convocatoria" | "postulacion";
   duenoId: string;
   actividades: any[];
   perfiles: { id: string; nombre: string }[];
   plantillas?: { id: string; nombre: string; tipo_proyecto: string | null; n: number }[];
   tipoProyecto?: string;
+  /** Etapas de esta categoría; por defecto las de cine. */
+  etapas?: Etapa[];
 }) {
+  /* ORDEN y COLOR se derivan de la lista de etapas (que puede venir de la
+     categoría de la convocatoria). El resto del componente los usa igual que
+     antes, cuando eran constantes fijas. */
+  const ETAPA_ORDEN = etapas.map(e => e.clave);
+  const ETAPA_COLOR: Record<string, string> = Object.fromEntries(etapas.map(e => [e.clave, e.color]));
+  // Etapa por defecto de una actividad nueva: rodaje/producción si existe, si
+  // no la primera de la categoría.
+  const etapaDef = etapas.some(e => e.clave === "produccion") ? "produccion" : (etapas[0]?.clave || "produccion");
+
   const [vista, setVista] = useState<"lista" | "gantt">("lista");
   const [ancho, setAncho] = useState(false);
   const [confirmando, setConfirmando] = useState<{ id: string; accion: "mat" | "del" } | null>(null);
   const [agregando, setAgregando] = useState(false);
-  const VACIO: Campos = { nombre: "", etapa: dueno === "convocatoria" ? "administracion" : "produccion", ini: "", fin: "", responsable: "", antic: "7", clase: "trabajo", descripcion: "", equipo: [] };
+  const VACIO: Campos = { nombre: "", etapa: etapaDef, ini: "", fin: "", responsable: "", antic: "7", clase: "trabajo", descripcion: "", equipo: [] };
   const [f, setF] = useState<Campos>(VACIO);
   // Editar: faltaba entero. Una fecha mal puesta solo se podía arreglar
   // cancelando la actividad y creándola de nuevo, perdiendo su historia.
@@ -230,7 +237,7 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
   const abrirEdicion = (a: any) => {
     setEditando(a.id);
     setEf({
-      nombre: a.nombre || "", etapa: a.etapa || "produccion",
+      nombre: a.nombre || "", etapa: a.etapa || etapaDef,
       ini: a.fecha_inicio || "", fin: a.fecha_fin || "",
       responsable: a.responsable || "", antic: String(a.dias_anticipacion ?? 7),
       clase: a.clase || "trabajo", descripcion: a.descripcion || "",
@@ -405,7 +412,7 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
       )}
 
       {agregando && (
-        <FormAct f={f} setF={setF} perfiles={perfiles} ocupado={ocupado}
+        <FormAct f={f} setF={setF} perfiles={perfiles} etapas={etapas} ocupado={ocupado}
           onSave={guardar} onCancel={() => setAgregando(false)} />
       )}
 
@@ -415,7 +422,7 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
         if (!grupo.length) return null;
         return (
           <div key={et}>
-            <div className="cr-etapa-h">{et.replace(/_/g, " ")}</div>
+            <div className="cr-etapa-h">{nombreEtapa(et)}</div>
             {grupo.map(a => {
               const [txt, col] = CHIP[a.estado] || CHIP.planificada;
               /* Se reordena dentro de toda la ETAPA (a cualquier fecha), no ya
@@ -426,7 +433,7 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
               const puedeBajar = pos >= 0 && pos < grupo.length - 1;
               if (editando === a.id) {
                 return (
-                  <FormAct key={a.id} f={ef} setF={setEf} perfiles={perfiles} ocupado={ocupado} editar
+                  <FormAct key={a.id} f={ef} setF={setEf} perfiles={perfiles} etapas={etapas} ocupado={ocupado} editar
                     onSave={guardarEdicion} onCancel={() => setEditando(null)} />
                 );
               }
@@ -563,7 +570,7 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
             const etCol = ETAPA_COLOR[a.etapa] || "#8b8ba3";
             const barra = (
               <div className="gt-track">
-                <div className="gt-bar" title={`${a.nombre} · ${(a.etapa || "").replace(/_/g, " ")}: ${fmt(a.fecha_inicio)} → ${a.fecha_fin ? fmt(a.fecha_fin) : "—"}`}
+                <div className="gt-bar" title={`${a.nombre} · ${nombreEtapa(a.etapa)}: ${fmt(a.fecha_inicio)} → ${a.fecha_fin ? fmt(a.fecha_fin) : "—"}`}
                   style={{
                     left: `${ini}%`, width: `${w}%`,
                     background: a.estado === "planificada" ? `${etCol}26` : etCol,
@@ -588,7 +595,7 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
             {ETAPA_ORDEN.filter(et => visibles.some(a => a.etapa === et)).map(et => (
               <span key={et}>
                 <i style={{ display: "inline-block", width: 16, height: 7, background: ETAPA_COLOR[et], borderRadius: 4, verticalAlign: "middle", marginRight: 4 }} />
-                {et.replace(/_/g, " ")}
+                {nombreEtapa(et)}
               </span>
             ))}
             <span style={{ marginLeft: 10 }}>· punteada = planificada · sólida = en curso · tenue = finalizada</span>

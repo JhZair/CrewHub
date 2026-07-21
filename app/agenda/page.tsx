@@ -25,7 +25,8 @@ export default async function AgendaPage() {
   const [{ data: acts }, { data: casos }, { data: perfs }] = await Promise.all([
     supabase.from("cronograma_actividades")
       .select("id,nombre,fecha_inicio,fecha_fin,etapa,estado,responsable,equipo,publicacion_id," +
-        "proy:proyectos(id,nombre,nombre_corto),conv:convocatorias(id,codigo,nombre)")
+        "proy:proyectos(id,nombre,nombre_corto),conv:convocatorias(id,codigo,nombre)," +
+        "postu:postulaciones(id,codigo)")
       .neq("estado", "cancelada").not("fecha_inicio", "is", null),
     supabase.from("publicaciones")
       .select("id,titulo,tipo,estado,fecha_limite,responsable")
@@ -35,12 +36,14 @@ export default async function AgendaPage() {
 
   // ── Actividades → items. Grupo = su proyecto/convocatoria. ──
   const itemsAct: ItemAgenda[] = (acts || []).map((a: any) => {
-    const proy = a.proy as any, conv = a.conv as any;
+    const proy = a.proy as any, conv = a.conv as any, postu = a.postu as any;
     const grupo = proy ? { id: `p:${proy.id}`, label: proy.nombre_corto || proy.nombre }
+      : postu ? { id: `postu:${postu.id}`, label: `🎯 ${postu.codigo || "Postulación"}` }
       : conv ? { id: `c:${conv.id}`, label: [conv.codigo, conv.nombre].filter(Boolean).join(" · ") }
       : { id: "sin", label: "Sin proyecto" };
     const href = a.publicacion_id ? `/caso/${a.publicacion_id}`
       : proy ? `/entidad/proyecto/${proy.id}`
+      : postu ? `/entidad/postulacion/${postu.id}`
       : conv ? `/entidad/convocatoria/${conv.id}` : "#";
     return {
       id: a.id, kind: "act", titulo: a.nombre,

@@ -1866,9 +1866,16 @@ export async function asignarClienteProyecto(proyectoId: string, personaId: stri
   return {};
 }
 
-/* --- CRONOGRAMA: el plan produce el trabajo --- */
+/* --- CRONOGRAMA: el plan produce el trabajo ---
+   Un cronograma puede colgar de un proyecto, una convocatoria O una
+   postulación (cada postulación arma el suyo, independiente). El dueño se
+   pasa como `dueno` y aquí se traduce a su columna. */
+type DuenoCrono = "proyecto" | "convocatoria" | "postulacion";
+const colCrono = (d: DuenoCrono) =>
+  d === "proyecto" ? "proyecto_id" : d === "convocatoria" ? "convocatoria_id" : "postulacion_id";
+
 export async function agregarActividadCrono(
-  dueno: "proyecto" | "convocatoria", duenoId: string,
+  dueno: DuenoCrono, duenoId: string,
   d: { nombre: string; etapa: string; ini: string; fin: string;
        responsable: string; antic: string; clase: string; descripcion?: string; equipo?: string[]; }
 ) {
@@ -1880,7 +1887,7 @@ export async function agregarActividadCrono(
      de la etapa, una actividad nueva sin orden (0) saltaría al TOPE de una
      etapa ya ordenada a mano. Se anexa al final —es lo que uno espera al
      «agregar»— y de ahí se arrastra con las flechas si va en otro sitio. */
-  const colDueno = dueno === "proyecto" ? "proyecto_id" : "convocatoria_id";
+  const colDueno = colCrono(dueno);
   /* `.eq(col, null)` NO matchea NULL en PostgREST (hay que usar `.is`). La
      etapa siempre viene del <select>, pero se blinda por si acaso. */
   let qUlt = supabase.from("cronograma_actividades")
@@ -1923,7 +1930,7 @@ export async function agregarActividadCrono(
  * desplazamientos sirve para todos los que vengan.
  */
 export async function guardarComoPlantilla(
-  dueno: "proyecto" | "convocatoria", duenoId: string, nombre: string, tipoProyecto: string
+  dueno: DuenoCrono, duenoId: string, nombre: string, tipoProyecto: string
 ) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -1931,7 +1938,7 @@ export async function guardarComoPlantilla(
   const nom = nombre.trim();
   if (!nom) return { error: "Ponle un nombre a la plantilla." };
 
-  const col = dueno === "proyecto" ? "proyecto_id" : "convocatoria_id";
+  const col = colCrono(dueno);
   const { data: acts } = await supabase.from("cronograma_actividades")
     .select("nombre,etapa,clase,fecha_inicio,fecha_fin,responsable,dias_anticipacion,orden,creado_en")
     .eq(col, duenoId).neq("estado", "cancelada").not("fecha_inicio", "is", null)
@@ -1982,7 +1989,7 @@ export async function guardarComoPlantilla(
    SUMA, no reemplaza: si el cronograma ya tiene algo, se agrega. Borrar lo que
    hay para poner una plantilla sería tirar trabajo por un clic. */
 export async function aplicarPlantilla(
-  plantillaId: string, dueno: "proyecto" | "convocatoria", duenoId: string, desde: string
+  plantillaId: string, dueno: DuenoCrono, duenoId: string, desde: string
 ) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -2001,7 +2008,7 @@ export async function aplicarPlantilla(
   const fecha = (n: number) => new Date(base + n * D).toISOString().slice(0, 10);
 
   const filas = l.map((a: any) => ({
-    [dueno === "proyecto" ? "proyecto_id" : "convocatoria_id"]: duenoId,
+    [colCrono(dueno)]: duenoId,
     plantilla_act: a.id,          // de dónde nació: sirve para saber qué se cambió después
     nombre: a.nombre,
     etapa: a.etapa,
@@ -2042,7 +2049,7 @@ export async function borrarPlantilla(id: string) {
  * puede corregir no se corrige: se abandona.
  */
 export async function editarActividadCrono(
-  actId: string, dueno: "proyecto" | "convocatoria", duenoId: string,
+  actId: string, dueno: DuenoCrono, duenoId: string,
   d: { nombre: string; etapa: string; ini: string; fin: string;
        responsable: string; antic: string; clase: string; descripcion?: string; equipo?: string[]; }
 ) {
@@ -2127,13 +2134,13 @@ function cmpEtapa(a: any, b: any) {
  * (dejan de empatar); las siguientes veces cambian solo dos. Renumerar una
  * lista de ~15 no es una migración, y evita el lío de permutar ceros. */
 export async function moverActividadCrono(
-  actId: string, dueno: "proyecto" | "convocatoria", duenoId: string, dir: "sube" | "baja"
+  actId: string, dueno: DuenoCrono, duenoId: string, dir: "sube" | "baja"
 ) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
 
-  const col = dueno === "proyecto" ? "proyecto_id" : "convocatoria_id";
+  const col = colCrono(dueno);
   const { data: act } = await supabase.from("cronograma_actividades")
     .select("id,etapa").eq("id", actId).maybeSingle();
   if (!act) return { error: "No se encontró la actividad." };
@@ -2178,7 +2185,7 @@ export async function moverActividadCrono(
    `registrar_evento_estado` ya vigila `responsable` en cronograma_actividades
    y lo deja escrito solo. Si lo escribiéramos otra vez aquí, saldría doble. */
 export async function asignarResponsableActividad(
-  actId: string, dueno: "proyecto" | "convocatoria", duenoId: string, respId: string | null
+  actId: string, dueno: DuenoCrono, duenoId: string, respId: string | null
 ) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -2206,7 +2213,7 @@ export async function asignarResponsableActividad(
    fecha de un cronograma es una decisión, no un tecleo — igual que en el
    editor completo. */
 export async function cambiarFechaActividad(
-  actId: string, dueno: "proyecto" | "convocatoria", duenoId: string, fecha: string
+  actId: string, dueno: DuenoCrono, duenoId: string, fecha: string
 ) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -2243,7 +2250,7 @@ export async function cambiarFechaActividad(
    lo vigila el trigger de bitácora, y es un detalle de planificación —quién
    más ayuda—, no una decisión de estado: no se registra a mano. */
 export async function fijarEquipoActividad(
-  actId: string, dueno: "proyecto" | "convocatoria", duenoId: string, equipo: string[]
+  actId: string, dueno: DuenoCrono, duenoId: string, equipo: string[]
 ) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -2254,6 +2261,34 @@ export async function fijarEquipoActividad(
   if (error) return { error: error.message };
   if (!data?.length) return { error: "No se guardó: no tienes permiso." };
   revalidatePath(`/entidad/${dueno}/${duenoId}`);
+  return {};
+}
+
+/* LA FOTO DE LO POSTULADO. Congela en la postulación el cronograma tal como
+   está ahora —lo que se envía a DAFO—. El vivo (cronograma_actividades) sigue
+   editándose; esto es el registro de lo presentado, para el expediente y para
+   comparar después qué cambió si se gana el fondo. */
+export async function fijarCronogramaPostulado(postulacionId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: acts } = await supabase.from("cronograma_actividades")
+    .select("nombre,etapa,fecha_inicio,fecha_fin,descripcion,resp:perfiles(nombre)")
+    .eq("postulacion_id", postulacionId).neq("estado", "cancelada").not("fecha_inicio", "is", null)
+    .order("etapa").order("orden").order("fecha_inicio").order("creado_en");
+  const foto = (acts || []).map((a: any) => ({
+    nombre: a.nombre, etapa: a.etapa,
+    fecha_inicio: a.fecha_inicio, fecha_fin: a.fecha_fin,
+    responsable: (a.resp as any)?.nombre || null,
+    descripcion: a.descripcion || null,
+  }));
+  if (!foto.length) return { error: "El cronograma está vacío — arma al menos una actividad antes de fijar." };
+  const { data, error } = await supabase.from("postulaciones")
+    .update({ cronograma_postulado: foto, cronograma_postulado_en: new Date().toISOString() })
+    .eq("id", postulacionId).select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "No se guardó: no tienes permiso." };
+  revalidatePath(`/entidad/postulacion/${postulacionId}`);
   return {};
 }
 
@@ -2274,13 +2309,14 @@ export async function materializarActividad(actId: string, dueno: string, duenoI
   if (!user) return { error: "Sesión no encontrada." };
 
   const { data: act } = await supabase.from("cronograma_actividades")
-    .select("*, proyecto:proyectos(nombre), convocatoria:convocatorias(codigo,nombre)")
+    .select("*, proyecto:proyectos(nombre), convocatoria:convocatorias(codigo,nombre), postulacion:postulaciones(codigo)")
     .eq("id", actId).single();
   if (!act || act.estado !== "planificada") return { error: "La actividad ya no está planificada." };
 
   const esHito = act.clase === "hito_externo";
   const contexto = (act.proyecto as any)?.nombre
     || `${(act.convocatoria as any)?.codigo || ""} ${(act.convocatoria as any)?.nombre || ""}`.trim()
+    || (act.postulacion as any)?.codigo
     || "el cronograma";
 
   /* El equipo de apoyo viaja al caso: el responsable es quien rinde cuentas

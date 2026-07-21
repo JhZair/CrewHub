@@ -39,6 +39,8 @@ import FotoPersona from "@/components/FotoPersona";
 import Materiales from "@/components/Materiales";
 import LineaTiempo from "@/components/LineaTiempo";
 import CronogramaProyecto from "@/components/CronogramaProyecto";
+import CronogramaPostulacion from "@/components/CronogramaPostulacion";
+import { etapasDe } from "@/lib/etapas";
 import TabsPanel from "@/components/TabsPanel";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
@@ -272,7 +274,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   let comp = SIN_COMPROMISO, empLibre = false, trabasEmp: string[] = [], miembrosHoja: any[] = [];
   let partesReserva: any[] = [], reserva: "si" | "no" | "falta" = "falta";
   let clienteDe: { id: string; nombre: string } | null = null;
-  let cronoActs: any[] = [], perfilesCat: any[] = [];
+  let cronoActs: any[] = [], perfilesCat: any[] = [], cronoPost: any[] = [];
   let postusProy: any[] = [], equipoProy: any[] = [], plantillas: any[] = [];
   if (params.tipo === "proyecto") {
     const [pc, cl, ca, pf, pp, eq, pl] = await Promise.all([
@@ -349,7 +351,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   if (params.tipo === "postulacion") {
     const [ctx, eq, pc, ec] = await Promise.all([
       supabase.from("postulaciones")
-        .select("proy:proyectos(id,nombre,tipo,renca), emp:empresas(id,nombre,codigo,ruc,razon_social,renca,estado_sunat,domicilio_fiscal,region), conv:convocatorias(id,codigo,nombre,anio,monto_adjudicado,bases_url,plantilla_formulario,hitos:cronograma_actividades(id,nombre,fecha_inicio,estado,clase))")
+        .select("proy:proyectos(id,nombre,tipo,renca), emp:empresas(id,nombre,codigo,ruc,razon_social,renca,estado_sunat,domicilio_fiscal,region), conv:convocatorias(id,codigo,nombre,anio,categoria,monto_adjudicado,bases_url,plantilla_formulario,hitos:cronograma_actividades(id,nombre,fecha_inicio,estado,clase))")
         .eq("id", params.id).single(),
       supabase.from("postulacion_equipo")
         .select("id,cargo,persona:personas(id,nombre,alias,ruc_dni,genero,nacionalidad,autoident,lengua_materna,otras_lenguas,discapacidad,region,provincia,distrito,fecha_nacimiento)")
@@ -420,6 +422,22 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     if (postCtx?.conv?.monto_adjudicado)
       autoExp.monto_solicitado = `S/ ${Math.round(parseFloat(postCtx.conv.monto_adjudicado)).toLocaleString("es-PE")}`;
     Object.keys(autoExp).forEach(k => { if (!autoExp[k]) delete autoExp[k]; });
+
+    /* Cronograma PROPIO de la postulación (independiente del plan del
+       proyecto) + plantillas por tipo + perfiles, para su pestaña. */
+    const [cp, pl2, pf2] = await Promise.all([
+      supabase.from("cronograma_actividades").select("*, resp:perfiles(nombre)")
+        .eq("postulacion_id", params.id)
+        .order("etapa").order("orden").order("fecha_inicio").order("creado_en"),
+      supabase.from("plantillas_cronograma")
+        .select("id,nombre,tipo_proyecto,acts:plantilla_actividades(count)").order("nombre"),
+      supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
+    ]);
+    cronoPost = cp.data || [];
+    perfilesCat = pf2.data || [];
+    plantillas = (pl2.data || []).map((x: any) => ({
+      id: x.id, nombre: x.nombre, tipo_proyecto: x.tipo_proyecto, n: x.acts?.[0]?.count ?? 0,
+    }));
   }
   if (params.tipo === "empresa") {
     const [m, pc, pe] = await Promise.all([
@@ -1315,6 +1333,19 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
 
         {/* ===== COLUMNA DERECHA: la vida ===== */}
         <main>
+          {/* Cronograma de la postulación: va en la columna ancha (no en el
+              carné estrecho de la izquierda), como el del proyecto — armarlo
+              en una columna angosta era imposible. */}
+          {params.tipo === "postulacion" && (
+            <div style={{ marginBottom: 16 }}>
+              <CronogramaPostulacion postulacionId={params.id}
+                actividades={cronoPost} perfiles={perfilesCat}
+                plantillas={plantillas} tipoProyecto={(postCtx?.proy as any)?.tipo || ""}
+                etapas={etapasDe((postCtx?.conv as any)?.categoria)}
+                postulado={ent.cronograma_postulado || null}
+                postuladoEn={ent.cronograma_postulado_en || null} />
+            </div>
+          )}
           {/* Palmarés: lo primero que cuenta qué ha logrado esta persona */}
           {params.tipo === "persona" && postDe.length > 0 && (() => {
             const ganadas = postDe.filter((r: any) => r.post?.estado === "ganadora");
