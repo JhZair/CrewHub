@@ -21,11 +21,18 @@ export type CampoExp = {
 };
 export type SeccionExp = { titulo: string; campos: CampoExp[] };
 
-export default function Expediente({ postulacionId, plantilla, expediente, auto }: {
+export default function Expediente({ postulacionId, plantilla, expediente, auto, cronoListo, cronoResumen, presuListo, presuResumen, materialN, benefN, precontN, precontFirm }: {
   postulacionId: string;
   plantilla: SeccionExp[];
   expediente: Record<string, { v: string; listo: boolean }>;
   auto: Record<string, string>;
+  /* El cronograma (Sección C) y el presupuesto (Sección D) NO se llenan aquí:
+     tienen su propia sección en la ficha. El expediente los enlaza y cuenta su
+     estado en el %. */
+  cronoListo?: boolean; cronoResumen?: string;
+  presuListo?: boolean; presuResumen?: string;
+  materialN?: number; benefN?: number;
+  precontN?: number; precontFirm?: number;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [editando, setEditando] = useState<string | null>(null);
@@ -40,9 +47,30 @@ export default function Expediente({ postulacionId, plantilla, expediente, auto 
   const listoDe = (c: CampoExp) =>
     expediente[c.k]?.listo || (!expediente[c.k] && !!auto[c.k] && !auto[c.k].includes("⚠"));
 
-  const obligatorios = plantilla.flatMap(s => s.campos).filter(c => !c.opcional);
-  const llenos = obligatorios.filter(c => listoDe(c)).length;
-  const pct = obligatorios.length ? Math.round((llenos / obligatorios.length) * 100) : 0;
+  /* Campos de cronograma/presupuesto: no se muestran como texto (se llenan en
+     su sección dedicada). Se detectan por etiqueta, así funciona sea cual sea
+     la clave de la plantilla. */
+  const esVinculada = (c: CampoExp) => {
+    const e = (c.etiqueta || "").toLowerCase();
+    // "Beneficiario final/efectivo" es la DDJJ de titularidad real (SUNAT), NO
+    // la tabla de participantes: ese campo SÍ se teclea, no lo escondas.
+    if (/beneficiario\s+(final|efectivo)/.test(e)) return false;
+    return /cronograma|presupuesto|financiamiento|tipo de cambio|material de archivo|beneficiario|precontrato|carta de compromiso/i.test(e);
+  };
+
+  // Obligatorios de la plantilla SIN los vinculados; el cronograma y el
+  // presupuesto entran como dos ítems propios, con su estado real.
+  const obligatorios = plantilla.flatMap(s => s.campos).filter(c => !c.opcional && !esVinculada(c));
+  const totalOblig = obligatorios.length + 2;
+  const llenos = obligatorios.filter(c => listoDe(c)).length + (cronoListo ? 1 : 0) + (presuListo ? 1 : 0);
+  const pct = totalOblig ? Math.round((llenos / totalOblig) * 100) : 0;
+
+  /* Ir a una sección de la ficha: cierra el emergente y baja hasta ella. El
+     pequeño retraso deja que el modal se desmonte antes del scroll. */
+  const irA = (id: string) => {
+    setAbierto(false);
+    setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+  };
 
   const guardar = async (c: CampoExp, listo: boolean) => {
     if (ocupado) return;
@@ -76,7 +104,7 @@ export default function Expediente({ postulacionId, plantilla, expediente, auto 
         <span style={{ display: "block", height: "100%", width: `${pct}%`, borderRadius: 6, background: pct === 100 ? "var(--green)" : "linear-gradient(90deg,#3b82f6,#7c5cff)" }} />
       </span>
       <b style={{ color: pct === 100 ? "var(--green)" : "var(--blue)", fontSize: 14, whiteSpace: "nowrap" }}>{pct}%</b>
-      <span style={{ color: "var(--dim)", fontSize: 11.5, whiteSpace: "nowrap" }}>{llenos}/{obligatorios.length} listos</span>
+      <span style={{ color: "var(--dim)", fontSize: 11.5, whiteSpace: "nowrap" }}>{llenos}/{totalOblig} listos</span>
     </div>
   );
 
@@ -89,8 +117,8 @@ export default function Expediente({ postulacionId, plantilla, expediente, auto 
           onClick={() => setAbierto(true)}>🗂 Abrir expediente</button>
       </div>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 10 }}>
-        {plantilla.map((s, i) => {
-          const oblig = s.campos.filter(c => !c.opcional);
+        {plantilla.filter(s => s.campos.some(c => !esVinculada(c))).map((s, i) => {
+          const oblig = s.campos.filter(c => !c.opcional && !esVinculada(c));
           const ok = oblig.filter(c => listoDe(c)).length;
           return (
             <span key={i} className="badge" style={{
@@ -124,15 +152,38 @@ export default function Expediente({ postulacionId, plantilla, expediente, auto 
               ⚡ = llenado desde la base · ✎ redacta y guarda como borrador o listo ·
               📋 copia el campo para pegarlo en la plataforma DAFO el día del envío.
             </p>
+
+            {/* Cronograma (Sección C) y Presupuesto (Sección D) no se llenan
+                aquí: tienen su propia sección en la ficha. Se enlazan y su
+                estado cuenta en el %. */}
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
+              {[
+                { id: "sec-cronograma", ico: "📅", nom: "Cronograma", listo: cronoListo, res: cronoResumen, opc: false },
+                { id: "sec-presupuesto", ico: "💰", nom: "Presupuesto", listo: presuListo, res: presuResumen, opc: false },
+                { id: "sec-material", ico: "📁", nom: "Material de archivo", listo: (materialN || 0) > 0, res: (materialN || 0) > 0 ? `${materialN} entradas` : "sin material (o no aplica)", opc: true },
+                { id: "sec-beneficiarios", ico: "👥", nom: "Beneficiarios", listo: (benefN || 0) > 0, res: (benefN || 0) > 0 ? `${benefN} filas` : "sin filas (o no aplica)", opc: true },
+                { id: "sec-precontratos", ico: "📝", nom: "Precontratos", listo: (precontN || 0) > 0 && (precontFirm || 0) === (precontN || 0), res: (precontN || 0) > 0 ? `${precontFirm || 0}/${precontN} firmados` : "sin precontratos (o no aplica)", opc: true },
+              ].map(x => (
+                <button key={x.id} className="btn btn-ghost"
+                  style={{ flex: "1 1 240px", textAlign: "left", padding: "9px 12px", fontSize: 12.5, borderColor: x.listo ? "rgba(46,204,113,.35)" : "var(--border)" }}
+                  onClick={() => irA(x.id)}>
+                  <span style={{ color: x.listo ? "var(--green)" : x.opc ? "var(--dim)" : "var(--yellow)" }}>{x.listo ? "✅" : x.opc ? "◦" : "○"}</span>{" "}
+                  {x.ico} <b>{x.nom}</b>
+                  <span style={{ color: "var(--dim)", fontWeight: 400 }}> — {x.res || (x.listo ? "listo" : "pendiente")}</span>
+                  <span style={{ color: "var(--accent)", float: "right" }}>ir →</span>
+                </button>
+              ))}
+            </div>
+
             {error && <div className="err-inline">⚠ {error}</div>}
 
-            {plantilla.map((s, si) => (
+            {plantilla.filter(s => s.campos.some(c => !esVinculada(c))).map((s, si) => (
               <div key={si} style={{ marginBottom: 16 }}>
                 <div style={{ fontWeight: 800, fontSize: 12, color: "var(--violet)", textTransform: "uppercase", letterSpacing: 1.2, margin: "0 0 8px", paddingBottom: 5, borderBottom: "1px solid var(--border)" }}>
-                  {s.titulo} · {s.campos.filter(c => !c.opcional && listoDe(c)).length}/{s.campos.filter(c => !c.opcional).length}
+                  {s.titulo} · {s.campos.filter(c => !c.opcional && !esVinculada(c) && listoDe(c)).length}/{s.campos.filter(c => !c.opcional && !esVinculada(c)).length}
                 </div>
                 <div className="exp-grid">
-                  {s.campos.map(c => {
+                  {s.campos.filter(c => !esVinculada(c)).map(c => {
                     const v = valorDe(c);
                     const esAuto = !expediente[c.k] && !!auto[c.k];
                     const listo = listoDe(c);

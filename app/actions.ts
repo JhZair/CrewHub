@@ -7,6 +7,7 @@ import { procesarSunatEmpresa, correrRondaSunat, consultarRucApi } from "@/lib/s
 import { rucDePersona } from "@/lib/ruc";
 import { TOKEN } from "@/lib/puertas";
 import { BOT } from "@/lib/personas";
+import { CAMPOS_TABLA } from "@/lib/tablas-expediente";
 
 /* Crear o actualizar una entidad núcleo (proyecto/empresa/persona).
    La config compartida actúa como whitelist de tabla y campos. */
@@ -1232,22 +1233,107 @@ export async function bajaMiembro(miembroId: string, empresaId: string) {
   return {};
 }
 
-/* --- Expediente de postulación: el formulario DAFO se llena en casa --- */
+/* --- Expediente de postulación: el formulario DAFO se llena en casa ---
+   Guarda UN campo de forma ATÓMICA (jsonb_set vía RPC), no read-modify-write:
+   así dos personas editando campos distintos de la misma postulación a la vez
+   no se pisan. La RPC devuelve true si tocó una fila (detecta postulación
+   inexistente o bloqueada por RLS, el UPDATE que antes fallaba en silencio). */
 export async function guardarExpediente(postulacionId: string, campo: string, valor: string, listo: boolean) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
-  const { data: post } = await supabase.from("postulaciones")
-    .select("expediente").eq("id", postulacionId).single();
-  if (!post) return { error: "Postulación no encontrada." };
-  const exp = { ...(post.expediente || {}) };
-  const v = (valor || "").trim();
-  if (!v) delete exp[campo];
-  else exp[campo] = { v, listo: !!listo };
-  const { error } = await supabase.from("postulaciones")
-    .update({ expediente: exp }).eq("id", postulacionId);
+  const { data, error } = await supabase.rpc("set_expediente_campo", {
+    pid: postulacionId, campo, valor: valor || "", listo: !!listo,
+  });
   if (error) return { error: error.message };
+  if (!data) return { error: "No se guardó: postulación no encontrada o sin permiso." };
   revalidatePath(`/entidad/postulacion/${postulacionId}`);
+  return {};
+}
+
+/* --- Presupuesto de postulación: la Sección D, guardada entera ---
+   Recibe todo el objeto (items + tipo_cambio + fuentes) y lo persiste. NO
+   revalida: el componente edita con autosave y su estado local ya es la
+   verdad mientras se escribe; un refresh cortaría el tecleo. */
+export async function guardarPresupuesto(postulacionId: string, presupuesto: any) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data, error } = await supabase.from("postulaciones")
+    .update({ presupuesto }).eq("id", postulacionId).select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "No se guardó: no tienes permiso." };
+  return {};
+}
+
+/* Guardar el presupuesto actual como PLANTILLA reusable (por categoría), como
+   las plantillas del cronograma. Guarda solo la estructura del ítem (rubro,
+   concepto, unidad, cantidad, costo unitario), no el split de fuentes —eso es
+   propio de cada postulación—. */
+export async function guardarPlantillaPresupuesto(nombre: string, categoria: string | null, items: any[]) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!nombre.trim()) return { error: "Ponle nombre a la plantilla." };
+  if (!items?.length) return { error: "El presupuesto está vacío — arma ítems antes de guardarlo como plantilla." };
+  const limpios = items.map((i: any) => ({
+    rubro: i.rubro, concepto: i.concepto || "", unidad: i.unidad || "",
+    cantidad: i.cantidad || 0, costo_unit: i.costo_unit || 0,
+  }));
+  const { error } = await supabase.from("plantillas_presupuesto")
+    .insert({ nombre: nombre.trim(), categoria: categoria || null, items: limpios });
+  if (error) return { error: error.message };
+  return { n: limpios.length };
+}
+
+/* La FOTO del presupuesto postulado: congela el presupuesto actual (lo que se
+   envía a DAFO). El vivo se sigue editando; si se gana, se compara para ver
+   qué cambió al ejecutar (la modificación de presupuesto que pide DAFO). */
+export async function fijarPresupuestoPostulado(postulacionId: string, presupuesto: any) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!presupuesto?.items?.length) return { error: "El presupuesto está vacío — arma al menos un ítem antes de fijar." };
+  const { data, error } = await supabase.from("postulaciones")
+    .update({ presupuesto_postulado: presupuesto, presupuesto_postulado_en: new Date().toISOString() })
+    .eq("id", postulacionId).select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "No se guardó: no tienes permiso." };
+  const totalPre = (presupuesto.items || []).reduce((s: number, i: any) => s + (i.cantidad || 0) * (i.costo_unit || 0), 0);
+  // Hito en la bitácora: qué presupuesto se presentó y por cuánto.
+  await supabase.from("actividad").insert({
+    entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "editado",
+    detalle: { mensaje: `📸 fijó el presupuesto postulado (S/ ${Math.round(totalPre).toLocaleString("es-PE")})` },
+  });
+  revalidatePath(`/entidad/postulacion/${postulacionId}`);
+  return {};
+}
+
+/* Tablas repetibles del expediente (material de archivo, beneficiarios):
+   guarda el arreglo entero en su columna jsonb. `campo` va en whitelist. */
+export async function guardarTablaPostulacion(postulacionId: string, campo: string, filas: any[]) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!(CAMPOS_TABLA as readonly string[]).includes(campo)) return { error: "Tabla no válida." };
+  const { data, error } = await supabase.from("postulaciones")
+    .update({ [campo]: filas || [] }).eq("id", postulacionId).select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "No se guardó: no tienes permiso." };
+  return {};
+}
+
+/* Precontratos (cartas de compromiso del equipo): guarda el arreglo entero en
+   su columna jsonb. El monto NO se guarda: se deriva del ítem del presupuesto
+   al leer, así el documento y lo presupuestado nunca se separan. */
+export async function guardarPrecontratos(postulacionId: string, filas: any[]) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data, error } = await supabase.from("postulaciones")
+    .update({ precontratos: filas || [] }).eq("id", postulacionId).select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "No se guardó: no tienes permiso." };
   return {};
 }
 
@@ -2288,6 +2374,11 @@ export async function fijarCronogramaPostulado(postulacionId: string) {
     .eq("id", postulacionId).select("id");
   if (error) return { error: error.message };
   if (!data?.length) return { error: "No se guardó: no tienes permiso." };
+  // Hito en la bitácora: presentar el cronograma es una decisión, no un tecleo.
+  await supabase.from("actividad").insert({
+    entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "editado",
+    detalle: { mensaje: `📸 fijó el cronograma postulado (${foto.length} actividades)` },
+  });
   revalidatePath(`/entidad/postulacion/${postulacionId}`);
   return {};
 }

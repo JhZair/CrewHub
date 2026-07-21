@@ -40,7 +40,14 @@ import Materiales from "@/components/Materiales";
 import LineaTiempo from "@/components/LineaTiempo";
 import CronogramaProyecto from "@/components/CronogramaProyecto";
 import CronogramaPostulacion from "@/components/CronogramaPostulacion";
+import Presupuesto from "@/components/Presupuesto";
+import CredencialesRef from "@/components/CredencialesRef";
+import TablaSimple from "@/components/TablaSimple";
+import EquipoPorcentajes from "@/components/EquipoPorcentajes";
+import Precontratos from "@/components/Precontratos";
 import { etapasDe } from "@/lib/etapas";
+import { rubrosDe } from "@/lib/rubros";
+import { TABLAS_EXP } from "@/lib/tablas-expediente";
 import TabsPanel from "@/components/TabsPanel";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
@@ -346,7 +353,10 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     proyectosPrest = py.data || [];
   }
 
-  let postCtx: any = null, equipoPost: any[] = [];
+  let postCtx: any = null, equipoPost: any[] = [], credsEmp: any[] = [], plantillasPre: any[] = [], hitosConc: any[] = [];
+  let cronoListo = false, cronoResumen = "", presuListo = false, presuResumen = "";
+  let seedBenef: { rol: string; cantidad: number }[] = [];
+  let precontN = 0, precontFirm = 0;
   const autoExp: Record<string, string> = {};
   if (params.tipo === "postulacion") {
     const [ctx, eq, pc, ec] = await Promise.all([
@@ -381,7 +391,17 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     }
 
     /* 🗂 EXPEDIENTE — auto-llenado: lo que la base ya sabe, no se teclea.
-       Cada clave calza con un campo `k` de la plantilla del formulario. */
+       ⚠ CONTRATO DE CLAVES: cada clave de `autoExp` debe COINCIDIR EXACTA con
+       la clave `k` de un campo de `convocatorias.plantilla_formulario`, o no
+       conecta (el campo queda vacío para llenar a mano). Al armar una plantilla
+       nueva, usar estas claves para lo que se auto-llena:
+         · ruc, razon_social, estado_sunat, renca_empresa, domicilio_legal,
+           departamento        → de la EMPRESA
+         · rep_legal_nombre, rep_legal_doc  → del representante legal
+         · titulo_proyecto, renca_obra      → del PROYECTO
+         · equipo_personal     → tabla censal del equipo (con ⚠ lo que falta)
+         · monto_solicitado    → total del ESTÍMULO del presupuesto
+       (El cronograma y el presupuesto NO van por aquí: tienen su sección.) */
     const e = postCtx?.emp, py = postCtx?.proy;
     if (e) {
       autoExp.ruc = e.ruc || "";
@@ -417,9 +437,25 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         `  domicilio: ${f(p.region, "región")} / ${f(p.provincia, "provincia")} / ${f(p.distrito, "distrito")}`,
       ].join("\n");
     };
-    const equipoTxt = [...equipoPost, ...equipoProy].map(filaCensal).join("\n\n");
+    /* Sin repetir a nadie: quien está en el equipo de la postulación Y en el
+       del proyecto (p. ej. la directora) sale una sola vez en la tabla censal.
+       Gana el de la postulación (va primero). */
+    const vistosCensal = new Set<string>();
+    const equipoCensal = [...equipoPost, ...equipoProy].filter((m: any) => {
+      const id = m.persona?.id;
+      if (!id) return true;                      // sin id no se deduplica, pero tampoco se pierde
+      if (vistosCensal.has(id)) return false;
+      vistosCensal.add(id); return true;
+    });
+    const equipoTxt = equipoCensal.map(filaCensal).join("\n\n");
     if (equipoTxt) autoExp.equipo_personal = equipoTxt;
-    if (postCtx?.conv?.monto_adjudicado)
+    /* El monto solicitado = lo que se pide AL ESTÍMULO = suma de item.estimulo
+       del presupuesto real (total del ítem menos la contrapartida). Antes usaba
+       el monto del concurso, que es el TOPE del fondo, no lo que pides. */
+    const preItems = ((ent.presupuesto as any)?.items || []) as any[];
+    const totalEstim = preItems.reduce((s, i) => s + Math.max(0, (i.cantidad || 0) * (i.costo_unit || 0) - (i.otras || 0)), 0);
+    if (totalEstim > 0) autoExp.monto_solicitado = `S/ ${Math.round(totalEstim).toLocaleString("es-PE")}`;
+    else if (postCtx?.conv?.monto_adjudicado)
       autoExp.monto_solicitado = `S/ ${Math.round(parseFloat(postCtx.conv.monto_adjudicado)).toLocaleString("es-PE")}`;
     Object.keys(autoExp).forEach(k => { if (!autoExp[k]) delete autoExp[k]; });
 
@@ -438,6 +474,66 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     plantillas = (pl2.data || []).map((x: any) => ({
       id: x.id, nombre: x.nombre, tipo_proyecto: x.tipo_proyecto, n: x.acts?.[0]?.count ?? 0,
     }));
+
+    /* Credenciales de la empresa, a la mano para entrar a DAFO o al correo sin
+       ir a su ficha. `conPlataforma` agrega el link y las entradas al leer. */
+    if (postCtx?.emp?.id) {
+      const { data: cd } = await supabase.from("credenciales")
+        .select("*, datos:credencial_datos(id,etiqueta,valor)")
+        .eq("empresa_id", postCtx.emp.id).order("plataforma");
+      credsEmp = await conPlataforma(cd || []);
+    }
+
+    // Plantillas de presupuesto (reusables por categoría).
+    const { data: plPre } = await supabase.from("plantillas_presupuesto")
+      .select("id,nombre,categoria,items").order("nombre");
+    plantillasPre = plPre || [];
+
+    // Hitos del concurso, para la línea de tiempo (va en la columna pequeña).
+    hitosConc = ((postCtx?.conv as any)?.hitos || [])
+      .filter((h: any) => h.clase === "hito_externo" && h.estado !== "cancelada")
+      .sort((a: any, b: any) => (a.fecha_inicio < b.fecha_inicio ? -1 : 1));
+
+    /* Estado y resumen del cronograma y el presupuesto, para que el expediente
+       enlace a sus secciones dedicadas (Sección C y D) en vez de duplicarlas. */
+    const vivC = cronoPost.filter((a: any) => a.estado !== "cancelada");
+    cronoListo = vivC.length > 0;
+    cronoResumen = cronoListo
+      ? `${vivC.length} actividades${ent.cronograma_postulado_en ? " · foto fijada" : ""}`
+      : "aún sin actividades";
+    const preIt = ((ent.presupuesto as any)?.items || []) as any[];
+    const preTot = preIt.reduce((s, i) => s + (i.cantidad || 0) * (i.costo_unit || 0), 0);
+    const preEst = preIt.reduce((s, i) => s + Math.max(0, (i.cantidad || 0) * (i.costo_unit || 0) - (i.otras || 0)), 0);
+    presuListo = preIt.length > 0;
+    presuResumen = presuListo
+      ? `costo S/ ${Math.round(preTot).toLocaleString("es-PE")} · estímulo S/ ${Math.round(preEst).toLocaleString("es-PE")} · ${preIt.length} ítems${ent.presupuesto_postulado_en ? " · foto fijada" : ""}`
+      : "aún sin ítems";
+
+    /* Semilla de «Participantes/beneficiarios»: una fila por CARGO del equipo
+       nombrado (proyecto + postulación, sin repetir persona). Es solo sugerencia
+       —la tabla la ofrece cuando aún no hay datos guardados— para no reteclear a
+       quien ya está en el equipo; luego se le suman los puestos sin nombre. */
+    const vistosBen = new Set<string>();
+    seedBenef = Object.entries(
+      [...equipoPost, ...equipoProy].reduce((acc: Record<string, number>, m: any) => {
+        const pid = m?.persona?.id;
+        if (pid) { if (vistosBen.has(pid)) return acc; vistosBen.add(pid); }
+        const rol = ((m?.cargo || "") as string).trim() || "Equipo";
+        acc[rol] = (acc[rol] || 0) + 1;
+        return acc;
+      }, {})
+    ).map(([rol, cantidad]) => ({ rol, cantidad: cantidad as number }));
+
+    /* Precontratos para el checklist del expediente. "Firmado" solo cuenta si
+       aún apunta a un ítem del presupuesto (uno huérfano no debe marcar listo). */
+    const preItemIds = new Set(((ent.presupuesto as any)?.items || []).map((i: any) => i.id));
+    const precLista = (ent.precontratos as any) || [];
+    precontN = precLista.length;
+    precontFirm = precLista.filter((x: any) => {
+      if (x?.estado !== "firmado") return false;
+      const ids = Array.isArray(x.item_ids) ? x.item_ids : (x.item_id ? [x.item_id] : []);
+      return ids.some((id: string) => preItemIds.has(id));
+    }).length;
   }
   if (params.tipo === "empresa") {
     const [m, pc, pe] = await Promise.all([
@@ -1244,17 +1340,41 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                       </div>
                     )}
                     <EquipoPostulacion postulacionId={params.id} equipo={equipoPost} personas={personasCat} />
+                    {/* Cumplimiento calculado: % peruano/domiciliado y % regional
+                        del equipo completo (proyecto + postulación). */}
+                    <EquipoPorcentajes equipo={[...equipoPost, ...equipoProy]} />
                   </div>,
                   ...(postCtx?.conv?.plantilla_formulario ? [
                     <Expediente key="exp" postulacionId={params.id}
                       plantilla={postCtx.conv.plantilla_formulario}
                       expediente={ent.expediente || {}}
-                      auto={autoExp} />,
+                      auto={autoExp}
+                      cronoListo={cronoListo} cronoResumen={cronoResumen}
+                      presuListo={presuListo} presuResumen={presuResumen}
+                      materialN={((ent.material_archivo as any) || []).length}
+                      benefN={((ent.beneficiarios as any) || []).length}
+                      precontN={precontN}
+                      precontFirm={precontFirm} />,
                   ] : [
                     <Materiales key="mat" postulacionId={params.id} materiales={ent.materiales || {}} />,
                   ]),
                 ]}
               />
+              {/* Los accesos de la empresa, a la mano para entrar a DAFO o al
+                  correo mientras se llena la postulación. */}
+              <CredencialesRef creds={credsEmp} empresaId={(postCtx?.emp as any)?.id} />
+              {/* La línea de tiempo del concurso va en la columna pequeña: es
+                  una referencia (fechas del Ministerio), no el trabajo — la
+                  columna ancha queda para el cronograma y el presupuesto. */}
+              {hitosConc.length > 0 && ["en_preparacion", "enviada", "finalista"].includes(ent.estado) && (
+                <div className="card" style={{ marginTop: 14 }}>
+                  <div className="panel-h">📅 Línea de tiempo del concurso — la carrera de esta postulación</div>
+                  <LineaTiempo eventos={hitosConc.map((h: any) => ({
+                    fecha: h.fecha_inicio, titulo: h.nombre, icono: "🏛",
+                    color: h.estado === "finalizada" ? "#4a4a5e" : "var(--violet)",
+                  }))} />
+                </div>
+              )}
             </div>
           )}
 
@@ -1337,13 +1457,37 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               carné estrecho de la izquierda), como el del proyecto — armarlo
               en una columna angosta era imposible. */}
           {params.tipo === "postulacion" && (
-            <div style={{ marginBottom: 16 }}>
-              <CronogramaPostulacion postulacionId={params.id}
+            <div id="sec-cronograma" style={{ marginBottom: 16, scrollMarginTop: 12 }}>
+              <CronogramaPostulacion key={`crono-${params.id}`} postulacionId={params.id}
                 actividades={cronoPost} perfiles={perfilesCat}
                 plantillas={plantillas} tipoProyecto={(postCtx?.proy as any)?.tipo || ""}
                 etapas={etapasDe((postCtx?.conv as any)?.categoria)}
                 postulado={ent.cronograma_postulado || null}
                 postuladoEn={ent.cronograma_postulado_en || null} />
+              <div id="sec-presupuesto" style={{ marginTop: 16, scrollMarginTop: 12 }}>
+                <Presupuesto key={`pre-${params.id}`} postulacionId={params.id}
+                  rubros={rubrosDe((postCtx?.conv as any)?.categoria)}
+                  categoria={(postCtx?.conv as any)?.categoria}
+                  inicial={ent.presupuesto || null}
+                  plantillas={plantillasPre}
+                  postulado={ent.presupuesto_postulado || null}
+                  postuladoEn={ent.presupuesto_postulado_en || null}
+                  estimuloConcurso={(postCtx?.conv as any)?.monto_adjudicado ? parseFloat((postCtx.conv as any).monto_adjudicado) : null} />
+              </div>
+              <div id="sec-material" style={{ marginTop: 16, scrollMarginTop: 12 }}>
+                <TablaSimple key={`mat-${params.id}`} postulacionId={params.id}
+                  tabla={TABLAS_EXP.material_archivo} inicial={(ent.material_archivo as any) || null} />
+              </div>
+              <div id="sec-precontratos" style={{ marginTop: 16, scrollMarginTop: 12 }}>
+                <Precontratos key={`prec-${params.id}`} postulacionId={params.id}
+                  equipo={[...equipoPost, ...equipoProy]}
+                  items={((ent.presupuesto as any)?.items) || []}
+                  inicial={(ent.precontratos as any) || null} />
+              </div>
+              <div id="sec-beneficiarios" style={{ marginTop: 16, scrollMarginTop: 12 }}>
+                <TablaSimple key={`ben-${params.id}`} postulacionId={params.id}
+                  tabla={TABLAS_EXP.beneficiarios} inicial={(ent.beneficiarios as any) || null} seed={seedBenef} />
+              </div>
             </div>
           )}
           {/* Palmarés: lo primero que cuenta qué ha logrado esta persona */}
@@ -1560,10 +1704,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             );
 
             if (params.tipo === "postulacion") {
-              const enJuego = ["en_preparacion", "enviada", "finalista"].includes(ent.estado);
-              const hitosConc = (postCtx?.conv?.hitos || [])
-                .filter((h: any) => h.clase === "hito_externo" && h.estado !== "cancelada")
-                .sort((a: any, b: any) => (a.fecha_inicio < b.fecha_inicio ? -1 : 1));
+              // (La línea de tiempo del concurso se calcula arriba —hitosConc— y
+              //  se muestra en la columna pequeña.)
               // Ganadora: su ruta ya no es el concurso, es la ejecución
               const rutaEjec = ent.estado === "ganadora" ? [
                 ent.fecha_firma_acta && { fecha: ent.fecha_firma_acta, titulo: "Firma del acta de compromiso", icono: "🖋", color: "var(--green)" },
@@ -1575,15 +1717,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               ].filter(Boolean) as any[] : [];
               return (
                 <>
-                  {enJuego && hitosConc.length > 0 && (
-                    <div className="card" style={{ marginBottom: 16 }}>
-                      <div className="panel-h">📅 Línea de tiempo del concurso — la carrera de esta postulación</div>
-                      <LineaTiempo eventos={hitosConc.map((h: any) => ({
-                        fecha: h.fecha_inicio, titulo: h.nombre, icono: "🏛",
-                        color: h.estado === "finalizada" ? "#4a4a5e" : "var(--violet)",
-                      }))} />
-                    </div>
-                  )}
+                  {/* La línea de tiempo del concurso se movió a la columna
+                      pequeña (arriba); la ancha es para cronograma/presupuesto. */}
                   {rutaEjec.length > 0 && (
                     <div className="card" style={{ marginBottom: 16, borderColor: "rgba(46,204,113,.3)" }}>
                       <div className="panel-h" style={{ color: "var(--green)" }}>🏆 Camino de ejecución — del acta a la rendición</div>

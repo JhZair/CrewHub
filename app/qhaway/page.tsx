@@ -247,9 +247,12 @@ export default async function Qhaway({ searchParams }: { searchParams: { bit?: s
     }
     // Con plantilla, el que manda es el expediente; sin ella, los materiales v1
     if (p.conv?.plantilla_formulario) {
+      /* Excluir los campos vinculados (cronograma/presupuesto): no se llenan en
+         el expediente sino en su sección, así que nunca marcan `listo` aquí —
+         contarlos dejaría el % atascado. Mismo criterio que Expediente.tsx. */
       const oblig = (p.conv.plantilla_formulario as any[])
         .flatMap((s: any) => s.campos || [])
-        .filter((c: any) => !c.opcional);
+        .filter((c: any) => !c.opcional && !/cronograma|presupuesto|financiamiento|tipo de cambio/i.test(c.etiqueta || ""));
       const exp = p.expediente || {};
       const listos = oblig.filter((c: any) => exp[c.k]?.listo).length;
       if (listos < oblig.length)

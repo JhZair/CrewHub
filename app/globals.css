@@ -963,6 +963,26 @@ a.stat-card:hover{border-color:var(--border2)}
 .notif-mas:disabled{opacity:.5;cursor:default}
 .notif-fin{text-align:center;color:var(--dim);font-size:11px;padding:16px 0 4px}
 
+/* ===== Presupuesto (Sección D) ===== */
+.pre-grid{margin-top:6px;overflow-x:auto}
+.pre-lbls,.pre-row,.pre-tot{display:grid;grid-template-columns:1fr 74px 56px 86px 94px 86px 94px 24px;gap:6px;align-items:center;min-width:740px}
+.pre-lbls{font-size:9.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--dim);padding:0 2px 4px}
+.pre-lbls>span{text-align:right}
+.pre-lbls>span:first-child{text-align:left}
+.pre-rubro{font-size:11px;font-weight:700;color:var(--violet);text-transform:uppercase;letter-spacing:.5px;margin:8px 0 4px;padding-top:6px;border-top:1px solid var(--border)}
+.pre-row{padding:2px 0}
+.pre-num{text-align:right;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pre-x{background:transparent;border:none;color:var(--dim);font-size:11px;padding:0;cursor:pointer}
+.pre-x:hover{color:var(--red)}
+.pre-add{background:transparent;border:1px dashed var(--border);border-radius:7px;color:var(--dim);font-size:11px;padding:4px 10px;margin:4px 0 2px;cursor:pointer}
+.pre-add:hover{color:var(--accent);border-color:var(--accent)}
+.pre-tot{margin-top:8px;padding-top:8px;border-top:2px solid var(--border);font-weight:800;font-size:12.5px}
+.pre-tot>:first-child{grid-column:1 / 5;color:var(--text)}
+.pre-fu-grid{overflow-x:auto}
+.pre-fu-lbls,.pre-fu-row{display:grid;grid-template-columns:1fr 90px 122px 90px 46px 24px;gap:6px;align-items:center;min-width:560px}
+.pre-fu-lbls{font-size:9.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--dim);padding:0 2px 4px}
+.pre-fu-row{padding:2px 0}
+
 /* ===== Agenda (línea de tiempo + calendario) ===== */
 .ag-tl-nav{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap}
 .ag-tl-body{position:relative}
