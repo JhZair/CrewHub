@@ -30,6 +30,8 @@ export default function MenuUsuario({ nombre, rol, color, src, esAdmin, personaI
             )}
             <Link href="/tablero" onClick={() => setAbierto(false)} className="btn btn-ghost"
               style={{ marginTop: personaId ? 6 : 10, fontSize: 12.5, textAlign: "center" }}>🗂 Tablero</Link>
+            <Link href="/agenda" onClick={() => setAbierto(false)} className="btn btn-ghost"
+              style={{ marginTop: 6, fontSize: 12.5, textAlign: "center" }}>📅 Agenda</Link>
             <Link href="/pulso" onClick={() => setAbierto(false)} className="btn btn-ghost"
               style={{ marginTop: 6, fontSize: 12.5, textAlign: "center" }}>📊 Pulso del equipo</Link>
             <Link href="/jornadas" onClick={() => setAbierto(false)} className="btn btn-ghost"

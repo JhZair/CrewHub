@@ -47,6 +47,7 @@ export const SUNAT_EMPRESA = "🏛 SUNAT — lo llena la verificación automáti
    separado. No es lo mismo que «región», que es dónde opera. */
 export const RESERVA_EMPRESA = "🗺 Reserva regional — dónde figura la empresa ante SUNARP y SUNAT";
 export const DNI_PERSONA = "🪪 Identidad — DNI y firma: obligatorios para postular";
+export const CENSAL_PERSONA = "🧬 Ficha censal DAFO — se llena UNA vez y sirve para todas las postulaciones";
 export const DOCS_PERSONA = "📎 Otros documentos";
 export const SUNAT_PERSONA = "🏛 SUNAT — su RUC sale del DNI; lo demás lo llena la verificación";
 
@@ -398,8 +399,21 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
       { key: "estado", label: "Estado", tipo: "select", opciones: ["activo", "potencial", "vetado", "inactivo"] },
       { key: "rol", label: "Especialidades / rol", corto: "Rol", sugerencias: ESPECIALIDADES, multiple: true },
       { key: "region", label: "Región", tipo: "select", opciones: REGIONES },
-      { key: "genero", label: "Género", tipo: "select", opciones: ["femenino", "masculino", "otro"] },
+      { key: "genero", label: "Género", tipo: "select", opciones: ["femenino", "masculino", "no binario", "otro"] },
       { key: "es_comunero", label: "¿Es comunero/a?", corto: "Comunero/a", tipo: "bool" },
+      // — Ficha censal DAFO: los datos que la plataforma pide POR PERSONA en
+      //   cada tabla de equipo. Se registran una vez y se generan solos en
+      //   el expediente de cada postulación. Opciones = las de la plataforma. —
+      { key: "fecha_nacimiento", label: "Fecha de nacimiento", corto: "Nacimiento", tipo: "date", grupo: CENSAL_PERSONA },
+      { key: "nacionalidad", label: "Nacionalidad", tipo: "select", opciones: ["Perú", "Extranjero/a domiciliado/a", "Extranjero/a"], grupo: CENSAL_PERSONA },
+      { key: "autoident", label: "Autoidentificación étnica (censo)", corto: "Autoident.", tipo: "select", grupo: CENSAL_PERSONA,
+        opciones: ["Quechua", "Aimara", "Blanco", "Mestizo", "Nativo o indígena de la Amazonía", "Negro, moreno, zambo, mulato, pueblo afroperuano o afrodescendiente", "Nikkei", "Tusan", "Perteneciente a otro pueblo indígena u originario", "Otros"] },
+      { key: "lengua_materna", label: "Lengua con la que aprendió a hablar", corto: "Lengua materna", tipo: "select", opciones: ["Quechua", "Castellano", "Aimara", "Otra lengua originaria", "Otra"], grupo: CENSAL_PERSONA },
+      { key: "otras_lenguas", label: "Otras lenguas en las que se expresa", corto: "Otras lenguas", grupo: CENSAL_PERSONA },
+      { key: "discapacidad", label: "Discapacidad o limitación permanente", corto: "Discapacidad", tipo: "select", grupo: CENSAL_PERSONA,
+        opciones: ["No tengo", "Moverse o caminar, para usar brazos o piernas", "Ver, aun usando anteojos", "Hablar o comunicarse", "Oír, aun usando audífonos", "Entender o aprender", "Relacionarse con los demás"] },
+      { key: "provincia", label: "Provincia (domicilio DNI)", corto: "Provincia", grupo: CENSAL_PERSONA },
+      { key: "distrito", label: "Distrito (domicilio DNI)", corto: "Distrito", grupo: CENSAL_PERSONA },
       { key: "telefono", label: "Teléfono", valida: "telefono" },
       { key: "email", label: "Email", valida: "email" },
       // "notas" se retiró: era un pozo sin fondo (sin autor, sin fecha y sin

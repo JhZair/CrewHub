@@ -1232,6 +1232,25 @@ export async function bajaMiembro(miembroId: string, empresaId: string) {
   return {};
 }
 
+/* --- Expediente de postulación: el formulario DAFO se llena en casa --- */
+export async function guardarExpediente(postulacionId: string, campo: string, valor: string, listo: boolean) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: post } = await supabase.from("postulaciones")
+    .select("expediente").eq("id", postulacionId).single();
+  if (!post) return { error: "Postulación no encontrada." };
+  const exp = { ...(post.expediente || {}) };
+  const v = (valor || "").trim();
+  if (!v) delete exp[campo];
+  else exp[campo] = { v, listo: !!listo };
+  const { error } = await supabase.from("postulaciones")
+    .update({ expediente: exp }).eq("id", postulacionId);
+  if (error) return { error: error.message };
+  revalidatePath(`/entidad/postulacion/${postulacionId}`);
+  return {};
+}
+
 /* --- Editar comentario: solo el autor, y queda la marca de editado --- */
 export async function editarComentario(comentarioId: string, pubId: string, cuerpo: string) {
   const supabase = createClient();

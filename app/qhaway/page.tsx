@@ -214,10 +214,10 @@ export default async function Qhaway({ searchParams }: { searchParams: { bit?: s
 
   // ===== SEMÁFORO PRE-POSTULACIÓN =====
   const { data: enPrep } = await supabase.from("postulaciones")
-    .select(`id,codigo,estado,materiales,
+    .select(`id,codigo,estado,materiales,expediente,
       proy:proyectos(id,nombre,tipo,renca),
       emp:empresas(id,nombre,renca,estado_sunat,condicion_sunat,fecha_verificacion_sunat,vigencia_poder_fecha),
-      conv:convocatorias(id,codigo,nombre,anio),
+      conv:convocatorias(id,codigo,nombre,anio,plantilla_formulario),
       equipo:postulacion_equipo(persona:personas(id,nombre,alias,dni_vencimiento))`)
     .in("estado", ["en_preparacion", "enviada"]);
 
@@ -245,8 +245,19 @@ export default async function Qhaway({ searchParams }: { searchParams: { bit?: s
       if (!p.emp.fecha_verificacion_sunat || diasDesde(p.emp.fecha_verificacion_sunat) > 60)
         avisos.push("SUNAT sin verificar");
     }
-    const llenos = Object.values(p.materiales || {}).filter(Boolean).length;
-    if (llenos < 10) avisos.push(`materiales ${llenos}/10`);
+    // Con plantilla, el que manda es el expediente; sin ella, los materiales v1
+    if (p.conv?.plantilla_formulario) {
+      const oblig = (p.conv.plantilla_formulario as any[])
+        .flatMap((s: any) => s.campos || [])
+        .filter((c: any) => !c.opcional);
+      const exp = p.expediente || {};
+      const listos = oblig.filter((c: any) => exp[c.k]?.listo).length;
+      if (listos < oblig.length)
+        avisos.push(`expediente ${Math.round((listos / Math.max(1, oblig.length)) * 100)}%`);
+    } else {
+      const llenos = Object.values(p.materiales || {}).filter(Boolean).length;
+      if (llenos < 10) avisos.push(`materiales ${llenos}/10`);
+    }
     const equipo = (p.equipo || []).map((e: any) => e.persona).filter(Boolean);
     if (!equipo.length) avisos.push("sin equipo registrado");
     equipo.forEach((per: any) => {

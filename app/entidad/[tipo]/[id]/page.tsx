@@ -14,6 +14,7 @@ import EmpresaPostulacion from "@/components/EmpresaPostulacion";
 import EquipoPostulacion from "@/components/EquipoPostulacion";
 import PrestamoEquipo from "@/components/PrestamoEquipo";
 import CuentaAcceso from "@/components/CuentaAcceso";
+import Expediente from "@/components/Expediente";
 import { BotonVerificarRuc, BotonVerificarDni, BotonRucPersona } from "@/components/VerificarSunat";
 import Alerta from "@/components/Alerta";
 import { urlPlataforma, conPlataforma, PLAT } from "@/lib/plataformas";
@@ -344,13 +345,14 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   }
 
   let postCtx: any = null, equipoPost: any[] = [];
+  const autoExp: Record<string, string> = {};
   if (params.tipo === "postulacion") {
     const [ctx, eq, pc, ec] = await Promise.all([
       supabase.from("postulaciones")
-        .select("proy:proyectos(id,nombre,tipo), emp:empresas(id,nombre,codigo), conv:convocatorias(id,codigo,nombre,anio,monto_adjudicado,bases_url,hitos:cronograma_actividades(id,nombre,fecha_inicio,estado,clase))")
+        .select("proy:proyectos(id,nombre,tipo,renca), emp:empresas(id,nombre,codigo,ruc,razon_social,renca,estado_sunat,domicilio_fiscal,region), conv:convocatorias(id,codigo,nombre,anio,monto_adjudicado,bases_url,plantilla_formulario,hitos:cronograma_actividades(id,nombre,fecha_inicio,estado,clase))")
         .eq("id", params.id).single(),
       supabase.from("postulacion_equipo")
-        .select("id,cargo,persona:personas(id,nombre,alias)")
+        .select("id,cargo,persona:personas(id,nombre,alias,ruc_dni,genero,nacionalidad,autoident,lengua_materna,otras_lenguas,discapacidad,region,provincia,distrito,fecha_nacimiento)")
         .eq("postulacion_id", params.id).order("cargo"),
       supabase.from("personas").select("id,nombre,alias,tipo").order("nombre"),
       /* Solo las que pueden postular de verdad: activas y nuestras. Ofrecer
@@ -371,10 +373,53 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     const proyId = (postCtx?.proy as any)?.id;
     if (proyId) {
       const { data: pe } = await supabase.from("proyecto_equipo")
-        .select("id,cargo,persona:personas(id,nombre,alias)")
+        .select("id,cargo,persona:personas(id,nombre,alias,ruc_dni,genero,nacionalidad,autoident,lengua_materna,otras_lenguas,discapacidad,region,provincia,distrito,fecha_nacimiento)")
         .eq("proyecto_id", proyId).order("cargo");
       equipoProy = pe || [];
     }
+
+    /* 🗂 EXPEDIENTE — auto-llenado: lo que la base ya sabe, no se teclea.
+       Cada clave calza con un campo `k` de la plantilla del formulario. */
+    const e = postCtx?.emp, py = postCtx?.proy;
+    if (e) {
+      autoExp.ruc = e.ruc || "";
+      autoExp.razon_social = e.razon_social || e.nombre || "";
+      autoExp.estado_sunat = e.estado_sunat || "";
+      autoExp.renca_empresa = e.renca || "";
+      autoExp.domicilio_legal = e.domicilio_fiscal || "";
+      autoExp.departamento = e.region || "";
+      const { data: rl } = await supabase.from("empresa_miembros")
+        .select("cargo,persona:personas(nombre,ruc_dni)")
+        .eq("empresa_id", e.id).eq("estado", "activo")
+        .ilike("cargo", "%representante%").limit(1);
+      const r: any = rl?.[0];
+      if (r?.persona) {
+        autoExp.rep_legal_nombre = r.persona.nombre || "";
+        autoExp.rep_legal_doc = r.persona.ruc_dni ? `DNI ${r.persona.ruc_dni}` : "";
+      }
+    }
+    if (py) {
+      autoExp.titulo_proyecto = py.nombre || "";
+      autoExp.renca_obra = py.renca || "";
+    }
+    /* La tabla censal de la plataforma, generada desde la ficha de cada
+       persona. Lo que falta se marca con ⚠ para cazarlo antes del envío:
+       cada ⚠ es un dato que la plataforma va a exigir sí o sí. */
+    const filaCensal = (m: any) => {
+      const p = m.persona || {};
+      const f = (v: any, etiqueta: string) => v || `⚠${etiqueta}`;
+      return [
+        `${m.cargo || "⚠cargo"}: ${p.nombre || ""}`,
+        `  DNI ${f(p.ruc_dni, "DNI")} · ${f(p.nacionalidad, "nacionalidad")} · ${f(p.genero, "género")}${p.fecha_nacimiento ? ` · nac. ${p.fecha_nacimiento}` : ""}`,
+        `  ${f(p.autoident, "autoident. étnica")} · lengua: ${f(p.lengua_materna, "lengua")}${p.otras_lenguas ? ` (+${p.otras_lenguas})` : ""} · discapacidad: ${f(p.discapacidad, "discapacidad")}`,
+        `  domicilio: ${f(p.region, "región")} / ${f(p.provincia, "provincia")} / ${f(p.distrito, "distrito")}`,
+      ].join("\n");
+    };
+    const equipoTxt = [...equipoPost, ...equipoProy].map(filaCensal).join("\n\n");
+    if (equipoTxt) autoExp.equipo_personal = equipoTxt;
+    if (postCtx?.conv?.monto_adjudicado)
+      autoExp.monto_solicitado = `S/ ${Math.round(parseFloat(postCtx.conv.monto_adjudicado)).toLocaleString("es-PE")}`;
+    Object.keys(autoExp).forEach(k => { if (!autoExp[k]) delete autoExp[k]; });
   }
   if (params.tipo === "empresa") {
     const [m, pc, pe] = await Promise.all([
@@ -1106,7 +1151,15 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                    película que tiene nueve personas — y al quitar a la
                    directora de la postulación el número bajaría, como si se
                    hubiera ido. */
-                labels={["🧭 Contexto", `👥 Equipo · ${equipoProy.length + equipoPost.length}`, "📎 Materiales"]}
+                /* Materiales fue la v1 del dossier (10 casillas genéricas).
+                   Donde la convocatoria tiene plantilla de formulario, el
+                   🗂 Expediente la reemplaza — tenerlos juntos es duplicar.
+                   Las postulaciones históricas conservan sus Materiales. */
+                labels={[
+                  "🧭 Contexto",
+                  `👥 Equipo · ${equipoProy.length + equipoPost.length}`,
+                  ...(postCtx?.conv?.plantilla_formulario ? ["🗂 Expediente"] : ["📎 Materiales"]),
+                ]}
                 paneles={[
                   <div className="linked" key="ctx">
                     {postCtx?.proy && (
@@ -1174,7 +1227,14 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                     )}
                     <EquipoPostulacion postulacionId={params.id} equipo={equipoPost} personas={personasCat} />
                   </div>,
-                  <Materiales key="mat" postulacionId={params.id} materiales={ent.materiales || {}} />,
+                  ...(postCtx?.conv?.plantilla_formulario ? [
+                    <Expediente key="exp" postulacionId={params.id}
+                      plantilla={postCtx.conv.plantilla_formulario}
+                      expediente={ent.expediente || {}}
+                      auto={autoExp} />,
+                  ] : [
+                    <Materiales key="mat" postulacionId={params.id} materiales={ent.materiales || {}} />,
+                  ]),
                 ]}
               />
             </div>
