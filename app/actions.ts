@@ -3206,6 +3206,52 @@ export async function misNotificaciones() {
   return { items, sinLeer: sinLeer || 0, sinLeerBot: sinLeerBot || 0 };
 }
 
+/* ===== MURO — mensajes efímeros de oficina (reemplaza el chat del almuerzo) =====
+   Se ven solo los de HOY (hora de Lima) y se limpian solos. */
+// Inicio del día en Lima (UTC-5 todo el año) como timestamptz ISO.
+function inicioDiaLima(): string {
+  const dia = new Date().toLocaleDateString("en-CA", { timeZone: "America/Lima" }); // YYYY-MM-DD
+  return `${dia}T00:00:00-05:00`;
+}
+
+export async function muroMensajes() {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { mensajes: [], yo: null };
+  const { data } = await supabase.from("muro_mensajes")
+    .select("id,texto,vistos,creado_en,autor_id,autor:perfiles(nombre,color,avatar_url)")
+    .gte("creado_en", inicioDiaLima())
+    .order("creado_en", { ascending: false });
+  return { mensajes: data || [], yo: user.id };
+}
+
+export async function publicarMuro(texto: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const t = (texto || "").trim().slice(0, 280);
+  if (!t) return { error: "Escribe algo." };
+  const { error } = await supabase.from("muro_mensajes").insert({ autor_id: user.id, texto: t });
+  if (error) return { error: error.message };
+  return {};
+}
+
+export async function borrarMuro(id: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { error } = await supabase.from("muro_mensajes").delete().eq("id", id);  // RLS: solo lo propio
+  return error ? { error: error.message } : {};
+}
+
+export async function toggleVistoMuro(id: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { error } = await supabase.rpc("muro_toggle_visto", { mid: id });
+  return error ? { error: error.message } : {};
+}
+
 /* Detalle para el panel de la página de notificaciones: el caso al que apunta
    la notificación + sus últimos eventos de bitácora (quién hizo qué y cuándo).
    Read-only; formato final lo arma el cliente. */

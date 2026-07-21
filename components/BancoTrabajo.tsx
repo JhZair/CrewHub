@@ -7,6 +7,8 @@ import Link from "next/link";
 import { plazoDe } from "@/lib/plazo";
 import { icoTipo } from "@/lib/tipos";
 import { ICO_ENT } from "@/lib/secciones";
+import MuroPanel from "@/components/MuroPanel";
+import { createClient } from "@/lib/supabase/client";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /* Banco de trabajo: lo que tengo EN PROGRESO, siempre a mano.
@@ -72,6 +74,25 @@ export default function BancoTrabajo() {
   // Al montar y cada vez que cambias de página (pudo cambiar algo)
   useEffect(() => { if (esTop && !enLogin) cargar(); }, [esTop, enLogin, pathname, cargar]);
 
+  // En vivo: si cambia una publicación (estado, responsable, nuevo caso) o llega
+  // un comentario, recarga el banco. Canal único por montaje.
+  useEffect(() => {
+    if (!esTop || enLogin) return;
+    const supabase = createClient();
+    let vivo = true;
+    const canal = supabase.channel(`banco-${Math.random().toString(36).slice(2)}`);
+    ["publicaciones", "comentarios"].forEach(t =>
+      canal.on("postgres_changes", { event: "*", schema: "public", table: t }, () => { if (vivo) cargar(); }));
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!vivo) return;
+      if (session) supabase.realtime.setAuth(session.access_token);
+      canal.subscribe();
+    })();
+    return () => { vivo = false; supabase.removeChannel(canal); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [esTop, enLogin]);
+
   // Auto-crecer el cuadro de comentario
   useEffect(() => {
     const el = taRef.current;
@@ -131,18 +152,20 @@ export default function BancoTrabajo() {
   return (
     <div className="banco">
       <div className="banco-h">
-        <b style={{ fontSize: 12.5 }}>🛠 En progreso · {casos.length}</b>
+        <b style={{ fontSize: 12.5 }}>🛠 Banco de trabajo</b>
         <span style={{ flex: 1 }} />
-        <button onClick={cargar} title="Actualizar" style={{ color: "var(--dim)", fontSize: 12 }}>⟳</button>
-        <button onClick={alternar} title="Colapsar" style={{ color: "var(--dim)", fontSize: 14, marginLeft: 6 }}>‹</button>
+        <button onClick={alternar} title="Colapsar" style={{ color: "var(--dim)", fontSize: 14 }}>‹</button>
       </div>
 
       <div className="banco-body">
+        {/* Muro de oficina (mensajes efímeros): un solo panel lateral, arriba. */}
+        <MuroPanel />
+
         {/* Bandeja: lo que espera turno. Se activa de un clic y baja a la mesa. */}
         {abiertas.length > 0 && (
-          <div style={{ marginBottom: 4, borderBottom: "1px solid var(--border)", paddingBottom: 4 }}>
+          <div style={{ marginBottom: 6, paddingBottom: 4, borderLeft: "3px solid var(--red)", paddingLeft: 5, borderRadius: "5px 0 0 5px", background: "rgba(255,90,90,.05)" }}>
             <button onClick={() => setVerPend(!verPend)}
-              style={{ width: "100%", display: "flex", alignItems: "center", gap: 6, padding: "6px 9px", borderRadius: 8, color: "var(--muted)", fontSize: 11, background: verPend ? "#1c1c2c" : "transparent" }}>
+              style={{ width: "100%", display: "flex", alignItems: "center", gap: 6, padding: "6px 9px", borderRadius: 8, color: "var(--red)", fontSize: 11, fontWeight: 600, background: verPend ? "#1c1c2c" : "transparent" }}>
               <span>{verPend ? "▾" : "▸"}</span>
               <span style={{ flex: 1, textAlign: "left" }}>📥 Sin resolver · {abiertas.length}</span>
             </button>
@@ -172,8 +195,11 @@ export default function BancoTrabajo() {
           </div>
         )}
 
+        {/* En progreso — la mesa, en amarillo (identidad del estado) */}
+        <div style={{ borderLeft: "3px solid var(--yellow)", paddingLeft: 5, borderRadius: "5px 0 0 5px", background: "rgba(244,180,0,.04)", marginBottom: 6 }}>
+          <div style={{ padding: "6px 9px 3px", color: "var(--yellow)", fontSize: 11, fontWeight: 600 }}>🛠 En progreso · {casos.length}</div>
         {!casos.length && (
-          <div style={{ color: "var(--dim)", fontSize: 11.5, padding: "14px 10px", textAlign: "center", lineHeight: 1.5 }}>
+          <div style={{ color: "var(--dim)", fontSize: 11.5, padding: "8px 10px 12px", textAlign: "center", lineHeight: 1.5 }}>
             {abiertas.length
               ? <>Nada en la mesa.<br />Activa uno con <b style={{ color: "var(--accent)" }}>▶</b> desde la bandeja.</>
               : <>Nada en progreso.<br />Pon un caso <b>En Progreso</b> y aparecerá aquí, listo para trabajar.</>}
@@ -266,13 +292,14 @@ export default function BancoTrabajo() {
             </div>
           );
         })}
+        </div>
 
         {/* Seguimiento: casos largos que no se cierran hoy, pero que no hay
             que perder de vista. Abajo y plegados: vigilar no es trabajar. */}
         {segui.length > 0 && (
-          <div style={{ marginTop: 4, borderTop: "1px solid var(--border)", paddingTop: 4 }}>
+          <div style={{ marginTop: 4, paddingBottom: 4, borderLeft: "3px solid var(--teal)", paddingLeft: 5, borderRadius: "5px 0 0 5px", background: "rgba(45,212,191,.05)" }}>
             <button onClick={() => setVerSeg(!verSeg)}
-              style={{ width: "100%", display: "flex", alignItems: "center", gap: 6, padding: "6px 9px", borderRadius: 8, color: "var(--muted)", fontSize: 11, background: verSeg ? "#1c1c2c" : "transparent" }}>
+              style={{ width: "100%", display: "flex", alignItems: "center", gap: 6, padding: "6px 9px", borderRadius: 8, color: "var(--teal)", fontSize: 11, fontWeight: 600, background: verSeg ? "#1c1c2c" : "transparent" }}>
               <span>{verSeg ? "▾" : "▸"}</span>
               <span style={{ flex: 1, textAlign: "left" }}>🔭 En seguimiento · {segui.length}</span>
             </button>

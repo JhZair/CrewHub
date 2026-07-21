@@ -120,6 +120,13 @@ begin
   select count(*) into sinres from publicaciones where estado = 'abierta' and archivado_en is null;
   select count(*) into enprog from publicaciones where estado = 'en_progreso' and archivado_en is null;
 
+  -- 🧱 MURO: borra los mensajes efímeros de más de 2 días (la app solo muestra
+  --    HOY; esto mantiene la tabla chica de verdad, no solo por filtro de vista).
+  --    Protegido por si el muro aún no se ha creado (db/muro.sql).
+  if to_regclass('public.muro_mensajes') is not null then
+    delete from muro_mensajes where creado_en < now() - interval '2 days';
+  end if;
+
   -- 📢 AVISOS con el plazo ya pasado → se archivan solos (su momento pasó).
   --    Un aviso "rige y deja de regir"; no se resuelve. Con esto el Bot deja de
   --    marcarlo "VENCIDO hace N días" a diario. Es reversible ("despertar").
