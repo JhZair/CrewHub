@@ -949,6 +949,10 @@ a.stat-card:hover{border-color:var(--border2)}
 .camp-marcar:hover{border-color:var(--accent);color:var(--text)}
 .camp-vinc{background:#22223a;border:1px solid var(--border2);border-radius:6px;padding:1px 6px;color:var(--muted);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .camp-item.nueva{border-left:2px solid var(--accent)}
+/* Ya atendidas (leídas): apagadas, para que resalte lo pendiente. Al pasar el
+   mouse vuelven a plena, como en el feed y el tablero. */
+.camp-item.leida{opacity:.5;transition:opacity .16s ease}
+.camp-item.leida:hover{opacity:1}
 /* "ver todas →" al pie de las dos campanitas: lleva al historial completo */
 .camp-vertodas{display:block;text-align:center;padding:9px 0 5px;margin-top:4px;border-top:1px solid var(--border);color:var(--muted);font-size:11.5px;font-weight:600}
 .camp-vertodas:hover{color:var(--accent)}

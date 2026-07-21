@@ -8,11 +8,13 @@
 export const ICONO: Record<string, string> = {
   asignacion: "👤", comentario: "💬", vencimiento: "⏰",
   cambio_estado: "🔄", mencion: "🔗", reaccion: "👍", bot: "🤖",
+  vinculo: "📢",
 };
 
 export const ETIQ: Record<string, string> = {
   asignacion: "te asignó", comentario: "comentó", vencimiento: "vence",
   cambio_estado: "cambió el estado", mencion: "te mencionó", reaccion: "reaccionó",
+  vinculo: "te vinculó",
 };
 
 /* A dónde lleva el aviso.

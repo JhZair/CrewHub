@@ -54,12 +54,12 @@ export default function Campanita({ items: itemsProp, sinLeer: sinLeerProp }: { 
             {items.map((n: any) => (
               n.publicacion_id ? (
                 <Link key={n.id} href={`/caso/${n.publicacion_id}${anclaDe(n.tipo)}`}
-                  className={`camp-item ${!n.leida ? "nueva" : ""}`}
+                  className={`camp-item ${n.leida ? "leida" : "nueva"}`}
                   onClick={() => { marcarUna(n); setAbierta(false); }}>
                   {contenido(n)}
                 </Link>
               ) : (
-                <div key={n.id} className={`camp-item ${!n.leida ? "nueva" : ""}`}
+                <div key={n.id} className={`camp-item ${n.leida ? "leida" : "nueva"}`}
                   onClick={() => marcarUna(n)} style={{ cursor: n.leida ? "default" : "pointer" }}>
                   {contenido(n)}
                 </div>

@@ -111,6 +111,34 @@ export async function guardarEntidad(tipo: string, id: string | null, datos: Rec
 
 export type Vinculo = { tipo: string; id: string };
 
+/* 🔔 Notificar a las PERSONAS vinculadas a una publicación. Esto era el hueco:
+   vincular a alguien lo mete en su feed "Mis asuntos", pero no le llegaba
+   campanita —un aviso dirigido a Michel no le avisaba a Michel—. Solo se puede
+   notificar a personas CON cuenta (personas.usuario_id); un colaborador externo
+   sin usuario no recibe (no tiene dónde). Se excluye al propio actor y a quien
+   ya se notificó por otra vía (p. ej. el responsable). */
+async function notificarPersonasVinculadas(
+  supabase: any, pubId: string, personaIds: string[],
+  actorUserId: string, actorNombre: string, titulo: string, tipo: string,
+  yaAvisados: (string | null)[] = []
+) {
+  const ids = [...new Set((personaIds || []).filter(Boolean))];
+  if (!ids.length) return;
+  const { data: pers } = await supabase.from("personas")
+    .select("usuario_id").in("id", ids).not("usuario_id", "is", null);
+  const evitar = new Set([actorUserId, ...yaAvisados].filter(Boolean) as string[]);
+  const destinatarios = [...new Set((pers || []).map((p: any) => p.usuario_id))]
+    .filter((uid: any): uid is string => !!uid && !evitar.has(uid));
+  if (!destinatarios.length) return;
+  const nom = (actorNombre || "Alguien").split(" ")[0];
+  await supabase.from("notificaciones").insert(destinatarios.map(uid => ({
+    usuario_id: uid, publicacion_id: pubId, tipo: "vinculo", actor_nombre: actorNombre,
+    mensaje: tipo === "aviso"
+      ? `📢 ${nom} te vinculó en el aviso «${titulo}»`
+      : `🔗 ${nom} te vinculó en «${titulo}»`,
+  })));
+}
+
 export async function crearPublicacion(
   tipo: string,
   titulo: string,
@@ -145,16 +173,22 @@ export async function crearPublicacion(
     if (e2) return { error: "Publicado, pero falló un vínculo: " + e2.message };
   }
 
-  // 🔔 Notificar al responsable asignado (si no soy yo mismo)
-  if (pub && responsable && responsable !== user.id) {
-    const { data: miP } = await supabase.from("perfiles").select("nombre").eq("id", user.id).single();
-    await supabase.from("notificaciones").insert({
-      usuario_id: responsable,
-      publicacion_id: pub.id,
-      tipo: "asignacion",
-      actor_nombre: miP?.nombre || "Alguien",
-      mensaje: `Te asignaron: «${titulo}»`,
-    });
+  // 🔔 Notificaciones: al responsable asignado y a las personas vinculadas.
+  if (pub) {
+    const personaIds = vinculos.filter(v => v.tipo === "persona").map(v => v.id);
+    const notificaResp = !!responsable && responsable !== user.id;
+    if (notificaResp || personaIds.length) {
+      const { data: miP } = await supabase.from("perfiles").select("nombre").eq("id", user.id).single();
+      const actorNombre = miP?.nombre || "Alguien";
+      if (notificaResp) {
+        await supabase.from("notificaciones").insert({
+          usuario_id: responsable, publicacion_id: pub.id, tipo: "asignacion",
+          actor_nombre: actorNombre, mensaje: `Te asignaron: «${titulo}»`,
+        });
+      }
+      // Al responsable ya se le avisó arriba: no duplicar si además está vinculado.
+      await notificarPersonasVinculadas(supabase, pub.id, personaIds, user.id, actorNombre, titulo, tipo, [responsable]);
+    }
   }
   revalidatePath("/");
   return {};
@@ -2833,16 +2867,31 @@ export async function agregarVinculo(pubId: string, entidadTipo: string, entidad
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
-  const { error } = await supabase.from("publicacion_vinculos").upsert(
+  const { data: ins, error } = await supabase.from("publicacion_vinculos").upsert(
     { publicacion_id: pubId, entidad_tipo: entidadTipo, entidad_id: entidadId },
-    { onConflict: "publicacion_id,entidad_tipo,entidad_id", ignoreDuplicates: true });
+    { onConflict: "publicacion_id,entidad_tipo,entidad_id", ignoreDuplicates: true })
+    .select("publicacion_id");
   if (error) return { error: error.message };
+  /* ¿Fue un vínculo NUEVO o ya existía? Con ignoreDuplicates, un conflicto no
+     devuelve fila. Si ya estaba, no re-registramos ni re-notificamos —vincular
+     dos veces a la misma persona mandaba campanita repetida y ensuciaba la
+     bitácora—. */
+  if (!ins?.length) { revalidatePath(`/caso/${pubId}`); return {}; }
   // 🗂 Bitácora
   const nombre = await nombreEntidad(supabase, entidadTipo, entidadId);
   await supabase.from("actividad").insert({
     entidad_tipo: "publicacion", entidad_id: pubId, actor_id: user.id, tipo: "vinculo",
     detalle: { mensaje: `vinculó ${ENT_LBL[entidadTipo] || entidadTipo}: ${nombre}` },
   });
+  // 🔔 Si vinculé a una PERSONA, avísale (igual que al crear).
+  if (entidadTipo === "persona") {
+    const [{ data: pub }, { data: miP }] = await Promise.all([
+      supabase.from("publicaciones").select("titulo,tipo").eq("id", pubId).single(),
+      supabase.from("perfiles").select("nombre").eq("id", user.id).single(),
+    ]);
+    if (pub) await notificarPersonasVinculadas(
+      supabase, pubId, [entidadId], user.id, miP?.nombre || "Alguien", pub.titulo, pub.tipo);
+  }
   revalidatePath(`/caso/${pubId}`);
   revalidatePath("/");
   return {};
@@ -3046,6 +3095,24 @@ export async function ocultarDelFeed(pubId: string) {
   return {};
 }
 
+/* Ocultar en BLOQUE los resueltos que el usuario tiene A LA VISTA —el mismo
+   "quítalo de MI feed" del ojo, pero de una—. Recibe los ids visibles (los que
+   ve en su pestaña actual), NO barre todo el sistema. Es personal
+   (feed_ocultos) y reversible: reabrir el caso lo devuelve al feed. */
+export async function ocultarResueltosDelFeed(ids: string[]) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const limpio = (ids || []).filter(Boolean);
+  if (!limpio.length) return { ok: 0 };
+  const { error } = await supabase.from("feed_ocultos").upsert(
+    limpio.map(id => ({ usuario_id: user.id, publicacion_id: id })),
+    { onConflict: "usuario_id,publicacion_id", ignoreDuplicates: true });
+  if (error) return { error: error.message };
+  revalidatePath("/");
+  return { ok: limpio.length };
+}
+
 /* ARCHIVAR / DESPERTAR — el eje `archivado_en`, no el estado.
    Archivar es GLOBAL (sale de la vista de todos) y distinto de `feed_ocultos`,
    que es personal («quítalo de MI feed»). Un caso se archiva cuando ya está
@@ -3141,8 +3208,11 @@ async function conVinculos(supabase: any, notifs: any[]) {
     const nombres = new Map<string, string>();
     await Promise.all([...porTipo.entries()].map(async ([tipo, idset]) => {
       const t = TABLA[tipo]; if (!t) return;
-      const { data } = await supabase.from(t[0]).select(`id,${t[1]}`).in("id", [...idset]);
-      (data || []).forEach((r: any) => nombres.set(`${tipo}:${r.id}`, r[t[1]]));
+      // Personas: prefiere el alias (nombre corto) para el chip; cae al nombre.
+      const cols = tipo === "persona" ? "id,nombre,alias" : `id,${t[1]}`;
+      const { data } = await supabase.from(t[0]).select(cols).in("id", [...idset]);
+      (data || []).forEach((r: any) =>
+        nombres.set(`${tipo}:${r.id}`, tipo === "persona" ? (r.alias || r.nombre) : r[t[1]]));
     }));
     (vincs || []).forEach((v: any) => {
       const nombre = nombres.get(`${v.entidad_tipo}:${v.entidad_id}`);

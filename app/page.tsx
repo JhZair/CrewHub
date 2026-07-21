@@ -12,6 +12,7 @@ import { plazoDe } from "@/lib/plazo";
 import { rotuloTipo, colorTipo } from "@/lib/tipos";
 import { sinBot } from "@/lib/personas";
 import FiltroMas from "@/components/FiltroMas";
+import ListaFeed, { type CardFeed } from "@/components/ListaFeed";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
@@ -184,7 +185,10 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
     supabase.from("notificaciones")
       .select("id,tipo,mensaje,actor_nombre,publicacion_id,leida,creado_en")
       .eq("usuario_id", user.id)
-      .order("creado_en", { ascending: false }).limit(12),
+      // Desempate por id: varias notifs del mismo lote comparten creado_en
+      // (p.ej. avisar a varios vinculados de una). Sin esto, el orden de la
+      // campanita del feed podría diferir del de la global y la página.
+      .order("creado_en", { ascending: false }).order("id", { ascending: false }).limit(12),
     supabase.from("notificaciones").select("id", { count: "exact", head: true })
       .eq("usuario_id", user.id).eq("leida", false),
     supabase.from("actividad").select("id", { count: "exact", head: true })
@@ -460,7 +464,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
         <FiltroMas v={v} items={VISTAS_MAS.map(([val, label]) => ({ val, label, n: conteo[val] ?? 0 }))} />
       </div>
 
-      {posts.map((p: any) => {
+      <ListaFeed items={posts.map((p: any): CardFeed => {
         const tl = rotuloTipo(p.tipo), tc = colorTipo(p.tipo);
         const nc = p.comentarios?.[0]?.count ?? 0;
         const chips = (p.vinculos || [])
@@ -470,32 +474,35 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
             ico: ENT_ICO[v.entidad_tipo] || "🔗",
           }))
           .filter((v: any) => v.nombre);
-        return (
-          <PostCard key={p.id}
-            href={`/caso/${p.id}`}
-            titulo={p.titulo}
-            tipo={p.tipo} tipoLabel={tl} tipoColor={tc}
-            estado={p.estado}
-            autorNombre={p.autor?.nombre} autorColor={p.autor?.color} autorSrc={p.autor?.avatar_url}
-            fechaStr={new Date(p.creado_en).toLocaleString("es-PE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "America/Lima" })}
-            respNombre={p.resp?.nombre || null}
-            avisaSinResp={["tarea", "problema", "pago"].includes(p.tipo)}
-            nc={nc}
-            plazo={plazoDe(p.fecha_limite, p.estado)}
-            cuerpo={p.cuerpo}
-            chips={chips}
-            pubId={p.id} userId={user.id} reacciones={reaccsDe.get(p.id) || []}
-            imagenes={p.imagenes || []}
-            creadoEn={p.creado_en}
-            equipoTotal={sinBot(perfs.data).length}
-            padreId={p.padre_id || null}
-            padreTitulo={p.padre_id ? (tituloPadre.get(p.padre_id) || null) : null}
-            hijos={hijosDe.get(p.id) || null}
-            marca={marcaFoco(p)}
-          />
-        );
-      })}
-      {!posts.length && <div className="empty">Nada en esta vista todavía.</div>}
+        return {
+          id: p.id,
+          resuelto: p.estado === "resuelta",
+          card: (
+            <PostCard
+              href={`/caso/${p.id}`}
+              titulo={p.titulo}
+              tipo={p.tipo} tipoLabel={tl} tipoColor={tc}
+              estado={p.estado}
+              autorNombre={p.autor?.nombre} autorColor={p.autor?.color} autorSrc={p.autor?.avatar_url}
+              fechaStr={new Date(p.creado_en).toLocaleString("es-PE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "America/Lima" })}
+              respNombre={p.resp?.nombre || null}
+              avisaSinResp={["tarea", "problema", "pago"].includes(p.tipo)}
+              nc={nc}
+              plazo={plazoDe(p.fecha_limite, p.estado)}
+              cuerpo={p.cuerpo}
+              chips={chips}
+              pubId={p.id} userId={user.id} reacciones={reaccsDe.get(p.id) || []}
+              imagenes={p.imagenes || []}
+              creadoEn={p.creado_en}
+              equipoTotal={sinBot(perfs.data).length}
+              padreId={p.padre_id || null}
+              padreTitulo={p.padre_id ? (tituloPadre.get(p.padre_id) || null) : null}
+              hijos={hijosDe.get(p.id) || null}
+              marca={marcaFoco(p)}
+            />
+          ),
+        };
+      })} />
     </div>
   );
 }
