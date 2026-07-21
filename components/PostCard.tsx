@@ -23,7 +23,7 @@ export default function PostCard({
   href, titulo, tipo, tipoLabel, tipoColor, estado,
   autorNombre, autorColor, autorSrc, fechaStr, respNombre, avisaSinResp,
   nc, plazo, cuerpo, chips, pubId, userId, reacciones, imagenes,
-  padreId, padreTitulo, hijos, creadoEn, equipoTotal,
+  padreId, padreTitulo, hijos, creadoEn, equipoTotal, marca,
 }: {
   href: string; titulo: string; tipo?: string; tipoLabel: string; tipoColor: string;
   /* El rótulo NO se recibe: se deduce de estado+tipo. Venía por prop y el feed
@@ -44,12 +44,18 @@ export default function PostCard({
   padreId?: string | null; padreTitulo?: string | null;
   hijos?: { total: number; ok: number } | null;
   creadoEn?: string; equipoTotal?: number;
+  /* En "Mis asuntos": por qué está aquí si no lo trabajo yo. `null` = es mi
+     responsabilidad (prendido); si viene, la tarjeta se atenúa (apagado). */
+  marca?: "delegado" | "mencion" | null;
 }) {
   const router = useRouter();
   const enterN = (reacciones || []).filter(r => r.emoji === "👀").length;
   const enterMio = (reacciones || []).some(r => r.emoji === "👀" && r.usuario_id === userId);
   return (
-    <div className={`card link est-${claseEstado(estado, tipo)} ${estado === "resuelta" ? "card-apagada" : ""}`} style={{ cursor: "pointer" }} onClick={() => router.push(href)}>
+    <div className={`card link est-${claseEstado(estado, tipo)} ${estado === "resuelta" ? "card-apagada" : ""} ${marca ? "card-ajena" : ""}`}
+      title={marca === "delegado" ? "Lo pediste tú — lo trabaja otra persona"
+        : marca === "mencion" ? "Te menciona, pero no es tu responsabilidad" : undefined}
+      style={{ cursor: "pointer" }} onClick={() => router.push(href)}>
       <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
         <Avatar nombre={autorNombre} color={autorColor} size={38} src={autorSrc} />
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -60,6 +66,14 @@ export default function PostCard({
             </Link>
           )}
           <div>
+            {marca === "delegado" && (
+              <span className="mini-ind" title="Lo pediste tú — lo trabaja otra persona"
+                style={{ marginRight: 6, color: "var(--blue)", verticalAlign: "middle" }}>📤</span>
+            )}
+            {marca === "mencion" && (
+              <span className="mini-ind" title="Te menciona, pero no es tu responsabilidad"
+                style={{ marginRight: 6, color: "var(--dim)", verticalAlign: "middle" }}>👁</span>
+            )}
             <b style={{ fontSize: 15, lineHeight: 1.35 }}>{titulo}</b>
             {creadoEn && <span style={{ marginLeft: 8, display: "inline-block", verticalAlign: "middle" }}><NuevoBadge creadoEn={creadoEn} /></span>}
             {hijos && hijos.total > 0 && (

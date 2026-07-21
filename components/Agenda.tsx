@@ -30,6 +30,8 @@ export type ItemAgenda = {
 const DAY = 86400000;
 const VENTANA = 70;        // días visibles en la línea de tiempo (10 semanas)
 const LBL = 184;           // ancho de la columna de rótulos (px)
+const RESP = 60;           // ancho de la columna del responsable (px)
+const OFF = LBL + RESP;    // dónde empieza la pista: rejilla y eje se anclan aquí
 
 const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio",
   "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
@@ -55,6 +57,13 @@ export default function Agenda({ items, perfiles, miId }: {
   const cortoDe = (id: string | null) => nombreDe(id).split(" ")[0];
 
   const vis = items.filter(it => !persona || it.personas.includes(persona));
+
+  /* Prendido / apagado, igual que el tablero: el "foco" es la persona filtrada
+     o, si es "Todo el equipo", uno mismo. Se prende lo que ESA persona tiene a
+     su cargo (es la responsable) y se apaga lo demás —donde solo apoya o que es
+     de otro—, para reconocer de un vistazo lo propio en la agenda entera. */
+  const foco = persona || miId;
+  const apagado = (it: ItemAgenda) => !!foco && it.respId !== foco;
 
   /* El color dice la cosa: la actividad, su etapa; el caso, su urgencia
      (plazoDe pinta rojo si vencido, amarillo si cerca). */
@@ -89,8 +98,8 @@ export default function Agenda({ items, perfiles, miId }: {
       </div>
 
       {vista === "tl"
-        ? <Timeline vis={vis} shift={shift} setShift={setShift} colorDe={colorDe} icoDe={icoDe} cortoDe={cortoDe} />
-        : <Calendario vis={vis} mesOff={mesOff} setMesOff={setMesOff} colorDe={colorDe} icoDe={icoDe} />}
+        ? <Timeline vis={vis} shift={shift} setShift={setShift} colorDe={colorDe} icoDe={icoDe} cortoDe={cortoDe} apagado={apagado} />
+        : <Calendario vis={vis} mesOff={mesOff} setMesOff={setMesOff} colorDe={colorDe} icoDe={icoDe} apagado={apagado} />}
 
       {/* Leyenda de etapas. Muestra las de cine (las comunes); cada categoría
           reusa esta paleta, así que sirve de referencia aunque los nombres
@@ -106,9 +115,10 @@ export default function Agenda({ items, perfiles, miId }: {
 }
 
 /* ───────────────────────── LÍNEA DE TIEMPO ───────────────────────── */
-function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe }: {
+function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, apagado }: {
   vis: ItemAgenda[]; shift: number; setShift: Dispatch<SetStateAction<number>>;
   colorDe: (it: ItemAgenda) => string; icoDe: (it: ItemAgenda) => string; cortoDe: (id: string | null) => string;
+  apagado: (it: ItemAgenda) => boolean;
 }) {
   /* Grupos plegables (como el tablero): plegar los proyectos que uno no mira
      devuelve alto a los que sí. La preferencia es personal —vive en
@@ -176,7 +186,7 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe }: {
       {!!dentro.length && (
         <div className="ag-tl-body">
           {/* Rejilla + línea de HOY, superpuestas sobre las filas */}
-          <div className="ag-tl-lineas" style={{ left: LBL }}>
+          <div className="ag-tl-lineas" style={{ left: OFF }}>
             {semanas.map((s, i) => <i key={i} style={{ left: `${s.pct}%` }} />)}
             {hoyPct >= 0 && hoyPct <= 100 && <span className="hoy" style={{ left: `${hoyPct}%` }} />}
           </div>
@@ -184,7 +194,7 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe }: {
           {/* Eje de fechas (posiciona con el mismo offset de la columna de rótulos) */}
           <div className="ag-tl-axis">
             {semanas.map((s, i) => (
-              <span key={i} style={{ left: `calc(${LBL}px + (100% - ${LBL}px) * ${s.pct / 100})` }}>{s.lbl}</span>
+              <span key={i} style={{ left: `calc(${OFF}px + (100% - ${OFF}px) * ${s.pct / 100})` }}>{s.lbl}</span>
             ))}
           </div>
 
@@ -217,10 +227,13 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe }: {
                 const w = Math.max(right - left, 1.5);
                 const col = colorDe(it);
                 return (
-                  <div className="ag-tl-row" key={it.id}>
+                  <div className={`ag-tl-row ${apagado(it) ? "ag-ajena" : ""}`} key={it.id}>
                     <Link href={it.href} className="ag-tl-lbl" title={it.titulo}>
                       {icoDe(it)} {it.titulo}
                     </Link>
+                    <span className="ag-tl-resp" title={it.respId ? cortoDe(it.respId) : "sin responsable"}>
+                      {it.respId ? cortoDe(it.respId) : "—"}
+                    </span>
                     <div className="ag-tl-track">
                       <Link href={it.href} className="ag-tl-bar"
                         title={`${it.titulo} · ${fmtCorto(it.ini)}${it.fin !== it.ini ? ` → ${fmtCorto(it.fin)}` : ""}${it.respId ? ` · ${cortoDe(it.respId)}` : ""}`}
@@ -243,9 +256,10 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe }: {
 }
 
 /* ───────────────────────── CALENDARIO ───────────────────────── */
-function Calendario({ vis, mesOff, setMesOff, colorDe, icoDe }: {
+function Calendario({ vis, mesOff, setMesOff, colorDe, icoDe, apagado }: {
   vis: ItemAgenda[]; mesOff: number; setMesOff: Dispatch<SetStateAction<number>>;
   colorDe: (it: ItemAgenda) => string; icoDe: (it: ItemAgenda) => string;
+  apagado: (it: ItemAgenda) => boolean;
 }) {
   const hoyKey = ymd(new Date());
   const base = new Date();
@@ -285,7 +299,7 @@ function Calendario({ vis, mesOff, setMesOff, colorDe, icoDe }: {
             <div key={i} className={`ag-cal-dia ${key === hoyKey ? "hoy" : ""}`}>
               <span className="ag-cal-num">{dia}</span>
               {items.slice(0, TOPE).map(it => (
-                <Link key={it.id} href={it.href} className="ag-cal-chip" title={it.titulo}
+                <Link key={it.id} href={it.href} className={`ag-cal-chip ${apagado(it) ? "ag-ajena" : ""}`} title={it.titulo}
                   style={{ borderLeft: `3px solid ${colorDe(it)}` }}>
                   {icoDe(it)} {it.titulo}
                 </Link>

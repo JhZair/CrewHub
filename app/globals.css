@@ -455,6 +455,10 @@ a{color:inherit;text-decoration:none}
 /* Casos resueltos en el feed: atenuados; al pasar el mouse vuelven a plena */
 .card-apagada{opacity:.55;filter:saturate(.75)}
 .card-apagada:hover{opacity:1;filter:none}
+/* "Mis asuntos": lo que no es mi responsabilidad va apagado (igual que el
+   kanban); prendido = lo que sí trabajo yo. Al pasar el mouse vuelve a plena. */
+.card-ajena{opacity:.5;transition:opacity .16s ease,filter .16s ease}
+.card-ajena:hover{opacity:1}
 
 /* Identidad de color por estado (tono tenue) en las tarjetas del feed */
 .card.est-abierta{border-left:3px solid rgba(255,77,94,.55);background-image:linear-gradient(90deg,rgba(255,77,94,.03),transparent 55%)}
@@ -1009,9 +1013,17 @@ a.stat-card:hover{border-color:var(--border2)}
 .ag-tl-row:hover .ag-tl-lbl{color:var(--text)}
 .ag-tl-lbl{flex:0 0 184px;width:184px;font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:10px}
 .ag-tl-lbl:hover{color:var(--accent)}
+/* Nombre corto del responsable, entre el rótulo y la barra */
+.ag-tl-resp{flex:0 0 60px;width:60px;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:8px}
 .ag-tl-track{position:relative;flex:1;height:100%}
 .ag-tl-bar{position:absolute;top:4px;height:18px;border-radius:5px;min-width:6px;box-sizing:border-box;transition:filter .12s}
 .ag-tl-bar:hover{filter:brightness(1.15)}
+/* Apagado lo que no es del foco (uno mismo o la persona filtrada); al pasar el
+   mouse vuelve a plena, igual que el tablero y el feed. */
+.ag-tl-row.ag-ajena{opacity:.4;transition:opacity .16s ease}
+.ag-tl-row.ag-ajena:hover{opacity:1}
+.ag-cal-chip.ag-ajena{opacity:.4;transition:opacity .16s ease}
+.ag-cal-chip.ag-ajena:hover{opacity:1}
 
 .ag-cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
 .ag-cal-dow{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--dim);text-align:center;padding:2px 0;font-weight:700}

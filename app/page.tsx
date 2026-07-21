@@ -79,6 +79,13 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
     .select("publicacion_id").eq("usuario_id", user.id);
   const idsOcultos = (ocultosData || []).map((x: any) => x.publicacion_id);
 
+  // Avisos que ESTE usuario ya dio por leídos: "me enteré" = reacción 👀 suya.
+  // Se ocultan de su feed (siguen visibles para quien aún no los vio, y el
+  // aviso se archiva solo cuando lo ve la mayoría).
+  const { data: enterData } = await supabase.from("reacciones")
+    .select("publicacion_id").eq("usuario_id", user.id).eq("emoji", "👀").is("comentario_id", null);
+  const misEnterados = new Set((enterData || []).map((x: any) => x.publicacion_id));
+
   // Catálogos (pequeños: una consulta cada uno, en paralelo)
   const [proy, emp, pers, conv, postu, equi, luga, etiq, perfs, destQ, postsQ, univQ] = await Promise.all([
     supabase.from("proyectos").select("id,nombre").order("nombre"),
@@ -116,12 +123,14 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
       let q = supabase.from("publicaciones")
         .select(`
           id, tipo, titulo, cuerpo, estado, prioridad, creado_en, fecha_limite, imagenes, padre_id,
+          autor_id, responsable,
           autor:perfiles!publicaciones_autor_id_fkey(nombre, color, avatar_url),
           resp:perfiles!publicaciones_responsable_fkey(nombre),
           comentarios(count),
           vinculos:publicacion_vinculos(entidad_tipo, entidad_id)
         `)
         .is("archivado_en", null)   // lo archivado descansa fuera del feed (ya no es un estado)
+        .neq("estado", "descartada") // "ya no aplica": terminó sin hacerse, fuera del feed
         .order("creado_en", { ascending: false })
         .limit(50);
       if (idsOcultos.length) q = q.not("id", "in", `(${idsOcultos.join(",")})`);
@@ -135,7 +144,8 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
     })(),
     (() => {
       // Universo para los contadores de cada pestaña (independiente del filtro activo)
-      let q = supabase.from("publicaciones").select("id,tipo,autor_id,responsable").is("archivado_en", null);
+      let q = supabase.from("publicaciones").select("id,tipo,autor_id,responsable")
+        .is("archivado_en", null).neq("estado", "descartada");
       if (idsOcultos.length) q = q.not("id", "in", `(${idsOcultos.join(",")})`);
       return q.limit(2000);
     })(),
@@ -299,11 +309,26 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
     ...n, vinculos: n.publicacion_id ? (vincDe.get(n.publicacion_id) || []) : [],
   }));
 
-  const posts = postsQ.data || [];
+  // Fuera del feed los avisos que YO ya di por leídos (mi 👀). Solo avisos: un
+  // 👀 en un caso normal es una reacción, no un acuse.
+  const yaVisto = (p: any) => p.tipo === "aviso" && misEnterados.has(p.id);
+  const posts = (postsQ.data || []).filter((p: any) => !yaVisto(p));
 
-  // Contadores por pestaña (sobre el universo no archivado y no oculto)
+  /* En "Mis asuntos", igual que en el tablero: PRENDIDO lo que es mi
+     responsabilidad, APAGADO lo que me incumbe pero trabaja otro (lo delegué,
+     📤) o solo me menciona (👁). En las demás pestañas no aplica —ahí se ven
+     casos de todos y apagar por "no es tuyo" apagaría casi todo—. */
+  const marcaFoco = (p: any): "delegado" | "mencion" | null => {
+    if (v !== "mios") return null;
+    if (p.responsable === user.id) return null;   // soy responsable → prendido
+    if (p.autor_id === user.id) return "delegado"; // lo pedí yo, lo hace otro
+    return "mencion";                              // vinculado a mi persona
+  };
+
+  // Contadores por pestaña (sobre el universo no archivado y no oculto, y sin
+  // los avisos que ya di por leídos, para que el número cuadre con la lista)
   const misSet = new Set(misVinculadas);
-  const U = univQ.data || [];
+  const U = (univQ.data || []).filter((p: any) => !yaVisto(p));
   const conteo: Record<string, number> = {
     mios: U.filter((p: any) => p.autor_id === user.id || p.responsable === user.id || misSet.has(p.id)).length,
     todo: U.length,
@@ -378,7 +403,13 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
                  Enlace estirado: la fila entera abre el caso, y cada chip abre
                  su entidad. */
               <div key={p.id} className="info-row fila-cap"
-                style={{ cursor: "pointer", flexDirection: "column", alignItems: "stretch", gap: 0 }}>
+                style={{
+                  cursor: "pointer", flexDirection: "column", alignItems: "stretch", gap: 0,
+                  // Línea de color por tipo: separa un ítem de otro y dice de un
+                  // vistazo qué es cada uno (mismo color que su badge).
+                  borderLeft: `3px solid ${colorTipo(p.tipo)}`,
+                  paddingLeft: 10, borderRadius: 4,
+                }}>
                 <Link href={`/caso/${p.id}`} className="fila-cubre" aria-label={p.titulo} />
                 <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                   <span className="badge" style={{
@@ -460,6 +491,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
             padreId={p.padre_id || null}
             padreTitulo={p.padre_id ? (tituloPadre.get(p.padre_id) || null) : null}
             hijos={hijosDe.get(p.id) || null}
+            marca={marcaFoco(p)}
           />
         );
       })}
