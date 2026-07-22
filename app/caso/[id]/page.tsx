@@ -14,6 +14,7 @@ import EventoHistorial from "@/components/EventoHistorial";
 import BarrasProgreso from "@/components/BarrasProgreso";
 import { progresoDe, esMovimientoReal } from "@/lib/progreso";
 import { tipoCanonico } from "@/lib/secciones";
+import { agruparEventos } from "@/lib/agrupar";
 import ComentarioTexto from "@/components/ComentarioTexto";
 import RespuestaBox from "@/components/RespuestaBox";
 import Realtime from "@/components/Realtime";
@@ -428,7 +429,33 @@ export default async function Caso({ params }: { params: { id: string } }) {
 
       <div className="h4">🕐 Actividad · {linea.length} eventos</div>
       <div className="tl">
-        {linea.map((e: any, i: number) => {
+        {agruparEventos(linea as any[]).map((f: any, i: number) => {
+          /* Ráfaga: nueve «vinculó persona: X» del mismo actor en el mismo
+             minuto son un solo hecho. Se pliega, y adentro está el detalle. */
+          if (f.grupo) {
+            const g = f.grupo, e0 = g[0], eN = g[g.length - 1];
+            return (
+              <details className="ev-grupo" key={i}>
+                <summary>
+                  <span className="eg-ico">{EV_ICO[e0.tipo] || "•"}</span>
+                  <span className="eg-txt">
+                    {textoEvento(e0)}<b className="eg-n">+{g.length - 1} más</b>
+                  </span>
+                  <span className="eg-t">{fecha(e0.creado_en)} — {fecha(eN.creado_en)}</span>
+                </summary>
+                <div className="tl eg-detalle">
+                  {g.map((x: any, j: number) => (
+                    <div className={`tl-ev ${x.actor ? x.tipo : "bot"}`} key={j}>
+                      <span>{EV_ICO[x.tipo] || "•"}</span>
+                      <span>{textoEvento(x)}</span>
+                      <span className="t">{fecha(x.creado_en)}</span>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            );
+          }
+          const e: any = f.solo;
           if (e.comentario) {
             const c = e.comentario;
             return (

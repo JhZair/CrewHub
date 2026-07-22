@@ -2,6 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import EventoHistorial, { icoDe, type Evento } from "@/components/EventoHistorial";
+import EventoGrupo from "@/components/EventoGrupo";
+import { agruparEventos } from "@/lib/agrupar";
 import { PERIODOS, desdeDe, diaLima, rotuloDia, type Periodo } from "@/lib/periodo";
 import { seccionDe } from "@/lib/secciones";
 import { mapaAlias } from "@/lib/personas";
@@ -161,9 +163,11 @@ export default async function HistorialTipo({ params, searchParams }: {
           </div>
           <div className="card">
             <div className="tl">
-              {evs.map((e, i) => (
-                <EventoHistorial key={i} e={e} hora={hora(e.creado_en)} conEntidad />
-              ))}
+              {agruparEventos(evs as any[]).map((f, i) =>
+                f.grupo
+                  ? <EventoGrupo key={i} items={f.grupo} horaDe={(x: any) => hora(x.creado_en)} conEntidad />
+                  : <EventoHistorial key={i} e={f.solo} hora={hora(f.solo.creado_en)} conEntidad />
+              )}
             </div>
           </div>
         </div>

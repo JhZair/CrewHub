@@ -28,6 +28,8 @@ import { sinBot, mapaAlias, conAlias } from "@/lib/personas";
 import BotonFichaSunat from "@/components/BotonFichaSunat";
 import Copiar from "@/components/Copiar";
 import EventoHistorial from "@/components/EventoHistorial";
+import EventoGrupo from "@/components/EventoGrupo";
+import { agruparEventos } from "@/lib/agrupar";
 import { claseEstado, rotuloEstado, esAviso } from "@/lib/estados";
 import { contarHijos, CERRADOS, type Familia } from "@/lib/familia";
 import { icoTipo } from "@/lib/tipos";
@@ -1754,9 +1756,13 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                         pide justo lo contrario. Dos copias que hoy dicen lo
                         mismo son dos copias que mañana no. */}
                     <div className="tl" style={{ marginTop: 12 }}>
-                      {eventosVis.map((e: any, i: number) => (
-                        <EventoHistorial key={i} e={e} hora={fecha(e.creado_en)} />
-                      ))}
+                      {/* Las ráfagas (vincular nueve personas seguidas) se
+                          pliegan en una línea desplegable. */}
+                      {agruparEventos(eventosVis as any[]).map((f, i) =>
+                        f.grupo
+                          ? <EventoGrupo key={i} items={f.grupo} horaDe={(x: any) => fecha(x.creado_en)} />
+                          : <EventoHistorial key={i} e={f.solo} hora={fecha(f.solo.creado_en)} />
+                      )}
                     </div>
                   </details>
                 )}

@@ -850,6 +850,18 @@ input[type=file]{color:var(--muted);font-size:12.5px}
 .tr-contexto{margin-top:10px;padding-top:8px;border-top:1px dashed var(--border2);opacity:.55}
 .tr-contexto:hover{opacity:.85}
 .tr-ctx-h{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);font-weight:700;margin-bottom:4px}
+
+/* Ráfaga de bitácora plegada */
+.ev-grupo>summary{cursor:pointer;list-style:none;display:flex;align-items:flex-start;gap:10px;padding:6px 0;font-size:12.5px;color:var(--muted)}
+.ev-grupo>summary::-webkit-details-marker{display:none}
+.ev-grupo>summary:hover{color:var(--text)}
+.ev-grupo .eg-ico{flex:none}
+.ev-grupo .eg-txt{flex:1;min-width:0}
+.ev-grupo .eg-n{display:inline-block;margin-left:8px;padding:1px 7px;border-radius:8px;background:rgba(124,92,255,.16);color:var(--violet);font-size:10.5px;font-weight:700}
+.ev-grupo .eg-t{flex:none;color:var(--dim);font-size:11px;white-space:nowrap}
+.ev-grupo>summary::after{content:"▸";color:var(--dim);font-size:10px;flex:none;transition:transform .12s}
+.ev-grupo[open]>summary::after{transform:rotate(90deg)}
+.eg-detalle{margin-left:14px;padding-left:10px;border-left:1px dashed var(--border2)}
 .cbx-tag{font-size:9.5px;color:var(--dim);background:#23233a;padding:2px 7px;border-radius:5px;white-space:nowrap}
 .cbx-crear{color:var(--yellow);font-weight:600}
 .cbx-vacio{color:var(--dim);font-size:11.5px;text-align:center;padding:12px 0}
