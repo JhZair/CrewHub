@@ -18,9 +18,14 @@
  * opuestas. `CERRADOS` sirve para «¿queda trabajo?»; para «¿cuánto se logró?»
  * hay que mirar solo `resuelta`, y ese conteo es otro (no vive aquí todavía).
  *
- * `archivado_en` NO entra en esto: archivar es esconder, no cerrar. Un caso
- * archivado ya estaba cerrado —por eso se archiva—; su estado es el que dice
- * cómo terminó.
+ * `archivado_en` SÍ cuenta como cerrado, aunque el estado diga otra cosa. La
+ * suposición de que «un caso archivado ya estaba cerrado» no la garantiza el
+ * código: `archivar()` no exige estado cerrado, y el bot matutino archiva los
+ * avisos con el plazo pasado DEJÁNDOLOS en «abierta». Un hijo así se quedaba
+ * en el denominador y fuera del numerador para siempre, y su padre no llegaba
+ * al 100% nunca. Si se archivó, ya no queda trabajo ahí.
+ * (Requiere que la consulta traiga `archivado_en`; si no viene, se comporta
+ *  como antes y solo mira el estado.)
  */
 
 export const CERRADOS = ["resuelta", "descartada"];
@@ -38,7 +43,7 @@ export const contarHijos = (filas: any[] | null | undefined): Map<string, Famili
     if (!h?.padre_id) return;
     const x = m.get(h.padre_id) || { total: 0, ok: 0 };
     x.total++;
-    if (CERRADOS.includes(h.estado)) x.ok++;
+    if (CERRADOS.includes(h.estado) || h.archivado_en) x.ok++;
     m.set(h.padre_id, x);
   });
   return m;

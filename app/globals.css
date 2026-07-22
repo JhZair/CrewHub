@@ -817,6 +817,39 @@ input[type=file]{color:var(--muted);font-size:12.5px}
 .cbx-lista{max-height:230px;overflow-y:auto;margin-top:6px}
 .cbx-item{display:flex;align-items:center;gap:8px;width:100%;padding:8px 10px;border-radius:8px;font-size:12.5px;color:var(--muted);cursor:pointer}
 .cbx-item:hover{background:#22223a;color:var(--text)}
+.cbx-item.on{background:rgba(124,92,255,.14);color:var(--text)}
+.cbx-check{flex:none;font-size:13px;width:16px;text-align:center}
+.cbx-pie{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)}
+
+/* ⏳ Tiempo vs ⚡ Trabajo */
+.bp{display:flex;flex-direction:column;gap:6px}
+.bp-fila{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.bp-lbl{flex:none;width:74px;font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);font-weight:700}
+.bp-bar{flex:1;min-width:90px;height:6px;border-radius:4px;background:rgba(255,255,255,.07);overflow:hidden}
+.bp-bar>span{display:block;height:100%;border-radius:4px;transition:width .3s}
+.bp-pct{flex:none;width:38px;text-align:right;font-size:12px;color:var(--muted)}
+.bp-txt{flex:none;font-style:normal;font-size:11px;color:var(--dim)}
+.bp-pie{display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;margin-top:2px}
+/* Compacto para tarjetas de listado: dos hilos finos */
+.bp-mini{display:flex;flex-direction:column;gap:2px;margin-top:7px}
+.bp-hilo{display:block;height:2px;border-radius:2px;background:rgba(255,255,255,.06);overflow:hidden}
+.bp-hilo>span{display:block;height:100%;border-radius:2px}
+
+/* «+N más» de los vínculos: un chip que despliega el resto */
+.echip.echip-mas{cursor:pointer;color:var(--violet);border-style:dashed;font-weight:700}
+.echip.echip-mas:hover{color:var(--text);border-color:var(--accent)}
+
+/* Panel plegable «Trabajo relacionado» del caso */
+.trabajo-rel>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:var(--dim);font-weight:700}
+.trabajo-rel>summary::-webkit-details-marker{display:none}
+.trabajo-rel>summary::before{content:"▸";font-size:10px;transition:transform .12s}
+.trabajo-rel[open]>summary::before{transform:rotate(90deg)}
+.trabajo-rel>summary:hover{color:var(--text)}
+.trabajo-rel>summary i{font-style:normal;text-transform:none;letter-spacing:0;font-weight:400;font-size:11px;color:var(--dim);opacity:.8}
+.trabajo-rel .tr-n{display:inline-block;min-width:18px;padding:0 6px;border-radius:8px;background:rgba(124,92,255,.16);color:var(--violet);font-size:10.5px;font-weight:700;text-align:center}
+.tr-contexto{margin-top:10px;padding-top:8px;border-top:1px dashed var(--border2);opacity:.55}
+.tr-contexto:hover{opacity:.85}
+.tr-ctx-h{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);font-weight:700;margin-bottom:4px}
 .cbx-tag{font-size:9.5px;color:var(--dim);background:#23233a;padding:2px 7px;border-radius:5px;white-space:nowrap}
 .cbx-crear{color:var(--yellow);font-weight:600}
 .cbx-vacio{color:var(--dim);font-size:11.5px;text-align:center;padding:12px 0}
@@ -835,6 +868,47 @@ input[type=file]{color:var(--muted);font-size:12.5px}
 .mas-datos[open]>summary::before{transform:rotate(90deg)}
 .mas-datos>summary:hover{color:var(--text)}
 .mas-datos .md-n{display:inline-block;min-width:16px;padding:0 5px;border-radius:8px;background:rgba(255,255,255,.07);color:var(--dim);font-size:10px;font-weight:700;text-align:center}
+
+/* Barrita de completitud de la ficha */
+.compl{margin-bottom:12px}
+.compl-lbl{display:flex;justify-content:space-between;align-items:baseline;font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);margin-bottom:4px}
+.compl-lbl b{font-size:12.5px}
+.compl-bar{height:4px;border-radius:3px;background:rgba(255,255,255,.07);overflow:hidden}
+.compl-bar span{display:block;height:100%;border-radius:3px;transition:width .3s}
+.compl-sub{margin-top:4px;font-size:10.5px;color:var(--dim)}
+/* Compacta, para los listados */
+.pl-compl{display:flex;align-items:center;gap:8px;margin-top:8px}
+.pl-compl-bar{flex:1;height:1px;border-radius:2px;background:rgba(255,255,255,.06);overflow:hidden}
+.pl-compl-bar span{display:block;height:100%;border-radius:2px}
+.pl-compl-n{font-size:10px;min-width:30px;text-align:right;font-weight:700}
+
+/* Link de documento con verificador (miniatura + sello de confirmación) */
+.link-verif{display:flex;gap:8px;align-items:flex-start;width:100%;padding:6px;border-radius:10px;border:1px solid var(--border);background:rgba(255,255,255,.02)}
+.link-verif.ok{border-color:rgba(46,204,113,.35);background:rgba(46,204,113,.05)}
+.link-verif.malo{border-color:rgba(255,77,94,.4);background:rgba(255,77,94,.06)}
+/* Fondo blanco: una firma PNG es tinta oscura sobre transparente; sobre el
+   fondo oscuro de la tarjeta se vería negra/invisible. `contain` la muestra
+   entera sin recortar (una firma es apaisada; `cover` le comía los bordes). */
+.lv-mini{flex:none;width:44px;height:44px;border-radius:8px;overflow:hidden;border:1px solid var(--border2);background:#fff;cursor:zoom-in;padding:0;display:flex;align-items:center;justify-content:center}
+.lv-mini img{width:100%;height:100%;object-fit:contain;display:block}
+.lv-cuerpo{display:flex;flex-direction:column;gap:5px;min-width:0;flex:1}
+.lv-abrir{align-self:flex-start;font-size:11.5px;padding:4px 10px}
+.lv-sello{align-self:flex-start;font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:7px;border:1px solid transparent;line-height:1.3}
+.lv-sello.lv-ok{color:var(--green);background:rgba(46,204,113,.12);border-color:rgba(46,204,113,.3)}
+.lv-sello.lv-bad{color:var(--red);background:rgba(255,77,94,.12);border-color:rgba(255,77,94,.35)}
+.lv-sello.lv-pend{color:var(--dim);background:rgba(255,255,255,.05)}
+.lv-marcas{display:flex;gap:6px}
+.lv-m{font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:7px;cursor:pointer;border:1px solid var(--border2);background:transparent;color:var(--muted)}
+.lv-m:hover{filter:brightness(1.2)}
+.lv-m.lv-mok.on{color:var(--green);background:rgba(46,204,113,.15);border-color:rgba(46,204,113,.45)}
+.lv-m.lv-mno.on{color:var(--red);background:rgba(255,77,94,.15);border-color:rgba(255,77,94,.45)}
+.lv-lightbox{position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.86);backdrop-filter:blur(2px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px}
+.lv-lightbox img{max-width:94vw;max-height:82vh;border-radius:10px;box-shadow:0 12px 48px rgba(0,0,0,.6);background:#fff}
+.lv-lb-barra{display:flex;gap:10px}
+/* Botones de preview de link en el historial */
+.lh-prev{display:inline-flex;gap:3px;align-items:center;vertical-align:middle}
+.lh-ver{display:inline-flex;align-items:center;justify-content:center;width:20px;height:18px;border-radius:5px;border:1px solid var(--border2);background:var(--card);color:var(--muted);font-size:11px;cursor:pointer;text-decoration:none;line-height:1}
+.lh-ver:hover{color:var(--text);border-color:var(--accent)}
 @media(max-width:900px){.perfil-grid{grid-template-columns:1fr}}
 
 /* Formulario de edición dentro del carné (columna angosta):

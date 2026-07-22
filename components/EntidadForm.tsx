@@ -151,7 +151,10 @@ export function EntidadForm({ tipo, id, valores, onDone }:
        de nuevo. Ocultar no es borrar — un formulario no debe tirar un dato
        por un cambio de tipo, y menos en silencio. */
     const aGuardar: Record<string, string> = {};
-    vivos.forEach(c => { if (c.key in arreglado) aGuardar[c.key] = arreglado[c.key]; });
+    /* Los campos `verif` (RENIEC/SUNAT) NO se mandan: los llena la verificación
+       y son de solo lectura. Enviarlos arriesga pisar un valor que la
+       verificación actualizó mientras el formulario estaba abierto. */
+    vivos.forEach(c => { if (!(c as any).verif && c.key in arreglado) aGuardar[c.key] = arreglado[c.key]; });
 
     setGuardando(true);
     const res = await guardarEntidad(tipo, id || null, aGuardar);
@@ -195,9 +198,11 @@ export function EntidadForm({ tipo, id, valores, onDone }:
             <span style={errores[c.key] ? { color: "var(--red)" } : undefined}>
               {c.label}{c.requerido && <b style={{ color: "var(--red)" }}> *</b>}
             </span>
-            {c.auto ? (
-              <input disabled value={id ? (form[c.key] || "—") : ""}
-                placeholder="Se genera automáticamente"
+            {c.auto || c.verif ? (
+              /* Solo lectura: `auto` lo genera el sistema (folios); `verif` lo
+                 llena la verificación automática (RENIEC/SUNAT). No se teclea. */
+              <input disabled placeholder={c.auto ? "Se genera automáticamente" : "Lo llena la verificación automática"}
+                value={id ? ((form[c.key] || "").replace(/_/g, " ") || "—") : ""}
                 style={{ opacity: .55, cursor: "not-allowed" }} />
             ) : c.tipo === "select" ? (
               <MiniSelect block value={form[c.key]} error={!!errores[c.key]}

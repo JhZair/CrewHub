@@ -39,3 +39,28 @@ export const esBot = (p?: { nombre?: string | null } | null) => p?.nombre === BO
 /** El equipo sin el bot. Lo que casi siempre se quiere. */
 export const sinBot = <T extends { nombre?: string | null }>(xs: T[] | null | undefined): T[] =>
   (xs || []).filter(x => !esBot(x));
+
+/* ── Nombre corto / alias del actor en el historial ──
+   El historial es texto denso; el nombre completo lo hace ilegible. Se
+   estandariza al alias del formulario (JohnO), que vive en `personas.alias`.
+
+   La llave es `usuario_id`, NO el nombre: la cuenta y la ficha pueden llamarse
+   distinto —la de Wilfredo es «Wilfredo pediáz» y su ficha «Wilfredo Perez
+   Diaz»— y mapear por nombre lo dejaba sin alias. `usuario_id` es la única
+   llave real entre cuenta (perfiles) y persona. */
+export function mapaAlias(personas: { usuario_id?: string | null; alias?: string | null }[] | null | undefined): Record<string, string> {
+  const m: Record<string, string> = {};
+  (personas || []).forEach(p => { if (p.usuario_id && p.alias) m[p.usuario_id] = p.alias; });
+  return m;
+}
+
+/* Copia los eventos con el alias del actor puesto (si lo hay). Necesita que la
+   consulta traiga `actor_id`. Inmutable: no toca el arreglo original. */
+export function conAlias<T extends { actor_id?: string | null; actor?: { nombre?: string | null; alias?: string | null } | null }>(
+  eventos: T[] | null | undefined, mapa: Record<string, string>
+): T[] {
+  return (eventos || []).map(e => {
+    const a = e.actor_id ? mapa[e.actor_id] : undefined;
+    return a ? { ...e, actor: { ...e.actor, alias: a } } : e;
+  });
+}

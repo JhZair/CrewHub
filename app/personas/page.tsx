@@ -8,6 +8,8 @@ import { rucDePersona } from "@/lib/ruc";
 import { buscadorDe, pal } from "@/lib/buscar";
 import { urlPlataforma, PLAT } from "@/lib/plataformas";
 import BotonFichaSunat from "@/components/BotonFichaSunat";
+import Completitud from "@/components/Completitud";
+import { completitud } from "@/lib/entidades";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
@@ -42,9 +44,9 @@ export default async function Personas({ searchParams }: {
 
   const [{ data: pers }, { data: vincs }, { data: coms }, { data: equipoPost }, urlSunat,
          { data: equipoProy }] = await Promise.all([
-    supabase.from("personas")
-      .select("id,nombre,alias,tipo,equipo,estado,rol,region,usuario_id,ruc_dni,dni_vencimiento,estado_sunat,condicion_sunat,suspension_4ta_anio")
-      .order("nombre"),
+    // `*`: el listado necesita todos los campos para calcular la completitud
+    // de cada ficha (la barrita). La tabla es chica, no pesa.
+    supabase.from("personas").select("*").order("nombre"),
     supabase.from("publicacion_vinculos")
       .select("entidad_id,publicacion_id,pub:publicaciones(estado)").eq("entidad_tipo", "persona"),
     supabase.from("comentarios").select("publicacion_id"),
@@ -239,6 +241,13 @@ export default async function Personas({ searchParams }: {
               ))}
             </div>
           )}
+
+          {/* Completitud de la ficha: barrita fina al pie, para ver de un
+              vistazo a quién le faltan datos sin abrir la ficha. */}
+          {(() => {
+            const c = completitud("persona", p);
+            return <Completitud mini pct={c.pct} llenos={c.llenos} total={c.total} faltan={c.faltan} />;
+          })()}
         </div>
       </div>
     );

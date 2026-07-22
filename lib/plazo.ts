@@ -43,8 +43,16 @@ export const HORIZONTE = 7;
    horas cruza el día y el conteo se equivoca en uno cerca de la medianoche.
    Al mediodía, ±5 h sigue cayendo en la misma fecha. `/casos` usaba
    `T23:59:59` y por eso podía contar un día de más. */
+/* `round`, NO `ceil`. El truco del mediodía solo cuadra si LOS DOS lados están
+   anclados, y aquí un lado es «hoy a las 12:00» y el otro «ahora mismo». Con
+   `ceil`, cualquier fracción positiva subía a 1: a las 08:00 del día que algo
+   vence, (4 h)/24 h = 0.17 → «vence en 1 día» de algo que vence HOY. El
+   servidor corre en UTC y nosotros en UTC-5, así que estaba mal de 00:00 a
+   07:00 hora local, todos los días — y el bot (que hace la cuenta en SQL) no
+   tiene ese desfase, o sea que web y bot discrepaban en uno cada mañana.
+   `round` acierta a cualquier hora del día. */
 export const diasHasta = (fecha: string) =>
-  Math.ceil((new Date(fecha + "T12:00:00").getTime() - Date.now()) / 86400000);
+  Math.round((new Date(fecha + "T12:00:00").getTime() - Date.now()) / 86400000);
 
 export type Plazo = {
   /** Días que faltan. Negativo = vencido. */

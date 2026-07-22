@@ -4,6 +4,7 @@ import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import EventoHistorial, { icoDe, type Evento } from "@/components/EventoHistorial";
 import { PERIODOS, desdeDe, diaLima, rotuloDia, type Periodo } from "@/lib/periodo";
 import { seccionDe } from "@/lib/secciones";
+import { mapaAlias } from "@/lib/personas";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
@@ -47,12 +48,16 @@ export default async function HistorialTipo({ params, searchParams }: {
 
   const desde = desdeDe(p);
   let q = supabase.from("actividad")
-    .select("tipo,detalle,creado_en,entidad_tipo,entidad_id,actor:perfiles(nombre)")
+    .select("tipo,detalle,creado_en,entidad_tipo,entidad_id,actor_id,actor:perfiles(nombre)")
     .eq("entidad_tipo", params.tipo)
     .order("creado_en", { ascending: false })
     .limit(400);
   if (desde) q = q.gte("creado_en", desde);
   const { data: evs } = await q;
+
+  const { data: aliasPers } = await supabase.from("personas").select("usuario_id,alias")
+    .not("alias", "is", null).not("usuario_id", "is", null);
+  const alias = mapaAlias(aliasPers);
 
   /* Los nombres, en una sola consulta: el historial guarda ids, y una lista
      de "actualizó 1 campo" sin decir de quién no le sirve a nadie. */
@@ -74,7 +79,7 @@ export default async function HistorialTipo({ params, searchParams }: {
     entidadNombre: nombre.get(e.entidad_id),
     // El nombre completo va al title: se acorta la vista, no el dato
     entidadTitulo: largo.get(e.entidad_id),
-    actor: e.actor ? { ...e.actor, nombre: cortoActor(e.actor.nombre) } : e.actor,
+    actor: e.actor ? { ...e.actor, nombre: cortoActor(e.actor.nombre), alias: alias[e.actor_id] } : e.actor,
   }));
 
   // El resumen cuenta el periodo entero; los chips filtran la lista

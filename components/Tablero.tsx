@@ -7,6 +7,7 @@ import { plazoDe } from "@/lib/plazo";
 import { icoTipo } from "@/lib/tipos";
 import { ICO_ENT } from "@/lib/secciones";
 import { CERRADOS } from "@/lib/familia";
+import BarrasProgreso from "@/components/BarrasProgreso";
 import { useState, useEffect } from "react";
 
 /* (Los íconos salieron a lib/tipos y lib/secciones; la cuenta regresiva, a
@@ -212,6 +213,9 @@ export default function Tablero({ columnas, archivado = false }: {
                     {p.vinc.length > 4 && <span className="kb-chip">+{p.vinc.length - 4}</span>}
                   </div>
                 )}
+                {/* ⏳ Tiempo / ⚡ Trabajo: dos hilos para escanear la columna
+                    sin abrir cada tarjeta. El detalle va en el tooltip. */}
+                <BarrasProgreso p={p.prog} mini />
               </div>
             );
           })}

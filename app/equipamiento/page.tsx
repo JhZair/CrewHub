@@ -4,6 +4,8 @@ import BotonComprobar from "@/components/BotonComprobar";
 import BotonDevolver from "@/components/BotonDevolver";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import { buscadorDe, pal } from "@/lib/buscar";
+import { completitud } from "@/lib/entidades";
+import Completitud from "@/components/Completitud";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
@@ -38,9 +40,8 @@ export default async function Equipamiento({ searchParams }: {
   if (!user) redirect("/login");
 
   const [{ data: eqs }, { data: enManos }, { data: vincs }, { data: coms }] = await Promise.all([
-    supabase.from("equipamiento")
-      .select("id,folio,nombre,categoria,subcategoria,estado,valor_compra,ultima_comprobacion")
-      .order("folio"),
+    // `*`: para calcular la completitud de la ficha de cada equipo.
+    supabase.from("equipamiento").select("*").order("folio"),
     supabase.from("equipo_prestamos")
       .select("id,desde,equipo:equipamiento(id,folio,nombre),persona:personas(id,nombre,alias),proy:proyectos(id,nombre)")
       .is("hasta", null).order("desde", { ascending: false }),
@@ -128,6 +129,10 @@ export default async function Equipamiento({ searchParams }: {
               {(x.estado || "").replace(/_/g, " ")}
             </span>
           </div>
+          {(() => {
+            const c = completitud("equipamiento", x);
+            return <Completitud mini pct={c.pct} llenos={c.llenos} total={c.total} faltan={c.faltan} />;
+          })()}
         </div>
       </Link>
     );

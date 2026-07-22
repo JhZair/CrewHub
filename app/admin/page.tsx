@@ -12,7 +12,7 @@ import { estado4ta } from "@/lib/cuarta";
 import { ejecutando, rendicionVencida, SEL_FONDO } from "@/lib/fondos";
 import { haceOEn } from "@/lib/fechas";
 import { ICO_ENT, rutaEntidad, tipoCanonico } from "@/lib/secciones";
-import { BOT } from "@/lib/personas";
+import { BOT, mapaAlias } from "@/lib/personas";
 import Link from "next/link";
 import { plazoDe, diasHasta } from "@/lib/plazo";
 import { colorTipo, rotuloTipo } from "@/lib/tipos";
@@ -100,7 +100,8 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
   const [{ data: personas }, { data: cobrables }, { data: rhes }, { data: jornsPend },
          { data: proyectos }, { data: jornsMes }, { data: liqs }, { data: vivos },
          { data: plats }, { data: credsPlat }, { data: ganadoras }, { data: activid }] = await Promise.all([
-    supabase.from("personas").select("id,nombre,alias,tarifa_dia,tarifa_rodaje,tarifa_noche")
+    // `usuario_id`: llave para poner el alias del actor en la actividad reciente
+    supabase.from("personas").select("id,nombre,alias,usuario_id,tarifa_dia,tarifa_rodaje,tarifa_noche")
       .eq("tipo", "personal").order("nombre"),
     // A quién se le puede girar un RHE, y los del año en curso
     supabase.from("personas").select("id,nombre,alias,suspension_4ta_anio")
@@ -146,10 +147,11 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
       .eq("estado", "ganadora"),
     // Los últimos movimientos, de quien sea: es el pulso del sistema
     supabase.from("actividad")
-      .select("tipo,detalle,creado_en,entidad_tipo,entidad_id,actor:perfiles(nombre)")
+      .select("tipo,detalle,creado_en,entidad_tipo,entidad_id,actor_id,actor:perfiles(nombre)")
       .order("creado_en", { ascending: false }).limit(12),
   ]);
 
+  const aliasMap = mapaAlias(personas as any);   // actor → alias (JohnO) en la actividad
   const tarifaLista = (personas || []).map((p: any) => ({
     id: p.id, nombre: p.alias || p.nombre, tarifa_dia: p.tarifa_dia, tarifa_rodaje: p.tarifa_rodaje, tarifa_noche: p.tarifa_noche,
   }));
@@ -420,7 +422,7 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
                       <span>{ICO_ENT[tipoCanonico(a.entidad_tipo)] || "•"}</span>
                       <span style={{ flex: 1, minWidth: 0 }}>
                         <b style={{ color: a.actor ? "var(--text)" : "var(--teal)" }}>
-                          {a.actor?.nombre || BOT}
+                          {aliasMap[a.actor_id] || a.actor?.nombre || BOT}
                         </b>
                         <i style={{ color: "var(--dim)", fontStyle: "normal" }}>
                           {" "}{a.detalle?.campo ? `cambió ${a.detalle.campo.replace(/_/g, " ")}` : a.tipo}

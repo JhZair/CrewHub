@@ -4,7 +4,7 @@ import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import EventoHistorial, { icoDe, type Evento } from "@/components/EventoHistorial";
 import { PERIODOS, desdeDe, diaLima, horaLima, rotuloDia, type Periodo } from "@/lib/periodo";
 import { ICO_ENT, TABLA_DE } from "@/lib/secciones";
-import { BOT } from "@/lib/personas";
+import { BOT, mapaAlias } from "@/lib/personas";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
@@ -54,6 +54,11 @@ export default async function HistorialTodo({ searchParams }: {
   if (desde) q = q.gte("creado_en", desde);
   const { data: evs } = await q;
 
+  // Alias del actor (JohnO): manda sobre el nombre corto derivado (cortoActor).
+  const { data: aliasPers } = await supabase.from("personas").select("usuario_id,alias")
+    .not("alias", "is", null).not("usuario_id", "is", null);
+  const alias = mapaAlias(aliasPers);
+
   /* Los nombres de TODO lo tocado, agrupando por tabla: una consulta por
      tipo de entidad, no una por evento. */
   const porTipo = new Map<string, Set<string>>();
@@ -97,7 +102,7 @@ export default async function HistorialTodo({ searchParams }: {
       ? { ...x.detalle, de: persDe(x.detalle.de), a: persDe(x.detalle.a) }
       : x.detalle,
     entidadNombre: nombre.get(`${x.entidad_tipo}:${x.entidad_id}`),
-    actor: x.actor ? { ...x.actor, nombre: cortoActor(x.actor.nombre) } : x.actor,
+    actor: x.actor ? { ...x.actor, nombre: cortoActor(x.actor.nombre), alias: alias[x.actor_id] } : x.actor,
   }));
 
   // Los conteos salen del periodo completo; los chips filtran la lista

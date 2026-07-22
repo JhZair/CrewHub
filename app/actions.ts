@@ -56,10 +56,13 @@ export async function guardarEntidad(tipo: string, id: string | null, datos: Rec
     if (error) return { error: error.message };
     if (!post?.length) return { error: "No se guardó: no tienes permiso para editar este registro." };
     if (antes) {
-      // Valor legible y acotado para la bitácora (evita textos kilométricos)
+      // Valor legible y acotado para la bitácora (evita textos kilométricos).
+      // Una URL NO se recorta: el historial la muestra como botón para verla y
+      // abrirla, y truncarla rompía el link (Drive no abría el enlace cortado).
       const vis = (v: any) => {
         const s = String(v ?? "").trim();
         if (!s) return "—";
+        if (/^https?:\/\/\S+$/.test(s)) return s;
         return s.length > 70 ? s.slice(0, 70) + "…" : s;
       };
       const cambios = conf.campos
@@ -1685,6 +1688,50 @@ export async function verificarDato(id: string, dueno: string, duenoId: string) 
   return {};
 }
 
+/* Registrar el veredicto de un humano sobre el link de un documento: correcto
+   (`correcto=true`) o equivocado (`false`, hay que corregir el link). Toggle: si
+   ya está marcado ESE MISMO link con el MISMO veredicto, lo quita (vuelve a «sin
+   revisar»); si cambia el veredicto o el link, lo re-marca con quién y cuándo.
+   Se guarda la url para que el veredicto se invalide solo cuando cambia el link. */
+export async function marcarLink(tipo: string, id: string, campo: string, url: string, correcto: boolean, etiqueta?: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const u = (url || "").trim();
+  if (!u) return { error: "No hay link que revisar." };
+
+  // Nombre legible del documento para la bitácora ("firma", "DNI"…).
+  const doc = (etiqueta || campo.replace(/_url$/, "").replace(/_/g, " ")).toLowerCase();
+  const registrar = (mensaje: string) => supabase.from("actividad").insert({
+    entidad_tipo: tipo, entidad_id: id, actor_id: user.id, tipo: "link", detalle: { mensaje },
+  });
+
+  const { data: prev } = await supabase.from("link_verificaciones")
+    .select("id,url,correcto").eq("entidad_tipo", tipo).eq("entidad_id", id).eq("campo", campo).maybeSingle();
+
+  // Mismo link y mismo veredicto → quitar la marca (des-revisar).
+  if (prev && prev.url === u && prev.correcto === correcto) {
+    const { error } = await supabase.from("link_verificaciones").delete().eq("id", prev.id);
+    if (error) return { error: error.message };
+    await registrar(`quitó la revisión del link de ${doc}`);
+    revalidatePath(`/entidad/${tipo}/${id}`);
+    return { estado: "quitado" };
+  }
+
+  // Marcar (o re-marcar tras cambio de veredicto o de link).
+  const { error } = await supabase.from("link_verificaciones")
+    .upsert({
+      entidad_tipo: tipo, entidad_id: id, campo, url: u, correcto,
+      verificado_por: user.id, verificado_en: new Date().toISOString(),
+    }, { onConflict: "entidad_tipo,entidad_id,campo" });
+  if (error) return { error: error.message };
+  await registrar(correcto
+    ? `revisó el link de ${doc} — ✅ contenido correcto`
+    : `revisó el link de ${doc} — ⚠ contenido equivocado, hay que corregirlo`);
+  revalidatePath(`/entidad/${tipo}/${id}`);
+  return { estado: correcto ? "correcto" : "malo" };
+}
+
 export async function borrarDato(id: string, dueno: string, duenoId: string) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -1942,10 +1989,12 @@ export async function guardarMateriales(postulacionId: string, materiales: Recor
   if (error) return { error: error.message };
   if (!post?.length) return { error: "No se guardó: no tienes permiso para editar esta postulación." };
 
-  // Mismo corte que el resto de la bitácora: los links son kilométricos
+  // Mismo criterio que el resto de la bitácora, pero SIN recortar URLs: el
+  // historial las muestra como botón y un link truncado no abre.
   const vis = (v: any) => {
     const s = String(v ?? "").trim();
     if (!s) return "—";
+    if (/^https?:\/\/\S+$/.test(s)) return s;
     return s.length > 70 ? s.slice(0, 70) + "…" : s;
   };
   const cambios = [...new Set([...Object.keys(prev), ...Object.keys(limpio)])]
@@ -2920,6 +2969,54 @@ export async function quitarVinculo(pubId: string, entidadTipo: string, entidadI
   revalidatePath(`/caso/${pubId}`);
   revalidatePath("/");
   return {};
+}
+
+/* Vincular VARIAS entidades del mismo tipo de una sola vez (orden de trabajo:
+   «este caso toca a estas 15 personas»). Un solo evento de bitácora y una sola
+   tanda de notificaciones. Solo procesa las NUEVAS (upsert ignoreDuplicates
+   devuelve únicamente las insertadas), así que re-vincular no duplica nada. */
+export async function vincularEnLote(pubId: string, entidadTipo: string, entidadIds: string[]) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const ids = [...new Set((entidadIds || []).filter(Boolean))];
+  if (!ids.length) return { error: "No elegiste a nadie." };
+
+  const { data: ins, error } = await supabase.from("publicacion_vinculos")
+    .upsert(ids.map(id => ({ publicacion_id: pubId, entidad_tipo: entidadTipo, entidad_id: id })),
+      { onConflict: "publicacion_id,entidad_tipo,entidad_id", ignoreDuplicates: true })
+    .select("entidad_id");
+  if (error) return { error: error.message };
+
+  const nuevos = (ins || []).map((r: any) => r.entidad_id);
+  if (!nuevos.length) { revalidatePath(`/caso/${pubId}`); return { n: 0 }; }
+
+  // Nombres legibles de los nuevos, en una consulta, para un solo evento.
+  const t = ENT_TABLA[entidadTipo];
+  let nombres: string[] = [];
+  if (t) {
+    const { data } = await supabase.from(t[0]).select(`id,${t[1]}`).in("id", nuevos);
+    const m = new Map((data || []).map((r: any) => [r.id, r[t[1]]]));
+    nombres = nuevos.map((id: string) => m.get(id) || ENT_LBL[entidadTipo] || entidadTipo);
+  }
+  const lbl = ENT_LBL[entidadTipo] || entidadTipo;
+  const lista = nombres.slice(0, 8).join(", ") + (nombres.length > 8 ? `… (+${nombres.length - 8})` : "");
+  await supabase.from("actividad").insert({
+    entidad_tipo: "publicacion", entidad_id: pubId, actor_id: user.id, tipo: "vinculo",
+    detalle: { mensaje: `vinculó ${nuevos.length} ${lbl}${nuevos.length > 1 ? "s" : ""}: ${lista}` },
+  });
+
+  if (entidadTipo === "persona") {
+    const [{ data: pub }, { data: miP }] = await Promise.all([
+      supabase.from("publicaciones").select("titulo,tipo").eq("id", pubId).single(),
+      supabase.from("perfiles").select("nombre").eq("id", user.id).single(),
+    ]);
+    if (pub) await notificarPersonasVinculadas(
+      supabase, pubId, nuevos, user.id, miP?.nombre || "Alguien", pub.titulo, pub.tipo);
+  }
+  revalidatePath(`/caso/${pubId}`);
+  revalidatePath("/");
+  return { n: nuevos.length };
 }
 
 /* ===== SUB-CASOS: un caso largo se descompone en hijos =====

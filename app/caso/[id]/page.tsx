@@ -10,6 +10,10 @@ import DescripcionEditable from "@/components/DescripcionEditable";
 import BotonDestacar from "@/components/BotonDestacar";
 import EtiquetasEditor from "@/components/EtiquetasEditor";
 import VinculosEditor from "@/components/VinculosEditor";
+import EventoHistorial from "@/components/EventoHistorial";
+import BarrasProgreso from "@/components/BarrasProgreso";
+import { progresoDe, esMovimientoReal } from "@/lib/progreso";
+import { tipoCanonico } from "@/lib/secciones";
 import ComentarioTexto from "@/components/ComentarioTexto";
 import RespuestaBox from "@/components/RespuestaBox";
 import Realtime from "@/components/Realtime";
@@ -110,7 +114,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
       /* `responsable` y `fecha_limite` en crudo: la fila ya no solo los
          muestra, los EDITA. Sin el id del responsable el combo no sabe qué
          tiene puesto, y `resp:perfiles(nombre)` solo trae el nombre. */
-      .select("id,titulo,estado,tipo,responsable,fecha_limite,resp:perfiles!publicaciones_responsable_fkey(nombre)")
+      .select("id,titulo,estado,tipo,archivado_en,responsable,fecha_limite,resp:perfiles!publicaciones_responsable_fkey(nombre)")
       .eq("padre_id", p.id).order("creado_en"),
   ]);
 
@@ -185,6 +189,83 @@ export default async function Caso({ params }: { params: { id: string } }) {
   };
   const actualesVinc = chips.map((v: any) => ({ tipo: v.entidad_tipo, id: v.entidad_id, nombre: v.nombre }));
 
+  /* 🧰 TRABAJO RELACIONADO — lo que se editó en las entidades vinculadas
+     mientras este caso estuvo abierto. Reúne bajo la orden de trabajo las
+     ediciones que igual se guardaron en cada ficha (firma, DNI…), que sin esto
+     quedaban desperdigadas y el caso salía «sin actividad». Ventana =
+     [creado_en, cierre/archivo, o ahora si sigue vivo]. */
+  const idsVinc = [...new Set(chips.map((v: any) => v.entidad_id))] as string[];
+  let trabajoRel: any[] = [];
+  if (idsVinc.length) {
+    /* Fin de ventana: solo se cierra si el caso está cerrado AHORA. Un caso
+       reabierto y vivo sigue hasta hoy —tomar su cierre viejo perdía todo el
+       trabajo del periodo reabierto—. */
+    const cerrado = (eventos || [])
+      .filter((e: any) => e.tipo === "estado" && e.detalle?.campo === "estado" && ["resuelta", "descartada"].includes(e.detalle?.a))
+      .map((e: any) => e.creado_en as string);
+    const fin = CERRADOS.includes(p.estado)
+      ? ([...cerrado, p.archivado_en].filter(Boolean).sort().slice(-1)[0] || new Date().toISOString())
+      : new Date().toISOString();
+    const { data: rel } = await supabase.from("actividad")
+      .select("tipo,detalle,creado_en,entidad_tipo,entidad_id,actor_id,actor:perfiles(nombre)")
+      .in("entidad_id", idsVinc)
+      .gte("creado_en", p.creado_en).lte("creado_en", fin)
+      // La ventana ya acota la actividad; 300 da margen de sobra para el ruido
+      // SUNAT (que se filtra abajo) sin recurrir a filtros json frágiles.
+      .order("creado_en", { ascending: false }).limit(300);
+    trabajoRel = (rel || [])
+      /* Solo trabajo HUMANO: fuera el ruido de la verificación SUNAT y todo lo
+         que escribe el bot. Si contara, la ronda automática mantendría vivo
+         cualquier caso con una empresa vinculada y nada parecería detenido. */
+      .filter((e: any) => esMovimientoReal(e.tipo)
+        && !(e.tipo === "estado" && ["estado_sunat", "condicion_sunat"].includes(e.detalle?.campo)))
+      .map((e: any) => ({
+        ...e,
+        /* `tipoCanonico`: el trigger escribe el nombre de la TABLA («personas»)
+           y el mapa de nombres está en singular («persona»). Sin esto, toda
+           fila de trigger salía sin nombre de entidad. */
+        entidadNombre: nombres.get(`${tipoCanonico(e.entidad_tipo)}:${e.entidad_id}`),
+        actor: e.actor ? { ...e.actor, alias: aliasDe.get(e.actor_id) } : e.actor,
+      }));
+  }
+
+  /* ¿QUÉ DE ESO ES TRABAJO DE ESTE CASO?
+     Coincidir en el tiempo y en la entidad no es lo mismo que trabajar para el
+     caso: en «alistar los estados de cuenta» salían seis ediciones sobre el
+     proyecto y la persona vinculados —renombrar el proyecto, cargar un CV—
+     hechas por otras tres personas y para otra cosa. Sin este cruce, el
+     denominador habría dicho «2 de 2 vinculadas = 100%» de una tarea que nadie
+     empezó. Se cruza con QUIÉN: gente del caso = responsable, autor y quien
+     comentó ahí. Lo demás se muestra como contexto, pero no cuenta. */
+  const genteCaso = new Set<string>(
+    [p.autor_id, p.responsable, ...(comentarios || []).map((c: any) => c.autor_id)].filter(Boolean));
+  const esDelCaso = (e: any) => !!e.actor_id && genteCaso.has(e.actor_id);
+  const relDelCaso = trabajoRel.filter(esDelCaso);
+  const relContexto = trabajoRel.filter((e: any) => !esDelCaso(e));
+
+  /* ⏳ Tiempo vs ⚡ Trabajo. El denominador del trabajo sale de lo que el caso
+     tenga: sub-casos primero, si no las entidades vinculadas que ya muestran
+     trabajo, si no la escalera del estado. El cálculo vive en lib/progreso. */
+  const totalHijos = (hijos || []).length;
+  const progreso = progresoDe({
+    creado_en: p.creado_en, fecha_limite: p.fecha_limite, estado: p.estado, tipo: p.tipo,
+    /* Archivar TAMBIÉN cierra el asunto: el bot archiva avisos vencidos
+       dejándolos en «abierta», y contarlos como pendientes hacía que un padre
+       nunca llegara al 100%. */
+    hijos: totalHijos
+      ? { ok: (hijos || []).filter((h: any) => CERRADOS.includes(h.estado) || h.archivado_en).length, total: totalHijos }
+      : null,
+    // Solo lo atribuible al caso cuenta como «vinculada trabajada».
+    vinculadas: idsVinc.length
+      ? { conTrabajo: new Set(relDelCaso.map((e: any) => e.entidad_id)).size, total: idsVinc.length }
+      : null,
+    // Último movimiento REAL: del propio caso o el trabajo suyo sobre las vinculadas.
+    ultimoMovimiento: [
+      ...(eventos || []).filter((e: any) => esMovimientoReal(e.tipo)).map((e: any) => e.creado_en as string),
+      ...relDelCaso.map((e: any) => e.creado_en as string),
+    ].sort().slice(-1)[0] || p.creado_en,
+  });
+
   // Línea de tiempo unificada
   const comMap = new Map((comentarios || []).map((c: any) => [c.id, c]));
   const timeline = (eventos || []).map((e: any) => ({
@@ -201,7 +282,10 @@ export default async function Caso({ params }: { params: { id: string } }) {
   const tl = rotuloTipo(p.tipo), tc = colorTipo(p.tipo);
 
   const textoEvento = (e: any) => {
-    const quien = e.actor?.nombre || BOT;
+    // `aliasDe` (usuario_id → alias) es la única llave fiable: la cuenta y la
+    // ficha pueden llamarse distinto. Mapear por nombre dejaba a Wilfredo sin
+    // alias («Wilfredo pediáz» la cuenta, «Wilfredo Perez Diaz» la ficha).
+    const quien = aliasDe.get(e.actor_id) || e.actor?.nombre || BOT;
     if (e.tipo === "bot") return `Bot Qhaway: "${e.detalle?.mensaje || "evento automático"}"`;
     if (e.tipo === "creado") return `${quien} creó la publicación`;
     if (e.tipo === "estado") {
@@ -225,7 +309,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
 
   return (
     <div className="shell">
-      <Realtime tablas={["actividad", "comentarios", "publicaciones", "reacciones"]} token={session?.access_token} />
+      <Realtime tablas={["actividad", "comentarios", "publicaciones", "reacciones", "publicacion_vinculos"]} token={session?.access_token} />
       <div className="topbar">
         <Volver />
         <span className="spacer" />
@@ -261,6 +345,14 @@ export default async function Caso({ params }: { params: { id: string } }) {
           <span className="v">{fecha(p.creado_en)}<br /><span style={{ color: "var(--muted)", fontWeight: 400 }}>por {p.autor?.nombre}</span></span></div>
       </div>
 
+      {/* ⏳ Tiempo vs ⚡ Trabajo: si el trabajo no sigue el ritmo del plazo, se
+          ve aquí antes de leer nada más. */}
+      {progreso && (
+        <div className="card" style={{ padding: "12px 15px" }}>
+          <BarrasProgreso p={progreso} />
+        </div>
+      )}
+
       <DescripcionEditable pubId={p.id} cuerpo={p.cuerpo || ""} estado={p.estado} tipo={p.tipo} imagenes={p.imagenes || []} />
 
       {p.tipo === "aviso" && (
@@ -291,6 +383,44 @@ export default async function Caso({ params }: { params: { id: string } }) {
           <EtiquetasEditor pubId={p.id} actuales={etiquetasActuales} todas={etqTodas} />
         </div>
       </div>
+
+      {/* Plegado: con 15 personas la lista alarga muchísimo la página. El
+          conteo en el resumen ya dice cuánto trabajo cuelga del caso. */}
+      {trabajoRel.length > 0 && (
+        <details className="linked trabajo-rel" style={{ marginTop: 14 }}>
+          <summary>
+            🧰 Trabajo relacionado <span className="tr-n">{relDelCaso.length}</span>
+            <i>lo que hizo la gente de este caso sobre las entidades vinculadas</i>
+          </summary>
+          <div style={{ marginTop: 8 }}>
+            {relDelCaso.length > 0 ? (
+              <div className="tl">
+                {relDelCaso.map((e: any, i: number) => (
+                  <EventoHistorial key={i} e={e} hora={fecha(e.creado_en)} conEntidad />
+                ))}
+              </div>
+            ) : (
+              <div className="empty" style={{ padding: "6px 0" }}>
+                Nadie del caso ha tocado aún las entidades vinculadas.
+              </div>
+            )}
+
+            {/* Contexto: pasó sobre las mismas entidades y en la misma ventana,
+                pero lo hizo otra gente y para otra cosa. Se muestra atenuado
+                porque ayuda a entender, y NO cuenta para el avance. */}
+            {relContexto.length > 0 && (
+              <div className="tr-contexto">
+                <div className="tr-ctx-h">Contexto · otras manos, no cuenta para el avance · {relContexto.length}</div>
+                <div className="tl">
+                  {relContexto.map((e: any, i: number) => (
+                    <EventoHistorial key={i} e={e} hora={fecha(e.creado_en)} conEntidad />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </details>
+      )}
 
       {(!p.padre_id || (hijos || []).length > 0) && (
         <SubCasos padreId={p.id} hijos={hijos || []} perfiles={perfilesCortos} />

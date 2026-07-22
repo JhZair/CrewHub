@@ -44,6 +44,16 @@ const STALE_DIAS = 180; // a partir de aquí, un dato pide reverificación
 
 const inp = { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, outline: "none" } as const;
 
+/* Fecha legible: «2026-07-16» → «16 jul. 2026» (nadie lee un ISO de un vistazo). */
+const fmtFecha = (d?: string | null) => {
+  const s = String(d ?? "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  return new Date(s + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" });
+};
+/* Nombre corto de la ubicación: «KeePass (Drive)» → «KeePass». El paréntesis es
+   ruido; lo importante es en qué gestor vive la clave. */
+const ubicCorta = (u?: string | null) => (u || "sin ubicar").split("(")[0].trim();
+
 const diasDesde = (d: string) => Math.floor((Date.now() - new Date(d + "T12:00:00").getTime()) / 86400000);
 const frescura = (verificado_en: string | null) => {
   if (!verificado_en) return { txt: "sin verificar", cls: "rojo" as const };
@@ -232,65 +242,73 @@ export default function Credenciales({ dueno, duenoId, credenciales }: {
           {editando === c.id ? (
             <FormFila v={ef} set={setEf} onSave={() => guardarEdicion(c.id)} onCancel={() => setEditando(null)} guardando={guardando} />
           ) : (
-            <div className="eq-row" style={{ alignItems: "center" }}>
-              {/* La plataforma ES el enlace cuando se sabe dónde queda */}
-              {c.url ? (
-                <a href={c.url} target="_blank" rel="noopener noreferrer" className="cargo"
-                  title={(c.calculada
-                    ? `Abre directo en ${c.identificador} — el link se arma con este mismo correo\n`
-                    : c.heredado ? "Link de la plataforma (se administra en Admin → Plataformas)\n"
-                    : "Link propio de esta cuenta\n") + c.url}
-                  style={{ minWidth: 130, color: "var(--violet)", textDecoration: "none" }}>
-                  {c.plataforma} ↗
-                </a>
-              ) : (
-                <span className="cargo" style={{ minWidth: 130 }}
-                  title="Nadie cargó el link de esta plataforma — se hace una vez en Admin → Plataformas y lo heredan todas">
-                  {c.plataforma}
+            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              {/* Línea 1: plataforma (enlace) · identificador · acciones */}
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                {c.url ? (
+                  <a href={c.url} target="_blank" rel="noopener noreferrer" className="cargo"
+                    title={(c.calculada
+                      ? `Abre directo en ${c.identificador} — el link se arma con este mismo correo\n`
+                      : c.heredado ? "Link de la plataforma (se administra en Admin → Plataformas)\n"
+                      : "Link propio de esta cuenta\n") + c.url}
+                    style={{ flex: "none", color: "var(--violet)", textDecoration: "none", fontWeight: 700 }}>
+                    {c.plataforma} ↗
+                  </a>
+                ) : (
+                  <span className="cargo" style={{ flex: "none", fontWeight: 700 }}
+                    title="Nadie cargó el link de esta plataforma — se hace una vez en Admin → Plataformas y lo heredan todas">
+                    {c.plataforma}
+                  </span>
+                )}
+                {/* El identificador es lo que se teclea para entrar: el RUC en
+                    DAFO, el correo en Gmail. El dato que más veces al día pasa
+                    de esta pantalla a otro formulario. */}
+                <span style={{ flex: 1, minWidth: 0, color: "#c6c6da", fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {c.identificador
+                    ? <Copiar valor={c.identificador} etiqueta={`el usuario de ${c.plataforma}`}>{c.identificador}</Copiar>
+                    : "—"}
                 </span>
-              )}
-              {/* El identificador es lo que se teclea para entrar: el RUC en
-                  DAFO, el correo en Gmail. Es el dato que más veces al día
-                  pasa de esta pantalla a otro formulario. */}
-              <span style={{ flex: 1, color: "#c6c6da" }}>
-                {c.identificador
-                  ? <Copiar valor={c.identificador} etiqueta={`el usuario de ${c.plataforma}`}>{c.identificador}</Copiar>
-                  : "—"}
-              </span>
-              {c.metodo_acceso && (
-                <span className="badge" style={{
-                  fontSize: 10.5,
-                  color: ES_CLASICO(c.metodo_acceso) ? "var(--muted)" : "var(--violet)",
-                  background: ES_CLASICO(c.metodo_acceso) ? "#1c1c2c" : "rgba(167,139,250,.12)",
-                }}>
-                  {ES_CLASICO(c.metodo_acceso) ? "🔑" : "🔗"} {c.metodo_acceso}
+                <button title="Editar" style={{ color: "var(--dim)", flex: "none" }} onClick={() => abrirEdicion(c)}>✎</button>
+                {borrando === c.id ? (
+                  <span style={{ fontSize: 11.5, whiteSpace: "nowrap", flex: "none" }}>
+                    ¿quitar? <button style={{ color: "var(--red)", fontWeight: 700 }} onClick={() => borrar(c.id)}>sí</button>
+                    {" / "}<button style={{ color: "var(--dim)" }} onClick={() => setBorrando(null)}>no</button>
+                  </span>
+                ) : (
+                  <button title="Quitar registro (la clave en el gestor no se toca)" style={{ color: "var(--dim)", flex: "none" }}
+                    onClick={() => setBorrando(c.id)}>✕</button>
+                )}
+              </div>
+
+              {/* Línea 2: método · dónde vive la clave · otras puertas · fecha */}
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                {c.metodo_acceso && (
+                  <span className="badge" style={{
+                    fontSize: 10.5,
+                    color: ES_CLASICO(c.metodo_acceso) ? "var(--muted)" : "var(--violet)",
+                    background: ES_CLASICO(c.metodo_acceso) ? "#1c1c2c" : "rgba(167,139,250,.12)",
+                  }}>
+                    {ES_CLASICO(c.metodo_acceso) ? "🔑" : "🔗"} {c.metodo_acceso}
+                  </span>
+                )}
+                <span className="badge" style={{ color: "var(--teal)", background: "rgba(45,212,191,.1)" }}
+                  title={c.ubicacion || "sin ubicar"}>
+                  🔒 {ubicCorta(c.ubicacion)}
                 </span>
-              )}
-              <span className="badge" style={{ color: "var(--teal)", background: "rgba(45,212,191,.1)" }}>
-                🔒 {c.ubicacion || "sin ubicar"}
-              </span>
-              {/* Las otras entradas de la misma cuenta. Con Clave SOL son
-                  tres sitios distintos y el de arriba es solo el menú
-                  general: quien viene a declarar el IGV necesita el suyo. */}
-              {(c.puertas || []).map((q: any) => (
-                <a key={q.id} href={q.url} target="_blank" rel="noopener noreferrer"
-                  className="badge" title={q.notas || `Entrar a ${q.titulo}`}
-                  style={{ color: "var(--violet)", background: "rgba(167,139,250,.1)",
-                    textTransform: "none", letterSpacing: 0, textDecoration: "none" }}>
-                  ↗ {q.titulo}
-                </a>
-              ))}
-              {c.actualizado_en && <span style={{ color: "var(--dim)", fontSize: 11 }}>{c.actualizado_en}</span>}
-              <button title="Editar" style={{ color: "var(--dim)", marginLeft: 6 }} onClick={() => abrirEdicion(c)}>✎</button>
-              {borrando === c.id ? (
-                <span style={{ fontSize: 11.5, marginLeft: 6, whiteSpace: "nowrap" }}>
-                  ¿quitar? <button style={{ color: "var(--red)", fontWeight: 700 }} onClick={() => borrar(c.id)}>sí</button>
-                  {" / "}<button style={{ color: "var(--dim)" }} onClick={() => setBorrando(null)}>no</button>
-                </span>
-              ) : (
-                <button title="Quitar registro (la clave en el gestor no se toca)" style={{ color: "var(--dim)", marginLeft: 4 }}
-                  onClick={() => setBorrando(c.id)}>✕</button>
-              )}
+                {/* Las otras entradas de la misma cuenta. Con Clave SOL son
+                    tres sitios distintos y el de arriba es solo el menú
+                    general: quien viene a declarar el IGV necesita el suyo. */}
+                {(c.puertas || []).map((q: any) => (
+                  <a key={q.id} href={q.url} target="_blank" rel="noopener noreferrer"
+                    className="badge" title={q.notas || `Entrar a ${q.titulo}`}
+                    style={{ color: "var(--violet)", background: "rgba(167,139,250,.1)",
+                      textTransform: "none", letterSpacing: 0, textDecoration: "none" }}>
+                    ↗ {q.titulo}
+                  </a>
+                ))}
+                <span style={{ flex: 1 }} />
+                {c.actualizado_en && <span style={{ color: "var(--dim)", fontSize: 11, whiteSpace: "nowrap" }}>actualizado {fmtFecha(c.actualizado_en)}</span>}
+              </div>
             </div>
           )}
 

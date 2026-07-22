@@ -1,6 +1,9 @@
 import { ICO_ENT, rutaEntidad, tipoCanonico } from "@/lib/secciones";
 import Link from "next/link";
 import { BOT } from "@/lib/personas";
+import LinkPreview from "@/components/LinkPreview";
+
+const esUrl = (v: any) => /^https?:\/\/\S+/.test(String(v ?? "").trim());
 
 /* Una línea del historial. Vive aquí y no dentro de la ficha porque ahora
    la usan dos pantallas: el historial de UNA entidad y el acumulado de
@@ -10,7 +13,7 @@ export type Evento = {
   tipo: string;
   detalle?: any;
   creado_en: string;
-  actor?: { nombre?: string } | null;
+  actor?: { nombre?: string; alias?: string | null } | null;
   entidad_tipo?: string;
   entidad_id?: string;
   entidadNombre?: string;   // solo en el acumulado, donde no se sabe de quién es
@@ -26,11 +29,11 @@ export type Evento = {
    hoy, una comprobación física de equipo —hecha por una persona— caía al
    `else`, se pintaba con 🤖 y perdía el nombre de quien la hizo. El bot
    firmando el trabajo de un humano, otra vez. */
-const HUMANOS = ["editado", "edicion", "dato", "miembro", "archivo"];
+const HUMANOS = ["editado", "edicion", "dato", "miembro", "archivo", "link"];
 
 export const ICO_EVENTO: Record<string, string> = {
   creado: "📝", estado: "🔄", editado: "✏️", edicion: "✏️",
-  dato: "🔑", miembro: "👥", bot: "🤖", archivo: "🗄",
+  dato: "🔑", miembro: "👥", bot: "🤖", archivo: "🗄", link: "🔗",
 };
 export const icoDe = (t: string) => ICO_EVENTO[t] || "🤖";
 
@@ -40,7 +43,9 @@ export { ICO_ENT } from "@/lib/secciones";
    cuando `actor` viene vacío — y por eso importa que las acciones humanas
    manden su actor_id. */
 export function textoEvento(e: Evento): string {
-  const quien = e.actor?.nombre;
+  // El nombre corto/alias (JohnO) manda en el historial: es texto denso y el
+  // nombre completo lo hace ilegible. Cae al nombre si no hay alias.
+  const quien = e.actor?.alias || e.actor?.nombre;
   if (e.tipo === "creado") return `${quien || "Sistema"} registró esta entidad`;
   if (e.tipo === "estado")
     return `${quien || BOT} · ${e.detalle?.campo}: ${String(e.detalle?.de ?? "—").replace(/_/g, " ")} → ${String(e.detalle?.a ?? "—").replace(/_/g, " ")}`;
@@ -79,9 +84,15 @@ export default function EventoHistorial({ e, hora, conEntidad }:
         {(e.detalle?.cambios || []).map((c: any, j: number) => (
           <span key={j} style={{ display: "block", marginTop: 3, fontSize: 12 }}>
             <b style={{ color: "var(--muted)" }}>{c.campo}:</b>{" "}
-            <s style={{ color: "var(--red)", opacity: .75 }}>{String(c.de).replace(/_/g, " ")}</s>
+            {/* Un link no se lee: se ve. En vez de volcar la URL larga de Drive,
+                un botón 👁 para previsualizarlo y ↗ para abrirlo. */}
+            {esUrl(c.de)
+              ? <span style={{ color: "var(--red)", opacity: .75, textDecoration: "line-through" }}>antes <LinkPreview url={String(c.de).trim()} /></span>
+              : <s style={{ color: "var(--red)", opacity: .75 }}>{String(c.de).replace(/_/g, " ")}</s>}
             {" → "}
-            <span style={{ color: "var(--green)" }}>{String(c.a).replace(/_/g, " ")}</span>
+            {esUrl(c.a)
+              ? <span style={{ color: "var(--green)" }}>ahora <LinkPreview url={String(c.a).trim()} /></span>
+              : <span style={{ color: "var(--green)" }}>{String(c.a).replace(/_/g, " ")}</span>}
           </span>
         ))}
       </span>

@@ -10,6 +10,8 @@ import { celebrarResuelto } from "@/lib/celebra";
 import Foto from "@/components/Foto";
 import { opcionesEstado, claseEstado, rotuloEstado, esAviso } from "@/lib/estados";
 import { type Plazo } from "@/lib/plazo";
+import BarrasProgreso from "@/components/BarrasProgreso";
+import { type Progreso } from "@/lib/progreso";
 import { TIPOS_SEL } from "@/lib/tipos";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -23,7 +25,7 @@ export default function PostCard({
   href, titulo, tipo, tipoLabel, tipoColor, estado,
   autorNombre, autorColor, autorSrc, fechaStr, respNombre, avisaSinResp,
   nc, plazo, cuerpo, chips, pubId, userId, reacciones, imagenes,
-  padreId, padreTitulo, hijos, creadoEn, equipoTotal, marca,
+  padreId, padreTitulo, hijos, creadoEn, equipoTotal, marca, prog,
 }: {
   href: string; titulo: string; tipo?: string; tipoLabel: string; tipoColor: string;
   /* El rótulo NO se recibe: se deduce de estado+tipo. Venía por prop y el feed
@@ -47,6 +49,8 @@ export default function PostCard({
   /* En "Mis asuntos": por qué está aquí si no lo trabajo yo. `null` = es mi
      responsabilidad (prendido); si viene, la tarjeta se atenúa (apagado). */
   marca?: "delegado" | "mencion" | null;
+  /* ⏳ Tiempo vs ⚡ Trabajo, ya calculado en el servidor (lib/progreso). */
+  prog?: Progreso | null;
 }) {
   const router = useRouter();
   const enterN = (reacciones || []).filter(r => r.emoji === "👀").length;
@@ -189,6 +193,9 @@ export default function PostCard({
           <span style={{ width: `${plazo.pct}%`, background: plazo.color }} />
         </div>
       )}
+      {/* ⏳ Tiempo / ⚡ Trabajo: el detalle va en el tooltip para no cargar
+          la tarjeta. La barra de plazo de arriba sigue siendo la de urgencia. */}
+      <BarrasProgreso p={prog} mini />
     </div>
   );
 }

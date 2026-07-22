@@ -1,7 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
-import { TIPO_COLOR } from "@/lib/entidades";
+import { TIPO_COLOR, completitud } from "@/lib/entidades";
+import Completitud from "@/components/Completitud";
 import { buscadorDe, pal } from "@/lib/buscar";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -208,6 +209,11 @@ export default async function Proyectos({ searchParams }: {
               )}
             </div>
           )}
+
+          {(() => {
+            const c = completitud("proyecto", p);
+            return <Completitud mini pct={c.pct} llenos={c.llenos} total={c.total} faltan={c.faltan} />;
+          })()}
         </div>
       </div>
     );

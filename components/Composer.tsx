@@ -40,6 +40,59 @@ const ENT_META: Record<string, string> = {
 type Sel = Vinculo & { nombre: string };
 
 /* Buscador desplegable para entidades: filtra mientras escribes */
+/* Como EntPicker pero de selección MÚLTIPLE: checkboxes + un botón que confirma
+   todos los elegidos de una vez (para vincular una tanda al caso). */
+export function MultiPicker({ etiqueta, items, onConfirm, ocupado }: {
+  etiqueta: string; items: CatalogoItem[]; onConfirm: (ids: string[]) => void; ocupado?: boolean;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const [filtro, setFiltro] = useState("");
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const nrm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const palabras = nrm(filtro).split(/\s+/).filter(Boolean);
+  const lista = palabras.length ? items.filter(i => coincideQ(i.nombre, palabras)) : items;
+  const cerrar = () => { setAbierto(false); setFiltro(""); setSel(new Set()); };
+  const toggle = (id: string) => setSel(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const confirmar = () => { if (sel.size) onConfirm([...sel]); cerrar(); };
+
+  return (
+    <span className="cbx">
+      <button type="button" className="ent-btn" onClick={() => setAbierto(!abierto)}>
+        {etiqueta} ▾
+      </button>
+      {abierto && (
+        <>
+          <div className="cbx-fondo" onClick={cerrar} />
+          <div className="cbx-menu">
+            <input autoFocus className="cbx-inp" placeholder="Buscar y marcar varias..." value={filtro}
+              onChange={e => setFiltro(e.target.value)}
+              onKeyDown={e => { if (e.key === "Escape") cerrar(); }} />
+            <div className="cbx-lista">
+              {lista.slice(0, 80).map(i => (
+                <button key={i.id} type="button" className={`cbx-item ${sel.has(i.id) ? "on" : ""}`} onClick={() => toggle(i.id)}>
+                  <span className="cbx-check">{sel.has(i.id) ? "☑" : "☐"}</span>
+                  <span style={{ flex: 1, textAlign: "left" }}>{i.nombre}</span>
+                  {i.tipo && <span className="cbx-tag">{i.tipo.replace(/_/g, " ")}</span>}
+                </button>
+              ))}
+              {!lista.length && !filtro && <div className="cbx-vacio">Escribe para buscar</div>}
+              {!lista.length && filtro && <div className="cbx-vacio">Sin resultados</div>}
+              {lista.length > 80 && <div className="cbx-vacio">+{lista.length - 80} más — afina la búsqueda</div>}
+            </div>
+            <div className="cbx-pie">
+              <span style={{ color: "var(--dim)", fontSize: 12 }}>{sel.size} elegida{sel.size === 1 ? "" : "s"}</span>
+              <button type="button" className="btn" style={{ padding: "5px 12px", fontSize: 12 }}
+                disabled={!sel.size || ocupado} onClick={confirmar}>
+                {ocupado ? "..." : `Vincular ${sel.size || ""}`.trim()}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </span>
+  );
+}
+
 export function EntPicker({ etiqueta, items, onPick, onCrear }: {
   etiqueta: string; items: CatalogoItem[];
   onPick: (id: string) => void; onCrear?: (nombre: string) => void;

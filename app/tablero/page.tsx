@@ -5,6 +5,7 @@ import TableroTimeline from "@/components/TableroTimeline";
 import Realtime from "@/components/Realtime";
 import FiltroTablero from "@/components/FiltroTablero";
 import { contarHijos } from "@/lib/familia";
+import { progresoDe } from "@/lib/progreso";
 import { BOT } from "@/lib/personas";
 import { TABLA_DE } from "@/lib/secciones";
 import Link from "next/link";
@@ -201,7 +202,7 @@ export default async function TableroPage({ searchParams }: {
   const { data: hijosData } = idsPubs.length
     // `estado` faltaba: este era el conteo que había divergido — solo sabía
     // cuántos hijos hay, nunca cuántos están cerrados.
-    ? await supabase.from("publicaciones").select("padre_id,estado").in("padre_id", idsPubs)
+    ? await supabase.from("publicaciones").select("padre_id,estado,archivado_en").in("padre_id", idsPubs)
     : { data: [] };
   const subDe = contarHijos(hijosData);
   const { data: reaccs } = idsPubs.length
@@ -254,16 +255,24 @@ export default async function TableroPage({ searchParams }: {
     return "mencion";                                    // solo lo mencionan
   };
 
-  const pubsE = (pubs || []).map((p: any) => ({
-    ...p,
-    nc: p.comentarios?.[0]?.count ?? 0,
-    // El kanban sigue mostrando solo el total, como siempre: cambiar la
-    // tarjeta del tablero no toca hoy. Pero `ok` ya está calculado aquí.
-    sub: subDe.get(p.id)?.total || 0,
-    reac: reacDe.get(p.id) || {},
-    vinc: vincDe.get(p.id) || [],
-    marca: marcaFoco(p),
-  }));
+  const pubsE = (pubs || []).map((p: any) => {
+    const fam = subDe.get(p.id) || null;
+    return {
+      ...p,
+      nc: p.comentarios?.[0]?.count ?? 0,
+      sub: fam?.total || 0,
+      reac: reacDe.get(p.id) || {},
+      vinc: vincDe.get(p.id) || [],
+      marca: marcaFoco(p),
+      /* ⏳ vs ⚡ para la barrita de la tarjeta. Sin `ultimoMovimiento`: el
+         tablero no carga la bitácora, y no saberlo no es estar detenido. */
+      prog: progresoDe({
+        creado_en: p.creado_en, fecha_limite: p.fecha_limite, estado: p.estado, tipo: p.tipo,
+        hijos: fam && fam.total > 0 ? fam : null,
+        vinculadasTotal: (vincDe.get(p.id) || []).length,
+      }),
+    };
+  });
 
   /* Universo para los contadores y los catálogos de filtros. Sigue al MODO:
      en archivadas cuenta lo archivado, o «Todo» y los desplegables de etiqueta

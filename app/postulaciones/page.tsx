@@ -2,7 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import LineaTiempo, { type EventoLT } from "@/components/LineaTiempo";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
-import { TIPO_COLOR } from "@/lib/entidades";
+import { TIPO_COLOR, completitud } from "@/lib/entidades";
+import Completitud from "@/components/Completitud";
 // EN_JUEGO y la regla de ejecución viven en lib/fondos.ts: /empresas las
 // tenía escritas aparte, y ya no decían lo mismo.
 import { EN_JUEGO, ejecutando, rendicionVencida, plazoRendicion } from "@/lib/fondos";
@@ -50,7 +51,7 @@ export default async function Postulaciones({ searchParams }: {
 
   const [{ data: postsAll, error: qErr }, { data: vincs }, { data: coms }] = await Promise.all([
     supabase.from("postulaciones")
-      .select("id,codigo,estado,monto_adjudicado,codigo_acta,fecha_limite_rendicion,fecha_prorroga,fecha_rendicion_real,creado_en,conv:convocatorias(id,codigo,nombre,anio,estado,monto_adjudicado),proy:proyectos(id,nombre,tipo),emp:empresas(id,nombre)")
+      .select("*,conv:convocatorias(id,codigo,nombre,anio,estado,monto_adjudicado),proy:proyectos(id,nombre,tipo),emp:empresas(id,nombre)")
       .order("creado_en", { ascending: false }),
     supabase.from("publicacion_vinculos")
       .select("entidad_id,publicacion_id,pub:publicaciones(estado)").eq("entidad_tipo", "postulacion"),
@@ -251,6 +252,10 @@ export default async function Postulaciones({ searchParams }: {
           <span style={{ color: "var(--muted)" }} title="Comentarios">💬 {x.coments}</span>
           {!x.casos && <span style={{ color: "var(--dim)" }}>sin actividad</span>}
         </div>
+        {(() => {
+          const cp = completitud("postulacion", p);
+          return <Completitud mini pct={cp.pct} llenos={cp.llenos} total={cp.total} faltan={cp.faltan} />;
+        })()}
       </div>
     </Link>
     );

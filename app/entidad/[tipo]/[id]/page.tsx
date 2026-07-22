@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { Mantenimiento } from "@/components/EntidadForm";
-import { SUNAT_EMPRESA, DOCS_EMPRESA, RESERVA_EMPRESA, DNI_PERSONA, DOCS_PERSONA, SUNAT_PERSONA, GRUPO_TONO } from "@/lib/entidades";
+import { SUNAT_EMPRESA, DOCS_EMPRESA, RESERVA_EMPRESA, DNI_PERSONA, DOCS_PERSONA, SUNAT_PERSONA, GRUPO_TONO, completitud } from "@/lib/entidades";
 import { rucDePersona } from "@/lib/ruc";
 import { estado4ta, money } from "@/lib/cuarta";
 import { diasDeVigencia, fmtVence, vigenciaVencida } from "@/lib/vigencia";
@@ -24,7 +24,7 @@ import {
   reservaEmpresa, reservaMiembro, reservaCompleta,
 } from "@/lib/fondos";
 import HojaPostulacion from "@/components/HojaPostulacion";
-import { sinBot } from "@/lib/personas";
+import { sinBot, mapaAlias, conAlias } from "@/lib/personas";
 import BotonFichaSunat from "@/components/BotonFichaSunat";
 import Copiar from "@/components/Copiar";
 import EventoHistorial from "@/components/EventoHistorial";
@@ -50,6 +50,8 @@ import { rubrosDe } from "@/lib/rubros";
 import { TABLAS_EXP } from "@/lib/tablas-expediente";
 import TabsPanel from "@/components/TabsPanel";
 import FilasDatos, { camposSecundarios } from "@/components/MasDatos";
+import LinkVerificable from "@/components/LinkVerificable";
+import Completitud from "@/components/Completitud";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
@@ -223,7 +225,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       .eq("entidad_tipo", params.tipo).eq("entidad_id", params.id)
       .limit(300),
     supabase.from("actividad")
-      .select("tipo,detalle,creado_en,actor:perfiles(nombre)")
+      .select("tipo,detalle,creado_en,actor_id,actor:perfiles(nombre)")
       .eq("entidad_tipo", params.tipo).eq("entidad_id", params.id)
       .order("creado_en", { ascending: false }).limit(30),
     // El link de SUNAT sale del admin, no del código: si SUNAT lo cambia
@@ -233,8 +235,12 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
 
   // Historial sin ruido: los cambios de estado_sunat/condicion_sunat ya
   // los resume el evento "Verificación SUNAT" del bot; se ocultan aquí.
-  const eventosVis = (eventos || []).filter((e: any) =>
-    !(e.tipo === "estado" && ["estado_sunat", "condicion_sunat"].includes(e.detalle?.campo)));
+  // Los actores salen con su alias (JohnO) en vez del nombre completo.
+  const { data: aliasPers } = await supabase.from("personas").select("usuario_id,alias")
+    .not("alias", "is", null).not("usuario_id", "is", null);
+  const alias = mapaAlias(aliasPers);
+  const eventosVis = conAlias((eventos || []).filter((e: any) =>
+    !(e.tipo === "estado" && ["estado_sunat", "condicion_sunat"].includes(e.detalle?.campo))) as any[], alias);
 
   const ids = (vincs || []).map((v: any) => v.publicacion_id);
   /* `cuerpo` va aquí porque en un aviso el título es solo el asunto: lo que
@@ -279,7 +285,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   const reaccDe = new Map<string, Reaccion[]>();
   if (idsP.length) {
     const [hj, rc] = await Promise.all([
-      supabase.from("publicaciones").select("padre_id,estado").in("padre_id", idsP),
+      supabase.from("publicaciones").select("padre_id,estado,archivado_en").in("padre_id", idsP),
       supabase.from("reacciones").select("publicacion_id,emoji,usuario_id").is("comentario_id", null).in("publicacion_id", idsP),
     ]);
     hijosDe = contarHijos(hj.data);
@@ -700,6 +706,19 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     creds = await conPlataforma(data || []);
   }
 
+  /* Verificaciones de contenido de los links de documentos (DNI, firma, CV…):
+     quién confirmó que el link apunta al archivo correcto, y contra qué url.
+     Se indexa por campo para pasárselo a cada botón. */
+  const verifDe: Record<string, { url: string; por?: string | null; en?: string | null; correcto?: boolean }> = {};
+  if (params.tipo === "empresa" || params.tipo === "persona") {
+    const { data: vf } = await supabase.from("link_verificaciones")
+      .select("campo,url,correcto,verificado_en,por:perfiles(nombre)")
+      .eq("entidad_tipo", params.tipo).eq("entidad_id", params.id);
+    (vf || []).forEach((r: any) => {
+      verifDe[r.campo] = { url: r.url, por: r.por?.nombre, en: r.verificado_en, correcto: r.correcto };
+    });
+  }
+
   const nombre = params.tipo === "postulacion"
     ? `${ent.codigo || postCtx?.conv?.codigo || "Postulación"} · ${postCtx?.proy?.nombre || ""}`.replace(/ · $/, "")
     : ent.nombre || ent.codigo || "—";
@@ -829,6 +848,12 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         {/* ===== COLUMNA IZQUIERDA: el carné ===== */}
         <aside>
           <div className="card">
+            {/* Completitud de la ficha. Para los tipos sin campos de formulario
+                (lugar, etiqueta) el componente se oculta solo. */}
+            {(() => {
+              const c = completitud(params.tipo, ent);
+              return <Completitud pct={c.pct} llenos={c.llenos} total={c.total} faltan={c.faltan} />;
+            })()}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: conf.campos.length ? 12 : 0 }}>
               {/* En empresa, Drive/RENCA/Vigencia se muestran dentro del
                   bloque 📎 Documentos, junto al dato que respaldan. */}
@@ -1092,8 +1117,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               [DNI_PERSONA]: (
                 <>
                   {ent.ruc_dni && <BotonVerificarDni personaId={params.id} />}
-                  {ent.dni_url && <a href={ent.dni_url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost" style={lnk}>🪪 DNI ↗</a>}
-                  {ent.firma_url && <a href={ent.firma_url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost" style={lnk}>✍️ Firma ↗</a>}
+                  {ent.dni_url && <LinkVerificable tipo={params.tipo} id={params.id} campo="dni_url" url={ent.dni_url} etiqueta="DNI" icono="🪪" verif={verifDe.dni_url} />}
+                  {ent.firma_url && <LinkVerificable tipo={params.tipo} id={params.id} campo="firma_url" url={ent.firma_url} etiqueta="Firma" icono="✍️" verif={verifDe.firma_url} />}
                 </>
               ),
               [SUNAT_PERSONA]: rucPer && (
@@ -1104,8 +1129,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                   <BotonRucPersona personaId={params.id} />
                   <BotonFichaSunat numero={ent.ruc_dni} tipo="DNI" url={urlSunat} />
                   {ent.suspension_4ta_url && (
-                    <a href={ent.suspension_4ta_url} target="_blank" rel="noopener noreferrer"
-                      className="btn btn-ghost" style={lnk}>🧾 Constancia 4ta ↗</a>
+                    <LinkVerificable tipo={params.tipo} id={params.id} campo="suspension_4ta_url" url={ent.suspension_4ta_url} etiqueta="Constancia 4ta" icono="🧾" verif={verifDe.suspension_4ta_url} />
                   )}
                   {/* Cuánto lleva del tope de 4ta con nosotros este año */}
                   {acum4ta > 0 && (() => {
@@ -1129,7 +1153,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               [DOCS_PERSONA]: (ent.carpeta_drive_url || ent.cv_url) && (
                 <>
                   {ent.carpeta_drive_url && <a href={ent.carpeta_drive_url} target="_blank" rel="noopener noreferrer" className="btn" style={{ ...lnk, background: "#1a73e8" }}>📂 Drive</a>}
-                  {ent.cv_url && <a href={ent.cv_url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost" style={lnk}>📋 CV ↗</a>}
+                  {ent.cv_url && <LinkVerificable tipo={params.tipo} id={params.id} campo="cv_url" url={ent.cv_url} etiqueta="CV" icono="📋" verif={verifDe.cv_url} />}
                 </>
               ),
             } : params.tipo !== "empresa" ? {} : {
@@ -1142,8 +1166,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               [DOCS_EMPRESA]: (
                 <>
                   {ent.carpeta_drive_url && <a href={ent.carpeta_drive_url} target="_blank" rel="noopener noreferrer" className="btn" style={{ ...lnk, background: "#1a73e8" }}>📂 Drive</a>}
-                  {ent.renca_url && <a href={ent.renca_url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost" style={lnk}>🎬 RENCA ↗</a>}
-                  {ent.vigencia_poder_url && <a href={ent.vigencia_poder_url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost" style={lnk}>📜 Vigencia ↗</a>}
+                  {ent.renca_url && <LinkVerificable tipo={params.tipo} id={params.id} campo="renca_url" url={ent.renca_url} etiqueta="RENCA" icono="🎬" verif={verifDe.renca_url} />}
+                  {ent.vigencia_poder_url && <LinkVerificable tipo={params.tipo} id={params.id} campo="vigencia_poder_url" url={ent.vigencia_poder_url} etiqueta="Vigencia de poder" icono="📜" verif={verifDe.vigencia_poder_url} />}
                   {/* Todo lo que pide el formulario, junto: la empresa y sus
                       responsables. Vive aquí, con los papeles, porque es lo
                       mismo que se va a buscar cuando toque postular. */}

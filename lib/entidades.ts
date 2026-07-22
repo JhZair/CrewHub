@@ -10,7 +10,9 @@ export type CampoDef = {
   opciones?: string[];
   requerido?: boolean;
   auto?: boolean;       // lo genera el sistema; solo lectura (folios inmutables)
+  verif?: boolean;      // lo llena la verificación automática (RENIEC/SUNAT); solo lectura
   soloEditar?: boolean; // se oculta al crear; solo aparece editando (ej. presupuesto vigente)
+  opcional?: boolean;   // no cuenta para la completitud de la ficha (dato circunstancial)
   sugerencias?: string[]; // autocompletado con lista, pero acepta texto libre
   multiple?: boolean;     // varias opciones como chips (se guardan separadas por coma)
   sugerenciasPor?: { campo: string; mapa: Record<string, string[]> };
@@ -30,6 +32,26 @@ export type CampoDef = {
 /* ¿Este campo aplica, dados los valores actuales del formulario? */
 export const campoAplica = (c: CampoDef, valores: Record<string, any>) =>
   !c.soloSi || c.soloSi.en.includes(String(valores[c.soloSi.campo] ?? ""));
+
+/* Completitud de una ficha: qué proporción de sus campos están llenos. Cuenta
+   solo los que APLICAN (una cobertura no necesita RENCA) y descarta los
+   autogenerados (folios). Los `verif` (RENIEC/SUNAT) sí cuentan: una ficha con
+   su verificación al día está más completa que una sin ella. `faltan` lista los
+   vacíos, para el tooltip. */
+export function completitud(tipo: string, valores: Record<string, any>) {
+  const conf = FORM_CONF[tipo];
+  if (!conf) return { llenos: 0, total: 0, pct: 0, faltan: [] as string[] };
+  const rel = conf.campos.filter(c => !c.auto && !c.opcional && campoAplica(c, valores));
+  const lleno = (c: CampoDef) => {
+    const v = valores[c.key];
+    if (c.tipo === "bool") return v === true || v === false;   // un «No» es una respuesta
+    return v != null && String(v).trim() !== "";
+  };
+  const total = rel.length;
+  const llenos = rel.filter(lleno).length;
+  const faltan = rel.filter(c => !lleno(c)).map(nombreCorto);
+  return { llenos, total, pct: total ? Math.round((llenos / total) * 100) : 0, faltan };
+}
 
 /* Nombre breve de un campo para la bitácora: usa `corto` si existe; si no,
    recorta la etiqueta en el guion largo y quita los paréntesis explicativos.
@@ -286,15 +308,15 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
          METROPOLITANA, no el departamento: Huacho y Cañete sí entran. Con el
          departamento solo, el sistema no puede decidir — y prefiere decirlo
          antes que adivinar. */
-      { key: "provincia_lima", label: "¿Qué provincia de Lima? (solo si arriba dice «Lima»)", corto: "Provincia de Lima", grupo: RESERVA_EMPRESA },
+      { key: "provincia_lima", label: "¿Qué provincia de Lima? (solo si arriba dice «Lima»)", corto: "Provincia de Lima", grupo: RESERVA_EMPRESA, opcional: true },
       // — SUNAT: el RUC es la llave, y lo demás lo trae la verificación.
       //   La ficha RUC en PDF se retiró: se consulta en vivo en SUNAT (el
       //   PDF guardado se desactualizaba y engañaba). —
       { key: "ruc", label: "RUC (11 dígitos)", valida: "ruc", grupo: SUNAT_EMPRESA },
       { key: "domicilio_fiscal", label: "Domicilio fiscal", grupo: SUNAT_EMPRESA },
-      { key: "estado_sunat", label: "Estado SUNAT", tipo: "select", opciones: ["activo", "suspension_temporal", "baja_provisional", "baja_definitiva"], grupo: SUNAT_EMPRESA },
-      { key: "condicion_sunat", label: "Condición SUNAT", tipo: "select", opciones: ["habido", "no_habido"], grupo: SUNAT_EMPRESA },
-      { key: "fecha_verificacion_sunat", label: "Última verificación SUNAT", corto: "Verificado SUNAT", tipo: "date", grupo: SUNAT_EMPRESA },
+      { key: "estado_sunat", label: "Estado SUNAT", tipo: "select", opciones: ["activo", "suspension_temporal", "baja_provisional", "baja_definitiva"], grupo: SUNAT_EMPRESA, verif: true },
+      { key: "condicion_sunat", label: "Condición SUNAT", tipo: "select", opciones: ["habido", "no_habido"], grupo: SUNAT_EMPRESA, verif: true },
+      { key: "fecha_verificacion_sunat", label: "Última verificación SUNAT", corto: "Verificado SUNAT", tipo: "date", grupo: SUNAT_EMPRESA, verif: true },
       // — Documentos: importantes para postular, pero no bloquean el alta.
       //   Cada dato va a la izquierda con su respaldo (link) a la derecha. —
       { key: "renca", label: "RENCA — N° de registro", corto: "RENCA", grupo: DOCS_EMPRESA },
@@ -426,16 +448,15 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
       // — Identidad: el DNI es la llave para verificar en RENIEC y SUNAT —
       { key: "ruc_dni", label: "DNI (8 dígitos)", corto: "DNI", valida: "dni", grupo: DNI_PERSONA },
       { key: "dni_vencimiento", label: "DNI — fecha de vencimiento", corto: "DNI vence", tipo: "date", grupo: DNI_PERSONA },
-      // La pone el botón de RENIEC sola; editable por si se verificó a mano
-      // en la web de RENIEC y hay que dejar constancia de cuándo.
-      { key: "fecha_verificacion_reniec", label: "Última verificación RENIEC", corto: "Verificado RENIEC", tipo: "date", grupo: DNI_PERSONA },
+      // La pone el botón «Verificar DNI (RENIEC)»; no se teclea a mano.
+      { key: "fecha_verificacion_reniec", label: "Última verificación RENIEC", corto: "Verificado RENIEC", tipo: "date", grupo: DNI_PERSONA, verif: true },
       // El escaneo del DNI y la firma SON identidad, y el fondo los exige
       { key: "dni_url", label: "DNI escaneado (PDF)", corto: "DNI escaneado", valida: "url", grupo: DNI_PERSONA },
       { key: "firma_url", label: "Firma escaneada", corto: "Firma", valida: "url", grupo: DNI_PERSONA },
       // — SUNAT: el RUC se calcula del DNI; el resto lo trae la verificación —
-      { key: "estado_sunat", label: "Estado SUNAT", tipo: "select", opciones: ["activo", "suspension_temporal", "baja_provisional", "baja_definitiva"], grupo: SUNAT_PERSONA },
-      { key: "condicion_sunat", label: "Condición SUNAT", tipo: "select", opciones: ["habido", "no_habido"], grupo: SUNAT_PERSONA },
-      { key: "fecha_verificacion_sunat", label: "Última verificación SUNAT", corto: "Verificado SUNAT", tipo: "date", grupo: SUNAT_PERSONA },
+      { key: "estado_sunat", label: "Estado SUNAT", tipo: "select", opciones: ["activo", "suspension_temporal", "baja_provisional", "baja_definitiva"], grupo: SUNAT_PERSONA, verif: true },
+      { key: "condicion_sunat", label: "Condición SUNAT", tipo: "select", opciones: ["habido", "no_habido"], grupo: SUNAT_PERSONA, verif: true },
+      { key: "fecha_verificacion_sunat", label: "Última verificación SUNAT", corto: "Verificado SUNAT", tipo: "date", grupo: SUNAT_PERSONA, verif: true },
       // Año, no Sí/No: la suspensión caduca cada 31 de diciembre.
       // La constancia va al lado: el año dice que vale, el PDF lo prueba.
       { key: "suspension_4ta_anio", label: "Suspensión 4ta — año vigente", corto: "Suspensión 4ta", valida: "anio", grupo: SUNAT_PERSONA },

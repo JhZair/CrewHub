@@ -66,7 +66,7 @@ export default async function CasosPorEntidad({ params, searchParams }: {
      trabajo repartido. Este listado no lo decía. */
   const idsPub2 = pubs.map((x: any) => x.id);
   const { data: hijosData } = idsPub2.length
-    ? await supabase.from("publicaciones").select("padre_id,estado").in("padre_id", idsPub2)
+    ? await supabase.from("publicaciones").select("padre_id,estado,archivado_en").in("padre_id", idsPub2)
     : { data: [] };
   const hijosDe = contarHijos(hijosData);
 

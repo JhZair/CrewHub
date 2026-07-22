@@ -9,6 +9,7 @@ import MenuUsuario from "@/components/MenuUsuario";
 import { ICO_ENT } from "@/lib/secciones";
 import { contarHijos } from "@/lib/familia";
 import { plazoDe } from "@/lib/plazo";
+import { progresoDe } from "@/lib/progreso";
 import { rotuloTipo, colorTipo } from "@/lib/tipos";
 import { sinBot } from "@/lib/personas";
 import FiltroMas from "@/components/FiltroMas";
@@ -155,7 +156,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
   // Familia de cada caso visible: ¿tiene hijos? ¿tiene padre?
   const idsPubs = (postsQ.data || []).map((p: any) => p.id);
   const { data: hijosData } = idsPubs.length
-    ? await supabase.from("publicaciones").select("padre_id,estado").in("padre_id", idsPubs)
+    ? await supabase.from("publicaciones").select("padre_id,estado,archivado_en").in("padre_id", idsPubs)
     : { data: [] };
   const hijosDe = contarHijos(hijosData);
   // Títulos de padres que no están en la página del feed
@@ -509,6 +510,14 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
               padreTitulo={p.padre_id ? (tituloPadre.get(p.padre_id) || null) : null}
               hijos={hijosDe.get(p.id) || null}
               marca={marcaFoco(p)}
+              /* Sin `ultimoMovimiento`: el feed no carga la bitácora por caso,
+                 y no saberlo no es estar detenido (lib/progreso lo respeta). */
+              prog={progresoDe({
+                creado_en: p.creado_en, fecha_limite: p.fecha_limite,
+                estado: p.estado, tipo: p.tipo, hijos: hijosDe.get(p.id) || null,
+                // Cuántas hay, para que calle si su ficha usaría ese denominador
+                vinculadasTotal: chips.length,
+              })}
             />
           ),
         };

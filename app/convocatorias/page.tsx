@@ -2,7 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import LineaTiempo, { type EventoLT } from "@/components/LineaTiempo";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
-import { TIPO_COLOR } from "@/lib/entidades";
+import { TIPO_COLOR, completitud } from "@/lib/entidades";
+import Completitud from "@/components/Completitud";
 import { buscadorDe, pal } from "@/lib/buscar";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -35,8 +36,8 @@ export default async function Convocatorias({ searchParams }: {
   const hoyS = new Date().toISOString().slice(0, 10);
 
   const [{ data: convs }, { data: hitos }, { data: postsAll }, { data: vincs }, { data: coms }] = await Promise.all([
-    supabase.from("convocatorias")
-      .select("id,codigo,nombre,anio,estado,monto_adjudicado,fecha_limite_rendicion")
+    // `*`: para calcular la completitud de la ficha de cada convocatoria.
+    supabase.from("convocatorias").select("*")
       .order("anio", { ascending: false }).order("codigo"),
     supabase.from("cronograma_actividades")
       .select("id,nombre,fecha_inicio,convocatoria_id,conv:convocatorias(id,codigo,anio)")
@@ -362,6 +363,10 @@ export default async function Convocatorias({ searchParams }: {
                       {(c.estado || "—").replace(/_/g, " ")}
                     </span>
                   </div>
+                  {(() => {
+                    const cp = completitud("convocatoria", c);
+                    return <Completitud mini pct={cp.pct} llenos={cp.llenos} total={cp.total} faltan={cp.faltan} />;
+                  })()}
                 </div>
               </Link>
             ))}

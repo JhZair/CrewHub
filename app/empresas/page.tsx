@@ -3,7 +3,8 @@ import Volver from "@/components/Volver";
 import { BotonVerificarLote } from "@/components/VerificarSunat";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import { alertaSunat, empresaDeCasa, esNuestra, esProblematico, textoSunat } from "@/lib/sunat";
-import { REL_EMPRESA, EST_EMPRESA } from "@/lib/entidades";
+import { REL_EMPRESA, EST_EMPRESA, completitud } from "@/lib/entidades";
+import Completitud from "@/components/Completitud";
 import { CERRADOS } from "@/lib/familia";
 import { fmtVence, vigenciaVencida } from "@/lib/vigencia";
 import {
@@ -406,6 +407,11 @@ export default async function Empresas({ searchParams }: {
               })}
             </div>
           )}
+
+          {(() => {
+            const c = completitud("empresa", emp);
+            return <Completitud mini pct={c.pct} llenos={c.llenos} total={c.total} faltan={c.faltan} />;
+          })()}
         </div>
       </div>
     );
