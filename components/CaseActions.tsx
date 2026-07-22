@@ -4,6 +4,7 @@ import { celebrarResuelto } from "@/lib/celebra";
 import { opcionesEstado } from "@/lib/estados";
 import { sinBot } from "@/lib/personas";
 import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
+import { menciones, MencionesMenu } from "@/components/Menciones";
 import { useRouter } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
 
@@ -108,16 +109,10 @@ export function CommentBox({ pubId, userId, perfiles = [] }: {
     el.style.height = Math.min(el.scrollHeight, 160) + "px";
   }, [txt]);
 
-  // 🪄 Autocompletado de menciones: detecta el @token al final de lo escrito
-  const nrmA = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-  const enMencion = txt.match(/@([^\s@]*)$/);
-  const candidatos = enMencion
-    ? perfiles.filter(p => nrmA(p.nombre).replace(/\s+/g, "").startsWith(nrmA(enMencion[1]))
-        || nrmA(p.nombre).split(/\s+/).some(w => w.startsWith(nrmA(enMencion[1])))).slice(0, 5)
-    : [];
-  const invocar = (nombre: string) => {
-    setTxt(txt.replace(/@[^\s@]*$/, "@" + nombre.replace(/\s+/g, "") + " "));
-  };
+  // 🪄 Autocompletado de menciones (components/Menciones: lo comparte con la
+  // caja de comentarios del repositorio).
+  const { enMencion, candidatos, aplicar } = menciones(txt, perfiles);
+  const invocar = (nombre: string) => setTxt(aplicar(nombre));
 
   const subir = async (files: File[]) => {
     if (!files.length || subiendo) return;
@@ -155,15 +150,7 @@ export function CommentBox({ pubId, userId, perfiles = [] }: {
         </div>
       )}
       <div className="cbox" style={{ position: "relative" }}>
-        {candidatos.length > 0 && (
-          <div className="menciones-menu">
-            {candidatos.map(p => (
-              <button key={p.id} onMouseDown={e => { e.preventDefault(); invocar(p.nombre); }}>
-                🪄 {p.nombre}
-              </button>
-            ))}
-          </div>
-        )}
+        <MencionesMenu candidatos={candidatos} onElegir={invocar} />
         <textarea
           ref={taRef}
           placeholder="Escribe un comentario… (Enter envía · Shift+Enter salto de línea) · @nombre para invocar"

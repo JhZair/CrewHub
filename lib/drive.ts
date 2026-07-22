@@ -63,9 +63,20 @@ export function previewCandidates(url?: string | null, sz = 400): string[] {
     `https://img.youtube.com/vi/${yt}/maxresdefault.jpg`,
     `https://img.youtube.com/vi/${yt}/hqdefault.jpg`,
   ];
-  // La miniatura de Drive SOLO para links de Drive: un link directo a imagen que
-  // por casualidad traiga `?id=` o `/d/` no debe mandarse a un thumbnail roto.
-  const id = /drive\.google\.com/.test(s) ? driveFileId(s) : null;
+  /* La miniatura SOLO para links de Google: un link directo a imagen que por
+     casualidad traiga `?id=` o `/d/` no debe mandarse a un thumbnail roto.
+
+     `docs.google.com` cuenta. Un Documento, una Hoja o una Presentación son
+     archivos de Drive como cualquier otro —el endpoint `thumbnail?id=` les
+     devuelve su primera página igual— pero viven en otro host, así que el
+     filtro los dejaba fuera: un Google Doc del repositorio salía siempre con
+     el ícono genérico, justo el material que más se guarda.
+
+     Si aun así no aparece, el motivo suele ser el permiso: la miniatura la
+     pide el navegador sin sesión, así que un archivo restringido no la
+     entrega. Ahí el ícono no es un fallo, es el aviso de que ese link no lo
+     puede abrir quien no esté invitado. */
+  const id = /(?:drive|docs)\.google\.com/.test(s) ? driveFileId(s) : null;
   if (id) return [
     `https://drive.google.com/thumbnail?id=${id}&sz=w${sz}`,
     `https://lh3.googleusercontent.com/d/${id}=w${sz}`,

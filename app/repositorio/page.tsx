@@ -2,7 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import { TIPOS_OBJETO, TIPO_CV, icoObjeto, lblObjeto, ordenObjeto } from "@/lib/objetos";
-import { ICO_ENT, nombreDe } from "@/lib/secciones";
+import { ICO_ENT } from "@/lib/secciones";
+import { resolverNombres } from "@/lib/nombres";
 import { enlaceLimpio } from "@/lib/drive";
 import MiniObjeto from "@/components/MiniObjeto";
 import NuevoObjeto from "@/components/NuevoObjeto";
@@ -74,23 +75,9 @@ export default async function RepositorioPage({ searchParams }: {
   const nCaso = new Map<string, number>();
   (casos || []).forEach((c: any) => nCaso.set(c.entidad_id, (nCaso.get(c.entidad_id) || 0) + 1));
 
-  /* Los nombres de los dueños, una consulta por tabla (no una por objeto). */
-  const nombres = new Map<string, string>();
-  {
-    const porTipo = new Map<string, Set<string>>();
-    todos.forEach((o: any) => {
-      const s = porTipo.get(o.entidad_tipo) || new Set<string>();
-      s.add(o.entidad_id); porTipo.set(o.entidad_tipo, s);
-    });
-    await Promise.all([...porTipo.entries()].map(async ([tipo, ids]) => {
-      const n = nombreDe(tipo);
-      if (!n) return;
-      const sel = ["id", n.campo, n.corto].filter(Boolean).join(",");
-      const { data } = await supabase.from(n.tabla).select(sel).in("id", [...ids]);
-      (data || []).forEach((r: any) =>
-        nombres.set(`${tipo}:${r.id}`, (n.corto && r[n.corto]) || r[n.campo] || "—"));
-    }));
-  }
+  // Los nombres de los dueños: resolvedor compartido (lib/nombres).
+  const nombres = await resolverNombres(supabase,
+    todos.map((o: any) => ({ tipo: o.entidad_tipo, id: o.entidad_id })));
   const duenoDe = (o: any) => nombres.get(`${o.entidad_tipo}:${o.entidad_id}`) || "—";
 
   // Catálogos para elegir dueño al agregar desde aquí.

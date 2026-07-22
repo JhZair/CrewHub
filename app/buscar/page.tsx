@@ -3,6 +3,9 @@ import type { Metadata } from "next";
 import { buscadorDe, nrmB, pal, partir } from "@/lib/buscar";
 import { contarHijos, colorFamilia, type Familia } from "@/lib/familia";
 import { icoTipo } from "@/lib/tipos";
+import { icoObjeto, lblObjeto } from "@/lib/objetos";
+import { ICO_ENT } from "@/lib/secciones";
+import { resolverNombres } from "@/lib/nombres";
 import { claseEstado, rotuloEstado } from "@/lib/estados";
 import { REL_EMPRESA, EST_EMPRESA, TIPO_COLOR } from "@/lib/entidades";
 import { alertaSunat, empresaDeCasa, empresaViva, textoSunat } from "@/lib/sunat";
@@ -97,10 +100,10 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
 
   let casos: any[] = [], coms: any[] = [], pers: any[] = [], proys: any[] = [],
       emps: any[] = [], equis: any[] = [], lugs: any[] = [], convs: any[] = [], postus: any[] = [],
-      creds: any[] = [];
+      creds: any[] = [], objs: any[] = [];
   let statProy = new Map<string, any>(), statEmp = new Map<string, any>(),
       statConv = new Map<string, any>(), statPers = new Map<string, any>();
-  let equisMas = 0, persMas = 0;
+  let equisMas = 0, persMas = 0, objsMas = 0;
   /* Título del padre de cada sub-caso encontrado: «Cámara A lista» a secas no
      dice nada — la mitad de un sub-caso es de quién es hijo. */
   let padreDe = new Map<string, string>();
@@ -136,7 +139,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
        el pajar lo arma el servidor y al navegador solo viajan 12 resultados.
        Somos seis personas; si algún día esto pesa, el arreglo de verdad es
        `unaccent` con índice en Postgres, no un ilike que miente. */
-    const [c1, c2, c3, c4, c5, c6, c7, c8, c9, c10] = await Promise.all([
+    const [c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11] = await Promise.all([
       supabase.from("publicaciones")
         // padre_id: un sub-caso sin su padre es un título huérfano
         .select("id,titulo,cuerpo,tipo,estado,creado_en,padre_id")
@@ -179,6 +182,21 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
       supabase.from("credenciales")
         .select("id,plataforma,identificador,ubicacion,notas,url,metodo_acceso,empresa_id,persona_id,datos:credencial_datos(id,etiqueta,valor)")
         .limit(600),
+      /* EL REPOSITORIO. Es la mitad de lo que la productora sabe —el libro que
+         sostiene un documental, la referencia que justifica un plano, la nota
+         de prensa de hace tres años— y el buscador no lo miraba: se podía
+         encontrar a alguien por su DNI y no el material sobre el que trabaja.
+         Los CV se excluyen: ya salen colgados de su persona, con su enfoque. */
+      /* MISMO orden y MISMO techo que /repositorio: el «ver la lista completa»
+         lleva ahí, y si cada página se quedara con 600 filas distintas el
+         enlace prometería resultados que el destino no tiene. Allá además se
+         ven los CV, así que el destino es un superconjunto — de más, nunca de
+         menos. */
+      supabase.from("objetos")
+        .select("id,tipo,titulo,url,notas,fecha,entidad_tipo,entidad_id")
+        .neq("tipo", "cv")
+        .order("fecha", { ascending: false, nullsFirst: false })
+        .order("creado_en", { ascending: false }).limit(600),
     ]);
 
     // El marcador en los resultados: 🏆 ganados · 🥈 casi · 🎯 intentos
@@ -379,6 +397,25 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
     equis = equisTodos.slice(0, 15);
     equisMas = Math.max(0, equisTodos.length - 15);
     lugs = (c7.data || []).filter((l: any) => coincide(`lugar ${l.nombre}`)).slice(0, 6);
+
+    /* EL REPOSITORIO. Se busca por título, nota, tipo y DE QUIÉN es: «khipu
+       jesus» tiene que encontrar el libro aunque la palabra «jesus» no esté
+       en su título, igual que una persona se encuentra por su película.
+       Los nombres de los dueños se resuelven en una tanda por tabla —no una
+       consulta por objeto— con el mismo `nombreDe` de todas las pantallas. */
+    {
+      const filas = (c11.data || []) as any[];
+      const duenos = await resolverNombres(supabase,
+        filas.map(o => ({ tipo: o.entidad_tipo, id: o.entidad_id })));
+      const objsTodos = filas
+        .map(o => ({ ...o, dueno: duenos.get(`${o.entidad_tipo}:${o.entidad_id}`) || "" }))
+        /* Sin la palabra «repositorio» en el pajar: la metía SOLO esta página, así
+           que buscarla aquí devolvía todo y en el destino, nada. */
+        .filter(o => coincide(pal(o.titulo, o.notas, lblObjeto(o.tipo), o.dueno)));
+      objs = objsTodos.slice(0, 10);
+      // El listado global busca con el mismo motor, así que «ver todo» cumple.
+      objsMas = Math.max(0, objsTodos.length - 10);
+    }
     // Las ediciones vivas arriba; las pasadas, abajo y apagadas
     convs = (c8.data || []).filter((c: any) => coincide(
       `convocatoria concurso ${c.codigo} ${c.nombre} ${c.anio} ` + pal(c.estado)))
@@ -453,8 +490,12 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
       }).slice(0, 10);
   }
 
+  /* `objs` cuenta como cualquier otra sección. Sin sumarlo, una búsqueda que
+     solo acierta en el repositorio pintaba «nada — prueba con menos palabras»
+     con los resultados justo debajo: el buscador desmintiéndose a sí mismo. */
   const total = casos.length + coms.length + pers.length + proys.length
-    + emps.length + equis.length + lugs.length + convs.length + postus.length + creds.length;
+    + emps.length + equis.length + lugs.length + convs.length + postus.length + creds.length
+    + objs.length;
 
   /* `mas` no es decoración: una sección que corta y no lo dice te hace creer
      que lo que buscabas no existe.
@@ -865,6 +906,31 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
         {lugs.map((l: any) => (
           <Fila key={l.id} href={`/entidad/lugar/${l.id}`}>
             <b>{l.nombre}</b>
+          </Fila>
+        ))}
+      </Seccion>
+
+      {/* El repositorio: material, no fichas. Va después de las entidades y
+          antes de los casos —es «lo que sabemos», no «lo que hacemos»—. */}
+      <Seccion titulo="📚 Repositorio" n={objs.length} mas={objsMas}
+        verTodo={`/repositorio?q=${encodeURIComponent(q)}`}>
+        {objs.map((o: any) => (
+          <Fila key={o.id} href={`/objeto/${o.id}`}>
+            <span>{icoObjeto(o.tipo)}</span>
+            <b>{o.titulo}</b>
+            <span className="badge" style={{ color: "var(--dim)", background: "#1c1c2c" }}>
+              {lblObjeto(o.tipo)}
+            </span>
+            {o.dueno && (
+              <span style={{ color: "var(--dim)", fontSize: 11.5 }}>
+                {ICO_ENT[o.entidad_tipo] || "🔗"} {o.dueno}
+              </span>
+            )}
+            {o.notas && (
+              <span style={{ color: "var(--muted)", fontSize: 11.5, width: "100%" }}>
+                {snippet(o.notas, palabras)}
+              </span>
+            )}
           </Fila>
         ))}
       </Seccion>

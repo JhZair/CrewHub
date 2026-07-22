@@ -12,9 +12,10 @@ import MoverObjeto from "@/components/MoverObjeto";
 import MiniObjeto from "@/components/MiniObjeto";
 import { agruparEventos } from "@/lib/agrupar";
 import { catalogosEntidades } from "@/lib/catalogos";
+import { resolverNombres } from "@/lib/nombres";
 import { mapaAlias, conAlias } from "@/lib/personas";
 import { icoObjeto, lblObjeto } from "@/lib/objetos";
-import { ICO_ENT, SECCIONES, rutaEntidad, nombreDe } from "@/lib/secciones";
+import { ICO_ENT, SECCIONES, rutaEntidad } from "@/lib/secciones";
 import { claseEstado, rotuloEstado } from "@/lib/estados";
 import { icoTipo } from "@/lib/tipos";
 import Link from "next/link";
@@ -40,21 +41,8 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
   return { title: data ? `${icoObjeto(data.tipo)} ${data.titulo}` : "Objeto" };
 }
 
-/** Nombre legible de una entidad cualquiera, para los chips de vínculo. */
-async function nombresDe(supabase: any, pares: { tipo: string; id: string }[]) {
-  const m = new Map<string, string>();
-  const porTipo = new Map<string, string[]>();
-  pares.forEach(p => porTipo.set(p.tipo, [...(porTipo.get(p.tipo) || []), p.id]));
-  await Promise.all([...porTipo.entries()].map(async ([tipo, ids]) => {
-    const n = nombreDe(tipo);
-    if (!n) return;
-    const sel = ["id", n.campo, n.corto].filter(Boolean).join(",");
-    const { data } = await supabase.from(n.tabla).select(sel).in("id", ids);
-    (data || []).forEach((r: any) =>
-      m.set(`${tipo}:${r.id}`, (n.corto && r[n.corto]) || r[n.campo] || "—"));
-  }));
-  return m;
-}
+/* (El resolvedor de nombres salió a lib/nombres: era el mismo bloque en
+   cuatro pantallas, y en todas la postulación salía como «PO-047» a secas.) */
 
 export default async function ObjetoPage({ params }: { params: { id: string } }) {
   const supabase = createClient();
@@ -65,7 +53,7 @@ export default async function ObjetoPage({ params }: { params: { id: string } })
   if (!o) notFound();
 
   const [{ data: vincs }, { data: casosVinc }, { data: eventos }, { data: verifs }, { data: aliasPers },
-         { data: coments }] =
+         { data: coments }, { data: perfilesCat }] =
     await Promise.all([
       supabase.from("objeto_vinculos").select("entidad_tipo,entidad_id").eq("objeto_id", params.id),
       /* Las conversaciones: casos vinculados a este objeto. No hay hilo propio
@@ -89,6 +77,10 @@ export default async function ObjetoPage({ params }: { params: { id: string } })
       supabase.from("comentarios")
         .select("id,cuerpo,imagenes,creado_en,editado_en,autor_id,autor:perfiles(nombre,color,avatar_url)")
         .eq("objeto_id", params.id).order("creado_en"),
+      /* Para el 🪄 del comentario: sin la lista de quién tiene cuenta, escribir
+         «@j» no ofrecía nada y el invocar parecía roto —aunque el servidor sí
+         reconocía la mención al enviar—. */
+      supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
     ]);
 
   // Dueño + entidades vinculadas, resueltos en una tanda
@@ -96,7 +88,7 @@ export default async function ObjetoPage({ params }: { params: { id: string } })
     { tipo: o.entidad_tipo, id: o.entidad_id },
     ...(vincs || []).map((v: any) => ({ tipo: v.entidad_tipo, id: v.entidad_id })),
   ];
-  const nombres = await nombresDe(supabase, pares);
+  const nombres = await resolverNombres(supabase, pares);
   const dueno = {
     tipo: o.entidad_tipo, id: o.entidad_id,
     nombre: nombres.get(`${o.entidad_tipo}:${o.entidad_id}`) || "—",
@@ -205,7 +197,7 @@ export default async function ObjetoPage({ params }: { params: { id: string } })
             Nadie ha comentado todavía.
           </div>
         )}
-        <ComentarObjeto objetoId={params.id} />
+        <ComentarObjeto objetoId={params.id} perfiles={perfilesCat || []} />
       </div>
 
       {/* Los CASOS son otra cosa: trabajo de verdad sobre el objeto —conseguir
