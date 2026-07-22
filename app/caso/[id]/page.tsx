@@ -25,6 +25,7 @@ import { claseEstado, rotuloEstado } from "@/lib/estados";
 import { BOT, sinBot } from "@/lib/personas";
 import { CERRADOS } from "@/lib/familia";
 import { rotuloTipo, colorTipo, icoTipo } from "@/lib/tipos";
+import { catalogoObjetos, catalogosEntidades } from "@/lib/catalogos";
 
 /* EV_ICO es de aquí: son los eventos de la bitácora de un caso, no los tipos
    de publicación. Los que SÍ eran copias —el mapa de tipos y el de entidades—
@@ -78,7 +79,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
   if (!p) notFound();
 
   const [{ data: eventos }, { data: comentarios }, { data: perfiles }, { data: miPerfil },
-         proy, emp, pers, conv, equi, luga, etiq, postu] = await Promise.all([
+         ents, proy, emp, pers, conv, equi, luga, etiq, postu] = await Promise.all([
     supabase.from("actividad")
       .select("*, actor:perfiles(nombre)")
       .eq("entidad_tipo", "publicacion").eq("entidad_id", p.id)
@@ -89,6 +90,11 @@ export default async function Caso({ params }: { params: { id: string } }) {
       .order("creado_en"),
     supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
     supabase.from("perfiles").select("es_admin").eq("id", user.id).single(),
+    /* Los catálogos de los desplegables se arman en lib/catalogos, igual que
+       en el feed y en el «+». Las consultas sueltas de abajo siguen porque
+       resuelven otra cosa: los NOMBRES de los chips (formato corto) y el
+       cruce alias↔cuenta. Elegir y etiquetar no piden lo mismo. */
+    catalogosEntidades(supabase),
     supabase.from("proyectos").select("id,nombre"),
     supabase.from("empresas").select("id,nombre"),
     /* `usuario_id,alias` además del catálogo: es el único cruce que da el
@@ -99,7 +105,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
     supabase.from("equipamiento").select("id,nombre,folio"),
     supabase.from("lugares").select("id,nombre"),
     supabase.from("etiquetas").select("id,nombre"),
-    supabase.from("postulaciones").select("id,codigo,proy:proyectos(nombre),conv:convocatorias(codigo)"),
+    supabase.from("postulaciones").select("id,codigo,proy:proyectos(nombre),conv:convocatorias(codigo,anio)"),
   ]);
 
   // Familia: el padre (si soy sub-caso) y los hijos (si soy caso largo)
@@ -185,20 +191,14 @@ export default async function Caso({ params }: { params: { id: string } }) {
     .filter((v: any) => v.entidad_tipo === "etiqueta")
     .map((v: any) => ({ id: v.entidad_id, nombre: etqMap.get(v.entidad_id) || "etiqueta" }));
 
+  /* Los objetos del repositorio también se pueden vincular desde aquí: un caso
+     puede tratar sobre un material concreto. Los más recientes, con techo —es
+     el único catálogo que crece sin límite. */
+  const objsCat = await catalogoObjetos(supabase);
+
   // Catálogos por tipo para el editor de vínculos + vínculos actuales (no-etiqueta)
-  const catEnt: Record<string, { id: string; nombre: string }[]> = {
-    proyecto: (proy.data || []).map((x: any) => ({ id: x.id, nombre: x.nombre })),
-    empresa: (emp.data || []).map((x: any) => ({ id: x.id, nombre: x.nombre })),
-    persona: (pers.data || []).map((x: any) => ({ id: x.id, nombre: x.nombre })),
-    convocatoria: (conv.data || []).map((x: any) => ({
-      id: x.id,
-      nombre: `${x.anio ? `${x.anio} · ` : ""}${x.nombre || ""} · ${x.codigo}`.replace(/^ · /, ""),
-    })),
-    postulacion: (postu.data || []).map((x: any) => ({
-      id: x.id, nombre: `${x.codigo || x.conv?.codigo || "🎯"} · ${x.proy?.nombre || "postulación"}`,
-    })),
-    equipamiento: (equi.data || []).map((x: any) => ({ id: x.id, nombre: x.folio ? `${x.folio} · ${x.nombre}` : x.nombre })),
-    lugar: (luga.data || []).map((x: any) => ({ id: x.id, nombre: x.nombre })),
+  const catEnt: Record<string, { id: string; nombre: string; tipo?: string; sub?: string }[]> = {
+    ...ents, objeto: objsCat,
   };
   const actualesVinc = chips.map((v: any) => ({ tipo: v.entidad_tipo, id: v.entidad_id, nombre: v.nombre }));
 

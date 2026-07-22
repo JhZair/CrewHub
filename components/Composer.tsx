@@ -12,7 +12,10 @@ const TIPOS = [
   ["aviso", "📢 Aviso"],
 ];
 
-export type CatalogoItem = { id: string; nombre: string; tipo?: string };
+/* `sub`: la coletilla que ayuda a distinguir pero no es el nombre — el alias de
+   una persona, el año de una postulación. Va apagada al lado del nombre y se
+   busca igual que él: apagar algo no es esconderlo. */
+export type CatalogoItem = { id: string; nombre: string; tipo?: string; sub?: string };
 
 const GRUPOS_PERSONA: [string, string][] = [
   ["personal", "— Equipo Kawsay —"],
@@ -29,13 +32,21 @@ export type Catalogos = {
   equipamiento: CatalogoItem[];
   lugar: CatalogoItem[];
   etiqueta: CatalogoItem[];
+  objeto?: CatalogoItem[];
 };
 
 const ENT_META: Record<string, string> = {
   proyecto: "📁 Proyecto", empresa: "🏢 Empresa", persona: "👤 Persona",
   postulacion: "🎯 Postulación", equipamiento: "🎥 Equipo", convocatoria: "📜 Convocatoria",
   lugar: "📍 Lugar", etiqueta: "🏷️ Etiqueta",
+  /* Solo el ícono: la franja ya va llena y «Repositorio» no cabe sin partirla
+     en dos líneas. Es también el vínculo menos frecuente —se enlaza material
+     cuando un caso trata sobre él—, así que puede pedir un clic de curiosidad
+     en vez de ocupar sitio permanente. El tooltip dice qué es. */
+  objeto: "📚",
 };
+/* El nombre largo para cuando hay sitio: tooltip del botón y chips ya puestos. */
+const ENT_TITULO: Record<string, string> = { objeto: "📚 Repositorio" };
 
 type Sel = Vinculo & { nombre: string };
 
@@ -50,7 +61,11 @@ export function MultiPicker({ etiqueta, items, onConfirm, ocupado }: {
   const [sel, setSel] = useState<Set<string>>(new Set());
   const nrm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
   const palabras = nrm(filtro).split(/\s+/).filter(Boolean);
-  const lista = palabras.length ? items.filter(i => coincideQ(i.nombre, palabras)) : items;
+  // Igual que el picker individual: se busca por nombre Y por coletilla, o en
+  // la misma bandeja uno encuentra a una persona por su alias y el otro no.
+  const lista = palabras.length
+    ? items.filter(i => coincideQ(`${i.nombre} ${i.sub || ""}`, palabras))
+    : items;
   const cerrar = () => { setAbierto(false); setFiltro(""); setSel(new Set()); };
   const toggle = (id: string) => setSel(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const confirmar = () => { if (sel.size) onConfirm([...sel]); cerrar(); };
@@ -71,7 +86,9 @@ export function MultiPicker({ etiqueta, items, onConfirm, ocupado }: {
               {lista.slice(0, 80).map(i => (
                 <button key={i.id} type="button" className={`cbx-item ${sel.has(i.id) ? "on" : ""}`} onClick={() => toggle(i.id)}>
                   <span className="cbx-check">{sel.has(i.id) ? "☑" : "☐"}</span>
-                  <span style={{ flex: 1, textAlign: "left" }}>{i.nombre}</span>
+                  <span style={{ flex: 1, textAlign: "left" }}>
+                    {i.nombre}{i.sub && <i className="cbx-sub">{i.sub}</i>}
+                  </span>
                   {i.tipo && <span className="cbx-tag">{i.tipo.replace(/_/g, " ")}</span>}
                 </button>
               ))}
@@ -93,30 +110,42 @@ export function MultiPicker({ etiqueta, items, onConfirm, ocupado }: {
   );
 }
 
-export function EntPicker({ etiqueta, items, onPick, onCrear }: {
+export function EntPicker({ etiqueta, items, onPick, onCrear, titulo }: {
   etiqueta: string; items: CatalogoItem[];
   onPick: (id: string) => void; onCrear?: (nombre: string) => void;
+  /** Nombre completo para el tooltip, cuando el botón va solo con ícono. */
+  titulo?: string;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [filtro, setFiltro] = useState("");
   const nrm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
   // Búsqueda por palabras + fonética quechua: "mujunacuy" encuentra "Mujunakuy"
   const palabras = nrm(filtro).split(/\s+/).filter(Boolean);
+  // Se busca por nombre Y por coletilla: «faure» y «FaureDueñas» encuentran.
   const lista = palabras.length
-    ? items.filter(i => coincideQ(i.nombre, palabras))
+    ? items.filter(i => coincideQ(`${i.nombre} ${i.sub || ""}`, palabras))
     : items;
   const cerrar = () => { setAbierto(false); setFiltro(""); };
 
   return (
     <span className="cbx">
-      <button type="button" className="ent-btn" onClick={() => setAbierto(!abierto)}>
+      {/* `ent-solo`: el que va con ícono nada más se aprieta un poco. */}
+      <button type="button" className={`ent-btn ${titulo ? "ent-solo" : ""}`}
+        onClick={() => setAbierto(!abierto)} title={titulo || etiqueta}>
         {etiqueta} ▾
       </button>
       {abierto && (
         <>
           <div className="cbx-fondo" onClick={cerrar} />
           <div className="cbx-menu">
-            <input autoFocus className="cbx-inp" placeholder="Buscar..." value={filtro}
+            {/* Solo se personaliza cuando el botón trae `titulo` —es decir,
+                cuando va con ícono solo y el placeholder es la única pista—.
+                Derivarlo de `etiqueta` salía mal: en media docena de pickers
+                esa etiqueta lleva el valor ya elegido («👤 María Quispe») o
+                una pregunta («¿A quién?»), y el placeholder los repetía. */}
+            <input autoFocus className="cbx-inp"
+              placeholder={titulo ? `Buscar en ${titulo.replace(/^\S+\s*/, "")}` : "Buscar..."}
+              value={filtro}
               onChange={e => setFiltro(e.target.value)}
               onKeyDown={e => {
                 if (e.key === "Escape") cerrar();
@@ -130,7 +159,9 @@ export function EntPicker({ etiqueta, items, onPick, onCrear }: {
               )}
               {lista.slice(0, 40).map(i => (
                 <button key={i.id} className="cbx-item" onClick={() => { onPick(i.id); cerrar(); }}>
-                  <span style={{ flex: 1, textAlign: "left" }}>{i.nombre}</span>
+                  <span style={{ flex: 1, textAlign: "left" }}>
+                    {i.nombre}{i.sub && <i className="cbx-sub">{i.sub}</i>}
+                  </span>
                   {i.tipo && <span className="cbx-tag">{i.tipo.replace(/_/g, " ")}</span>}
                 </button>
               ))}
@@ -307,12 +338,18 @@ export default function Composer({ userId, catalogos, perfiles, inicial, onListo
             el FAB «+» —que monta este Composer—. Vincular se ve igual en los
             tres sitios donde se vincula: `.bandeja-vinc` en globals. */}
         <div className="meta-linea bandeja-vinc">
-          <span className="vinc-add-lbl">+ vincular</span>
-          {Object.keys(ENT_META).filter(t => t !== "etiqueta").map(t => (
-            <EntPicker key={t} etiqueta={ENT_META[t]} items={itemsDe(t)}
-              onPick={id => agregar(t, id)}
-              onCrear={t === "lugar" ? crearYAgregarLugar : undefined} />
-          ))}
+          {/* Sin el «+»: la fila cabe justa y el signo no aportaba —los botones
+              de al lado ya son la acción—. */}
+          <span className="vinc-add-lbl">vincular</span>
+          {Object.keys(ENT_META)
+            .filter(t => t !== "etiqueta")
+            // Sin objetos cargados no se pinta un botón que abre una lista vacía
+            .filter(t => t !== "objeto" || itemsDe("objeto").length > 0)
+            .map(t => (
+              <EntPicker key={t} etiqueta={ENT_META[t]} titulo={ENT_TITULO[t]} items={itemsDe(t)}
+                onPick={id => agregar(t, id)}
+                onCrear={t === "lugar" ? crearYAgregarLugar : undefined} />
+            ))}
         </div>
       </div>
       {/* `vinc-puestos`: los vínculos ya puestos pesan un punto más que la

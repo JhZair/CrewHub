@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { plazoDe } from "@/lib/plazo";
 import { icoTipo } from "@/lib/tipos";
-import { ICO_ENT } from "@/lib/secciones";
+import { ICO_ENT, rutaEntidad } from "@/lib/secciones";
 import { CERRADOS } from "@/lib/familia";
 import BarrasProgreso from "@/components/BarrasProgreso";
 import { useState, useEffect } from "react";
@@ -205,7 +205,7 @@ export default function Tablero({ columnas, archivado = false }: {
                 {(p.vinc || []).length > 0 && (
                   <div className="kb-chips">
                     {p.vinc.slice(0, 4).map((c: any, i: number) => (
-                      <Link key={i} href={`/entidad/${c.tipo}/${c.id}`}
+                      <Link key={i} href={rutaEntidad(c.tipo, c.id) || `/entidad/${c.tipo}/${c.id}`}
                         onClick={e => e.stopPropagation()} className="kb-chip">
                         {ICO_ENT[c.tipo] || "🔗"} {c.nombre}
                       </Link>

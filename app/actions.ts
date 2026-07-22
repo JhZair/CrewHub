@@ -11,6 +11,7 @@ import { CAMPOS_TABLA } from "@/lib/tablas-expediente";
 import { esCampoDelTrigger } from "@/lib/actividad";
 import { SECCIONES } from "@/lib/secciones";
 import { TIPOS_OBJETO } from "@/lib/objetos";
+import { catalogoObjetos, catalogosEntidades } from "@/lib/catalogos";
 
 /* Crear o actualizar una entidad núcleo (proyecto/empresa/persona).
    La config compartida actúa como whitelist de tabla y campos. */
@@ -3352,12 +3353,15 @@ export async function editarCuerpo(pubId: string, cuerpo: string, imagenes?: str
 const ENT_LBL: Record<string, string> = {
   proyecto: "proyecto", empresa: "empresa", persona: "persona", convocatoria: "convocatoria",
   postulacion: "postulación", equipamiento: "equipo", lugar: "lugar", etiqueta: "etiqueta",
+  objeto: "material del repositorio",
 };
 const ENT_TABLA: Record<string, [string, string]> = {
   proyecto: ["proyectos", "nombre"], empresa: ["empresas", "nombre"],
   persona: ["personas", "nombre"], convocatoria: ["convocatorias", "codigo"],
   postulacion: ["postulaciones", "codigo"], equipamiento: ["equipamiento", "nombre"],
   lugar: ["lugares", "nombre"], etiqueta: ["etiquetas", "nombre"],
+  // Sin esta línea la bitácora registraba «vinculó objeto: objeto».
+  objeto: ["objetos", "titulo"],
 };
 async function nombreEntidad(supabase: any, tipo: string, id: string): Promise<string> {
   const t = ENT_TABLA[tipo];
@@ -3929,27 +3933,17 @@ export async function datosNuevoCaso() {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
-  const [proy, emp, pers, conv, postu, equi, luga, etiq, perfs] = await Promise.all([
-    supabase.from("proyectos").select("id,nombre").order("nombre"),
-    supabase.from("empresas").select("id,nombre,codigo").order("codigo"),
-    supabase.from("personas").select("id,nombre,alias,tipo").order("nombre"),
-    supabase.from("convocatorias").select("id,codigo,nombre,anio").order("anio", { ascending: false }).order("codigo"),
-    supabase.from("postulaciones").select("id,codigo,proy:proyectos(nombre),conv:convocatorias(codigo)"),
-    supabase.from("equipamiento").select("id,nombre,folio").order("folio"),
-    supabase.from("lugares").select("id,nombre").order("nombre"),
+  /* Los MISMOS catálogos que el feed, armados por la misma función. Es
+     literalmente el mismo compositor abierto desde el «+» flotante: si aquí la
+     persona sale como «Nombre · Alias» y allá con el alias apagado, el usuario
+     ve dos formularios distintos para la misma tarea. */
+  const [ents, objs, etiq, perfs] = await Promise.all([
+    catalogosEntidades(supabase),
+    catalogoObjetos(supabase),
     supabase.from("etiquetas").select("id,nombre").order("nombre"),
     supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
   ]);
-  const catalogos = {
-    proyecto: proy.data || [],
-    empresa: (emp.data || []).map((e: any) => ({ id: e.id, nombre: e.codigo ? `${e.codigo} · ${e.nombre}` : e.nombre })),
-    persona: (pers.data || []).map((x: any) => ({ ...x, nombre: x.alias ? `${x.nombre} · ${x.alias}` : x.nombre })),
-    convocatoria: (conv.data || []).map((c: any) => ({ id: c.id, nombre: `${c.anio ? `${c.anio} · ` : ""}${c.nombre} · ${c.codigo}` })),
-    postulacion: (postu.data || []).map((p: any) => ({ id: p.id, nombre: `${p.codigo || (p as any).conv?.codigo || "🎯"} · ${(p as any).proy?.nombre || "postulación"}` })),
-    equipamiento: (equi.data || []).map((x: any) => ({ id: x.id, nombre: x.folio ? `${x.folio} · ${x.nombre}` : x.nombre })),
-    lugar: luga.data || [],
-    etiqueta: etiq.data || [],
-  };
+  const catalogos = { ...ents, etiqueta: etiq.data || [], objeto: objs };
   return { userId: user.id, catalogos, perfiles: perfs.data || [] };
 }
 

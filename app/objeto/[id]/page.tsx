@@ -11,6 +11,7 @@ import Avatar from "@/components/Avatar";
 import MoverObjeto from "@/components/MoverObjeto";
 import MiniObjeto from "@/components/MiniObjeto";
 import { agruparEventos } from "@/lib/agrupar";
+import { catalogosEntidades } from "@/lib/catalogos";
 import { mapaAlias, conAlias } from "@/lib/personas";
 import { icoObjeto, lblObjeto } from "@/lib/objetos";
 import { ICO_ENT, SECCIONES, rutaEntidad, nombreDe } from "@/lib/secciones";
@@ -118,24 +119,11 @@ export default async function ObjetoPage({ params }: { params: { id: string } })
      misma pregunta —de dónde salió esto y me puedo fiar—. */
   const quienTrajo = (o.creado_por && alias[o.creado_por]) || null;
 
-  /* Catálogos para vincular a proyectos, empresas, etc. Los mismos sirven para
-     CAMBIARLE EL DUEÑO al objeto: son las fichas que pueden tener repositorio,
-     y aquí las personas ya salen como «Nombre · alias», que es lo que hace
-     falta para elegir bien entre treinta. */
-  const [pr, em, pe, co, po] = await Promise.all([
-    supabase.from("proyectos").select("id,nombre").order("nombre"),
-    supabase.from("empresas").select("id,nombre,codigo").order("codigo"),
-    supabase.from("personas").select("id,nombre,alias").order("nombre"),
-    supabase.from("convocatorias").select("id,codigo,nombre,anio").order("anio", { ascending: false }),
-    supabase.from("postulaciones").select("id,codigo,proy:proyectos(nombre)"),
-  ]);
-  const catalogos: Record<string, { id: string; nombre: string }[]> = {
-    proyecto: (pr.data || []).map((x: any) => ({ id: x.id, nombre: x.nombre })),
-    empresa: (em.data || []).map((x: any) => ({ id: x.id, nombre: x.codigo ? `${x.codigo} · ${x.nombre}` : x.nombre })),
-    persona: (pe.data || []).map((x: any) => ({ id: x.id, nombre: x.alias ? `${x.nombre} · ${x.alias}` : x.nombre })),
-    convocatoria: (co.data || []).map((x: any) => ({ id: x.id, nombre: `${x.anio || ""} ${x.nombre || x.codigo}`.trim() })),
-    postulacion: (po.data || []).map((x: any) => ({ id: x.id, nombre: `${x.codigo || "🎯"} · ${x.proy?.nombre || ""}`.trim() })),
-  };
+  /* Catálogos para vincular a proyectos, empresas, etc., y para CAMBIARLE EL
+     DUEÑO al objeto. Misma función que el feed, el «+» y la ficha del caso:
+     ésta era la quinta puerta que armaba su propia lista, y era la que peor
+     mostraba a las personas. */
+  const catalogos = await catalogosEntidades(supabase);
   // Cómo se llama cada tipo en el botón del selector, sin escribirlo a mano.
   const ETIQ_ENT: Record<string, string> = Object.fromEntries(
     SECCIONES.map(s => [s.tipo, s.singular || s.plural]));

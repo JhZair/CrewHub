@@ -12,6 +12,8 @@ import { opcionesEstado, claseEstado, rotuloEstado, esAviso } from "@/lib/estado
 import { type Plazo } from "@/lib/plazo";
 import BarrasProgreso from "@/components/BarrasProgreso";
 import { type Progreso } from "@/lib/progreso";
+// Ruta central: un objeto del repositorio no vive en /entidad/…
+import { rutaEntidad } from "@/lib/secciones";
 import { TIPOS_SEL } from "@/lib/tipos";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -128,7 +130,7 @@ export default function PostCard({
           {chips.length > 0 && (
             <div className="sel-chips" style={{ marginTop: 9 }}>
               {chips.map((c, i) => (
-                <Link key={i} href={`/entidad/${c.tipo}/${c.id}`}
+                <Link key={i} href={rutaEntidad(c.tipo, c.id) || `/entidad/${c.tipo}/${c.id}`}
                   onClick={e => e.stopPropagation()}>
                   <span className="echip echip-link">{c.ico} {c.nombre}</span>
                 </Link>

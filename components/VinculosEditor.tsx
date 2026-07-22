@@ -15,7 +15,10 @@ const ENT_META: Record<string, string> = {
   proyecto: "📁 Proyecto", empresa: "🏢 Empresa", persona: "👤 Persona",
   convocatoria: "📜 Convocatoria", postulacion: "🎯 Postulación",
   equipamiento: "🎥 Equipo", lugar: "📍 Lugar",
+  // Solo ícono, como en el compositor: la franja no da para otra palabra.
+  objeto: "📚",
 };
+const ENT_TITULO: Record<string, string> = { objeto: "📚 Repositorio" };
 /* (Otra copia: a ésta le faltaban `etiqueta` y `publicacion`.) */
 const ENT_ICO = ICO_ENT;
 
@@ -74,11 +77,15 @@ export default function VinculosEditor({ pubId, actuales, catalogos }: {
           radio 20 vs 9— y a ese tamaño, sobre negro, no llega. Una palabra
           sí llega. */}
       <div className="bandeja-vinc">
-        <span className="vinc-add-lbl">+ vincular</span>
-        {Object.keys(ENT_META).map(t => (
-          <EntPicker key={t} etiqueta={ENT_META[t]} items={catalogos[t] || []}
-            onPick={id => agregar(t, id)} />
-        ))}
+        {/* Sin el «+», igual que en el compositor: la fila entra justa con los
+            nueve tipos y el signo no aporta nada que los botones no digan. */}
+        <span className="vinc-add-lbl">vincular</span>
+        {Object.keys(ENT_META)
+          .filter(t => t !== "objeto" || (catalogos[t] || []).length > 0)
+          .map(t => (
+            <EntPicker key={t} etiqueta={ENT_META[t]} titulo={ENT_TITULO[t]}
+              items={catalogos[t] || []} onPick={id => agregar(t, id)} />
+          ))}
       </div>
       {/* Vincular en lote: para una orden de trabajo que toca a muchas personas
           o empresas (ej. «revisión de firmas del equipo»). */}

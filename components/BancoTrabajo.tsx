@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { plazoDe } from "@/lib/plazo";
 import { icoTipo } from "@/lib/tipos";
-import { ICO_ENT } from "@/lib/secciones";
+import { ICO_ENT, rutaEntidad } from "@/lib/secciones";
 import MuroPanel from "@/components/MuroPanel";
 import { createClient } from "@/lib/supabase/client";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -262,7 +262,7 @@ export default function BancoTrabajo() {
                   )}
                   {c.ctx.map((v, i) => (
                     <Link key={i} title={`${v.tipo}: ${v.nombre}`}
-                      href={v.tipo === "etiqueta" ? `/?e=${v.id}` : `/entidad/${v.tipo}/${v.id}`}
+                      href={v.tipo === "etiqueta" ? `/?e=${v.id}` : (rutaEntidad(v.tipo, v.id) || `/entidad/${v.tipo}/${v.id}`)}
                       style={{
                         fontSize: 10, borderRadius: 5, padding: "1px 6px", whiteSpace: "nowrap",
                         maxWidth: 152, overflow: "hidden", textOverflow: "ellipsis",

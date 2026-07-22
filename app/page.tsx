@@ -6,7 +6,8 @@ import PostCard from "@/components/PostCard";
 import BuscadorGlobal from "@/components/BuscadorGlobal";
 import NavIconos from "@/components/NavIconos";
 import MenuUsuario from "@/components/MenuUsuario";
-import { ICO_ENT } from "@/lib/secciones";
+import { ICO_ENT, rutaEntidad } from "@/lib/secciones";
+import { catalogoObjetos, catalogosEntidades } from "@/lib/catalogos";
 import { contarHijos } from "@/lib/familia";
 import { plazoDe } from "@/lib/plazo";
 import { progresoDe } from "@/lib/progreso";
@@ -89,16 +90,18 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
   const misEnterados = new Set((enterData || []).map((x: any) => x.publicacion_id));
 
   // Catálogos (pequeños: una consulta cada uno, en paralelo)
-  const [proy, emp, pers, conv, postu, equi, luga, etiq, perfs, destQ, postsQ, univQ] = await Promise.all([
-    supabase.from("proyectos").select("id,nombre").order("nombre"),
-    supabase.from("empresas").select("id,nombre,codigo").order("codigo"),
-    supabase.from("personas").select("id,nombre,alias,tipo").order("nombre"),
-    supabase.from("convocatorias").select("id,codigo,nombre,anio")
-      .order("anio", { ascending: false }).order("codigo"),
-    supabase.from("postulaciones").select("id,codigo,proy:proyectos(nombre),conv:convocatorias(codigo)"),
-    supabase.from("equipamiento").select("id,nombre,folio").order("folio"),
-    supabase.from("lugares").select("id,nombre").order("nombre"),
+  const [ents, pers, etiq, objs, perfs, destQ, postsQ, univQ] = await Promise.all([
+    /* Cómo se lee cada entidad en un desplegable lo decide lib/catalogos, no
+       esta página: el mismo compositor se abre desde aquí, desde el «+» y
+       desde la ficha del caso. */
+    catalogosEntidades(supabase),
+    // Aparte: el feed necesita el alias suelto para los chips (ver más abajo).
+    supabase.from("personas").select("id,nombre,alias").order("nombre"),
     supabase.from("etiquetas").select("id,nombre").order("nombre"),
+    /* El repositorio, para poder decir «este caso trata sobre ESTE material».
+       Trae el dueño como coletilla: dos objetos se llaman igual con facilidad
+       y es de quién son lo que los distingue. */
+    catalogoObjetos(supabase),
     supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
     /* Cabecera del feed: SOLO lo que administración clavó a mano.
        Antes también subía cualquier caso con la fecha límite a menos de 15
@@ -278,23 +281,14 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
     ? pick(cumples)                                              // el cumpleaños manda
     : pick([...hallazgos, ...hallazgos, ...vibras, ...DECORATIVAS]); // hallazgos y vibras con más peso
 
+  /* Cada combo muestra lo mínimo para NO equivocarse de fila: el nombre, y al
+     lado lo que desempata. Apagado (`sub`) cuando es una coletilla del mismo
+     nombre —el alias, el año—; como etiqueta (`tipo`) cuando es una
+     clasificación que además ordena la lectura. */
   const catalogos: Catalogos = {
-    proyecto: proy.data || [],
-    empresa: (emp.data || []).map((e: any) => ({ id: e.id, nombre: e.codigo ? `${e.codigo} · ${e.nombre}` : e.nombre })),
-    persona: (pers.data || []).map((x: any) => ({ ...x, nombre: x.alias ? `${x.nombre} · ${x.alias}` : x.nombre })),
-    convocatoria: (conv.data || []).map((c: any) => ({
-      id: c.id,
-      nombre: `${c.anio ? `${c.anio} · ` : ""}${c.nombre} · ${c.codigo}`,
-    })),
-    postulacion: (postu.data || []).map((p: any) => ({
-      id: p.id,
-      nombre: `${p.codigo || p.conv?.codigo || "🎯"} · ${p.proy?.nombre || "postulación"}`,
-    })),
-    equipamiento: (equi.data || []).map((x: any) => ({
-      id: x.id, nombre: x.folio ? `${x.folio} · ${x.nombre}` : x.nombre,
-    })),
-    lugar: luga.data || [],
+    ...(ents as any),
     etiqueta: etiq.data || [],
+    objeto: objs || [],
   };
 
   // Resolver nombre de cada entidad vinculada: mapa "tipo:id" → nombre
@@ -305,6 +299,26 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
   // En los chips del feed, la persona se muestra con su nombre corto (alias)
   // para ocupar menos espacio; el buscador del compositor conserva el completo.
   (pers.data || []).forEach((x: any) => nombres.set(`persona:${x.id}`, x.alias || x.nombre));
+
+  /* Los objetos que el feed necesita NOMBRAR no son los mismos que ofrece para
+     ELEGIR. El catálogo trae los 300 más recientes y sin CVs —para el
+     desplegable sobra—, pero un caso puede estar vinculado a material más
+     viejo: como los chips se filtran por «tiene nombre», ese vínculo
+     desaparecía de la tarjeta sin decir nada. Se resuelven aparte, solo los
+     que salen en pantalla. */
+  {
+    const idsObj = [...new Set(
+      [...(postsQ.data || []), ...(destQ.data || [])]
+        .flatMap((p: any) => p.vinculos || [])
+        .filter((v: any) => v.entidad_tipo === "objeto")
+        .map((v: any) => v.entidad_id)
+        .filter((id: string) => !nombres.has(`objeto:${id}`))
+    )];
+    if (idsObj.length) {
+      const { data } = await supabase.from("objetos").select("id,titulo").in("id", idsObj);
+      (data || []).forEach((o: any) => nombres.set(`objeto:${o.id}`, o.titulo));
+    }
+  }
 
   // Contexto para las notificaciones: vínculos de entidad de cada caso notificado
   const idsNotif = [...new Set((notifs || []).map((n: any) => n.publicacion_id).filter(Boolean))];
@@ -450,7 +464,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
                   <div className="fila-docs">
                     {chips.map((c: any) => (
                       <Link key={`${c.tipo}:${c.id}`}
-                        href={c.tipo === "publicacion" ? `/caso/${c.id}` : `/entidad/${c.tipo}/${c.id}`}
+                        href={rutaEntidad(c.tipo, c.id) || `/entidad/${c.tipo}/${c.id}`}
                         className="badge fila-encima" title={`${c.tipo} · ${c.nombre}`}
                         style={{ color: "var(--violet)", background: "rgba(167,139,250,.12)",
                           textTransform: "none", letterSpacing: 0, textDecoration: "none" }}>

@@ -651,15 +651,26 @@ button.sc-est:hover{border-color:var(--border2);background:var(--bg)}
    siete botones). Si alguien alarga un rótulo —«Convocatoria» ya es el más
    largo— o engorda esta caja, vuelve a partirse. No es grave: envuelve como
    caja y se lee igual. Pero avisa. */
-.bandeja-vinc{display:flex;gap:7px;flex-wrap:wrap;align-items:center;
+/* Ocho tipos + la etiqueta «+ vincular» caben justos en una línea; con el
+   noveno (📚) se partía y una fila con un solo botón suelto se lee como un
+   error de maquetado. `gap` y padding un punto más ajustados dan los ~50 px
+   que faltaban, sin tocar el `.ent-btn` global —el mismo botón se usa en media
+   docena de pantallas donde va solo y sí necesita su aire—. */
+.bandeja-vinc,
+/* `.meta-linea` también define `gap` y se declara MÁS ABAJO en este archivo,
+   así que ganaba por orden y el ajuste de aquí no hacía nada en el Composer.
+   Con las dos clases en el selector, gana esta. */
+.meta-linea.bandeja-vinc{display:flex;gap:5px;flex-wrap:wrap;align-items:center;
   padding:6px 8px;border-radius:12px;
   border:1px dashed var(--border2);
   background:linear-gradient(92deg,rgba(124,92,255,.05),rgba(124,92,255,.015) 55%,transparent)}
 .vinc-add-lbl{font-size:10px;font-weight:800;letter-spacing:.7px;
   text-transform:uppercase;color:var(--accent);opacity:.85;
   margin:0 2px 0 1px;user-select:none;white-space:nowrap}
-.bandeja-vinc .ent-btn{font-size:11px;padding:4px 7px;border-radius:8px;
+.bandeja-vinc .ent-btn{font-size:11px;padding:4px 6px;border-radius:8px;gap:4px;
   color:var(--dim);border:1px solid var(--border);background:var(--bg)}
+/* El de solo ícono no necesita el ancho de una palabra */
+.bandeja-vinc .ent-btn.ent-solo{padding:4px 5px;letter-spacing:-.5px}
 .bandeja-vinc .ent-btn:hover{color:var(--text);border-color:var(--accent);background:var(--card)}
 /* Solo en la ficha del caso: ahí la bandeja va DEBAJO de los vínculos que ya
    existen y necesita separarse de ellos. En el Composer no hay nada encima. */
@@ -940,6 +951,8 @@ button.obj-mini:hover,a.obj-mini:hover{border-color:var(--accent)}
 .ev-grupo[open]>summary::after{transform:rotate(90deg)}
 .eg-detalle{margin-left:14px;padding-left:10px;border-left:1px dashed var(--border2)}
 .cbx-tag{font-size:9.5px;color:var(--dim);background:#23233a;padding:2px 7px;border-radius:5px;white-space:nowrap}
+/* La coletilla que desempata (alias, año): se lee si la buscas, no compite */
+.cbx-sub{font-style:normal;color:var(--dim);font-size:11px;margin-left:6px}
 .cbx-crear{color:var(--yellow);font-weight:600}
 .cbx-vacio{color:var(--dim);font-size:11.5px;text-align:center;padding:12px 0}
 
