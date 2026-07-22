@@ -246,6 +246,8 @@ a{color:inherit;text-decoration:none}
   box-shadow:0 6px 22px rgba(0,0,0,.35);transition:color .15s,background .15s}
 .banco-tab:hover{background:#1c1c2c;color:var(--text)}
 .banco-tab b{font-size:10px;color:var(--yellow)}
+/* Señal sutil de mensajes nuevos en el muro (sin campanita) */
+.banco-muro-dot{font-size:9px;background:var(--accent);color:#fff;border-radius:999px;padding:1px 5px;line-height:1.4;font-weight:700}
 
 .banco{position:fixed;left:0;top:50%;transform:translateY(-50%);z-index:60;
   width:312px;max-height:84vh;background:var(--panel);border:1px solid var(--border2);
@@ -826,6 +828,13 @@ input[type=file]{color:var(--muted);font-size:12.5px}
 .ficha-row:last-of-type{border-bottom:none}
 .ficha-row .fk{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.6px;white-space:nowrap}
 .ficha-row .fv{color:#c6c6da;text-align:right}
+.mas-datos{margin-top:10px}
+.mas-datos>summary{cursor:pointer;list-style:none;font-size:11.5px;color:var(--muted);font-weight:600;padding:5px 0;display:inline-flex;align-items:center;gap:6px}
+.mas-datos>summary::-webkit-details-marker{display:none}
+.mas-datos>summary::before{content:"▸";color:var(--dim);font-size:10px;transition:transform .12s}
+.mas-datos[open]>summary::before{transform:rotate(90deg)}
+.mas-datos>summary:hover{color:var(--text)}
+.mas-datos .md-n{display:inline-block;min-width:16px;padding:0 5px;border-radius:8px;background:rgba(255,255,255,.07);color:var(--dim);font-size:10px;font-weight:700;text-align:center}
 @media(max-width:900px){.perfil-grid{grid-template-columns:1fr}}
 
 /* Formulario de edición dentro del carné (columna angosta):
@@ -1055,6 +1064,12 @@ a.stat-card:hover{border-color:var(--border2)}
 
 /* ===== Agenda (línea de tiempo + calendario) ===== */
 .ag-tl-nav{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.ag-tl-nav .vtab{cursor:pointer;padding:6px 12px}
+.ag-tl-ir{display:inline-flex;align-items:center;gap:5px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:4px 10px;font-size:12.5px;cursor:pointer}
+.ag-tl-ir:hover{border-color:var(--border2)}
+.ag-tl-ir input{background:transparent;border:none;color:var(--text);font-size:12px;outline:none;cursor:pointer;font-family:inherit;color-scheme:dark}
+.ag-tl-zoom{display:inline-flex;gap:4px;flex-wrap:wrap}
+.ag-tl-zoom .vtab{padding:5px 10px;font-size:11.5px}
 .ag-tl-body{position:relative}
 .ag-tl-axis{position:relative;height:16px;margin-bottom:8px}
 .ag-tl-axis>span{position:absolute;transform:translateX(-50%);font-size:10px;color:var(--dim);white-space:nowrap}

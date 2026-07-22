@@ -1,5 +1,5 @@
 "use client";
-import { misEnProgreso, comentar, cambiarEstado } from "@/app/actions";
+import { misEnProgreso, comentar, cambiarEstado, muroMensajes } from "@/app/actions";
 import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
 import { celebrarResuelto } from "@/lib/celebra";
 import { usePathname, useRouter } from "next/navigation";
@@ -38,7 +38,9 @@ export default function BancoTrabajo() {
   const [imgs, setImgs] = useState<string[]>([]);
   const [ocupado, setOcupado] = useState(false);
   const [guardado, setGuardado] = useState(false);   // acuse tras enviar
+  const [muroNuevos, setMuroNuevos] = useState(0);   // señal: mensajes del muro sin ver
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const colapsadoRef = useRef(colapsado); colapsadoRef.current = colapsado;
 
   const enLogin = pathname.startsWith("/login");
 
@@ -60,6 +62,22 @@ export default function BancoTrabajo() {
     if (!r?.error) { setCasos(r.casos || []); setAbiertas(r.abiertas || []); setSegui(r.seguimiento || []); }
   }, []);
 
+  /* Señal del muro: cuántos mensajes NUEVOS (de otros, después de la última vez
+     que abrí el banco) hay sin ver. Con el banco abierto se marcan todos vistos.
+     El marcador vive en localStorage; es por-navegador, sin campanita. */
+  const cargarMuro = useCallback(async () => {
+    const r: any = await muroMensajes();
+    const msgs = r?.mensajes || [];
+    if (!colapsadoRef.current) {   // banco abierto → todo visto
+      try { localStorage.setItem("muro-visto", String(Date.now())); } catch {}
+      setMuroNuevos(0);
+      return;
+    }
+    let vistoMs = 0;
+    try { vistoMs = Number(localStorage.getItem("muro-visto") || 0); } catch {}
+    setMuroNuevos(msgs.filter((m: any) => m.autor_id !== r.yo && new Date(m.creado_en).getTime() > vistoMs).length);
+  }, []);
+
   // Activar = ponerlo En Progreso: pasa de la bandeja a la mesa
   const activar = async (id: string) => {
     if (ocupado) return;
@@ -72,10 +90,13 @@ export default function BancoTrabajo() {
   };
 
   // Al montar y cada vez que cambias de página (pudo cambiar algo)
-  useEffect(() => { if (esTop && !enLogin) cargar(); }, [esTop, enLogin, pathname, cargar]);
+  useEffect(() => { if (esTop && !enLogin) { cargar(); cargarMuro(); } }, [esTop, enLogin, pathname, cargar, cargarMuro]);
+  // Al abrir/cerrar el banco: abrir marca el muro como visto (apaga la señal).
+  useEffect(() => { if (esTop && !enLogin) cargarMuro(); }, [colapsado, esTop, enLogin, cargarMuro]);
 
   // En vivo: si cambia una publicación (estado, responsable, nuevo caso) o llega
-  // un comentario, recarga el banco. Canal único por montaje.
+  // un comentario, recarga el banco; si llega un mensaje al muro, actualiza la
+  // señal. Canal único por montaje.
   useEffect(() => {
     if (!esTop || enLogin) return;
     const supabase = createClient();
@@ -83,6 +104,7 @@ export default function BancoTrabajo() {
     const canal = supabase.channel(`banco-${Math.random().toString(36).slice(2)}`);
     ["publicaciones", "comentarios"].forEach(t =>
       canal.on("postgres_changes", { event: "*", schema: "public", table: t }, () => { if (vivo) cargar(); }));
+    canal.on("postgres_changes", { event: "*", schema: "public", table: "muro_mensajes" }, () => { if (vivo) cargarMuro(); });
     (async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!vivo) return;
@@ -142,9 +164,11 @@ export default function BancoTrabajo() {
   if (colapsado) {
     return (
       <button className="banco-tab" onClick={alternar}
-        title={`${casos.length} en progreso · ${abiertas.length} sin resolver — tu banco de trabajo`}>
+        title={`${casos.length} en progreso · ${abiertas.length} sin resolver${muroNuevos ? ` · ${muroNuevos} nuevo(s) en el muro` : ""} — tu banco de trabajo`}>
         🛠 {casos.length > 0 && <b>{casos.length}</b>}
         {abiertas.length > 0 && <span style={{ fontSize: 9, color: "var(--dim)" }}>+{abiertas.length}</span>}
+        {/* Señal sutil del muro: algo nuevo que mirar */}
+        {muroNuevos > 0 && <span className="banco-muro-dot">🧱{muroNuevos}</span>}
       </button>
     );
   }

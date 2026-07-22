@@ -7,7 +7,6 @@ import AvisoEnterado from "@/components/AvisoEnterado";
 import SubCasos from "@/components/SubCasos";
 import TituloEditable from "@/components/TituloEditable";
 import DescripcionEditable from "@/components/DescripcionEditable";
-import Foto from "@/components/Foto";
 import BotonDestacar from "@/components/BotonDestacar";
 import EtiquetasEditor from "@/components/EtiquetasEditor";
 import VinculosEditor from "@/components/VinculosEditor";
@@ -313,14 +312,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
                     </div>
                   )}
                   <ComentarioTexto comentarioId={c.id} pubId={p.id} cuerpo={c.cuerpo || ""}
-                    esMio={c.autor_id === user.id} editadoEn={c.editado_en} />
-                  {(c.imagenes || []).length > 0 && (
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-                      {c.imagenes.map((u: string, j: number) => (
-                        <Foto key={j} src={u} maxHeight={160} />
-                      ))}
-                    </div>
-                  )}
+                    imagenes={c.imagenes || []} esMio={c.autor_id === user.id} editadoEn={c.editado_en} />
                   <div style={{ marginTop: 7, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                     <Reacciones pubId={p.id} comentarioId={c.id} reacciones={rxCom.get(c.id) || []} userId={user.id} />
                     <RespuestaBox pubId={p.id} comentarioId={c.id} />

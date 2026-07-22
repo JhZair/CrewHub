@@ -28,10 +28,17 @@ export type ItemAgenda = {
 };
 
 const DAY = 86400000;
-const VENTANA = 70;        // días visibles en la línea de tiempo (10 semanas)
 const LBL = 184;           // ancho de la columna de rótulos (px)
 const RESP = 60;           // ancho de la columna del responsable (px)
 const OFF = LBL + RESP;    // dónde empieza la pista: rejilla y eje se anclan aquí
+// Zoom de la ventana visible del timeline (días). El default (2 meses) es
+// parecido a las 10 semanas de antes.
+const ZOOMS = [
+  { lbl: "1 mes", d: 31 },
+  { lbl: "2 meses", d: 62 },
+  { lbl: "3 meses", d: 93 },
+  { lbl: "6 meses", d: 186 },
+];
 
 const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio",
   "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
@@ -136,12 +143,30 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, apagado }: {
     return n;
   });
 
+  // Zoom de la ventana (persistente por navegador).
+  const [zoom, setZoom] = useState(1);   // índice en ZOOMS (default: 2 meses)
+  useEffect(() => {
+    // Leer el raw antes de Number(): sin clave, getItem→null y Number(null)===0,
+    // que pasaría el guard y forzaría "1 mes" pisando el default "2 meses".
+    try { const raw = localStorage.getItem("ag-tl-zoom"); const z = Number(raw); if (raw !== null && z >= 0 && z < ZOOMS.length) setZoom(z); } catch { }
+  }, []);
+  const cambiarZoom = (z: number) => { setZoom(z); try { localStorage.setItem("ag-tl-zoom", String(z)); } catch { } };
+  const ventanaDias = ZOOMS[zoom].d;
+
   const hoy0 = new Date();
   const baseD = new Date(hoy0.getFullYear(), hoy0.getMonth(), hoy0.getDate() - 7 + shift);
   const inicioT = new Date(baseD.getFullYear(), baseD.getMonth(), baseD.getDate(), 12).getTime();
-  const finT = inicioT + VENTANA * DAY;
+  const finT = inicioT + ventanaDias * DAY;
   const pct = (t: number) => ((t - inicioT) / (finT - inicioT)) * 100;
   const hoyPct = pct(pd(ymd(hoy0)));
+  // La fecha "foco" (7 días dentro de la ventana, donde cae HOY sin desplazar):
+  // el selector la muestra y saltar a otra fecha la recoloca ahí.
+  const fechaFoco = ymd(new Date(inicioT + 7 * DAY));
+  const irAFecha = (iso: string) => {
+    if (!iso) return;
+    const d = new Date(iso + "T12:00:00").getTime();
+    setShift(Math.round((d - pd(ymd(hoy0))) / DAY));
+  };
 
   // Solo lo que cruza la ventana
   const dentro = vis.filter(it => pd(it.fin) + DAY >= inicioT && pd(it.ini) < finT);
@@ -164,11 +189,12 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, apagado }: {
     rango(a[0]) - rango(b[0]) || a[1].label.localeCompare(b[1].label));
   grupos.forEach(([, g]) => g.items.sort((x, y) => x.ini < y.ini ? -1 : x.ini > y.ini ? 1 : 0));
 
-  // Marcas de semana (cada 7 días). Sin el tick final (== fin de ventana): su
-  // etiqueta, centrada en el 100%, se salía por la derecha y forzaba un scroll
-  // horizontal que no hacía falta.
-  const semanas = Array.from({ length: Math.ceil(VENTANA / 7) }, (_, i) => {
-    const t = inicioT + i * 7 * DAY;
+  // Marcas del eje: el paso se adapta al zoom para no amontonar etiquetas
+  // (semanal en ventanas cortas, quincenal/mensual en las largas). Sin el tick
+  // final (su etiqueta, centrada en 100%, se salía por la derecha).
+  const paso = ventanaDias <= 70 ? 7 : ventanaDias <= 100 ? 14 : 30;
+  const semanas = Array.from({ length: Math.ceil(ventanaDias / paso) }, (_, i) => {
+    const t = inicioT + i * paso * DAY;
     return { pct: pct(t), lbl: fmtCorto(ymd(new Date(t))) };
   });
 
@@ -176,9 +202,20 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, apagado }: {
     <div className="card">
       <div className="ag-tl-nav">
         <button className="vtab" onClick={() => setShift(0)}>Hoy</button>
-        <button className="vtab" title="Antes" onClick={() => setShift(s => s - 14)}>‹</button>
-        <button className="vtab" title="Después" onClick={() => setShift(s => s + 14)}>›</button>
-        <span style={{ color: "var(--muted)", fontSize: 12 }}>{fmtCorto(ymd(new Date(inicioT)))} — {fmtCorto(ymd(new Date(finT - DAY)))}</span>
+        <button className="vtab" title="Un mes antes" onClick={() => setShift(s => s - 30)}>‹</button>
+        <button className="vtab" title="Un mes después" onClick={() => setShift(s => s + 30)}>›</button>
+        {/* Ir a una fecha */}
+        <label className="ag-tl-ir" title="Ir a una fecha">
+          📅
+          <input type="date" value={fechaFoco} onChange={e => irAFecha(e.target.value)} />
+        </label>
+        {/* Zoom de la ventana */}
+        <span className="ag-tl-zoom">
+          {ZOOMS.map((z, i) => (
+            <button key={i} className={`vtab ${zoom === i ? "on" : ""}`} onClick={() => cambiarZoom(i)}>{z.lbl}</button>
+          ))}
+        </span>
+        <span style={{ color: "var(--muted)", fontSize: 12, marginLeft: "auto" }}>{fmtCorto(ymd(new Date(inicioT)))} — {fmtCorto(ymd(new Date(finT - DAY)))}</span>
       </div>
 
       {!dentro.length && <div className="empty" style={{ padding: "20px 0" }}>Nada con fecha en esta ventana.</div>}

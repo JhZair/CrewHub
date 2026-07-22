@@ -49,6 +49,7 @@ import { etapasDe } from "@/lib/etapas";
 import { rubrosDe } from "@/lib/rubros";
 import { TABLAS_EXP } from "@/lib/tablas-expediente";
 import TabsPanel from "@/components/TabsPanel";
+import FilasDatos, { camposSecundarios } from "@/components/MasDatos";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
@@ -93,6 +94,26 @@ const CONF: Record<string, { tabla: string; icono: string; campos: [string, stri
   postulacion: { tabla: "postulaciones", icono: "🎯", campos: [["Código", "codigo"], ["Código plataforma DAFO", "codigo_plataforma"], ["Código del acta", "codigo_acta"], ["Estado", "estado"], ["Lenguas originarias", "lenguas_originarias"], ["Puntaje jurado", "puntaje_jurado"], ["Monto adjudicado (S/)", "monto_adjudicado"], ["Firma del acta", "fecha_firma_acta"], ["Límite de rendición", "fecha_limite_rendicion"], ["Prórroga", "fecha_prorroga"], ["Rendición entregada", "fecha_rendicion_real"]] },
   convocatoria: { tabla: "convocatorias", icono: "📜", campos: [["Código", "codigo"], ["Institución", "institucion"], ["Año", "anio"], ["Estado", "estado"], ["Monto del estímulo (S/)", "monto_adjudicado"]] },
   etiqueta: { tabla: "etiquetas", icono: "🏷️", campos: [] },
+};
+
+/* Grupos que bajan al bloque plegable «Ver más» (vacío por ahora: Documentos,
+   Identidad y SUNAT quedan a la vista). Se conserva el mecanismo por si algún
+   grupo conviene plegarlo más adelante. */
+const GRUPOS_SECUNDARIOS = new Set<string>([]);
+
+/* Campos pasivos por entidad: datos de referencia (códigos, folios, fechas de
+   trámite, identificadores) que no son lo primero que se mira. Bajan al bloque
+   plegable «Ver más» para que arriba queden los datos de trabajo —estado,
+   etapa, montos, plazos— y sus alertas.
+   Persona baja TODO su bloque base porque su ficha se consulta por el
+   DNI/SUNAT y los papeles (bloques que quedan arriba), no por su alias. */
+const CAMPOS_SECUNDARIOS: Record<string, string[]> = {
+  persona: ["alias", "tipo", "equipo", "estado", "region", "es_comunero", "rol"],
+  proyecto: ["folio", "modalidad", "renca"],
+  empresa: ["codigo", "fecha_constitucion"],
+  convocatoria: ["codigo"],
+  postulacion: ["codigo", "codigo_plataforma", "codigo_acta", "lenguas_originarias", "fecha_firma_acta"],
+  equipamiento: ["folio", "comprado_en"],
 };
 
 /* El rótulo de estado ya no se escribe aquí: era la novena copia de un mapa
@@ -1053,21 +1074,12 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                         ? { color: "var(--red)", fontWeight: 700 }
                       : CAMPOS_DINERO.includes(key) ? { color: "var(--teal)", fontWeight: 700 } : undefined
                   }>
-                    {/* El rol desplegable se queda fuera: ya es un botón (abre
-                        y cierra), y dos botones encimados no obedecen a nadie. */}
-                    {key === "rol" && String(ent[key]).split(",").length > 3 ? (
-                      <details style={{ display: "inline" }}>
-                        <summary style={{ cursor: "pointer", listStyle: "none" }}>
-                          {String(ent[key]).split(",").slice(0, 3).map(s => s.trim()).join(", ")}
-                          <i style={{ color: "var(--dim)" }}> … +{String(ent[key]).split(",").length - 3} ver más</i>
-                        </summary>
-                        {String(ent[key]).split(",").slice(3).map(s => s.trim()).join(", ")}
-                      </details>
-                    ) : (
-                      <Copiar valor={crudo(ent[key])} etiqueta={lbl.toLowerCase()}>
-                        {verFicha(key, ent[key], ent)}
-                      </Copiar>
-                    )}
+                    {/* Antes el rol se truncaba con su propio «+N ver más»,
+                        pero ahora vive dentro del bloque «Ver más» del carné:
+                        un desplegable dentro de otro sobra. Se muestra entero. */}
+                    <Copiar valor={crudo(ent[key])} etiqueta={lbl.toLowerCase()}>
+                      {verFicha(key, ent[key], ent)}
+                    </Copiar>
                   </span>
                 </div>
               ) : null;
@@ -1149,27 +1161,51 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               ...conf.campos.map(c => c[2]).filter(Boolean),
               ...Object.keys(extras),
             ])] as string[];
+            const renderGrupo = (g: string) => {
+              const filas = conf.campos.filter(c => c[2] === g && ent[c[1]] != null && ent[c[1]] !== "");
+              const btns = extras[g];
+              if (!filas.length && !btns) return null;
+              const azul = GRUPO_TONO[g] === "azul";
+              const c1 = azul ? "59,130,246" : "244,180,0";
+              return (
+                <div key={g} style={{ marginTop: 10, padding: "6px 10px 8px", borderRadius: 10, border: `1px solid rgba(${c1},.25)`, background: `rgba(${c1},.04)` }}>
+                  <div style={{ fontSize: 9.5, textTransform: "uppercase", letterSpacing: 1, color: azul ? "var(--blue)" : "var(--yellow)", fontWeight: 700, marginBottom: 2 }}>
+                    {g.split("—")[0].trim()}
+                  </div>
+                  {filas.map(pintarFila)}
+                  {btns && (
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>{btns}</div>
+                  )}
+                </div>
+              );
+            };
+            // Primarios a la vista; lo secundario (campos base descriptivos +
+            // grupos plegables + campos sueltos extra) en un solo «Ver más», para
+            // que la ficha cargue sin saturarse.
+            const secKeys = new Set(CAMPOS_SECUNDARIOS[params.tipo] || []);
+            const sueltosVis = sueltos.filter(c => !secKeys.has(c[1]));
+            const sueltosSec = sueltos.filter(c => secKeys.has(c[1]));
+            const gruposPri = gruposF.filter(g => !GRUPOS_SECUNDARIOS.has(g));
+            const gruposSec = gruposF.filter(g => GRUPOS_SECUNDARIOS.has(g));
+            const extraCampos = camposSecundarios(params.tipo, ent, conf.campos.map(c => c[1]));
+            const secDibujados = gruposSec.map(renderGrupo).filter(Boolean);
+            const nBase = sueltosSec.filter(c => ent[c[1]] != null && ent[c[1]] !== "").length;
+            const nVerMas = nBase + extraCampos.length;
+            const haySec = nVerMas > 0 || secDibujados.length > 0;
             return (
               <>
-                {sueltos.map(pintarFila)}
-                {gruposF.map(g => {
-                  const filas = conf.campos.filter(c => c[2] === g && ent[c[1]] != null && ent[c[1]] !== "");
-                  const btns = extras[g];
-                  if (!filas.length && !btns) return null;
-                  const azul = GRUPO_TONO[g] === "azul";
-                  const c1 = azul ? "59,130,246" : "244,180,0";
-                  return (
-                    <div key={g} style={{ marginTop: 10, padding: "6px 10px 8px", borderRadius: 10, border: `1px solid rgba(${c1},.25)`, background: `rgba(${c1},.04)` }}>
-                      <div style={{ fontSize: 9.5, textTransform: "uppercase", letterSpacing: 1, color: azul ? "var(--blue)" : "var(--yellow)", fontWeight: 700, marginBottom: 2 }}>
-                        {g.split("—")[0].trim()}
-                      </div>
-                      {filas.map(pintarFila)}
-                      {btns && (
-                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>{btns}</div>
-                      )}
+                {sueltosVis.map(pintarFila)}
+                {gruposPri.map(renderGrupo)}
+                {haySec && (
+                  <details className="mas-datos">
+                    <summary>Ver más{nVerMas ? <span className="md-n">{nVerMas}</span> : null}</summary>
+                    <div style={{ marginTop: 2 }}>
+                      {sueltosSec.map(pintarFila)}
+                      <FilasDatos campos={extraCampos} valores={ent} />
+                      {secDibujados}
                     </div>
-                  );
-                })}
+                  </details>
+                )}
               </>
             );
             })()}

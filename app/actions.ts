@@ -8,6 +8,7 @@ import { rucDePersona } from "@/lib/ruc";
 import { TOKEN } from "@/lib/puertas";
 import { BOT } from "@/lib/personas";
 import { CAMPOS_TABLA } from "@/lib/tablas-expediente";
+import { esCampoDelTrigger } from "@/lib/actividad";
 
 /* Crear o actualizar una entidad núcleo (proyecto/empresa/persona).
    La config compartida actúa como whitelist de tabla y campos. */
@@ -43,9 +44,9 @@ export async function guardarEntidad(tipo: string, id: string | null, datos: Rec
   if (req) return { error: `El campo "${req.label}" es obligatorio.` };
 
   if (id) {
-    // Foto previa para el diff del historial (el trigger de BD solo
-    // registra unos pocos campos de estado; aquí anotamos el resto)
-    const TRIGGER_KEYS = ["estado", "etapa", "estado_actividad", "prioridad", "responsable"];
+    // Foto previa para el diff del historial. El trigger de BD ya registra los
+    // CAMPOS_TRIGGER (estado/responsable/…); aquí anotamos el resto. La regla y
+    // la lista viven en lib/actividad (fuente única) para no duplicar bitácora.
     const { data: antes } = await supabase.from(conf.tabla).select("*").eq("id", id).maybeSingle();
     /* El .select() no es decorativo: si una política de RLS impide el UPDATE,
        PostgREST no devuelve error — afecta cero filas y responde OK. Sin
@@ -62,7 +63,7 @@ export async function guardarEntidad(tipo: string, id: string | null, datos: Rec
         return s.length > 70 ? s.slice(0, 70) + "…" : s;
       };
       const cambios = conf.campos
-        .filter(c => (c.key in limpio) && !TRIGGER_KEYS.includes(c.key))
+        .filter(c => (c.key in limpio) && !esCampoDelTrigger(c.key))
         .filter(c => {
           const a = (antes as any)[c.key], b = limpio[c.key];
           return NUMERICOS.includes(c.key)
@@ -264,19 +265,14 @@ export async function asignarResponsable(pubId: string, perfilId: string | null)
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
-  const { data: antes } = await supabase.from("publicaciones")
-    .select("responsable").eq("id", pubId).single();
   const { error } = await supabase.from("publicaciones")
     .update({ responsable: perfilId }).eq("id", pubId);
   if (error) return { error: error.message };
 
-  // 🗂 Bitácora: registrar el cambio de responsable (para el histórico)
-  if ((antes?.responsable || null) !== (perfilId || null)) {
-    await supabase.from("actividad").insert({
-      entidad_tipo: "publicacion", entidad_id: pubId, actor_id: user.id, tipo: "estado",
-      detalle: { campo: "responsable", de: antes?.responsable || null, a: perfilId || null },
-    });
-  }
+  /* 🗂 Bitácora: NO se inserta a mano. El trigger `registrar_evento_estado`
+     (db/schema.sql) ya registra el cambio de `responsable` con el actor
+     (auth.uid()) al hacer el UPDATE. Insertarlo aquí también lo dejaba
+     DUPLICADO —igual que el cambio de estado, que confía solo en el trigger—. */
 
   // 🔔 Notificar al nuevo responsable
   if (perfilId && perfilId !== user.id) {
@@ -1372,19 +1368,21 @@ export async function guardarPrecontratos(postulacionId: string, filas: any[]) {
 }
 
 /* --- Editar comentario: solo el autor, y queda la marca de editado --- */
-export async function editarComentario(comentarioId: string, pubId: string, cuerpo: string) {
+export async function editarComentario(comentarioId: string, pubId: string, cuerpo: string, imagenes?: string[]) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
   const texto = (cuerpo || "").trim();
-  if (!texto) return { error: "El comentario no puede quedar vacío." };
+  const imgs = imagenes ? imagenes.filter(Boolean).slice(0, 6) : null;
+  // Válido si tiene texto O al menos una imagen (un comentario puede ser solo foto).
+  if (!texto && !(imgs && imgs.length)) return { error: "El comentario no puede quedar vacío." };
   const { data: com } = await supabase.from("comentarios")
     .select("autor_id").eq("id", comentarioId).single();
   if (!com) return { error: "Comentario no encontrado." };
   if (com.autor_id !== user.id) return { error: "Solo el autor puede editar su comentario." };
-  const { error } = await supabase.from("comentarios")
-    .update({ cuerpo: texto, editado_en: new Date().toISOString() })
-    .eq("id", comentarioId);
+  const upd: any = { cuerpo: texto || "📷", editado_en: new Date().toISOString() };
+  if (imgs) upd.imagenes = imgs;
+  const { error } = await supabase.from("comentarios").update(upd).eq("id", comentarioId);
   if (error) return { error: error.message };
   revalidatePath(`/caso/${pubId}`);
   return {};
@@ -2834,13 +2832,17 @@ export async function editarTitulo(pubId: string, titulo: string) {
   return {};
 }
 
-export async function editarCuerpo(pubId: string, cuerpo: string) {
+export async function editarCuerpo(pubId: string, cuerpo: string, imagenes?: string[]) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
   const limpio = cuerpo.trim();
+  const upd: any = { cuerpo: limpio || null };
+  // `if (imagenes)` (no `imagenes?.length`) a propósito: [] es truthy, así que
+  // pasar [] SÍ vacía la columna (quitar todas). `undefined` = no tocar imágenes.
+  if (imagenes) upd.imagenes = imagenes.filter(Boolean).slice(0, 6);
   const { error } = await supabase.from("publicaciones")
-    .update({ cuerpo: limpio || null }).eq("id", pubId);
+    .update(upd).eq("id", pubId);
   if (error) return { error: error.message };
   await supabase.from("actividad").insert({
     entidad_tipo: "publicacion", entidad_id: pubId, tipo: "edicion", actor_id: user.id,
