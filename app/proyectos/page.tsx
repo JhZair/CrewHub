@@ -46,7 +46,10 @@ export default async function Proyectos({ searchParams }: {
     supabase.from("proyectos").select("*").order("folio"),
     supabase.from("publicacion_vinculos")
       .select("entidad_id,publicacion_id,pub:publicaciones(estado)").eq("entidad_tipo", "proyecto"),
-    supabase.from("comentarios").select("publicacion_id"),
+    /* Solo los de caso: desde que los objetos del repositorio comentan en
+       esta misma tabla, sin el filtro sus filas gastan el tope de PostgREST
+       (1000) y el contador 💬 se queda corto en silencio. */
+    supabase.from("comentarios").select("publicacion_id").not("publicacion_id", "is", null),
     /* El triángulo que no se veía: proyecto — directora — empresa.
        «Para una convocatoria se comprometen la directora + su proyecto con la
        empresa postulante; esa relación pasa a matrimonio cuando ganan.» Hasta

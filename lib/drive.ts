@@ -28,6 +28,21 @@ export function enlaceLimpio(url?: string | null): string {
 
 const EXT_IMG = /\.(png|jpe?g|gif|webp|bmp|avif|svg)(\?|#|$)/i;
 
+/* Id de un video de YouTube en sus formas habituales:
+     youtu.be/ID · youtube.com/watch?v=ID · /embed/ID · /shorts/ID
+   Una referencia audiovisual es casi siempre un link de YouTube, y sin esto el
+   repositorio la mostraba sin miniatura — que es justo lo que la hace
+   reconocible de un vistazo. */
+export function youtubeId(url?: string | null): string | null {
+  const s = (url || "").trim();
+  if (!/youtu\.?be/.test(s)) return null;
+  const m =
+    s.match(/youtu\.be\/([A-Za-z0-9_-]{6,})/) ||
+    s.match(/[?&]v=([A-Za-z0-9_-]{6,})/) ||
+    s.match(/\/(?:embed|shorts)\/([A-Za-z0-9_-]{6,})/);
+  return m ? m[1] : null;
+}
+
 /* URL de miniatura para previsualizar, o null si no se puede (folder, link
    raro, PDF directo…). `sz` controla el ancho pedido a Drive. */
 export function previewUrl(url?: string | null, sz = 400): string | null {
@@ -42,6 +57,12 @@ export function previewUrl(url?: string | null, sz = 400): string | null {
 export function previewCandidates(url?: string | null, sz = 400): string[] {
   const s = (url || "").trim();
   if (!s || esCarpeta(s)) return [];
+  // YouTube: la carátula del video. `hqdefault` existe siempre; `maxres` no.
+  const yt = youtubeId(s);
+  if (yt) return [
+    `https://img.youtube.com/vi/${yt}/maxresdefault.jpg`,
+    `https://img.youtube.com/vi/${yt}/hqdefault.jpg`,
+  ];
   // La miniatura de Drive SOLO para links de Drive: un link directo a imagen que
   // por casualidad traiga `?id=` o `/d/` no debe mandarse a un thumbnail roto.
   const id = /drive\.google\.com/.test(s) ? driveFileId(s) : null;

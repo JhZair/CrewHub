@@ -37,6 +37,8 @@ import Reacciones, { type Reaccion } from "@/components/Reacciones";
 import AvisoMini from "@/components/AvisoMini";
 import TextoCorto from "@/components/TextoCorto";
 import CVs from "@/components/CVs";
+import Repositorio from "@/components/Repositorio";
+import { DIAS_CV, icoObjeto } from "@/lib/objetos";
 import FotoPersona from "@/components/FotoPersona";
 import Materiales from "@/components/Materiales";
 import LineaTiempo from "@/components/LineaTiempo";
@@ -261,8 +263,13 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
           .order("creado_en", { ascending: false }).limit(150)
       : Promise.resolve({ data: [] as any[] }),
     uid
+      /* `.not(publicacion_id, is, null)`: los comentarios de objetos del
+         repositorio viven en esta misma tabla con publicacion_id vacío. Sin
+         el filtro, ese null llega al `.in("id", …)` de abajo, Postgres no lo
+         puede castear a uuid y la consulta entera falla — se traga con `|| []`
+         y la ficha pierde en silencio los casos donde solo comentó. */
       ? supabase.from("comentarios").select("publicacion_id")
-          .eq("autor_id", uid).limit(400)
+          .eq("autor_id", uid).not("publicacion_id", "is", null).limit(400)
       : Promise.resolve({ data: [] as any[] }),
   ]);
   // Casos donde solo participó comentando (ni autor ni responsable ni vinculado)
@@ -630,7 +637,11 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       supabase.from("empresa_miembros")
         .select("id,cargo,estado,fecha_inicio,fecha_fin,empresa:empresas(id,nombre,codigo)")
         .eq("persona_id", params.id).order("estado"),
-      supabase.from("persona_cv").select("*").eq("persona_id", params.id).order("enfoque"),
+      /* Los CVs viven en `objetos` (tipo='cv', titulo=enfoque) desde que el
+         repositorio generalizó `persona_cv`. Se leen aparte porque su sección
+         y sus alertas cruzan el enfoque con el cargo de cada postulación. */
+      supabase.from("objetos").select("id,titulo,url,actualizado")
+        .eq("entidad_tipo", "persona").eq("entidad_id", params.id).eq("tipo", "cv").order("titulo"),
       // RHE del año: para vigilar su tope de 4ta
       supabase.from("rhe").select("monto,fecha")
         .eq("persona_id", params.id).gte("fecha", `${new Date().getFullYear()}-01-01`),
@@ -646,7 +657,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         .eq("cliente_id", params.id).order("nombre"),
     ]);
     cargosDe = cg.data || [];
-    cvsDe = cv.data || [];
+    // `titulo` → `enfoque`: la sección de CVs y sus alertas siguen igual.
+    cvsDe = (cv.data || []).map((c: any) => ({ ...c, enfoque: c.titulo }));
     acum4ta = (rh.data || []).reduce((s: number, r: any) => s + Number(r.monto || 0), 0);
     postDe = (pe.data || []).sort((a: any, b: any) =>
       (b.post?.conv?.anio || 0) - (a.post?.conv?.anio || 0));
@@ -708,11 +720,49 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     creds = await conPlataforma(data || []);
   }
 
+  /* 📚 Repositorio: la cola infinita de la entidad (obras, prensa, premios…).
+     Los CVs se excluyen: tienen su propia sección con la lógica del enfoque,
+     aunque vivan en la misma tabla. Se estrena en persona. */
+  const { data: objData } = await supabase.from("objetos")
+    .select("id,tipo,titulo,url,fecha,notas,creado_en,creado_por,quien:perfiles(nombre)")
+    .eq("entidad_tipo", params.tipo).eq("entidad_id", params.id)
+    .neq("tipo", "cv")
+    .order("fecha", { ascending: false, nullsFirst: false }).order("creado_en", { ascending: false });
+  /* La procedencia del dato es parte del dato: quién lo trajo, con su alias
+     (JohnO) como en el resto del sistema, y cuándo. */
+  const objetosDe: any[] = (objData || []).map((o: any) => ({
+    ...o, autor: (o.creado_por && alias[o.creado_por]) || o.quien?.nombre || null,
+  }));
+
+  /* Objetos de OTROS que apuntan a esta entidad: el «Libro Khipukamaq» es de
+     Jesús y es la base de «Los Khipus», así que el proyecto tiene que verlo
+     —con su procedencia— sin que el libro deje de ser de su autor. */
+  const { data: objVin } = await supabase.from("objeto_vinculos")
+    .select("obj:objetos(id,tipo,titulo,fecha,entidad_tipo,entidad_id)")
+    .eq("entidad_tipo", params.tipo).eq("entidad_id", params.id);
+  const objetosVinculados = (objVin || []).map((r: any) => r.obj).filter(Boolean);
+  const duenosObj = await (async () => {
+    const m = new Map<string, string>();
+    const pares = objetosVinculados.map((o: any) => ({ tipo: o.entidad_tipo, id: o.entidad_id }));
+    const porTipo = new Map<string, string[]>();
+    pares.forEach((p: any) => porTipo.set(p.tipo, [...(porTipo.get(p.tipo) || []), p.id]));
+    await Promise.all([...porTipo.entries()].map(async ([t, ids]) => {
+      const n = nombreDe(t);
+      if (!n) return;
+      const { data } = await supabase.from(n.tabla)
+        .select(["id", n.campo, n.corto].filter(Boolean).join(",")).in("id", ids);
+      (data || []).forEach((r: any) => m.set(`${t}:${r.id}`, (n.corto && r[n.corto]) || r[n.campo] || "—"));
+    }));
+    return m;
+  })();
+
   /* Verificaciones de contenido de los links de documentos (DNI, firma, CV…):
      quién confirmó que el link apunta al archivo correcto, y contra qué url.
      Se indexa por campo para pasárselo a cada botón. */
+  /* Para CUALQUIER entidad: el repositorio verifica los links de sus objetos
+     (campo `objeto:<id>`), no solo los documentos de persona y empresa. */
   const verifDe: Record<string, { url: string; por?: string | null; en?: string | null; correcto?: boolean }> = {};
-  if (params.tipo === "empresa" || params.tipo === "persona") {
+  {
     const { data: vf } = await supabase.from("link_verificaciones")
       .select("campo,url,correcto,verificado_en,por:perfiles(nombre)")
       .eq("entidad_tipo", params.tipo).eq("entidad_id", params.id);
@@ -958,7 +1008,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                     detalle="Cada rol necesita su propio CV: el del director no sirve para presentarla como investigadora." />
                 );
                 const viejos = cvsDe.filter((c: any) =>
-                  c.actualizado && (Date.now() - new Date(c.actualizado + "T12:00:00").getTime()) / 86400000 > 365);
+                  c.actualizado && (Date.now() - new Date(c.actualizado + "T12:00:00").getTime()) / 86400000 > DIAS_CV);
                 return viejos.length > 0 && (
                   <Alerta tono="ambar"
                     titulo={`📋 CV desactualizado: ${viejos.map((c: any) => c.enfoque).join(", ")}`}
@@ -1504,6 +1554,10 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               especialidades={String(ent.rol || "").split(",").map(s => s.trim()).filter(Boolean)} />
           )}
 
+          {/* El repositorio se mudó a la columna ancha: el carné es «quién es»,
+              y las obras y referencias son su producción — crecen, y con cinco
+              campos y miniaturas no caben en una columna angosta. */}
+
           {(params.tipo === "empresa" || params.tipo === "persona") && (
             <Credenciales dueno={params.tipo as "empresa" | "persona"} duenoId={params.id} credenciales={creds} />
           )}
@@ -1515,6 +1569,29 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
 
         {/* ===== COLUMNA DERECHA: la vida ===== */}
         <main>
+          {/* 📚 Repositorio: todo lo que se sabe y no cabe en el formulario.
+              En cualquier entidad — un proyecto acumula referencias y prensa
+              igual que una persona acumula obras. */}
+          <Repositorio entidadTipo={params.tipo} entidadId={params.id}
+            objetos={objetosDe} verif={verifDe} />
+
+          {/* Objetos de OTROS que apuntan aquí: el libro de Jesús que sostiene
+              este proyecto. Se muestra con su procedencia, no se apropia. */}
+          {objetosVinculados.length > 0 && (
+            <div className="linked" style={{ marginTop: 14 }}>
+              <h4>📚 Del repositorio · {objetosVinculados.length}</h4>
+              {objetosVinculados.map((o: any) => (
+                <Link key={o.id} href={`/objeto/${o.id}`} className="info-row" style={{ textDecoration: "none" }}>
+                  <span>{icoObjeto(o.tipo)}</span>
+                  <b style={{ flex: 1, fontSize: 13, color: "var(--text)" }}>{o.titulo}</b>
+                  <span style={{ color: "var(--dim)", fontSize: 11.5 }}>
+                    de {duenosObj.get(`${o.entidad_tipo}:${o.entidad_id}`) || "—"}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          )}
+
           {/* Cronograma de la postulación: va en la columna ancha (no en el
               carné estrecho de la izquierda), como el del proyecto — armarlo
               en una columna angosta era imposible. */}

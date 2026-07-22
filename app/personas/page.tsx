@@ -49,7 +49,10 @@ export default async function Personas({ searchParams }: {
     supabase.from("personas").select("*").order("nombre"),
     supabase.from("publicacion_vinculos")
       .select("entidad_id,publicacion_id,pub:publicaciones(estado)").eq("entidad_tipo", "persona"),
-    supabase.from("comentarios").select("publicacion_id"),
+    /* Solo los de caso: desde que los objetos del repositorio comentan en
+       esta misma tabla, sin el filtro sus filas gastan el tope de PostgREST
+       (1000) y el contador 💬 se queda corto en silencio. */
+    supabase.from("comentarios").select("publicacion_id").not("publicacion_id", "is", null),
     supabase.from("postulacion_equipo").select("persona_id"),
     // El link de SUNAT sale del admin, no del código: si SUNAT lo cambia
     // —lo ha hecho— se corrige ahí sin esperar un deploy.

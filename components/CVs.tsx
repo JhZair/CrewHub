@@ -1,6 +1,7 @@
 "use client";
 import { guardarCv, borrarCv } from "@/app/actions";
 import MiniSelect from "@/components/MiniSelect";
+import { DIAS_CV } from "@/lib/objetos";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -89,7 +90,7 @@ export default function CVs({ personaId, cvs, especialidades }: {
       )}
 
       {cvs.map(c => {
-        const viejo = c.actualizado ? diasDe(c.actualizado) > 365 : false;
+        const viejo = c.actualizado ? diasDe(c.actualizado) > DIAS_CV : false;
         return (
           <div key={c.id} className="eq-row" style={{ alignItems: "center" }}>
             <span className="cargo">{c.enfoque}</span>

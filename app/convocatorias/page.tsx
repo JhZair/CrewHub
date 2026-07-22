@@ -49,7 +49,10 @@ export default async function Convocatorias({ searchParams }: {
       .select("id,codigo,estado,monto_adjudicado,fecha_limite_rendicion,fecha_prorroga,conv:convocatorias(id,codigo,nombre,estado,anio,monto_adjudicado),proy:proyectos(id,nombre,tipo)"),
     supabase.from("publicacion_vinculos")
       .select("entidad_id,publicacion_id,pub:publicaciones(estado)").eq("entidad_tipo", "convocatoria"),
-    supabase.from("comentarios").select("publicacion_id"),
+    /* Solo los de caso: desde que los objetos del repositorio comentan en
+       esta misma tabla, sin el filtro sus filas gastan el tope de PostgREST
+       (1000) y el contador 💬 se queda corto en silencio. */
+    supabase.from("comentarios").select("publicacion_id").not("publicacion_id", "is", null),
   ]);
 
   // Su vida en CrewHub+, igual que en el resto de los listados

@@ -3,7 +3,7 @@ import { marcarNotifsLeidas, marcarNotifLeida } from "@/app/actions";
 import Link from "next/link";
 import { useState, useEffect } from "react";
 
-import { anclaDe, esAutomatica } from "@/lib/notificaciones";
+import { rutaNotif, esAutomatica } from "@/lib/notificaciones";
 import NotifFila from "./NotifFila";
 /* La fila (ícono/título/cuándo/chips) salió a NotifFila: la pintaban idéntica
    esta campanita, la flotante y ahora la página /notificaciones. */
@@ -67,8 +67,8 @@ export default function Campanita({ items: itemsProp, sinLeer: sinLeerProp, sinL
               </div>
             )}
             {lista.map((n: any) => (
-              n.publicacion_id ? (
-                <Link key={n.id} href={`/caso/${n.publicacion_id}${anclaDe(n.tipo)}`}
+              rutaNotif(n) ? (
+                <Link key={n.id} href={rutaNotif(n)!}
                   className={`camp-item ${n.leida ? "leida" : "nueva"}`}
                   onClick={() => { marcarUna(n); setAbierta(false); }}>
                   <NotifFila n={n} />

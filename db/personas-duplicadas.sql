@@ -49,7 +49,12 @@ begin
     if c > 0 then tabla := r.tab; n := c; return next; end if;
   end loop;
 
-  foreach t in array array['publicacion_vinculos', 'actividad'] loop
+  /* `objetos` (el repositorio) va aquí y no por FK: su dueño es polimórfico
+     (entidad_tipo/entidad_id), así que no puede tener FK a personas. Sin esta
+     línea, una persona cuyo único dato era su CV contaba refs = 0 y el PASO 3
+     la borraba — el repositorio la volvía invisible justo para lo que existe
+     esta función. */
+  foreach t in array array['publicacion_vinculos', 'actividad', 'objetos'] loop
     execute format(
       'select count(*) from %I where entidad_tipo = ''persona'' and entidad_id = $1',
       t) into c using p_id;
@@ -225,6 +230,30 @@ begin
    where entidad_tipo = 'persona' and entidad_id = absorber;
   get diagnostics c = row_count; movidos := movidos + c;
 
+  /* El repositorio (obras, CVs, prensa…). También sin FK, por dueño
+     polimórfico. Puede chocar contra `idx_objetos_cv_unico` si los dos
+     gemelos tienen CV del mismo enfoque: ahí el del absorbido sobra.
+
+     FILA POR FILA, no en bloque. La versión anterior movía todos los objetos
+     en una sentencia y, si UNO chocaba, la excepción anulaba el update entero
+     y el `delete` de rescate borraba TODOS los objetos del absorbido —no solo
+     el que colisionó—. Con `comentarios.objeto_id ... on delete cascade` eso
+     ya no perdería un vínculo barato: se llevaría por delante conversaciones
+     enteras y sus notificaciones. Aquí solo se descarta el duplicado real. */
+  for r in
+    select id, titulo, tipo from objetos
+     where entidad_tipo = 'persona' and entidad_id = absorber
+  loop
+    begin
+      update objetos set entidad_id = mantener where id = r.id;
+      movidos := movidos + 1;
+    exception when unique_violation then
+      -- El que se queda ya tiene un CV de ese enfoque: este es el sobrante.
+      delete from objetos where id = r.id;
+      chocados := chocados + 1;
+    end;
+  end loop;
+
   -- Rellena los huecos del que se queda con lo que traía el otro.
   -- Solo rellena: nunca pisa un dato que ya estaba.
   --
@@ -241,9 +270,12 @@ begin
   -- activarles RLS, parte la función a la mitad para colarte un
   -- `ALTER TABLE sets ENABLE ROW LEVEL SECURITY`. Aquí dentro INTO solo
   -- asigna una variable, pero su parser no lo sabe.
+  -- El alias se llama `col`, no `c`: `c` es la variable contadora de esta
+  -- misma función y PL/pgSQL no adivina cuál de las dos quieres —«column
+  -- reference "c" is ambiguous» y la fusión no llega a ejecutarse nunca.
   sets := (
-    select string_agg(format('%I = coalesce(p.%I, a.%I)', c, c, c), ', ')
-      from (select column_name as c
+    select string_agg(format('%I = coalesce(p.%I, a.%I)', z.col, z.col, z.col), ', ')
+      from (select column_name as col
               from information_schema.columns
              where table_schema = 'public' and table_name = 'personas'
                and column_name not in ('id', 'nombre', 'tipo', 'estado',

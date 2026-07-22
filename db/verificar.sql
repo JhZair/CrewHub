@@ -30,7 +30,10 @@ with esperado(clase, obj, para, archivo) as (values
   -- Feed
   ('col', 'publicaciones.destacado_hasta',      'Destacados que caducan',     'destacados.sql'),
   -- Tablas
-  ('tab', 'persona_cv',        'CV por enfoque',                    'persona-cv.sql'),
+  ('tab', 'persona_cv',        'CV por enfoque (legacy: migrado a objetos)', 'persona-cv.sql'),
+  ('tab', 'objetos',           'Repositorio: la cola infinita de cada entidad', 'repositorio.sql'),
+  ('col', 'comentarios.objeto_id',   'Comentar un objeto sin abrir un caso', 'objeto-comentarios.sql'),
+  ('col', 'notificaciones.objeto_id','Que el aviso de ese comentario lleve a algún sitio', 'objeto-comentarios.sql'),
   ('tab', 'rhe',               'Recibos por honorarios',            'rhe.sql'),
   ('tab', 'credencial_datos',  'Datos sueltos de cada credencial',  'credencial-datos.sql'),
   ('tab', 'jornadas',          'Jornadas del equipo',               'jornadas.sql'),

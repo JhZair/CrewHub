@@ -18,6 +18,8 @@ export default function NavIconos() {
            y sus casos también encienden su ícono. */
         const aqui = pathname === s.ruta
           || pathname.startsWith(`/entidad/${s.tipo}/`)
+          // El repositorio es la única sección cuya ficha no vive en /entidad
+          || (s.tipo === "objeto" && pathname.startsWith("/objeto/"))
           || pathname === `/historial/${s.tipo}`
           || pathname === `/casos/${s.tipo}`;
         return (

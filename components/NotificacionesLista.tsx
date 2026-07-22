@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { notificacionesTodas, marcarNotifLeida, marcarNotifsLeidas, actividadDeCaso } from "@/app/actions";
 import { createClient } from "@/lib/supabase/client";
-import { anclaDe, esAutomatica, bucketFecha, CHIPS, ICONO, ETIQ, hace, tituloDe } from "@/lib/notificaciones";
+import { rutaNotif, esAutomatica, bucketFecha, CHIPS, ICONO, ETIQ, hace, tituloDe } from "@/lib/notificaciones";
 import { ICO_ENT } from "@/lib/secciones";
 import { rotuloEstado } from "@/lib/estados";
 import { plazoDe } from "@/lib/plazo";
@@ -251,9 +251,9 @@ export default function NotificacionesLista({
               );
             })()}
 
-            {sel.publicacion_id && (
-              <Link href={`/caso/${sel.publicacion_id}${anclaDe(sel.tipo)}`} className="btn btn-ghost notif-det-abrir">
-                Abrir el caso →
+            {rutaNotif(sel) && (
+              <Link href={rutaNotif(sel)!} className="btn btn-ghost notif-det-abrir">
+                {sel.objeto_id ? "Abrir el objeto →" : "Abrir el caso →"}
               </Link>
             )}
 

@@ -27,6 +27,16 @@ export const ETIQ: Record<string, string> = {
 export const anclaDe = (tipo: string) =>
   ["comentario", "mencion", "reaccion"].includes(tipo) ? "#comentarios" : "";
 
+/* A DÓNDE LLEVA UNA NOTIFICACIÓN — en un solo sitio.
+   Antes las tres pantallas (dos campanitas + la lista) preguntaban cada una
+   `if (n.publicacion_id)`, así que un aviso de un comentario sobre un objeto
+   del repositorio llegaba a la bandeja pero no era clicable: sonaba y no
+   llevaba a ninguna parte. Ahora el destino se decide aquí. */
+export const rutaNotif = (n: { publicacion_id?: string | null; objeto_id?: string | null; tipo?: string }) =>
+  n.publicacion_id ? `/caso/${n.publicacion_id}${anclaDe(n.tipo || "")}`
+  : n.objeto_id ? `/objeto/${n.objeto_id}${anclaDe(n.tipo || "")}`
+  : null;
+
 /* Cuánto hace, dicho corto: la campanita es una lista, no un texto */
 export const hace = (d: string) => {
   const min = Math.floor((Date.now() - new Date(d).getTime()) / 60000);

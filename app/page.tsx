@@ -188,11 +188,11 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
   const NCAMP = 12;
   const [{ data: notifPers }, { data: notifBot }, { count: sinLeer }, { count: sinLeerBot }, { count: botHoy }] = await Promise.all([
     supabase.from("notificaciones")
-      .select("id,tipo,mensaje,actor_nombre,publicacion_id,leida,creado_en")
+      .select("id,tipo,mensaje,actor_nombre,publicacion_id,objeto_id,leida,creado_en")
       .eq("usuario_id", user.id).not("actor_nombre", "is", null)
       .order("creado_en", { ascending: false }).order("id", { ascending: false }).limit(NCAMP),
     supabase.from("notificaciones")
-      .select("id,tipo,mensaje,actor_nombre,publicacion_id,leida,creado_en")
+      .select("id,tipo,mensaje,actor_nombre,publicacion_id,objeto_id,leida,creado_en")
       .eq("usuario_id", user.id).is("actor_nombre", null)
       .order("creado_en", { ascending: false }).order("id", { ascending: false }).limit(NCAMP),
     // Timbre = solo lo personal sin leer (lo que pide tu acción).

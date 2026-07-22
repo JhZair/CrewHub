@@ -264,6 +264,70 @@ export async function comentar(pubId: string, texto: string, imagenes: string[] 
   return {};
 }
 
+/* Comentar un OBJETO del repositorio. Misma tabla `comentarios` y mismo motor
+   de menciones y avisos que un caso — solo cambia de quién cuelga. Se hizo así
+   tras probar la vía de «abrir un caso»: el caso es una unidad de trabajo
+   (estado, responsable, plazo) y un comentario sobre un libro no lo es; cada
+   conversación dejaba un caso «Sin Resolver» eterno en el tablero. */
+export async function comentarObjeto(objetoId: string, texto: string, imagenes: string[] = [], respondeA: string | null = null) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const cuerpo = (texto || "").trim();
+  const imgs = (imagenes || []).filter(Boolean).slice(0, 6);
+  if (!cuerpo && !imgs.length) return { error: "El comentario no puede ir vacío." };
+
+  const { data: com, error } = await supabase.from("comentarios")
+    .insert({ objeto_id: objetoId, autor_id: user.id, cuerpo: cuerpo || "📷", imagenes: imgs, responde_a: respondeA || null })
+    .select("id").single();
+  if (error) return { error: error.message };
+
+  const [{ data: miP }, { data: obj }] = await Promise.all([
+    supabase.from("perfiles").select("nombre").eq("id", user.id).single(),
+    supabase.from("objetos").select("titulo,creado_por").eq("id", objetoId).single(),
+  ]);
+  const actorNombre = miP?.nombre || "Alguien";
+  const titulo = (obj?.titulo || "").slice(0, 60);
+
+  // 🪄 Menciones @nombre — mismo reconocimiento que en los casos
+  const tokens = [...new Set((cuerpo.match(/@[^\s@,;:!?]+/g) || []).map(m => m.slice(1)))];
+  const avisados = new Set<string>([user.id]);
+  if (tokens.length) {
+    const nrmM = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+    const { data: perfs } = await supabase.from("perfiles").select("id,nombre").eq("activo", true);
+    for (const p of perfs || []) {
+      const sinEspacios = nrmM(p.nombre).replace(/\s+/g, "");
+      const palabras = nrmM(p.nombre).split(/\s+/);
+      const invocado = tokens.some(t => {
+        const tk = nrmM(t);
+        return sinEspacios.startsWith(tk) || palabras.some(w => w.startsWith(tk));
+      });
+      if (invocado && !avisados.has(p.id)) {
+        avisados.add(p.id);
+        await supabase.from("notificaciones").insert({
+          usuario_id: p.id, objeto_id: objetoId, tipo: "mencion", actor_nombre: actorNombre,
+          mensaje: `🪄 ${actorNombre.split(" ")[0]} te mencionó en «${titulo}»`,
+        });
+      }
+    }
+  }
+
+  // 🔔 A quien trajo el objeto (si no es quien comenta)
+  if (obj?.creado_por && !avisados.has(obj.creado_por)) {
+    await supabase.from("notificaciones").insert({
+      usuario_id: obj.creado_por, objeto_id: objetoId, tipo: "comentario", actor_nombre: actorNombre,
+      mensaje: `Nuevo comentario en «${titulo}»`,
+    });
+  }
+
+  await supabase.from("actividad").insert({
+    entidad_tipo: "objeto", entidad_id: objetoId, actor_id: user.id, tipo: "comentario",
+    detalle: { comentario_id: com.id },
+  });
+  revalidatePath(`/objeto/${objetoId}`);
+  return {};
+}
+
 export async function asignarResponsable(pubId: string, perfilId: string | null) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -1132,12 +1196,22 @@ export async function guardarCv(personaId: string, enfoque: string, url: string,
   if (!enf) return { error: "Elige el enfoque del CV." };
   if (!/^https?:\/\/\S+$/.test(u)) return { error: "El CV debe ser un link completo (https://...)." };
 
+  /* Los CVs viven en `objetos` (tipo='cv', titulo=enfoque) desde que el
+     repositorio generalizó `persona_cv`. La sección de CVs de la ficha sigue
+     aparte porque el enfoque tiene lógica propia —se cruza con el cargo de
+     cada postulación—, pero el dato es un objeto más. */
   const hoy = new Date().toISOString().slice(0, 10);
   if (id) {
-    const { data: prev } = await supabase.from("persona_cv").select("enfoque,url").eq("id", id).maybeSingle();
-    const { error } = await supabase.from("persona_cv")
-      .update({ enfoque: enf, url: u, actualizado: hoy }).eq("id", id);
-    if (error) return { error: error.message };
+    /* Acotado a ESTA persona y a tipo='cv'. `objetos` es una tabla compartida
+       por todas las entidades: un id equivocado —o forjado, esto es una server
+       action pública— pisaría el título y la url de la obra de otra ficha. */
+    const { data: prev } = await supabase.from("objetos").select("titulo,url").eq("id", id).maybeSingle();
+    const { error } = await supabase.from("objetos")
+      .update({ titulo: enf, url: u, actualizado: hoy })
+      .eq("id", id).eq("entidad_tipo", "persona").eq("entidad_id", personaId).eq("tipo", "cv");
+    if (error) {
+      return { error: error.code === "23505" ? `Ya existe un CV con enfoque «${enf}».` : error.message };
+    }
     await supabase.from("actividad").insert({
       entidad_tipo: "persona", entidad_id: personaId, actor_id: user.id, tipo: "dato",
       detalle: {
@@ -1146,8 +1220,10 @@ export async function guardarCv(personaId: string, enfoque: string, url: string,
       },
     });
   } else {
-    const { error } = await supabase.from("persona_cv")
-      .insert({ persona_id: personaId, enfoque: enf, url: u, actualizado: hoy });
+    const { error } = await supabase.from("objetos").insert({
+      entidad_tipo: "persona", entidad_id: personaId, tipo: "cv",
+      titulo: enf, url: u, actualizado: hoy, creado_por: user.id,
+    });
     if (error) {
       return { error: error.code === "23505" ? `Ya existe un CV con enfoque «${enf}».` : error.message };
     }
@@ -1160,16 +1236,191 @@ export async function guardarCv(personaId: string, enfoque: string, url: string,
   return {};
 }
 
+/* ===== REPOSITORIO — la cola infinita de una entidad =====
+   Obras, investigaciones, prensa, premios, redes, notas. No son campos de un
+   formulario: son una colección abierta. El archivo vive en Drive; aquí vive
+   lo que se sabe de él, y por eso `url` puede ir vacía (una nota no tiene). */
+export async function guardarObjeto(a: {
+  id?: string | null;
+  entidadTipo: string; entidadId: string;
+  tipo: string; titulo: string; url?: string; fecha?: string; notas?: string;
+}) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  const titulo = (a.titulo || "").trim();
+  const url = (a.url || "").trim();
+  const notas = (a.notas || "").trim();
+  const fecha = (a.fecha || "").trim();
+  if (!titulo) return { error: "Ponle un título." };
+  if (!a.tipo) return { error: "Elige el tipo." };
+  /* El link es OBLIGATORIO: un objeto del repositorio es la referencia a algo
+     que existe en alguna parte. Sin link no hay objeto que referenciar, solo
+     un título suelto. La única excepción es la nota, que es texto por
+     definición. */
+  if (!url && a.tipo !== "nota")
+    return { error: "Falta el link. Solo una 🗒 Nota puede ir sin link." };
+  if (url && !/^https?:\/\/\S+$/.test(url))
+    return { error: "El link debe empezar en http:// o https://" };
+  if (fecha && !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return { error: "Fecha inválida." };
+
+  const fila = {
+    tipo: a.tipo, titulo, url: url || null,
+    fecha: fecha || null, notas: notas || null,
+    actualizado: new Date().toISOString().slice(0, 10),
+  };
+  const nuevo = !a.id;
+  // El update se acota a la entidad dueña: la tabla es compartida y un id
+  // suelto podría pisar el objeto de otra ficha.
+  const { data: fil, error } = nuevo
+    ? await supabase.from("objetos").insert({
+        ...fila, entidad_tipo: a.entidadTipo, entidad_id: a.entidadId, creado_por: user.id })
+        .select("id").single()
+    : await supabase.from("objetos").update(fila)
+        .eq("id", a.id).eq("entidad_tipo", a.entidadTipo).eq("entidad_id", a.entidadId)
+        .select("id").single();
+  if (error) {
+    return { error: error.code === "23505" ? "Ya existe un objeto igual." : error.message };
+  }
+  const objId = fil?.id || a.id;
+
+  /* DOS bitácoras, y no es duplicación: son dos preguntas distintas.
+     · En la ficha del dueño: «qué pasó con esta persona» → que se le agregó
+       algo al repositorio. Solo el hito de alta, no cada retoque.
+     · En el objeto: «qué pasó con este libro» → su propia vida, edición a
+       edición. Sin esto su página no tenía historial nunca. */
+  if (nuevo) {
+    await supabase.from("actividad").insert({
+      entidad_tipo: a.entidadTipo, entidad_id: a.entidadId, actor_id: user.id, tipo: "dato",
+      detalle: { mensaje: `agregó al repositorio: ${titulo}` },
+    });
+  }
+  if (objId) {
+    await supabase.from("actividad").insert({
+      entidad_tipo: "objeto", entidad_id: objId, actor_id: user.id, tipo: nuevo ? "creado" : "editado",
+      detalle: { mensaje: nuevo ? `lo agregó al repositorio` : `actualizó «${titulo}»` },
+    });
+    revalidatePath(`/objeto/${objId}`);
+  }
+  revalidatePath(`/entidad/${a.entidadTipo}/${a.entidadId}`);
+  return {};
+}
+
+export async function borrarObjeto(id: string, entidadTipo: string, entidadId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: prev } = await supabase.from("objetos").select("titulo").eq("id", id).maybeSingle();
+  const { error } = await supabase.from("objetos").delete()
+    .eq("id", id).eq("entidad_tipo", entidadTipo).eq("entidad_id", entidadId);
+  if (error) return { error: error.message };
+  // Su verificación de link no tiene FK que la cascadee: se limpia a mano.
+  await supabase.from("link_verificaciones").delete()
+    .eq("entidad_tipo", entidadTipo).eq("entidad_id", entidadId).eq("campo", `objeto:${id}`);
+  await supabase.from("actividad").insert({
+    entidad_tipo: entidadTipo, entidad_id: entidadId, actor_id: user.id, tipo: "dato",
+    detalle: { mensaje: `quitó del repositorio: ${prev?.titulo || "—"}` },
+  });
+  revalidatePath(`/entidad/${entidadTipo}/${entidadId}`);
+  return {};
+}
+
+/* Un objeto tiene UN dueño (donde vive y se edita) y MUCHOS vínculos: el
+   «Libro Khipukamaq» es de Jesús y además es la base de «Los Khipus». Mismo
+   patrón que un caso — duplicarlo sería tener dos libros. */
+export async function vincularObjeto(objetoId: string, entidadTipo: string, entidadId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: ins, error } = await supabase.from("objeto_vinculos").upsert(
+    { objeto_id: objetoId, entidad_tipo: entidadTipo, entidad_id: entidadId },
+    { onConflict: "objeto_id,entidad_tipo,entidad_id", ignoreDuplicates: true })
+    .select("id");
+  if (error) return { error: error.message };
+  if (ins?.length) {
+    const [{ data: o }, nombre] = await Promise.all([
+      supabase.from("objetos").select("titulo,entidad_tipo,entidad_id").eq("id", objetoId).single(),
+      nombreEntidad(supabase, entidadTipo, entidadId),
+    ]);
+    // En la ficha vinculada («apareció este libro aquí») y en el objeto
+    // («ahora sostiene este proyecto»). Son los dos lados del mismo hecho.
+    await supabase.from("actividad").insert([
+      {
+        entidad_tipo: entidadTipo, entidad_id: entidadId, actor_id: user.id, tipo: "vinculo",
+        detalle: { mensaje: `vinculó del repositorio: ${o?.titulo || "un objeto"}` },
+      },
+      {
+        entidad_tipo: "objeto", entidad_id: objetoId, actor_id: user.id, tipo: "vinculo",
+        detalle: { mensaje: `lo vinculó a ${ENT_LBL[entidadTipo] || entidadTipo}: ${nombre}` },
+      },
+    ]);
+    if (o) revalidatePath(`/entidad/${o.entidad_tipo}/${o.entidad_id}`);
+    revalidatePath(`/entidad/${entidadTipo}/${entidadId}`);
+  }
+  revalidatePath(`/objeto/${objetoId}`);
+  return {};
+}
+
+export async function desvincularObjeto(objetoId: string, entidadTipo: string, entidadId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const nombre = await nombreEntidad(supabase, entidadTipo, entidadId);
+  const { error } = await supabase.from("objeto_vinculos").delete()
+    .eq("objeto_id", objetoId).eq("entidad_tipo", entidadTipo).eq("entidad_id", entidadId);
+  if (error) return { error: error.message };
+  await supabase.from("actividad").insert({
+    entidad_tipo: "objeto", entidad_id: objetoId, actor_id: user.id, tipo: "vinculo",
+    detalle: { mensaje: `lo desvinculó de ${ENT_LBL[entidadTipo] || entidadTipo}: ${nombre}` },
+  });
+  revalidatePath(`/objeto/${objetoId}`);
+  revalidatePath(`/entidad/${entidadTipo}/${entidadId}`);
+  return {};
+}
+
+/* Conversar sobre un objeto = abrir un caso vinculado a él. NO se construye un
+   segundo hilo de comentarios: ya existe uno completo —menciones, reacciones,
+   notificaciones, bitácora— y dos sitios donde hablar significa dos bandejas y
+   conversaciones que después nadie encuentra. */
+export async function conversarObjeto(objetoId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: o } = await supabase.from("objetos")
+    .select("titulo,entidad_tipo,entidad_id").eq("id", objetoId).single();
+  if (!o) return { error: "No se encontró el objeto." };
+
+  /* `tarea`, no `consulta`: esto es trabajo sobre el objeto —conseguir los
+     derechos, pedir permiso al autor—, no una conversación. Para conversar
+     el objeto tiene su propio hilo de comentarios. El título arranca con un
+     verbo por lo mismo: «Sobre «X»» invitaba a usarlo como foro. */
+  const { data: pub, error } = await supabase.from("publicaciones").insert({
+    tipo: "tarea", titulo: `Gestionar «${o.titulo}»`, autor_id: user.id, estado: "abierta",
+  }).select("id").single();
+  if (error || !pub) return { error: error?.message || "No se pudo abrir el caso." };
+
+  /* Se vincula al objeto Y a su dueño: el trabajo tiene que aparecer tanto en
+     el objeto como en la ficha de quien lo aporta. */
+  await supabase.from("publicacion_vinculos").insert([
+    { publicacion_id: pub.id, entidad_tipo: "objeto", entidad_id: objetoId },
+    { publicacion_id: pub.id, entidad_tipo: o.entidad_tipo, entidad_id: o.entidad_id },
+  ]);
+  revalidatePath(`/objeto/${objetoId}`);
+  return { id: pub.id };
+}
+
 export async function borrarCv(id: string, personaId: string) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
-  const { data: prev } = await supabase.from("persona_cv").select("enfoque").eq("id", id).maybeSingle();
-  const { error } = await supabase.from("persona_cv").delete().eq("id", id);
+  const { data: prev } = await supabase.from("objetos").select("titulo").eq("id", id).maybeSingle();
+  const { error } = await supabase.from("objetos").delete()
+    .eq("id", id).eq("entidad_tipo", "persona").eq("entidad_id", personaId).eq("tipo", "cv");
   if (error) return { error: error.message };
   await supabase.from("actividad").insert({
     entidad_tipo: "persona", entidad_id: personaId, actor_id: user.id, tipo: "dato",
-    detalle: { mensaje: `borró el CV de ${prev?.enfoque || "—"}` },
+    detalle: { mensaje: `borró el CV de ${prev?.titulo || "—"}` },
   });
   revalidatePath(`/entidad/persona/${personaId}`);
   return {};
@@ -1380,14 +1631,16 @@ export async function editarComentario(comentarioId: string, pubId: string, cuer
   // Válido si tiene texto O al menos una imagen (un comentario puede ser solo foto).
   if (!texto && !(imgs && imgs.length)) return { error: "El comentario no puede quedar vacío." };
   const { data: com } = await supabase.from("comentarios")
-    .select("autor_id").eq("id", comentarioId).single();
+    .select("autor_id,publicacion_id,objeto_id").eq("id", comentarioId).single();
   if (!com) return { error: "Comentario no encontrado." };
   if (com.autor_id !== user.id) return { error: "Solo el autor puede editar su comentario." };
   const upd: any = { cuerpo: texto || "📷", editado_en: new Date().toISOString() };
   if (imgs) upd.imagenes = imgs;
   const { error } = await supabase.from("comentarios").update(upd).eq("id", comentarioId);
   if (error) return { error: error.message };
-  revalidatePath(`/caso/${pubId}`);
+  /* La ruta se deduce del propio comentario: desde que también cuelgan de un
+     objeto, el `pubId` que manda el cliente puede no ser una publicación. */
+  revalidatePath(com.objeto_id ? `/objeto/${com.objeto_id}` : `/caso/${com.publicacion_id || pubId}`);
   return {};
 }
 
@@ -3286,7 +3539,9 @@ export async function misNotificaciones() {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { items: [], sinLeer: 0, sinLeerBot: 0 };
-  const cols = "id,tipo,mensaje,actor_nombre,publicacion_id,leida,creado_en";
+  // `objeto_id`: una notificación puede colgar de un caso O de un objeto del
+  // repositorio. Sin traerla, el aviso llega pero no lleva a ninguna parte.
+  const cols = "id,tipo,mensaje,actor_nombre,publicacion_id,objeto_id,leida,creado_en";
   const [{ data: pers }, { data: bot }, { count: sinLeer }, { count: sinLeerBot }] = await Promise.all([
     supabase.from("notificaciones").select(cols)
       .eq("usuario_id", user.id).not("actor_nombre", "is", null)
@@ -3439,7 +3694,7 @@ export async function notificacionesTodas(desde = 0, filtro?: "personal" | "bot"
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { items: [], hayMas: false, total: 0, totalBot: 0, sinLeer: 0, sinLeerBot: 0 };
   let q = supabase.from("notificaciones")
-    .select("id,tipo,mensaje,actor_nombre,publicacion_id,leida,creado_en")
+    .select("id,tipo,mensaje,actor_nombre,publicacion_id,objeto_id,leida,creado_en")
     .eq("usuario_id", user.id);
   if (filtro === "personal") q = q.not("actor_nombre", "is", null);
   else if (filtro === "bot") q = q.is("actor_nombre", null);

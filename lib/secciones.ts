@@ -35,6 +35,12 @@ export const SECCIONES: Seccion[] = [
     plural: "equipos", singular: "equipo", tabla: "equipamiento", campo: "nombre" },
   { tipo: "convocatoria", ruta: "/convocatorias", ico: "📜", titulo: "Convocatorias y fondos",
     plural: "convocatorias", singular: "convocatoria", tabla: "convocatorias", campo: "codigo" },
+  /* El repositorio es una sección de pleno derecho: los objetos se buscan,
+     se listan y dejan bitácora como cualquier entidad. Lo único distinto es
+     que su ficha vive en /objeto/[id] y no en /entidad/… (lo resuelve
+     `rutaEntidad`), porque un objeto pertenece a otra entidad. */
+  { tipo: "objeto", ruta: "/repositorio", ico: "📚", titulo: "Repositorio",
+    plural: "objetos", singular: "objeto", tabla: "objetos", campo: "titulo" },
 ];
 
 export const seccionDe = (tipo: string) => SECCIONES.find(s => s.tipo === tipo);
@@ -78,6 +84,7 @@ const CON_FICHA = new Set([
 export function rutaEntidad(tipo: string, id: string): string | null {
   const t = tipoCanonico(tipo);
   if (t === "publicacion") return `/caso/${id}`;
+  if (t === "objeto") return `/objeto/${id}`;
   if (CON_FICHA.has(t)) return `/entidad/${t}/${id}`;
   return null;
 }

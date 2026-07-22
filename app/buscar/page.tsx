@@ -141,8 +141,11 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
         // padre_id: un sub-caso sin su padre es un título huérfano
         .select("id,titulo,cuerpo,tipo,estado,creado_en,padre_id")
         .order("creado_en", { ascending: false }).limit(1500),
+      /* `objeto_id` + el título del objeto: un comentario ya no cuelga solo de
+         un caso. Sin esto, un comentario sobre un libro del repositorio salía
+         en los resultados enlazando a /caso/null —404— y firmado «en «»». */
       supabase.from("comentarios")
-        .select("id,cuerpo,creado_en,publicacion_id,autor:perfiles(nombre),pub:publicaciones(titulo)")
+        .select("id,cuerpo,creado_en,publicacion_id,objeto_id,autor:perfiles(nombre),pub:publicaciones(titulo),obj:objetos(titulo)")
         .order("creado_en", { ascending: false }).limit(1500),
       /* Los CVs viajan con la persona: se guardan por enfoque justo para
          poder pedir "el CV de Yajaida como Investigadora", y hasta hoy no
@@ -150,7 +153,10 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
       /* Y sus películas. El buscador encontraba a alguien por su DNI, su RUC
          y su CV — toda su papelería— y no por el documental que dirige. */
       supabase.from("personas")
-        .select("id,nombre,alias,rol,tipo,estado,ruc_dni,region,dni_url,firma_url,carpeta_drive_url,cvs:persona_cv(id,enfoque,url),proys:proyecto_equipo(cargo,proy:proyectos(id,nombre,nombre_corto))")
+        /* Los CVs ya no se anidan: viven en `objetos` (tipo='cv'), que cuelga
+           por (entidad_tipo, entidad_id) y no tiene FK a personas, así que no
+           se puede embeber. Se traen aparte, abajo. */
+        .select("id,nombre,alias,rol,tipo,estado,ruc_dni,region,dni_url,firma_url,carpeta_drive_url,proys:proyecto_equipo(cargo,proy:proyectos(id,nombre,nombre_corto))")
         .limit(600),
       // RENCA, presupuesto y Drive del proyecto: guardados desde siempre y
       // nunca seleccionados aquí
@@ -176,14 +182,27 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
     ]);
 
     // El marcador en los resultados: 🏆 ganados · 🥈 casi · 🎯 intentos
-    const [{ data: postStats }, { data: equipoStats }, uSunat] = await Promise.all([
+    const [{ data: postStats }, { data: equipoStats }, uSunat, { data: cvObj }] = await Promise.all([
       supabase.from("postulaciones").select("estado,proyecto_id,empresa_id,convocatoria_id"),
       supabase.from("postulacion_equipo").select("persona_id,post:postulaciones(estado)"),
       // El link de SUNAT sale del admin, no del código: si SUNAT lo cambia
       // —lo ha hecho— se corrige ahí sin esperar un deploy.
       urlPlataforma(PLAT.sunatConsultaRuc),
+      /* Los CVs, ahora en el repositorio. Sin FK no se pueden anidar en la
+         consulta de personas, así que se traen aparte y se cuelgan abajo — si
+         no, el buscador se quedaría con la foto del día de la migración. */
+      supabase.from("objetos").select("id,entidad_id,titulo,url")
+        .eq("entidad_tipo", "persona").eq("tipo", "cv"),
     ]);
     urlSunat = uSunat;
+    // `enfoque`: el buscador y sus chips esperan ese nombre desde siempre.
+    const cvsDePersona = new Map<string, any[]>();
+    (cvObj || []).forEach((o: any) => {
+      const l = cvsDePersona.get(o.entidad_id) || [];
+      l.push({ id: o.id, enfoque: o.titulo, url: o.url });
+      cvsDePersona.set(o.entidad_id, l);
+    });
+    (c3.data || []).forEach((p: any) => { p.cvs = cvsDePersona.get(p.id) || []; });
     const marca = (key: "proyecto_id" | "empresa_id" | "convocatoria_id") => {
       const m = new Map<string, { t: number; g: number; c: number }>();
       (postStats || []).forEach((p: any) => {
@@ -882,12 +901,12 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
 
       <Seccion titulo="💬 En comentarios" n={coms.length}>
         {coms.map((c: any) => (
-          <Fila key={c.id} href={`/caso/${c.publicacion_id}`}>
+          <Fila key={c.id} href={c.objeto_id ? `/objeto/${c.objeto_id}#comentarios` : `/caso/${c.publicacion_id}`}>
             <span style={{ color: "var(--muted)", fontSize: 12, fontStyle: "italic" }}>
               "{snippet(c.cuerpo, palabras)}"
             </span>
             <span style={{ color: "var(--dim)", fontSize: 11.5 }}>
-              — {(c.autor as any)?.nombre?.split(" ")[0]} en «{(c.pub as any)?.titulo}»
+              — {(c.autor as any)?.nombre?.split(" ")[0]} en «{(c.pub as any)?.titulo || (c.obj as any)?.titulo || "—"}»
             </span>
           </Fila>
         ))}

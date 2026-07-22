@@ -9,7 +9,7 @@ import { createClient } from "@/lib/supabase/client";
    que ya tiene la suya, ni dentro de los paneles del Monitor). Trae las
    notificaciones bajo demanda y se actualiza en tiempo real. */
 
-import { anclaDe, esAutomatica } from "@/lib/notificaciones";
+import { rutaNotif, esAutomatica } from "@/lib/notificaciones";
 import NotifFila from "./NotifFila";
 /* La fila salió a NotifFila: la pintaban idéntica esta campanita, la del feed
    y la página /notificaciones. */
@@ -102,8 +102,8 @@ export default function CampanitaGlobal() {
               </div>
             )}
             {lista.map((n: any) => (
-              n.publicacion_id ? (
-                <Link key={n.id} href={`/caso/${n.publicacion_id}${anclaDe(n.tipo)}`}
+              rutaNotif(n) ? (
+                <Link key={n.id} href={rutaNotif(n)!}
                   className={`camp-item ${n.leida ? "leida" : "nueva"}`}
                   onClick={() => { marcarUna(n); setAbierta(false); }}>{fila(n)}</Link>
               ) : (

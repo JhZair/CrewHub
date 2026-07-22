@@ -4,7 +4,7 @@ import { agregarVinculo, quitarVinculo, vincularEnLote } from "@/app/actions";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { ICO_ENT } from "@/lib/secciones";
+import { ICO_ENT, rutaEntidad } from "@/lib/secciones";
 
 /* Editor de vínculos de entidad de un caso: chips actuales con ✕ para quitar,
    y un picker por tipo para agregar. Reusa el EntPicker del Composer y las
@@ -54,7 +54,8 @@ export default function VinculosEditor({ pubId, actuales, catalogos }: {
         <div className="sel-chips vinc-puestos">
           {visibles.map(v => (
             <span key={v.tipo + v.id} className="echip">
-              <Link href={`/entidad/${v.tipo}/${v.id}`} style={{ color: "inherit" }}>
+              {/* Ruta central: un objeto del repositorio no vive en /entidad/… */}
+              <Link href={rutaEntidad(v.tipo, v.id) || `/entidad/${v.tipo}/${v.id}`} style={{ color: "inherit" }}>
                 {ENT_ICO[v.tipo] || "🔗"} {v.nombre}
               </Link>
               <button className="x" title="Quitar vínculo" onClick={() => quitar(v.tipo, v.id)}>×</button>

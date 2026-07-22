@@ -131,8 +131,20 @@ export default async function Caso({ params }: { params: { id: string } }) {
     l.push(r); rxCom.set(r.comentario_id, l);
   });
 
+  /* Los OBJETOS del repositorio se resuelven aparte y solo los vinculados a
+     este caso: el catálogo puede tener miles y no hay razón de traerlos todos
+     —a diferencia de proyectos o empresas, un objeto no se elige de una lista.
+     Sin esto el vínculo existía en la base pero el chip se filtraba por no
+     tener nombre: el caso decía estar vinculado a nada. */
+  const idsObj = (p.vinculos || [])
+    .filter((v: any) => v.entidad_tipo === "objeto").map((v: any) => v.entidad_id);
+  const { data: objs } = idsObj.length
+    ? await supabase.from("objetos").select("id,titulo,tipo").in("id", idsObj)
+    : { data: [] as any[] };
+
   // Resolver nombres de entidades vinculadas y de perfiles
   const nombres = new Map<string, string>();
+  (objs || []).forEach((x: any) => nombres.set(`objeto:${x.id}`, x.titulo));
   (proy.data || []).forEach((x: any) => nombres.set(`proyecto:${x.id}`, x.nombre));
   (emp.data || []).forEach((x: any) => nombres.set(`empresa:${x.id}`, x.nombre));
   (pers.data || []).forEach((x: any) => nombres.set(`persona:${x.id}`, x.nombre));

@@ -72,7 +72,10 @@ export default async function Empresas({ searchParams }: {
     supabase.from("postulaciones")
       .select(`${SEL_FONDO},codigo,proyecto_id,proy:proyectos(id,nombre,nombre_corto),conv:convocatorias(codigo,nombre,anio)`)
       .not("empresa_id", "is", null),
-    supabase.from("comentarios").select("publicacion_id"),
+    /* Solo los de caso: desde que los objetos del repositorio comentan en
+       esta misma tabla, sin el filtro sus filas gastan el tope de PostgREST
+       (1000) y el contador 💬 se queda corto en silencio. */
+    supabase.from("comentarios").select("publicacion_id").not("publicacion_id", "is", null),
     // El link de SUNAT sale del admin, no del código: si SUNAT lo cambia
     // —lo ha hecho— se corrige ahí sin esperar un deploy.
     urlPlataforma(PLAT.sunatConsultaRuc),

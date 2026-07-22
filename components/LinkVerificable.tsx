@@ -10,10 +10,12 @@ import { previewCandidates } from "@/lib/drive";
    que quedó equivocado, y el veredicto de un humano: ✓ Correcto o ✗ Incorrecto.
    El veredicto se guarda contra la URL: si el link cambia, vuelve a «sin
    revisar». Volver a tocar el mismo veredicto lo quita. */
-export default function LinkVerificable({ tipo, id, campo, url, etiqueta, icono, verif }: {
+export default function LinkVerificable({ tipo, id, campo, url, etiqueta, icono, verif, linea }: {
   tipo: string; id: string; campo: string; url: string;
   etiqueta: string; icono: string;
   verif?: { url: string; por?: string | null; en?: string | null; correcto?: boolean } | null;
+  /** Todo en una sola fila (para listas donde el alto importa). */
+  linea?: boolean;
 }) {
   const router = useRouter();
   const [ocupado, setOcupado] = useState(false);
@@ -54,7 +56,7 @@ export default function LinkVerificable({ tipo, id, campo, url, etiqueta, icono,
   const firma = quien || fecha ? ` · ${[quien, fecha].filter(Boolean).join(" · ")}` : "";
 
   return (
-    <div className={`link-verif ${ok ? "ok" : malo ? "malo" : ""}`}>
+    <div className={`link-verif ${ok ? "ok" : malo ? "malo" : ""} ${linea ? "lv-linea" : ""}`}>
       {mini && (
         <button className="lv-mini" onClick={() => setZoom(true)} title="Ver el contenido del link">
           <img src={mini} alt="" loading="lazy" referrerPolicy="no-referrer"
