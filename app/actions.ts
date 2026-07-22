@@ -9,6 +9,8 @@ import { TOKEN } from "@/lib/puertas";
 import { BOT } from "@/lib/personas";
 import { CAMPOS_TABLA } from "@/lib/tablas-expediente";
 import { esCampoDelTrigger } from "@/lib/actividad";
+import { SECCIONES } from "@/lib/secciones";
+import { TIPOS_OBJETO } from "@/lib/objetos";
 
 /* Crear o actualizar una entidad núcleo (proyecto/empresa/persona).
    La config compartida actúa como whitelist de tabla y campos. */
@@ -1254,7 +1256,26 @@ export async function guardarObjeto(a: {
   const notas = (a.notas || "").trim();
   const fecha = (a.fecha || "").trim();
   if (!titulo) return { error: "Ponle un título." };
-  if (!a.tipo) return { error: "Elige el tipo." };
+  /* La lista de tipos es CERRADA a propósito (lib/objetos): si cada quien
+     inventa el suyo, el filtro deja de servir. El cliente ya solo ofrece los
+     válidos, pero esto es una acción de servidor. `cv` se excluye aquí a
+     propósito: tiene su propia puerta (`guardarCv`), que sabe del enfoque. */
+  if (!TIPOS_OBJETO.some(t => t.key === a.tipo)) return { error: "Ese tipo de objeto no existe." };
+  /* EL DUEÑO TIENE QUE EXISTIR DE VERDAD. `objetos` guarda el dueño como
+     (texto, uuid) sin clave foránea —es polimórfico—, así que nadie más lo
+     comprueba: un tipo inventado crea un objeto huérfano que sale en
+     /repositorio con dueño «—» y no aparece en ninguna ficha. Y un id que no
+     sea uuid revienta en Postgres con un 22P02 que el humano no entiende.
+     Ahora que se puede crear desde la página global, la entidad la elige el
+     formulario y no la ruta: conviene comprobarla aquí. */
+  const dueno = SECCIONES.find(s => s.tipo === a.entidadTipo && s.tipo !== "objeto");
+  if (!dueno) return { error: "Elige de quién es el objeto." };
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(a.entidadId || ""))
+    return { error: "No se reconoce a quién pertenece." };
+  // Y que exista: un uuid con forma válida pero inventado creaba un objeto
+  // sin ficha donde aparecer.
+  if (!a.id && !await existeEntidad(supabase, a.entidadTipo, a.entidadId))
+    return { error: "Esa ficha no existe." };
   /* El link es OBLIGATORIO: un objeto del repositorio es la referencia a algo
      que existe en alguna parte. Sin link no hay objeto que referenciar, solo
      un título suelto. La única excepción es la nota, que es texto por
@@ -1307,22 +1328,134 @@ export async function guardarObjeto(a: {
   return {};
 }
 
+/* ¿La ficha dueña EXISTE? Validar el tipo y el formato del uuid no basta: son
+   acciones de servidor y `objetos` no tiene clave foránea al dueño (es
+   polimórfico), así que un uuid inventado creaba un objeto que sale en
+   /repositorio con dueño «—» y no aparece en ninguna ficha. */
+async function existeEntidad(supabase: any, tipo: string, id: string) {
+  const s = SECCIONES.find(x => x.tipo === tipo && x.tipo !== "objeto");
+  if (!s) return false;
+  const { data } = await supabase.from(s.tabla).select("id").eq("id", id).maybeSingle();
+  return !!data;
+}
+
+/* CAMBIARLE EL DUEÑO A UN OBJETO.
+
+   Se guardó la entrevista al maestro Faure colgando de Wilfredo, que fue quien
+   la trajo. Traer algo y ser su protagonista no es lo mismo, y hasta ahora no
+   había forma de corregirlo salvo borrar y volver a crear —perdiendo el
+   historial, los comentarios y los vínculos—.
+
+   Es un movimiento, no una edición: se anota en la bitácora de las dos fichas
+   (de dónde salió, a dónde entró) y en la del propio objeto. Un dato que
+   cambia de dueño sin dejar rastro es un dato que aparece «de la nada» en una
+   ficha y nadie sabe por qué. */
+export async function moverObjeto(id: string, entidadTipo: string, entidadId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  const dueno = SECCIONES.find(s => s.tipo === entidadTipo && s.tipo !== "objeto");
+  if (!dueno) return { error: "Ese tipo de ficha no puede tener repositorio." };
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(entidadId || ""))
+    return { error: "No se reconoce la ficha de destino." };
+
+  const { data: o } = await supabase.from("objetos")
+    .select("titulo,tipo,entidad_tipo,entidad_id").eq("id", id).maybeSingle();
+  if (!o) return { error: "No se encontró el objeto." };
+  if (o.entidad_tipo === entidadTipo && o.entidad_id === entidadId) return {};
+  /* Un CV solo tiene sentido colgando de una persona: su sección propia solo
+     se dibuja ahí, y el repositorio genérico excluye tipo='cv'. Movido a un
+     proyecto se volvía invisible en las dos pantallas. */
+  if (o.tipo === "cv" && entidadTipo !== "persona")
+    return { error: "Un CV solo puede pertenecer a una persona." };
+  if (!await existeEntidad(supabase, entidadTipo, entidadId))
+    return { error: "Esa ficha ya no existe." };
+
+  const { error } = await supabase.from("objetos")
+    .update({ entidad_tipo: entidadTipo, entidad_id: entidadId }).eq("id", id);
+  if (error) {
+    // El único choque posible es el índice de CV por enfoque.
+    return { error: error.code === "23505" ? "Esa ficha ya tiene un objeto igual." : error.message };
+  }
+
+  /* LO QUE VIAJA CON EL OBJETO.
+     `link_verificaciones` se guarda contra el DUEÑO —(entidad_tipo, entidad_id,
+     campo='objeto:<id>')— porque nació antes que el repositorio. Si no se
+     reasigna, pasan tres cosas a la vez: el link vuelve a «sin revisar» aunque
+     alguien ya lo revisó, la fila vieja queda pegada a la ficha anterior sin
+     pintarse nunca, y al borrar el objeto se limpia con las claves nuevas, así
+     que esa fila sobrevive al objeto para siempre. */
+  const { data: verifVieja } = await supabase.from("link_verificaciones")
+    .select("id").eq("entidad_tipo", o.entidad_tipo).eq("entidad_id", o.entidad_id)
+    .eq("campo", `objeto:${id}`).maybeSingle();
+  if (verifVieja) {
+    /* Si el objeto ya estuvo en la ficha destino puede haber quedado una fila
+       con el mismo (entidad, campo) y el unique haría chocar el update. Se
+       limpia — pero SOLO si hay una que la reemplace: borrarla cuando el
+       origen no tiene ninguna dejaría el link «sin revisar» habiendo sido
+       revisado. */
+    await supabase.from("link_verificaciones").delete()
+      .eq("entidad_tipo", entidadTipo).eq("entidad_id", entidadId).eq("campo", `objeto:${id}`);
+    const { error: eVerif } = await supabase.from("link_verificaciones")
+      .update({ entidad_tipo: entidadTipo, entidad_id: entidadId }).eq("id", verifVieja.id);
+    // Se avisa, no se aborta: el objeto YA se movió, y dejar el error mudo es
+    // exactamente lo que este bloque vino a evitar.
+    if (eVerif) console.error("moverObjeto · verificación no reasignada:", eVerif.message);
+  }
+
+  /* Y si el destino ya estaba VINCULADO al objeto, ese vínculo sobra: sería el
+     mismo material saliendo dos veces en la misma ficha —en «Repositorio» y en
+     «Del repositorio»— y contándose a sí mismo en 🔗. */
+  await supabase.from("objeto_vinculos").delete()
+    .eq("objeto_id", id).eq("entidad_tipo", entidadTipo).eq("entidad_id", entidadId);
+
+  await supabase.from("actividad").insert([
+    { entidad_tipo: o.entidad_tipo, entidad_id: o.entidad_id, actor_id: user.id, tipo: "dato",
+      detalle: { mensaje: `movió «${o.titulo}» a otra ficha` } },
+    { entidad_tipo: entidadTipo, entidad_id: entidadId, actor_id: user.id, tipo: "dato",
+      detalle: { mensaje: `recibió del repositorio: ${o.titulo}` } },
+    { entidad_tipo: "objeto", entidad_id: id, actor_id: user.id, tipo: "editado",
+      detalle: { mensaje: `cambió de dueño` } },
+  ]);
+
+  revalidatePath(`/objeto/${id}`);
+  revalidatePath(`/entidad/${o.entidad_tipo}/${o.entidad_id}`);
+  revalidatePath(`/entidad/${entidadTipo}/${entidadId}`);
+  revalidatePath("/repositorio");
+  return {};
+}
+
 export async function borrarObjeto(id: string, entidadTipo: string, entidadId: string) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
   const { data: prev } = await supabase.from("objetos").select("titulo").eq("id", id).maybeSingle();
-  const { error } = await supabase.from("objetos").delete()
-    .eq("id", id).eq("entidad_tipo", entidadTipo).eq("entidad_id", entidadId);
+  const { data: fue, error } = await supabase.from("objetos").delete()
+    .eq("id", id).eq("entidad_tipo", entidadTipo).eq("entidad_id", entidadId)
+    .select("id");
   if (error) return { error: error.message };
-  // Su verificación de link no tiene FK que la cascadee: se limpia a mano.
+  // Sin `.select()` un delete que no toca nada —RLS, claves que no casan—
+  // devuelve éxito y la pantalla dice que borró algo que sigue ahí.
+  if (!fue?.length) return { error: "No se pudo quitar: no se encontró el objeto en esta ficha." };
+  /* Lo que NO cascadea solo. `comentarios`, `notificaciones` y
+     `objeto_vinculos` tienen FK con `on delete cascade`; estas dos no, porque
+     guardan el dueño de forma polimórfica y no hay FK posible. Sin limpiarlas,
+     el caso se queda con un chip a un objeto inexistente. */
   await supabase.from("link_verificaciones").delete()
     .eq("entidad_tipo", entidadTipo).eq("entidad_id", entidadId).eq("campo", `objeto:${id}`);
+  await supabase.from("publicacion_vinculos").delete()
+    .eq("entidad_tipo", "objeto").eq("entidad_id", id);
+  // Su bitácora propia: si no, quedan eventos enlazando a una página que ya
+  // no existe.
+  await supabase.from("actividad").delete().eq("entidad_tipo", "objeto").eq("entidad_id", id);
   await supabase.from("actividad").insert({
     entidad_tipo: entidadTipo, entidad_id: entidadId, actor_id: user.id, tipo: "dato",
     detalle: { mensaje: `quitó del repositorio: ${prev?.titulo || "—"}` },
   });
   revalidatePath(`/entidad/${entidadTipo}/${entidadId}`);
+  // El listado global también lo mostraba: sin esto seguía apareciendo ahí.
+  revalidatePath("/repositorio");
   return {};
 }
 
@@ -1415,9 +1548,20 @@ export async function borrarCv(id: string, personaId: string) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
   const { data: prev } = await supabase.from("objetos").select("titulo").eq("id", id).maybeSingle();
-  const { error } = await supabase.from("objetos").delete()
-    .eq("id", id).eq("entidad_tipo", "persona").eq("entidad_id", personaId).eq("tipo", "cv");
+  const { data: fue, error } = await supabase.from("objetos").delete()
+    .eq("id", id).eq("entidad_tipo", "persona").eq("entidad_id", personaId).eq("tipo", "cv")
+    .select("id");
   if (error) return { error: error.message };
+  if (!fue?.length) return { error: "No se pudo borrar: no se encontró ese CV." };
+  /* Un CV es un objeto como cualquier otro: arrastra las mismas colas que no
+     cascadean solas. La sección de CVs es otra puerta a la misma bodega, no
+     otra bodega — si la limpieza vive solo en `borrarObjeto`, borrar por aquí
+     deja la basura que allá se aprendió a recoger. */
+  await supabase.from("link_verificaciones").delete()
+    .eq("entidad_tipo", "persona").eq("entidad_id", personaId).eq("campo", `objeto:${id}`);
+  await supabase.from("publicacion_vinculos").delete()
+    .eq("entidad_tipo", "objeto").eq("entidad_id", id);
+  await supabase.from("actividad").delete().eq("entidad_tipo", "objeto").eq("entidad_id", id);
   await supabase.from("actividad").insert({
     entidad_tipo: "persona", entidad_id: personaId, actor_id: user.id, tipo: "dato",
     detalle: { mensaje: `borró el CV de ${prev?.titulo || "—"}` },
@@ -1955,6 +2099,14 @@ export async function marcarLink(tipo: string, id: string, campo: string, url: s
 
   // Nombre legible del documento para la bitácora ("firma", "DNI"…).
   const doc = (etiqueta || campo.replace(/_url$/, "").replace(/_/g, " ")).toLowerCase();
+  /* El campo `objeto:<id>` significa que el link vive en un objeto del
+     repositorio: además de la ficha del dueño hay que refrescar SU página, o
+     el resto del equipo sigue viendo el veredicto viejo. */
+  const objId = campo.startsWith("objeto:") ? campo.slice(7) : null;
+  const refrescar = () => {
+    revalidatePath(`/entidad/${tipo}/${id}`);
+    if (objId) { revalidatePath(`/objeto/${objId}`); revalidatePath("/repositorio"); }
+  };
   const registrar = (mensaje: string) => supabase.from("actividad").insert({
     entidad_tipo: tipo, entidad_id: id, actor_id: user.id, tipo: "link", detalle: { mensaje },
   });
@@ -1967,7 +2119,7 @@ export async function marcarLink(tipo: string, id: string, campo: string, url: s
     const { error } = await supabase.from("link_verificaciones").delete().eq("id", prev.id);
     if (error) return { error: error.message };
     await registrar(`quitó la revisión del link de ${doc}`);
-    revalidatePath(`/entidad/${tipo}/${id}`);
+    refrescar();
     return { estado: "quitado" };
   }
 
@@ -1981,7 +2133,7 @@ export async function marcarLink(tipo: string, id: string, campo: string, url: s
   await registrar(correcto
     ? `revisó el link de ${doc} — ✅ contenido correcto`
     : `revisó el link de ${doc} — ⚠ contenido equivocado, hay que corregirlo`);
-  revalidatePath(`/entidad/${tipo}/${id}`);
+  refrescar();
   return { estado: correcto ? "correcto" : "malo" };
 }
 
@@ -2086,10 +2238,52 @@ export async function borrarPostulacion(id: string, convocatoriaId: string) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
-  const { error } = await supabase.from("postulaciones").delete().eq("id", id);
+  /* `.select()` OBLIGATORIO antes de limpiar el rastro: `postulaciones` tiene
+     RLS y no hay policy de DELETE versionada, así que un delete sin permiso
+     borra 0 filas y NO devuelve error. Sin este chequeo, la postulación seguía
+     viva y la limpieza de abajo le borraba igual sus objetos y su bitácora. */
+  const { data: fue, error } = await supabase.from("postulaciones")
+    .delete().eq("id", id).select("id");
   if (error) return { error: error.message };
+  if (!fue?.length) return { error: "No se borró: no tienes permiso sobre esta postulación." };
+  await limpiarRastroPolimorfico(supabase, "postulacion", id);
   revalidatePath(`/entidad/convocatoria/${convocatoriaId}`);
+  revalidatePath("/repositorio");
   return {};
+}
+
+/* LO QUE NO SE VA SOLO AL BORRAR UNA FICHA.
+   Cuatro tablas guardan a su dueño de forma polimórfica —(entidad_tipo,
+   entidad_id)— y por eso no pueden tener clave foránea: nadie las cascadea.
+   Sin esto, borrar una postulación dejaba sus objetos del repositorio vivos,
+   saliendo en /repositorio con dueño «—» e inalcanzables desde cualquier
+   ficha. Cualquier borrado de entidad futuro debe pasar por aquí. */
+async function limpiarRastroPolimorfico(supabase: any, tipo: string, id: string) {
+  const { data: objs } = await supabase.from("objetos").select("id")
+    .eq("entidad_tipo", tipo).eq("entidad_id", id);
+  const ids = (objs || []).map((o: any) => o.id);
+  if (ids.length) {
+    // Los casos que apuntaban a esos objetos se quedarían con chips rotos.
+    await supabase.from("publicacion_vinculos").delete()
+      .eq("entidad_tipo", "objeto").in("entidad_id", ids);
+    // La bitácora propia de cada objeto: sin esto quedan eventos apuntando a
+    // una página /objeto/<id> que ya no existe.
+    await supabase.from("actividad").delete()
+      .eq("entidad_tipo", "objeto").in("entidad_id", ids);
+    // `objetos` cascadea comentarios, notificaciones y objeto_vinculos.
+    await supabase.from("objetos").delete().in("id", ids);
+  }
+  for (const t of ["publicacion_vinculos", "objeto_vinculos", "link_verificaciones"]) {
+    await supabase.from(t).delete().eq("entidad_tipo", tipo).eq("entidad_id", id);
+  }
+  /* La bitácora se escribe con DOS grafías: las acciones ponen el singular
+     («postulacion») y los triggers de la base ponen `tg_table_name`, o sea el
+     plural («postulaciones»). Borrar solo una dejaba media historia huérfana
+     enlazando a una ficha 404 — peor que no borrar nada. */
+  const plural = SECCIONES.find(s => s.tipo === tipo)?.tabla;
+  await supabase.from("actividad").delete()
+    .in("entidad_tipo", plural && plural !== tipo ? [tipo, plural] : [tipo])
+    .eq("entidad_id", id);
 }
 
 /* ── El equipo de un PROYECTO ──

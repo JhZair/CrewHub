@@ -54,7 +54,13 @@ begin
      línea, una persona cuyo único dato era su CV contaba refs = 0 y el PASO 3
      la borraba — el repositorio la volvía invisible justo para lo que existe
      esta función. */
-  foreach t in array array['publicacion_vinculos', 'actividad', 'objetos'] loop
+  /* La lista completa de tablas con dueño polimórfico. Faltaban
+     `objeto_vinculos` y `link_verificaciones`: una persona cuyo único rastro
+     es estar vinculada a los objetos de otros —o haber revisado sus links—
+     contaba refs = 0 y el PASO 3 la borraba. Cada tabla nueva con
+     (entidad_tipo, entidad_id) tiene que entrar aquí el mismo día que nace. */
+  foreach t in array array['publicacion_vinculos', 'actividad', 'objetos',
+                           'objeto_vinculos', 'link_verificaciones'] loop
     execute format(
       'select count(*) from %I where entidad_tipo = ''persona'' and entidad_id = $1',
       t) into c using p_id;
@@ -186,7 +192,7 @@ select * from victimas;
 create or replace function persona_fusionar(mantener uuid, absorber uuid)
 returns text
 language plpgsql as $$
-declare r record; movidos int := 0; chocados int := 0; c int; sets text;
+declare r record; r2 record; movidos int := 0; chocados int := 0; c int; sets text;
 begin
   if mantener = absorber then return 'Son la misma persona.'; end if;
   if not exists (select 1 from personas where id = mantener) then
@@ -202,29 +208,45 @@ begin
      where con.contype = 'f' and con.confrelid = 'personas'::regclass
        and array_length(con.conkey, 1) = 1
   loop
-    -- Puede chocar contra un índice único (p.ej. la misma persona ya está
-    -- en esa postulación por las dos fichas). En ese caso el del absorbido
-    -- sobra: el que se queda ya lo tiene.
-    begin
-      execute format('update %s set %I = $1 where %I = $2', r.tab, r.col, r.col)
-        using mantener, absorber;
-      get diagnostics c = row_count; movidos := movidos + c;
-    exception when unique_violation then
-      execute format('delete from %s where %I = $1', r.tab, r.col) using absorber;
-      get diagnostics c = row_count; chocados := chocados + c;
-    end;
+    /* FILA POR FILA, con `ctid` como identificador universal —hay tablas sin
+       columna `id`—. Puede chocar contra un índice único (p.ej. la misma
+       persona ya está en esa postulación por las dos fichas); en ese caso el
+       del absorbido sobra. Pero moverlas en bloque significaba que UNA
+       colisión anulaba el update entero y el `delete` de rescate se llevaba
+       TODAS las filas del absorbido en esa tabla: la persona desaparecía de
+       postulaciones y equipos donde sí estuvo. Mismo error que ya se corrigió
+       en `objetos`; aquí afectaba a las diez tablas con FK a personas. */
+    for r2 in execute format('select ctid from %s where %I = $1', r.tab, r.col) using absorber
+    loop
+      begin
+        execute format('update %s set %I = $1 where ctid = $2', r.tab, r.col)
+          using mantener, r2.ctid;
+        movidos := movidos + 1;
+      exception when unique_violation then
+        execute format('delete from %s where ctid = $1', r.tab) using r2.ctid;
+        chocados := chocados + 1;
+      end;
+    end loop;
   end loop;
 
-  -- Los vínculos sueltos: sin clave foránea, hay que moverlos a mano
-  begin
-    update publicacion_vinculos set entidad_id = mantener
-     where entidad_tipo = 'persona' and entidad_id = absorber;
-    get diagnostics c = row_count; movidos := movidos + c;
-  exception when unique_violation then
-    delete from publicacion_vinculos
-     where entidad_tipo = 'persona' and entidad_id = absorber;
-    get diagnostics c = row_count; chocados := chocados + c;
-  end;
+  /* Los vínculos sueltos: sin clave foránea, hay que moverlos a mano — y FILA
+     POR FILA, por lo mismo que los objetos. `publicacion_vinculos` tiene
+     unique(publicacion_id, entidad_tipo, entidad_id): si los dos gemelos están
+     vinculados al MISMO caso, el update en bloque fallaba entero y el delete
+     de rescate se llevaba TODOS los vínculos del absorbido, no solo el
+     colisionado. La persona desaparecía de casos donde sí participó. */
+  for r in
+    select id from publicacion_vinculos
+     where entidad_tipo = 'persona' and entidad_id = absorber
+  loop
+    begin
+      update publicacion_vinculos set entidad_id = mantener where id = r.id;
+      movidos := movidos + 1;
+    exception when unique_violation then
+      delete from publicacion_vinculos where id = r.id;
+      chocados := chocados + 1;
+    end;
+  end loop;
 
   update actividad set entidad_id = mantener
    where entidad_tipo = 'persona' and entidad_id = absorber;
@@ -250,6 +272,36 @@ begin
     exception when unique_violation then
       -- El que se queda ya tiene un CV de ese enfoque: este es el sobrante.
       delete from objetos where id = r.id;
+      chocados := chocados + 1;
+    end;
+  end loop;
+
+  /* Lo que la persona apuntaba en el repositorio de OTROS: sus vínculos a
+     objetos ajenos y sus revisiones de link. Sin esto quedaban apuntando a un
+     uuid que ya no existe, y la página del objeto los ocultaba en silencio
+     —filtra los vínculos sin nombre—, así que el dato desaparecía sin error. */
+  for r in
+    select id from objeto_vinculos
+     where entidad_tipo = 'persona' and entidad_id = absorber
+  loop
+    begin
+      update objeto_vinculos set entidad_id = mantener where id = r.id;
+      movidos := movidos + 1;
+    exception when unique_violation then
+      delete from objeto_vinculos where id = r.id;
+      chocados := chocados + 1;
+    end;
+  end loop;
+
+  for r in
+    select id from link_verificaciones
+     where entidad_tipo = 'persona' and entidad_id = absorber
+  loop
+    begin
+      update link_verificaciones set entidad_id = mantener where id = r.id;
+      movidos := movidos + 1;
+    exception when unique_violation then
+      delete from link_verificaciones where id = r.id;
       chocados := chocados + 1;
     end;
   end loop;

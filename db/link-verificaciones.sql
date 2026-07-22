@@ -38,9 +38,38 @@ create policy "leer_linkverif" on link_verificaciones
 drop policy if exists "crear_linkverif" on link_verificaciones;
 create policy "crear_linkverif" on link_verificaciones
   for insert to authenticated with check (verificado_por = auth.uid());
+/* UPDATE: o firmas la revisión, o no tocas la firma.
+   Hay dos updates legítimos y son distintos:
+     · Cambiar el VEREDICTO — lo hace quien revisa, y queda a su nombre.
+     · MOVER la fila con su objeto — cuando un objeto del repositorio cambia
+       de dueño, su verificación tiene que seguirlo (la clave incluye la
+       entidad dueña). Ahí no hay revisión nueva y el firmante NO debe cambiar.
+   El check anterior (`verificado_por = auth.uid()`) hacía fallar el segundo
+   caso con 42501 si la había revisado otra persona, y la revisión quedaba
+   huérfana en la ficha anterior. Abrirlo a `true` habría permitido lo
+   contrario: cambiarle el veredicto a un link dejando el nombre de otro —
+   «✅ revisado por Wilfredo» sobre algo que Wilfredo nunca vio—, que es
+   justo la garantía por la que esta tabla existe. Así que se admiten los dos
+   casos y nada más: o el firmante eres tú, o el firmante no cambió. */
 drop policy if exists "editar_linkverif" on link_verificaciones;
 create policy "editar_linkverif" on link_verificaciones
-  for update to authenticated using (true) with check (verificado_por = auth.uid());
+  for update to authenticated using (true)
+  with check (
+    verificado_por = auth.uid()
+    or exists (
+      /* La rama «mover»: SOLO puede cambiar de qué ficha cuelga. Firmante,
+         veredicto, url y fecha tienen que quedar idénticos — si no, bastaría
+         con `set correcto = true` dejando el nombre de otro para fabricar una
+         revisión que nadie hizo. */
+      select 1 from link_verificaciones l
+       where l.id = link_verificaciones.id
+         and l.verificado_por is not distinct from link_verificaciones.verificado_por
+         and l.correcto       is not distinct from link_verificaciones.correcto
+         and l.url            is not distinct from link_verificaciones.url
+         and l.campo          is not distinct from link_verificaciones.campo
+         and l.verificado_en  is not distinct from link_verificaciones.verificado_en
+    )
+  );
 drop policy if exists "borrar_linkverif" on link_verificaciones;
 create policy "borrar_linkverif" on link_verificaciones
   for delete to authenticated using (true);

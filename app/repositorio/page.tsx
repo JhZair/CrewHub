@@ -2,8 +2,11 @@ import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import { TIPOS_OBJETO, TIPO_CV, icoObjeto, lblObjeto, ordenObjeto } from "@/lib/objetos";
-import { SECCIONES, ICO_ENT, rutaEntidad, nombreDe } from "@/lib/secciones";
-import { previewUrl, enlaceLimpio } from "@/lib/drive";
+import { ICO_ENT, nombreDe } from "@/lib/secciones";
+import { enlaceLimpio } from "@/lib/drive";
+import MiniObjeto from "@/components/MiniObjeto";
+import NuevoObjeto from "@/components/NuevoObjeto";
+import { catalogosDuenos, DUENOS } from "@/lib/catalogos";
 import { buscadorDe, pal } from "@/lib/buscar";
 import { mapaAlias } from "@/lib/personas";
 import Link from "next/link";
@@ -25,7 +28,7 @@ const fmtHora = (d: string) =>
   new Date(d).toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric", timeZone: "America/Lima" });
 
 /** Los tipos de entidad que pueden tener repositorio (todas menos el objeto). */
-const DUENOS = SECCIONES.filter(s => s.tipo !== "objeto");
+// (DUENOS vive en lib/catalogos: lo comparten esta página y el selector.)
 
 export default async function RepositorioPage({ searchParams }: {
   searchParams: { q?: string; t?: string; de?: string };
@@ -45,14 +48,16 @@ export default async function RepositorioPage({ searchParams }: {
       .order("fecha", { ascending: false, nullsFirst: false })
       .order("creado_en", { ascending: false })
       .limit(600),
-    supabase.from("objeto_vinculos").select("objeto_id"),
+    supabase.from("objeto_vinculos").select("objeto_id").limit(5000),
     supabase.from("personas").select("usuario_id,alias")
       .not("alias", "is", null).not("usuario_id", "is", null),
     /* Conversación y trabajo, que es lo que dice si un objeto está vivo o solo
        está guardado. Dos consultas planas y se cuentan en memoria: pedir un
-       count embebido por objeto serían 31 consultas. */
-    supabase.from("comentarios").select("objeto_id").not("objeto_id", "is", null),
-    supabase.from("publicacion_vinculos").select("entidad_id").eq("entidad_tipo", "objeto"),
+       count embebido por objeto serían 31 consultas.
+       Con techo explícito: PostgREST corta en 1000 por defecto y sin `limit`
+       el día que se pase, los badges empiezan a mentir en silencio. */
+    supabase.from("comentarios").select("objeto_id").not("objeto_id", "is", null).limit(5000),
+    supabase.from("publicacion_vinculos").select("entidad_id").eq("entidad_tipo", "objeto").limit(5000),
   ]);
   // Quién lo trajo, con su alias (JohnO) como en el resto del sistema.
   const alias = mapaAlias(aliasPers);
@@ -88,6 +93,9 @@ export default async function RepositorioPage({ searchParams }: {
   }
   const duenoDe = (o: any) => nombres.get(`${o.entidad_tipo}:${o.entidad_id}`) || "—";
 
+  // Catálogos para elegir dueño al agregar desde aquí.
+  const { catalogos, etiquetas } = await catalogosDuenos(supabase);
+
   // Mismo motor de búsqueda que el resto: sin tildes, por palabras
   const coincide = buscadorDe(q);
   const filtrados = todos.filter((o: any) =>
@@ -113,11 +121,15 @@ export default async function RepositorioPage({ searchParams }: {
           title="Conversaciones sobre objetos del repositorio">🗂 Casos</Link>
         <Link href="/historial/objeto" className="btn btn-ghost"
           title="Todo lo que se movió en el repositorio">🕐 Historial</Link>
+        {/* Se puede guardar material aquí mismo: el dueño se elige dentro del
+            formulario, no viajando a su ficha. */}
+        <NuevoObjeto catalogos={catalogos} etiquetas={etiquetas} />
       </div>
       <h1 className="title-lg">📚 Repositorio</h1>
       <p style={{ color: "var(--dim)", fontSize: 12.5, margin: "0 0 12px" }}>
         Todo lo que sabemos y no cabe en un formulario: obras, referencias, prensa,
-        premios, investigaciones. Cada objeto se agrega desde la ficha de quien lo aporta.
+        premios, investigaciones. Cada objeto pertenece a alguien — una persona,
+        un proyecto, una empresa — y se puede agregar desde aquí o desde su ficha.
       </p>
 
       <form className="card" style={{ display: "flex", gap: 10, padding: 12 }}>
@@ -168,7 +180,6 @@ export default async function RepositorioPage({ searchParams }: {
           </div>
 
           {g.items.map((o: any) => {
-            const mini = previewUrl(o.url, 220);
             const nv = nVinc.get(o.id) || 0;
             const nc = nCom.get(o.id) || 0;
             const nk = nCaso.get(o.id) || 0;
@@ -179,34 +190,39 @@ export default async function RepositorioPage({ searchParams }: {
                  es HTML inválido y revienta al hidratar. */
               <div key={o.id} className="card link fila-cap repo-item">
                 <Link href={`/objeto/${o.id}`} className="fila-cubre" aria-label={o.titulo} />
-                {mini
-                  ? <span className="repo-item-mini"><img src={mini} alt="" loading="lazy" referrerPolicy="no-referrer" /></span>
-                  : <span className="repo-item-ico">{icoObjeto(o.tipo)}</span>}
+                <MiniObjeto url={o.url} ico={icoObjeto(o.tipo)} />
                 <span className="repo-item-cuerpo">
+                  {/* El título manda y se queda con TODO el ancho. Antes competía
+                      en la misma línea con cuatro chips y un botón, así que un
+                      título largo se partía o se comía a las píldoras. */}
                   <span className="repo-item-cab">
                     <b>{o.titulo}</b>
                     {o.fecha && <i className="repo-fecha">{fmtDia(o.fecha)}</i>}
-                    <span style={{ flex: 1 }} />
-                    {nv > 0 && <span className="badge" style={{ color: "var(--violet)", background: "rgba(167,139,250,.12)" }}>🔗 {nv}</span>}
-                    {/* Un objeto con conversación o con trabajo encima no es lo
-                        mismo que uno solo archivado. Solo se pintan si existen:
-                        una fila de ceros no informa, estorba. */}
-                    {nc > 0 && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>💬 {nc}</span>}
-                    {nk > 0 && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>🗂 {nk}</span>}
-                    <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>
-                      {ICO_ENT[o.entidad_tipo] || "🔗"} {duenoDe(o)}
-                    </span>
-                    {/* Abrir el original sin pasar por la ficha */}
-                    {o.url && (
-                      <a href={enlaceLimpio(o.url)} target="_blank" rel="noopener noreferrer"
-                        className="repo-abrir fila-encima" title={`Abrir ${lblObjeto(o.tipo).toLowerCase()} ↗`}>↗</a>
-                    )}
                   </span>
                   {o.notas && <span className="repo-item-notas">{o.notas}</span>}
-                  {/* La procedencia del dato es parte del dato */}
-                  <span className="repo-pie">
-                    agregado{o.autor ? ` por ${o.autor}` : ""}
-                    {o.creado_en ? ` · ${fmtHora(o.creado_en)}` : ""}
+                  {/* Pie: de dónde viene y qué tiene encima, todo en una banda.
+                      La procedencia del dato es parte del dato. */}
+                  <span className="repo-item-pie">
+                    <span className="repo-pie">
+                      agregado{o.autor ? ` por ${o.autor}` : ""}
+                      {o.creado_en ? ` · ${fmtHora(o.creado_en)}` : ""}
+                    </span>
+                    <span className="repo-item-chips">
+                      {nv > 0 && <span className="badge" style={{ color: "var(--violet)", background: "rgba(167,139,250,.12)" }}>🔗 {nv}</span>}
+                      {/* Un objeto con conversación o con trabajo encima no es lo
+                          mismo que uno solo archivado. Solo se pintan si existen:
+                          una fila de ceros no informa, estorba. */}
+                      {nc > 0 && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>💬 {nc}</span>}
+                      {nk > 0 && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>🗂 {nk}</span>}
+                      <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>
+                        {ICO_ENT[o.entidad_tipo] || "🔗"} {duenoDe(o)}
+                      </span>
+                      {/* Abrir el original sin pasar por la ficha */}
+                      {o.url && (
+                        <a href={enlaceLimpio(o.url)} target="_blank" rel="noopener noreferrer"
+                          className="repo-abrir fila-encima" title={`Abrir ${lblObjeto(o.tipo).toLowerCase()} ↗`}>↗</a>
+                      )}
+                    </span>
                   </span>
                 </span>
               </div>
@@ -219,7 +235,7 @@ export default async function RepositorioPage({ searchParams }: {
         <div className="empty">
           {todos.length
             ? <>Sin resultados{q && ` para «${q}»`}.</>
-            : <>Vacío. Los objetos se agregan desde la ficha de quien los aporta: una persona, un proyecto, una empresa.</>}
+            : <>Vacío. Usa ＋ Agregar aquí arriba, o hazlo desde la ficha de quien lo aporta.</>}
         </div>
       )}
       {todos.length === 600 && (

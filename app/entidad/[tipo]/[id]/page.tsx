@@ -730,8 +730,29 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     .order("fecha", { ascending: false, nullsFirst: false }).order("creado_en", { ascending: false });
   /* La procedencia del dato es parte del dato: quién lo trajo, con su alias
      (JohnO) como en el resto del sistema, y cuándo. */
+  /* Y su contexto: a qué apunta, y qué se movió encima. Tres consultas planas
+     acotadas a estos objetos —no un count embebido por fila—. Sin esto había
+     que entrar a cada objeto para saber si alguien había hablado de él. */
+  const idsObj = (objData || []).map((o: any) => o.id);
+  const [{ data: ovs }, { data: ocs }, { data: oks }] = idsObj.length
+    ? await Promise.all([
+        supabase.from("objeto_vinculos").select("objeto_id").in("objeto_id", idsObj),
+        supabase.from("comentarios").select("objeto_id").in("objeto_id", idsObj),
+        supabase.from("publicacion_vinculos").select("entidad_id")
+          .eq("entidad_tipo", "objeto").in("entidad_id", idsObj),
+      ])
+    : [{ data: [] }, { data: [] }, { data: [] }] as any;
+  const cuenta = (filas: any[], campo: string) => {
+    const m = new Map<string, number>();
+    (filas || []).forEach((r: any) => m.set(r[campo], (m.get(r[campo]) || 0) + 1));
+    return m;
+  };
+  const nOV = cuenta(ovs, "objeto_id"), nOC = cuenta(ocs, "objeto_id"), nOK = cuenta(oks, "entidad_id");
   const objetosDe: any[] = (objData || []).map((o: any) => ({
     ...o, autor: (o.creado_por && alias[o.creado_por]) || o.quien?.nombre || null,
+    n_vinculos: nOV.get(o.id) || 0,
+    n_comentarios: nOC.get(o.id) || 0,
+    n_casos: nOK.get(o.id) || 0,
   }));
 
   /* Objetos de OTROS que apuntan a esta entidad: el «Libro Khipukamaq» es de

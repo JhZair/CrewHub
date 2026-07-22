@@ -74,6 +74,41 @@ export function previewCandidates(url?: string | null, sz = 400): string[] {
   return [];                         // PDF directo u otros: sin miniatura, solo abrir
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   EL FORMATO SE DEDUCE DEL LINK, NO SE ESCRIBE EN EL TÍTULO.
+
+   La costumbre era anteponer «Video:» al título para avisar que la referencia
+   era audiovisual. Funciona el primer día y falla siempre después: el segundo
+   lo escribe «VIDEO -», el tercero se olvida, y el buscador ya no encuentra
+   los videos porque la marca vive dentro de un texto libre. Un dato que la
+   máquina puede deducir no se le pide a una persona.
+
+   La URL ya dice qué es: youtube → video, .mp4 → video, Drive con un doc de
+   Google → documento. Se deriva aquí, en un solo sitio, y se pinta igual en
+   todas las pantallas.
+   ═══════════════════════════════════════════════════════════════════════ */
+const EXT_VIDEO = /\.(mp4|mov|avi|mkv|webm|m4v)(\?|#|$)/i;
+const EXT_AUDIO = /\.(mp3|wav|aac|m4a|ogg|flac)(\?|#|$)/i;
+
+export type Formato = { key: string; ico: string; lbl: string };
+
+export function formatoDe(url?: string | null): Formato | null {
+  const s = (url || "").trim();
+  if (!s) return null;
+  if (esCarpeta(s)) return { key: "carpeta", ico: "📁", lbl: "Carpeta" };
+  if (youtubeId(s) || /vimeo\.com/.test(s) || EXT_VIDEO.test(s))
+    return { key: "video", ico: "▶", lbl: "Video" };
+  if (EXT_AUDIO.test(s)) return { key: "audio", ico: "🎧", lbl: "Audio" };
+  if (/\.pdf(\?|#|$)/i.test(s)) return { key: "pdf", ico: "📕", lbl: "PDF" };
+  if (EXT_IMG.test(s)) return { key: "imagen", ico: "🖼", lbl: "Imagen" };
+  // Los editores de Google se distinguen por la ruta, no por extensión.
+  if (/docs\.google\.com\/document/.test(s)) return { key: "doc", ico: "📄", lbl: "Documento" };
+  if (/docs\.google\.com\/spreadsheets/.test(s)) return { key: "hoja", ico: "📊", lbl: "Hoja" };
+  if (/docs\.google\.com\/presentation/.test(s)) return { key: "slides", ico: "🖥", lbl: "Presentación" };
+  if (/drive\.google\.com/.test(s)) return { key: "archivo", ico: "📎", lbl: "Archivo" };
+  return { key: "web", ico: "🔗", lbl: "Web" };
+}
+
 /* ¿El link apunta a una carpeta (no a un archivo)? Para no ofrecer verificar
    contenido de algo que no es un documento. */
 export function esCarpeta(url?: string | null): boolean {

@@ -40,3 +40,5 @@ create policy "crear_com" on comentarios
 -- `publicacion_id` ya era nullable, así que una notificación de objeto la deja
 -- vacía y llena `objeto_id`. Las pantallas resuelven el enlace según cuál venga.
 alter table notificaciones add column if not exists objeto_id uuid references objetos(id) on delete cascade;
+-- Sin índice, cada borrado de objeto obliga a un seq scan por la FK en cascada.
+create index if not exists idx_notif_objeto on notificaciones(objeto_id) where objeto_id is not null;

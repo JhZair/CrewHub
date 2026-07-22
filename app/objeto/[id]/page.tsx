@@ -8,10 +8,12 @@ import ConversarObjeto from "@/components/ConversarObjeto";
 import ComentarObjeto from "@/components/ComentarObjeto";
 import ComentarioTexto from "@/components/ComentarioTexto";
 import Avatar from "@/components/Avatar";
+import MoverObjeto from "@/components/MoverObjeto";
+import MiniObjeto from "@/components/MiniObjeto";
 import { agruparEventos } from "@/lib/agrupar";
 import { mapaAlias, conAlias } from "@/lib/personas";
 import { icoObjeto, lblObjeto } from "@/lib/objetos";
-import { ICO_ENT, rutaEntidad, nombreDe } from "@/lib/secciones";
+import { ICO_ENT, SECCIONES, rutaEntidad, nombreDe } from "@/lib/secciones";
 import { claseEstado, rotuloEstado } from "@/lib/estados";
 import { icoTipo } from "@/lib/tipos";
 import Link from "next/link";
@@ -27,6 +29,9 @@ const fecha = (d: string) =>
   new Date(d).toLocaleString("es-PE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "America/Lima" });
 const fmtDia = (f: string) =>
   new Date(f + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "long", year: "numeric" });
+/* `creado_en` es timestamp, no columna `date`: sin el T12:00 de las otras. */
+const fmtHora = (d: string) =>
+  new Date(d).toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric", timeZone: "America/Lima" });
 
 export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
   const supabase = createClient();
@@ -109,8 +114,14 @@ export default async function ObjetoPage({ params }: { params: { id: string } })
   const evs = conAlias((eventos || []) as any[], alias);
   // Nombre corto de quien comenta, igual que en el resto del sistema
   const aliasDe = new Map(Object.entries(alias));
+  /* Quién lo trajo. Va dentro del sello: procedencia y veredicto contestan la
+     misma pregunta —de dónde salió esto y me puedo fiar—. */
+  const quienTrajo = (o.creado_por && alias[o.creado_por]) || null;
 
-  // Catálogos para vincular a proyectos, empresas, etc.
+  /* Catálogos para vincular a proyectos, empresas, etc. Los mismos sirven para
+     CAMBIARLE EL DUEÑO al objeto: son las fichas que pueden tener repositorio,
+     y aquí las personas ya salen como «Nombre · alias», que es lo que hace
+     falta para elegir bien entre treinta. */
   const [pr, em, pe, co, po] = await Promise.all([
     supabase.from("proyectos").select("id,nombre").order("nombre"),
     supabase.from("empresas").select("id,nombre,codigo").order("codigo"),
@@ -125,6 +136,9 @@ export default async function ObjetoPage({ params }: { params: { id: string } })
     convocatoria: (co.data || []).map((x: any) => ({ id: x.id, nombre: `${x.anio || ""} ${x.nombre || x.codigo}`.trim() })),
     postulacion: (po.data || []).map((x: any) => ({ id: x.id, nombre: `${x.codigo || "🎯"} · ${x.proy?.nombre || ""}`.trim() })),
   };
+  // Cómo se llama cada tipo en el botón del selector, sin escribirlo a mano.
+  const ETIQ_ENT: Record<string, string> = Object.fromEntries(
+    SECCIONES.map(s => [s.tipo, s.singular || s.plural]));
 
   return (
     <div className="shell">
@@ -141,24 +155,33 @@ export default async function ObjetoPage({ params }: { params: { id: string } })
       </h1>
       <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 16, fontSize: 12.5, color: "var(--dim)" }}>
         {o.fecha && <span>{fmtDia(o.fecha)}</span>}
-        <span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           de{" "}
           <Link href={rutaEntidad(dueno.tipo, dueno.id) || "#"} style={{ color: "var(--violet)", fontWeight: 700 }}>
             {ICO_ENT[dueno.tipo] || "🔗"} {dueno.nombre}
           </Link>
+          {/* Quien trae el material no siempre es de quien trata. */}
+          <MoverObjeto objetoId={params.id} catalogos={catalogos} etiquetas={ETIQ_ENT} />
         </span>
       </div>
 
-      {o.notas && (
-        <div className="card" style={{ whiteSpace: "pre-wrap", fontSize: 13.5, lineHeight: 1.6, color: "var(--text)" }}>
-          {o.notas}
+      {/* PORTADA: la imagen manda. Esta página existe para ver el objeto
+          completo, y hasta ahora su única imagen era una miniatura metida
+          dentro de la franja de revisión —el archivo convertido en adorno de
+          un control—. Aquí la portada abre el visor y la descripción va al
+          lado; en pantalla angosta se apilan. */}
+      {(o.url || o.notas) && (
+        <div className="card obj-portada">
+          {o.url && <MiniObjeto url={o.url} ico={icoObjeto(o.tipo)} ancho={900} />}
+          {o.notas && <div className="obj-desc">{o.notas}</div>}
         </div>
       )}
 
       {o.url && (
-        <div className="card" style={{ padding: "12px 15px" }}>
+        <div style={{ marginTop: 10 }}>
           <LinkVerificable tipo={o.entidad_tipo} id={o.entidad_id} campo={`objeto:${params.id}`}
-            url={o.url} etiqueta={lblObjeto(o.tipo)} icono={icoObjeto(o.tipo)} verif={verif} linea />
+            url={o.url} etiqueta={lblObjeto(o.tipo)} icono={icoObjeto(o.tipo)} verif={verif} franja
+            origen={`agregado${quienTrajo ? ` por ${quienTrajo}` : ""}${o.creado_en ? ` · ${fmtHora(o.creado_en)}` : ""}`} />
         </div>
       )}
 

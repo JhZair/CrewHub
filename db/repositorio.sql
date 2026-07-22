@@ -44,10 +44,15 @@ create table if not exists objetos (
 
 create index if not exists idx_objetos_entidad on objetos(entidad_tipo, entidad_id, tipo);
 
--- Un CV por enfoque: se actualiza, no se duplica. Es la regla que traía
--- `persona_cv` (unique persona_id, enfoque) y que no se puede perder.
+/* Un CV por enfoque: se actualiza, no se duplica. Es la regla que traía
+   `persona_cv` (unique persona_id, enfoque) y que no se puede perder.
+   Acotado además a `entidad_tipo='persona'`: un CV solo existe colgando de una
+   persona —su sección solo se dibuja ahí y el repositorio genérico excluye
+   tipo='cv'—, así que en cualquier otra ficha sería material invisible. */
+drop index if exists idx_objetos_cv_unico;
 create unique index if not exists idx_objetos_cv_unico
-  on objetos(entidad_tipo, entidad_id, titulo) where tipo = 'cv';
+  on objetos(entidad_tipo, entidad_id, titulo)
+  where tipo = 'cv' and entidad_tipo = 'persona';
 
 alter table objetos enable row level security;
 drop policy if exists "leer_objetos" on objetos;
