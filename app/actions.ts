@@ -1680,6 +1680,89 @@ export async function guardarExpediente(postulacionId: string, campo: string, va
   return {};
 }
 
+/* ENCARGAR UN CAMPO DEL EXPEDIENTE.
+
+   El expediente sabe cuánto falta, pero saberlo no es repartirlo. Ese encargo
+   vivía en el chat: sin responsable, sin plazo y sin rastro de en qué quedó.
+
+   CAMPO, no sección: de los nueve que faltan en la Sección C, seis son combos
+   o un sí/no que se resuelven en diez segundos y tres son la sinopsis, el
+   planteamiento y el GDD —eso sí es trabajo de alguien—. Encargar los nueve de
+   golpe convierte una tarea real en una lista de pendientes ajenos, y el
+   responsable acaba devolviéndola a medias.
+
+   Esto abre un CASO NORMAL vinculado a la postulación: se le pone responsable
+   y fecha como a cualquiera, aparece en el tablero y se comenta ahí. Lo único
+   que se guarda aparte es qué caso atiende qué sección, para no crear dos ni
+   tener que buscarlo. Si ya existe, no se crea otro: se devuelve el que hay. */
+export async function casoDeExpediente(postulacionId: string, clave: string, titulo: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  const { data: post, error: ePost } = await supabase.from("postulaciones")
+    .select("codigo,expediente_casos,proy:proyectos(nombre),conv:convocatorias(codigo)")
+    .eq("id", postulacionId).maybeSingle();
+  /* Distinguir «no existe» de «la consulta falló» — con el mensaje anterior,
+     olvidar correr db/expediente-casos.sql se leía como «no se encontró la
+     postulación», que manda a buscar el problema donde no está. */
+  if (ePost) {
+    return {
+      error: /expediente_casos/.test(ePost.message)
+        ? "Falta correr db/expediente-casos.sql en Supabase."
+        : ePost.message,
+    };
+  }
+  if (!post) return { error: "No se encontró la postulación." };
+
+  /* ¿Ya hay uno, y sigue VIVO? Un caso archivado o descartado no cuenta: el
+     campo quedaría encargado para siempre a algo que ya no aparece en ningún
+     tablero, sin forma de volver a encargarlo. Ahí se libera la clave y se
+     sigue como si no hubiera. */
+  const yaId = (post.expediente_casos as any)?.[clave];
+  if (yaId) {
+    const { data: vive } = await supabase.from("publicaciones")
+      .select("id").eq("id", yaId)
+      .is("archivado_en", null).neq("estado", "descartada").maybeSingle();
+    if (vive) return { id: yaId as string, ya: true };
+    await supabase.rpc("set_expediente_caso", { pid: postulacionId, clave, caso: null });
+  }
+
+  const quien = `${(post as any).codigo || (post as any).conv?.codigo || "🎯"} · ${(post as any).proy?.nombre || "postulación"}`;
+  const { data: pub, error } = await supabase.from("publicaciones").insert({
+    tipo: "tarea", estado: "abierta", autor_id: user.id,
+    titulo: `${titulo} — ${quien}`,
+    cuerpo: "Falta este campo del expediente de postulación. Se llena en 🗂 Expediente, en la ficha de la postulación.",
+  }).select("id").single();
+  if (error || !pub) return { error: error?.message || "No se pudo crear el caso." };
+
+  /* RESERVAR el campo. La RPC solo escribe si nadie llegó antes y devuelve el
+     caso que quedó asignado. Si perdimos la carrera —otra persona encargó lo
+     mismo en el mismo segundo— se borra el caso recién creado y se devuelve el
+     suyo: dos tareas idénticas en el tablero no ayudan a nadie. */
+  const { data: asignado, error: eMapa } = await supabase.rpc("set_expediente_caso", {
+    pid: postulacionId, clave, caso: pub.id,
+  });
+  if (eMapa || !asignado) {
+    await supabase.from("publicaciones").delete().eq("id", pub.id);
+    return { error: eMapa?.message || "No se pudo encargar el campo." };
+  }
+  if (asignado !== pub.id) {
+    await supabase.from("publicaciones").delete().eq("id", pub.id);
+    return { id: asignado as string, ya: true };
+  }
+
+  await supabase.from("publicacion_vinculos").insert({
+    publicacion_id: pub.id, entidad_tipo: "postulacion", entidad_id: postulacionId,
+  });
+  await supabase.from("actividad").insert({
+    entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "tarea",
+    detalle: { mensaje: `encargó «${titulo}» del expediente` },
+  });
+  revalidatePath(`/entidad/postulacion/${postulacionId}`);
+  return { id: pub.id as string };
+}
+
 /* --- Presupuesto de postulación: la Sección D, guardada entera ---
    Recibe todo el objeto (items + tipo_cambio + fuentes) y lo persiste. NO
    revalida: el componente edita con autosave y su estado local ya es la

@@ -50,9 +50,10 @@ import TablaSimple from "@/components/TablaSimple";
 import EquipoPorcentajes from "@/components/EquipoPorcentajes";
 import Precontratos from "@/components/Precontratos";
 import { etapasDe } from "@/lib/etapas";
-import { rubrosDe } from "@/lib/rubros";
+import { rubrosDe, TOPE_ESTIMULO } from "@/lib/rubros";
 import { TABLAS_EXP } from "@/lib/tablas-expediente";
 import TabsPanel from "@/components/TabsPanel";
+import Plegable from "@/components/Plegable";
 import FilasDatos, { camposSecundarios } from "@/components/MasDatos";
 import LinkVerificable from "@/components/LinkVerificable";
 import Completitud from "@/components/Completitud";
@@ -205,6 +206,20 @@ export async function generateMetadata({ params }: { params: { tipo: string; id:
   const n = nombreDe(params.tipo);
   if (!n) return { title: "Ficha" };
   const supabase = createClient();
+  /* La postulación se nombra aparte: su `campo` es el código («PO-040»), que
+     en una pestaña no dice de qué película ni de qué año es. Y son justo las
+     que se repiten —el mismo proyecto al mismo concurso tres años seguidos—,
+     así que sin el año hay tres pestañas idénticas. */
+  if (params.tipo === "postulacion") {
+    const { data } = await supabase.from("postulaciones")
+      .select("codigo,proy:proyectos(nombre),conv:convocatorias(codigo,anio)")
+      .eq("id", params.id).maybeSingle();
+    const d = data as any;
+    if (!d) return { title: `${ICO_ENT.postulacion || "🎯"} Postulación` };
+    const t = [`${d.codigo || d.conv?.codigo || "Postulación"} · ${d.proy?.nombre || ""}`.replace(/ · $/, ""),
+               d.conv?.anio || null].filter(Boolean).join(" · ");
+    return { title: `${ICO_ENT.postulacion || "🎯"} ${t}` };
+  }
   const sel = ["id", n.campo, n.corto].filter(Boolean).join(",");
   const { data } = await supabase.from(n.tabla).select(sel).eq("id", params.id).single();
   const d = data as any;
@@ -393,6 +408,10 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   let cronoListo = false, cronoResumen = "", presuListo = false, presuResumen = "";
   let seedBenef: { rol: string; cantidad: number }[] = [];
   let precontN = 0, precontFirm = 0;
+  /* Qué caso atiende cada sección del expediente. El puente vive en
+     `postulaciones.expediente_casos` (clave → id); aquí se resuelven título,
+     estado y responsable para poder mostrarlo sin entrar al caso. */
+  let casosExp: Record<string, { id: string; titulo: string; estado: string; resp?: string | null }> = {};
   const autoExp: Record<string, string> = {};
   if (params.tipo === "postulacion") {
     const [ctx, eq, pc, ec] = await Promise.all([
@@ -409,6 +428,11 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       supabase.from("empresas").select("id,nombre,codigo")
         .eq("estado", "activa").order("nombre"),
     ]);
+    /* Si ESTA consulta falla, la ficha se degrada entera y en silencio: sin
+       proyecto, sin empresa, sin concurso, con `autoExp` vacío y —lo peor— sin
+       `plantilla_formulario`, lo que cambia la pestaña 🗂 Expediente por la
+       📎 Materiales antigua sin decir nada. Que quede en el log del servidor. */
+    if (ctx.error) console.error("ficha postulación · contexto:", ctx.error.message);
     postCtx = ctx.data;
     equipoPost = eq.data || [];
     personasCat = (pc.data || []).map((x: any) => ({ ...x, nombre: x.alias ? `${x.nombre} · ${x.alias}` : x.nombre }));
@@ -492,7 +516,13 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     const totalEstim = preItems.reduce((s, i) => s + Math.max(0, (i.cantidad || 0) * (i.costo_unit || 0) - (i.otras || 0)), 0);
     if (totalEstim > 0) autoExp.monto_solicitado = `S/ ${Math.round(totalEstim).toLocaleString("es-PE")}`;
     else if (postCtx?.conv?.monto_adjudicado)
-      autoExp.monto_solicitado = `S/ ${Math.round(parseFloat(postCtx.conv.monto_adjudicado)).toLocaleString("es-PE")}`;
+      /* Sin presupuesto armado se muestra el tope del concurso como REFERENCIA,
+         con ⚠ — que es la marca que impide contarlo como listo (`listoDe`) y
+         evita que alguien lo copie a DAFO tal cual. El comentario de arriba
+         dice que el tope no es lo que pides, y sin el ⚠ este `else` lo volvía
+         a colar: ✅ verde, copiable, y mal. */
+      autoExp.monto_solicitado =
+        `⚠ referencia — tope del concurso: S/ ${Math.round(parseFloat(postCtx.conv.monto_adjudicado)).toLocaleString("es-PE")} (arma el presupuesto)`;
     Object.keys(autoExp).forEach(k => { if (!autoExp[k]) delete autoExp[k]; });
 
     /* Cronograma PROPIO de la postulación (independiente del plan del
@@ -540,10 +570,26 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     const preIt = ((ent.presupuesto as any)?.items || []) as any[];
     const preTot = preIt.reduce((s, i) => s + (i.cantidad || 0) * (i.costo_unit || 0), 0);
     const preEst = preIt.reduce((s, i) => s + Math.max(0, (i.cantidad || 0) * (i.costo_unit || 0) - (i.otras || 0)), 0);
-    presuListo = preIt.length > 0;
-    presuResumen = presuListo
-      ? `costo S/ ${Math.round(preTot).toLocaleString("es-PE")} · estímulo S/ ${Math.round(preEst).toLocaleString("es-PE")} · ${preIt.length} ítems${ent.presupuesto_postulado_en ? " · foto fijada" : ""}`
-      : "aún sin ítems";
+    /* LISTO ≠ EMPEZADO. Tener ítems no es tener un presupuesto presentable: las
+       bases fijan dos reglas duras y el editor ya las mide en pantalla, pero el
+       expediente no las miraba. Con un solo ítem daba el punto por bueno y
+       llegaba a decir «100% — a la plataforma solo a copiar y pegar» sobre un
+       presupuesto que excede el tope del estímulo o cuyo plan de financiamiento
+       no cuadra: el peor momento para enterarse es el día del envío. */
+    const preFue = ((ent.presupuesto as any)?.fuentes || []) as any[];
+    const preTotFue = preFue.reduce((s, f) => s + (f.importe || 0), 0);
+    const preExcede = preTot > 0 && preEst / preTot > TOPE_ESTIMULO + 1e-9;
+    const preCuadra = Math.abs(preTotFue - preTot) < 1;
+    presuListo = preIt.length > 0 && !preExcede && preCuadra;
+    presuResumen = preIt.length === 0
+      ? "aún sin ítems"
+      : [`costo S/ ${Math.round(preTot).toLocaleString("es-PE")}`,
+         `estímulo S/ ${Math.round(preEst).toLocaleString("es-PE")}`,
+         `${preIt.length} ítems`,
+         preExcede ? `⚠ el estímulo pasa del ${Math.round(TOPE_ESTIMULO * 100)}%` : null,
+         !preCuadra ? "⚠ el financiamiento no cuadra con el costo" : null,
+         ent.presupuesto_postulado_en ? "foto fijada" : null,
+        ].filter(Boolean).join(" · ");
 
     /* Semilla de «Participantes/beneficiarios»: una fila por CARGO del equipo
        nombrado (proyecto + postulación, sin repetir persona). Es solo sugerencia
@@ -570,6 +616,26 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       const ids = Array.isArray(x.item_ids) ? x.item_ids : (x.item_id ? [x.item_id] : []);
       return ids.some((id: string) => preItemIds.has(id));
     }).length;
+
+    /* Los casos que atienden cada sección. Si alguno fue borrado simplemente
+       no aparece y el botón vuelve a ofrecer encargarla — mejor que enlazar a
+       un caso fantasma. */
+    const mapa = (ent.expediente_casos as any) || {};
+    const idsCaso = Object.values(mapa).filter(Boolean) as string[];
+    if (idsCaso.length) {
+      /* Vivos: un caso archivado o descartado no debe seguir apareciendo como
+         «encargado» — la sección se leería atendida cuando no lo está. Al no
+         resolverlo, el botón vuelve a ofrecer encargarla y la acción libera
+         la clave vieja antes de crear la nueva. */
+      const { data: cs } = await supabase.from("publicaciones")
+        .select("id,titulo,estado,resp:perfiles!publicaciones_responsable_fkey(nombre)")
+        .in("id", idsCaso).is("archivado_en", null).neq("estado", "descartada");
+      const porId = new Map((cs || []).map((c: any) => [c.id, c]));
+      Object.entries(mapa).forEach(([clave, cid]) => {
+        const c = porId.get(cid as string);
+        if (c) casosExp[clave] = { id: c.id, titulo: c.titulo, estado: c.estado, resp: (c as any).resp?.nombre || null };
+      });
+    }
   }
   if (params.tipo === "empresa") {
     const [m, pc, pe] = await Promise.all([
@@ -792,8 +858,14 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     });
   }
 
+  /* El AÑO en el título de la postulación. Un proyecto se presenta al mismo
+     concurso varios años seguidos —«PO-040 · HexaFill» aparecía tres veces
+     idéntico en el buscador, en los chips y en la pestaña del navegador— y el
+     año es lo único que los distingue de un vistazo. Sale de la convocatoria,
+     que es donde vive de verdad; si no la hay, el título queda como estaba. */
   const nombre = params.tipo === "postulacion"
-    ? `${ent.codigo || postCtx?.conv?.codigo || "Postulación"} · ${postCtx?.proy?.nombre || ""}`.replace(/ · $/, "")
+    ? [`${ent.codigo || postCtx?.conv?.codigo || "Postulación"} · ${postCtx?.proy?.nombre || ""}`.replace(/ · $/, ""),
+       postCtx?.conv?.anio || null].filter(Boolean).join(" · ")
     : ent.nombre || ent.codigo || "—";
   /* Activas = vivas y a la vista. Cerradas = terminadas (resuelta/descartada)
      O archivadas —lo archivado es memoria de esta entidad y aquí sí se ve, en
@@ -1487,7 +1559,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                       materialN={((ent.material_archivo as any) || []).length}
                       benefN={((ent.beneficiarios as any) || []).length}
                       precontN={precontN}
-                      precontFirm={precontFirm} />,
+                      precontFirm={precontFirm}
+                      casos={casosExp} />,
                   ] : [
                     <Materiales key="mat" postulacionId={params.id} materiales={ent.materiales || {}} />,
                   ]),
@@ -1616,40 +1689,73 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
           {/* Cronograma de la postulación: va en la columna ancha (no en el
               carné estrecho de la izquierda), como el del proyecto — armarlo
               en una columna angosta era imposible. */}
-          {params.tipo === "postulacion" && (
-            <div id="sec-cronograma" style={{ marginBottom: 16, scrollMarginTop: 12 }}>
-              <CronogramaPostulacion key={`crono-${params.id}`} postulacionId={params.id}
-                actividades={cronoPost} perfiles={perfilesCat}
-                plantillas={plantillas} tipoProyecto={(postCtx?.proy as any)?.tipo || ""}
-                etapas={etapasDe((postCtx?.conv as any)?.categoria)}
-                postulado={ent.cronograma_postulado || null}
-                postuladoEn={ent.cronograma_postulado_en || null} />
-              <div id="sec-presupuesto" style={{ marginTop: 16, scrollMarginTop: 12 }}>
-                <Presupuesto key={`pre-${params.id}`} postulacionId={params.id}
-                  rubros={rubrosDe((postCtx?.conv as any)?.categoria)}
-                  categoria={(postCtx?.conv as any)?.categoria}
-                  inicial={ent.presupuesto || null}
-                  plantillas={plantillasPre}
-                  postulado={ent.presupuesto_postulado || null}
-                  postuladoEn={ent.presupuesto_postulado_en || null}
-                  estimuloConcurso={(postCtx?.conv as any)?.monto_adjudicado ? parseFloat((postCtx.conv as any).monto_adjudicado) : null} />
+          {params.tipo === "postulacion" && (() => {
+            /* Cada bloque plegable, con un resumen que se lee CERRADO: si
+               «Presupuesto · costo S/ 60.000 · 12 ítems» ya contesta la
+               pregunta, no hace falta abrirlo. Solo el cronograma arranca
+               abierto —es por donde se empieza a armar una postulación—; el
+               resto se abre cuando toca y la elección se recuerda.
+
+               Los textos se REUSAN de `cronoResumen` / `presuResumen`, que son
+               los mismos que muestra el expediente. Calcularlos otra vez aquí
+               daba dos cifras del mismo dinero —una el costo y otra el
+               estímulo, ambas sin rótulo—: dos números distintos para lo mismo
+               es peor que ninguno. */
+            const nMat = ((ent.material_archivo as any) || []).length;
+            const nBen = ((ent.beneficiarios as any) || []).length;
+            const dim = (t: string) => <span style={{ color: "var(--dim)", fontWeight: 400 }}>{t}</span>;
+            return (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ scrollMarginTop: 12 }}>
+                <Plegable id={`post:${params.id}:crono`} ancla="sec-cronograma" titulo="📅 Cronograma"
+                  resumen={dim(cronoResumen || "")}>
+                  <CronogramaPostulacion key={`crono-${params.id}`} postulacionId={params.id}
+                    actividades={cronoPost} perfiles={perfilesCat}
+                    plantillas={plantillas} tipoProyecto={(postCtx?.proy as any)?.tipo || ""}
+                    etapas={etapasDe((postCtx?.conv as any)?.categoria)}
+                    postulado={ent.cronograma_postulado || null}
+                    postuladoEn={ent.cronograma_postulado_en || null} />
+                </Plegable>
               </div>
-              <div id="sec-material" style={{ marginTop: 16, scrollMarginTop: 12 }}>
-                <TablaSimple key={`mat-${params.id}`} postulacionId={params.id}
-                  tabla={TABLAS_EXP.material_archivo} inicial={(ent.material_archivo as any) || null} />
+              <div style={{ scrollMarginTop: 12 }}>
+                <Plegable id={`post:${params.id}:presu`} ancla="sec-presupuesto" titulo="💰 Presupuesto" abiertoPorDefecto={false}
+                  resumen={dim(presuResumen || "")}>
+                  <Presupuesto key={`pre-${params.id}`} postulacionId={params.id}
+                    rubros={rubrosDe((postCtx?.conv as any)?.categoria)}
+                    categoria={(postCtx?.conv as any)?.categoria}
+                    inicial={ent.presupuesto || null}
+                    plantillas={plantillasPre}
+                    postulado={ent.presupuesto_postulado || null}
+                    postuladoEn={ent.presupuesto_postulado_en || null}
+                    estimuloConcurso={(postCtx?.conv as any)?.monto_adjudicado ? parseFloat((postCtx.conv as any).monto_adjudicado) : null} />
+                </Plegable>
               </div>
-              <div id="sec-precontratos" style={{ marginTop: 16, scrollMarginTop: 12 }}>
-                <Precontratos key={`prec-${params.id}`} postulacionId={params.id}
-                  equipo={[...equipoPost, ...equipoProy]}
-                  items={((ent.presupuesto as any)?.items) || []}
-                  inicial={(ent.precontratos as any) || null} />
+              <div style={{ scrollMarginTop: 12 }}>
+                <Plegable id={`post:${params.id}:mat`} ancla="sec-material" titulo="📁 Material de archivo" abiertoPorDefecto={false}
+                  resumen={nMat ? dim(`${nMat} filas`) : dim("sin material (o no aplica)")}>
+                  <TablaSimple key={`mat-${params.id}`} postulacionId={params.id}
+                    tabla={TABLAS_EXP.material_archivo} inicial={(ent.material_archivo as any) || null} />
+                </Plegable>
               </div>
-              <div id="sec-beneficiarios" style={{ marginTop: 16, scrollMarginTop: 12 }}>
-                <TablaSimple key={`ben-${params.id}`} postulacionId={params.id}
-                  tabla={TABLAS_EXP.beneficiarios} inicial={(ent.beneficiarios as any) || null} seed={seedBenef} />
+              <div style={{ scrollMarginTop: 12 }}>
+                <Plegable id={`post:${params.id}:prec`} ancla="sec-precontratos" titulo="📝 Precontratos" abiertoPorDefecto={false}
+                  resumen={precontN ? dim(`${precontFirm}/${precontN} firmados`) : dim("sin precontratos (o no aplica)")}>
+                  <Precontratos key={`prec-${params.id}`} postulacionId={params.id}
+                    equipo={[...equipoPost, ...equipoProy]}
+                    items={((ent.presupuesto as any)?.items) || []}
+                    inicial={(ent.precontratos as any) || null} />
+                </Plegable>
+              </div>
+              <div style={{ scrollMarginTop: 12 }}>
+                <Plegable id={`post:${params.id}:ben`} ancla="sec-beneficiarios" titulo="👥 Beneficiarios" abiertoPorDefecto={false}
+                  resumen={nBen ? dim(`${nBen} filas`) : dim("sin filas (o no aplica)")}>
+                  <TablaSimple key={`ben-${params.id}`} postulacionId={params.id}
+                    tabla={TABLAS_EXP.beneficiarios} inicial={(ent.beneficiarios as any) || null} seed={seedBenef} />
+                </Plegable>
               </div>
             </div>
-          )}
+            );
+          })()}
           {/* Palmarés: lo primero que cuenta qué ha logrado esta persona */}
           {params.tipo === "persona" && postDe.length > 0 && (() => {
             const ganadas = postDe.filter((r: any) => r.post?.estado === "ganadora");

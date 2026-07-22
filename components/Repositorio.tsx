@@ -102,7 +102,11 @@ export default function Repositorio({ entidadTipo, entidadId, objetos, verif }: 
     .map(t => ({ tipo: t, items: objetos.filter(o => o.tipo === t) }));
 
   return (
-    <div className="linked repo" style={{ marginTop: 14 }}>
+    /* El margen superior va en CSS, no aquí: un estilo en línea gana a
+       cualquier selector, así que la regla que alinea el arranque de las dos
+       columnas de la ficha (`.perfil-grid > main > :first-child`) no podía
+       anularlo y la columna ancha se quedaba 14 px por debajo del carné. */
+    <div className="linked repo">
       {/* PLEGABLE. Con tres objetos el panel ya ocupa media pantalla y empuja
           hacia abajo todo lo demás de la ficha; con quince es una página
           entera de material dentro de otra página. El título dice cuántos hay,

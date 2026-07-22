@@ -39,8 +39,13 @@ export const SECCIONES: Seccion[] = [
      se listan y dejan bitácora como cualquier entidad. Lo único distinto es
      que su ficha vive en /objeto/[id] y no en /entidad/… (lo resuelve
      `rutaEntidad`), porque un objeto pertenece a otra entidad. */
+  /* `plural: "repositorio"` a propósito. El equipo nunca dice «voy a objetos»
+     —dice «está en el repositorio»—, y la pantalla ya se llama así en todas
+     partes: el título de la página, el panel de cada ficha, el menú. «Objetos»
+     es vocabulario interno de la tabla; el singular sí lo conserva, porque una
+     cosa suelta sí es «un objeto» («📚 objeto» en el selector de vínculos). */
   { tipo: "objeto", ruta: "/repositorio", ico: "📚", titulo: "Repositorio",
-    plural: "objetos", singular: "objeto", tabla: "objetos", campo: "titulo" },
+    plural: "repositorio", singular: "objeto", tabla: "objetos", campo: "titulo" },
 ];
 
 export const seccionDe = (tipo: string) => SECCIONES.find(s => s.tipo === tipo);

@@ -2,31 +2,72 @@
 import { usePathname } from "next/navigation";
 import { SECCIONES } from "@/lib/secciones";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 
-/* La navegación entre entidades. Vivía suelta dentro del feed, así que en
-   cuanto entrabas a una empresa desaparecía y para ir a personas tenías que
-   volver al inicio primero. Ahora es un componente y viaja con el <Volver>,
-   que sí está en todas las pantallas internas. */
+/* LA NAVEGACIÓN ENTRE SECCIONES, en un solo control.
+
+   Vivía suelta dentro del feed, así que al entrar a una empresa desaparecía y
+   para ir a personas había que volver al inicio. Se hizo componente y viajó
+   con el <Volver>, que sí está en todas las pantallas.
+
+   Ahora se pliega en un combo. Eran siete íconos sin texto en la cabecera —el
+   séptimo llegó con el repositorio— y siete emojis seguidos no son un menú:
+   son siete adivinanzas que además le comían el sitio al buscador. El combo
+   muestra DÓNDE ESTÁS con su nombre («📁 Proyectos ▾») y al abrirse da la
+   lista con ícono y nombre, que es lo que un menú tiene que hacer: decir a
+   dónde llevan las cosas antes de tocarlas. */
 
 export default function NavIconos() {
   const pathname = usePathname() || "";
+  const [abierto, setAbierto] = useState(false);
+
+  /* Dónde estás. Cuenta la sección entera: la ficha, su historial y sus casos
+     también son «estar ahí». */
+  const enSeccion = (s: (typeof SECCIONES)[number]) =>
+    pathname === s.ruta
+    || pathname.startsWith(`/entidad/${s.tipo}/`)
+    // El repositorio es la única sección cuya ficha no vive en /entidad
+    || (s.tipo === "objeto" && pathname.startsWith("/objeto/"))
+    || pathname === `/historial/${s.tipo}`
+    || pathname === `/casos/${s.tipo}`;
+
+  const aqui = SECCIONES.find(enSeccion);
+
+  // Cerrar con Escape: un menú que solo se cierra con el ratón estorba.
+  useEffect(() => {
+    if (!abierto) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setAbierto(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [abierto]);
+
+  // Al navegar, el menú sobra.
+  useEffect(() => { setAbierto(false); }, [pathname]);
+
   return (
-    <nav className="nav-icons">
-      {SECCIONES.map(s => {
-        /* Marcar dónde estás: seis íconos iguales sin señal de posición son
-           seis adivinanzas. Cuenta la sección entera: la ficha, su historial
-           y sus casos también encienden su ícono. */
-        const aqui = pathname === s.ruta
-          || pathname.startsWith(`/entidad/${s.tipo}/`)
-          // El repositorio es la única sección cuya ficha no vive en /entidad
-          || (s.tipo === "objeto" && pathname.startsWith("/objeto/"))
-          || pathname === `/historial/${s.tipo}`
-          || pathname === `/casos/${s.tipo}`;
-        return (
-          <Link key={s.tipo} href={s.ruta} className={`btn btn-ghost${aqui ? " nav-aqui" : ""}`}
-            title={s.titulo}>{s.ico}</Link>
-        );
-      })}
+    <nav className="nav-menu">
+      <button type="button" className={`btn btn-ghost nav-btn${aqui ? " nav-aqui" : ""}`}
+        onClick={() => setAbierto(a => !a)} aria-expanded={abierto}
+        title={aqui ? aqui.titulo : "Secciones"}>
+        <span className="nav-ico">{aqui ? aqui.ico : "☰"}</span>
+        <span className="nav-txt">{aqui ? aqui.plural : "Secciones"}</span>
+        <span className="nav-cheb">▾</span>
+      </button>
+      {abierto && (
+        <>
+          <div className="cbx-fondo" onClick={() => setAbierto(false)} />
+          <div className="nav-lista">
+            {SECCIONES.map(s => (
+              <Link key={s.tipo} href={s.ruta}
+                className={`nav-item${enSeccion(s) ? " on" : ""}`}
+                onClick={() => setAbierto(false)}>
+                <span className="nav-item-ico">{s.ico}</span>
+                <span>{s.plural}</span>
+              </Link>
+            ))}
+          </div>
+        </>
+      )}
     </nav>
   );
 }
