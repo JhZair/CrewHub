@@ -8,6 +8,11 @@ import { ICO_ENT } from "@/lib/secciones";
 import { resolverNombres } from "@/lib/nombres";
 import { claseEstado, rotuloEstado } from "@/lib/estados";
 import VistaRapida from "@/components/VistaRapida";
+import Plegable from "@/components/Plegable";
+import Avatar from "@/components/Avatar";
+import Miniatura from "@/components/Miniatura";
+import { previewCandidates } from "@/lib/drive";
+import { TXT } from "@/lib/texto";
 import { REL_EMPRESA, EST_EMPRESA, TIPO_COLOR } from "@/lib/entidades";
 import { alertaSunat, empresaDeCasa, empresaViva, textoSunat } from "@/lib/sunat";
 import { esDelEquipo } from "@/lib/personas";
@@ -75,15 +80,24 @@ const EST_ACT: Record<string, [string, string]> = {
 };
 
 
+/* Corta sin partir un emoji. Un emoji ocupa dos unidades UTF-16 (par
+   «surrogate»); si el corte cae en medio, queda medio carácter. Ese medio
+   carácter se vuelve � (U+FFFD) al serializar el HTML del servidor, mientras el
+   cliente conserva la mitad cruda — y React ve dos textos distintos y grita
+   «hydration error». Se quitan las mitades sueltas de los extremos: surrogate
+   BAJA al inicio, surrogate ALTA al final. */
+const sinMedioEmoji = (s: string) =>
+  s.replace(/^[\uDC00-\uDFFF]/, "").replace(/[\uD800-\uDBFF]$/, "");
+
 /* recorte con contexto alrededor de la primera palabra coincidente */
 function snippet(texto: string | null, palabras: string[]): string {
   if (!texto) return "";
   let i = -1;
   for (const w of palabras) { i = nrmB(texto).indexOf(w); if (i >= 0) break; }
-  if (i < 0) return texto.slice(0, 100) + (texto.length > 100 ? "…" : "");
+  if (i < 0) return sinMedioEmoji(texto.slice(0, 100)) + (texto.length > 100 ? "…" : "");
   const ini = Math.max(0, i - 50);
   const fin = Math.min(texto.length, i + 80);
-  return (ini > 0 ? "…" : "") + texto.slice(ini, fin) + (fin < texto.length ? "…" : "");
+  return (ini > 0 ? "…" : "") + sinMedioEmoji(texto.slice(ini, fin)) + (fin < texto.length ? "…" : "");
 }
 
 /* La pestaña dice QUÉ buscaste: «🔍 pampacucho». Sin esto, tres buscadores
@@ -105,6 +119,10 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
   let statProy = new Map<string, any>(), statEmp = new Map<string, any>(),
       statConv = new Map<string, any>(), statPers = new Map<string, any>();
   let equisMas = 0, persMas = 0, objsMas = 0;
+  // Avatar de la cuenta (login) por id de perfil: la foto de quien no subió una
+  // propia (persona.usuario_id) y la del autor de un caso (publicacion.autor_id).
+  let avatarDe = new Map<string, string | null>();
+  let perfilNom = new Map<string, string>();   // id de perfil → nombre (iniciales)
   /* Título del padre de cada sub-caso encontrado: «Cámara A lista» a secas no
      dice nada — la mitad de un sub-caso es de quién es hijo. */
   let padreDe = new Map<string, string>();
@@ -143,13 +161,14 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
     const [c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11] = await Promise.all([
       supabase.from("publicaciones")
         // padre_id: un sub-caso sin su padre es un título huérfano
-        .select("id,titulo,cuerpo,tipo,estado,creado_en,padre_id")
+        // autor_id: para pintar la cara de quien lo creó
+        .select("id,titulo,cuerpo,tipo,estado,creado_en,padre_id,autor_id")
         .order("creado_en", { ascending: false }).limit(1500),
       /* `objeto_id` + el título del objeto: un comentario ya no cuelga solo de
          un caso. Sin esto, un comentario sobre un libro del repositorio salía
          en los resultados enlazando a /caso/null —404— y firmado «en «»». */
       supabase.from("comentarios")
-        .select("id,cuerpo,creado_en,publicacion_id,objeto_id,autor:perfiles(nombre),pub:publicaciones(titulo),obj:objetos(titulo)")
+        .select("id,cuerpo,creado_en,publicacion_id,objeto_id,autor:perfiles(nombre,avatar_url),pub:publicaciones(titulo),obj:objetos(titulo)")
         .order("creado_en", { ascending: false }).limit(1500),
       /* Los CVs viajan con la persona: se guardan por enfoque justo para
          poder pedir "el CV de Yajaida como Investigadora", y hasta hoy no
@@ -160,7 +179,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
         /* Los CVs ya no se anidan: viven en `objetos` (tipo='cv'), que cuelga
            por (entidad_tipo, entidad_id) y no tiene FK a personas, así que no
            se puede embeber. Se traen aparte, abajo. */
-        .select("id,nombre,alias,rol,tipo,estado,ruc_dni,region,dni_url,firma_url,carpeta_drive_url,proys:proyecto_equipo(cargo,proy:proyectos(id,nombre,nombre_corto))")
+        .select("id,nombre,alias,rol,tipo,estado,ruc_dni,region,dni_url,firma_url,carpeta_drive_url,foto_url,usuario_id,proys:proyecto_equipo(cargo,proy:proyectos(id,nombre,nombre_corto))")
         .limit(600),
       // RENCA, presupuesto y Drive del proyecto: guardados desde siempre y
       // nunca seleccionados aquí
@@ -201,7 +220,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
     ]);
 
     // El marcador en los resultados: 🏆 ganados · 🥈 casi · 🎯 intentos
-    const [{ data: postStats }, { data: equipoStats }, uSunat, { data: cvObj }] = await Promise.all([
+    const [{ data: postStats }, { data: equipoStats }, uSunat, { data: cvObj }, { data: perfAv }] = await Promise.all([
       supabase.from("postulaciones").select("estado,proyecto_id,empresa_id,convocatoria_id"),
       supabase.from("postulacion_equipo").select("persona_id,post:postulaciones(estado)"),
       // El link de SUNAT sale del admin, no del código: si SUNAT lo cambia
@@ -212,8 +231,13 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
          no, el buscador se quedaría con la foto del día de la migración. */
       supabase.from("objetos").select("id,entidad_id,titulo,url")
         .eq("entidad_tipo", "persona").eq("tipo", "cv"),
+      // Avatares de login: la foto de quien no subió una propia (foto_url) y la
+      // del autor de cada caso. El nombre va para las iniciales de respaldo.
+      supabase.from("perfiles").select("id,nombre,avatar_url"),
     ]);
     urlSunat = uSunat;
+    avatarDe = new Map((perfAv || []).map((p: any) => [p.id, p.avatar_url]));
+    perfilNom = new Map((perfAv || []).map((p: any) => [p.id, p.nombre]));
     // `enfoque`: el buscador y sus chips esperan ese nombre desde siempre.
     const cvsDePersona = new Map<string, any[]>();
     (cvObj || []).forEach((o: any) => {
@@ -503,31 +527,40 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
      `verTodo` SOLO se pasa cuando esa página busca lo mismo que aquí. El de
      personas mandaba a /personas?q=…, que no mira los CVs: prometía el resto
      y entregaba cero. Un enlace que miente es peor que no tenerlo. */
-  const Seccion = ({ titulo, n, mas, verTodo, children }: any) => n > 0 ? (
-    <div style={{ marginBottom: 14 }}>
-      <div className="panel-h" style={{ marginBottom: 6 }}>
-        {titulo} · {n}
-        {mas > 0 && <span style={{ color: "var(--yellow)", fontWeight: 400 }}> de {n + mas}</span>}
+  /* Cada sección se puede plegar, con memoria (localStorage) por sección: si lo
+     que buscas no salió arriba, cierras Personas y Casos y dejas a la vista lo
+     que sí importa, y la próxima búsqueda respeta esa decisión. Nivel 2: sin
+     caja, solo cabecera con flecha — no engorda la página. La `k` es la clave
+     de memoria, estable por sección (no el título, que lleva emoji). */
+  const Seccion = ({ titulo, k, n, mas, verTodo, children }: any) => n > 0 ? (
+    <Plegable id={`busc:${k}`} nivel={2} titulo={
+      <>{titulo} · {n}
+        {mas > 0 && <span style={{ color: "var(--yellow)", fontWeight: 400 }}> de {n + mas}</span>}</>
+    }>
+      {/* Envoltorio para que las filas NO sean hijas directas de .plg-cuerpo:
+          la regla `.plg-cuerpo>.card` les quitaría borde y fondo (existe para
+          no doblar cajas cuando dentro va una sola tarjeta). */}
+      <div>
+        {children}
+        {mas > 0 && (verTodo ? (
+          <Link href={verTodo} style={{ color: "var(--violet)", fontSize: TXT.base, fontWeight: 600, display: "block", padding: "4px 2px" }}>
+            … y {mas} más — ver la lista completa →
+          </Link>
+        ) : (
+          <span style={{ color: "var(--dim)", fontSize: TXT.base, display: "block", padding: "4px 2px" }}>
+            … y {mas} más — agrega una palabra para acotar
+          </span>
+        ))}
       </div>
-      {children}
-      {mas > 0 && (verTodo ? (
-        <Link href={verTodo} style={{ color: "var(--violet)", fontSize: 12.5, fontWeight: 600, display: "block", padding: "4px 2px" }}>
-          … y {mas} más — ver la lista completa →
-        </Link>
-      ) : (
-        <span style={{ color: "var(--dim)", fontSize: 12.5, display: "block", padding: "4px 2px" }}>
-          … y {mas} más — agrega una palabra para acotar
-        </span>
-      ))}
-    </div>
+    </Plegable>
   ) : null;
 
   /* Insignias del marcador: 🏆 ganados · 🥈 casi · 🎯 intentos */
   const Marca = ({ s }: { s?: { t: number; g: number; c: number } }) => !s?.t ? null : (
     <span style={{ display: "inline-flex", gap: 5 }}>
-      {s.g > 0 && <span className="badge" style={{ color: "var(--green)", background: "rgba(46,204,113,.12)", fontSize: 10.5 }}>🏆 {s.g}</span>}
-      {s.c > 0 && <span className="badge" style={{ color: "var(--yellow)", background: "rgba(244,180,0,.12)", fontSize: 10.5 }}>🥈 {s.c}</span>}
-      <span className="badge" style={{ color: "var(--blue)", background: "rgba(59,130,246,.12)", fontSize: 10.5 }}>🎯 {s.t}</span>
+      {s.g > 0 && <span className="badge" style={{ color: "var(--green)", background: "rgba(46,204,113,.12)", fontSize: TXT.chip }}>🏆 {s.g}</span>}
+      {s.c > 0 && <span className="badge" style={{ color: "var(--yellow)", background: "rgba(244,180,0,.12)", fontSize: TXT.chip }}>🥈 {s.c}</span>}
+      <span className="badge" style={{ color: "var(--blue)", background: "rgba(59,130,246,.12)", fontSize: TXT.chip }}>🎯 {s.t}</span>
     </span>
   );
 
@@ -545,7 +578,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
     <div className={`card link fila-cap${tenue ? " fila-tenue" : ""}`}
       style={{ cursor: "pointer", padding: "8px 13px", marginBottom: 7 }}>
       <Link href={href} className="fila-cubre" aria-label="Abrir" />
-      <div style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap", fontSize: 12.5 }}>
+      <div style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap", fontSize: TXT.base }}>
         {children}
       </div>
       {/* Segunda línea: los papeles, todos clickables. Arriba, quién es;
@@ -581,7 +614,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
           <Volver />
           <span className="spacer" />
           {q && (
-            <span style={{ color: "var(--muted)", fontSize: 12 }}>
+            <span style={{ color: "var(--muted)", fontSize: TXT.meta }}>
               🤖 {total ? `${total} resultado${total === 1 ? "" : "s"}` : "nada — prueba con menos palabras"}
             </span>
           )}
@@ -596,7 +629,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
       {/* Entidades primero: son la respuesta corta. Los casos, el océano, al final. */}
       {/* Sin verTodo: /personas no busca CVs, así que enlazar allá sería
           mandarte a una lista vacía */}
-      <Seccion titulo="👤 Personas" n={pers.length} mas={persMas}>
+      <Seccion titulo="👤 Personas" k="personas" n={pers.length} mas={persMas}>
         {pers.map((p: any) => (
           <Fila key={p.id} href={`/entidad/persona/${p.id}`}
             // No es del equipo: sigue ahí, pero apagado
@@ -643,8 +676,12 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
                 )}
               </>
             }>
+            {/* Su cara: la propia si la subió (foto_url), si no la de su cuenta
+                (avatar del login). Sin ninguna, Avatar cae a las iniciales — no
+                hay hueco. */}
+            <Avatar nombre={p.nombre} src={p.foto_url || avatarDe.get(p.usuario_id)} size={32} />
             <b>{p.nombre}</b>
-            {p.rol && <span style={{ color: "var(--muted)", fontSize: 12 }}>{p.rol.slice(0, 50)}</span>}
+            {p.rol && <span style={{ color: "var(--muted)", fontSize: TXT.meta }}>{p.rol.slice(0, 50)}</span>}
             <Marca s={statPers.get(p.id)} />
             <span style={{ flex: 1 }} />
             <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{p.tipo}</span>
@@ -652,7 +689,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
         ))}
       </Seccion>
 
-      <Seccion titulo="🔑 Credenciales" n={creds.length}>
+      <Seccion titulo="🔑 Credenciales" k="credenciales" n={creds.length}>
         {creds.map((c: any) => (
           <Fila key={c.id} href={`/entidad/${c.dueno}/${c.duenoId}`}
             docs={
@@ -697,15 +734,15 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
             <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{c.plataforma}</span>
             {c.identificador && <b>{c.identificador}</b>}
             {c.metodo_acceso && (
-              <span style={{ color: "var(--dim)", fontSize: 11 }}>{c.metodo_acceso}</span>
+              <span style={{ color: "var(--dim)", fontSize: TXT.micro }}>{c.metodo_acceso}</span>
             )}
             <span style={{ flex: 1 }} />
-            {c.duenoNombre && <span style={{ color: "var(--muted)", fontSize: 12 }}>{c.dueno === "empresa" ? "🏢" : "👤"} {c.duenoNombre}</span>}
+            {c.duenoNombre && <span style={{ color: "var(--muted)", fontSize: TXT.meta }}>{c.dueno === "empresa" ? "🏢" : "👤"} {c.duenoNombre}</span>}
           </Fila>
         ))}
       </Seccion>
 
-      <Seccion titulo="📁 Proyectos" n={proys.length}>
+      <Seccion titulo="📁 Proyectos" k="proyectos" n={proys.length}>
         {proys.map((p: any) => (
           <Fila key={p.id} href={`/entidad/proyecto/${p.id}`}
             // Solo lo que se mueve va encendido. Lo demás sigue ahí, apagado.
@@ -741,12 +778,12 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
             )}
             <Marca s={statProy.get(p.id)} />
             <span style={{ flex: 1 }} />
-            <span style={{ color: "var(--dim)", fontSize: 12 }}>{p.etapa?.replace(/_/g, " ")}</span>
+            <span style={{ color: "var(--dim)", fontSize: TXT.meta }}>{p.etapa?.replace(/_/g, " ")}</span>
           </Fila>
         ))}
       </Seccion>
 
-      <Seccion titulo="🏢 Empresas" n={emps.length}>
+      <Seccion titulo="🏢 Empresas" k="empresas" n={emps.length}>
         {emps.map((e: any) => (
           <Fila key={e.id} href={`/entidad/empresa/${e.id}`}
             // Apagada si ya no está viva (en cierre) o si nunca fue nuestra
@@ -807,7 +844,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
                 {EST_EMPRESA[e.estado]?.[0] || e.estado.replace(/_/g, " ")}
               </span>
             )}
-            {e.razon_social && <span style={{ color: "var(--dim)", fontSize: 12 }}>{e.razon_social}</span>}
+            {e.razon_social && <span style={{ color: "var(--dim)", fontSize: TXT.meta }}>{e.razon_social}</span>}
             <Marca s={statEmp.get(e.id)} />
             {/* La regla compartida, no otra copia: solo alerta si es nuestra,
                 está activa, y de verdad está mal (incluye "no habido"). */}
@@ -821,18 +858,18 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
         ))}
       </Seccion>
 
-      <Seccion titulo="🎥 Equipos" n={equis.length} mas={equisMas}
+      <Seccion titulo="🎥 Equipos" k="equipos" n={equis.length} mas={equisMas}
         verTodo={`/equipamiento?q=${encodeURIComponent(q)}`}>
         {equis.map((e: any) => (
           <Fila key={e.id} href={`/entidad/equipamiento/${e.id}`}>
             {e.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{e.folio}</span>}
             <b>{e.nombre}</b>
-            <span style={{ color: "var(--dim)", fontSize: 12 }}>{e.categoria} · {(e.estado || "").replace(/_/g, " ")}</span>
+            <span style={{ color: "var(--dim)", fontSize: TXT.meta }}>{e.categoria} · {(e.estado || "").replace(/_/g, " ")}</span>
           </Fila>
         ))}
       </Seccion>
 
-      <Seccion titulo="🎯 Postulaciones" n={postus.length}>
+      <Seccion titulo="🎯 Postulaciones" k="postulaciones" n={postus.length}>
         {postus.map((p: any) => (
           <Fila key={p.id} href={`/entidad/postulacion/${p.id}`}
             // Edición pasada o terminó sin ganar: historia, salvo que deba rendición
@@ -854,10 +891,10 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
               </>
             ) : null}>
             <b>{p.codigo ? `${p.codigo} · ` : ""}{(p.proy as any)?.nombre || "Postulación"}</b>
-            {(p.conv as any) && <span style={{ color: "var(--muted)", fontSize: 12 }}>📜 {(p.conv as any).codigo}{(p.conv as any).anio ? ` · ${(p.conv as any).anio}` : ""}</span>}
+            {(p.conv as any) && <span style={{ color: "var(--muted)", fontSize: TXT.meta }}>📜 {(p.conv as any).codigo}{(p.conv as any).anio ? ` · ${(p.conv as any).anio}` : ""}</span>}
             {/* El monto ganado dice más que el código del acta */}
             {p.estado === "ganadora" && p.monto_adjudicado && (
-              <span style={{ color: "var(--teal)", fontSize: 12, fontWeight: 700 }}>
+              <span style={{ color: "var(--teal)", fontSize: TXT.meta, fontWeight: 700 }}>
                 S/ {parseFloat(p.monto_adjudicado).toLocaleString("es-PE")}
               </span>
             )}
@@ -866,7 +903,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
               const f = p.fecha_prorroga || p.fecha_limite_rendicion;
               const d = Math.ceil((new Date(f + "T23:59:59").getTime() - Date.now()) / 86400000);
               return (
-                <span style={{ fontSize: 11.5, fontWeight: 700,
+                <span style={{ fontSize: TXT.micro, fontWeight: 700,
                   color: d < 0 ? "var(--red)" : d <= 60 ? "var(--yellow)" : "var(--dim)" }}
                   title={`Rendición: ${fechaLarga(f)}${p.fecha_prorroga ? " (prórroga)" : ""}`}>
                   🧾 {d < 0 ? `rendición vencida ${haceOEn(f)}` : `rinde ${haceOEn(f)}`}
@@ -881,13 +918,13 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
         ))}
       </Seccion>
 
-      <Seccion titulo="📜 Convocatorias" n={convs.length}>
+      <Seccion titulo="📜 Convocatorias" k="convocatorias" n={convs.length}>
         {convs.map((c: any) => (
           <Fila key={c.id} href={`/entidad/convocatoria/${c.id}`}
             // Edición pasada o cerrada: memoria del palmarés, no cancha de hoy
             tenue={!convViva(c)}>
             <b>{c.codigo}</b>
-            <span style={{ color: "var(--muted)", fontSize: 12 }}>{c.nombre}</span>
+            <span style={{ color: "var(--muted)", fontSize: TXT.meta }}>{c.nombre}</span>
             {/* El año manda en un concurso: es su edición */}
             {c.anio && (
               <span className="badge" style={{
@@ -896,14 +933,14 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
               }}>{c.anio}</span>
             )}
             {c.estado && (
-              <span style={{ color: "var(--dim)", fontSize: 11.5 }}>{c.estado.replace(/_/g, " ")}</span>
+              <span style={{ color: "var(--dim)", fontSize: TXT.micro }}>{c.estado.replace(/_/g, " ")}</span>
             )}
             <Marca s={statConv.get(c.id)} />
           </Fila>
         ))}
       </Seccion>
 
-      <Seccion titulo="📍 Lugares" n={lugs.length}>
+      <Seccion titulo="📍 Lugares" k="lugares" n={lugs.length}>
         {lugs.map((l: any) => (
           <Fila key={l.id} href={`/entidad/lugar/${l.id}`}>
             <b>{l.nombre}</b>
@@ -913,22 +950,27 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
 
       {/* El repositorio: material, no fichas. Va después de las entidades y
           antes de los casos —es «lo que sabemos», no «lo que hacemos»—. */}
-      <Seccion titulo="📚 Repositorio" n={objs.length} mas={objsMas}
+      <Seccion titulo="📚 Repositorio" k="repositorio" n={objs.length} mas={objsMas}
         verTodo={`/repositorio?q=${encodeURIComponent(q)}`}>
         {objs.map((o: any) => (
           <Fila key={o.id} href={`/objeto/${o.id}`}>
-            <span>{icoObjeto(o.tipo)}</span>
+            {/* La cara del material: miniatura del archivo (imagen, carátula de
+                YouTube, primera página de un Drive) si el link la da; si no —un
+                PDF suelto, un doc restringido— queda el ícono del tipo. */}
+            {previewCandidates(o.url, 200).length
+              ? <Miniatura url={o.url} size={44} alt={o.titulo} />
+              : <span>{icoObjeto(o.tipo)}</span>}
             <b>{o.titulo}</b>
             <span className="badge" style={{ color: "var(--dim)", background: "#1c1c2c" }}>
               {lblObjeto(o.tipo)}
             </span>
             {o.dueno && (
-              <span style={{ color: "var(--dim)", fontSize: 11.5 }}>
+              <span style={{ color: "var(--dim)", fontSize: TXT.micro }}>
                 {ICO_ENT[o.entidad_tipo] || "🔗"} {o.dueno}
               </span>
             )}
             {o.notas && (
-              <span style={{ color: "var(--muted)", fontSize: 11.5, width: "100%" }}>
+              <span style={{ color: "var(--muted)", fontSize: TXT.cuerpo, width: "100%" }}>
                 {snippet(o.notas, palabras)}
               </span>
             )}
@@ -936,11 +978,16 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
         ))}
       </Seccion>
 
-      <Seccion titulo="📌 Casos" n={casos.length}>
+      <Seccion titulo="📌 Casos" k="casos" n={casos.length}>
         {casos.map((p: any) => (
           <Fila key={p.id} href={`/caso/${p.id}`}>
-            <span>{p.padre_id ? "🧩" : icoTipo(p.tipo)}</span>
-            <b>{p.titulo}</b>
+            {/* La cara de quien lo creó (autor_id → su cuenta). Sin foto, las
+                iniciales; sin autor, Avatar cae a «?». */}
+            <span title={`Creado por ${perfilNom.get(p.autor_id) || "—"}`} style={{ display: "inline-flex", flex: "none" }}>
+              <Avatar nombre={perfilNom.get(p.autor_id)} src={avatarDe.get(p.autor_id)} size={24} />
+            </span>
+            <span style={{ fontSize: 15 }}>{p.padre_id ? "🧩" : icoTipo(p.tipo)}</span>
+            <b style={{ fontSize: TXT.titulo }}>{p.titulo}</b>
             {/* Que tiene hijos cambia lo que es: no es un caso suelto, es uno
                 largo con trabajo dentro. Verde solo cuando están todos. */}
             {hijosDe.get(p.id) && (() => {
@@ -958,22 +1005,24 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
                 lista» no dice de qué rodaje habla. El padre no es adorno, es
                 la mitad del dato. */}
             {p.padre_id && padreDe.get(p.padre_id) && (
-              <span style={{ color: "var(--dim)", fontSize: 11, width: "100%" }}>
+              <span style={{ color: "var(--dim)", fontSize: TXT.micro, width: "100%" }}>
                 ↑ parte de: <b style={{ color: "var(--violet)" }}>{padreDe.get(p.padre_id)}</b>
               </span>
             )}
-            {p.cuerpo && <span style={{ color: "var(--muted)", fontSize: 11.5, width: "100%" }}>{snippet(p.cuerpo, palabras)}</span>}
+            {p.cuerpo && <span style={{ color: "var(--muted)", fontSize: TXT.cuerpo, width: "100%", lineHeight: 1.4 }}>{snippet(p.cuerpo, palabras)}</span>}
           </Fila>
         ))}
       </Seccion>
 
-      <Seccion titulo="💬 En comentarios" n={coms.length}>
+      <Seccion titulo="💬 En comentarios" k="comentarios" n={coms.length}>
         {coms.map((c: any) => (
           <Fila key={c.id} href={c.objeto_id ? `/objeto/${c.objeto_id}#comentarios` : `/caso/${c.publicacion_id}`}>
-            <span style={{ color: "var(--muted)", fontSize: 12, fontStyle: "italic" }}>
+            <span style={{ color: "var(--text)", fontSize: TXT.cuerpo, fontStyle: "italic", width: "100%", lineHeight: 1.45 }}>
               "{snippet(c.cuerpo, palabras)}"
             </span>
-            <span style={{ color: "var(--dim)", fontSize: 11.5 }}>
+            {/* La cara de quien comentó: su avatar de cuenta, o iniciales. */}
+            <Avatar nombre={(c.autor as any)?.nombre} src={(c.autor as any)?.avatar_url} size={22} />
+            <span style={{ color: "var(--muted)", fontSize: TXT.meta }}>
               — {(c.autor as any)?.nombre?.split(" ")[0]} en «{(c.pub as any)?.titulo || (c.obj as any)?.titulo || "—"}»
             </span>
           </Fila>

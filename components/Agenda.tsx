@@ -1,8 +1,8 @@
 "use client";
 import { useState, useEffect, type Dispatch, type SetStateAction } from "react";
 import Link from "next/link";
-import { plazoDe } from "@/lib/plazo";
-import { icoTipo } from "@/lib/tipos";
+import { icoTipo, colorTipo } from "@/lib/tipos";
+import VistaRapida from "@/components/VistaRapida";
 import { colorEtapa, ETAPAS_CINE } from "@/lib/etapas";
 
 /* AGENDA — todo lo que tiene fecha, en dos vistas.
@@ -28,8 +28,8 @@ export type ItemAgenda = {
 };
 
 const DAY = 86400000;
-const LBL = 184;           // ancho de la columna de rótulos (px)
-const RESP = 60;           // ancho de la columna del responsable (px)
+const LBL = 212;           // ancho de la columna de rótulos (px)
+const RESP = 68;           // ancho de la columna del responsable (px)
 const OFF = LBL + RESP;    // dónde empieza la pista: rejilla y eje se anclan aquí
 // Zoom de la ventana visible del timeline (días). El default (2 meses) es
 // parecido a las 10 semanas de antes.
@@ -72,12 +72,14 @@ export default function Agenda({ items, perfiles, miId }: {
   const foco = persona || miId;
   const apagado = (it: ItemAgenda) => !!foco && it.respId !== foco;
 
-  /* El color dice la cosa: la actividad, su etapa; el caso, su urgencia
-     (plazoDe pinta rojo si vencido, amarillo si cerca). */
+  /* El color dice la cosa: la actividad, su etapa; el caso, su TIPO (tarea,
+     aviso, problema…). La urgencia ya la lee la línea roja de HOY —cerca a la
+     derecha, lejos a la izquierda—, así que el color no necesita repetirla:
+     queda libre para identificar de qué clase es cada caso de un vistazo. */
   const colorDe = (it: ItemAgenda) =>
     it.kind === "act"
       ? colorEtapa(it.etapa || "")
-      : (plazoDe(it.fin, it.estado)?.color || "var(--violet)");
+      : colorTipo(it.tipo || "");
 
   const icoDe = (it: ItemAgenda) => it.kind === "caso" ? icoTipo(it.tipo || "") : "▬";
 
@@ -263,21 +265,41 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, apagado }: {
                 const right = Math.min(100, pct(pd(it.fin) + DAY));
                 const w = Math.max(right - left, 1.5);
                 const col = colorDe(it);
+                const rango = it.fin !== it.ini;   // tiene inicio y fin distintos
                 return (
                   <div className={`ag-tl-row ${apagado(it) ? "ag-ajena" : ""}`} key={it.id}>
-                    <Link href={it.href} className="ag-tl-lbl" title={it.titulo}>
-                      {icoDe(it)} {it.titulo}
-                    </Link>
+                    <div className="ag-tl-lbl">
+                      {/* Trabajar al vuelo: solo los casos son publicaciones; las
+                          actividades del cronograma no. Va dentro del rótulo (ancho
+                          fijo) para no descuadrar el eje temporal de la pista. */}
+                      {it.kind === "caso" && it.href.startsWith("/caso/") && (
+                        <VistaRapida pubId={it.href.slice("/caso/".length)} />
+                      )}
+                      <Link href={it.href} className="ag-tl-lbl-txt" title={it.titulo}>
+                        {icoDe(it)} {it.titulo}
+                      </Link>
+                    </div>
                     <span className="ag-tl-resp" title={it.respId ? cortoDe(it.respId) : "sin responsable"}>
                       {it.respId ? cortoDe(it.respId) : "—"}
                     </span>
                     <div className="ag-tl-track">
+                      {/* El tramo inicio→fin va tenue y punteado: dice cuánto dura
+                          sin robar protagonismo. Solo cuando hay rango real (fin
+                          distinto del inicio); un solo día no traza línea. */}
+                      {rango && (
+                        <span className="ag-tl-span"
+                          style={{ left: `${left}%`, width: `${w}%`, borderColor: col }} />
+                      )}
+                      {/* Marca en la fecha clave: al final del rango, o en su única
+                          fecha si no hay rango. Hueca para casos, rellena para
+                          actividades — la misma identidad de color de siempre. */}
                       <Link href={it.href} className="ag-tl-bar"
                         title={`${it.titulo} · ${fmtCorto(it.ini)}${it.fin !== it.ini ? ` → ${fmtCorto(it.fin)}` : ""}${it.respId ? ` · ${cortoDe(it.respId)}` : ""}`}
                         style={{
-                          left: `${left}%`, width: `${w}%`,
+                          left: `${rango ? Math.max(0, right - 1.6) : left}%`,
+                          width: `${rango ? 1.6 : w}%`,
                           background: it.kind === "caso" ? "transparent" : col,
-                          border: it.kind === "caso" ? `2px solid ${col}` : "none",
+                          border: `2px solid ${col}`,
                         }} />
                     </div>
                   </div>

@@ -5,6 +5,7 @@ import Volver from "@/components/Volver";
 import Agenda, { type ItemAgenda } from "@/components/Agenda";
 import Realtime from "@/components/Realtime";
 import { sinBot } from "@/lib/personas";
+import { avisoVencido } from "@/lib/estados";
 
 export const metadata: Metadata = { title: "📅 Agenda" };
 
@@ -31,7 +32,7 @@ export default async function AgendaPage() {
         "postu:postulaciones(id,codigo)")
       .neq("estado", "cancelada").not("fecha_inicio", "is", null),
     supabase.from("publicaciones")
-      .select("id,titulo,tipo,estado,fecha_limite,responsable")
+      .select("id,titulo,tipo,estado,fecha_limite,responsable,creado_en")
       .in("estado", VIVOS).not("fecha_limite", "is", null).is("archivado_en", null),
     supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
   ]);
@@ -58,14 +59,25 @@ export default async function AgendaPage() {
   });
 
   // ── Casos vivos con fecha límite → items. Grupo único "Casos". ──
-  const itemsCaso: ItemAgenda[] = (casos || []).map((c: any) => ({
-    id: c.id, kind: "caso", titulo: c.titulo,
-    ini: c.fecha_limite, fin: c.fecha_limite,
+  // Un aviso VENCIDO ya no rige (misma regla que feed/kanban/muro): sale de la
+  // agenda solo, sin esperar a que se archive a mano. Los casos normales y los
+  // avisos aún vigentes se quedan.
+  const itemsCaso: ItemAgenda[] = (casos || [])
+    .filter((c: any) => !avisoVencido(c.tipo, c.fecha_limite))
+    .map((c: any) => {
+    // El caso «dura» desde que se creó hasta su fecha límite: ese tramo se
+    // dibuja tenue y punteado en la línea de tiempo, con la marca en el límite.
+    // Si nació el mismo día del límite (o después), no hay tramo: solo la marca.
+    const creado = String(c.creado_en || "").slice(0, 10);
+    const ini = creado && creado < c.fecha_limite ? creado : c.fecha_limite;
+    return {
+    id: c.id, kind: "caso" as const, titulo: c.titulo,
+    ini, fin: c.fecha_limite,
     estado: c.estado, tipo: c.tipo,
     respId: c.responsable || null,
     personas: [c.responsable].filter(Boolean) as string[],
     grupo: "Casos", grupoId: "__casos__", href: `/caso/${c.id}`,
-  }));
+  }; });
 
   return (
     <div className="shell" style={{ maxWidth: "min(1800px, 98vw)" }}>
