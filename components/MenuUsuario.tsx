@@ -40,8 +40,6 @@ export default function MenuUsuario({ nombre, rol, color, src, esAdmin, personaI
               <Link href="/admin" onClick={() => setAbierto(false)} className="btn btn-ghost"
                 style={{ marginTop: 6, fontSize: 12.5, textAlign: "center" }}>⚙ Administración</Link>
             )}
-            <Link href="/etiquetas" onClick={() => setAbierto(false)} className="btn btn-ghost"
-              style={{ marginTop: 6, fontSize: 12.5, textAlign: "center" }}>🏷️ Etiquetas</Link>
             <a href="/auth/signout" className="btn btn-ghost"
               style={{ marginTop: 6, fontSize: 12.5, textAlign: "center" }}>⎋ Salir</a>
           </div>

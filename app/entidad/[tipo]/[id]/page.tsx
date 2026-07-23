@@ -30,7 +30,7 @@ import Copiar from "@/components/Copiar";
 import EventoHistorial from "@/components/EventoHistorial";
 import EventoGrupo from "@/components/EventoGrupo";
 import { agruparEventos } from "@/lib/agrupar";
-import { claseEstado, rotuloEstado, esAviso } from "@/lib/estados";
+import { claseEstado, rotuloEstado, esAviso, avisoVencido } from "@/lib/estados";
 import { contarHijos, CERRADOS, type Familia } from "@/lib/familia";
 import { icoTipo } from "@/lib/tipos";
 import Reacciones, { type Reaccion } from "@/components/Reacciones";
@@ -882,8 +882,10 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
      O archivadas —lo archivado es memoria de esta entidad y aquí sí se ve, en
      su cajón—. Ojo: `en_pausa` ahora cae en activas, que es lo correcto —está
      detenido, no cerrado—; antes caía en «cerradas» por descarte. */
-  const activas = (pubs || []).filter((p: any) => !p.archivado_en && !CERRADOS.includes(p.estado));
-  const cerradas = (pubs || []).filter((p: any) => p.archivado_en || CERRADOS.includes(p.estado));
+  /* Un aviso VENCIDO (pasó su fecha límite) deja de regir y cae en «cerradas»
+     solo, sin archivarlo a mano: sale del muro y del listado activo. */
+  const activas = (pubs || []).filter((p: any) => !p.archivado_en && !CERRADOS.includes(p.estado) && !avisoVencido(p.tipo, p.fecha_limite));
+  const cerradas = (pubs || []).filter((p: any) => p.archivado_en || CERRADOS.includes(p.estado) || avisoVencido(p.tipo, p.fecha_limite));
 
   const cardPub = (p: any) => {
     const hj = hijosDe.get(p.id);
@@ -914,8 +916,11 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
           <span>{icoTipo(p.tipo)}</span>
           <b style={{ flex: 1, fontSize: 13.5 }}>{p.titulo}</b>
           {(p.resp as any)?.nombre && <span className="tv-resp">{(p.resp as any).nombre.split(" ")[0]}</span>}
-          {/* Un aviso dice «Vigente», no «Sin Resolver»: nadie lo va a resolver */}
-          <span className={`pill st-${claseEstado(p.estado, p.tipo)}`}>{rotuloEstado(p.estado, p.tipo)}</span>
+          {/* Un aviso dice «Vigente», no «Sin Resolver»: nadie lo va a resolver.
+              Si venció (pasó su fecha), ya no rige → «Vencido» en gris, no «Vigente». */}
+          {avisoVencido(p.tipo, p.fecha_limite)
+            ? <span className="pill st-descartada">📢 Vencido</span>
+            : <span className={`pill st-${claseEstado(p.estado, p.tipo)}`}>{rotuloEstado(p.estado, p.tipo)}</span>}
           {/* Interactuar al vuelo, sin abrir otra pestaña */}
           <VistaRapida pubId={p.id} />
         </div>

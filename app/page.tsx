@@ -12,6 +12,7 @@ import { contarHijos } from "@/lib/familia";
 import { plazoDe } from "@/lib/plazo";
 import { progresoDe } from "@/lib/progreso";
 import { rotuloTipo, colorTipo } from "@/lib/tipos";
+import { avisoVencido } from "@/lib/estados";
 import { sinBot } from "@/lib/personas";
 import FiltroMas from "@/components/FiltroMas";
 import ListaFeed, { type CardFeed } from "@/components/ListaFeed";
@@ -148,8 +149,10 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
       return q;
     })(),
     (() => {
-      // Universo para los contadores de cada pestaña (independiente del filtro activo)
-      let q = supabase.from("publicaciones").select("id,tipo,autor_id,responsable")
+      // Universo para los contadores de cada pestaña (independiente del filtro activo).
+      // `fecha_limite`: para excluir avisos vencidos igual que en la lista, y que
+      // el número de la pestaña cuadre con lo que se ve.
+      let q = supabase.from("publicaciones").select("id,tipo,autor_id,responsable,fecha_limite")
         .is("archivado_en", null).neq("estado", "descartada");
       if (idsOcultos.length) q = q.not("id", "in", `(${idsOcultos.join(",")})`);
       return q.limit(2000);
@@ -341,7 +344,9 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
   // Fuera del feed los avisos que YO ya di por leídos (mi 👀). Solo avisos: un
   // 👀 en un caso normal es una reacción, no un acuse.
   const yaVisto = (p: any) => p.tipo === "aviso" && misEnterados.has(p.id);
-  const posts = (postsQ.data || []).filter((p: any) => !yaVisto(p));
+  // Un aviso VENCIDO (pasó su fecha) ya no rige: fuera del feed, como en el muro.
+  const fueraFeed = (p: any) => yaVisto(p) || avisoVencido(p.tipo, p.fecha_limite);
+  const posts = (postsQ.data || []).filter((p: any) => !fueraFeed(p));
 
   /* En "Mis asuntos", igual que en el tablero: PRENDIDO lo que es mi
      responsabilidad, APAGADO lo que me incumbe pero trabaja otro (lo delegué,
@@ -357,7 +362,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
   // Contadores por pestaña (sobre el universo no archivado y no oculto, y sin
   // los avisos que ya di por leídos, para que el número cuadre con la lista)
   const misSet = new Set(misVinculadas);
-  const U = (univQ.data || []).filter((p: any) => !yaVisto(p));
+  const U = (univQ.data || []).filter((p: any) => !fueraFeed(p));
   const conteo: Record<string, number> = {
     mios: U.filter((p: any) => p.autor_id === user.id || p.responsable === user.id || misSet.has(p.id)).length,
     todo: U.length,

@@ -6,6 +6,7 @@ import Realtime from "@/components/Realtime";
 import FiltroTablero from "@/components/FiltroTablero";
 import { contarHijos } from "@/lib/familia";
 import { progresoDe } from "@/lib/progreso";
+import { avisoVencido } from "@/lib/estados";
 import { BOT } from "@/lib/personas";
 import { TABLA_DE } from "@/lib/secciones";
 import Link from "next/link";
@@ -193,9 +194,12 @@ export default async function TableroPage({ searchParams }: {
      entero — hoy son 169 casos vivos. El día que pase de 300, el filtro
      empezaría a mirar solo los 300 más nuevos y a mentir en silencio. Ése es
      el número a vigilar, y está aquí escrito para que se note. */
-  const pubs = idsVinc === null
+  const pubs = (idsVinc === null
     ? (pubsCrudo || [])
-    : (pubsCrudo || []).filter((p: any) => idsVinc!.has(p.id));
+    : (pubsCrudo || []).filter((p: any) => idsVinc!.has(p.id)))
+    // Un aviso VENCIDO ya no rige: fuera del tablero activo (en la vista de
+    // archivadas no aplica —ahí solo hay `archivado_en`, no avisos vencidos—).
+    .filter((p: any) => arch || !avisoVencido(p.tipo, p.fecha_limite));
 
   // Indicadores sociales: sub-casos (hijos) y reacciones (comentarios ya vienen en el select)
   const idsPubs = (pubs || []).map((p: any) => p.id);
@@ -278,11 +282,12 @@ export default async function TableroPage({ searchParams }: {
      en archivadas cuenta lo archivado, o «Todo» y los desplegables de etiqueta
      mostrarían lo vivo mientras las columnas muestran lo guardado. */
   let qUniv = supabase.from("publicaciones")
-    .select("id,tipo,autor_id,responsable")
+    .select("id,tipo,autor_id,responsable,fecha_limite")
     .in("estado", ESTADOS).limit(TOPE);
   qUniv = arch ? qUniv.not("archivado_en", "is", null) : qUniv.is("archivado_en", null);
   const { data: universo } = await qUniv;
-  const U = universo || [];
+  // Los avisos vencidos ya no cuentan en el tablero activo (igual que las columnas).
+  const U = (universo || []).filter((p: any) => arch || !avisoVencido(p.tipo, p.fecha_limite));
   const misSet = new Set(misVinc);
   /* Los contadores son del UNIVERSO, no del filtro: dicen cuánto hay de cada
      tipo en el tablero entero. Con los ejes apilados eso podría confundir

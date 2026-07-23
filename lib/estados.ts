@@ -70,6 +70,17 @@ const AVISO_TXT: Record<string, string> = { abierta: "Vigente" };
 
 export const esAviso = (tipo?: string | null) => tipo === "aviso";
 
+/* Un aviso VENCIÓ cuando pasó su fecha límite: deja de regir y desde entonces
+   se comporta como cerrado —sale del muro y cae en «cerradas»— sin tener que
+   archivarlo a mano. Los avisos SIN fecha rigen hasta que otro los reemplace.
+   La comparación es por día: «vence hoy» sigue vigente hoy; vence al terminar. */
+export const avisoVencido = (tipo?: string | null, fechaLimite?: string | null): boolean => {
+  if (!esAviso(tipo) || !fechaLimite) return false;
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  const dl = new Date(String(fechaLimite).slice(0, 10) + "T00:00:00");
+  return !isNaN(+dl) && dl < hoy;
+};
+
 /* LOS ESTADOS VIVOS — para las consultas de «qué está en curso».
    ⚠ Filtrar por ESTOS ya NO basta para excluir lo archivado. Antes sí:
    `estado='archivada'` sacaba gratis lo archivado de cualquier `.in(estado)`.
