@@ -1022,6 +1022,10 @@ export async function editarTarifa(
 export async function guardarRhe(f: {
   id?: string | null; personaId: string; numero: string; fecha: string;
   monto: string; retencion: string; concepto: string; proyectoId: string; url: string;
+  /* Los dos ejes del gasto (opcionales: un RHE puede no ser de un fondo). Si
+     se cargan al momento, el control de presupuesto y el informe económico
+     salen los dos, gratis; si no, se reconstruyen de memoria dos años después. */
+  postulacionId?: string; actividadId?: string; rubroItem?: string; etapa?: string;
 }) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -1045,6 +1049,11 @@ export async function guardarRhe(f: {
     concepto: f.concepto.trim() || null,
     proyecto_id: f.proyectoId || null,
     url: f.url.trim() || null,
+    // undefined = no tocar (para no pisar los ejes al editar desde otra pantalla)
+    ...(f.postulacionId !== undefined ? { postulacion_id: f.postulacionId || null } : {}),
+    ...(f.actividadId !== undefined ? { actividad_id: f.actividadId || null } : {}),
+    ...(f.rubroItem !== undefined ? { rubro_item: f.rubroItem || null } : {}),
+    ...(f.etapa !== undefined ? { etapa: f.etapa || null } : {}),
   };
   const { error } = f.id
     ? await supabase.from("rhe").update(fila).eq("id", f.id)
@@ -1057,10 +1066,185 @@ export async function guardarRhe(f: {
   });
   revalidatePath("/admin");
   revalidatePath(`/entidad/persona/${f.personaId}`);
+  if (f.postulacionId) revalidatePath(`/entidad/postulacion/${f.postulacionId}`);
   return {};
 }
 
-export async function borrarRhe(id: string, personaId: string) {
+/* Fijar los ejes de un RHE ya girado (fondo · actividad · rubro), sin tocar
+   monto ni persona. Es la puerta desde la vista del fondo: se registra el
+   pago en admin y aquí se le dice a qué actividad y rubro pertenece. */
+export async function fijarEjesRhe(id: string, ejes: {
+  postulacionId?: string | null; actividadId?: string | null; rubroItem?: string | null; etapa?: string | null;
+}) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: perfil } = await supabase.from("perfiles").select("es_admin").eq("id", user.id).single();
+  if (!perfil?.es_admin) return { error: "Solo administración edita los RHE." };
+  const patch: any = {};
+  if (ejes.postulacionId !== undefined) patch.postulacion_id = ejes.postulacionId || null;
+  if (ejes.actividadId !== undefined) patch.actividad_id = ejes.actividadId || null;
+  if (ejes.rubroItem !== undefined) patch.rubro_item = ejes.rubroItem || null;
+  if (ejes.etapa !== undefined) patch.etapa = ejes.etapa || null;
+  if (!Object.keys(patch).length) return {};
+  const { error } = await supabase.from("rhe").update(patch).eq("id", id);
+  if (error) return { error: error.message };
+  if (ejes.postulacionId) {
+    revalidatePath(`/entidad/postulacion/${ejes.postulacionId}`);
+    revalidatePath(`/fondo/${ejes.postulacionId}`);
+  }
+  return {};
+}
+
+/* Fijar los ejes a VARIOS RHE de golpe (los de una persona, por lo general).
+   La mayoría de los RHE de una misma persona van a la misma actividad y rubro,
+   así que asignarlos en lote ahorra decenas de clics. */
+export async function fijarEjesRheLote(ids: string[], ejes: {
+  actividadId?: string | null; rubroItem?: string | null; etapa?: string | null;
+}, postulacionId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: perfil } = await supabase.from("perfiles").select("es_admin").eq("id", user.id).single();
+  if (!perfil?.es_admin) return { error: "Solo administración edita los RHE." };
+  const limpios = (Array.isArray(ids) ? ids : []).filter(x => typeof x === "string");
+  if (!limpios.length) return {};
+  const patch: any = {};
+  if (ejes.actividadId !== undefined) patch.actividad_id = ejes.actividadId || null;
+  if (ejes.rubroItem !== undefined) patch.rubro_item = ejes.rubroItem || null;
+  if (ejes.etapa !== undefined) patch.etapa = ejes.etapa || null;
+  if (!Object.keys(patch).length) return {};
+  const { error } = await supabase.from("rhe").update(patch).in("id", limpios);
+  if (error) return { error: error.message };
+  revalidatePath(`/fondo/${postulacionId}`);
+  return {};
+}
+
+/* ── Estados de cuenta del banco (uno por mes, por fondo) ──
+   El estado emitido por el banco: PDF + saldo al cierre + intereses. Es
+   referencia para la rendición, no contabilidad línea a línea. Solo
+   administración los carga, como los RHE. */
+export async function guardarEstadoCuenta(f: {
+  id?: string | null; postulacionId: string; periodo: string;
+  url: string; saldo: string; intereses: string; nota: string;
+}) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: perfil } = await supabase.from("perfiles").select("es_admin").eq("id", user.id).single();
+  if (!perfil?.es_admin) return { error: "Solo administración carga los estados de cuenta." };
+  if (!f.postulacionId) return { error: "Falta el fondo." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(f.periodo)) return { error: "Elige el mes que cubre." };
+  if (f.url && !/^https?:\/\/\S+$/.test(f.url.trim())) return { error: "El PDF debe ser un link completo." };
+  const num = (s: string) => { const t = String(s).replace(/[^\d.-]/g, ""); return t === "" ? null : parseFloat(t); };
+  // El periodo se normaliza al primer día del mes: un estado por fondo y mes.
+  const periodo = f.periodo.slice(0, 8) + "01";
+  const fila = {
+    postulacion_id: f.postulacionId,
+    periodo,
+    url: f.url.trim() || null,
+    saldo: num(f.saldo),
+    intereses: num(f.intereses) ?? 0,
+    nota: f.nota.trim() || null,
+  };
+  const { error } = f.id
+    ? await supabase.from("estado_cuenta").update(fila).eq("id", f.id)
+    : await supabase.from("estado_cuenta").insert({ ...fila, creado_por: user.id });
+  if (error) {
+    if (/duplicate|unique/i.test(error.message))
+      return { error: "Ya hay un estado de cuenta para ese mes en este fondo." };
+    return { error: error.message };
+  }
+  revalidatePath(`/entidad/postulacion/${f.postulacionId}`);
+  return {};
+}
+
+/* Guardar los escaneos/fotos del comprobante de un mes. Las imágenes ya se
+   subieron al Storage (subirImagen) del lado del cliente; aquí solo se guarda
+   la lista de URLs. */
+export async function imagenesEstadoCuenta(id: string, imagenes: string[], postulacionId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: perfil } = await supabase.from("perfiles").select("es_admin").eq("id", user.id).single();
+  if (!perfil?.es_admin) return { error: "Solo administración adjunta comprobantes." };
+  const limpio = (Array.isArray(imagenes) ? imagenes : [])
+    .filter(u => typeof u === "string" && /^https?:\/\/\S+$/.test(u)).slice(0, 12);
+  /* Registra quién y cuándo tocó el comprobante. Si se quitan todos, se
+     limpia el sello: ya no hay comprobante que atribuir. */
+  const sello = limpio.length
+    ? { comprobante_en: new Date().toISOString(), comprobante_por: user.id }
+    : { comprobante_en: null, comprobante_por: null };
+  const { error } = await supabase.from("estado_cuenta").update({ imagenes: limpio, ...sello }).eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath(`/fondo/${postulacionId}`);
+  return {};
+}
+
+export async function borrarEstadoCuenta(id: string, postulacionId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: perfil } = await supabase.from("perfiles").select("es_admin").eq("id", user.id).single();
+  if (!perfil?.es_admin) return { error: "Solo administración puede borrar estados de cuenta." };
+  const { error } = await supabase.from("estado_cuenta").delete().eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath(`/entidad/postulacion/${postulacionId}`);
+  revalidatePath(`/fondo/${postulacionId}`);
+  return {};
+}
+
+/* ── Movimientos del banco (el libro línea a línea) ──
+   Cada línea del estado de cuenta, con su categoría (desembolso / retiro /
+   comisión / interés / otro). Solo administración escribe. */
+const CAT_MOV = ["desembolso", "retiro", "comision", "interes", "otro"];
+export async function guardarMovimiento(f: {
+  id?: string | null; postulacionId: string; fecha: string; glosa: string;
+  medio: string; tipo: string; monto: string; saldo: string; categoria: string; nota: string;
+}) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: perfil } = await supabase.from("perfiles").select("es_admin").eq("id", user.id).single();
+  if (!perfil?.es_admin) return { error: "Solo administración registra los movimientos." };
+  if (!f.postulacionId) return { error: "Falta el fondo." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(f.fecha)) return { error: "Fecha inválida." };
+  if (!f.glosa.trim()) return { error: "Pon la glosa del movimiento." };
+  const num = (s: string) => { const t = String(s).replace(/[^\d.-]/g, ""); return t === "" ? null : parseFloat(t); };
+  const monto = num(f.monto);
+  if (monto === null || monto <= 0) return { error: "El monto debe ser mayor que cero (el signo lo da abono/cargo)." };
+  const tipo = f.tipo === "abono" ? "abono" : "cargo";
+  const categoria = CAT_MOV.includes(f.categoria) ? f.categoria : "otro";
+  const fila = {
+    postulacion_id: f.postulacionId, fecha: f.fecha, glosa: f.glosa.trim(),
+    medio: f.medio.trim() || null, tipo, monto, saldo: num(f.saldo),
+    categoria, nota: f.nota.trim() || null,
+  };
+  const { error } = f.id
+    ? await supabase.from("movimiento_banco").update(fila).eq("id", f.id)
+    : await supabase.from("movimiento_banco").insert({ ...fila, creado_por: user.id });
+  if (error) {
+    if (/duplicate|unique/i.test(error.message))
+      return { error: "Ese movimiento (misma fecha, glosa y monto) ya está cargado." };
+    return { error: error.message };
+  }
+  revalidatePath(`/fondo/${f.postulacionId}`);
+  return {};
+}
+
+export async function borrarMovimiento(id: string, postulacionId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: perfil } = await supabase.from("perfiles").select("es_admin").eq("id", user.id).single();
+  if (!perfil?.es_admin) return { error: "Solo administración puede borrar movimientos." };
+  const { error } = await supabase.from("movimiento_banco").delete().eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath(`/fondo/${postulacionId}`);
+  return {};
+}
+
+export async function borrarRhe(id: string, personaId: string, postulacionId?: string) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
@@ -1075,6 +1259,7 @@ export async function borrarRhe(id: string, personaId: string) {
   });
   revalidatePath("/admin");
   revalidatePath(`/entidad/persona/${personaId}`);
+  if (postulacionId) revalidatePath(`/entidad/postulacion/${postulacionId}`);
   return {};
 }
 
@@ -2994,6 +3179,104 @@ export async function fijarCronogramaPostulado(postulacionId: string) {
     detalle: { mensaje: `📸 fijó el cronograma postulado (${foto.length} actividades)` },
   });
   revalidatePath(`/entidad/postulacion/${postulacionId}`);
+  return {};
+}
+
+/* ── Historial de VERSIONES del fondo (presupuesto · cronograma) ──
+   El presupuesto y el cronograma cambian a lo largo del fondo (desgloses,
+   reformulaciones, prórroga). Cada foto se guarda como versión, con etiqueta y
+   motivo; una es la VIGENTE (contra la que se rinde). Solo administración. */
+const ETIQUETAS_VERSION = ["Postulado", "Reformulado", "Prórroga", "Otro"];
+
+async function fotoVivaDelFondo(supabase: any, postulacionId: string, tipo: string) {
+  if (tipo === "presupuesto") {
+    const { data } = await supabase.from("postulaciones").select("presupuesto").eq("id", postulacionId).maybeSingle();
+    const pre = data?.presupuesto;
+    if (!pre?.items?.length) return { error: "El presupuesto está vacío — arma al menos un ítem antes de guardar una versión." };
+    return { datos: pre };
+  }
+  // cronograma: se captura de las filas vivas (mismo shape que la foto vieja)
+  const { data: acts } = await supabase.from("cronograma_actividades")
+    .select("nombre,etapa,fecha_inicio,fecha_fin,descripcion,resp:perfiles(nombre)")
+    .eq("postulacion_id", postulacionId).neq("estado", "cancelada").not("fecha_inicio", "is", null)
+    .order("etapa").order("orden").order("fecha_inicio").order("creado_en");
+  const foto = (acts || []).map((a: any) => ({
+    nombre: a.nombre, etapa: a.etapa, fecha_inicio: a.fecha_inicio, fecha_fin: a.fecha_fin,
+    responsable: (a.resp as any)?.nombre || null, descripcion: a.descripcion || null,
+  }));
+  if (!foto.length) return { error: "El cronograma está vacío — arma al menos una actividad antes de guardar una versión." };
+  return { datos: foto };
+}
+
+export async function guardarVersionFondo(f: {
+  postulacionId: string; tipo: string; etiqueta: string; motivo: string; vigente: boolean;
+}) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: perfil } = await supabase.from("perfiles").select("es_admin").eq("id", user.id).single();
+  if (!perfil?.es_admin) return { error: "Solo administración guarda versiones." };
+  if (!["presupuesto", "cronograma"].includes(f.tipo)) return { error: "Tipo inválido." };
+  const etiqueta = ETIQUETAS_VERSION.includes(f.etiqueta) ? f.etiqueta : "Otro";
+
+  const foto: any = await fotoVivaDelFondo(supabase, f.postulacionId, f.tipo);
+  if (foto.error) return { error: foto.error };
+
+  /* Se inserta SIEMPRE como no vigente (así nunca choca con el índice único de
+     «una sola vigente»), y solo después —si toca— se promueve. De este modo,
+     si el insert falla, la vigente anterior no queda demovida a la nada. */
+  const { data: ins, error } = await supabase.from("version_fondo").insert({
+    postulacion_id: f.postulacionId, tipo: f.tipo, etiqueta, motivo: f.motivo.trim() || null,
+    datos: foto.datos, vigente: false, creado_por: user.id,
+  }).select("id").maybeSingle();
+  if (error) return { error: error.message };
+  if (!ins?.id) return { error: "No se guardó la versión." };
+  if (f.vigente) {
+    await supabase.from("version_fondo").update({ vigente: false })
+      .eq("postulacion_id", f.postulacionId).eq("tipo", f.tipo);
+    await supabase.from("version_fondo").update({ vigente: true }).eq("id", ins.id);
+  }
+  revalidatePath(`/fondo/${f.postulacionId}`);
+  return {};
+}
+
+export async function marcarVersionVigente(id: string, postulacionId: string, tipo: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: perfil } = await supabase.from("perfiles").select("es_admin").eq("id", user.id).single();
+  if (!perfil?.es_admin) return { error: "Solo administración cambia la versión vigente." };
+  // La versión objetivo debe existir ANTES de bajar las demás (si no, el grupo
+  // quedaría sin ninguna vigente).
+  const { data: tgt } = await supabase.from("version_fondo").select("id")
+    .eq("id", id).eq("postulacion_id", postulacionId).eq("tipo", tipo).maybeSingle();
+  if (!tgt?.id) return { error: "No se encontró la versión a marcar." };
+  await supabase.from("version_fondo").update({ vigente: false })
+    .eq("postulacion_id", postulacionId).eq("tipo", tipo);
+  const { error } = await supabase.from("version_fondo").update({ vigente: true }).eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath(`/fondo/${postulacionId}`);
+  return {};
+}
+
+export async function borrarVersionFondo(id: string, postulacionId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: perfil } = await supabase.from("perfiles").select("es_admin").eq("id", user.id).single();
+  if (!perfil?.es_admin) return { error: "Solo administración borra versiones." };
+  const { data: prev } = await supabase.from("version_fondo").select("tipo,vigente").eq("id", id).maybeSingle();
+  const { error } = await supabase.from("version_fondo").delete().eq("id", id);
+  if (error) return { error: error.message };
+  // Si se borró la vigente, se promueve la más reciente que quede de ese tipo,
+  // para que el fondo no quede sin versión contra la cual comparar/rendir.
+  if (prev?.vigente) {
+    const { data: sig } = await supabase.from("version_fondo").select("id")
+      .eq("postulacion_id", postulacionId).eq("tipo", prev.tipo)
+      .order("creado_en", { ascending: false }).limit(1).maybeSingle();
+    if (sig?.id) await supabase.from("version_fondo").update({ vigente: true }).eq("id", sig.id);
+  }
+  revalidatePath(`/fondo/${postulacionId}`);
   return {};
 }
 

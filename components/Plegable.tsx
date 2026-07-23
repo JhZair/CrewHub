@@ -14,7 +14,7 @@ import { useEffect, useState, type ReactNode } from "react";
 
    El resumen del título es lo que se lee cerrado: «Presupuesto · S/ 60.000»
    dice más que «Presupuesto», y muchas veces evita abrirlo. */
-export default function Plegable({ id, ancla, titulo, resumen, abiertoPorDefecto = true, children }: {
+export default function Plegable({ id, ancla, titulo, resumen, abiertoPorDefecto = true, nivel = 1, children }: {
   /** Clave de memoria. Única por ficha: `postulacion:<id>:presupuesto`. */
   id: string;
   /** Id en el DOM, para que «ir →» pueda abrirla antes de bajar hasta ella. */
@@ -23,6 +23,8 @@ export default function Plegable({ id, ancla, titulo, resumen, abiertoPorDefecto
   /** Lo que se ve cuando está cerrado, a la derecha del título. */
   resumen?: ReactNode;
   abiertoPorDefecto?: boolean;
+  /** Profundidad visual: 1 = tarjeta principal, 2 = sub-sección, 3 = grupo. */
+  nivel?: 1 | 2 | 3;
   children: ReactNode;
 }) {
   /* Arranca con el valor por defecto y lo corrige tras montar: leer
@@ -40,11 +42,6 @@ export default function Plegable({ id, ancla, titulo, resumen, abiertoPorDefecto
     setListo(true);
   }, [llave]);
 
-  const abrir = () => {
-    setAbierto(true);
-    try { localStorage.setItem(llave, "1"); } catch { /* da igual */ }
-  };
-
   /* «ir →» desde el expediente baja hasta esta sección. Si estaba plegada, el
      usuario aterrizaba en una cabecera cerrada y la leía como vacía —cuatro de
      las cinco tarjetas del expediente llevan a secciones que arrancan
@@ -53,11 +50,31 @@ export default function Plegable({ id, ancla, titulo, resumen, abiertoPorDefecto
   useEffect(() => {
     if (!ancla) return;
     const onAbrir = (e: Event) => {
-      if ((e as CustomEvent).detail === ancla) abrir();
+      if ((e as CustomEvent).detail === ancla) {
+        setAbierto(true);
+        try { localStorage.setItem(llave, "1"); } catch { /* da igual */ }
+      }
     };
     window.addEventListener("plg:abrir", onAbrir);
     return () => window.removeEventListener("plg:abrir", onAbrir);
-  });
+  }, [ancla, llave]);
+
+  /* Plegado masivo: «expandir/plegar todo» dispara un evento con un PREFIJO de
+     id y un booleano; cada sección cuyo id empieza con ese prefijo obedece y
+     recuerda el nuevo estado. Sirve para las decenas de grupos de una lista
+     (los RHE por persona) sin cablear cada uno a mano. */
+  useEffect(() => {
+    const onTodos = (e: Event) => {
+      const d = (e as CustomEvent).detail || {};
+      if (typeof d.prefijo === "string" && id.startsWith(d.prefijo)) {
+        const ab = !!d.abrir;
+        setAbierto(ab);
+        try { localStorage.setItem(llave, ab ? "1" : "0"); } catch { /* da igual */ }
+      }
+    };
+    window.addEventListener("plg:todos", onTodos);
+    return () => window.removeEventListener("plg:todos", onTodos);
+  }, [id, llave]);
 
   const alternar = () => {
     const n = !abierto;
@@ -66,7 +83,7 @@ export default function Plegable({ id, ancla, titulo, resumen, abiertoPorDefecto
   };
 
   return (
-    <section className={`plg ${abierto ? "on" : ""}`} id={ancla}>
+    <section className={`plg n${nivel} ${abierto ? "on" : ""}`} id={ancla}>
       <button className="plg-cab" onClick={alternar}
         title={abierto ? "Plegar" : "Desplegar"} aria-expanded={abierto}>
         <span className="plg-flecha">{abierto ? "▾" : "▸"}</span>

@@ -1,6 +1,7 @@
 "use client";
 import { guardarExpediente, casoDeExpediente } from "@/app/actions";
 import { claseEstado, rotuloEstado } from "@/lib/estados";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -22,7 +23,7 @@ export type CampoExp = {
 };
 export type SeccionExp = { titulo: string; campos: CampoExp[] };
 
-export default function Expediente({ postulacionId, plantilla, expediente, auto, cronoListo, cronoResumen, presuListo, presuResumen, materialN, benefN, precontN, precontFirm, casos }: {
+export default function Expediente({ postulacionId, plantilla, expediente, auto, cronoListo, cronoResumen, presuListo, presuResumen, materialN, benefN, precontN, precontFirm, casos, rutaFondo }: {
   postulacionId: string;
   plantilla: SeccionExp[];
   expediente: Record<string, { v: string; listo: boolean }>;
@@ -36,6 +37,10 @@ export default function Expediente({ postulacionId, plantilla, expediente, auto,
   precontN?: number; precontFirm?: number;
   /** Qué caso atiende cada campo, ya resuelto: clave del campo → caso. */
   casos?: Record<string, { id: string; titulo: string; estado: string; resp?: string | null }>;
+  /* Si el fondo ya está en ejecución, el cronograma y el presupuesto se editan
+     en su página propia, no en un plegable de esta ficha. Cuando llega, esos
+     dos enlaces navegan allí en vez de bajar a un ancla que ya no existe. */
+  rutaFondo?: string;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [pestana, setPestana] = useState(0);
@@ -257,16 +262,27 @@ export default function Expediente({ postulacionId, plantilla, expediente, auto,
                 </div>
                 {enlaces.length > 0 && (
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
-                    {enlaces.map(x => (
-                      <button key={x.id} className="btn btn-ghost"
-                        style={{ flex: "1 1 240px", textAlign: "left", padding: "9px 12px", fontSize: 12.5, borderColor: x.listo ? "rgba(46,204,113,.35)" : "var(--border)" }}
-                        onClick={() => irA(x.id)}>
-                        <span style={{ color: x.listo ? "var(--green)" : x.opc ? "var(--dim)" : "var(--yellow)" }}>{x.listo ? "✅" : x.opc ? "◦" : "○"}</span>{" "}
-                        {x.ico} <b>{x.nom}</b>
-                        <span style={{ color: "var(--dim)", fontWeight: 400 }}> — {x.res || (x.listo ? "listo" : "pendiente")}</span>
-                        <span style={{ color: "var(--accent)", float: "right" }}>ir →</span>
-                      </button>
-                    ))}
+                    {enlaces.map(x => {
+                      /* Cronograma y presupuesto migraron a la página del fondo
+                         cuando ya se ganó: su enlace navega allí, no baja a un
+                         ancla que ya no está en esta ficha. El resto (material,
+                         beneficiarios, precontratos) sigue viviendo aquí. */
+                      const alFondo = !!rutaFondo && (x.id === "sec-cronograma" || x.id === "sec-presupuesto");
+                      const cara = (
+                        <>
+                          <span style={{ color: x.listo ? "var(--green)" : x.opc ? "var(--dim)" : "var(--yellow)" }}>{x.listo ? "✅" : x.opc ? "◦" : "○"}</span>{" "}
+                          {x.ico} <b>{x.nom}</b>
+                          <span style={{ color: "var(--dim)", fontWeight: 400 }}> — {x.res || (x.listo ? "listo" : "pendiente")}</span>
+                          <span style={{ color: "var(--accent)", float: "right" }}>{alFondo ? "ejecución →" : "ir →"}</span>
+                        </>
+                      );
+                      const estilo = { flex: "1 1 240px", textAlign: "left" as const, padding: "9px 12px", fontSize: 12.5, borderColor: x.listo ? "rgba(46,204,113,.35)" : "var(--border)" };
+                      return alFondo ? (
+                        <Link key={x.id} href={rutaFondo!} className="btn btn-ghost" style={estilo}>{cara}</Link>
+                      ) : (
+                        <button key={x.id} className="btn btn-ghost" style={estilo} onClick={() => irA(x.id)}>{cara}</button>
+                      );
+                    })}
                   </div>
                 )}
                 <div className="exp-form">

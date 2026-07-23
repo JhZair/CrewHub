@@ -23,7 +23,7 @@ const fmt = (s: string | null) => s
   : "—";
 
 export default function CronogramaPostulacion({
-  postulacionId, actividades, perfiles, plantillas, tipoProyecto, etapas = ETAPAS_CINE, postulado, postuladoEn,
+  postulacionId, actividades, perfiles, plantillas, tipoProyecto, etapas = ETAPAS_CINE, postulado, postuladoEn, ocultarFijar = false,
 }: {
   postulacionId: string;
   actividades: any[];
@@ -34,7 +34,11 @@ export default function CronogramaPostulacion({
   etapas?: Etapa[];
   postulado: Foto[] | null;
   postuladoEn: string | null;
+  /* En el fondo, las versiones las maneja el panel de arriba: se oculta la foto
+     única y `postulado` es la versión VIGENTE. */
+  ocultarFijar?: boolean;
 }) {
+  const refNombre = ocultarFijar ? "la versión vigente" : "lo postulado";
   const ETAPA_ORDEN = etapas.map(e => e.clave);
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState("");
@@ -73,36 +77,38 @@ export default function CronogramaPostulacion({
 
   return (
     <div>
-      {/* ===== Barra de estado de la foto ===== */}
-      <div className="card" style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
-        <div style={{ flex: 1, minWidth: 200 }}>
-          <b style={{ fontSize: 13 }}>📸 Cronograma postulado</b>
-          <div style={{ color: "var(--dim)", fontSize: 11.5, marginTop: 2 }}>
-            {postuladoEn
-              ? <>Fijado el {new Date(postuladoEn).toLocaleDateString("es-PE", { day: "numeric", month: "long", year: "numeric" })} · {foto.length} actividades — es lo que fue a DAFO.</>
-              : <>Aún no fijas la foto. Arma el cronograma abajo y fíjalo cuando esté listo para enviar.</>}
+      {/* ===== Barra de estado de la foto (oculta en el fondo: versiones arriba) ===== */}
+      {!ocultarFijar && (
+        <div className="card" style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <b style={{ fontSize: 13 }}>📸 Cronograma postulado</b>
+            <div style={{ color: "var(--dim)", fontSize: 11.5, marginTop: 2 }}>
+              {postuladoEn
+                ? <>Fijado el {new Date(postuladoEn).toLocaleDateString("es-PE", { day: "numeric", month: "long", year: "numeric" })} · {foto.length} actividades — es lo que fue a DAFO.</>
+                : <>Aún no fijas la foto. Arma el cronograma abajo y fíjalo cuando esté listo para enviar.</>}
+            </div>
           </div>
+          {postulado && (
+            <button className="btn btn-ghost" style={{ padding: "6px 12px", fontSize: 12 }}
+              onClick={() => setVerFoto(v => !v)}>{verFoto ? "Ocultar la foto" : "👁 Ver la foto"}</button>
+          )}
+          <button className="btn" style={{ padding: "7px 14px", fontSize: 12.5 }} disabled={ocupado}
+            onClick={fijar} title="Congela el cronograma actual como lo presentado a DAFO">
+            {ocupado ? "…" : postulado ? "📸 Volver a fijar" : "📸 Fijar como postulado"}
+          </button>
         </div>
-        {postulado && (
-          <button className="btn btn-ghost" style={{ padding: "6px 12px", fontSize: 12 }}
-            onClick={() => setVerFoto(v => !v)}>{verFoto ? "Ocultar la foto" : "👁 Ver la foto"}</button>
-        )}
-        <button className="btn" style={{ padding: "7px 14px", fontSize: 12.5 }} disabled={ocupado}
-          onClick={fijar} title="Congela el cronograma actual como lo presentado a DAFO">
-          {ocupado ? "…" : postulado ? "📸 Volver a fijar" : "📸 Fijar como postulado"}
-        </button>
-      </div>
+      )}
       {error && <div className="err-inline" style={{ marginBottom: 12 }}>⚠ {error}</div>}
 
-      {/* ===== Comparación vivo vs postulado ===== */}
+      {/* ===== Comparación vivo vs postulado/vigente ===== */}
       {postulado && (
         <div className="card" style={{ marginBottom: 12, borderLeft: `3px solid ${hayCambios ? "var(--yellow)" : "var(--green)"}` }}>
           {!hayCambios ? (
-            <span style={{ color: "var(--green)", fontSize: 12.5 }}>✅ El cronograma vivo coincide con lo postulado.</span>
+            <span style={{ color: "var(--green)", fontSize: 12.5 }}>✅ El cronograma vivo coincide con {refNombre}.</span>
           ) : (
             <>
               <div style={{ fontSize: 12.5, color: "var(--muted)" }}>
-                <b style={{ color: "var(--yellow)" }}>Cambió desde lo postulado:</b>{" "}
+                <b style={{ color: "var(--yellow)" }}>Cambió desde {refNombre}:</b>{" "}
                 {movidas.length > 0 && <>{movidas.length} con otra fecha</>}
                 {movidas.length > 0 && (nuevas.length || quitadas.length) ? " · " : ""}
                 {nuevas.length > 0 && <>{nuevas.length} nuevas</>}

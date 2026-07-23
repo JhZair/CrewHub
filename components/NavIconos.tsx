@@ -32,6 +32,10 @@ export default function NavIconos() {
     || pathname === `/casos/${s.tipo}`;
 
   const aqui = SECCIONES.find(enSeccion);
+  /* «Fondos» no es una sección de entidad (no tiene ficha en /entidad ni
+     historial propio): es una vista sobre las postulaciones ganadoras. Va
+     fijado aparte para no ensuciar SECCIONES con un tipo falso. */
+  const enFondos = pathname === "/fondos" || pathname.startsWith("/fondo/");
 
   // Cerrar con Escape: un menú que solo se cierra con el ratón estorba.
   useEffect(() => {
@@ -46,11 +50,11 @@ export default function NavIconos() {
 
   return (
     <nav className="nav-menu">
-      <button type="button" className={`btn btn-ghost nav-btn${aqui ? " nav-aqui" : ""}`}
+      <button type="button" className={`btn btn-ghost nav-btn${aqui || enFondos ? " nav-aqui" : ""}`}
         onClick={() => setAbierto(a => !a)} aria-expanded={abierto}
-        title={aqui ? aqui.titulo : "Secciones"}>
-        <span className="nav-ico">{aqui ? aqui.ico : "☰"}</span>
-        <span className="nav-txt">{aqui ? aqui.plural : "Secciones"}</span>
+        title={enFondos ? "Fondos en ejecución" : aqui ? aqui.titulo : "Secciones"}>
+        <span className="nav-ico">{enFondos ? "🎬" : aqui ? aqui.ico : "☰"}</span>
+        <span className="nav-txt">{enFondos ? "fondos" : aqui ? aqui.plural : "Secciones"}</span>
         <span className="nav-cheb">▾</span>
       </button>
       {abierto && (
@@ -65,6 +69,14 @@ export default function NavIconos() {
                 <span>{s.plural}</span>
               </Link>
             ))}
+            {/* Los fondos ganados en marcha: no son una entidad, pero sí un
+                lugar al que se va. */}
+            <Link href="/fondos" className={`nav-item${enFondos ? " on" : ""}`}
+              onClick={() => setAbierto(false)}
+              style={{ borderTop: "1px solid var(--border)", marginTop: 4, paddingTop: 8 }}>
+              <span className="nav-item-ico">🎬</span>
+              <span>fondos en ejecución</span>
+            </Link>
           </div>
         </>
       )}

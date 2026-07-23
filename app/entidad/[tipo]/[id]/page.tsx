@@ -50,7 +50,7 @@ import TablaSimple from "@/components/TablaSimple";
 import EquipoPorcentajes from "@/components/EquipoPorcentajes";
 import Precontratos from "@/components/Precontratos";
 import { etapasDe } from "@/lib/etapas";
-import { rubrosDe, TOPE_ESTIMULO } from "@/lib/rubros";
+import { rubrosDe, topeEstimuloDe } from "@/lib/rubros";
 import { TABLAS_EXP } from "@/lib/tablas-expediente";
 import TabsPanel from "@/components/TabsPanel";
 import Plegable from "@/components/Plegable";
@@ -98,7 +98,7 @@ const CONF: Record<string, { tabla: string; icono: string; campos: [string, stri
   ] },
   equipamiento: { tabla: "equipamiento", icono: "🎥", campos: [["Folio", "folio"], ["Categoría", "categoria"], ["Subcategoría", "subcategoria"], ["Estado", "estado"], ["Valor (S/)", "valor_compra"], ["Comprado en", "comprado_en"]] },
   lugar: { tabla: "lugares", icono: "📍", campos: [] },
-  postulacion: { tabla: "postulaciones", icono: "🎯", campos: [["Código", "codigo"], ["Código plataforma DAFO", "codigo_plataforma"], ["Código del acta", "codigo_acta"], ["Estado", "estado"], ["Lenguas originarias", "lenguas_originarias"], ["Puntaje jurado", "puntaje_jurado"], ["Monto adjudicado (S/)", "monto_adjudicado"], ["Firma del acta", "fecha_firma_acta"], ["Límite de rendición", "fecha_limite_rendicion"], ["Prórroga", "fecha_prorroga"], ["Rendición entregada", "fecha_rendicion_real"]] },
+  postulacion: { tabla: "postulaciones", icono: "🎯", campos: [["Código", "codigo"], ["Código plataforma DAFO", "codigo_plataforma"], ["Código del acta", "codigo_acta"], ["Estado", "estado"], ["Lenguas originarias", "lenguas_originarias"], ["Puntaje jurado", "puntaje_jurado"], ["Monto adjudicado (S/)", "monto_adjudicado"], ["Firma del acta", "fecha_firma_acta"], ["Desembolso del estímulo", "fecha_desembolso"], ["Límite de rendición", "fecha_limite_rendicion"], ["Prórroga", "fecha_prorroga"], ["Rendición entregada", "fecha_rendicion_real"]] },
   convocatoria: { tabla: "convocatorias", icono: "📜", campos: [["Código", "codigo"], ["Institución", "institucion"], ["Año", "anio"], ["Estado", "estado"], ["Monto del estímulo (S/)", "monto_adjudicado"]] },
   etiqueta: { tabla: "etiquetas", icono: "🏷️", campos: [] },
 };
@@ -578,7 +578,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
        no cuadra: el peor momento para enterarse es el día del envío. */
     const preFue = ((ent.presupuesto as any)?.fuentes || []) as any[];
     const preTotFue = preFue.reduce((s, f) => s + (f.importe || 0), 0);
-    const preExcede = preTot > 0 && preEst / preTot > TOPE_ESTIMULO + 1e-9;
+    const preTope = topeEstimuloDe((postCtx?.conv as any)?.categoria);
+    const preExcede = preTope < 1 && preTot > 0 && preEst / preTot > preTope + 1e-9;
     const preCuadra = Math.abs(preTotFue - preTot) < 1;
     presuListo = preIt.length > 0 && !preExcede && preCuadra;
     presuResumen = preIt.length === 0
@@ -586,7 +587,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       : [`costo S/ ${Math.round(preTot).toLocaleString("es-PE")}`,
          `estímulo S/ ${Math.round(preEst).toLocaleString("es-PE")}`,
          `${preIt.length} ítems`,
-         preExcede ? `⚠ el estímulo pasa del ${Math.round(TOPE_ESTIMULO * 100)}%` : null,
+         preExcede ? `⚠ el estímulo pasa del ${Math.round(preTope * 100)}%` : null,
          !preCuadra ? "⚠ el financiamiento no cuadra con el costo" : null,
          ent.presupuesto_postulado_en ? "foto fijada" : null,
         ].filter(Boolean).join(" · ");
@@ -1560,7 +1561,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                       benefN={((ent.beneficiarios as any) || []).length}
                       precontN={precontN}
                       precontFirm={precontFirm}
-                      casos={casosExp} />,
+                      casos={casosExp}
+                      rutaFondo={ent.estado === "ganadora" ? `/fondo/${params.id}` : undefined} />,
                   ] : [
                     <Materiales key="mat" postulacionId={params.id} materiales={ent.materiales || {}} />,
                   ]),
@@ -1704,32 +1706,55 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             const nMat = ((ent.material_archivo as any) || []).length;
             const nBen = ((ent.beneficiarios as any) || []).length;
             const dim = (t: string) => <span style={{ color: "var(--dim)", fontWeight: 400 }}>{t}</span>;
+            const esGanadora = ent.estado === "ganadora";
             return (
             <div style={{ marginBottom: 16 }}>
-              <div style={{ scrollMarginTop: 12 }}>
-                <Plegable id={`post:${params.id}:crono`} ancla="sec-cronograma" titulo="📅 Cronograma"
-                  resumen={dim(cronoResumen || "")}>
-                  <CronogramaPostulacion key={`crono-${params.id}`} postulacionId={params.id}
-                    actividades={cronoPost} perfiles={perfilesCat}
-                    plantillas={plantillas} tipoProyecto={(postCtx?.proy as any)?.tipo || ""}
-                    etapas={etapasDe((postCtx?.conv as any)?.categoria)}
-                    postulado={ent.cronograma_postulado || null}
-                    postuladoEn={ent.cronograma_postulado_en || null} />
-                </Plegable>
-              </div>
-              <div style={{ scrollMarginTop: 12 }}>
-                <Plegable id={`post:${params.id}:presu`} ancla="sec-presupuesto" titulo="💰 Presupuesto" abiertoPorDefecto={false}
-                  resumen={dim(presuResumen || "")}>
-                  <Presupuesto key={`pre-${params.id}`} postulacionId={params.id}
-                    rubros={rubrosDe((postCtx?.conv as any)?.categoria)}
-                    categoria={(postCtx?.conv as any)?.categoria}
-                    inicial={ent.presupuesto || null}
-                    plantillas={plantillasPre}
-                    postulado={ent.presupuesto_postulado || null}
-                    postuladoEn={ent.presupuesto_postulado_en || null}
-                    estimuloConcurso={(postCtx?.conv as any)?.monto_adjudicado ? parseFloat((postCtx.conv as any).monto_adjudicado) : null} />
-                </Plegable>
-              </div>
+              {/* Una ganadora ya no arma cronograma ni presupuesto AQUÍ: eso es
+                  vida real de dos años y vive en la ejecución del fondo. Esta
+                  página queda como el expediente de cómo se postuló. */}
+              {esGanadora ? (
+                <Link href={`/fondo/${params.id}`} className="card"
+                  style={{ display: "block", textDecoration: "none", marginBottom: 14,
+                    borderColor: "rgba(46,204,113,.4)", background: "rgba(46,204,113,.06)" }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: "var(--green)" }}>
+                    🎬 Este fondo está en ejecución
+                  </div>
+                  <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>
+                    El presupuesto real, el cronograma de dos años, los estados de cuenta, los pagos
+                    (RHE) y la rendición viven en su propia página.
+                  </div>
+                  <div style={{ color: "var(--accent)", fontSize: 12.5, marginTop: 8, fontWeight: 600 }}>
+                    Abrir ejecución del fondo →
+                  </div>
+                </Link>
+              ) : (
+                <>
+                  <div style={{ scrollMarginTop: 12 }}>
+                    <Plegable id={`post:${params.id}:crono`} ancla="sec-cronograma" titulo="📅 Cronograma"
+                      resumen={dim(cronoResumen || "")}>
+                      <CronogramaPostulacion key={`crono-${params.id}`} postulacionId={params.id}
+                        actividades={cronoPost} perfiles={perfilesCat}
+                        plantillas={plantillas} tipoProyecto={(postCtx?.proy as any)?.tipo || ""}
+                        etapas={etapasDe((postCtx?.conv as any)?.categoria)}
+                        postulado={ent.cronograma_postulado || null}
+                        postuladoEn={ent.cronograma_postulado_en || null} />
+                    </Plegable>
+                  </div>
+                  <div style={{ scrollMarginTop: 12 }}>
+                    <Plegable id={`post:${params.id}:presu`} ancla="sec-presupuesto" titulo="💰 Presupuesto" abiertoPorDefecto={false}
+                      resumen={dim(presuResumen || "")}>
+                      <Presupuesto key={`pre-${params.id}`} postulacionId={params.id}
+                        rubros={rubrosDe((postCtx?.conv as any)?.categoria)}
+                        categoria={(postCtx?.conv as any)?.categoria}
+                        inicial={ent.presupuesto || null}
+                        plantillas={plantillasPre}
+                        postulado={ent.presupuesto_postulado || null}
+                        postuladoEn={ent.presupuesto_postulado_en || null}
+                        estimuloConcurso={(postCtx?.conv as any)?.monto_adjudicado ? parseFloat((postCtx.conv as any).monto_adjudicado) : null} />
+                    </Plegable>
+                  </div>
+                </>
+              )}
               <div style={{ scrollMarginTop: 12 }}>
                 <Plegable id={`post:${params.id}:mat`} ancla="sec-material" titulo="📁 Material de archivo" abiertoPorDefecto={false}
                   resumen={nMat ? dim(`${nMat} filas`) : dim("sin material (o no aplica)")}>

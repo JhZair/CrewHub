@@ -369,6 +369,10 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
       // — Lo que solo existe si se ganó —
       { key: "codigo_acta", label: "Código del acta de compromiso (ej. 139-2025-DAFO)", corto: "Código acta", grupo: FONDO_POST },
       { key: "fecha_firma_acta", label: "Firma del acta de compromiso", corto: "Firma acta", tipo: "date", grupo: FONDO_POST },
+      /* El plazo de ejecución (2 años, acta 7.2) se cuenta desde que el dinero
+         llega a la cuenta, no desde la firma. Sin esta fecha, la rendición no
+         tiene reloj — y era el único hueco de dato del modelo financiero. */
+      { key: "fecha_desembolso", label: "Desembolso del estímulo (a la cuenta)", corto: "Desembolso", tipo: "date", grupo: FONDO_POST },
       { key: "monto_adjudicado", label: "Monto adjudicado (S/)", corto: "Monto", valida: "monto", grupo: FONDO_POST },
       { key: "acta_url", label: "Acta de compromiso (link)", corto: "Acta", valida: "url", grupo: FONDO_POST },
       { key: "fecha_limite_rendicion", label: "Límite de rendición", corto: "Límite rendición", tipo: "date", grupo: FONDO_POST },
