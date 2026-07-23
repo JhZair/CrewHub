@@ -1,6 +1,7 @@
 "use client";
 import { cambiarEstado, archivar } from "@/app/actions";
 import { celebrarResuelto } from "@/lib/celebra";
+import VistaRapida from "@/components/VistaRapida";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { plazoDe } from "@/lib/plazo";
@@ -201,6 +202,7 @@ export default function Tablero({ columnas, archivado = false }: {
                   {p.nc > 0 && <span className="mini-ind">💬 {p.nc}</span>}
                   {p.sub > 0 && <span className="mini-ind">🧩 {p.sub}</span>}
                   {reacStr(p.reac) && <span className="mini-ind">{reacStr(p.reac)}</span>}
+                  <span style={{ marginLeft: "auto" }}><VistaRapida pubId={p.id} /></span>
                 </div>
                 {(p.vinc || []).length > 0 && (
                   <div className="kb-chips">

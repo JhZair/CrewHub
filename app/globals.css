@@ -545,7 +545,7 @@ a{color:inherit;text-decoration:none}
 /* FAB global "+" y su modal de nuevo caso */
 .fab-nuevo{position:fixed;right:22px;bottom:22px;z-index:60;width:56px;height:56px;border-radius:50%;background:var(--accent);color:#fff;border:none;font-size:28px;line-height:1;cursor:pointer;box-shadow:0 8px 24px rgba(124,92,255,.45);display:flex;align-items:center;justify-content:center}
 .fab-nuevo:hover{filter:brightness(1.1);transform:translateY(-1px)}
-.modal-fondo{position:fixed;inset:0;z-index:70;background:rgba(4,4,10,.72);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto}
+.modal-fondo{position:fixed;inset:0;z-index:80;background:rgba(4,4,10,.72);backdrop-filter:blur(3px);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto}
 .modal-caja{background:linear-gradient(180deg,rgba(124,92,255,.07),transparent 170px),var(--panel);border:1px solid rgba(124,92,255,.5);border-radius:16px;padding:16px 18px;width:100%;max-width:720px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
 /* El modal del compositor va tan ancho como el feed, y no por gusto: dentro
    vive el MISMO Composer, y su bandeja de vincular está calculada al límite
@@ -1196,7 +1196,6 @@ button.obj-mini:hover,a.obj-mini:hover{border-color:var(--accent)}
 .perfil-grid aside .f-campo textarea{width:100%}
 
 /* ===== Edición en ventana modal amplia ===== */
-.modal-fondo{position:fixed;inset:0;background:rgba(4,4,10,.72);backdrop-filter:blur(3px);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;z-index:80;overflow-y:auto}
 .modal-ed{width:100%;max-width:780px}
 /* Ventana ancha: para lo que se COMPARA, no para lo que se lee.
    El feed y las fichas se quedan en 860 px porque ésa es la medida en que el
@@ -1743,3 +1742,68 @@ img.av{border:1px solid var(--border2)}
 .con-et-row:hover{background:rgba(255,255,255,.02)}
 .con-et-tot{margin-top:8px;padding-top:8px;border-top:2px solid var(--border);font-weight:800;font-size:13px}
 .con-et-tot>:first-child{color:var(--text)}
+
+/* ── Filtros y vistas de la lista de casos (perfil) ── */
+.cf-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.cf-search{flex:1;min-width:180px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:7px 11px;font-size:13px;color:var(--text);outline:none}
+.cf-search:focus{border-color:var(--accent)}
+.cf-chips{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+.cf-lbl{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.4px;margin-right:2px}
+.cf-chip{background:var(--card);border:1px solid var(--border);color:var(--muted);font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;cursor:pointer;transition:border-color .12s,color .12s}
+.cf-chip:hover{color:var(--text);border-color:var(--border2)}
+.cf-chip.on{background:rgba(124,92,255,.14);border-color:rgba(124,92,255,.45);color:var(--text)}
+.cf-count{color:var(--dim);font-size:12px;margin:2px 0 10px;display:flex;align-items:center;gap:10px}
+.cf-clear{background:none;border:none;color:var(--violet);font-size:12px;cursor:pointer;padding:0}
+.cf-clear:hover{text-decoration:underline}
+
+/* «Mis asuntos» en la lista de casos: apagado = me incumbe pero responde otro. */
+.caso-apagado{opacity:.45;transition:opacity .12s;filter:saturate(.7)}
+.caso-apagado:hover{opacity:1;filter:none}
+.cf-mis{background:var(--card);border:1px solid var(--border);color:var(--muted);font-size:12.5px;font-weight:700;padding:6px 12px;border-radius:8px;cursor:pointer;white-space:nowrap;transition:border-color .12s,color .12s,background .12s}
+.cf-mis:hover{color:var(--text);border-color:var(--border2)}
+.cf-mis.on{background:rgba(45,212,191,.12);border-color:rgba(45,212,191,.4);color:var(--teal)}
+
+/* Encabezado de coincidencias en cerradas (al buscar). */
+.cf-cerr-h{color:var(--muted);font-size:12.5px;font-weight:700;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+
+/* ── Muro de avisos ── (los avisos rigen, no se resuelven: pared propia) */
+.muro{border:1px solid rgba(124,92,255,.32);background:rgba(124,92,255,.06);border-radius:14px;padding:12px 14px;margin-bottom:18px}
+.muro-h{display:flex;align-items:center;gap:8px;margin-bottom:0;flex-wrap:wrap;width:100%;background:none;border:none;cursor:pointer;text-align:left;padding:0}
+.muro.on .muro-h{margin-bottom:10px}
+.muro-h .plg-flecha{flex:none;width:11px;font-size:10px;color:var(--violet)}
+.muro-tit{font-size:13.5px;font-weight:800;color:var(--violet);letter-spacing:.3px}
+.muro-n{background:rgba(124,92,255,.22);color:var(--violet);border-radius:999px;padding:1px 9px;font-size:11.5px;font-weight:700}
+.muro-sub{color:var(--dim);font-size:11px;font-style:italic}
+.muro-body{display:flex;flex-direction:column;gap:9px}
+
+/* Autor de un aviso: enterado implícito, sin botón. */
+.ae-autor{color:var(--violet);opacity:.85;cursor:default;display:inline-flex;align-items:center}
+
+.muro-body[hidden]{display:none}
+
+/* ── Vista rápida de un caso (pop-up interactivo) ── */
+.vr-btn{background:none;border:1px solid var(--border);color:var(--dim);font-size:12px;border-radius:7px;padding:2px 7px;cursor:pointer;line-height:1.4;transition:color .12s,border-color .12s}
+.vr-btn:hover{color:var(--violet);border-color:var(--violet)}
+.vr-caja{max-width:720px;width:100%}
+.vr-abrir{color:var(--violet);font-size:12px;text-decoration:none;white-space:nowrap;margin-right:14px}
+.vr-abrir:hover{text-decoration:underline}
+.vr-cuerpo{display:flex;flex-direction:column;gap:12px;margin-top:12px}
+.vr-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.vr-body-txt{white-space:pre-wrap;color:var(--muted);font-size:13px;line-height:1.5;background:var(--bg);border-radius:10px;padding:10px 12px;max-height:220px;overflow-y:auto}
+/* La mini-cabecera reusa .grid-meta del caso; solo se ajusta el margen dentro del modal. */
+.vr-cuerpo .grid-meta{margin-bottom:0}
+.vr-aviso{display:flex;align-items:center;gap:10px;background:rgba(124,92,255,.08);border:1px solid rgba(124,92,255,.25);border-radius:10px;padding:7px 11px}
+.vr-rx{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.vr-rx-pal{display:inline-flex;gap:2px;align-items:center}
+.vr-rx-add{background:none;border:none;font-size:15px;cursor:pointer;padding:2px 3px;border-radius:6px;opacity:.7}
+.vr-rx-add:hover{opacity:1;background:rgba(255,255,255,.06)}
+.vr-coms{display:flex;flex-direction:column;gap:8px;max-height:280px;overflow-y:auto;border-top:1px solid var(--border);padding-top:10px}
+.vr-coms-h{font-size:12px;font-weight:700;color:var(--muted)}
+.vr-com{background:var(--bg);border-radius:9px;padding:7px 10px}
+.vr-com-h{display:flex;align-items:baseline;gap:8px;margin-bottom:2px}
+.vr-com-txt{white-space:pre-wrap;font-size:12.5px;color:var(--text);line-height:1.45}
+.vr-escribir{display:flex;gap:8px;align-items:flex-end}
+.vr-escribir textarea{flex:1;background:var(--card);border:1px solid var(--border);border-radius:9px;padding:8px 10px;font-size:13px;color:var(--text);outline:none;resize:vertical;font-family:inherit}
+.vr-escribir textarea:focus{border-color:var(--accent)}
+
+.vr-vinc{display:flex;flex-wrap:wrap;gap:6px}

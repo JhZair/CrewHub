@@ -8,6 +8,7 @@ import { celebrarResuelto } from "@/lib/celebra";
 import { CERRADOS } from "@/lib/familia";
 import { plazoDe } from "@/lib/plazo";
 import MiniSelect from "@/components/MiniSelect";
+import VistaRapida from "@/components/VistaRapida";
 import FechaMini from "@/components/FechaMini";
 import { sinBot } from "@/lib/personas";
 
@@ -140,6 +141,7 @@ export default function SubCasos({ padreId, hijos, perfiles = [] }: {
             etiqueta={!h.responsable ? "🙋" : inactivo(h.responsable) ? "⚠ de baja" : cortoDe(h.responsable)}
             onSelect={v => alVuelo(h.id, () => asignarResponsable(h.id, v || null))}
             buttonClass={`sc-btn${h.responsable ? (inactivo(h.responsable) ? " puesto baja" : " puesto resp") : ""}`} />
+          <VistaRapida pubId={h.id} />
         </div>
       ))}
 

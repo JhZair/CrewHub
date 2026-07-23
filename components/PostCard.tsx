@@ -5,6 +5,7 @@ import NuevoBadge from "@/components/NuevoBadge";
 import MiniSelect from "@/components/MiniSelect";
 import TextoCorto from "@/components/TextoCorto";
 import AvisoMini from "@/components/AvisoMini";
+import VistaRapida from "@/components/VistaRapida";
 import { cambiarTipo, cambiarEstado, ocultarDelFeed } from "@/app/actions";
 import { celebrarResuelto } from "@/lib/celebra";
 import Foto from "@/components/Foto";
@@ -160,7 +161,7 @@ export default function PostCard({
                 /* Las opciones dependen del tipo: a un aviso no se le ofrece
                    "Resuelta" — no hay nada que resolver. Antes se le ofrecía. */
                 <MiniSelect value={estado} options={opcionesEstado(tipo, estado)}
-                  onSelect={async v => { await cambiarEstado(pubId, v); if (v === "resuelta" && estado !== "resuelta") celebrarResuelto(); router.refresh(); }}
+                  onSelect={async v => { const r: any = await cambiarEstado(pubId, v); if (r?.error) { alert(r.error); return; } if (v === "resuelta" && estado !== "resuelta") celebrarResuelto(); router.refresh(); }}
                   buttonClass={`pill st-${claseEstado(estado, tipo)}`}
                   buttonStyle={{ border: "none" }} />
               ) : (
@@ -182,6 +183,8 @@ export default function PostCard({
                   </svg>
                 </button>
               )}
+              {/* Interactuar al vuelo sin abrir el caso en otra pestaña. */}
+              {pubId && <VistaRapida pubId={pubId} />}
             </span>
           </div>
         </div>

@@ -6,7 +6,7 @@ import { nrmQ } from "@/lib/quechua";
 import { procesarSunatEmpresa, correrRondaSunat, consultarRucApi } from "@/lib/sunat";
 import { rucDePersona } from "@/lib/ruc";
 import { TOKEN } from "@/lib/puertas";
-import { BOT } from "@/lib/personas";
+import { BOT, sinBot } from "@/lib/personas";
 import { CAMPOS_TABLA } from "@/lib/tablas-expediente";
 import { esCampoDelTrigger } from "@/lib/actividad";
 import { SECCIONES } from "@/lib/secciones";
@@ -337,9 +337,12 @@ export async function asignarResponsable(pubId: string, perfilId: string | null)
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
-  const { error } = await supabase.from("publicaciones")
-    .update({ responsable: perfilId }).eq("id", pubId);
+  // Filas afectadas: si RLS bloquea el cambio vuelve 0 filas sin error — se avisa
+  // en vez de dejar el no-op silencioso (el select rebotaba al valor viejo).
+  const { data: filas, error } = await supabase.from("publicaciones")
+    .update({ responsable: perfilId }).eq("id", pubId).select("id");
   if (error) return { error: error.message };
+  if (!filas?.length) return { error: "No se pudo cambiar el responsable (sin permiso o el caso ya no existe)." };
 
   /* 🗂 Bitácora: NO se inserta a mano. El trigger `registrar_evento_estado`
      (db/schema.sql) ya registra el cambio de `responsable` con el actor
@@ -4002,8 +4005,14 @@ export async function cambiarEstado(pubId: string, estado: string) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
-  const { error } = await supabase.from("publicaciones").update({ estado }).eq("id", pubId);
+  /* `.select("id")` no es adorno: sin él, un UPDATE bloqueado por RLS vuelve
+     con error=null y 0 filas — la acción decía «ok» y la UI rebotaba al valor
+     viejo sin explicar por qué. Comprobar las filas afectadas convierte ese
+     no-op silencioso en un aviso. */
+  const { data: filas, error } = await supabase.from("publicaciones")
+    .update({ estado }).eq("id", pubId).select("id");
   if (error) return { error: error.message };
+  if (!filas?.length) return { error: "No se pudo cambiar el estado (sin permiso o el caso ya no existe)." };
 
   // Cierre de ida y vuelta: caso resuelto → actividad del cronograma finalizada
   if (estado === "resuelta") {
@@ -4333,4 +4342,73 @@ export async function cambiarTipo(pubId: string, tipo: string) {
   revalidatePath(`/caso/${pubId}`);
   revalidatePath("/");
   return {};
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   VISTA RÁPIDA — detalle simplificado de un caso para el pop-up.
+   Es de LECTURA: lo justo para leer e interactuar sin abrir la página entera
+   (título, cuerpo, estado, responsable, vencimiento, comentarios, reacciones).
+   El pop-up llama las mismas acciones de escritura de siempre y luego vuelve a
+   pedir esto para refrescarse solo. ───────────────────────────────────────── */
+export async function cargarCasoRapido(id: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  const { data: p, error } = await supabase.from("publicaciones")
+    .select("id,titulo,cuerpo,tipo,estado,fecha_limite,archivado_en,creado_en,autor_id,responsable," +
+      "autor:perfiles!publicaciones_autor_id_fkey(nombre)," +
+      "vinculos:publicacion_vinculos(entidad_tipo,entidad_id)")
+    .eq("id", id).single();
+  if (error || !p) return { error: "No se encontró el caso." };
+
+  const [coms, rx, perf] = await Promise.all([
+    supabase.from("comentarios")
+      .select("id,cuerpo,imagenes,creado_en,autor_id,autor:perfiles(nombre,color,avatar_url)")
+      .eq("publicacion_id", id).order("creado_en"),
+    supabase.from("reacciones").select("emoji,usuario_id")
+      .is("comentario_id", null).eq("publicacion_id", id),
+    supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
+  ]);
+  const perfiles = sinBot(perf.data || []);
+
+  /* Vínculos → nombre (contexto del caso). Solo se consultan las tablas de los
+     tipos que este caso realmente usa, por sus ids (barato). */
+  const vinc = ((p as any).vinculos || []) as { entidad_tipo: string; entidad_id: string }[];
+  const RES: Record<string, { tabla: string; sel: string; fmt: (x: any) => string }> = {
+    proyecto: { tabla: "proyectos", sel: "id,nombre", fmt: x => x.nombre },
+    empresa: { tabla: "empresas", sel: "id,nombre", fmt: x => x.nombre },
+    persona: { tabla: "personas", sel: "id,nombre,alias", fmt: x => x.alias || x.nombre },
+    convocatoria: { tabla: "convocatorias", sel: "id,nombre,anio", fmt: x => `${x.nombre}${x.anio ? ` ${x.anio}` : ""}` },
+    postulacion: { tabla: "postulaciones", sel: "id,codigo,proy:proyectos(nombre)", fmt: x => x.proy?.nombre ? `${x.codigo} · ${x.proy.nombre}` : x.codigo },
+    equipamiento: { tabla: "equipamiento", sel: "id,folio,nombre", fmt: x => `${x.folio ? x.folio + " · " : ""}${x.nombre}` },
+    lugar: { tabla: "lugares", sel: "id,nombre", fmt: x => x.nombre },
+    etiqueta: { tabla: "etiquetas", sel: "id,nombre,color", fmt: x => x.nombre },
+    objeto: { tabla: "objetos", sel: "id,titulo", fmt: x => x.titulo },
+  };
+  const nombres = new Map<string, string>();
+  const etqColor = new Map<string, string>();
+  await Promise.all(Object.keys(RES).map(async t => {
+    const idl = vinc.filter(v => v.entidad_tipo === t).map(v => v.entidad_id);
+    if (!idl.length) return;
+    const { data } = await supabase.from(RES[t].tabla).select(RES[t].sel).in("id", idl);
+    (data || []).forEach((x: any) => {
+      nombres.set(`${t}:${x.id}`, RES[t].fmt(x));
+      if (t === "etiqueta" && x.color) etqColor.set(x.id, x.color);
+    });
+  }));
+  const vinculos = vinc
+    .map(v => ({
+      tipo: v.entidad_tipo, id: v.entidad_id,
+      nombre: nombres.get(`${v.entidad_tipo}:${v.entidad_id}`),
+      color: v.entidad_tipo === "etiqueta" ? etqColor.get(v.entidad_id) : undefined,
+    }))
+    .filter(v => v.nombre);
+
+  return {
+    caso: { ...(p as any), comentarios: coms.data || [], reacciones: rx.data || [], vinculos },
+    perfiles,
+    userId: user.id,
+    equipoTotal: perfiles.length,
+  };
 }

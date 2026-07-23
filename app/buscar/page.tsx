@@ -7,6 +7,7 @@ import { icoObjeto, lblObjeto } from "@/lib/objetos";
 import { ICO_ENT } from "@/lib/secciones";
 import { resolverNombres } from "@/lib/nombres";
 import { claseEstado, rotuloEstado } from "@/lib/estados";
+import VistaRapida from "@/components/VistaRapida";
 import { REL_EMPRESA, EST_EMPRESA, TIPO_COLOR } from "@/lib/entidades";
 import { alertaSunat, empresaDeCasa, empresaViva, textoSunat } from "@/lib/sunat";
 import { esDelEquipo } from "@/lib/personas";
@@ -952,6 +953,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
               );
             })()}
             <span className={`pill st-${claseEstado(p.estado, p.tipo)}`} style={{ fontSize: 10 }}>{rotuloEstado(p.estado, p.tipo)}</span>
+            <VistaRapida pubId={p.id} />
             {/* Un sub-caso sin su padre es un título huérfano: «Cámara A
                 lista» no dice de qué rodaje habla. El padre no es adorno, es
                 la mitad del dato. */}

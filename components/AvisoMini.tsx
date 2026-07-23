@@ -18,13 +18,15 @@ import { useState } from "react";
    `stopPropagation` no es adorno: esto vive dentro de tarjetas que navegan
    al hacer clic (el feed con router.push, la ficha con enlace estirado). Sin
    él, marcar "me enteré" te saca de la página que estabas mirando. */
-export default function AvisoMini({ pubId, enterados, total, mio }: {
+export default function AvisoMini({ pubId, enterados, total, mio, esAutor = false }: {
   pubId: string;
   enterados: number;
   /** Cuántos deberían enterarse. Si no se sabe, se muestra "—": mejor un
    *  hueco visible que un denominador inventado. */
   total?: number;
   mio: boolean;
+  /** El autor ya está enterado (lo escribió él): no se le pide «me enteré». */
+  esAutor?: boolean;
 }) {
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState("");
@@ -45,11 +47,16 @@ export default function AvisoMini({ pubId, enterados, total, mio }: {
       <span style={{ color: "var(--violet)", fontSize: 12 }}>
         👀 Enterados {enterados}/{total ?? "—"}
       </span>
-      <button className="ae-mini" disabled={ocupado}
-        title={mio ? "Ya te enteraste" : "Marcar que me enteré"}
-        onClick={e => { e.stopPropagation(); tap(); }}>
-        {ocupado ? "…" : mio ? "✓ enterado" : "me enteré"}
-      </button>
+      {esAutor ? (
+        // El autor no clica: escribió el aviso, ya está enterado.
+        <span className="ae-mini ae-autor" title="Eres el autor del aviso">✍ autor</span>
+      ) : (
+        <button className="ae-mini" disabled={ocupado}
+          title={mio ? "Ya te enteraste" : "Marcar que me enteré"}
+          onClick={e => { e.stopPropagation(); tap(); }}>
+          {ocupado ? "…" : mio ? "✓ enterado" : "me enteré"}
+        </button>
+      )}
       {error && <span style={{ color: "var(--red)", fontSize: 11 }}>⚠ {error}</span>}
     </span>
   );
