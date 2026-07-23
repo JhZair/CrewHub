@@ -4,8 +4,9 @@ import TextoRico from "@/components/TextoRico";
 import Foto from "@/components/Foto";
 import EditorImagenes from "@/components/EditorImagenes";
 import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
+import BarraFormato from "@/components/BarraFormato";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /* Texto de un comentario: resalta @menciones y, si es mío, se edita en línea —
    texto E imágenes (miniaturas con ✕, adjuntar, pegar). Las imágenes se muestran
@@ -23,7 +24,18 @@ export default function ComentarioTexto({ comentarioId, pubId, cuerpo, imagenes,
   const [imgs, setImgs] = useState<string[]>(imagenes || []);
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState("");
+  const areaRef = useRef<HTMLTextAreaElement>(null);
   const router = useRouter();
+
+  /* La caja crece con lo escrito: contar saltos de línea no bastaba —un párrafo
+     largo sin saltos se envolvía y quedaba oculto tras el scroll—. Se mide el
+     alto real del contenido y se ajusta, hasta 320px; a partir de ahí, scroll. */
+  useEffect(() => {
+    const el = areaRef.current;
+    if (!el || !editando) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 320) + "px";
+  }, [texto, editando]);
 
   const imgsBase = JSON.stringify(imagenes || []);
   const abrir = () => { setTexto(cuerpo); setImgs(imagenes || []); setError(""); setEditando(true); };
@@ -53,11 +65,12 @@ export default function ComentarioTexto({ comentarioId, pubId, cuerpo, imagenes,
     return (
       <div>
         {error && <div className="err-inline">⚠ {error}</div>}
-        <textarea value={texto} autoFocus rows={Math.min(8, Math.max(2, texto.split("\n").length))}
+        <BarraFormato areaRef={areaRef} valor={texto} setValor={setTexto} />
+        <textarea ref={areaRef} value={texto} autoFocus rows={2}
           onChange={e => setTexto(e.target.value)}
           onKeyDown={e => { if (e.key === "Escape") cancelar(); }}
           onPaste={e => { const f = imagenesDePaste(e); if (f.length) { e.preventDefault(); pegar(f); } }}
-          style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", fontSize: 13, color: "var(--text)", outline: "none", resize: "vertical", lineHeight: 1.5 }} />
+          style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", fontSize: 14.5, color: "var(--text)", outline: "none", resize: "none", overflowY: "auto", lineHeight: 1.6 }} />
         <EditorImagenes imgs={imgs} setImgs={setImgs} />
         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
           <button className="btn" style={{ padding: "5px 14px", fontSize: 12 }}

@@ -4,8 +4,9 @@ import TextoRico from "@/components/TextoRico";
 import Foto from "@/components/Foto";
 import EditorImagenes from "@/components/EditorImagenes";
 import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
+import BarraFormato from "@/components/BarraFormato";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { claseEstado } from "@/lib/estados";
 
 /* Descripción del caso con lápiz: clic, corriges, Guardar. Si está vacía,
@@ -20,6 +21,7 @@ export default function DescripcionEditable({ pubId, cuerpo, estado, tipo, image
   const [valor, setValor] = useState(cuerpo);
   const [imgs, setImgs] = useState<string[]>(imagenes || []);
   const [guardando, setGuardando] = useState(false);
+  const areaRef = useRef<HTMLTextAreaElement>(null);
   const router = useRouter();
 
   const imgsBase = JSON.stringify(imagenes || []);
@@ -69,7 +71,8 @@ export default function DescripcionEditable({ pubId, cuerpo, estado, tipo, image
 
   return (
     <div style={{ margin: "4px 0 12px" }}>
-      <textarea autoFocus rows={4} value={valor}
+      <BarraFormato areaRef={areaRef} valor={valor} setValor={setValor} />
+      <textarea ref={areaRef} autoFocus rows={4} value={valor}
         onChange={e => setValor(e.target.value)}
         onKeyDown={e => { if (e.key === "Escape") cancelar(); }}
         onPaste={e => { const f = imagenesDePaste(e); if (f.length) { e.preventDefault(); pegar(f); } }}

@@ -217,7 +217,9 @@ export async function comentar(pubId: string, texto: string, imagenes: string[] 
   const actorNombre = miPerfilC?.nombre || "Alguien";
 
   // 🪄 Menciones @nombre → notificación al invocado
-  const tokens = [...new Set((texto.match(/@[^\s@,;:!?]+/g) || []).map(m => m.slice(1)))];
+  // El token de mención excluye `*` y `_`: si alguien pone en negrita
+  // `**@Juan**`, «Juan**» no casaría con ningún nombre y el aviso se perdía.
+  const tokens = [...new Set((texto.match(/@[^\s@,;:!?*_`]+/g) || []).map(m => m.slice(1)))];
   if (tokens.length) {
     const nrmM = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
     const [{ data: perfs }, { data: pubT }] = await Promise.all([
@@ -293,7 +295,7 @@ export async function comentarObjeto(objetoId: string, texto: string, imagenes: 
   const titulo = (obj?.titulo || "").slice(0, 60);
 
   // 🪄 Menciones @nombre — mismo reconocimiento que en los casos
-  const tokens = [...new Set((cuerpo.match(/@[^\s@,;:!?]+/g) || []).map(m => m.slice(1)))];
+  const tokens = [...new Set((cuerpo.match(/@[^\s@,;:!?*_`]+/g) || []).map(m => m.slice(1)))];
   const avisados = new Set<string>([user.id]);
   if (tokens.length) {
     const nrmM = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
@@ -3589,7 +3591,7 @@ export async function crearSubCaso(padreId: string, titulo: string, tipo: string
 /* ===== REACCIONES: los famosos "me gusta" =====
    Toggle por usuario: mismo emoji dos veces = quitar. */
 const EMOJIS_REACCION = ["👀", "👍", "❤️", "🔥", "👏", "😂", "😮", "🤔", "😕", "😢"];
-export async function toggleReaccion(pubId: string, comentarioId: string | null, emoji: string) {
+export async function toggleReaccion(pubId: string | null, comentarioId: string | null, emoji: string, objetoId?: string | null) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
@@ -3597,6 +3599,11 @@ export async function toggleReaccion(pubId: string, comentarioId: string | null,
 
   let q = supabase.from("reacciones").select("id")
     .eq("usuario_id", user.id).eq("emoji", emoji);
+  /* Un comentario del repositorio no cuelga de una publicación —`pubId` es
+     null—, pero la reacción se guarda igual contra `comentario_id`: la tabla
+     `reacciones` ya admitía uno u otro (check `pub is not null OR com is not
+     null`). Por eso el toggle busca por comentario cuando lo hay, sin mirar
+     `publicacion_id`. */
   q = comentarioId ? q.eq("comentario_id", comentarioId) : q.eq("publicacion_id", pubId).is("comentario_id", null);
   const { data: ya } = await q.maybeSingle();
 
@@ -3611,7 +3618,9 @@ export async function toggleReaccion(pubId: string, comentarioId: string | null,
     if (error) return { error: error.message };
   }
   revalidatePath("/");
-  revalidatePath(`/caso/${pubId}`);
+  // La reacción vive donde vive el comentario: caso u objeto.
+  if (objetoId) revalidatePath(`/objeto/${objetoId}`);
+  else if (pubId) revalidatePath(`/caso/${pubId}`);
   return {};
 }
 

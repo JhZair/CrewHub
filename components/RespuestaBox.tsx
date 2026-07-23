@@ -1,5 +1,5 @@
 "use client";
-import { comentar } from "@/app/actions";
+import { comentar, comentarObjeto } from "@/app/actions";
 import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -7,8 +7,10 @@ import { useEffect, useRef, useState } from "react";
 /* Responder a un comentario concreto: botón "↩ Responder" que abre una
    caja inline; al enviar, el comentario queda enlazado al padre (responde_a).
    Soporta pegar (Ctrl+V) y adjuntar imágenes, igual que el comentario. */
-export default function RespuestaBox({ pubId, comentarioId }: {
-  pubId: string; comentarioId: string;
+export default function RespuestaBox({ pubId, comentarioId, objetoId }: {
+  pubId?: string | null; comentarioId: string;
+  /** Cuando se responde a un comentario del repositorio, no de un caso. */
+  objetoId?: string | null;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [txt, setTxt] = useState("");
@@ -40,7 +42,11 @@ export default function RespuestaBox({ pubId, comentarioId }: {
   const enviar = async () => {
     if ((!txt.trim() && !imgs.length) || enviando || subiendo) return;
     setEnviando(true);
-    const res: any = await comentar(pubId, txt.trim() || "📷", imgs, comentarioId);
+    // Misma tabla, dos dueños: el objeto usa su propia acción para que el
+    // aviso y el evento cuelguen de él, no de un caso inexistente.
+    const res: any = objetoId
+      ? await comentarObjeto(objetoId, txt.trim() || "📷", imgs, comentarioId)
+      : await comentar(pubId!, txt.trim() || "📷", imgs, comentarioId);
     setEnviando(false);
     if (res?.error) { alert(res.error); return; }
     setTxt(""); setImgs([]); setAbierto(false);

@@ -10,6 +10,9 @@ import ComentarioTexto from "@/components/ComentarioTexto";
 import Avatar from "@/components/Avatar";
 import MoverObjeto from "@/components/MoverObjeto";
 import MiniObjeto from "@/components/MiniObjeto";
+import Reacciones from "@/components/Reacciones";
+import RespuestaBox from "@/components/RespuestaBox";
+import Realtime from "@/components/Realtime";
 import { agruparEventos } from "@/lib/agrupar";
 import { catalogosEntidades } from "@/lib/catalogos";
 import { resolverNombres } from "@/lib/nombres";
@@ -48,6 +51,7 @@ export default async function ObjetoPage({ params }: { params: { id: string } })
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+  const { data: { session } } = await supabase.auth.getSession();
 
   const { data: o } = await supabase.from("objetos").select("*").eq("id", params.id).single();
   if (!o) notFound();
@@ -64,7 +68,7 @@ export default async function ObjetoPage({ params }: { params: { id: string } })
       supabase.from("actividad")
         .select("tipo,detalle,creado_en,actor_id,actor:perfiles(nombre)")
         .eq("entidad_tipo", "objeto").eq("entidad_id", params.id)
-        .order("creado_en", { ascending: false }).limit(30),
+        .order("creado_en").limit(60),
       // La verificación del link del objeto vive en la ficha de su DUEÑO,
       // con campo `objeto:<id>` (así se guardó desde el repositorio).
       supabase.from("link_verificaciones")
@@ -75,7 +79,7 @@ export default async function ObjetoPage({ params }: { params: { id: string } })
         .not("alias", "is", null).not("usuario_id", "is", null),
       /* Los comentarios del objeto: misma tabla que los de un caso. */
       supabase.from("comentarios")
-        .select("id,cuerpo,imagenes,creado_en,editado_en,autor_id,autor:perfiles(nombre,color,avatar_url)")
+        .select("id,cuerpo,imagenes,creado_en,editado_en,autor_id,responde_a,autor:perfiles(nombre,color,avatar_url)")
         .eq("objeto_id", params.id).order("creado_en"),
       /* Para el 🪄 del comentario: sin la lista de quién tiene cuenta, escribir
          «@j» no ofrecía nada y el invocar parecía roto —aunque el servidor sí
@@ -101,12 +105,46 @@ export default async function ObjetoPage({ params }: { params: { id: string } })
   const casos = (casosVinc || []).map((r: any) => r.pub).filter(Boolean)
     .sort((a: any, b: any) => (b.creado_en || "").localeCompare(a.creado_en || ""));
 
+  /* Las reacciones SOLO de los comentarios de ESTE objeto. Sin el `.in`, la
+     consulta bajaba la tabla entera —reacciones de todos los casos y objetos
+     del sistema, con su usuario_id— en cada visita. `rxCom` ya filtraba al
+     pintar, así que el error no se veía, pero viajaba de todas formas. */
+  const idsCom = (coments || []).map((c: any) => c.id);
+  const { data: reaccs } = idsCom.length
+    ? await supabase.from("reacciones").select("comentario_id,emoji,usuario_id").in("comentario_id", idsCom)
+    : { data: [] as any[] };
+
   const v0: any = (verifs || [])[0];
   const verif = v0 ? { url: v0.url, por: v0.por?.nombre, en: v0.verificado_en, correcto: v0.correcto } : undefined;
   const alias = mapaAlias(aliasPers);
   const evs = conAlias((eventos || []) as any[], alias);
   // Nombre corto de quien comenta, igual que en el resto del sistema
   const aliasDe = new Map(Object.entries(alias));
+
+  /* UNA SOLA LÍNEA DE ACTIVIDAD, como en el caso.
+     Antes el objeto tenía tres cajas —Comentarios, Historial— y el evento de
+     «comentario» salía en el historial como texto pelado: «comentario ·
+     comentario · comentario», sin decir de qué. Aquí los eventos y los
+     comentarios se tejen en orden: el evento de tipo `comentario` se cambia
+     por la burbuja real, con su reacción y su responder. */
+  const comMap = new Map((coments || []).map((c: any) => [c.id, c]));
+  const rxCom = new Map<string, any[]>();
+  (reaccs || []).forEach((r: any) => {
+    const l = rxCom.get(r.comentario_id) || [];
+    l.push({ emoji: r.emoji, usuario_id: r.usuario_id }); rxCom.set(r.comentario_id, l);
+  });
+  const conEvento = new Set<string>();
+  const timeline = (evs as any[]).map((e: any) => {
+    const c = e.tipo === "comentario" ? comMap.get(e.detalle?.comentario_id) : null;
+    if (c) conEvento.add((c as any).id);
+    return { ...e, comentario: c };
+  });
+  /* Los comentarios sin evento —los cargados antes de que el objeto registrara
+     bitácora— entran igual, por su fecha, para que ninguno se pierda. */
+  const sueltos = (coments || []).filter((c: any) => !conEvento.has(c.id))
+    .map((c: any) => ({ tipo: "comentario", creado_en: c.creado_en, actor_id: c.autor_id, comentario: c }));
+  const linea = [...timeline, ...sueltos]
+    .sort((a: any, b: any) => new Date(a.creado_en).getTime() - new Date(b.creado_en).getTime());
   /* Quién lo trajo. Va dentro del sello: procedencia y veredicto contestan la
      misma pregunta —de dónde salió esto y me puedo fiar—. */
   const quienTrajo = (o.creado_por && alias[o.creado_por]) || null;
@@ -122,6 +160,9 @@ export default async function ObjetoPage({ params }: { params: { id: string } })
 
   return (
     <div className="shell">
+      {/* En vivo, como el caso: si otro comenta o reacciona sobre este objeto,
+          la página se refresca sola sin tener que recargar. */}
+      <Realtime tablas={["actividad", "comentarios", "reacciones", "objetos"]} token={session?.access_token} />
       <div className="topbar">
         <Volver />
         <span className="spacer" />
@@ -171,35 +212,6 @@ export default async function ObjetoPage({ params }: { params: { id: string } })
         <ObjetoVinculos objetoId={params.id} actuales={vinculadas} catalogos={catalogos} />
       </div>
 
-      {/* 💬 Comentar aquí mismo. Mismo motor que los casos (menciones y avisos
-          incluidos) pero SIN estado, responsable ni plazo: hablar de un libro
-          no es una unidad de trabajo, y forzarlo dejaba casos «Sin Resolver»
-          eternos en el tablero. */}
-      <div className="linked" style={{ marginTop: 14 }} id="comentarios">
-        <h4>💬 Comentarios · {(coments || []).length}</h4>
-        <div className="tl">
-          {(coments || []).map((c: any) => (
-            <div className="tl-com" key={c.id}>
-              <Avatar nombre={c.autor?.nombre} color={c.autor?.color} size={32} src={c.autor?.avatar_url} />
-              <div className="bubble">
-                <div className="who">
-                  {aliasDe.get(c.autor_id) || c.autor?.nombre}
-                  <span className="t">{fecha(c.creado_en)}</span>
-                </div>
-                <ComentarioTexto comentarioId={c.id} pubId="" cuerpo={c.cuerpo || ""}
-                  imagenes={c.imagenes || []} esMio={c.autor_id === user.id} editadoEn={c.editado_en} />
-              </div>
-            </div>
-          ))}
-        </div>
-        {!(coments || []).length && (
-          <div style={{ color: "var(--dim)", fontSize: 12.5, padding: "4px 0" }}>
-            Nadie ha comentado todavía.
-          </div>
-        )}
-        <ComentarObjeto objetoId={params.id} perfiles={perfilesCat || []} />
-      </div>
-
       {/* Los CASOS son otra cosa: trabajo de verdad sobre el objeto —conseguir
           los derechos, pedir permiso al autor—. El botón de abrir uno va SIEMPRE
           visible: si vive dentro del `casos.length > 0`, el primer caso de un
@@ -223,25 +235,55 @@ export default async function ObjetoPage({ params }: { params: { id: string } })
         ))}
       </div>
 
-      {/* Siempre visible: una sección que aparece y desaparece se lee como que
-          no existe — que es justo lo que pasaba antes de que el objeto tuviera
-          bitácora propia. */}
-      <div className="linked" style={{ marginTop: 14 }}>
-        <h4>🕐 Historial · {evs.length}</h4>
-        {evs.length > 0 ? (
+      {/* 🕐 ACTIVIDAD — historial y comentarios en una sola línea, como el
+          caso. Comentar sigue siendo lo de siempre: mismo motor, menciones y
+          avisos, pero SIN estado ni plazo —hablar de un libro no es una unidad
+          de trabajo—. Para eso están los casos de arriba. */}
+      <div className="linked" style={{ marginTop: 14 }} id="comentarios">
+        <h4>🕐 Actividad · {linea.length}</h4>
+        {linea.length > 0 && (
           <div className="tl">
-            {agruparEventos(evs as any[]).map((f, i) =>
-              f.grupo
-                ? <EventoGrupo key={i} items={f.grupo} horaDe={(x: any) => fecha(x.creado_en)} />
-                : <EventoHistorial key={i} e={f.solo} hora={fecha(f.solo.creado_en)} />
-            )}
-          </div>
-        ) : (
-          <div style={{ color: "var(--dim)", fontSize: 12.5, padding: "4px 0" }}>
-            Sin movimientos registrados. Los objetos cargados antes de que
-            existiera esta bitácora empiezan a registrarse desde su próxima edición.
+            {agruparEventos(linea as any[]).map((f: any, i: number) => {
+              // Ráfaga de eventos iguales del mismo actor: se pliega.
+              if (f.grupo)
+                return <EventoGrupo key={i} items={f.grupo} horaDe={(x: any) => fecha(x.creado_en)} />;
+              const e: any = f.solo;
+              // El evento de «comentario» se cambia por la burbuja real.
+              if (e.comentario) {
+                const c = e.comentario;
+                const padre = c.responde_a ? comMap.get(c.responde_a) : null;
+                return (
+                  <div className="tl-com" key={i}>
+                    <Avatar nombre={c.autor?.nombre} color={c.autor?.color} size={32} src={c.autor?.avatar_url} />
+                    <div className="bubble">
+                      <div className="who">
+                        {aliasDe.get(c.autor_id) || c.autor?.nombre}
+                        <span className="t">{fecha(c.creado_en)}</span>
+                      </div>
+                      {padre && (
+                        <div style={{ fontSize: 11, color: "var(--dim)", margin: "1px 0 4px" }}>
+                          ↳ en respuesta a <b style={{ color: "var(--violet)" }}>
+                            {aliasDe.get((padre as any).autor_id) || (padre as any).autor?.nombre || "un comentario"}
+                          </b>
+                        </div>
+                      )}
+                      <ComentarioTexto comentarioId={c.id} pubId="" cuerpo={c.cuerpo || ""}
+                        imagenes={c.imagenes || []} esMio={c.autor_id === user.id} editadoEn={c.editado_en} />
+                      <div style={{ marginTop: 7, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                        <Reacciones pubId={null} objetoId={params.id} comentarioId={c.id}
+                          reacciones={rxCom.get(c.id) || []} userId={user.id} />
+                        <RespuestaBox objetoId={params.id} comentarioId={c.id} />
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+              return <EventoHistorial key={i} e={e} hora={fecha(e.creado_en)} />;
+            })}
           </div>
         )}
+        {/* La caja de comentar cierra la línea, como en el caso. */}
+        <ComentarObjeto objetoId={params.id} perfiles={perfilesCat || []} />
       </div>
     </div>
   );

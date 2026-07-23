@@ -61,7 +61,9 @@ a{color:inherit;text-decoration:none}
 .gm .v{font-size:12.5px;font-weight:600}
 .gm select,.gm input[type=date]{width:100%;background:#181825;border:1px solid var(--border2);border-radius:8px;padding:6px 9px;font-size:12px;font-weight:600;outline:none;color:var(--text)}
 .gm input[type=date]::-webkit-calendar-picker-indicator{filter:invert(.7)}
-.desc{color:#d2d2e2;line-height:1.6;font-size:13.5px;margin:8px 0 16px;white-space:pre-wrap;padding:12px 16px;background:var(--card);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:12px}
+/* Descripción del caso: mismo criterio que el comentario — es lo que se lee
+   para entender de qué va, a menudo largo. Sube a 14.5 con más aire. */
+.desc{color:var(--text);line-height:1.65;font-size:14.5px;margin:8px 0 16px;white-space:pre-wrap;padding:13px 16px;background:var(--card);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:12px}
 .desc.est-abierta{border-left-color:rgba(255,77,94,.6)}
 .desc.est-vigente{border-left-color:rgba(167,139,250,.6)}
 .desc.est-en_progreso{border-left-color:rgba(244,180,0,.6)}
@@ -92,9 +94,32 @@ a{color:inherit;text-decoration:none}
 .bubble{flex:1;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 14px}
 .bubble .who{font-size:12.5px;font-weight:700;display:flex;gap:8px}
 .bubble .who .t{margin-left:auto;font-size:10.5px;color:var(--dim);font-weight:400}
-.bubble .tx{font-size:13px;color:#c6c6da;margin-top:4px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+/* Cuerpo del comentario: es texto para LEER, a veces varios párrafos. A 13px
+   y en gris apagado cansaba la vista; 14.5 y un color más claro con más
+   interlineado lo vuelven cómodo sin agrandar la burbuja. El nombre y la hora
+   siguen chicos: son etiqueta, no contenido. */
+.bubble .tx{font-size:14.5px;color:var(--text);margin-top:4px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}
+
+/* Formato mínimo renderizado por TextoRico (**negrita**, _cursiva_, listas,
+   citas, `código`). Sin `white-space:pre-wrap` los saltos ya los pone el
+   propio TextoRico como \n entre líneas normales. */
+.tx-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em;background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:1px 5px}
+.tx-ul{margin:4px 0 4px 2px;padding-left:18px;list-style:disc}
+.tx-ul li{margin:1px 0}
+.tx-cita{margin:4px 0;padding:2px 0 2px 11px;border-left:3px solid var(--border2);color:var(--muted)}
+
+/* Barra de formato: tres botones discretos encima de la caja de texto.
+   Cuando precede a `.cbox`, la barra hereda la separación superior de la caja
+   y ésta se pega a la barra —si no, el `margin-top:14px` de `.cbox` dejaba un
+   hueco entre la barra y su propia caja. */
+.fmt-bar{display:flex;gap:2px;margin-bottom:4px}
+.fmt-bar:has(+ .cbox){margin-top:14px}
+.fmt-bar + .cbox{margin-top:0}
+.fmt-bar button{width:26px;height:24px;border-radius:6px;border:1px solid transparent;background:none;color:var(--dim);cursor:pointer;font-size:12.5px;line-height:1;display:inline-flex;align-items:center;justify-content:center}
+.fmt-bar button:hover{background:rgba(255,255,255,.05);color:var(--text);border-color:var(--border)}
+.fmt-bar button i{font-style:italic}
 .cbox{display:flex;gap:10px;margin-top:14px;align-items:flex-end}
-.cbox input,.cbox textarea{flex:1;background:var(--card);border:1px solid var(--border);border-radius:11px;padding:11px 15px;outline:none;font-size:13px;color:var(--text)}
+.cbox input,.cbox textarea{flex:1;background:var(--card);border:1px solid var(--border);border-radius:11px;padding:11px 15px;outline:none;font-size:14.5px;color:var(--text)}
 .cbox input:focus,.cbox textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(124,92,255,.12)}
 .btn-responder{background:none;border:none;color:var(--dim);font-size:11.5px;cursor:pointer;padding:0}
 .btn-responder:hover{color:var(--accent)}

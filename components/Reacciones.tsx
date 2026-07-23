@@ -16,11 +16,13 @@ export type Reaccion = { emoji: string; usuario_id: string };
 
 /* Chips de reacción con toggle: clic en un chip = sumar/quitar la mía.
    El ＋ abre la paleta. Funciona en publicaciones y comentarios. */
-export default function Reacciones({ pubId, comentarioId = null, reacciones, userId }: {
-  pubId: string;
+export default function Reacciones({ pubId, comentarioId = null, reacciones, userId, objetoId = null }: {
+  pubId: string | null;
   comentarioId?: string | null;
   reacciones: Reaccion[];
   userId: string;
+  /** Cuando el comentario es de un objeto del repositorio, no de un caso. */
+  objetoId?: string | null;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [ocupado, setOcupado] = useState(false);
@@ -38,7 +40,7 @@ export default function Reacciones({ pubId, comentarioId = null, reacciones, use
   const tap = async (emoji: string) => {
     if (ocupado) return;
     setOcupado(true); setAbierto(false); setError("");
-    const res = await toggleReaccion(pubId, comentarioId, emoji);
+    const res = await toggleReaccion(pubId, comentarioId, emoji, objetoId);
     setOcupado(false);
     if (res?.error) { setError(res.error); return; }
     router.refresh();

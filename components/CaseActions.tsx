@@ -5,6 +5,7 @@ import { opcionesEstado } from "@/lib/estados";
 import { sinBot } from "@/lib/personas";
 import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
 import { menciones, MencionesMenu } from "@/components/Menciones";
+import BarraFormato from "@/components/BarraFormato";
 import { useRouter } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
 
@@ -149,6 +150,7 @@ export function CommentBox({ pubId, userId, perfiles = [] }: {
           {subiendo && <span style={{ color: "var(--dim)", fontSize: 12, alignSelf: "center" }}>subiendo…</span>}
         </div>
       )}
+      <BarraFormato areaRef={taRef} valor={txt} setValor={setTxt} />
       <div className="cbox" style={{ position: "relative" }}>
         <MencionesMenu candidatos={candidatos} onElegir={invocar} />
         <textarea
@@ -165,7 +167,7 @@ export function CommentBox({ pubId, userId, perfiles = [] }: {
             // Shift+Enter: salto de línea (comportamiento por defecto del textarea)
           }}
           onPaste={e => { const f = imagenesDePaste(e); if (f.length) { e.preventDefault(); subir(f); } }}
-          style={{ resize: "none", fontFamily: "inherit", lineHeight: 1.4, maxHeight: 160, overflowY: "auto" }}
+          style={{ resize: "none", fontFamily: "inherit", lineHeight: 1.55, maxHeight: 240, overflowY: "auto" }}
         />
         <label className="btn btn-ghost" title="Adjuntar imagen" style={{ cursor: "pointer" }}>
           📷

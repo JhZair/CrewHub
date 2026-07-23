@@ -3,8 +3,9 @@ import { comentarObjeto } from "@/app/actions";
 import EditorImagenes from "@/components/EditorImagenes";
 import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
 import { menciones, MencionesMenu, type Perfil } from "@/components/Menciones";
+import BarraFormato from "@/components/BarraFormato";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 /* Caja para comentar un objeto del repositorio. Usa el mismo motor que los
    comentarios de un caso —misma tabla, mismas menciones, mismos avisos—, así
@@ -15,6 +16,7 @@ export default function ComentarObjeto({ objetoId, perfiles = [] }: {
   perfiles?: Perfil[];
 }) {
   const router = useRouter();
+  const areaRef = useRef<HTMLTextAreaElement>(null);
   const [texto, setTexto] = useState("");
   const [imgs, setImgs] = useState<string[]>([]);
   const [enviando, setEnviando] = useState(false);
@@ -45,7 +47,8 @@ export default function ComentarObjeto({ objetoId, perfiles = [] }: {
     <div style={{ marginTop: 10, position: "relative" }}>
       {error && <div className="err-inline">⚠ {error}</div>}
       <MencionesMenu candidatos={candidatos} onElegir={n => setTexto(aplicar(n))} />
-      <textarea value={texto} rows={3}
+      <BarraFormato areaRef={areaRef} valor={texto} setValor={setTexto} />
+      <textarea ref={areaRef} value={texto} rows={3}
         placeholder="Escribe un comentario… (Enter envía · Shift+Enter salto de línea · @nombre para invocar)"
         onChange={e => setTexto(e.target.value)}
         onKeyDown={e => {
@@ -56,7 +59,7 @@ export default function ComentarObjeto({ objetoId, perfiles = [] }: {
           }
         }}
         onPaste={e => { const f = imagenesDePaste(e); if (f.length) { e.preventDefault(); pegar(f); } }}
-        style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 12, padding: "10px 14px", fontSize: 13.5, color: "var(--text)", outline: "none", resize: "vertical", lineHeight: 1.5, fontFamily: "inherit" }} />
+        style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 12, padding: "10px 14px", fontSize: 14.5, color: "var(--text)", outline: "none", resize: "vertical", lineHeight: 1.6, fontFamily: "inherit" }} />
       <EditorImagenes imgs={imgs} setImgs={setImgs} />
       <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
         <button className="btn" disabled={enviando || (!texto.trim() && !imgs.length)} onClick={enviar}>
