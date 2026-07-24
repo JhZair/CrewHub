@@ -185,6 +185,75 @@ a{color:inherit;text-decoration:none}
    sola línea, para que informe sin ensanchar ni descuadrar la fila. */
 .vtab-nota{font-size:10.5px;font-weight:600;color:var(--dim)}
 .vtab.on .vtab-nota{color:var(--muted)}
+
+/* ── Pasos de una postulación (mini-cronograma editable en la cabecera) ── */
+/* margin-left:auto lo empuja al extremo derecho de la cabecera */
+.pasos-post{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-left:auto}
+.pp-linea{display:flex;align-items:flex-start}
+.pp-item{display:flex;align-items:flex-start}
+.pp-con{width:18px;height:2px;margin-top:10px;border-radius:2px;background:var(--border)}
+.pp-con.on{background:var(--violet)}
+.pp-nodo{display:flex;flex-direction:column;align-items:center;gap:4px;background:none;border:none;cursor:pointer;padding:0}
+.pp-nodo:disabled{cursor:default}
+.pp-punto{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;background:var(--card);border:2px solid var(--border);transition:.15s}
+.pp-nodo.hecho .pp-punto{border-color:var(--violet);background:rgba(124,92,255,.18)}
+.pp-nodo.actual .pp-punto{border-color:var(--accent);box-shadow:0 0 0 3px rgba(124,92,255,.28)}
+.pp-nodo:not(:disabled):hover .pp-punto{border-color:var(--accent)}
+.pp-lbl{font-size:10px;color:var(--dim);white-space:nowrap}
+.pp-nodo.hecho .pp-lbl{color:var(--muted)}
+.pp-nodo.actual .pp-lbl{color:var(--text);font-weight:700}
+.pp-salidas{display:flex;gap:6px}
+.pp-salida{font-size:10.5px;font-weight:600;color:var(--dim);background:#1c1c2c;border:1px solid var(--border);border-radius:8px;padding:3px 8px;cursor:pointer;white-space:nowrap;transition:.15s}
+.pp-salida:not(:disabled):hover{color:var(--text);border-color:var(--red)}
+.pp-err{color:var(--red);font-size:11px}
+
+/* ── Mini línea de tiempo de hitos (fila de convocatoria) ── */
+.mini-tl{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px;padding-left:2px}
+.mtl-line{display:flex;align-items:center}
+.mtl-item{display:flex;align-items:center}
+.mtl-con{width:16px;height:2px;border-radius:2px;background:var(--border)}
+.mtl-con.on{background:var(--violet)}
+.mtl-dot{width:9px;height:9px;border-radius:50%;box-sizing:border-box;background:var(--card);border:2px solid var(--border)}
+.mtl-dot.hecho{background:var(--violet);border-color:var(--violet)}
+.mtl-dot.prox{background:var(--accent);border-color:var(--accent);box-shadow:0 0 0 3px rgba(124,92,255,.28)}
+.mtl-txt{font-size:13px;font-weight:700}
+/* Divisor de temporada (año) dentro del panel de frentes */
+.frente-anio{font-size:10px;text-transform:uppercase;letter-spacing:1.2px;color:var(--dim);font-weight:700;margin:16px 2px 6px;padding-top:10px;border-top:1px solid var(--border)}
+.frente-anio:first-child{margin-top:2px;border-top:none;padding-top:0}
+/* ── La cancha de la temporada: convocatoria = carrera con fechas ── */
+.cn-panel-h{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;color:var(--yellow);font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px}
+.cn-toggle{display:inline-flex;gap:2px;background:var(--panel);border:1px solid var(--border);border-radius:9px;padding:2px}
+.cn-toggle button{background:none;border:0;color:var(--muted);font:inherit;font-size:12px;text-transform:none;letter-spacing:0;font-weight:600;padding:3px 10px;border-radius:7px;cursor:pointer}
+.cn-toggle button.on{background:var(--card);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.cn-frente{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px 16px 16px;margin-bottom:12px}
+.cn-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.cn-frente .cn-head{padding-bottom:10px;border-bottom:1px solid var(--border)}
+.cn-title{font-weight:600;flex:1;min-width:0}
+.cn-cat{color:var(--muted);background:#1c1c2c;border-radius:6px;padding:1px 7px;white-space:nowrap}
+.cn-cat-falta{color:var(--dim);background:transparent;border:1px dashed var(--border2);font-style:italic}
+/* Riel de tiempo real: los hitos por fecha, HOY marcado, el pasado en penumbra */
+.cn-time{margin:2px 0 14px}
+.cn-track{position:relative;height:3px;background:var(--border);border-radius:3px;margin:26px 8px 40px}
+.cn-past{position:absolute;top:0;left:0;height:100%;background:linear-gradient(90deg,rgba(93,93,120,.15),rgba(93,93,120,.4));border-radius:3px}
+.cn-hoy{position:absolute;top:-24px;bottom:-30px;width:2px;background:var(--accent);transform:translateX(-1px)}
+.cn-hoy span{position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--accent);background:var(--card);padding:1px 5px;border-radius:6px;border:1px solid var(--accent)}
+.cn-hito{position:absolute;top:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center}
+.cn-hdot{width:11px;height:11px;border-radius:50%;box-sizing:border-box;background:var(--card);border:2px solid var(--border)}
+.cn-hito.hecho .cn-hdot{background:var(--violet);border-color:var(--violet)}
+.cn-hito.prox .cn-hdot{background:var(--accent);border-color:var(--accent);box-shadow:0 0 0 4px rgba(124,92,255,.25)}
+.cn-hdate{position:absolute;top:16px;font-size:10.5px;color:var(--muted);white-space:nowrap}
+.cn-hito.hecho .cn-hdate{color:var(--dim)}
+.cn-hito.prox .cn-hdate{color:var(--text);font-weight:700}
+.cn-next{font-size:13px;font-weight:700;padding-left:2px}
+/* La carrera de jugadores: cada postulación corre hacia la meta 🏁 */
+.cn-players{display:flex;flex-direction:column;gap:7px}
+.cn-lane{display:grid;grid-template-columns:minmax(120px,1.4fr) 2fr auto;gap:10px;align-items:center}
+.cn-pname{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cn-race{position:relative;height:10px;background:var(--panel);border:1px solid var(--border);border-radius:6px;overflow:hidden}
+.cn-fill{position:absolute;top:0;left:0;height:100%;border-radius:6px 0 0 6px;opacity:.85;transition:width .3s}
+.cn-flag{position:absolute;right:2px;top:50%;transform:translateY(-50%);font-size:10px;line-height:1;opacity:.85}
+.cn-stage{font-weight:700;white-space:nowrap;text-align:right}
+@media(max-width:640px){.cn-lane{grid-template-columns:1fr auto;gap:6px}.cn-race{grid-column:1/-1;order:3}}
 /* Filtros del feed: una fila compacta (sin recortar el desplegable) */
 .vtabs-compacta{flex-wrap:wrap;gap:6px;margin:2px 0 14px;justify-content:center}
 .vtabs-compacta .vtab{padding:6px 10px;font-size:11.5px;white-space:nowrap;flex:0 0 auto}

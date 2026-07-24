@@ -227,6 +227,21 @@ export const EST_EMPRESA: Record<string, [string, string]> = {
   cerrada: ["cerrada", "var(--dim)"],
 };
 
+/* El ciclo de vida de una CONVOCATORIA (la cancha), distinto del de una
+   postulación y del de un fondo. Planificada → Abierta → En evaluación → Con
+   resultados → Finalizada, con «Cancelada» como salida. En un solo sitio:
+   la usan la lista, la ficha, el ícono del historial y el stepper editable. */
+export const EST_CONVOCATORIA: Record<string, { label: string; color: string; ico: string }> = {
+  planificada:    { label: "Planificada",    color: "var(--dim)",    ico: "📅" },
+  abierta:        { label: "Abierta",         color: "var(--green)",  ico: "📣" },
+  en_evaluacion:  { label: "En evaluación",   color: "var(--yellow)", ico: "⚖️" },
+  con_resultados: { label: "Con resultados",  color: "var(--violet)", ico: "🏆" },
+  finalizada:     { label: "Finalizada",      color: "var(--dim)",    ico: "🏁" },
+  cancelada:      { label: "Cancelada",       color: "var(--red)",    ico: "🚫" },
+};
+/* La carrera (sin la salida «cancelada»), en orden. */
+export const PASOS_CONVOCATORIA = ["planificada", "abierta", "en_evaluacion", "con_resultados", "finalizada"];
+
 /* Color por tipo de proyecto — el mismo en todo el sistema */
 export const TIPO_COLOR: Record<string, string> = {
   documental: "#2dd4bf",   // teal
@@ -339,7 +354,7 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
       { key: "categoria", label: "Categoría del concurso", tipo: "select", opciones: CATEGORIAS_OPC },
       { key: "institucion", label: "Institución" },
       { key: "anio", label: "Año", valida: "anio" },
-      { key: "estado", label: "Estado", tipo: "select", opciones: ["postulacion", "en_ejecucion", "rendicion_pendiente", "cerrada"] },
+      { key: "estado", label: "Estado", tipo: "select", opciones: Object.keys(EST_CONVOCATORIA) },
       { key: "monto_adjudicado", label: "Monto del estímulo (S/)" },
       { key: "bases_url", label: "Link a las bases del concurso", valida: "url" },
       { key: "carpeta_drive_url", label: "Carpeta en Drive (link)", valida: "url" },

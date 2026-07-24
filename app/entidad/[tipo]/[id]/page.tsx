@@ -10,6 +10,7 @@ import Credenciales from "@/components/Credenciales";
 import ClienteProyecto from "@/components/ClienteProyecto";
 import EquipoProyecto from "@/components/EquipoProyecto";
 import ActoresProyecto from "@/components/ActoresProyecto";
+import Pasos from "@/components/Pasos";
 import Postulaciones from "@/components/Postulaciones";
 import EmpresaPostulacion from "@/components/EmpresaPostulacion";
 import EquipoPostulacion from "@/components/EquipoPostulacion";
@@ -160,8 +161,8 @@ const CAMPOS_DINERO = ["monto_adjudicado", "valor_compra"];
 const ICONO_ESTADO: Record<string, string> = {
   // postulaciones
   ganadora: "🏆", finalista: "⭐", finalista_no_ganadora: "🥈", enviada: "📨", no_seleccionada: "✖", retirada: "↩", en_preparacion: "🛠",
-  // convocatorias
-  postulacion: "📨", en_ejecucion: "🎬", rendicion_pendiente: "🧾", cerrada: "🗄",
+  // convocatorias (su ciclo de vida real)
+  planificada: "📅", abierta: "📣", en_evaluacion: "⚖️", con_resultados: "🏆", finalizada: "🏁", cancelada: "🚫",
   // empresas
   activa: "✅", en_constitucion: "🏗", inactiva: "💤",
 };
@@ -422,24 +423,29 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       n: x.acts?.[0]?.count ?? 0,
     }));
   }
-  let postus: any[] = [], proyectosCat: any[] = [], empresasCat: any[] = [];
+  let postus: any[] = [], proyectosCat: any[] = [], empresasCat: any[] = [], cartelesProy: Record<string, string> = {};
   if (params.tipo === "convocatoria") {
-    const [ca, pf, po, pr, em] = await Promise.all([
+    const [ca, pf, po, pr, em, mm] = await Promise.all([
       supabase.from("cronograma_actividades")
         .select("*, resp:perfiles(nombre)")
         .eq("convocatoria_id", params.id).order("fecha_inicio").order("orden").order("creado_en"),
       supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
+      /* Cada postulación con su proyecto, la empresa que la presentó y su
+         equipo —para dar contexto en la pestaña sin entrar a cada una. */
       supabase.from("postulaciones")
-        .select("*, proy:proyectos(id,nombre), emp:empresas(id,nombre,codigo)")
+        .select("*, proy:proyectos(id,nombre), emp:empresas(id,nombre,codigo), equipo:postulacion_equipo(cargo,persona:personas(id,nombre,alias))")
         .eq("convocatoria_id", params.id).order("creado_en"),
       supabase.from("proyectos").select("id,nombre").order("nombre"),
       supabase.from("empresas").select("id,nombre,codigo").order("codigo"),
+      // Pósters de proyecto, para identificar cada postulación de un vistazo.
+      supabase.from("entidad_media").select("entidad_id,cartel_url").eq("entidad_tipo", "proyecto"),
     ]);
     cronoActs = ca.data || [];
     perfilesCat = pf.data || [];
     postus = po.data || [];
     proyectosCat = pr.data || [];
     empresasCat = (em.data || []).map((x: any) => ({ id: x.id, nombre: x.codigo ? `${x.codigo} · ${x.nombre}` : x.nombre }));
+    (mm.data || []).forEach((m: any) => { if (m.cartel_url) cartelesProy[m.entidad_id] = m.cartel_url; });
   }
   let prestamos: any[] = [], proyectosPrest: any[] = [];
   if (params.tipo === "equipamiento") {
@@ -1091,8 +1097,13 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         color={COLOR_ENT[params.tipo] || "var(--violet)"}
         editable conCartel={conCartel} />
 
-      {/* El nombre arranca a la derecha del cartel que sobresale (si lo hay). */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 16, paddingLeft: conCartel ? 108 : 0 }}>
+      {/* El nombre arranca a la derecha del cartel que sobresale. Pero cuando
+          hay stepper (postulación/convocatoria) el título arranca desde el
+          inicio: el mini-cronograma de la derecha se come el espacio y un
+          nombre largo necesita todo el ancho. El cartel queda arriba-izquierda,
+          sin estorbar (no se solapa con esta fila). */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 16,
+        paddingLeft: conCartel && params.tipo !== "postulacion" && params.tipo !== "convocatoria" ? 108 : 0 }}>
         {/* A quien trabaja con nosotros le ponemos cara; a un contacto no */}
         {params.tipo === "persona" && ["personal", "colaborador", "colaborador eventual"].includes(ent.tipo || "") ? (
           <>
@@ -1123,6 +1134,25 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
           const [col, bg] = t[ent.relacion] || t.externa;
           return <span className="badge" style={{ color: col, background: bg }}>{ent.relacion}</span>;
         })()}
+        {/* El mismo gesto para otras entidades: un dato de identidad junto al
+            nombre, sin bajar a la ficha. El tipo del proyecto y de la persona;
+            el estado de la postulación (que es lo que la define). */}
+        {params.tipo === "proyecto" && ent.tipo && (
+          <span className="badge" style={{ color: "var(--blue)", background: "rgba(59,130,246,.12)" }}>
+            {String(ent.tipo).replace(/_/g, " ")}
+          </span>
+        )}
+        {params.tipo === "persona" && ent.tipo && (
+          <span className="badge" style={{ color: "var(--teal)", background: "rgba(45,212,191,.12)" }}>
+            {String(ent.tipo).replace(/_/g, " ")}
+          </span>
+        )}
+        {/* Postulación y convocatoria son carreras con ciclo de vida: su estado
+            cambia según avanzan. En vez de un badge estático (y de entrar al
+            formulario para editarlo), un mini-cronograma editable ahí mismo. */}
+        {(params.tipo === "postulacion" || params.tipo === "convocatoria") && (
+          <Pasos tipo={params.tipo} id={params.id} estado={ent.estado} />
+        )}
         {/* Aquí vivía un "＋ Publicar" que te mandaba al feed con la entidad
             pre-vinculada. Lo hace el FAB flotante, sin sacarte de la ficha. */}
       </div>
@@ -1557,10 +1587,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               en el carné: se mudaron a la pestaña «Trayectoria» del proyecto
               (main), igual que los miembros de una empresa. */}
 
-          {params.tipo === "convocatoria" && (
-            <Postulaciones convocatoriaId={params.id} postulaciones={postus}
-              proyectos={proyectosCat} empresas={empresasCat} />
-          )}
+          {/* Las postulaciones de la convocatoria ya no viven en el carné: se
+              mudaron a su pestaña «Postulaciones» (main), con más espacio. */}
 
           {params.tipo === "postulacion" && (
             <div style={{ marginTop: 14 }}>
@@ -1738,7 +1766,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               En cualquier entidad — un proyecto acumula referencias y prensa
               igual que una persona acumula obras. En PERSONA, EMPRESA y PROYECTO
               vive en su propia pestaña (abajo), no aquí arriba. */}
-          {params.tipo !== "persona" && params.tipo !== "empresa" && params.tipo !== "proyecto" && (
+          {params.tipo !== "persona" && params.tipo !== "empresa" && params.tipo !== "proyecto" && params.tipo !== "convocatoria" && (
             <>
               <Repositorio entidadTipo={params.tipo} entidadId={params.id}
                 objetos={objetosDe} verif={verifDe} />
@@ -2683,11 +2711,52 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               );
             }
 
-            // Convocatoria: las dos pestañas de siempre
+            /* CONVOCATORIA en pestañas, como el resto:
+                 Trabajo → Cronograma → Postulaciones → Repositorio → Historial.
+               Su dominio propio son las postulaciones (a qué proyectos/empresas
+               presentamos a este concurso) y el cronograma del concurso. */
+            const postusConv = (
+              <Postulaciones convocatoriaId={params.id} postulaciones={postus}
+                proyectos={proyectosCat} empresas={empresasCat} carteles={cartelesProy} />
+            );
+            const repoConv = (
+              <>
+                <Repositorio entidadTipo={params.tipo} entidadId={params.id} objetos={objetosDe} verif={verifDe} />
+                {objetosVinculados.length > 0 && (
+                  <div className="linked" style={{ marginTop: 14 }}>
+                    <h4>📚 Del repositorio · {objetosVinculados.length}</h4>
+                    {objetosVinculados.map((o: any) => (
+                      <Link key={o.id} href={`/objeto/${o.id}`} className="info-row" style={{ textDecoration: "none" }}>
+                        {previewCandidates(o.url, 200).length
+                          ? <Miniatura url={o.url} size={42} alt={o.titulo} />
+                          : <span>{icoObjeto(o.tipo)}</span>}
+                        <b style={{ flex: 1, fontSize: TXT.micro, color: "var(--text)" }}>{o.titulo}</b>
+                        <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>
+                          de {duenosObj.get(`${o.entidad_tipo}:${o.entidad_id}`) || "—"}
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </>
+            );
+            const histConv = eventosVis.length > 0 ? histInner : (
+              <div className="empty" style={{ padding: "18px 0" }}>Sin actividad registrada todavía.</div>
+            );
+            /* Postulaciones primero: en una convocatoria, lo que se viene a ver
+               es a qué presentamos. Luego el cronograma del concurso, y después
+               el trabajo/repositorio/historial. */
             return (
               <TabsPanel
-                labels={[`🔥 Actividad viva · ${activas.length}`, etiquetaCrono]}
-                paneles={[vida, cronoNode]}
+                labels={[
+                  `🎯 Postulaciones · ${postus.length}`,
+                  etiquetaCrono,
+                  `📋 Trabajo · ${activas.length}`,
+                  `📚 Repositorio · ${objetosDe.length}`,
+                  `🕐 Historial · ${eventosVis.length}`,
+                ]}
+                paneles={[postusConv, cronoNode, trabajoNode, repoConv, histConv]}
+                iconoSolo={[4]}
               />
             );
           })()}

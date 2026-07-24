@@ -1,9 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
-import LineaTiempo, { type EventoLT } from "@/components/LineaTiempo";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
-import { TIPO_COLOR, completitud } from "@/lib/entidades";
+import { TIPO_COLOR, completitud, EST_CONVOCATORIA } from "@/lib/entidades";
+import { TXT } from "@/lib/texto";
 import Completitud from "@/components/Completitud";
+import CanchaTemporada, { type Frente } from "@/components/CanchaTemporada";
 import { buscadorDe, pal } from "@/lib/buscar";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -11,16 +12,9 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "📜 Convocatorias" };
 
-const EST_META: Record<string, [string, string]> = {
-  postulacion: ["En postulación", "var(--blue)"],
-  en_ejecucion: ["En ejecución", "var(--green)"],
-  rendicion_pendiente: ["Rendición pendiente", "var(--red)"],
-  cerrada: ["Cerradas", "var(--dim)"],
-};
-const dias = (f: string) => Math.ceil((new Date(f + "T12:00:00").getTime() - Date.now()) / 86400000);
-const fmt = (f: string) => new Date(f + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short" });
-const colorD = (d: number) => (d <= 2 ? "var(--red)" : d <= 7 ? "var(--yellow)" : "var(--muted)");
-
+/* Etiqueta + color por estado, desde el mapa central del ciclo de vida. */
+const EST_META: Record<string, [string, string]> = Object.fromEntries(
+  Object.entries(EST_CONVOCATORIA).map(([k, v]) => [k, [v.label, v.color] as [string, string]]));
 const ABIERTOS = ["abierta", "en_progreso", "seguimiento"];
 
 export default async function Convocatorias({ searchParams }: {
@@ -35,24 +29,24 @@ export default async function Convocatorias({ searchParams }: {
   if (!user) redirect("/login");
   const hoyS = new Date().toISOString().slice(0, 10);
 
-  const [{ data: convs }, { data: hitos }, { data: postsAll }, { data: vincs }, { data: coms }] = await Promise.all([
+  const [{ data: convs }, { data: postsAll }, { data: vincs }, { data: coms }, { data: hitosAll }] = await Promise.all([
     // `*`: para calcular la completitud de la ficha de cada convocatoria.
     supabase.from("convocatorias").select("*")
       .order("anio", { ascending: false }).order("codigo"),
-    supabase.from("cronograma_actividades")
-      .select("id,nombre,fecha_inicio,convocatoria_id,conv:convocatorias(id,codigo,anio)")
-      .not("convocatoria_id", "is", null)
-      .eq("clase", "hito_externo").eq("estado", "planificada")
-      .gte("fecha_inicio", hoyS)
-      .order("fecha_inicio").limit(10),
     supabase.from("postulaciones")
-      .select("id,codigo,estado,monto_adjudicado,fecha_limite_rendicion,fecha_prorroga,conv:convocatorias(id,codigo,nombre,estado,anio,monto_adjudicado),proy:proyectos(id,nombre,tipo)"),
+      .select("id,codigo,estado,monto_adjudicado,fecha_limite_rendicion,fecha_prorroga,conv:convocatorias(id,codigo,nombre,estado,anio,categoria,monto_adjudicado),proy:proyectos(id,nombre,tipo)"),
     supabase.from("publicacion_vinculos")
       .select("entidad_id,publicacion_id,pub:publicaciones(estado)").eq("entidad_tipo", "convocatoria"),
     /* Solo los de caso: desde que los objetos del repositorio comentan en
        esta misma tabla, sin el filtro sus filas gastan el tope de PostgREST
        (1000) y el contador 💬 se queda corto en silencio. */
     supabase.from("comentarios").select("publicacion_id").not("publicacion_id", "is", null),
+    /* Todos los hitos externos de cada convocatoria —pasados y futuros— para la
+       mini línea de tiempo por concurso. */
+    supabase.from("cronograma_actividades")
+      .select("id,nombre,fecha_inicio,convocatoria_id")
+      .not("convocatoria_id", "is", null)
+      .eq("clase", "hito_externo").order("fecha_inicio"),
   ]);
 
   // Su vida en CrewHub+, igual que en el resto de los listados
@@ -74,10 +68,25 @@ export default async function Convocatorias({ searchParams }: {
   const coincide = buscadorDe(q);   // el mismo motor que el buscador global
 
   const cnt = (est: string) => todas.filter((c: any) => c.estado === est).length;
-  const enEjec = todas.filter((c: any) => ["en_ejecucion", "rendicion_pendiente"].includes(c.estado));
   // El marcador de Kawsay: las postulaciones son el partido,
   // la convocatoria es la cancha y el calendario
   const posts = postsAll || [];
+  /* Las postulaciones de cada convocatoria, para mostrar CON QUÉ presentamos
+     —no solo cuántas— en su fila, como en el listado de empresas. */
+  const postsPorConv = new Map<string, any[]>();
+  posts.forEach((p: any) => {
+    const cid = p.conv?.id; if (!cid) return;
+    (postsPorConv.get(cid) || postsPorConv.set(cid, []).get(cid)!).push(p);
+  });
+  const colPost = (e: string) => e === "ganadora" ? "var(--green)"
+    : e === "finalista" || e === "finalista_no_ganadora" ? "var(--yellow)"
+    : e === "no_apta" || e === "no_seleccionada" ? "var(--red)"
+    : e === "apta" ? "var(--teal)" : "var(--violet)";
+  // Los hitos de cada convocatoria, en orden, para su mini línea de tiempo.
+  const hitosPorConv = new Map<string, any[]>();
+  (hitosAll || []).forEach((h: any) => {
+    (hitosPorConv.get(h.convocatoria_id) || hitosPorConv.set(h.convocatoria_id, []).get(h.convocatoria_id)!).push(h);
+  });
   const ganas = posts.filter((p: any) => p.estado === "ganadora");
   const enJuego = posts.filter((p: any) => ["en_preparacion", "enviada", "finalista"].includes(p.estado));
   const decididas = posts.length - enJuego.length;
@@ -86,31 +95,6 @@ export default async function Convocatorias({ searchParams }: {
   // Rutas activas: postulaciones aún en juego (el trabajo arduo de hoy)
   const rutas = enJuego
     .sort((a: any, b: any) => ((b.conv?.anio || 0) - (a.conv?.anio || 0)));
-  // Ganadoras vivas: su EJECUCIÓN sigue abierta (rendición aún no vence),
-  // aunque el concurso ya esté cerrado
-  const gansVivas = ganas.filter((g: any) => {
-    const f = g.fecha_prorroga || g.fecha_limite_rendicion;
-    return f ? f >= hoyS : (g.conv && g.conv.estado !== "cerrada");
-  });
-  const montoVivo = gansVivas.reduce((s: number, g: any) => s + (parseFloat(g.monto_adjudicado) || 0), 0)
-    || enEjec.reduce((s: number, c: any) => s + (parseFloat(c.monto_adjudicado) || 0), 0);
-  // Rendiciones: de las postulaciones ganadoras (la prórroga manda si existe)
-  // + legado directo en convocatorias antiguas
-  const rendiciones = [
-    ...gansVivas
-      .filter((g: any) => g.fecha_limite_rendicion || g.fecha_prorroga)
-      .map((g: any) => ({
-        id: `p${g.id}`, href: `/entidad/convocatoria/${g.conv.id}`,
-        fecha: g.fecha_prorroga || g.fecha_limite_rendicion,
-        label: `🏆 ${g.proy?.nombre || "Proyecto"} · ${g.conv.codigo}`,
-      })),
-    ...enEjec
-      .filter((c: any) => c.fecha_limite_rendicion)
-      .map((c: any) => ({
-        id: `c${c.id}`, href: `/entidad/convocatoria/${c.id}`,
-        fecha: c.fecha_limite_rendicion, label: `${c.codigo} · ${c.nombre}`,
-      })),
-  ].sort((a, b) => (a.fecha < b.fecha ? -1 : 1)).slice(0, 6);
   const anios = todas.map((c: any) => c.anio).filter(Boolean);
   const desde = anios.length ? Math.min(...anios) : null;
   const porAnio = [...new Set(anios)].sort((a: any, b: any) => b - a);
@@ -221,8 +205,31 @@ export default async function Convocatorias({ searchParams }: {
           f.n++;
           frentes.set(p.conv.id, f);
         });
-        const proxHitoDe = (cid: string) =>
-          (hitos || []).find((h: any) => h.convocatoria_id === cid)?.fecha_inicio;
+        /* Los indicadores de arriba son de la TEMPORADA actual: cuántos frentes
+           y cuánto está en juego este año. El detalle por año va en el panel. */
+        const anioActual = new Date().getFullYear();
+        const frentesTemp = [...frentes.values()].filter(f => Number(f.conv.anio) === anioActual);
+        const montoEnJuego = frentesTemp
+          .reduce((s, { conv }) => s + (parseFloat(conv.monto_adjudicado) || 0), 0);
+        /* La cancha va en un componente cliente (tiene el toggle Cancha/Lista):
+           aplanamos cada frente a datos serializables —concurso, sus hitos y
+           sus jugadores (postulaciones)—; el componente agrupa y ordena. */
+        const frentesData: Frente[] = [...frentes.values()].map(({ conv }) => ({
+          id: conv.id,
+          codigo: conv.codigo,
+          nombre: conv.nombre,
+          categoria: conv.categoria ?? null,
+          monto: conv.monto_adjudicado != null ? parseFloat(conv.monto_adjudicado) || null : null,
+          estado: conv.estado,
+          anio: conv.anio ?? null,
+          posts: (postsPorConv.get(conv.id) || []).map((p: any) => ({
+            id: p.id, codigo: p.codigo ?? null,
+            nombre: p.proy?.nombre || p.codigo || "Postulación", estado: p.estado,
+          })),
+          hitos: (hitosPorConv.get(conv.id) || []).map((h: any) => ({
+            id: h.id, nombre: h.nombre, fecha: h.fecha_inicio,
+          })),
+        }));
         return (
           <>
             {/* «temporada 2026» y «en proceso ahora» eran filtros disfrazados
@@ -230,72 +237,20 @@ export default async function Convocatorias({ searchParams }: {
                 queda lo que solo informa. */}
             <div className="stat-grid">
               <span className="stat-card" style={{ display: "block" }}>
-                <span className="stat-n" style={{ color: "var(--yellow)", display: "block" }}>{frentes.size}</span>
-                <span className="stat-l">🎪 frentes donde jugamos</span>
+                <span className="stat-n" style={{ color: "var(--yellow)", display: "block" }}>{frentesTemp.length}</span>
+                <span className="stat-l">🎪 frentes donde jugamos · {anioActual}</span>
               </span>
               <span className="stat-card" style={{ display: "block" }}>
                 <span className="stat-n" style={{ color: "var(--teal)", fontSize: 19, display: "block" }}>
-                  S/ {montoVivo.toLocaleString("es-PE")}
+                  S/ {montoEnJuego.toLocaleString("es-PE")}
                 </span>
-                <span className="stat-l">en ejecución</span>
+                <span className="stat-l">en juego · temporada {anioActual}</span>
               </span>
-              <Link href="/postulaciones" className="stat-card" style={{ borderColor: "rgba(167,139,250,.4)" }}>
-                <div className="stat-n" style={{ fontSize: 19, color: "var(--violet)" }}>🎯 →</div>
-                <div className="stat-l">marcador y rutas, en Postulaciones</div>
-              </Link>
             </div>
 
             {frentes.size > 0 && (
-              <div className="card" style={{ borderColor: "rgba(244,180,0,.3)" }}>
-                <div className="panel-h" style={{ color: "var(--yellow)" }}>🎪 Frentes de la temporada — concursos donde jugamos</div>
-                {[...frentes.values()]
-                  .sort((a, b) => (parseFloat(b.conv.monto_adjudicado) || 0) - (parseFloat(a.conv.monto_adjudicado) || 0))
-                  .map(({ conv, n }) => {
-                    const prox = proxHitoDe(conv.id);
-                    return (
-                      <div key={conv.id} style={{ borderBottom: "1px solid var(--border)", padding: "10px 2px" }}>
-                        <Link href={`/entidad/convocatoria/${conv.id}`} style={{ fontWeight: 600, fontSize: 13.5, display: "block", marginBottom: 6 }}>
-                          📜 {conv.codigo} · {conv.nombre} →
-                        </Link>
-                        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", paddingLeft: 2 }}>
-                          <span className="badge" style={{ color: "var(--blue)", background: "rgba(59,130,246,.12)" }}>
-                            🎯 {n} postulaci{n === 1 ? "ón" : "ones"}
-                          </span>
-                          {prox ? (
-                            <span style={{ color: colorD(dias(prox)), fontSize: 12, fontWeight: 700 }}>
-                              ⏱ próx. hito: {fmt(prox)} · en {dias(prox)} días
-                            </span>
-                          ) : (
-                            <span style={{ color: "var(--dim)", fontSize: 12 }}>⏱ sin hitos cargados</span>
-                          )}
-                          <span style={{ flex: 1 }} />
-                          {conv.monto_adjudicado && (
-                            <span style={{ color: "var(--teal)", fontSize: 12.5, fontWeight: 700 }}>
-                              S/ {parseFloat(conv.monto_adjudicado).toLocaleString("es-PE")} en juego
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-              </div>
+              <CanchaTemporada frentes={frentesData} hoy={hoyS} />
             )}
-
-          <div className="card">
-            <div className="panel-h">📅 Línea de tiempo DAFO — hitos y rendiciones</div>
-            <LineaTiempo eventos={[
-              ...(hitos || []).map((h: any): EventoLT => ({
-                fecha: h.fecha_inicio, titulo: h.nombre, icono: "🏛",
-                color: "var(--violet)", chip: h.conv?.codigo,
-                href: h.conv ? `/entidad/convocatoria/${h.conv.id}` : undefined,
-              })),
-              ...rendiciones.map((r: any): EventoLT => ({
-                fecha: r.fecha, titulo: r.label, icono: "🧾",
-                color: dias(r.fecha) < 7 ? "var(--red)" : "var(--yellow)",
-                href: r.href,
-              })),
-            ]} />
-          </div>
 
           <div style={{ color: "var(--dim)", fontSize: 12.5, textAlign: "center", margin: "6px 0 14px" }}>
             {todas.length} concursos{desde ? ` desde ${desde}` : ""} — filtra arriba para ver la lista.
@@ -317,11 +272,15 @@ export default async function Convocatorias({ searchParams }: {
             </div>
 
             {nuestras.map((c: any) => (
-              <Link key={c.id} href={`/entidad/convocatoria/${c.id}`}>
-                <div className="card link" style={{
-                  cursor: "pointer", padding: "12px 16px",
-                  borderLeft: `3px solid ${ganamosEn.has(c.id) ? "var(--green)" : finalistasEn.has(c.id) ? "var(--yellow)" : "var(--blue)"}`,
-                }}>
+              /* Enlace estirado: la tarjeta lleva a la convocatoria mediante una
+                 capa invisible, y así los chips de postulación de dentro pueden
+                 ser enlaces propios (a un <a> dentro de otro <a> revienta). */
+              <div key={c.id} className="card link fila-cap" style={{
+                cursor: "pointer", padding: "12px 16px",
+                borderLeft: `3px solid ${ganamosEn.has(c.id) ? "var(--green)" : finalistasEn.has(c.id) ? "var(--yellow)" : "var(--blue)"}`,
+              }}>
+                <Link href={`/entidad/convocatoria/${c.id}`} className="fila-cubre" aria-label={c.nombre} />
+                <div>
                   <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
                     <b style={{ fontSize: 14.5 }}>{c.codigo}</b>
                     <span style={{ color: "var(--text)", fontSize: 13 }}>{c.nombre}</span>
@@ -336,11 +295,9 @@ export default async function Convocatorias({ searchParams }: {
                         🥈 finalista{(finalistasEn.get(c.id) || 0) > 1 ? `s · ${finalistasEn.get(c.id)}` : ""}
                       </span>
                     )}
-                    {!ganamosEn.has(c.id) && (
-                      <span className="badge" style={{ color: "var(--blue)", background: "rgba(59,130,246,.12)" }}>
-                        🎯 postulamos · {postulamosEn.get(c.id)}
-                      </span>
-                    )}
+                    {/* El chip «postulamos · N» se quitó: ahora los proyectos
+                        con que postulamos salen como chips abajo, con nombre —
+                        el número solo era redundante. */}
                     <span style={{ flex: 1 }} />
                     {(act.get(c.id)?.abiertos || 0) > 0 && (
                       <span style={{ color: "var(--red)", fontSize: 11.5, fontWeight: 700 }}>
@@ -366,12 +323,25 @@ export default async function Convocatorias({ searchParams }: {
                       {(c.estado || "—").replace(/_/g, " ")}
                     </span>
                   </div>
+                  {/* CON QUÉ postulamos a este concurso: cada proyecto, con su
+                      estado por color, enlazando a su postulación. */}
+                  {(postsPorConv.get(c.id) || []).length > 0 && (
+                    <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
+                      {(postsPorConv.get(c.id) || []).map((p: any) => (
+                        <Link key={p.id} href={`/entidad/postulacion/${p.id}`} className="badge fila-encima"
+                          title={`${p.codigo || ""} · ${(p.estado || "").replace(/_/g, " ")}`}
+                          style={{ color: colPost(p.estado), background: "#1c1c2c", textTransform: "none", letterSpacing: 0, textDecoration: "none", fontSize: 11.5 }}>
+                          🎯 {p.proy?.nombre || p.codigo || "Postulación"} ↗
+                        </Link>
+                      ))}
+                    </div>
+                  )}
                   {(() => {
                     const cp = completitud("convocatoria", c);
                     return <Completitud mini pct={cp.pct} llenos={cp.llenos} total={cp.total} faltan={cp.faltan} />;
                   })()}
                 </div>
-              </Link>
+              </div>
             ))}
 
             {resto.length > 0 && (

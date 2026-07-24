@@ -686,7 +686,7 @@ export async function importarEntidades(entidad: string, filas: Record<string, s
       } else {
         maxC++;
         const codigo = `C-${String(maxC).padStart(3, "0")}`;
-        const estado = decidida ? "cerrada" : "postulacion";
+        const estado = decidida ? "finalizada" : "abierta";
         const basesUrl = (norm(f.bases_url).match(/https?:\/\/\S+/) || [null])[0];
         const { data: nueva, error } = await supabase.from("convocatorias").insert({
           codigo, nombre: concurso, institucion: "DAFO", anio,
@@ -2656,6 +2656,47 @@ export async function quitarEquipoProyecto(id: string, proyectoId: string) {
     detalle: { mensaje: `quitó a ${quien} del equipo${prev?.cargo ? ` (${prev.cargo})` : ""}` },
   });
   revalidatePath(`/entidad/proyecto/${proyectoId}`);
+  return {};
+}
+
+/* ── El ESTADO de una POSTULACIÓN, editable desde la cabecera ──
+ *
+ * La postulación es lo único con ciclo de vida real: su estado avanza en una
+ * carrera con fin (preparación → enviada → apta → finalista → ganadora, con dos
+ * salidas: no apta, no ganó). Editarlo entrando al formulario era tedioso; el
+ * mini-cronograma de la cabecera lo cambia en un clic.
+ *
+ * Solo hace el UPDATE: el trigger `registrar_evento_estado` (db/schema.sql) ya
+ * escribe el cambio en el historial con el actor, como en los casos. */
+const ESTADOS_POST = ["en_preparacion", "enviada", "apta", "no_apta", "finalista", "ganadora", "finalista_no_ganadora"];
+export async function cambiarEstadoPostulacion(id: string, estado: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!ESTADOS_POST.includes(estado)) return { error: "Estado no válido." };
+  const { data, error } = await supabase.from("postulaciones")
+    .update({ estado }).eq("id", id).select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "No se pudo cambiar el estado (sin permiso o ya no existe)." };
+  revalidatePath(`/entidad/postulacion/${id}`);
+  return {};
+}
+
+/* Igual que la postulación, pero para la CONVOCATORIA: su propio ciclo de vida
+   (planificada → abierta → en evaluación → con resultados → finalizada; salida:
+   cancelada). El trigger `registrar_evento_estado` también cubre convocatorias,
+   así que el cambio queda en el historial solo. */
+const ESTADOS_CONV = ["planificada", "abierta", "en_evaluacion", "con_resultados", "finalizada", "cancelada"];
+export async function cambiarEstadoConvocatoria(id: string, estado: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!ESTADOS_CONV.includes(estado)) return { error: "Estado no válido." };
+  const { data, error } = await supabase.from("convocatorias")
+    .update({ estado }).eq("id", id).select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "No se pudo cambiar el estado (sin permiso o ya no existe)." };
+  revalidatePath(`/entidad/convocatoria/${id}`);
   return {};
 }
 

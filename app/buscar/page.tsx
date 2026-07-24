@@ -70,8 +70,8 @@ const postViva = (p: any) =>
    suyo. Un 2025 con rendición pendiente NO es edición pasada: es trabajo.
    Y uno cerrado es pasado aunque sea de este año. */
 const convViva = (c: any) =>
-  c.estado !== "cerrada"
-  && ((c.anio ?? ANIO) >= ANIO || ["en_ejecucion", "rendicion_pendiente"].includes(c.estado));
+  !["finalizada", "cancelada"].includes(c.estado)
+  && ((c.anio ?? ANIO) >= ANIO || ["abierta", "en_evaluacion", "con_resultados"].includes(c.estado));
 
 const EST_ACT: Record<string, [string, string]> = {
   bloqueado: ["🚧 bloqueado", "var(--red)"],

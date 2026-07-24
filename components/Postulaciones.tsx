@@ -1,13 +1,21 @@
 "use client";
 import { crearPostulacion, actualizarPostulacion, borrarPostulacion } from "@/app/actions";
 import { EntPicker, type CatalogoItem } from "@/components/Composer";
+import { TXT } from "@/lib/texto";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
 
+/* Estados alineados con el ciclo de vida real de una postulación (el mismo del
+   stepper de su ficha): preparación → enviada → apta → finalista → ganadora,
+   con salidas «no apta» y «no ganó». Los dos últimos (no_seleccionada,
+   retirada) son legado: se mantienen para que una postulación vieja con ese
+   estado siga mostrándose bien en el selector. */
 const ESTADOS: [string, string, string][] = [
   ["en_preparacion", "🛠 En preparación", "var(--violet)"],
   ["enviada", "📨 Enviada", "var(--blue)"],
+  ["apta", "✅ Apta", "var(--teal)"],
+  ["no_apta", "⛔ No apta", "var(--red)"],
   ["finalista", "⭐ Finalista", "var(--yellow)"],
   ["ganadora", "🏆 Ganadora", "var(--green)"],
   ["finalista_no_ganadora", "🥈 Finalista (no ganó)", "var(--yellow)"],
@@ -21,11 +29,13 @@ const inputCss: React.CSSProperties = {
   padding: "6px 9px", fontSize: 12, color: "var(--text)", outline: "none",
 };
 
-export default function Postulaciones({ convocatoriaId, postulaciones, proyectos, empresas }: {
+export default function Postulaciones({ convocatoriaId, postulaciones, proyectos, empresas, carteles = {} }: {
   convocatoriaId: string;
   postulaciones: any[];
   proyectos: CatalogoItem[];
   empresas: CatalogoItem[];
+  /** Póster (cartel) por id de proyecto, para identificar cada postulación. */
+  carteles?: Record<string, string>;
 }) {
   const [agregando, setAgregando] = useState(false);
   const [proy, setProy] = useState<{ id: string; nombre: string } | null>(null);
@@ -112,83 +122,148 @@ export default function Postulaciones({ convocatoriaId, postulaciones, proyectos
 
       {postulaciones.map((p: any) => {
         const [, , col] = estMeta(p.estado);
+        const cartel = p.proy?.id ? carteles[p.proy.id] : null;
+        const gano = p.estado === "ganadora";
         return (
-          <div key={p.id} style={{ borderBottom: "1px solid var(--border)", padding: "10px 0" }}>
-            {/* línea 1: la postulación + borrar */}
-            <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-              <Link href={`/entidad/postulacion/${p.id}`}
-                style={{ color: "var(--text)", fontWeight: 600, fontSize: 13, flex: 1, minWidth: 0, lineHeight: 1.4 }}>
-                🎯 {p.codigo ? `${p.codigo} · ` : ""}{p.proy?.nombre || "—"} →
-              </Link>
-              {borrando === p.id ? (
-                <span style={{ fontSize: 11.5, whiteSpace: "nowrap" }}>
-                  ¿borrar? <button style={{ color: "var(--red)", fontWeight: 700 }} onClick={() => borrar(p.id)}>sí</button>
-                  {" / "}<button style={{ color: "var(--dim)" }} onClick={() => setBorrando(null)}>no</button>
+          <div key={p.id} style={{ display: "flex", gap: 12, alignItems: "flex-start", borderBottom: "1px solid var(--border)", padding: "12px 0" }}>
+            {/* Póster del proyecto: identifica la postulación de un vistazo. */}
+            {cartel && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={cartel} alt="" referrerPolicy="no-referrer" className="tr-poster"
+                style={{ width: 48, height: 48, flexShrink: 0 }} />
+            )}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {/* línea 1: la postulación + borrar */}
+              <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                <Link href={`/entidad/postulacion/${p.id}`}
+                  style={{ color: "var(--text)", fontWeight: 600, fontSize: TXT.meta, flex: 1, minWidth: 0, lineHeight: 1.4 }}>
+                  🎯 {p.codigo ? `${p.codigo} · ` : ""}{p.proy?.nombre || "—"} →
+                </Link>
+                {borrando === p.id ? (
+                  <span style={{ fontSize: 11.5, whiteSpace: "nowrap" }}>
+                    ¿borrar? <button style={{ color: "var(--red)", fontWeight: 700 }} onClick={() => borrar(p.id)}>sí</button>
+                    {" / "}<button style={{ color: "var(--dim)" }} onClick={() => setBorrando(null)}>no</button>
+                  </span>
+                ) : (
+                  <button title="Borrar postulación" style={{ color: "var(--dim)", flex: "none" }} onClick={() => setBorrando(p.id)}>✕</button>
+                )}
+              </div>
+              {/* línea 2: empresa (clic para cambiar) + estado */}
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 7, flexWrap: "wrap" }}>
+                <span style={{ flex: 1, minWidth: 160 }}>
+                  <EntPicker
+                    etiqueta={p.emp ? `🏢 ${p.emp.nombre}` : "🏢 asignar empresa"}
+                    items={empresas}
+                    onPick={id => asignarEmpresa(p.id, id)} />
                 </span>
-              ) : (
-                <button title="Borrar postulación" style={{ color: "var(--dim)", flex: "none" }} onClick={() => setBorrando(p.id)}>✕</button>
+                <select value={p.estado} onChange={e => cambiarEstado(p.id, e.target.value)}
+                  style={{ ...inputCss, color: col, fontWeight: 700, fontSize: 11.5, padding: "5px 7px", maxWidth: 180 }}>
+                  {ESTADOS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              </div>
+
+              {/* Contexto del jurado: puntaje, matriz y comentario. Va para
+                  cualquier postulación evaluada, gane o pierda. */}
+              {(p.puntaje_jurado || p.matriz_jurado_url || p.feedback_jurado) && (
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: TXT.chip }}>
+                    {p.puntaje_jurado && (
+                      <span style={{ color: "var(--yellow)", fontWeight: 700 }}>⚖️ {p.puntaje_jurado} pts</span>
+                    )}
+                    {p.matriz_jurado_url && (
+                      <a href={p.matriz_jurado_url} target="_blank" rel="noopener noreferrer"
+                        title="Matriz de evaluación del jurado" style={{ color: "var(--violet)" }}>📊 Matriz jurado</a>
+                    )}
+                  </div>
+                  {p.feedback_jurado && (
+                    p.feedback_jurado.length > 160 ? (
+                      <details className="jurado-box" style={{ marginTop: 6 }}>
+                        <summary>
+                          <b style={{ color: "var(--text)" }}>💬 Comentario del jurado</b>
+                          <span className="jx"><br />{p.feedback_jurado.slice(0, p.feedback_jurado.lastIndexOf(" ", 160))}… <i>ver más</i></span>
+                        </summary>
+                        <div style={{ marginTop: 6 }}>{p.feedback_jurado}</div>
+                      </details>
+                    ) : (
+                      <div className="jurado-box" style={{ marginTop: 6 }}>
+                        <b style={{ color: "var(--text)" }}>💬 Comentario del jurado</b><br />
+                        {p.feedback_jurado}
+                      </div>
+                    )
+                  )}
+                </div>
+              )}
+
+              {/* El equipo con que se presentó al concurso. */}
+              {(p.equipo || []).length > 0 && (
+                <div style={{ display: "flex", gap: 5, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+                  <span style={{ color: gano ? "var(--green)" : "var(--dim)", fontSize: TXT.chip, fontWeight: gano ? 700 : 400 }}>
+                    {gano ? "🏆 Equipo ganador:" : "👥 Equipo:"}
+                  </span>
+                  {p.equipo.map((e: any, i: number) => (
+                    <Link key={i} href={`/entidad/persona/${e.persona?.id}`} className="badge" title={e.cargo || ""}
+                      style={{ color: "var(--violet)", background: "rgba(167,139,250,.10)", textTransform: "none", letterSpacing: 0, fontWeight: 600, fontSize: TXT.chip }}>
+                      {e.persona?.alias || e.persona?.nombre}
+                      {e.cargo && <span style={{ color: "var(--dim)", fontWeight: 400 }}> · {e.cargo}</span>}
+                    </Link>
+                  ))}
+                </div>
+              )}
+
+              {gano && editando !== p.id && (
+                <div style={{ marginTop: 8, padding: "8px 10px", background: "var(--bg)", borderRadius: 9, borderLeft: "3px solid var(--green)", fontSize: TXT.chip, color: "var(--muted)" }}>
+                  {p.monto_adjudicado && (
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                      <span style={{ color: "var(--teal)", fontWeight: 700 }}>S/ {parseFloat(p.monto_adjudicado).toLocaleString("es-PE")}</span>
+                    </div>
+                  )}
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: p.monto_adjudicado ? 5 : 0 }}>
+                    {(p.acta_url || p.codigo_acta || p.fecha_firma_acta) && (
+                      <span style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                        {p.acta_url
+                          ? <a href={p.acta_url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--violet)" }}>📄 Acta de compromiso{p.codigo_acta ? ` ${p.codigo_acta}` : ""}</a>
+                          : <span style={{ color: "var(--dim)" }}>📄 Acta de compromiso{p.codigo_acta ? ` ${p.codigo_acta}` : ""}</span>}
+                        {p.fecha_firma_acta && <span>🖋 firmada {fmtF(p.fecha_firma_acta)}</span>}
+                      </span>
+                    )}
+                    {p.fecha_limite_rendicion && <span style={{ color: "var(--yellow)" }}>🧾 rinde: {fmtF(p.fecha_prorroga || p.fecha_limite_rendicion)}{p.fecha_prorroga ? " (prórroga)" : ""}</span>}
+                    <span style={{ flex: 1 }} />
+                    <button className="btn btn-ghost" style={{ padding: "2px 9px", fontSize: 11 }} onClick={() => abrirEjec(p)}>
+                      ✎ {p.fecha_firma_acta || p.monto_adjudicado ? "Editar" : "Registrar"} ejecución
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {editando === p.id && (
+                <div style={{ marginTop: 8, padding: 10, background: "var(--bg)", borderRadius: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <label style={{ fontSize: 11, color: "var(--dim)" }}>Código del acta (ej. 139-2025-DAFO)
+                    <input value={ej.codigo_acta} style={{ ...inputCss, width: "100%", marginTop: 3 }}
+                      onChange={e => setEj({ ...ej, codigo_acta: e.target.value })} /></label>
+                  <label style={{ fontSize: 11, color: "var(--dim)" }}>Firma del acta
+                    <input type="date" value={ej.fecha_firma_acta} style={{ ...inputCss, width: "100%", marginTop: 3 }}
+                      onChange={e => setEj({ ...ej, fecha_firma_acta: e.target.value })} /></label>
+                  <label style={{ fontSize: 11, color: "var(--dim)" }}>Monto adjudicado (S/)
+                    <input value={ej.monto_adjudicado} style={{ ...inputCss, width: "100%", marginTop: 3 }}
+                      onChange={e => setEj({ ...ej, monto_adjudicado: e.target.value })} /></label>
+                  <label style={{ fontSize: 11, color: "var(--dim)" }}>Límite de rendición
+                    <input type="date" value={ej.fecha_limite_rendicion} style={{ ...inputCss, width: "100%", marginTop: 3 }}
+                      onChange={e => setEj({ ...ej, fecha_limite_rendicion: e.target.value })} /></label>
+                  <label style={{ fontSize: 11, color: "var(--dim)" }}>Prórroga (si existe)
+                    <input type="date" value={ej.fecha_prorroga} style={{ ...inputCss, width: "100%", marginTop: 3 }}
+                      onChange={e => setEj({ ...ej, fecha_prorroga: e.target.value })} /></label>
+                  <label style={{ fontSize: 11, color: "var(--dim)", gridColumn: "1 / -1" }}>Acta de compromiso (link Drive)
+                    <input value={ej.acta_url} placeholder="https://..." style={{ ...inputCss, width: "100%", marginTop: 3 }}
+                      onChange={e => setEj({ ...ej, acta_url: e.target.value })} /></label>
+                  <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8 }}>
+                    <button className="btn" style={{ padding: "6px 14px", fontSize: 12 }} disabled={guardando}
+                      onClick={() => guardarEjec(p.id)}>{guardando ? "..." : "Guardar ejecución"}</button>
+                    <button className="btn btn-ghost" style={{ padding: "6px 10px", fontSize: 12 }}
+                      onClick={() => setEditando(null)}>Cancelar</button>
+                  </div>
+                </div>
               )}
             </div>
-            {/* línea 2: empresa (clic para cambiar) + estado */}
-            <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 7 }}>
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <EntPicker
-                  etiqueta={p.emp ? `🏢 ${p.emp.nombre}` : "🏢 asignar empresa"}
-                  items={empresas}
-                  onPick={id => asignarEmpresa(p.id, id)} />
-              </span>
-              <select value={p.estado} onChange={e => cambiarEstado(p.id, e.target.value)}
-                style={{ ...inputCss, color: col, fontWeight: 700, fontSize: 11.5, padding: "5px 7px", maxWidth: 170 }}>
-                {ESTADOS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </select>
-            </div>
-
-            {p.estado === "ganadora" && editando !== p.id && (
-              <div style={{ marginTop: 8, padding: "8px 10px", background: "var(--bg)", borderRadius: 9, borderLeft: "3px solid var(--green)", fontSize: 11.5, color: "var(--muted)" }}>
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                  {p.codigo_acta && <span style={{ color: "var(--green)", fontWeight: 700 }}>{p.codigo_acta}</span>}
-                  {p.monto_adjudicado && <span style={{ color: "var(--teal)", fontWeight: 700 }}>S/ {parseFloat(p.monto_adjudicado).toLocaleString("es-PE")}</span>}
-                  {p.fecha_firma_acta && <span>🖋 {fmtF(p.fecha_firma_acta)}</span>}
-                </div>
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 5 }}>
-                  {p.fecha_limite_rendicion && <span style={{ color: "var(--yellow)" }}>🧾 rinde: {fmtF(p.fecha_prorroga || p.fecha_limite_rendicion)}{p.fecha_prorroga ? " (prórroga)" : ""}</span>}
-                  {p.acta_url && <a href={p.acta_url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--violet)" }}>📄 Acta</a>}
-                  <span style={{ flex: 1 }} />
-                  <button className="btn btn-ghost" style={{ padding: "2px 9px", fontSize: 11 }} onClick={() => abrirEjec(p)}>
-                    ✎ {p.fecha_firma_acta || p.monto_adjudicado ? "Editar" : "Registrar"} ejecución
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {editando === p.id && (
-              <div style={{ marginTop: 8, padding: 10, background: "var(--bg)", borderRadius: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                <label style={{ fontSize: 11, color: "var(--dim)" }}>Código del acta (ej. 139-2025-DAFO)
-                  <input value={ej.codigo_acta} style={{ ...inputCss, width: "100%", marginTop: 3 }}
-                    onChange={e => setEj({ ...ej, codigo_acta: e.target.value })} /></label>
-                <label style={{ fontSize: 11, color: "var(--dim)" }}>Firma del acta
-                  <input type="date" value={ej.fecha_firma_acta} style={{ ...inputCss, width: "100%", marginTop: 3 }}
-                    onChange={e => setEj({ ...ej, fecha_firma_acta: e.target.value })} /></label>
-                <label style={{ fontSize: 11, color: "var(--dim)" }}>Monto adjudicado (S/)
-                  <input value={ej.monto_adjudicado} style={{ ...inputCss, width: "100%", marginTop: 3 }}
-                    onChange={e => setEj({ ...ej, monto_adjudicado: e.target.value })} /></label>
-                <label style={{ fontSize: 11, color: "var(--dim)" }}>Límite de rendición
-                  <input type="date" value={ej.fecha_limite_rendicion} style={{ ...inputCss, width: "100%", marginTop: 3 }}
-                    onChange={e => setEj({ ...ej, fecha_limite_rendicion: e.target.value })} /></label>
-                <label style={{ fontSize: 11, color: "var(--dim)" }}>Prórroga (si existe)
-                  <input type="date" value={ej.fecha_prorroga} style={{ ...inputCss, width: "100%", marginTop: 3 }}
-                    onChange={e => setEj({ ...ej, fecha_prorroga: e.target.value })} /></label>
-                <label style={{ fontSize: 11, color: "var(--dim)", gridColumn: "1 / -1" }}>Acta de compromiso (link Drive)
-                  <input value={ej.acta_url} placeholder="https://..." style={{ ...inputCss, width: "100%", marginTop: 3 }}
-                    onChange={e => setEj({ ...ej, acta_url: e.target.value })} /></label>
-                <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8 }}>
-                  <button className="btn" style={{ padding: "6px 14px", fontSize: 12 }} disabled={guardando}
-                    onClick={() => guardarEjec(p.id)}>{guardando ? "..." : "Guardar ejecución"}</button>
-                  <button className="btn btn-ghost" style={{ padding: "6px 10px", fontSize: 12 }}
-                    onClick={() => setEditando(null)}>Cancelar</button>
-                </div>
-              </div>
-            )}
           </div>
         );
       })}

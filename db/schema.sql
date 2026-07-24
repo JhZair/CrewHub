@@ -108,8 +108,8 @@ create table convocatorias (
   fecha_entrega_estimulo date,
   fecha_limite_rendicion date,
   fecha_prorroga         date,
-  estado                 text default 'en_ejecucion',
-    -- postulacion | en_ejecucion | rendicion_pendiente | cerrada
+  estado                 text default 'abierta',
+    -- planificada | abierta | en_evaluacion | con_resultados | finalizada | cancelada
   anio                   int,
   cuenta_bancaria        text,
   eventos_concurso       jsonb default '{}',
