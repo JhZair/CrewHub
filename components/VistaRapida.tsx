@@ -8,6 +8,7 @@ import {
 } from "@/app/actions";
 import { opcionesEstado, esAviso, claseEstado } from "@/lib/estados";
 import { icoTipo } from "@/lib/tipos";
+import { TXT } from "@/lib/texto";
 import { ICO_ENT } from "@/lib/secciones";
 import { menciones, MencionesMenu } from "@/components/Menciones";
 
@@ -202,7 +203,7 @@ export default function VistaRapida({ pubId }: { pubId: string }) {
                 {/* 2) Título del caso */}
                 <div className="vr-head">
                   <span style={{ fontSize: 18 }}>{icoTipo(caso.tipo)}</span>
-                  <b style={{ flex: 1, fontSize: 15 }}>{caso.titulo}</b>
+                  <b style={{ flex: 1, fontSize: TXT.titulo }}>{caso.titulo}</b>
                 </div>
 
                 {/* 3) Descripción del caso */}
@@ -225,7 +226,7 @@ export default function VistaRapida({ pubId }: { pubId: string }) {
                 {/* Aviso: enterarse */}
                 {esAv && (
                   <div className="vr-aviso">
-                    <span style={{ color: "var(--violet)", fontSize: 12.5 }}>
+                    <span style={{ color: "var(--violet)", fontSize: TXT.micro }}>
                       👀 Enterados {vistos.size}/{data.equipoTotal || "—"}
                     </span>
                     {esAutor ? (
@@ -256,15 +257,15 @@ export default function VistaRapida({ pubId }: { pubId: string }) {
                 <div className="vr-coms">
                   <div className="vr-coms-h">💬 Comentarios · {caso.comentarios.length}</div>
                   {caso.comentarios.length === 0 && (
-                    <div style={{ color: "var(--dim)", fontSize: 12.5, padding: "4px 0" }}>Aún no hay comentarios.</div>
+                    <div style={{ color: "var(--dim)", fontSize: TXT.micro, padding: "4px 0" }}>Aún no hay comentarios.</div>
                   )}
                   {caso.comentarios.map((c: any) => (
                     <div key={c.id} className="vr-com">
                       <div className="vr-com-h">
-                        <b style={{ fontSize: 12.5, color: c.autor?.color || "var(--text)" }}>
+                        <b style={{ fontSize: TXT.meta, color: c.autor?.color || "var(--text)" }}>
                           {c.autor?.nombre?.split(" ")[0] || "—"}
                         </b>
-                        <span style={{ color: "var(--dim)", fontSize: 11 }}>{fecha(c.creado_en)}</span>
+                        <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>{fecha(c.creado_en)}</span>
                       </div>
                       <div className="vr-com-txt">{c.cuerpo}</div>
                     </div>

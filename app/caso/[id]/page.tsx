@@ -25,6 +25,7 @@ import { claseEstado, rotuloEstado } from "@/lib/estados";
 import { BOT, sinBot } from "@/lib/personas";
 import { CERRADOS } from "@/lib/familia";
 import { rotuloTipo, colorTipo, icoTipo } from "@/lib/tipos";
+import { TXT } from "@/lib/texto";
 import { catalogoObjetos, catalogosEntidades } from "@/lib/catalogos";
 
 /* EV_ICO es de aquí: son los eventos de la bitácora de un caso, no los tipos
@@ -328,11 +329,11 @@ export default async function Caso({ params }: { params: { id: string } }) {
         <span className="spacer" />
         {/* Subirlo a la cabecera del feed: solo administración */}
         {miPerfil?.es_admin && <BotonDestacar pubId={p.id} hasta={p.destacado_hasta} />}
-        <span className="badge" style={{ color: tc, background: `${tc}22`, fontSize: 12 }}>{tl}</span>
+        <span className="badge" style={{ color: tc, background: `${tc}22`, fontSize: TXT.chip }}>{tl}</span>
       </div>
 
       {padre && (
-        <Link href={`/caso/${padre.id}`} style={{ color: "var(--muted)", fontSize: 12.5, display: "inline-block", marginBottom: 4 }}>
+        <Link href={`/caso/${padre.id}`} style={{ color: "var(--muted)", fontSize: TXT.micro, display: "inline-block", marginBottom: 4 }}>
           ↑ Parte de: <b style={{ color: "var(--violet)" }}>{padre.titulo}</b>
         </Link>
       )}
@@ -476,7 +477,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
                 <div className="bubble">
                   <div className="who">{c.autor?.nombre}<span className="t">{fecha(c.creado_en)}</span></div>
                   {c.responde_a && comMap.get(c.responde_a) && (
-                    <div style={{ fontSize: 11, color: "var(--dim)", margin: "1px 0 4px" }}>
+                    <div style={{ fontSize: TXT.micro, color: "var(--dim)", margin: "1px 0 4px" }}>
                       ↳ en respuesta a <b style={{ color: "var(--violet)" }}>{(comMap.get(c.responde_a) as any)?.autor?.nombre || "un comentario"}</b>
                     </div>
                   )}

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { icoTipo, colorTipo } from "@/lib/tipos";
 import VistaRapida from "@/components/VistaRapida";
 import { colorEtapa, ETAPAS_CINE } from "@/lib/etapas";
+import { TXT } from "@/lib/texto";
 
 /* AGENDA — todo lo que tiene fecha, en dos vistas.
    Línea de tiempo (barras por proyecto, con la duración inicio→fin de cada
@@ -92,16 +93,16 @@ export default function Agenda({ items, perfiles, miId }: {
           <button className={`vtab ${vista === "cal" ? "on" : ""}`} onClick={() => setVista("cal")}>🗓 Calendario</button>
         </div>
         <span style={{ flex: 1 }} />
-        <label style={{ color: "var(--dim)", fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}>
+        <label style={{ color: "var(--dim)", fontSize: TXT.micro, display: "flex", alignItems: "center", gap: 6 }}>
           👤
           <select value={persona} onChange={e => setPersona(e.target.value)}
-            style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "6px 10px", fontSize: 12.5, color: "var(--text)", outline: "none" }}>
+            style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "6px 10px", fontSize: TXT.micro, color: "var(--text)", outline: "none" }}>
             <option value="">Todo el equipo</option>
             {miId && <option value={miId}>🙋 Solo lo mío</option>}
             {perfiles.filter(p => p.id !== miId).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
           </select>
         </label>
-        <span style={{ color: "var(--dim)", fontSize: 11.5 }}>
+        <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>
           {vis.length} · <span style={{ color: "var(--muted)" }}>{vis.filter(i => i.kind === "act").length} activ.</span> · <span style={{ color: "var(--muted)" }}>{vis.filter(i => i.kind === "caso").length} casos</span>
         </span>
       </div>
@@ -113,7 +114,7 @@ export default function Agenda({ items, perfiles, miId }: {
       {/* Leyenda de etapas. Muestra las de cine (las comunes); cada categoría
           reusa esta paleta, así que sirve de referencia aunque los nombres
           exactos varíen por categoría. */}
-      <div className="card" style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 10.5, color: "var(--dim)", marginTop: 12 }}>
+      <div className="card" style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: TXT.chip, color: "var(--dim)", marginTop: 12 }}>
         {ETAPAS_CINE.map(e => (
           <span key={e.clave}><i style={{ display: "inline-block", width: 16, height: 7, background: e.color, borderRadius: 4, verticalAlign: "middle", marginRight: 4 }} />{e.nombre}</span>
         ))}
@@ -217,7 +218,7 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, apagado }: {
             <button key={i} className={`vtab ${zoom === i ? "on" : ""}`} onClick={() => cambiarZoom(i)}>{z.lbl}</button>
           ))}
         </span>
-        <span style={{ color: "var(--muted)", fontSize: 12, marginLeft: "auto" }}>{fmtCorto(ymd(new Date(inicioT)))} — {fmtCorto(ymd(new Date(finT - DAY)))}</span>
+        <span style={{ color: "var(--muted)", fontSize: TXT.micro, marginLeft: "auto" }}>{fmtCorto(ymd(new Date(inicioT)))} — {fmtCorto(ymd(new Date(finT - DAY)))}</span>
       </div>
 
       {!dentro.length && <div className="empty" style={{ padding: "20px 0" }}>Nada con fecha en esta ventana.</div>}
@@ -345,7 +346,7 @@ function Calendario({ vis, mesOff, setMesOff, colorDe, icoDe, apagado }: {
         <button className="vtab" onClick={() => setMesOff(0)}>Hoy</button>
         <button className="vtab" title="Mes anterior" onClick={() => setMesOff(s => s - 1)}>‹</button>
         <button className="vtab" title="Mes siguiente" onClick={() => setMesOff(s => s + 1)}>›</button>
-        <span style={{ color: "var(--muted)", fontSize: 13, textTransform: "capitalize" }}>{MESES[m]} {y}</span>
+        <span style={{ color: "var(--muted)", fontSize: TXT.micro, textTransform: "capitalize" }}>{MESES[m]} {y}</span>
       </div>
 
       <div className="ag-cal">

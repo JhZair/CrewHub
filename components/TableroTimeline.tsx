@@ -5,6 +5,7 @@ import { cambiarEstado } from "@/app/actions";
 import { celebrarResuelto } from "@/lib/celebra";
 import { plazoDe } from "@/lib/plazo";
 import { icoTipo } from "@/lib/tipos";
+import { TXT } from "@/lib/texto";
 
 // Nombre corto que distingue homónimos: "John Oros" → "John O."
 function corto(n?: string | null) {
@@ -107,7 +108,7 @@ export default function TableroTimeline({ casos }: { casos: Caso[] }) {
           {FILAS.map(f => (
             <Fragment key={f.estado}>
               <div className={`tl-rowlabel est-${f.estado}`}>
-                <span style={{ color: f.color, fontWeight: 700, fontSize: 11.5, letterSpacing: ".5px" }}>
+                <span style={{ color: f.color, fontWeight: 700, fontSize: TXT.chip, letterSpacing: ".5px" }}>
                   {f.icon} {f.label}
                 </span>
                 <span className="tl-n">{conteo(f.estado)}</span>
@@ -129,7 +130,16 @@ export default function TableroTimeline({ casos }: { casos: Caso[] }) {
                         <div key={c.id} className="tl-card" draggable
                           style={{ ["--st" as any]: f.color }}
                           onDragStart={e => e.dataTransfer.setData("text/plain", c.id)}
-                          onClick={() => router.push(`/caso/${c.id}`)}>
+                          /* Igual que en el Kanban: no es un <a>, así que Ctrl/⌘+clic
+                             o clic central se imitan a mano para abrir en pestaña nueva. */
+                          onClick={e => {
+                            const url = `/caso/${c.id}`;
+                            if (e.metaKey || e.ctrlKey) { window.open(url, "_blank", "noopener"); return; }
+                            router.push(url);
+                          }}
+                          onAuxClick={e => {
+                            if (e.button === 1) { e.preventDefault(); window.open(`/caso/${c.id}`, "_blank", "noopener"); }
+                          }}>
                           <div className="tt">{icoTipo(c.tipo)} {c.titulo}</div>
                           <div className="mt">
                             {c.resp && <span className="tl-resp">{corto(c.resp)}</span>}

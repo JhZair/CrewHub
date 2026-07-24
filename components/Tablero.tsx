@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { plazoDe } from "@/lib/plazo";
 import { icoTipo } from "@/lib/tipos";
+import { TXT } from "@/lib/texto";
 import { ICO_ENT, rutaEntidad } from "@/lib/secciones";
 import { CERRADOS } from "@/lib/familia";
 import BarrasProgreso from "@/components/BarrasProgreso";
@@ -174,8 +175,19 @@ export default function Tablero({ columnas, archivado = false }: {
                 draggable
                 onDragStart={() => setArrastrando(p.id)}
                 onDragEnd={() => { setArrastrando(null); setSobre(null); }}
-                onClick={() => router.push(`/caso/${p.id}`)}>
-                <div style={{ fontSize: 12, fontWeight: 600, lineHeight: 1.3 }}>
+                /* La tarjeta no es un <a> (es arrastrable y lleva enlaces dentro),
+                   así que el navegador no sabe abrirla en otra pestaña. Se imita a
+                   mano: Ctrl/⌘+clic o clic central → pestaña nueva; clic normal →
+                   navega en la misma. */
+                onClick={e => {
+                  const url = `/caso/${p.id}`;
+                  if (e.metaKey || e.ctrlKey) { window.open(url, "_blank", "noopener"); return; }
+                  router.push(url);
+                }}
+                onAuxClick={e => {
+                  if (e.button === 1) { e.preventDefault(); window.open(`/caso/${p.id}`, "_blank", "noopener"); }
+                }}>
+                <div style={{ fontSize: TXT.base, fontWeight: 600, lineHeight: 1.3 }}>
                   {icoTipo(p.tipo)} {p.titulo}
                 </div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 5, flexWrap: "wrap" }}>
@@ -191,11 +203,11 @@ export default function Tablero({ columnas, archivado = false }: {
                       style={{ color: "var(--dim)" }}>👁</span>
                   )}
                   {(p.resp as any)?.nombre
-                    ? <span className="tv-resp" style={{ fontSize: 10, padding: "1px 8px" }}>{corto((p.resp as any).nombre)}</span>
+                    ? <span className="tv-resp" style={{ fontSize: TXT.chip, padding: "1px 8px" }}>{corto((p.resp as any).nombre)}</span>
                     : ["tarea", "problema", "pago"].includes(p.tipo) &&
-                      <span style={{ color: "var(--yellow)", fontSize: 10.5 }}>⚠ sin resp.</span>}
+                      <span style={{ color: "var(--yellow)", fontSize: TXT.chip }}>⚠ sin resp.</span>}
                   {d !== null && !CERRADOS.includes(p.estado) && (
-                    <span style={{ color: vencColor!, fontSize: 10.5, fontWeight: 700 }}>
+                    <span style={{ color: vencColor!, fontSize: TXT.chip, fontWeight: 700 }}>
                       {d < 0 ? `vencido ${Math.abs(d)}d` : d === 0 ? "HOY" : `${d}d`}
                     </span>
                   )}
