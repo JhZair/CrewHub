@@ -2,9 +2,19 @@
 import { agregarEquipoProyecto, quitarEquipoProyecto, editarCargoProyecto } from "@/app/actions";
 import { EntPicker, type CatalogoItem } from "@/components/Composer";
 import MiniSelect from "@/components/MiniSelect";
+import Avatar from "@/components/Avatar";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
+
+/* «desde ene 2024» — el mes y el año en que se sumó al proyecto. Da contexto
+   sin ocupar una fila: cuánto lleva alguien es parte de saber quién es en la
+   película. Sin fecha no se inventa nada. */
+const desdeTxt = (f?: string | null) => {
+  if (!f) return "";
+  const d = new Date(f + "T12:00:00");
+  return isNaN(d.getTime()) ? "" : `desde ${d.toLocaleDateString("es-PE", { month: "short", year: "numeric" })}`;
+};
 
 /* Quién hace esta película — desde «idea», no desde la postulación.
  *
@@ -113,11 +123,24 @@ export default function EquipoProyecto({ proyectoId, equipo, personas }: {
           <MiniSelect value={m.cargo || ""} options={OPC}
             onSelect={v => cambiarCargo(m.id, v)}
             buttonClass="cargo" buttonStyle={{ cursor: "pointer", border: "none" }} />
-          <span style={{ flex: 1, textAlign: "right" }}>
-            <Link href={`/entidad/persona/${m.persona?.id}`} style={{ color: "var(--text)" }}>
-              {m.persona?.alias || m.persona?.nombre} →
-            </Link>
-          </span>
+          <span style={{ flex: 1 }} />
+          {/* Foto + nombre + desde: la cara de quien hace la película, no solo
+              su nombre. Para la directora —con quien nace el proyecto— importa
+              más que para nadie. */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+            <Avatar nombre={m.persona?.nombre} src={m.persona?.foto_url} size={30} />
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", lineHeight: 1.25, minWidth: 0 }}>
+              <Link href={`/entidad/persona/${m.persona?.id}`}
+                style={{ color: "var(--text)", fontWeight: 600 }}>
+                {m.persona?.alias || m.persona?.nombre} →
+              </Link>
+              {(desdeTxt(m.desde) || m.persona?.tipo) && (
+                <span style={{ color: "var(--dim)", fontSize: 11 }}>
+                  {[m.persona?.tipo, desdeTxt(m.desde)].filter(Boolean).join(" · ")}
+                </span>
+              )}
+            </div>
+          </div>
           {quitando === m.id ? (
             <span style={{ fontSize: 11.5, marginLeft: 8, whiteSpace: "nowrap" }}>
               ¿quitar? <button style={{ color: "var(--red)", fontWeight: 700 }} onClick={() => quitar(m.id)}>sí</button>

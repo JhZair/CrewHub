@@ -906,7 +906,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
                   <Doc href={p.acta_url} titulo="Acta de compromiso">📜 Acta {p.codigo_acta}</Doc>
                 )}
                 {!p.codigo_acta && p.acta_url && (
-                  <Doc href={p.acta_url} titulo="Acta de compromiso">📜 Acta</Doc>
+                  <Doc href={p.acta_url} titulo="Acta de compromiso">📜 Acta de compromiso</Doc>
                 )}
                 {p.matriz_jurado_url && (
                   <Doc href={p.matriz_jurado_url} titulo="Matriz de evaluación del jurado">⚖️ Matriz jurado</Doc>

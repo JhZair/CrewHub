@@ -389,12 +389,12 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         .eq("proyecto_id", params.id).order("fecha_inicio").order("orden").order("creado_en"),
       supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
       supabase.from("postulaciones")
-        .select("id,codigo,estado,codigo_acta,monto_adjudicado,fecha_firma_acta,fecha_limite_rendicion,fecha_prorroga,acta_url,conv:convocatorias(id,codigo,nombre,anio)")
+        .select("id,codigo,estado,codigo_acta,monto_adjudicado,fecha_firma_acta,fecha_limite_rendicion,fecha_prorroga,acta_url,matriz_jurado_url,puntaje_jurado,feedback_jurado,conv:convocatorias(id,codigo,nombre,anio),emp:empresas(id,nombre),equipo:postulacion_equipo(cargo,persona:personas(id,nombre,alias))")
         .eq("proyecto_id", params.id).order("creado_en", { ascending: false }),
       /* Quién hace esta película, desde «idea». Distinto de
          `postulacion_equipo`: ese es quién se presentó a UN concurso. */
       supabase.from("proyecto_equipo")
-        .select("id,cargo,desde,hasta,persona:personas(id,nombre,alias)")
+        .select("id,cargo,desde,hasta,persona:personas(id,nombre,alias,foto_url,tipo)")
         .eq("proyecto_id", params.id).order("cargo"),
       // Cronogramas que ya se usaron antes: «las coberturas son casi la misma»
       supabase.from("plantillas_cronograma")
@@ -1148,7 +1148,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               )}
               {ent.acta_url && (
                 <a href={ent.acta_url} target="_blank" rel="noopener noreferrer"
-                  className="btn btn-ghost" style={{ fontSize: TXT.chip, padding: "7px 12px" }}>🖋 Acta</a>
+                  className="btn btn-ghost" style={{ fontSize: TXT.chip, padding: "7px 12px" }}>🖋 Acta de compromiso</a>
               )}
               {params.tipo !== "empresa" && ent.renca_url && (
                 <a href={ent.renca_url} target="_blank" rel="noopener noreferrer"
@@ -1543,60 +1543,9 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             </div>
           </div>
 
-          {params.tipo === "proyecto" && postusProy.length > 0 && (
-            <div className="linked" style={{ marginTop: 14 }}>
-              <h4>🎯 Postulaciones y fondos · {postusProy.length}</h4>
-              {postusProy.map((p: any) => (
-                <div key={p.id} style={{ borderBottom: "1px solid var(--border)", padding: "10px 0" }}>
-                  {/* línea 1: el concurso */}
-                  <Link href={`/entidad/postulacion/${p.id}`}
-                    style={{ color: "var(--text)", fontWeight: 600, fontSize: TXT.micro, display: "block", lineHeight: 1.4 }}>
-                    {ICONO_ESTADO[p.estado] || "🎯"} {p.conv?.nombre || p.codigo || "Postulación"} →
-                  </Link>
-                  {/* línea 2: año + estado */}
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6 }}>
-                    {p.conv?.anio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{p.conv.anio}</span>}
-                    <span className="badge" style={{
-                      color: p.estado === "ganadora" ? "var(--green)" : "var(--muted)", background: "#1c1c2c",
-                    }}>{(p.estado || "").replace(/_/g, " ")}</span>
-                  </div>
-                  {/* la ejecución, en su caja verde */}
-                  {p.estado === "ganadora" && (
-                    <div style={{ marginTop: 8, padding: "8px 10px", background: "var(--bg)", borderRadius: 9, borderLeft: "3px solid var(--green)", fontSize: TXT.chip, color: "var(--muted)" }}>
-                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                        {p.codigo_acta && <span style={{ color: "var(--green)", fontWeight: 700 }}>{p.codigo_acta}</span>}
-                        {p.monto_adjudicado && (
-                          <span style={{ color: "var(--teal)", fontWeight: 700 }}>
-                            S/ {parseFloat(p.monto_adjudicado).toLocaleString("es-PE")}
-                          </span>
-                        )}
-                        {p.fecha_firma_acta && <span>🖋 {verFicha("f", p.fecha_firma_acta)}</span>}
-                      </div>
-                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 5 }}>
-                        {(p.fecha_prorroga || p.fecha_limite_rendicion) && (
-                          <span style={{ color: "var(--yellow)" }}>
-                            🧾 rinde: {verFicha("f", p.fecha_prorroga || p.fecha_limite_rendicion)}{p.fecha_prorroga ? " (prórroga)" : ""}
-                          </span>
-                        )}
-                        {p.acta_url && (
-                          <a href={p.acta_url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--violet)" }}>📄 Acta</a>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {params.tipo === "proyecto" && (
-            <>
-              {/* Antes que el cliente: la directora es con quien nace el
-                  proyecto; el cliente solo existe si es un encargo. */}
-              <EquipoProyecto proyectoId={params.id} equipo={equipoProy} personas={personasCat} />
-              <ClienteProyecto proyectoId={params.id} cliente={clienteDe} personas={personasCat} />
-            </>
-          )}
+          {/* Postulaciones y fondos, equipo del proyecto y cliente ya no viven
+              en el carné: se mudaron a la pestaña «Trayectoria» del proyecto
+              (main), igual que los miembros de una empresa. */}
 
           {params.tipo === "convocatoria" && (
             <Postulaciones convocatoriaId={params.id} postulaciones={postus}
@@ -1777,9 +1726,9 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         <main>
           {/* 📚 Repositorio: todo lo que se sabe y no cabe en el formulario.
               En cualquier entidad — un proyecto acumula referencias y prensa
-              igual que una persona acumula obras. En PERSONA y EMPRESA vive en
-              su propia pestaña (abajo), no aquí arriba. */}
-          {params.tipo !== "persona" && params.tipo !== "empresa" && (
+              igual que una persona acumula obras. En PERSONA, EMPRESA y PROYECTO
+              vive en su propia pestaña (abajo), no aquí arriba. */}
+          {params.tipo !== "persona" && params.tipo !== "empresa" && params.tipo !== "proyecto" && (
             <>
               <Repositorio entidadTipo={params.tipo} entidadId={params.id}
                 objetos={objetosDe} verif={verifDe} />
@@ -2494,22 +2443,189 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             }
             if (params.tipo !== "proyecto" && params.tipo !== "convocatoria") return vida;
 
+            // Cronograma: común a proyecto y convocatoria
             const vivasCrono = cronoActs.filter((a: any) => a.estado !== "cancelada");
             const proxima = vivasCrono
               .filter((a: any) => a.estado === "planificada")
               .sort((a: any, b: any) => (a.fecha_inicio < b.fecha_inicio ? -1 : 1))[0];
             const etiquetaCrono = `📅 Cronograma · ${vivasCrono.length}` +
               (proxima ? ` · próx. ${new Date(proxima.fecha_inicio + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short" })}` : "");
+            const cronoNode = (
+              <CronogramaProyecto key="crono" dueno={params.tipo as "proyecto" | "convocatoria"}
+                duenoId={params.id} actividades={cronoActs} perfiles={perfilesCat}
+                plantillas={plantillas} tipoProyecto={ent.tipo || ""} />
+            );
 
+            /* PROYECTO en pestañas, como empresa/persona:
+                 Trabajo → Cronograma → Trayectoria → Repositorio → Historial.
+               La Trayectoria reúne lo que antes vivía apilado en el carné:
+               postulaciones y fondos, el equipo del proyecto y su cliente. */
+            if (params.tipo === "proyecto") {
+              const postusCard = postusProy.length > 0 ? (
+                <div className="linked">
+                  <h4>🎯 Postulaciones y fondos · {postusProy.length}</h4>
+                  {postusProy.map((p: any) => (
+                    <div key={p.id} style={{ borderBottom: "1px solid var(--border)", padding: "10px 0" }}>
+                      <Link href={`/entidad/postulacion/${p.id}`}
+                        style={{ color: "var(--text)", fontWeight: 600, fontSize: TXT.meta, display: "block", lineHeight: 1.4 }}>
+                        {ICONO_ESTADO[p.estado] || "🎯"} {p.conv?.nombre || p.codigo || "Postulación"} →
+                      </Link>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6, flexWrap: "wrap" }}>
+                        {p.conv?.anio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c", fontSize: TXT.chip }}>{p.conv.anio}</span>}
+                        <span className="badge" style={{
+                          color: p.estado === "ganadora" ? "var(--green)" : "var(--muted)", background: "#1c1c2c", fontSize: TXT.chip,
+                        }}>{(p.estado || "").replace(/_/g, " ")}</span>
+                        {/* Con qué empresa se presentó: contexto que faltaba —un
+                            proyecto se presenta a través de una persona jurídica. */}
+                        {p.emp && (
+                          <Link href={`/entidad/empresa/${p.emp.id}`} className="badge"
+                            style={{ color: "var(--teal)", background: "rgba(45,212,191,.10)", textTransform: "none", letterSpacing: 0, fontWeight: 600, fontSize: TXT.chip }}>
+                            🏢 {p.emp.nombre}
+                          </Link>
+                        )}
+                      </div>
+                      {p.estado === "ganadora" && (
+                        <div style={{ marginTop: 8, padding: "8px 10px", background: "var(--bg)", borderRadius: 9, borderLeft: "3px solid var(--green)", fontSize: TXT.chip, color: "var(--muted)" }}>
+                          {/* Qué ganó: el monto adjudicado */}
+                          {p.monto_adjudicado && (
+                            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                              <span style={{ color: "var(--teal)", fontWeight: 700 }}>
+                                S/ {parseFloat(p.monto_adjudicado).toLocaleString("es-PE")}
+                              </span>
+                            </div>
+                          )}
+                          {/* El acta con su código (139-2025-DAFO ES el código del
+                              acta) y su firma van juntas: el 🖋 es la fecha en que
+                              se firmó ESE documento, no un dato suelto. */}
+                          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 5 }}>
+                            {(p.acta_url || p.codigo_acta || p.fecha_firma_acta) && (
+                              <span style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                                {p.acta_url
+                                  ? <a href={p.acta_url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--violet)" }}>📄 Acta de compromiso{p.codigo_acta ? ` ${p.codigo_acta}` : ""}</a>
+                                  : <span style={{ color: "var(--dim)" }}>📄 Acta de compromiso{p.codigo_acta ? ` ${p.codigo_acta}` : ""}</span>}
+                                {p.fecha_firma_acta && <span>🖋 firmada {verFicha("f", p.fecha_firma_acta)}</span>}
+                              </span>
+                            )}
+                            {/* La matriz del jurado, junto al acta —como en la
+                                ficha de la postulación: son los dos papeles del
+                                fallo. */}
+                            {p.matriz_jurado_url && (
+                              <a href={p.matriz_jurado_url} target="_blank" rel="noopener noreferrer"
+                                title="Matriz de evaluación del jurado" style={{ color: "var(--violet)" }}>📊 Matriz jurado</a>
+                            )}
+                            {(p.fecha_prorroga || p.fecha_limite_rendicion) && (
+                              <span style={{ color: "var(--yellow)" }}>
+                                🧾 rinde: {verFicha("f", p.fecha_prorroga || p.fecha_limite_rendicion)}{p.fecha_prorroga ? " (prórroga)" : ""}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      {/* Lo que dijo el jurado: puntaje de la matriz y su
+                          comentario. Va para cualquier postulación evaluada —gane
+                          o pierda—, porque el fallo del jurado no es solo del que
+                          ganó. */}
+                      {p.puntaje_jurado && (
+                        <div style={{ marginTop: 8 }}>
+                          <span style={{ color: "var(--yellow)", fontWeight: 700, fontSize: TXT.micro }}>
+                            ⚖️ {p.puntaje_jurado} pts — matriz del jurado
+                          </span>
+                        </div>
+                      )}
+                      {/* El comentario, con «ver más»: largo se recorta y se abre
+                          en su sitio; corto se muestra entero. Mismo patrón que la
+                          ficha de la postulación. */}
+                      {p.feedback_jurado && (
+                        p.feedback_jurado.length > 180 ? (
+                          <details className="jurado-box" style={{ marginTop: 8 }}>
+                            <summary>
+                              <b style={{ color: "var(--text)" }}>💬 Comentario del jurado</b>
+                              <span className="jx"><br />{p.feedback_jurado.slice(0, p.feedback_jurado.lastIndexOf(" ", 180))}… <i>ver más</i></span>
+                            </summary>
+                            <div style={{ marginTop: 6 }}>{p.feedback_jurado}</div>
+                          </details>
+                        ) : (
+                          <div className="jurado-box" style={{ marginTop: 8 }}>
+                            <b style={{ color: "var(--text)" }}>💬 Comentario del jurado</b><br />
+                            {p.feedback_jurado}
+                          </div>
+                        )
+                      )}
+                      {/* El equipo con que se presentó a ESE concurso (distinto
+                          del equipo del proyecto). En la ganadora es «el equipo
+                          ganador»: el dato de contexto que faltaba. */}
+                      {(p.equipo || []).length > 0 && (
+                        <div style={{ display: "flex", gap: 5, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+                          <span style={{ color: p.estado === "ganadora" ? "var(--green)" : "var(--dim)", fontSize: TXT.chip, fontWeight: p.estado === "ganadora" ? 700 : 400 }}>
+                            {p.estado === "ganadora" ? "🏆 Equipo ganador:" : "👥 Equipo presentado:"}
+                          </span>
+                          {p.equipo.map((e: any, i: number) => (
+                            <Link key={i} href={`/entidad/persona/${e.persona?.id}`} className="badge" title={e.cargo || ""}
+                              style={{ color: "var(--violet)", background: "rgba(167,139,250,.10)", textTransform: "none", letterSpacing: 0, fontWeight: 600, fontSize: TXT.chip }}>
+                              {e.persona?.alias || e.persona?.nombre}
+                              {e.cargo && <span style={{ color: "var(--dim)", fontWeight: 400 }}> · {e.cargo}</span>}
+                            </Link>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : null;
+              /* Orden de la Trayectoria: primero quién hace la película (el
+                 equipo del proyecto), luego su recorrido ante los fondos —cada
+                 postulación con su empresa y su equipo ganador—, y al final el
+                 cliente, que solo existe si el proyecto es un encargo. */
+              const trayectoriaProy = (
+                <>
+                  <EquipoProyecto proyectoId={params.id} equipo={equipoProy} personas={personasCat} />
+                  {postusCard}
+                  <ClienteProyecto proyectoId={params.id} cliente={clienteDe} personas={personasCat} />
+                </>
+              );
+              const repoProy = (
+                <>
+                  <Repositorio entidadTipo={params.tipo} entidadId={params.id} objetos={objetosDe} verif={verifDe} />
+                  {objetosVinculados.length > 0 && (
+                    <div className="linked" style={{ marginTop: 14 }}>
+                      <h4>📚 Del repositorio · {objetosVinculados.length}</h4>
+                      {objetosVinculados.map((o: any) => (
+                        <Link key={o.id} href={`/objeto/${o.id}`} className="info-row" style={{ textDecoration: "none" }}>
+                          {previewCandidates(o.url, 200).length
+                            ? <Miniatura url={o.url} size={42} alt={o.titulo} />
+                            : <span>{icoObjeto(o.tipo)}</span>}
+                          <b style={{ flex: 1, fontSize: TXT.micro, color: "var(--text)" }}>{o.titulo}</b>
+                          <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>
+                            de {duenosObj.get(`${o.entidad_tipo}:${o.entidad_id}`) || "—"}
+                          </span>
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </>
+              );
+              const histProy = eventosVis.length > 0 ? histInner : (
+                <div className="empty" style={{ padding: "18px 0" }}>Sin actividad registrada todavía.</div>
+              );
+              return (
+                <TabsPanel
+                  labels={[
+                    `📋 Trabajo · ${activas.length}`,
+                    etiquetaCrono,
+                    `🏆 Trayectoria · ${postusProy.length + equipoProy.length}`,
+                    `📚 Repositorio · ${objetosDe.length}`,
+                    `🕐 Historial · ${eventosVis.length}`,
+                  ]}
+                  paneles={[trabajoNode, cronoNode, trayectoriaProy, repoProy, histProy]}
+                />
+              );
+            }
+
+            // Convocatoria: las dos pestañas de siempre
             return (
               <TabsPanel
                 labels={[`🔥 Actividad viva · ${activas.length}`, etiquetaCrono]}
-                paneles={[
-                  vida,
-                  <CronogramaProyecto key="crono" dueno={params.tipo as "proyecto" | "convocatoria"}
-                    duenoId={params.id} actividades={cronoActs} perfiles={perfilesCat}
-                    plantillas={plantillas} tipoProyecto={ent.tipo || ""} />,
-                ]}
+                paneles={[vida, cronoNode]}
               />
             );
           })()}

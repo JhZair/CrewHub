@@ -1327,7 +1327,7 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(.65);cursor:
 .lt-conn i{position:absolute;left:16px;top:50%;transform:translateY(-50%);font-style:normal;font-size:10px;color:var(--dim);white-space:nowrap}
 
 /* Comentario del jurado, colapsable con "ver más..." */
-.jurado-box{margin-top:10px;padding:10px 12px;background:var(--bg);border-radius:10px;border-left:3px solid var(--violet);font-size:12.5px;line-height:1.55;color:var(--muted)}
+.jurado-box{margin-top:10px;padding:10px 12px;background:var(--bg);border-radius:10px;border-left:3px solid var(--violet);font-size:15px;line-height:1.55;color:var(--muted)}
 .jurado-box summary{cursor:pointer;list-style:none}
 .jurado-box summary::-webkit-details-marker{display:none}
 .jurado-box summary i{color:var(--violet);font-style:normal;font-weight:700}
