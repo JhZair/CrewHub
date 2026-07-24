@@ -201,7 +201,25 @@ export default async function Caso({ params }: { params: { id: string } }) {
   const catEnt: Record<string, { id: string; nombre: string; tipo?: string; sub?: string }[]> = {
     ...ents, objeto: objsCat,
   };
-  const actualesVinc = chips.map((v: any) => ({ tipo: v.entidad_tipo, id: v.entidad_id, nombre: v.nombre }));
+  /* Cartel (póster/logo) de los proyectos y empresas vinculados, para que su
+     chip muestre la imagen en vez del ícono genérico. */
+  const cartelVinc = new Map<string, string>();
+  {
+    const idsMedia = chips
+      .filter((v: any) => v.entidad_tipo === "proyecto" || v.entidad_tipo === "empresa")
+      .map((v: any) => v.entidad_id);
+    if (idsMedia.length) {
+      const { data: mm } = await supabase.from("entidad_media")
+        .select("entidad_tipo,entidad_id,cartel_url").in("entidad_id", idsMedia);
+      (mm || []).forEach((m: any) => {
+        if (m.cartel_url) cartelVinc.set(`${m.entidad_tipo}:${m.entidad_id}`, m.cartel_url);
+      });
+    }
+  }
+  const actualesVinc = chips.map((v: any) => ({
+    tipo: v.entidad_tipo, id: v.entidad_id, nombre: v.nombre,
+    cartel: cartelVinc.get(`${v.entidad_tipo}:${v.entidad_id}`) || null,
+  }));
 
   /* 🧰 TRABAJO RELACIONADO — lo que se editó en las entidades vinculadas
      mientras este caso estuvo abierto. Reúne bajo la orden de trabajo las

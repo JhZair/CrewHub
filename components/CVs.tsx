@@ -1,7 +1,9 @@
 "use client";
 import { guardarCv, borrarCv } from "@/app/actions";
 import MiniSelect from "@/components/MiniSelect";
+import Miniatura from "@/components/Miniatura";
 import { DIAS_CV } from "@/lib/objetos";
+import { TXT } from "@/lib/texto";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -54,14 +56,17 @@ export default function CVs({ personaId, cvs, especialidades }: {
   return (
     <div className="linked" style={{ marginTop: 14 }}>
       <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}>
-        <h4 style={{ margin: 0, fontSize: 11, letterSpacing: 1.2, textTransform: "uppercase", color: "var(--dim)" }}>
+        <h4 style={{ margin: 0, fontSize: TXT.chip, letterSpacing: 1.2, textTransform: "uppercase", color: "var(--dim)" }}>
           📋 CVs por enfoque · {cvs.length}
         </h4>
         <span style={{ flex: 1 }} />
         {!abierto && (
-          <button className="btn btn-ghost" style={{ padding: "5px 12px", fontSize: 12 }}
+          <button className="btn btn-ghost" style={{ padding: "5px 12px", fontSize: TXT.chip }}
             onClick={() => setAbierto(true)}>＋ Agregar</button>
         )}
+      </div>
+      <div style={{ color: "var(--dim)", fontSize: TXT.micro, margin: "-2px 0 8px" }}>
+        Uno por cada rol con el que postula — el fondo lo exige así.
       </div>
 
       {error && <div className="err-inline">⚠ {error}</div>}
@@ -69,23 +74,23 @@ export default function CVs({ personaId, cvs, especialidades }: {
       {abierto && (
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 10, padding: 10, background: "var(--bg)", borderRadius: 10 }}>
           {libres.length === 0 && !editando ? (
-            <span style={{ color: "var(--yellow)", fontSize: 12 }}>
+            <span style={{ color: "var(--yellow)", fontSize: TXT.chip }}>
               Ya tiene CV de todas sus especialidades. Agrega una nueva en ✏️ Editar.
             </span>
           ) : (
             <>
               <MiniSelect value={enfoque} options={[["", "— enfoque —"], ...libres.map(e => [e, e])]}
                 onSelect={v => setEnfoque(v)}
-                buttonStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, color: enfoque ? "var(--text)" : "var(--dim)", minWidth: 180, justifyContent: "space-between" }} />
+                buttonStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: TXT.micro, color: enfoque ? "var(--text)" : "var(--dim)", minWidth: 180, justifyContent: "space-between" }} />
               <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://drive.google.com/..."
-                style={{ flex: 1, minWidth: 200, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, color: "var(--text)", outline: "none" }} />
-              <button className="btn" style={{ padding: "7px 14px", fontSize: 12 }}
+                style={{ flex: 1, minWidth: 200, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: TXT.micro, color: "var(--text)", outline: "none" }} />
+              <button className="btn" style={{ padding: "7px 14px", fontSize: TXT.chip }}
                 disabled={!enfoque || !url.trim() || guardando} onClick={guardar}>
                 {guardando ? "..." : editando ? "Actualizar" : "Guardar"}
               </button>
             </>
           )}
-          <button className="btn btn-ghost" style={{ padding: "7px 10px", fontSize: 12 }} onClick={limpiar}>Cancelar</button>
+          <button className="btn btn-ghost" style={{ padding: "7px 10px", fontSize: TXT.chip }} onClick={limpiar}>Cancelar</button>
         </div>
       )}
 
@@ -93,19 +98,24 @@ export default function CVs({ personaId, cvs, especialidades }: {
         const viejo = c.actualizado ? diasDe(c.actualizado) > DIAS_CV : false;
         return (
           <div key={c.id} className="eq-row" style={{ alignItems: "center" }}>
+            {/* La cara del CV: miniatura de la primera página (Drive) o del
+                archivo. Si el link no da imagen, no ocupa espacio. */}
+            <a href={c.url} target="_blank" rel="noopener noreferrer" title={`Abrir CV · ${c.enfoque}`}>
+              <Miniatura url={c.url} size={40} alt={c.enfoque} />
+            </a>
             <span className="cargo">{c.enfoque}</span>
             <a href={c.url} target="_blank" rel="noopener noreferrer"
-              style={{ color: "var(--text)", fontSize: 12.5 }}>📋 abrir ↗</a>
+              style={{ color: "var(--text)", fontSize: TXT.micro }}>📋 abrir ↗</a>
             <span style={{ flex: 1 }} />
             {c.actualizado && (
-              <span style={{ color: viejo ? "var(--yellow)" : "var(--dim)", fontSize: 11 }}
+              <span style={{ color: viejo ? "var(--yellow)" : "var(--dim)", fontSize: TXT.chip }}
                 title={viejo ? "Conviene rehacerlo: lleva más de un año" : "Última actualización"}>
                 {viejo ? "⚠ " : ""}{fmt(c.actualizado)}
               </span>
             )}
             <button className="dato-btn" style={{ marginLeft: 8 }} onClick={() => editar(c)}>✎</button>
             {borrando === c.id ? (
-              <span style={{ fontSize: 11.5, marginLeft: 6, whiteSpace: "nowrap" }}>
+              <span style={{ fontSize: TXT.chip, marginLeft: 6, whiteSpace: "nowrap" }}>
                 ¿borrar? <button style={{ color: "var(--red)", fontWeight: 700 }} onClick={() => quitar(c.id)}>sí</button>
                 {" / "}<button style={{ color: "var(--dim)" }} onClick={() => setBorrando(null)}>no</button>
               </span>
@@ -117,7 +127,7 @@ export default function CVs({ personaId, cvs, especialidades }: {
       })}
 
       {!cvs.length && !abierto && (
-        <div style={{ color: "var(--dim)", fontSize: 12.5, padding: "6px 0" }}>
+        <div style={{ color: "var(--dim)", fontSize: TXT.micro, padding: "6px 0" }}>
           Sin CVs. Se necesita uno por cada rol con el que postule.
         </div>
       )}

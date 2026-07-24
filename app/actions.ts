@@ -1380,6 +1380,30 @@ export async function guardarFotoPersona(personaId: string, url: string | null) 
   return {};
 }
 
+/* --- Imágenes de una entidad: portada (banner) + cartel (póster) ---
+   Sirve a cualquier tipo (proyecto, empresa, convocatoria…) desde la tabla
+   polimórfica `entidad_media`. Una fila por entidad; se hace UPSERT del campo
+   que cambió, sin pisar el otro. `url=null` la quita. */
+export async function guardarImagenEntidad(
+  tipo: string, id: string, campo: "portada" | "cartel", url: string | null
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const col = campo === "portada" ? "portada_url" : "cartel_url";
+  const { error } = await supabase.from("entidad_media").upsert(
+    { entidad_tipo: tipo, entidad_id: id, [col]: url || null, actualizado: new Date().toISOString() },
+    { onConflict: "entidad_tipo,entidad_id" }
+  );
+  if (error) return { error: error.message };
+  await supabase.from("actividad").insert({
+    entidad_tipo: tipo, entidad_id: id, actor_id: user.id, tipo: "dato",
+    detalle: { mensaje: url ? `cambió ${campo === "portada" ? "la portada" : "el cartel"}` : `quitó ${campo === "portada" ? "la portada" : "el cartel"}` },
+  });
+  revalidatePath(`/entidad/${tipo}/${id}`);
+  return {};
+}
+
 /* --- CVs por enfoque: uno por rol al que postula la persona --- */
 export async function guardarCv(personaId: string, enfoque: string, url: string, id?: string | null) {
   const supabase = createClient();

@@ -24,7 +24,7 @@ const ENT_ICO = ICO_ENT;
 
 export default function VinculosEditor({ pubId, actuales, catalogos }: {
   pubId: string;
-  actuales: { tipo: string; id: string; nombre: string }[];
+  actuales: { tipo: string; id: string; nombre: string; cartel?: string | null }[];
   catalogos: Record<string, { id: string; nombre: string }[]>;
 }) {
   const router = useRouter();
@@ -58,8 +58,12 @@ export default function VinculosEditor({ pubId, actuales, catalogos }: {
           {visibles.map(v => (
             <span key={v.tipo + v.id} className="echip">
               {/* Ruta central: un objeto del repositorio no vive en /entidad/… */}
-              <Link href={rutaEntidad(v.tipo, v.id) || `/entidad/${v.tipo}/${v.id}`} style={{ color: "inherit" }}>
-                {ENT_ICO[v.tipo] || "🔗"} {v.nombre}
+              <Link href={rutaEntidad(v.tipo, v.id) || `/entidad/${v.tipo}/${v.id}`} style={{ color: "inherit", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                {v.cartel
+                  // eslint-disable-next-line @next/next/no-img-element
+                  ? <img src={v.cartel} alt="" className="echip-cartel" referrerPolicy="no-referrer" />
+                  : <span>{ENT_ICO[v.tipo] || "🔗"}</span>}
+                {v.nombre}
               </Link>
               <button className="x" title="Quitar vínculo" onClick={() => quitar(v.tipo, v.id)}>×</button>
             </span>

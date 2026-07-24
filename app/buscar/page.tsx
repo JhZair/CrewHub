@@ -123,6 +123,8 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
   // propia (persona.usuario_id) y la del autor de un caso (publicacion.autor_id).
   let avatarDe = new Map<string, string | null>();
   let perfilNom = new Map<string, string>();   // id de perfil → nombre (iniciales)
+  // Cartel (póster) de proyectos/empresas de los resultados — clave `${tipo}:${id}`.
+  let carteles = new Map<string, string>();
   /* Título del padre de cada sub-caso encontrado: «Cámara A lista» a secas no
      dice nada — la mitad de un sub-caso es de quién es hijo. */
   let padreDe = new Map<string, string>();
@@ -417,6 +419,18 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
       (empEnJuego(b) ? 1 : 0) - (empEnJuego(a) ? 1 : 0)
       || String(a.nombre).localeCompare(String(b.nombre))
     ).slice(0, 10);
+    /* Carteles de los proyectos y empresas que se van a mostrar: un solo query
+       por los ids visibles, para adornar sus filas con el póster/logo. */
+    {
+      const idsMedia = [...proys.map((p: any) => p.id), ...emps.map((e: any) => e.id)];
+      if (idsMedia.length) {
+        const { data: mm } = await supabase.from("entidad_media")
+          .select("entidad_tipo,entidad_id,cartel_url").in("entidad_id", idsMedia);
+        (mm || []).forEach((m: any) => {
+          if (m.cartel_url) carteles.set(`${m.entidad_tipo}:${m.entidad_id}`, m.cartel_url);
+        });
+      }
+    }
     const equisTodos = (c6.data || []).filter((e: any) => coincide(
       `equipo ${e.nombre} ${e.folio} ${e.categoria} ${e.subcategoria} ${e.descripcion} ` + pal(e.estado)));
     equis = equisTodos.slice(0, 15);
@@ -587,6 +601,16 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
     </div>
   );
 
+  /* Póster/logo de una entidad (proyecto o empresa) si tiene cartel cargado;
+     si no, null (la fila queda igual). Mismo estilo que en la trayectoria. */
+  const poster = (tipo: string, id: string, size = 38) => {
+    const u = carteles.get(`${tipo}:${id}`);
+    if (!u) return null;
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={u} alt="" className="tr-poster" referrerPolicy="no-referrer"
+      style={{ width: size, height: size }} />;
+  };
+
   /* Chip de documento: si hay link, va al papel; si no, se muestra apagado
      —que el dato exista y el archivo no es información, no un hueco que
      esconder. `fila-encima` lo levanta sobre la capa clickable de la fila. */
@@ -756,6 +780,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
                 )}
               </>
             ) : null}>
+            {poster("proyecto", p.id)}
             <b>{p.nombre}</b>
             {p.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{p.folio}</span>}
             {p.tipo && (
@@ -831,6 +856,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
                 )}
               </>
             }>
+            {poster("empresa", e.id)}
             <b>{e.nombre}</b>
             {/* De quién es y cómo está: sin esto, "⚠ SUNAT" en una empresa
                 externa o en cierre parece un pendiente tuyo, y no lo es. */}
