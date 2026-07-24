@@ -2659,6 +2659,70 @@ export async function quitarEquipoProyecto(id: string, proyectoId: string) {
   return {};
 }
 
+/* ── Los ACTORES SOCIALES de un PROYECTO ──
+ *
+ * Los personajes de la vida real que el documental retrata. Ni equipo (quienes
+ * lo hacen) ni cliente (para quién es un encargo): a quiénes se cuenta. Cada
+ * uno enlaza a su ficha de persona y lleva un rol y una descripción del
+ * personaje —el jurado DAFO valora a quién se retrata. */
+export async function agregarActorProyecto(proyectoId: string, personaId: string, rol: string, descripcion: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!personaId) return { error: "Elige la persona." };
+  const { error } = await supabase.from("proyecto_actores").insert({
+    proyecto_id: proyectoId, persona_id: personaId,
+    rol: rol.trim() || null, descripcion: descripcion.trim() || null,
+  });
+  if (error) return { error: error.message };
+  const { data: per } = await supabase.from("personas")
+    .select("nombre,alias").eq("id", personaId).maybeSingle();
+  await supabase.from("actividad").insert({
+    entidad_tipo: "proyecto", entidad_id: proyectoId, actor_id: user.id, tipo: "miembro",
+    detalle: { mensaje: `sumó a ${per?.alias || per?.nombre || "alguien"} como actor social${rol.trim() ? ` (${rol.trim()})` : ""}` },
+  });
+  revalidatePath(`/entidad/proyecto/${proyectoId}`);
+  return {};
+}
+
+export async function editarActorProyecto(id: string, proyectoId: string, rol: string, descripcion: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: prev } = await supabase.from("proyecto_actores")
+    .select("rol,per:personas(nombre,alias)").eq("id", id).maybeSingle();
+  const { data: post, error } = await supabase.from("proyecto_actores")
+    .update({ rol: rol.trim() || null, descripcion: descripcion.trim() || null }).eq("id", id).select("id");
+  if (error) return { error: error.message };
+  if (!post?.length) return { error: "No se guardó: no tienes permiso." };
+  const quien = (prev?.per as any)?.alias || (prev?.per as any)?.nombre || "alguien";
+  await supabase.from("actividad").insert({
+    entidad_tipo: "proyecto", entidad_id: proyectoId, actor_id: user.id, tipo: "miembro",
+    detalle: { mensaje: `actualizó al actor social ${quien}` },
+  });
+  revalidatePath(`/entidad/proyecto/${proyectoId}`);
+  return {};
+}
+
+export async function quitarActorProyecto(id: string, proyectoId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: prev } = await supabase.from("proyecto_actores")
+    .select("per:personas(nombre,alias)").eq("id", id).maybeSingle();
+  const { data: fuera, error } = await supabase.from("proyecto_actores")
+    .delete().eq("id", id).select("id");
+  if (error) return { error: error.message };
+  if (!fuera?.length) return { error: "No se quitó: no tienes permiso, o ya no estaba." };
+  const quien = (prev?.per as any)?.alias || (prev?.per as any)?.nombre || "alguien";
+  await supabase.from("actividad").insert({
+    entidad_tipo: "proyecto", entidad_id: proyectoId, actor_id: user.id, tipo: "miembro",
+    detalle: { mensaje: `quitó a ${quien} de los actores sociales` },
+  });
+  revalidatePath(`/entidad/proyecto/${proyectoId}`);
+  return {};
+}
+
 /* Quién postula con qué proyecto queda escrito, igual que los miembros de una
    empresa. No es simetría por gusto: el equipo es criterio del jurado
    —«COMPETENCIA DEL PERSONAL DEL PROYECTO», hasta 5 puntos en la matriz— y

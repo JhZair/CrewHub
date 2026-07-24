@@ -9,6 +9,7 @@ import Miembros from "@/components/Miembros";
 import Credenciales from "@/components/Credenciales";
 import ClienteProyecto from "@/components/ClienteProyecto";
 import EquipoProyecto from "@/components/EquipoProyecto";
+import ActoresProyecto from "@/components/ActoresProyecto";
 import Postulaciones from "@/components/Postulaciones";
 import EmpresaPostulacion from "@/components/EmpresaPostulacion";
 import EquipoPostulacion from "@/components/EquipoPostulacion";
@@ -374,9 +375,9 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   let partesReserva: any[] = [], reserva: "si" | "no" | "falta" = "falta";
   let clienteDe: { id: string; nombre: string } | null = null;
   let cronoActs: any[] = [], perfilesCat: any[] = [], cronoPost: any[] = [];
-  let postusProy: any[] = [], equipoProy: any[] = [], plantillas: any[] = [];
+  let postusProy: any[] = [], equipoProy: any[] = [], plantillas: any[] = [], actoresProy: any[] = [];
   if (params.tipo === "proyecto") {
-    const [pc, cl, ca, pf, pp, eq, pl] = await Promise.all([
+    const [pc, cl, ca, pf, pp, eq, pl, ac] = await Promise.all([
       supabase.from("personas").select("id,nombre,alias,tipo").order("nombre"),
       ent.cliente_id
         ? supabase.from("personas").select("id,nombre,alias").eq("id", ent.cliente_id).single()
@@ -400,6 +401,11 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       supabase.from("plantillas_cronograma")
         .select("id,nombre,tipo_proyecto,acts:plantilla_actividades(count)")
         .order("nombre"),
+      /* Actores sociales: los personajes de la vida real que retrata el
+         documental. Relación aparte del equipo. */
+      supabase.from("proyecto_actores")
+        .select("id,rol,descripcion,orden,persona:personas(id,nombre,alias,foto_url)")
+        .eq("proyecto_id", params.id).order("orden").order("creado_en"),
     ]);
     personasCat = (pc.data || []).map((x: any) => ({ ...x, nombre: x.alias ? `${x.nombre} · ${x.alias}` : x.nombre }));
     const _cl = (cl as any).data; clienteDe = _cl ? { id: _cl.id, nombre: _cl.alias || _cl.nombre } : null;
@@ -407,6 +413,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     perfilesCat = pf.data || [];
     postusProy = pp.data || [];
     equipoProy = eq.data || [];
+    actoresProy = ac.data || [];
     plantillas = (pl.data || []).map((x: any) => ({
       id: x.id, nombre: x.nombre, tipo_proyecto: x.tipo_proyecto,
       n: x.acts?.[0]?.count ?? 0,
@@ -699,7 +706,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
          si puede tomar otro—: sin `fecha_rendicion_real`, `ejecutando()`
          leería el hueco como «ya entregó». */
       supabase.from("postulaciones")
-        .select("id,codigo,estado,monto_adjudicado,fecha_limite_rendicion,fecha_prorroga,fecha_rendicion_real,proy:proyectos(id,nombre),conv:convocatorias(id,nombre,anio),equipo:postulacion_equipo(cargo,persona:personas(id,nombre,alias))")
+        .select("id,codigo,estado,monto_adjudicado,fecha_limite_rendicion,fecha_prorroga,fecha_rendicion_real,codigo_acta,fecha_firma_acta,acta_url,matriz_jurado_url,puntaje_jurado,feedback_jurado,proy:proyectos(id,nombre),conv:convocatorias(id,nombre,anio),equipo:postulacion_equipo(cargo,persona:personas(id,nombre,alias))")
         .eq("empresa_id", params.id).order("creado_en", { ascending: false }),
     ]);
     miembros = m.data || [];
@@ -2341,6 +2348,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                     economiaNode,
                     historialNode,
                   ]}
+                  iconoSolo={[4]}
                 />
               );
             }
@@ -2374,12 +2382,61 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                           </Link>
                         )}
                       </div>
+                      {/* El fallo, con el mismo contexto que la ficha del proyecto:
+                          acta de compromiso (con su código) + firma, matriz del
+                          jurado y fecha de rendición. */}
+                      {p.estado === "ganadora" && (p.acta_url || p.codigo_acta || p.fecha_firma_acta || p.matriz_jurado_url || p.fecha_prorroga || p.fecha_limite_rendicion) && (
+                        <div style={{ marginTop: 8, padding: "8px 10px", background: "var(--bg)", borderRadius: 9, borderLeft: "3px solid var(--green)", fontSize: TXT.chip, color: "var(--muted)" }}>
+                          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                            {(p.acta_url || p.codigo_acta || p.fecha_firma_acta) && (
+                              <span style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                                {p.acta_url
+                                  ? <a href={p.acta_url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--violet)" }}>📄 Acta de compromiso{p.codigo_acta ? ` ${p.codigo_acta}` : ""}</a>
+                                  : <span style={{ color: "var(--dim)" }}>📄 Acta de compromiso{p.codigo_acta ? ` ${p.codigo_acta}` : ""}</span>}
+                                {p.fecha_firma_acta && <span>🖋 firmada {verFicha("f", p.fecha_firma_acta)}</span>}
+                              </span>
+                            )}
+                            {p.matriz_jurado_url && (
+                              <a href={p.matriz_jurado_url} target="_blank" rel="noopener noreferrer"
+                                title="Matriz de evaluación del jurado" style={{ color: "var(--violet)" }}>📊 Matriz jurado</a>
+                            )}
+                            {(p.fecha_prorroga || p.fecha_limite_rendicion) && (
+                              <span style={{ color: "var(--yellow)" }}>
+                                🧾 rinde: {verFicha("f", p.fecha_prorroga || p.fecha_limite_rendicion)}{p.fecha_prorroga ? " (prórroga)" : ""}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      {/* Puntaje y comentario del jurado — gane o pierda. */}
+                      {p.puntaje_jurado && (
+                        <div style={{ marginTop: 8 }}>
+                          <span style={{ color: "var(--yellow)", fontWeight: 700, fontSize: TXT.micro }}>
+                            ⚖️ {p.puntaje_jurado} pts — matriz del jurado
+                          </span>
+                        </div>
+                      )}
+                      {p.feedback_jurado && (
+                        p.feedback_jurado.length > 180 ? (
+                          <details className="jurado-box" style={{ marginTop: 8 }}>
+                            <summary>
+                              <b style={{ color: "var(--text)" }}>💬 Comentario del jurado</b>
+                              <span className="jx"><br />{p.feedback_jurado.slice(0, p.feedback_jurado.lastIndexOf(" ", 180))}… <i>ver más</i></span>
+                            </summary>
+                            <div style={{ marginTop: 6 }}>{p.feedback_jurado}</div>
+                          </details>
+                        ) : (
+                          <div className="jurado-box" style={{ marginTop: 8 }}>
+                            <b style={{ color: "var(--text)" }}>💬 Comentario del jurado</b><br />
+                            {p.feedback_jurado}
+                          </div>
+                        )
+                      )}
                       {(p.equipo || []).length > 0 && (
-                        <div style={{ display: "flex", gap: 5, alignItems: "center", marginTop: 6, flexWrap: "wrap" }}>
-                          <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>👥</span>
+                        <div style={{ display: "flex", gap: 5, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
                           {p.equipo.map((e: any, i: number) => (
                             <Link key={i} href={`/entidad/persona/${e.persona?.id}`} className="badge" title={e.cargo || ""}
-                              style={{ color: "var(--violet)", background: "rgba(167,139,250,.10)", textTransform: "none", letterSpacing: 0, fontWeight: 600 }}>
+                              style={{ color: "var(--violet)", background: "rgba(167,139,250,.10)", textTransform: "none", letterSpacing: 0, fontWeight: 600, fontSize: TXT.chip }}>
                               {e.persona?.alias || e.persona?.nombre}
                               {e.cargo && <span style={{ color: "var(--dim)", fontWeight: 400 }}> · {e.cargo}</span>}
                             </Link>
@@ -2438,6 +2495,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                     `🕐 Historial · ${eventosVis.length}`,
                   ]}
                   paneles={[trabajoNode, trayectoriaEmp, dafoNode, repoEmp, histEmp]}
+                  iconoSolo={[4]}
                 />
               );
             }
@@ -2556,9 +2614,6 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                           ganador»: el dato de contexto que faltaba. */}
                       {(p.equipo || []).length > 0 && (
                         <div style={{ display: "flex", gap: 5, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
-                          <span style={{ color: p.estado === "ganadora" ? "var(--green)" : "var(--dim)", fontSize: TXT.chip, fontWeight: p.estado === "ganadora" ? 700 : 400 }}>
-                            {p.estado === "ganadora" ? "🏆 Equipo ganador:" : "👥 Equipo presentado:"}
-                          </span>
                           {p.equipo.map((e: any, i: number) => (
                             <Link key={i} href={`/entidad/persona/${e.persona?.id}`} className="badge" title={e.cargo || ""}
                               style={{ color: "var(--violet)", background: "rgba(167,139,250,.10)", textTransform: "none", letterSpacing: 0, fontWeight: 600, fontSize: TXT.chip }}>
@@ -2579,6 +2634,9 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               const trayectoriaProy = (
                 <>
                   <EquipoProyecto proyectoId={params.id} equipo={equipoProy} personas={personasCat} />
+                  {/* Los actores sociales van junto al equipo: ambos son las
+                      personas del proyecto —quienes lo hacen y a quiénes retrata. */}
+                  <ActoresProyecto proyectoId={params.id} actores={actoresProy} personas={personasCat} />
                   {postusCard}
                   <ClienteProyecto proyectoId={params.id} cliente={clienteDe} personas={personasCat} />
                 </>
@@ -2612,11 +2670,12 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                   labels={[
                     `📋 Trabajo · ${activas.length}`,
                     etiquetaCrono,
-                    `🏆 Trayectoria · ${postusProy.length + equipoProy.length}`,
+                    `🏆 Trayectoria · ${postusProy.length + equipoProy.length + actoresProy.length}`,
                     `📚 Repositorio · ${objetosDe.length}`,
                     `🕐 Historial · ${eventosVis.length}`,
                   ]}
                   paneles={[trabajoNode, cronoNode, trayectoriaProy, repoProy, histProy]}
+                  iconoSolo={[4]}
                 />
               );
             }
