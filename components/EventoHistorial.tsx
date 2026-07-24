@@ -42,13 +42,34 @@ export { ICO_ENT } from "@/lib/secciones";
 /* Qué dice el evento. El bot no tiene actor: por eso "Sistema"/"Bot Qhaway"
    cuando `actor` viene vacío — y por eso importa que las acciones humanas
    manden su actor_id. */
-export function textoEvento(e: Evento): string {
+export function textoEvento(e: Evento, conEntidad?: boolean): string {
   // El nombre corto/alias (JohnO) manda en el historial: es texto denso y el
   // nombre completo lo hace ilegible. Cae al nombre si no hay alias.
   const quien = e.actor?.alias || e.actor?.nombre;
-  if (e.tipo === "creado") return `${quien || "Sistema"} registró esta entidad`;
-  if (e.tipo === "estado")
-    return `${quien || BOT} · ${e.detalle?.campo}: ${String(e.detalle?.de ?? "—").replace(/_/g, " ")} → ${String(e.detalle?.a ?? "—").replace(/_/g, " ")}`;
+  /* «esta entidad» sobra en el diario: ahí la entidad ya se nombra y enlaza al
+     inicio de la línea, así que decir «esta entidad» repite lo que ya se ve. En
+     la ficha, en cambio, la entidad NO se nombra (se sobreentiende que es
+     ésta), y ahí «esta entidad» sí es el objeto del verbo. «registrado por» es
+     neutro en género —vale para proyecto, empresa, persona…—. */
+  if (e.tipo === "creado")
+    return conEntidad
+      ? `registrado por ${quien || "el sistema"}`
+      : `${quien || "Sistema"} registró esta entidad`;
+  if (e.tipo === "estado") {
+    const campo = e.detalle?.campo;
+    const de = String(e.detalle?.de ?? "").trim();
+    const a = String(e.detalle?.a ?? "").trim();
+    /* Cuando el valor es un id (un cambio de responsable lo registra el trigger
+       con el UUID del perfil, no con el nombre), no se vuelcan 72 caracteres de
+       gibberish: se dice QUÉ cambió. El 🔄 ya marca que hubo cambio. */
+    const esId = (s: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-/i.test(s);
+    if (esId(de) || esId(a))
+      return `${quien || BOT} cambió ${campo === "responsable" ? "el responsable" : campo || "un dato"}`;
+    /* «estado:» sobra: el 🔄 ya lo dice y «abierta → seguimiento» se entiende
+       solo. Para otros campos (etapa, prioridad) el rótulo sí distingue. */
+    const rotulo = campo && campo !== "estado" ? `${campo}: ` : "";
+    return `${quien || BOT} · ${rotulo}${de.replace(/_/g, " ") || "—"} → ${a.replace(/_/g, " ") || "—"}`;
+  }
   /* Archivar/despertar: el mensaje ya lo trae el bot («aviso archivado —…»);
      una acción humana solo trae `a`. Se dice sin ambigüedad para que el
      historial no muestre «archivo» a secas. */
@@ -80,7 +101,7 @@ export default function EventoHistorial({ e, hora, conEntidad }:
             : <span title={e.entidadTitulo || undefined} style={estilo}>{cont}</span>;
         })()}
         {conEntidad && e.entidadNombre && " · "}
-        {textoEvento(e)}
+        {textoEvento(e, conEntidad)}
         {(e.detalle?.cambios || []).map((c: any, j: number) => (
           <span key={j} style={{ display: "block", marginTop: 3, fontSize: 12 }}>
             <b style={{ color: "var(--muted)" }}>{c.campo}:</b>{" "}

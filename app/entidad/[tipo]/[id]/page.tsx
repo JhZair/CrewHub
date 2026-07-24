@@ -31,7 +31,7 @@ import BotonFichaSunat from "@/components/BotonFichaSunat";
 import Copiar from "@/components/Copiar";
 import EventoHistorial from "@/components/EventoHistorial";
 import EventoGrupo from "@/components/EventoGrupo";
-import { resolverNombres } from "@/lib/nombres";
+import { resolverNombres, nombresDeEventos, conNombresEventos } from "@/lib/nombres";
 import { agruparEventos } from "@/lib/agrupar";
 import { claseEstado, rotuloEstado, esAviso, avisoVencido } from "@/lib/estados";
 import { contarHijos, CERRADOS, type Familia } from "@/lib/familia";
@@ -280,8 +280,10 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   const { data: aliasPers } = await supabase.from("personas").select("usuario_id,alias")
     .not("alias", "is", null).not("usuario_id", "is", null);
   const alias = mapaAlias(aliasPers);
-  const eventosVis = conAlias((eventos || []).filter((e: any) =>
-    !(e.tipo === "estado" && ["estado_sunat", "condicion_sunat"].includes(e.detalle?.campo))) as any[], alias);
+  // Traduce los UUID sueltos (responsable, etc.) a nombres antes de mostrar.
+  const nomEv = await nombresDeEventos(supabase, eventos || []);
+  const eventosVis = conAlias(conNombresEventos((eventos || []).filter((e: any) =>
+    !(e.tipo === "estado" && ["estado_sunat", "condicion_sunat"].includes(e.detalle?.campo))), nomEv) as any[], alias);
 
   /* LO QUE ESTA PERSONA HIZO EN TODO EL SISTEMA — no solo sobre su ficha.
      Es lo mismo que el diario (/historial) filtrado por ella: `actividad`
@@ -297,10 +299,11 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       .order("creado_en", { ascending: false }).limit(80);
     const nombresU = await resolverNombres(supabase,
       (actsU || []).map((a: any) => ({ tipo: a.entidad_tipo, id: a.entidad_id })));
-    actividadUsuario = conAlias((actsU || []).map((a: any) => {
+    const nomEvU = await nombresDeEventos(supabase, actsU || []);
+    actividadUsuario = conAlias(conNombresEventos((actsU || []).map((a: any) => {
       const nom = nombresU.get(`${a.entidad_tipo}:${a.entidad_id}`) || undefined;
       return { ...a, entidadNombre: nom, entidadTitulo: nom };
-    }) as any[], alias);
+    }), nomEvU) as any[], alias);
   }
 
   const ids = (vincs || []).map((v: any) => v.publicacion_id);

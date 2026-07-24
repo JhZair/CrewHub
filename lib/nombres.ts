@@ -59,3 +59,51 @@ export function etiquetaPostulacion(r: any): string {
   const base = `${r?.codigo || r?.conv?.codigo || "Postulación"} · ${r?.proy?.nombre || ""}`.replace(/ · $/, "");
   return [base, r?.conv?.anio || null].filter(Boolean).join(" · ");
 }
+
+/* ── Nombres DENTRO de los eventos del historial ──
+ *
+ * `resolverNombres` traduce ENTIDADES (tipo:id). Esto es otra cosa: valores
+ * sueltos guardados dentro de `detalle`. Un cambio de responsable lo registra
+ * el trigger de la base con el UUID del perfil —no con el nombre—, así que en
+ * el historial salía «responsable: 24930c21-… → 3bdfbacb-…»: 72 caracteres que
+ * no dicen nada. Esto junta esos UUID y los cambia por el nombre (de perfiles;
+ * personas como respaldo, con su alias). */
+const RE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export async function nombresDeEventos(supabase: any, eventos: any[]): Promise<Map<string, string>> {
+  const ids = new Set<string>();
+  const mira = (v: any) => { const s = String(v ?? "").trim(); if (RE_UUID.test(s)) ids.add(s); };
+  (eventos || []).forEach((e: any) => {
+    mira(e?.detalle?.de); mira(e?.detalle?.a);
+    (e?.detalle?.cambios || []).forEach((c: any) => { mira(c?.de); mira(c?.a); });
+  });
+  const m = new Map<string, string>();
+  const lista = [...ids];
+  // perfiles y personas tienen id-spaces distintos: un UUID cae en una u otra,
+  // no en las dos. Se consultan ambas y gana la que lo tenga (personas, con alias).
+  for (let i = 0; i < lista.length; i += 100) {
+    const chunk = lista.slice(i, i + 100);
+    const [perf, pers] = await Promise.all([
+      supabase.from("perfiles").select("id,nombre").in("id", chunk),
+      supabase.from("personas").select("id,nombre,alias").in("id", chunk),
+    ]);
+    (perf.data || []).forEach((r: any) => { if (r.nombre) m.set(r.id, r.nombre); });
+    (pers.data || []).forEach((r: any) => m.set(r.id, r.alias || r.nombre));
+  }
+  return m;
+}
+
+/** Reescribe los valores de/a (y los de `cambios`) que sean un UUID por su
+ *  nombre resuelto; deja intacto lo demás. Devuelve eventos nuevos (no muta). */
+export function conNombresEventos<T extends { detalle?: any }>(eventos: T[], nombres: Map<string, string>): T[] {
+  if (!nombres.size) return eventos;
+  const tr = (v: any) => nombres.get(String(v ?? "").trim()) || v;
+  return (eventos || []).map(e => {
+    if (!e?.detalle) return e;
+    const d: any = { ...e.detalle };
+    if ("de" in d) d.de = tr(d.de);
+    if ("a" in d) d.a = tr(d.a);
+    if (Array.isArray(d.cambios)) d.cambios = d.cambios.map((c: any) => ({ ...c, de: tr(c.de), a: tr(c.a) }));
+    return { ...e, detalle: d };
+  });
+}

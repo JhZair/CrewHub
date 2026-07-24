@@ -6,6 +6,7 @@ import EventoGrupo from "@/components/EventoGrupo";
 import { agruparEventos } from "@/lib/agrupar";
 import { PERIODOS, desdeDe, diaLima, rotuloDia, type Periodo } from "@/lib/periodo";
 import { seccionDe } from "@/lib/secciones";
+import { nombresDeEventos, conNombresEventos } from "@/lib/nombres";
 import { mapaAlias } from "@/lib/personas";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
@@ -76,13 +77,15 @@ export default async function HistorialTipo({ params, searchParams }: {
     });
   }
 
-  const todos: Evento[] = (evs || []).map((e: any) => ({
+  // Traduce los UUID sueltos (responsable, etc.) de detalle a nombres.
+  const nomEv = await nombresDeEventos(supabase, evs || []);
+  const todos: Evento[] = conNombresEventos((evs || []).map((e: any) => ({
     ...e,
     entidadNombre: nombre.get(e.entidad_id),
     // El nombre completo va al title: se acorta la vista, no el dato
     entidadTitulo: largo.get(e.entidad_id),
     actor: e.actor ? { ...e.actor, nombre: cortoActor(e.actor.nombre), alias: alias[e.actor_id] } : e.actor,
-  }));
+  })), nomEv);
 
   // El resumen cuenta el periodo entero; los chips filtran la lista
   const porTipo = new Map<string, number>();
