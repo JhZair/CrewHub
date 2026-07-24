@@ -1,6 +1,7 @@
 "use client";
 import { agregarEquipoPostulacion, quitarEquipoPostulacion } from "@/app/actions";
 import { EntPicker, type CatalogoItem } from "@/components/Composer";
+import Avatar from "@/components/Avatar";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
@@ -71,26 +72,36 @@ export default function EquipoPostulacion({ postulacionId, equipo, personas }: {
         </div>
       )}
 
-      {equipo.map((m: any) => (
-        <div key={m.id} className="eq-row" style={{ alignItems: "center" }}>
-          <span className="cargo">{m.cargo || "—"}</span>
-          <span style={{ flex: 1, textAlign: "right" }}>
-            <Link href={`/entidad/persona/${m.persona?.id}`} style={{ color: "var(--text)" }}
-              title={m.persona?.nombre}>
-              {m.persona?.alias || m.persona?.nombre} →
-            </Link>
-          </span>
-          {quitando === m.id ? (
-            <span style={{ fontSize: 11.5, marginLeft: 8 }}>
-              ¿quitar? <button style={{ color: "var(--red)", fontWeight: 700 }} onClick={() => quitar(m.id)}>sí</button>
-              {" / "}<button style={{ color: "var(--dim)" }} onClick={() => setQuitando(null)}>no</button>
-            </span>
-          ) : (
-            <button title="Quitar del equipo" style={{ color: "var(--dim)", marginLeft: 10 }}
-              onClick={() => setQuitando(m.id)}>✕</button>
-          )}
-        </div>
-      ))}
+      {equipo.map((m: any) => {
+        const p = m.persona || {};
+        // Contexto que pesa en el fondo: qué es, de dónde, y si es comunero/a
+        // (la reserva regional y la participación comunitaria puntúan en DAFO).
+        const ctx = [p.tipo, p.region, p.es_comunero ? "🌱 comunero/a" : ""].filter(Boolean).join(" · ");
+        return (
+          <div key={m.id} className="eq-row" style={{ alignItems: "center" }}>
+            <span className="cargo">{m.cargo || "—"}</span>
+            <span style={{ flex: 1 }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+              <Avatar nombre={p.nombre} src={p.foto_url} size={30} />
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", lineHeight: 1.25, minWidth: 0 }}>
+                <Link href={`/entidad/persona/${p.id}`} style={{ color: "var(--text)", fontWeight: 600 }} title={p.nombre}>
+                  {p.alias || p.nombre} →
+                </Link>
+                {ctx && <span style={{ color: "var(--dim)", fontSize: 11 }}>{ctx}</span>}
+              </div>
+            </div>
+            {quitando === m.id ? (
+              <span style={{ fontSize: 11.5, marginLeft: 8, whiteSpace: "nowrap" }}>
+                ¿quitar? <button style={{ color: "var(--red)", fontWeight: 700 }} onClick={() => quitar(m.id)}>sí</button>
+                {" / "}<button style={{ color: "var(--dim)" }} onClick={() => setQuitando(null)}>no</button>
+              </span>
+            ) : (
+              <button title="Quitar del equipo" style={{ color: "var(--dim)", marginLeft: 10 }}
+                onClick={() => setQuitando(m.id)}>✕</button>
+            )}
+          </div>
+        );
+      })}
       {!equipo.length && !agregando && (
         <div style={{ color: "var(--dim)", fontSize: 12.5, padding: "6px 0" }}>
           Sin equipo registrado — el equipo técnico y artístico de esta postulación.

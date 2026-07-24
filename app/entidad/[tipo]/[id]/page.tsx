@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { Mantenimiento } from "@/components/EntidadForm";
-import { SUNAT_EMPRESA, DOCS_EMPRESA, RESERVA_EMPRESA, DNI_PERSONA, DOCS_PERSONA, SUNAT_PERSONA, GRUPO_TONO, completitud } from "@/lib/entidades";
+import { SUNAT_EMPRESA, DOCS_EMPRESA, RESERVA_EMPRESA, DNI_PERSONA, DOCS_PERSONA, SUNAT_PERSONA, GRUPO_TONO, completitud, REGIONES } from "@/lib/entidades";
 import { rucDePersona } from "@/lib/ruc";
 import { estado4ta, money } from "@/lib/cuarta";
 import { diasDeVigencia, fmtVence, vigenciaVencida } from "@/lib/vigencia";
@@ -58,8 +58,9 @@ import EquipoPorcentajes from "@/components/EquipoPorcentajes";
 import Precontratos from "@/components/Precontratos";
 import { etapasDe } from "@/lib/etapas";
 import { rubrosDe, topeEstimuloDe } from "@/lib/rubros";
-import { TABLAS_EXP } from "@/lib/tablas-expediente";
+import { TABLAS_EXP, materialTablaDe, plantillaConExtras, esVideojuego } from "@/lib/tablas-expediente";
 import TabsPanel from "@/components/TabsPanel";
+import Avatar from "@/components/Avatar";
 import Plegable from "@/components/Plegable";
 import CasosLista, { type CasoMeta } from "@/components/CasosLista";
 import MuroAvisos from "@/components/MuroAvisos";
@@ -462,6 +463,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   }
 
   let postCtx: any = null, equipoPost: any[] = [], credsEmp: any[] = [], plantillasPre: any[] = [], hitosConc: any[] = [];
+  let cartelProy: string | null = null;
   let cronoListo = false, cronoResumen = "", presuListo = false, presuResumen = "";
   let seedBenef: { rol: string; cantidad: number }[] = [];
   let precontN = 0, precontFirm = 0;
@@ -473,10 +475,10 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   if (params.tipo === "postulacion") {
     const [ctx, eq, pc, ec] = await Promise.all([
       supabase.from("postulaciones")
-        .select("proy:proyectos(id,nombre,tipo,renca), emp:empresas(id,nombre,codigo,ruc,razon_social,renca,estado_sunat,domicilio_fiscal,region), conv:convocatorias(id,codigo,nombre,anio,categoria,monto_adjudicado,bases_url,plantilla_formulario,hitos:cronograma_actividades(id,nombre,fecha_inicio,estado,clase))")
+        .select("proy:proyectos(id,nombre,tipo,renca), emp:empresas(id,nombre,codigo,ruc,razon_social,renca,partida_electronica,estado_sunat,domicilio_fiscal,region,sunat_region_domicilio,provincia_fiscal,distrito_fiscal), conv:convocatorias(id,codigo,nombre,anio,categoria,monto_adjudicado,bases_url,plantilla_formulario,hitos:cronograma_actividades(id,nombre,fecha_inicio,estado,clase))")
         .eq("id", params.id).single(),
       supabase.from("postulacion_equipo")
-        .select("id,cargo,persona:personas(id,nombre,alias,ruc_dni,genero,nacionalidad,autoident,lengua_materna,otras_lenguas,discapacidad,region,provincia,distrito,fecha_nacimiento)")
+        .select("id,cargo,persona:personas(id,nombre,alias,foto_url,tipo,es_comunero,ruc_dni,genero,nacionalidad,autoident,lengua_materna,otras_lenguas,discapacidad,region,provincia,distrito,fecha_nacimiento)")
         .eq("postulacion_id", params.id).order("cargo"),
       supabase.from("personas").select("id,nombre,alias,tipo").order("nombre"),
       /* Solo las que pueden postular de verdad: activas y nuestras. Ofrecer
@@ -501,10 +503,16 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
        consulta de arriba — encadenada a propósito, es una sola fila. */
     const proyId = (postCtx?.proy as any)?.id;
     if (proyId) {
-      const { data: pe } = await supabase.from("proyecto_equipo")
-        .select("id,cargo,persona:personas(id,nombre,alias,ruc_dni,genero,nacionalidad,autoident,lengua_materna,otras_lenguas,discapacidad,region,provincia,distrito,fecha_nacimiento)")
-        .eq("proyecto_id", proyId).order("cargo");
+      const [{ data: pe }, { data: mp }] = await Promise.all([
+        supabase.from("proyecto_equipo")
+          .select("id,cargo,persona:personas(id,nombre,alias,foto_url,tipo,es_comunero,ruc_dni,genero,nacionalidad,autoident,lengua_materna,otras_lenguas,discapacidad,region,provincia,distrito,fecha_nacimiento)")
+          .eq("proyecto_id", proyId).order("cargo"),
+        // El cartel del proyecto, para la cabecera de contexto de la pestaña Equipo.
+        supabase.from("entidad_media").select("cartel_url")
+          .eq("entidad_tipo", "proyecto").eq("entidad_id", proyId).maybeSingle(),
+      ]);
       equipoProy = pe || [];
+      cartelProy = (mp as any)?.cartel_url || null;
     }
 
     /* 🗂 EXPEDIENTE — auto-llenado: lo que la base ya sabe, no se teclea.
@@ -512,29 +520,87 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
        la clave `k` de un campo de `convocatorias.plantilla_formulario`, o no
        conecta (el campo queda vacío para llenar a mano). Al armar una plantilla
        nueva, usar estas claves para lo que se auto-llena:
-         · ruc, razon_social, estado_sunat, renca_empresa, domicilio_legal,
-           departamento        → de la EMPRESA
+         · ruc, razon_social, estado_sunat, renca_empresa, partida_electronica,
+           domicilio_legal, departamento, provincia, distrito → de la EMPRESA
+           (además, cualquier campo de empresa se empareja también por etiqueta)
          · rep_legal_nombre, rep_legal_doc  → del representante legal
          · titulo_proyecto, renca_obra      → del PROYECTO
          · equipo_personal     → tabla censal del equipo (con ⚠ lo que falta)
          · monto_solicitado    → total del ESTÍMULO del presupuesto
        (El cronograma y el presupuesto NO van por aquí: tienen su sección.) */
     const e = postCtx?.emp, py = postCtx?.proy;
+    // La plantilla del formulario DAFO: la usamos para emparejar por etiqueta.
+    const plantForm = (postCtx?.conv as any)?.plantilla_formulario as any[] | undefined;
     if (e) {
       autoExp.ruc = e.ruc || "";
       autoExp.razon_social = e.razon_social || e.nombre || "";
       autoExp.estado_sunat = e.estado_sunat || "";
       autoExp.renca_empresa = e.renca || "";
+      autoExp.partida_electronica = e.partida_electronica || "";
       autoExp.domicilio_legal = e.domicilio_fiscal || "";
-      autoExp.departamento = e.region || "";
+      /* Domicilio fiscal desglosado: el departamento es el de SUNAT (el mismo de
+         la reserva); provincia y distrito, sus campos propios. */
+      autoExp.departamento = e.sunat_region_domicilio || e.region || "";
+      autoExp.provincia = e.provincia_fiscal || "";
+      autoExp.distrito = e.distrito_fiscal || "";
+      /* Y por ETIQUETA, para plantillas cuyas claves no siguen el contrato:
+         emparejamos cada campo de EMPRESA (no RL) por lo que su etiqueta pide. */
+      const empValor = (et: string): string | null => {
+        const s = et.toLowerCase();
+        if (/partida\s*electr[oó]nica|n[°º.]?\s*de\s*partida/.test(s)) return e.partida_electronica || null;
+        if (/departamento/.test(s)) return e.sunat_region_domicilio || e.region || null;
+        if (/provincia/.test(s)) return e.provincia_fiscal || null;
+        if (/distrito/.test(s)) return e.distrito_fiscal || null;
+        return null;
+      };
+      (Array.isArray(plantForm) ? plantForm : []).forEach((sec: any) =>
+        (sec?.campos || []).forEach((campo: any) => {
+          const et = String(campo?.etiqueta || "");
+          if (/^\s*rl\b|representante\s+legal/i.test(et)) return;   // los RL van aparte
+          const val = empValor(et);
+          if (val && !autoExp[campo.k]) autoExp[campo.k] = val;
+        }));
+      /* El representante legal —el presidente/titular de la empresa—: su perfil
+         ya guarda TODO lo censal que el expediente pide del RL. Traemos a los
+         cargos que pueden serlo y elegimos por prioridad (representante primero,
+         luego presidente/titular/gerente). */
       const { data: rl } = await supabase.from("empresa_miembros")
-        .select("cargo,persona:personas(nombre,ruc_dni)")
-        .eq("empresa_id", e.id).eq("estado", "activo")
-        .ilike("cargo", "%representante%").limit(1);
-      const r: any = rl?.[0];
+        .select("cargo,persona:personas(nombre,ruc_dni,nacionalidad,genero,fecha_nacimiento,autoident,lengua_materna,otras_lenguas,discapacidad)")
+        .eq("empresa_id", e.id).eq("estado", "activo");
+      const prioridadRL = (c: string) =>
+        /representante/i.test(c) ? 0 : /presidente|titular|gerente/i.test(c) ? 1 : 9;
+      const r: any = (rl || [])
+        .filter((m: any) => prioridadRL(m.cargo || "") < 9)
+        .sort((a: any, b: any) => prioridadRL(a.cargo || "") - prioridadRL(b.cargo || ""))[0];
       if (r?.persona) {
-        autoExp.rep_legal_nombre = r.persona.nombre || "";
-        autoExp.rep_legal_doc = r.persona.ruc_dni ? `DNI ${r.persona.ruc_dni}` : "";
+        const rp = r.persona;
+        // Claves «clásicas» por compatibilidad con plantillas que ya las usan.
+        autoExp.rep_legal_nombre = rp.nombre || "";
+        autoExp.rep_legal_doc = rp.ruc_dni ? `DNI ${rp.ruc_dni}` : "";
+        /* Y, además, emparejamos por ETIQUETA cada campo «RL - …» de la
+           plantilla con el dato del perfil: la clave de la plantilla puede ser
+           cualquiera, pero su etiqueta dice qué pide. Así el RL se llena solo,
+           igual que la empresa. */
+        const rlValor = (et: string): string | null => {
+          const s = et.toLowerCase();
+          if (/nombre|apellido/.test(s)) return rp.nombre || null;
+          if (/nacionalidad/.test(s)) return rp.nacionalidad || null;
+          if (/documento|dni|identidad|pasaporte|carnet/.test(s)) return rp.ruc_dni ? `DNI ${rp.ruc_dni}` : null;
+          if (/nacimiento/.test(s)) return rp.fecha_nacimiento || null;
+          if (/g[eé]nero|sexo/.test(s)) return rp.genero || null;
+          if (/autoident|[eé]tnic/.test(s)) return rp.autoident || null;
+          if (/lengua|idioma/.test(s)) return rp.lengua_materna
+            ? (rp.otras_lenguas ? `${rp.lengua_materna} (+${rp.otras_lenguas})` : rp.lengua_materna) : null;
+          if (/discapacidad/.test(s)) return rp.discapacidad || null;
+          return null;
+        };
+        (Array.isArray(plantForm) ? plantForm : []).forEach((sec: any) =>
+          (sec?.campos || []).forEach((campo: any) => {
+            const et = String(campo?.etiqueta || "");
+            if (!/^\s*rl\b|representante\s+legal/i.test(et)) return;   // solo campos del RL
+            const val = rlValor(et);
+            if (val && !autoExp[campo.k]) autoExp[campo.k] = val;
+          }));
       }
     }
     if (py) {
@@ -1592,109 +1658,9 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
 
           {params.tipo === "postulacion" && (
             <div style={{ marginTop: 14 }}>
-              <TabsPanel
-                /* Cuenta los dos: el del proyecto más el de esta postulación.
-                   Si contara solo el de abajo, diría «Equipo · 4» de una
-                   película que tiene nueve personas — y al quitar a la
-                   directora de la postulación el número bajaría, como si se
-                   hubiera ido. */
-                /* Materiales fue la v1 del dossier (10 casillas genéricas).
-                   Donde la convocatoria tiene plantilla de formulario, el
-                   🗂 Expediente la reemplaza — tenerlos juntos es duplicar.
-                   Las postulaciones históricas conservan sus Materiales. */
-                labels={[
-                  "🧭 Contexto",
-                  `👥 Equipo · ${equipoProy.length + equipoPost.length}`,
-                  ...(postCtx?.conv?.plantilla_formulario ? ["🗂 Expediente"] : ["📎 Materiales"]),
-                ]}
-                paneles={[
-                  <div className="linked" key="ctx">
-                    {postCtx?.proy && (
-                      <div className="eq-row"><span className="cargo">Proyecto</span>
-                        <span style={{ flex: 1, textAlign: "right" }}>
-                          <Link href={`/entidad/proyecto/${postCtx.proy.id}`} style={{ color: "var(--text)" }}>📁 {postCtx.proy.nombre} →</Link>
-                        </span></div>
-                    )}
-                    <EmpresaPostulacion postulacionId={params.id}
-                      convocatoriaId={postCtx?.conv?.id || ""}
-                      empresa={postCtx?.emp} empresas={empresasCat} />
-                    {postCtx?.conv && (
-                      <div className="eq-row"><span className="cargo">Concurso</span>
-                        <span style={{ flex: 1, textAlign: "right" }}>
-                          <Link href={`/entidad/convocatoria/${postCtx.conv.id}`} style={{ color: "var(--text)" }}>📜 {postCtx.conv.codigo} · {postCtx.conv.nombre} →</Link>
-                        </span></div>
-                    )}
-                    {postCtx?.conv?.monto_adjudicado && (
-                      <div className="eq-row"><span className="cargo">En juego</span>
-                        <span style={{ flex: 1, textAlign: "right", color: "var(--teal)", fontWeight: 700 }}>
-                          S/ {parseFloat(postCtx.conv.monto_adjudicado).toLocaleString("es-PE")}
-                        </span></div>
-                    )}
-                    {postCtx?.conv?.bases_url && (
-                      <div className="eq-row"><span className="cargo">Bases</span>
-                        <span style={{ flex: 1, textAlign: "right" }}>
-                          <a href={postCtx.conv.bases_url} target="_blank" rel="noopener noreferrer"
-                            style={{ color: "var(--violet)", fontWeight: 600 }}>📖 Bases del concurso ↗</a>
-                        </span></div>
-                    )}
-                  </div>,
-                  <div key="eq">
-                    {/* El equipo del PROYECTO va primero y no se edita aquí:
-                        la directora nace con el proyecto y la postulación la
-                        hereda. Repetirla abajo sería tenerla en dos sitios —y
-                        el día que cambie, cambiaría en uno solo.
-                        Abajo, el equipo de ESTA postulación: quienes se suman
-                        para este concurso en concreto. */}
-                    {equipoProy.length > 0 && (
-                      <div className="linked" style={{ marginBottom: 14 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                          <h4 style={{ margin: 0, fontSize: TXT.chip, letterSpacing: 1.2, textTransform: "uppercase", color: "var(--dim)" }}>
-                            🎬 Equipo del proyecto · {equipoProy.length}
-                          </h4>
-                          <span style={{ flex: 1 }} />
-                          {postCtx?.proy && (
-                            <Link href={`/entidad/proyecto/${(postCtx.proy as any).id}`}
-                              style={{ color: "var(--accent)", fontSize: TXT.chip }}>editarlo en el proyecto →</Link>
-                          )}
-                        </div>
-                        <p style={{ color: "var(--dim)", fontSize: TXT.chip, marginTop: 0, marginBottom: 8 }}>
-                          Viene con el proyecto: no hace falta repetirlo aquí.
-                        </p>
-                        {equipoProy.map((m: any) => (
-                          <div className="eq-row" key={m.id} style={{ alignItems: "center" }}>
-                            <span className="cargo">{m.cargo}</span>
-                            <span style={{ flex: 1, textAlign: "right" }}>
-                              <Link href={`/entidad/persona/${m.persona?.id}`} style={{ color: "var(--text)" }}>
-                                {m.persona?.alias || m.persona?.nombre} →
-                              </Link>
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    <EquipoPostulacion postulacionId={params.id} equipo={equipoPost} personas={personasCat} />
-                    {/* Cumplimiento calculado: % peruano/domiciliado y % regional
-                        del equipo completo (proyecto + postulación). */}
-                    <EquipoPorcentajes equipo={[...equipoPost, ...equipoProy]} />
-                  </div>,
-                  ...(postCtx?.conv?.plantilla_formulario ? [
-                    <Expediente key="exp" postulacionId={params.id}
-                      plantilla={postCtx.conv.plantilla_formulario}
-                      expediente={ent.expediente || {}}
-                      auto={autoExp}
-                      cronoListo={cronoListo} cronoResumen={cronoResumen}
-                      presuListo={presuListo} presuResumen={presuResumen}
-                      materialN={((ent.material_archivo as any) || []).length}
-                      benefN={((ent.beneficiarios as any) || []).length}
-                      precontN={precontN}
-                      precontFirm={precontFirm}
-                      casos={casosExp}
-                      rutaFondo={ent.estado === "ganadora" ? `/fondo/${params.id}` : undefined} />,
-                  ] : [
-                    <Materiales key="mat" postulacionId={params.id} materiales={ent.materiales || {}} />,
-                  ]),
-                ]}
-              />
+              {/* Contexto y Equipo se mudaron a la pestaña «👥 Equipo» de la
+                  columna ancha (en una postulación el equipo pesa, y ahí tiene
+                  espacio). El carné se queda con los accesos y el calendario. */}
               {/* Los accesos de la empresa, a la mano para entrar a DAFO o al
                   correo mientras se llena la postulación. */}
               <CredencialesRef creds={credsEmp} empresaId={(postCtx?.emp as any)?.id} />
@@ -1766,7 +1732,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               En cualquier entidad — un proyecto acumula referencias y prensa
               igual que una persona acumula obras. En PERSONA, EMPRESA y PROYECTO
               vive en su propia pestaña (abajo), no aquí arriba. */}
-          {params.tipo !== "persona" && params.tipo !== "empresa" && params.tipo !== "proyecto" && params.tipo !== "convocatoria" && (
+          {params.tipo !== "persona" && params.tipo !== "empresa" && params.tipo !== "proyecto" && params.tipo !== "convocatoria" && params.tipo !== "postulacion" && (
             <>
               <Repositorio entidadTipo={params.tipo} entidadId={params.id}
                 objetos={objetosDe} verif={verifDe} />
@@ -1791,99 +1757,9 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             </>
           )}
 
-          {/* Cronograma de la postulación: va en la columna ancha (no en el
-              carné estrecho de la izquierda), como el del proyecto — armarlo
-              en una columna angosta era imposible. */}
-          {params.tipo === "postulacion" && (() => {
-            /* Cada bloque plegable, con un resumen que se lee CERRADO: si
-               «Presupuesto · costo S/ 60.000 · 12 ítems» ya contesta la
-               pregunta, no hace falta abrirlo. Solo el cronograma arranca
-               abierto —es por donde se empieza a armar una postulación—; el
-               resto se abre cuando toca y la elección se recuerda.
-
-               Los textos se REUSAN de `cronoResumen` / `presuResumen`, que son
-               los mismos que muestra el expediente. Calcularlos otra vez aquí
-               daba dos cifras del mismo dinero —una el costo y otra el
-               estímulo, ambas sin rótulo—: dos números distintos para lo mismo
-               es peor que ninguno. */
-            const nMat = ((ent.material_archivo as any) || []).length;
-            const nBen = ((ent.beneficiarios as any) || []).length;
-            const dim = (t: string) => <span style={{ color: "var(--dim)", fontWeight: 400 }}>{t}</span>;
-            const esGanadora = ent.estado === "ganadora";
-            return (
-            <div style={{ marginBottom: 16 }}>
-              {/* Una ganadora ya no arma cronograma ni presupuesto AQUÍ: eso es
-                  vida real de dos años y vive en la ejecución del fondo. Esta
-                  página queda como el expediente de cómo se postuló. */}
-              {esGanadora ? (
-                <Link href={`/fondo/${params.id}`} className="card"
-                  style={{ display: "block", textDecoration: "none", marginBottom: 14,
-                    borderColor: "rgba(46,204,113,.4)", background: "rgba(46,204,113,.06)" }}>
-                  <div style={{ fontWeight: 700, fontSize: TXT.meta, color: "var(--green)" }}>
-                    🎬 Este fondo está en ejecución
-                  </div>
-                  <div style={{ color: "var(--muted)", fontSize: TXT.chip, marginTop: 4 }}>
-                    El presupuesto real, el cronograma de dos años, los estados de cuenta, los pagos
-                    (RHE) y la rendición viven en su propia página.
-                  </div>
-                  <div style={{ color: "var(--accent)", fontSize: TXT.micro, marginTop: 8, fontWeight: 600 }}>
-                    Abrir ejecución del fondo →
-                  </div>
-                </Link>
-              ) : (
-                <>
-                  <div style={{ scrollMarginTop: 12 }}>
-                    <Plegable id={`post:${params.id}:crono`} ancla="sec-cronograma" titulo="📅 Cronograma"
-                      resumen={dim(cronoResumen || "")}>
-                      <CronogramaPostulacion key={`crono-${params.id}`} postulacionId={params.id}
-                        actividades={cronoPost} perfiles={perfilesCat}
-                        plantillas={plantillas} tipoProyecto={(postCtx?.proy as any)?.tipo || ""}
-                        etapas={etapasDe((postCtx?.conv as any)?.categoria)}
-                        postulado={ent.cronograma_postulado || null}
-                        postuladoEn={ent.cronograma_postulado_en || null} />
-                    </Plegable>
-                  </div>
-                  <div style={{ scrollMarginTop: 12 }}>
-                    <Plegable id={`post:${params.id}:presu`} ancla="sec-presupuesto" titulo="💰 Presupuesto" abiertoPorDefecto={false}
-                      resumen={dim(presuResumen || "")}>
-                      <Presupuesto key={`pre-${params.id}`} postulacionId={params.id}
-                        rubros={rubrosDe((postCtx?.conv as any)?.categoria)}
-                        categoria={(postCtx?.conv as any)?.categoria}
-                        inicial={ent.presupuesto || null}
-                        plantillas={plantillasPre}
-                        postulado={ent.presupuesto_postulado || null}
-                        postuladoEn={ent.presupuesto_postulado_en || null}
-                        estimuloConcurso={(postCtx?.conv as any)?.monto_adjudicado ? parseFloat((postCtx.conv as any).monto_adjudicado) : null} />
-                    </Plegable>
-                  </div>
-                </>
-              )}
-              <div style={{ scrollMarginTop: 12 }}>
-                <Plegable id={`post:${params.id}:mat`} ancla="sec-material" titulo="📁 Material de archivo" abiertoPorDefecto={false}
-                  resumen={nMat ? dim(`${nMat} filas`) : dim("sin material (o no aplica)")}>
-                  <TablaSimple key={`mat-${params.id}`} postulacionId={params.id}
-                    tabla={TABLAS_EXP.material_archivo} inicial={(ent.material_archivo as any) || null} />
-                </Plegable>
-              </div>
-              <div style={{ scrollMarginTop: 12 }}>
-                <Plegable id={`post:${params.id}:prec`} ancla="sec-precontratos" titulo="📝 Precontratos" abiertoPorDefecto={false}
-                  resumen={precontN ? dim(`${precontFirm}/${precontN} firmados`) : dim("sin precontratos (o no aplica)")}>
-                  <Precontratos key={`prec-${params.id}`} postulacionId={params.id}
-                    equipo={[...equipoPost, ...equipoProy]}
-                    items={((ent.presupuesto as any)?.items) || []}
-                    inicial={(ent.precontratos as any) || null} />
-                </Plegable>
-              </div>
-              <div style={{ scrollMarginTop: 12 }}>
-                <Plegable id={`post:${params.id}:ben`} ancla="sec-beneficiarios" titulo="👥 Beneficiarios" abiertoPorDefecto={false}
-                  resumen={nBen ? dim(`${nBen} filas`) : dim("sin filas (o no aplica)")}>
-                  <TablaSimple key={`ben-${params.id}`} postulacionId={params.id}
-                    tabla={TABLAS_EXP.beneficiarios} inicial={(ent.beneficiarios as any) || null} seed={seedBenef} />
-                </Plegable>
-              </div>
-            </div>
-            );
-          })()}
+          {/* La columna ancha de la postulación (armado, expediente, ejecución,
+              repositorio, historial) se ensambla en pestañas dentro de la rama
+              `postulacion` del IIFE de abajo, junto al resto de las entidades. */}
           {/* El palmarés (postulaciones) y los miembros de la empresa se mudaron
               a la pestaña 🏆 Trayectoria (columna derecha). */}
           {(() => {
@@ -1969,32 +1845,325 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             if (params.tipo === "postulacion") {
               // (La línea de tiempo del concurso se calcula arriba —hitosConc— y
               //  se muestra en la columna pequeña.)
-              // Ganadora: su ruta ya no es el concurso, es la ejecución
-              const rutaEjec = ent.estado === "ganadora" ? [
-                ent.fecha_firma_acta && { fecha: ent.fecha_firma_acta, titulo: "Firma del acta de compromiso", icono: "🖋", color: "var(--green)" },
-                ent.fecha_limite_rendicion && { fecha: ent.fecha_limite_rendicion, titulo: `Límite de rendición${ent.fecha_prorroga ? " (original)" : ""}`, icono: "🧾", color: ent.fecha_prorroga ? "#4a4a5e" : "var(--yellow)" },
-                ent.fecha_prorroga && { fecha: ent.fecha_prorroga, titulo: "Límite de rendición (prórroga)", icono: "⏳", color: "var(--yellow)" },
-                /* El final del camino. Sin este hito la ruta terminaba en un
-                   plazo, no en un hecho — y el plazo no dice si se entregó. */
-                ent.fecha_rendicion_real && { fecha: ent.fecha_rendicion_real, titulo: "Rendición entregada — fondo cerrado", icono: "✅", color: "var(--green)" },
-              ].filter(Boolean) as any[] : [];
-              return (
-                <>
-                  {/* La línea de tiempo del concurso se movió a la columna
-                      pequeña (arriba); la ancha es para cronograma/presupuesto. */}
-                  {rutaEjec.length > 0 && (
-                    <div className="card" style={{ marginBottom: 16, borderColor: "rgba(46,204,113,.3)" }}>
-                      <div className="panel-h" style={{ color: "var(--green)" }}>🏆 Camino de ejecución — del acta a la rendición</div>
-                      <LineaTiempo eventos={rutaEjec} />
+              const esGanadora = ent.estado === "ganadora";
+              const conPlantilla = !!(postCtx?.conv as any)?.plantilla_formulario;
+              const nMat = ((ent.material_archivo as any) || []).length;
+              const nBen = ((ent.beneficiarios as any) || []).length;
+              const dim = (t: string) => <span style={{ color: "var(--dim)", fontWeight: 400 }}>{t}</span>;
+              /* Extras del formulario de VIDEOJUEGO: la tabla de material cambia
+                 a «materiales gráficos», aparece la de prototipo, y el checklist
+                 gana el campo «Producto que resultará». */
+              const catConv = (postCtx?.conv as any)?.categoria as string | undefined;
+              const esVJ = esVideojuego(catConv);
+              const matTabla = materialTablaDe(catConv);
+              const nProto = ((ent.prototipo as any) || []).length;
+              /* Obra de terceros: es CONDICIONAL. El combo «Usa obra de terceros»
+                 vive en la plantilla; si su respuesta es «Sí», mostramos la tabla. */
+              const plantFormR = (postCtx?.conv as any)?.plantilla_formulario as any[] | undefined;
+              const claveTerceros = (Array.isArray(plantFormR) ? plantFormR : [])
+                .flatMap((s: any) => s?.campos || [])
+                .find((c: any) => /obra\s+de\s+terceros/i.test(String(c?.etiqueta || "")))?.k as string | undefined;
+              const usaTerceros = !!claveTerceros
+                && /^s[ií]/i.test(String((ent.expediente as any)?.[claveTerceros]?.v || ""));
+              const nTerceros = ((ent.obra_terceros as any) || []).length;
+              /* La postulación termina su ciclo cuando se gana: la EJECUCIÓN es
+                 otro ciclo y tiene su propio sitio (📁 fondos en ejecución →
+                 /fondo/[id]). Por eso aquí no hay pestaña de ejecución; el
+                 armado, para una ganadora, solo enlaza a esa página. */
+
+              /* Las secciones del expediente —cronograma, presupuesto, material,
+                 precontratos, beneficiarios—, dentro de la pestaña 🗂 Expediente
+                 debajo de su checklist. Una GANADORA no borra nada: su
+                 cronograma y presupuesto POSTULADOS quedan como la foto de con
+                 qué ganó; arriba, una tarjeta la lleva a la ejecución del fondo,
+                 donde vive el presupuesto y cronograma REALES de los dos años. */
+              const armadoNode = (
+                <div>
+                  {esGanadora && (
+                    <Link href={`/fondo/${params.id}`} className="card"
+                      style={{ display: "block", textDecoration: "none", marginBottom: 14,
+                        borderColor: "rgba(46,204,113,.4)", background: "rgba(46,204,113,.06)" }}>
+                      <div style={{ fontWeight: 700, fontSize: TXT.meta, color: "var(--green)" }}>
+                        🎬 Este fondo está en ejecución
+                      </div>
+                      <div style={{ color: "var(--muted)", fontSize: TXT.chip, marginTop: 4 }}>
+                        Abajo queda lo que se postuló —la foto de con qué ganó—. El presupuesto real, el
+                        cronograma de dos años, los estados de cuenta, los pagos (RHE) y la rendición
+                        viven en su propia página.
+                      </div>
+                      <div style={{ color: "var(--accent)", fontSize: TXT.micro, marginTop: 8, fontWeight: 600 }}>
+                        Abrir ejecución del fondo →
+                      </div>
+                    </Link>
+                  )}
+                  <div style={{ scrollMarginTop: 12 }}>
+                    <Plegable id={`post:${params.id}:crono`} ancla="sec-cronograma"
+                      titulo={esGanadora ? "📅 Cronograma postulado" : "📅 Cronograma"}
+                      abiertoPorDefecto={!esGanadora}
+                      resumen={dim(cronoResumen || "")}>
+                      <CronogramaPostulacion key={`crono-${params.id}`} postulacionId={params.id}
+                        actividades={cronoPost} perfiles={perfilesCat}
+                        plantillas={plantillas} tipoProyecto={(postCtx?.proy as any)?.tipo || ""}
+                        etapas={etapasDe((postCtx?.conv as any)?.categoria)}
+                        postulado={ent.cronograma_postulado || null}
+                        postuladoEn={ent.cronograma_postulado_en || null} />
+                    </Plegable>
+                  </div>
+                  <div style={{ scrollMarginTop: 12 }}>
+                    <Plegable id={`post:${params.id}:presu`} ancla="sec-presupuesto"
+                      titulo={esGanadora ? "💰 Presupuesto postulado" : "💰 Presupuesto"} abiertoPorDefecto={false}
+                      resumen={dim(presuResumen || "")}>
+                      <Presupuesto key={`pre-${params.id}`} postulacionId={params.id}
+                        rubros={rubrosDe((postCtx?.conv as any)?.categoria)}
+                        categoria={(postCtx?.conv as any)?.categoria}
+                        inicial={ent.presupuesto || null}
+                        plantillas={plantillasPre}
+                        postulado={ent.presupuesto_postulado || null}
+                        postuladoEn={ent.presupuesto_postulado_en || null}
+                        estimuloConcurso={(postCtx?.conv as any)?.monto_adjudicado ? parseFloat((postCtx.conv as any).monto_adjudicado) : null} />
+                    </Plegable>
+                  </div>
+                  <div style={{ scrollMarginTop: 12 }}>
+                    <Plegable id={`post:${params.id}:mat`} ancla="sec-material" titulo={matTabla.titulo} abiertoPorDefecto={false}
+                      resumen={nMat ? dim(`${nMat} filas`) : dim("sin material (o no aplica)")}>
+                      <TablaSimple key={`mat-${params.id}`} postulacionId={params.id}
+                        tabla={matTabla} inicial={(ent.material_archivo as any) || null} />
+                    </Plegable>
+                  </div>
+                  {/* Solo videojuego: prototipo / vertical slice ejecutable. */}
+                  {esVJ && (
+                    <div style={{ scrollMarginTop: 12 }}>
+                      <Plegable id={`post:${params.id}:proto`} ancla="sec-prototipo" titulo={TABLAS_EXP.prototipo.titulo} abiertoPorDefecto={false}
+                        resumen={nProto ? dim(`${nProto} filas`) : dim("sin prototipo (o no aplica)")}>
+                        <TablaSimple key={`proto-${params.id}`} postulacionId={params.id}
+                          tabla={TABLAS_EXP.prototipo} inicial={(ent.prototipo as any) || null} />
+                      </Plegable>
                     </div>
                   )}
-                  {ent.estado === "ganadora" && !rutaEjec.length && (
-                    <Alerta tono="ambar"
-                      titulo="🏆 Ganadora sin fechas de ejecución"
-                      detalle="Registra acta y rendición en ✏️ Editar." />
+                  <div style={{ scrollMarginTop: 12 }}>
+                    <Plegable id={`post:${params.id}:prec`} ancla="sec-precontratos" titulo="📝 Precontratos" abiertoPorDefecto={false}
+                      resumen={precontN ? dim(`${precontFirm}/${precontN} firmados`) : dim("sin precontratos (o no aplica)")}>
+                      <Precontratos key={`prec-${params.id}`} postulacionId={params.id}
+                        equipo={[...equipoPost, ...equipoProy]}
+                        items={((ent.presupuesto as any)?.items) || []}
+                        inicial={(ent.precontratos as any) || null} />
+                    </Plegable>
+                  </div>
+                  <div style={{ scrollMarginTop: 12 }}>
+                    <Plegable id={`post:${params.id}:ben`} ancla="sec-beneficiarios" titulo="👥 Beneficiarios" abiertoPorDefecto={false}
+                      resumen={nBen ? dim(`${nBen} filas`) : dim("sin filas (o no aplica)")}>
+                      <TablaSimple key={`ben-${params.id}`} postulacionId={params.id}
+                        tabla={TABLAS_EXP.beneficiarios} inicial={(ent.beneficiarios as any) || null} seed={seedBenef} />
+                    </Plegable>
+                  </div>
+                  {/* Condicional: solo si «usa obra de terceros» = Sí. */}
+                  {usaTerceros && (
+                    <div style={{ scrollMarginTop: 12 }}>
+                      <Plegable id={`post:${params.id}:terceros`} ancla="sec-obra-terceros" titulo={TABLAS_EXP.obra_terceros.titulo} abiertoPorDefecto={false}
+                        resumen={nTerceros ? dim(`${nTerceros} filas`) : dim("pendiente — la declaraste")}>
+                        <TablaSimple key={`ter-${params.id}`} postulacionId={params.id}
+                          tabla={TABLAS_EXP.obra_terceros} inicial={(ent.obra_terceros as any) || null} />
+                      </Plegable>
+                    </div>
                   )}
-                  {vida}
+                </div>
+              );
+
+              /* 🗂 EXPEDIENTE (primera pestaña): el checklist DAFO arriba —el
+                 estado del dossier, con % y enlaces— y debajo las secciones que
+                 se llenan (el armado).
+                 En las postulaciones sin plantilla, el checklist es la vista
+                 Materiales v1 —pero esa lista es para ARMAR—. Una ganadora ya
+                 ganó: su expediente queda como la foto de lo que ganó, así que
+                 no lleva ese checklist genérico. */
+              const expedienteNode = (
+                <>
+                  {conPlantilla && (
+                    <Expediente postulacionId={params.id}
+                      plantilla={plantillaConExtras((postCtx?.conv as any).plantilla_formulario, catConv)}
+                      expediente={ent.expediente || {}}
+                      auto={autoExp}
+                      cronoListo={cronoListo} cronoResumen={cronoResumen}
+                      presuListo={presuListo} presuResumen={presuResumen}
+                      materialN={nMat}
+                      benefN={nBen}
+                      precontN={precontN}
+                      precontFirm={precontFirm}
+                      casos={casosExp}
+                      regiones={REGIONES}
+                      categoria={catConv}
+                      prototipoN={nProto}
+                      usaTerceros={usaTerceros}
+                      tercerosN={nTerceros}
+                      rutaFondo={esGanadora ? `/fondo/${params.id}` : undefined} />
+                  )}
+                  {!conPlantilla && !esGanadora && (
+                    <Materiales postulacionId={params.id} materiales={ent.materiales || {}} />
+                  )}
+                  <div style={{ marginTop: 16 }}>{armadoNode}</div>
                 </>
+              );
+
+              /* 👥 EQUIPO (segunda pestaña): el contexto de la postulación
+                 (proyecto, empresa, concurso, lo que está en juego, bases) y el
+                 equipo —el del proyecto, heredado, y el de esta postulación—.
+                 En una postulación el equipo pesa, y aquí tiene espacio. */
+              // Contexto DAFO de una persona del equipo: qué es, de dónde, y si
+              // es comunero/a (la reserva regional y la comunidad puntúan).
+              const ctxPersona = (p: any) =>
+                [p?.tipo, p?.region, p?.es_comunero ? "🌱 comunero/a" : ""].filter(Boolean).join(" · ");
+              const equipoNode = (
+                <>
+                  {/* Cabecera de contexto: el proyecto con su cartel y, de un
+                      vistazo, la empresa, el concurso (categoría y año) y lo que
+                      está en juego. Es la cancha en la que corre este equipo. */}
+                  <div className="linked">
+                    {postCtx?.proy && (
+                      <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 10 }}>
+                        {cartelProy
+                          ? // eslint-disable-next-line @next/next/no-img-element
+                            <img src={cartelProy} alt="" referrerPolicy="no-referrer" className="tr-poster" style={{ width: 52, height: 52 }} />
+                          : <span style={{ fontSize: 30, lineHeight: 1 }}>📁</span>}
+                        <div style={{ minWidth: 0 }}>
+                          <Link href={`/entidad/proyecto/${postCtx.proy.id}`}
+                            style={{ color: "var(--text)", fontWeight: 700, fontSize: TXT.base }}>
+                            {postCtx.proy.nombre} →
+                          </Link>
+                          {postCtx.proy.tipo && (
+                            <div style={{ marginTop: 4 }}>
+                              <span className="badge" style={{ color: "var(--violet)", background: "#1c1c2c", textTransform: "none", letterSpacing: 0 }}>
+                                {postCtx.proy.tipo}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    <EmpresaPostulacion postulacionId={params.id}
+                      convocatoriaId={postCtx?.conv?.id || ""}
+                      empresa={postCtx?.emp} empresas={empresasCat} />
+                    {postCtx?.conv && (
+                      <div className="eq-row"><span className="cargo">Concurso</span>
+                        <span style={{ flex: 1, textAlign: "right" }}>
+                          <Link href={`/entidad/convocatoria/${postCtx.conv.id}`} style={{ color: "var(--text)" }}>📜 {postCtx.conv.codigo} · {postCtx.conv.nombre} →</Link>
+                          {(postCtx.conv.categoria || postCtx.conv.anio) && (
+                            <div style={{ color: "var(--dim)", fontSize: TXT.chip }}>
+                              {[postCtx.conv.categoria, postCtx.conv.anio].filter(Boolean).join(" · ")}
+                            </div>
+                          )}
+                        </span></div>
+                    )}
+                    {postCtx?.conv?.monto_adjudicado && (
+                      <div className="eq-row"><span className="cargo">En juego</span>
+                        <span style={{ flex: 1, textAlign: "right", color: "var(--teal)", fontWeight: 700 }}>
+                          S/ {parseFloat(postCtx.conv.monto_adjudicado).toLocaleString("es-PE")}
+                        </span></div>
+                    )}
+                    {postCtx?.conv?.bases_url && (
+                      <div className="eq-row"><span className="cargo">Bases</span>
+                        <span style={{ flex: 1, textAlign: "right" }}>
+                          <a href={postCtx.conv.bases_url} target="_blank" rel="noopener noreferrer"
+                            style={{ color: "var(--violet)", fontWeight: 600 }}>📖 Bases del concurso ↗</a>
+                        </span></div>
+                    )}
+                  </div>
+                  <div style={{ marginTop: 14 }}>
+                    {/* El equipo del PROYECTO va primero y no se edita aquí: la
+                        directora nace con el proyecto y la postulación la hereda.
+                        Abajo, el equipo de ESTA postulación. */}
+                    {equipoProy.length > 0 && (
+                      <div className="linked" style={{ marginBottom: 14 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                          <h4 style={{ margin: 0, fontSize: TXT.chip, letterSpacing: 1.2, textTransform: "uppercase", color: "var(--dim)" }}>
+                            🎬 Equipo del proyecto · {equipoProy.length}
+                          </h4>
+                          <span style={{ flex: 1 }} />
+                          {postCtx?.proy && (
+                            <Link href={`/entidad/proyecto/${(postCtx.proy as any).id}`}
+                              style={{ color: "var(--accent)", fontSize: TXT.chip }}>editarlo en el proyecto →</Link>
+                          )}
+                        </div>
+                        <p style={{ color: "var(--dim)", fontSize: TXT.chip, marginTop: 0, marginBottom: 8 }}>
+                          Viene con el proyecto: no hace falta repetirlo aquí.
+                        </p>
+                        {equipoProy.map((m: any) => {
+                          const p = m.persona || {};
+                          const ctx = ctxPersona(p);
+                          return (
+                            <div className="eq-row" key={m.id} style={{ alignItems: "center" }}>
+                              <span className="cargo">{m.cargo}</span>
+                              <span style={{ flex: 1 }} />
+                              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                                <Avatar nombre={p.nombre} src={p.foto_url} size={30} />
+                                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", lineHeight: 1.25, minWidth: 0 }}>
+                                  <Link href={`/entidad/persona/${p.id}`} style={{ color: "var(--text)", fontWeight: 600 }} title={p.nombre}>
+                                    {p.alias || p.nombre} →
+                                  </Link>
+                                  {ctx && <span style={{ color: "var(--dim)", fontSize: 11 }}>{ctx}</span>}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <EquipoPostulacion postulacionId={params.id} equipo={equipoPost} personas={personasCat} />
+                    {/* Cumplimiento calculado: % peruano/domiciliado y % regional
+                        del equipo completo (proyecto + postulación). */}
+                    <EquipoPorcentajes equipo={[...equipoPost, ...equipoProy]} />
+                  </div>
+                </>
+              );
+
+              /* 📚 REPOSITORIO: obras y referencias de esta postulación, más las
+                 de otros que la sostienen. */
+              const repoNode = (
+                <>
+                  <Repositorio entidadTipo={params.tipo} entidadId={params.id}
+                    objetos={objetosDe} verif={verifDe} />
+                  {objetosVinculados.length > 0 && (
+                    <div className="linked" style={{ marginTop: 14 }}>
+                      <h4>📚 Del repositorio · {objetosVinculados.length}</h4>
+                      {objetosVinculados.map((o: any) => (
+                        <Link key={o.id} href={`/objeto/${o.id}`} className="info-row" style={{ textDecoration: "none" }}>
+                          {previewCandidates(o.url, 200).length
+                            ? <Miniatura url={o.url} size={42} alt={o.titulo} />
+                            : <span>{icoObjeto(o.tipo)}</span>}
+                          <b style={{ flex: 1, fontSize: TXT.micro, color: "var(--text)" }}>{o.titulo}</b>
+                          <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>
+                            de {duenosObj.get(`${o.entidad_tipo}:${o.entidad_id}`) || "—"}
+                          </span>
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </>
+              );
+
+              /* 🕐 HISTORIAL: el trabajo (avisos + casos) y la línea de tiempo
+                 de eventos, sin el <details> extra (ya está en su pestaña). */
+              const historialNode = (
+                <>
+                  {trabajoNode}
+                  {eventosVis.length > 0 && histInner}
+                </>
+              );
+
+              return (
+                <TabsPanel
+                  labels={[
+                    conPlantilla || esGanadora ? "🗂 Expediente" : "📎 Materiales",
+                    `👥 Equipo · ${equipoProy.length + equipoPost.length}`,
+                    `📚 Repositorio${objetosDe.length ? ` · ${objetosDe.length}` : ""}`,
+                    `🕐 Historial · ${eventosVis.length}`,
+                  ]}
+                  paneles={[
+                    expedienteNode,
+                    equipoNode,
+                    repoNode,
+                    historialNode,
+                  ]}
+                />
               );
             }
             /* PERSONA: la columna de la vida en pestañas (como los fondos), para

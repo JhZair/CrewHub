@@ -1,6 +1,7 @@
 "use client";
 import { guardarExpediente, casoDeExpediente } from "@/app/actions";
 import { claseEstado, rotuloEstado } from "@/lib/estados";
+import VistaRapida from "@/components/VistaRapida";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -23,11 +24,21 @@ export type CampoExp = {
 };
 export type SeccionExp = { titulo: string; campos: CampoExp[] };
 
-export default function Expediente({ postulacionId, plantilla, expediente, auto, cronoListo, cronoResumen, presuListo, presuResumen, materialN, benefN, precontN, precontFirm, casos, rutaFondo }: {
+export default function Expediente({ postulacionId, plantilla, expediente, auto, cronoListo, cronoResumen, presuListo, presuResumen, materialN, benefN, precontN, precontFirm, casos, regiones, categoria, prototipoN, usaTerceros, tercerosN, rutaFondo }: {
   postulacionId: string;
   plantilla: SeccionExp[];
   expediente: Record<string, { v: string; listo: boolean }>;
   auto: Record<string, string>;
+  /** Regiones del Perú, para el combo del campo «Región(es) de las actividades». */
+  regiones?: string[];
+  /** Categoría de la convocatoria: cambia las tablas de la Sección C (videojuego). */
+  categoria?: string | null;
+  /** Filas del prototipo / vertical slice (solo videojuego), para su enlace. */
+  prototipoN?: number;
+  /** ¿La postulación adapta obra de terceros? (combo Sí) — revela su tabla. */
+  usaTerceros?: boolean;
+  /** Filas de obra de terceros, para su enlace cuando aplica. */
+  tercerosN?: number;
   /* El cronograma (Sección C) y el presupuesto (Sección D) NO se llenan aquí:
      tienen su propia sección en la ficha. El expediente los enlaza y cuenta su
      estado en el %. */
@@ -64,8 +75,27 @@ export default function Expediente({ postulacionId, plantilla, expediente, auto,
     // "Beneficiario final/efectivo" es la DDJJ de titularidad real (SUNAT), NO
     // la tabla de participantes: ese campo SÍ se teclea, no lo escondas.
     if (/beneficiario\s+(final|efectivo)/.test(e)) return false;
-    return /cronograma|presupuesto|financiamiento|tipo de cambio|material de archivo|beneficiario|precontrato|carta de compromiso/i.test(e);
+    return /cronograma|presupuesto|financiamiento|tipo de cambio|material de archivo|materiales gr[aá]ficos|prototipo|vertical slice|beneficiario|precontrato|carta de compromiso/i.test(e);
   };
+  const esVJ = /videojuego/i.test(categoria || "");
+
+  /* Campo de región (p. ej. «Región(es) de las actividades»): en vez de texto
+     libre, un combo de regiones del Perú —se elige de la lista, no se teclea—.
+     Solo si la plantilla no trae ya sus propias opciones. */
+  const esRegion = (c: CampoExp) => !c.opciones && !!regiones?.length && /regi[oó]n/i.test(c.etiqueta || "");
+  const partesReg = (t: string) => t.split(",").map(s => s.trim()).filter(Boolean);
+
+  /* Campos que el formulario oficial DE ESTE AÑO ya no pide: se dejan de mostrar
+     aunque la plantilla (heredada del año pasado) todavía los traiga. */
+  const esObsoleto = (c: CampoExp) => /enlaces de versiones publicadas/i.test(c.etiqueta || "");
+  const visible = (c: CampoExp) => !esVinculada(c) && !esObsoleto(c);
+
+  /* Campos de sí/no: en el formulario oficial son un combo. Si además la
+     plantilla no trae opciones propias, damos «Sí»/«No». (El de «obra de
+     terceros» es condicional: con «Sí» aparece su tabla en la ficha.) */
+  const esSiNo = (c: CampoExp) => !c.opciones && /\bs[ií]\s*\/\s*no\b|\(\s*s[ií]\s*\/\s*no/i.test(c.etiqueta || "");
+  const opcionesDe = (c: CampoExp): string[] | undefined =>
+    c.opciones || (esSiNo(c) ? ["Sí", "No"] : undefined);
 
   /* LAS PESTAÑAS SON LAS SECCIONES DE LA PLANTILLA.
 
@@ -79,7 +109,7 @@ export default function Expediente({ postulacionId, plantilla, expediente, auto,
 
      No se declaran a mano: cada sección de la plantilla es una pestaña. Si una
      convocatoria trae tres secciones, salen tres. */
-  const secciones = plantilla.filter(s => s.campos.some(c => !esVinculada(c)));
+  const secciones = plantilla.filter(s => s.campos.some(c => visible(c)));
   /* La letra que la plantilla ya usa en el título («A · PERSONA JURÍDICA»).
      Es la misma que la plataforma imprime en sus pestañas, así que sirve de
      puente entre las dos pantallas el día del envío. */
@@ -99,7 +129,7 @@ export default function Expediente({ postulacionId, plantilla, expediente, auto,
 
   // Obligatorios de la plantilla SIN los vinculados; el cronograma y el
   // presupuesto entran como dos ítems propios, con su estado real.
-  const obligatorios = plantilla.flatMap(s => s.campos).filter(c => !c.opcional && !esVinculada(c));
+  const obligatorios = plantilla.flatMap(s => s.campos).filter(c => !c.opcional && visible(c));
   const totalOblig = obligatorios.length + 2;
   const llenos = obligatorios.filter(c => listoDe(c)).length + (cronoListo ? 1 : 0) + (presuListo ? 1 : 0);
   const pct = totalOblig ? Math.round((llenos / totalOblig) * 100) : 0;
@@ -166,7 +196,7 @@ export default function Expediente({ postulacionId, plantilla, expediente, auto,
             ves que a la C le faltan cinco, tocarla y aterrizar en la A es un
             paso de más cada vez. */}
         {secciones.map((s, i) => {
-          const oblig = s.campos.filter(c => !c.opcional && !esVinculada(c));
+          const oblig = s.campos.filter(c => !c.opcional && visible(c));
           const ok = oblig.filter(c => listoDe(c)).length;
           return (
             <span key={i} className="badge" style={{
@@ -208,7 +238,7 @@ export default function Expediente({ postulacionId, plantilla, expediente, auto,
                 expediente entero le faltan 13 no le dice a nadie qué hacer. */}
             <div className="exp-tabs">
               {secciones.map((s, i) => {
-                const ob = s.campos.filter(c => !c.opcional && !esVinculada(c));
+                const ob = s.campos.filter(c => !c.opcional && visible(c));
                 const ok = ob.filter(c => listoDe(c)).length;
                 const full = ob.length > 0 && ok === ob.length;
                 return (
@@ -234,15 +264,19 @@ export default function Expediente({ postulacionId, plantilla, expediente, auto,
               const letra = letraDe(s);
               const enlaces = [
                 { en: "C", id: "sec-cronograma", ico: "📅", nom: "Cronograma", listo: cronoListo, res: cronoResumen, opc: false },
-                { en: "C", id: "sec-material", ico: "📁", nom: "Material de archivo", listo: (materialN || 0) > 0, res: (materialN || 0) > 0 ? `${materialN} entradas` : "sin material (o no aplica)", opc: true },
+                { en: "C", id: "sec-material", ico: esVJ ? "🖼" : "📁", nom: esVJ ? "Materiales gráficos" : "Material de archivo", listo: (materialN || 0) > 0, res: (materialN || 0) > 0 ? `${materialN} entradas` : "sin material (o no aplica)", opc: true },
+                // Solo videojuego: prototipo / vertical slice ejecutable.
+                ...(esVJ ? [{ en: "C", id: "sec-prototipo", ico: "🎮", nom: "Prototipo / vertical slice", listo: (prototipoN || 0) > 0, res: (prototipoN || 0) > 0 ? `${prototipoN} filas` : "sin prototipo (o no aplica)", opc: true }] : []),
                 { en: "C", id: "sec-beneficiarios", ico: "👥", nom: "Beneficiarios", listo: (benefN || 0) > 0, res: (benefN || 0) > 0 ? `${benefN} filas` : "sin filas (o no aplica)", opc: true },
                 { en: "D", id: "sec-presupuesto", ico: "💰", nom: "Presupuesto", listo: presuListo, res: presuResumen, opc: false },
                 { en: "B", id: "sec-precontratos", ico: "📝", nom: "Precontratos", listo: (precontN || 0) > 0 && (precontFirm || 0) === (precontN || 0), res: (precontN || 0) > 0 ? `${precontFirm || 0}/${precontN} firmados` : "sin precontratos (o no aplica)", opc: true },
+                // Solo si «usa obra de terceros» = Sí: la tabla de obras adaptadas.
+                ...(usaTerceros ? [{ en: "B", id: "sec-obra-terceros", ico: "⚖", nom: "Obra de terceros", listo: (tercerosN || 0) > 0, res: (tercerosN || 0) > 0 ? `${tercerosN} filas` : "pendiente — la declaraste", opc: false }] : []),
               ].filter(x =>
                 letras.has(x.en)
                   ? x.en === letra          // hay pestaña para su letra: ahí va
                   : si === 0);              // no la hay: a la primera, nunca al vacío
-              const ob = s.campos.filter(c => !c.opcional && !esVinculada(c));
+              const ob = s.campos.filter(c => !c.opcional && visible(c));
               const faltan = ob.filter(c => !listoDe(c)).length;
               const encargados = ob.filter(c => casos?.[c.k]).length;
               return (
@@ -286,7 +320,7 @@ export default function Expediente({ postulacionId, plantilla, expediente, auto,
                   </div>
                 )}
                 <div className="exp-form">
-                  {s.campos.filter(c => !esVinculada(c)).map(c => {
+                  {s.campos.filter(c => visible(c)).map(c => {
                     const v = valorDe(c);
                     const esAuto = !expediente[c.k] && !!auto[c.k];
                     const listo = listoDe(c);
@@ -328,9 +362,14 @@ export default function Expediente({ postulacionId, plantilla, expediente, auto,
                               <span className={`pill st-${claseEstado(casos[c.k].estado, "tarea")}`}>
                                 {rotuloEstado(casos[c.k].estado, "tarea")}
                               </span>
+                              {/* Interactuar al vuelo: comentar, cambiar estado o
+                                  responsable sin salir del expediente. */}
+                              <span style={{ position: "relative", marginLeft: 4 }}>
+                                <VistaRapida pubId={casos[c.k].id} />
+                              </span>
                             </div>
                           )}
-                        {abiertoCampo && c.opciones ? (
+                        {abiertoCampo && opcionesDe(c) ? (
                           <div style={{ marginTop: 6 }}>
                             <select value={texto} autoFocus
                               onChange={async e => {
@@ -345,8 +384,42 @@ export default function Expediente({ postulacionId, plantilla, expediente, auto,
                               }}
                               style={{ width: "100%", background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", fontSize: 12.5, color: "var(--text)", outline: "none" }}>
                               <option value="">Elegir…</option>
-                              {c.opciones.map(o => <option key={o} value={o}>{o}</option>)}
+                              {opcionesDe(c)!.map(o => <option key={o} value={o}>{o}</option>)}
                             </select>
+                            {/* Combo condicional: con «Sí», la tabla de obra de
+                                terceros aparece en la ficha (Sección B). */}
+                            {esSiNo(c) && /obra\s+de\s+terceros/i.test(c.etiqueta || "") && /^s[ií]/i.test(texto) && (
+                              <div style={{ color: "var(--dim)", fontSize: 11, marginTop: 4 }}>
+                                Al guardar «Sí», abajo en la ficha aparece la tabla ⚖ Obra de terceros para listarlas.
+                              </div>
+                            )}
+                          </div>
+                        ) : abiertoCampo && esRegion(c) ? (
+                          /* Combo de regiones: chips que se prenden al elegir. Se
+                             pueden marcar varias (son «región(es)»). */
+                          <div style={{ marginTop: 6 }}>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                              {regiones!.map(rg => {
+                                const sel = partesReg(texto).includes(rg);
+                                return (
+                                  <button key={rg} type="button" className="badge"
+                                    style={{ cursor: "pointer", textTransform: "none", letterSpacing: 0, border: "none",
+                                      background: sel ? "var(--accent)" : "#1c1c2c", color: sel ? "#fff" : "var(--muted)" }}
+                                    onClick={() => {
+                                      const cur = partesReg(texto);
+                                      setTexto((sel ? cur.filter(x => x !== rg) : [...cur, rg]).join(", "));
+                                    }}>{rg}</button>
+                                );
+                              })}
+                            </div>
+                            <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
+                              <button className="btn btn-ghost" style={{ padding: "4px 12px", fontSize: 11.5 }} disabled={ocupado}
+                                onClick={() => guardar(c, false)}>{ocupado ? "..." : "💾 Borrador"}</button>
+                              <button className="btn" style={{ padding: "4px 12px", fontSize: 11.5, background: "var(--green)" }}
+                                disabled={ocupado || !texto.trim()}
+                                onClick={() => guardar(c, true)}>✓ Guardar listo</button>
+                              <span style={{ color: "var(--dim)", fontSize: 11 }}>{partesReg(texto).length} región(es)</span>
+                            </div>
                           </div>
                         ) : abiertoCampo && (
                           <div style={{ marginTop: 6 }}>

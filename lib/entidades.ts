@@ -329,11 +329,18 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
       //   PDF guardado se desactualizaba y engañaba). —
       { key: "ruc", label: "RUC (11 dígitos)", valida: "ruc", grupo: SUNAT_EMPRESA },
       { key: "domicilio_fiscal", label: "Domicilio fiscal", grupo: SUNAT_EMPRESA },
+      /* El domicilio fiscal desglosado, como lo pide el expediente DAFO
+         (departamento · provincia · distrito). El DEPARTAMENTO es el mismo dato
+         que la reserva usa (`sunat_region_domicilio`), así que no se repite:
+         aquí solo van provincia y distrito. */
+      { key: "provincia_fiscal", label: "Provincia (domicilio fiscal)", corto: "Provincia fiscal", grupo: SUNAT_EMPRESA },
+      { key: "distrito_fiscal", label: "Distrito (domicilio fiscal)", corto: "Distrito fiscal", grupo: SUNAT_EMPRESA },
       { key: "estado_sunat", label: "Estado SUNAT", tipo: "select", opciones: ["activo", "suspension_temporal", "baja_provisional", "baja_definitiva"], grupo: SUNAT_EMPRESA, verif: true },
       { key: "condicion_sunat", label: "Condición SUNAT", tipo: "select", opciones: ["habido", "no_habido"], grupo: SUNAT_EMPRESA, verif: true },
       { key: "fecha_verificacion_sunat", label: "Última verificación SUNAT", corto: "Verificado SUNAT", tipo: "date", grupo: SUNAT_EMPRESA, verif: true },
       // — Documentos: importantes para postular, pero no bloquean el alta.
       //   Cada dato va a la izquierda con su respaldo (link) a la derecha. —
+      { key: "partida_electronica", label: "N° de partida electrónica (SUNARP)", corto: "Partida electrónica", grupo: DOCS_EMPRESA },
       { key: "renca", label: "RENCA — N° de registro", corto: "RENCA", grupo: DOCS_EMPRESA },
       { key: "renca_url", label: "RENCA — reconocimiento (PDF)", corto: "RENCA PDF", valida: "url", grupo: DOCS_EMPRESA },
       /* Se pide la emisión, no el vencimiento: es el dato que trae el papel
