@@ -1156,8 +1156,13 @@ button.obj-mini:hover,a.obj-mini:hover{border-color:var(--accent)}
 .compl-sub{margin-top:4px;font-size:10.5px;color:var(--dim)}
 /* Compacta, para los listados */
 .pl-compl{display:flex;align-items:center;gap:8px;margin-top:8px}
-.pl-compl-bar{flex:1;height:1px;border-radius:2px;background:rgba(255,255,255,.06);overflow:hidden}
-.pl-compl-bar span{display:block;height:100%;border-radius:2px}
+.pl-compl-bar{flex:1;height:1px;border-radius:1px;background:rgba(255,255,255,.06);overflow:hidden}
+.pl-compl-bar span{display:block;height:100%;border-radius:1px;opacity:.5}
+
+/* Ediciones pasadas: apagadas como contexto, pero legibles; al pasar el
+   cursor se encienden a plena luz (siguen siendo enlaces vivos). */
+.edicion-pasada{opacity:.42;transition:opacity .15s ease}
+.edicion-pasada:hover{opacity:1}
 .pl-compl-n{font-size:10px;min-width:30px;text-align:right;font-weight:700}
 
 /* Link de documento con verificador (miniatura + sello de confirmación) */

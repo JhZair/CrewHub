@@ -1458,12 +1458,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                   {ent.carpeta_drive_url && <a href={ent.carpeta_drive_url} target="_blank" rel="noopener noreferrer" className="btn" style={{ ...lnk, background: "#1a73e8" }}>📂 Drive</a>}
                   {ent.renca_url && <LinkVerificable tipo={params.tipo} id={params.id} campo="renca_url" url={ent.renca_url} etiqueta="RENCA" icono="🎬" verif={verifDe.renca_url} />}
                   {ent.vigencia_poder_url && <LinkVerificable tipo={params.tipo} id={params.id} campo="vigencia_poder_url" url={ent.vigencia_poder_url} etiqueta="Vigencia de poder" icono="📜" verif={verifDe.vigencia_poder_url} />}
-                  {/* Todo lo que pide el formulario, junto: la empresa y sus
-                      responsables. Vive aquí, con los papeles, porque es lo
-                      mismo que se va a buscar cuando toque postular. */}
-                  <HojaPostulacion empresa={ent} miembros={miembrosHoja}
-                    trabasEmp={trabasEmp} libre={empLibre}
-                    partesReserva={partesReserva} reserva={reserva} />
+                  {/* La HojaPostulacion (elegibilidad DAFO completa) se mudó a la
+                      pestaña 🎬 Elegibilidad DAFO de la columna derecha. */}
                 </>
               ),
             };
@@ -1730,9 +1726,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             </div>
           )}
 
-          {params.tipo === "empresa" && (
-            <Miembros empresaId={params.id} miembros={miembros} personas={personasCat} />
-          )}
+          {/* Los miembros/plantilla de la empresa se mudaron a la pestaña
+              🏆 Trayectoria (columna derecha). */}
 
           {params.tipo === "equipamiento" && (
             <PrestamoEquipo equipoId={params.id} prestamos={prestamos}
@@ -1782,9 +1777,9 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         <main>
           {/* 📚 Repositorio: todo lo que se sabe y no cabe en el formulario.
               En cualquier entidad — un proyecto acumula referencias y prensa
-              igual que una persona acumula obras. En PERSONA vive en su propia
-              pestaña (abajo), no aquí arriba. */}
-          {params.tipo !== "persona" && (
+              igual que una persona acumula obras. En PERSONA y EMPRESA vive en
+              su propia pestaña (abajo), no aquí arriba. */}
+          {params.tipo !== "persona" && params.tipo !== "empresa" && (
             <>
               <Repositorio entidadTipo={params.tipo} entidadId={params.id}
                 objetos={objetosDe} verif={verifDe} />
@@ -1902,54 +1897,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             </div>
             );
           })()}
-          {/* Palmarés: lo primero que cuenta qué ha logrado esta empresa */}
-          {params.tipo === "empresa" && postusEmp.length > 0 && (
-            <div className="card" style={{ marginBottom: 16 }}>
-              <div className="panel-h">🎯 Postuló con · {postusEmp.length}</div>
-              {postusEmp.map((p: any) => (
-                <div key={p.id} style={{ borderTop: "1px solid var(--border)", padding: "9px 0" }}>
-                  <Link href={`/entidad/postulacion/${p.id}`}
-                    style={{ color: "var(--text)", fontWeight: 600, fontSize: TXT.meta, display: "block", lineHeight: 1.4 }}>
-                    {ICONO_ESTADO[p.estado] || "🎯"} {p.proy?.nombre || p.codigo || "Postulación"} →
-                  </Link>
-                  <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 5, flexWrap: "wrap" }}>
-                    {p.conv?.anio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{p.conv.anio}</span>}
-                    <span className="badge" style={{
-                      color: p.estado === "ganadora" ? "var(--green)" : "var(--muted)", background: "#1c1c2c",
-                    }}>{(p.estado || "").replace(/_/g, " ")}</span>
-                    {p.estado === "ganadora" && p.monto_adjudicado && (
-                      <span className="badge" style={{ color: "var(--teal)", background: "rgba(45,212,191,.12)", fontWeight: 700 }}>
-                        S/ {Number(p.monto_adjudicado).toLocaleString("es-PE")}
-                      </span>
-                    )}
-                    {p.conv?.nombre && (
-                      <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>· {p.conv.nombre}</span>
-                    )}
-                    {p.proy?.id && (
-                      <Link href={`/entidad/proyecto/${p.proy.id}`}
-                        style={{ color: "var(--dim)", fontSize: TXT.chip, textDecoration: "underline dotted", textUnderlineOffset: 3 }}>
-                        📁 ver proyecto →
-                      </Link>
-                    )}
-                  </div>
-                  {/* Quiénes lo hicieron posible */}
-                  {(p.equipo || []).length > 0 && (
-                    <div style={{ display: "flex", gap: 5, alignItems: "center", marginTop: 6, flexWrap: "wrap" }}>
-                      <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>👥</span>
-                      {p.equipo.map((e: any, i: number) => (
-                        <Link key={i} href={`/entidad/persona/${e.persona?.id}`} className="badge"
-                          title={e.cargo || ""}
-                          style={{ color: "var(--violet)", background: "rgba(167,139,250,.10)", textTransform: "none", letterSpacing: 0, fontWeight: 600 }}>
-                          {e.persona?.alias || e.persona?.nombre}
-                          {e.cargo && <span style={{ color: "var(--dim)", fontWeight: 400 }}> · {e.cargo}</span>}
-                        </Link>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
+          {/* El palmarés (postulaciones) y los miembros de la empresa se mudaron
+              a la pestaña 🏆 Trayectoria (columna derecha). */}
           {(() => {
             /* El historial, solo la línea de tiempo (sin el <details>): así se
                puede montar tanto dentro de `vida` (plegado, para los demás
@@ -2443,6 +2392,103 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                     economiaNode,
                     historialNode,
                   ]}
+                />
+              );
+            }
+            /* EMPRESA: mismo patrón de pestañas que la persona, con su contenido
+               propio. Trayectoria = sus postulaciones (palmarés) + sus miembros;
+               Elegibilidad DAFO = la HojaPostulacion; Historial = solo lo que le
+               pasó a su ficha (una empresa no «actúa», no tiene cuenta). */
+            if (params.tipo === "empresa") {
+              const empPostusCard = postusEmp.length > 0 ? (
+                <div className="card">
+                  <div className="panel-h">🎯 Postuló con · {postusEmp.length}</div>
+                  {postusEmp.map((p: any) => (
+                    <div key={p.id} style={{ borderTop: "1px solid var(--border)", padding: "9px 0" }}>
+                      <Link href={`/entidad/postulacion/${p.id}`}
+                        style={{ color: "var(--text)", fontWeight: 600, fontSize: TXT.meta, display: "block", lineHeight: 1.4 }}>
+                        {ICONO_ESTADO[p.estado] || "🎯"} {p.proy?.nombre || p.codigo || "Postulación"} →
+                      </Link>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 5, flexWrap: "wrap" }}>
+                        {p.conv?.anio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{p.conv.anio}</span>}
+                        <span className="badge" style={{ color: p.estado === "ganadora" ? "var(--green)" : "var(--muted)", background: "#1c1c2c" }}>{(p.estado || "").replace(/_/g, " ")}</span>
+                        {p.estado === "ganadora" && p.monto_adjudicado && (
+                          <span className="badge" style={{ color: "var(--teal)", background: "rgba(45,212,191,.12)", fontWeight: 700 }}>
+                            S/ {Number(p.monto_adjudicado).toLocaleString("es-PE")}
+                          </span>
+                        )}
+                        {p.conv?.nombre && <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>· {p.conv.nombre}</span>}
+                        {p.proy?.id && (
+                          <Link href={`/entidad/proyecto/${p.proy.id}`}
+                            style={{ color: "var(--dim)", fontSize: TXT.chip, textDecoration: "underline dotted", textUnderlineOffset: 3 }}>
+                            📁 ver proyecto →
+                          </Link>
+                        )}
+                      </div>
+                      {(p.equipo || []).length > 0 && (
+                        <div style={{ display: "flex", gap: 5, alignItems: "center", marginTop: 6, flexWrap: "wrap" }}>
+                          <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>👥</span>
+                          {p.equipo.map((e: any, i: number) => (
+                            <Link key={i} href={`/entidad/persona/${e.persona?.id}`} className="badge" title={e.cargo || ""}
+                              style={{ color: "var(--violet)", background: "rgba(167,139,250,.10)", textTransform: "none", letterSpacing: 0, fontWeight: 600 }}>
+                              {e.persona?.alias || e.persona?.nombre}
+                              {e.cargo && <span style={{ color: "var(--dim)", fontWeight: 400 }}> · {e.cargo}</span>}
+                            </Link>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty" style={{ padding: "18px 0" }}>Sin postulaciones registradas para {nombre}.</div>
+              );
+              const trayectoriaEmp = (
+                <>
+                  {empPostusCard}
+                  <Miembros empresaId={params.id} miembros={miembros} personas={personasCat} />
+                </>
+              );
+              const dafoNode = (
+                <HojaPostulacion inline empresa={ent} miembros={miembrosHoja}
+                  trabasEmp={trabasEmp} libre={empLibre}
+                  bloqueada={comp.ejec > 0} enConcurso={comp.juego > 0}
+                  partesReserva={partesReserva} reserva={reserva} />
+              );
+              const repoEmp = (
+                <>
+                  <Repositorio entidadTipo={params.tipo} entidadId={params.id} objetos={objetosDe} verif={verifDe} />
+                  {objetosVinculados.length > 0 && (
+                    <div className="linked" style={{ marginTop: 14 }}>
+                      <h4>📚 Del repositorio · {objetosVinculados.length}</h4>
+                      {objetosVinculados.map((o: any) => (
+                        <Link key={o.id} href={`/objeto/${o.id}`} className="info-row" style={{ textDecoration: "none" }}>
+                          {previewCandidates(o.url, 200).length
+                            ? <Miniatura url={o.url} size={42} alt={o.titulo} />
+                            : <span>{icoObjeto(o.tipo)}</span>}
+                          <b style={{ flex: 1, fontSize: TXT.micro, color: "var(--text)" }}>{o.titulo}</b>
+                          <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>
+                            de {duenosObj.get(`${o.entidad_tipo}:${o.entidad_id}`) || "—"}
+                          </span>
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </>
+              );
+              const histEmp = eventosVis.length > 0 ? histInner : (
+                <div className="empty" style={{ padding: "18px 0" }}>Sin actividad registrada todavía.</div>
+              );
+              return (
+                <TabsPanel
+                  labels={[
+                    `📋 Trabajo · ${activas.length}`,
+                    `🏆 Trayectoria · ${postusEmp.length + miembros.length}`,
+                    "🎬 Elegibilidad DAFO",
+                    `📚 Repositorio · ${objetosDe.length}`,
+                    `🕐 Historial · ${eventosVis.length}`,
+                  ]}
+                  paneles={[trabajoNode, trayectoriaEmp, dafoNode, repoEmp, histEmp]}
                 />
               );
             }

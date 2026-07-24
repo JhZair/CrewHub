@@ -29,6 +29,7 @@ type Veredicto = "si" | "no" | "falta";
 
 export default function HojaPostulacion({
   empresa, miembros, trabasEmp, libre, partesReserva, reserva,
+  bloqueada = false, enConcurso = false, inline = false,
 }: {
   empresa: any;
   miembros: Miembro[];
@@ -36,6 +37,12 @@ export default function HojaPostulacion({
   libre: boolean;
   partesReserva: { que: string; v: Veredicto; region: string }[];
   reserva: Veredicto;
+  /** Ejecutando un fondo ganado: no puede tomar otro. Apaga el formulario. */
+  bloqueada?: boolean;
+  /** Ya postulando con ésta: comprometida, no un «todavía no». */
+  enConcurso?: boolean;
+  /** Desplegada de una vez (pestaña ancha) en vez de tras un botón + modal. */
+  inline?: boolean;
 }) {
   const [abierto, setAbierto] = useState(false);
 
@@ -56,75 +63,137 @@ export default function HojaPostulacion({
   // Puede postular, pero hay cosas que nadie miró. No es lo mismo que estar bien.
   const conReparo = todoOk && conDuda.length > 0;
 
-  return (
+  /* Un fondo encima se dice distinto de un trámite pendiente, porque son cosas
+     distintas: «en concurso» / «ejecutando» no se arreglan llenando un papel —
+     es que la empresa ya está comprometida. Se separan del resto de trabas para
+     no mezclar «ya tiene un fondo» con «le falta el RENCA». */
+  const trabaFondo = trabasEmp.find(t => /ejecutando|rendición vencida/i.test(t));
+  const otrasTrabasEmp = trabasEmp.filter(t => t !== "en concurso" && t !== trabaFondo);
+  const hayPendientes = otrasTrabasEmp.length > 0 || conProblema.length > 0 || !miembros.length;
+
+  /* El veredicto, en orden de peso:
+       bloqueada → ejecuta un fondo ganado: no puede tomar otro (apaga el form).
+       concurso  → ya postula con ésta: comprometida, no un «todavía no».
+       lista     → papeles y gente en regla.
+       pendiente → le falta algo para poder postular. */
+  const estado: "bloqueada" | "concurso" | "lista" | "pendiente" =
+    bloqueada ? "bloqueada"
+      : enConcurso ? "concurso"
+        : todoOk ? "lista"
+          : "pendiente";
+
+  /* La lista de lo que hay que arreglar — empresa y responsables. Se usa en el
+     estado «pendiente» y, dentro de «concurso», como lo que falta aparte. */
+  const listaTrabas = (
+    <div style={{ fontSize: 12.5 }}>
+      {otrasTrabasEmp.length > 0 && (
+        <div style={{ marginBottom: 4 }}>
+          <b style={{ color: "var(--dim)" }}>La empresa:</b>{" "}
+          <span style={{ color: "var(--yellow)" }}>{otrasTrabasEmp.join(" · ")}</span>
+        </div>
+      )}
+      {conProblema.map(m => (
+        <div key={m.id} style={{ marginBottom: 3 }}>
+          <b style={{ color: "var(--dim)" }}>{m.cargo || "Responsable"}
+            {" "}({m.persona?.alias || m.persona?.nombre}):</b>{" "}
+          <span style={{ color: "var(--red)" }}>{m.trabas.join(" · ")}</span>
+        </div>
+      ))}
+      {!miembros.length && (
+        <div style={{ color: "var(--red)" }}>
+          Sin responsables registrados — alguien tiene que firmar.
+        </div>
+      )}
+    </div>
+  );
+
+  /* El cuerpo de la hoja: veredicto + empresa + reserva + responsables. Se
+     muestra desplegado (inline, en la pestaña ancha de Elegibilidad DAFO) o
+     dentro de un modal tras un botón (en el carné angosto). */
+  const cuerpo = (
     <>
-      <button className="btn" onClick={() => setAbierto(true)}
-        title="Todo lo que pide el formulario, junto: la empresa y sus responsables"
-        style={{ fontSize: 12, padding: "7px 12px", width: "100%",
-          background: todoOk ? "var(--green)" : undefined,
-          color: todoOk ? "#06210f" : undefined, fontWeight: 700 }}>
-        {todoOk ? "✅" : "⚠"} Hoja para postular
-      </button>
-
-      {abierto && (
-        <div className="modal-fondo" onClick={() => setAbierto(false)}>
-          <div className="modal-caja" onClick={e => e.stopPropagation()}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-              <b style={{ fontSize: 15 }}>📋 Hoja para postular</b>
-              <span style={{ flex: 1 }} />
-              <button onClick={() => setAbierto(false)}
-                style={{ color: "var(--dim)", background: "none", border: "none",
-                  cursor: "pointer", fontSize: 18, lineHeight: 1 }}>✕</button>
-            </div>
-
             {/* ── El veredicto, primero ── */}
-            <div className="card" style={{
-              marginBottom: 14,
-              borderColor: todoOk ? "rgba(46,204,113,.4)" : "rgba(244,180,0,.4)",
-              background: todoOk ? "rgba(46,204,113,.07)" : "rgba(244,180,0,.06)",
-            }}>
-              <div style={{ fontWeight: 700, fontSize: 14,
-                color: todoOk ? "var(--green)" : "var(--yellow)" }}>
-                {todoOk ? "✅ Lista para postular" : "⚠ Todavía no"}
+            {estado === "bloqueada" ? (
+              /* Ejecuta un fondo ganado. No es un trámite pendiente: es que ya
+                 tiene un fondo encima y no puede tomar otro hasta rendirlo.
+                 Por eso, abajo, el formulario se apaga: llenarlo no aplica. */
+              <div className="card" style={{ marginBottom: 14,
+                borderColor: "rgba(255,77,94,.45)", background: "rgba(255,77,94,.07)" }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: "var(--red)" }}>
+                  ⛔ No puede postular
+                </div>
+                <div style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 5, lineHeight: 1.5 }}>
+                  Está {trabaFondo || "ejecutando un fondo ganado"} — hasta rendirlo,
+                  no puede tomar otro.{" "}
+                  <span style={{ color: "var(--dim)" }}>
+                    No es un trámite que arreglar: es que ya tiene un fondo encima.
+                  </span>
+                  {conProblema.length > 0 && (
+                    <div style={{ marginTop: 5, color: "var(--dim)" }}>
+                      (Aparte, en sus responsables: {conProblema.map(m =>
+                        `${m.persona?.alias || m.persona?.nombre?.split(" ")[0]} — ${m.trabas.join(", ")}`).join(" · ")}.)
+                    </div>
+                  )}
+                </div>
               </div>
-              {todoOk ? (
-                <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>
-                  {/* Antes decía «sus 3 responsables con DNI vigente y SUNAT
-                      sano» sin mirar si alguien lo había comprobado. Afirmar
-                      que está sano lo que nunca se consultó es peor que no
-                      decir nada: da tranquilidad falsa justo antes de firmar. */}
-                  Papeles de la empresa en regla, sin fondos encima, y nada objetable
-                  en sus {miembros.length} responsable(s).
-                  {conReparo && (
-                    <div style={{ color: "var(--yellow)", marginTop: 5 }}>
-                      ⚠ Pero hay datos que nadie comprobó — el sistema no puede decir que estén bien:
-                      {" "}{conDuda.map(m => `${m.persona?.alias || m.persona?.nombre?.split(" ")[0]} (${m.dudas.join(", ")})`).join(" · ")}
-                    </div>
-                  )}
+            ) : estado === "concurso" ? (
+              /* Ya postula con ésta. No es un «todavía no» —está comprometida—,
+                 así que se dice como estado, no como falla. Lo que sí falte
+                 (un DNI, un papel) va debajo, aparte, como pendiente. */
+              <div className="card" style={{ marginBottom: 14,
+                borderColor: "rgba(167,139,250,.4)", background: "rgba(167,139,250,.07)" }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: "var(--violet)" }}>
+                  ▶ Ya está en concurso
                 </div>
-              ) : (
-                <div style={{ marginTop: 6, fontSize: 12.5 }}>
-                  {trabasEmp.length > 0 && (
-                    <div style={{ marginBottom: 4 }}>
-                      <b style={{ color: "var(--dim)" }}>La empresa:</b>{" "}
-                      <span style={{ color: "var(--yellow)" }}>{trabasEmp.join(" · ")}</span>
-                    </div>
-                  )}
-                  {conProblema.map(m => (
-                    <div key={m.id} style={{ marginBottom: 3 }}>
-                      <b style={{ color: "var(--dim)" }}>{m.cargo || "Responsable"}
-                        {" "}({m.persona?.alias || m.persona?.nombre}):</b>{" "}
-                      <span style={{ color: "var(--red)" }}>{m.trabas.join(" · ")}</span>
-                    </div>
-                  ))}
-                  {!miembros.length && (
-                    <div style={{ color: "var(--red)" }}>
-                      Sin responsables registrados — alguien tiene que firmar.
-                    </div>
-                  )}
+                <div style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 5, lineHeight: 1.5 }}>
+                  Está postulando con ésta. Según la estrategia de la productora,
+                  no conviene apilar otra postulación encima — para eso hay más empresas.
                 </div>
-              )}
-            </div>
+                {hayPendientes && (
+                  <div style={{ marginTop: 8 }}>
+                    <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--dim)", marginBottom: 3 }}>
+                      Pendiente de arreglar:
+                    </div>
+                    {listaTrabas}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="card" style={{
+                marginBottom: 14,
+                borderColor: todoOk ? "rgba(46,204,113,.4)" : "rgba(244,180,0,.4)",
+                background: todoOk ? "rgba(46,204,113,.07)" : "rgba(244,180,0,.06)",
+              }}>
+                <div style={{ fontWeight: 700, fontSize: 14,
+                  color: todoOk ? "var(--green)" : "var(--yellow)" }}>
+                  {todoOk ? "✅ Lista para postular" : "⚠ Todavía no"}
+                </div>
+                {todoOk ? (
+                  <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>
+                    {/* Antes decía «sus 3 responsables con DNI vigente y SUNAT
+                        sano» sin mirar si alguien lo había comprobado. Afirmar
+                        que está sano lo que nunca se consultó es peor que no
+                        decir nada: da tranquilidad falsa justo antes de firmar. */}
+                    Papeles de la empresa en regla, sin fondos encima, y nada objetable
+                    en sus {miembros.length} responsable(s).
+                    {conReparo && (
+                      <div style={{ color: "var(--yellow)", marginTop: 5 }}>
+                        ⚠ Pero hay datos que nadie comprobó — el sistema no puede decir que estén bien:
+                        {" "}{conDuda.map(m => `${m.persona?.alias || m.persona?.nombre?.split(" ")[0]} (${m.dudas.join(", ")})`).join(" · ")}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 6 }}>{listaTrabas}</div>
+                )}
+              </div>
+            )}
+
+            {/* Debajo del veredicto: la empresa, la reserva y los responsables.
+                Si está bloqueada por un fondo, se apaga —está para consultar,
+                no para llenar. */}
+            <div style={estado === "bloqueada"
+              ? { opacity: .4, pointerEvents: "none" } : undefined}>
 
             {/* ── La empresa ── */}
             <div className="h4" style={{ marginTop: 0 }}>🏢 La empresa</div>
@@ -258,6 +327,34 @@ export default function HojaPostulacion({
             {!miembros.length && (
               <div className="empty">Sin responsables registrados.</div>
             )}
+            </div>{/* fin del bloque que se apaga si está bloqueada */}
+    </>
+  );
+
+  // Desplegada en la pestaña ancha; tras un botón + modal en el carné angosto.
+  if (inline) return cuerpo;
+
+  return (
+    <>
+      <button className="btn" onClick={() => setAbierto(true)}
+        title="Todo lo que pide el formulario, junto: la empresa y sus responsables"
+        style={{ fontSize: 12, padding: "7px 12px", width: "100%",
+          background: todoOk ? "var(--green)" : undefined,
+          color: todoOk ? "#06210f" : undefined, fontWeight: 700 }}>
+        {estado === "bloqueada" ? "⛔" : estado === "concurso" ? "▶" : todoOk ? "✅" : "⚠"} Hoja para postular
+      </button>
+
+      {abierto && (
+        <div className="modal-fondo" onClick={() => setAbierto(false)}>
+          <div className="modal-caja" onClick={e => e.stopPropagation()}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+              <b style={{ fontSize: 15 }}>📋 Hoja para postular</b>
+              <span style={{ flex: 1 }} />
+              <button onClick={() => setAbierto(false)}
+                style={{ color: "var(--dim)", background: "none", border: "none",
+                  cursor: "pointer", fontSize: 18, lineHeight: 1 }}>✕</button>
+            </div>
+            {cuerpo}
           </div>
         </div>
       )}

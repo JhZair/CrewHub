@@ -46,8 +46,10 @@ export default function BotonFichaSunat({ numero, tipo = "RUC", compacto, nota, 
     return (
       <button onClick={ir} title={ayuda} className="badge fila-encima"
         style={{
-          color: copiado ? "var(--green)" : "var(--teal)",
-          background: copiado ? "rgba(46,204,113,.14)" : "rgba(45,212,191,.12)",
+          // El RUC en reposo va tenue: es dato de referencia, no una alerta.
+          // Al copiar sí se enciende (verde) porque ahí pasó algo.
+          color: copiado ? "var(--green)" : "rgba(45,212,191,.7)",
+          background: copiado ? "rgba(46,204,113,.14)" : "rgba(45,212,191,.07)",
           textTransform: "none", letterSpacing: 0, cursor: "pointer", border: "none",
         }}>
         🏛 {tipo} {numero} {copiado ? "· copiado, pega en SUNAT" : "↗"}

@@ -2,8 +2,10 @@ import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { BotonVerificarLote } from "@/components/VerificarSunat";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
+import Avatar from "@/components/Avatar";
 import { alertaSunat, empresaDeCasa, esNuestra, esProblematico, textoSunat } from "@/lib/sunat";
 import { REL_EMPRESA, EST_EMPRESA, completitud } from "@/lib/entidades";
+import { TXT } from "@/lib/texto";
 import Completitud from "@/components/Completitud";
 import { CERRADOS } from "@/lib/familia";
 import { fmtVence, vigenciaVencida } from "@/lib/vigencia";
@@ -62,7 +64,7 @@ export default async function Empresas({ searchParams }: {
   if (!user) redirect("/login");
 
   const [{ data: emps }, { data: vincs }, { data: postsEmp }, { data: coms }, urlSunat,
-         { data: directoras }] = await Promise.all([
+         { data: directoras }, { data: medias }] = await Promise.all([
     supabase.from("empresas").select("*").order("codigo"),
     supabase.from("publicacion_vinculos")
       .select("entidad_id,publicacion_id,pub:publicaciones(estado)").eq("entidad_tipo", "empresa"),
@@ -85,7 +87,14 @@ export default async function Empresas({ searchParams }: {
     supabase.from("proyecto_equipo")
       .select("proyecto_id,cargo,persona:personas(id,nombre,alias)")
       .or("cargo.ilike.%direc%,cargo.ilike.%codirec%"),
+    /* El logo/cartel de cada empresa, para el avatar de la fila. Se trae de
+       entidad_media —la misma tabla que la portada de la ficha— y si no hay,
+       Avatar cae a las iniciales con el color de la relación. */
+    supabase.from("entidad_media").select("entidad_id,cartel_url").eq("entidad_tipo", "empresa"),
   ]);
+
+  const logos = new Map<string, string>();
+  (medias || []).forEach((m: any) => { if (m.cartel_url) logos.set(m.entidad_id, m.cartel_url); });
 
   // Actividad real en CrewHub+: en qué estado están sus casos y cuánto se conversó
   const comentPorPub = new Map<string, number>();
@@ -153,8 +162,6 @@ export default async function Empresas({ searchParams }: {
   const compDe = (x: any) => marca.get(x.id) || SIN_COMPROMISO;
   const libre = (x: any) => empresaLibre(x, compDe(x));
   const trabas = (x: any) => trabasEmpresa(x, compDe(x));
-  const enConcurso = (postsEmp || []).filter(enJuego);
-  const empDe = new Map(todas.map((x: any) => [x.id, x]));
 
   // Filtro por fondos: cada opción con su prueba
   // A un trámite de distancia (lib/fondos.ts): le falta el RENCA y tiene con
@@ -195,6 +202,11 @@ export default async function Empresas({ searchParams }: {
     .map((x: any) => ({ emp: x, ...marca.get(x.id)! }))
     .sort((a, b) => b.ganadas - a.ganadas || b.casi - a.casi || b.total - a.total)
     .slice(0, 10);
+
+  /* La edición viva es la del año en curso; las de años anteriores son
+     ediciones pasadas —quedan como contexto, apagadas— aunque su postulación
+     siga marcada «en concurso» por dato viejo. */
+  const anioActual = new Date().getFullYear();
 
   const Fila = (emp: any) => {
     const a = act.get(emp.id) || VACIO;
@@ -242,10 +254,17 @@ export default async function Empresas({ searchParams }: {
         style={{ cursor: "pointer", padding: "11px 16px" }}>
         <Link href={`/entidad/empresa/${emp.id}`} className="fila-cubre"
           aria-label={emp.nombre} />
-        <div>
+        <div style={{ display: "flex", gap: 11, alignItems: "flex-start" }}>
+          {/* Avatar: el logo cargado, o las iniciales con el color de la
+              relación (propia / aliada / externa) cuando no hay logo. */}
+          <div style={{ flexShrink: 0, marginTop: 1 }}>
+            <Avatar nombre={emp.nombre} src={logos.get(emp.id)}
+              color={REL_META[emp.relacion]?.[1]} size={38} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
           {/* línea 1: quién es */}
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <b style={{ fontSize: 14.5 }}>{emp.nombre}</b>
+            <b style={{ fontSize: TXT.titulo }}>{emp.nombre}</b>
             {emp.relacion && (
               <span className="badge" style={{ color: REL_META[emp.relacion]?.[1] || "var(--dim)", background: "#1c1c2c" }}>
                 {emp.relacion}
@@ -316,7 +335,7 @@ export default async function Empresas({ searchParams }: {
           </div>
 
           {/* línea 2: su vida en CrewHub+ */}
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 7, fontSize: 11.5 }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 7, fontSize: TXT.micro }}>
             {emp.codigo && <span style={{ color: "var(--dim)" }}>{emp.codigo}</span>}
             {/* Sin RUC solo alarma si figura activa: en constitución es normal */}
             {emp.ruc ? (
@@ -357,7 +376,7 @@ export default async function Empresas({ searchParams }: {
               cuando la pregunta existe. */}
           {suyas.length > 0 && (
             <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap",
-              marginTop: 7, paddingTop: 7, borderTop: "1px solid var(--border)", fontSize: 11.5 }}>
+              marginTop: 7, paddingTop: 7, borderTop: "1px solid var(--border)", fontSize: TXT.micro }}>
               {suyas.map((p: any) => {
                 /* El chip dice en qué punto está, porque «ejecutando» a secas
                    no distingue lo que hay que hacer: si va tarde, entregar;
@@ -374,9 +393,14 @@ export default async function Empresas({ searchParams }: {
                 const cola = debe ? ` · 🔴 venció hace ${-d!}d`
                   : sinPlazo ? " · ⚠ sin plazo cargado"
                   : ej ? ` · rinde en ${d}d` : "";
+                // Edición pasada: la convocatoria es de un año anterior. Se
+                // apaga —contexto, no lo activo—; ejecutando no se toca, que
+                // sigue siendo trabajo vivo aunque el fondo sea de otro año.
+                const anioConv = Number((p.conv as any)?.anio) || 0;
+                const vieja = !ej && anioConv > 0 && anioConv < anioActual;
                 return (
                   <Link key={p.id} href={`/entidad/postulacion/${p.id}`}
-                    className="badge fila-encima"
+                    className={`badge fila-encima${vieja ? " edicion-pasada" : ""}`}
                     title={`${String(p.estado || "").replace(/_/g, " ")}`
                       + `${(p.conv as any)?.nombre ? ` · ${(p.conv as any).nombre}` : ""}`
                       + `${(p.conv as any)?.anio ? ` ${(p.conv as any).anio}` : ""}`
@@ -384,7 +408,10 @@ export default async function Empresas({ searchParams }: {
                       + (sinPlazo ? "\nGanó y nadie cargó para cuándo debe rendir." : "")
                       + "\n— ir a la postulación"}
                     style={{ color: col, background: fondo, fontWeight: debe ? 700 : 400,
-                      textTransform: "none", letterSpacing: 0, textDecoration: "none" }}>
+                      textTransform: "none", letterSpacing: 0, textDecoration: "none",
+                      // Todos al mismo tamaño (legibles); las ediciones pasadas
+                      // se apagan por clase y se encienden al pasar el cursor.
+                      fontSize: 11.5 }}>
                     {/* El proyecto es lo que identifica la postulación en la
                         cabeza de uno; la convocatoria en código, que es corta —
                         con el nombre completo el chip no cabría. El nombre
@@ -415,6 +442,7 @@ export default async function Empresas({ searchParams }: {
             const c = completitud("empresa", emp);
             return <Completitud mini pct={c.pct} llenos={c.llenos} total={c.total} faltan={c.faltan} />;
           })()}
+          </div>{/* fin columna de contenido, junto al avatar */}
         </div>
       </div>
     );
@@ -513,18 +541,6 @@ export default async function Empresas({ searchParams }: {
 
       {!listar && (
         <>
-          <div className="card">
-            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-              <div className="panel-h" style={{ margin: 0 }}>🔄 Ronda SUNAT</div>
-              <span style={{ flex: 1 }} />
-              <BotonVerificarLote />
-            </div>
-            <p style={{ color: "var(--dim)", fontSize: 12, margin: "8px 0 0" }}>
-              Consulta el RUC de todas las activas y actualiza estado, condición y fecha de verificación.
-              Bot Qhaway deja de contar "sin verificar" por 60 días.
-            </p>
-          </div>
-
           {(() => {
             // Activa y propia pero sin RUC: no puede verificarse ni postular
             const sinRuc = todas.filter((x: any) => nosCompete(x) && !x.ruc);
@@ -539,7 +555,7 @@ export default async function Empresas({ searchParams }: {
                       {x.codigo ? `${x.codigo} · ` : ""}{x.nombre} →
                     </Link>
                     <span style={{ flex: 1 }} />
-                    <span style={{ color: "var(--red)", fontSize: 12, fontWeight: 700 }}>falta el RUC</span>
+                    <span style={{ color: "var(--red)", fontSize: TXT.micro, fontWeight: 700 }}>falta el RUC</span>
                   </div>
                 ))}
               </div>
@@ -558,7 +574,7 @@ export default async function Empresas({ searchParams }: {
                   {/* Ojo: aquí había un x.estado_sunat.replace() directo. Una
                       empresa puede entrar a esta lista solo por "no habido",
                       con estado_sunat en null, y eso tumbaba toda la página. */}
-                  <span style={{ color: "var(--red)", fontSize: 12.5, fontWeight: 700 }}>
+                  <span style={{ color: "var(--red)", fontSize: TXT.micro, fontWeight: 700 }}>
                     {textoSunat(x)}
                   </span>
                 </div>
@@ -587,7 +603,7 @@ export default async function Empresas({ searchParams }: {
                       {x.codigo ? `${x.codigo} · ` : ""}{x.nombre} →
                     </Link>
                     <span style={{ flex: 1 }} />
-                    <span style={{ color: "var(--yellow)", fontSize: 12, fontWeight: 700 }}>
+                    <span style={{ color: "var(--yellow)", fontSize: TXT.micro, fontWeight: 700 }}>
                       venció el {fmtVence(x.vigencia_poder_fecha)}
                     </span>
                   </div>
@@ -596,42 +612,17 @@ export default async function Empresas({ searchParams }: {
             );
           })()}
 
-          {enConcurso.length > 0 && (
-            <div className="card" style={{ borderColor: "rgba(167,139,250,.35)" }}>
-              <div className="panel-h" style={{ color: "var(--violet)" }}>
-                ⏳ En concurso ahora · {enConcurso.length}
-              </div>
-              {enConcurso.map((p: any) => {
-                const emp = empDe.get(p.empresa_id) as any;
-                return (
-                  <div className="info-row" key={p.id}>
-                    <Link href={`/entidad/postulacion/${p.id}`} style={{ fontWeight: 600 }}>
-                      {ICONO_POST[p.estado] || "🎯"} {p.proy?.nombre || "Postulación"} →
-                    </Link>
-                    {emp && (
-                      <Link href={`/entidad/empresa/${emp.id}`} className="badge"
-                        style={{ color: REL_META[emp.relacion]?.[1] || "var(--muted)", background: "#1c1c2c" }}>
-                        {emp.nombre}
-                      </Link>
-                    )}
-                    <span style={{ color: "var(--dim)", fontSize: 11.5 }}>
-                      {p.conv?.nombre}{p.conv?.anio ? ` · ${p.conv.anio}` : ""}
-                    </span>
-                    <span style={{ flex: 1 }} />
-                    <span style={{ color: "var(--violet)", fontSize: 12, fontWeight: 700 }}>
-                      {(p.estado || "").replace(/_/g, " ")}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          {/* La sección «En concurso ahora» se quitó: eso ya vive en la página
+              de postulaciones, y repetirlo aquí —en la lista de empresas—
+              confundía sobre de qué trata esta pantalla. */}
 
           {palmares.length > 0 && (
             <div className="card">
               <div className="panel-h" style={{ color: "var(--yellow)" }}>🏅 Palmarés — quién gana, quién roza, quién persiste</div>
               {palmares.map(({ emp, total, ganadas, casi, monto }) => (
                 <div className="info-row" key={emp.id}>
+                  <Avatar nombre={emp.nombre} src={logos.get(emp.id)}
+                    color={REL_META[emp.relacion]?.[1]} size={26} />
                   <Link href={`/entidad/empresa/${emp.id}`} style={{ fontWeight: 600 }}>
                     {emp.codigo ? `${emp.codigo} · ` : ""}{emp.nombre} →
                   </Link>
@@ -650,7 +641,7 @@ export default async function Empresas({ searchParams }: {
                   </span>
                   <span style={{ flex: 1 }} />
                   {monto > 0 && (
-                    <span style={{ color: "var(--teal)", fontSize: 12.5, fontWeight: 700 }}>
+                    <span style={{ color: "var(--teal)", fontSize: TXT.micro, fontWeight: 700 }}>
                       S/ {monto.toLocaleString("es-PE")} ganado
                     </span>
                   )}
@@ -667,20 +658,38 @@ export default async function Empresas({ searchParams }: {
               {todas.map((x: any) => {
                 const alerta = alertaSunat(x);
                 const col = REL_META[x.relacion]?.[1];
+                const base: any = { display: "inline-flex", alignItems: "center", gap: 6 };
+                const estilo = alerta ? { ...base, borderColor: "var(--red)", color: "var(--red)" }
+                  : x.relacion === "propia" || x.relacion === "aliada" ? { ...base, color: col } : base;
                 return (
                   <Link key={x.id} href={`/entidad/empresa/${x.id}`} className="vtab"
                     title={`${x.relacion || "externa"}${x.tipo ? ` · ${x.tipo}` : ""}`}
-                    style={alerta ? { borderColor: "var(--red)", color: "var(--red)" }
-                      : x.relacion === "propia" || x.relacion === "aliada" ? { color: col } : undefined}>
+                    style={estilo}>
+                    <Avatar nombre={x.nombre} src={logos.get(x.id)}
+                      color={REL_META[x.relacion]?.[1]} size={18} />
                     {x.nombre}
                   </Link>
                 );
               })}
             </div>
-            <p style={{ color: "var(--dim)", fontSize: 11.5, margin: "10px 0 0" }}>
+            <p style={{ color: "var(--dim)", fontSize: TXT.micro, margin: "10px 0 0" }}>
               <span style={{ color: "var(--violet)" }}>propias</span> ·{" "}
               <span style={{ color: "var(--teal)" }}>aliadas</span> · externas ·{" "}
               <span style={{ color: "var(--red)" }}>requiere atención</span>
+            </p>
+          </div>
+
+          {/* La Ronda SUNAT va al final: es una herramienta de mantenimiento
+              (reverificar RUCs en lote), no lo primero que se viene a mirar. */}
+          <div className="card">
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <div className="panel-h" style={{ margin: 0 }}>🔄 Ronda SUNAT</div>
+              <span style={{ flex: 1 }} />
+              <BotonVerificarLote />
+            </div>
+            <p style={{ color: "var(--dim)", fontSize: TXT.micro, margin: "8px 0 0" }}>
+              Consulta el RUC de todas las activas y actualiza estado, condición y fecha de verificación.
+              Bot Qhaway deja de contar "sin verificar" por 60 días.
             </p>
           </div>
         </>
@@ -688,7 +697,7 @@ export default async function Empresas({ searchParams }: {
 
       {listar && (
         <>
-          <div style={{ color: "var(--muted)", fontSize: 13, margin: "2px 4px 10px" }}>
+          <div style={{ color: "var(--muted)", fontSize: TXT.micro, margin: "2px 4px 10px" }}>
             {filtradas.length} resultado{filtradas.length === 1 ? "" : "s"}
             {e && ` · ${(EST_META[e]?.[0] || e).toLowerCase()}`}
             {r && ` · ${r}`}{t && ` · ${t}`}
