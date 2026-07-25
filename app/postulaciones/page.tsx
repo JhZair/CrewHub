@@ -1,6 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
-import LineaTiempo, { type EventoLT } from "@/components/LineaTiempo";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import { TIPO_COLOR, completitud } from "@/lib/entidades";
 import Completitud from "@/components/Completitud";
@@ -49,7 +48,7 @@ export default async function Postulaciones({ searchParams }: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: postsAll, error: qErr }, { data: vincs }, { data: coms }] = await Promise.all([
+  const [{ data: postsAll, error: qErr }, { data: vincs }, { data: coms }, { data: peq }, { data: pyeq }, { data: media }] = await Promise.all([
     supabase.from("postulaciones")
       .select("*,conv:convocatorias(id,codigo,nombre,anio,estado,monto_adjudicado),proy:proyectos(id,nombre,tipo),emp:empresas(id,nombre)")
       .order("creado_en", { ascending: false }),
@@ -59,7 +58,27 @@ export default async function Postulaciones({ searchParams }: {
        esta misma tabla, sin el filtro sus filas gastan el tope de PostgREST
        (1000) y el contador 💬 se queda corto en silencio. */
     supabase.from("comentarios").select("publicacion_id").not("publicacion_id", "is", null),
+    /* El/la director(a): el tercer protagonista del trío. Vive en el equipo de
+       la postulación; si ahí no está, se hereda del equipo del proyecto. */
+    supabase.from("postulacion_equipo").select("postulacion_id,cargo,persona:personas(id,nombre,alias,foto_url)"),
+    supabase.from("proyecto_equipo").select("proyecto_id,cargo,persona:personas(id,nombre,alias,foto_url)"),
+    /* Las imágenes del trío: cartel del proyecto y logo de la empresa (la foto
+       del director viaja con la persona). Para mostrar caras, no solo texto. */
+    supabase.from("entidad_media").select("entidad_tipo,entidad_id,cartel_url").in("entidad_tipo", ["proyecto", "empresa"]),
   ]);
+
+  const cartelDe = new Map<string, string>();
+  (media || []).forEach((m: any) => { if (m.cartel_url) cartelDe.set(`${m.entidad_tipo}:${m.entidad_id}`, m.cartel_url); });
+
+  /* El trío que define una postulación: Proyecto × Empresa × Director(a). Los
+     dos primeros vienen en la fila; el director se arma aquí. Se prefiere el de
+     la postulación y, si no hay, el del proyecto (que aquella hereda). */
+  const esDir = (c: string) => /director|realizador/i.test(c || "");
+  const dirPost = new Map<string, any>();
+  (peq || []).forEach((r: any) => { if (esDir(r.cargo) && r.persona && !dirPost.has(r.postulacion_id)) dirPost.set(r.postulacion_id, r.persona); });
+  const dirProy = new Map<string, any>();
+  (pyeq || []).forEach((r: any) => { if (esDir(r.cargo) && r.persona && !dirProy.has(r.proyecto_id)) dirProy.set(r.proyecto_id, r.persona); });
+  const directorDe = (p: any) => dirPost.get(p.id) || (p.proy?.id ? dirProy.get(p.proy.id) : null);
 
   /* Su vida en CrewHub+: cuánto trabajo cuelga de cada postulación.
      Empresas y personas ya la muestran; aquí la fila terminaba en el estado
@@ -117,14 +136,6 @@ export default async function Postulaciones({ searchParams }: {
   const decididas = posts.length - enJuego.length;
   const efectividad = decididas > 0 ? Math.round((ganas.length / decididas) * 100) : null;
   const montoHist = ganas.reduce((s: number, g: any) => s + (parseFloat(g.monto_adjudicado) || 0), 0);
-  /* Ejecución viva = ganó y todavía no entregó la rendición (lib/fondos.ts).
-     Aquí había una tercera versión de la misma regla, y era la más rara: sin
-     fecha de rendición miraba si la CONVOCATORIA estaba cerrada, como si el
-     fondo se terminara porque el concurso terminó. Son cosas distintas — el
-     concurso cierra cuando se anuncian los ganadores; el fondo, cuando
-     rindes. Ninguna fecha ni ningún estado ajeno lo puede decir: lo dice la
-     entrega, que ahora se registra. */
-  const enEjecucion = ganas.filter(ejecutando);
   const anios = posts.map((p: any) => p.conv?.anio).filter(Boolean);
   const porAnio = [...new Set(anios)].sort((a: any, b: any) => b - a);
 
@@ -199,23 +210,13 @@ export default async function Postulaciones({ searchParams }: {
     return (
     <Link key={p.id} href={`/entidad/postulacion/${p.id}`}>
       <div className="card link" style={{ cursor: "pointer", padding: "12px 16px" }}>
-        {/* línea 1: quién es */}
-        <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-          <b style={{ fontSize: 14.5 }}>🎯 {p.codigo ? `${p.codigo} · ` : ""}{p.proy?.nombre || "—"}</b>
-          {p.proy?.tipo && (
-            <span className="badge" style={{
-              color: TIPO_COLOR[p.proy.tipo] || "var(--muted)",
-              background: `${TIPO_COLOR[p.proy.tipo] || "#8b8ba3"}1c`,
-            }}>{p.proy.tipo.replace(/_/g, " ")}</span>
-          )}
-          {/* La ausencia se dice. Antes la fila simplemente no mostraba nada
-              y había que notar el hueco. */}
-          {p.emp
-            ? <span style={{ color: "var(--dim)", fontSize: 12 }}>🏢 {p.emp.nombre}</span>
-            : <span className="badge" style={{ color: "var(--red)", background: "rgba(255,77,94,.12)" }}>⚠ sin empresa</span>}
+        {/* línea 1: identidad de la postulación — código, concurso y estado */}
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <b style={{ fontSize: 14.5 }}>🎯 {p.codigo || "—"}</b>
           {p.conv && (
-            <span className="badge" style={{ color: "var(--violet)", background: "rgba(167,139,250,.12)" }}>
-              📜 {p.conv.codigo}{p.conv.anio ? ` · ${p.conv.anio}` : ""}
+            <span className="badge" style={{ color: "var(--violet)", background: "rgba(167,139,250,.12)", textTransform: "none", letterSpacing: 0, maxWidth: 340, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+              title={`${p.conv.codigo} · ${p.conv.nombre || ""}${p.conv.anio ? ` · ${p.conv.anio}` : ""}`}>
+              📜 {p.conv.codigo}{p.conv.nombre ? ` · ${p.conv.nombre}` : ""}{p.conv.anio ? ` · ${p.conv.anio}` : ""}
             </span>
           )}
           <span style={{ flex: 1 }} />
@@ -229,32 +230,74 @@ export default async function Postulaciones({ searchParams }: {
           </span>
         </div>
 
-        {/* línea 2: su vida en CrewHub+ */}
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 7, fontSize: 11.5 }}>
-          {/* La rendición manda: es la única fecha con consecuencia legal */}
-          {p.fecha_rendicion_real && (
-            <span style={{ color: "var(--green)", fontWeight: 700 }}
-              title="Fondo cerrado: la empresa vuelve a estar libre para postular">
-              ✅ rendida el {p.fecha_rendicion_real}
-            </span>
-          )}
-          {dRend !== null && (
-            <span style={{ fontWeight: 700,
-              color: dRend < 0 ? "var(--red)" : dRend <= 60 ? "var(--yellow)" : "var(--dim)" }}
-              title={dRend < 0 ? "El plazo pasó y no hay entrega registrada. Si ya se entregó, ponle la fecha en «Rendición entregada el»." : undefined}>
-              🧾 {dRend < 0 ? `rendición vencida hace ${-dRend}d` : `rinde en ${dRend}d`}
-              {p.fecha_prorroga ? " (prórroga)" : ""}
-            </span>
-          )}
-          {ejecutando(p) && !rend && (
-            <span style={{ color: "var(--yellow)", fontWeight: 700 }}>⚠ sin fecha de rendición</span>
-          )}
-          <span style={{ flex: 1 }} />
-          {x.abiertos > 0 && <span style={{ color: "var(--red)" }}>❗ {x.abiertos} sin resolver</span>}
-          <span style={{ color: "var(--dim)" }} title="Casos vinculados">📌 {x.casos}</span>
-          <span style={{ color: "var(--muted)" }} title="Comentarios">💬 {x.coments}</span>
-          {!x.casos && <span style={{ color: "var(--dim)" }}>sin actividad</span>}
-        </div>
+        {/* línea 2: el TRÍO protagonista con sus imágenes — proyecto, empresa y
+            director(a), en ese orden y a tamaño legible. No son enlaces sueltos
+            (toda la fila lleva a la postulación), así que van como retratos, no
+            como chips. */}
+        {(() => {
+          const dir = directorDe(p);
+          const cProy = p.proy?.id ? cartelDe.get(`proyecto:${p.proy.id}`) : null;
+          const cEmp = p.emp?.id ? cartelDe.get(`empresa:${p.emp.id}`) : null;
+          const retrato = (img: string | null | undefined, emoji: string, cls: string) =>
+            img
+              ? // eslint-disable-next-line @next/next/no-img-element
+                <img src={img} alt="" referrerPolicy="no-referrer" className={`pt-img ${cls}`} />
+              : <span className={`pt-img pt-ph ${cls}`}>{emoji}</span>;
+          return (
+            <div className="post-trio">
+              <span className="pt-item">
+                {retrato(cProy, "📁", "")}
+                <span className="pt-txt">
+                  <span className="pt-nom">{p.proy?.nombre || "—"}</span>
+                  {p.proy?.tipo && <span className="pt-rol" style={{ color: TIPO_COLOR[p.proy.tipo] || "var(--dim)" }}>{p.proy.tipo.replace(/_/g, " ")}</span>}
+                </span>
+              </span>
+              <span className="pt-item">
+                {p.emp
+                  ? retrato(cEmp, "🏢", "")
+                  : <span className="pt-img pt-ph pt-falta">⚠</span>}
+                <span className="pt-txt">
+                  <span className="pt-nom" style={p.emp ? undefined : { color: "var(--red)" }}>{p.emp?.nombre || "sin empresa"}</span>
+                  <span className="pt-rol">empresa</span>
+                </span>
+              </span>
+              <span className="pt-item">
+                {retrato(dir?.foto_url, "🎬", "pt-redondo")}
+                <span className="pt-txt">
+                  <span className="pt-nom" style={dir ? undefined : { color: "var(--dim)" }}>{dir ? (dir.alias || dir.nombre) : "sin director/a"}</span>
+                  <span className="pt-rol">director/a</span>
+                </span>
+              </span>
+              {/* Su vida en CrewHub+ (rendición + casos + comentarios) va en la
+                  misma fila del trío, empujada a la derecha: antes ocupaba una
+                  franja aparte que quedaba casi vacía a la izquierda. */}
+              <span className="pt-vida">
+                {/* La rendición manda: es la única fecha con consecuencia legal */}
+                {p.fecha_rendicion_real && (
+                  <span style={{ color: "var(--green)", fontWeight: 700 }}
+                    title="Fondo cerrado: la empresa vuelve a estar libre para postular">
+                    ✅ rendida el {p.fecha_rendicion_real}
+                  </span>
+                )}
+                {dRend !== null && (
+                  <span style={{ fontWeight: 700,
+                    color: dRend < 0 ? "var(--red)" : dRend <= 60 ? "var(--yellow)" : "var(--dim)" }}
+                    title={dRend < 0 ? "El plazo pasó y no hay entrega registrada. Si ya se entregó, ponle la fecha en «Rendición entregada el»." : undefined}>
+                    🧾 {dRend < 0 ? `rendición vencida hace ${-dRend}d` : `rinde en ${dRend}d`}
+                    {p.fecha_prorroga ? " (prórroga)" : ""}
+                  </span>
+                )}
+                {ejecutando(p) && !rend && (
+                  <span style={{ color: "var(--yellow)", fontWeight: 700 }}>⚠ sin fecha de rendición</span>
+                )}
+                {x.abiertos > 0 && <span style={{ color: "var(--red)" }}>❗ {x.abiertos} sin resolver</span>}
+                <span style={{ color: "var(--dim)" }} title="Casos vinculados">📌 {x.casos}</span>
+                <span style={{ color: "var(--muted)" }} title="Comentarios">💬 {x.coments}</span>
+                {!x.casos && <span style={{ color: "var(--dim)" }}>sin actividad</span>}
+              </span>
+            </div>
+          );
+        })()}
         {(() => {
           const cp = completitud("postulacion", p);
           return <Completitud mini pct={cp.pct} llenos={cp.llenos} total={cp.total} faltan={cp.faltan} />;
@@ -454,33 +497,6 @@ export default async function Postulaciones({ searchParams }: {
                     : <>{decidióAnio} decididas, ninguna ganó todavía</>}
                 </div>
               )}
-            </div>
-          )}
-
-          {enEjecucion.length > 0 && (
-            <div className="card">
-              <div className="panel-h" style={{ color: "var(--green)" }}>🏆 Ganadoras en ejecución — camino a la rendición</div>
-              <LineaTiempo eventos={enEjecucion
-                .filter(plazoRendicion)
-                .map((g: any): EventoLT => {
-                  const f = plazoRendicion(g)!;
-                  return {
-                    fecha: f,
-                    titulo: `Rendición: ${g.proy?.nombre || "Proyecto"}${g.monto_adjudicado ? ` · S/ ${parseFloat(g.monto_adjudicado).toLocaleString("es-PE")}` : ""}${g.fecha_prorroga ? " (prórroga)" : ""}`,
-                    icono: "🧾",
-                    color: dias(f) < 60 ? "var(--red)" : dias(f) < 180 ? "var(--yellow)" : "var(--green)",
-                    chip: g.conv?.codigo,
-                    href: `/entidad/postulacion/${g.id}`,
-                  };
-                })} />
-              {enEjecucion.filter((g: any) => !plazoRendicion(g)).map((g: any) => (
-                <div className="info-row" key={g.id} style={{ marginTop: 6 }}>
-                  <Link href={`/entidad/postulacion/${g.id}`} style={{ fontWeight: 600 }}>
-                    🏆 {g.proy?.nombre || "Proyecto"} →
-                  </Link>
-                  <span style={{ color: "var(--yellow)", fontSize: 12 }}>⚠ sin fecha de rendición registrada</span>
-                </div>
-              ))}
             </div>
           )}
 

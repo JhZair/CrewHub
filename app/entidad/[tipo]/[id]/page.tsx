@@ -466,6 +466,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
 
   let postCtx: any = null, equipoPost: any[] = [], credsEmp: any[] = [], plantillasPre: any[] = [], hitosConc: any[] = [];
   let cartelProy: string | null = null;
+  let portadaProy: string | null = null;
+  let cartelEmp: string | null = null;
   let cronoListo = false, cronoResumen = "", presuListo = false, presuResumen = "";
   let seedBenef: { rol: string; cantidad: number }[] = [];
   let precontN = 0, precontFirm = 0;
@@ -509,12 +511,23 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         supabase.from("proyecto_equipo")
           .select("id,cargo,persona:personas(id,nombre,alias,foto_url,tipo,es_comunero,ruc_dni,genero,nacionalidad,autoident,lengua_materna,otras_lenguas,discapacidad,direccion,region,provincia,distrito,fecha_nacimiento)")
           .eq("proyecto_id", proyId).order("cargo"),
-        // El cartel del proyecto, para la cabecera de contexto de la pestaña Equipo.
-        supabase.from("entidad_media").select("cartel_url")
+        // Cartel + banner del proyecto: el cartel para la cabecera de la pestaña
+        // Equipo, y el banner (portada) para la cabecera del carné —así se ve de
+        // un vistazo QUÉ proyecto está compitiendo en esta postulación.
+        supabase.from("entidad_media").select("portada_url,cartel_url")
           .eq("entidad_tipo", "proyecto").eq("entidad_id", proyId).maybeSingle(),
       ]);
       equipoProy = pe || [];
       cartelProy = (mp as any)?.cartel_url || null;
+      portadaProy = (mp as any)?.portada_url || null;
+    }
+    // El cartel/logo de la EMPRESA: es el otro protagonista del concurso y va
+    // junto al del proyecto en la cabecera de contexto de la pestaña Equipo.
+    const empId = (postCtx?.emp as any)?.id;
+    if (empId) {
+      const { data: me } = await supabase.from("entidad_media").select("cartel_url")
+        .eq("entidad_tipo", "empresa").eq("entidad_id", empId).maybeSingle();
+      cartelEmp = (me as any)?.cartel_url || null;
     }
 
     /* 🗂 EXPEDIENTE — auto-llenado: lo que la base ya sabe, no se teclea.
@@ -550,9 +563,16 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       const empValor = (et: string): string | null => {
         const s = et.toLowerCase();
         if (/partida\s*electr[oó]nica|n[°º.]?\s*de\s*partida/.test(s)) return e.partida_electronica || null;
-        if (/departamento/.test(s)) return e.departamento_fiscal || e.region || null;
-        if (/provincia/.test(s)) return e.provincia_fiscal || null;
-        if (/distrito/.test(s)) return e.distrito_fiscal || null;
+        /* El departamento/provincia/distrito solo se toma de la EMPRESA cuando la
+           etiqueta es su domicilio; NO cuando es una ubicación del PROYECTO
+           («provincia de rodaje», «departamento de ejecución», «región de las
+           actividades»…), para no colar el domicilio fiscal donde no va. */
+        const esUbicacionProyecto = /rodaje|ejecuci|actividad|localiz|filmaci|grabaci|proyecto|obra/.test(s);
+        if (!esUbicacionProyecto) {
+          if (/departamento/.test(s)) return e.departamento_fiscal || e.region || null;
+          if (/provincia/.test(s)) return e.provincia_fiscal || null;
+          if (/distrito/.test(s)) return e.distrito_fiscal || null;
+        }
         return null;
       };
       (Array.isArray(plantForm) ? plantForm : []).forEach((sec: any) =>
@@ -567,7 +587,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
          cargos que pueden serlo y elegimos por prioridad (representante primero,
          luego presidente/titular/gerente). */
       const { data: rl } = await supabase.from("empresa_miembros")
-        .select("cargo,persona:personas(nombre,ruc_dni,nacionalidad,genero,fecha_nacimiento,autoident,lengua_materna,otras_lenguas,discapacidad)")
+        .select("cargo,persona:personas(nombre,ruc_dni,nacionalidad,genero,fecha_nacimiento,autoident,lengua_materna,otras_lenguas,discapacidad,direccion,region,provincia,distrito)")
         .eq("empresa_id", e.id).eq("estado", "activo");
       const prioridadRL = (c: string) =>
         /representante/i.test(c) ? 0 : /presidente|titular|gerente/i.test(c) ? 1 : 9;
@@ -594,6 +614,11 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
           if (/lengua|idioma/.test(s)) return rp.lengua_materna
             ? (rp.otras_lenguas ? `${rp.lengua_materna} (+${rp.otras_lenguas})` : rp.lengua_materna) : null;
           if (/discapacidad/.test(s)) return rp.discapacidad || null;
+          // Domicilio del DNI del RL (el censo lo pide igual que para el equipo).
+          if (/direcci[oó]n/.test(s)) return rp.direccion || null;
+          if (/departamento/.test(s)) return rp.region || null;
+          if (/provincia/.test(s)) return rp.provincia || null;
+          if (/distrito/.test(s)) return rp.distrito || null;
           return null;
         };
         (Array.isArray(plantForm) ? plantForm : []).forEach((sec: any) =>
@@ -1229,45 +1254,30 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         {/* ===== COLUMNA IZQUIERDA: el carné ===== */}
         <aside>
           <div className="card">
+            {/* Cabecera del carné: QUIÉN compite. El banner del proyecto (con su
+                cartel y nombre) al tope, para que a simple vista se lea de qué
+                proyecto es esta postulación —no solo el sello del concurso. */}
+            {params.tipo === "postulacion" && postCtx?.proy && (portadaProy || cartelProy) && (
+              <Link href={`/entidad/proyecto/${postCtx.proy.id}`} className="post-banner"
+                style={portadaProy ? { backgroundImage: `url(${portadaProy})` } : undefined}
+                title={`Ir al proyecto: ${postCtx.proy.nombre}`}>
+                <span className="post-banner-vel" />
+                {cartelProy && <img src={cartelProy} alt="" referrerPolicy="no-referrer" className="post-banner-cartel" />}
+                <span className="post-banner-txt">
+                  <span className="post-banner-nom">{postCtx.proy.nombre}</span>
+                  {postCtx.proy.tipo && <span className="post-banner-tipo">{postCtx.proy.tipo}</span>}
+                </span>
+              </Link>
+            )}
             {/* Completitud de la ficha. Para los tipos sin campos de formulario
                 (lugar, etiqueta) el componente se oculta solo. */}
             {(() => {
               const c = completitud(params.tipo, ent);
               return <Completitud pct={c.pct} llenos={c.llenos} total={c.total} faltan={c.faltan} />;
             })()}
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: conf.campos.length ? 12 : 0 }}>
-              {/* En empresa, Drive/RENCA/Vigencia se muestran dentro del
-                  bloque 📎 Documentos, junto al dato que respaldan. */}
-              {!["empresa", "persona"].includes(params.tipo) && ent.carpeta_drive_url && (
-                <a href={ent.carpeta_drive_url} target="_blank" rel="noopener noreferrer"
-                  className="btn" style={{ background: "#1a73e8", fontSize: TXT.chip, padding: "7px 12px" }}>📂 Drive</a>
-              )}
-              {ent.bases_url && (
-                <a href={ent.bases_url} target="_blank" rel="noopener noreferrer"
-                  className="btn btn-ghost" style={{ fontSize: TXT.chip, padding: "7px 12px" }}>📖 Bases</a>
-              )}
-              {ent.presupuesto_url && (
-                <a href={ent.presupuesto_url} target="_blank" rel="noopener noreferrer"
-                  className="btn btn-ghost" style={{ fontSize: TXT.chip, padding: "7px 12px" }}>💰 Presupuesto</a>
-              )}
-              {ent.matriz_jurado_url && (
-                <a href={ent.matriz_jurado_url} target="_blank" rel="noopener noreferrer"
-                  className="btn btn-ghost" style={{ fontSize: TXT.chip, padding: "7px 12px" }}>📊 Matriz jurado</a>
-              )}
-              {ent.acta_url && (
-                <a href={ent.acta_url} target="_blank" rel="noopener noreferrer"
-                  className="btn btn-ghost" style={{ fontSize: TXT.chip, padding: "7px 12px" }}>🖋 Acta de compromiso</a>
-              )}
-              {params.tipo !== "empresa" && ent.renca_url && (
-                <a href={ent.renca_url} target="_blank" rel="noopener noreferrer"
-                  className="btn btn-ghost" style={{ fontSize: TXT.chip, padding: "7px 12px" }}>🎬 RENCA</a>
-              )}
-              {params.tipo !== "empresa" && ent.vigencia_poder_url && (
-                <a href={ent.vigencia_poder_url} target="_blank" rel="noopener noreferrer"
-                  className="btn btn-ghost" style={{ fontSize: TXT.chip, padding: "7px 12px" }}>📜 Vigencia</a>
-              )}
-              {/* En persona, CV/DNI/Firma/Drive van dentro del bloque 📎 Documentos */}
-            </div>
+            {/* Los enlaces del expediente (Drive, Bases, Matriz jurado, Acta…)
+                se bajaron al pie del carné, junto al botón Editar: son
+                herramientas, no datos, y arriba robaban la primera vista. */}
 
             {/* Al personal y colaboradores activos el fondo les exige DNI y
                 firma escaneados. A un contacto no se le pide nada. */}
@@ -1657,6 +1667,16 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             const nBase = sueltosSec.filter(c => ent[c[1]] != null && ent[c[1]] !== "").length;
             const nVerMas = nBase + extraCampos.length;
             const haySec = nVerMas > 0 || secDibujados.length > 0;
+            /* Postulación y convocatoria tienen POCA info de referencia: no la
+               escondemos tras «Ver más», se muestra toda de una. */
+            const sinVerMas = params.tipo === "postulacion" || params.tipo === "convocatoria";
+            const secInner = (
+              <div style={{ marginTop: 2 }}>
+                {sueltosSec.map(pintarFila)}
+                <FilasDatos campos={extraCampos} valores={ent} />
+                {secDibujados}
+              </div>
+            );
             return (
               <>
                 {sueltosVis.map(pintarFila)}
@@ -1667,16 +1687,12 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                     <a href={ent.carpeta_drive_url} target="_blank" rel="noopener noreferrer" className="btn" style={{ ...lnk, background: "#1a73e8" }}>📂 Drive</a>
                   </div>
                 )}
-                {haySec && (
+                {haySec && (sinVerMas ? secInner : (
                   <details className="mas-datos">
                     <summary>Ver más{nVerMas ? <span className="md-n">{nVerMas}</span> : null}</summary>
-                    <div style={{ marginTop: 2 }}>
-                      {sueltosSec.map(pintarFila)}
-                      <FilasDatos campos={extraCampos} valores={ent} />
-                      {secDibujados}
-                    </div>
+                    {secInner}
                   </details>
-                )}
+                ))}
               </>
             );
             })()}
@@ -1697,6 +1713,41 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                 </div>
               )
             )}
+            {/* Enlaces del expediente, en una sola fila al pie del carné (si son
+                muchos, se desplazan de lado en vez de saltar de línea). */}
+            <div style={{ display: "flex", gap: 6, flexWrap: "nowrap", overflowX: "auto", marginTop: 12 }}>
+              {/* En empresa, Drive/RENCA/Vigencia se muestran dentro del
+                  bloque 📎 Documentos, junto al dato que respaldan. */}
+              {!["empresa", "persona"].includes(params.tipo) && ent.carpeta_drive_url && (
+                <a href={ent.carpeta_drive_url} target="_blank" rel="noopener noreferrer"
+                  className="btn" style={{ background: "#1a73e8", fontSize: TXT.chip, padding: "7px 9px", whiteSpace: "nowrap", flex: "0 0 auto" }}>📂 Drive</a>
+              )}
+              {ent.bases_url && (
+                <a href={ent.bases_url} target="_blank" rel="noopener noreferrer"
+                  className="btn btn-ghost" style={{ fontSize: TXT.chip, padding: "7px 9px", whiteSpace: "nowrap", flex: "0 0 auto" }}>📖 Bases</a>
+              )}
+              {ent.presupuesto_url && (
+                <a href={ent.presupuesto_url} target="_blank" rel="noopener noreferrer"
+                  className="btn btn-ghost" style={{ fontSize: TXT.chip, padding: "7px 9px", whiteSpace: "nowrap", flex: "0 0 auto" }}>💰 Presupuesto</a>
+              )}
+              {ent.matriz_jurado_url && (
+                <a href={ent.matriz_jurado_url} target="_blank" rel="noopener noreferrer"
+                  className="btn btn-ghost" style={{ fontSize: TXT.chip, padding: "7px 9px", whiteSpace: "nowrap", flex: "0 0 auto" }}>📊 Del jurado</a>
+              )}
+              {ent.acta_url && (
+                <a href={ent.acta_url} target="_blank" rel="noopener noreferrer"
+                  className="btn btn-ghost" style={{ fontSize: TXT.chip, padding: "7px 9px", whiteSpace: "nowrap", flex: "0 0 auto" }}>🖋 Acta compromiso</a>
+              )}
+              {params.tipo !== "empresa" && ent.renca_url && (
+                <a href={ent.renca_url} target="_blank" rel="noopener noreferrer"
+                  className="btn btn-ghost" style={{ fontSize: TXT.chip, padding: "7px 9px", whiteSpace: "nowrap", flex: "0 0 auto" }}>🎬 RENCA</a>
+              )}
+              {params.tipo !== "empresa" && ent.vigencia_poder_url && (
+                <a href={ent.vigencia_poder_url} target="_blank" rel="noopener noreferrer"
+                  className="btn btn-ghost" style={{ fontSize: TXT.chip, padding: "7px 9px", whiteSpace: "nowrap", flex: "0 0 auto" }}>📜 Vigencia</a>
+              )}
+              {/* En persona, CV/DNI/Firma/Drive van dentro del bloque 📎 Documentos */}
+            </div>
             <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
               <Mantenimiento tipo={params.tipo} id={params.id} valores={ent} />
               {/* Los de empresa (verificar / ficha SUNAT) van en el bloque 🏛 SUNAT */}
@@ -1716,9 +1767,6 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               {/* Contexto y Equipo se mudaron a la pestaña «👥 Equipo» de la
                   columna ancha (en una postulación el equipo pesa, y ahí tiene
                   espacio). El carné se queda con los accesos y el calendario. */}
-              {/* Los accesos de la empresa, a la mano para entrar a DAFO o al
-                  correo mientras se llena la postulación. */}
-              <CredencialesRef creds={credsEmp} empresaId={(postCtx?.emp as any)?.id} />
               {/* La línea de tiempo del concurso va en la columna pequeña: es
                   una referencia (fechas del Ministerio), no el trabajo — la
                   columna ancha queda para el cronograma y el presupuesto. */}
@@ -1731,6 +1779,10 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                   }))} />
                 </div>
               )}
+              {/* Los accesos de la empresa van al final del carné: son una
+                  herramienta (entrar a DAFO / al correo), no datos de la
+                  postulación — cierran la columna sin robar la vista. */}
+              <CredencialesRef creds={credsEmp} empresaId={(postCtx?.emp as any)?.id} />
             </div>
           )}
 
@@ -2073,25 +2125,33 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                       vistazo, la empresa, el concurso (categoría y año) y lo que
                       está en juego. Es la cancha en la que corre este equipo. */}
                   <div className="linked">
-                    {postCtx?.proy && (
-                      <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 10 }}>
-                        {cartelProy
-                          ? // eslint-disable-next-line @next/next/no-img-element
-                            <img src={cartelProy} alt="" referrerPolicy="no-referrer" className="tr-poster" style={{ width: 52, height: 52 }} />
-                          : <span style={{ fontSize: 30, lineHeight: 1 }}>📁</span>}
-                        <div style={{ minWidth: 0 }}>
-                          <Link href={`/entidad/proyecto/${postCtx.proy.id}`}
-                            style={{ color: "var(--text)", fontWeight: 700, fontSize: TXT.base }}>
-                            {postCtx.proy.nombre} →
+                    {/* Los DOS protagonistas del concurso, lado a lado con su
+                        imagen: el proyecto que compite y la empresa que lo
+                        presenta. El «×» de por medio los lee como un enfrentamiento
+                        en la cancha (el concurso). */}
+                    {(postCtx?.proy || postCtx?.emp) && (
+                      <div className="post-duo">
+                        {postCtx?.proy && (
+                          <Link href={`/entidad/proyecto/${postCtx.proy.id}`} className="post-duo-lado">
+                            {cartelProy
+                              ? // eslint-disable-next-line @next/next/no-img-element
+                                <img src={cartelProy} alt="" referrerPolicy="no-referrer" className="post-duo-img" />
+                              : <span className="post-duo-emoji">📁</span>}
+                            <span className="post-duo-nom">{postCtx.proy.nombre}</span>
+                            {postCtx.proy.tipo && <span className="post-duo-sub">{postCtx.proy.tipo}</span>}
                           </Link>
-                          {postCtx.proy.tipo && (
-                            <div style={{ marginTop: 4 }}>
-                              <span className="badge" style={{ color: "var(--violet)", background: "#1c1c2c", textTransform: "none", letterSpacing: 0 }}>
-                                {postCtx.proy.tipo}
-                              </span>
-                            </div>
-                          )}
-                        </div>
+                        )}
+                        {postCtx?.proy && postCtx?.emp && <span className="post-duo-x">×</span>}
+                        {postCtx?.emp && (
+                          <Link href={`/entidad/empresa/${postCtx.emp.id}`} className="post-duo-lado">
+                            {cartelEmp
+                              ? // eslint-disable-next-line @next/next/no-img-element
+                                <img src={cartelEmp} alt="" referrerPolicy="no-referrer" className="post-duo-img" />
+                              : <span className="post-duo-emoji">🏢</span>}
+                            <span className="post-duo-nom">{postCtx.emp.nombre}</span>
+                            <span className="post-duo-sub">empresa</span>
+                          </Link>
+                        )}
                       </div>
                     )}
                     <EmpresaPostulacion postulacionId={params.id}

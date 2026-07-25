@@ -66,7 +66,7 @@ export default function PortadaEntidad({ tipo, id, portada, cartel, nombre, colo
         {controles("portada", !!portada)}
       </div>
       {conCartel && (
-        <div className="ent-hero-cartel">
+        <div className={`ent-hero-cartel ${cartel ? "tiene-img" : ""}`}>
           {cartel
             ? // eslint-disable-next-line @next/next/no-img-element
               <img src={cartel} alt={nombre || ""} referrerPolicy="no-referrer" />
