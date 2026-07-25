@@ -1976,6 +1976,33 @@ export async function bajaMiembro(miembroId: string, empresaId: string) {
   return {};
 }
 
+/* --- Push al celular: cada dispositivo registra su suscripción --- */
+export async function guardarSuscripcionPush(sub: { endpoint: string; keys?: { p256dh?: string; auth?: string } }, dispositivo: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!sub?.endpoint || !sub.keys?.p256dh || !sub.keys?.auth)
+    return { error: "Suscripción incompleta." };
+  const { error } = await supabase.from("push_suscripciones").upsert({
+    usuario_id: user.id,
+    endpoint: sub.endpoint,
+    p256dh: sub.keys.p256dh,
+    auth: sub.keys.auth,
+    dispositivo: (dispositivo || "").slice(0, 120),
+  }, { onConflict: "endpoint" });
+  if (error) return { error: error.message };
+  return {};
+}
+
+export async function quitarSuscripcionPush(endpoint: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  await supabase.from("push_suscripciones")
+    .delete().eq("usuario_id", user.id).eq("endpoint", endpoint);
+  return {};
+}
+
 /* --- Expediente de postulación: el formulario DAFO se llena en casa ---
    Guarda UN campo de forma ATÓMICA (jsonb_set vía RPC), no read-modify-write:
    así dos personas editando campos distintos de la misma postulación a la vez

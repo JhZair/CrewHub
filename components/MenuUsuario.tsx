@@ -1,5 +1,6 @@
 "use client";
 import Avatar from "@/components/Avatar";
+import ActivarPush from "@/components/ActivarPush";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -40,6 +41,7 @@ export default function MenuUsuario({ nombre, rol, color, src, esAdmin, personaI
               <Link href="/admin" onClick={() => setAbierto(false)} className="btn btn-ghost"
                 style={{ marginTop: 6, fontSize: 12.5, textAlign: "center" }}>⚙ Administración</Link>
             )}
+            <ActivarPush />
             <a href="/auth/signout" className="btn btn-ghost"
               style={{ marginTop: 6, fontSize: 12.5, textAlign: "center" }}>⎋ Salir</a>
           </div>

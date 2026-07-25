@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QuitaFondos — Extractor de fondos con IA</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #181c24;
+    --panel2: #1f2430;
+    --border: #2c3342;
+    --text: #e8ebf0;
+    --muted: #9aa3b2;
+    --accent: #7c6cf0;
+    --accent2: #4fd1a5;
+    --danger: #e05c6a;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 32px 20px 60px;
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; }
+  header { text-align: center; margin-bottom: 28px; }
+  header h1 { font-size: 1.9rem; font-weight: 700; letter-spacing: -0.5px; }
+  header h1 span { color: var(--accent); }
+  header p { color: var(--muted); margin-top: 6px; font-size: 0.95rem; }
+
+  #status {
+    margin: 0 auto 18px;
+    max-width: 640px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 18px;
+    font-size: 0.9rem;
+    color: var(--muted);
+    text-align: center;
+    display: none;
+  }
+  #status.visible { display: block; }
+  #status.error { border-color: var(--danger); color: #f2b8bf; }
+  .bar {
+    height: 6px; background: var(--panel2); border-radius: 3px;
+    margin-top: 8px; overflow: hidden; display: none;
+  }
+  .bar.visible { display: block; }
+  .bar > div {
+    height: 100%; width: 0%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius: 3px; transition: width .25s ease;
+  }
+
+  #drop {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    background: var(--panel);
+    padding: 48px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .2s, background .2s;
+  }
+  #drop:hover, #drop.over { border-color: var(--accent); background: #1b1f2c; }
+  #drop .icon { font-size: 2.4rem; margin-bottom: 10px; }
+  #drop strong { display: block; font-size: 1.05rem; margin-bottom: 4px; }
+  #drop small { color: var(--muted); }
+  #fileInput { display: none; }
+
+  .toolbar {
+    display: flex; gap: 12px; align-items: center; justify-content: center;
+    margin: 20px 0; flex-wrap: wrap;
+  }
+  .toolbar label { color: var(--muted); font-size: 0.88rem; }
+  select {
+    background: var(--panel2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 7px 10px; font-size: 0.88rem; cursor: pointer;
+  }
+  button {
+    background: var(--accent); color: #fff; border: none;
+    border-radius: 9px; padding: 10px 18px;
+    font-size: 0.92rem; font-weight: 600; cursor: pointer;
+    transition: opacity .15s, transform .1s;
+  }
+  button:hover { opacity: .9; }
+  button:active { transform: scale(.98); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.ghost { background: var(--panel2); border: 1px solid var(--border); color: var(--text); }
+  button.zip { background: var(--accent2); color: #0b1512; }
+
+  #grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+    gap: 18px; margin-top: 10px;
+  }
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .card .imgs { display: flex; }
+  .card .half {
+    flex: 1; aspect-ratio: 1; position: relative; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .card .half.checker {
+    background:
+      repeating-conic-gradient(#3a4150 0% 25%, #262c38 0% 50%) 0 0 / 18px 18px;
+  }
+  .card .half img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .card .half .tag {
+    position: absolute; top: 6px; left: 6px;
+    background: rgba(0,0,0,.55); color: #cfd6e2;
+    font-size: 0.66rem; padding: 2px 7px; border-radius: 6px;
+    letter-spacing: .4px;
+  }
+  .card .spin {
+    width: 30px; height: 30px; border-radius: 50%;
+    border: 3px solid var(--border); border-top-color: var(--accent);
+    animation: rot 0.9s linear infinite;
+  }
+  @keyframes rot { to { transform: rotate(360deg); } }
+  .card .info {
+    padding: 11px 13px; display: flex; align-items: center;
+    justify-content: space-between; gap: 8px; border-top: 1px solid var(--border);
+  }
+  .card .name {
+    font-size: 0.78rem; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .card .info button { padding: 7px 12px; font-size: 0.78rem; }
+  .card .err { color: var(--danger); font-size: 0.75rem; padding: 4px 13px 10px; }
+
+  footer { text-align: center; margin-top: 40px; color: #5b6474; font-size: 0.78rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Quita<span>Fondos</span></h1>
+    <p>Extrae el fondo de tus imágenes con IA — 100% en tu navegador, sin subir nada a internet. Resultado: PNG con transparencia real.</p>
+  </header>
+
+  <div id="status"><span id="statusText"></span><div class="bar" id="bar"><div id="barFill"></div></div></div>
+
+  <div id="drop">
+    <div class="icon">🖼️</div>
+    <strong>Arrastra tus imágenes aquí o haz clic para elegirlas</strong>
+    <small>JPG, PNG, WebP · varias a la vez · personas, productos, animales, lo que sea</small>
+    <input type="file" id="fileInput" accept="image/*" multiple>
+  </div>
+
+  <div class="toolbar">
+    <label>Calidad:
+      <select id="quality">
+        <option value="isnet_fp16" selected>Equilibrada (recomendada)</option>
+        <option value="isnet">Máxima (más lenta)</option>
+        <option value="isnet_quint8">Rápida (menos precisa)</option>
+      </select>
+    </label>
+    <button class="zip" id="zipBtn" disabled>⬇ Descargar todo (ZIP)</button>
+    <button class="ghost" id="clearBtn" disabled>Limpiar</button>
+  </div>
+
+  <div id="grid"></div>
+
+  <footer>La primera vez se descarga el modelo de IA (~40&nbsp;MB); luego queda en caché y todo funciona al instante. Tus imágenes nunca salen de tu computadora.</footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script type="module">
+  const $ = id => document.getElementById(id);
+  const statusBox = $('status'), statusText = $('statusText');
+  const bar = $('bar'), barFill = $('barFill');
+  const drop = $('drop'), fileInput = $('fileInput');
+  const grid = $('grid'), zipBtn = $('zipBtn'), clearBtn = $('clearBtn');
+
+  let removeBackground = null;
+  let loadingLib = null;
+  const results = [];   // { name, blob }
+  let queue = Promise.resolve();
+
+  function setStatus(msg, { error = false, progress = null } = {}) {
+    statusBox.classList.add('visible');
+    statusBox.classList.toggle('error', error);
+    statusText.textContent = msg;
+    if (progress !== null) {
+      bar.classList.add('visible');
+      barFill.style.width = (progress * 100).toFixed(1) + '%';
+    } else {
+      bar.classList.remove('visible');
+    }
+  }
+  function hideStatus() { statusBox.classList.remove('visible'); }
+
+  async function ensureLib() {
+    if (removeBackground) return removeBackground;
+    if (!loadingLib) {
+      setStatus('Cargando motor de IA…', { progress: 0 });
+      loadingLib = import('https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/+esm')
+        .then(m => { removeBackground = m.removeBackground; return removeBackground; })
+        .catch(e => {
+          loadingLib = null;
+          setStatus('No se pudo cargar el motor de IA. Revisa tu conexión a internet e inténtalo de nuevo. (Si estás viendo esto dentro de la vista previa de Claude, descarga el archivo HTML y ábrelo en tu navegador.)', { error: true });
+          throw e;
+        });
+    }
+    return loadingLib;
+  }
+
+  function baseName(name) { return name.replace(/\.[^.]+$/, ''); }
+
+  function makeCard(file) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    const url = URL.createObjectURL(file);
+    card.innerHTML = `
+      <div class="imgs">
+        <div class="half"><span class="tag">ORIGINAL</span><img src="${url}" alt=""></div>
+        <div class="half checker"><span class="tag">SIN FONDO</span><div class="spin"></div></div>
+      </div>
+      <div class="info">
+        <span class="name" title="${file.name}">${file.name}</span>
+        <button disabled>⬇ PNG</button>
+      </div>`;
+    grid.prepend(card);
+    return card;
+  }
+
+  async function processFile(file) {
+    const card = makeCard(file);
+    const outHalf = card.querySelector('.half.checker');
+    const btn = card.querySelector('.info button');
+    try {
+      const rb = await ensureLib();
+      setStatus(`Procesando “${file.name}”…`, { progress: null });
+      const blob = await rb(file, {
+        model: $('quality').value,
+        output: { format: 'image/png' },
+        progress: (key, current, total) => {
+          if (key.startsWith('fetch')) {
+            setStatus(`Descargando modelo de IA… ${(current / total * 100).toFixed(0)}%`, { progress: current / total });
+          }
+        }
+      });
+      const outUrl = URL.createObjectURL(blob);
+      outHalf.querySelector('.spin').remove();
+      const img = document.createElement('img');
+      img.src = outUrl;
+      outHalf.appendChild(img);
+
+      const outName = baseName(file.name) + '_sin_fondo.png';
+      results.push({ name: outName, blob });
+      btn.disabled = false;
+      btn.onclick = () => {
+        const a = document.createElement('a');
+        a.href = outUrl; a.download = outName; a.click();
+      };
+      zipBtn.disabled = false;
+      hideStatus();
+    } catch (e) {
+      console.error(e);
+      outHalf.querySelector('.spin')?.remove();
+      const err = document.createElement('div');
+      err.className = 'err';
+      err.textContent = 'Error al procesar esta imagen.';
+      card.appendChild(err);
+    }
+  }
+
+  function handleFiles(files) {
+    const imgs = [...files].filter(f => f.type.startsWith('image/'));
+    if (!imgs.length) return;
+    clearBtn.disabled = false;
+    for (const f of imgs) queue = queue.then(() => processFile(f));
+  }
+
+  drop.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', e => { handleFiles(e.target.files); fileInput.value = ''; });
+  ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => handleFiles(e.dataTransfer.files));
+  document.addEventListener('paste', e => {
+    if (e.clipboardData?.files?.length) handleFiles(e.clipboardData.files);
+  });
+
+  zipBtn.addEventListener('click', async () => {
+    if (!results.length) return;
+    setStatus('Generando ZIP…');
+    const zip = new JSZip();
+    results.forEach(r => zip.file(r.name, r.blob));
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'imagenes_sin_fondo.zip';
+    a.click();
+    hideStatus();
+  });
+
+  clearBtn.addEventListener('click', () => {
+    grid.innerHTML = '';
+    results.length = 0;
+    zipBtn.disabled = true;
+    clearBtn.disabled = true;
+    hideStatus();
+  });
+</script>
+</body>
+</html>

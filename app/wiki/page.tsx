@@ -170,6 +170,15 @@ export default async function Wiki() {
         columna extra con fecha se vuelve hito automáticamente.</P>
       </S>
 
+      <S titulo="🧰 Herramientas de la casa">
+        <P><K><a href="/quitafondos.html" target="_blank" rel="noopener noreferrer"
+          style={{ color: "var(--violet)" }}>✂️ QuitaFondos →</a></K> quita
+        el fondo de imágenes con IA, 100% en el navegador — nada se sube a internet.
+        Ideal para <K>firmas escaneadas</K> (el PNG transparente que piden los
+        formularios DAFO), fotos de perfil y material gráfico. La primera vez
+        descarga el modelo (~40 MB); después funciona al instante, incluso sin señal.</P>
+      </S>
+
       <p style={{ color: "var(--dim)", fontSize: 12, textAlign: "center", margin: "20px 0 8px" }}>
         Esta wiki vive en el código: si un flujo cambia, se actualiza aquí en el mismo cambio. ⬡
       </p>

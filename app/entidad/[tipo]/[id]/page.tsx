@@ -1315,9 +1315,38 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             {/* Completitud de la ficha. Para los tipos sin campos de formulario
                 (lugar, etiqueta) el componente se oculta solo. En postulación,
                 convocatoria y proyecto no se muestra: la barra no aporta ahí. */}
-            {!["postulacion", "convocatoria", "proyecto"].includes(params.tipo) && (() => {
+            {!["postulacion", "convocatoria", "proyecto", "equipamiento"].includes(params.tipo) && (() => {
               const c = completitud(params.tipo, ent);
               return <Completitud pct={c.pct} llenos={c.llenos} total={c.total} faltan={c.faltan} />;
+            })()}
+            {/* 🎥 Equipo audiovisual: lo primero que se necesita saber es su
+                ESTADO y QUIÉN lo tiene ahora. Va destacado al tope del carné; el
+                registro de préstamos completo vive en su pestaña. */}
+            {params.tipo === "equipamiento" && (() => {
+              const actual = (prestamos as any[]).find(p => !p.hasta);
+              const EST: Record<string, [string, string]> = {
+                disponible: ["🟢 Disponible", "var(--green)"],
+                en_uso: ["🔵 En uso", "var(--blue)"],
+                en_reparacion: ["🛠 En reparación", "var(--yellow)"],
+                perdido: ["❌ Perdido", "var(--red)"],
+                de_baja: ["⬇ De baja", "var(--dim)"],
+              };
+              const est = EST[ent.estado] || [String(ent.estado || "—"), "var(--muted)"];
+              const fmtD = (f: string) => new Date(f + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" });
+              return (
+                <div className="carne-equipo">
+                  <div className="ce-estado" style={{ color: est[1] }}>{est[0]}</div>
+                  {actual ? (
+                    <div className="ce-portador">
+                      <div>🤝 <Link href={`/entidad/persona/${actual.persona?.id}`} style={{ color: "var(--text)", fontWeight: 700 }}>{actual.persona?.alias || actual.persona?.nombre}</Link> lo tiene</div>
+                      {actual.proy && <div className="ce-sub">para <Link href={`/entidad/proyecto/${actual.proy.id}`} style={{ color: "var(--violet)" }}>{actual.proy.nombre}</Link></div>}
+                      <div className="ce-sub">desde {fmtD(actual.desde)}</div>
+                    </div>
+                  ) : (
+                    <div className="ce-libre">Nadie lo tiene ahora — libre para prestar.</div>
+                  )}
+                </div>
+              );
             })()}
             {/* 🎭 Actor(es) social(es): los personajes reales del documental —el
                 corazón humano del proyecto—. Van al TOPE del carné, con su
@@ -1736,7 +1765,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             const haySec = nVerMas > 0 || secDibujados.length > 0;
             /* Postulación, convocatoria y proyecto tienen POCA info de
                referencia: no la escondemos tras «Ver más», se muestra toda. */
-            const sinVerMas = ["postulacion", "convocatoria", "proyecto"].includes(params.tipo);
+            const sinVerMas = ["postulacion", "convocatoria", "proyecto", "equipamiento"].includes(params.tipo);
             const secInner = (
               <div style={{ marginTop: 2 }}>
                 {sueltosSec.map(pintarFila)}
@@ -1882,10 +1911,9 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
           {/* Los miembros/plantilla de la empresa se mudaron a la pestaña
               🏆 Trayectoria (columna derecha). */}
 
-          {params.tipo === "equipamiento" && (
-            <PrestamoEquipo equipoId={params.id} prestamos={prestamos}
-              personas={personasCat} proyectos={proyectosPrest} />
-          )}
+          {/* El registro de préstamos (prestar / devolver / historial) se mudó a
+              la pestaña 🤝 Préstamos de la columna ancha; en el carné solo queda
+              el resumen de arriba (estado + quién lo tiene). */}
 
           {/* «Cargos en empresas» y «CVs por enfoque» se mudaron a la pestaña
               🏆 Trayectoria (columna derecha): son recorrido profesional —dónde
@@ -1932,7 +1960,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               En cualquier entidad — un proyecto acumula referencias y prensa
               igual que una persona acumula obras. En PERSONA, EMPRESA y PROYECTO
               vive en su propia pestaña (abajo), no aquí arriba. */}
-          {params.tipo !== "persona" && params.tipo !== "empresa" && params.tipo !== "proyecto" && params.tipo !== "convocatoria" && params.tipo !== "postulacion" && (
+          {params.tipo !== "persona" && params.tipo !== "empresa" && params.tipo !== "proyecto" && params.tipo !== "convocatoria" && params.tipo !== "postulacion" && params.tipo !== "equipamiento" && (
             <>
               <Repositorio entidadTipo={params.tipo} entidadId={params.id}
                 objetos={objetosDe} verif={verifDe} />
@@ -2904,6 +2932,52 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                   ]}
                   paneles={[trabajoNode, trayectoriaEmp, dafoNode, repoEmp, histEmp]}
                   iconoSolo={[4]}
+                />
+              );
+            }
+            /* EQUIPAMIENTO en pestañas, como el resto: Casos · Préstamos ·
+               Repositorio · Historial. El registro de préstamos (prestar,
+               devolver, historial de uso) vive en su propia pestaña; el carné
+               solo lleva el resumen (estado + quién lo tiene ahora). */
+            if (params.tipo === "equipamiento") {
+              const prestamosNode = (
+                <PrestamoEquipo equipoId={params.id} prestamos={prestamos}
+                  personas={personasCat} proyectos={proyectosPrest} />
+              );
+              const repoEq = (
+                <>
+                  <Repositorio entidadTipo={params.tipo} entidadId={params.id} objetos={objetosDe} verif={verifDe} />
+                  {objetosVinculados.length > 0 && (
+                    <div className="linked" style={{ marginTop: 14 }}>
+                      <h4>📚 Del repositorio · {objetosVinculados.length}</h4>
+                      {objetosVinculados.map((o: any) => (
+                        <Link key={o.id} href={`/objeto/${o.id}`} className="info-row" style={{ textDecoration: "none" }}>
+                          {previewCandidates(o.url, 200).length
+                            ? <Miniatura url={o.url} size={42} alt={o.titulo} />
+                            : <span>{icoObjeto(o.tipo)}</span>}
+                          <b style={{ flex: 1, fontSize: TXT.micro, color: "var(--text)" }}>{o.titulo}</b>
+                          <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>
+                            de {duenosObj.get(`${o.entidad_tipo}:${o.entidad_id}`) || "—"}
+                          </span>
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </>
+              );
+              const histEq = eventosVis.length > 0 ? histInner : (
+                <div className="empty" style={{ padding: "18px 0" }}>Sin actividad registrada todavía.</div>
+              );
+              return (
+                <TabsPanel
+                  labels={[
+                    `📋 Casos · ${activas.length}`,
+                    `🤝 Préstamos · ${prestamos.length}`,
+                    `📚 Repositorio · ${objetosDe.length}`,
+                    `🕐 Historial · ${eventosVis.length}`,
+                  ]}
+                  paneles={[trabajoNode, prestamosNode, repoEq, histEq]}
+                  iconoSolo={[3]}
                 />
               );
             }
