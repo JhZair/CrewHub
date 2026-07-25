@@ -78,29 +78,31 @@ export default function LinkVerificable({ tipo, id, campo, url, etiqueta, icono,
         {origen && <span className="lv-origen">{origen}</span>}
         {extra}
 
-        {/* Veredicto actual. En la banda estrecha el ✅ verde YA dice
-            «revisado»: repetir la palabra costaba 65 px que hacían saltar los
-            botones a un segundo renglón. */}
-        {ok && <span className="lv-sello lv-ok" title={`Revisado${firma}`}>
-          {franja ? `✅${firma.replace(/^ · /, " ")}` : `✅ Revisado${firma}`}
-        </span>}
-        {malo && <span className="lv-sello lv-bad" title="El contenido está equivocado — hay que corregir el link">
-          {franja ? `⚠ Equivocado${firma}` : `⚠ Contenido equivocado${firma} — corrige el link`}
-        </span>}
-        {!vig && <span className="lv-sello lv-pend">Sin revisar</span>}
-
-        {/* El humano decide: correcto / incorrecto (toca de nuevo para quitar).
-            Sin veredicto van con palabra —hay que invitar a revisar—; una vez
-            resuelto basta el símbolo. Lo pendiente pide voz; lo resuelto no. */}
-        <div className="lv-marcas">
-          <button className={`lv-m lv-mok ${ok ? "on" : ""}`} onClick={() => marcar(true)} disabled={ocupado}
-            title={ok ? "Quitar la revisión" : "El contenido es el correcto"}>
-            {franja && vig ? "✓" : "✓ Correcto"}
-          </button>
-          <button className={`lv-m lv-mno ${malo ? "on" : ""}`} onClick={() => marcar(false)} disabled={ocupado}
-            title={malo ? "Quitar la revisión" : "El contenido está equivocado — hay que corregir el link"}>
-            {franja && vig ? "✗" : "✗ Incorrecto"}
-          </button>
+        {/* El sello (Sin revisar / Revisado…) y los dos iconos ✓/✗ van en una
+            sola línea, no en dos renglones. En la banda estrecha el ✅ verde YA
+            dice «revisado»: repetir la palabra saltaba los botones abajo. */}
+        <div className="lv-veredicto">
+          {/* Sello corto también fuera de la banda: el ✅ verde ya dice
+              «revisado», y repetir la palabra empujaba los ✓/✗ a una 3ª línea. */}
+          {ok && <span className="lv-sello lv-ok" title={`Revisado${firma}`}>
+            ✅{firma.replace(/^ · /, " ")}
+          </span>}
+          {malo && <span className="lv-sello lv-bad" title="El contenido está equivocado — hay que corregir el link">
+            {franja ? `⚠ Equivocado${firma}` : `⚠ Equivocado${firma} — corrige el link`}
+          </span>}
+          {!vig && <span className="lv-sello lv-pend">Sin revisar</span>}
+          {/* El humano decide: correcto / incorrecto (toca de nuevo para quitar).
+              Solo iconos —✓ / ✗—: el color + el tooltip ya dicen qué es cada uno. */}
+          <div className="lv-marcas">
+            <button className={`lv-m lv-mico lv-mok ${ok ? "on" : ""}`} onClick={() => marcar(true)} disabled={ocupado}
+              title={ok ? "Correcto — toca para quitar la revisión" : "Marcar: el contenido es el correcto"}>
+              ✓
+            </button>
+            <button className={`lv-m lv-mico lv-mno ${malo ? "on" : ""}`} onClick={() => marcar(false)} disabled={ocupado}
+              title={malo ? "Incorrecto — toca para quitar la revisión" : "Marcar: el contenido está equivocado (corrige el link)"}>
+              ✗
+            </button>
+          </div>
         </div>
       </div>
 

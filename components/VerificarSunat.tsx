@@ -22,13 +22,12 @@ export function BotonVerificarDni({ personaId }: { personaId: string }) {
   };
 
   return (
-    <span style={{ display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-      <button className="btn btn-ghost" disabled={ocupado} onClick={verificar}
-        title="Consulta el DNI en RENIEC y confirma que el nombre registrado sea el correcto"
-        style={{ fontSize: 12, padding: "7px 12px" }}>
-        {ocupado ? "Consultando..." : "🪪 Verificar DNI (RENIEC)"}
+    <span style={{ display: "flex", gap: 6, alignItems: "flex-end", flexWrap: "wrap", justifyContent: "flex-end" }}>
+      <button className="btn btn-auto" disabled={ocupado} onClick={verificar}
+        title="Automático: consulta el DNI en RENIEC y confirma que el nombre registrado sea el correcto">
+        {ocupado ? "⚡ Consultando…" : "⚡ Verificar DNI en RENIEC"}
       </button>
-      {msg && <span style={{ fontSize: 11.5, color: msg.startsWith("✔") ? "var(--green)" : "var(--yellow)" }}>{msg}</span>}
+      {msg && <span style={{ flexBasis: "100%", textAlign: "right", fontSize: 12, fontWeight: 600, color: msg.startsWith("✔") ? "var(--green)" : "var(--yellow)" }}>{msg}</span>}
     </span>
   );
 }
@@ -51,13 +50,12 @@ export function BotonRucPersona({ personaId }: { personaId: string }) {
   };
 
   return (
-    <span style={{ display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-      <button className="btn btn-ghost" disabled={ocupado} onClick={verificar}
-        title="Calcula su RUC desde el DNI y lo consulta en SUNAT"
-        style={{ fontSize: 12, padding: "7px 12px" }}>
-        {ocupado ? "Consultando..." : "🔄 Verificar RUC en SUNAT"}
+    <span style={{ display: "flex", gap: 6, alignItems: "flex-end", flexWrap: "wrap", justifyContent: "flex-end" }}>
+      <button className="btn btn-auto" disabled={ocupado} onClick={verificar}
+        title="Automático: calcula su RUC desde el DNI y lo consulta en SUNAT">
+        {ocupado ? "⚡ Consultando…" : "⚡ Verificar RUC en SUNAT"}
       </button>
-      {msg && <span style={{ fontSize: 11.5, color: msg.startsWith("✔") ? "var(--green)" : "var(--yellow)" }}>{msg}</span>}
+      {msg && <span style={{ flexBasis: "100%", textAlign: "right", fontSize: 12, fontWeight: 600, color: msg.startsWith("✔") ? "var(--green)" : "var(--yellow)" }}>{msg}</span>}
     </span>
   );
 }
@@ -79,13 +77,12 @@ export function BotonVerificarRuc({ empresaId }: { empresaId: string }) {
   };
 
   return (
-    <span style={{ display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-      <button className="btn btn-ghost" disabled={ocupado} onClick={verificar}
-        title="Consulta su RUC en SUNAT y actualiza estado, condición y fecha de verificación"
-        style={{ fontSize: 12, padding: "7px 12px" }}>
-        {ocupado ? "Consultando..." : "🔄 Verificar en SUNAT"}
+    <span style={{ display: "flex", gap: 6, alignItems: "flex-end", flexWrap: "wrap", justifyContent: "flex-end" }}>
+      <button className="btn btn-auto" disabled={ocupado} onClick={verificar}
+        title="Automático: consulta su RUC en SUNAT y actualiza estado, condición y fecha de verificación">
+        {ocupado ? "⚡ Consultando…" : "⚡ Verificar en SUNAT"}
       </button>
-      {msg && <span style={{ fontSize: 11.5, color: msg.startsWith("✔") ? "var(--green)" : "var(--yellow)" }}>{msg}</span>}
+      {msg && <span style={{ flexBasis: "100%", textAlign: "right", fontSize: 12, fontWeight: 600, color: msg.startsWith("✔") ? "var(--green)" : "var(--yellow)" }}>{msg}</span>}
     </span>
   );
 }

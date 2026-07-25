@@ -37,14 +37,14 @@ export default function MiniSelect({ value, options, onSelect, buttonClass, butt
   const estiloCampo: React.CSSProperties = block
     ? { width: "100%", justifyContent: "space-between", background: "var(--bg)",
         border: `1px solid ${error ? "var(--red)" : open ? "var(--accent)" : "var(--border)"}`,
-        borderRadius: 9, padding: "9px 12px", fontSize: 13,
+        borderRadius: 9, padding: "10px 12px", fontSize: 14,
         color: value ? "var(--text)" : "var(--dim)", fontWeight: 400,
         textTransform: "none", letterSpacing: 0 }
     : {};
 
   return (
     <span style={{ position: "relative", display: block ? "flex" : "inline-flex", width: block ? "100%" : undefined,
-      ...(block ? { textTransform: "none" as const, letterSpacing: "normal", fontSize: 13 } : {}) }}
+      ...(block ? { textTransform: "none" as const, letterSpacing: "normal", fontSize: 14 } : {}) }}
       onClick={e => e.stopPropagation()}>
       <button ref={btnRef} className={buttonClass} type="button"
         /* `buttonStyle` va AL FINAL: es lo que pide quien llama, y quien llama

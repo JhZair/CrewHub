@@ -10,6 +10,17 @@ import { FORM_CONF, nombreCorto, type CampoDef } from "@/lib/entidades";
 
 const esFecha = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
 
+/* Edad cumplida a partir de una fecha de nacimiento (aaaa-mm-dd). */
+export function edadDe(iso?: any): number | null {
+  const s = String(iso ?? "");
+  if (!esFecha(s)) return null;
+  const n = new Date(s + "T12:00:00"), h = new Date();
+  let a = h.getFullYear() - n.getFullYear();
+  const m = h.getMonth() - n.getMonth();
+  if (m < 0 || (m === 0 && h.getDate() < n.getDate())) a--;
+  return a >= 0 && a < 130 ? a : null;
+}
+
 const verVal = (val: any) => {
   if (typeof val === "boolean") return val ? "✅ Sí" : "No";
   const s = String(val);
@@ -46,16 +57,21 @@ export default function FilasDatos({ campos, valores }: { campos: CampoDef[]; va
   if (!campos.length) return null;
   return (
     <>
-      {campos.map(c => (
+      {campos.map(c => {
+        // La fecha de nacimiento se muestra con la edad cumplida al lado.
+        const edad = c.key === "fecha_nacimiento" ? edadDe(valores[c.key]) : null;
+        return (
         <div className="ficha-row" key={c.key}>
           <span className="fk">{nombreCorto(c)}</span>
           <span className="fv">
             <Copiar valor={crudoVal(valores[c.key])} etiqueta={nombreCorto(c).toLowerCase()}>
               {verVal(valores[c.key])}
             </Copiar>
+            {edad != null && <span style={{ color: "var(--dim)" }}> · {edad} años</span>}
           </span>
         </div>
-      ))}
+        );
+      })}
     </>
   );
 }

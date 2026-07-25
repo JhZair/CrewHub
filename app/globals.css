@@ -463,7 +463,7 @@ a{color:inherit;text-decoration:none}
 .foto-p:hover .foto-x{opacity:1}
 
 .combo-menu.block{right:0;min-width:0}
-.combo-menu.block .combo-item{white-space:normal}
+.combo-menu.block .combo-item{white-space:normal;font-size:14px}
 .combo-item{text-align:left;background:transparent;border:none;border-radius:7px;padding:7px 10px;font-size:12.5px;color:var(--muted);font-weight:600;cursor:pointer;white-space:nowrap}
 .combo-item:hover{background:#22223a;color:var(--text)}
 .combo-item.on{background:rgba(124,92,255,.14);color:var(--text)}
@@ -1207,12 +1207,31 @@ button.obj-mini:hover,a.obj-mini:hover{border-color:var(--accent)}
    cada componente que adivine dónde lo van a poner. */
 .perfil-grid > aside > :first-child,
 .perfil-grid > main > :first-child{margin-top:0}
-.ficha-row{display:flex;justify-content:space-between;gap:12px;font-size:12.5px;padding:6px 0;border-bottom:1px solid #1c1c2c}
+.ficha-row{display:flex;justify-content:space-between;gap:12px;font-size:13.5px;padding:6px 0;border-bottom:1px solid #1c1c2c}
 .ficha-row:last-of-type{border-bottom:none}
-.ficha-row .fk{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.6px;white-space:nowrap}
+.ficha-row .fk{color:var(--dim);font-size:12px;text-transform:uppercase;letter-spacing:.6px;white-space:nowrap}
 .ficha-row .fv{color:#c6c6da;text-align:right}
+/* Identidad de un panel que se llena/verifica solo (RENIEC/SUNAT) + su botón
+   de verificación, arrinconado arriba a la derecha y compacto. */
+/* Botón de verificación automática (RENIEC/SUNAT): pastilla teal, compacta,
+   que ya se lee como «esto lo hace y verifica el sistema». */
+.btn-auto{padding:4px 11px;font-size:11.5px;font-weight:600;border-radius:20px;color:var(--teal);background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.3);white-space:nowrap}
+.btn-auto:hover{background:rgba(45,212,191,.18);border-color:rgba(45,212,191,.5);color:var(--teal)}
+.btn-auto:disabled{opacity:.6}
+/* En un panel, el botón toma el color de ese panel (azul Identidad/SUNAT, ámbar). */
+.gv-azul .btn-auto{color:var(--blue);background:rgba(59,130,246,.1);border-color:rgba(59,130,246,.32)}
+.gv-azul .btn-auto:hover{color:var(--blue);background:rgba(59,130,246,.18);border-color:rgba(59,130,246,.55)}
+.gv-amber .btn-auto{color:var(--yellow);background:rgba(244,180,0,.1);border-color:rgba(244,180,0,.32)}
+.gv-amber .btn-auto:hover{color:var(--yellow);background:rgba(244,180,0,.18);border-color:rgba(244,180,0,.55)}
+/* Bloque de un documento (campo + su PDF escaneado): caja propia para que
+   cada uno —RENCA, Vigencia, Partida— se lea separado del siguiente. */
+.doc-bloque{margin-top:8px;padding:6px 9px;border:1px solid var(--border);border-radius:9px;background:rgba(255,255,255,.02)}
+/* Dentro de la caja el dato va en DOS líneas: etiqueta arriba, valor abajo a
+   todo el ancho (los valores largos —«venció hace 513 d»— ya no se aprietan). */
+.doc-bloque .ficha-row{flex-direction:column;align-items:flex-start;gap:2px;border-bottom:none;padding:2px 0}
+.doc-bloque .ficha-row .fv{text-align:left}
 .mas-datos{margin-top:10px}
-.mas-datos>summary{cursor:pointer;list-style:none;font-size:11.5px;color:var(--muted);font-weight:600;padding:5px 0;display:inline-flex;align-items:center;gap:6px}
+.mas-datos>summary{cursor:pointer;list-style:none;font-size:12.5px;color:var(--muted);font-weight:600;padding:5px 0;display:inline-flex;align-items:center;gap:6px}
 .mas-datos>summary::-webkit-details-marker{display:none}
 .mas-datos>summary::before{content:"▸";color:var(--dim);font-size:10px;transition:transform .12s}
 .mas-datos[open]>summary::before{transform:rotate(90deg)}
@@ -1287,11 +1306,21 @@ button.obj-mini:hover,a.obj-mini:hover{border-color:var(--accent)}
 .lv-sello.lv-ok{color:rgba(46,204,113,.72);background:rgba(46,204,113,.06);border-color:rgba(46,204,113,.14)}
 .lv-sello.lv-bad{color:var(--red);background:rgba(255,77,94,.12);border-color:rgba(255,77,94,.35)}
 .lv-sello.lv-pend{color:var(--dim);background:rgba(255,255,255,.05)}
+/* Sello + iconos ✓/✗ en una sola línea */
+.lv-veredicto{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px}
+.lv-veredicto .lv-sello{margin:0;align-self:center}
 .lv-marcas{display:flex;gap:6px}
 .lv-m{font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:7px;cursor:pointer;border:1px solid var(--border2);background:transparent;color:var(--muted)}
 .lv-m:hover{filter:brightness(1.2)}
 .lv-m.lv-mok.on{color:rgba(46,204,113,.78);background:rgba(46,204,113,.09);border-color:rgba(46,204,113,.26)}
 .lv-m.lv-mno.on{color:var(--red);background:rgba(255,77,94,.15);border-color:rgba(255,77,94,.45)}
+/* Botones solo-icono ✓ / ✗: cuadrados, con un tinte que ya dice qué es cada
+   uno sin la palabra. */
+.lv-m.lv-mico{width:28px;height:28px;padding:0;display:inline-flex;align-items:center;justify-content:center;font-size:15px;line-height:1}
+.lv-mico.lv-mok{color:rgba(46,204,113,.6)}
+.lv-mico.lv-mno{color:rgba(255,77,94,.55)}
+.lv-mico.lv-mok:hover{color:var(--green);border-color:rgba(46,204,113,.4)}
+.lv-mico.lv-mno:hover{color:var(--red);border-color:rgba(255,77,94,.4)}
 .lv-lightbox{position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.86);backdrop-filter:blur(2px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px}
 .lv-lightbox img{max-width:94vw;max-height:82vh;border-radius:10px;box-shadow:0 12px 48px rgba(0,0,0,.6);background:#fff}
 .lv-lb-barra{display:flex;gap:10px}

@@ -64,7 +64,7 @@ export function nombreCorto(c: { label: string; corto?: string }): string {
 /* Bloques de campos agrupados en el formulario, cada uno con su tono:
    ámbar = importa, pero no bloquea el alta.
    azul  = lo llena la verificación automática; no se edita a mano. */
-export const DOCS_EMPRESA = "📎 Documentos — necesarios para postular, no para dar de alta";
+export const DOCS_EMPRESA = "📜 Documentos registrales — SUNARP: partida, RENCA, vigencia de poder";
 export const SUNAT_EMPRESA = "🏛 SUNAT — lo llena la verificación automática";
 /* El DAFO aparta la mitad del concurso para empresas fuera de Lima Metrop. y
    Callao, y lo mide con tres hechos distintos que hay que acreditar por
@@ -261,6 +261,15 @@ export const REGIONES = [
   "Moquegua", "Pasco", "Piura", "Puno", "San Martín", "Tacna", "Tumbes", "Ucayali",
 ];
 
+/* Lenguas para el multiselect «otras lenguas en las que se expresa» (censo
+   DAFO). No es cerrado: el campo permite escribir otra que no esté en la lista. */
+export const LENGUAS = [
+  "Castellano", "Quechua", "Aimara", "Ashaninka", "Awajún (Aguaruna)",
+  "Shipibo-Konibo", "Shawi", "Matsigenka", "Achuar", "Kukama-Kukamiria",
+  "Wampis", "Yanesha", "Inglés", "Portugués", "Francés",
+  "Otra lengua originaria", "Lengua de señas peruana",
+];
+
 export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: CampoDef[] }> = {
   proyecto: {
     tabla: "proyectos",
@@ -335,6 +344,7 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
       // — Documentos: importantes para postular, pero no bloquean el alta.
       //   Cada dato va a la izquierda con su respaldo (link) a la derecha. —
       { key: "partida_electronica", label: "N° de partida electrónica (SUNARP)", corto: "Partida electrónica", grupo: DOCS_EMPRESA },
+      { key: "partida_electronica_url", label: "Partida electrónica (PDF)", corto: "Partida PDF", valida: "url", grupo: DOCS_EMPRESA },
       { key: "renca", label: "RENCA — N° de registro", corto: "RENCA", grupo: DOCS_EMPRESA },
       { key: "renca_url", label: "RENCA — reconocimiento (PDF)", corto: "RENCA PDF", valida: "url", grupo: DOCS_EMPRESA },
       /* Se pide la emisión, no el vencimiento: es el dato que trae el papel
@@ -443,7 +453,6 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
       { key: "equipo", label: "Equipo", tipo: "select", opciones: ["creativo", "tecnico", "artistico", "administrativo"] },
       { key: "estado", label: "Estado", tipo: "select", opciones: ["activo", "potencial", "vetado", "inactivo"] },
       { key: "rol", label: "Especialidades / rol", corto: "Rol", sugerencias: ESPECIALIDADES, multiple: true },
-      { key: "region", label: "Región", tipo: "select", opciones: REGIONES },
       { key: "genero", label: "Género", tipo: "select", opciones: ["femenino", "masculino", "no binario", "otro"] },
       { key: "es_comunero", label: "¿Es comunero/a?", corto: "Comunero/a", tipo: "bool" },
       // — Ficha censal DAFO: los datos que la plataforma pide POR PERSONA en
@@ -454,11 +463,20 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
       { key: "autoident", label: "Autoidentificación étnica (censo)", corto: "Autoident.", tipo: "select", grupo: CENSAL_PERSONA,
         opciones: ["Quechua", "Aimara", "Blanco", "Mestizo", "Nativo o indígena de la Amazonía", "Negro, moreno, zambo, mulato, pueblo afroperuano o afrodescendiente", "Nikkei", "Tusan", "Perteneciente a otro pueblo indígena u originario", "Otros"] },
       { key: "lengua_materna", label: "Lengua con la que aprendió a hablar", corto: "Lengua materna", tipo: "select", opciones: ["Quechua", "Castellano", "Aimara", "Otra lengua originaria", "Otra"], grupo: CENSAL_PERSONA },
-      { key: "otras_lenguas", label: "Otras lenguas en las que se expresa", corto: "Otras lenguas", grupo: CENSAL_PERSONA },
+      // Multiselect: se pueden marcar varias (chips) y también escribir otra.
+      { key: "otras_lenguas", label: "Otras lenguas en las que se expresa", corto: "Otras lenguas", grupo: CENSAL_PERSONA, sugerencias: LENGUAS, multiple: true, opcional: true },
       { key: "discapacidad", label: "Discapacidad o limitación permanente", corto: "Discapacidad", tipo: "select", grupo: CENSAL_PERSONA,
         opciones: ["No tengo", "Moverse o caminar, para usar brazos o piernas", "Ver, aun usando anteojos", "Hablar o comunicarse", "Oír, aun usando audífonos", "Entender o aprender", "Relacionarse con los demás"] },
-      { key: "provincia", label: "Provincia (domicilio DNI)", corto: "Provincia", grupo: CENSAL_PERSONA },
-      { key: "distrito", label: "Distrito (domicilio DNI)", corto: "Distrito", grupo: CENSAL_PERSONA },
+      /* Domicilio del DNI, desglosado como el censo DAFO: dirección + el mismo
+         Departamento · Provincia · Distrito de una empresa (combos dependientes
+         del ubigeo). `region` ES el departamento del domicilio del DNI (se llena
+         mirando el DNI), así que se reusa esa clave. */
+      { key: "direccion", label: "Dirección (domicilio DNI)", corto: "Dirección", grupo: CENSAL_PERSONA },
+      { key: "region", label: "Departamento (domicilio DNI)", corto: "Departamento", tipo: "select", opciones: REGIONES, grupo: CENSAL_PERSONA },
+      { key: "provincia", label: "Provincia (domicilio DNI)", corto: "Provincia", grupo: CENSAL_PERSONA,
+        tipo: "select", sugerenciasPor: { campo: "region", mapa: PROVINCIAS_POR_DEPARTAMENTO } },
+      { key: "distrito", label: "Distrito (domicilio DNI)", corto: "Distrito", grupo: CENSAL_PERSONA,
+        tipo: "select", sugerenciasPor: { campo: "provincia", mapa: DISTRITOS_POR_PROVINCIA } },
       { key: "telefono", label: "Teléfono", valida: "telefono" },
       { key: "email", label: "Email", valida: "email" },
       // "notas" se retiró: era un pozo sin fondo (sin autor, sin fecha y sin

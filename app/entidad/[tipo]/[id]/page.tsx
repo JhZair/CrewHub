@@ -85,16 +85,19 @@ const CONF: Record<string, { tabla: string; icono: string; campos: [string, stri
     ["Código", "codigo"], ["Razón social", "razon_social"], ["Relación", "relacion"],
     ["Región", "region"], ["Estado interno", "estado"], ["Constitución", "fecha_constitucion"],
     ["RUC", "ruc", SUNAT_EMPRESA], ["Domicilio fiscal", "domicilio_fiscal", SUNAT_EMPRESA],
-    ["Departamento fiscal", "departamento_fiscal", SUNAT_EMPRESA],
-    ["Provincia fiscal", "provincia_fiscal", SUNAT_EMPRESA], ["Distrito fiscal", "distrito_fiscal", SUNAT_EMPRESA],
     ["Estado SUNAT", "estado_sunat", SUNAT_EMPRESA], ["Condición SUNAT", "condicion_sunat", SUNAT_EMPRESA],
     ["Verificado", "fecha_verificacion_sunat", SUNAT_EMPRESA],
     ["N° partida electrónica", "partida_electronica", DOCS_EMPRESA],
     ["RENCA", "renca", DOCS_EMPRESA], ["Vigencia de poder vence", "vigencia_poder_fecha", DOCS_EMPRESA],
+    /* El domicilio fiscal desglosado (departamento/provincia/distrito) es info
+       censal manual: baja al bloque «Ver más», como el domicilio del DNI de una
+       persona. No se lista aquí ni va en el panel SUNAT (que es lo automático). */
   ] },
   persona: { tabla: "personas", icono: "👤", campos: [
     ["Alias", "alias"], ["Tipo", "tipo"], ["Equipo", "equipo"], ["Estado", "estado"],
-    ["Región", "region"], ["Comunero/a", "es_comunero"], ["Rol", "rol"],
+    ["Comunero/a", "es_comunero"], ["Rol", "rol"],
+    // El domicilio del DNI (dirección/departamento/provincia/distrito) NO se
+    // lista aquí: es info censal secundaria y baja sola al bloque «Ver más».
     ["DNI", "ruc_dni", DNI_PERSONA], ["DNI vence", "dni_vencimiento", DNI_PERSONA],
     ["Verificado en RENIEC", "fecha_verificacion_reniec", DNI_PERSONA],
     // El nombre oficial, a la vista: si no coincide con el de arriba, el que
@@ -138,7 +141,9 @@ const GRUPOS_SECUNDARIOS = new Set<string>([]);
 const CAMPOS_SECUNDARIOS: Record<string, string[]> = {
   persona: ["alias", "tipo", "equipo", "estado", "region", "es_comunero", "rol"],
   proyecto: ["folio", "modalidad", "renca"],
-  empresa: ["codigo", "fecha_constitucion"],
+  // Como persona: todo su bloque base baja a «Ver más»; arriba quedan los
+  // paneles de trabajo (SUNAT, Documentos) con sus verificaciones.
+  empresa: ["codigo", "razon_social", "relacion", "region", "estado", "fecha_constitucion"],
   convocatoria: ["codigo"],
   postulacion: ["codigo", "codigo_plataforma", "codigo_acta", "lenguas_originarias", "fecha_firma_acta"],
   equipamiento: ["folio", "comprado_en"],
@@ -475,7 +480,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         .select("proy:proyectos(id,nombre,tipo,renca), emp:empresas(id,nombre,codigo,ruc,razon_social,renca,partida_electronica,estado_sunat,domicilio_fiscal,region,departamento_fiscal,provincia_fiscal,distrito_fiscal), conv:convocatorias(id,codigo,nombre,anio,categoria,monto_adjudicado,bases_url,plantilla_formulario,hitos:cronograma_actividades(id,nombre,fecha_inicio,estado,clase))")
         .eq("id", params.id).single(),
       supabase.from("postulacion_equipo")
-        .select("id,cargo,persona:personas(id,nombre,alias,foto_url,tipo,es_comunero,ruc_dni,genero,nacionalidad,autoident,lengua_materna,otras_lenguas,discapacidad,region,provincia,distrito,fecha_nacimiento)")
+        .select("id,cargo,persona:personas(id,nombre,alias,foto_url,tipo,es_comunero,ruc_dni,genero,nacionalidad,autoident,lengua_materna,otras_lenguas,discapacidad,direccion,region,provincia,distrito,fecha_nacimiento)")
         .eq("postulacion_id", params.id).order("cargo"),
       supabase.from("personas").select("id,nombre,alias,tipo").order("nombre"),
       /* Solo las que pueden postular de verdad: activas y nuestras. Ofrecer
@@ -502,7 +507,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     if (proyId) {
       const [{ data: pe }, { data: mp }] = await Promise.all([
         supabase.from("proyecto_equipo")
-          .select("id,cargo,persona:personas(id,nombre,alias,foto_url,tipo,es_comunero,ruc_dni,genero,nacionalidad,autoident,lengua_materna,otras_lenguas,discapacidad,region,provincia,distrito,fecha_nacimiento)")
+          .select("id,cargo,persona:personas(id,nombre,alias,foto_url,tipo,es_comunero,ruc_dni,genero,nacionalidad,autoident,lengua_materna,otras_lenguas,discapacidad,direccion,region,provincia,distrito,fecha_nacimiento)")
           .eq("proyecto_id", proyId).order("cargo"),
         // El cartel del proyecto, para la cabecera de contexto de la pestaña Equipo.
         supabase.from("entidad_media").select("cartel_url")
@@ -614,7 +619,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         `${m.cargo || "⚠cargo"}: ${p.nombre || ""}`,
         `  DNI ${f(p.ruc_dni, "DNI")} · ${f(p.nacionalidad, "nacionalidad")} · ${f(p.genero, "género")}${p.fecha_nacimiento ? ` · nac. ${p.fecha_nacimiento}` : ""}`,
         `  ${f(p.autoident, "autoident. étnica")} · lengua: ${f(p.lengua_materna, "lengua")}${p.otras_lenguas ? ` (+${p.otras_lenguas})` : ""} · discapacidad: ${f(p.discapacidad, "discapacidad")}`,
-        `  domicilio: ${f(p.region, "región")} / ${f(p.provincia, "provincia")} / ${f(p.distrito, "distrito")}`,
+        `  domicilio: ${p.direccion ? p.direccion + " — " : ""}${f(p.region, "región")} / ${f(p.provincia, "provincia")} / ${f(p.distrito, "distrito")}`,
       ].join("\n");
     };
     /* Sin repetir a nadie: quien está en el equipo de la postulación Y en el
@@ -1506,10 +1511,20 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             // verificar/ficha con SUNAT, y los PDF con sus documentos.
             const lnk = { fontSize: TXT.chip, padding: "5px 10px" };
             const rucPer = params.tipo === "persona" ? rucDePersona(ent.ruc_dni) : null;
+            /* El botón de verificación AUTOMÁTICA (RENIEC/SUNAT) va en la esquina
+               superior derecha de su panel, no mezclado con los documentos. */
+            const verificarBtn: Record<string, any> = params.tipo === "persona"
+              ? { [DNI_PERSONA]: ent.ruc_dni ? <BotonVerificarDni personaId={params.id} /> : null,
+                  [SUNAT_PERSONA]: rucPer ? <BotonRucPersona personaId={params.id} /> : null }
+              : params.tipo === "empresa"
+              ? { [SUNAT_EMPRESA]: ent.ruc ? <BotonVerificarRuc empresaId={params.id} /> : null }
+              : {};
             const extras: Record<string, any> = params.tipo === "persona" ? {
               [DNI_PERSONA]: (
                 <>
-                  {ent.ruc_dni && <BotonVerificarDni personaId={params.id} />}
+                  {/* El DNI (número) va arriba con sus datos de verificación
+                      —vence, verificado en RENIEC, nombre RENIEC—; las fotos
+                      escaneadas (DNI y firma) van al final del panel. */}
                   {ent.dni_url && <LinkVerificable tipo={params.tipo} id={params.id} campo="dni_url" url={ent.dni_url} etiqueta="DNI" icono="🪪" verif={verifDe.dni_url} />}
                   {ent.firma_url && <LinkVerificable tipo={params.tipo} id={params.id} campo="firma_url" url={ent.firma_url} etiqueta="Firma" icono="✍️" verif={verifDe.firma_url} />}
                 </>
@@ -1519,7 +1534,6 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                   <span style={{ color: "var(--dim)", fontSize: TXT.chip, alignSelf: "center" }}>
                     RUC calculado: <b style={{ color: "var(--text)" }}>{rucPer}</b>
                   </span>
-                  <BotonRucPersona personaId={params.id} />
                   <BotonFichaSunat numero={ent.ruc_dni} tipo="DNI" url={urlSunat} />
                   {ent.suspension_4ta_url && (
                     <LinkVerificable tipo={params.tipo} id={params.id} campo="suspension_4ta_url" url={ent.suspension_4ta_url} etiqueta="Constancia 4ta" icono="🧾" verif={verifDe.suspension_4ta_url} />
@@ -1543,29 +1557,37 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                   })()}
                 </>
               ),
-              [DOCS_PERSONA]: (ent.carpeta_drive_url || ent.cv_url) && (
-                <>
-                  {ent.carpeta_drive_url && <a href={ent.carpeta_drive_url} target="_blank" rel="noopener noreferrer" className="btn" style={{ ...lnk, background: "#1a73e8" }}>📂 Drive</a>}
-                  {ent.cv_url && <LinkVerificable tipo={params.tipo} id={params.id} campo="cv_url" url={ent.cv_url} etiqueta="CV" icono="📋" verif={verifDe.cv_url} />}
-                </>
-              ),
+              /* «OTROS DOCUMENTOS» se retiró: el CV legado (cv_url) se migró a los
+                 CVs por enfoque (persona_cv) de la pestaña 🏆 Trayectoria, y la
+                 carpeta Drive sale como chip limpio abajo. No queda nada que
+                 mostrar en un panel aparte. */
             } : params.tipo !== "empresa" ? {} : {
               [SUNAT_EMPRESA]: ent.ruc && (
                 <>
-                  <BotonVerificarRuc empresaId={params.id} />
                   <BotonFichaSunat numero={ent.ruc} url={urlSunat} />
                 </>
               ),
               [DOCS_EMPRESA]: (
                 <>
+                  {/* RENCA y Vigencia suben junto a su campo (linkDeCampo). Aquí
+                      solo queda Drive, que va al final del panel. */}
                   {ent.carpeta_drive_url && <a href={ent.carpeta_drive_url} target="_blank" rel="noopener noreferrer" className="btn" style={{ ...lnk, background: "#1a73e8" }}>📂 Drive</a>}
-                  {ent.renca_url && <LinkVerificable tipo={params.tipo} id={params.id} campo="renca_url" url={ent.renca_url} etiqueta="RENCA" icono="🎬" verif={verifDe.renca_url} />}
-                  {ent.vigencia_poder_url && <LinkVerificable tipo={params.tipo} id={params.id} campo="vigencia_poder_url" url={ent.vigencia_poder_url} etiqueta="Vigencia de poder" icono="📜" verif={verifDe.vigencia_poder_url} />}
                   {/* La HojaPostulacion (elegibilidad DAFO completa) se mudó a la
                       pestaña 🎬 Elegibilidad DAFO de la columna derecha. */}
                 </>
               ),
             };
+            /* Cada documento escaneado va JUNTO a su campo —RENCA bajo su código,
+               DNI bajo su número—, no amontonados abajo. Lo que no tiene campo
+               propio (firma, CV, Drive…) queda en `extras`, al final del panel. */
+            const linkDeCampo: Record<string, any> = params.tipo === "empresa" ? {
+              partida_electronica: ent.partida_electronica_url && <LinkVerificable tipo={params.tipo} id={params.id} campo="partida_electronica_url" url={ent.partida_electronica_url} etiqueta="Partida electrónica" icono="📄" verif={verifDe.partida_electronica_url} />,
+              renca: ent.renca_url && <LinkVerificable tipo={params.tipo} id={params.id} campo="renca_url" url={ent.renca_url} etiqueta="RENCA" icono="🎬" verif={verifDe.renca_url} />,
+              vigencia_poder_fecha: ent.vigencia_poder_url && <LinkVerificable tipo={params.tipo} id={params.id} campo="vigencia_poder_url" url={ent.vigencia_poder_url} etiqueta="Vigencia de poder" icono="📜" verif={verifDe.vigencia_poder_url} />,
+            } : {};
+            /* (Persona: el DNI escaneado NO se interleava con el número —sus
+               datos de verificación deben quedar juntos arriba—, va al final del
+               panel junto con la firma; ver extras[DNI_PERSONA].) */
 
             const sueltos = conf.campos.filter(c => !c[2]);
             /* Hay grupos que solo traen botones y ningún campo (ej. 📎
@@ -1575,17 +1597,47 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               ...Object.keys(extras),
             ])] as string[];
             const renderGrupo = (g: string) => {
-              const filas = conf.campos.filter(c => c[2] === g && ent[c[1]] != null && ent[c[1]] !== "");
+              const camposG = conf.campos.filter(c => c[2] === g);
+              const tieneFila = (c: [string, string, string?]) => ent[c[1]] != null && ent[c[1]] !== "";
               const btns = extras[g];
-              if (!filas.length && !btns) return null;
+              const vBtn = verificarBtn[g];
+              // Hay contenido si algún campo está lleno o si trae un doc escaneado.
+              const hayFilas = camposG.some(c => tieneFila(c) || linkDeCampo[c[1]]);
+              if (!hayFilas && !btns && !vBtn) return null;
               const azul = GRUPO_TONO[g] === "azul";
               const c1 = azul ? "59,130,246" : "244,180,0";
               return (
                 <div key={g} style={{ marginTop: 10, padding: "6px 10px 8px", borderRadius: 10, border: `1px solid rgba(${c1},.25)`, background: `rgba(${c1},.04)` }}>
-                  <div style={{ fontSize: TXT.chip, textTransform: "uppercase", letterSpacing: 1, color: azul ? "var(--blue)" : "var(--yellow)", fontWeight: 700, marginBottom: 2 }}>
-                    {g.split("—")[0].trim()}
+                  {/* Cabecera: el título, y debajo —a la derecha, en su propia
+                      fila para que su resultado quepa— el botón de verificación
+                      AUTOMÁTICA (⚡, una sola cosa; el resultado ya no se sale). */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: TXT.chip, textTransform: "uppercase", letterSpacing: 1, color: azul ? "var(--blue)" : "var(--yellow)", fontWeight: 700 }}>
+                      {g.split("—")[0].trim()}
+                    </span>
                   </div>
-                  {filas.map(pintarFila)}
+                  {vBtn && (
+                    <div className={`grupo-verif ${azul ? "gv-azul" : "gv-amber"}`}
+                      style={{ display: "flex", justifyContent: "flex-end", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                      {vBtn}
+                    </div>
+                  )}
+                  {/* Cada campo lleno + (si lo tiene) su documento escaneado.
+                      Los que traen documento van en su propia CAJA —RENCA,
+                      Vigencia, Partida quedan claramente separados—; el resto,
+                      como filas normales. */}
+                  {camposG.flatMap(c => {
+                    const link = linkDeCampo[c[1]];
+                    const fila = tieneFila(c);
+                    if (!fila && !link) return [];
+                    if (link) return [
+                      <div key={`doc-${c[1]}`} className="doc-bloque">
+                        {fila && pintarFila(c)}
+                        <div style={{ marginTop: fila ? 6 : 0 }}>{link}</div>
+                      </div>,
+                    ];
+                    return [pintarFila(c)];
+                  })}
                   {btns && (
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>{btns}</div>
                   )}
@@ -1609,6 +1661,12 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               <>
                 {sueltosVis.map(pintarFila)}
                 {gruposPri.map(renderGrupo)}
+                {/* La carpeta Drive de una persona: chip limpio, sin panel. */}
+                {params.tipo === "persona" && ent.carpeta_drive_url && (
+                  <div style={{ marginTop: 10 }}>
+                    <a href={ent.carpeta_drive_url} target="_blank" rel="noopener noreferrer" className="btn" style={{ ...lnk, background: "#1a73e8" }}>📂 Drive</a>
+                  </div>
+                )}
                 {haySec && (
                   <details className="mas-datos">
                     <summary>Ver más{nVerMas ? <span className="md-n">{nVerMas}</span> : null}</summary>
