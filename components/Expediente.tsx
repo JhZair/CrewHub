@@ -228,7 +228,7 @@ export default function Expediente({ postulacionId, plantilla, expediente, auto,
                   onClick={() => setAbierto(false)}>✕ Cerrar</button>
               </div>
             </div>
-            <p style={{ color: "var(--dim)", fontSize: 11.5, margin: "0 0 12px" }}>
+            <p style={{ color: "var(--dim)", fontSize: 12.5, margin: "0 0 12px" }}>
               ⚡ = llenado desde la base · ✎ redacta y guarda como borrador o listo ·
               📋 copia el campo para pegarlo en la plataforma DAFO el día del envío.
             </p>
@@ -310,7 +310,7 @@ export default function Expediente({ postulacionId, plantilla, expediente, auto,
                           <span style={{ color: "var(--accent)", float: "right" }}>{alFondo ? "ejecución →" : "ir →"}</span>
                         </>
                       );
-                      const estilo = { flex: "1 1 240px", textAlign: "left" as const, padding: "9px 12px", fontSize: 12.5, borderColor: x.listo ? "rgba(46,204,113,.35)" : "var(--border)" };
+                      const estilo = { flex: "1 1 240px", textAlign: "left" as const, padding: "9px 12px", fontSize: 13, borderColor: x.listo ? "rgba(46,204,113,.35)" : "var(--border)" };
                       return alFondo ? (
                         <Link key={x.id} href={rutaFondo!} className="btn btn-ghost" style={estilo}>{cara}</Link>
                       ) : (
@@ -382,7 +382,7 @@ export default function Expediente({ postulacionId, plantilla, expediente, auto,
                                 setEditando(null);
                                 router.refresh();
                               }}
-                              style={{ width: "100%", background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", fontSize: 12.5, color: "var(--text)", outline: "none" }}>
+                              style={{ width: "100%", background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", fontSize: 13.5, color: "var(--text)", outline: "none" }}>
                               <option value="">Elegir…</option>
                               {opcionesDe(c)!.map(o => <option key={o} value={o}>{o}</option>)}
                             </select>
@@ -425,7 +425,7 @@ export default function Expediente({ postulacionId, plantilla, expediente, auto,
                           <div style={{ marginTop: 6 }}>
                             <textarea value={texto} autoFocus rows={c.largo ? 8 : 3}
                               onChange={e => setTexto(e.target.value)}
-                              style={{ width: "100%", background: "var(--card)", border: `1px solid ${c.max && texto.length > c.max ? "var(--red)" : "var(--border)"}`, borderRadius: 8, padding: "8px 10px", fontSize: 12.5, color: "var(--text)", outline: "none", resize: "vertical", lineHeight: 1.5 }} />
+                              style={{ width: "100%", background: "var(--card)", border: `1px solid ${c.max && texto.length > c.max ? "var(--red)" : "var(--border)"}`, borderRadius: 8, padding: "8px 10px", fontSize: 13.5, color: "var(--text)", outline: "none", resize: "vertical", lineHeight: 1.55 }} />
                             <div style={{ display: "flex", gap: 8, marginTop: 5, alignItems: "center" }}>
                               <button className="btn btn-ghost" style={{ padding: "4px 12px", fontSize: 11.5 }} disabled={ocupado}
                                 onClick={() => guardar(c, false)}>{ocupado ? "..." : "💾 Borrador"}</button>

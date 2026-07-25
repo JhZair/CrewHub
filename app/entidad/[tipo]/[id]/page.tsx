@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { Mantenimiento } from "@/components/EntidadForm";
-import { SUNAT_EMPRESA, DOCS_EMPRESA, RESERVA_EMPRESA, DNI_PERSONA, DOCS_PERSONA, SUNAT_PERSONA, GRUPO_TONO, completitud, REGIONES } from "@/lib/entidades";
+import { SUNAT_EMPRESA, DOCS_EMPRESA, DNI_PERSONA, DOCS_PERSONA, SUNAT_PERSONA, GRUPO_TONO, completitud, REGIONES } from "@/lib/entidades";
 import { rucDePersona } from "@/lib/ruc";
 import { estado4ta, money } from "@/lib/cuarta";
 import { diasDeVigencia, fmtVence, vigenciaVencida } from "@/lib/vigencia";
@@ -85,15 +85,12 @@ const CONF: Record<string, { tabla: string; icono: string; campos: [string, stri
     ["Código", "codigo"], ["Razón social", "razon_social"], ["Relación", "relacion"],
     ["Región", "region"], ["Estado interno", "estado"], ["Constitución", "fecha_constitucion"],
     ["RUC", "ruc", SUNAT_EMPRESA], ["Domicilio fiscal", "domicilio_fiscal", SUNAT_EMPRESA],
+    ["Departamento fiscal", "departamento_fiscal", SUNAT_EMPRESA],
+    ["Provincia fiscal", "provincia_fiscal", SUNAT_EMPRESA], ["Distrito fiscal", "distrito_fiscal", SUNAT_EMPRESA],
     ["Estado SUNAT", "estado_sunat", SUNAT_EMPRESA], ["Condición SUNAT", "condicion_sunat", SUNAT_EMPRESA],
     ["Verificado", "fecha_verificacion_sunat", SUNAT_EMPRESA],
+    ["N° partida electrónica", "partida_electronica", DOCS_EMPRESA],
     ["RENCA", "renca", DOCS_EMPRESA], ["Vigencia de poder vence", "vigencia_poder_fecha", DOCS_EMPRESA],
-    // La reserva del DAFO aparta media convocatoria para las de fuera de
-    // Lima Metrop. y Callao, y pide estos tres por separado. Ver lib/fondos.
-    ["Constituida en (SUNARP)", "sunarp_region_constitucion", RESERVA_EMPRESA],
-    ["Domicilio registral (SUNARP)", "sunarp_region_domicilio", RESERVA_EMPRESA],
-    ["Domicilio fiscal (SUNAT)", "sunat_region_domicilio", RESERVA_EMPRESA],
-    ["Provincia de Lima", "provincia_lima", RESERVA_EMPRESA],
   ] },
   persona: { tabla: "personas", icono: "👤", campos: [
     ["Alias", "alias"], ["Tipo", "tipo"], ["Equipo", "equipo"], ["Estado", "estado"],
@@ -475,7 +472,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   if (params.tipo === "postulacion") {
     const [ctx, eq, pc, ec] = await Promise.all([
       supabase.from("postulaciones")
-        .select("proy:proyectos(id,nombre,tipo,renca), emp:empresas(id,nombre,codigo,ruc,razon_social,renca,partida_electronica,estado_sunat,domicilio_fiscal,region,sunat_region_domicilio,provincia_fiscal,distrito_fiscal), conv:convocatorias(id,codigo,nombre,anio,categoria,monto_adjudicado,bases_url,plantilla_formulario,hitos:cronograma_actividades(id,nombre,fecha_inicio,estado,clase))")
+        .select("proy:proyectos(id,nombre,tipo,renca), emp:empresas(id,nombre,codigo,ruc,razon_social,renca,partida_electronica,estado_sunat,domicilio_fiscal,region,departamento_fiscal,provincia_fiscal,distrito_fiscal), conv:convocatorias(id,codigo,nombre,anio,categoria,monto_adjudicado,bases_url,plantilla_formulario,hitos:cronograma_actividades(id,nombre,fecha_inicio,estado,clase))")
         .eq("id", params.id).single(),
       supabase.from("postulacion_equipo")
         .select("id,cargo,persona:personas(id,nombre,alias,foto_url,tipo,es_comunero,ruc_dni,genero,nacionalidad,autoident,lengua_materna,otras_lenguas,discapacidad,region,provincia,distrito,fecha_nacimiento)")
@@ -538,9 +535,9 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       autoExp.renca_empresa = e.renca || "";
       autoExp.partida_electronica = e.partida_electronica || "";
       autoExp.domicilio_legal = e.domicilio_fiscal || "";
-      /* Domicilio fiscal desglosado: el departamento es el de SUNAT (el mismo de
-         la reserva); provincia y distrito, sus campos propios. */
-      autoExp.departamento = e.sunat_region_domicilio || e.region || "";
+      /* Domicilio fiscal desglosado (Departamento · Provincia · Distrito),
+         como lo pide DAFO. Si falta el departamento fiscal, cae en la región. */
+      autoExp.departamento = e.departamento_fiscal || e.region || "";
       autoExp.provincia = e.provincia_fiscal || "";
       autoExp.distrito = e.distrito_fiscal || "";
       /* Y por ETIQUETA, para plantillas cuyas claves no siguen el contrato:
@@ -548,7 +545,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       const empValor = (et: string): string | null => {
         const s = et.toLowerCase();
         if (/partida\s*electr[oó]nica|n[°º.]?\s*de\s*partida/.test(s)) return e.partida_electronica || null;
-        if (/departamento/.test(s)) return e.sunat_region_domicilio || e.region || null;
+        if (/departamento/.test(s)) return e.departamento_fiscal || e.region || null;
         if (/provincia/.test(s)) return e.provincia_fiscal || null;
         if (/distrito/.test(s)) return e.distrito_fiscal || null;
         return null;

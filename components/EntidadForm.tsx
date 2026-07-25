@@ -168,8 +168,29 @@ export function EntidadForm({ tipo, id, valores, onDone }:
   const cancelar = () => { if (onDone) onDone(); else router.back(); };
 
   const setCampo = (key: string, valor: string) => {
-    setForm({ ...form, [key]: valor });
-    if (errores[key]) { const e = { ...errores }; delete e[key]; setErrores(e); }
+    /* Updater FUNCIONAL, no `{ ...form }`: con `{ ...form }` la copia sale del
+       render que creó este handler, y si dos cambios ocurren antes de
+       re-renderizar (encadenar campos, un clic tras otro), el segundo pisa al
+       primero con un estado viejo — «por ratos edita, por ratos no». Con `prev`
+       siempre se parte del estado más reciente. */
+    setForm(prev => {
+      const next = { ...prev, [key]: valor };
+      /* Cascada de opciones dependientes (ubigeo, subcategoría…): al cambiar un
+         campo padre, los hijos que dependían de él (`sugerenciasPor.campo`)
+         dejan de encajar, así que se limpian —y así en cadena, nieto incluido—. */
+      let recienCambiados = [key];
+      for (let nivel = 0; nivel < 4 && recienCambiados.length; nivel++) {
+        const hijos = campos.filter((c: any) =>
+          c.sugerenciasPor && recienCambiados.includes(c.sugerenciasPor.campo) && next[c.key]);
+        hijos.forEach((c: any) => { next[c.key] = ""; });
+        recienCambiados = hijos.map((c: any) => c.key);
+      }
+      return next;
+    });
+    setErrores(prev => {
+      if (!prev[key]) return prev;
+      const e = { ...prev }; delete e[key]; return e;
+    });
   };
 
   // Sugerencias fijas o dependientes de otro campo (subcategoría ← categoría)
@@ -179,7 +200,21 @@ export function EntidadForm({ tipo, id, valores, onDone }:
       const valor = form[c.sugerenciasPor.campo];
       const propias = c.sugerenciasPor.mapa[valor];
       if (propias?.length) return propias;
-      return [...new Set(Object.values(c.sugerenciasPor.mapa).flat())] as string[];
+      /* Sin el padre elegido pero CON valor propio ya guardado (empresa migrada
+         antes de que existiera el combo): se deduce el padre desde ese valor
+         —la lista que lo contiene—, para que el campo nunca quede sin opciones
+         y se pueda cambiar por otro hermano. */
+      const actual = form[c.key];
+      if (actual) {
+        const contiene = (Object.values(c.sugerenciasPor.mapa) as string[][])
+          .find(lista => lista.includes(actual));
+        if (contiene) return contiene;
+      }
+      /* Sin padre ni valor: solo se vuelca TODA la lista si es corta (p. ej.
+         subcategorías). Para catálogos grandes —el ubigeo tiene ~1800 distritos—
+         se deja vacío hasta elegir el padre: nada de volcar miles. */
+      const todas = [...new Set(Object.values(c.sugerenciasPor.mapa).flat())] as string[];
+      return todas.length <= 60 ? todas : [];
     }
     return undefined;
   };
@@ -204,17 +239,24 @@ export function EntidadForm({ tipo, id, valores, onDone }:
               <input disabled placeholder={c.auto ? "Se genera automáticamente" : "Lo llena la verificación automática"}
                 value={id ? ((form[c.key] || "").replace(/_/g, " ") || "—") : ""}
                 style={{ opacity: .55, cursor: "not-allowed" }} />
-            ) : c.tipo === "select" ? (
+            ) : c.tipo === "select" ? (() => {
+              /* Opciones fijas (`opciones`) o DEPENDIENTES de otro campo
+                 (`sugerenciasPor`, p. ej. provincia←departamento, distrito←
+                 provincia). Vacío hasta que se elija el padre: primero el de
+                 arriba. */
+              const selOpts = (c.opciones ?? sugerenciasDe(c) ?? []) as string[];
+              return (
               <MiniSelect block value={form[c.key]} error={!!errores[c.key]}
                 onSelect={v => setCampo(c.key, v)}
                 options={[
-                  ["", "—"],
+                  ["", c.sugerenciasPor && !selOpts.length ? "— elige primero el de arriba —" : "—"],
                   // valor actual que no está entre las opciones (dato migrado): visible
-                  ...(form[c.key] && !c.opciones!.includes(form[c.key])
+                  ...(form[c.key] && !selOpts.includes(form[c.key])
                     ? [[form[c.key], `${form[c.key].replace(/_/g, " ")} (valor actual)`]] : []),
-                  ...c.opciones!.map(o => [o, o.replace(/_/g, " ")]),
+                  ...selOpts.map(o => [o, o.replace(/_/g, " ")]),
                 ]} />
-            ) : c.tipo === "bool" ? (
+              );
+            })() : c.tipo === "bool" ? (
               <MiniSelect block value={form[c.key]} error={!!errores[c.key]}
                 onSelect={v => setCampo(c.key, v)}
                 options={[["", "—"], ["si", "Sí"], ["no", "No"]]} />

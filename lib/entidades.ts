@@ -2,6 +2,7 @@
    Compartida por el formulario (cliente) y la acción (servidor,
    como whitelist de tablas y campos). */
 import { CATEGORIAS_OPC } from "@/lib/etapas";
+import { PROVINCIAS_POR_DEPARTAMENTO, DISTRITOS_POR_PROVINCIA } from "@/lib/ubigeo";
 
 export type CampoDef = {
   key: string;
@@ -310,31 +311,24 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
       { key: "region", label: "Región donde opera", corto: "Región", tipo: "select", opciones: REGIONES },
       { key: "estado", label: "Estado (interno)", tipo: "select", opciones: ["en_constitucion", "activa", "inactiva", "en_proceso_de_cierre", "cerrada"] },
       { key: "fecha_constitucion", label: "Fecha de constitución", tipo: "date" },
-      /* La reserva regional del DAFO aparta la mitad del concurso para
-         empresas fuera de Lima Metropolitana y Callao, y exige TRES cosas
-         separadas: constitución en SUNARP, domicilio en SUNARP, domicilio en
-         SUNAT. Pueden no coincidir —una empresa constituida en Cusco puede
-         haber mudado su domicilio registral—, así que van en tres campos.
-         `region` (arriba) es dónde opera: otro hecho, no sirve para esto. */
-      { key: "sunarp_region_constitucion", label: "Constituida en (SUNARP) — para la reserva regional", corto: "Constituida en", tipo: "select", opciones: REGIONES, grupo: RESERVA_EMPRESA },
-      { key: "sunarp_region_domicilio", label: "Domicilio registral (SUNARP)", corto: "Domicilio SUNARP", tipo: "select", opciones: REGIONES, grupo: RESERVA_EMPRESA },
-      { key: "sunat_region_domicilio", label: "Región del domicilio fiscal (SUNAT)", corto: "Región SUNAT", tipo: "select", opciones: REGIONES, grupo: RESERVA_EMPRESA },
-      /* Solo si alguna de las tres dice «Lima». La reserva excluye Lima
-         METROPOLITANA, no el departamento: Huacho y Cañete sí entran. Con el
-         departamento solo, el sistema no puede decidir — y prefiere decirlo
-         antes que adivinar. */
-      { key: "provincia_lima", label: "¿Qué provincia de Lima? (solo si arriba dice «Lima»)", corto: "Provincia de Lima", grupo: RESERVA_EMPRESA, opcional: true },
+      /* La reserva regional del DAFO (media convocatoria para empresas fuera de
+         Lima Metrop. y Callao) se decide con «Región donde opera» —una sola
+         fuente—: ya no hay tres campos SUNARP/SUNAT separados. */
       // — SUNAT: el RUC es la llave, y lo demás lo trae la verificación.
       //   La ficha RUC en PDF se retiró: se consulta en vivo en SUNAT (el
       //   PDF guardado se desactualizaba y engañaba). —
       { key: "ruc", label: "RUC (11 dígitos)", valida: "ruc", grupo: SUNAT_EMPRESA },
       { key: "domicilio_fiscal", label: "Domicilio fiscal", grupo: SUNAT_EMPRESA },
-      /* El domicilio fiscal desglosado, como lo pide el expediente DAFO
-         (departamento · provincia · distrito). El DEPARTAMENTO es el mismo dato
-         que la reserva usa (`sunat_region_domicilio`), así que no se repite:
-         aquí solo van provincia y distrito. */
-      { key: "provincia_fiscal", label: "Provincia (domicilio fiscal)", corto: "Provincia fiscal", grupo: SUNAT_EMPRESA },
-      { key: "distrito_fiscal", label: "Distrito (domicilio fiscal)", corto: "Distrito fiscal", grupo: SUNAT_EMPRESA },
+      /* El domicilio fiscal desglosado, como lo pide la plataforma DAFO:
+         Departamento · Provincia · Distrito. */
+      { key: "departamento_fiscal", label: "Departamento (domicilio fiscal)", corto: "Departamento fiscal", tipo: "select", opciones: REGIONES, grupo: SUNAT_EMPRESA },
+      // Provincia y distrito son combos que dependen del de arriba: al elegir
+      // departamento, la provincia ofrece las suyas; y el distrito, las de la
+      // provincia. (Ubigeo del Perú, lib/ubigeo.)
+      { key: "provincia_fiscal", label: "Provincia (domicilio fiscal)", corto: "Provincia fiscal", grupo: SUNAT_EMPRESA,
+        tipo: "select", sugerenciasPor: { campo: "departamento_fiscal", mapa: PROVINCIAS_POR_DEPARTAMENTO } },
+      { key: "distrito_fiscal", label: "Distrito (domicilio fiscal)", corto: "Distrito fiscal", grupo: SUNAT_EMPRESA,
+        tipo: "select", sugerenciasPor: { campo: "provincia_fiscal", mapa: DISTRITOS_POR_PROVINCIA } },
       { key: "estado_sunat", label: "Estado SUNAT", tipo: "select", opciones: ["activo", "suspension_temporal", "baja_provisional", "baja_definitiva"], grupo: SUNAT_EMPRESA, verif: true },
       { key: "condicion_sunat", label: "Condición SUNAT", tipo: "select", opciones: ["habido", "no_habido"], grupo: SUNAT_EMPRESA, verif: true },
       { key: "fecha_verificacion_sunat", label: "Última verificación SUNAT", corto: "Verificado SUNAT", tipo: "date", grupo: SUNAT_EMPRESA, verif: true },

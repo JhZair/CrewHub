@@ -235,20 +235,14 @@ export const regionReserva = (r?: string | null, provinciaLima?: string | null):
   return /^lima$/i.test(p) ? "no" : "si";
 };
 
-/* Los tres requisitos regionales de la empresa, con su nombre en las bases.
-   Se devuelven los tres siempre —también los que están bien— porque quien
-   mira esto está por decidir si aplica a la reserva y necesita ver el
-   conjunto, no solo lo que falla. */
+/* El requisito regional de la empresa. Antes eran tres campos separados
+   (constitución SUNARP, domicilio SUNARP, domicilio SUNAT) que en la práctica
+   repetían «Región donde opera»; ahora se decide con esa única fuente
+   (`e.region`). Se devuelve como una sola fila para la hoja de elegibilidad. */
 export const reservaEmpresa = (e: any): { que: string; v: Veredicto; region: string }[] => [
-  { que: "Constituida fuera de Lima Metrop. y Callao (SUNARP)",
-    v: regionReserva(e.sunarp_region_constitucion, e.provincia_lima),
-    region: e.sunarp_region_constitucion || "" },
-  { que: "Domicilio fuera de Lima Metrop. y Callao (SUNARP)",
-    v: regionReserva(e.sunarp_region_domicilio, e.provincia_lima),
-    region: e.sunarp_region_domicilio || "" },
-  { que: "Domicilio fiscal fuera de Lima Metrop. y Callao (SUNAT)",
-    v: regionReserva(e.sunat_region_domicilio, e.provincia_lima),
-    region: e.sunat_region_domicilio || "" },
+  { que: "Región fuera de Lima Metrop. y Callao",
+    v: regionReserva(e.region),
+    region: e.region || "" },
 ];
 
 /* El veredicto: basta un "no" para quedar fuera; si no hay ningún "no" pero
