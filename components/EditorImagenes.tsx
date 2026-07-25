@@ -5,10 +5,14 @@ import { subirImagen } from "@/lib/subirImagen";
 /* Mini-editor de imágenes reusable: miniaturas con ✕ para quitar + botón para
    adjuntar. La subida se comparte con `subir` (también la usa el pegado del
    textarea que lo envuelve). `imgs`/`setImgs` los maneja el padre. */
-export default function EditorImagenes({ imgs, setImgs, max = 6 }: {
+export default function EditorImagenes({ imgs, setImgs, max = 6, onError }: {
   imgs: string[]; setImgs: (v: string[]) => void; max?: number;
+  /** Si se pasa, los errores (p. ej. «Máximo 5MB») se muestran por aquí en vez
+   *  del `alert()` nativo del navegador. */
+  onError?: (msg: string) => void;
 }) {
   const [subiendo, setSubiendo] = useState(false);
+  const avisar = (m: string) => (onError ? onError(m) : alert(m));
 
   const subir = async (files: File[]) => {
     if (!files.length || subiendo || imgs.length >= max) return;
@@ -18,7 +22,7 @@ export default function EditorImagenes({ imgs, setImgs, max = 6 }: {
     // NO devuelve [] (recorta desde el final) y dejaría pasar de más.
     for (const f of files.slice(0, Math.max(0, max - imgs.length))) {
       const r = await subirImagen(f);
-      if (r.error) { alert(r.error); break; }
+      if (r.error) { avisar(r.error); break; }
       if (r.url) nuevas.push(r.url);
     }
     if (nuevas.length) setImgs([...imgs, ...nuevas]);

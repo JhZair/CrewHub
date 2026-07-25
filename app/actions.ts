@@ -201,6 +201,99 @@ export async function crearPublicacion(
   return {};
 }
 
+/* MURO DEL PROYECTO — una nota de bitácora. Es una publicación tipo 'bitacora'
+   vinculada al proyecto (y a las etiquetas que la ordenan), con imágenes. Reusa
+   todo el motor de publicaciones: reacciones, comentarios y menciones vienen
+   gratis. El título no se pide —una nota no tiene asunto— así que se deriva de
+   la primera línea del cuerpo (la columna `titulo` es NOT NULL). */
+export async function publicarBitacora(
+  proyectoId: string,
+  cuerpo: string,
+  imagenes: string[] = [],
+  tags: string[] = [],
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const cuerpoT = (cuerpo || "").trim();
+  const imgs = (imagenes || []).filter(Boolean).slice(0, 6);
+  if (!cuerpoT && !imgs.length) return { error: "Escribe algo o agrega una imagen." };
+  const titulo = ((cuerpoT.split("\n")[0] || "").trim() || "🧱 Nota").slice(0, 80);
+  /* Las etiquetas del muro son PROPIAS de la bitácora, no las del sistema (las
+     de casos: Urgente, SUNAT…). Se guardan como texto en la propia nota, no
+     como vínculo a la tabla `etiquetas` — así jamás salen en otro listado ni se
+     mezclan con las etiquetas de trabajo. Acotadas a este proyecto. */
+  const tagsLimpias = [...new Set((tags || []).map(t => t.trim()).filter(Boolean))].slice(0, 12);
+  const { data: pub, error } = await supabase.from("publicaciones").insert({
+    autor_id: user.id, tipo: "bitacora", titulo, cuerpo: cuerpoT || null,
+    imagenes: imgs, estado: "abierta", datos_extra: { tags: tagsLimpias },
+  }).select("id").single();
+  if (error) return { error: error.message };
+  const { error: e2 } = await supabase.from("publicacion_vinculos")
+    .insert({ publicacion_id: pub.id, entidad_tipo: "proyecto", entidad_id: proyectoId });
+  if (e2) return { error: "Publicado, pero falló el vínculo al proyecto: " + e2.message };
+  revalidatePath(`/entidad/proyecto/${proyectoId}`);
+  return {};
+}
+
+/* Destacar / quitar de destacados una nota del muro. Las destacadas asoman en
+   la columna del carné del proyecto. Es una decisión de equipo (cualquiera del
+   sistema puede fijarla), no solo del autor. Se guarda en `datos_extra`. */
+export async function destacarBitacora(pubId: string, proyectoId: string, destacado: boolean) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: pub } = await supabase.from("publicaciones").select("tipo,datos_extra").eq("id", pubId).single();
+  if (!pub) return { error: "No se encontró la nota." };
+  if (pub.tipo !== "bitacora") return { error: "No es una nota del muro." };
+  const nuevo = { ...(pub.datos_extra || {}), destacado };
+  const { error } = await supabase.from("publicaciones").update({ datos_extra: nuevo }).eq("id", pubId);
+  if (error) return { error: error.message };
+  revalidatePath(`/entidad/proyecto/${proyectoId}`);
+  return {};
+}
+
+/* Editar una nota del muro: solo su autor. Cambia texto, imágenes y etiquetas;
+   conserva el «destacado» y marca `editado_en`. */
+export async function editarBitacora(
+  pubId: string, proyectoId: string, cuerpo: string, imagenes: string[] = [], tags: string[] = [],
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: pub } = await supabase.from("publicaciones").select("autor_id,tipo,datos_extra").eq("id", pubId).single();
+  if (!pub) return { error: "No se encontró la nota." };
+  if (pub.tipo !== "bitacora") return { error: "No es una nota del muro." };
+  if (pub.autor_id !== user.id) return { error: "Solo el autor puede editar su nota." };
+  const cuerpoT = (cuerpo || "").trim();
+  const imgs = (imagenes || []).filter(Boolean).slice(0, 6);
+  if (!cuerpoT && !imgs.length) return { error: "La nota no puede quedar vacía." };
+  const tagsLimpias = [...new Set((tags || []).map(t => t.trim()).filter(Boolean))].slice(0, 12);
+  const titulo = ((cuerpoT.split("\n")[0] || "").trim() || "🧱 Nota").slice(0, 80);
+  const nuevo = { ...(pub.datos_extra || {}), tags: tagsLimpias };
+  const { error } = await supabase.from("publicaciones")
+    .update({ titulo, cuerpo: cuerpoT || null, imagenes: imgs, datos_extra: nuevo, editado_en: new Date().toISOString() })
+    .eq("id", pubId);
+  if (error) return { error: error.message };
+  revalidatePath(`/entidad/proyecto/${proyectoId}`);
+  return {};
+}
+
+/* Borrar una nota del muro: solo su autor. Cascadea comentarios/reacciones. */
+export async function borrarBitacora(pubId: string, proyectoId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: pub } = await supabase.from("publicaciones").select("autor_id,tipo").eq("id", pubId).single();
+  if (!pub) return { error: "No se encontró la nota." };
+  if (pub.tipo !== "bitacora") return { error: "No es una nota del muro." };
+  if (pub.autor_id !== user.id) return { error: "Solo el autor puede borrar su nota." };
+  const { error } = await supabase.from("publicaciones").delete().eq("id", pubId);
+  if (error) return { error: error.message };
+  revalidatePath(`/entidad/proyecto/${proyectoId}`);
+  return {};
+}
+
 export async function comentar(pubId: string, texto: string, imagenes: string[] = [], respondeA: string | null = null) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -219,6 +312,10 @@ export async function comentar(pubId: string, texto: string, imagenes: string[] 
   // 🪄 Menciones @nombre → notificación al invocado
   // El token de mención excluye `*` y `_`: si alguien pone en negrita
   // `**@Juan**`, «Juan**» no casaría con ningún nombre y el aviso se perdía.
+  // Quiénes ya reciben aviso por MENCIÓN: no se les vuelve a notificar por el
+  // mismo comentario (si no, el autor mencionado recibía dos —mención y
+  // comentario— por un solo mensaje).
+  const mencionados = new Set<string>();
   const tokens = [...new Set((texto.match(/@[^\s@,;:!?*_`]+/g) || []).map(m => m.slice(1)))];
   if (tokens.length) {
     const nrmM = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
@@ -234,6 +331,7 @@ export async function comentar(pubId: string, texto: string, imagenes: string[] 
         return sinEspacios.startsWith(tk) || palabras.some(w => w.startsWith(tk));
       });
       if (invocado && p.id !== user.id) {
+        mencionados.add(p.id);
         await supabase.from("notificaciones").insert({
           usuario_id: p.id, publicacion_id: pubId, tipo: "mencion", actor_nombre: actorNombre,
           mensaje: `🪄 ${actorNombre.split(" ")[0]} te mencionó en «${(pubT?.titulo || "").slice(0, 60)}»`,
@@ -254,7 +352,9 @@ export async function comentar(pubId: string, texto: string, imagenes: string[] 
     .select("titulo,autor_id,responsable").eq("id", pubId).single();
   if (pub) {
     const destinatarios = [...new Set([pub.autor_id, pub.responsable])]
-      .filter(d => d && d !== user.id);
+      // A quien ya se le avisó por mención no se le manda además la de
+      // comentario: es el mismo mensaje y salían dos notificaciones.
+      .filter(d => d && d !== user.id && !mencionados.has(d as string));
     if (destinatarios.length) {
       await supabase.from("notificaciones").insert(destinatarios.map(d => ({
         usuario_id: d,
@@ -1892,6 +1992,31 @@ export async function guardarExpediente(postulacionId: string, campo: string, va
   if (!data) return { error: "No se guardó: postulación no encontrada o sin permiso." };
   revalidatePath(`/entidad/postulacion/${postulacionId}`);
   return {};
+}
+
+/* REFRESCAR LOS DATOS DEL SISTEMA EN EL EXPEDIENTE.
+   Los campos 🔗 (RUC, razón social, domicilio, RL, etc.) se traen de la ficha de
+   la empresa/persona/proyecto. En el expediente están BLOQUEADOS: no se editan a
+   mano —para cambiarlos se edita el formulario que corresponda—. Este botón
+   vuelca los valores VIVOS (que `auto` ya trae recalculados) al expediente y los
+   deja como «listo». Así queda una foto fija (importa para el ganador) que se
+   actualiza a voluntad tras editar el origen. */
+export async function refrescarExpedienteAuto(postulacionId: string, auto: Record<string, string>) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  // Solo lo que tiene valor y no viene con ⚠ (faltante en la ficha de origen).
+  const entradas = Object.entries(auto || {}).filter(([, v]) => v && !String(v).includes("⚠"));
+  let n = 0;
+  for (const [campo, valor] of entradas) {
+    const { data, error } = await supabase.rpc("set_expediente_campo", {
+      pid: postulacionId, campo, valor: String(valor), listo: true,
+    });
+    if (error) return { error: error.message };
+    if (data) n++;
+  }
+  revalidatePath(`/entidad/postulacion/${postulacionId}`);
+  return { n };
 }
 
 /* ENCARGAR UN CAMPO DEL EXPEDIENTE.
@@ -4005,7 +4130,7 @@ export async function crearSubCaso(padreId: string, titulo: string, tipo: string
 
 /* ===== REACCIONES: los famosos "me gusta" =====
    Toggle por usuario: mismo emoji dos veces = quitar. */
-const EMOJIS_REACCION = ["👀", "👍", "❤️", "🔥", "👏", "😂", "😮", "🤔", "😕", "😢"];
+const EMOJIS_REACCION = ["👀", "👍", "✔️", "❤️", "🔥", "👏", "😂", "😮", "🤔", "😕", "😢"];
 export async function toggleReaccion(pubId: string | null, comentarioId: string | null, emoji: string, objetoId?: string | null) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();

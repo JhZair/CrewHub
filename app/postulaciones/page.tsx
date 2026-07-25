@@ -1,8 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
-import { TIPO_COLOR, completitud } from "@/lib/entidades";
-import Completitud from "@/components/Completitud";
+import { TIPO_COLOR } from "@/lib/entidades";
 // EN_JUEGO y la regla de ejecución viven en lib/fondos.ts: /empresas las
 // tenía escritas aparte, y ya no decían lo mismo.
 import { EN_JUEGO, ejecutando, rendicionVencida, plazoRendicion } from "@/lib/fondos";
@@ -298,10 +297,8 @@ export default async function Postulaciones({ searchParams }: {
             </div>
           );
         })()}
-        {(() => {
-          const cp = completitud("postulacion", p);
-          return <Completitud mini pct={cp.pct} llenos={cp.llenos} total={cp.total} faltan={cp.faltan} />;
-        })()}
+        {/* La barra de completitud se retiró de postulaciones: son pocos
+            campos y no aporta al escaneo del listado. */}
       </div>
     </Link>
     );

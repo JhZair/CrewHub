@@ -32,6 +32,9 @@ export const TIPOS: TipoPub[] = [
   { tipo: "idea", ico: "💡", label: "Idea", color: "#f4b400" },
   { tipo: "archivo", ico: "📎", label: "Archivo", color: "#3b82f6" },
   { tipo: "aviso", ico: "📢", label: "Aviso", color: "#a78bfa" },
+  // Bitácora: una nota del muro del proyecto (texto + imágenes). Informativa,
+  // como el aviso — no es una tarea que se «resuelva».
+  { tipo: "bitacora", ico: "📝", label: "Bitácora", color: "#c084fc" },
   { tipo: "conversacion", ico: "💬", label: "Conversación", color: "#8b8ba3" },
 ];
 

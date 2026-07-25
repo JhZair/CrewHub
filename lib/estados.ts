@@ -65,10 +65,20 @@ export const ESTADO_COL: Record<string, string> = {
 
 /* Un aviso no termina «resuelto» ni «descartado»: rige y deja de regir. Solo
    tiene un estado vivo —Vigente— y se guarda archivándolo, no cerrándolo. */
-const AVISO_ICO: Record<string, string> = { abierta: "📢" };
-const AVISO_TXT: Record<string, string> = { abierta: "Vigente" };
-
 export const esAviso = (tipo?: string | null) => tipo === "aviso";
+
+/* INFORMATIVO = no es una deuda ni una tarea: se lee, no se resuelve. El aviso
+   rige; la bitácora (nota del muro) queda publicada. Ambos muestran su estado
+   como algo vivo, en violeta, y no ofrecen «Resuelta». */
+export const esInformativo = (tipo?: string | null) => tipo === "aviso" || tipo === "bitacora";
+const INFO_TXT: Record<string, Record<string, string>> = {
+  aviso: { abierta: "Vigente" },
+  bitacora: { abierta: "Publicado" },
+};
+const INFO_ICO: Record<string, Record<string, string>> = {
+  aviso: { abierta: "📢" },
+  bitacora: { abierta: "📝" },
+};
 
 /* Un aviso VENCIÓ cuando pasó su fecha límite: deja de regir y desde entonces
    se comporta como cerrado —sale del muro y cae en «cerradas»— sin tener que
@@ -101,11 +111,11 @@ export const ESTADOS_VIVOS = ["abierta", "en_progreso", "seguimiento", "en_pausa
 
 /** Texto del estado tal como debe leerse para ESTE tipo de publicación. */
 export const textoEstado = (estado: string, tipo?: string | null) =>
-  (esAviso(tipo) && AVISO_TXT[estado]) || ESTADO_TXT[estado] || estado;
+  (tipo && INFO_TXT[tipo]?.[estado]) || ESTADO_TXT[estado] || estado;
 
 /** Ícono del estado para ESTE tipo. */
 export const icoEstado = (estado: string, tipo?: string | null) =>
-  (esAviso(tipo) && AVISO_ICO[estado]) || ESTADO_ICO[estado] || "";
+  (tipo && INFO_ICO[tipo]?.[estado]) || ESTADO_ICO[estado] || "";
 
 /** Ícono + texto, para pills. */
 export const rotuloEstado = (estado: string, tipo?: string | null) =>
@@ -114,7 +124,7 @@ export const rotuloEstado = (estado: string, tipo?: string | null) =>
 /** Sufijo de clase CSS (st-… / est-…). Un aviso vigente va en violeta:
  *  ni rojo (no es una deuda) ni verde (no terminó). Rige. */
 export const claseEstado = (estado: string, tipo?: string | null) =>
-  esAviso(tipo) && estado === "abierta" ? "vigente" : estado;
+  esInformativo(tipo) && estado === "abierta" ? "vigente" : estado;
 
 /* Qué estados se le pueden PONER a esto. «archivada» ya no está: archivar es
    una acción aparte (lib/familia · archivado_en), no un estado. Un caso puede
@@ -123,6 +133,7 @@ export const claseEstado = (estado: string, tipo?: string | null) =>
    Vive aquí y no en cada combo porque ya había dos listas —CaseActions y
    PostCard— y la del feed le ofrecía "Resuelta" a un aviso. */
 const OPC_AVISO = ["abierta", "en_pausa"];
+const OPC_BITACORA = ["abierta"];
 const OPC_CASO = ["abierta", "en_progreso", "seguimiento", "en_pausa", "resuelta", "descartada"];
 const HINT: Record<string, string> = {
   seguimiento: " (caso largo)",
@@ -134,7 +145,7 @@ const HINT: Record<string, string> = {
  *  se agrega delante: sin eso el combo muestra otra cosa y el primer cambio
  *  la pisa en silencio. */
 export const opcionesEstado = (tipo?: string | null, estado?: string): [string, string][] => {
-  const base = esAviso(tipo) ? OPC_AVISO : OPC_CASO;
+  const base = tipo === "bitacora" ? OPC_BITACORA : esAviso(tipo) ? OPC_AVISO : OPC_CASO;
   const opc = estado && !base.includes(estado) ? [estado, ...base] : base;
   return opc.map(k => [k, `${rotuloEstado(k, tipo)}${HINT[k] || ""}`]);
 };

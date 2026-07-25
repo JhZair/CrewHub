@@ -1,9 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
-import { TIPO_COLOR, completitud, EST_CONVOCATORIA } from "@/lib/entidades";
+import { TIPO_COLOR, EST_CONVOCATORIA } from "@/lib/entidades";
 import { TXT } from "@/lib/texto";
-import Completitud from "@/components/Completitud";
 import CanchaTemporada, { type Frente } from "@/components/CanchaTemporada";
 import { buscadorDe, pal } from "@/lib/buscar";
 import Link from "next/link";
@@ -336,10 +335,8 @@ export default async function Convocatorias({ searchParams }: {
                       ))}
                     </div>
                   )}
-                  {(() => {
-                    const cp = completitud("convocatoria", c);
-                    return <Completitud mini pct={cp.pct} llenos={cp.llenos} total={cp.total} faltan={cp.faltan} />;
-                  })()}
+                  {/* La barra de completitud se retiró de convocatorias: son
+                      pocos campos y no aporta al escaneo del listado. */}
                 </div>
               </div>
             ))}

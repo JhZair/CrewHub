@@ -130,12 +130,15 @@ export default async function Caso({ params }: { params: { id: string } }) {
   const { data: reaccs } = await supabase.from("reacciones")
     .select("publicacion_id,comentario_id,emoji,usuario_id")
     .eq("publicacion_id", p.id);
-  const rxPub = (reaccs || []).filter((r: any) => !r.comentario_id);
+  // Nombre de quién reaccionó (acuse en el tooltip), del catálogo ya cargado.
+  const nombrePerfil = new Map((perfiles || []).map((x: any) => [x.id, x.nombre]));
+  const conNombre = (r: any) => ({ emoji: r.emoji, usuario_id: r.usuario_id, comentario_id: r.comentario_id, nombre: nombrePerfil.get(r.usuario_id) });
+  const rxPub = (reaccs || []).filter((r: any) => !r.comentario_id).map(conNombre);
   const rxCom = new Map<string, any[]>();
   (reaccs || []).forEach((r: any) => {
     if (!r.comentario_id) return;
     const l = rxCom.get(r.comentario_id) || [];
-    l.push(r); rxCom.set(r.comentario_id, l);
+    l.push(conNombre(r)); rxCom.set(r.comentario_id, l);
   });
 
   /* Los OBJETOS del repositorio se resuelven aparte y solo los vinculados a

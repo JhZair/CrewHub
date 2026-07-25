@@ -138,6 +138,7 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
       .select("id,tipo,titulo,fecha_limite,destacado_hasta")
       .in("estado", ["abierta", "en_progreso", "seguimiento"])
       .is("archivado_en", null)   // lo archivado no se destaca ni se lista aquí
+      .neq("tipo", "bitacora")    // las notas del muro solo viven en su proyecto
       .order("creado_en", { ascending: false }).limit(300),
     /* Para la portada: lo que espera acción en dinero de fondos. Las
        rendiciones vencidas son lo más caro que hay callado en el sistema —

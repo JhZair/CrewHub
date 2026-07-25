@@ -53,6 +53,7 @@ export default async function CasosPorEntidad({ params, searchParams }: {
       // Vista operativa: quién acumula trabajo. Lo archivado no es trabajo —y
       // un aviso archivado sumaba a «sin cerrar». La memoria está en la ficha.
       .is("archivado_en", null)
+      .neq("tipo", "bitacora")   // las notas del muro solo viven en su proyecto
       .order("creado_en", { ascending: false })
       .limit(1000);
     const desde = desdeDe(p);

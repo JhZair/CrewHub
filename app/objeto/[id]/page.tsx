@@ -113,6 +113,9 @@ export default async function ObjetoPage({ params }: { params: { id: string } })
   const { data: reaccs } = idsCom.length
     ? await supabase.from("reacciones").select("comentario_id,emoji,usuario_id").in("comentario_id", idsCom)
     : { data: [] as any[] };
+  // Nombres de quienes reaccionaron, para el acuse en el tooltip.
+  const { data: perfsRx } = await supabase.from("perfiles").select("id,nombre");
+  const nombrePerfil = new Map(((perfsRx as any[]) || []).map((x: any) => [x.id, x.nombre]));
 
   const v0: any = (verifs || [])[0];
   const verif = v0 ? { url: v0.url, por: v0.por?.nombre, en: v0.verificado_en, correcto: v0.correcto } : undefined;
@@ -131,7 +134,7 @@ export default async function ObjetoPage({ params }: { params: { id: string } })
   const rxCom = new Map<string, any[]>();
   (reaccs || []).forEach((r: any) => {
     const l = rxCom.get(r.comentario_id) || [];
-    l.push({ emoji: r.emoji, usuario_id: r.usuario_id }); rxCom.set(r.comentario_id, l);
+    l.push({ emoji: r.emoji, usuario_id: r.usuario_id, nombre: nombrePerfil.get(r.usuario_id) }); rxCom.set(r.comentario_id, l);
   });
   const conEvento = new Set<string>();
   const timeline = (evs as any[]).map((e: any) => {

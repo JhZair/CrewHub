@@ -87,6 +87,58 @@ a{color:inherit;text-decoration:none}
 .ent-hero-ctrl label:hover,.ent-hero-ctrl button:hover{background:rgba(0,0,0,.8)}
 /* Miniatura del cartel de una obra/empresa en las filas de la trayectoria */
 .tr-poster{flex:none;object-fit:cover;border-radius:8px;border:1px solid var(--border);background:#1c1c2c}
+
+/* ===== MURO DEL PROYECTO (bitácora) ===== */
+.muro{display:flex;flex-direction:column;gap:14px}
+.muro-composer{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px}
+.muro-textarea{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:10px 14px;font-size:14.5px;color:var(--text);outline:none;resize:vertical;line-height:1.6;font-family:inherit}
+.muro-textarea:focus{border-color:var(--accent)}
+.muro-tagsel{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:9px}
+.muro-tagsel-lbl{font-size:11.5px;color:var(--dim);font-weight:600}
+.muro-tag{background:var(--bg);border:1px solid var(--border);border-radius:999px;padding:4px 11px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer}
+.muro-tag:hover{border-color:var(--border2)}
+.muro-tag.on{border-color:var(--accent);background:rgba(124,92,255,.85);color:#fff}
+.muro-tag-chip{cursor:pointer;padding:3px 9px;font-size:11.5px}
+.muro-tag-input{background:var(--bg);border:1px solid var(--border);border-radius:999px;padding:4px 11px;font-size:12px;color:var(--text);outline:none;width:120px}
+.muro-tag-input:focus{border-color:var(--accent)}
+.muro-filtro{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.muro-post{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px}
+.muro-post-cab{display:flex;gap:10px;align-items:center}
+.muro-borrar{background:none;border:none;color:var(--dim);cursor:pointer;font-size:14px;padding:2px 6px;border-radius:6px}
+.muro-borrar:hover{color:var(--red);background:rgba(255,77,94,.1)}
+.muro-destacar{background:none;border:none;cursor:pointer;font-size:14px;padding:2px 6px;border-radius:6px;filter:grayscale(1);opacity:.5}
+.muro-destacar:hover{opacity:.9;background:rgba(124,92,255,.12)}
+.muro-destacar.on{filter:none;opacity:1}
+/* Tarjetas de «Destacados del muro» en la columna del carné. Fluidas: se
+   acomodan al contenido — si la nota es solo imagen, la imagen manda y ocupa el
+   ancho; si tiene texto, el texto respira; si tiene ambos, van apilados. */
+.muro-dest{display:flex;flex-direction:column;gap:6px;padding:10px 0;border-top:1px solid var(--border)}
+.muro-dest:first-of-type{border-top:none}
+.muro-dest-img{width:100%;height:auto;max-height:150px;object-fit:cover;border-radius:9px;border:1px solid var(--border);display:block}
+/* Solo imagen: dejarla lucir un poco más, sin recorte agresivo. */
+.muro-dest.solo-img .muro-dest-img{max-height:180px;object-fit:contain;background:#14141c}
+.muro-dest-txt{color:var(--text);font-size:12.5px;line-height:1.45;white-space:pre-wrap;word-break:break-word}
+.muro-dest-fecha{color:var(--dim);font-size:11px}
+/* 🎭 Actor(es) social(es) en el carné del proyecto: rostros destacados. Uno o
+   dos; con dos, van lado a lado y cada foto luce. */
+.carne-actores{margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
+.ca-titulo{font-size:10.5px;text-transform:uppercase;letter-spacing:1.1px;color:var(--violet);font-weight:700;margin-bottom:9px}
+.ca-lista{display:flex;gap:10px;flex-wrap:wrap}
+.ca-item{flex:1 1 0;min-width:120px;display:flex;align-items:center;gap:10px;padding:8px;background:#16161f;border:1px solid var(--border);border-radius:12px;text-decoration:none}
+.ca-item:hover{border-color:var(--border2)}
+.ca-foto{width:68px;height:68px;flex:0 0 auto;object-fit:cover;border-radius:50%;border:2px solid var(--violet);background:#1c1c2c}
+.ca-foto-ph{display:flex;align-items:center;justify-content:center;font-size:30px;border-color:var(--border)}
+.ca-txt{display:flex;flex-direction:column;min-width:0}
+.ca-nom{color:var(--text);font-weight:700;font-size:13.5px;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ca-rol{color:var(--dim);font-size:11.5px;margin-top:2px}
+.muro-cuerpo{margin-top:10px;white-space:pre-wrap;word-break:break-word;font-size:14.5px;line-height:1.6;color:var(--text)}
+.muro-post-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.muro-post-pie{margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
+.muro-coments{margin-top:10px;display:flex;flex-direction:column;gap:10px}
+.muro-coment{display:flex;gap:9px;align-items:flex-start}
+.muro-caja{display:flex;gap:8px;align-items:center;margin-top:2px}
+.muro-caja-input{flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);border-radius:999px;padding:8px 14px;font-size:13.5px;color:var(--text);outline:none}
+.muro-caja-input:focus{border-color:var(--accent)}
 /* Banner del PROYECTO al tope del carné de una postulación: se ve de un vistazo
    quién compite. Portada como fondo, cartel encima, nombre + tipo sobre un velo
    oscuro para que el texto se lea sea cual sea la imagen. */

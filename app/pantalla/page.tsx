@@ -38,6 +38,7 @@ export default async function Pantalla() {
       // Sin lo archivado: si no, un aviso archivado sigue «Vigente» en la TV
       // para siempre — un aviso archivado es leído, no vigente.
       .is("archivado_en", null)
+      .neq("tipo", "bitacora")   // las notas del muro solo viven en su proyecto
       .order("creado_en", { ascending: false }).limit(200),
     supabase.from("actividad")
       .select("tipo,detalle,creado_en,entidad_tipo,entidad_id,actor:perfiles(nombre)")

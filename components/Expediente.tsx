@@ -1,5 +1,5 @@
 "use client";
-import { guardarExpediente, casoDeExpediente } from "@/app/actions";
+import { guardarExpediente, casoDeExpediente, refrescarExpedienteAuto } from "@/app/actions";
 import { claseEstado, rotuloEstado } from "@/lib/estados";
 import VistaRapida from "@/components/VistaRapida";
 import Link from "next/link";
@@ -9,7 +9,7 @@ import { useState } from "react";
 /* 🗂 EXPEDIENTE DE POSTULACIÓN
    En la pestaña: el medidor y el botón. El formulario vive en un emergente
    a lo ancho de la página, con las secciones A/B/C/D del formulario DAFO.
-   - "⚡ de la base": el dato ya vive en CrewHub+ y se llena solo
+   - "🔗 de la base": el dato ya vive en CrewHub+ y se llena solo (y queda bloqueado)
    - lo demás se redacta: borrador → listo
    - el día D: 📋 en cada campo y copiar-pegar a la plataforma oficial */
 
@@ -60,9 +60,18 @@ export default function Expediente({ postulacionId, plantilla, expediente, auto,
   const [ocupado, setOcupado] = useState(false);
   const [copiado, setCopiado] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [refrescando, setRefrescando] = useState(false);
+  const [refrescado, setRefrescado] = useState(false);
   const router = useRouter();
 
   const valorDe = (c: CampoExp) => expediente[c.k]?.v ?? auto[c.k] ?? "";
+  /* CAMPO DEL SISTEMA: su valor lo trae la ficha de la empresa/persona/proyecto
+     (contrato `auto`). Va BLOQUEADO en el expediente —no se edita a mano—: para
+     cambiarlo se edita el formulario de origen y se pulsa «Refrescar».
+     EXCEPCIÓN: si el origen aún no tiene el dato, `auto` trae un texto con ⚠;
+     ese NO se bloquea —si no, quedaría atascado (no editable a mano, y el
+     refresco lo salta)—: se deja editable hasta que se complete el origen. */
+  const esSistema = (c: CampoExp) => !!auto[c.k] && !auto[c.k].includes("⚠");
   // Un dato auto-llenado con ⚠ (faltantes en la ficha) aún no está listo
   const listoDe = (c: CampoExp) =>
     expediente[c.k]?.listo || (!expediente[c.k] && !!auto[c.k] && !auto[c.k].includes("⚠"));
@@ -170,6 +179,25 @@ export default function Expediente({ postulacionId, plantilla, expediente, auto,
     } catch { /* clipboard bloqueado: nada grave */ }
   };
 
+  /* Refrescar: vuelca al expediente los valores VIVOS del sistema (`auto`) que
+     ya vienen recalculados del servidor, y los deja como «listo». Es lo que se
+     pulsa tras editar el formulario de la empresa/persona y volver. */
+  const refrescar = async () => {
+    if (refrescando) return;
+    setRefrescando(true); setError("");
+    /* Solo las claves que SON campos de la plantilla: `auto` trae también claves
+       auxiliares (ruc, departamento…) que quizá no existen en esta convocatoria;
+       volcarlas ensuciaría el expediente con datos que nunca se muestran. */
+    const claves = new Set(plantilla.flatMap(s => s.campos.map(c => c.k)));
+    const soloPlantilla = Object.fromEntries(Object.entries(auto).filter(([k]) => claves.has(k)));
+    const r: any = await refrescarExpedienteAuto(postulacionId, soloPlantilla);
+    setRefrescando(false);
+    if (r?.error) { setError(r.error); return; }
+    setRefrescado(true);
+    setTimeout(() => setRefrescado(false), 2500);
+    router.refresh();
+  };
+
   const Medidor = ({ compacto }: { compacto?: boolean }) => (
     <div style={{ display: "flex", gap: 12, alignItems: "center", flex: 1 }}>
       <span style={{ flex: 1, height: compacto ? 8 : 10, background: "var(--bg)", borderRadius: 6, overflow: "hidden", border: "1px solid var(--border)" }}>
@@ -222,15 +250,20 @@ export default function Expediente({ postulacionId, plantilla, expediente, auto,
           <div className="modal-caja modal-form">
             <div className="modal-cab">
               <b>🗂 Expediente de postulación</b>
-              <div style={{ display: "flex", gap: 14, alignItems: "center", flex: 1, marginLeft: 18 }}>
+              <div style={{ display: "flex", gap: 12, alignItems: "center", flex: 1, marginLeft: 18 }}>
                 <Medidor compacto />
+                <button className="btn btn-ghost" style={{ padding: "5px 12px", fontSize: 12.5, whiteSpace: "nowrap" }}
+                  disabled={refrescando} onClick={refrescar}
+                  title="Vuelve a traer los datos del sistema (RUC, razón social, domicilio, representante legal…). Úsalo tras editar el formulario de la empresa o la persona.">
+                  {refrescando ? "🔄 Refrescando…" : refrescado ? "✓ Actualizado" : "🔄 Refrescar del sistema"}
+                </button>
                 <button className="btn btn-ghost" style={{ padding: "5px 12px", fontSize: 12.5 }}
                   onClick={() => setAbierto(false)}>✕ Cerrar</button>
               </div>
             </div>
             <p style={{ color: "var(--dim)", fontSize: 12.5, margin: "0 0 12px" }}>
-              ⚡ = llenado desde la base · ✎ redacta y guarda como borrador o listo ·
-              📋 copia el campo para pegarlo en la plataforma DAFO el día del envío.
+              🔗 = dato del sistema (bloqueado): para cambiarlo, edita su origen (formulario de empresa/persona, o su sección) y pulsa 🔄 Refrescar ·
+              ✎ redacta y guarda como borrador o listo · 📋 copia el campo para la plataforma DAFO.
             </p>
 
             {/* LAS PESTAÑAS. Cada una lleva su propio contador: saber que a la
@@ -322,7 +355,7 @@ export default function Expediente({ postulacionId, plantilla, expediente, auto,
                 <div className="exp-form">
                   {s.campos.filter(c => visible(c)).map(c => {
                     const v = valorDe(c);
-                    const esAuto = !expediente[c.k] && !!auto[c.k];
+                    const sistema = esSistema(c);
                     const listo = listoDe(c);
                     const abiertoCampo = editando === c.k;
                     return (
@@ -339,7 +372,7 @@ export default function Expediente({ postulacionId, plantilla, expediente, auto,
                           <span>
                             {c.etiqueta}
                             {c.opcional && <i> (opc.)</i>}
-                            {esAuto && <b className="exp-auto" title="Se llena solo desde la base">⚡</b>}
+                            {sistema && <b className="exp-auto" title="Dato del sistema (bloqueado): para cambiarlo edita el formulario de origen y pulsa 🔄 Refrescar">🔗</b>}
                           </span>
                         </div>
                         <div className="exp-val">
@@ -369,7 +402,11 @@ export default function Expediente({ postulacionId, plantilla, expediente, auto,
                               </span>
                             </div>
                           )}
-                        {abiertoCampo && opcionesDe(c) ? (
+                        {abiertoCampo && sistema ? (
+                          <div style={{ marginTop: 6, color: "var(--dim)", fontSize: 12 }}>
+                            🔒 Dato del sistema. Para cambiarlo, edita su origen (formulario de empresa/persona, o su sección) y pulsa <b>🔄 Refrescar del sistema</b>.
+                          </div>
+                        ) : abiertoCampo && opcionesDe(c) ? (
                           <div style={{ marginTop: 6 }}>
                             <select value={texto} autoFocus
                               onChange={async e => {
@@ -458,15 +495,16 @@ export default function Expediente({ postulacionId, plantilla, expediente, auto,
                               style={{ color: copiado === c.k ? "var(--green)" : "var(--dim)" }}
                               onClick={() => copiar(c)}>{copiado === c.k ? "✓" : "📋"}</button>
                           )}
-                          {v && !esAuto && (
+                          {v && !sistema && (
                             <button title={listo ? "Volver a borrador" : "Marcar listo"}
                               style={{ color: listo ? "var(--yellow)" : "var(--green)" }}
                               onClick={() => marcarListo(c, !listo)}>{listo ? "↩" : "✓"}</button>
                           )}
                           {/* Encargar SOLO éste. Aparece donde hace falta: en
                               lo que no está listo y aún no tiene caso. Un
-                              combo de diez segundos no necesita una tarea. */}
-                          {!listo && !casos?.[c.k] && (
+                              combo de diez segundos no necesita una tarea. Nunca
+                              en un dato del sistema: no se redacta, se refresca. */}
+                          {!listo && !sistema && !casos?.[c.k] && (
                             <button title="Convertir en caso, con responsable y plazo"
                               disabled={ocupado}
                               onClick={async () => {
@@ -477,10 +515,21 @@ export default function Expediente({ postulacionId, plantilla, expediente, auto,
                                 router.refresh();
                               }}>🗂</button>
                           )}
-                          <button title={abiertoCampo ? "Cerrar" : "Redactar"}
-                            onClick={() => { setEditando(abiertoCampo ? null : c.k); setTexto(v); }}>
-                            {abiertoCampo ? "✕" : "✎"}
-                          </button>
+                          {/* Un dato del sistema está BLOQUEADO: en vez de ✎ un
+                              candado que recuerda editarlo en su formulario. */}
+                          {sistema ? (
+                            abiertoCampo ? (
+                              <button title="Cerrar" onClick={() => setEditando(null)}>✕</button>
+                            ) : (
+                              <span title="Bloqueado — dato del sistema. Edítalo en su origen (empresa/persona o su sección) y pulsa 🔄 Refrescar."
+                                style={{ color: "var(--dim)", cursor: "default" }}>🔒</span>
+                            )
+                          ) : (
+                            <button title={abiertoCampo ? "Cerrar" : "Redactar"}
+                              onClick={() => { setEditando(abiertoCampo ? null : c.k); setTexto(v); }}>
+                              {abiertoCampo ? "✕" : "✎"}
+                            </button>
+                          )}
                         </div>
                       </div>
                     );

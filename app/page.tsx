@@ -121,6 +121,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
         resp:perfiles!publicaciones_responsable_fkey(nombre),
         vinculos:publicacion_vinculos(entidad_tipo, entidad_id)`)
       .in("estado", ["abierta", "en_progreso", "seguimiento"])
+      .neq("tipo", "bitacora")   // las notas del muro solo viven en su proyecto
       .is("archivado_en", null)
       .gt("destacado_hasta", new Date().toISOString())
       .order("fecha_limite", { ascending: true, nullsFirst: false })
@@ -137,6 +138,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
         `)
         .is("archivado_en", null)   // lo archivado descansa fuera del feed (ya no es un estado)
         .neq("estado", "descartada") // "ya no aplica": terminó sin hacerse, fuera del feed
+        .neq("tipo", "bitacora")     // las notas del muro solo viven en su proyecto
         .order("creado_en", { ascending: false })
         .limit(50);
       if (idsOcultos.length) q = q.not("id", "in", `(${idsOcultos.join(",")})`);
@@ -153,7 +155,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
       // `fecha_limite`: para excluir avisos vencidos igual que en la lista, y que
       // el número de la pestaña cuadre con lo que se ve.
       let q = supabase.from("publicaciones").select("id,tipo,autor_id,responsable,fecha_limite")
-        .is("archivado_en", null).neq("estado", "descartada");
+        .is("archivado_en", null).neq("estado", "descartada").neq("tipo", "bitacora");
       if (idsOcultos.length) q = q.not("id", "in", `(${idsOcultos.join(",")})`);
       return q.limit(2000);
     })(),
@@ -180,10 +182,13 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
         .select("publicacion_id,emoji,usuario_id")
         .is("comentario_id", null).in("publicacion_id", idsPubs)
     : { data: [] };
+  // El nombre de quién reaccionó, para el acuse en el tooltip. Se resuelve con el
+  // mismo catálogo de perfiles ya cargado (perfs), sin otra consulta.
+  const nombrePerfil = new Map((perfs.data || []).map((x: any) => [x.id, x.nombre]));
   const reaccsDe = new Map<string, any[]>();
   (reaccs || []).forEach((r: any) => {
     const l = reaccsDe.get(r.publicacion_id) || [];
-    l.push(r); reaccsDe.set(r.publicacion_id, l);
+    l.push({ emoji: r.emoji, usuario_id: r.usuario_id, nombre: nombrePerfil.get(r.usuario_id) }); reaccsDe.set(r.publicacion_id, l);
   });
 
   // Notificaciones + actividad de Qhaway hoy

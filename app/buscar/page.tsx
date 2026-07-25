@@ -165,6 +165,8 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
         // padre_id: un sub-caso sin su padre es un título huérfano
         // autor_id: para pintar la cara de quien lo creó
         .select("id,titulo,cuerpo,tipo,estado,creado_en,padre_id,autor_id")
+        // Las notas del muro solo viven en su proyecto: no salen en la búsqueda global.
+        .neq("tipo", "bitacora")
         .order("creado_en", { ascending: false }).limit(1500),
       /* `objeto_id` + el título del objeto: un comentario ya no cuelga solo de
          un caso. Sin esto, un comentario sobre un libro del repositorio salía

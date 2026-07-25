@@ -426,9 +426,14 @@ export default async function Personas({ searchParams }: {
 
           {/* Agrupadas por tipo: el personal con el personal, los contactos aparte */}
           {(() => {
-            const grupos = [...TIPOS, ""]
-              .map(tt => ({ tt, filas: filtradas.filter((p: any) => (p.tipo || "contacto") === (tt || "contacto")) }))
-              .filter((g, i, arr) => g.filas.length > 0 && arr.findIndex(z => z.tt === g.tt) === i);
+            /* TIPOS ya incluye «contacto», y las personas sin tipo caen ahí por
+               el `|| "contacto"`. Antes se añadía un grupo extra «» que resolvía
+               otra vez a «contacto»: como el dedup comparaba la clave cruda
+               («» ≠ «contacto») no lo descartaba, y los contactos salían dos
+               veces. Sin ese grupo redundante, cada persona aparece una sola. */
+            const grupos = TIPOS
+              .map(tt => ({ tt, filas: filtradas.filter((p: any) => (p.tipo || "contacto") === tt) }))
+              .filter(g => g.filas.length > 0);
             return grupos.map(({ tt, filas }) => (
               <div key={tt || "sin"} style={{ marginTop: 6 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "12px 4px 6px" }}>

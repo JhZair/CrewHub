@@ -127,7 +127,8 @@ export default async function PulsoPage({ searchParams }: {
   {
     const { data: vivos } = await supabase.from("publicaciones")
       .select("responsable,fecha_limite,estado")
-      .in("estado", ["abierta", "en_progreso", "seguimiento", "en_pausa"]).is("archivado_en", null).limit(1500);
+      .in("estado", ["abierta", "en_progreso", "seguimiento", "en_pausa"]).is("archivado_en", null)
+      .neq("tipo", "bitacora").limit(1500);
     for (const p of vivos || []) {
       const r = (p as any).responsable as string | null;
       const venc = !!(p as any).fecha_limite && (p as any).fecha_limite < hoyStr;
@@ -152,7 +153,8 @@ export default async function PulsoPage({ searchParams }: {
   const en7Str = (() => { const d = new Date(Date.now() + 7 * 86400000); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; })();
   const [{ data: vivosCarga }, { data: act3d }, { count: resueltosSemana }] = await Promise.all([
     supabase.from("publicaciones").select("id,titulo,responsable,fecha_limite")
-      .in("estado", ["abierta", "en_progreso", "seguimiento", "en_pausa"]).is("archivado_en", null).limit(1500),
+      .in("estado", ["abierta", "en_progreso", "seguimiento", "en_pausa"]).is("archivado_en", null)
+      .neq("tipo", "bitacora").limit(1500),
     supabase.from("actividad").select("entidad_id").eq("entidad_tipo", "publicacion")
       .gte("creado_en", hace3d).limit(4000),
     supabase.from("actividad").select("id", { count: "exact", head: true })

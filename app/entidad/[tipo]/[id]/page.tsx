@@ -42,6 +42,7 @@ import AvisoMini from "@/components/AvisoMini";
 import TextoCorto from "@/components/TextoCorto";
 import CVs from "@/components/CVs";
 import Repositorio from "@/components/Repositorio";
+import MuroProyecto from "@/components/MuroProyecto";
 import { DIAS_CV, icoObjeto } from "@/lib/objetos";
 import FotoPersona from "@/components/FotoPersona";
 import PortadaEntidad from "@/components/PortadaEntidad";
@@ -357,14 +358,17 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
      botón "me enteré" que valga. Contar es tirar el dato que importa. */
   const reaccDe = new Map<string, Reaccion[]>();
   if (idsP.length) {
-    const [hj, rc] = await Promise.all([
+    const [hj, rc, pf] = await Promise.all([
       supabase.from("publicaciones").select("padre_id,estado,archivado_en").in("padre_id", idsP),
       supabase.from("reacciones").select("publicacion_id,emoji,usuario_id").is("comentario_id", null).in("publicacion_id", idsP),
+      // Nombres de quienes reaccionaron, para el acuse en el tooltip.
+      supabase.from("perfiles").select("id,nombre"),
     ]);
     hijosDe = contarHijos(hj.data);
+    const nombrePerfil = new Map(((pf.data as any[]) || []).map((x: any) => [x.id, x.nombre]));
     (rc.data || []).forEach((r: any) => {
       const l = reaccDe.get(r.publicacion_id) || [];
-      l.push({ emoji: r.emoji, usuario_id: r.usuario_id });
+      l.push({ emoji: r.emoji, usuario_id: r.usuario_id, nombre: nombrePerfil.get(r.usuario_id) });
       reaccDe.set(r.publicacion_id, l);
     });
   }
@@ -383,6 +387,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   let clienteDe: { id: string; nombre: string } | null = null;
   let cronoActs: any[] = [], perfilesCat: any[] = [], cronoPost: any[] = [];
   let postusProy: any[] = [], equipoProy: any[] = [], plantillas: any[] = [], actoresProy: any[] = [];
+  let muroPosts: any[] = [], muroEtqs: any[] = [];
   if (params.tipo === "proyecto") {
     const [pc, cl, ca, pf, pp, eq, pl, ac] = await Promise.all([
       supabase.from("personas").select("id,nombre,alias,tipo").order("nombre"),
@@ -421,6 +426,41 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     postusProy = pp.data || [];
     equipoProy = eq.data || [];
     actoresProy = ac.data || [];
+
+    /* 🧱 MURO — las notas de bitácora (publicaciones tipo 'bitacora' vinculadas
+       al proyecto). Traen su cuerpo e imágenes, sus etiquetas PROPIAS (texto en
+       `datos_extra.tags`, no las del sistema), sus reacciones (ya en reaccDe) y
+       sus comentarios con autor. */
+    const un1 = (x: any) => (Array.isArray(x) ? x[0] : x);
+    const idsBit = pubs.filter((p: any) => p.tipo === "bitacora").map((p: any) => p.id);
+    if (idsBit.length) {
+      const [bitFull, bitComs] = await Promise.all([
+        supabase.from("publicaciones")
+          .select("id,cuerpo,imagenes,creado_en,editado_en,autor_id,datos_extra,autor:perfiles!publicaciones_autor_id_fkey(nombre,color,avatar_url)")
+          .in("id", idsBit),
+        supabase.from("comentarios")
+          .select("id,publicacion_id,cuerpo,imagenes,creado_en,editado_en,autor_id,autor:perfiles(nombre,color,avatar_url)")
+          .in("publicacion_id", idsBit).order("creado_en"),
+      ]);
+      const comsDe = new Map<string, any[]>();
+      (bitComs.data || []).forEach((c: any) => {
+        const l = comsDe.get(c.publicacion_id) || [];
+        l.push({ ...c, autor: un1(c.autor) }); comsDe.set(c.publicacion_id, l);
+      });
+      muroPosts = (bitFull.data || [])
+        .map((p: any) => ({
+          id: p.id, cuerpo: p.cuerpo, imagenes: p.imagenes || [], creado_en: p.creado_en, editado_en: p.editado_en, autor_id: p.autor_id,
+          autor: un1(p.autor),
+          tags: Array.isArray(p.datos_extra?.tags) ? p.datos_extra.tags : [],
+          destacado: !!p.datos_extra?.destacado,
+          reacciones: reaccDe.get(p.id) || [],
+          comentarios: comsDe.get(p.id) || [],
+        }))
+        .sort((a: any, b: any) => (b.creado_en || "").localeCompare(a.creado_en || ""));
+    }
+    // Sugerencias de etiquetas para el compositor: las ya usadas en el muro de
+    // este proyecto (más las se van escribiendo). Nunca las del sistema.
+    muroEtqs = [...new Set(muroPosts.flatMap((p: any) => p.tags))].sort();
     plantillas = (pl.data || []).map((x: any) => ({
       id: x.id, nombre: x.nombre, tipo_proyecto: x.tipo_proyecto,
       n: x.acts?.[0]?.count ?? 0,
@@ -1071,8 +1111,11 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
      detenido, no cerrado—; antes caía en «cerradas» por descarte. */
   /* Un aviso VENCIDO (pasó su fecha límite) deja de regir y cae en «cerradas»
      solo, sin archivarlo a mano: sale del muro y del listado activo. */
-  const activas = (pubs || []).filter((p: any) => !p.archivado_en && !CERRADOS.includes(p.estado) && !avisoVencido(p.tipo, p.fecha_limite));
-  const cerradas = (pubs || []).filter((p: any) => p.archivado_en || CERRADOS.includes(p.estado) || avisoVencido(p.tipo, p.fecha_limite));
+  // Las notas de bitácora no son «trabajo»: viven en su pestaña Muro, no en la
+  // lista de casos activos/cerrados.
+  const pubsTrabajo = (pubs || []).filter((p: any) => p.tipo !== "bitacora");
+  const activas = pubsTrabajo.filter((p: any) => !p.archivado_en && !CERRADOS.includes(p.estado) && !avisoVencido(p.tipo, p.fecha_limite));
+  const cerradas = pubsTrabajo.filter((p: any) => p.archivado_en || CERRADOS.includes(p.estado) || avisoVencido(p.tipo, p.fecha_limite));
 
   const cardPub = (p: any) => {
     const hj = hijosDe.get(p.id);
@@ -1270,11 +1313,35 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               </Link>
             )}
             {/* Completitud de la ficha. Para los tipos sin campos de formulario
-                (lugar, etiqueta) el componente se oculta solo. */}
-            {(() => {
+                (lugar, etiqueta) el componente se oculta solo. En postulación,
+                convocatoria y proyecto no se muestra: la barra no aporta ahí. */}
+            {!["postulacion", "convocatoria", "proyecto"].includes(params.tipo) && (() => {
               const c = completitud(params.tipo, ent);
               return <Completitud pct={c.pct} llenos={c.llenos} total={c.total} faltan={c.faltan} />;
             })()}
+            {/* 🎭 Actor(es) social(es): los personajes reales del documental —el
+                corazón humano del proyecto—. Van al TOPE del carné, con su
+                rostro grande. Normalmente uno; a veces dos, lado a lado. */}
+            {params.tipo === "proyecto" && actoresProy.length > 0 && (
+              <div className="carne-actores" style={{ marginTop: 0, paddingTop: 0, borderTop: "none", marginBottom: 4 }}>
+                <div className="ca-titulo">🎭 {actoresProy.length > 1 ? `Actores sociales · ${actoresProy.length}` : "Actor social"}</div>
+                <div className="ca-lista">
+                  {actoresProy.map((a: any) => (
+                    <Link key={a.id} href={`/entidad/persona/${a.persona?.id}`} className="ca-item"
+                      title={a.descripcion || a.persona?.nombre}>
+                      {a.persona?.foto_url
+                        ? // eslint-disable-next-line @next/next/no-img-element
+                          <img src={a.persona.foto_url} alt="" referrerPolicy="no-referrer" className="ca-foto" />
+                        : <span className="ca-foto ca-foto-ph">🎭</span>}
+                      <span className="ca-txt">
+                        <span className="ca-nom">{a.persona?.alias || a.persona?.nombre || "—"}</span>
+                        {a.rol && <span className="ca-rol">{a.rol}</span>}
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
             {/* Los enlaces del expediente (Drive, Bases, Matriz jurado, Acta…)
                 se bajaron al pie del carné, junto al botón Editar: son
                 herramientas, no datos, y arriba robaban la primera vista. */}
@@ -1667,9 +1734,9 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             const nBase = sueltosSec.filter(c => ent[c[1]] != null && ent[c[1]] !== "").length;
             const nVerMas = nBase + extraCampos.length;
             const haySec = nVerMas > 0 || secDibujados.length > 0;
-            /* Postulación y convocatoria tienen POCA info de referencia: no la
-               escondemos tras «Ver más», se muestra toda de una. */
-            const sinVerMas = params.tipo === "postulacion" || params.tipo === "convocatoria";
+            /* Postulación, convocatoria y proyecto tienen POCA info de
+               referencia: no la escondemos tras «Ver más», se muestra toda. */
+            const sinVerMas = ["postulacion", "convocatoria", "proyecto"].includes(params.tipo);
             const secInner = (
               <div style={{ marginTop: 2 }}>
                 {sueltosSec.map(pintarFila)}
@@ -1783,6 +1850,32 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                   herramienta (entrar a DAFO / al correo), no datos de la
                   postulación — cierran la columna sin robar la vista. */}
               <CredencialesRef creds={credsEmp} empresaId={(postCtx?.emp as any)?.id} />
+            </div>
+          )}
+
+          {/* 📌 Destacados del muro: las notas fijadas asoman aquí, en la columna
+              del carné, compactas. Lo importante del proyecto, a la mano. */}
+          {params.tipo === "proyecto" && muroPosts.some((p: any) => p.destacado) && (
+            <div className="card" style={{ marginTop: 14, padding: "12px 14px" }}>
+              <div className="panel-h" style={{ color: "var(--violet)" }}>📌 Destacados del muro</div>
+              {muroPosts.filter((p: any) => p.destacado).map((p: any) => {
+                const imgs = (p.imagenes || []) as string[];
+                const soloImg = imgs.length > 0 && !(p.cuerpo || "").trim();
+                return (
+                  <div key={p.id} className={`muro-dest ${soloImg ? "solo-img" : ""}`}>
+                    {imgs.length > 0 && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={imgs[0]} alt="" referrerPolicy="no-referrer" className="muro-dest-img" />
+                    )}
+                    {(p.cuerpo || "").trim() && <div className="muro-dest-txt">{p.cuerpo}</div>}
+                    <div className="muro-dest-fecha">
+                      {new Date(p.creado_en).toLocaleDateString("es-PE", { day: "numeric", month: "short" })}
+                      {(p.tags || []).length > 0 ? ` · 🏷 ${p.tags[0]}` : ""}
+                      {imgs.length > 1 ? ` · 🖼 ${imgs.length}` : ""}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
 
@@ -2980,17 +3073,22 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               const histProy = eventosVis.length > 0 ? histInner : (
                 <div className="empty" style={{ padding: "18px 0" }}>Sin actividad registrada todavía.</div>
               );
+              const muroNode = (
+                <MuroProyecto proyectoId={params.id} userId={user.id}
+                  perfiles={perfilesCat} sugerencias={muroEtqs} posts={muroPosts} />
+              );
               return (
                 <TabsPanel
                   labels={[
-                    `📋 Trabajo · ${activas.length}`,
+                    `📝 Muro · ${muroPosts.length}`,
                     etiquetaCrono,
                     `🏆 Trayectoria · ${postusProy.length + equipoProy.length + actoresProy.length}`,
+                    `📋 Casos · ${activas.length}`,
                     `📚 Repositorio · ${objetosDe.length}`,
                     `🕐 Historial · ${eventosVis.length}`,
                   ]}
-                  paneles={[trabajoNode, cronoNode, trayectoriaProy, repoProy, histProy]}
-                  iconoSolo={[4]}
+                  paneles={[muroNode, cronoNode, trayectoriaProy, trabajoNode, repoProy, histProy]}
+                  iconoSolo={[3, 4, 5]}
                 />
               );
             }

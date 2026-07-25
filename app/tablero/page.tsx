@@ -170,6 +170,7 @@ export default async function TableroPage({ searchParams }: {
   let q = supabase.from("publicaciones")
     .select("id,titulo,tipo,estado,fecha_limite,creado_en,autor_id,responsable,comentarios(count),resp:perfiles!publicaciones_responsable_fkey(nombre)")
     .in("estado", ESTADOS)
+    .neq("tipo", "bitacora")   // las notas del muro solo viven en su proyecto
     .order("creado_en", { ascending: false })
     .limit(TOPE);
   // El eje archivado: vivo (`is null`) o guardado (`not null`), según el modo.
@@ -283,7 +284,7 @@ export default async function TableroPage({ searchParams }: {
      mostrarían lo vivo mientras las columnas muestran lo guardado. */
   let qUniv = supabase.from("publicaciones")
     .select("id,tipo,autor_id,responsable,fecha_limite")
-    .in("estado", ESTADOS).limit(TOPE);
+    .in("estado", ESTADOS).neq("tipo", "bitacora").limit(TOPE);
   qUniv = arch ? qUniv.not("archivado_en", "is", null) : qUniv.is("archivado_en", null);
   const { data: universo } = await qUniv;
   // Los avisos vencidos ya no cuentan en el tablero activo (igual que las columnas).

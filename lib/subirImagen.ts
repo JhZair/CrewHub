@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
    son comunicación efímera, no documentos del archivo institucional. */
 export async function subirImagen(file: File): Promise<{ url?: string; error?: string }> {
   if (!file.type.startsWith("image/")) return { error: "Solo se aceptan imágenes." };
-  if (file.size > 5 * 1024 * 1024) return { error: "Máximo 5MB por imagen." };
+  if (file.size > 3 * 1024 * 1024) return { error: "Máximo 3MB por imagen." };
   const supabase = createClient();
   const ext = (file.name.split(".").pop() || "png").toLowerCase();
   const ruta = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
