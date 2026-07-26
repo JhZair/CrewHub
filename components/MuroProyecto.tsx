@@ -5,6 +5,7 @@ import Link from "next/link";
 import Avatar from "@/components/Avatar";
 import Foto from "@/components/Foto";
 import Miniatura from "@/components/Miniatura";
+import VistaObjeto from "@/components/VistaObjeto";
 import EditorImagenes from "@/components/EditorImagenes";
 import Reacciones, { type Reaccion } from "@/components/Reacciones";
 import ComentarioTexto from "@/components/ComentarioTexto";
@@ -314,10 +315,14 @@ function MaterialCard({ m, entidadTipo, entidadId, onCambio }: {
     onCambio();
   };
   return (
-    // Enlace estirado (fila-cubre) para que toda la tarjeta abra el objeto; el
-    // 📌 queda por encima para destacar sin navegar.
+    // Botón estirado (fila-cubre): toda la tarjeta abre el objeto en un pop-up
+    // —así se ve e interactúa sin salir del muro—; el 📌 queda por encima.
     <div className="muro-post muro-material" style={{ position: "relative" }}>
-      <Link href={`/objeto/${m.id}`} className="fila-cubre" aria-label={`Abrir ${m.titulo}`} />
+      <VistaObjeto objetoId={m.id}>
+        {abrir => (
+          <button type="button" className="fila-cubre" aria-label={`Ver ${m.titulo}`} onClick={abrir} />
+        )}
+      </VistaObjeto>
       <button type="button" className={`muro-destacar muro-mat-pin ${dest ? "on" : ""}`}
         title={dest ? "Quitar de destacados del carné" : "Destacar en el carné"}
         onClick={toggle} disabled={ocupado}>📌</button>

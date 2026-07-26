@@ -1210,6 +1210,44 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     destOrden: typeof o.datos?.destacado_orden === "number" ? o.datos.destacado_orden : 0,
   }));
 
+  /* MATERIALES DESTACADOS QUE LA PERSONA CREÓ EN OTROS MUROS.
+     El carné personal junta las notas que dejó por el sistema (por autoría);
+     con los materiales había una asimetría: solo traía los de su propio carné.
+     Así, un material que creó DENTRO de un proyecto y destacó no aparecía en
+     sus destacados. Aquí se traen esos —creados por la persona, dueño ajeno,
+     y destacados— para mostrarlos agrupados por su proyecto de origen. */
+  let objDestExternos: any[] = [];
+  if (params.tipo === "persona" && ent.usuario_id) {
+    const { data: objExt } = await supabase.from("objetos")
+      .select("id,tipo,titulo,url,fecha,datos,entidad_tipo,entidad_id,creado_por,quien:perfiles(nombre)")
+      .eq("creado_por", ent.usuario_id)
+      .not("datos->>destacado_orden", "is", null)   // solo destacados (extracción de texto: null-check estándar)
+      .neq("entidad_id", params.id)
+      .limit(200);
+    // Se reconfirma el destacado en JS: la correctitud no depende solo del filtro
+    // de la base, y se excluye por si acaso cualquier objeto de este mismo carné.
+    const externos = (objExt || []).filter((o: any) =>
+      (o.datos?.destacado || typeof o.datos?.destacado_orden === "number")
+      && !(o.entidad_tipo === params.tipo && o.entidad_id === params.id));
+    // Nombre del muro de origen (dueño) de cada material.
+    const TABLA_MURO2: Record<string, string> = { proyecto: "proyectos", empresa: "empresas", persona: "personas" };
+    const porTipoO: Record<string, Set<string>> = {};
+    externos.forEach((o: any) => { if (TABLA_MURO2[o.entidad_tipo]) (porTipoO[o.entidad_tipo] ||= new Set()).add(o.entidad_id); });
+    const nombreOrigen = new Map<string, string>();
+    await Promise.all(Object.entries(porTipoO).map(async ([tipo, ids]) => {
+      const { data } = await supabase.from(TABLA_MURO2[tipo]).select("id,nombre").in("id", [...ids]);
+      (data || []).forEach((r: any) => nombreOrigen.set(`${tipo}:${r.id}`, r.nombre));
+    }));
+    objDestExternos = externos.map((o: any) => ({
+      ...o, autor: (o.creado_por && alias[o.creado_por]) || o.quien?.nombre || null,
+      destacado: true,
+      destOrden: typeof o.datos?.destacado_orden === "number" ? o.datos.destacado_orden : 0,
+      fuenteObj: nombreOrigen.has(`${o.entidad_tipo}:${o.entidad_id}`)
+        ? { tipo: o.entidad_tipo, id: o.entidad_id, nombre: nombreOrigen.get(`${o.entidad_tipo}:${o.entidad_id}`)! }
+        : null,
+    })).filter((o: any) => o.fuenteObj);   // sin nombre de origen no se puede agrupar
+  }
+
   /* Objetos de OTROS que apuntan a esta entidad: el «Libro Khipukamaq» es de
      Jesús y es la base de «Los Khipus», así que el proyecto tiene que verlo
      —con su procedencia— sin que el libro deje de ser de su autor. */
@@ -2104,12 +2142,21 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               tag: (p.tags || [])[0] || null,
               fuente: p.fuente || null,   // muro de origen (si es de otro carné)
             }));
-            const destObjs = objetosDe.filter((o: any) => o.destacado).map((o: any) => ({
+            // Material destacado: los de este carné (fuente propia) + los que la
+            // persona creó en OTROS muros (fuente = su proyecto de origen).
+            const destObjsPropios = objetosDe.filter((o: any) => o.destacado).map((o: any) => ({
               kind: "obj" as const, id: o.id, orden: o.destOrden ?? 0,
-              titulo: o.titulo, tipo: o.tipo, url: o.url,
+              titulo: o.titulo, tipo: o.tipo, url: o.url, autor: o.autor || null,
               fecha: o.fecha ? new Date(o.fecha + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" }) : null,
               fuente: null,   // el material del repositorio vive en este carné
             }));
+            const destObjsExternos = objDestExternos.map((o: any) => ({
+              kind: "obj" as const, id: o.id, orden: o.destOrden ?? 0,
+              titulo: o.titulo, tipo: o.tipo, url: o.url, autor: o.autor || null,
+              fecha: o.fecha ? new Date(o.fecha + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" }) : null,
+              fuente: o.fuenteObj,   // el proyecto/empresa donde la persona lo creó
+            }));
+            const destObjs = [...destObjsPropios, ...destObjsExternos];
             const destacados = [...destPosts, ...destObjs]
               .sort((a, b) => a.orden - b.orden)
               .map(({ orden, ...rest }) => rest);

@@ -13,6 +13,7 @@ import { esCampoDelTrigger } from "@/lib/actividad";
 import { SECCIONES } from "@/lib/secciones";
 import { TIPOS_OBJETO } from "@/lib/objetos";
 import { catalogoObjetos, catalogosEntidades } from "@/lib/catalogos";
+import { resolverNombres } from "@/lib/nombres";
 
 /* Crear o actualizar una entidad núcleo (proyecto/empresa/persona).
    La config compartida actúa como whitelist de tabla y campos. */
@@ -4944,5 +4945,77 @@ export async function cargarCasoRapido(id: string) {
     perfiles,
     userId: user.id,
     equipoTotal: perfiles.length,
+  };
+}
+
+/* VISTA RÁPIDA DE UN OBJETO DEL REPOSITORIO — lectura para el pop-up.
+   Un objeto se ve así como se trabaja: se abre sin salir de la página, se lee
+   (portada + notas + procedencia), se conversa (comentarios con sus reacciones)
+   y se salta a los casos vinculados. Reusa las escrituras existentes
+   (comentarObjeto, toggleReaccion); esto es solo la lectura. */
+export async function cargarObjetoRapido(objetoId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  const { data: o, error } = await supabase.from("objetos").select("*").eq("id", objetoId).single();
+  if (error || !o) return { error: "No se encontró el objeto." };
+
+  const [{ data: vincs }, { data: casosVinc }, { data: coments }, { data: perf }, { data: verifs }] =
+    await Promise.all([
+      supabase.from("objeto_vinculos").select("entidad_tipo,entidad_id").eq("objeto_id", objetoId),
+      supabase.from("publicacion_vinculos")
+        .select("pub:publicaciones(id,titulo,tipo,estado,creado_en,autor:perfiles!publicaciones_autor_id_fkey(nombre),comentarios(count))")
+        .eq("entidad_tipo", "objeto").eq("entidad_id", objetoId),
+      supabase.from("comentarios")
+        .select("id,cuerpo,imagenes,creado_en,editado_en,autor_id,responde_a,autor:perfiles(nombre,color,avatar_url)")
+        .eq("objeto_id", objetoId).order("creado_en"),
+      supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
+      supabase.from("link_verificaciones")
+        .select("url,correcto,verificado_en,por:perfiles(nombre)")
+        .eq("entidad_tipo", (o as any).entidad_tipo).eq("entidad_id", (o as any).entidad_id)
+        .eq("campo", `objeto:${objetoId}`),
+    ]);
+  const perfiles = sinBot(perf || []);
+
+  // Reacciones SOLO de los comentarios de este objeto (agrupadas por comentario).
+  const idsCom = (coments || []).map((c: any) => c.id);
+  const { data: reaccs } = idsCom.length
+    ? await supabase.from("reacciones").select("comentario_id,emoji,usuario_id").in("comentario_id", idsCom)
+    : { data: [] as any[] };
+  const { data: perfsRx } = await supabase.from("perfiles").select("id,nombre");
+  const nombrePerfil = new Map(((perfsRx as any[]) || []).map((x: any) => [x.id, x.nombre]));
+  const reaccionesPorComentario: Record<string, { emoji: string; usuario_id: string; nombre?: string }[]> = {};
+  (reaccs || []).forEach((r: any) => {
+    (reaccionesPorComentario[r.comentario_id] ||= []).push({
+      emoji: r.emoji, usuario_id: r.usuario_id, nombre: nombrePerfil.get(r.usuario_id),
+    });
+  });
+
+  // Dueño + entidades vinculadas, resueltos a nombre.
+  const pares = [
+    { tipo: (o as any).entidad_tipo, id: (o as any).entidad_id },
+    ...(vincs || []).map((v: any) => ({ tipo: v.entidad_tipo, id: v.entidad_id })),
+  ];
+  const nombres = await resolverNombres(supabase, pares);
+  const dueno = {
+    tipo: (o as any).entidad_tipo, id: (o as any).entidad_id,
+    nombre: nombres.get(`${(o as any).entidad_tipo}:${(o as any).entidad_id}`) || "—",
+  };
+  const vinculadas = (vincs || []).map((v: any) => ({
+    tipo: v.entidad_tipo, id: v.entidad_id,
+    nombre: nombres.get(`${v.entidad_tipo}:${v.entidad_id}`) || "—",
+  })).filter((v: any) => v.nombre !== "—");
+
+  const casos = (casosVinc || []).map((r: any) => r.pub).filter(Boolean)
+    .sort((a: any, b: any) => (b.creado_en || "").localeCompare(a.creado_en || ""));
+
+  const v0: any = (verifs || [])[0];
+  const verif = v0 ? { por: v0.por?.nombre, en: v0.verificado_en, correcto: v0.correcto } : null;
+
+  return {
+    objeto: o, dueno, vinculadas, casos,
+    comentarios: coments || [], reaccionesPorComentario, verif,
+    perfiles, userId: user.id,
   };
 }

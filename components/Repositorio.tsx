@@ -3,9 +3,9 @@ import { guardarObjeto, borrarObjeto } from "@/app/actions";
 import LinkVerificable from "@/components/LinkVerificable";
 import FormObjeto, { OBJETO_VACIO } from "@/components/FormObjeto";
 import MiniObjeto from "@/components/MiniObjeto";
+import VistaObjeto from "@/components/VistaObjeto";
 import TextoCorto from "@/components/TextoCorto";
 import { icoObjeto, lblObjeto, ordenObjeto } from "@/lib/objetos";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -143,9 +143,13 @@ export default function Repositorio({ entidadTipo, entidadId, objetos, verif }: 
               <MiniObjeto url={o.url} ico={icoObjeto(o.tipo)} />
               <div className="repo-fila-cuerpo">
               <div className="repo-cab">
-                {/* Su página propia: ahí se lee entero, se vincula a proyectos
-                    y se conversa sobre él. */}
-                <Link href={`/objeto/${o.id}`} className="repo-tit"><b>{o.titulo}</b></Link>
+                {/* Se abre en un pop-up para verlo y conversar al vuelo, sin
+                    salir de la ficha; «Abrir completo» lleva a su página. */}
+                <VistaObjeto objetoId={o.id}>
+                  {abrir => (
+                    <button type="button" className="repo-tit" onClick={abrir}><b>{o.titulo}</b></button>
+                  )}
+                </VistaObjeto>
                 {o.fecha && <span className="repo-fecha">{fmt(o.fecha)}</span>}
                 <span style={{ flex: 1 }} />
                 <button className="dato-btn" title="Editar" onClick={() => editar(o)}>✎</button>

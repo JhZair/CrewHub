@@ -1,8 +1,8 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import Miniatura from "@/components/Miniatura";
+import VistaObjeto from "@/components/VistaObjeto";
 import { icoObjeto, lblObjeto } from "@/lib/objetos";
 import { previewCandidates } from "@/lib/drive";
 import { ordenarDestacados, destacarBitacora, destacarObjeto } from "@/app/actions";
@@ -15,7 +15,7 @@ import { ordenarDestacados, destacarBitacora, destacarObjeto } from "@/app/actio
 type Fuente = { tipo: string; id: string; nombre: string } | null;
 export type Destacado =
   | { kind: "post"; id: string; cuerpo?: string | null; imagen?: string | null; nImgs?: number; fecha?: string | null; tag?: string | null; fuente?: Fuente }
-  | { kind: "obj"; id: string; titulo: string; tipo: string; url?: string | null; fecha?: string | null; fuente?: Fuente };
+  | { kind: "obj"; id: string; titulo: string; tipo: string; url?: string | null; fecha?: string | null; autor?: string | null; fuente?: Fuente };
 
 const ICO_ENT: Record<string, string> = { proyecto: "📁", empresa: "🏢", persona: "👤" };
 const idDe = (d: Destacado) => `${d.kind}:${d.id}`;
@@ -161,15 +161,20 @@ function PostMini({ d }: { d: Extract<Destacado, { kind: "post" }> }) {
 
 function ObjMini({ d }: { d: Extract<Destacado, { kind: "obj" }> }) {
   const thumb = d.url && previewCandidates(d.url, 200).length
-    ? <Miniatura url={d.url} size={40} alt={d.titulo} />
+    ? <Miniatura url={d.url} size={64} alt={d.titulo} />
     : <span className="dest-obj-tile">{icoObjeto(d.tipo)}</span>;
   return (
-    <Link href={`/objeto/${d.id}`} className="dest-obj" draggable={false} style={{ flex: 1, minWidth: 0 }}>
-      <span style={{ flex: "none", lineHeight: 0 }}>{thumb}</span>
-      <span style={{ minWidth: 0 }}>
-        <span className="dest-obj-tit">{d.titulo}</span>
-        <span className="dest-obj-tipo">📚 {lblObjeto(d.tipo)}{d.fecha ? ` · ${d.fecha}` : ""}</span>
-      </span>
-    </Link>
+    <VistaObjeto objetoId={d.id}>
+      {abrir => (
+        <button type="button" className="dest-obj" draggable={false} onClick={abrir} style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+          <span style={{ flex: "none", lineHeight: 0 }}>{thumb}</span>
+          <span style={{ minWidth: 0 }}>
+            <span className="dest-obj-tit">{d.titulo}</span>
+            <span className="dest-obj-tipo">📚 {lblObjeto(d.tipo)}{d.fecha ? ` · ${d.fecha}` : ""}</span>
+            {d.autor && <span className="dest-obj-por">por {d.autor}</span>}
+          </span>
+        </button>
+      )}
+    </VistaObjeto>
   );
 }

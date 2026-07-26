@@ -140,11 +140,12 @@ a{color:inherit;text-decoration:none}
 .dest-quitar{flex:none;background:none;border:none;cursor:pointer;font-size:13px;padding:2px 4px;border-radius:6px;filter:none;opacity:.85}
 .dest-quitar:hover{background:rgba(255,77,94,.12);opacity:1}
 .dest-cuerpo .muro-dest-img{max-height:110px}
-.dest-obj{display:flex;gap:9px;align-items:center;text-decoration:none;min-width:0}
-.dest-obj-tile{width:40px;height:40px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;
-  font-size:19px;background:var(--bg);border:1px solid var(--border);flex:none}
-.dest-obj-tit{display:block;color:var(--text);font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dest-obj{display:flex;gap:10px;align-items:center;text-decoration:none;min-width:0}
+.dest-obj-tile{width:64px;height:64px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;
+  font-size:26px;background:var(--bg);border:1px solid var(--border);flex:none}
+.dest-obj-tit{display:block;color:var(--text);font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dest-obj-tipo{display:block;color:var(--teal);font-size:11px;margin-top:1px}
+.dest-obj-por{display:block;color:var(--dim);font-size:11px;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dest-ayuda{color:var(--dim);font-size:10.5px;margin-top:8px;text-align:center}
 /* Destacados agrupados por muro de origen (plegables con memoria) */
 .dest-grupos{display:flex;flex-direction:column;gap:4px;margin-top:6px}
@@ -2232,3 +2233,52 @@ img.av{border:1px solid var(--border2)}
 .vr-escribir textarea:focus{border-color:var(--accent)}
 
 .vr-vinc{display:flex;flex-wrap:wrap;gap:6px}
+
+/* VISTA OBJETO — pop-up del material del repositorio. Ver + conversar al vuelo. */
+.vo-caja{max-width:760px;width:100%}
+.vo-cuerpo{display:flex;flex-direction:column;gap:11px;margin-top:12px;max-height:78vh;overflow-y:auto;padding-right:2px}
+.vo-head{display:flex;align-items:center;gap:10px}
+.vo-meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px;color:var(--dim)}
+.vo-dueno{color:var(--violet);font-weight:700;text-decoration:none}
+.vo-dueno:hover{text-decoration:underline}
+.vo-verif{font-size:11px;font-weight:700;padding:1px 8px;border-radius:20px}
+.vo-verif.ok{color:var(--green,#38b26a);background:rgba(56,178,106,.12)}
+.vo-verif.warn{color:var(--yellow);background:rgba(244,180,0,.12)}
+/* La miniatura de objeto es un recuadro fijo (176px); dentro de un contenedor
+   ancho dejaba un gran vacío a su derecha. Aquí se estira al ancho del modal y
+   —a diferencia del listado, que recorta a 16:9— muestra la imagen ENTERA
+   (contain): el pop-up existe para ver el material, no un recorte. */
+.vo-portada{display:flex;justify-content:center;border-radius:12px;overflow:hidden;background:var(--bg)}
+.vo-portada .obj-mini{width:100%;border-radius:0;background:transparent;max-height:60vh}
+.vo-portada .obj-mini img{object-fit:contain}
+.vo-notas{white-space:pre-wrap;color:var(--muted);font-size:14px;line-height:1.5;background:var(--bg);border-radius:10px;padding:10px 12px}
+.vo-abrir-link{align-self:flex-start;padding:6px 12px;font-size:12.5px;text-decoration:none}
+.vo-vinc,.vo-casos{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.vo-lbl{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);margin-right:2px}
+.vo-caso{display:flex;align-items:center;gap:8px;width:100%;background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:7px 10px;text-decoration:none;color:var(--text);font-size:13px}
+.vo-caso:hover{border-color:var(--border2)}
+.vo-caso-n{color:var(--muted);font-size:11.5px}
+.vo-coms{display:flex;flex-direction:column;gap:9px;border-top:1px solid var(--border);padding-top:10px}
+.vo-coms-h{font-size:13px;font-weight:700;color:var(--muted)}
+.vo-com{display:flex;gap:9px;align-items:flex-start}
+.vo-bubble{flex:1;min-width:0;background:var(--bg);border-radius:10px;padding:8px 11px}
+.vo-com-h{display:flex;align-items:baseline;gap:8px}
+.vo-com-h b{font-size:12.5px}
+.vo-com-t{color:var(--dim);font-size:11px}
+.vo-com-resp{font-size:11px;color:var(--dim);margin:1px 0 3px}
+.vo-com-resp b{color:var(--violet)}
+.vo-com-txt{white-space:pre-wrap;font-size:14px;color:var(--text);line-height:1.45;margin-top:2px}
+.vo-com-imgs{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.vo-com-imgs img{max-height:120px;border-radius:8px;border:1px solid var(--border)}
+.vo-rx{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:7px}
+.vo-rx-pal{display:inline-flex;gap:2px;align-items:center;opacity:.55;transition:opacity .12s}
+.vo-com:hover .vo-rx-pal,.vo-rx-pal:hover{opacity:1}
+.vo-rx-add{background:none;border:none;font-size:14px;cursor:pointer;padding:2px 3px;border-radius:6px}
+.vo-rx-add:hover{background:rgba(255,255,255,.06)}
+.vo-escribir{display:flex;gap:8px;align-items:flex-end;border-top:1px solid var(--border);padding-top:10px}
+.vo-escribir textarea{flex:1;background:var(--card);border:1px solid var(--border);border-radius:9px;padding:8px 10px;font-size:14px;color:var(--text);outline:none;resize:vertical;font-family:inherit}
+.vo-escribir textarea:focus{border-color:var(--accent)}
+/* Los disparadores que antes eran <a> ahora son <button>: reset del estilo nativo. */
+button.fila-cubre{background:none;border:none;cursor:pointer;padding:0}
+button.repo-tit,button.dest-obj{background:none;border:none;cursor:pointer;padding:0;font:inherit}
+button.repo-tit{text-align:left}
