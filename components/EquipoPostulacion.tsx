@@ -45,6 +45,19 @@ export default function EquipoPostulacion({ postulacionId, equipo, personas }: {
     if (res?.error) setError(res.error); else router.refresh();
   };
 
+  /* El equipo se ordena por jerarquía del rol (el orden de ROLES: responsable →
+     dirección → producción → técnicos…), no por cómo se fueron agregando. Los
+     cargos fuera de la lista van al final; a igual rango, alfabético por nombre. */
+  const rangoCargo = (c?: string | null) => {
+    const i = ROLES.indexOf((c || "").trim());
+    return i < 0 ? ROLES.length + 1 : i;
+  };
+  const equipoOrd = [...equipo].sort((a: any, b: any) => {
+    const d = rangoCargo(a.cargo) - rangoCargo(b.cargo);
+    if (d) return d;
+    return (a.persona?.nombre || "").localeCompare(b.persona?.nombre || "");
+  });
+
   return (
     <div className="linked" style={{ marginTop: 14 }}>
       <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>
@@ -72,14 +85,14 @@ export default function EquipoPostulacion({ postulacionId, equipo, personas }: {
         </div>
       )}
 
-      {equipo.map((m: any) => {
+      {equipoOrd.map((m: any) => {
         const p = m.persona || {};
         // Contexto que pesa en el fondo: qué es, de dónde, y si es comunero/a
         // (la reserva regional y la participación comunitaria puntúan en DAFO).
         const ctx = [p.tipo, p.region, p.es_comunero ? "🌱 comunero/a" : ""].filter(Boolean).join(" · ");
         return (
           <div key={m.id} className="eq-card">
-            <Avatar nombre={p.nombre} src={p.foto_url} size={38} />
+            <Avatar nombre={p.nombre} src={p.foto_url} size={60} />
             <div className="eq-card-main">
               <div className="eq-card-top">
                 <Link href={`/entidad/persona/${p.id}`} className="eq-card-nom" title={p.nombre}>{p.alias || p.nombre} →</Link>

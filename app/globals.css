@@ -266,6 +266,63 @@ a{color:inherit;text-decoration:none}
 .pc-sub{color:var(--dim);font-weight:500;font-size:10.5px;margin-top:2px}
 .pc-conc{flex-basis:100%;text-align:center;color:var(--muted);font-size:12px;text-decoration:none;margin-top:6px;padding-top:10px;border-top:1px solid var(--border)}
 .pc-conc:hover{color:var(--text)}
+/* VEREDICTO del concurso: cuando terminó, el trío y la cancha se atenúan y el
+   resultado se estampa grande al centro, como un sello sobre el expediente.
+   El sello no captura clics (pointer-events:none): los enlaces siguen vivos. */
+.post-resultado-wrap{position:relative}
+.post-resultado-wrap.con-resultado>.post-duo,
+.post-resultado-wrap.con-resultado>.post-cancha{opacity:.3;filter:saturate(.55)}
+.post-resultado{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  pointer-events:none;border-radius:14px}
+.pr-sello{display:flex;flex-direction:column;align-items:center;gap:1px;
+  padding:12px 30px;border:3px solid currentColor;border-radius:12px;
+  background:rgba(10,10,16,.42);transform:rotate(-7deg);box-shadow:0 8px 30px rgba(0,0,0,.4)}
+.pr-ico{font-size:34px;line-height:1;margin-bottom:2px}
+.pr-tit{font-size:38px;font-weight:900;letter-spacing:2.5px;text-transform:uppercase;line-height:1}
+.pr-sub{font-size:13px;font-weight:800;letter-spacing:2px;text-transform:uppercase;opacity:.92}
+.post-resultado.tono-gano{color:var(--green,#38b26a)}
+.post-resultado.tono-finalista{color:var(--yellow)}
+.post-resultado.tono-noapta{color:var(--red)}
+.post-resultado.tono-cerrada{color:#9aa3b8}
+/* Lista de participantes de una convocatoria: agrupada por desenlace y con un
+   «sello» de estado por fila. */
+.pl-seccion{margin-bottom:14px}
+.pl-seccion-h{font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);
+  padding:4px 0 6px;border-bottom:1px solid var(--border);margin-bottom:2px}
+.pl-fila{position:relative;display:flex;gap:12px;align-items:flex-start;padding:12px 10px 12px 11px;
+  border-left:3px solid var(--border);border-radius:0 9px 9px 0;
+  background:linear-gradient(90deg,color-mix(in srgb,var(--pl-col,transparent) 7%,transparent),transparent 55%);
+  margin-bottom:2px}
+/* `--pl-col` (color del estado) lo fija cada fila con style. */
+/* Fila SELLADA: su contenido se atenúa MIENTRAS el sello está presente. Con
+   `:has` el atenuado se ata al sello real: al cerrarlo (✕), el sello se
+   desmonta y la fila recupera su opacidad al instante, sin recargar. */
+.pl-fila:has(> .post-resultado)>:not(.post-resultado){opacity:.3;filter:saturate(.55)}
+.post-resultado.sr-fila{border-radius:0 9px 9px 0}
+.post-resultado.sr-fila .pr-sello{padding:7px 20px;transform:rotate(-5deg)}
+.post-resultado.sr-fila .pr-ico{font-size:20px;margin-bottom:0}
+.post-resultado.sr-fila .pr-tit{font-size:22px;letter-spacing:1.5px}
+.post-resultado.sr-fila .pr-sub{font-size:10.5px;letter-spacing:1.5px}
+@media (max-width:560px){.pr-tit{font-size:28px}.pr-ico{font-size:26px}}
+/* La «✕» del sello: es lo único que SÍ recibe clics dentro de la capa. */
+.sr-x{position:absolute;top:8px;right:10px;pointer-events:auto;background:rgba(10,10,16,.55);
+  color:currentColor;border:1px solid currentColor;width:26px;height:26px;border-radius:50%;
+  font-size:13px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  opacity:.8;transition:opacity .12s,background .12s;z-index:2}
+.sr-x:hover{opacity:1;background:rgba(10,10,16,.8)}
+/* Variante CARNÉ: el sello se estampa sobre la ficha entera; el contenido se
+   atenúa detrás. El sello se coloca hacia arriba (sobre la portada). */
+.card.con-sello{position:relative}
+/* `:has` ata el atenuado al sello real: cerrar la ✕ lo desmonta y el carné
+   recupera su opacidad al instante (antes quedaba apagado hasta recargar). */
+.card:has(> .post-resultado)>:not(.post-resultado){opacity:.32;filter:saturate(.55)}
+/* La fila de acciones (Editar…) NO se atenúa y va POR ENCIMA del sello: aunque
+   el concurso cerró, la ficha se sigue pudiendo editar. */
+.card.con-sello>.carne-acciones{opacity:1;filter:none;position:relative;z-index:3}
+.post-resultado.sr-carne{align-items:flex-start;padding-top:44px}
+.post-resultado.sr-carne .pr-sello{transform:rotate(-6deg)}
+.post-resultado.sr-carne .pr-tit{font-size:30px;letter-spacing:2px}
+.post-resultado.sr-carne .pr-ico{font-size:28px}
 /* El trío protagonista de una fila de postulación: proyecto, empresa y
    director(a) con su retrato, a tamaño legible. Como toda la fila es un enlace,
    van como retratos (no chips). */

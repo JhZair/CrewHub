@@ -44,6 +44,9 @@ import CVs from "@/components/CVs";
 import Repositorio from "@/components/Repositorio";
 import MuroProyecto from "@/components/MuroProyecto";
 import DestacadosMuro from "@/components/DestacadosMuro";
+import SelloResultado from "@/components/SelloResultado";
+import { ordenarActores } from "@/lib/actores";
+import { resultadoPostulacion, resultadoConvocatoria } from "@/lib/resultados";
 import { DIAS_CV, icoObjeto } from "@/lib/objetos";
 import FotoPersona from "@/components/FotoPersona";
 import PortadaEntidad from "@/components/PortadaEntidad";
@@ -477,7 +480,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     perfilesCat = pf.data || [];
     postusProy = pp.data || [];
     equipoProy = eq.data || [];
-    actoresProy = ac.data || [];
+    // Protagonistas primero, luego secundarios, luego los demás.
+    actoresProy = ordenarActores(ac.data || []);
 
     /* 🧱 MURO — reutiliza el helper compartido (mismo muro que empresa). */
     { const m = await cargarMuro(); muroPosts = m.posts; muroEtqs = m.etqs; }
@@ -1418,6 +1422,12 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       className="vtab vtab-drive" title="Carpeta en Drive">📂 Drive ↗</a>
   ) : null;
 
+  /* Veredicto del concurso para el carné: mismo sello estampado sobre la ficha
+     de identidad. Postulación → su resultado; convocatoria → si ya cerró. */
+  const resCarne = params.tipo === "postulacion" ? resultadoPostulacion(ent.estado)
+    : params.tipo === "convocatoria" ? resultadoConvocatoria(ent.estado)
+    : null;
+
   return (
     <div className="shell shell-ancho">
       <div className="topbar">
@@ -1511,7 +1521,10 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       <div className="perfil-grid">
         {/* ===== COLUMNA IZQUIERDA: el carné ===== */}
         <aside>
-          <div className="card">
+          {/* Veredicto también sobre el carné: si el concurso terminó, el
+              resultado se estampa sobre la ficha (con «✕» para cerrarlo). */}
+          <div className={`card${resCarne ? " con-sello" : ""}`} style={resCarne ? { position: "relative" } : undefined}>
+            {resCarne && <SelloResultado {...resCarne} variante="carne" />}
             {/* Cabecera del carné: QUIÉN compite. El banner del proyecto (con su
                 cartel y nombre) al tope, para que a simple vista se lea de qué
                 proyecto es esta postulación —no solo el sello del concurso. */}
@@ -2065,7 +2078,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               )}
               {/* En persona, CV/DNI/Firma/Drive van dentro del bloque 📎 Documentos */}
             </div>
-            <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <div className="carne-acciones" style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
               <Mantenimiento tipo={params.tipo} id={params.id} valores={ent} />
               {/* Los de empresa (verificar / ficha SUNAT) van en el bloque 🏛 SUNAT */}
               {/* Verificar DNI vive ahora en el bloque 🪪 Identidad */}
@@ -2503,12 +2516,15 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                  postulación. Un director/a o codirector/a. */
               const directora = (equipoProy.find((r: any) => /direc|codirec/i.test(r.cargo || ""))
                 || equipoPost.find((r: any) => /direc|codirec/i.test(r.cargo || "")))?.persona || null;
+              // Veredicto del concurso (si ya terminó): se estampa sobre la cancha.
+              const resPost = resultadoPostulacion(ent.estado);
               const equipoNode = (
                 <>
                   {/* Cabecera de contexto: el proyecto con su cartel y, de un
                       vistazo, la empresa, el concurso (categoría y año) y lo que
                       está en juego. Es la cancha en la que corre este equipo. */}
                   <div className="linked">
+                    <div className={`post-resultado-wrap${resPost ? " con-resultado" : ""}`}>
                     {/* Los DOS protagonistas del concurso, lado a lado con su
                         imagen: el proyecto que compite y la empresa que lo
                         presenta. El «×» de por medio los lee como un enfrentamiento
@@ -2601,6 +2617,12 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                         </Link>
                       </div>
                     )}
+                      {/* VEREDICTO: cuando el concurso terminó, el resultado se
+                          estampa GRANDE sobre la cancha (con el trío atenuado
+                          detrás). No captura clics —los enlaces siguen vivos—;
+                          su «✕» lo cierra. */}
+                      {resPost && <SelloResultado {...resPost} variante="cancha" />}
+                    </div>
                     {/* Cambiar la empresa que presenta (su nombre ya está arriba). */}
                     <EmpresaPostulacion postulacionId={params.id}
                       convocatoriaId={postCtx?.conv?.id || ""}
@@ -2631,7 +2653,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                           const ctx = ctxPersona(p);
                           return (
                             <div className="eq-card" key={m.id}>
-                              <Avatar nombre={p.nombre} src={p.foto_url} size={38} />
+                              <Avatar nombre={p.nombre} src={p.foto_url} size={60} />
                               <div className="eq-card-main">
                                 <div className="eq-card-top">
                                   <Link href={`/entidad/persona/${p.id}`} className="eq-card-nom" title={p.nombre}>{p.alias || p.nombre} →</Link>

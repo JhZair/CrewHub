@@ -2,6 +2,7 @@
 import { agregarActorProyecto, editarActorProyecto, quitarActorProyecto } from "@/app/actions";
 import { EntPicker, type CatalogoItem } from "@/components/Composer";
 import Avatar from "@/components/Avatar";
+import { ROLES_ACTOR, ordenarActores } from "@/lib/actores";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
@@ -83,9 +84,10 @@ export default function ActoresProyecto({ proyectoId, actores, personas }: {
                 const p: any = personas.find(x => x.id === id);
                 if (p) setSel({ id: p.id, nombre: p.alias || p.nombre });
               }} />
-            <input value={rol} onChange={e => setRol(e.target.value)}
+            <input list="roles-actor" value={rol} onChange={e => setRol(e.target.value)}
               placeholder="Rol (protagonista, secundario…)"
               style={{ ...inputStyle, flex: 1, minWidth: 180, width: "auto" }} />
+            <datalist id="roles-actor">{ROLES_ACTOR.map(r => <option key={r} value={r} />)}</datalist>
           </div>
           <textarea value={desc} onChange={e => setDesc(e.target.value)}
             placeholder="Descripción del personaje (opcional)"
@@ -102,7 +104,7 @@ export default function ActoresProyecto({ proyectoId, actores, personas }: {
         </div>
       )}
 
-      {actores.map(a => (
+      {ordenarActores(actores).map(a => (
         <div key={a.id} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "9px 0", borderTop: "1px solid var(--border)" }}>
           <Avatar nombre={a.persona?.nombre} src={a.persona?.foto_url} size={34} />
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -118,8 +120,8 @@ export default function ActoresProyecto({ proyectoId, actores, personas }: {
             </div>
             {editando === a.id ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
-                <input value={eRol} onChange={e => setERol(e.target.value)}
-                  placeholder="Rol" style={inputStyle} />
+                <input list="roles-actor" value={eRol} onChange={e => setERol(e.target.value)}
+                  placeholder="Rol (protagonista, secundario…)" style={inputStyle} />
                 <textarea value={eDesc} onChange={e => setEDesc(e.target.value)}
                   placeholder="Descripción del personaje" rows={2} style={{ ...inputStyle, resize: "vertical" }} />
                 <div style={{ display: "flex", gap: 8 }}>

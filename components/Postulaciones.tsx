@@ -1,6 +1,8 @@
 "use client";
 import { crearPostulacion, actualizarPostulacion, borrarPostulacion } from "@/app/actions";
 import { EntPicker, type CatalogoItem } from "@/components/Composer";
+import SelloResultado from "@/components/SelloResultado";
+import { resultadoPostulacion } from "@/lib/resultados";
 import { TXT } from "@/lib/texto";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -23,6 +25,21 @@ const ESTADOS: [string, string, string][] = [
   ["retirada", "↩ Retirada", "var(--dim)"],
 ];
 const estMeta = (e: string) => ESTADOS.find(x => x[0] === e) || ESTADOS[0];
+
+/* Secciones del concurso: los participantes no van todos juntos, se agrupan por
+   desenlace —ganadoras, finalistas, en proceso, no seleccionadas— y en ese
+   orden (lo que ganó primero). Cada fila además lleva su «sello» de estado. */
+const SECCIONES_POST: { clave: string; label: string }[] = [
+  { clave: "ganadora", label: "🏆 Ganadoras" },
+  { clave: "finalista", label: "🥈 Finalistas" },
+  { clave: "proceso", label: "🎯 En proceso" },
+  { clave: "descartada", label: "✖ No seleccionadas" },
+];
+const seccionDe = (estado: string): string =>
+  estado === "ganadora" ? "ganadora"
+  : (estado === "finalista" || estado === "finalista_no_ganadora") ? "finalista"
+  : ["en_preparacion", "enviada", "apta"].includes(estado) ? "proceso"
+  : "descartada";   // no_apta, no_seleccionada, retirada
 
 const inputCss: React.CSSProperties = {
   background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8,
@@ -120,12 +137,16 @@ export default function Postulaciones({ convocatoriaId, postulaciones, proyectos
         </div>
       )}
 
-      {postulaciones.map((p: any) => {
+      {(() => {
+        const fila = (p: any) => {
         const [, , col] = estMeta(p.estado);
         const cartel = p.proy?.id ? carteles[p.proy.id] : null;
         const gano = p.estado === "ganadora";
+        // Veredicto: si el concurso ya se resolvió para esta fila, se estampa
+        // una capa (con su ✕) encima, como en el carné y la cancha.
+        const res = resultadoPostulacion(p.estado);
         return (
-          <div key={p.id} style={{ display: "flex", gap: 12, alignItems: "flex-start", borderBottom: "1px solid var(--border)", padding: "12px 0" }}>
+          <div key={p.id} className={`pl-fila${res ? " con-sello" : ""}`} style={{ borderLeftColor: col, ["--pl-col" as any]: col }}>
             {/* Póster del proyecto: identifica la postulación de un vistazo. */}
             {cartel && (
               // eslint-disable-next-line @next/next/no-img-element
@@ -264,9 +285,22 @@ export default function Postulaciones({ convocatoriaId, postulaciones, proyectos
                 </div>
               )}
             </div>
+            {res && <SelloResultado {...res} variante="fila" />}
           </div>
         );
-      })}
+        };
+        // Se pintan las secciones en orden; solo las que tienen participantes.
+        return SECCIONES_POST.map(sec => {
+          const items = postulaciones.filter((p: any) => seccionDe(p.estado) === sec.clave);
+          if (!items.length) return null;
+          return (
+            <div key={sec.clave} className="pl-seccion">
+              <div className="pl-seccion-h">{sec.label} · {items.length}</div>
+              {items.map(fila)}
+            </div>
+          );
+        });
+      })()}
       {!postulaciones.length && !agregando && (
         <div style={{ color: "var(--dim)", fontSize: 12.5, padding: "6px 0" }}>
           Sin postulaciones — registra qué proyectos y empresas compiten aquí.
