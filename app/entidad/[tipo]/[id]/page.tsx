@@ -490,11 +490,12 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     empresasCat = (em.data || []).map((x: any) => ({ id: x.id, nombre: x.codigo ? `${x.codigo} · ${x.nombre}` : x.nombre }));
     (mm.data || []).forEach((m: any) => { if (m.cartel_url) cartelesProy[m.entidad_id] = m.cartel_url; });
   }
-  let prestamos: any[] = [], proyectosPrest: any[] = [];
+  let prestamos: any[] = [], proyectosPrest: any[] = [], prestamoPerfiles: { id: string; nombre: string }[] = [], bitacoraEq: any[] = [];
+  let relacionados: any[] = []; const cartelRel = new Map<string, string>();
   if (params.tipo === "equipamiento") {
     const [pr, pc, py] = await Promise.all([
       supabase.from("equipo_prestamos")
-        .select("id,desde,hasta,nota,persona:personas(id,nombre,alias),proy:proyectos(id,nombre)")
+        .select("id,desde,hasta,nota,persona:personas(id,nombre,alias,foto_url),proy:proyectos(id,nombre)")
         .eq("equipamiento_id", params.id).order("desde", { ascending: false }),
       supabase.from("personas").select("id,nombre,alias,tipo").order("nombre"),
       supabase.from("proyectos").select("id,nombre").order("nombre"),
@@ -502,6 +503,60 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     prestamos = pr.data || [];
     personasCat = (pc.data || []).map((x: any) => ({ ...x, nombre: x.alias ? `${x.nombre} · ${x.alias}` : x.nombre }));
     proyectosPrest = py.data || [];
+
+    /* Equipos relacionados (automático): de la misma categoría, con los de la
+       misma SUBcategoría primero —de una cámara de acción, las otras cámaras de
+       acción antes que cualquier cámara—. Se excluye a sí mismo y a las bajas. */
+    if (ent.categoria) {
+      const { data: relRaw } = await supabase.from("equipamiento")
+        .select("id,nombre,folio,estado,categoria,subcategoria")
+        .eq("categoria", ent.categoria).neq("id", params.id).neq("estado", "de_baja")
+        .order("folio").limit(80);
+      const sub = (ent.subcategoria || "").trim().toLowerCase();
+      relacionados = (relRaw || [])
+        .sort((a: any, b: any) => (sub && (b.subcategoria || "").toLowerCase() === sub ? 1 : 0) - (sub && (a.subcategoria || "").toLowerCase() === sub ? 1 : 0))
+        .slice(0, 8);
+      const idsRel = relacionados.map((r: any) => r.id);
+      if (idsRel.length) {
+        const { data: mmR } = await supabase.from("entidad_media")
+          .select("entidad_id,cartel_url").eq("entidad_tipo", "equipamiento").in("entidad_id", idsRel);
+        (mmR || []).forEach((m: any) => { if (m.cartel_url) cartelRel.set(m.entidad_id, m.cartel_url); });
+      }
+    }
+    // La bitácora de cada préstamo (comentarios con prestamo_id) + la bitácora
+    // SUELTA del equipo (comentarios con equipamiento_id, sin depender de un uso),
+    // ambas con sus reacciones (por comentario_id) y quién reaccionó (acuse).
+    {
+      const un1 = (x: any) => (Array.isArray(x) ? x[0] : x);
+      const comSel = "id,prestamo_id,equipamiento_id,cuerpo,imagenes,etiquetas,es_dano,responde_a,fecha_evento,creado_en,editado_en,autor_id,autor:perfiles(nombre,color,avatar_url)";
+      const [{ data: coms }, { data: comsEq }, { data: perfsC }] = await Promise.all([
+        prestamos.length
+          ? supabase.from("comentarios").select(comSel).in("prestamo_id", prestamos.map((p: any) => p.id)).order("creado_en")
+          : Promise.resolve({ data: [] as any[] }),
+        supabase.from("comentarios").select(comSel).eq("equipamiento_id", params.id).order("creado_en"),
+        supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
+      ]);
+      const comIds = [...(coms || []), ...(comsEq || [])].map((c: any) => c.id);
+      const { data: rxC } = comIds.length
+        ? await supabase.from("reacciones").select("comentario_id,emoji,usuario_id").in("comentario_id", comIds)
+        : { data: [] as any[] };
+      const nomPerf = new Map(((perfsC as any[]) || []).map((x: any) => [x.id, x.nombre]));
+      const rxDe = new Map<string, any[]>();
+      (rxC || []).forEach((r: any) => {
+        const l = rxDe.get(r.comentario_id) || [];
+        l.push({ emoji: r.emoji, usuario_id: r.usuario_id, nombre: nomPerf.get(r.usuario_id) });
+        rxDe.set(r.comentario_id, l);
+      });
+      prestamoPerfiles = ((perfsC as any[]) || []).map((x: any) => ({ id: x.id, nombre: x.nombre }));
+      const porP = new Map<string, any[]>();
+      (coms || []).forEach((c: any) => {
+        const l = porP.get(c.prestamo_id) || [];
+        l.push({ ...c, autor: un1(c.autor), reacciones: rxDe.get(c.id) || [] });
+        porP.set(c.prestamo_id, l);
+      });
+      prestamos = prestamos.map((p: any) => ({ ...p, comentarios: porP.get(p.id) || [] }));
+      bitacoraEq = (comsEq || []).map((c: any) => ({ ...c, autor: un1(c.autor), reacciones: rxDe.get(c.id) || [] }));
+    }
   }
 
   let postCtx: any = null, equipoPost: any[] = [], credsEmp: any[] = [], plantillasPre: any[] = [], hitosConc: any[] = [];
@@ -1337,10 +1392,19 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                 <div className="carne-equipo">
                   <div className="ce-estado" style={{ color: est[1] }}>{est[0]}</div>
                   {actual ? (
-                    <div className="ce-portador">
-                      <div>🤝 <Link href={`/entidad/persona/${actual.persona?.id}`} style={{ color: "var(--text)", fontWeight: 700 }}>{actual.persona?.alias || actual.persona?.nombre}</Link> lo tiene</div>
-                      {actual.proy && <div className="ce-sub">para <Link href={`/entidad/proyecto/${actual.proy.id}`} style={{ color: "var(--violet)" }}>{actual.proy.nombre}</Link></div>}
-                      <div className="ce-sub">desde {fmtD(actual.desde)}</div>
+                    <div className="ce-portador" style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                      <Link href={`/entidad/persona/${actual.persona?.id}`} style={{ flexShrink: 0 }}>
+                        {actual.persona?.foto_url
+                          ? // eslint-disable-next-line @next/next/no-img-element
+                            <img src={actual.persona.foto_url} alt="" referrerPolicy="no-referrer"
+                              style={{ width: 40, height: 40, borderRadius: "50%", objectFit: "cover", border: "1px solid var(--border2)" }} />
+                          : <span style={{ width: 40, height: 40, borderRadius: "50%", background: "var(--bg)", border: "1px solid var(--border2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>👤</span>}
+                      </Link>
+                      <div style={{ minWidth: 0 }}>
+                        <div>🤝 <Link href={`/entidad/persona/${actual.persona?.id}`} style={{ color: "var(--text)", fontWeight: 700 }}>{actual.persona?.alias || actual.persona?.nombre}</Link> lo tiene</div>
+                        {actual.proy && <div className="ce-sub">para <Link href={`/entidad/proyecto/${actual.proy.id}`} style={{ color: "var(--violet)" }}>{actual.proy.nombre}</Link></div>}
+                        <div className="ce-sub">desde {fmtD(actual.desde)}</div>
+                      </div>
                     </div>
                   ) : (
                     <div className="ce-libre">Nadie lo tiene ahora — libre para prestar.</div>
@@ -1850,6 +1914,34 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               {/* Verificar DNI vive ahora en el bloque 🪪 Identidad */}
             </div>
           </div>
+
+          {/* Equipos relacionados (automático por categoría): de una cámara de
+              acción, las otras cámaras de acción y demás cámaras. Al pie del
+              carné, con su foto y estado; cada uno enlaza a su ficha. */}
+          {params.tipo === "equipamiento" && relacionados.length > 0 && (
+            <div className="card" style={{ marginTop: 12 }}>
+              <h4 style={{ margin: "0 0 8px", fontSize: 11.5, letterSpacing: 1.2, textTransform: "uppercase", color: "var(--dim)" }}>
+                🔗 Equipos relacionados
+              </h4>
+              {relacionados.map((r: any) => {
+                const cartel = cartelRel.get(r.id);
+                const ESTC: Record<string, string> = { disponible: "var(--green)", en_uso: "var(--blue)", en_reparacion: "var(--yellow)", perdido: "var(--dano)", de_baja: "var(--dim)" };
+                return (
+                  <Link key={r.id} href={`/entidad/equipamiento/${r.id}`} className="info-row" style={{ textDecoration: "none" }}>
+                    <span style={{ width: 34, height: 34, borderRadius: 7, flexShrink: 0, overflow: "hidden", background: "var(--bg)", border: "1px solid var(--border)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 17 }}>
+                      {cartel
+                        // eslint-disable-next-line @next/next/no-img-element
+                        ? <img src={cartel} alt="" referrerPolicy="no-referrer" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        : "🎥"}
+                    </span>
+                    {r.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c", fontSize: TXT.chip }}>{r.folio}</span>}
+                    <b style={{ flex: 1, fontSize: TXT.micro, color: "var(--text)" }}>{r.nombre}</b>
+                    <span style={{ color: ESTC[r.estado] || "var(--dim)", fontSize: TXT.chip }}>{(r.estado || "").replace(/_/g, " ")}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
 
           {/* Postulaciones y fondos, equipo del proyecto y cliente ya no viven
               en el carné: se mudaron a la pestaña «Trayectoria» del proyecto
@@ -2940,10 +3032,16 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                devolver, historial de uso) vive en su propia pestaña; el carné
                solo lleva el resumen (estado + quién lo tiene ahora). */
             if (params.tipo === "equipamiento") {
-              const prestamosNode = (
+              const bitacoraNode = (
                 <PrestamoEquipo equipoId={params.id} prestamos={prestamos}
-                  personas={personasCat} proyectos={proyectosPrest} />
+                  personas={personasCat} proyectos={proyectosPrest} userId={user.id}
+                  perfiles={prestamoPerfiles} bitacora={bitacoraEq} estado={ent.estado} />
               );
+              // Total de entradas de la línea: comentarios (sueltos + de cada uso)
+              // + eventos de uso (inicio + fin).
+              const nComsBita = bitacoraEq.length + prestamos.reduce((s: number, p: any) => s + (p.comentarios?.length || 0), 0);
+              const nEventos = prestamos.reduce((s: number, p: any) => s + (p.hasta ? 2 : 1), 0);
+              const nBita = nComsBita + nEventos;
               const repoEq = (
                 <>
                   <Repositorio entidadTipo={params.tipo} entidadId={params.id} objetos={objetosDe} verif={verifDe} />
@@ -2971,12 +3069,12 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               return (
                 <TabsPanel
                   labels={[
+                    `🗒 Bitácora · ${nBita}`,
                     `📋 Casos · ${activas.length}`,
-                    `🤝 Préstamos · ${prestamos.length}`,
                     `📚 Repositorio · ${objetosDe.length}`,
                     `🕐 Historial · ${eventosVis.length}`,
                   ]}
-                  paneles={[trabajoNode, prestamosNode, repoEq, histEq]}
+                  paneles={[bitacoraNode, trabajoNode, repoEq, histEq]}
                   iconoSolo={[3]}
                 />
               );

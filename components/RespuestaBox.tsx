@@ -1,5 +1,5 @@
 "use client";
-import { comentar, comentarObjeto } from "@/app/actions";
+import { comentar, comentarObjeto, comentarPrestamo, comentarEquipo } from "@/app/actions";
 import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -7,10 +7,14 @@ import { useEffect, useRef, useState } from "react";
 /* Responder a un comentario concreto: botón "↩ Responder" que abre una
    caja inline; al enviar, el comentario queda enlazado al padre (responde_a).
    Soporta pegar (Ctrl+V) y adjuntar imágenes, igual que el comentario. */
-export default function RespuestaBox({ pubId, comentarioId, objetoId }: {
+export default function RespuestaBox({ pubId, comentarioId, objetoId, prestamoId, equipoId, bitacoraEquipoId }: {
   pubId?: string | null; comentarioId: string;
   /** Cuando se responde a un comentario del repositorio, no de un caso. */
   objetoId?: string | null;
+  /** Cuando se responde a un comentario del hilo de un uso de equipo. */
+  prestamoId?: string | null; equipoId?: string | null;
+  /** Cuando se responde en la bitácora del equipo (comentario suelto). */
+  bitacoraEquipoId?: string | null;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [txt, setTxt] = useState("");
@@ -44,7 +48,11 @@ export default function RespuestaBox({ pubId, comentarioId, objetoId }: {
     setEnviando(true);
     // Misma tabla, dos dueños: el objeto usa su propia acción para que el
     // aviso y el evento cuelguen de él, no de un caso inexistente.
-    const res: any = objetoId
+    const res: any = prestamoId
+      ? await comentarPrestamo(prestamoId, equipoId!, txt.trim(), imgs, [], comentarioId)
+      : bitacoraEquipoId
+      ? await comentarEquipo(bitacoraEquipoId, txt.trim(), imgs, [], comentarioId)
+      : objetoId
       ? await comentarObjeto(objetoId, txt.trim() || "📷", imgs, comentarioId)
       : await comentar(pubId!, txt.trim() || "📷", imgs, comentarioId);
     setEnviando(false);

@@ -123,8 +123,10 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
   // propia (persona.usuario_id) y la del autor de un caso (publicacion.autor_id).
   let avatarDe = new Map<string, string | null>();
   let perfilNom = new Map<string, string>();   // id de perfil → nombre (iniciales)
-  // Cartel (póster) de proyectos/empresas de los resultados — clave `${tipo}:${id}`.
+  // Cartel (póster) de proyectos/empresas/equipos de los resultados — clave `${tipo}:${id}`.
   let carteles = new Map<string, string>();
+  // Quién tiene cada equipo ahora (portador) — clave: id de equipamiento.
+  let portadorEq = new Map<string, any>();
   /* Título del padre de cada sub-caso encontrado: «Cámara A lista» a secas no
      dice nada — la mitad de un sub-caso es de quién es hijo. */
   let padreDe = new Map<string, string>();
@@ -183,7 +185,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
         /* Los CVs ya no se anidan: viven en `objetos` (tipo='cv'), que cuelga
            por (entidad_tipo, entidad_id) y no tiene FK a personas, así que no
            se puede embeber. Se traen aparte, abajo. */
-        .select("id,nombre,alias,rol,tipo,estado,ruc_dni,region,dni_url,firma_url,carpeta_drive_url,foto_url,usuario_id,proys:proyecto_equipo(cargo,proy:proyectos(id,nombre,nombre_corto))")
+        .select("id,nombre,alias,rol,tipo,estado,ruc_dni,email,region,dni_url,firma_url,carpeta_drive_url,foto_url,usuario_id,proys:proyecto_equipo(cargo,proy:proyectos(id,nombre,nombre_corto))")
         .limit(600),
       // RENCA, presupuesto y Drive del proyecto: guardados desde siempre y
       // nunca seleccionados aquí
@@ -361,7 +363,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
 
     const persTodas = (c3.data || [])
       .filter((p: any) => coincide(
-        `persona ${p.nombre} ${p.alias} ${p.rol} ${p.ruc_dni} ${p.region} `
+        `persona ${p.nombre} ${p.alias} ${p.rol} ${p.ruc_dni} ${p.email || ""} ${p.region} `
         + pal(p.tipo, p.estado, p.equipo) + ` ${docsPersona(p)}`))
       .map((p: any) => ({
         // Qué CV coincidió: sin esto buscas "cv investigadora" y sale una
@@ -437,6 +439,17 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
       `equipo ${e.nombre} ${e.folio} ${e.categoria} ${e.subcategoria} ${e.descripcion} ` + pal(e.estado)));
     equis = equisTodos.slice(0, 15);
     equisMas = Math.max(0, equisTodos.length - 15);
+    /* Cartel (miniatura) y portador (quién lo tiene ahora) de los equipos que se
+       van a mostrar: para ponerles foto y decir en manos de quién están. */
+    if (equis.length) {
+      const idsEq = equis.map((e: any) => e.id);
+      const [{ data: mmEq }, { data: prEq }] = await Promise.all([
+        supabase.from("entidad_media").select("entidad_id,cartel_url").eq("entidad_tipo", "equipamiento").in("entidad_id", idsEq),
+        supabase.from("equipo_prestamos").select("equipamiento_id,persona:personas(id,nombre,alias,foto_url)").is("hasta", null).in("equipamiento_id", idsEq),
+      ]);
+      (mmEq || []).forEach((m: any) => { if (m.cartel_url) carteles.set(`equipamiento:${m.entidad_id}`, m.cartel_url); });
+      (prEq || []).forEach((p: any) => { const per = Array.isArray(p.persona) ? p.persona[0] : p.persona; if (per) portadorEq.set(p.equipamiento_id, per); });
+    }
     lugs = (c7.data || []).filter((l: any) => coincide(`lugar ${l.nombre}`)).slice(0, 6);
 
     /* EL REPOSITORIO. Se busca por título, nota, tipo y DE QUIÉN es: «khipu
@@ -590,9 +603,16 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
      que no es del equipo. No se esconde (buscaste algo y ahí está), pero se
      apaga y se va abajo. Al pasar el cursor se prende. Mismo gesto que las
      empresas candidatas y los concursos donde nunca postulamos. */
-  const Fila = ({ href, children, docs, tenue }: any) => (
+  // `resaltar`: al revés de `tenue` — pide un poco de atención (en uso, en
+  // reparación). Un filo de color a la izquierda y un tinte muy leve; nada más.
+  const RES: Record<string, [string, string]> = {
+    en_uso: ["var(--blue)", "rgba(59,130,246,.06)"],
+    en_reparacion: ["var(--yellow)", "rgba(244,180,0,.06)"],
+  };
+  const Fila = ({ href, children, docs, tenue, resaltar }: any) => (
     <div className={`card link fila-cap${tenue ? " fila-tenue" : ""}`}
-      style={{ cursor: "pointer", padding: "8px 13px", marginBottom: 7 }}>
+      style={{ cursor: "pointer", padding: "8px 13px", marginBottom: 7,
+        ...(resaltar && RES[resaltar] ? { borderLeft: `3px solid ${RES[resaltar][0]}`, background: RES[resaltar][1] } : {}) }}>
       <Link href={href} className="fila-cubre" aria-label="Abrir" />
       <div style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap", fontSize: TXT.base }}>
         {children}
@@ -612,6 +632,24 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
     return <img src={u} alt="" className="tr-poster" referrerPolicy="no-referrer"
       style={{ width: size, height: size }} />;
   };
+  /* Miniatura de equipo: su cartel si lo tiene, o un 🎥 de relleno —el equipo
+     SIEMPRE lleva imagen en la lista, aunque nadie haya subido una. */
+  const posterEq = (id: string, size = 38) => {
+    const u = carteles.get(`equipamiento:${id}`);
+    return u
+      // eslint-disable-next-line @next/next/no-img-element
+      ? <img src={u} alt="" className="tr-poster" referrerPolicy="no-referrer" style={{ width: size, height: size }} />
+      : <span className="tr-poster" style={{ width: size, height: size, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: size * 0.5, background: "var(--bg)" }}>🎥</span>;
+  };
+  // Avatar chico del portador (con relleno 👤 si no tiene foto).
+  const miniPersona = (url: string | undefined, size = 22) => (
+    <span style={{ width: size, height: size, borderRadius: "50%", flexShrink: 0, background: "var(--bg)", border: "1px solid var(--border2)", display: "inline-flex", alignItems: "center", justifyContent: "center", overflow: "hidden", verticalAlign: "middle" }}>
+      {url
+        // eslint-disable-next-line @next/next/no-img-element
+        ? <img src={url} alt="" referrerPolicy="no-referrer" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        : <span style={{ fontSize: size * 0.5 }}>👤</span>}
+    </span>
+  );
 
   /* Chip de documento: si hay link, va al papel; si no, se muestra apagado
      —que el dato exista y el archivo no es información, no un hueco que
@@ -888,13 +926,24 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
 
       <Seccion titulo="🎥 Equipos" k="equipos" n={equis.length} mas={equisMas}
         verTodo={`/equipamiento?q=${encodeURIComponent(q)}`}>
-        {equis.map((e: any) => (
-          <Fila key={e.id} href={`/entidad/equipamiento/${e.id}`}>
-            {e.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{e.folio}</span>}
-            <b>{e.nombre}</b>
-            <span style={{ color: "var(--dim)", fontSize: TXT.meta }}>{e.categoria} · {(e.estado || "").replace(/_/g, " ")}</span>
-          </Fila>
-        ))}
+        {equis.map((e: any) => {
+          const per = portadorEq.get(e.id);
+          return (
+            <Fila key={e.id} href={`/entidad/equipamiento/${e.id}`}
+              resaltar={e.estado === "en_uso" ? "en_uso" : e.estado === "en_reparacion" ? "en_reparacion" : undefined}>
+              {posterEq(e.id)}
+              {e.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{e.folio}</span>}
+              <b>{e.nombre}</b>
+              <span style={{ color: "var(--dim)", fontSize: TXT.meta }}>{e.categoria} · {(e.estado || "").replace(/_/g, " ")}</span>
+              <span style={{ flex: 1 }} />
+              {per && (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "var(--muted)", fontSize: TXT.meta }}>
+                  {miniPersona(per.foto_url)} {per.alias || per.nombre}
+                </span>
+              )}
+            </Fila>
+          );
+        })}
       </Seccion>
 
       <Seccion titulo="🎯 Postulaciones" k="postulaciones" n={postus.length}>

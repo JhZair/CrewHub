@@ -3958,6 +3958,159 @@ export async function devolverEquipo(prestamoId: string, equipoId: string) {
   return {};
 }
 
+/* COMENTAR UN PRÉSTAMO DE EQUIPO — la bitácora de esa salida (se lo pasó a
+   Carlos, lo devolvió rayado, falta el cargador). Misma tabla `comentarios`
+   que casos y objetos; solo cambia de qué cuelga (prestamo_id). Requiere haber
+   corrido db/prestamo-comentarios.sql. */
+export async function comentarPrestamo(
+  prestamoId: string, equipoId: string, texto: string,
+  imagenes: string[] = [], etiquetas: string[] = [], respondeA: string | null = null,
+  fechaEvento: string | null = null,
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const cuerpo = (texto || "").trim();
+  const imgs = (imagenes || []).filter(Boolean).slice(0, 6);
+  // Etiquetas libres: limpiadas, sin duplicados, tope razonable.
+  const tags = [...new Set((etiquetas || []).map(t => (t || "").trim()).filter(Boolean))].slice(0, 8);
+  // Un parte de daño puede ser solo fotos («mira cómo llegó»); un comentario
+  // normal sin texto ni fotos no tiene sentido. `cuerpo || "📷"` porque la
+  // columna es NOT NULL —igual que comentarObjeto—.
+  if (!cuerpo && !imgs.length) return { error: "Escribe algo o adjunta una foto." };
+  const esDano = tags.some(esTagDano);
+  const { error } = await supabase.from("comentarios")
+    .insert({ prestamo_id: prestamoId, autor_id: user.id, cuerpo: cuerpo || "📷", imagenes: imgs, etiquetas: tags, es_dano: esDano, responde_a: respondeA || null, fecha_evento: fechaEvento || null });
+  if (error) {
+    if (/etiquetas|es_dano|fecha_evento/.test(error.message)) return { error: "Falta correr db/comentario-dano.sql y db/bitacora-equipo.sql en Supabase." };
+    return { error: /prestamo_id/.test(error.message)
+      ? "Falta correr db/prestamo-comentarios.sql en Supabase."
+      : error.message };
+  }
+
+  // Parte de daño ⇒ el equipo entra a evaluación técnica / reparación. El uso
+  // no se cierra solo (quizá lo devuelvan luego); solo cambia el estado para que
+  // nadie más lo saque mientras está averiado.
+  if (esDano) {
+    await supabase.from("equipamiento").update({ estado: "en_reparacion" }).eq("id", equipoId);
+  }
+  await avisarMencionesEquipo(supabase, user.id, equipoId, cuerpo, esDano, { prestamo_id: prestamoId });
+
+  revalidatePath(`/entidad/equipamiento/${equipoId}`);
+  return {};
+}
+
+/* ¿Una etiqueta es un daño? Normaliza acentos: «Daño», «daños», «dano» valen. */
+function esTagDano(t: string) {
+  return (t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().includes("dano");
+}
+
+/* 🪄 Menciones @nombre en un comentario de equipo → aviso al invocado, que lo
+   lleva a la ficha del equipo. `destino` decide de qué cuelga el aviso: de un
+   uso (prestamo_id) o directo del equipo (equipamiento_id). Compartido por
+   comentarPrestamo y comentarEquipo para no divergir. */
+async function avisarMencionesEquipo(
+  supabase: any, userId: string, equipoId: string, cuerpo: string, esDano: boolean,
+  destino: { prestamo_id?: string; equipamiento_id?: string },
+) {
+  const tokens = [...new Set((cuerpo.match(/@[^\s@,;:!?*_`]+/g) || []).map(m => m.slice(1)))];
+  if (!tokens.length) return;
+  const nrmM = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const [{ data: miP }, { data: eq }, { data: perfs }] = await Promise.all([
+    supabase.from("perfiles").select("nombre").eq("id", userId).single(),
+    supabase.from("equipamiento").select("nombre").eq("id", equipoId).single(),
+    supabase.from("perfiles").select("id,nombre").eq("activo", true),
+  ]);
+  const actorNombre = miP?.nombre || "Alguien";
+  const nomEquipo = (eq?.nombre || "un equipo").slice(0, 50);
+  const enUso = !!destino.prestamo_id;
+  for (const p of perfs || []) {
+    const sinEsp = nrmM(p.nombre).replace(/\s+/g, "");
+    const palabras = nrmM(p.nombre).split(/\s+/);
+    const invocado = tokens.some((t: string) => { const tk = nrmM(t); return sinEsp.startsWith(tk) || palabras.some((w: string) => w.startsWith(tk)); });
+    if (invocado && p.id !== userId) {
+      await supabase.from("notificaciones").insert({
+        usuario_id: p.id, ...destino, tipo: "mencion", actor_nombre: actorNombre,
+        mensaje: esDano
+          ? `🔧 ${actorNombre.split(" ")[0]} reportó un daño en «${nomEquipo}»`
+          : `🪄 ${actorNombre.split(" ")[0]} te mencionó en ${enUso ? "el uso de" : "la bitácora de"} «${nomEquipo}»`,
+      });
+    }
+  }
+}
+
+/* COMENTAR EL EQUIPO (bitácora suelta) — comentarios y partes de daño que
+   cuelgan del EQUIPO mismo, no de un uso. Aquí va lo que no pertenece a ningún
+   préstamo: «buscando técnico», o un daño de una salida ya no registrada (con su
+   `fechaEvento` real). Misma tabla `comentarios`, cuarto dueño equipamiento_id.
+   Requiere db/bitacora-equipo.sql. */
+export async function comentarEquipo(
+  equipoId: string, texto: string,
+  imagenes: string[] = [], etiquetas: string[] = [], respondeA: string | null = null,
+  fechaEvento: string | null = null,
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const cuerpo = (texto || "").trim();
+  const imgs = (imagenes || []).filter(Boolean).slice(0, 6);
+  const tags = [...new Set((etiquetas || []).map(t => (t || "").trim()).filter(Boolean))].slice(0, 8);
+  if (!cuerpo && !imgs.length) return { error: "Escribe algo o adjunta una foto." };
+  const esDano = tags.some(esTagDano);
+  const { error } = await supabase.from("comentarios")
+    .insert({ equipamiento_id: equipoId, autor_id: user.id, cuerpo: cuerpo || "📷", imagenes: imgs, etiquetas: tags, es_dano: esDano, responde_a: respondeA || null, fecha_evento: fechaEvento || null });
+  if (error) {
+    if (/equipamiento_id|fecha_evento/.test(error.message)) return { error: "Falta correr db/bitacora-equipo.sql en Supabase." };
+    if (/etiquetas|es_dano/.test(error.message)) return { error: "Falta correr db/comentario-dano.sql en Supabase." };
+    return { error: error.message };
+  }
+  if (esDano) {
+    await supabase.from("equipamiento").update({ estado: "en_reparacion" }).eq("id", equipoId);
+  }
+  await avisarMencionesEquipo(supabase, user.id, equipoId, cuerpo, esDano, { equipamiento_id: equipoId });
+
+  revalidatePath(`/entidad/equipamiento/${equipoId}`);
+  return {};
+}
+
+/* EDITAR un comentario de la bitácora del equipo o de un uso (corregir un typo,
+   ajustar el parte de daño, cambiar la fecha del incidente). Solo el autor.
+   Recalcula es_dano de las etiquetas; si queda como daño, el equipo entra a
+   reparación (no se “des-repara” solo al quitar la etiqueta: eso se decide a
+   mano). El equipo se deduce del propio comentario para revalidar bien. */
+export async function editarComentarioEquipo(
+  comentarioId: string, texto: string,
+  imagenes: string[] = [], etiquetas: string[] = [], fechaEvento: string | null = null,
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const cuerpo = (texto || "").trim();
+  const imgs = (imagenes || []).filter(Boolean).slice(0, 6);
+  const tags = [...new Set((etiquetas || []).map(t => (t || "").trim()).filter(Boolean))].slice(0, 8);
+  if (!cuerpo && !imgs.length) return { error: "El comentario no puede quedar vacío." };
+  const { data: com } = await supabase.from("comentarios")
+    .select("autor_id,equipamiento_id,prestamo_id").eq("id", comentarioId).single();
+  if (!com) return { error: "Comentario no encontrado." };
+  if (com.autor_id !== user.id) return { error: "Solo el autor puede editar su comentario." };
+  const esDano = tags.some(esTagDano);
+  const { error } = await supabase.from("comentarios")
+    .update({ cuerpo: cuerpo || "📷", imagenes: imgs, etiquetas: tags, es_dano: esDano, fecha_evento: fechaEvento || null, editado_en: new Date().toISOString() })
+    .eq("id", comentarioId);
+  if (error) return { error: error.message };
+
+  let equipoId: string | null = com.equipamiento_id;
+  if (!equipoId && com.prestamo_id) {
+    const { data: pr } = await supabase.from("equipo_prestamos").select("equipamiento_id").eq("id", com.prestamo_id).single();
+    equipoId = pr?.equipamiento_id || null;
+  }
+  if (esDano && equipoId) {
+    await supabase.from("equipamiento").update({ estado: "en_reparacion" }).eq("id", equipoId);
+  }
+  if (equipoId) revalidatePath(`/entidad/equipamiento/${equipoId}`);
+  return {};
+}
+
 /* Editar el título de una publicación (queda en la bitácora quién y qué) */
 export async function editarTitulo(pubId: string, titulo: string) {
   const supabase = createClient();
@@ -4404,7 +4557,7 @@ export async function misNotificaciones() {
   if (!user) return { items: [], sinLeer: 0, sinLeerBot: 0 };
   // `objeto_id`: una notificación puede colgar de un caso O de un objeto del
   // repositorio. Sin traerla, el aviso llega pero no lleva a ninguna parte.
-  const cols = "id,tipo,mensaje,actor_nombre,publicacion_id,objeto_id,leida,creado_en";
+  const cols = "id,tipo,mensaje,actor_nombre,publicacion_id,objeto_id,prestamo_id,equipamiento_id,leida,creado_en";
   const [{ data: pers }, { data: bot }, { count: sinLeer }, { count: sinLeerBot }] = await Promise.all([
     supabase.from("notificaciones").select(cols)
       .eq("usuario_id", user.id).not("actor_nombre", "is", null)
@@ -4534,9 +4687,41 @@ async function conVinculos(supabase: any, notifs: any[]) {
       vincDe.set(v.publicacion_id, l);
     });
   }
-  return notifs.map((n: any) => ({
-    ...n, vinculos: n.publicacion_id ? (vincDe.get(n.publicacion_id) || []) : [],
-  }));
+  /* Un aviso de préstamo cuelga de `prestamo_id`; su destino es la ficha del
+     EQUIPO. Se resuelve aquí prestamo → equipamiento (id + nombre) para poder
+     enlazar y pintar el chip, igual que los vínculos de una publicación. */
+  const idsPrest = [...new Set(notifs.map((n: any) => n.prestamo_id).filter(Boolean))];
+  const equipoDe = new Map<string, { id: string; nombre: string }>();
+  if (idsPrest.length) {
+    const { data: prs } = await supabase.from("equipo_prestamos")
+      .select("id,equipo:equipamiento(id,nombre)").in("id", idsPrest);
+    (prs || []).forEach((p: any) => {
+      const e = Array.isArray(p.equipo) ? p.equipo[0] : p.equipo;
+      if (e?.id) equipoDe.set(p.id, { id: e.id, nombre: e.nombre });
+    });
+  }
+  /* Un aviso de la bitácora del equipo ya trae el equipamiento_id directo: solo
+     falta el nombre para el chip. */
+  const idsEq = [...new Set(notifs.map((n: any) => n.equipamiento_id).filter(Boolean))];
+  const nombreEq = new Map<string, string>();
+  if (idsEq.length) {
+    const { data: eqs } = await supabase.from("equipamiento").select("id,nombre").in("id", idsEq);
+    (eqs || []).forEach((e: any) => nombreEq.set(e.id, e.nombre));
+  }
+  return notifs.map((n: any) => {
+    // Directo (bitácora) manda; si no, el derivado del uso (prestamo→equipo).
+    const eq = n.equipamiento_id
+      ? { id: n.equipamiento_id, nombre: nombreEq.get(n.equipamiento_id) || "un equipo" }
+      : n.prestamo_id ? equipoDe.get(n.prestamo_id) : null;
+    return {
+      ...n,
+      // El id del equipo para que `rutaNotif` sepa a dónde llevar el aviso.
+      equipamiento_id: eq?.id || null,
+      vinculos: n.publicacion_id
+        ? (vincDe.get(n.publicacion_id) || [])
+        : eq ? [{ tipo: "equipamiento", nombre: eq.nombre }] : [],
+    };
+  });
 }
 
 /* LA PÁGINA /notificaciones — el historial completo, en tandas.
@@ -4557,7 +4742,7 @@ export async function notificacionesTodas(desde = 0, filtro?: "personal" | "bot"
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { items: [], hayMas: false, total: 0, totalBot: 0, sinLeer: 0, sinLeerBot: 0 };
   let q = supabase.from("notificaciones")
-    .select("id,tipo,mensaje,actor_nombre,publicacion_id,objeto_id,leida,creado_en")
+    .select("id,tipo,mensaje,actor_nombre,publicacion_id,objeto_id,prestamo_id,equipamiento_id,leida,creado_en")
     .eq("usuario_id", user.id);
   if (filtro === "personal") q = q.not("actor_nombre", "is", null);
   else if (filtro === "bot") q = q.is("actor_nombre", null);

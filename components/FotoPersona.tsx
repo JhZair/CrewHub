@@ -1,6 +1,7 @@
 "use client";
 import { guardarFotoPersona } from "@/app/actions";
 import { subirImagen } from "@/lib/subirImagen";
+import { prepararImagen, MEDIDAS } from "@/lib/prepararImagen";
 import Avatar from "@/components/Avatar";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -20,7 +21,8 @@ export default function FotoPersona({ personaId, nombre, foto, propia, size = 56
   const subir = async (f?: File) => {
     if (!f || subiendo) return;
     setSubiendo(true); setError("");
-    const r = await subirImagen(f);
+    const lista = await prepararImagen(f, MEDIDAS.foto);
+    const r = await subirImagen(lista);
     if (r.error || !r.url) { setError(r.error || "No se pudo subir"); setSubiendo(false); return; }
     const res: any = await guardarFotoPersona(personaId, r.url);
     setSubiendo(false);

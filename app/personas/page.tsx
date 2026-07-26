@@ -129,7 +129,7 @@ export default async function Personas({ searchParams }: {
     (!a || PRUEBA_A[a]?.(p)) &&
     // El DNI, el RUC deducido y la clasificación también se buscan aquí
     (!q || coincide(pal(
-      p.nombre, p.alias, p.rol, p.region,
+      p.nombre, p.alias, p.rol, p.region, p.email,
       p.ruc_dni && `dni ${p.ruc_dni}`,
       rucDePersona(p.ruc_dni) && `ruc ${rucDePersona(p.ruc_dni)}`,
       p.tipo, p.estado, p.equipo,

@@ -27,7 +27,11 @@ export async function middleware(request: NextRequest) {
   // Vercel Cron, que no tiene cookies de usuario).
   const publica = path.startsWith("/login") || path.startsWith("/auth")
     || path.startsWith("/api/cron")
-    || path === "/manifest.webmanifest";
+    // El cartero de push lo llama pg_cron (sin cookies); su seguridad es la
+    // llave PUSH_CRON_LLAVE que valida el propio endpoint.
+    || path.startsWith("/api/push/despachar")
+    || path === "/manifest.webmanifest"
+    || path === "/sw.js";
 
   if (!user && !publica) {
     return NextResponse.redirect(new URL("/login", request.url));

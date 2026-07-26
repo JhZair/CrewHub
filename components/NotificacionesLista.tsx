@@ -253,7 +253,7 @@ export default function NotificacionesLista({
 
             {rutaNotif(sel) && (
               <Link href={rutaNotif(sel)!} className="btn btn-ghost notif-det-abrir">
-                {sel.objeto_id ? "Abrir el objeto →" : "Abrir el caso →"}
+                {sel.objeto_id ? "Abrir el objeto →" : sel.equipamiento_id ? "Abrir el equipo →" : "Abrir el caso →"}
               </Link>
             )}
 

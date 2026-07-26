@@ -125,7 +125,8 @@ export const VALIDADORES: Record<string, [RegExp, string]> = {
 
 /* Subcategorías sugeridas según la categoría del equipo */
 export const SUBCATS_EQUIPO: Record<string, string[]> = {
-  "cámara": ["Cuerpo de cámara", "Lente", "Batería", "Cargador", "Memoria SD / CFexpress",
+  "cámara": ["Cuerpo de cámara", "Cámara de acción", "Cámara de bolsillo (Pocket / Nano)",
+    "Cámara 360", "Lente", "Batería", "Cargador", "Memoria SD / CFexpress",
     "Trípode", "Monopié", "Estabilizador / Gimbal", "Filtro ND", "Jaula / Rig",
     "Monitor externo", "Celular / Smartphone"],
   "micrófono": ["Micrófono corbatero", "Micrófono boom / cañón", "Micrófono inalámbrico",
@@ -436,7 +437,7 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
       { key: "categoria", label: "Categoría", tipo: "select", opciones: ["cámara", "micrófono", "iluminación", "drone", "energía", "producción", "camping", "pc_accesorios", "cómputo", "otro"] },
       { key: "subcategoria", label: "Subcategoría", sugerenciasPor: { campo: "categoria", mapa: SUBCATS_EQUIPO } },
       // "en_uso" no es elegible: lo gobiernan los préstamos (🤝 en el perfil)
-      { key: "estado", label: "Estado", tipo: "select", opciones: ["disponible", "en_reparacion", "perdido", "de_baja"] },
+      { key: "estado", label: "Estado", tipo: "select", opciones: ["disponible", "en_uso", "en_reparacion", "perdido", "de_baja"] },
       { key: "valor_compra", label: "Valor de compra (S/)" },
       { key: "comprado_en", label: "Comprado en" },
       { key: "link", label: "Link (referencia)", valida: "url" },

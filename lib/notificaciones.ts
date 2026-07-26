@@ -32,9 +32,11 @@ export const anclaDe = (tipo: string) =>
    `if (n.publicacion_id)`, así que un aviso de un comentario sobre un objeto
    del repositorio llegaba a la bandeja pero no era clicable: sonaba y no
    llevaba a ninguna parte. Ahora el destino se decide aquí. */
-export const rutaNotif = (n: { publicacion_id?: string | null; objeto_id?: string | null; tipo?: string }) =>
+export const rutaNotif = (n: { publicacion_id?: string | null; objeto_id?: string | null; equipamiento_id?: string | null; tipo?: string }) =>
   n.publicacion_id ? `/caso/${n.publicacion_id}${anclaDe(n.tipo || "")}`
   : n.objeto_id ? `/objeto/${n.objeto_id}${anclaDe(n.tipo || "")}`
+  // Un aviso de préstamo lleva a la ficha del equipo (resuelto en conVinculos).
+  : n.equipamiento_id ? `/entidad/equipamiento/${n.equipamiento_id}`
   : null;
 
 /* Cuánto hace, dicho corto: la campanita es una lista, no un texto */
