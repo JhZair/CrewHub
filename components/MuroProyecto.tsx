@@ -1,14 +1,18 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import Avatar from "@/components/Avatar";
 import Foto from "@/components/Foto";
+import Miniatura from "@/components/Miniatura";
 import EditorImagenes from "@/components/EditorImagenes";
 import Reacciones, { type Reaccion } from "@/components/Reacciones";
 import ComentarioTexto from "@/components/ComentarioTexto";
 import { menciones, MencionesMenu, type Perfil } from "@/components/Menciones";
 import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
 import { prepararImagen, MEDIDAS } from "@/lib/prepararImagen";
+import { icoObjeto, lblObjeto } from "@/lib/objetos";
+import { previewCandidates } from "@/lib/drive";
 import { publicarBitacora, borrarBitacora, destacarBitacora, editarBitacora, comentar } from "@/app/actions";
 
 /* MURO DEL PROYECTO — una bitácora simple: notas con texto e imágenes, ordenadas
@@ -31,6 +35,14 @@ export type MuroPost = {
   reacciones: Reaccion[];
   comentarios: MuroComentario[];
 };
+/* Un material del repositorio, tal como se ve DENTRO del muro: una tarjeta de
+   referencia que enlaza a la ficha del objeto (donde vive su conversación). No
+   se comenta ni edita aquí —eso sigue en la pestaña Repositorio y en el objeto—. */
+export type MuroMaterial = {
+  id: string; tipo: string; titulo: string;
+  url?: string | null; notas?: string | null;
+  creado_en: string; autor?: string | null;
+};
 
 const fecha = (iso?: string | null) => {
   if (!iso) return "";
@@ -38,12 +50,16 @@ const fecha = (iso?: string | null) => {
   return isNaN(+d) ? "" : d.toLocaleString("es-PE", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 };
 
-export default function MuroProyecto({ proyectoId, userId, perfiles, sugerencias, posts, entidadTipo = "proyecto" }: {
+export default function MuroProyecto({ proyectoId, userId, perfiles, sugerencias, posts, materiales = [], entidadTipo = "proyecto" }: {
   proyectoId: string; userId: string;
   perfiles: Perfil[];
   /** Etiquetas ya usadas en el muro de esta entidad, para sugerir al escribir. */
   sugerencias: string[];
   posts: MuroPost[];
+  /** Material del repositorio de esta entidad, para intercalarlo en la línea de
+   *  tiempo del muro por orden de llegada. Se sube y organiza aparte (pestaña
+   *  Repositorio); aquí solo se muestra como referencia. */
+  materiales?: MuroMaterial[];
   /** De qué entidad es el muro: "proyecto" (por defecto) o "empresa". El id
    *  sigue viajando en `proyectoId` (nombre histórico). */
   entidadTipo?: string;
@@ -107,9 +123,23 @@ export default function MuroProyecto({ proyectoId, userId, perfiles, sugerencias
 
   // Etiquetas que aparecen en el muro, para el filtro (de las notas visibles).
   const usadas = [...new Set(posts.flatMap(p => p.tags))].sort();
-  const filtradas = filtro ? posts.filter(p => p.tags.includes(filtro)) : posts;
   // Sugerencias que aún no están puestas ni escritas.
   const sugToggle = [...new Set([...sugerencias, ...usadas])].filter(t => !tags.includes(t)).sort();
+
+  /* La línea de tiempo: notas del muro + material del repositorio, mezclados por
+     orden de llegada. El material es parte de la historia del proyecto, así que
+     comparte el hilo —no se esconde en otra pestaña—. Con un filtro de etiqueta
+     activo solo quedan notas (el material no lleva etiquetas del muro). */
+  type FeedItem =
+    | { kind: "post"; creado_en: string; post: MuroPost }
+    | { kind: "mat"; creado_en: string; mat: MuroMaterial };
+  const feed: FeedItem[] = filtro
+    ? posts.filter(p => p.tags.includes(filtro)).map(p => ({ kind: "post" as const, creado_en: p.creado_en, post: p }))
+    : [
+        ...posts.map(p => ({ kind: "post" as const, creado_en: p.creado_en, post: p })),
+        ...materiales.map(m => ({ kind: "mat" as const, creado_en: m.creado_en, mat: m })),
+      ].sort((a, b) => (a.creado_en < b.creado_en ? 1 : -1));
+  const vacioTotal = posts.length === 0 && materiales.length === 0;
 
   return (
     <div className="muro">
@@ -123,41 +153,42 @@ export default function MuroProyecto({ proyectoId, userId, perfiles, sugerencias
             onPaste={e => { const f = imagenesDePaste(e); if (f.length) { e.preventDefault(); pegar(f); } }}
             className="muro-textarea" />
         </div>
-        <EditorImagenes imgs={imgs} setImgs={setImgs} onError={setError} />
-
-        {/* Etiquetas propias del muro: chips seleccionadas + entrada libre + sugerencias */}
-        <div className="muro-tagsel">
-          <span className="muro-tagsel-lbl">🏷 Etiquetas:</span>
-          {tags.map(t => (
-            <button key={t} type="button" className="muro-tag on" onClick={() => setTags(tags.filter(x => x !== t))}
-              title="Quitar">{t} ✕</button>
-          ))}
-          <input value={tagInput} placeholder="+ etiqueta"
-            onChange={e => setTagInput(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); agregarTag(tagInput); } }}
-            className="muro-tag-input" />
+        {/* Una sola fila: adjuntar imagen · etiquetas · publicar (a la derecha).
+            Las miniaturas y las etiquetas envuelven si no caben; el botón siempre
+            queda al final por `margin-left:auto`. */}
+        <div className="muro-composer-pie">
+          <EditorImagenes imgs={imgs} setImgs={setImgs} onError={setError} />
+          {/* Etiquetas propias del muro: chips seleccionadas + entrada libre.
+              Sin rótulo «Etiquetas:» — el chip «+ etiqueta» ya lo dice. */}
+          <div className="muro-tagsel">
+            {tags.map(t => (
+              <button key={t} type="button" className="muro-tag on" onClick={() => setTags(tags.filter(x => x !== t))}
+                title="Quitar">{t} ✕</button>
+            ))}
+            <input value={tagInput} placeholder="+ etiqueta"
+              onChange={e => setTagInput(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); agregarTag(tagInput); } }}
+              className="muro-tag-input" />
+          </div>
+          <button className="btn" disabled={enviando || (!texto.trim() && !imgs.length)} onClick={publicar}>
+            {enviando ? "Publicando…" : "📝 Publicar en el muro"}
+          </button>
         </div>
         {sugToggle.length > 0 && (
-          <div className="muro-tagsel" style={{ marginTop: 4 }}>
+          <div className="muro-tagsel" style={{ marginTop: 6 }}>
             <span className="muro-tagsel-lbl" style={{ opacity: .7 }}>Sugeridas:</span>
             {sugToggle.slice(0, 12).map(t => (
               <button key={t} type="button" className="muro-tag" onClick={() => agregarTag(t)}>{t}</button>
             ))}
           </div>
         )}
-
         {error && <div className="err-inline" style={{ marginTop: 8 }}>⚠ {error}</div>}
-        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
-          <button className="btn" disabled={enviando || (!texto.trim() && !imgs.length)} onClick={publicar}>
-            {enviando ? "Publicando…" : "📝 Publicar en el muro"}
-          </button>
-        </div>
       </div>
 
       {/* Filtro por etiqueta */}
       {usadas.length > 0 && (
         <div className="muro-filtro">
-          <button className={`muro-tag ${!filtro ? "on" : ""}`} onClick={() => setFiltro(null)}>Todas · {posts.length}</button>
+          <button className={`muro-tag ${!filtro ? "on" : ""}`} onClick={() => setFiltro(null)}>Todas · {posts.length + materiales.length}</button>
           {usadas.map(t => (
             <button key={t} className={`muro-tag ${filtro === t ? "on" : ""}`}
               onClick={() => setFiltro(filtro === t ? null : t)}>
@@ -167,13 +198,15 @@ export default function MuroProyecto({ proyectoId, userId, perfiles, sugerencias
         </div>
       )}
 
-      {/* Posts */}
-      {filtradas.length === 0 && (
+      {/* Línea de tiempo: notas + material del repositorio, por orden de llegada */}
+      {feed.length === 0 && (
         <div className="empty" style={{ padding: "22px 0" }}>
-          {posts.length === 0 ? "El muro está vacío — publica la primera nota." : "Ninguna nota con esa etiqueta."}
+          {vacioTotal ? "El muro está vacío — publica la primera nota." : "Ninguna nota con esa etiqueta."}
         </div>
       )}
-      {filtradas.map(p => (
+      {feed.map(it => it.kind === "mat"
+        ? <MaterialCard key={`mat-${it.mat.id}`} m={it.mat} />
+        : (() => { const p = it.post; return (
         <div key={p.id} className="muro-post">
           <div className="muro-post-cab">
             <Avatar nombre={p.autor?.nombre} color={p.autor?.color} size={34} src={p.autor?.avatar_url} />
@@ -240,8 +273,41 @@ export default function MuroProyecto({ proyectoId, userId, perfiles, sugerencias
             <CajaComentario pubId={p.id} perfiles={perfiles} onSent={() => router.refresh()} />
           </div>
         </div>
-      ))}
+      ); })())}
     </div>
+  );
+}
+
+/* Tarjeta de un material del repositorio DENTRO del muro: referencia que enlaza
+   a la ficha del objeto. Se lee distinta de una nota (borde teal, 📚) para que el
+   muro no pierda su carácter casual; comentar/gestionar sigue en el objeto. */
+function MaterialCard({ m }: { m: MuroMaterial }) {
+  const thumb = m.url && previewCandidates(m.url, 200).length
+    ? <Miniatura url={m.url} size={56} alt={m.titulo} />
+    : <span className="muro-mat-tile">{icoObjeto(m.tipo)}</span>;
+  return (
+    <Link href={`/objeto/${m.id}`} className="muro-post muro-material">
+      <div style={{ display: "flex", gap: 11, alignItems: "flex-start" }}>
+        <span style={{ flex: "none", lineHeight: 0 }}>{thumb}</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <b style={{ fontSize: 14, color: "var(--text)" }}>{m.titulo}</b>
+            <span className="badge muro-mat-badge">📚 {lblObjeto(m.tipo)}</span>
+            <span style={{ flex: 1 }} />
+            <span className="muro-mat-abrir">Repositorio ↗</span>
+          </div>
+          <div style={{ color: "var(--dim)", fontSize: 11.5, marginTop: 2 }}>
+            {m.autor ? `${m.autor} · ` : ""}{fecha(m.creado_en)}
+          </div>
+          {m.notas && (
+            <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 6, overflow: "hidden",
+              display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as any }}>
+              {m.notas}
+            </div>
+          )}
+        </div>
+      </div>
+    </Link>
   );
 }
 

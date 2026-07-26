@@ -2,6 +2,7 @@
    Compartida por el formulario (cliente) y la acción (servidor,
    como whitelist de tablas y campos). */
 import { CATEGORIAS_OPC } from "@/lib/etapas";
+import { ETAPAS_KEYS_POR_TIPO } from "@/lib/etapasProyecto";
 import { PROVINCIAS_POR_DEPARTAMENTO, DISTRITOS_POR_PROVINCIA } from "@/lib/ubigeo";
 
 export type CampoDef = {
@@ -305,14 +306,13 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
       { key: "nombre_corto", label: "Nombre corto" },
       { key: "tipo", label: "Tipo", tipo: "select", opciones: ["documental", "animacion", "videojuego", "ficcion", "experimental", "gestion_cultural", "cobertura"] },
       { key: "modalidad", label: "Modalidad", tipo: "select", opciones: ["concurso", "encargo", "autofinanciado", "coproduccion"] },
-      /* «festivales» y «distribucion» faltaban, y con ellas el sistema
-         terminaba donde termina DAFO. El divorcio de la directora con su
-         proyecto no es la rendición: es cuando la película llega a los
-         festivales y los cines. Un documental que ya rindió y todavía no se
-         estrenó no está «finalizado» ni de lejos.
-         El orden supone que el documental estrena en festival y recién
-         después va a cines y plataformas. */
-      { key: "etapa", label: "Etapa", tipo: "select", opciones: ["idea", "en_carpeta", "desarrollo", "preproduccion", "produccion", "postproduccion", "festivales", "distribucion", "finalizado"] },
+      /* La etapa (el ciclo de vida macro del proyecto) depende del TIPO: un
+         documental estrena en festivales y se distribuye; un videojuego
+         prototipa, lanza y hace post-lanzamiento; una gestión cultural formula,
+         ejecuta y cierra. Las opciones salen de lib/etapasProyecto según el tipo
+         elegido (sugerenciasPor), la misma fuente que pinta el stepper. */
+      { key: "etapa", label: "Etapa", tipo: "select",
+        sugerenciasPor: { campo: "tipo", mapa: ETAPAS_KEYS_POR_TIPO } },
       { key: "estado_actividad", label: "Estado de actividad", tipo: "select", opciones: ["activo", "bloqueado", "en_pausa", "completado"] },
       { key: "color", label: "Color del proyecto", tipo: "color" },
       { key: "carpeta_drive_url", label: "Carpeta principal en Drive (link)", valida: "url" },

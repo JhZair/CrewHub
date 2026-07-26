@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import { TIPO_COLOR, completitud } from "@/lib/entidades";
+import { ETAPAS_PROY_UNICAS, metaEtapaProy, enMarchaProy } from "@/lib/etapasProyecto";
 import Completitud from "@/components/Completitud";
 import { buscadorDe, pal } from "@/lib/buscar";
 import Link from "next/link";
@@ -9,17 +10,6 @@ import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "📁 Proyectos" };
-
-const ETAPAS: [string, string][] = [
-  ["idea", "💡 Idea"], ["en_carpeta", "🗂 En carpeta"], ["desarrollo", "✍ Desarrollo"],
-  ["preproduccion", "📋 Preproducción"], ["produccion", "🎬 Producción"],
-  ["postproduccion", "🎞 Postproducción"], ["finalizado", "✅ Finalizados"],
-];
-const ETAPA_COLOR: Record<string, string> = {
-  idea: "var(--dim)", en_carpeta: "var(--dim)", desarrollo: "var(--violet)",
-  preproduccion: "var(--blue)", produccion: "var(--yellow)",
-  postproduccion: "var(--teal)", finalizado: "var(--green)",
-};
 
 const ACTIVIDAD: [string, string, string][] = [
   ["activo", "🟢 Activos", "var(--green)"],
@@ -127,8 +117,9 @@ export default async function Proyectos({ searchParams }: {
   const cntEt = (x: string) => todos.filter((p: any) => p.etapa === x).length;
   const cntF = (k: string) => todos.filter(PRUEBA_F[k]).length;
 
-  const enMarcha = todos.filter((p: any) =>
-    ["desarrollo", "preproduccion", "produccion", "postproduccion"].includes(p.etapa));
+  // «En marcha»: type-aware (lib/etapasProyecto) — ya arrancó y no finalizó,
+  // sea cual sea su tipo (videojuego en prototipo, gestión en ejecución…).
+  const enMarcha = todos.filter((p: any) => enMarchaProy(p));
   const bloqueados = todos.filter((p: any) => p.estado_actividad === "bloqueado");
   // Ahora sí: los más conversados son los que tienen más comentarios
   const masConversados = [...todos]
@@ -165,8 +156,8 @@ export default async function Proyectos({ searchParams }: {
             )}
             <span style={{ color: "var(--dim)", fontSize: 11.5 }} title="Casos vinculados">📌 {x.casos}</span>
             <span style={{ color: "var(--muted)", fontSize: 12.5 }} title="Comentarios">💬 {x.coments}</span>
-            <span className="badge" style={{ color: "var(--violet)", background: "rgba(167,139,250,.12)" }}>
-              {(p.etapa || "—").replace(/_/g, " ")}
+            <span className="badge" style={{ color: metaEtapaProy(p.etapa)?.color || "var(--dim)", background: "#1c1c2c" }}>
+              {metaEtapaProy(p.etapa)?.label || (p.etapa || "—").replace(/_/g, " ")}
             </span>
             <span className="badge" style={{
               color: p.estado_actividad === "activo" ? "var(--green)" : p.estado_actividad === "bloqueado" ? "var(--red)" : "var(--dim)",
@@ -251,12 +242,15 @@ export default async function Proyectos({ searchParams }: {
       <PanelFiltros limpiar="/proyectos" mostrarLimpiar={listar}>
         {/* La etapa es un filtro, así que vive aquí. Estaba arriba como
             tarjetas grandes: el mismo trabajo con otro idioma visual. */}
+        {/* Un chip por cada etapa PRESENTE (n>0). Como las etapas dependen del
+            tipo de proyecto, se recorre la unión de todos los ciclos y solo
+            aparecen las que de verdad tienen proyectos. */}
         <FilaFiltro titulo="Etapa">
-          {ETAPAS.map(([x, lbl]) => {
-            const n = cntEt(x);
+          {ETAPAS_PROY_UNICAS.map(({ clave, label, ico, color }) => {
+            const n = cntEt(clave);
             return n === 0 ? null : (
-              <Chip key={x} href={`/proyectos?et=${x}`} on={et === x} color={ETAPA_COLOR[x]}>
-                {lbl} · {n}
+              <Chip key={clave} href={`/proyectos?et=${clave}`} on={et === clave} color={color}>
+                {ico} {label} · {n}
               </Chip>
             );
           })}
@@ -303,8 +297,8 @@ export default async function Proyectos({ searchParams }: {
                     {p.folio ? `${p.folio} · ` : ""}{p.nombre}
                   </Link>
                   <span style={{ flex: 1 }} />
-                  <span className="badge" style={{ color: ETAPA_COLOR[p.etapa] || "var(--dim)", background: "#1c1c2c" }}>
-                    {(p.etapa || "—").replace(/_/g, " ")}
+                  <span className="badge" style={{ color: metaEtapaProy(p.etapa)?.color || "var(--dim)", background: "#1c1c2c" }}>
+                    {metaEtapaProy(p.etapa)?.label || (p.etapa || "—").replace(/_/g, " ")}
                   </span>
                 </div>
               ))}
@@ -316,7 +310,7 @@ export default async function Proyectos({ searchParams }: {
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {enMarcha.map((p: any) => (
                 <Link key={p.id} href={`/entidad/proyecto/${p.id}`} className="vtab"
-                  style={{ borderColor: "transparent", borderLeft: `3px solid ${p.color || ETAPA_COLOR[p.etapa] || "var(--border)"}` }}>
+                  style={{ borderColor: "transparent", borderLeft: `3px solid ${p.color || metaEtapaProy(p.etapa)?.color || "var(--border)"}` }}>
                   {p.nombre_corto || p.nombre}
                 </Link>
               ))}

@@ -6,8 +6,6 @@ import { CERRADOS } from "@/lib/familia";
 import { esProblematico, textoSunat } from "@/lib/sunat";
 import { rucDePersona } from "@/lib/ruc";
 import { buscadorDe, pal } from "@/lib/buscar";
-import { urlPlataforma, PLAT } from "@/lib/plataformas";
-import BotonFichaSunat from "@/components/BotonFichaSunat";
 import Avatar from "@/components/Avatar";
 import Completitud from "@/components/Completitud";
 import { completitud, EQUIPOS_PERSONA } from "@/lib/entidades";
@@ -44,8 +42,8 @@ export default async function Personas({ searchParams }: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: pers }, { data: vincs }, { data: coms }, { data: equipoPost }, urlSunat,
-         { data: equipoProy }] = await Promise.all([
+  const [{ data: pers }, { data: vincs }, { data: coms }, { data: equipoPost },
+         { data: equipoProy }, { data: actoresProy }] = await Promise.all([
     // `*`: el listado necesita todos los campos para calcular la completitud
     // de cada ficha (la barrita). La tabla es chica, no pesa.
     supabase.from("personas").select("*").order("nombre"),
@@ -55,15 +53,19 @@ export default async function Personas({ searchParams }: {
        esta misma tabla, sin el filtro sus filas gastan el tope de PostgREST
        (1000) y el contador 💬 se queda corto en silencio. */
     supabase.from("comentarios").select("publicacion_id").not("publicacion_id", "is", null),
-    supabase.from("postulacion_equipo").select("persona_id"),
-    // El link de SUNAT sale del admin, no del código: si SUNAT lo cambia
-    // —lo ha hecho— se corrige ahí sin esperar un deploy.
-    urlPlataforma(PLAT.sunatConsultaRuc),
+    // Su palmarés ante los fondos: en cuántas estuvo (🎯), cuántas ganó (🏆) y
+    // en cuántas fue finalista sin ganar (🥈). Antes solo se contaba el total.
+    supabase.from("postulacion_equipo").select("persona_id,post:postulaciones(estado)"),
     /* Qué películas hace cada quien. Este listado sabía el DNI, el RUC, el
        estado SUNAT y el tope de 4ta de cada persona — y no sabía que Yajaida
        dirige un documental. Sabía todo de su papelería y nada de su trabajo. */
     supabase.from("proyecto_equipo")
       .select("persona_id,cargo,proy:proyectos(id,nombre,nombre_corto,color,etapa)"),
+    /* Y en qué obras aparece como ACTOR SOCIAL (comunero, protagonista): su
+       palmarés no está en `proyecto_equipo` (el crew) sino en `proyecto_actores`.
+       Sin esto, un actor social salía sin obra —solo se le veía la ficha. */
+    supabase.from("proyecto_actores")
+      .select("persona_id,rol,proy:proyectos(id,nombre,nombre_corto,color,etapa)"),
   ]);
 
   const todas = pers || [];
@@ -91,9 +93,20 @@ export default async function Personas({ searchParams }: {
     act.set(v.entidad_id, x);
   });
 
-  // En cuántas postulaciones ha estado: su hoja de vida ante los fondos
+  // En cuántas postulaciones ha estado: su hoja de vida ante los fondos.
+  // t = total (🎯) · g = ganadas (🏆) · c = finalista sin ganar (🥈).
   const postDe = new Map<string, number>();
-  (equipoPost || []).forEach((r: any) => postDe.set(r.persona_id, (postDe.get(r.persona_id) || 0) + 1));
+  const palmar = new Map<string, { t: number; g: number; c: number }>();
+  (equipoPost || []).forEach((r: any) => {
+    postDe.set(r.persona_id, (postDe.get(r.persona_id) || 0) + 1);
+    const s = palmar.get(r.persona_id) || { t: 0, g: 0, c: 0 };
+    s.t++;
+    // `post` puede llegar como objeto o como arreglo (PostgREST); se normaliza.
+    const est = (Array.isArray(r.post) ? r.post[0] : r.post)?.estado;
+    if (est === "ganadora") s.g++;
+    if (est === "finalista_no_ganadora") s.c++;
+    palmar.set(r.persona_id, s);
+  });
 
   /* Qué películas hace cada quien. Dirigir se separa del resto a propósito:
      un director no es «alguien más del equipo» — el proyecto nace con él, y
@@ -104,6 +117,15 @@ export default async function Personas({ searchParams }: {
     if (!r.proy) return;
     const l = proysDe.get(r.persona_id) || [];
     l.push(r); proysDe.set(r.persona_id, l);
+  });
+
+  // En qué obras figura como actor social (comunero, protagonista, sujeto).
+  const actorEn = new Map<string, any[]>();
+  (actoresProy || []).forEach((r: any) => {
+    const proy = Array.isArray(r.proy) ? r.proy[0] : r.proy;
+    if (!proy) return;
+    const l = actorEn.get(r.persona_id) || [];
+    l.push({ ...r, proy }); actorEn.set(r.persona_id, l);
   });
 
   // Atención: solo exigimos papeles a quien trabaja con nosotros (lib/personas.ts)
@@ -158,9 +180,11 @@ export default async function Personas({ searchParams }: {
     const x = act.get(p.id) || VACIO;
     const d = dniVence(p);
     const nPost = postDe.get(p.id) || 0;
+    const pal = palmar.get(p.id);   // palmarés: 🎯 total · 🏆 ganadas · 🥈 finalista
     const suyos = proysDe.get(p.id) || [];
     const dirige = suyos.filter((r: any) => DIRIGE.test(r.cargo || ""));
     const enOtros = suyos.filter((r: any) => !DIRIGE.test(r.cargo || ""));
+    const comoActor = actorEn.get(p.id) || [];   // obras donde figura como actor social
     return (
       /* Enlace estirado: la tarjeta lleva a la persona por una capa
          invisible, para que sus películas sean enlaces propios. */
@@ -171,24 +195,26 @@ export default async function Personas({ searchParams }: {
         <div style={{ flex: 1, minWidth: 0 }}>
           {/* línea 1: quién es */}
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <b style={{ fontSize: 14.5 }}>{p.alias || p.nombre}</b>
+            {/* El nombre COMPLETO manda —es el listado de personas, se busca por
+                nombre—; el alias va al lado, tenue, para quien lo reconoce así. */}
+            <b style={{ fontSize: 14.5 }}>{p.nombre}</b>
+            {p.alias && p.alias !== p.nombre && (
+              <span style={{ color: "var(--dim)", fontSize: 12.5, fontWeight: 500 }}>{p.alias}</span>
+            )}
             {p.usuario_id && <span title="Tiene cuenta en CrewHub+">⬡</span>}
             <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{p.tipo || "contacto"}</span>
             {p.equipo && (
               <span className="badge" style={{ color: "var(--violet)", background: "rgba(167,139,250,.12)" }}>{p.equipo}</span>
             )}
-            {nPost > 0 && (
-              <span className="badge" title={`Participó en ${nPost} postulación(es)`}
-                style={{ color: "var(--blue)", background: "rgba(59,130,246,.12)" }}>🎯 {nPost}</span>
-            )}
-            {delEquipo(p) && !p.ruc_dni && (
-              <span className="badge" style={{ color: "var(--red)", background: "rgba(255,77,94,.12)" }}>⚠ sin DNI</span>
-            )}
-            {/* El RUC sale del DNI y solo se veía dentro de la ficha. Aquí es
-                un clic: copia y abre SUNAT, sin entrar a cada persona. */}
-            {rucDePersona(p.ruc_dni) && (
-              <BotonFichaSunat numero={rucDePersona(p.ruc_dni)!} tipo="RUC"
-                compacto nota="se calcula del DNI" url={urlSunat} />
+            {/* Palmarés ante los fondos: intentos (🎯), y de ellos los que ganó
+                (🏆) y en los que quedó finalista sin ganar (🥈). */}
+            {pal && pal.t > 0 && (
+              <span title={`${pal.t} postulación(es) · ${pal.g} ganada(s) · ${pal.c} finalista sin ganar`}
+                style={{ display: "inline-flex", gap: 5 }}>
+                {pal.g > 0 && <span className="badge" style={{ color: "var(--green)", background: "rgba(46,204,113,.12)" }}>🏆 {pal.g}</span>}
+                {pal.c > 0 && <span className="badge" style={{ color: "var(--yellow)", background: "rgba(244,180,0,.12)" }}>🥈 {pal.c}</span>}
+                <span className="badge" style={{ color: "var(--blue)", background: "rgba(59,130,246,.12)" }}>🎯 {pal.t}</span>
+              </span>
             )}
             {d !== null && d < 0 && (
               <span className="badge" style={{ color: "var(--red)", background: "rgba(255,77,94,.12)" }}>
@@ -206,8 +232,13 @@ export default async function Personas({ searchParams }: {
             }}>{p.estado}</span>
           </div>
 
-          {/* línea 2: su vida en CrewHub+ */}
+          {/* línea 2: su vida en CrewHub+. Abre con el DNI —para una persona es
+              el dato clave (verifica en RENIEC, deduce el RUC)—; antes se veía el
+              RUC en la fila 1, pero el DNI manda y va primero aquí. */}
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 7, fontSize: 11.5 }}>
+            {p.ruc_dni
+              ? <span style={{ color: "var(--muted)", fontWeight: 600 }}>🪪 {p.ruc_dni}</span>
+              : delEquipo(p) && <span style={{ color: "var(--red)" }}>🪪 sin DNI</span>}
             {p.rol && (
               <span style={{ color: "var(--dim)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {p.rol}
@@ -226,9 +257,19 @@ export default async function Personas({ searchParams }: {
               SUNAT y el tope de 4ta de cada persona — toda su papelería— y no
               sabía que Yajaida dirige un documental. Dirigir va aparte y en
               violeta: un director no es «alguien más del equipo». */}
-          {suyos.length > 0 && (
+          {(suyos.length > 0 || comoActor.length > 0) && (
             <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap",
               marginTop: 7, paddingTop: 7, borderTop: "1px solid var(--border)", fontSize: 11.5 }}>
+              {/* Como actor social: su obra ante la cámara —comunero, protagonista—.
+                  Va con 🎭 en teal, aparte del crew, porque es otro tipo de aporte. */}
+              {comoActor.map((r: any) => (
+                <Link key={`act-${r.proy.id}`} href={`/entidad/proyecto/${r.proy.id}`}
+                  className="badge fila-encima" title={`Actor social${r.rol ? ` · ${r.rol}` : ""} · ${(r.proy.etapa || "").replace(/_/g, " ")}`}
+                  style={{ color: "var(--teal)", background: "rgba(45,212,191,.12)", fontWeight: 700,
+                    textTransform: "none", letterSpacing: 0, textDecoration: "none" }}>
+                  🎭 {r.proy.nombre_corto || r.proy.nombre}{r.rol ? <i style={{ opacity: .6, fontStyle: "normal" }}> · {r.rol}</i> : null} ↗
+                </Link>
+              ))}
               {dirige.map((r: any) => (
                 <Link key={r.proy.id} href={`/entidad/proyecto/${r.proy.id}`}
                   className="badge fila-encima" title={`${r.cargo} · ${(r.proy.etapa || "").replace(/_/g, " ")}`}

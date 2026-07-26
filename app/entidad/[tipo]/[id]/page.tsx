@@ -1293,12 +1293,12 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         editable conCartel={conCartel} />
 
       {/* El nombre arranca a la derecha del cartel que sobresale. Pero cuando
-          hay stepper (postulación/convocatoria) el título arranca desde el
-          inicio: el mini-cronograma de la derecha se come el espacio y un
+          hay stepper (postulación/convocatoria/proyecto) el título arranca desde
+          el inicio: el mini-cronograma de la derecha se come el espacio y un
           nombre largo necesita todo el ancho. El cartel queda arriba-izquierda,
           sin estorbar (no se solapa con esta fila). */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 16,
-        paddingLeft: conCartel && params.tipo !== "postulacion" && params.tipo !== "convocatoria" ? 108 : 0 }}>
+        paddingLeft: conCartel && !["postulacion", "convocatoria", "proyecto"].includes(params.tipo) ? 108 : 0 }}>
         {/* A quien trabaja con nosotros le ponemos cara; a un contacto no.
             El actor social también lleva cara —su imagen (comunero, protagonista)
             es parte esencial de la obra, no un adorno—. */}
@@ -1355,6 +1355,11 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             formulario para editarlo), un mini-cronograma editable ahí mismo. */}
         {(params.tipo === "postulacion" || params.tipo === "convocatoria") && (
           <Pasos tipo={params.tipo} id={params.id} estado={ent.estado} />
+        )}
+        {/* El proyecto también avanza por etapas (idea → … → finalizado): su
+            mini-cronograma toma la `etapa`, no el estado. */}
+        {params.tipo === "proyecto" && (
+          <Pasos tipo="proyecto" id={params.id} estado={ent.etapa} subtipo={ent.tipo} />
         )}
         {/* Aquí vivía un "＋ Publicar" que te mandaba al feed con la entidad
             pre-vinculada. Lo hace el FAB flotante, sin sacarte de la ficha. */}
@@ -2874,13 +2879,13 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                 + cvsDe.length + clienteEnProy.length;
               const muroPer = (
                 <MuroProyecto proyectoId={params.id} entidadTipo="persona" userId={user.id}
-                  perfiles={perfilesCat} sugerencias={muroEtqs} posts={muroPosts} />
+                  perfiles={perfilesCat} sugerencias={muroEtqs} posts={muroPosts} materiales={objetosDe} />
               );
               return (
                 <TabsPanel
                   labels={[
                     `📝 Muro · ${muroPosts.length}`,
-                    `📋 Trabajo · ${activas.length}`,
+                    `📋 Casos · ${activas.length}`,
                     `🏆 Trayectoria · ${nTrayectoria}`,
                     `📚 Repositorio · ${objetosDe.length}`,
                     `🧾 Economía · ${rheGirados.length}`,
@@ -3033,13 +3038,13 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               );
               const muroEmp = (
                 <MuroProyecto proyectoId={params.id} entidadTipo="empresa" userId={user.id}
-                  perfiles={perfilesCat} sugerencias={muroEtqs} posts={muroPosts} />
+                  perfiles={perfilesCat} sugerencias={muroEtqs} posts={muroPosts} materiales={objetosDe} />
               );
               return (
                 <TabsPanel
                   labels={[
                     `📝 Muro · ${muroPosts.length}`,
-                    `📋 Trabajo · ${activas.length}`,
+                    `📋 Casos · ${activas.length}`,
                     `🏆 Trayectoria · ${postusEmp.length + miembros.length}`,
                     "🎬 Elegibilidad DAFO",
                     `📚 Repositorio · ${objetosDe.length}`,
@@ -3270,7 +3275,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               );
               const muroNode = (
                 <MuroProyecto proyectoId={params.id} userId={user.id}
-                  perfiles={perfilesCat} sugerencias={muroEtqs} posts={muroPosts} />
+                  perfiles={perfilesCat} sugerencias={muroEtqs} posts={muroPosts} materiales={objetosDe} />
               );
               return (
                 <TabsPanel

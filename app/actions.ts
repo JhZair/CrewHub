@@ -2,6 +2,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { FORM_CONF, nombreCorto } from "@/lib/entidades";
+import { ETAPAS_PROY_VALIDAS } from "@/lib/etapasProyecto";
 import { nrmQ } from "@/lib/quechua";
 import { procesarSunatEmpresa, correrRondaSunat, consultarRucApi } from "@/lib/sunat";
 import { rucDePersona } from "@/lib/ruc";
@@ -2850,6 +2851,23 @@ export async function cambiarEstadoConvocatoria(id: string, estado: string) {
   if (error) return { error: error.message };
   if (!data?.length) return { error: "No se pudo cambiar el estado (sin permiso o ya no existe)." };
   revalidatePath(`/entidad/convocatoria/${id}`);
+  return {};
+}
+
+/* La ETAPA del proyecto (idea → en carpeta → desarrollo → pre/pro/post →
+   festivales → distribución → finalizado) también es una carrera con ciclo de
+   vida y se toca seguido según avanza. Mismo patrón: un clic la cambia ahí
+   mismo, sin entrar al formulario. */
+export async function cambiarEtapaProyecto(id: string, etapa: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!ETAPAS_PROY_VALIDAS.includes(etapa)) return { error: "Etapa no válida." };
+  const { data, error } = await supabase.from("proyectos")
+    .update({ etapa }).eq("id", id).select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "No se pudo cambiar la etapa (sin permiso o ya no existe)." };
+  revalidatePath(`/entidad/proyecto/${id}`);
   return {};
 }
 

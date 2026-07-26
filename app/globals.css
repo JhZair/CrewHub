@@ -96,6 +96,12 @@ a{color:inherit;text-decoration:none}
 .muro-textarea{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:10px 14px;font-size:14.5px;color:var(--text);outline:none;resize:vertical;line-height:1.6;font-family:inherit}
 .muro-textarea:focus{border-color:var(--accent)}
 .muro-tagsel{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:9px}
+/* Pie del composer en UNA fila: adjuntar · etiquetas · publicar (derecha).
+   Se anulan los márgenes superiores propios de cada bloque para que queden
+   alineados, y el botón se va al final con margin-left:auto. */
+.muro-composer-pie{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-top:10px}
+.muro-composer-pie>*{margin-top:0!important}
+.muro-composer-pie .btn{margin-left:auto}
 .muro-tagsel-lbl{font-size:11.5px;color:var(--dim);font-weight:600}
 .muro-tag{background:var(--bg);border:1px solid var(--border);border-radius:999px;padding:4px 11px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer}
 .muro-tag:hover{border-color:var(--border2)}
@@ -105,6 +111,16 @@ a{color:inherit;text-decoration:none}
 .muro-tag-input:focus{border-color:var(--accent)}
 .muro-filtro{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .muro-post{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px}
+/* Material del repositorio intercalado en el muro: se lee distinto de una nota
+   —filo teal a la izquierda, fondo apenas teñido, 📚— y toda la tarjeta enlaza
+   al objeto. No lleva composer ni comentarios: es una referencia. */
+.muro-material{display:block;text-decoration:none;border-left:3px solid color-mix(in srgb, var(--teal) 55%, transparent);
+  background:color-mix(in srgb, var(--teal) 5%, var(--card));transition:border-color .12s,background .12s}
+.muro-material:hover{border-color:color-mix(in srgb, var(--teal) 40%, transparent);background:color-mix(in srgb, var(--teal) 9%, var(--card))}
+.muro-mat-tile{width:56px;height:56px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;
+  font-size:26px;background:var(--bg);border:1px solid var(--border)}
+.muro-mat-badge{color:var(--teal);background:rgba(45,212,191,.12);text-transform:none;letter-spacing:0}
+.muro-mat-abrir{color:var(--teal);font-size:11.5px;font-weight:700;white-space:nowrap}
 .muro-post-cab{display:flex;gap:10px;align-items:center}
 .muro-borrar{background:none;border:none;color:var(--dim);cursor:pointer;font-size:14px;padding:2px 6px;border-radius:6px}
 .muro-borrar:hover{color:var(--red);background:rgba(255,77,94,.1)}

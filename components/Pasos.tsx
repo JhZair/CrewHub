@@ -1,5 +1,6 @@
 "use client";
-import { cambiarEstadoPostulacion, cambiarEstadoConvocatoria } from "@/app/actions";
+import { cambiarEstadoPostulacion, cambiarEstadoConvocatoria, cambiarEtapaProyecto } from "@/app/actions";
+import { etapasProyecto } from "@/lib/etapasProyecto";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -47,13 +48,25 @@ const CFG: Record<string, { pasos: Paso[]; salidas: Salida[]; set: (id: string, 
   },
 };
 
-export default function Pasos({ tipo, id, estado }: {
-  tipo: "postulacion" | "convocatoria"; id: string; estado: string | null;
+export default function Pasos({ tipo, id, estado, subtipo }: {
+  tipo: "postulacion" | "convocatoria" | "proyecto"; id: string; estado: string | null;
+  /** Para el proyecto: su tipo (documental, videojuego…), que decide el ciclo
+   *  de vida. Ignorado en postulación/convocatoria (tienen uno solo). */
+  subtipo?: string | null;
 }) {
   const router = useRouter();
   const [guardando, setGuardando] = useState<string | null>(null);
   const [error, setError] = useState("");
-  const { pasos, salidas, set } = CFG[tipo];
+  /* El proyecto arma su ciclo según su tipo (lib/etapasProyecto); postulación y
+     convocatoria tienen ciclo único (CFG). Ninguno de los dos primeros tiene
+     salidas negativas para el proyecto —eso lo dice el estado de actividad. */
+  const { pasos, salidas, set } = tipo === "proyecto"
+    ? {
+        pasos: etapasProyecto(subtipo).map(p => ({ e: p.clave, label: p.label, ico: p.ico })),
+        salidas: [] as Salida[],
+        set: cambiarEtapaProyecto,
+      }
+    : CFG[tipo];
 
   const salidaActiva = salidas.find(s => s.e === estado);
   // Hasta dónde llegó de verdad: si está en una salida negativa, su etapa; si
