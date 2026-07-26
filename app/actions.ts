@@ -248,9 +248,58 @@ export async function destacarBitacora(pubId: string, entidadId: string, destaca
   const { data: pub } = await supabase.from("publicaciones").select("tipo,datos_extra").eq("id", pubId).single();
   if (!pub) return { error: "No se encontró la nota." };
   if (pub.tipo !== "bitacora") return { error: "No es una nota del muro." };
-  const nuevo = { ...(pub.datos_extra || {}), destacado };
-  const { error } = await supabase.from("publicaciones").update({ datos_extra: nuevo }).eq("id", pubId);
+  // `destacado_orden` (número) guarda la posición en los destacados; se conserva
+  // `destacado` (bool) por compatibilidad. Al destacar por primera vez se pone
+  // al final (Date.now() > cualquier orden normalizado). El reorden lo ajusta.
+  const de = { ...(pub.datos_extra || {}) } as any;
+  if (destacado) { de.destacado = true; if (typeof de.destacado_orden !== "number") de.destacado_orden = Date.now(); }
+  else { de.destacado = false; delete de.destacado_orden; }
+  const { error } = await supabase.from("publicaciones").update({ datos_extra: de }).eq("id", pubId);
   if (error) return { error: error.message };
+  revalidatePath(`/entidad/${entidadTipo}/${entidadId}`);
+  return {};
+}
+
+/* Destacar (o quitar) un MATERIAL del repositorio en el muro. Mismo modelo que
+   una nota, pero en `objetos.datos` (jsonb). Así el bloque «Destacados del muro»
+   puede mezclar notas y material. */
+export async function destacarObjeto(objetoId: string, entidadTipo: string, entidadId: string, destacado: boolean) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: obj } = await supabase.from("objetos").select("datos").eq("id", objetoId).single();
+  if (!obj) return { error: "No se encontró el material." };
+  const d = { ...(obj.datos || {}) } as any;
+  if (destacado) { d.destacado = true; if (typeof d.destacado_orden !== "number") d.destacado_orden = Date.now(); }
+  else { d.destacado = false; delete d.destacado_orden; }
+  const { error } = await supabase.from("objetos").update({ datos: d }).eq("id", objetoId);
+  if (error) return { error: error.message };
+  revalidatePath(`/entidad/${entidadTipo}/${entidadId}`);
+  return {};
+}
+
+/* Reordenar los destacados del muro (notas + material). Recibe la lista YA en el
+   orden deseado; escribe `destacado_orden = índice` en cada uno. Pocos ítems, así
+   que el bucle de updates es barato. */
+export async function ordenarDestacados(
+  entidadTipo: string, entidadId: string,
+  items: { kind: "post" | "obj"; id: string }[],
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  for (let i = 0; i < items.length; i++) {
+    const { kind, id } = items[i];
+    if (kind === "post") {
+      const { data } = await supabase.from("publicaciones").select("datos_extra").eq("id", id).single();
+      if (data) await supabase.from("publicaciones")
+        .update({ datos_extra: { ...(data.datos_extra || {}), destacado: true, destacado_orden: i } }).eq("id", id);
+    } else {
+      const { data } = await supabase.from("objetos").select("datos").eq("id", id).single();
+      if (data) await supabase.from("objetos")
+        .update({ datos: { ...(data.datos || {}), destacado: true, destacado_orden: i } }).eq("id", id);
+    }
+  }
   revalidatePath(`/entidad/${entidadTipo}/${entidadId}`);
   return {};
 }

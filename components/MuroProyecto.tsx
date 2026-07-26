@@ -13,7 +13,7 @@ import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
 import { prepararImagen, MEDIDAS } from "@/lib/prepararImagen";
 import { icoObjeto, lblObjeto } from "@/lib/objetos";
 import { previewCandidates } from "@/lib/drive";
-import { publicarBitacora, borrarBitacora, destacarBitacora, editarBitacora, comentar } from "@/app/actions";
+import { publicarBitacora, borrarBitacora, destacarBitacora, destacarObjeto, editarBitacora, comentar } from "@/app/actions";
 
 /* MURO DEL PROYECTO — una bitácora simple: notas con texto e imágenes, ordenadas
    por etiquetas PROPIAS del muro (texto libre, acotadas al proyecto — NO las
@@ -32,6 +32,8 @@ export type MuroPost = {
   autor?: { nombre?: string | null; color?: string | null; avatar_url?: string | null } | null;
   tags: string[];
   destacado?: boolean;
+  /** De qué muro viene la nota (si es de OTRA entidad, no la actual). */
+  fuente?: { tipo: string; id: string; nombre: string } | null;
   reacciones: Reaccion[];
   comentarios: MuroComentario[];
 };
@@ -42,6 +44,7 @@ export type MuroMaterial = {
   id: string; tipo: string; titulo: string;
   url?: string | null; notas?: string | null;
   creado_en: string; autor?: string | null;
+  destacado?: boolean;
 };
 
 const fecha = (iso?: string | null) => {
@@ -101,7 +104,10 @@ export default function MuroProyecto({ proyectoId, userId, perfiles, sugerencias
     if (enviando) return;
     if (!texto.trim() && !imgs.length) { setError("Escribe algo o agrega una imagen."); return; }
     setEnviando(true); setError("");
-    const r: any = await publicarBitacora(proyectoId, texto, imgs, tags, entidadTipo);
+    // Incluye la etiqueta que quedó escrita sin confirmar (Enter): crear una
+    // etiqueta nueva y publicar directo debe funcionar sin un paso extra.
+    const tagsFinal = [...new Set([...tags, ...(tagInput.trim() ? [tagInput.trim()] : [])])];
+    const r: any = await publicarBitacora(proyectoId, texto, imgs, tagsFinal, entidadTipo);
     setEnviando(false);
     if (r?.error) { setError(r.error); return; }
     setTexto(""); setImgs([]); setTags([]); setTagInput("");
@@ -205,14 +211,23 @@ export default function MuroProyecto({ proyectoId, userId, perfiles, sugerencias
         </div>
       )}
       {feed.map(it => it.kind === "mat"
-        ? <MaterialCard key={`mat-${it.mat.id}`} m={it.mat} />
+        ? <MaterialCard key={`mat-${it.mat.id}`} m={it.mat} entidadTipo={entidadTipo} entidadId={proyectoId} onCambio={() => router.refresh()} />
         : (() => { const p = it.post; return (
         <div key={p.id} className="muro-post">
           <div className="muro-post-cab">
             <Avatar nombre={p.autor?.nombre} color={p.autor?.color} size={34} src={p.autor?.avatar_url} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <b style={{ fontSize: 14 }}>{p.autor?.nombre || "Alguien"}</b>
-              <div style={{ color: "var(--dim)", fontSize: 11.5 }}>{fecha(p.creado_en)}</div>
+              <div style={{ color: "var(--dim)", fontSize: 11.5, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                {fecha(p.creado_en)}
+                {/* De qué muro viene (solo si es de otra entidad). */}
+                {p.fuente && (
+                  <Link href={`/entidad/${p.fuente.tipo}/${p.fuente.id}`} className="muro-fuente"
+                    title={`Del muro de ${p.fuente.nombre}`}>
+                    {p.fuente.tipo === "proyecto" ? "📁" : p.fuente.tipo === "empresa" ? "🏢" : "👤"} {p.fuente.nombre}
+                  </Link>
+                )}
+              </div>
             </div>
             <button className={`muro-destacar ${p.destacado ? "on" : ""}`}
               title={p.destacado ? "Quitar de destacados del carné" : "Destacar en el carné del proyecto"}
@@ -281,16 +296,35 @@ export default function MuroProyecto({ proyectoId, userId, perfiles, sugerencias
 /* Tarjeta de un material del repositorio DENTRO del muro: referencia que enlaza
    a la ficha del objeto. Se lee distinta de una nota (borde teal, 📚) para que el
    muro no pierda su carácter casual; comentar/gestionar sigue en el objeto. */
-function MaterialCard({ m }: { m: MuroMaterial }) {
+function MaterialCard({ m, entidadTipo, entidadId, onCambio }: {
+  m: MuroMaterial; entidadTipo: string; entidadId: string; onCambio: () => void;
+}) {
+  const [dest, setDest] = useState(!!m.destacado);
+  const [ocupado, setOcupado] = useState(false);
   const thumb = m.url && previewCandidates(m.url, 200).length
-    ? <Miniatura url={m.url} size={56} alt={m.titulo} />
+    ? <Miniatura url={m.url} size={73} alt={m.titulo} />
     : <span className="muro-mat-tile">{icoObjeto(m.tipo)}</span>;
+  const toggle = async () => {
+    if (ocupado) return;
+    const nuevo = !dest;
+    setDest(nuevo); setOcupado(true);
+    const r: any = await destacarObjeto(m.id, entidadTipo, entidadId, nuevo);
+    setOcupado(false);
+    if (r?.error) { setDest(!nuevo); alert(r.error); return; }
+    onCambio();
+  };
   return (
-    <Link href={`/objeto/${m.id}`} className="muro-post muro-material">
+    // Enlace estirado (fila-cubre) para que toda la tarjeta abra el objeto; el
+    // 📌 queda por encima para destacar sin navegar.
+    <div className="muro-post muro-material" style={{ position: "relative" }}>
+      <Link href={`/objeto/${m.id}`} className="fila-cubre" aria-label={`Abrir ${m.titulo}`} />
+      <button type="button" className={`muro-destacar muro-mat-pin ${dest ? "on" : ""}`}
+        title={dest ? "Quitar de destacados del carné" : "Destacar en el carné"}
+        onClick={toggle} disabled={ocupado}>📌</button>
       <div style={{ display: "flex", gap: 11, alignItems: "flex-start" }}>
         <span style={{ flex: "none", lineHeight: 0 }}>{thumb}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", paddingRight: 24 }}>
             <b style={{ fontSize: 14, color: "var(--text)" }}>{m.titulo}</b>
             <span className="badge muro-mat-badge">📚 {lblObjeto(m.tipo)}</span>
             <span style={{ flex: 1 }} />
@@ -307,7 +341,7 @@ function MaterialCard({ m }: { m: MuroMaterial }) {
           )}
         </div>
       </div>
-    </Link>
+    </div>
   );
 }
 
@@ -335,7 +369,8 @@ function EditorNota({ post, proyectoId, entidadTipo = "proyecto", perfiles, suge
     if (guardando) return;
     if (!texto.trim() && !imgs.length) { setError("La nota no puede quedar vacía."); return; }
     setGuardando(true); setError("");
-    const r: any = await editarBitacora(post.id, proyectoId, texto, imgs, tags, entidadTipo);
+    const tagsFinal = [...new Set([...tags, ...(tagInput.trim() ? [tagInput.trim()] : [])])];
+    const r: any = await editarBitacora(post.id, proyectoId, texto, imgs, tagsFinal, entidadTipo);
     setGuardando(false);
     if (r?.error) { setError(r.error); return; }
     onDone();

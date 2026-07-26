@@ -43,6 +43,7 @@ import TextoCorto from "@/components/TextoCorto";
 import CVs from "@/components/CVs";
 import Repositorio from "@/components/Repositorio";
 import MuroProyecto from "@/components/MuroProyecto";
+import DestacadosMuro from "@/components/DestacadosMuro";
 import { DIAS_CV, icoObjeto } from "@/lib/objetos";
 import FotoPersona from "@/components/FotoPersona";
 import PortadaEntidad from "@/components/PortadaEntidad";
@@ -377,14 +378,31 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     const un1 = (x: any) => (Array.isArray(x) ? x[0] : x);
     const idsBit = pubs.filter((p: any) => p.tipo === "bitacora").map((p: any) => p.id);
     if (!idsBit.length) return { posts: [], etqs: [] };
-    const [bitFull, bitComs] = await Promise.all([
+    const [bitFull, bitComs, bitVin] = await Promise.all([
       supabase.from("publicaciones")
         .select("id,cuerpo,imagenes,creado_en,editado_en,autor_id,datos_extra,autor:perfiles!publicaciones_autor_id_fkey(nombre,color,avatar_url)")
         .in("id", idsBit),
       supabase.from("comentarios")
         .select("id,publicacion_id,cuerpo,imagenes,creado_en,editado_en,autor_id,autor:perfiles(nombre,color,avatar_url)")
         .in("publicacion_id", idsBit).order("creado_en"),
+      // A qué muro pertenece cada nota (su vínculo). El muro de persona junta las
+      // bitácoras que el usuario dejó por todo el sistema; conviene ver la fuente.
+      supabase.from("publicacion_vinculos").select("publicacion_id,entidad_tipo,entidad_id").in("publicacion_id", idsBit),
     ]);
+    /* Fuente de cada nota: su entidad de origen (proyecto/empresa/persona —los
+       únicos con muro). Si es la ficha actual, es «nativa» (sin chip); si es otra,
+       se resuelve su nombre para mostrar de dónde viene. */
+    const homeDe = new Map<string, { tipo: string; id: string }>();
+    (bitVin.data || []).forEach((v: any) => { if (!homeDe.has(v.publicacion_id)) homeDe.set(v.publicacion_id, { tipo: v.entidad_tipo, id: v.entidad_id }); });
+    const porTipoF: Record<string, Set<string>> = {};
+    homeDe.forEach(h => { if (!(h.tipo === params.tipo && h.id === params.id)) (porTipoF[h.tipo] ||= new Set()).add(h.id); });
+    const TABLA_MURO: Record<string, string> = { proyecto: "proyectos", empresa: "empresas", persona: "personas" };
+    const nombreFuente = new Map<string, string>();
+    await Promise.all(Object.entries(porTipoF).map(async ([tipo, ids]) => {
+      const tabla = TABLA_MURO[tipo]; if (!tabla) return;
+      const { data } = await supabase.from(tabla).select("id,nombre").in("id", [...ids]);
+      (data || []).forEach((r: any) => nombreFuente.set(`${tipo}:${r.id}`, r.nombre));
+    }));
     const comsDe = new Map<string, any[]>();
     (bitComs.data || []).forEach((c: any) => {
       const l = comsDe.get(c.publicacion_id) || [];
@@ -395,9 +413,18 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         id: p.id, cuerpo: p.cuerpo, imagenes: p.imagenes || [], creado_en: p.creado_en, editado_en: p.editado_en, autor_id: p.autor_id,
         autor: un1(p.autor),
         tags: Array.isArray(p.datos_extra?.tags) ? p.datos_extra.tags : [],
-        destacado: !!p.datos_extra?.destacado,
+        destacado: !!p.datos_extra?.destacado || typeof p.datos_extra?.destacado_orden === "number",
+        destOrden: typeof p.datos_extra?.destacado_orden === "number" ? p.datos_extra.destacado_orden : 0,
         reacciones: reaccDe.get(p.id) || [],
         comentarios: comsDe.get(p.id) || [],
+        // Fuente: solo si la nota es de OTRO muro (no la ficha actual) y se pudo
+        // resolver su nombre. La nota nativa no lleva chip.
+        fuente: (() => {
+          const h = homeDe.get(p.id);
+          if (!h || (h.tipo === params.tipo && h.id === params.id)) return null;
+          const nom = nombreFuente.get(`${h.tipo}:${h.id}`);
+          return nom ? { tipo: h.tipo, id: h.id, nombre: nom } : null;
+        })(),
       }))
       .sort((a: any, b: any) => (b.creado_en || "").localeCompare(a.creado_en || ""));
     const etqs = [...new Set(posts.flatMap((p: any) => p.tags))].sort() as string[];
@@ -556,6 +583,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   let cartelProy: string | null = null;
   let portadaProy: string | null = null;
   let cartelEmp: string | null = null;
+  let repLegal: any = null;   // el/la representante legal de la empresa, con foto
   let cronoListo = false, cronoResumen = "", presuListo = false, presuResumen = "";
   let seedBenef: { rol: string; cantidad: number }[] = [];
   let precontN = 0, precontFirm = 0;
@@ -613,10 +641,63 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     // junto al del proyecto en la cabecera de contexto de la pestaña Equipo.
     const empId = (postCtx?.emp as any)?.id;
     if (empId) {
-      const { data: me } = await supabase.from("entidad_media").select("cartel_url")
-        .eq("entidad_tipo", "empresa").eq("entidad_id", empId).maybeSingle();
+      const [{ data: me }, { data: rls }] = await Promise.all([
+        supabase.from("entidad_media").select("cartel_url")
+          .eq("entidad_tipo", "empresa").eq("entidad_id", empId).maybeSingle(),
+        // El/la representante legal: quien firma por la empresa ante el fondo.
+        // Mismo criterio de prioridad que el auto-llenado (representante > presidente/titular/gerente).
+        supabase.from("empresa_miembros")
+          .select("cargo,persona:personas(id,nombre,alias,foto_url)")
+          .eq("empresa_id", empId).eq("estado", "activo"),
+      ]);
       cartelEmp = (me as any)?.cartel_url || null;
+      const prioRL = (c: string) => /representante/i.test(c) ? 0 : /presidente|titular|gerente/i.test(c) ? 1 : 9;
+      const rl = (rls || [])
+        .filter((m: any) => prioRL(m.cargo || "") < 9)
+        .sort((a: any, b: any) => prioRL(a.cargo || "") - prioRL(b.cargo || ""))[0];
+      if (rl?.persona) repLegal = { ...(Array.isArray(rl.persona) ? rl.persona[0] : rl.persona), cargo: rl.cargo };
     }
+
+    /* Para el listado del equipo: por cada miembro (postulación + proyecto),
+       ¿tiene CV? y ¿su precontrato está firmado/pendiente? Son los datos que el
+       fondo revisa PERSONA por persona. Un solo query de CVs para todos. */
+    const un1p = (x: any) => (Array.isArray(x) ? x[0] : x);
+    const idsMiembro = [...new Set([...equipoPost, ...equipoProy]
+      .map((m: any) => un1p(m.persona)?.id).filter(Boolean))] as string[];
+    /* CVs de cada miembro CON su enfoque, link y fecha: el chip valida que el CV
+       sea para el ROL de esta postulación y esté vigente —DAFO no acepta uno
+       viejo ni de otro rol; el enfoque cambia con el cargo. */
+    const cvPorPersona = new Map<string, any[]>();
+    if (idsMiembro.length) {
+      const { data: cvs } = await supabase.from("objetos")
+        .select("id,entidad_id,titulo,url,actualizado").eq("entidad_tipo", "persona").eq("tipo", "cv").in("entidad_id", idsMiembro);
+      (cvs || []).forEach((c: any) => {
+        const l = cvPorPersona.get(c.entidad_id) || [];
+        l.push({ id: c.id, enfoque: c.titulo, url: c.url, actualizado: c.actualizado });
+        cvPorPersona.set(c.entidad_id, l);
+      });
+    }
+    // Precontrato por persona: su id (para bajar el .docx) y su estado.
+    const prePorPersona = new Map<string, { id: string; estado: string }>();
+    ((ent.precontratos as any) || []).forEach((p: any) => {
+      if (p?.persona_id) prePorPersona.set(p.persona_id, { id: p.id || "", estado: p.estado === "firmado" ? "firmado" : "pendiente" });
+    });
+    const normCv = (s: string) => (s || "").trim().toLowerCase();
+    const enriquecer = (m: any) => {
+      const p = un1p(m.persona);
+      const cvs = (p?.id ? cvPorPersona.get(p.id) : null) || [];
+      const c = normCv(m.cargo);
+      // El CV cubre el rol si su enfoque es la raíz del cargo (Productor cubre
+      // Productor Ejecutivo, no al revés) — misma regla que la alerta de CV.
+      const cv = cvs.find((x: any) => { const e = normCv(x.enfoque); return e && (c === e || c.startsWith(e + " ")); });
+      const vigente = cv ? !(cv.actualizado && (Date.now() - new Date(cv.actualizado + "T12:00:00").getTime()) / 86400000 > DIAS_CV) : false;
+      const pre = p?.id ? prePorPersona.get(p.id) : null;
+      return { ...m, persona: p,
+        _cv: cv ? { url: cv.url || null, id: cv.id, vigente } : null,
+        _pre: pre || null };
+    };
+    equipoPost = equipoPost.map(enriquecer);
+    equipoProy = equipoProy.map(enriquecer);
 
     /* 🗂 EXPEDIENTE — auto-llenado: lo que la base ya sabe, no se teclea.
        ⚠ CONTRATO DE CLAVES: cada clave de `autoExp` debe COINCIDIR EXACTA con
@@ -940,6 +1021,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   }
   let postDe: any[] = [], equiposEnMano: any[] = [], clienteEnProy: any[] = [], cvsDe: any[] = [];
   let proyectosPropios: any[] = [];   // proyectos donde es del equipo (proyecto_equipo)
+  let proyectosActor: any[] = [];     // obras donde figura como actor social (proyecto_actores)
   // Cartel (póster) de las entidades que aparecen en la trayectoria — clave `${tipo}:${id}`.
   let carteles = new Map<string, string>();
   let rheGirados: any[] = [];   // todos los RHE que giró, con su proyecto (pestaña Economía)
@@ -948,7 +1030,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   let cuentasLibres: { id: string; nombre: string }[] = [];
   let pulso: { cerr: number; creo: number; coments: number; ab: number; venc: number; ultimo: string } | null = null;
   if (params.tipo === "persona") {
-    const [cg, cv, rh, pe, pr, cl, rg, pq] = await Promise.all([
+    const [cg, cv, rh, pe, pr, cl, rg, pq, pa] = await Promise.all([
       supabase.from("empresa_miembros")
         .select("id,cargo,estado,fecha_inicio,fecha_fin,empresa:empresas(id,nombre,codigo)")
         .eq("persona_id", params.id).order("estado"),
@@ -981,6 +1063,12 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       supabase.from("proyecto_equipo")
         .select("id,cargo,proy:proyectos(id,nombre,nombre_corto,tipo,etapa,estado_actividad)")
         .eq("persona_id", params.id),
+      /* Y las obras donde figura como ACTOR SOCIAL (protagonista, comunero): la
+         relación vive en `proyecto_actores`. Se mostraba del lado del proyecto
+         pero no en la trayectoria de la persona —donde también es «lo suyo»—. */
+      supabase.from("proyecto_actores")
+        .select("id,rol,descripcion,proy:proyectos(id,nombre,nombre_corto,tipo,etapa,estado_actividad)")
+        .eq("persona_id", params.id),
     ]);
     cargosDe = cg.data || [];
     rheGirados = rg.data || [];
@@ -990,6 +1078,11 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       const vivo = (x: any) => (x.proy?.estado_actividad || "activo") === "activo" && x.proy?.etapa !== "finalizado" ? 1 : 0;
       const dir = (x: any) => /direc|codirec/i.test(x.cargo || "") ? 1 : 0;
       return (vivo(b) - vivo(a)) || (dir(b) - dir(a)) || String(a.proy?.nombre).localeCompare(String(b.proy?.nombre));
+    });
+    // Obras como actor social: los vivos arriba, luego alfabético.
+    proyectosActor = (pa.data || []).filter((r: any) => r.proy).sort((a: any, b: any) => {
+      const vivo = (x: any) => (x.proy?.estado_actividad || "activo") === "activo" && x.proy?.etapa !== "finalizado" ? 1 : 0;
+      return (vivo(b) - vivo(a)) || String(a.proy?.nombre).localeCompare(String(b.proy?.nombre));
     });
     // `titulo` → `enfoque`: la sección de CVs y sus alertas siguen igual.
     cvsDe = (cv.data || []).map((c: any) => ({ ...c, enfoque: c.titulo }));
@@ -1004,6 +1097,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
        para todos los ids referenciados (proyectos + empresas). */
     const idsProy = new Set<string>();
     proyectosPropios.forEach((r: any) => r.proy?.id && idsProy.add(r.proy.id));
+    proyectosActor.forEach((r: any) => r.proy?.id && idsProy.add(r.proy.id));
     clienteEnProy.forEach((p: any) => p.id && idsProy.add(p.id));
     postDe.forEach((r: any) => r.post?.proy?.id && idsProy.add(r.post.proy.id));
     rheGirados.forEach((r: any) => r.post?.proy?.id && idsProy.add(r.post.proy.id));
@@ -1082,7 +1176,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
      Los CVs se excluyen: tienen su propia sección con la lógica del enfoque,
      aunque vivan en la misma tabla. Se estrena en persona. */
   const { data: objData } = await supabase.from("objetos")
-    .select("id,tipo,titulo,url,fecha,notas,creado_en,creado_por,quien:perfiles(nombre)")
+    .select("id,tipo,titulo,url,fecha,notas,datos,creado_en,creado_por,quien:perfiles(nombre)")
     .eq("entidad_tipo", params.tipo).eq("entidad_id", params.id)
     .neq("tipo", "cv")
     .order("fecha", { ascending: false, nullsFirst: false }).order("creado_en", { ascending: false });
@@ -1111,6 +1205,9 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     n_vinculos: nOV.get(o.id) || 0,
     n_comentarios: nOC.get(o.id) || 0,
     n_casos: nOK.get(o.id) || 0,
+    // Destacado en el muro (mismo modelo que las notas, en objetos.datos).
+    destacado: !!o.datos?.destacado || typeof o.datos?.destacado_orden === "number",
+    destOrden: typeof o.datos?.destacado_orden === "number" ? o.datos.destacado_orden : 0,
   }));
 
   /* Objetos de OTROS que apuntan a esta entidad: el «Libro Khipukamaq» es de
@@ -1274,6 +1371,14 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     .select("portada_url,cartel_url")
     .eq("entidad_tipo", params.tipo).eq("entidad_id", params.id).maybeSingle();
   const conCartel = params.tipo !== "persona";
+
+  /* Drive como «pestaña»: la carpeta Drive es un repositorio de contenido amplio,
+     la misma lógica en toda entidad. Va en la fila de pestañas, justo antes del
+     Historial (TabsPanel lo inserta ahí). Abre en otra pestaña del navegador. */
+  const driveTab = ent.carpeta_drive_url ? (
+    <a href={ent.carpeta_drive_url} target="_blank" rel="noopener noreferrer"
+      className="vtab vtab-drive" title="Carpeta en Drive">📂 Drive ↗</a>
+  ) : null;
 
   return (
     <div className="shell shell-ancho">
@@ -1451,6 +1556,12 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                   ))}
                 </div>
               </div>
+            )}
+            {/* La sinopsis/logline del proyecto: sube aquí, debajo de los actores
+                —es de qué va la obra, el corazón—, antes de los datos técnicos
+                (tipo, etapa, folio). En las demás entidades sigue al pie. */}
+            {params.tipo === "proyecto" && ent.descripcion && (
+              <p style={{ color: "var(--muted)", fontSize: TXT.micro, lineHeight: 1.5, margin: "2px 0 12px" }}>{ent.descripcion}</p>
             )}
             {/* Los enlaces del expediente (Drive, Bases, Matriz jurado, Acta…)
                 se bajaron al pie del carné, junto al botón Editar: son
@@ -1696,7 +1807,6 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
 
             // Los botones viven en el bloque del dato al que pertenecen:
             // verificar/ficha con SUNAT, y los PDF con sus documentos.
-            const lnk = { fontSize: TXT.chip, padding: "5px 10px" };
             const rucPer = params.tipo === "persona" ? rucDePersona(ent.ruc_dni) : null;
             /* El botón de verificación AUTOMÁTICA (RENIEC/SUNAT) va en la esquina
                superior derecha de su panel, no mezclado con los documentos. */
@@ -1756,11 +1866,9 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               ),
               [DOCS_EMPRESA]: (
                 <>
-                  {/* RENCA y Vigencia suben junto a su campo (linkDeCampo). Aquí
-                      solo queda Drive, que va al final del panel. */}
-                  {ent.carpeta_drive_url && <a href={ent.carpeta_drive_url} target="_blank" rel="noopener noreferrer" className="btn" style={{ ...lnk, background: "#1a73e8" }}>📂 Drive</a>}
-                  {/* La HojaPostulacion (elegibilidad DAFO completa) se mudó a la
-                      pestaña 🎬 Elegibilidad DAFO de la columna derecha. */}
+                  {/* RENCA y Vigencia suben junto a su campo (linkDeCampo). Drive
+                      se mudó a la fila de pestañas, como en todas las entidades.
+                      La HojaPostulacion (elegibilidad DAFO) está en su pestaña. */}
                 </>
               ),
             };
@@ -1792,17 +1900,17 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               const hayFilas = camposG.some(c => tieneFila(c) || linkDeCampo[c[1]]);
               if (!hayFilas && !btns && !vBtn) return null;
               const azul = GRUPO_TONO[g] === "azul";
-              const c1 = azul ? "59,130,246" : "244,180,0";
+              /* Sección plegable con MEMORIA (Plegable, nivel 3): el carné se
+                 puede colapsar sección por sección y recuerda el estado. El
+                 tinte le da a IDENTIDAD/SUNAT su color (azul/ámbar). */
               return (
-                <div key={g} style={{ marginTop: 10, padding: "6px 10px 8px", borderRadius: 10, border: `1px solid rgba(${c1},.25)`, background: `rgba(${c1},.04)` }}>
-                  {/* Cabecera: el título, y debajo —a la derecha, en su propia
-                      fila para que su resultado quepa— el botón de verificación
-                      AUTOMÁTICA (⚡, una sola cosa; el resultado ya no se sale). */}
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
+                <Plegable key={g} id={`${params.tipo}:${params.id}:grupo:${g}`} nivel={3}
+                  tinte={azul ? "var(--blue)" : "var(--yellow)"}
+                  titulo={
                     <span style={{ fontSize: TXT.chip, textTransform: "uppercase", letterSpacing: 1, color: azul ? "var(--blue)" : "var(--yellow)", fontWeight: 700 }}>
                       {g.split("—")[0].trim()}
                     </span>
-                  </div>
+                  }>
                   {vBtn && (
                     <div className={`grupo-verif ${azul ? "gv-azul" : "gv-amber"}`}
                       style={{ display: "flex", justifyContent: "flex-end", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
@@ -1828,7 +1936,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                   {btns && (
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>{btns}</div>
                   )}
-                </div>
+                </Plegable>
               );
             };
             // Primarios a la vista; lo secundario (campos base descriptivos +
@@ -1858,12 +1966,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               <>
                 {sueltosVis.map(pintarFila)}
                 {gruposPri.map(renderGrupo)}
-                {/* La carpeta Drive de una persona: chip limpio, sin panel. */}
-                {params.tipo === "persona" && ent.carpeta_drive_url && (
-                  <div style={{ marginTop: 10 }}>
-                    <a href={ent.carpeta_drive_url} target="_blank" rel="noopener noreferrer" className="btn" style={{ ...lnk, background: "#1a73e8" }}>📂 Drive</a>
-                  </div>
-                )}
+                {/* La carpeta Drive se mudó a la fila de pestañas (antes del
+                    Historial), como en todas las entidades. */}
                 {haySec && (sinVerMas ? secInner : (
                   <details className="mas-datos">
                     <summary>Ver más{nVerMas ? <span className="md-n">{nVerMas}</span> : null}</summary>
@@ -1873,7 +1977,9 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               </>
             );
             })()}
-            {ent.descripcion && <p style={{ color: "var(--muted)", fontSize: TXT.micro, lineHeight: 1.5, marginTop: 10 }}>{ent.descripcion}</p>}
+            {/* En proyecto la descripción ya subió (debajo de los actores); aquí
+                se mantiene para las demás entidades. */}
+            {params.tipo !== "proyecto" && ent.descripcion && <p style={{ color: "var(--muted)", fontSize: TXT.micro, lineHeight: 1.5, marginTop: 10 }}>{ent.descripcion}</p>}
             {params.tipo === "postulacion" && ent.feedback_jurado && (
               ent.feedback_jurado.length > 220 ? (
                 <details className="jurado-box">
@@ -1893,12 +1999,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             {/* Enlaces del expediente, en una sola fila al pie del carné (si son
                 muchos, se desplazan de lado en vez de saltar de línea). */}
             <div style={{ display: "flex", gap: 6, flexWrap: "nowrap", overflowX: "auto", marginTop: 12 }}>
-              {/* En empresa, Drive/RENCA/Vigencia se muestran dentro del
-                  bloque 📎 Documentos, junto al dato que respaldan. */}
-              {!["empresa", "persona"].includes(params.tipo) && ent.carpeta_drive_url && (
-                <a href={ent.carpeta_drive_url} target="_blank" rel="noopener noreferrer"
-                  className="btn" style={{ background: "#1a73e8", fontSize: TXT.chip, padding: "7px 9px", whiteSpace: "nowrap", flex: "0 0 auto" }}>📂 Drive</a>
-              )}
+              {/* Drive se mudó a la fila de pestañas (antes del Historial): es un
+                  repositorio de contenido, la misma lógica en toda entidad. */}
               {ent.bases_url && (
                 <a href={ent.bases_url} target="_blank" rel="noopener noreferrer"
                   className="btn btn-ghost" style={{ fontSize: TXT.chip, padding: "7px 9px", whiteSpace: "nowrap", flex: "0 0 auto" }}>📖 Bases</a>
@@ -1991,31 +2093,30 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             </div>
           )}
 
-          {/* 📌 Destacados del muro: las notas fijadas asoman aquí, en la columna
-              del carné, compactas. Lo importante del proyecto, a la mano. */}
-          {params.tipo === "proyecto" && muroPosts.some((p: any) => p.destacado) && (
-            <div className="card" style={{ marginTop: 14, padding: "12px 14px" }}>
-              <div className="panel-h" style={{ color: "var(--violet)" }}>📌 Destacados del muro</div>
-              {muroPosts.filter((p: any) => p.destacado).map((p: any) => {
-                const imgs = (p.imagenes || []) as string[];
-                const soloImg = imgs.length > 0 && !(p.cuerpo || "").trim();
-                return (
-                  <div key={p.id} className={`muro-dest ${soloImg ? "solo-img" : ""}`}>
-                    {imgs.length > 0 && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={imgs[0]} alt="" referrerPolicy="no-referrer" className="muro-dest-img" />
-                    )}
-                    {(p.cuerpo || "").trim() && <div className="muro-dest-txt">{p.cuerpo}</div>}
-                    <div className="muro-dest-fecha">
-                      {new Date(p.creado_en).toLocaleDateString("es-PE", { day: "numeric", month: "short" })}
-                      {(p.tags || []).length > 0 ? ` · 🏷 ${p.tags[0]}` : ""}
-                      {imgs.length > 1 ? ` · 🖼 ${imgs.length}` : ""}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          {/* 📌 Destacados del muro: lo importante del proyecto a la mano —notas
+              del muro Y material del repositorio, mezclados y reordenables
+              (arrastrar y soltar). Solo donde hay muro: proyecto/empresa/persona. */}
+          {["proyecto", "empresa", "persona"].includes(params.tipo) && (() => {
+            const destPosts = muroPosts.filter((p: any) => p.destacado).map((p: any) => ({
+              kind: "post" as const, id: p.id, orden: p.destOrden ?? 0,
+              cuerpo: p.cuerpo, imagen: (p.imagenes || [])[0] || null, nImgs: (p.imagenes || []).length,
+              fecha: new Date(p.creado_en).toLocaleDateString("es-PE", { day: "numeric", month: "short" }),
+              tag: (p.tags || [])[0] || null,
+              fuente: p.fuente || null,   // muro de origen (si es de otro carné)
+            }));
+            const destObjs = objetosDe.filter((o: any) => o.destacado).map((o: any) => ({
+              kind: "obj" as const, id: o.id, orden: o.destOrden ?? 0,
+              titulo: o.titulo, tipo: o.tipo, url: o.url,
+              fecha: o.fecha ? new Date(o.fecha + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" }) : null,
+              fuente: null,   // el material del repositorio vive en este carné
+            }));
+            const destacados = [...destPosts, ...destObjs]
+              .sort((a, b) => a.orden - b.orden)
+              .map(({ orden, ...rest }) => rest);
+            return destacados.length > 0 ? (
+              <DestacadosMuro entidadTipo={params.tipo} entidadId={params.id} entidadNombre={(ent as any).nombre} items={destacados} />
+            ) : null;
+          })()}
 
           {/* Los miembros/plantilla de la empresa se mudaron a la pestaña
               🏆 Trayectoria (columna derecha). */}
@@ -2349,6 +2450,12 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               // es comunero/a (la reserva regional y la comunidad puntúan).
               const ctxPersona = (p: any) =>
                 [p?.tipo, p?.region, p?.es_comunero ? "🌱 comunero/a" : ""].filter(Boolean).join(" · ");
+              /* La directora completa el trío del concurso (proyecto × empresa ×
+                 directora): es quien da la cara ante el jurado. Nace con el
+                 proyecto (proyecto_equipo); si no, se busca en el equipo de la
+                 postulación. Un director/a o codirector/a. */
+              const directora = (equipoProy.find((r: any) => /direc|codirec/i.test(r.cargo || ""))
+                || equipoPost.find((r: any) => /direc|codirec/i.test(r.cargo || "")))?.persona || null;
               const equipoNode = (
                 <>
                   {/* Cabecera de contexto: el proyecto con su cartel y, de un
@@ -2373,51 +2480,92 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                         )}
                         {postCtx?.proy && postCtx?.emp && <span className="post-duo-x">×</span>}
                         {postCtx?.emp && (
-                          <Link href={`/entidad/empresa/${postCtx.emp.id}`} className="post-duo-lado">
-                            {cartelEmp
+                          /* Empresa + su representante legal DEBAJO (quien firma). */
+                          <div className="post-duo-col">
+                            <Link href={`/entidad/empresa/${postCtx.emp.id}`} className="post-duo-lado">
+                              {cartelEmp
+                                ? // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={cartelEmp} alt="" referrerPolicy="no-referrer" className="post-duo-img" />
+                                : <span className="post-duo-emoji">🏢</span>}
+                              <span className="post-duo-nom">{postCtx.emp.nombre}</span>
+                              <span className="post-duo-sub">empresa</span>
+                            </Link>
+                            {repLegal ? (
+                              <Link href={`/entidad/persona/${repLegal.id}`} className="post-duo-rl">
+                                {repLegal.foto_url
+                                  ? // eslint-disable-next-line @next/next/no-img-element
+                                    <img src={repLegal.foto_url} alt="" referrerPolicy="no-referrer" className="post-duo-rl-foto" />
+                                  : <span className="post-duo-rl-foto post-duo-rl-ph">🖋</span>}
+                                <span className="post-duo-rl-txt">
+                                  <span className="post-duo-rl-nom">{repLegal.alias || repLegal.nombre}</span>
+                                  <span className="post-duo-rl-rol">Rep. legal</span>
+                                </span>
+                              </Link>
+                            ) : (
+                              <div className="post-duo-rl post-duo-vacio">
+                                <span className="post-duo-rl-foto post-duo-rl-ph">🖋</span>
+                                <span className="post-duo-rl-txt"><span className="post-duo-rl-nom">Falta rep. legal</span></span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {/* La directora cierra el trío: siempre su espacio —vacío es
+                            señal de que FALTA, es dato clave de la postulación. */}
+                        {(postCtx?.proy || postCtx?.emp) && <span className="post-duo-x">×</span>}
+                        {directora ? (
+                          <Link href={`/entidad/persona/${directora.id}`} className="post-duo-lado">
+                            {directora.foto_url
                               ? // eslint-disable-next-line @next/next/no-img-element
-                                <img src={cartelEmp} alt="" referrerPolicy="no-referrer" className="post-duo-img" />
-                              : <span className="post-duo-emoji">🏢</span>}
-                            <span className="post-duo-nom">{postCtx.emp.nombre}</span>
-                            <span className="post-duo-sub">empresa</span>
+                                <img src={directora.foto_url} alt="" referrerPolicy="no-referrer" className="post-duo-img post-duo-persona" />
+                              : <span className="post-duo-emoji">🎬</span>}
+                            <span className="post-duo-nom">{directora.alias || directora.nombre}</span>
+                            <span className="post-duo-sub">dirige</span>
                           </Link>
+                        ) : (
+                          <div className="post-duo-lado post-duo-vacio">
+                            <span className="post-duo-emoji post-duo-emoji-vacio">🎬</span>
+                            <span className="post-duo-nom" style={{ color: "var(--dim)" }}>Falta directora</span>
+                            <span className="post-duo-sub post-duo-sub-vacio">dirige</span>
+                          </div>
                         )}
                       </div>
                     )}
+                    {/* La CANCHA del concurso: el monto por el que compiten, al
+                        centro y grande; al lado, las reglas de juego (las bases);
+                        debajo, qué concurso es. Antes era una tabla de filas —se
+                        lee mucho mejor así, de un vistazo. */}
+                    {postCtx?.conv && (
+                      <div className="post-cancha">
+                        {postCtx.conv.monto_adjudicado && (
+                          <div className="pc-monto">
+                            <span className="pc-cifra">S/ {parseFloat(postCtx.conv.monto_adjudicado).toLocaleString("es-PE")}</span>
+                            <span className="pc-lbl">en juego</span>
+                          </div>
+                        )}
+                        {postCtx.conv.bases_url && (
+                          <a href={postCtx.conv.bases_url} target="_blank" rel="noopener noreferrer" className="pc-bases">
+                            <span>📖 Reglas de juego</span>
+                            <span className="pc-sub">las bases del concurso ↗</span>
+                          </a>
+                        )}
+                        <Link href={`/entidad/convocatoria/${postCtx.conv.id}`} className="pc-conc">
+                          📜 {postCtx.conv.codigo} · {postCtx.conv.nombre}
+                          {(postCtx.conv.categoria || postCtx.conv.anio) ? ` · ${[postCtx.conv.categoria, postCtx.conv.anio].filter(Boolean).join(" · ")}` : ""} →
+                        </Link>
+                      </div>
+                    )}
+                    {/* Cambiar la empresa que presenta (su nombre ya está arriba). */}
                     <EmpresaPostulacion postulacionId={params.id}
                       convocatoriaId={postCtx?.conv?.id || ""}
                       empresa={postCtx?.emp} empresas={empresasCat} />
-                    {postCtx?.conv && (
-                      <div className="eq-row"><span className="cargo">Concurso</span>
-                        <span style={{ flex: 1, textAlign: "right" }}>
-                          <Link href={`/entidad/convocatoria/${postCtx.conv.id}`} style={{ color: "var(--text)" }}>📜 {postCtx.conv.codigo} · {postCtx.conv.nombre} →</Link>
-                          {(postCtx.conv.categoria || postCtx.conv.anio) && (
-                            <div style={{ color: "var(--dim)", fontSize: TXT.chip }}>
-                              {[postCtx.conv.categoria, postCtx.conv.anio].filter(Boolean).join(" · ")}
-                            </div>
-                          )}
-                        </span></div>
-                    )}
-                    {postCtx?.conv?.monto_adjudicado && (
-                      <div className="eq-row"><span className="cargo">En juego</span>
-                        <span style={{ flex: 1, textAlign: "right", color: "var(--teal)", fontWeight: 700 }}>
-                          S/ {parseFloat(postCtx.conv.monto_adjudicado).toLocaleString("es-PE")}
-                        </span></div>
-                    )}
-                    {postCtx?.conv?.bases_url && (
-                      <div className="eq-row"><span className="cargo">Bases</span>
-                        <span style={{ flex: 1, textAlign: "right" }}>
-                          <a href={postCtx.conv.bases_url} target="_blank" rel="noopener noreferrer"
-                            style={{ color: "var(--violet)", fontWeight: 600 }}>📖 Bases del concurso ↗</a>
-                        </span></div>
-                    )}
                   </div>
                   <div style={{ marginTop: 14 }}>
-                    {/* El equipo del PROYECTO va primero y no se edita aquí: la
-                        directora nace con el proyecto y la postulación la hereda.
-                        Abajo, el equipo de ESTA postulación. */}
+                    {/* El equipo de ESTA postulación va PRIMERO —es lo que se arma
+                        y edita aquí—; debajo, el del proyecto, que se hereda (la
+                        directora nace con el proyecto y no se repite). */}
+                    <EquipoPostulacion postulacionId={params.id} equipo={equipoPost} personas={personasCat} />
                     {equipoProy.length > 0 && (
-                      <div className="linked" style={{ marginBottom: 14 }}>
+                      <div className="linked" style={{ marginTop: 14 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                           <h4 style={{ margin: 0, fontSize: TXT.chip, letterSpacing: 1.2, textTransform: "uppercase", color: "var(--dim)" }}>
                             🎬 Equipo del proyecto · {equipoProy.length}
@@ -2435,16 +2583,29 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                           const p = m.persona || {};
                           const ctx = ctxPersona(p);
                           return (
-                            <div className="eq-row" key={m.id} style={{ alignItems: "center" }}>
-                              <span className="cargo">{m.cargo}</span>
-                              <span style={{ flex: 1 }} />
-                              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                                <Avatar nombre={p.nombre} src={p.foto_url} size={30} />
-                                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", lineHeight: 1.25, minWidth: 0 }}>
-                                  <Link href={`/entidad/persona/${p.id}`} style={{ color: "var(--text)", fontWeight: 600 }} title={p.nombre}>
-                                    {p.alias || p.nombre} →
-                                  </Link>
-                                  {ctx && <span style={{ color: "var(--dim)", fontSize: 11 }}>{ctx}</span>}
+                            <div className="eq-card" key={m.id}>
+                              <Avatar nombre={p.nombre} src={p.foto_url} size={38} />
+                              <div className="eq-card-main">
+                                <div className="eq-card-top">
+                                  <Link href={`/entidad/persona/${p.id}`} className="eq-card-nom" title={p.nombre}>{p.alias || p.nombre} →</Link>
+                                  <span className="eq-card-cargo">{m.cargo}</span>
+                                </div>
+                                {ctx && <div className="eq-card-ctx">{ctx}</div>}
+                                <div className="eq-card-chips">
+                                  {m._cv ? (
+                                    <a href={m._cv.url || `/objeto/${m._cv.id}`} target="_blank" rel="noopener noreferrer"
+                                      className={`eq-chip eq-chip-link ${m._cv.vigente ? "ok" : "warn"}`}>
+                                      📄 {m._cv.vigente ? "CV" : "CV viejo"} ↗
+                                    </a>
+                                  ) : <span className="eq-chip falta">📄 sin CV</span>}
+                                  {m._pre ? (
+                                    m._pre.id ? (
+                                      <a href={`/api/precontrato?post=${params.id}&pre=${m._pre.id}`} target="_blank" rel="noopener noreferrer"
+                                        className={`eq-chip eq-chip-link ${m._pre.estado === "firmado" ? "ok" : "warn"}`}>
+                                        📝 {m._pre.estado} ↗
+                                      </a>
+                                    ) : <span className={`eq-chip ${m._pre.estado === "firmado" ? "ok" : "warn"}`}>📝 {m._pre.estado}</span>
+                                  ) : <span className="eq-chip dim">📝 sin precontrato</span>}
                                 </div>
                               </div>
                             </div>
@@ -2452,7 +2613,6 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                         })}
                       </div>
                     )}
-                    <EquipoPostulacion postulacionId={params.id} equipo={equipoPost} personas={personasCat} />
                     {/* Cumplimiento calculado: % peruano/domiciliado y % regional
                         del equipo completo (proyecto + postulación). */}
                     <EquipoPorcentajes equipo={[...equipoPost, ...equipoProy]} />
@@ -2485,26 +2645,26 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                 </>
               );
 
-              /* 🕐 HISTORIAL: el trabajo (avisos + casos) y la línea de tiempo
-                 de eventos, sin el <details> extra (ya está en su pestaña). */
-              const historialNode = (
-                <>
-                  {trabajoNode}
-                  {eventosVis.length > 0 && histInner}
-                </>
+              /* 🕐 HISTORIAL: solo la línea de tiempo de eventos. Los casos
+                 (avisos + trabajo) salieron a su propia pestaña «Casos», como en
+                 el resto de entidades. */
+              const historialNode = eventosVis.length > 0 ? histInner : (
+                <div className="empty" style={{ padding: "18px 0" }}>Sin eventos registrados aún.</div>
               );
 
               return (
-                <TabsPanel
+                <TabsPanel extra={driveTab} masUltima
                   labels={[
                     conPlantilla || esGanadora ? "🗂 Expediente" : "📎 Materiales",
                     `👥 Equipo · ${equipoProy.length + equipoPost.length}`,
+                    `📋 Casos · ${activas.length}`,
                     `📚 Repositorio${objetosDe.length ? ` · ${objetosDe.length}` : ""}`,
                     `🕐 Historial · ${eventosVis.length}`,
                   ]}
                   paneles={[
                     expedienteNode,
                     equipoNode,
+                    trabajoNode,
                     repoNode,
                     historialNode,
                   ]}
@@ -2639,6 +2799,43 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                   })}
                 </div>
               ) : null;
+              /* Obras donde es ACTOR SOCIAL (protagonista, comunero): su
+                 aparición ante la cámara. Va aparte de la filmografía de crew
+                 —es otro tipo de aporte— con 🎭 en teal, como en /personas. */
+              const proyectosActorNode = proyectosActor.length > 0 ? (
+                <div className="linked" style={{ marginTop: 14 }}>
+                  <h4>🎭 Como actor social · {proyectosActor.length}</h4>
+                  <div style={{ color: "var(--dim)", fontSize: TXT.micro, margin: "-2px 0 8px" }}>
+                    Obras en las que aparece (protagonista, comunero, sujeto). Los terminados van atenuados.
+                  </div>
+                  {proyectosActor.map((r: any) => {
+                    const vivo = (r.proy?.estado_actividad || "activo") === "activo" && r.proy?.etapa !== "finalizado";
+                    const ctx = [r.proy?.tipo?.replace(/_/g, " "), r.proy?.etapa?.replace(/_/g, " ")].filter(Boolean).join(" · ");
+                    return (
+                      <div key={r.id} className="eq-row" style={{ alignItems: "flex-start", gap: 12, opacity: vivo ? 1 : .6 }}>
+                        {poster("proyecto", r.proy?.id, 56)}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                            <span className="cargo" style={{ color: "var(--teal)" }}>🎭 {r.rol || "actor social"}</span>
+                            {ctx && <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>· {ctx}</span>}
+                            <span style={{ flex: 1 }} />
+                            <Link href={`/entidad/proyecto/${r.proy.id}`} style={{ color: "var(--text)" }}>
+                              📁 {r.proy.nombre} →
+                            </Link>
+                          </div>
+                          {/* El personaje: su descripción en la obra, aprovechando el
+                              ancho de la tarjeta (antes solo se veía del lado del proyecto). */}
+                          {r.descripcion && (
+                            <div style={{ color: "var(--muted)", fontSize: TXT.micro, marginTop: 5, lineHeight: 1.5 }}>
+                              {r.descripcion}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null;
               const cvsNode = (
                 <CVs personaId={params.id} cvs={cvsDe}
                   especialidades={String(ent.rol || "").split(",").map(s => s.trim()).filter(Boolean)} />
@@ -2691,11 +2888,17 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                       {resto.map(filaPost)}
                     </div>
                   )}
-                  {postDe.length === 0 && (
+                  {/* «Sin postulaciones» solo si NO tiene otra trayectoria: para un
+                      actor social (sujeto del documental, no del equipo que postula)
+                      el mensaje es ruido —la postulación del proyecto es de la
+                      productora, no suya—. Si tiene obras o cargos, no se muestra. */}
+                  {postDe.length === 0 && cargosDe.length === 0 && proyectosPropios.length === 0
+                    && proyectosActor.length === 0 && clienteEnProy.length === 0 && (
                     <div className="empty" style={{ padding: "18px 0" }}>Sin postulaciones registradas para {nombre}.</div>
                   )}
                   {cargosNode}
                   {proyectosNode}
+                  {proyectosActorNode}
                   {cvsNode}
                   {clienteNode}
                 </>
@@ -2876,13 +3079,13 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                  postulaciones + cargos + proyectos + CVs + proyectos como
                  cliente. Antes solo contaba postulaciones y se quedaba corto. */
               const nTrayectoria = postDe.length + cargosDe.length + proyectosPropios.length
-                + cvsDe.length + clienteEnProy.length;
+                + proyectosActor.length + cvsDe.length + clienteEnProy.length;
               const muroPer = (
                 <MuroProyecto proyectoId={params.id} entidadTipo="persona" userId={user.id}
                   perfiles={perfilesCat} sugerencias={muroEtqs} posts={muroPosts} materiales={objetosDe} />
               );
               return (
-                <TabsPanel
+                <TabsPanel extra={driveTab} masUltima
                   labels={[
                     `📝 Muro · ${muroPosts.length}`,
                     `📋 Casos · ${activas.length}`,
@@ -2899,7 +3102,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                     economiaNode,
                     historialNode,
                   ]}
-                  iconoSolo={[5]}
+                  iconoSolo={[3, 5]}
                 />
               );
             }
@@ -3041,7 +3244,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                   perfiles={perfilesCat} sugerencias={muroEtqs} posts={muroPosts} materiales={objetosDe} />
               );
               return (
-                <TabsPanel
+                <TabsPanel extra={driveTab} masUltima
                   labels={[
                     `📝 Muro · ${muroPosts.length}`,
                     `📋 Casos · ${activas.length}`,
@@ -3095,7 +3298,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                 <div className="empty" style={{ padding: "18px 0" }}>Sin actividad registrada todavía.</div>
               );
               return (
-                <TabsPanel
+                <TabsPanel extra={driveTab} masUltima
                   labels={[
                     `🗒 Bitácora · ${nBita}`,
                     `📋 Casos · ${activas.length}`,
@@ -3114,7 +3317,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             const proxima = vivasCrono
               .filter((a: any) => a.estado === "planificada")
               .sort((a: any, b: any) => (a.fecha_inicio < b.fecha_inicio ? -1 : 1))[0];
-            const etiquetaCrono = `📅 Cronograma · ${vivasCrono.length}` +
+            const etiquetaCrono = `📅 Crono · ${vivasCrono.length}` +
               (proxima ? ` · próx. ${new Date(proxima.fecha_inicio + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short" })}` : "");
             const cronoNode = (
               <CronogramaProyecto key="crono" dueno={params.tipo as "proyecto" | "convocatoria"}
@@ -3278,7 +3481,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                   perfiles={perfilesCat} sugerencias={muroEtqs} posts={muroPosts} materiales={objetosDe} />
               );
               return (
-                <TabsPanel
+                <TabsPanel extra={driveTab} masUltima
                   labels={[
                     `📝 Muro · ${muroPosts.length}`,
                     etiquetaCrono,
@@ -3329,11 +3532,11 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                es a qué presentamos. Luego el cronograma del concurso, y después
                el trabajo/repositorio/historial. */
             return (
-              <TabsPanel
+              <TabsPanel extra={driveTab} masUltima
                 labels={[
                   `🎯 Postulaciones · ${postus.length}`,
                   etiquetaCrono,
-                  `📋 Trabajo · ${activas.length}`,
+                  `📋 Casos · ${activas.length}`,
                   `📚 Repositorio · ${objetosDe.length}`,
                   `🕐 Historial · ${eventosVis.length}`,
                 ]}

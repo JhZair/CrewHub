@@ -117,10 +117,53 @@ a{color:inherit;text-decoration:none}
 .muro-material{display:block;text-decoration:none;border-left:3px solid color-mix(in srgb, var(--teal) 55%, transparent);
   background:color-mix(in srgb, var(--teal) 5%, var(--card));transition:border-color .12s,background .12s}
 .muro-material:hover{border-color:color-mix(in srgb, var(--teal) 40%, transparent);background:color-mix(in srgb, var(--teal) 9%, var(--card))}
-.muro-mat-tile{width:56px;height:56px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;
-  font-size:26px;background:var(--bg);border:1px solid var(--border)}
+.muro-mat-tile{width:73px;height:73px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;
+  font-size:34px;background:var(--bg);border:1px solid var(--border)}
 .muro-mat-badge{color:var(--teal);background:rgba(45,212,191,.12);text-transform:none;letter-spacing:0}
 .muro-mat-abrir{color:var(--teal);font-size:11.5px;font-weight:700;white-space:nowrap}
+/* Fuente de una nota del muro: de qué otra ficha/muro proviene (chip enlace). */
+.muro-fuente{display:inline-flex;align-items:center;gap:3px;color:var(--muted);background:#1c1c2c;
+  border:1px solid var(--border);border-radius:999px;padding:1px 8px;font-size:10.5px;font-weight:600;text-decoration:none;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.muro-fuente:hover{color:var(--text);border-color:var(--border2)}
+/* 📌 destacar sobre la tarjeta de material (encima del enlace estirado). */
+.muro-mat-pin{position:absolute;top:8px;right:10px;z-index:2}
+
+/* ── 📌 Destacados del muro: lista reordenable (arrastrar y soltar) ── */
+.dest-lista{display:flex;flex-direction:column;gap:2px;margin-top:6px}
+.dest-item{display:flex;align-items:flex-start;gap:8px;padding:8px 6px;border-radius:9px;border:1px solid transparent;
+  background:rgba(255,255,255,.015);transition:background .12s,border-color .12s}
+.dest-item:hover{background:rgba(255,255,255,.04)}
+.dest-item.sobre{border-color:color-mix(in srgb, var(--violet) 55%, transparent);background:rgba(167,139,250,.08)}
+.dest-item.arrastrando{opacity:.4}
+.dest-agarre{flex:none;color:var(--dim);cursor:grab;font-size:13px;line-height:1.2;padding-top:2px;user-select:none;letter-spacing:-2px}
+.dest-item:active .dest-agarre{cursor:grabbing}
+.dest-quitar{flex:none;background:none;border:none;cursor:pointer;font-size:13px;padding:2px 4px;border-radius:6px;filter:none;opacity:.85}
+.dest-quitar:hover{background:rgba(255,77,94,.12);opacity:1}
+.dest-cuerpo .muro-dest-img{max-height:110px}
+.dest-obj{display:flex;gap:9px;align-items:center;text-decoration:none;min-width:0}
+.dest-obj-tile{width:40px;height:40px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;
+  font-size:19px;background:var(--bg);border:1px solid var(--border);flex:none}
+.dest-obj-tit{display:block;color:var(--text);font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dest-obj-tipo{display:block;color:var(--teal);font-size:11px;margin-top:1px}
+.dest-ayuda{color:var(--dim);font-size:10.5px;margin-top:8px;text-align:center}
+/* Destacados agrupados por muro de origen (plegables con memoria) */
+.dest-grupos{display:flex;flex-direction:column;gap:4px;margin-top:6px}
+.dest-grupo{border:1px solid rgba(255,255,255,.05);border-radius:10px;background:rgba(255,255,255,.012);overflow:hidden}
+.dest-grupo.propio{border-color:color-mix(in srgb, var(--violet) 22%, transparent);background:rgba(167,139,250,.03)}
+.dest-grupo-h{display:flex;align-items:center;gap:7px;width:100%;background:none;border:none;cursor:pointer;
+  padding:8px 10px;text-align:left;color:var(--text)}
+.dest-grupo-h:hover{background:rgba(255,255,255,.03)}
+.dest-grupo-ico{flex:none;font-size:13px}
+.dest-grupo-nom{flex:1;min-width:0;font-size:12px;font-weight:700;color:var(--text);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:.2px}
+.dest-grupo.propio .dest-grupo-nom{color:var(--violet)}
+.dest-grupo-n{flex:none;font-size:10.5px;font-weight:700;color:var(--dim);background:rgba(255,255,255,.06);
+  border-radius:20px;padding:1px 8px;min-width:20px;text-align:center}
+.dest-grupo .dest-lista{margin:0 8px 8px}
+.dest-grupo-h .plg-caret{flex:none;color:var(--dim);font-size:10px;line-height:1;
+  transition:transform .14s ease;transform:rotate(0deg)}
+.dest-grupo-h:hover .plg-caret{color:var(--text)}
+.plg-caret.abierto{transform:rotate(90deg)}
 .muro-post-cab{display:flex;gap:10px;align-items:center}
 .muro-borrar{background:none;border:none;color:var(--dim);cursor:pointer;font-size:14px;padding:2px 6px;border-radius:6px}
 .muro-borrar:hover{color:var(--red);background:rgba(255,77,94,.1)}
@@ -188,11 +231,40 @@ a{color:inherit;text-decoration:none}
 .post-duo-lado{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;padding:12px 8px;background:#16161f;border:1px solid var(--border);border-radius:12px;text-decoration:none}
 .post-duo-lado:hover{border-color:var(--border2)}
 .post-duo-img{width:60px;height:60px;object-fit:cover;border-radius:10px;border:1px solid rgba(255,255,255,.14);background:#1c1c2c}
+/* La directora es una persona: foto circular, como su avatar en el resto. */
+.post-duo-persona{border-radius:50%}
 .post-duo-emoji{width:60px;height:60px;display:flex;align-items:center;justify-content:center;font-size:30px;border-radius:10px;background:#1c1c2c;border:1px solid var(--border)}
 .post-duo-nom{color:var(--text);font-weight:700;font-size:13.5px;line-height:1.25;max-width:100%;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .post-duo-lado:hover .post-duo-nom{text-decoration:underline}
 .post-duo-sub{font-size:10.5px;font-weight:600;color:#fff;background:rgba(124,92,255,.7);padding:2px 8px;border-radius:999px;text-transform:capitalize}
 .post-duo-x{align-self:center;flex:0 0 auto;color:var(--dim);font-size:15px;font-weight:700}
+/* Columna de la empresa: su tarjeta + el representante legal debajo. */
+.post-duo-col{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:8px}
+.post-duo-col>.post-duo-lado{flex:1}
+.post-duo-rl{display:flex;align-items:center;gap:8px;padding:7px 9px;background:#14141c;border:1px solid var(--border);border-radius:10px;text-decoration:none;min-width:0}
+.post-duo-rl:hover{border-color:var(--border2)}
+.post-duo-rl-foto{width:30px;height:30px;flex:none;border-radius:50%;object-fit:cover;border:1px solid rgba(255,255,255,.14);background:#1c1c2c}
+.post-duo-rl-ph{display:flex;align-items:center;justify-content:center;font-size:14px}
+.post-duo-rl-txt{min-width:0;display:flex;flex-direction:column;line-height:1.2}
+.post-duo-rl-nom{color:var(--text);font-weight:600;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.post-duo-rl:hover .post-duo-rl-nom{text-decoration:underline}
+.post-duo-rl-rol{color:var(--dim);font-size:10px;font-weight:600}
+/* Espacios vacíos: indican que FALTA (directora / rep. legal). Borde punteado. */
+.post-duo-vacio{border-style:dashed;background:#12121a}
+.post-duo-emoji-vacio{opacity:.4;filter:grayscale(1)}
+.post-duo-sub-vacio{background:var(--dim)}
+/* La «cancha» del concurso: monto en juego (grande, al centro) + reglas (bases)
+   al lado; el concurso como línea de contexto debajo. Reemplaza la tabla. */
+.post-cancha{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:10px 24px;
+  margin:12px 0 4px;padding:14px 16px;background:#14141c;border:1px solid var(--border);border-radius:12px}
+.pc-monto{display:flex;flex-direction:column;align-items:center;line-height:1}
+.pc-cifra{color:var(--teal);font-weight:800;font-size:23px;letter-spacing:.2px}
+.pc-lbl{color:var(--dim);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.4px;margin-top:4px}
+.pc-bases{display:flex;flex-direction:column;align-items:center;text-decoration:none;color:var(--violet);font-weight:700;font-size:13px}
+.pc-bases:hover{color:var(--text)}
+.pc-sub{color:var(--dim);font-weight:500;font-size:10.5px;margin-top:2px}
+.pc-conc{flex-basis:100%;text-align:center;color:var(--muted);font-size:12px;text-decoration:none;margin-top:6px;padding-top:10px;border-top:1px solid var(--border)}
+.pc-conc:hover{color:var(--text)}
 /* El trío protagonista de una fila de postulación: proyecto, empresa y
    director(a) con su retrato, a tamaño legible. Como toda la fila es un enlace,
    van como retratos (no chips). */
@@ -313,6 +385,43 @@ a{color:inherit;text-decoration:none}
    sola línea, para que informe sin ensanchar ni descuadrar la fila. */
 .vtab-nota{font-size:10.5px;font-weight:600;color:var(--dim)}
 .vtab.on .vtab-nota{color:var(--muted)}
+/* Drive como pestaña-enlace: no es un panel, es un acceso externo. Se distingue
+   con el azul de Drive y sin fondo lleno, para que se lea como enlace. */
+.vtab-drive{color:#8ab4f8;text-decoration:none;border-color:color-mix(in srgb, #1a73e8 35%, var(--border))}
+.vtab-drive:hover{color:#8ab4f8;border-color:#1a73e8;background:rgba(26,115,232,.12)}
+
+/* ── Identidad de NAVEGACIÓN (solo la ficha de entidad, no los filtros) ──
+   El `.vtabs` genérico lo usan también filtros; por eso la identidad de
+   «pestañas» (subrayado, no píldoras) se acota a `.vtabs-nav`. Así se leen como
+   navegación —una barra con la activa subrayada en acento— y no como chips. */
+/* Envuelve en vez de hacer scroll: cuando no caben, saltan de línea —nada de
+   barra horizontal—. Pestañas con SUBRAYADO (no píldora), para leerse como
+   navegación y no como chips de filtro. */
+.vtabs-nav{gap:2px 4px;flex-wrap:wrap;overflow:visible;border-bottom:1px solid var(--border);align-items:flex-end;padding:0}
+/* Cada pestaña con un fondo TENUE (se lee como menú, cajita por cajita); al
+   pasar el cursor el fondo se aviva; la activa lleva el subrayado de acento. */
+.vtabs-nav .vtab{background:rgba(255,255,255,.03);border:1px solid var(--border);border-bottom:2px solid transparent;
+  border-radius:8px 8px 0 0;padding:8px 12px;margin-bottom:-1px;color:var(--muted);font-size:12.5px;transition:background .12s,color .12s,border-color .12s}
+.vtabs-nav .vtab:hover{background:rgba(255,255,255,.09);color:var(--text);border-color:var(--border2)}
+.vtabs-nav .vtab.on{background:rgba(124,92,255,.12);color:var(--text);border-color:var(--border);border-bottom-color:var(--accent);font-weight:700}
+.vtabs-nav .vtab.on .vtab-n{background:rgba(124,92,255,.24);color:var(--text)}
+.vtabs-nav .vtab-drive{color:#8ab4f8;background:rgba(26,115,232,.08);border-color:color-mix(in srgb, #1a73e8 28%, var(--border));border-bottom-color:transparent}
+.vtabs-nav .vtab-drive:hover{background:rgba(26,115,232,.18);color:#9cc0fb;border-color:#1a73e8}
+.vtabs-nav .vtab-mas{padding-left:11px;padding-right:11px;letter-spacing:1px}
+
+/* Menú «⋯ Más»: aloja el Historial (y lo que no entre) sin desbordar la fila. */
+.vtab-mas-wrap{position:relative;flex:0 0 auto;margin-left:2px}
+.vtab-mas{gap:5px}
+.vtab-mas-flecha{font-size:8px;color:var(--dim)}
+.vtab-mas-bg{position:fixed;inset:0;z-index:40}
+.vtab-mas-menu{position:absolute;top:calc(100% + 5px);right:0;z-index:41;min-width:195px;
+  background:var(--card);border:1px solid var(--border2);border-radius:11px;padding:5px;
+  box-shadow:0 12px 34px rgba(0,0,0,.55);display:flex;flex-direction:column;gap:2px}
+.vtab-mas-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;
+  border:none;color:var(--muted);font-size:13px;font-weight:600;padding:8px 11px;border-radius:8px;cursor:pointer}
+.vtab-mas-item:hover{background:rgba(255,255,255,.05);color:var(--text)}
+.vtab-mas-item.on{background:rgba(124,92,255,.14);color:var(--text)}
+.vtab-mas-item .vtab-n{margin-left:auto}
 
 /* ── Pasos de una postulación (mini-cronograma editable en la cabecera) ── */
 /* margin-left:auto lo empuja al extremo derecho de la cabecera */
@@ -1517,6 +1626,30 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(.65);cursor:
 .eq-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;flex-wrap:wrap}
 .eq-row:last-child{border-bottom:none}
 .cargo{color:var(--violet);background:rgba(167,139,250,.12);border-radius:7px;padding:2px 9px;font-size:11px;font-weight:700;white-space:nowrap}
+/* ── Tarjeta de miembro del equipo (postulación / proyecto) ──
+   Reemplaza la fila cargo-izquierda / persona-derecha (que se leía desordenada)
+   por una tarjeta: cara + nombre + cargo, y debajo el contexto y los datos que
+   el fondo revisa por persona (CV, precontrato). */
+.eq-card{display:flex;align-items:flex-start;gap:11px;padding:10px 12px;margin-bottom:7px;
+  background:#14141c;border:1px solid var(--border);border-radius:11px}
+.eq-card>.avatar,.eq-card>img{flex:none}
+.eq-card-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.eq-card-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.eq-card-nom{color:var(--text);font-weight:700;font-size:13.5px;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.eq-card-nom:hover{text-decoration:underline}
+.eq-card-cargo{color:var(--violet);background:rgba(167,139,250,.14);border-radius:7px;padding:2px 9px;font-size:10.5px;font-weight:700;white-space:nowrap}
+.eq-card-ctx{color:var(--dim);font-size:11px}
+.eq-card-chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:2px}
+.eq-chip{font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;display:inline-flex;gap:3px;align-items:center;white-space:nowrap}
+.eq-chip.ok{color:var(--green);background:rgba(46,204,113,.12)}
+.eq-chip.warn{color:var(--yellow);background:rgba(244,180,0,.13)}
+.eq-chip.falta{color:var(--red);background:rgba(255,77,94,.12)}
+.eq-chip.dim{color:var(--dim);background:#1c1c2c}
+.eq-chip-link{text-decoration:none;cursor:pointer}
+.eq-chip-link:hover{filter:brightness(1.25);text-decoration:underline}
+.eq-card-x{flex:none;color:var(--dim);background:none;border:none;cursor:pointer;font-size:13px;padding:2px 6px;border-radius:6px}
+.eq-card-x:hover{color:var(--red);background:rgba(255,77,94,.1)}
+.eq-card-conf{flex:none;font-size:11.5px;white-space:nowrap;align-self:center}
 .err-inline{color:var(--red);font-size:12px;margin:6px 0;padding:6px 10px;background:rgba(255,77,94,.08);border-radius:8px}
 
 /* 🪄 Menciones */
@@ -1991,6 +2124,11 @@ img.av{border:1px solid var(--border2)}
 .plg.n3.on>.plg-cab{border-bottom:1px solid rgba(255,255,255,.06)}
 .plg.n3>.plg-cuerpo{padding:3px 11px 8px}
 .plg.n3>.plg-cab .plg-tit{font-size:14.5px}
+/* Nivel 3 con tinte de identidad: las secciones del carné (IDENTIDAD azul,
+   SUNAT ámbar…) conservan su color al volverse plegables. */
+.plg.n3.plg--tinte{border-color:color-mix(in srgb, var(--plg-tinte) 25%, transparent);
+  background:color-mix(in srgb, var(--plg-tinte) 5%, transparent)}
+.plg.n3.plg--tinte.on>.plg-cab{border-bottom-color:color-mix(in srgb, var(--plg-tinte) 16%, transparent)}
 
 /* Botones «expandir/plegar todo». */
 .plg-todo{background:none;border:1px solid var(--border);color:var(--dim);font-size:11.5px;font-weight:600;padding:3px 10px;border-radius:7px;cursor:pointer;transition:color .12s,border-color .12s}

@@ -78,26 +78,40 @@ export default function EquipoPostulacion({ postulacionId, equipo, personas }: {
         // (la reserva regional y la participación comunitaria puntúan en DAFO).
         const ctx = [p.tipo, p.region, p.es_comunero ? "🌱 comunero/a" : ""].filter(Boolean).join(" · ");
         return (
-          <div key={m.id} className="eq-row" style={{ alignItems: "center" }}>
-            <span className="cargo">{m.cargo || "—"}</span>
-            <span style={{ flex: 1 }} />
-            <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-              <Avatar nombre={p.nombre} src={p.foto_url} size={30} />
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", lineHeight: 1.25, minWidth: 0 }}>
-                <Link href={`/entidad/persona/${p.id}`} style={{ color: "var(--text)", fontWeight: 600 }} title={p.nombre}>
-                  {p.alias || p.nombre} →
-                </Link>
-                {ctx && <span style={{ color: "var(--dim)", fontSize: 11 }}>{ctx}</span>}
+          <div key={m.id} className="eq-card">
+            <Avatar nombre={p.nombre} src={p.foto_url} size={38} />
+            <div className="eq-card-main">
+              <div className="eq-card-top">
+                <Link href={`/entidad/persona/${p.id}`} className="eq-card-nom" title={p.nombre}>{p.alias || p.nombre} →</Link>
+                <span className="eq-card-cargo">{m.cargo || "—"}</span>
+              </div>
+              {ctx && <div className="eq-card-ctx">{ctx}</div>}
+              {/* Los datos que el fondo revisa por persona: CV (para su ROL y
+                  vigente) y precontrato. Si existe el archivo, el chip lo abre. */}
+              <div className="eq-card-chips">
+                {m._cv ? (
+                  <a href={m._cv.url || `/objeto/${m._cv.id}`} target="_blank" rel="noopener noreferrer"
+                    className={`eq-chip eq-chip-link ${m._cv.vigente ? "ok" : "warn"}`}>
+                    📄 {m._cv.vigente ? "CV" : "CV viejo"} ↗
+                  </a>
+                ) : <span className="eq-chip falta">📄 sin CV</span>}
+                {m._pre ? (
+                  m._pre.id ? (
+                    <a href={`/api/precontrato?post=${postulacionId}&pre=${m._pre.id}`} target="_blank" rel="noopener noreferrer"
+                      className={`eq-chip eq-chip-link ${m._pre.estado === "firmado" ? "ok" : "warn"}`}>
+                      📝 {m._pre.estado} ↗
+                    </a>
+                  ) : <span className={`eq-chip ${m._pre.estado === "firmado" ? "ok" : "warn"}`}>📝 {m._pre.estado}</span>
+                ) : <span className="eq-chip dim">📝 sin precontrato</span>}
               </div>
             </div>
             {quitando === m.id ? (
-              <span style={{ fontSize: 11.5, marginLeft: 8, whiteSpace: "nowrap" }}>
+              <span className="eq-card-conf">
                 ¿quitar? <button style={{ color: "var(--red)", fontWeight: 700 }} onClick={() => quitar(m.id)}>sí</button>
                 {" / "}<button style={{ color: "var(--dim)" }} onClick={() => setQuitando(null)}>no</button>
               </span>
             ) : (
-              <button title="Quitar del equipo" style={{ color: "var(--dim)", marginLeft: 10 }}
-                onClick={() => setQuitando(m.id)}>✕</button>
+              <button className="eq-card-x" title="Quitar del equipo" onClick={() => setQuitando(m.id)}>✕</button>
             )}
           </div>
         );
