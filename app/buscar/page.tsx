@@ -13,9 +13,9 @@ import Avatar from "@/components/Avatar";
 import Miniatura from "@/components/Miniatura";
 import { previewCandidates } from "@/lib/drive";
 import { TXT } from "@/lib/texto";
-import { REL_EMPRESA, EST_EMPRESA, TIPO_COLOR } from "@/lib/entidades";
+import { REL_EMPRESA, EST_EMPRESA, TIPO_COLOR, COLOR_ENTIDAD } from "@/lib/entidades";
 import { alertaSunat, empresaDeCasa, empresaViva, textoSunat } from "@/lib/sunat";
-import { esDelEquipo } from "@/lib/personas";
+import { esProminente } from "@/lib/personas";
 import { fmtVence, venceVigencia, vigenciaVencida } from "@/lib/vigencia";
 import { fechaLarga, haceOEn } from "@/lib/fechas";
 import { rucDePersona } from "@/lib/ruc";
@@ -33,6 +33,17 @@ import { redirect } from "next/navigation";
    lugares y convocatorias. Una caja, todo el sistema. */
 
 /* (El mapa de tipos salió a lib/tipos.) */
+
+/* Color de los bloques que NO son entidad (no viven en COLOR_ENTIDAD, para no
+   ensuciar ese mapa): son secciones del buscador con vida propia. Se eligen
+   fuera de los siete colores de entidad ya usados —azul/violeta/teal/naranja/
+   verde/amarillo/rosa— para que cada bloque siga siendo distinguible. */
+const COLOR_SECCION: Record<string, string> = {
+  credenciales: "var(--red)",   // llaves / seguridad — rojo coral
+  repositorio: "#b08968",       // archivo — bronce
+  casos: "var(--accent)",       // el trabajo, el «océano» — el morado del sistema
+  comentarios: "#22d3ee",       // conversación — cian
+};
 
 /* ===== búsqueda por palabras =====
    La frase se parte en palabras (sin conectores) y un registro
@@ -127,6 +138,10 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
   let carteles = new Map<string, string>();
   // Quién tiene cada equipo ahora (portador) — clave: id de equipamiento.
   let portadorEq = new Map<string, any>();
+  // Representante legal por empresa — clave: id de empresa.
+  let rlDe = new Map<string, { nombre: string; foto?: string | null }>();
+  // Interacción en la bitácora por equipo — clave: id de equipamiento.
+  let bitaEq = new Map<string, number>();
   /* Título del padre de cada sub-caso encontrado: «Cámara A lista» a secas no
      dice nada — la mitad de un sub-caso es de quién es hijo. */
   let padreDe = new Map<string, string>();
@@ -379,7 +394,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
          por su película, no por su papelería. */
       .sort((a: any, b: any) => {
         const dirige = (x: any) => (x.proys || []).some((r: any) => /direc|codirec/i.test(r.cargo || ""));
-        const pt = (x: any) => (x.cvsHit.length ? 2 : 0) + (dirige(x) ? 2 : 0) + (esDelEquipo(x) ? 1 : 0);
+        const pt = (x: any) => (x.cvsHit.length ? 2 : 0) + (dirige(x) ? 2 : 0) + (esProminente(x) ? 1 : 0);
         return pt(b) - pt(a) || String(a.nombre).localeCompare(String(b.nombre));
       });
     /* 25, no 10. El corte estaba para que la página no se hiciera eterna,
@@ -435,6 +450,25 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
         });
       }
     }
+    /* Representante legal de las empresas mostradas: su miembro activo cuyo
+       cargo es «representante legal» (prioridad) o presidente/titular/gerente
+       —la misma regla que autocompleta el RL en la ficha. */
+    {
+      const idsEmp = emps.map((e: any) => e.id);
+      if (idsEmp.length) {
+        const { data: rls } = await supabase.from("empresa_miembros")
+          .select("empresa_id,cargo,persona:personas(nombre,alias,foto_url)")
+          .in("empresa_id", idsEmp).eq("estado", "activo");
+        const prio = (c: string) => /representante/i.test(c) ? 0 : /presidente|titular|gerente/i.test(c) ? 1 : 9;
+        const porEmp = new Map<string, any[]>();
+        (rls || []).forEach((m: any) => { const l = porEmp.get(m.empresa_id) || []; l.push(m); porEmp.set(m.empresa_id, l); });
+        porEmp.forEach((ms, eid) => {
+          const r = ms.filter((m: any) => prio(m.cargo || "") < 9).sort((a: any, b: any) => prio(a.cargo || "") - prio(b.cargo || ""))[0];
+          const per = r?.persona ? (Array.isArray(r.persona) ? r.persona[0] : r.persona) : null;
+          if (per) rlDe.set(eid, { nombre: per.alias || per.nombre, foto: per.foto_url });
+        });
+      }
+    }
     const equisTodos = (c6.data || []).filter((e: any) => coincide(
       `equipo ${e.nombre} ${e.folio} ${e.categoria} ${e.subcategoria} ${e.descripcion} ` + pal(e.estado)));
     equis = equisTodos.slice(0, 15);
@@ -449,6 +483,18 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
       ]);
       (mmEq || []).forEach((m: any) => { if (m.cartel_url) carteles.set(`equipamiento:${m.entidad_id}`, m.cartel_url); });
       (prEq || []).forEach((p: any) => { const per = Array.isArray(p.persona) ? p.persona[0] : p.persona; if (per) portadorEq.set(p.equipamiento_id, per); });
+      /* Interacción en la bitácora de cada equipo mostrado: comentarios sueltos
+         (equipamiento_id) + los de sus usos (prestamo_id → equipo). */
+      const [{ data: cbEq }, { data: prsEq }] = await Promise.all([
+        supabase.from("comentarios").select("equipamiento_id").in("equipamiento_id", idsEq),
+        supabase.from("equipo_prestamos").select("id,equipamiento_id").in("equipamiento_id", idsEq),
+      ]);
+      (cbEq || []).forEach((c: any) => bitaEq.set(c.equipamiento_id, (bitaEq.get(c.equipamiento_id) || 0) + 1));
+      const prestEq = new Map((prsEq || []).map((p: any) => [p.id, p.equipamiento_id]));
+      if (prsEq && prsEq.length) {
+        const { data: cpEq } = await supabase.from("comentarios").select("prestamo_id").in("prestamo_id", prsEq.map((p: any) => p.id));
+        (cpEq || []).forEach((c: any) => { const eid = prestEq.get(c.prestamo_id); if (eid) bitaEq.set(eid, (bitaEq.get(eid) || 0) + 1); });
+      }
     }
     lugs = (c7.data || []).filter((l: any) => coincide(`lugar ${l.nombre}`)).slice(0, 6);
 
@@ -561,8 +607,8 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
      que sí importa, y la próxima búsqueda respeta esa decisión. Nivel 2: sin
      caja, solo cabecera con flecha — no engorda la página. La `k` es la clave
      de memoria, estable por sección (no el título, que lleva emoji). */
-  const Seccion = ({ titulo, k, n, mas, verTodo, children }: any) => n > 0 ? (
-    <Plegable id={`busc:${k}`} nivel={2} titulo={
+  const Seccion = ({ titulo, k, n, mas, verTodo, tinte, children }: any) => n > 0 ? (
+    <Plegable id={`busc:${k}`} nivel={2} tinte={tinte} titulo={
       <>{titulo} · {n}
         {mas > 0 && <span style={{ color: "var(--yellow)", fontWeight: 400 }}> de {n + mas}</span>}</>
     }>
@@ -609,19 +655,33 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
     en_uso: ["var(--blue)", "rgba(59,130,246,.06)"],
     en_reparacion: ["var(--yellow)", "rgba(244,180,0,.06)"],
   };
-  const Fila = ({ href, children, docs, tenue, resaltar }: any) => (
-    <div className={`card link fila-cap${tenue ? " fila-tenue" : ""}`}
-      style={{ cursor: "pointer", padding: "8px 13px", marginBottom: 7,
-        ...(resaltar && RES[resaltar] ? { borderLeft: `3px solid ${RES[resaltar][0]}`, background: RES[resaltar][1] } : {}) }}>
-      <Link href={href} className="fila-cubre" aria-label="Abrir" />
-      <div style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap", fontSize: TXT.base }}>
-        {children}
+  const Fila = ({ href, children, docs, tenue, resaltar, avatar }: any) => {
+    const contenido = (
+      <>
+        <div style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap", fontSize: TXT.base }}>
+          {children}
+        </div>
+        {/* Segunda línea: los papeles, todos clickables. Arriba, quién es;
+            abajo, con qué se le abre la puerta a un fondo. */}
+        {docs && <div className="fila-docs">{docs}</div>}
+      </>
+    );
+    return (
+      <div className={`card link fila-cap${tenue ? " fila-tenue" : ""}`}
+        style={{ cursor: "pointer", padding: "8px 13px", marginBottom: 7,
+          ...(resaltar && RES[resaltar] ? { borderLeft: `3px solid ${RES[resaltar][0]}`, background: RES[resaltar][1] } : {}) }}>
+        <Link href={href} className="fila-cubre" aria-label="Abrir" />
+        {/* Con `avatar`, la foto va como columna izquierda que ocupa las dos
+            líneas (nombre + papeles) — así se aprovecha el alto de la fila. */}
+        {avatar ? (
+          <div style={{ display: "flex", gap: 11, alignItems: "center" }}>
+            {avatar}
+            <div style={{ flex: 1, minWidth: 0 }}>{contenido}</div>
+          </div>
+        ) : contenido}
       </div>
-      {/* Segunda línea: los papeles, todos clickables. Arriba, quién es;
-          abajo, con qué se le abre la puerta a un fondo. */}
-      {docs && <div className="fila-docs">{docs}</div>}
-    </div>
-  );
+    );
+  };
 
   /* Póster/logo de una entidad (proyecto o empresa) si tiene cartel cargado;
      si no, null (la fila queda igual). Mismo estilo que en la trayectoria. */
@@ -631,6 +691,16 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
     // eslint-disable-next-line @next/next/no-img-element
     return <img src={u} alt="" className="tr-poster" referrerPolicy="no-referrer"
       style={{ width: size, height: size }} />;
+  };
+  /* Avatar de columna (proyecto/empresa) a 60px, como la foto de persona: su
+     cartel/logo si lo tiene, o un ícono de relleno —siempre ocupa el alto de la
+     fila, nunca un hueco. */
+  const avatarEntidad = (tipo: string, id: string, icono: string, size = 60) => {
+    const u = carteles.get(`${tipo}:${id}`);
+    return u
+      // eslint-disable-next-line @next/next/no-img-element
+      ? <img src={u} alt="" className="tr-poster" referrerPolicy="no-referrer" style={{ width: size, height: size }} />
+      : <span className="tr-poster" style={{ width: size, height: size, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: size * 0.45, background: "var(--bg)" }}>{icono}</span>;
   };
   /* Miniatura de equipo: su cartel si lo tiene, o un 🎥 de relleno —el equipo
      SIEMPRE lleva imagen en la lista, aunque nadie haya subido una. */
@@ -654,10 +724,16 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
   /* Chip de documento: si hay link, va al papel; si no, se muestra apagado
      —que el dato exista y el archivo no es información, no un hueco que
      esconder. `fila-encima` lo levanta sobre la capa clickable de la fila. */
-  const Doc = ({ href, color = "var(--teal)", titulo, children }: any) => href ? (
+  const Doc = ({ href, color = "var(--teal)", titulo, children, tenue }: any) => href ? (
     <a href={href} target="_blank" rel="noopener noreferrer" title={titulo}
       className="badge fila-encima"
-      style={{ color, background: `${color === "var(--teal)" ? "rgba(45,212,191,.12)" : "rgba(167,139,250,.12)"}`, textTransform: "none", letterSpacing: 0 }}>
+      style={{
+        // `tenue`: teal apagado, igual que el chip de RUC (BotonFichaSunat), para
+        // que no compita con los datos que sí importan.
+        color: tenue ? "rgba(45,212,191,.7)" : color,
+        background: tenue ? "rgba(45,212,191,.07)" : (color === "var(--teal)" ? "rgba(45,212,191,.12)" : "rgba(167,139,250,.12)"),
+        textTransform: "none", letterSpacing: 0,
+      }}>
       {children} ↗
     </a>
   ) : (
@@ -693,11 +769,14 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
       {/* Entidades primero: son la respuesta corta. Los casos, el océano, al final. */}
       {/* Sin verTodo: /personas no busca CVs, así que enlazar allá sería
           mandarte a una lista vacía */}
-      <Seccion titulo="👤 Personas" k="personas" n={pers.length} mas={persMas}>
+      <Seccion titulo="👤 Personas" k="personas" n={pers.length} mas={persMas} tinte={COLOR_ENTIDAD.persona}>
         {pers.map((p: any) => (
           <Fila key={p.id} href={`/entidad/persona/${p.id}`}
-            // No es del equipo: sigue ahí, pero apagado
-            tenue={!esDelEquipo(p)}
+            // No es gente principal (equipo ni actor social): sigue ahí, pero apagado
+            tenue={!esProminente(p)}
+            // La cara como columna izquierda: ocupa el alto de la fila (nombre +
+            // papeles), aprovechando el doble espacio que ya tenía la tarjeta.
+            avatar={<Avatar nombre={p.nombre} src={p.foto_url || avatarDe.get(p.usuario_id)} size={60} />}
             docs={
               <>
                 {/* Sus películas PRIMERO, antes que los papeles. Esta línea es
@@ -740,10 +819,6 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
                 )}
               </>
             }>
-            {/* Su cara: la propia si la subió (foto_url), si no la de su cuenta
-                (avatar del login). Sin ninguna, Avatar cae a las iniciales — no
-                hay hueco. */}
-            <Avatar nombre={p.nombre} src={p.foto_url || avatarDe.get(p.usuario_id)} size={32} />
             <b>{p.nombre}</b>
             {p.rol && <span style={{ color: "var(--muted)", fontSize: TXT.meta }}>{p.rol.slice(0, 50)}</span>}
             <Marca s={statPers.get(p.id)} />
@@ -753,7 +828,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
         ))}
       </Seccion>
 
-      <Seccion titulo="🔑 Credenciales" k="credenciales" n={creds.length}>
+      <Seccion titulo="🔑 Credenciales" k="credenciales" n={creds.length} tinte={COLOR_SECCION.credenciales}>
         {creds.map((c: any) => (
           <Fila key={c.id} href={`/entidad/${c.dueno}/${c.duenoId}`}
             docs={
@@ -806,11 +881,12 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
         ))}
       </Seccion>
 
-      <Seccion titulo="📁 Proyectos" k="proyectos" n={proys.length}>
+      <Seccion titulo="📁 Proyectos" k="proyectos" n={proys.length} tinte={COLOR_ENTIDAD.proyecto}>
         {proys.map((p: any) => (
           <Fila key={p.id} href={`/entidad/proyecto/${p.id}`}
             // Solo lo que se mueve va encendido. Lo demás sigue ahí, apagado.
             tenue={!proyVivo(p)}
+            avatar={avatarEntidad("proyecto", p.id, "📁")}
             docs={(p.renca || p.presupuesto_url || p.carpeta_drive_url) ? (
               <>
                 {p.renca && <Doc href={p.renca_url} titulo="Constancia RENCA del proyecto">🎬 {p.renca}</Doc>}
@@ -820,7 +896,6 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
                 )}
               </>
             ) : null}>
-            {poster("proyecto", p.id)}
             <b>{p.nombre}</b>
             {p.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{p.folio}</span>}
             {p.tipo && (
@@ -848,19 +923,20 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
         ))}
       </Seccion>
 
-      <Seccion titulo="🏢 Empresas" k="empresas" n={emps.length}>
+      <Seccion titulo="🏢 Empresas" k="empresas" n={emps.length} tinte={COLOR_ENTIDAD.empresa}>
         {emps.map((e: any) => (
           <Fila key={e.id} href={`/entidad/empresa/${e.id}`}
             // Apagada si ya no está viva (en cierre) o si nunca fue nuestra
             // (externa). La aliada se queda: con ella sí se postula.
             tenue={!empresaViva(e) || !empresaDeCasa(e)}
+            avatar={avatarEntidad("empresa", e.id, "🏢")}
             docs={
               <>
                 {e.ruc && <BotonFichaSunat numero={e.ruc} tipo="RUC" compacto url={urlSunat} />}
                 {/* RENCA y vigencia tienen su PDF guardado y los pintaba como
                     texto muerto: el papel estaba a un clic y no se ofrecía. */}
                 {e.renca && (
-                  <Doc href={e.renca_url} titulo="Constancia RENCA">🎬 {e.renca}</Doc>
+                  <Doc href={e.renca_url} titulo="Constancia RENCA" tenue>🎬 {e.renca}</Doc>
                 )}
                 {e.vigencia_poder_fecha && (() => {
                   /* Vencida en rojo SOLO si no tiene RENCA. La vigencia sirve
@@ -896,7 +972,6 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
                 )}
               </>
             }>
-            {poster("empresa", e.id)}
             <b>{e.nombre}</b>
             {/* De quién es y cómo está: sin esto, "⚠ SUNAT" en una empresa
                 externa o en cierre parece un pendiente tuyo, y no lo es. */}
@@ -910,7 +985,20 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
                 {EST_EMPRESA[e.estado]?.[0] || e.estado.replace(/_/g, " ")}
               </span>
             )}
-            {e.razon_social && <span style={{ color: "var(--dim)", fontSize: TXT.meta }}>{e.razon_social}</span>}
+            {/* Razón social recortada (title = completa): ocupa poco y deja aire
+                para el dato que más interesa aquí, el representante legal. */}
+            {e.razon_social && (
+              <span title={e.razon_social}
+                style={{ color: "var(--dim)", fontSize: TXT.meta, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {e.razon_social}
+              </span>
+            )}
+            {rlDe.get(e.id) && (
+              <span className="badge" title="Representante legal"
+                style={{ color: "var(--teal)", background: "rgba(45,212,191,.12)", textTransform: "none", letterSpacing: 0, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 5 }}>
+                {miniPersona(rlDe.get(e.id)!.foto || undefined, 18)} {rlDe.get(e.id)!.nombre}
+              </span>
+            )}
             <Marca s={statEmp.get(e.id)} />
             {/* La regla compartida, no otra copia: solo alerta si es nuestra,
                 está activa, y de verdad está mal (incluye "no habido"). */}
@@ -925,16 +1013,20 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
       </Seccion>
 
       <Seccion titulo="🎥 Equipos" k="equipos" n={equis.length} mas={equisMas}
-        verTodo={`/equipamiento?q=${encodeURIComponent(q)}`}>
+        verTodo={`/equipamiento?q=${encodeURIComponent(q)}`} tinte={COLOR_ENTIDAD.equipamiento}>
         {equis.map((e: any) => {
           const per = portadorEq.get(e.id);
+          const nBita = bitaEq.get(e.id) || 0;
           return (
             <Fila key={e.id} href={`/entidad/equipamiento/${e.id}`}
+              avatar={avatarEntidad("equipamiento", e.id, "🎥")}
               resaltar={e.estado === "en_uso" ? "en_uso" : e.estado === "en_reparacion" ? "en_reparacion" : undefined}>
-              {posterEq(e.id)}
               {e.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{e.folio}</span>}
               <b>{e.nombre}</b>
               <span style={{ color: "var(--dim)", fontSize: TXT.meta }}>{e.categoria} · {(e.estado || "").replace(/_/g, " ")}</span>
+              {nBita > 0 && (
+                <span style={{ color: "var(--muted)", fontSize: TXT.chip }} title="Notas y comentarios en su bitácora">🗒 {nBita}</span>
+              )}
               <span style={{ flex: 1 }} />
               {per && (
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "var(--muted)", fontSize: TXT.meta }}>
@@ -946,7 +1038,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
         })}
       </Seccion>
 
-      <Seccion titulo="🎯 Postulaciones" k="postulaciones" n={postus.length}>
+      <Seccion titulo="🎯 Postulaciones" k="postulaciones" n={postus.length} tinte={COLOR_ENTIDAD.postulacion}>
         {postus.map((p: any) => (
           <Fila key={p.id} href={`/entidad/postulacion/${p.id}`}
             // Edición pasada o terminó sin ganar: historia, salvo que deba rendición
@@ -995,7 +1087,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
         ))}
       </Seccion>
 
-      <Seccion titulo="📜 Convocatorias" k="convocatorias" n={convs.length}>
+      <Seccion titulo="📜 Convocatorias" k="convocatorias" n={convs.length} tinte={COLOR_ENTIDAD.convocatoria}>
         {convs.map((c: any) => (
           <Fila key={c.id} href={`/entidad/convocatoria/${c.id}`}
             // Edición pasada o cerrada: memoria del palmarés, no cancha de hoy
@@ -1017,7 +1109,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
         ))}
       </Seccion>
 
-      <Seccion titulo="📍 Lugares" k="lugares" n={lugs.length}>
+      <Seccion titulo="📍 Lugares" k="lugares" n={lugs.length} tinte={COLOR_ENTIDAD.lugar}>
         {lugs.map((l: any) => (
           <Fila key={l.id} href={`/entidad/lugar/${l.id}`}>
             <b>{l.nombre}</b>
@@ -1028,24 +1120,29 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
       {/* El repositorio: material, no fichas. Va después de las entidades y
           antes de los casos —es «lo que sabemos», no «lo que hacemos»—. */}
       <Seccion titulo="📚 Repositorio" k="repositorio" n={objs.length} mas={objsMas}
-        verTodo={`/repositorio?q=${encodeURIComponent(q)}`}>
+        verTodo={`/repositorio?q=${encodeURIComponent(q)}`} tinte={COLOR_SECCION.repositorio}>
         {objs.map((o: any) => (
-          <Fila key={o.id} href={`/objeto/${o.id}`}>
-            {/* La cara del material: miniatura del archivo (imagen, carátula de
-                YouTube, primera página de un Drive) si el link la da; si no —un
-                PDF suelto, un doc restringido— queda el ícono del tipo. */}
-            {previewCandidates(o.url, 200).length
-              ? <Miniatura url={o.url} size={44} alt={o.titulo} />
-              : <span>{icoObjeto(o.tipo)}</span>}
-            <b>{o.titulo}</b>
-            <span className="badge" style={{ color: "var(--dim)", background: "#1c1c2c" }}>
-              {lblObjeto(o.tipo)}
-            </span>
-            {o.dueno && (
-              <span style={{ color: "var(--dim)", fontSize: TXT.micro }}>
-                {ICO_ENT[o.entidad_tipo] || "🔗"} {o.dueno}
+          <Fila key={o.id} href={`/objeto/${o.id}`}
+            /* La cara del material como columna izquierda (ocupa el alto de la
+               fila): miniatura del archivo (imagen, carátula de YouTube, primera
+               página de un Drive) si el link la da; si no —un PDF suelto, un doc
+               restringido— un recuadro con el ícono del tipo, del mismo tamaño. */
+            avatar={previewCandidates(o.url, 200).length
+              ? <Miniatura url={o.url} size={60} alt={o.titulo} />
+              : <span className="tr-poster" style={{ width: 60, height: 60, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 27, background: "var(--bg)" }}>{icoObjeto(o.tipo)}</span>}>
+            <b style={{ fontSize: TXT.titulo }}>{o.titulo}</b>
+            {/* Segunda fila propia: tipo + dueño, para que no desborden junto al
+                título. `width:100%` fuerza el salto de línea dentro del flex. */}
+            <span style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap", width: "100%" }}>
+              <span className="badge" style={{ color: "var(--dim)", background: "#1c1c2c" }}>
+                {lblObjeto(o.tipo)}
               </span>
-            )}
+              {o.dueno && (
+                <span style={{ color: "var(--dim)", fontSize: TXT.micro }}>
+                  {ICO_ENT[o.entidad_tipo] || "🔗"} {o.dueno}
+                </span>
+              )}
+            </span>
             {o.notas && (
               <span style={{ color: "var(--muted)", fontSize: TXT.cuerpo, width: "100%" }}>
                 {snippet(o.notas, palabras)}
@@ -1055,7 +1152,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
         ))}
       </Seccion>
 
-      <Seccion titulo="📌 Casos" k="casos" n={casos.length}>
+      <Seccion titulo="📌 Casos" k="casos" n={casos.length} tinte={COLOR_SECCION.casos}>
         {casos.map((p: any) => (
           <Fila key={p.id} href={`/caso/${p.id}`}>
             {/* La cara de quien lo creó (autor_id → su cuenta). Sin foto, las
@@ -1091,7 +1188,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
         ))}
       </Seccion>
 
-      <Seccion titulo="💬 En comentarios" k="comentarios" n={coms.length}>
+      <Seccion titulo="💬 En comentarios" k="comentarios" n={coms.length} tinte={COLOR_SECCION.comentarios}>
         {coms.map((c: any) => (
           <Fila key={c.id} href={c.objeto_id ? `/objeto/${c.objeto_id}#comentarios` : `/caso/${c.publicacion_id}`}>
             <span style={{ color: "var(--text)", fontSize: TXT.cuerpo, fontStyle: "italic", width: "100%", lineHeight: 1.45 }}>

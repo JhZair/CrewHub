@@ -14,7 +14,7 @@ import { useEffect, useState, type ReactNode } from "react";
 
    El resumen del título es lo que se lee cerrado: «Presupuesto · S/ 60.000»
    dice más que «Presupuesto», y muchas veces evita abrirlo. */
-export default function Plegable({ id, ancla, titulo, resumen, abiertoPorDefecto = true, nivel = 1, children }: {
+export default function Plegable({ id, ancla, titulo, resumen, abiertoPorDefecto = true, nivel = 1, tinte, children }: {
   /** Clave de memoria. Única por ficha: `postulacion:<id>:presupuesto`. */
   id: string;
   /** Id en el DOM, para que «ir →» pueda abrirla antes de bajar hasta ella. */
@@ -25,6 +25,9 @@ export default function Plegable({ id, ancla, titulo, resumen, abiertoPorDefecto
   abiertoPorDefecto?: boolean;
   /** Profundidad visual: 1 = tarjeta principal, 2 = sub-sección, 3 = grupo. */
   nivel?: 1 | 2 | 3;
+  /** Color de identidad: tiñe MUY tenue el fondo del bloque (el buscador lo usa
+      para dar a cada entidad su color). Cualquier color CSS o `var(--…)`. */
+  tinte?: string;
   children: ReactNode;
 }) {
   /* Arranca con el valor por defecto y lo corrige tras montar: leer
@@ -83,7 +86,8 @@ export default function Plegable({ id, ancla, titulo, resumen, abiertoPorDefecto
   };
 
   return (
-    <section className={`plg n${nivel} ${abierto ? "on" : ""}`} id={ancla}>
+    <section className={`plg n${nivel} ${abierto ? "on" : ""} ${tinte ? "plg--tinte" : ""}`} id={ancla}
+      style={tinte ? ({ ["--plg-tinte" as any]: tinte }) : undefined}>
       <button className="plg-cab" onClick={alternar}
         title={abierto ? "Plegar" : "Desplegar"} aria-expanded={abierto}>
         <span className="plg-flecha">{abierto ? "▾" : "▸"}</span>

@@ -1960,6 +1960,15 @@ img.av{border:1px solid var(--border2)}
 .plg.n2.on>.plg-cab{border-bottom:1px solid var(--border)}
 .plg.n2>.plg-cuerpo{padding:11px 0 4px}
 .plg.n2>.plg-cab .plg-tit{font-size:13.5px}
+/* Tinte de identidad: cada bloque de entidad del buscador con su color, muy
+   tenue de fondo y un filo de acento a la izquierda. Reviste el n2 (que va al
+   ras) con caja propia: fondo al 5%, borde al 14%, filo izquierdo al 45%. */
+.plg.n2.plg--tinte{background:color-mix(in srgb, var(--plg-tinte) 5%, transparent);
+  border:1px solid color-mix(in srgb, var(--plg-tinte) 14%, transparent);
+  border-left:3px solid color-mix(in srgb, var(--plg-tinte) 45%, transparent);
+  border-radius:12px;padding:0 12px;margin-bottom:10px;overflow:hidden}
+.plg.n2.plg--tinte.on>.plg-cab{border-bottom-color:color-mix(in srgb, var(--plg-tinte) 16%, transparent)}
+.plg.n2.plg--tinte>.plg-cuerpo{padding-bottom:12px}
 /* Nivel 3: grupo (una persona / etapa / rubro). Caja ligera, muy contenida. */
 .plg.n3{border:1px solid var(--border);border-radius:10px;background:rgba(255,255,255,.015);margin-bottom:7px;overflow:hidden}
 .plg.n3>.plg-cab{padding:8px 11px}

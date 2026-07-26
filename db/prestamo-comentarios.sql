@@ -16,14 +16,27 @@ alter table comentarios add column if not exists prestamo_id uuid
 
 -- Exactamente UNO de los tres dueños. El XOR de dos (`<>`) ya no basta con tres:
 -- se cuenta cuántos vienen no nulos y se exige que sea exactamente uno.
-alter table comentarios drop constraint if exists comentarios_dueno_chk;
-alter table comentarios add constraint comentarios_dueno_chk
-  check (
-    (publicacion_id is not null)::int
-    + (objeto_id is not null)::int
-    + (prestamo_id is not null)::int
-    = 1
-  );
+--
+-- BLINDAJE: si ya existe `equipamiento_id` (o sea, ya corrió db/bitacora-equipo.sql,
+-- que instala el constraint de CUATRO dueños), NO lo revertimos a tres —hacerlo
+-- reventaría contra las filas de la bitácora del equipo. Así este archivo es
+-- seguro de re-correr en cualquier orden.
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_name = 'comentarios' and column_name = 'equipamiento_id'
+  ) then
+    alter table comentarios drop constraint if exists comentarios_dueno_chk;
+    alter table comentarios add constraint comentarios_dueno_chk
+      check (
+        (publicacion_id is not null)::int
+        + (objeto_id is not null)::int
+        + (prestamo_id is not null)::int
+        = 1
+      );
+  end if;
+end $$;
 
 create index if not exists idx_com_prestamo on comentarios(prestamo_id, creado_en);
 

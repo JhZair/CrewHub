@@ -10,7 +10,7 @@ import { urlPlataforma, PLAT } from "@/lib/plataformas";
 import BotonFichaSunat from "@/components/BotonFichaSunat";
 import Avatar from "@/components/Avatar";
 import Completitud from "@/components/Completitud";
-import { completitud } from "@/lib/entidades";
+import { completitud, EQUIPOS_PERSONA } from "@/lib/entidades";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
@@ -23,8 +23,9 @@ const EST_META: Record<string, [string, string]> = {
   inactivo: ["Inactivos", "var(--dim)"],
   vetado: ["Vetados", "var(--red)"],
 };
-const TIPOS = ["personal", "colaborador", "colaborador eventual", "independiente", "contacto"];
-const EQUIPOS = ["creativo", "tecnico", "artistico", "administrativo"];
+const TIPOS = ["personal", "colaborador", "actor social", "colaborador eventual", "independiente", "contacto"];
+// Fuente única (lib/entidades): sumar un equipo ahí lo trae solo a este filtro.
+const EQUIPOS = EQUIPOS_PERSONA;
 
 const dias = (f: string) => Math.ceil((new Date(f + "T12:00:00").getTime() - Date.now()) / 86400000);
 const fmt = (f: string) => new Date(f + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" });

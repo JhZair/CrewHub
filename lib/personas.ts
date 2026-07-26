@@ -18,6 +18,22 @@ export const esDelEquipo = (p: { estado?: string | null; tipo?: string | null })
 /* Para las consultas a PostgREST, que no pueden llamar a la función. */
 export const FILTRO_EQUIPO = `(${TIPOS_EQUIPO.join(",")})`;
 
+/* ── Gente IMPORTANTE (prominencia), que no es lo mismo que «gente nuestra» ──
+   Dos conceptos que se confundían en uno. `esDelEquipo` decide a quién le
+   RECLAMAMOS papeles (DNI, RHE, SUNAT) y a quién le contamos carga: solo
+   personal y colaborador. Pero la importancia VISUAL —salir destacado y no
+   apagado en el buscador y los listados— es más ancha: el actor social
+   (comunero, protagonista, sujeto del documental) es figura principal de la
+   obra aunque no sea staff a quien se le chasea documentación.
+
+   Antes «actor social» vivía en el eje `equipo` (creativo/técnico/…), donde no
+   encajaba: no es un área del crew, es una CLASE de relación. Ahora es un
+   `tipo` y entra aquí, en la prominencia, sin entrar en las obligaciones. */
+export const TIPOS_PROMINENTES = ["personal", "colaborador", "actor social"];
+
+export const esProminente = (p: { estado?: string | null; tipo?: string | null }) =>
+  p.estado === "activo" && TIPOS_PROMINENTES.includes(p.tipo || "");
+
 /* ── EL BOT NO ES GENTE ──
    Bot Qhaway tiene una cuenta como cualquiera, así que hay que apartarlo a
    mano de todo lo que signifique «el equipo»: no carga casos —«él reparte, no

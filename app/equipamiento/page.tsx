@@ -40,7 +40,7 @@ export default async function Equipamiento({ searchParams }: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: eqs }, { data: enManos }, { data: vincs }, { data: coms }, { data: media }, comsBita, comsUso, usosRec] = await Promise.all([
+  const [{ data: eqs }, { data: enManos }, { data: vincs }, { data: coms }, { data: media }, comsBita, comsUso, usosRec, { data: comBita }, { data: prestAll }] = await Promise.all([
     // `*`: para calcular la completitud de la ficha de cada equipo.
     supabase.from("equipamiento").select("*").order("folio"),
     supabase.from("equipo_prestamos")
@@ -67,10 +67,26 @@ export default async function Equipamiento({ searchParams }: {
     supabase.from("equipo_prestamos")
       .select("id,desde,hasta,equipo:equipamiento(id,folio,nombre),persona:personas(id,nombre,alias)")
       .order("desde", { ascending: false }).limit(12),
+    // Para el contador de interacción en la bitácora de cada equipo: solo los FK
+    // (livianos), sean de la bitácora suelta (equipamiento_id) o de un uso
+    // (prestamo_id, que se resuelve al equipo con la tabla de préstamos).
+    supabase.from("comentarios").select("equipamiento_id,prestamo_id")
+      .or("equipamiento_id.not.is.null,prestamo_id.not.is.null"),
+    supabase.from("equipo_prestamos").select("id,equipamiento_id"),
   ]);
   const un1 = (v: any) => (Array.isArray(v) ? v[0] : v);
   const cartelPorEq = new Map<string, string>();
   (media || []).forEach((m: any) => { if (m.cartel_url) cartelPorEq.set(m.entidad_id, m.cartel_url); });
+
+  /* Interacción en la bitácora de cada equipo: comentarios sueltos
+     (equipamiento_id) + comentarios de sus usos (prestamo_id → equipo). */
+  const prestEq = new Map<string, string>();
+  (prestAll || []).forEach((p: any) => { if (p.equipamiento_id) prestEq.set(p.id, p.equipamiento_id); });
+  const bitaCount = new Map<string, number>();
+  (comBita || []).forEach((c: any) => {
+    const eid = c.equipamiento_id || (c.prestamo_id ? prestEq.get(c.prestamo_id) : null);
+    if (eid) bitaCount.set(eid, (bitaCount.get(eid) || 0) + 1);
+  });
 
   // Fusiona las tres fuentes en una sola línea de actividad (descendente).
   const actItems: any[] = [];
@@ -163,13 +179,21 @@ export default async function Equipamiento({ searchParams }: {
     </span>
   );
 
+  // Resaltado tenue por estado: en uso (azul) y en reparación (amarillo).
+  const RES_EST: Record<string, [string, string]> = {
+    en_uso: ["var(--blue)", "rgba(59,130,246,.05)"],
+    en_reparacion: ["var(--yellow)", "rgba(244,180,0,.05)"],
+  };
   const Fila = (x: any) => {
     const a = act.get(x.id) || VACIO;
+    const nBita = bitaCount.get(x.id) || 0;
+    const res = RES_EST[x.estado];
     return (
       <Link key={x.id} href={`/entidad/equipamiento/${x.id}`}>
-        <div className="card link" style={{ cursor: "pointer", padding: "12px 16px" }}>
+        <div className="card link" style={{ cursor: "pointer", padding: "12px 16px",
+          ...(res ? { borderLeft: `3px solid ${res[0]}`, background: res[1] } : {}) }}>
           <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-            {miniEquipo(cartelPorEq.get(x.id))}
+            {miniEquipo(cartelPorEq.get(x.id), 60)}
             {x.folio
               ? <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{x.folio}</span>
               : <span className="badge" style={{ color: "var(--yellow)", background: "rgba(244,180,0,.12)" }}>⚠ sin folio</span>}
@@ -183,8 +207,11 @@ export default async function Equipamiento({ searchParams }: {
             {a.casos > 0 && (
               <span style={{ color: "var(--dim)", fontSize: TXT.chip }} title="Casos vinculados">📌 {a.casos}</span>
             )}
+            {nBita > 0 && (
+              <span style={{ color: "var(--muted)", fontSize: TXT.chip }} title="Notas y comentarios en su bitácora">🗒 {nBita}</span>
+            )}
             {a.coments > 0 && (
-              <span style={{ color: "var(--muted)", fontSize: TXT.chip }} title="Comentarios">💬 {a.coments}</span>
+              <span style={{ color: "var(--muted)", fontSize: TXT.chip }} title="Comentarios en casos">💬 {a.coments}</span>
             )}
             <BotonComprobar equipoId={x.id} ultima={x.ultima_comprobacion} compacto={!ronda} />
             <span className="badge" style={{ color: EST_META[x.estado]?.[1] || "var(--muted)", background: "#1c1c2c", fontSize: TXT.chip }}>

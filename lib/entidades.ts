@@ -123,6 +123,13 @@ export const VALIDADORES: Record<string, [RegExp, string]> = {
   puntaje: [/^\d{1,3}(\.\d{1,2})?$/, "Solo el puntaje, hasta 2 decimales (ej. 87.5)"],
 };
 
+/* Los «equipos» a los que puede pertenecer una persona: el ÁREA del crew en la
+   que trabaja. Una sola fuente: la usa el combo del formulario Y los chips del
+   filtro en /personas, para que al sumar una nueva aparezca sola en los dos
+   sitios. OJO: «actor social» NO va aquí —no es un área del crew, es una clase
+   de relación, y por eso vive en el eje `tipo` (ver campo tipo de persona). */
+export const EQUIPOS_PERSONA = ["creativo", "tecnico", "artistico", "administrativo"];
+
 /* Subcategorías sugeridas según la categoría del equipo */
 export const SUBCATS_EQUIPO: Record<string, string[]> = {
   "cámara": ["Cuerpo de cámara", "Cámara de acción", "Cámara de bolsillo (Pocket / Nano)",
@@ -243,6 +250,23 @@ export const EST_CONVOCATORIA: Record<string, { label: string; color: string; ic
 };
 /* La carrera (sin la salida «cancelada»), en orden. */
 export const PASOS_CONVOCATORIA = ["planificada", "abierta", "en_evaluacion", "con_resultados", "finalizada"];
+
+/* Color de IDENTIDAD por TIPO de entidad — para distinguirlas de un vistazo
+   (tinte de la cabecera de la ficha, fondo tenue de los bloques del buscador…).
+   Una sola fuente: la usan la ficha de entidad Y el buscador general, para que
+   el azul de «persona» o el naranja de «equipamiento» sean el mismo en todos
+   lados. Distinto de TIPO_COLOR (que colorea el tipo de un PROYECTO) y de los
+   colores de estado de un caso: son tres ejes de color separados. */
+export const COLOR_ENTIDAD: Record<string, string> = {
+  proyecto: "var(--violet)",
+  empresa: "var(--teal)",
+  persona: "var(--blue)",
+  convocatoria: "var(--yellow)",
+  postulacion: "var(--green)",
+  equipamiento: "#ff8c42",
+  lugar: "#ec4899",
+  etiqueta: "var(--dim)",
+};
 
 /* Color por tipo de proyecto — el mismo en todo el sistema */
 export const TIPO_COLOR: Record<string, string> = {
@@ -450,8 +474,12 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
     campos: [
       { key: "nombre", label: "Nombre completo", corto: "Nombre", requerido: true },
       { key: "alias", label: "Nombre corto / alias", corto: "Alias" },
-      { key: "tipo", label: "Tipo", tipo: "select", opciones: ["personal", "colaborador", "colaborador eventual", "independiente", "contacto"] },
-      { key: "equipo", label: "Equipo", tipo: "select", opciones: ["creativo", "tecnico", "artistico", "administrativo"] },
+      /* «actor social» (comunero, protagonista, sujeto del documental) es una
+         CLASE de relación, no un área del crew —por eso es un tipo y no un
+         equipo—. Sale destacado en búsquedas/listados (lib/personas
+         esProminente) pero no se le reclama papeles como a personal/colaborador. */
+      { key: "tipo", label: "Tipo", tipo: "select", opciones: ["personal", "colaborador", "actor social", "colaborador eventual", "independiente", "contacto"] },
+      { key: "equipo", label: "Equipo", tipo: "select", opciones: EQUIPOS_PERSONA },
       { key: "estado", label: "Estado", tipo: "select", opciones: ["activo", "potencial", "vetado", "inactivo"] },
       { key: "rol", label: "Especialidades / rol", corto: "Rol", sugerencias: ESPECIALIDADES, multiple: true },
       { key: "genero", label: "Género", tipo: "select", opciones: ["femenino", "masculino", "no binario", "otro"] },

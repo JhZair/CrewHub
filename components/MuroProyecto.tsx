@@ -283,7 +283,9 @@ function EditorNota({ post, proyectoId, entidadTipo = "proyecto", perfiles, suge
           onChange={e => setTexto(e.target.value)}
           onPaste={async e => {
             const files = imagenesDePaste(e); if (!files.length) return; e.preventDefault();
-            pegar(files);
+            for (const f of files.slice(0, Math.max(0, 6 - imgs.length))) {
+              const r = await subirImagen(f); if (r.error) { setError(r.error); break; } if (r.url) setImgs(prev => [...prev, r.url!]);
+            }
           }} />
       </div>
       <EditorImagenes imgs={imgs} setImgs={setImgs} onError={setError} />

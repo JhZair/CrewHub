@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { Mantenimiento } from "@/components/EntidadForm";
-import { SUNAT_EMPRESA, DOCS_EMPRESA, DNI_PERSONA, DOCS_PERSONA, SUNAT_PERSONA, GRUPO_TONO, completitud, REGIONES } from "@/lib/entidades";
+import { SUNAT_EMPRESA, DOCS_EMPRESA, DNI_PERSONA, DOCS_PERSONA, SUNAT_PERSONA, GRUPO_TONO, completitud, REGIONES, COLOR_ENTIDAD } from "@/lib/entidades";
 import { rucDePersona } from "@/lib/ruc";
 import { estado4ta, money } from "@/lib/cuarta";
 import { diasDeVigencia, fmtVence, vigenciaVencida } from "@/lib/vigencia";
@@ -115,18 +115,9 @@ const CONF: Record<string, { tabla: string; icono: string; campos: [string, stri
   etiqueta: { tabla: "etiquetas", icono: "🏷️", campos: [] },
 };
 
-/* Un color por TIPO de entidad, para distinguirlas de un vistazo en la
-   cabecera (tinte de la portada, marco del cartel, línea de acento). */
-const COLOR_ENT: Record<string, string> = {
-  proyecto: "var(--violet)",
-  empresa: "var(--teal)",
-  persona: "var(--blue)",
-  convocatoria: "var(--yellow)",
-  postulacion: "var(--green)",
-  equipamiento: "#ff8c42",
-  lugar: "#ec4899",
-  etiqueta: "var(--dim)",
-};
+/* El color por TIPO de entidad vive en lib/entidades (COLOR_ENTIDAD): lo
+   comparten esta ficha y el buscador general para que sea el mismo azul de
+   «persona» o naranja de «equipamiento» en todos lados. */
 
 /* Grupos que bajan al bloque plegable «Ver más» (vacío por ahora: Documentos,
    Identidad y SUNAT quedan a la vista). Se conserva el mecanismo por si algún
@@ -1298,7 +1289,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
           cualquiera del equipo, como el resto de la ficha. */}
       <PortadaEntidad tipo={params.tipo} id={params.id} nombre={nombre}
         portada={media?.portada_url} cartel={media?.cartel_url}
-        color={COLOR_ENT[params.tipo] || "var(--violet)"}
+        color={COLOR_ENTIDAD[params.tipo] || "var(--violet)"}
         editable conCartel={conCartel} />
 
       {/* El nombre arranca a la derecha del cartel que sobresale. Pero cuando
@@ -1308,8 +1299,10 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
           sin estorbar (no se solapa con esta fila). */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 16,
         paddingLeft: conCartel && params.tipo !== "postulacion" && params.tipo !== "convocatoria" ? 108 : 0 }}>
-        {/* A quien trabaja con nosotros le ponemos cara; a un contacto no */}
-        {params.tipo === "persona" && ["personal", "colaborador", "colaborador eventual"].includes(ent.tipo || "") ? (
+        {/* A quien trabaja con nosotros le ponemos cara; a un contacto no.
+            El actor social también lleva cara —su imagen (comunero, protagonista)
+            es parte esencial de la obra, no un adorno—. */}
+        {params.tipo === "persona" && ["personal", "colaborador", "colaborador eventual", "actor social"].includes(ent.tipo || "") ? (
           <>
             {/* Si ya tiene cuenta, su avatar del login sirve de foto: no hay
                 que pedirle otra. La subida solo la reemplaza si quiere. */}
