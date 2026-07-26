@@ -207,10 +207,11 @@ export async function crearPublicacion(
    gratis. El título no se pide —una nota no tiene asunto— así que se deriva de
    la primera línea del cuerpo (la columna `titulo` es NOT NULL). */
 export async function publicarBitacora(
-  proyectoId: string,
+  entidadId: string,
   cuerpo: string,
   imagenes: string[] = [],
   tags: string[] = [],
+  entidadTipo: string = "proyecto",
 ) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -222,7 +223,7 @@ export async function publicarBitacora(
   /* Las etiquetas del muro son PROPIAS de la bitácora, no las del sistema (las
      de casos: Urgente, SUNAT…). Se guardan como texto en la propia nota, no
      como vínculo a la tabla `etiquetas` — así jamás salen en otro listado ni se
-     mezclan con las etiquetas de trabajo. Acotadas a este proyecto. */
+     mezclan con las etiquetas de trabajo. Acotadas a esta entidad. */
   const tagsLimpias = [...new Set((tags || []).map(t => t.trim()).filter(Boolean))].slice(0, 12);
   const { data: pub, error } = await supabase.from("publicaciones").insert({
     autor_id: user.id, tipo: "bitacora", titulo, cuerpo: cuerpoT || null,
@@ -230,16 +231,16 @@ export async function publicarBitacora(
   }).select("id").single();
   if (error) return { error: error.message };
   const { error: e2 } = await supabase.from("publicacion_vinculos")
-    .insert({ publicacion_id: pub.id, entidad_tipo: "proyecto", entidad_id: proyectoId });
-  if (e2) return { error: "Publicado, pero falló el vínculo al proyecto: " + e2.message };
-  revalidatePath(`/entidad/proyecto/${proyectoId}`);
+    .insert({ publicacion_id: pub.id, entidad_tipo: entidadTipo, entidad_id: entidadId });
+  if (e2) return { error: "Publicado, pero falló el vínculo: " + e2.message };
+  revalidatePath(`/entidad/${entidadTipo}/${entidadId}`);
   return {};
 }
 
 /* Destacar / quitar de destacados una nota del muro. Las destacadas asoman en
    la columna del carné del proyecto. Es una decisión de equipo (cualquiera del
    sistema puede fijarla), no solo del autor. Se guarda en `datos_extra`. */
-export async function destacarBitacora(pubId: string, proyectoId: string, destacado: boolean) {
+export async function destacarBitacora(pubId: string, entidadId: string, destacado: boolean, entidadTipo: string = "proyecto") {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
@@ -249,14 +250,14 @@ export async function destacarBitacora(pubId: string, proyectoId: string, destac
   const nuevo = { ...(pub.datos_extra || {}), destacado };
   const { error } = await supabase.from("publicaciones").update({ datos_extra: nuevo }).eq("id", pubId);
   if (error) return { error: error.message };
-  revalidatePath(`/entidad/proyecto/${proyectoId}`);
+  revalidatePath(`/entidad/${entidadTipo}/${entidadId}`);
   return {};
 }
 
 /* Editar una nota del muro: solo su autor. Cambia texto, imágenes y etiquetas;
    conserva el «destacado» y marca `editado_en`. */
 export async function editarBitacora(
-  pubId: string, proyectoId: string, cuerpo: string, imagenes: string[] = [], tags: string[] = [],
+  pubId: string, entidadId: string, cuerpo: string, imagenes: string[] = [], tags: string[] = [], entidadTipo: string = "proyecto",
 ) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -275,12 +276,12 @@ export async function editarBitacora(
     .update({ titulo, cuerpo: cuerpoT || null, imagenes: imgs, datos_extra: nuevo, editado_en: new Date().toISOString() })
     .eq("id", pubId);
   if (error) return { error: error.message };
-  revalidatePath(`/entidad/proyecto/${proyectoId}`);
+  revalidatePath(`/entidad/${entidadTipo}/${entidadId}`);
   return {};
 }
 
 /* Borrar una nota del muro: solo su autor. Cascadea comentarios/reacciones. */
-export async function borrarBitacora(pubId: string, proyectoId: string) {
+export async function borrarBitacora(pubId: string, entidadId: string, entidadTipo: string = "proyecto") {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
@@ -290,7 +291,7 @@ export async function borrarBitacora(pubId: string, proyectoId: string) {
   if (pub.autor_id !== user.id) return { error: "Solo el autor puede borrar su nota." };
   const { error } = await supabase.from("publicaciones").delete().eq("id", pubId);
   if (error) return { error: error.message };
-  revalidatePath(`/entidad/proyecto/${proyectoId}`);
+  revalidatePath(`/entidad/${entidadTipo}/${entidadId}`);
   return {};
 }
 

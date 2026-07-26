@@ -343,7 +343,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
   };
 
   return (
-    <div className="shell">
+    <div className="shell" style={{ paddingBottom: 64 }}>
       <Realtime tablas={["actividad", "comentarios", "publicaciones", "reacciones", "publicacion_vinculos"]} token={session?.access_token} />
       <div className="topbar">
         <Volver />

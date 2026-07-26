@@ -2,6 +2,7 @@
 import { guardarImagenEntidad } from "@/app/actions";
 import { subirImagen } from "@/lib/subirImagen";
 import { prepararImagen, MEDIDAS } from "@/lib/prepararImagen";
+import { destinoPaste } from "@/lib/destinoPaste";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -30,6 +31,8 @@ export default function PortadaEntidad({ tipo, id, portada, cartel, nombre, colo
   useEffect(() => {
     if (!editable) return;
     const h = (e: ClipboardEvent) => {
+      // Si otro destino (la foto de la persona) reclamó el pegado, se respeta
+      if (destinoPaste.reclamado) return;
       const el = document.activeElement as HTMLElement | null;
       if (el && (el.tagName === "TEXTAREA" || el.tagName === "INPUT" || el.isContentEditable)) return;
       const f = Array.from(e.clipboardData?.items || [])

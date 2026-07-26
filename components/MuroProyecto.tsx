@@ -8,6 +8,7 @@ import Reacciones, { type Reaccion } from "@/components/Reacciones";
 import ComentarioTexto from "@/components/ComentarioTexto";
 import { menciones, MencionesMenu, type Perfil } from "@/components/Menciones";
 import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
+import { prepararImagen, MEDIDAS } from "@/lib/prepararImagen";
 import { publicarBitacora, borrarBitacora, destacarBitacora, editarBitacora, comentar } from "@/app/actions";
 
 /* MURO DEL PROYECTO — una bitácora simple: notas con texto e imágenes, ordenadas
@@ -37,12 +38,15 @@ const fecha = (iso?: string | null) => {
   return isNaN(+d) ? "" : d.toLocaleString("es-PE", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 };
 
-export default function MuroProyecto({ proyectoId, userId, perfiles, sugerencias, posts }: {
+export default function MuroProyecto({ proyectoId, userId, perfiles, sugerencias, posts, entidadTipo = "proyecto" }: {
   proyectoId: string; userId: string;
   perfiles: Perfil[];
-  /** Etiquetas ya usadas en el muro de este proyecto, para sugerir al escribir. */
+  /** Etiquetas ya usadas en el muro de esta entidad, para sugerir al escribir. */
   sugerencias: string[];
   posts: MuroPost[];
+  /** De qué entidad es el muro: "proyecto" (por defecto) o "empresa". El id
+   *  sigue viajando en `proyectoId` (nombre histórico). */
+  entidadTipo?: string;
 }) {
   const router = useRouter();
   // Composer
@@ -62,7 +66,10 @@ export default function MuroProyecto({ proyectoId, userId, perfiles, sugerencias
   const pegar = async (files: File[]) => {
     setError("");
     for (const f of files.slice(0, Math.max(0, 6 - imgs.length))) {
-      const r = await subirImagen(f);
+      // El preparador aligera la foto ANTES del tope de 3MB: las fotos de
+      // celular pasan siempre, sin que nadie las achique a mano.
+      const lista = await prepararImagen(f, MEDIDAS.adjunto);
+      const r = await subirImagen(lista);
       if (r.error) { setError(r.error); break; }
       if (r.url) setImgs(prev => [...prev, r.url!]);
     }
@@ -78,7 +85,7 @@ export default function MuroProyecto({ proyectoId, userId, perfiles, sugerencias
     if (enviando) return;
     if (!texto.trim() && !imgs.length) { setError("Escribe algo o agrega una imagen."); return; }
     setEnviando(true); setError("");
-    const r: any = await publicarBitacora(proyectoId, texto, imgs, tags);
+    const r: any = await publicarBitacora(proyectoId, texto, imgs, tags, entidadTipo);
     setEnviando(false);
     if (r?.error) { setError(r.error); return; }
     setTexto(""); setImgs([]); setTags([]); setTagInput("");
@@ -87,13 +94,13 @@ export default function MuroProyecto({ proyectoId, userId, perfiles, sugerencias
 
   const borrar = async (pubId: string) => {
     if (!confirm("¿Borrar esta nota del muro?")) return;
-    const r: any = await borrarBitacora(pubId, proyectoId);
+    const r: any = await borrarBitacora(pubId, proyectoId, entidadTipo);
     if (r?.error) { alert(r.error); return; }
     router.refresh();
   };
 
   const destacar = async (pubId: string, valor: boolean) => {
-    const r: any = await destacarBitacora(pubId, proyectoId, valor);
+    const r: any = await destacarBitacora(pubId, proyectoId, valor, entidadTipo);
     if (r?.error) { alert(r.error); return; }
     router.refresh();
   };
@@ -186,7 +193,7 @@ export default function MuroProyecto({ proyectoId, userId, perfiles, sugerencias
           </div>
 
           {editando === p.id ? (
-            <EditorNota post={p} proyectoId={proyectoId} perfiles={perfiles} sugerencias={sugerencias}
+            <EditorNota post={p} proyectoId={proyectoId} entidadTipo={entidadTipo} perfiles={perfiles} sugerencias={sugerencias}
               onDone={() => { setEditando(null); router.refresh(); }}
               onCancel={() => setEditando(null)} />
           ) : (
@@ -239,8 +246,8 @@ export default function MuroProyecto({ proyectoId, userId, perfiles, sugerencias
 }
 
 /* Editor inline de una nota del muro (texto + imágenes + etiquetas propias). */
-function EditorNota({ post, proyectoId, perfiles, sugerencias, onDone, onCancel }: {
-  post: MuroPost; proyectoId: string; perfiles: Perfil[]; sugerencias: string[];
+function EditorNota({ post, proyectoId, entidadTipo = "proyecto", perfiles, sugerencias, onDone, onCancel }: {
+  post: MuroPost; proyectoId: string; entidadTipo?: string; perfiles: Perfil[]; sugerencias: string[];
   onDone: () => void; onCancel: () => void;
 }) {
   const [texto, setTexto] = useState(post.cuerpo || "");
@@ -262,7 +269,7 @@ function EditorNota({ post, proyectoId, perfiles, sugerencias, onDone, onCancel 
     if (guardando) return;
     if (!texto.trim() && !imgs.length) { setError("La nota no puede quedar vacía."); return; }
     setGuardando(true); setError("");
-    const r: any = await editarBitacora(post.id, proyectoId, texto, imgs, tags);
+    const r: any = await editarBitacora(post.id, proyectoId, texto, imgs, tags, entidadTipo);
     setGuardando(false);
     if (r?.error) { setError(r.error); return; }
     onDone();
@@ -276,9 +283,7 @@ function EditorNota({ post, proyectoId, perfiles, sugerencias, onDone, onCancel 
           onChange={e => setTexto(e.target.value)}
           onPaste={async e => {
             const files = imagenesDePaste(e); if (!files.length) return; e.preventDefault();
-            for (const f of files.slice(0, Math.max(0, 6 - imgs.length))) {
-              const r = await subirImagen(f); if (r.error) { setError(r.error); break; } if (r.url) setImgs(prev => [...prev, r.url!]);
-            }
+            pegar(files);
           }} />
       </div>
       <EditorImagenes imgs={imgs} setImgs={setImgs} onError={setError} />

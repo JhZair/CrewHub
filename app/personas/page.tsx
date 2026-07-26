@@ -8,6 +8,7 @@ import { rucDePersona } from "@/lib/ruc";
 import { buscadorDe, pal } from "@/lib/buscar";
 import { urlPlataforma, PLAT } from "@/lib/plataformas";
 import BotonFichaSunat from "@/components/BotonFichaSunat";
+import Avatar from "@/components/Avatar";
 import Completitud from "@/components/Completitud";
 import { completitud } from "@/lib/entidades";
 import Link from "next/link";
@@ -162,9 +163,11 @@ export default async function Personas({ searchParams }: {
     return (
       /* Enlace estirado: la tarjeta lleva a la persona por una capa
          invisible, para que sus películas sean enlaces propios. */
-      <div key={p.id} className="card link fila-cap" style={{ cursor: "pointer", padding: "11px 16px" }}>
+      <div key={p.id} className="card link fila-cap" style={{ cursor: "pointer", padding: "11px 16px", display: "flex", gap: 12, alignItems: "flex-start" }}>
         <Link href={`/entidad/persona/${p.id}`} className="fila-cubre" aria-label={p.alias || p.nombre} />
-        <div>
+        {/* Su cara: la propia si la subió; si no, Avatar cae a las iniciales. */}
+        <Avatar nombre={p.nombre} src={p.foto_url} size={66} />
+        <div style={{ flex: 1, minWidth: 0 }}>
           {/* línea 1: quién es */}
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <b style={{ fontSize: 14.5 }}>{p.alias || p.nombre}</b>

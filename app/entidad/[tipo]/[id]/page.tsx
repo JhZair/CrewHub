@@ -379,6 +379,40 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     ? sinBot((await supabase.from("perfiles").select("id,nombre").eq("activo", true)).data)
     : [];
 
+  /* 🧱 MURO reutilizable (proyecto y empresa): las notas de bitácora (tipo
+     'bitacora') vinculadas a ESTA entidad, con su cuerpo/imágenes, etiquetas
+     propias (datos_extra.tags), reacciones (ya en reaccDe) y comentarios. */
+  const cargarMuro = async (): Promise<{ posts: any[]; etqs: string[] }> => {
+    const un1 = (x: any) => (Array.isArray(x) ? x[0] : x);
+    const idsBit = pubs.filter((p: any) => p.tipo === "bitacora").map((p: any) => p.id);
+    if (!idsBit.length) return { posts: [], etqs: [] };
+    const [bitFull, bitComs] = await Promise.all([
+      supabase.from("publicaciones")
+        .select("id,cuerpo,imagenes,creado_en,editado_en,autor_id,datos_extra,autor:perfiles!publicaciones_autor_id_fkey(nombre,color,avatar_url)")
+        .in("id", idsBit),
+      supabase.from("comentarios")
+        .select("id,publicacion_id,cuerpo,imagenes,creado_en,editado_en,autor_id,autor:perfiles(nombre,color,avatar_url)")
+        .in("publicacion_id", idsBit).order("creado_en"),
+    ]);
+    const comsDe = new Map<string, any[]>();
+    (bitComs.data || []).forEach((c: any) => {
+      const l = comsDe.get(c.publicacion_id) || [];
+      l.push({ ...c, autor: un1(c.autor) }); comsDe.set(c.publicacion_id, l);
+    });
+    const posts = (bitFull.data || [])
+      .map((p: any) => ({
+        id: p.id, cuerpo: p.cuerpo, imagenes: p.imagenes || [], creado_en: p.creado_en, editado_en: p.editado_en, autor_id: p.autor_id,
+        autor: un1(p.autor),
+        tags: Array.isArray(p.datos_extra?.tags) ? p.datos_extra.tags : [],
+        destacado: !!p.datos_extra?.destacado,
+        reacciones: reaccDe.get(p.id) || [],
+        comentarios: comsDe.get(p.id) || [],
+      }))
+      .sort((a: any, b: any) => (b.creado_en || "").localeCompare(a.creado_en || ""));
+    const etqs = [...new Set(posts.flatMap((p: any) => p.tags))].sort() as string[];
+    return { posts, etqs };
+  };
+
   // Relaciones societarias
   let miembros: any[] = [], personasCat: any[] = [], cargosDe: any[] = [], postusEmp: any[] = [];
   // Lo que necesita la hoja para postular (solo se llena si es empresa)
@@ -427,40 +461,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     equipoProy = eq.data || [];
     actoresProy = ac.data || [];
 
-    /* 🧱 MURO — las notas de bitácora (publicaciones tipo 'bitacora' vinculadas
-       al proyecto). Traen su cuerpo e imágenes, sus etiquetas PROPIAS (texto en
-       `datos_extra.tags`, no las del sistema), sus reacciones (ya en reaccDe) y
-       sus comentarios con autor. */
-    const un1 = (x: any) => (Array.isArray(x) ? x[0] : x);
-    const idsBit = pubs.filter((p: any) => p.tipo === "bitacora").map((p: any) => p.id);
-    if (idsBit.length) {
-      const [bitFull, bitComs] = await Promise.all([
-        supabase.from("publicaciones")
-          .select("id,cuerpo,imagenes,creado_en,editado_en,autor_id,datos_extra,autor:perfiles!publicaciones_autor_id_fkey(nombre,color,avatar_url)")
-          .in("id", idsBit),
-        supabase.from("comentarios")
-          .select("id,publicacion_id,cuerpo,imagenes,creado_en,editado_en,autor_id,autor:perfiles(nombre,color,avatar_url)")
-          .in("publicacion_id", idsBit).order("creado_en"),
-      ]);
-      const comsDe = new Map<string, any[]>();
-      (bitComs.data || []).forEach((c: any) => {
-        const l = comsDe.get(c.publicacion_id) || [];
-        l.push({ ...c, autor: un1(c.autor) }); comsDe.set(c.publicacion_id, l);
-      });
-      muroPosts = (bitFull.data || [])
-        .map((p: any) => ({
-          id: p.id, cuerpo: p.cuerpo, imagenes: p.imagenes || [], creado_en: p.creado_en, editado_en: p.editado_en, autor_id: p.autor_id,
-          autor: un1(p.autor),
-          tags: Array.isArray(p.datos_extra?.tags) ? p.datos_extra.tags : [],
-          destacado: !!p.datos_extra?.destacado,
-          reacciones: reaccDe.get(p.id) || [],
-          comentarios: comsDe.get(p.id) || [],
-        }))
-        .sort((a: any, b: any) => (b.creado_en || "").localeCompare(a.creado_en || ""));
-    }
-    // Sugerencias de etiquetas para el compositor: las ya usadas en el muro de
-    // este proyecto (más las se van escribiendo). Nunca las del sistema.
-    muroEtqs = [...new Set(muroPosts.flatMap((p: any) => p.tags))].sort();
+    /* 🧱 MURO — reutiliza el helper compartido (mismo muro que empresa). */
+    { const m = await cargarMuro(); muroPosts = m.posts; muroEtqs = m.etqs; }
     plantillas = (pl.data || []).map((x: any) => ({
       id: x.id, nombre: x.nombre, tipo_proyecto: x.tipo_proyecto,
       n: x.acts?.[0]?.count ?? 0,
@@ -910,6 +912,12 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     personasCat = (pc.data || []).map((x: any) => ({ ...x, nombre: x.alias ? `${x.nombre} · ${x.alias}` : x.nombre }));
     postusEmp = pe.data || [];
 
+    /* 🧱 Muro de la empresa — mismo componente y motor que el del proyecto.
+       Necesita perfiles (para el @ de las menciones) y sus notas de bitácora. */
+    const { data: pfE } = await supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre");
+    perfilesCat = pfE || [];
+    { const mm = await cargarMuro(); muroPosts = mm.posts; muroEtqs = mm.etqs; }
+
     /* El veredicto se arma acá, en el servidor, con las mismas funciones que
        usa el listado de /empresas (lib/fondos.ts). Si la hoja decidiera por
        su cuenta, un día diría «lista» de una empresa que la lista muestra
@@ -1029,6 +1037,11 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     const perfilesAll = sinBot(pf.data);
     cuentaDe = ent.usuario_id ? perfilesAll.find((p: any) => p.id === ent.usuario_id) || null : null;
     cuentasLibres = perfilesAll.filter((p: any) => !usadas.has(p.id));
+
+    /* 🧱 Muro de la persona — mismo motor que proyecto/empresa. Reusa los
+       perfiles ya cargados (para el @) y sus notas de bitácora. */
+    perfilesCat = perfilesAll;
+    { const mm = await cargarMuro(); muroPosts = mm.posts; muroEtqs = mm.etqs; }
 
     /* Pulso en CrewHub+: solo tiene sentido para quien tiene cuenta, porque
        la actividad se registra contra el usuario, no contra la persona.
@@ -1300,8 +1313,14 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
           <>
             {/* Si ya tiene cuenta, su avatar del login sirve de foto: no hay
                 que pedirle otra. La subida solo la reemplaza si quiere. */}
-            <FotoPersona personaId={params.id} nombre={ent.nombre} size={52}
-              foto={ent.foto_url || cuentaDe?.avatar_url} propia={!!ent.foto_url} />
+            {/* Grande y montada sobre el banner, como el cartel de las demás
+                entidades: la cara es la identidad de la ficha, no un adorno. */}
+            <span style={{ marginTop: -46, marginLeft: 18, zIndex: 2, borderRadius: "50%",
+              border: "1px solid var(--border2)",
+              boxShadow: "0 6px 18px rgba(0,0,0,.45)", lineHeight: 0 }}>
+              <FotoPersona personaId={params.id} nombre={ent.nombre} size={96}
+                foto={ent.foto_url || cuentaDe?.avatar_url} propia={!!ent.foto_url} />
+            </span>
             {/* El nombre también se copia: es de los que Wilfredo pasa a
                 mano a los formularios. El ícono queda fuera del valor —
                 copiar «🏢 Kawsay Pacha» sería copiar mal. */}
@@ -2860,9 +2879,14 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                  cliente. Antes solo contaba postulaciones y se quedaba corto. */
               const nTrayectoria = postDe.length + cargosDe.length + proyectosPropios.length
                 + cvsDe.length + clienteEnProy.length;
+              const muroPer = (
+                <MuroProyecto proyectoId={params.id} entidadTipo="persona" userId={user.id}
+                  perfiles={perfilesCat} sugerencias={muroEtqs} posts={muroPosts} />
+              );
               return (
                 <TabsPanel
                   labels={[
+                    `📝 Muro · ${muroPosts.length}`,
                     `📋 Trabajo · ${activas.length}`,
                     `🏆 Trayectoria · ${nTrayectoria}`,
                     `📚 Repositorio · ${objetosDe.length}`,
@@ -2870,13 +2894,14 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                     `🕐 Historial · ${actividadUsuario.length + eventosVis.length}`,
                   ]}
                   paneles={[
+                    muroPer,
                     <>{pulsoNode}{trabajoNode}</>,
                     trayectoria,
                     repositorioNode,
                     economiaNode,
                     historialNode,
                   ]}
-                  iconoSolo={[4]}
+                  iconoSolo={[5]}
                 />
               );
             }
@@ -3013,17 +3038,22 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               const histEmp = eventosVis.length > 0 ? histInner : (
                 <div className="empty" style={{ padding: "18px 0" }}>Sin actividad registrada todavía.</div>
               );
+              const muroEmp = (
+                <MuroProyecto proyectoId={params.id} entidadTipo="empresa" userId={user.id}
+                  perfiles={perfilesCat} sugerencias={muroEtqs} posts={muroPosts} />
+              );
               return (
                 <TabsPanel
                   labels={[
+                    `📝 Muro · ${muroPosts.length}`,
                     `📋 Trabajo · ${activas.length}`,
                     `🏆 Trayectoria · ${postusEmp.length + miembros.length}`,
                     "🎬 Elegibilidad DAFO",
                     `📚 Repositorio · ${objetosDe.length}`,
                     `🕐 Historial · ${eventosVis.length}`,
                   ]}
-                  paneles={[trabajoNode, trayectoriaEmp, dafoNode, repoEmp, histEmp]}
-                  iconoSolo={[4]}
+                  paneles={[muroEmp, trabajoNode, trayectoriaEmp, dafoNode, repoEmp, histEmp]}
+                  iconoSolo={[5]}
                 />
               );
             }
