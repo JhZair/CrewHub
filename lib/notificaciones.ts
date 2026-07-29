@@ -6,7 +6,7 @@
    sistema, así que se corta aquí. */
 
 export const ICONO: Record<string, string> = {
-  asignacion: "👤", comentario: "💬", vencimiento: "⏰",
+  asignacion: "👤", comentario: "💬", vencimiento: "⏰", dafo: "📬",
   cambio_estado: "🔄", mencion: "🔗", reaccion: "👍", bot: "🤖",
   vinculo: "📢",
 };
@@ -32,8 +32,11 @@ export const anclaDe = (tipo: string) =>
    `if (n.publicacion_id)`, así que un aviso de un comentario sobre un objeto
    del repositorio llegaba a la bandeja pero no era clicable: sonaba y no
    llevaba a ninguna parte. Ahora el destino se decide aquí. */
-export const rutaNotif = (n: { publicacion_id?: string | null; objeto_id?: string | null; equipamiento_id?: string | null; tipo?: string }) =>
+export const rutaNotif = (n: { publicacion_id?: string | null; objeto_id?: string | null; equipamiento_id?: string | null; dafo_id?: string | null; tipo?: string }) =>
   n.publicacion_id ? `/caso/${n.publicacion_id}${anclaDe(n.tipo || "")}`
+  // Un correo de DAFO no es un caso: vive en la casilla, y el ancla deja al
+  // lector en el mensaje exacto que sonó.
+  : n.dafo_id ? `/casilla#c-${n.dafo_id}`
   : n.objeto_id ? `/objeto/${n.objeto_id}${anclaDe(n.tipo || "")}`
   // Un aviso de préstamo lleva a la ficha del equipo (resuelto en conVinculos).
   : n.equipamiento_id ? `/entidad/equipamiento/${n.equipamiento_id}`

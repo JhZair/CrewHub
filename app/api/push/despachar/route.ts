@@ -34,7 +34,7 @@ export async function GET(req: Request) {
   // Solo lo fresco: más de 24h sin enviar ya no es notificación, es historia.
   const desde = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
   const { data: pendientes } = await db.from("notificaciones")
-    .select("id,usuario_id,mensaje,publicacion_id")
+    .select("id,usuario_id,mensaje,publicacion_id,dafo_id")
     .is("push_enviado_en", null).gte("creado_en", desde)
     .order("creado_en").limit(150);
   if (!pendientes?.length) return Response.json({ pendientes: 0, enviadas: 0 });
@@ -58,7 +58,8 @@ export async function GET(req: Request) {
           JSON.stringify({
             titulo: "CrewHub+",
             cuerpo: n.mensaje,
-            url: n.publicacion_id ? `/caso/${n.publicacion_id}` : "/",
+            url: n.publicacion_id ? `/caso/${n.publicacion_id}`
+              : n.dafo_id ? `/casilla#c-${n.dafo_id}` : "/",
             tag: n.id,
           })
         );

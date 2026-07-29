@@ -37,6 +37,7 @@ export default function NavIconos() {
      fijado aparte para no ensuciar SECCIONES con un tipo falso. */
   const enFondos = pathname === "/fondos" || pathname.startsWith("/fondo/");
   const enEtiquetas = pathname === "/etiquetas";
+  const enCasilla = pathname === "/casilla";
 
   // Cerrar con Escape: un menú que solo se cierra con el ratón estorba.
   useEffect(() => {
@@ -51,11 +52,11 @@ export default function NavIconos() {
 
   return (
     <nav className="nav-menu">
-      <button type="button" className={`btn btn-ghost nav-btn${aqui || enFondos ? " nav-aqui" : ""}`}
+      <button type="button" className={`btn btn-ghost nav-btn${aqui || enFondos || enCasilla ? " nav-aqui" : ""}`}
         onClick={() => setAbierto(a => !a)} aria-expanded={abierto}
-        title={enFondos ? "Fondos en ejecución" : aqui ? aqui.titulo : "Secciones"}>
-        <span className="nav-ico">{enFondos ? "🎬" : aqui ? aqui.ico : "☰"}</span>
-        <span className="nav-txt">{enFondos ? "fondos" : aqui ? aqui.plural : "Secciones"}</span>
+        title={enCasilla ? "Casilla DAFO" : enFondos ? "Fondos en ejecución" : aqui ? aqui.titulo : "Secciones"}>
+        <span className="nav-ico">{enCasilla ? "📬" : enFondos ? "🎬" : aqui ? aqui.ico : "☰"}</span>
+        <span className="nav-txt">{enCasilla ? "casilla" : enFondos ? "fondos" : aqui ? aqui.plural : "Secciones"}</span>
         <span className="nav-cheb">▾</span>
       </button>
       {abierto && (
@@ -85,6 +86,14 @@ export default function NavIconos() {
               onClick={() => setAbierto(false)}>
               <span className="nav-item-ico">🏷️</span>
               <span>etiquetas</span>
+            </Link>
+            {/* La casilla DAFO tampoco es una entidad: es la bandeja donde
+                aterrizan los correos de todas las postulaciones, que antes
+                vivían repartidos en diez cuentas de Gmail. */}
+            <Link href="/casilla" className={`nav-item${enCasilla ? " on" : ""}`}
+              onClick={() => setAbierto(false)}>
+              <span className="nav-item-ico">📬</span>
+              <span>casilla DAFO</span>
             </Link>
           </div>
         </>

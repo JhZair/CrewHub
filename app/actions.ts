@@ -4626,7 +4626,7 @@ export async function misNotificaciones() {
   if (!user) return { items: [], sinLeer: 0, sinLeerBot: 0 };
   // `objeto_id`: una notificación puede colgar de un caso O de un objeto del
   // repositorio. Sin traerla, el aviso llega pero no lleva a ninguna parte.
-  const cols = "id,tipo,mensaje,actor_nombre,publicacion_id,objeto_id,prestamo_id,equipamiento_id,leida,creado_en";
+  const cols = "id,tipo,mensaje,actor_nombre,publicacion_id,objeto_id,prestamo_id,equipamiento_id,dafo_id,leida,creado_en";
   const [{ data: pers }, { data: bot }, { count: sinLeer }, { count: sinLeerBot }] = await Promise.all([
     supabase.from("notificaciones").select(cols)
       .eq("usuario_id", user.id).not("actor_nombre", "is", null)
@@ -4811,7 +4811,7 @@ export async function notificacionesTodas(desde = 0, filtro?: "personal" | "bot"
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { items: [], hayMas: false, total: 0, totalBot: 0, sinLeer: 0, sinLeerBot: 0 };
   let q = supabase.from("notificaciones")
-    .select("id,tipo,mensaje,actor_nombre,publicacion_id,objeto_id,prestamo_id,equipamiento_id,leida,creado_en")
+    .select("id,tipo,mensaje,actor_nombre,publicacion_id,objeto_id,prestamo_id,equipamiento_id,dafo_id,leida,creado_en")
     .eq("usuario_id", user.id);
   if (filtro === "personal") q = q.not("actor_nombre", "is", null);
   else if (filtro === "bot") q = q.is("actor_nombre", null);
