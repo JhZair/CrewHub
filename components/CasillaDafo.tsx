@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { hace } from "@/lib/notificaciones";
@@ -33,6 +33,9 @@ type Com = {
 type Opcion = { id: string; etiqueta: string; enJuego: boolean };
 type Fila = { id: string; codigo: string; nombre: string; ultimo: string | null; sinLeer: number };
 
+/* Cuántos correos ya leídos se muestran por postulación antes de recortar. */
+const POR_GRUPO = 3;
+
 export default function CasillaDafo({ items, opciones, resumen, tope }: {
   items: Com[]; opciones: Opcion[]; resumen: Fila[]; tope: number;
 }) {
@@ -62,6 +65,23 @@ export default function CasillaDafo({ items, opciones, resumen, tope }: {
     });
     return [...m.entries()].sort((a, b) => (a[0] === "_" ? 1 : b[0] === "_" ? -1 : 0));
   }, [leidos]);
+
+  /* Si llegamos desde una notificación (/casilla#c-<id>), abrir TODO antes de
+     que el navegador busque el ancla: si ese correo ya estaba leído y su grupo
+     venía recortado, el ancla no existe en el DOM y el clic no lleva a ninguna
+     parte — el fallo silencioso de siempre, un aviso que suena y no entrega. */
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.location.hash.startsWith("#c-")) {
+      setVerTodo(true);
+      const id = window.location.hash;
+      // Tras pintar todo, ir al correo. El navegador ya no lo hace solo: el
+      // ancla no estaba cuando cargó la página.
+      requestAnimationFrame(() => document.querySelector(id)?.scrollIntoView({ block: "center" }));
+    }
+  }, []);
+
+  /* ¿Algún grupo está recortado? Decide si el «ver todos» tiene sentido. */
+  const hayRecorte = useMemo(() => grupos.some(([, g]) => g.coms.length > POR_GRUPO), [grupos]);
 
   const correr = (fn: () => Promise<any>) => arrancar(async () => {
     setAviso(null);
@@ -196,22 +216,26 @@ export default function CasillaDafo({ items, opciones, resumen, tope }: {
         <>
           <h2 style={{ fontSize: 13, color: "var(--dim)", margin: "24px 0 8px", letterSpacing: .5 }}>
             ✅ Ya leídos · {leidos.length}
-            {!verTodo && leidos.length > 12 && (
+            {/* El botón aparece si HAY algo recortado, no según el total: con
+                8 leídos repartidos en tres grupos, el corte de 3 por grupo ya
+                escondía filas y el botón no salía — «y 2 más» sin forma de
+                verlas. */}
+            {!verTodo && hayRecorte && (
               <button type="button" className="btn btn-ghost" style={{ fontSize: 11, marginLeft: 8 }}
                 onClick={() => setVerTodo(true)}>ver todos</button>
             )}
           </h2>
           {grupos.map(([k, g]) => {
-            const visibles = verTodo ? g.coms : g.coms.slice(0, 3);
+            const visibles = verTodo ? g.coms : g.coms.slice(0, POR_GRUPO);
             return (
               <div key={k} style={{ marginBottom: 16 }}>
                 <div style={{ fontSize: 12, fontWeight: 600, margin: "0 0 6px", color: "var(--dim)" }}>
                   {g.titulo} · {g.coms.length}
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{visibles.map(fila)}</div>
-                {!verTodo && g.coms.length > 3 && (
+                {!verTodo && g.coms.length > POR_GRUPO && (
                   <div style={{ color: "var(--dim)", fontSize: 11, marginTop: 4 }}>
-                    y {g.coms.length - 3} más
+                    y {g.coms.length - POR_GRUPO} más
                   </div>
                 )}
               </div>

@@ -68,18 +68,31 @@ Gmail del maestro → ⚙ → **Filtros y direcciones bloqueadas** → *Crear un
 Ese filtro es el que decide qué entra al sistema. Si un día DAFO escribe desde
 otro dominio, se agrega aquí — sin tocar código, sin desplegar.
 
+> **Sobre "aplicar también a las conversaciones que coinciden":** puedes marcarlo
+> sin miedo. El correo viejo se guarda y aparece en el panel, pero **no suena**:
+> solo se avisa al celular de lo recibido en las últimas 72 horas. Una tanda de
+> cien pushes el día de la instalación gastaría justo la confianza que hace que
+> el aviso siguiente se lea.
+
 ### 5. El Apps Script (una vez)
 
 1. [script.google.com](https://script.google.com) → **Nuevo proyecto**, entrando
    con la cuenta del **buzón maestro**
 2. Pegar el contenido de **`scripts/casilla-dafo.gs`**
 3. Cambiar `CH_LLAVE` por la misma cadena de `INGESTA_DAFO_LLAVE`
-4. Ejecutar la función **`probar`** una vez → Google pedirá permiso de Gmail
-5. Ejecutar la función **`instalarDisparador`** una vez → queda corriendo cada
+4. Ejecutar la función **`verDestinatarios`** una vez → Google pedirá permiso de
+   Gmail y te dirá, sin mandar nada, **si está viendo la cuenta de la
+   postulación** en cada correo. Es lo único de todo el montaje que depende de
+   cabeceras que Google no documenta del todo (`X-Forwarded-For`): si ahí no
+   aparece la cuenta, la vinculación por cuenta no va a funcionar y todo
+   dependerá del código en el asunto.
+5. Ejecutar la función **`probar`** una vez → manda de verdad la primera tanda
+6. Ejecutar la función **`instalarDisparador`** una vez → queda corriendo cada
    10 minutos
 
-Para ver si trabaja: en Apps Script → *Ejecuciones*. Cada corrida imprime
-cuántos mensajes mandó y qué respondió CrewHub+.
+Para ver si trabaja: en Apps Script → *Ejecuciones*. Cada corrida imprime cuántos
+hilos y mensajes mandó, qué respondió CrewHub+ y cuántos hilos quedaron para la
+corrida siguiente.
 
 ### 6. El celular
 
@@ -125,13 +138,29 @@ guarda ese mapa por segunda vez.
 ## Probar a mano
 
 ```
-curl -X POST "https://crew-hub-sigma.vercel.app/api/ingesta/dafo?llave=TU_LLAVE" \
+curl -X POST "https://crew-hub-sigma.vercel.app/api/ingesta/dafo" \
+  -H "Authorization: Bearer TU_LLAVE" \
   -H "Content-Type: application/json" \
   -d '{"mensajes":[{"id":"prueba-1","fecha":"2026-07-29T10:00:00Z","buzon":"maestro@gmail.com","de":"DAFO <notificaciones@cultura.gob.pe>","para":["cuenta-postulacion@gmail.com","maestro@gmail.com"],"asunto":"Subsanación CDO-P-00094-26","extracto":"Se otorga plazo de cinco dias habiles."}]}'
 ```
 
-Responde `{ recibidos, nuevos, avisos }`. Correrlo dos veces debe dar
-`nuevos: 0` la segunda: eso confirma que la deduplicación funciona.
+Responde `{ recibidos, nuevos, avisos, correosAvisados, rafaga }`. Correrlo dos
+veces debe dar `nuevos: 0` la segunda: eso confirma que la deduplicación
+funciona. (La llave también se acepta como `?llave=` para probar a mano, pero el
+script la manda en la cabecera: las query strings quedan escritas en los logs de
+Vercel y esta llave escribe en la base.)
+
+## Reglas de aviso
+
+- **Solo suena lo de las últimas 72 h.** Lo más viejo se guarda y aparece en el
+  panel; el celular no.
+- **A quién avisar se le pregunta a la base, no al insert.** Cada corrida busca
+  «qué hay reciente sin aviso», así que si un aviso falla —red, columna que
+  falta— la corrida siguiente lo arregla sola. Sin eso, un correo guardado cuyo
+  aviso falló quedaría callado para siempre: la corrida siguiente lo vería como
+  «ya estaba».
+- **Más de 6 correos de golpe = un solo push.** Los demás quedan en la campanita
+  🔔 (que es el registro) con el push ya marcado como despachado.
 
 ## Archivos
 
@@ -144,3 +173,19 @@ Responde `{ recibidos, nuevos, avisos }`. Correrlo dos veces debe dar
 | `app/casilla/acciones.ts` | Marcar leído, vincular a mano, abrir caso |
 | `components/CasillaDafo.tsx` | La lista y el resumen de silencio |
 | `scripts/casilla-dafo.gs` | Lo que corre en Gmail cada 10 minutos |
+| `scripts/prueba-casilla.mts` | 25 pruebas de la lógica de vinculado y del 🚨 |
+
+## Probar la lógica sin desplegar
+
+La parte que puede equivocarse **en silencio** es la que decide de qué
+postulación es un correo: un vínculo errado no da error, solo aparece en el
+sitio equivocado. Esa lógica es pura y se prueba sin instalar nada:
+
+```
+node --experimental-strip-types scripts/prueba-casilla.mts
+```
+
+Si cambias las agujas de `pide_accion` o el emparejado de códigos, corre esto
+antes de desplegar. Ahí se descubrió que el espacio entre separadores rompía el
+caso más normal: «Subsanacion CDO-P-00094-26 del expediente» no casaba con
+nada.

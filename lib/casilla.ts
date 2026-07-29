@@ -13,16 +13,32 @@ export const normCod = (s?: string | null) =>
   String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 
 /* Los candidatos a código que trae un texto.
-   Exige un dígito: sin eso, «Ministerio-de-Cultura» entra como código y
-   empieza a emparejar con cualquier cosa. Y exige 8 caracteres útiles:
-   más corto que eso, un fragmento como «P-074» aparece en media docena de
-   expedientes y el vínculo sería una moneda al aire. */
-const RE_TOKEN = /[A-Za-z0-9]+(?:[-/ .][A-Za-z0-9]+)+/g;
+ *
+ * El separador es SOLO guion o barra, nunca espacio ni punto. La primera
+ * versión incluía el espacio y eso rompía el emparejamiento justo en el caso
+ * normal: en «Notificacion de subsanacion CDO-P-00094-26 del expediente» el
+ * espacio pegaba todo en un único token gigante
+ * («NOTIFICACIONDESUBSANACIONCDOP0009426DELEXPEDIENTE») que ya no casaba con
+ * ningún código en ninguna dirección. El correo quedaba sin vincular teniendo
+ * el código escrito en el asunto — y el síntoma no era un error, era silencio.
+ *
+ * Exige un dígito: sin eso, «Ministerio-de-Cultura» entra como código y empieza
+ * a emparejar con cualquier cosa. Y exige 8 caracteres útiles: más corto que
+ * eso, un fragmento como «P-074» aparece en media docena de expedientes y el
+ * vínculo sería una moneda al aire.
+ */
+const RE_TOKEN = /[A-Za-z0-9]+(?:[-/][A-Za-z0-9]+)+/g;
+
+/* «2026-07-29» normalizado es «20260729»: ocho caracteres con dígitos, o sea un
+   candidato perfectamente válido según la regla de arriba. Y las fechas están
+   en todos los asuntos. Fuera. */
+const pareceFecha = (n: string) => /^(19|20)\d{6}$/.test(n);
+
 export function candidatosCodigo(texto: string): string[] {
   const out = new Set<string>();
   for (const m of String(texto || "").match(RE_TOKEN) || []) {
     const n = normCod(m);
-    if (n.length >= 8 && /\d/.test(n)) out.add(n);
+    if (n.length >= 8 && /\d/.test(n) && !pareceFecha(n)) out.add(n);
   }
   return [...out];
 }
@@ -33,6 +49,9 @@ export type PostMin = {
   codigo_plataforma?: string | null;
   estado?: string | null;
   empresa_id?: string | null;
+  /* Para saber si una ganadora sigue viva (lib/fondos.ts → ejecutando). Sin
+     ella, una que ya rindió se lee igual que una que debe. */
+  fecha_rendicion_real?: string | null;
 };
 
 /* ¿De qué postulación habla este texto?
@@ -59,19 +78,35 @@ export function vincularPorCodigo(texto: string, posts: PostMin[]): string | nul
   return hits.size === 1 ? [...hits][0] : null;
 }
 
-/* ── ¿Este correo pide algo? ──
+/* ── ¿Este correo pide algo DE MÍ? ──
  * Sin acentos en las agujas y comparando en minúsculas: DAFO escribe
  * «SUBSANACIÓN», «Subsanacion» y «subsanación» en el mismo mes. Se buscan
  * raíces, no palabras completas, para que «subsanar»/«subsanación» entren
  * con una sola aguja.
  *
+ * La primera versión traía «notificaci», «resoluci», «plazo» y «presentar», y
+ * eso encendía el 🚨 en toda la bandeja: DAFO titula la mitad de sus correos
+ * «Notificación de…» y casi todos mencionan un plazo. Un semáforo que siempre
+ * está en rojo no es un semáforo — la marca solo sirve si distingue.
+ *
+ * Así que quedan únicamente las que nombran un ACTO que exige respuesta. Ni
+ * «plazo» ni «resolución» entran: acompañan tanto a un requerimiento de cinco
+ * días como a una resolución que solo se archiva, y el que sí exige respuesta
+ * trae además una de estas palabras.
+ *
  * Es una sospecha que ORDENA la lista, no un estado del expediente. Por eso
  * no abre casos sola: eso lo decide una persona, en el panel.
  */
 export const AGUJAS_ACCION = [
-  "subsan", "requerimiento", "requiere", "observaci", "observado",
-  "apercib", "absolv", "absoluc", "plazo", "improceden", "desist",
-  "aclaraci", "levantar", "notificaci", "resoluci", "presentar",
+  "subsan",        // subsanar, subsanación
+  "requerimient",  // requerimiento (no «requiere», que aparece en cualquier instructivo)
+  "apercib",       // apercibimiento
+  "observaci", "observado",
+  "absolv", "absoluc",
+  "aclaraci",
+  "improceden",
+  "desist",
+  "descargo",
 ];
 
 const sinTildes = (s: string) =>
@@ -97,6 +132,19 @@ export function linkGmail(threadId?: string | null, buzon?: string | null): stri
 
 /* Cómo se supo de qué postulación es. Se muestra al lado del vínculo: un
    vínculo deducido y uno confirmado no valen lo mismo. */
+/* El asunto MANDA; el cuerpo es solo el respaldo.
+ * Una resolución de DAFO puede listar en el cuerpo los códigos de veinte
+ * beneficiarios: buscando en todo de una vez, un correo dirigido a un
+ * expediente se vincularía a otro que solo aparecía mencionado — o, si salen
+ * dos de los nuestros, se quedaría sin vincular teniendo el código correcto en
+ * el asunto. Primero se le pregunta al asunto, que es de quien va dirigido.
+ */
+export function vincularPorAsuntoOCuerpo(
+  asunto: string, extracto: string, posts: PostMin[],
+): string | null {
+  return vincularPorCodigo(asunto, posts) || vincularPorCodigo(extracto, posts);
+}
+
 export const ORIGEN_VINCULO: Record<string, { ico: string; txt: string; col: string }> = {
   codigo: { ico: "🎯", txt: "por el código del asunto", col: "var(--teal)" },
   cuenta: { ico: "📧", txt: "deducido de la cuenta", col: "var(--yellow)" },

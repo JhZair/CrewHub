@@ -6,9 +6,14 @@
    sistema, así que se corta aquí. */
 
 export const ICONO: Record<string, string> = {
-  asignacion: "👤", comentario: "💬", vencimiento: "⏰", dafo: "📬",
+  asignacion: "👤", comentario: "💬", vencimiento: "⏰",
   cambio_estado: "🔄", mencion: "🔗", reaccion: "👍", bot: "🤖",
   vinculo: "📢",
+  /* Dos tipos para el mismo correo de DAFO: la campanita pinta el ícono a
+     partir del TIPO y se queda solo con lo que va entre « » del mensaje
+     (tituloDe), así que un emoji delante del texto no se ve. El «esto pide
+     algo» tiene que viajar en el tipo o no llega. */
+  dafo: "📬", dafo_accion: "🚨",
 };
 
 export const ETIQ: Record<string, string> = {

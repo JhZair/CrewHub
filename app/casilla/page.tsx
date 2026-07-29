@@ -3,7 +3,12 @@ import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import CasillaDafo from "@/components/CasillaDafo";
-import { EN_JUEGO } from "@/lib/fondos";
+import Realtime from "@/components/Realtime";
+import { enJuego, ejecutando } from "@/lib/fondos";
+
+/* Viva = recibe correo de DAFO. No es lo mismo que «en juego»: una GANADORA sin
+   rendir es la que más recibe —todo el hilo de la rendición— y quedaba fuera. */
+const viva = (p: any) => enJuego(p) || ejecutando(p);
 
 export const metadata: Metadata = { title: "📬 Casilla DAFO" };
 
@@ -28,6 +33,10 @@ export default async function CasillaPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
+  /* El token es para el canal de realtime: el navegador no tiene la sesión de
+     Supabase, la tiene el servidor (ver components/Realtime.tsx). */
+  const { data: { session } } = await supabase.auth.getSession();
+
   const [{ data: comsRaw, error }, { data: postsRaw }] = await Promise.all([
     supabase.from("dafo_comunicaciones")
       .select("id,gmail_thread_id,buzon,cuenta,remitente,asunto,extracto,recibido_en," +
@@ -36,7 +45,7 @@ export default async function CasillaPage() {
               "emp:empresas(id,nombre)")
       .order("recibido_en", { ascending: false }).limit(TOPE),
     supabase.from("postulaciones")
-      .select("id,codigo,estado,proy:proyectos(nombre),conv:convocatorias(anio)")
+      .select("id,codigo,estado,fecha_rendicion_real,proy:proyectos(nombre),conv:convocatorias(anio)")
       .order("creado_en", { ascending: false }).limit(300),
   ]);
 
@@ -67,8 +76,8 @@ export default async function CasillaPage() {
   const etiqueta = (p: any) =>
     `${p.codigo || "sin código"}${p.proy?.nombre ? ` · ${p.proy.nombre}` : ""}${p.conv?.anio ? ` (${p.conv.anio})` : ""}`;
   const opciones = [...posts]
-    .sort((a, b) => Number(EN_JUEGO.includes(b.estado || "")) - Number(EN_JUEGO.includes(a.estado || "")))
-    .map(p => ({ id: p.id as string, etiqueta: etiqueta(p), enJuego: EN_JUEGO.includes(p.estado || "") }));
+    .sort((a, b) => Number(viva(b)) - Number(viva(a)))
+    .map(p => ({ id: p.id as string, etiqueta: etiqueta(p), enJuego: viva(p) }));
 
   /* Última señal por postulación. Se calcula de los correos ya traídos: la
      lista viene ordenada por fecha desc, así que el PRIMERO de cada
@@ -82,7 +91,7 @@ export default async function CasillaPage() {
   });
 
   const resumen = posts
-    .filter(p => EN_JUEGO.includes(p.estado || ""))
+    .filter(viva)
     .map(p => ({
       id: p.id as string,
       codigo: (p.codigo || "sin código") as string,
@@ -98,6 +107,9 @@ export default async function CasillaPage() {
 
   return (
     <div className="shell" style={{ maxWidth: "min(1100px, 97vw)" }}>
+      {/* En vivo: un correo puede entrar mientras la página está abierta, y el
+          panel es justo el sitio donde se está esperando que entre. */}
+      <Realtime tablas={["dafo_comunicaciones"]} token={session?.access_token} />
       <div className="topbar">
         <Volver />
         <span className="spacer" />
