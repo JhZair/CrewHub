@@ -14,6 +14,7 @@ import { progresoDe } from "@/lib/progreso";
 import { rotuloTipo, colorTipo } from "@/lib/tipos";
 import { avisoVencido } from "@/lib/estados";
 import { sinBot } from "@/lib/personas";
+import { COL_DAFO, sinColumna, sinDafoId } from "@/lib/notificaciones";
 import FiltroMas from "@/components/FiltroMas";
 import ListaFeed, { type CardFeed } from "@/components/ListaFeed";
 import Link from "next/link";
@@ -197,15 +198,18 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
   // pestaña "Del Bot" del desplegable tiene contenido aunque lo último sea
   // personal. Desempate por id (varias del mismo lote comparten creado_en).
   const NCAMP = 12;
-  const [{ data: notifPers }, { data: notifBot }, { count: sinLeer }, { count: sinLeerBot }, { count: botHoy }] = await Promise.all([
-    supabase.from("notificaciones")
-      .select("id,tipo,mensaje,actor_nombre,publicacion_id,objeto_id,dafo_id,leida,creado_en")
-      .eq("usuario_id", user.id).not("actor_nombre", "is", null)
-      .order("creado_en", { ascending: false }).order("id", { ascending: false }).limit(NCAMP),
-    supabase.from("notificaciones")
-      .select("id,tipo,mensaje,actor_nombre,publicacion_id,objeto_id,dafo_id,leida,creado_en")
-      .eq("usuario_id", user.id).is("actor_nombre", null)
-      .order("creado_en", { ascending: false }).order("id", { ascending: false }).limit(NCAMP),
+  const COLS_NOTIF = "id,tipo,mensaje,actor_nombre,publicacion_id,objeto_id,dafo_id,leida,creado_en";
+  /* En función para poder repetirla sin `dafo_id` cuando esa columna todavía no
+     existe: PostgREST rechaza la consulta entera, no la columna (ver
+     lib/notificaciones.ts → COL_DAFO). */
+  const tandaNotif = (cols: string, esBot: boolean) => {
+    const q = supabase.from("notificaciones").select(cols).eq("usuario_id", user.id);
+    return (esBot ? q.is("actor_nombre", null) : q.not("actor_nombre", "is", null))
+      .order("creado_en", { ascending: false }).order("id", { ascending: false }).limit(NCAMP);
+  };
+  const [{ data: notifPersRaw, error: ePers }, { data: notifBotRaw, error: eBot }, { count: sinLeer }, { count: sinLeerBot }, { count: botHoy }] = await Promise.all([
+    tandaNotif(COLS_NOTIF, false),
+    tandaNotif(COLS_NOTIF, true),
     // Timbre = solo lo personal sin leer (lo que pide tu acción).
     supabase.from("notificaciones").select("id", { count: "exact", head: true })
       .eq("usuario_id", user.id).eq("leida", false).not("actor_nombre", "is", null),
@@ -215,6 +219,16 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
     supabase.from("actividad").select("id", { count: "exact", head: true })
       .eq("tipo", "bot").gte("creado_en", hoy.toISOString()),
   ]);
+  /* Segundo intento sin `dafo_id` si la columna aún no existe: la campanita del
+     feed no puede quedarse vacía con el timbre marcando avisos. */
+  let notifPers: any = notifPersRaw, notifBot: any = notifBotRaw;
+  if (sinColumna(ePers, COL_DAFO) || sinColumna(eBot, COL_DAFO)) {
+    const [a, b] = await Promise.all([
+      tandaNotif(sinDafoId(COLS_NOTIF), false),
+      tandaNotif(sinDafoId(COLS_NOTIF), true),
+    ]);
+    notifPers = a.data; notifBot = b.data;
+  }
   const notifs = [...(notifPers || []), ...(notifBot || [])];
 
   // ── Mensaje de Qhaway: combina hallazgos reales + cumpleaños + frases decorativas,

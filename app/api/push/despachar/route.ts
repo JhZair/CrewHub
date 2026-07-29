@@ -1,5 +1,6 @@
 import webpush from "web-push";
 import { createClient } from "@supabase/supabase-js";
+import { COL_DAFO, sinColumna, sinDafoId } from "@/lib/notificaciones";
 
 /* 📮 DESPACHADOR DE PUSH — el cartero único del sistema.
    Toda notificación (mención, asignación, cronograma, Qhaway) cae en la
@@ -33,10 +34,22 @@ export async function GET(req: Request) {
 
   // Solo lo fresco: más de 24h sin enviar ya no es notificación, es historia.
   const desde = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-  const { data: pendientes } = await db.from("notificaciones")
-    .select("id,usuario_id,mensaje,publicacion_id,dafo_id")
+  /* `dafo_id` llega con db/casilla-dafo.sql. Mientras no se haya corrido,
+     PostgREST rechaza la consulta ENTERA por la columna desconocida — y esto
+     es el cartero de TODAS las notificaciones del sistema: sin el segundo
+     intento, una migración pendiente de un módulo dejaba al equipo sin ningún
+     push, sin un solo error visible en pantalla. */
+  const cols = "id,usuario_id,mensaje,publicacion_id,dafo_id";
+  const cola = (c: string) => db.from("notificaciones").select(c)
     .is("push_enviado_en", null).gte("creado_en", desde)
     .order("creado_en").limit(150);
+  /* `any` porque el select con una lista de campos VARIABLE no puede inferir la
+     forma de la fila (supabase-js solo la deduce de literales). */
+  const primera = await cola(cols);
+  let pendientes: any[] | null = primera.data as any;
+  if (sinColumna(primera.error, COL_DAFO)) {
+    pendientes = (await cola(sinDafoId(cols))).data as any;
+  }
   if (!pendientes?.length) return Response.json({ pendientes: 0, enviadas: 0 });
 
   const uids = [...new Set(pendientes.map((n: any) => n.usuario_id))];

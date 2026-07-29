@@ -5,6 +5,26 @@
    nadie mira juntos. Ese es el nacimiento exacto de los bichos de este
    sistema, así que se corta aquí. */
 
+/* ── LA COLUMNA QUE PUEDE NO ESTAR TODAVÍA ──
+ *
+ * `dafo_id` (casilla DAFO) llega con db/casilla-dafo.sql. Mientras ese SQL no
+ * se haya corrido, PostgREST NO ignora la columna que no conoce: rechaza la
+ * consulta ENTERA. Y como los contadores del timbre no la piden y las listas
+ * sí, el resultado era una campanita vacía con el badge marcando 2 — el aviso
+ * existía, decía que existía, y no se podía ver. Se rompió la bandeja de
+ * notificaciones de todo el sistema por una migración pendiente de un módulo
+ * que todavía no estaba en uso.
+ *
+ * Así que se pide la columna, y si la base dice que no está, se vuelve a
+ * preguntar sin ella. Una pantalla que ya funcionaba no puede caerse porque
+ * alguien no corrió un SQL: eso es lo que hace que un sistema propio dé miedo.
+ */
+export const COL_DAFO = "dafo_id";
+export const sinColumna = (e: any, col: string): boolean =>
+  !!e && new RegExp(col).test(`${e?.message || ""} ${e?.details || ""} ${e?.hint || ""}`);
+/* Quita la columna de una lista de campos ya escrita, para el segundo intento. */
+export const sinDafoId = (cols: string) => cols.replace(`,${COL_DAFO}`, "");
+
 export const ICONO: Record<string, string> = {
   asignacion: "👤", comentario: "💬", vencimiento: "⏰",
   cambio_estado: "🔄", mencion: "🔗", reaccion: "👍", bot: "🤖",

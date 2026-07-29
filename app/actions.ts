@@ -14,6 +14,7 @@ import { SECCIONES } from "@/lib/secciones";
 import { TIPOS_OBJETO } from "@/lib/objetos";
 import { catalogoObjetos, catalogosEntidades } from "@/lib/catalogos";
 import { resolverNombres } from "@/lib/nombres";
+import { COL_DAFO, sinColumna, sinDafoId } from "@/lib/notificaciones";
 
 /* Crear o actualizar una entidad núcleo (proyecto/empresa/persona).
    La config compartida actúa como whitelist de tabla y campos. */
@@ -4627,13 +4628,16 @@ export async function misNotificaciones() {
   // `objeto_id`: una notificación puede colgar de un caso O de un objeto del
   // repositorio. Sin traerla, el aviso llega pero no lleva a ninguna parte.
   const cols = "id,tipo,mensaje,actor_nombre,publicacion_id,objeto_id,prestamo_id,equipamiento_id,dafo_id,leida,creado_en";
-  const [{ data: pers }, { data: bot }, { count: sinLeer }, { count: sinLeerBot }] = await Promise.all([
-    supabase.from("notificaciones").select(cols)
-      .eq("usuario_id", user.id).not("actor_nombre", "is", null)
-      .order("creado_en", { ascending: false }).order("id", { ascending: false }).limit(CAMP_LIM),
-    supabase.from("notificaciones").select(cols)
-      .eq("usuario_id", user.id).is("actor_nombre", null)
-      .order("creado_en", { ascending: false }).order("id", { ascending: false }).limit(CAMP_LIM),
+  /* La consulta en una función para poder repetirla sin `dafo_id` si esa
+     columna aún no existe (ver lib/notificaciones.ts → COL_DAFO). */
+  const tanda = (c: string, esBot: boolean) => {
+    const q = supabase.from("notificaciones").select(c).eq("usuario_id", user.id);
+    return (esBot ? q.is("actor_nombre", null) : q.not("actor_nombre", "is", null))
+      .order("creado_en", { ascending: false }).order("id", { ascending: false }).limit(CAMP_LIM);
+  };
+  const r = await Promise.all([
+    tanda(cols, false),
+    tanda(cols, true),
     // Timbre = solo lo personal sin leer (lo que pide tu acción).
     supabase.from("notificaciones").select("id", { count: "exact", head: true })
       .eq("usuario_id", user.id).eq("leida", false).not("actor_nombre", "is", null),
@@ -4641,6 +4645,12 @@ export async function misNotificaciones() {
     supabase.from("notificaciones").select("id", { count: "exact", head: true })
       .eq("usuario_id", user.id).eq("leida", false).is("actor_nombre", null),
   ]);
+  let pers: any = r[0].data, bot: any = r[1].data;
+  const sinLeer = r[2].count, sinLeerBot = r[3].count;
+  if (sinColumna(r[0].error, COL_DAFO) || sinColumna(r[1].error, COL_DAFO)) {
+    const r2 = await Promise.all([tanda(sinDafoId(cols), false), tanda(sinDafoId(cols), true)]);
+    pers = r2[0].data; bot = r2[1].data;
+  }
   const items = await conVinculos(supabase, [...(pers || []), ...(bot || [])]);
   return { items, sinLeer: sinLeer || 0, sinLeerBot: sinLeerBot || 0 };
 }
@@ -4810,17 +4820,22 @@ export async function notificacionesTodas(desde = 0, filtro?: "personal" | "bot"
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { items: [], hayMas: false, total: 0, totalBot: 0, sinLeer: 0, sinLeerBot: 0 };
-  let q = supabase.from("notificaciones")
-    .select("id,tipo,mensaje,actor_nombre,publicacion_id,objeto_id,prestamo_id,equipamiento_id,dafo_id,leida,creado_en")
-    .eq("usuario_id", user.id);
-  if (filtro === "personal") q = q.not("actor_nombre", "is", null);
-  else if (filtro === "bot") q = q.is("actor_nombre", null);
-  // Chips: afinan dentro de la pestaña. "todas"/undefined no filtra.
-  if (chip === "no_leidas") q = q.eq("leida", false);
-  else if (chip === "mencion") q = q.eq("tipo", "mencion");
-  else if (chip === "comentario") q = q.eq("tipo", "comentario");
-  else if (chip === "asignacion") q = q.eq("tipo", "asignacion");
-  const [{ data: notifs }, { count: total }, { count: totalBot }, { count: sinLeer }, { count: sinLeerBot }] = await Promise.all([
+  const COLS = "id,tipo,mensaje,actor_nombre,publicacion_id,objeto_id,prestamo_id,equipamiento_id,dafo_id,leida,creado_en";
+  /* Armada en una función: si `dafo_id` no existe todavía hay que preguntar
+     otra vez sin ella, y un builder ya filtrado no se puede reusar. */
+  const consulta = (cols: string) => {
+    let q = supabase.from("notificaciones").select(cols).eq("usuario_id", user.id);
+    if (filtro === "personal") q = q.not("actor_nombre", "is", null);
+    else if (filtro === "bot") q = q.is("actor_nombre", null);
+    // Chips: afinan dentro de la pestaña. "todas"/undefined no filtra.
+    if (chip === "no_leidas") q = q.eq("leida", false);
+    else if (chip === "mencion") q = q.eq("tipo", "mencion");
+    else if (chip === "comentario") q = q.eq("tipo", "comentario");
+    else if (chip === "asignacion") q = q.eq("tipo", "asignacion");
+    return q;
+  };
+  const q = consulta(COLS);
+  const [{ data: notifsRaw, error: eNotifs }, { count: total }, { count: totalBot }, { count: sinLeer }, { count: sinLeerBot }] = await Promise.all([
     /* Desempate por id: dos notifs con el MISMO creado_en (p.ej. un insert
        múltiple a varios destinatarios) no tienen orden estable entre dos SELECT
        paginados sin segundo criterio → una podría saltarse (hueco). */
@@ -4835,6 +4850,16 @@ export async function notificacionesTodas(desde = 0, filtro?: "personal" | "bot"
     supabase.from("notificaciones").select("id", { count: "exact", head: true })
       .eq("usuario_id", user.id).eq("leida", false).is("actor_nombre", null),
   ]);
+  /* Si la columna de la casilla no existe todavía, se repite la consulta sin
+     ella: la bandeja de notificaciones NO puede quedarse vacía por un SQL
+     pendiente de otro módulo. */
+  let notifs: any = notifsRaw;
+  if (sinColumna(eNotifs, COL_DAFO)) {
+    const { data } = await consulta(sinDafoId(COLS))
+      .order("creado_en", { ascending: false }).order("id", { ascending: false })
+      .range(desde, desde + NOTIF_PAGINA - 1);
+    notifs = data;
+  }
   const items = await conVinculos(supabase, notifs || []);
   /* hayMas heurístico: si vino una página completa, probablemente hay más. Con
      chips no tenemos un total exacto por combinación, y esto funciona igual para
