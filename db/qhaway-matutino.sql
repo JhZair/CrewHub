@@ -36,7 +36,7 @@ as $function$
 declare
   sinres int; enprog int; dormidos int := 0; dni_alerta text := ''; dni_n int := 0;
   dni_raros text := ''; dni_raros_n int := 0;
-  porvencer int := 0; vencidos int := 0; materializadas int := 0;
+  porvencer int := 0; vencidos int := 0; materializadas int := 0; huerfanas int := 0;
   emp_alerta text := ''; emp_sinverif int := 0;
   lista_venc text := ''; msg text; hook text; r record; d int; dest uuid;
   nueva_pub uuid; autor_defecto uuid; contexto text; es_hito boolean;
@@ -59,6 +59,26 @@ begin
   end if;
 
   -- 📅 MATERIALIZACIÓN (hitos de concurso solo si tenemos postulaciones en juego)
+  /* ── ACTIVIDADES SIN DUEÑO ──
+     `proyecto_id` y `convocatoria_id` son las dos opcionales, así que una
+     actividad puede no tener ninguna. Materializarla intentaba insertar un
+     vínculo con entidad_id NULL, y como la columna es not null la ronda
+     ENTERA reventaba: sin avisos, sin mensaje al Chat, sin nada.
+
+     Pasó de verdad. Del 23 al 30 de julio de 2026 el Bot estuvo ocho días
+     mudo por veinte actividades de un documental de 2024 que se habían
+     quedado sin proyecto. Nadie lo notó porque un Bot que calla se ve igual
+     que un Bot sin novedades — y porque esas filas, al no colgar de nada,
+     eran invisibles en toda la aplicación.
+
+     Ahora se saltan y se CUENTAN. Saltarlas en silencio sería cambiar un
+     fallo ruidoso por uno mudo: el número sale en el mensaje de la mañana
+     para que alguien las arregle. */
+  select count(*) into huerfanas
+    from cronograma_actividades ca
+   where ca.estado = 'planificada' and ca.publicacion_id is null
+     and ca.proyecto_id is null and ca.convocatoria_id is null;
+
   for r in
     select ca.*, p.nombre as proy_nombre,
            cv.codigo as conv_codigo, cv.nombre as conv_nombre, cv.anio as conv_anio
@@ -66,6 +86,9 @@ begin
     left join proyectos p on p.id = ca.proyecto_id
     left join convocatorias cv on cv.id = ca.convocatoria_id
     where ca.estado = 'planificada' and ca.publicacion_id is null
+      -- Sin proyecto NI convocatoria no hay a qué vincular el caso. Se salta:
+      -- una fila mal formada no puede tumbar la ronda de todo el equipo.
+      and (ca.proyecto_id is not null or ca.convocatoria_id is not null)
       and ca.fecha_inicio - coalesce(ca.dias_anticipacion, 7) <= current_date
       and (
         ca.convocatoria_id is null
@@ -255,7 +278,12 @@ begin
       || case when materializadas > 0
               then E'\n' || '📅 Del cronograma creé ' || materializadas || ' caso(s)' else '' end
       || case when dormidos > 0
-              then E'\n' || '💤 Despertados: ' || dormidos else '' end;
+              then E'\n' || '💤 Despertados: ' || dormidos else '' end
+      /* Visible a propósito: son actividades que NO se pueden materializar y
+         que no aparecen en ninguna pantalla por no colgar de nada. Si no se
+         dicen aquí, no se dicen en ningún sitio. */
+      || case when huerfanas > 0
+              then E'\n' || '⚠ ' || huerfanas || ' actividad(es) del cronograma sin proyecto ni convocatoria — no se materializan' else '' end;
 
   if porvencer + vencidos > 0 then
     msg := msg || sep || E'\n' || '⏰ *PLAZOS* — '
