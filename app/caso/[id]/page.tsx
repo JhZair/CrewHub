@@ -492,16 +492,25 @@ export default async function Caso({ params }: { params: { id: string } }) {
           const e: any = f.solo;
           if (e.comentario) {
             const c = e.comentario;
+            const padreC = c.responde_a ? (comMap.get(c.responde_a) as any) : null;
             return (
-              <div className="tl-com" key={i}>
+              <div className="tl-com" id={`com-${c.id}`} key={i}>
                 <Avatar nombre={c.autor?.nombre} color={c.autor?.color} size={32} src={c.autor?.avatar_url} />
                 <div className="bubble">
                   <div className="who">{c.autor?.nombre}<span className="t">{fecha(c.creado_en)}</span></div>
-                  {c.responde_a && comMap.get(c.responde_a) && (
-                    <div style={{ fontSize: TXT.micro, color: "var(--dim)", margin: "1px 0 4px" }}>
-                      ↳ en respuesta a <b style={{ color: "var(--violet)" }}>{(comMap.get(c.responde_a) as any)?.autor?.nombre || "un comentario"}</b>
-                    </div>
-                  )}
+                  {padreC && (() => {
+                    /* En vez de solo «↳ en respuesta a X», citamos el comentario
+                       padre (autor + un extracto) y lo hacemos un enlace-ancla:
+                       al pulsarlo salta y resalta el original, así el hilo se
+                       sigue sin perderse aunque estén separados en el tiempo. */
+                    const cita = (padreC.cuerpo || "").replace(/\s+/g, " ").trim();
+                    return (
+                      <a href={`#com-${padreC.id}`} className="tl-resp-cita" title="Ir al comentario original">
+                        <span className="tl-resp-cab">↳ en respuesta a <b>{padreC.autor?.nombre?.split(" ")[0] || "un comentario"}</b></span>
+                        {cita && <span className="tl-resp-txt">{cita.length > 90 ? cita.slice(0, 90) + "…" : cita}</span>}
+                      </a>
+                    );
+                  })()}
                   <ComentarioTexto comentarioId={c.id} pubId={p.id} cuerpo={c.cuerpo || ""}
                     imagenes={c.imagenes || []} esMio={c.autor_id === user.id} editadoEn={c.editado_en} />
                   <div style={{ marginTop: 7, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
