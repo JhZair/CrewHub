@@ -38,8 +38,10 @@ alter table reacciones
 create index if not exists idx_rx_postulacion on reacciones (postulacion_id);
 
 -- El check de dueño anónimo (publicacion_id o comentario_id) impediría una
--- reacción a la postulación: lo relajamos.
+-- reacción a la postulación: lo relajamos. (Idempotente: soltamos tanto el
+-- nombre viejo como el nuevo antes de crearlo, para poder re-ejecutar el script.)
 alter table reacciones drop constraint if exists reacciones_check;
+alter table reacciones drop constraint if exists reacciones_dueno_chk;
 alter table reacciones add constraint reacciones_dueno_chk check (
   publicacion_id is not null or comentario_id is not null or postulacion_id is not null
 );
