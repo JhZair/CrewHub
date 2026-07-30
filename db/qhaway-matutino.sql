@@ -73,11 +73,26 @@ begin
 
      Ahora se saltan y se CUENTAN. Saltarlas en silencio sería cambiar un
      fallo ruidoso por uno mudo: el número sale en el mensaje de la mañana
-     para que alguien las arregle. */
+     para que alguien las arregle.
+
+     ── Y EL TERCER DUEÑO ──
+     El 20/07/2026 `cronograma_actividades` ganó `postulacion_id` (ver
+     db/crono-postulacion.sql) y ESTA FUNCIÓN NO SE ENTERÓ. Esa fue la causa
+     real de los ocho días mudos: al crearse el primer cronograma de una
+     postulación, sus filas entraban al bucle sin proyecto ni convocatoria y
+     el vínculo salía con entidad_id NULL.
+
+     El cronograma de una postulación NO se materializa, y es una regla, no
+     un descuido: mientras se postula es una PROPUESTA — lo que le prometes a
+     DAFO que vas a hacer si ganas. No hay trabajo que abrir ni plazo que
+     vigilar hasta que el fondo se gane; ahí empieza otro ciclo. Por eso se
+     excluye aquí explícitamente y NO cuenta como huérfana: tiene dueño, solo
+     que uno que no genera casos. */
   select count(*) into huerfanas
     from cronograma_actividades ca
    where ca.estado = 'planificada' and ca.publicacion_id is null
-     and ca.proyecto_id is null and ca.convocatoria_id is null;
+     and ca.proyecto_id is null and ca.convocatoria_id is null
+     and ca.postulacion_id is null;
 
   for r in
     select ca.*, p.nombre as proy_nombre,
@@ -86,8 +101,11 @@ begin
     left join proyectos p on p.id = ca.proyecto_id
     left join convocatorias cv on cv.id = ca.convocatoria_id
     where ca.estado = 'planificada' and ca.publicacion_id is null
-      -- Sin proyecto NI convocatoria no hay a qué vincular el caso. Se salta:
-      -- una fila mal formada no puede tumbar la ronda de todo el equipo.
+      -- El cronograma de una postulación es una PROPUESTA, no trabajo: no
+      -- abre casos ni vigila plazos hasta que se gane el fondo.
+      and ca.postulacion_id is null
+      -- Y sin proyecto NI convocatoria no hay a qué vincular el caso. Se
+      -- salta: una fila mal formada no puede tumbar la ronda del equipo.
       and (ca.proyecto_id is not null or ca.convocatoria_id is not null)
       and ca.fecha_inicio - coalesce(ca.dias_anticipacion, 7) <= current_date
       and (
