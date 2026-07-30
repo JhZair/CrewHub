@@ -1,5 +1,5 @@
 "use client";
-import { agregarEquipoPostulacion, quitarEquipoPostulacion } from "@/app/actions";
+import { agregarEquipoPostulacion, quitarEquipoPostulacion, guardarCvEquipo } from "@/app/actions";
 import { EntPicker, type CatalogoItem } from "@/components/Composer";
 import Avatar from "@/components/Avatar";
 import { ROLES_EQUIPO as ROLES, ordenarEquipo } from "@/lib/rolesEquipo";
@@ -18,7 +18,21 @@ export default function EquipoPostulacion({ postulacionId, equipo, personas }: {
   const [guardando, setGuardando] = useState(false);
   const [quitando, setQuitando] = useState<string | null>(null);
   const [error, setError] = useState("");
+  // CV presentado: qué fila está editando su link y qué URL se está pegando.
+  const [cvEditando, setCvEditando] = useState<string | null>(null);
+  const [cvUrl, setCvUrl] = useState("");
+  const [cvGuardando, setCvGuardando] = useState(false);
   const router = useRouter();
+
+  const guardarCv = async (filaId: string, url: string) => {
+    if (cvGuardando) return;
+    setCvGuardando(true); setError("");
+    const res = await guardarCvEquipo(filaId, postulacionId, url);
+    setCvGuardando(false);
+    if (res?.error) { setError(res.error); return; }
+    setCvEditando(null); setCvUrl("");
+    router.refresh();
+  };
 
   const guardar = async () => {
     if (!sel || guardando) return;
@@ -84,15 +98,31 @@ export default function EquipoPostulacion({ postulacionId, equipo, personas }: {
                 <span className="eq-card-cargo">{m.cargo || "—"}</span>
               </div>
               {ctx && <div className="eq-card-ctx">{ctx}</div>}
-              {/* Los datos que el fondo revisa por persona: CV (para su ROL y
-                  vigente) y precontrato. Si existe el archivo, el chip lo abre. */}
+              {/* Los datos que el fondo revisa por persona: CV y precontrato.
+                  El CV que vale es el PRESENTADO (cv_url de esta fila, hecho
+                  para esta postulación y este cargo). Si aún no está, el CV
+                  general de la persona aparece como base sugerida — abre el
+                  documento del cual partir, pero no cuenta como entregado. */}
               <div className="eq-card-chips">
-                {m._cv ? (
-                  <a href={m._cv.url || `/objeto/${m._cv.id}`} target="_blank" rel="noopener noreferrer"
-                    className={`eq-chip eq-chip-link ${m._cv.vigente ? "ok" : "warn"}`}>
-                    📄 {m._cv.vigente ? "CV" : "CV viejo"} ↗
-                  </a>
-                ) : <span className="eq-chip falta">📄 sin CV</span>}
+                {m.cv_url ? (
+                  <>
+                    <a href={m.cv_url} target="_blank" rel="noopener noreferrer"
+                      className="eq-chip eq-chip-link ok">📄 CV ↗</a>
+                    <button className="eq-chip dim" title="Cambiar o quitar el CV presentado"
+                      onClick={() => { setCvEditando(m.id); setCvUrl(m.cv_url); }}>✎</button>
+                  </>
+                ) : (
+                  <>
+                    {m._cv ? (
+                      <a href={m._cv.url || `/objeto/${m._cv.id}`} target="_blank" rel="noopener noreferrer"
+                        className="eq-chip eq-chip-link warn" title="CV general de la persona: sirve de base, no cuenta como presentado">
+                        📄 base: CV general ↗
+                      </a>
+                    ) : <span className="eq-chip falta">📄 sin CV</span>}
+                    <button className="eq-chip dim" title="Registrar el link del CV preparado para esta postulación"
+                      onClick={() => { setCvEditando(m.id); setCvUrl(""); }}>＋ CV</button>
+                  </>
+                )}
                 {m._pre ? (
                   m._pre.id ? (
                     <a href={`/api/precontrato?post=${postulacionId}&pre=${m._pre.id}`} target="_blank" rel="noopener noreferrer"
@@ -102,6 +132,24 @@ export default function EquipoPostulacion({ postulacionId, equipo, personas }: {
                   ) : <span className={`eq-chip ${m._pre.estado === "firmado" ? "ok" : "warn"}`}>📝 {m._pre.estado}</span>
                 ) : <span className="eq-chip dim">📝 sin precontrato</span>}
               </div>
+              {cvEditando === m.id && (
+                <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 6, flexWrap: "wrap" }}>
+                  <input value={cvUrl} onChange={e => setCvUrl(e.target.value)} autoFocus
+                    placeholder="https://drive.google.com/… (CV de esta postulación)"
+                    style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "6px 10px", fontSize: 12, outline: "none", flex: 1, minWidth: 220 }} />
+                  <button className="btn" style={{ padding: "6px 12px", fontSize: 12 }}
+                    disabled={cvGuardando || !cvUrl.trim()} onClick={() => guardarCv(m.id, cvUrl)}>
+                    {cvGuardando ? "..." : "Guardar"}
+                  </button>
+                  {m.cv_url && (
+                    <button className="btn btn-ghost" style={{ padding: "6px 10px", fontSize: 12, color: "var(--red)" }}
+                      disabled={cvGuardando} title="Quitar el CV presentado de esta fila"
+                      onClick={() => guardarCv(m.id, "")}>Quitar</button>
+                  )}
+                  <button className="btn btn-ghost" style={{ padding: "6px 10px", fontSize: 12 }}
+                    onClick={() => { setCvEditando(null); setCvUrl(""); }}>Cancelar</button>
+                </div>
+              )}
             </div>
             {quitando === m.id ? (
               <span className="eq-card-conf">

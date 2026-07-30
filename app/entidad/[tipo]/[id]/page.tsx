@@ -623,7 +623,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         .select("proy:proyectos(id,nombre,tipo,renca), emp:empresas(id,nombre,codigo,ruc,razon_social,renca,partida_electronica,estado_sunat,domicilio_fiscal,region,departamento_fiscal,provincia_fiscal,distrito_fiscal), conv:convocatorias(id,codigo,nombre,anio,categoria,monto_adjudicado,bases_url,plantilla_formulario,hitos:cronograma_actividades(id,nombre,fecha_inicio,estado,clase))")
         .eq("id", params.id).single(),
       supabase.from("postulacion_equipo")
-        .select("id,cargo,persona:personas(id,nombre,alias,foto_url,tipo,es_comunero,ruc_dni,genero,nacionalidad,autoident,lengua_materna,otras_lenguas,discapacidad,direccion,region,provincia,distrito,fecha_nacimiento)")
+        .select("id,cargo,cv_url,cv_actualizado,persona:personas(id,nombre,alias,foto_url,tipo,es_comunero,ruc_dni,genero,nacionalidad,autoident,lengua_materna,otras_lenguas,discapacidad,direccion,region,provincia,distrito,fecha_nacimiento)")
         .eq("postulacion_id", params.id).order("cargo"),
       supabase.from("personas").select("id,nombre,alias,tipo").order("nombre"),
       /* Solo las que pueden postular de verdad: activas y nuestras. Ofrecer
@@ -734,8 +734,17 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       const cv = cvs.find((x: any) => { const e = normCv(x.enfoque); return e && (c === e || c.startsWith(e + " ")); });
       const vigente = cv ? !(cv.actualizado && (Date.now() - new Date(cv.actualizado + "T12:00:00").getTime()) / 86400000 > DIAS_CV) : false;
       const pre = p?.id ? prePorPersona.get(p.id) : null;
+      /* CV PRESENTADO (db/cv-postulacion.sql): si la fila del equipo tiene su
+         propio cv_url, ESE es el CV de la carpeta — validación binaria, sin
+         vigencia (nació para esta postulación, no caduca). El CV general por
+         enfoque queda degradado a sugerencia (`_cvBase`): «úsalo de base para
+         preparar el de esta postulación». Las filas de proyecto no tienen
+         cv_url y conservan la lógica inferida de siempre — es identidad. */
+      const propio = m.cv_url
+        ? { url: m.cv_url as string, id: null, vigente: true, propio: true }
+        : null;
       return { ...m, persona: p,
-        _cv: cv ? { url: cv.url || null, id: cv.id, vigente } : null,
+        _cv: propio || (cv ? { url: cv.url || null, id: cv.id, vigente, propio: false } : null),
         _pre: pre || null };
     };
     equipoPost = equipoPost.map(enriquecer);
@@ -1093,7 +1102,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         .eq("persona_id", params.id).gte("fecha", `${new Date().getFullYear()}-01-01`),
       // Con qué postuló, con quién y por cuál empresa: el contexto completo
       supabase.from("postulacion_equipo")
-        .select("id,cargo,post:postulaciones(id,codigo,estado,monto_adjudicado,proy:proyectos(id,nombre),conv:convocatorias(id,nombre,anio),emp:empresas(id,nombre),equipo:postulacion_equipo(cargo,persona:personas(id,nombre,alias,foto_url)))")
+        .select("id,cargo,cv_url,post:postulaciones(id,codigo,estado,monto_adjudicado,proy:proyectos(id,nombre),conv:convocatorias(id,nombre,anio),emp:empresas(id,nombre),equipo:postulacion_equipo(cargo,persona:personas(id,nombre,alias,foto_url)))")
         .eq("persona_id", params.id),
       supabase.from("equipo_prestamos")
         .select("id,desde,equipo:equipamiento(id,folio,nombre)")
@@ -1808,10 +1817,14 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                 /* Solo la edición vigente: el CV se exige para lo que se va a
                    presentar ahora. Haber dirigido en 2020 no reclama un CV de
                    director hoy —esa postulación ya se cerró—. Sin fecha, se
-                   asume vigente para no ocultar un pendiente real. */
+                   asume vigente para no ocultar un pendiente real.
+                   Y si la fila del equipo ya tiene su CV PRESENTADO (cv_url,
+                   db/cv-postulacion.sql), ese cargo está cumplido: el CV
+                   general pasa a ser materia prima, no requisito. */
                 const anioActual = new Date().getFullYear();
                 const cargosVigentes = postDe
                   .filter((r: any) => (r.post?.conv?.anio ?? anioActual) >= anioActual)
+                  .filter((r: any) => !r.cv_url)
                   .map((r: any) => r.cargo).filter(Boolean);
                 const sinCv = [...new Set(cargosVigentes)].filter((c: any) => !cubierto(c));
                 if (sinCv.length) return (

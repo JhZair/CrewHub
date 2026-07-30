@@ -2,7 +2,7 @@
  *
  * Lista CERRADA a propósito, con un «otro» de escape. Si cada quien inventa su
  * tipo, el filtro deja de servir y el repositorio se vuelve un cajón de sastre
- * — que es justo lo que vino a evitar. Doce entradas cubren lo que una
+ * — que es justo lo que vino a evitar. Trece entradas cubren lo que una
  * productora acumula de una persona, una empresa o una película.
  *
  * `cv` está en la lista porque vive en la misma tabla, pero tiene su propia
@@ -33,6 +33,12 @@ export const TIPOS_OBJETO: TipoObjeto[] = [
   { key: "prensa", ico: "📰", lbl: "Prensa", pista: "Nota, entrevista, reseña" },
   { key: "red", ico: "🔗", lbl: "Red o web", pista: "Instagram, web personal, Vimeo" },
   { key: "certificado", ico: "📜", lbl: "Certificado", pista: "Constancia, diploma, acreditación" },
+  /* Formación como HECHO de la trayectoria (se estudió tal cosa, con quién,
+     cuándo), distinta del certificado que la acredita — un taller con un
+     maestro reconocido pesa en el CV aunque nunca diera papel. Alimenta la
+     sección Formación de los CVs por postulación (PLAN-CVS-POSTULACION.md).
+     `datos` jsonb: { institucion, grado }. */
+  { key: "formacion", ico: "🎓", lbl: "Formación", pista: "Estudios, taller, laboratorio, residencia, diplomado" },
   { key: "contrato", ico: "✍️", lbl: "Contrato", pista: "Acuerdo, adenda, carta de compromiso" },
   { key: "foto", ico: "🖼", lbl: "Fotografía", pista: "Retrato, foto fija, material gráfico" },
   { key: "nota", ico: "🗒", lbl: "Nota", pista: "Algo que conviene recordar (puede no tener link)" },
