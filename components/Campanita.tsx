@@ -3,7 +3,7 @@ import { marcarNotifsLeidas, marcarNotifLeida } from "@/app/actions";
 import Link from "next/link";
 import { useState, useEffect } from "react";
 
-import { rutaNotif, esAutomatica } from "@/lib/notificaciones";
+import { rutaNotif, esAutomatica, agruparNotifs } from "@/lib/notificaciones";
 import NotifFila from "./NotifFila";
 /* La fila (ícono/título/cuándo/chips) salió a NotifFila: la pintaban idéntica
    esta campanita, la flotante y ahora la página /notificaciones. */
@@ -22,12 +22,16 @@ export default function Campanita({ items: itemsProp, sinLeer: sinLeerProp, sinL
   // Abrir NO marca nada: el número persiste hasta atender cada una.
   const alternar = () => setAbierta(a => !a);
 
-  const marcarUna = async (n: any) => {
-    if (n.leida) return;
-    setItems(prev => prev.map(x => x.id === n.id ? { ...x, leida: true } : x));
-    if (esAutomatica(n)) setSinLeerBot(c => Math.max(0, c - 1));
-    else setSinLeer(c => Math.max(0, c - 1));
-    await marcarNotifLeida(n.id);
+  /* Atender un GRUPO: marca de una vez todas las del mismo caso. Si no, leías
+     los cuatro comentarios y el timbre seguía marcando tres. Se mandan en
+     paralelo y el contador baja por las que de verdad estaban sin leer. */
+  const marcarGrupo = async (g: any) => {
+    if (!g.idsSinLeer.length) return;
+    const pendientes = new Set<string>(g.idsSinLeer);
+    setItems(prev => prev.map(x => pendientes.has(x.id) ? { ...x, leida: true } : x));
+    if (esAutomatica(g.n)) setSinLeerBot(c => Math.max(0, c - pendientes.size));
+    else setSinLeer(c => Math.max(0, c - pendientes.size));
+    await Promise.all(g.idsSinLeer.map((id: string) => marcarNotifLeida(id)));
   };
 
   // Marca todas las de la pestaña actual (no las de la otra).
@@ -41,6 +45,10 @@ export default function Campanita({ items: itemsProp, sinLeer: sinLeerProp, sinL
   // El timbre cuenta SOLO lo personal (lo que pide tu acción).
   const badge = sinLeer;
   const lista = items.filter(n => esAutomatica(n) === (pestana === "bot"));
+  /* Sin useMemo: `lista` se recalcula en cada render, así que la dependencia
+     cambiaba siempre y no memoizaba nada. Son 12 elementos. (En la campanita
+     flotante además rompía las reglas de los hooks: va tras un return null.) */
+  const grupos = agruparNotifs(lista);
   const nPestana = pestana === "bot" ? sinLeerBot : sinLeer;
 
   return (
@@ -66,17 +74,17 @@ export default function Campanita({ items: itemsProp, sinLeer: sinLeerProp, sinL
                 {pestana === "bot" ? "Sin avisos del Bot por ahora. 🤖" : "Nada que requiera tu acción. ✨"}
               </div>
             )}
-            {lista.map((n: any) => (
-              rutaNotif(n) ? (
-                <Link key={n.id} href={rutaNotif(n)!}
-                  className={`camp-item ${n.leida ? "leida" : "nueva"}`}
-                  onClick={() => { marcarUna(n); setAbierta(false); }}>
-                  <NotifFila n={n} />
+            {grupos.map((g: any) => (
+              rutaNotif(g.n) ? (
+                <Link key={g.n.id} href={rutaNotif(g.n)!}
+                  className={`camp-item ${g.idsSinLeer.length ? "nueva" : "leida"}`}
+                  onClick={() => { marcarGrupo(g); setAbierta(false); }}>
+                  <NotifFila n={g.n} cuenta={g.cuenta} actores={g.actores} />
                 </Link>
               ) : (
-                <div key={n.id} className={`camp-item ${n.leida ? "leida" : "nueva"}`}
-                  onClick={() => marcarUna(n)} style={{ cursor: n.leida ? "default" : "pointer" }}>
-                  <NotifFila n={n} />
+                <div key={g.n.id} className={`camp-item ${g.idsSinLeer.length ? "nueva" : "leida"}`}
+                  onClick={() => marcarGrupo(g)} style={{ cursor: g.idsSinLeer.length ? "pointer" : "default" }}>
+                  <NotifFila n={g.n} cuenta={g.cuenta} actores={g.actores} />
                 </div>
               )
             ))}

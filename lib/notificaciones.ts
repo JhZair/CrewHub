@@ -89,6 +89,69 @@ export const hace = (d: string) => {
    actor". */
 export const esAutomatica = (n: any): boolean => n?.actor_nombre == null;
 
+/* ── AGRUPAR LO QUE APUNTA AL MISMO SITIO ──
+ * Un caso conversado producía una fila por comentario. Con datos reales
+ * (30/07/2026): quince comentarios alternando entre dos personas en una hora
+ * — o sea, una CONVERSACIÓN, no quince eventos. La campanita mostraba cuatro
+ * filas idénticas «Carlos comentó · 1d» que llevaban todas al mismo caso.
+ *
+ * Dos daños, y el segundo es el peor:
+ *  1. Ocupan el cupo. La campanita trae 12 por pestaña; un hilo activo se come
+ *     la mitad y empuja fuera cosas que sí eran nuevas.
+ *  2. Marcabas una y las otras seguían sin leer. Leías los cuatro comentarios
+ *     y el timbre seguía marcando 3. El número dejaba de significar «lo que no
+ *     has visto» y pasaba a significar «filas que no has clicado», que es como
+ *     un contador se vuelve ignorable.
+ *
+ * Se agrupa AL PINTAR, no al guardar: la base conserva una fila por evento
+ * (que es la verdad de lo que pasó) y esto es solo cómo se lee. Si mañana no
+ * gusta, se revierte cambiando esta función.
+ *
+ * La clave incluye el TIPO además del destino: una mención y un comentario en
+ * el mismo caso NO se juntan. Se pintan distinto y pesan distinto — enterrar
+ * un «te mencionó» dentro de «3 comentarios» sería justo lo que esto viene a
+ * evitar. Sin destino (una notificación suelta), cada una es su propio grupo:
+ * `id:` garantiza que nunca se fusionen por error.
+ */
+export type GrupoNotif = {
+  n: any;              // la más reciente: es la que se pinta
+  ids: string[];       // todas las del grupo
+  idsSinLeer: string[];// las que hay que marcar al atender el grupo
+  cuenta: number;
+  actores: string[];   // nombres cortos, de la más reciente a la más vieja
+};
+
+const claveGrupo = (n: any) => `${rutaNotif(n) || `id:${n.id}`}|${n.tipo || ""}`;
+
+/* Espera `items` ya ordenado de más nuevo a más viejo (así llega de la
+   consulta). Conserva ese orden por la posición del PRIMERO de cada grupo. */
+export function agruparNotifs(items: any[]): GrupoNotif[] {
+  const orden: string[] = [];
+  const mapa = new Map<string, GrupoNotif>();
+  for (const n of items || []) {
+    const k = claveGrupo(n);
+    let g = mapa.get(k);
+    if (!g) {
+      g = { n, ids: [], idsSinLeer: [], cuenta: 0, actores: [] };
+      mapa.set(k, g); orden.push(k);
+    }
+    g.ids.push(n.id);
+    g.cuenta++;
+    if (!n.leida) g.idsSinLeer.push(n.id);
+    const quien = String(n.actor_nombre || "").trim().split(/\s+/)[0];
+    if (quien && !g.actores.includes(quien)) g.actores.push(quien);
+  }
+  return orden.map(k => mapa.get(k)!);
+}
+
+/* «Carlos», «Carlos y 1 más», «Carlos y 2 más». El primero es el más reciente:
+   es el nombre que la persona espera ver cuando algo acaba de moverse. */
+export function actoresTexto(actores: string[]): string {
+  if (!actores.length) return "";
+  if (actores.length === 1) return actores[0];
+  return `${actores[0]} y ${actores.length - 1} más`;
+}
+
 /* Bloque de fecha para agrupar el historial: Hoy · Ayer · Esta semana · … */
 export function bucketFecha(iso: string): string {
   const d = new Date(iso); d.setHours(0, 0, 0, 0);
