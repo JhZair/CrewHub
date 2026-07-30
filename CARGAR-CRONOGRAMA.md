@@ -43,8 +43,19 @@ empiece a crear tareas de trabajo por algo que todavía no existe.
 Nunca pegues un UUID a mano. Se busca por código:
 
 ```sql
-select id, codigo, titulo, anio from postulaciones where codigo = 'PO-040';
+select p.id, p.codigo, p.codigo_plataforma, p.estado,
+       pr.nombre as proyecto, c.nombre as convocatoria, c.anio
+from postulaciones p
+join proyectos pr on pr.id = p.proyecto_id
+join convocatorias c on c.id = p.convocatoria_id
+where p.codigo = 'PO-040';
 ```
+
+> `postulaciones` NO tiene `titulo` ni `anio`: el nombre del proyecto vive en
+> `proyectos.nombre` y el año en `convocatorias.anio`. La postulación es el cruce
+> proyecto × convocatoria × empresa, no una cosa con nombre propio.
+> `codigo` es el interno (`PO-040`); `codigo_plataforma` es el de DAFO
+> (`CDV-00071-26`). No confundirlos.
 
 Si no aparece, **para y pregunta**. No inventes el destino.
 
