@@ -30,6 +30,16 @@ export async function middleware(request: NextRequest) {
     // El cartero de push lo llama pg_cron (sin cookies); su seguridad es la
     // llave PUSH_CRON_LLAVE que valida el propio endpoint.
     || path.startsWith("/api/push/despachar")
+    /* La casilla DAFO la llama el Apps Script de Google (sin cookies); su
+       seguridad es INGESTA_DAFO_LLAVE, que el endpoint exige SIEMPRE —sin
+       variable configurada responde 401 a todo, nunca abierto.
+       REGLA para lo que se agregue bajo /api/ingesta: valida tu propia llave,
+       porque aquí ya no hay sesión que te cubra.
+       Sin esta línea el POST se iba redirigido a /login y devolvía la página de
+       login con estado 200: el Apps Script lo habría leído como «entregado» y
+       habría marcado los hilos como enviados sin que entrara un solo correo.
+       Justo la pérdida silenciosa que este módulo existe para evitar. */
+    || path.startsWith("/api/ingesta")
     || path === "/manifest.webmanifest"
     || path === "/sw.js";
 

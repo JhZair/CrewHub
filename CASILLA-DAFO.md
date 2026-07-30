@@ -144,6 +144,15 @@ curl -X POST "https://crew-hub-sigma.vercel.app/api/ingesta/dafo" \
   -d '{"mensajes":[{"id":"prueba-1","fecha":"2026-07-29T10:00:00Z","buzon":"maestro@gmail.com","de":"DAFO <notificaciones@cultura.gob.pe>","para":["cuenta-postulacion@gmail.com","maestro@gmail.com"],"asunto":"Subsanación CDO-P-00094-26","extracto":"Se otorga plazo de cinco dias habiles."}]}'
 ```
 
+Para probar que la llave quedó bien SIN escribir nada en la base, manda la
+tanda vacía: `-d '{"mensajes":[]}'` responde `{recibidos:0, nuevos:0, avisos:0}`.
+
+> Si en vez de JSON te devuelve **HTML** (en PowerShell se ve como un objeto
+> `html`), el endpoint está cayendo en el redirect a `/login` del middleware:
+> `/api/ingesta` tiene que estar en la lista `publica` de `middleware.ts`. Es un
+> fallo traicionero porque el redirect responde **200**, así que el Apps Script
+> lo lee como entregado y marca los hilos como enviados sin haber entrado nada.
+
 Responde `{ recibidos, nuevos, avisos, correosAvisados, rafaga }`. Correrlo dos
 veces debe dar `nuevos: 0` la segunda: eso confirma que la deduplicación
 funciona. (La llave también se acepta como `?llave=` para probar a mano, pero el
