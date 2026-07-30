@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { menciones, MencionesMenu } from "@/components/Menciones";
+import LinkPreviews from "@/components/LinkPreviews";
 import Avatar from "@/components/Avatar";
 
 /* VISTA HILO — base compartida de los pop-up interactivos (objeto del
@@ -209,6 +210,7 @@ export default function VistaHilo({
                             <div className="vo-com-resp">↳ a <b>{(padre as any).autor?.nombre?.split(" ")[0] || "un comentario"}</b></div>
                           )}
                           {c.cuerpo && <div className="vo-com-txt">{c.cuerpo}</div>}
+                          <LinkPreviews texto={c.cuerpo} />
                           {(c.imagenes || []).length > 0 && (
                             <div className="vo-com-imgs">
                               {c.imagenes.map((src: string, i: number) => (

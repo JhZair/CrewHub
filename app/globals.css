@@ -387,6 +387,18 @@ a{color:inherit;text-decoration:none}
 .tl-ev.miembro::before{background:var(--accent)}
 .tl-ev.jornada::before{background:var(--green)}
 .tl-ev .t{margin-left:auto;font-size:12px;color:var(--dim);white-space:nowrap;padding-left:10px}
+/* Tarjetas de preview de enlaces (YouTube, Google Docs/Drive, web). */
+.lp-wrap{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.lp-card{display:flex;align-items:stretch;max-width:420px;background:var(--bg);border:1px solid var(--border);border-radius:10px;overflow:hidden;text-decoration:none;transition:border-color .12s}
+.lp-card:hover{border-color:var(--border2)}
+.lp-thumb{position:relative;width:104px;min-width:104px;height:66px;background:#1c1c2c;flex:none}
+.lp-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.lp-play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;text-shadow:0 1px 5px rgba(0,0,0,.7);background:rgba(0,0,0,.14)}
+.lp-ico{width:54px;min-width:54px;display:flex;align-items:center;justify-content:center;font-size:22px;background:#1c1c2c;flex:none}
+.lp-ico img{width:26px;height:26px;border-radius:5px}
+.lp-body{display:flex;flex-direction:column;justify-content:center;gap:2px;padding:8px 12px;min-width:0}
+.lp-lbl{font-size:12.5px;color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lp-host{font-size:11.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tl-com{position:relative;margin:7px 0;display:flex;gap:11px;scroll-margin-top:70px}
 /* Cita del comentario padre: enlace-ancla que salta y resalta el original. */
 .tl-resp-cita{display:block;border-left:2px solid var(--violet);background:rgba(167,139,250,.06);border-radius:0 6px 6px 0;padding:3px 9px;margin:2px 0 6px;text-decoration:none}

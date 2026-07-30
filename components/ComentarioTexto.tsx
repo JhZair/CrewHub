@@ -1,6 +1,7 @@
 "use client";
 import { editarComentario } from "@/app/actions";
 import TextoRico from "@/components/TextoRico";
+import LinkPreviews from "@/components/LinkPreviews";
 import Foto from "@/components/Foto";
 import EditorImagenes from "@/components/EditorImagenes";
 import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
@@ -99,6 +100,7 @@ export default function ComentarioTexto({ comentarioId, pubId, cuerpo, imagenes,
           style={{ color: "var(--dim)", fontSize: 11.5, marginLeft: 8, background: "none", border: "none", cursor: "pointer", padding: 0 }}
           onClick={abrir}>✎</button>
       )}
+      {!soloFoto && <LinkPreviews texto={cuerpo} />}
       {imgsVista.length > 0 && (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
           {imgsVista.map((u, j) => <Foto key={j} src={u} maxHeight={160} />)}
