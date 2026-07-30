@@ -9,6 +9,7 @@ import VistaObjeto from "@/components/VistaObjeto";
 import EditorImagenes from "@/components/EditorImagenes";
 import Reacciones, { type Reaccion } from "@/components/Reacciones";
 import ComentarioTexto from "@/components/ComentarioTexto";
+import LinkPreviews from "@/components/LinkPreviews";
 import { menciones, MencionesMenu, type Perfil } from "@/components/Menciones";
 import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
 import { prepararImagen, MEDIDAS } from "@/lib/prepararImagen";
@@ -248,6 +249,7 @@ export default function MuroProyecto({ proyectoId, userId, perfiles, sugerencias
           ) : (
             <>
               {p.cuerpo && <div className="muro-cuerpo">{p.cuerpo}</div>}
+              <LinkPreviews texto={p.cuerpo} />
               {(p.imagenes || []).length > 0 && (
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
                   {p.imagenes!.map((u, i) => <Foto key={i} src={u} maxHeight={260} />)}

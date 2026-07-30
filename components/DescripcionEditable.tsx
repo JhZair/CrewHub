@@ -1,6 +1,7 @@
 "use client";
 import { editarCuerpo } from "@/app/actions";
 import TextoRico from "@/components/TextoRico";
+import LinkPreviews from "@/components/LinkPreviews";
 import Foto from "@/components/Foto";
 import EditorImagenes from "@/components/EditorImagenes";
 import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
@@ -58,6 +59,7 @@ export default function DescripcionEditable({ pubId, cuerpo, estado, tipo, image
           <button title="Editar descripción" onClick={abrir}
             style={{ color: "var(--dim)", fontSize: 13, flex: "none" }}>✎</button>
         </div>
+        <LinkPreviews texto={cuerpo} />
         {imgsVista.length > 0 && (
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: cuerpo ? 12 : 2 }}>
             {imgsVista.map((u, i) => <Foto key={i} src={u} />)}

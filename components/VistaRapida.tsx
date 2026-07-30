@@ -11,6 +11,7 @@ import { icoTipo } from "@/lib/tipos";
 import { TXT } from "@/lib/texto";
 import { ICO_ENT } from "@/lib/secciones";
 import { menciones, MencionesMenu } from "@/components/Menciones";
+import LinkPreviews from "@/components/LinkPreviews";
 
 /* VISTA RÁPIDA — un caso en un pop-up, para interactuar sin abrir otra pestaña.
  *
@@ -210,6 +211,7 @@ export default function VistaRapida({ pubId }: { pubId: string }) {
                 {caso.cuerpo && (
                   <div className="vr-body-txt">{caso.cuerpo}</div>
                 )}
+                <LinkPreviews texto={caso.cuerpo} />
 
                 {/* 4) Chips de contexto (vinculaciones) */}
                 {caso.vinculos?.length > 0 && (
@@ -268,6 +270,7 @@ export default function VistaRapida({ pubId }: { pubId: string }) {
                         <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>{fecha(c.creado_en)}</span>
                       </div>
                       <div className="vr-com-txt">{c.cuerpo}</div>
+                      <LinkPreviews texto={c.cuerpo} />
                     </div>
                   ))}
                   <div ref={finRef} />

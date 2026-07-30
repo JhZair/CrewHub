@@ -3,6 +3,7 @@ import { prestarEquipo, devolverEquipo, comentarEquipo, comentarPrestamo, editar
 import { EntPicker, type CatalogoItem } from "@/components/Composer";
 import Avatar from "@/components/Avatar";
 import Reacciones, { type Reaccion } from "@/components/Reacciones";
+import LinkPreviews from "@/components/LinkPreviews";
 import { menciones, MencionesMenu, type Perfil } from "@/components/Menciones";
 import EditorImagenes from "@/components/EditorImagenes";
 import Foto from "@/components/Foto";
@@ -188,6 +189,7 @@ export default function PrestamoEquipo({ equipoId, prestamos, personas, proyecto
                 {c.cuerpo && c.cuerpo !== "📷" && (
                   <div style={{ fontSize: 13.5, whiteSpace: "pre-wrap", wordBreak: "break-word", lineHeight: 1.5 }}>{c.cuerpo}</div>
                 )}
+                {c.cuerpo !== "📷" && <LinkPreviews texto={c.cuerpo} />}
                 {c.editado_en && <span style={{ fontSize: 10.5, color: "var(--dim)", marginLeft: 2 }}>· editado</span>}
                 {(c.imagenes || []).length > 0 && (
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 5 }}>
