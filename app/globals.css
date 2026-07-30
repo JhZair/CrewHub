@@ -397,7 +397,8 @@ a{color:inherit;text-decoration:none}
 .lp-ico{width:54px;min-width:54px;display:flex;align-items:center;justify-content:center;font-size:22px;background:#1c1c2c;flex:none}
 .lp-ico img{width:26px;height:26px;border-radius:5px}
 .lp-body{display:flex;flex-direction:column;justify-content:center;gap:2px;padding:8px 12px;min-width:0}
-.lp-lbl{font-size:12.5px;color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lp-lbl{font-size:12.5px;color:var(--text);font-weight:600;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.lp-desc{font-size:11.5px;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.35}
 .lp-host{font-size:11.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tl-com{position:relative;margin:7px 0;display:flex;gap:11px;scroll-margin-top:70px}
 /* Cita del comentario padre: enlace-ancla que salta y resalta el original. */

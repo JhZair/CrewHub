@@ -1,15 +1,18 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { previewCandidates, formatoDe, enlaceLimpio } from "@/lib/drive";
+import { unfurlEnlace } from "@/app/actions";
 
-/* PREVIEW DE ENLACES en un texto (comentarios, bitácora…). Detecta las URLs del
- * cuerpo y pinta una tarjeta con la CARA del enlace: miniatura de YouTube o de
- * Google Docs/Drive (mismo motor que el repositorio, con fallback entre
- * candidatos), y para un enlace web cualquiera, su favicon + dominio. Así un
- * link deja de ser una línea azul y se reconoce de un vistazo.
+/* PREVIEW DE ENLACES en un texto (comentarios, bitácora, muro…). Detecta las
+ * URLs del cuerpo y pinta una tarjeta con la CARA del enlace.
  *
- * No hace fetch al servidor: todo sale del patrón de la URL, así que es
- * instantáneo y no depende de desbloquear un unfurler. */
+ * Dos fuentes, en cascada:
+ *  1) Al instante, sin red: por el PATRÓN de la URL (previewCandidates/formatoDe)
+ *     salen una miniatura tentativa (YouTube/Drive) y el tipo. Se ve de inmediato.
+ *  2) Al montar, `unfurlEnlace` lee del SERVIDOR las etiquetas Open Graph reales
+ *     (título, descripción e imagen). Cuando responde, la tarjeta se enriquece:
+ *     carátula de verdad + título + descripción. Así el video muestra su nombre y
+ *     su imagen real, no el gris que YouTube devuelve al adivinar por el ID. */
 
 const URL_RE = /\bhttps?:\/\/[^\s<>()]+|\bwww\.[^\s<>()]+/gi;
 
@@ -23,20 +26,38 @@ const hostDe = (u: string) => {
   catch { return u; }
 };
 
+type Meta = { title?: string; description?: string; image?: string; site?: string };
+
 function Tarjeta({ url }: { url: string }) {
   const href = enlaceLimpio(url.startsWith("http") ? url : `https://${url}`);
   const cand = previewCandidates(url, 320);
   const [i, setI] = useState(0);
+  const [meta, setMeta] = useState<Meta | null>(null);
   const fmt = formatoDe(url);
   const host = hostDe(url);
-  const thumb = i < cand.length ? cand[i] : null;
   const esVideo = fmt?.key === "video";
+
+  useEffect(() => {
+    let vivo = true;
+    unfurlEnlace(url).then(m => { if (vivo && m && (m.title || m.image)) setMeta(m); }).catch(() => {});
+    return () => { vivo = false; };
+  }, [url]);
+
+  // Imagen: la real de las OG manda; si no, la tentativa por patrón.
+  const imgPatron = i < cand.length ? cand[i] : null;
+  const [ogFalla, setOgFalla] = useState(false);
+  const thumb = meta?.image && !ogFalla ? meta.image : imgPatron;
+
+  const titulo = meta?.title || fmt?.lbl || "Enlace";
+  const sitio = meta?.site || host;
+
   return (
     <a href={href} target="_blank" rel="noopener noreferrer" className="lp-card" onClick={e => e.stopPropagation()}>
       {thumb ? (
         <div className="lp-thumb">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={thumb} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setI(v => v + 1)} />
+          <img src={thumb} alt="" loading="lazy" referrerPolicy="no-referrer"
+            onError={() => { if (meta?.image && !ogFalla) setOgFalla(true); else setI(v => v + 1); }} />
           {esVideo && <span className="lp-play">▶</span>}
         </div>
       ) : (
@@ -48,8 +69,9 @@ function Tarjeta({ url }: { url: string }) {
         </div>
       )}
       <div className="lp-body">
-        <span className="lp-lbl">{fmt?.ico} {fmt?.lbl || "Enlace"}</span>
-        <span className="lp-host">{host}</span>
+        <span className="lp-lbl">{fmt?.ico} {titulo}</span>
+        {meta?.description && <span className="lp-desc">{meta.description}</span>}
+        <span className="lp-host">{sitio}</span>
       </div>
     </a>
   );

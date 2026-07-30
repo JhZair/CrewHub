@@ -3033,6 +3033,47 @@ export async function quitarEquipoPostulacion(id: string, postulacionId: string)
   return {};
 }
 
+/* --- CV PRESENTADO: el CV es del expediente, no de la persona ---
+   El CV que se entrega al fondo se prepara PARA esta postulación y este
+   cargo, y se archiva con la fila del equipo (db/cv-postulacion.sql). No
+   confundir con los CVs generales de la persona (objetos tipo='cv'): esos
+   son identidad y aquí solo sirven de base sugerida. `url` vacía = quitar
+   el CV de la fila (se subió mal, se rehace). */
+export async function guardarCvEquipo(filaId: string, postulacionId: string, url: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const u = url.trim();
+  if (u && !/^https?:\/\/\S+$/.test(u)) return { error: "El CV debe ser un link completo (https://...)." };
+
+  /* Se lee ANTES para que la bitácora diga el HECHO (sumó / cambió / quitó)
+     y nombre a la persona — mismo criterio que quitarEquipoPostulacion. */
+  const { data: prev } = await supabase.from("postulacion_equipo")
+    .select("cargo,cv_url,per:personas(nombre,alias)")
+    .eq("id", filaId).eq("postulacion_id", postulacionId).maybeSingle();
+  if (!prev) return { error: "No se encontró esa fila del equipo." };
+
+  /* Acotado a la fila Y a la postulación: esto es una server action pública
+     y un id forjado pisaría el CV de otra carpeta. Un UPDATE bloqueado por
+     RLS no da error: devuelve cero filas — se verifica. */
+  const { data: filas, error } = await supabase.from("postulacion_equipo")
+    .update({ cv_url: u || null, cv_actualizado: u ? new Date().toISOString().slice(0, 10) : null })
+    .eq("id", filaId).eq("postulacion_id", postulacionId).select("id");
+  if (error) return { error: error.message };
+  if (!filas?.length) return { error: "No se guardó: no tienes permiso." };
+
+  const quien = (prev.per as any)?.alias || (prev.per as any)?.nombre || "alguien";
+  const mensaje = !u ? `quitó el CV presentado de ${quien} (${prev.cargo})`
+    : prev.cv_url ? `cambió el CV presentado de ${quien} (${prev.cargo})`
+    : `sumó el CV presentado de ${quien} (${prev.cargo})`;
+  await supabase.from("actividad").insert({
+    entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id,
+    tipo: "editado", detalle: { mensaje },
+  });
+  revalidatePath(`/entidad/postulacion/${postulacionId}`);
+  return {};
+}
+
 export async function guardarMateriales(postulacionId: string, materiales: Record<string, string>) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -5156,4 +5197,58 @@ export async function comentarPostulacion(postulacionId: string, texto: string, 
     if (per?.id) revalidatePath(`/entidad/persona/${per.id}`);
   }
   return {};
+}
+
+/* METADATOS DE UN ENLACE (unfurl). Lee la página del lado del servidor y saca
+   sus etiquetas Open Graph: título, descripción e imagen reales. Así un enlace
+   —YouTube, Google Doc, una nota de prensa— muestra su carátula y su título de
+   verdad, en vez de adivinar la miniatura por el patrón de la URL (que para
+   YouTube devuelve un gris cuando el video no tiene esa versión).
+
+   El navegador NO puede hacer esto: las páginas no mandan CORS. Por eso vive
+   aquí, en el servidor. `next.revalidate` cachea un día: el mismo enlace no se
+   vuelve a bajar en cada render. */
+function decodeEntidades(s: string): string {
+  return (s || "")
+    .replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#0?39;/g, "'")
+    .replace(/&#x27;/gi, "'").replace(/&apos;/g, "'").replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">").replace(/&nbsp;/g, " ")
+    .replace(/&#(\d+);/g, (_, n) => { try { return String.fromCodePoint(+n); } catch { return _; } });
+}
+
+export async function unfurlEnlace(url: string): Promise<{ title?: string; description?: string; image?: string; site?: string }> {
+  try {
+    const u = new URL((url || "").startsWith("http") ? url : `https://${url}`);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return {};
+    // Cortafuegos SSRF: nada de hosts internos/privados desde el servidor.
+    const host = u.hostname;
+    if (host === "localhost" || host === "::1" ||
+        /^(127\.|0\.|10\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host)) return {};
+
+    const r = await fetch(u.toString(), {
+      headers: { "user-agent": "Mozilla/5.0 (compatible; CrewHubBot/1.0; +preview)", "accept": "text/html,*/*" },
+      redirect: "follow",
+      // @ts-ignore  — opción de caché de Next
+      next: { revalidate: 86400 },
+    });
+    if (!r.ok) return {};
+    if (!/text\/html/i.test(r.headers.get("content-type") || "")) return {};
+    const html = (await r.text()).slice(0, 300000);   // las OG viven en el <head>
+
+    const meta = (prop: string) => {
+      const a = html.match(new RegExp(`<meta[^>]+(?:property|name)=["']${prop}["'][^>]*content=["']([^"']*)["']`, "i"));
+      const b = html.match(new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]*(?:property|name)=["']${prop}["']`, "i"));
+      const m = a || b;
+      return m ? decodeEntidades(m[1]).trim() : "";
+    };
+    const tituloTag = html.match(/<title[^>]*>([^<]*)<\/title>/i);
+    const title = (meta("og:title") || meta("twitter:title") || (tituloTag ? decodeEntidades(tituloTag[1]).trim() : "")).slice(0, 160);
+    const description = (meta("og:description") || meta("twitter:description") || meta("description")).slice(0, 220);
+    const image = meta("og:image") || meta("og:image:url") || meta("twitter:image") || "";
+    const site = meta("og:site_name");
+    if (!title && !image) return {};
+    return { title, description, image, site };
+  } catch {
+    return {};
+  }
 }
