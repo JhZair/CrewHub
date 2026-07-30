@@ -44,6 +44,7 @@ import CVs from "@/components/CVs";
 import Repositorio from "@/components/Repositorio";
 import MuroProyecto from "@/components/MuroProyecto";
 import DestacadosMuro from "@/components/DestacadosMuro";
+import HiloPostulacionBtn from "@/components/HiloPostulacionBtn";
 import SelloResultado from "@/components/SelloResultado";
 import { ordenarActores } from "@/lib/actores";
 import { resultadoPostulacion, resultadoConvocatoria, colorEstadoPost } from "@/lib/resultados";
@@ -444,6 +445,10 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   let cronoActs: any[] = [], perfilesCat: any[] = [], cronoPost: any[] = [];
   let postusProy: any[] = [], equipoProy: any[] = [], plantillas: any[] = [], actoresProy: any[] = [];
   let muroPosts: any[] = [], muroEtqs: any[] = [];
+  // Interacción de cada postulación (💬 comentarios + 😊 reacciones), para
+  // mostrar el resumen en las tarjetas de las tres fichas. Se llena abajo, una
+  // vez cargadas las postulaciones de la rama que corresponda.
+  let contadoresPost: Record<string, { c: number; r: number }> = {};
   if (params.tipo === "proyecto") {
     const [pc, cl, ca, pf, pp, eq, pl, ac] = await Promise.all([
       supabase.from("personas").select("id,nombre,alias,tipo").order("nombre"),
@@ -1355,6 +1360,28 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     : params.tipo === "convocatoria"
     ? [ent.nombre || ent.codigo || "—", ent.anio || null].filter(Boolean).join(" · ")
     : ent.nombre || ent.codigo || "—";
+
+  /* Resumen de interacción por postulación (la MISMA en las tres fichas):
+     cuántos comentarios y cuántas reacciones tiene, para el chip del hilo.
+     Se cuenta sobre los ids de la rama que se haya cargado. */
+  {
+    const idsPost = [
+      ...postusProy.map((p: any) => p.id),
+      ...postusEmp.map((p: any) => p.id),
+      ...postDe.map((r: any) => r.post?.id),
+    ].filter(Boolean) as string[];
+    const uniq = [...new Set(idsPost)];
+    if (uniq.length) {
+      const [cc, rr] = await Promise.all([
+        supabase.from("comentarios").select("postulacion_id").in("postulacion_id", uniq),
+        supabase.from("reacciones").select("postulacion_id").in("postulacion_id", uniq).is("comentario_id", null),
+      ]);
+      for (const id of uniq) contadoresPost[id] = { c: 0, r: 0 };
+      (cc.data || []).forEach((x: any) => { if (contadoresPost[x.postulacion_id]) contadoresPost[x.postulacion_id].c++; });
+      (rr.data || []).forEach((x: any) => { if (contadoresPost[x.postulacion_id]) contadoresPost[x.postulacion_id].r++; });
+    }
+  }
+
   /* Activas = vivas y a la vista. Cerradas = terminadas (resuelta/descartada)
      O archivadas —lo archivado es memoria de esta entidad y aquí sí se ve, en
      su cajón—. Ojo: `en_pausa` ahora cae en activas, que es lo correcto —está
@@ -2934,6 +2961,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                       <span className="badge" style={{ color: colorEstadoPost(p.estado), background: `color-mix(in srgb, ${colorEstadoPost(p.estado)} 15%, transparent)`, whiteSpace: "nowrap", flex: "none" }}>
                         {(p.estado || "").replace(/_/g, " ")}
                       </span>
+                      <HiloPostulacionBtn postulacionId={p.id} nComentarios={contadoresPost[p.id]?.c || 0} nReacciones={contadoresPost[p.id]?.r || 0} />
                     </div>
                     <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 6 }}>
                       {p.conv?.anio && (
@@ -3396,6 +3424,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                         <span className="badge" style={{ color: colorEstadoPost(p.estado), background: `color-mix(in srgb, ${colorEstadoPost(p.estado)} 15%, transparent)`, whiteSpace: "nowrap", flex: "none" }}>
                           {(p.estado || "").replace(/_/g, " ")}
                         </span>
+                        <HiloPostulacionBtn postulacionId={p.id} nComentarios={contadoresPost[p.id]?.c || 0} nReacciones={contadoresPost[p.id]?.r || 0} />
                       </div>
                       <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 5, flexWrap: "wrap" }}>
                         {p.conv?.anio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{p.conv.anio}</span>}
@@ -3653,6 +3682,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                         <span className="badge" style={{ color: colorEstadoPost(p.estado), background: `color-mix(in srgb, ${colorEstadoPost(p.estado)} 15%, transparent)`, whiteSpace: "nowrap", flex: "none" }}>
                           {(p.estado || "").replace(/_/g, " ")}
                         </span>
+                        <HiloPostulacionBtn postulacionId={p.id} nComentarios={contadoresPost[p.id]?.c || 0} nReacciones={contadoresPost[p.id]?.r || 0} />
                       </div>
                       <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6, flexWrap: "wrap" }}>
                         {p.conv?.anio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c", fontSize: TXT.chip }}>{p.conv.anio}</span>}

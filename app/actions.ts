@@ -4381,7 +4381,7 @@ export async function crearSubCaso(padreId: string, titulo: string, tipo: string
 /* ===== REACCIONES: los famosos "me gusta" =====
    Toggle por usuario: mismo emoji dos veces = quitar. */
 const EMOJIS_REACCION = ["👀", "👍", "✔️", "❤️", "🔥", "👏", "😂", "😮", "🤔", "😕", "😢"];
-export async function toggleReaccion(pubId: string | null, comentarioId: string | null, emoji: string, objetoId?: string | null) {
+export async function toggleReaccion(pubId: string | null, comentarioId: string | null, emoji: string, objetoId?: string | null, postulacionId?: string | null) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
@@ -4389,12 +4389,14 @@ export async function toggleReaccion(pubId: string | null, comentarioId: string 
 
   let q = supabase.from("reacciones").select("id")
     .eq("usuario_id", user.id).eq("emoji", emoji);
-  /* Un comentario del repositorio no cuelga de una publicación —`pubId` es
-     null—, pero la reacción se guarda igual contra `comentario_id`: la tabla
-     `reacciones` ya admitía uno u otro (check `pub is not null OR com is not
-     null`). Por eso el toggle busca por comentario cuando lo hay, sin mirar
-     `publicacion_id`. */
-  q = comentarioId ? q.eq("comentario_id", comentarioId) : q.eq("publicacion_id", pubId).is("comentario_id", null);
+  /* Un comentario (del repositorio o de una postulación) no cuelga de una
+     publicación —`pubId` es null—, pero la reacción se guarda igual contra
+     `comentario_id`. Además, una postulación puede recibir reacciones sobre sí
+     misma (`postulacion_id`, sin comentario). El toggle busca por comentario si
+     lo hay; si no, por postulación; si no, por publicación. */
+  q = comentarioId ? q.eq("comentario_id", comentarioId)
+    : postulacionId ? q.eq("postulacion_id", postulacionId).is("comentario_id", null)
+    : q.eq("publicacion_id", pubId).is("comentario_id", null);
   const { data: ya } = await q.maybeSingle();
 
   if (ya) {
@@ -4403,13 +4405,16 @@ export async function toggleReaccion(pubId: string | null, comentarioId: string 
   } else {
     const { error } = await supabase.from("reacciones").insert({
       publicacion_id: pubId, comentario_id: comentarioId,
+      // La reacción a la postulación misma solo cuando NO es a un comentario.
+      postulacion_id: comentarioId ? null : (postulacionId ?? null),
       usuario_id: user.id, emoji,
     });
     if (error) return { error: error.message };
   }
   revalidatePath("/");
-  // La reacción vive donde vive el comentario: caso u objeto.
+  // La reacción vive donde vive el comentario: caso, objeto o postulación.
   if (objetoId) revalidatePath(`/objeto/${objetoId}`);
+  else if (postulacionId) revalidatePath(`/entidad/postulacion/${postulacionId}`);
   else if (pubId) revalidatePath(`/caso/${pubId}`);
   return {};
 }
@@ -5044,4 +5049,111 @@ export async function cargarObjetoRapido(objetoId: string) {
     comentarios: coments || [], reaccionesPorComentario, verif,
     perfiles, userId: user.id,
   };
+}
+
+/* ── INTERACCIÓN DE UNA POSTULACIÓN ──
+   La postulación es UNA sola entidad: su hilo (comentarios + reacciones) cuelga
+   de ella, así que se ve idéntico desde la ficha de empresa, proyecto o persona.
+   Calcado de la pila de «objeto» (objeto_id → postulacion_id). */
+export async function cargarPostulacionRapida(postulacionId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  const { data: p, error } = await supabase.from("postulaciones")
+    .select("id,codigo,estado,proy:proyectos(id,nombre),conv:convocatorias(id,nombre,anio),emp:empresas(id,nombre)")
+    .eq("id", postulacionId).single();
+  if (error || !p) return { error: "No se encontró la postulación." };
+
+  const [{ data: coments }, { data: perf }] = await Promise.all([
+    supabase.from("comentarios")
+      .select("id,cuerpo,imagenes,creado_en,editado_en,autor_id,responde_a,autor:perfiles(nombre,color,avatar_url)")
+      .eq("postulacion_id", postulacionId).order("creado_en"),
+    supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
+  ]);
+  const perfiles = sinBot(perf || []);
+
+  // Reacciones: a la postulación misma (postulacion_id) Y a cada comentario.
+  const idsCom = (coments || []).map((c: any) => c.id);
+  const [{ data: rxPost }, rxComRes] = await Promise.all([
+    supabase.from("reacciones").select("emoji,usuario_id").eq("postulacion_id", postulacionId).is("comentario_id", null),
+    idsCom.length
+      ? supabase.from("reacciones").select("comentario_id,emoji,usuario_id").in("comentario_id", idsCom)
+      : Promise.resolve({ data: [] as any[] }),
+  ]);
+  const rxCom = ((rxComRes as any).data as any[]) || [];
+  const { data: perfsRx } = await supabase.from("perfiles").select("id,nombre");
+  const nombrePerfil = new Map(((perfsRx as any[]) || []).map((x: any) => [x.id, x.nombre]));
+  const reaccionesPorComentario: Record<string, { emoji: string; usuario_id: string; nombre?: string }[]> = {};
+  rxCom.forEach((r: any) => {
+    (reaccionesPorComentario[r.comentario_id] ||= []).push({ emoji: r.emoji, usuario_id: r.usuario_id, nombre: nombrePerfil.get(r.usuario_id) });
+  });
+  const reaccionesPostulacion = (rxPost || []).map((r: any) => ({ emoji: r.emoji, usuario_id: r.usuario_id, nombre: nombrePerfil.get(r.usuario_id) }));
+
+  return {
+    postulacion: p,
+    comentarios: coments || [], reaccionesPorComentario, reaccionesPostulacion,
+    perfiles, userId: user.id,
+  };
+}
+
+export async function comentarPostulacion(postulacionId: string, texto: string, imagenes: string[] = [], respondeA: string | null = null) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const cuerpo = (texto || "").trim();
+  const imgs = (imagenes || []).filter(Boolean).slice(0, 6);
+  if (!cuerpo && !imgs.length) return { error: "El comentario no puede ir vacío." };
+
+  const { data: com, error } = await supabase.from("comentarios")
+    .insert({ postulacion_id: postulacionId, autor_id: user.id, cuerpo: cuerpo || "📷", imagenes: imgs, responde_a: respondeA || null })
+    .select("id").single();
+  if (error) return { error: error.message };
+
+  const [{ data: miP }, { data: post }] = await Promise.all([
+    supabase.from("perfiles").select("nombre").eq("id", user.id).single(),
+    supabase.from("postulaciones")
+      .select("codigo,proy:proyectos(id,nombre),emp:empresas(id),equipo:postulacion_equipo(persona:personas(id))")
+      .eq("id", postulacionId).single(),
+  ]);
+  const actorNombre = miP?.nombre || "Alguien";
+  const proy = Array.isArray((post as any)?.proy) ? (post as any).proy[0] : (post as any)?.proy;
+  const emp = Array.isArray((post as any)?.emp) ? (post as any).emp[0] : (post as any)?.emp;
+  const titulo = (proy?.nombre || (post as any)?.codigo || "postulación").slice(0, 60);
+
+  // 🪄 Menciones @nombre — mismo reconocimiento que en casos/objetos.
+  const tokens = [...new Set((cuerpo.match(/@[^\s@,;:!?*_`]+/g) || []).map(m => m.slice(1)))];
+  const avisados = new Set<string>([user.id]);
+  if (tokens.length) {
+    const nrmM = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+    const { data: perfs } = await supabase.from("perfiles").select("id,nombre").eq("activo", true);
+    for (const pf of perfs || []) {
+      const sinEspacios = nrmM(pf.nombre).replace(/\s+/g, "");
+      const palabras = nrmM(pf.nombre).split(/\s+/);
+      const invocado = tokens.some(t => { const tk = nrmM(t); return sinEspacios.startsWith(tk) || palabras.some(w => w.startsWith(tk)); });
+      if (invocado && !avisados.has(pf.id)) {
+        avisados.add(pf.id);
+        await supabase.from("notificaciones").insert({
+          usuario_id: pf.id, postulacion_id: postulacionId, tipo: "mencion", actor_nombre: actorNombre,
+          mensaje: `🪄 ${actorNombre.split(" ")[0]} te mencionó en «${titulo}»`,
+        });
+      }
+    }
+  }
+
+  await supabase.from("actividad").insert({
+    entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "comentario",
+    detalle: { comentario_id: com.id },
+  });
+  // El hilo es el mismo desde las 3 fichas: refrescamos el contador 💬 en todas
+  // ellas, además de la página de la postulación y el feed (por la actividad).
+  revalidatePath("/");
+  revalidatePath(`/entidad/postulacion/${postulacionId}`);
+  if (proy?.id) revalidatePath(`/entidad/proyecto/${proy.id}`);
+  if (emp?.id) revalidatePath(`/entidad/empresa/${emp.id}`);
+  for (const e of ((post as any)?.equipo || [])) {
+    const per = Array.isArray(e?.persona) ? e.persona[0] : e?.persona;
+    if (per?.id) revalidatePath(`/entidad/persona/${per.id}`);
+  }
+  return {};
 }

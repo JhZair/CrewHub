@@ -2417,6 +2417,18 @@ img.av{border:1px solid var(--border2)}
 .vo-escribir{display:flex;gap:8px;align-items:flex-end;border-top:1px solid var(--border);padding-top:10px}
 .vo-escribir textarea{flex:1;background:var(--card);border:1px solid var(--border);border-radius:9px;padding:8px 10px;font-size:14px;color:var(--text);outline:none;resize:vertical;font-family:inherit}
 .vo-escribir textarea:focus{border-color:var(--accent)}
+/* Responder a un comentario del hilo de postulación. */
+.vo-com-resp-btn{background:none;border:none;color:var(--dim);cursor:pointer;font-size:13px;padding:0 4px;margin-left:2px;border-radius:6px}
+.vo-com-resp-btn:hover{color:var(--blue);background:rgba(59,130,246,.1)}
+.vo-respondiendo{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:5px 9px;margin-top:8px}
+.vo-respondiendo b{color:var(--blue)}
+.vo-resp-x{margin-left:auto;background:none;border:none;color:var(--dim);cursor:pointer;font-size:12px}
+.vo-resp-x:hover{color:var(--text)}
+/* Chip de interacción de una postulación en las tarjetas de las 3 fichas. */
+.hilo-post-chip{display:inline-flex;align-items:center;gap:5px;background:var(--bg);border:1px solid var(--border);border-radius:20px;padding:3px 10px;font-size:12px;color:var(--muted);cursor:pointer;white-space:nowrap;flex:none;transition:border-color .12s,color .12s}
+.hilo-post-chip:hover{border-color:var(--blue);color:var(--blue)}
+.hilo-post-rx{color:var(--muted)}
+.hilo-post-lbl{color:var(--dim)}
 /* Los disparadores que antes eran <a> ahora son <button>: reset del estilo nativo. */
 button.fila-cubre{background:none;border:none;cursor:pointer;padding:0}
 button.repo-tit,button.dest-obj{background:none;border:none;cursor:pointer;padding:0;font:inherit}

@@ -301,9 +301,11 @@ create table reacciones (
   id             uuid primary key default gen_random_uuid(),
   publicacion_id uuid references publicaciones(id) on delete cascade,
   comentario_id  uuid references comentarios(id) on delete cascade,
-  autor_id       uuid not null references perfiles(id),
+  -- Quién reaccionó. (La columna se llama usuario_id en la BD desplegada; el
+  -- código usa usuario_id en todos lados. Antes se llamó autor_id.)
+  usuario_id     uuid not null references perfiles(id),
   emoji          text not null default '👍',
-  unique (publicacion_id, comentario_id, autor_id, emoji),
+  unique (publicacion_id, comentario_id, usuario_id, emoji),
   check (publicacion_id is not null or comentario_id is not null)
 );
 
