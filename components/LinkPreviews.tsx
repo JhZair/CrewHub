@@ -46,7 +46,15 @@ function Tarjeta({ url }: { url: string }) {
   // Imagen: la real de las OG manda; si no, la tentativa por patrón.
   const imgPatron = i < cand.length ? cand[i] : null;
   const [ogFalla, setOgFalla] = useState(false);
-  const thumb = meta?.image && !ogFalla ? meta.image : imgPatron;
+  const usandoOg = !!meta?.image && !ogFalla;
+  const thumb = usandoOg ? meta!.image! : imgPatron;
+
+  /* Si la imagen no sirve (404, o el placeholder gris de 120×90 que YouTube
+     devuelve con estado 200 para maxresdefault cuando el video no tiene esa
+     versión), pasamos a la siguiente: primero soltamos la de OG, luego los
+     candidatos por patrón. */
+  const fallar = () => { if (usandoOg) setOgFalla(true); else setI(v => v + 1); };
+  const alCargar = (e: any) => { const im = e.currentTarget; if (im.naturalWidth && im.naturalWidth <= 121) fallar(); };
 
   const titulo = meta?.title || fmt?.lbl || "Enlace";
   const sitio = meta?.site || host;
@@ -57,7 +65,7 @@ function Tarjeta({ url }: { url: string }) {
         <div className="lp-thumb">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={thumb} alt="" loading="lazy" referrerPolicy="no-referrer"
-            onError={() => { if (meta?.image && !ogFalla) setOgFalla(true); else setI(v => v + 1); }} />
+            onError={fallar} onLoad={alCargar} />
           {esVideo && <span className="lp-play">▶</span>}
         </div>
       ) : (

@@ -57,11 +57,15 @@ export function previewUrl(url?: string | null, sz = 400): string | null {
 export function previewCandidates(url?: string | null, sz = 400): string[] {
   const s = (url || "").trim();
   if (!s || esCarpeta(s)) return [];
-  // YouTube: la carátula del video. `hqdefault` existe siempre; `maxres` no.
+  // YouTube: la carátula del video. `hqdefault` existe SIEMPRE y es real, así que
+  // va primero; `maxresdefault` da más resolución pero a menudo no existe —y peor:
+  // YouTube devuelve para él un gris de 120×90 con estado 200 (no un 404), que no
+  // dispara onError—. Por eso el candidato fiable manda, y el de más calidad es la
+  // reserva (el consumidor detecta el gris por tamaño y lo descarta).
   const yt = youtubeId(s);
   if (yt) return [
-    `https://img.youtube.com/vi/${yt}/maxresdefault.jpg`,
     `https://img.youtube.com/vi/${yt}/hqdefault.jpg`,
+    `https://img.youtube.com/vi/${yt}/sddefault.jpg`,
   ];
   /* La miniatura SOLO para links de Google: un link directo a imagen que por
      casualidad traiga `?id=` o `/d/` no debe mandarse a un thumbnail roto.
