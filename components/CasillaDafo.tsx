@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { hace } from "@/lib/notificaciones";
-import { linkGmail, soloNombre, diasDesde, ORIGEN_VINCULO } from "@/lib/casilla";
+import { linkGmail, soloNombre, diasDesde, ORIGEN_VINCULO, esAcuse } from "@/lib/casilla";
 import { marcarComunicacion, vincularComunicacion, casoDeComunicacion } from "@/app/casilla/acciones";
 
 /* La lista de la casilla. Cliente porque cada fila hace tres cosas —marcar,
@@ -117,7 +117,7 @@ export default function CasillaDafo({ items, opciones, resumen, tope }: {
           borderLeft: c.pide_accion && !c.leido_en ? "3px solid var(--red)" : undefined }}>
         <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
           <span style={{ fontWeight: 700, fontSize: 13.5, flex: 1, minWidth: 220 }}>
-            {c.pide_accion ? "🚨 " : ""}{c.asunto || "(sin asunto)"}
+            {c.pide_accion ? "🚨 " : esAcuse(c.asunto) ? "🧾 " : ""}{c.asunto || "(sin asunto)"}
           </span>
           {chipVinculo(c)}
           <span style={{ color: "var(--dim)", fontSize: 11 }}>{hace(c.recibido_en)}</span>

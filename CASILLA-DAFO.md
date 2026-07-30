@@ -159,6 +159,35 @@ funciona. (La llave también se acepta como `?llave=` para probar a mano, pero e
 script la manda en la cabecera: las query strings quedan escritas en los logs de
 Vercel y esta llave escribe en la base.)
 
+## Los correos que DAFO manda de verdad
+
+Levantado de 17 correos reales de `plataformacultura@cultura.gob.pe` en una sola
+cuenta (30/07/2026). El remitente es siempre ese, así que el filtro por
+`cultura.gob.pe` los agarra todos.
+
+| Asunto | Qué es | 🚨 |
+|---|---|---|
+| `… - NOTIFICACIÓN DE OBSERVACIÓN` | te observaron algo, corre plazo | **sí** |
+| `CONSTANCIA DE ENVÍO` / `DE POSTULACIÓN` / `DE SUBSANACIÓN` / `DE RECEPCIÓN` | acuse de algo que TÚ mandaste | no (🧾) |
+| `CASILLA ELECTRÓNICA - MINISTERIO DE CULTURA` | «tienes un mensaje», sin decir de qué | no |
+| `MATRIZ DEL JURADO` | resultados publicados | no |
+| `Código de verificacion - Plataforma Virtual…` | clave de un solo uso | se guarda, no suena |
+
+**La regla que costó descubrir: las constancias GANAN sobre las agujas.**
+`CONSTANCIA DE ENVÍO DE SUBSANACIÓN - DAFO` contiene «subsan», y
+`CONSTANCIA DE ENVÍO DE POSTULACIÓN` dice en el cuerpo «vinculada a las
+observaciones». Con solo las agujas, la alarma sonaba en 3 de 17 correos que no
+la merecían — y un semáforo que se pone rojo cuando tú entregaste algo enseña a
+ignorarlo. `esAcuse()` mira que el asunto EMPIECE por «constancia» (no que la
+contenga: «Requerimiento sobre su constancia» sí tiene que sonar) y se salta los
+prefijos `Fwd:`/`Re:`, porque el correo viejo se rescata reenviándolo a mano.
+
+**Lo que estos correos NO traen: el código de la postulación.** Ni en el asunto
+ni, casi nunca, en el cuerpo — ahí va el NOMBRE del proyecto («MAMÁ PIURAY»,
+«Pallay»). Así que el vínculo se resolverá casi siempre por la vía «cuenta», y
+la vía «código» quedará para los correos directos de un evaluador. Si el vínculo
+por cuenta falla seguido, el siguiente paso es emparejar por nombre de proyecto.
+
 ## Reglas de aviso
 
 - **Solo suena lo de las últimas 72 h.** Lo más viejo se guarda y aparece en el

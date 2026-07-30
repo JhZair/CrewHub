@@ -112,7 +112,45 @@ export const AGUJAS_ACCION = [
 const sinTildes = (s: string) =>
   s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
+/* Prefijos de reenvío. Importan porque el correo viejo se rescata reenviándolo
+   a mano al maestro, y «Fwd: CONSTANCIA…» tiene que seguir siendo una
+   constancia. Se quitan hasta tres veces: los hilos reenviados acumulan. */
+const PREFIJOS = /^\s*(?:re|rv|fwd|fw)\s*:\s*/i;
+const limpio = (s?: string | null) => {
+  let t = String(s || "");
+  for (let i = 0; i < 3; i++) t = t.replace(PREFIJOS, "");
+  return sinTildes(t.trim());
+};
+
+/* ── LAS CONSTANCIAS SON RECIBOS, NO PEDIDOS ──
+ * Descubierto con 17 correos reales de una cuenta (30/07/2026), no supuesto:
+ * DAFO acusa recibo de lo que TÚ mandas con asuntos que empiezan por
+ * «CONSTANCIA DE…», y esos asuntos contienen las mismas palabras que las
+ * agujas. «CONSTANCIA DE ENVÍO DE SUBSANACIÓN - DAFO» traía «subsan» y
+ * encendía el 🚨; «CONSTANCIA DE ENVÍO DE POSTULACIÓN» dice en el cuerpo
+ * «vinculada a las observaciones» y traía «observaci». De 17 correos, la
+ * alarma sonaba en 3 que no la merecían.
+ *
+ * Un semáforo que se pone rojo cuando TÚ entregaste algo es peor que no
+ * tenerlo: enseña a ignorarlo. Por eso esta regla GANA sobre las agujas.
+ *
+ * `startsWith` y no `includes`: «Requerimiento sobre su constancia» es un
+ * requerimiento de verdad y tiene que seguir sonando. La palabra solo manda
+ * cuando encabeza el asunto, que es donde DAFO la usa como tipo de documento.
+ */
+export function esAcuse(asunto?: string | null): boolean {
+  return limpio(asunto).startsWith("constancia");
+}
+
+/* La clave de un solo uso para entrar a la plataforma. Se guarda —queda el
+   rastro de quién entró y cuándo— pero no suena: avisar al celular de un
+   código que tú mismo acabas de pedir es ruido puro. */
+export function esRuido(asunto?: string | null): boolean {
+  return limpio(asunto).startsWith("codigo de verificacion");
+}
+
 export function pideAccion(asunto?: string | null, extracto?: string | null): boolean {
+  if (esAcuse(asunto)) return false;
   const t = sinTildes(`${asunto || ""} ${extracto || ""}`);
   return AGUJAS_ACCION.some(a => t.includes(a));
 }

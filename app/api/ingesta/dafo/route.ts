@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { BOT } from "@/lib/personas";
 import { enJuego, ejecutando } from "@/lib/fondos";
-import { vincularPorAsuntoOCuerpo, pideAccion, type PostMin } from "@/lib/casilla";
+import { vincularPorAsuntoOCuerpo, pideAccion, esRuido, type PostMin } from "@/lib/casilla";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -212,6 +212,12 @@ export async function POST(req: Request) {
     }
     pendientes = pendientes.filter(r => !yaAvisadas.has(r.id));
   }
+  /* Los códigos de un solo uso se guardan pero NO suenan. Se filtran aquí y no
+     al guardar para que sigan entrando al panel, y ANTES de contar la ráfaga
+     para que no empujen a los demás a un aviso resumen. Quedan «pendientes» de
+     aviso para siempre, pero la consulta de arriba solo mira las últimas 72 h:
+     a los tres días salen solos del radar. */
+  pendientes = pendientes.filter(r => !esRuido(r.asunto));
   if (!pendientes.length) return NextResponse.json({ recibidos: mensajes.length, nuevos, avisos: 0 });
 
   const { data: activos } = await db.from("perfiles").select("id").eq("activo", true).neq("nombre", BOT);

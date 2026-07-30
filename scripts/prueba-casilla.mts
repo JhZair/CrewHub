@@ -16,7 +16,7 @@
  * pide *.ts) y el import con extensión explícita —que Node necesita— no le
  * molesta al typecheck del proyecto.
  */
-import { candidatosCodigo, vincularPorCodigo, vincularPorAsuntoOCuerpo, pideAccion, linkGmail, soloNombre } from "../lib/casilla.ts";
+import { candidatosCodigo, vincularPorCodigo, vincularPorAsuntoOCuerpo, pideAccion, esAcuse, esRuido, linkGmail, soloNombre } from "../lib/casilla.ts";
 
 const POSTS = [
   { id: "sol", codigo: "CDO-P-00094-26-P-074-Solischa", codigo_plataforma: null },
@@ -66,6 +66,39 @@ ok("plazo solo NO", pideAccion("Cronograma: plazo de evaluación", ""), false);
 ok("acuse de recibo NO", pideAccion("Notificación: postulación recibida", ""), false);
 ok("presentar solo NO", pideAccion("Guía para presentar proyectos", ""), false);
 ok("observaciones en el cuerpo sí", pideAccion("Notificación", "Se han registrado observaciones al expediente"), true);
+
+/* ── ASUNTOS REALES ──
+   Los 17 correos de plataformacultura@cultura.gob.pe de una cuenta, vistos el
+   30/07/2026. No son inventados: son el motivo de que exista `esAcuse`. */
+ok("REAL observación sí suena",
+  pideAccion("ESTÍMULOS ECONÓMICOS PARA LA CULTURA - NOTIFICACIÓN DE OBSERVACIÓN", ""), true);
+ok("REAL observación del registro sí suena",
+  pideAccion("REGISTRO NACIONAL DE LA CINEMATOGRAFÍA Y EL AUDIOVISUAL - NOTIFICACIÓN DE OBSERVACIÓN", ""), true);
+ok("REAL constancia de subsanación NO suena (traía «subsan»)",
+  pideAccion("CONSTANCIA DE ENVÍO DE SUBSANACIÓN - DAFO", ""), false);
+ok("REAL constancia de postulación NO suena (el cuerpo traía «observaciones»)",
+  pideAccion("CONSTANCIA DE ENVÍO DE POSTULACIÓN",
+    "Hemos recibido la información actualizada vinculada a las observaciones notificadas"), false);
+ok("REAL constancia de envío NO suena",
+  pideAccion("CONSTANCIA DE ENVÍO", "Su postulación ha sido enviada satisfactoriamente. Pallay"), false);
+ok("REAL constancia de recepción NO suena",
+  pideAccion("CONSTANCIA DE RECEPCIÓN DE MODIFICACIÓN DE INFORMACIÓN", ""), false);
+ok("REAL casilla electrónica es rutina",
+  pideAccion("CASILLA ELECTRÓNICA - MINISTERIO DE CULTURA", "Hemos depositado un mensaje en su casilla electrónica"), false);
+ok("REAL matriz del jurado es rutina",
+  pideAccion("MATRIZ DEL JURADO", "Ya se encuentra disponible la matriz del jurado"), false);
+
+ok("acuse: constancia", esAcuse("CONSTANCIA DE ENVÍO DE SUBSANACIÓN - DAFO"), true);
+ok("acuse: reenviada a mano sigue siendo acuse", esAcuse("Fwd: CONSTANCIA DE ENVÍO"), true);
+ok("acuse: reenvío doble", esAcuse("Fwd: Re: CONSTANCIA DE ENVÍO"), true);
+ok("acuse: observación NO es acuse", esAcuse("NOTIFICACIÓN DE OBSERVACIÓN"), false);
+ok("acuse: la palabra en medio NO cuenta", esAcuse("Requerimiento sobre su constancia de envío"), false);
+ok("y por eso ese sí sigue sonando",
+  pideAccion("Requerimiento sobre su constancia de envío", ""), true);
+
+ok("ruido: código de verificación",
+  esRuido("Código de verificacion - Plataforma Virtual de Atención a la Ciudadanía"), true);
+ok("ruido: una observación no es ruido", esRuido("NOTIFICACIÓN DE OBSERVACIÓN"), false);
 
 // ── Detalles ──
 ok("link con buzón",
