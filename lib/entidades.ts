@@ -273,12 +273,21 @@ export const COLOR_ENTIDAD: Record<string, string> = {
 export const TIPO_COLOR: Record<string, string> = {
   documental: "#2dd4bf",   // teal
   animacion: "#ec4899",    // rosa
-  videojuego: "#3b82f6",   // azul
+  videojuego: "#38bdf8",   // azul eléctrico / cian (propio; distinto del azul de persona)
   ficcion: "#a78bfa",      // violeta
   experimental: "#f4b400",     // ámbar
   gestion_cultural: "#2ecc71", // verde
   cobertura: "#f59e0b",        // naranja
 };
+
+/* Helpers de color de identidad — fuente única. Nada debe hardcodear el hex de
+   una entidad o un tipo de proyecto: se pide por aquí, así el día que se ajusta
+   la paleta cambia en un solo sitio y el ojo ve el mismo color en toda la app.
+   (El tipo de CASO tiene su propio `colorTipo` en lib/tipos.) */
+export const colorEntidad = (tipo?: string | null) =>
+  COLOR_ENTIDAD[String(tipo ?? "")] || "var(--dim)";
+export const colorTipoProyecto = (tipo?: string | null) =>
+  TIPO_COLOR[String(tipo ?? "")] || "var(--dim)";
 
 export const REGIONES = [
   "Amazonas", "Áncash", "Apurímac", "Arequipa", "Ayacucho", "Cajamarca",

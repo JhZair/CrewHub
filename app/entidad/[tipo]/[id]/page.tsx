@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { Mantenimiento } from "@/components/EntidadForm";
-import { SUNAT_EMPRESA, DOCS_EMPRESA, DNI_PERSONA, DOCS_PERSONA, SUNAT_PERSONA, GRUPO_TONO, completitud, REGIONES, COLOR_ENTIDAD } from "@/lib/entidades";
+import { SUNAT_EMPRESA, DOCS_EMPRESA, DNI_PERSONA, DOCS_PERSONA, SUNAT_PERSONA, GRUPO_TONO, completitud, REGIONES, COLOR_ENTIDAD, TIPO_COLOR } from "@/lib/entidades";
 import { rucDePersona } from "@/lib/ruc";
 import { estado4ta, money } from "@/lib/cuarta";
 import { diasDeVigencia, fmtVence, vigenciaVencida } from "@/lib/vigencia";
@@ -46,7 +46,7 @@ import MuroProyecto from "@/components/MuroProyecto";
 import DestacadosMuro from "@/components/DestacadosMuro";
 import SelloResultado from "@/components/SelloResultado";
 import { ordenarActores } from "@/lib/actores";
-import { resultadoPostulacion, resultadoConvocatoria } from "@/lib/resultados";
+import { resultadoPostulacion, resultadoConvocatoria, colorEstadoPost } from "@/lib/resultados";
 import { ordenarEquipo, rangoRol } from "@/lib/rolesEquipo";
 import { DIAS_CV, icoObjeto } from "@/lib/objetos";
 import FotoPersona from "@/components/FotoPersona";
@@ -1546,13 +1546,20 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         {/* El mismo gesto para otras entidades: un dato de identidad junto al
             nombre, sin bajar a la ficha. El tipo del proyecto y de la persona;
             el estado de la postulación (que es lo que la define). */}
-        {params.tipo === "proyecto" && ent.tipo && (
-          <span className="badge" style={{ color: "var(--blue)", background: "rgba(59,130,246,.12)" }}>
-            {String(ent.tipo).replace(/_/g, " ")}
-          </span>
-        )}
+        {params.tipo === "proyecto" && ent.tipo && (() => {
+          // El badge del tipo de proyecto usa SU color de identidad (documental
+          // teal, animación rosa…), no un azul fijo para todos.
+          const c = TIPO_COLOR[String(ent.tipo)] || "var(--dim)";
+          return (
+            <span className="badge" style={{ color: c, background: `color-mix(in srgb, ${c} 14%, transparent)` }}>
+              {String(ent.tipo).replace(/_/g, " ")}
+            </span>
+          );
+        })()}
         {params.tipo === "persona" && ent.tipo && (
-          <span className="badge" style={{ color: "var(--teal)", background: "rgba(45,212,191,.12)" }}>
+          // Subtipo de persona (personal/colaborador…): en la familia de la
+          // persona (azul), no en teal —que es el color de empresa—.
+          <span className="badge" style={{ color: "var(--blue)", background: "rgba(59,130,246,.12)" }}>
             {String(ent.tipo).replace(/_/g, " ")}
           </span>
         )}
@@ -2914,14 +2921,21 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                 // Los roles de ESTA persona (todos), y el resto del equipo.
                 const logo = empLogo(p.emp?.id);
                 return (
-                  <div key={r.id} className="tray-post" style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                  <div key={r.id} className="tray-post" style={{ display: "flex", gap: 12, alignItems: "flex-start", ["--est-col" as any]: colorEstadoPost(p.estado) }}>
                     {poster("proyecto", p.proy?.id, 56)}
                     <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
+                    {/* Misma lógica que la tarjeta de empresa: estado en la
+                        ESQUINA SUPERIOR DERECHA con su color de identidad. */}
+                    <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
                       <Link href={`/entidad/postulacion/${p.id}`}
-                        style={{ color: "var(--text)", fontWeight: 600, fontSize: TXT.base }}>
+                        style={{ color: "var(--text)", fontWeight: 600, fontSize: TXT.base, flex: 1, minWidth: 0, lineHeight: 1.4 }}>
                         {ICONO_ESTADO[p.estado] || "🎯"} {p.proy?.nombre || p.codigo} →
                       </Link>
+                      <span className="badge" style={{ color: colorEstadoPost(p.estado), background: `color-mix(in srgb, ${colorEstadoPost(p.estado)} 15%, transparent)`, whiteSpace: "nowrap", flex: "none" }}>
+                        {(p.estado || "").replace(/_/g, " ")}
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 6 }}>
                       {p.conv?.anio && (
                         <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{p.conv.anio}</span>
                       )}
@@ -2930,18 +2944,6 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                           S/ {Number(p.monto_adjudicado).toLocaleString("es-PE")}
                         </span>
                       )}
-                      {p.estado !== "ganadora" && (
-                        <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>{(p.estado || "").replace(/_/g, " ")}</span>
-                      )}
-                      <span style={{ flex: 1 }} />
-                      {p.proy?.id && (
-                        <Link href={`/entidad/proyecto/${p.proy.id}`}
-                          style={{ color: "var(--dim)", fontSize: TXT.chip, textDecoration: "underline dotted", textUnderlineOffset: 3 }}>
-                          📁 ver proyecto →
-                        </Link>
-                      )}
-                    </div>
-                    <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 6 }}>
                       {p.emp?.id && (
                         <Link href={`/entidad/empresa/${p.emp.id}`} className="post-proy-chip" title={p.emp.nombre}>
                           {logo ? (
@@ -2954,6 +2956,17 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                         </Link>
                       )}
                       {p.conv?.nombre && <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>· {p.conv.nombre}</span>}
+                      {p.proy?.id && (
+                        <Link href={`/entidad/proyecto/${p.proy.id}`} className="post-proy-chip" title={p.proy?.nombre || "proyecto"}>
+                          {carteles.get(`proyecto:${p.proy.id}`) ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={carteles.get(`proyecto:${p.proy.id}`)} alt="" referrerPolicy="no-referrer" className="post-proy-chip-img" />
+                          ) : (
+                            <span className="post-proy-chip-ph">📁</span>
+                          )}
+                          <span className="post-proy-chip-txt">{p.proy?.nombre || "—"} →</span>
+                        </Link>
+                      )}
                     </div>
                     {equipo.length > 0 && (
                       <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
@@ -3365,14 +3378,27 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                   <div className="panel-h">🎯 Postuló con · {postusEmpOrd.length}</div>
                   <div className="tray-postus">
                   {postusEmpOrd.map((p: any) => (
-                    <div key={p.id} className="tray-post">
-                      <Link href={`/entidad/postulacion/${p.id}`}
-                        style={{ color: "var(--text)", fontWeight: 600, fontSize: TXT.meta, display: "block", lineHeight: 1.4 }}>
-                        {ICONO_ESTADO[p.estado] || "🎯"} {p.proy?.nombre || p.codigo || "Postulación"} →
-                      </Link>
+                    <div key={p.id} className="tray-post" style={{ display: "flex", gap: 12, alignItems: "flex-start", ["--est-col" as any]: colorEstadoPost(p.estado) }}>
+                      {/* Imagen del proyecto arriba a la izquierda (igual que en
+                          la ficha de persona): solo si tiene portada. */}
+                      {p.proy?.id && cartelesProy[p.proy.id] && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={cartelesProy[p.proy.id]} alt="" referrerPolicy="no-referrer" className="tr-poster" style={{ width: 56, height: 56, flexShrink: 0 }} />
+                      )}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                      {/* Estado a la ESQUINA SUPERIOR DERECHA, con su color de
+                          identidad (el mismo que tiñe la tarjeta). */}
+                      <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                        <Link href={`/entidad/postulacion/${p.id}`}
+                          style={{ color: "var(--text)", fontWeight: 600, fontSize: TXT.meta, flex: 1, minWidth: 0, lineHeight: 1.4 }}>
+                          {ICONO_ESTADO[p.estado] || "🎯"} {p.proy?.nombre || p.codigo || "Postulación"} →
+                        </Link>
+                        <span className="badge" style={{ color: colorEstadoPost(p.estado), background: `color-mix(in srgb, ${colorEstadoPost(p.estado)} 15%, transparent)`, whiteSpace: "nowrap", flex: "none" }}>
+                          {(p.estado || "").replace(/_/g, " ")}
+                        </span>
+                      </div>
                       <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 5, flexWrap: "wrap" }}>
                         {p.conv?.anio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{p.conv.anio}</span>}
-                        <span className="badge" style={{ color: p.estado === "ganadora" ? "var(--green)" : "var(--muted)", background: "#1c1c2c" }}>{(p.estado || "").replace(/_/g, " ")}</span>
                         {p.estado === "ganadora" && p.monto_adjudicado && (
                           <span className="badge" style={{ color: "var(--teal)", background: "rgba(45,212,191,.12)", fontWeight: 700 }}>
                             S/ {Number(p.monto_adjudicado).toLocaleString("es-PE")}
@@ -3454,6 +3480,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                           ))}
                         </div>
                       )}
+                      </div>
                     </div>
                   ))}
                   </div>
@@ -3615,16 +3642,20 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                   <h4>🎯 Postulaciones y fondos · {postusProyOrd.length}</h4>
                   <div className="tray-postus">
                   {postusProyOrd.map((p: any) => (
-                    <div key={p.id} className="tray-post">
-                      <Link href={`/entidad/postulacion/${p.id}`}
-                        style={{ color: "var(--text)", fontWeight: 600, fontSize: TXT.meta, display: "block", lineHeight: 1.4 }}>
-                        {ICONO_ESTADO[p.estado] || "🎯"} {p.conv?.nombre || p.codigo || "Postulación"} →
-                      </Link>
+                    <div key={p.id} className="tray-post" style={{ ["--est-col" as any]: colorEstadoPost(p.estado) }}>
+                      {/* Misma lógica que empresa/persona: estado en la ESQUINA
+                          SUPERIOR DERECHA con su color de identidad. */}
+                      <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                        <Link href={`/entidad/postulacion/${p.id}`}
+                          style={{ color: "var(--text)", fontWeight: 600, fontSize: TXT.meta, flex: 1, minWidth: 0, lineHeight: 1.4 }}>
+                          {ICONO_ESTADO[p.estado] || "🎯"} {p.conv?.nombre || p.codigo || "Postulación"} →
+                        </Link>
+                        <span className="badge" style={{ color: colorEstadoPost(p.estado), background: `color-mix(in srgb, ${colorEstadoPost(p.estado)} 15%, transparent)`, whiteSpace: "nowrap", flex: "none" }}>
+                          {(p.estado || "").replace(/_/g, " ")}
+                        </span>
+                      </div>
                       <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6, flexWrap: "wrap" }}>
                         {p.conv?.anio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c", fontSize: TXT.chip }}>{p.conv.anio}</span>}
-                        <span className="badge" style={{
-                          color: p.estado === "ganadora" ? "var(--green)" : "var(--muted)", background: "#1c1c2c", fontSize: TXT.chip,
-                        }}>{(p.estado || "").replace(/_/g, " ")}</span>
                         {/* Con qué empresa se presentó: contexto que faltaba —un
                             proyecto se presenta a través de una persona jurídica. */}
                         {p.emp && (

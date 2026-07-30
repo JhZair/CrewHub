@@ -288,10 +288,16 @@ export default async function Convocatorias({ searchParams }: {
               /* Enlace estirado: la tarjeta lleva a la convocatoria mediante una
                  capa invisible, y así los chips de postulación de dentro pueden
                  ser enlaces propios (a un <a> dentro de otro <a> revienta). */
-              <div key={c.id} className="card link fila-cap" style={{
-                cursor: "pointer", padding: "12px 16px",
-                borderLeft: `3px solid ${ganamosEn.has(c.id) ? "var(--green)" : finalistasEn.has(c.id) ? "var(--yellow)" : "var(--blue)"}`,
-              }}>
+              <div key={c.id} className="card link fila-cap" style={(() => {
+                // Refuerzo tenue por «nuestra historia»: ganamos verde, rozamos
+                // ámbar, postulamos azul —borde + degradado que se apaga.
+                const col = ganamosEn.has(c.id) ? "var(--green)" : finalistasEn.has(c.id) ? "var(--yellow)" : "var(--blue)";
+                return {
+                  cursor: "pointer", padding: "12px 16px",
+                  borderLeft: `3px solid ${col}`,
+                  backgroundImage: `linear-gradient(90deg, color-mix(in srgb, ${col} 7%, transparent), transparent 58%)`,
+                };
+              })()}>
                 <Link href={`/entidad/convocatoria/${c.id}`} className="fila-cubre" aria-label={c.nombre} />
                 <div>
                   <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>

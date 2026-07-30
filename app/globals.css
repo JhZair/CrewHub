@@ -549,12 +549,15 @@ a{color:inherit;text-decoration:none}
 .cn-time{margin:2px 0 14px}
 .cn-track{position:relative;height:3px;background:var(--border);border-radius:3px;margin:26px 8px 40px}
 .cn-past{position:absolute;top:0;left:0;height:100%;background:linear-gradient(90deg,rgba(93,93,120,.15),rgba(93,93,120,.4));border-radius:3px}
-.cn-hoy{position:absolute;top:-24px;bottom:-30px;width:2px;background:var(--accent);transform:translateX(-1px)}
-.cn-hoy span{position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--accent);background:var(--card);padding:1px 5px;border-radius:6px;border:1px solid var(--accent)}
+/* Línea de tiempo NEUTRAL (blancos/grises): la cronología es estructura, no
+   identidad —no debe competir en color con las tarjetas. HOY y el hito próximo
+   se distinguen por brillo/tamaño, no por tono. */
+.cn-hoy{position:absolute;top:-24px;bottom:-30px;width:2px;background:var(--muted);transform:translateX(-1px)}
+.cn-hoy span{position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:#c6c6da;background:var(--card);padding:1px 5px;border-radius:6px;border:1px solid var(--muted)}
 .cn-hito{position:absolute;top:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center}
 .cn-hdot{width:11px;height:11px;border-radius:50%;box-sizing:border-box;background:var(--card);border:2px solid var(--border)}
-.cn-hito.hecho .cn-hdot{background:var(--violet);border-color:var(--violet)}
-.cn-hito.prox .cn-hdot{background:var(--accent);border-color:var(--accent);box-shadow:0 0 0 4px rgba(124,92,255,.25)}
+.cn-hito.hecho .cn-hdot{background:var(--muted);border-color:var(--muted)}
+.cn-hito.prox .cn-hdot{background:#e8e8f2;border-color:#e8e8f2;box-shadow:0 0 0 4px rgba(198,198,218,.18)}
 .cn-hdate{position:absolute;top:16px;font-size:10.5px;color:var(--muted);white-space:nowrap}
 .cn-hito.hecho .cn-hdate{color:var(--dim)}
 .cn-hito.prox .cn-hdate{color:var(--text);font-weight:700}
@@ -1701,18 +1704,20 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(.65);cursor:
 .linked{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:12px}
 .linked h4{margin:0 0 10px;font-size:12px;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim)}
 .eq-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;flex-wrap:wrap}
-/* Chip persona con foto (equipo de «Postuló con»): avatar + nombre · cargo. */
+/* Chip persona con foto (equipo de «Postuló con»): avatar + nombre · cargo.
+   Va en AZUL —el color de identidad de PERSONA (#3b82f6)—, no en violeta. */
 .pers-chip{display:inline-flex;align-items:center;gap:7px;text-decoration:none;
-  background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.18);
+  background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.18);
   border-radius:22px;padding:3px 11px 3px 3px;transition:background .12s,border-color .12s}
-.pers-chip:hover{background:rgba(167,139,250,.16);border-color:rgba(167,139,250,.32)}
-.pers-chip-txt{font-size:12px;font-weight:600;color:var(--violet);line-height:1.2}
+.pers-chip:hover{background:rgba(59,130,246,.16);border-color:rgba(59,130,246,.32)}
+.pers-chip-txt{font-size:12px;font-weight:600;color:var(--blue);line-height:1.2}
 .pers-chip-rol{color:var(--dim);font-weight:400}
-/* La persona de esta ficha, resaltada dentro de su equipo (color distinto). */
-.pers-chip-yo{background:rgba(45,212,191,.14);border-color:rgba(45,212,191,.4)}
-.pers-chip-yo:hover{background:rgba(45,212,191,.22);border-color:rgba(45,212,191,.55)}
-.pers-chip-yo .pers-chip-txt{color:var(--teal)}
-.pers-chip-yo .pers-chip-rol{color:rgba(45,212,191,.7)}
+/* La persona de esta ficha, resaltada dentro de su equipo: MISMA familia azul,
+   pero rellena (destaca por intensidad, no por otro color). */
+.pers-chip-yo{background:rgba(59,130,246,.22);border-color:rgba(59,130,246,.6)}
+.pers-chip-yo:hover{background:rgba(59,130,246,.3);border-color:rgba(59,130,246,.72)}
+.pers-chip-yo .pers-chip-txt{color:#7fb2ff}
+.pers-chip-yo .pers-chip-rol{color:rgba(59,130,246,.8)}
 /* Ediciones anteriores del proyecto (pie de la pestaña Equipo). */
 .edic-ant{padding:10px 0;border-top:1px solid var(--border)}
 .edic-ant:first-of-type{border-top:none}
@@ -1749,8 +1754,12 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(.65);cursor:
 /* Antigüedad de la empresa (banner al tope de Trayectoria). */
 /* ── «Postuló con»: cada postulación en su propia caja, separadas ── */
 .tray-postus{display:flex;flex-direction:column;gap:12px;margin-top:10px}
+/* Refuerzo tenue por RESULTADO: cada postulación se tiñe con el color de su
+   estado (borde izquierdo + degradado que se apaga), como el feed y el listado
+   de postulaciones. El color lo pone cada tarjeta con `--est-col`. */
 .tray-post{padding:12px 14px;background:var(--bg);border:1px solid var(--border);
-  border-radius:12px;border-left:3px solid var(--violet)}
+  border-radius:12px;border-left:3px solid var(--est-col,var(--violet));
+  background-image:linear-gradient(90deg,color-mix(in srgb,var(--est-col,var(--violet)) 7%,transparent),transparent 58%)}
 .tray-post:first-child{border-top-color:var(--border)}
 .emp-fundada{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:13.5px;color:var(--muted)}
 .emp-fundada-anios{margin-left:auto;font-weight:800;color:var(--teal);
@@ -1821,7 +1830,7 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(.65);cursor:
 .lt-conn i{position:absolute;left:16px;top:50%;transform:translateY(-50%);font-style:normal;font-size:10px;color:var(--dim);white-space:nowrap}
 
 /* Comentario del jurado, colapsable con "ver más..." */
-.jurado-box{margin-top:10px;padding:10px 12px;background:var(--bg);border-radius:10px;border-left:3px solid var(--violet);font-size:15px;line-height:1.55;color:var(--muted)}
+.jurado-box{margin-top:10px;padding:10px 12px;background:var(--bg);border-radius:10px;font-size:15px;line-height:1.55;color:var(--muted)}
 .jurado-box summary{cursor:pointer;list-style:none}
 .jurado-box summary::-webkit-details-marker{display:none}
 .jurado-box summary i{color:var(--violet);font-style:normal;font-weight:700}

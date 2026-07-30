@@ -10,7 +10,9 @@ export type Hito = { id: string; nombre: string; fecha: string };
 const d = (f: string) => new Date(f + "T12:00:00").getTime();
 const fmt = (f: string) => new Date(f + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short" });
 const dias = (f: string) => Math.ceil((d(f) - Date.now()) / 86400000);
-const colorD = (n: number) => (n <= 2 ? "var(--red)" : n <= 7 ? "var(--yellow)" : "var(--muted)");
+// Rojo TENUE para la urgencia (≤2 días): alerta sin gritar. El rojo pleno
+// (var(--red)) se reservaba para el problema, y aquí saturaba la tarjeta.
+const colorD = (n: number) => (n <= 2 ? "#e88a91" : n <= 7 ? "var(--yellow)" : "var(--muted)");
 
 export default function RielHitos({ hitos, hoy, compacto = false }: {
   hitos: Hito[]; hoy: string;

@@ -327,7 +327,7 @@ export default async function Equipamiento({ searchParams }: {
                     {p.equipo?.nombre} →
                   </Link>
                   <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>en manos de</span>
-                  <Link href={`/entidad/persona/${p.persona?.id}`} style={{ color: "var(--teal)", fontWeight: 600, fontSize: TXT.micro, display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <Link href={`/entidad/persona/${p.persona?.id}`} style={{ color: "var(--blue)", fontWeight: 600, fontSize: TXT.micro, display: "inline-flex", alignItems: "center", gap: 5 }}>
                     {avatarPersona(un1(p.persona)?.foto_url, 28)} {p.persona?.alias || p.persona?.nombre}
                   </Link>
                   {p.proy && (

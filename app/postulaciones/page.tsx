@@ -254,19 +254,29 @@ export default async function Postulaciones({ searchParams }: {
     const externa = p.proy?.relacion === "externa" || p.emp?.relacion === "externa";
     const apagada = externa || (p.estado !== "ganadora"
       && (!!resultadoPostulacion(p.estado) || (p.estado === "finalista" && convCerrada)));
+    /* El RESULTADO no debe pasar desapercibido: se refuerza tiñendo toda la
+       tarjeta muy tenue con el color del estado (borde izquierdo + degradado
+       que se apaga hacia la derecha), la misma técnica que los casos del feed.
+       Ganadora glow verde, no apta rojo, finalista ámbar… de un vistazo. */
+    const estCol = EST_META[p.estado]?.[1] || "var(--muted)";
     return (
     <Link key={p.id} href={`/entidad/postulacion/${p.id}`}>
-      <div className={`card link${apagada ? " post-apagada" : ""}`} style={{ cursor: "pointer", padding: "12px 16px" }}>
-        {/* línea 1: identidad de la postulación — código, concurso y estado */}
+      <div className={`card link${apagada ? " post-apagada" : ""}`}
+        style={{ cursor: "pointer", padding: "12px 16px",
+          borderLeft: `3px solid color-mix(in srgb, ${estCol} 55%, transparent)`,
+          backgroundImage: `linear-gradient(90deg, color-mix(in srgb, ${estCol} 7%, transparent), transparent 58%)` }}>
+        {/* línea 1: código a la IZQUIERDA; el concurso y el estado a la DERECHA
+            —así el nombre largo de la convocatoria no apila texto sobre el trío
+            que va debajo. */}
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <b style={{ fontSize: 14.5 }}>🎯 {p.codigo || "—"}</b>
+          <span style={{ flex: 1 }} />
           {p.conv && (
             <span className="badge" style={{ color: "var(--violet)", background: "rgba(167,139,250,.12)", textTransform: "none", letterSpacing: 0, maxWidth: 340, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
               title={`${p.conv.codigo} · ${p.conv.nombre || ""}${p.conv.anio ? ` · ${p.conv.anio}` : ""}`}>
               📜 {p.conv.codigo}{p.conv.nombre ? ` · ${p.conv.nombre}` : ""}{p.conv.anio ? ` · ${p.conv.anio}` : ""}
             </span>
           )}
-          <span style={{ flex: 1 }} />
           {p.estado === "ganadora" && p.monto_adjudicado && (
             <span style={{ color: "var(--teal)", fontSize: 12.5 }}>
               S/ {parseFloat(p.monto_adjudicado).toLocaleString("es-PE")}
@@ -295,7 +305,10 @@ export default async function Postulaciones({ searchParams }: {
               <span className="pt-item">
                 {retrato(cProy, "📁", "")}
                 <span className="pt-txt">
-                  <span className="pt-nom">{p.proy?.nombre || "—"}</span>
+                  {/* El trío lleva su color de identidad: proyecto=violeta,
+                      empresa=teal, director(persona)=azul. Así el ojo lee qué es
+                      cada uno por su color, no solo por el ícono. */}
+                  <span className="pt-nom" style={{ color: "var(--violet)" }}>{p.proy?.nombre || "—"}</span>
                   {p.proy?.tipo && <span className="pt-rol" style={{ color: TIPO_COLOR[p.proy.tipo] || "var(--dim)" }}>{p.proy.tipo.replace(/_/g, " ")}</span>}
                 </span>
               </span>
@@ -304,14 +317,14 @@ export default async function Postulaciones({ searchParams }: {
                   ? retrato(cEmp, "🏢", "")
                   : <span className="pt-img pt-ph pt-falta">⚠</span>}
                 <span className="pt-txt">
-                  <span className="pt-nom" style={p.emp ? undefined : { color: "var(--red)" }}>{p.emp?.nombre || "sin empresa"}</span>
+                  <span className="pt-nom" style={{ color: p.emp ? "var(--teal)" : "var(--red)" }}>{p.emp?.nombre || "sin empresa"}</span>
                   <span className="pt-rol">empresa</span>
                 </span>
               </span>
               <span className="pt-item">
                 {retrato(dir?.foto_url, "🎬", "pt-redondo")}
                 <span className="pt-txt">
-                  <span className="pt-nom" style={dir ? undefined : { color: "var(--dim)" }}>{dir ? (dir.alias || dir.nombre) : "sin director/a"}</span>
+                  <span className="pt-nom" style={{ color: dir ? "var(--blue)" : "var(--dim)" }}>{dir ? (dir.alias || dir.nombre) : "sin director/a"}</span>
                   <span className="pt-rol">director/a</span>
                 </span>
               </span>

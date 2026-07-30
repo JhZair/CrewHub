@@ -101,7 +101,7 @@ export default function CasillaDafo({ items, opciones, resumen, tope }: {
     }
     return (
       <span style={{ fontSize: 11, display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-        <Link href={`/entidad/postulacion/${c.post.id}`} style={{ color: "var(--violet)", fontWeight: 600 }}>
+        <Link href={`/entidad/postulacion/${c.post.id}`} style={{ color: "var(--green)", fontWeight: 600 }}>
           🎯 {c.post.codigo || "postulación"}
         </Link>
         {o && <span style={{ color: o.col }} title={o.txt}>{o.ico}</span>}

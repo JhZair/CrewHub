@@ -24,14 +24,23 @@ export type TipoPub = {
   color: string;
 };
 
+/* COLORES DE-CONFLICTADOS (ver los tres ejes de identidad):
+ *   · Este eje NO debe repetir un color que ya signifique una ENTIDAD
+ *     (empresa=teal, persona=azul, proyecto=violeta, convocatoria=ámbar,
+ *     postulación=verde…), para que el ojo aprenda «cada color, una cosa».
+ *   · Se conservan los anclas semánticas: problema=rojo (alerta), tarea=verde
+ *     (hecho). Los que chocaban con una entidad se movieron a un tono propio:
+ *     consulta→cian, pago→oro, idea→lima, archivo→índigo, aviso→fucsia.
+ *   · Residual asumido: tarea (verde) comparte «positivo» con postulación, y
+ *     aviso (fucsia) roza el rosa de «lugar» (entidad poco frecuente). */
 export const TIPOS: TipoPub[] = [
   { tipo: "tarea", ico: "✅", label: "Tarea", color: "#22c55e" },
   { tipo: "problema", ico: "❗", label: "Problema", color: "#ff4d5e" },
-  { tipo: "consulta", ico: "❓", label: "Consulta", color: "#60a5fa" },
-  { tipo: "pago", ico: "💰", label: "Pago", color: "#2dd4bf" },
-  { tipo: "idea", ico: "💡", label: "Idea", color: "#f4b400" },
-  { tipo: "archivo", ico: "📎", label: "Archivo", color: "#3b82f6" },
-  { tipo: "aviso", ico: "📢", label: "Aviso", color: "#a78bfa" },
+  { tipo: "consulta", ico: "❓", label: "Consulta", color: "#06b6d4" },
+  { tipo: "pago", ico: "💰", label: "Pago", color: "#ca8a04" },
+  { tipo: "idea", ico: "💡", label: "Idea", color: "#84cc16" },
+  { tipo: "archivo", ico: "📎", label: "Archivo", color: "#6366f1" },
+  { tipo: "aviso", ico: "📢", label: "Aviso", color: "#d946ef" },
   // Bitácora: una nota del muro del proyecto (texto + imágenes). Informativa,
   // como el aviso — no es una tarea que se «resuelva».
   { tipo: "bitacora", ico: "📝", label: "Bitácora", color: "#c084fc" },
