@@ -1,6 +1,7 @@
 "use client";
 import { crearPostulacion, actualizarPostulacion, borrarPostulacion } from "@/app/actions";
 import { EntPicker, type CatalogoItem } from "@/components/Composer";
+import Avatar from "@/components/Avatar";
 import SelloResultado from "@/components/SelloResultado";
 import { resultadoPostulacion } from "@/lib/resultados";
 import { TXT } from "@/lib/texto";
@@ -46,13 +47,15 @@ const inputCss: React.CSSProperties = {
   padding: "6px 9px", fontSize: 12, color: "var(--text)", outline: "none",
 };
 
-export default function Postulaciones({ convocatoriaId, postulaciones, proyectos, empresas, carteles = {} }: {
+export default function Postulaciones({ convocatoriaId, postulaciones, proyectos, empresas, carteles = {}, logosEmp = {} }: {
   convocatoriaId: string;
   postulaciones: any[];
   proyectos: CatalogoItem[];
   empresas: CatalogoItem[];
   /** Póster (cartel) por id de proyecto, para identificar cada postulación. */
   carteles?: Record<string, string>;
+  /** Logo (cartel) por id de empresa, para ponerle cara a quien postula. */
+  logosEmp?: Record<string, string>;
 }) {
   const [agregando, setAgregando] = useState(false);
   const [proy, setProy] = useState<{ id: string; nombre: string } | null>(null);
@@ -147,14 +150,8 @@ export default function Postulaciones({ convocatoriaId, postulaciones, proyectos
         const res = resultadoPostulacion(p.estado);
         return (
           <div key={p.id} className={`pl-fila${res ? " con-sello" : ""}`} style={{ borderLeftColor: col, ["--pl-col" as any]: col }}>
-            {/* Póster del proyecto: identifica la postulación de un vistazo. */}
-            {cartel && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={cartel} alt="" referrerPolicy="no-referrer" className="tr-poster"
-                style={{ width: 48, height: 48, flexShrink: 0 }} />
-            )}
             <div style={{ flex: 1, minWidth: 0 }}>
-              {/* línea 1: la postulación + borrar */}
+              {/* línea 1: la postulación (el título enlaza a la postulación). */}
               <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
                 <Link href={`/entidad/postulacion/${p.id}`}
                   style={{ color: "var(--text)", fontWeight: 600, fontSize: TXT.meta, flex: 1, minWidth: 0, lineHeight: 1.4 }}>
@@ -169,8 +166,24 @@ export default function Postulaciones({ convocatoriaId, postulaciones, proyectos
                   <button title="Borrar postulación" style={{ color: "var(--dim)", flex: "none" }} onClick={() => setBorrando(p.id)}>✕</button>
                 )}
               </div>
-              {/* línea 2: empresa (clic para cambiar) + estado */}
+              {/* línea 2: proyecto (imagen + nombre + link) · empresa (logo +
+                  clic para cambiar) · estado */}
               <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 7, flexWrap: "wrap" }}>
+                {p.proy?.id && (
+                  <Link href={`/entidad/proyecto/${p.proy.id}`} className="post-proy-chip" title={p.proy?.nombre || "proyecto"}>
+                    {cartel ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={cartel} alt="" referrerPolicy="no-referrer" className="post-proy-chip-img" />
+                    ) : (
+                      <span className="post-proy-chip-ph">📁</span>
+                    )}
+                    <span className="post-proy-chip-txt">{p.proy?.nombre || "—"} →</span>
+                  </Link>
+                )}
+                {p.emp?.id && logosEmp[p.emp.id] && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={logosEmp[p.emp.id]} alt="" referrerPolicy="no-referrer" className="post-emp-logo" />
+                )}
                 <span style={{ flex: 1, minWidth: 160 }}>
                   <EntPicker
                     etiqueta={p.emp ? `🏢 ${p.emp.nombre}` : "🏢 asignar empresa"}
@@ -218,14 +231,13 @@ export default function Postulaciones({ convocatoriaId, postulaciones, proyectos
               {/* El equipo con que se presentó al concurso. */}
               {(p.equipo || []).length > 0 && (
                 <div style={{ display: "flex", gap: 5, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
-                  <span style={{ color: gano ? "var(--green)" : "var(--dim)", fontSize: TXT.chip, fontWeight: gano ? 700 : 400 }}>
-                    {gano ? "🏆 Equipo ganador:" : "👥 Equipo:"}
-                  </span>
                   {p.equipo.map((e: any, i: number) => (
-                    <Link key={i} href={`/entidad/persona/${e.persona?.id}`} className="badge" title={e.cargo || ""}
-                      style={{ color: "var(--violet)", background: "rgba(167,139,250,.10)", textTransform: "none", letterSpacing: 0, fontWeight: 600, fontSize: TXT.chip }}>
-                      {e.persona?.alias || e.persona?.nombre}
-                      {e.cargo && <span style={{ color: "var(--dim)", fontWeight: 400 }}> · {e.cargo}</span>}
+                    <Link key={i} href={`/entidad/persona/${e.persona?.id}`} className="pers-chip" title={e.cargo || ""}>
+                      <Avatar nombre={e.persona?.nombre} src={e.persona?.foto_url} size={26} />
+                      <span className="pers-chip-txt">
+                        {e.persona?.alias || e.persona?.nombre}
+                        {e.cargo && <span className="pers-chip-rol"> · {e.cargo}</span>}
+                      </span>
                     </Link>
                   ))}
                 </div>

@@ -26,7 +26,7 @@ import {
   reservaEmpresa, reservaMiembro, reservaCompleta,
 } from "@/lib/fondos";
 import HojaPostulacion from "@/components/HojaPostulacion";
-import { sinBot, mapaAlias, conAlias } from "@/lib/personas";
+import { sinBot, mapaAlias, conAlias, esDirectorObra } from "@/lib/personas";
 import { TXT } from "@/lib/texto";
 import BotonFichaSunat from "@/components/BotonFichaSunat";
 import Copiar from "@/components/Copiar";
@@ -47,6 +47,7 @@ import DestacadosMuro from "@/components/DestacadosMuro";
 import SelloResultado from "@/components/SelloResultado";
 import { ordenarActores } from "@/lib/actores";
 import { resultadoPostulacion, resultadoConvocatoria } from "@/lib/resultados";
+import { ordenarEquipo, rangoRol } from "@/lib/rolesEquipo";
 import { DIAS_CV, icoObjeto } from "@/lib/objetos";
 import FotoPersona from "@/components/FotoPersona";
 import PortadaEntidad from "@/components/PortadaEntidad";
@@ -85,7 +86,7 @@ import { ICO_ENT, nombreDe } from "@/lib/secciones";
 /* El tercer elemento agrupa la fila en un bloque de color, igual que en el
    formulario: la ficha se lee con la misma estructura con la que se edita. */
 const CONF: Record<string, { tabla: string; icono: string; campos: [string, string, string?][] }> = {
-  proyecto: { tabla: "proyectos", icono: "📁", campos: [["Folio", "folio"], ["Tipo", "tipo"], ["Modalidad", "modalidad"], ["Etapa", "etapa"], ["Actividad", "estado_actividad"], ["RENCA", "renca"]] },
+  proyecto: { tabla: "proyectos", icono: "📁", campos: [["Folio", "folio"], ["Tipo", "tipo"], ["Modalidad", "modalidad"], ["Relación", "relacion"], ["Etapa", "etapa"], ["Actividad", "estado_actividad"], ["RENCA", "renca"]] },
   empresa: { tabla: "empresas", icono: "🏢", campos: [
     ["Código", "codigo"], ["Razón social", "razon_social"], ["Relación", "relacion"],
     ["Región", "region"], ["Estado interno", "estado"], ["Constitución", "fecha_constitucion"],
@@ -457,7 +458,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         .eq("proyecto_id", params.id).order("fecha_inicio").order("orden").order("creado_en"),
       supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
       supabase.from("postulaciones")
-        .select("id,codigo,estado,codigo_acta,monto_adjudicado,fecha_firma_acta,fecha_limite_rendicion,fecha_prorroga,acta_url,matriz_jurado_url,puntaje_jurado,feedback_jurado,conv:convocatorias(id,codigo,nombre,anio),emp:empresas(id,nombre),equipo:postulacion_equipo(cargo,persona:personas(id,nombre,alias))")
+        .select("id,codigo,estado,codigo_acta,monto_adjudicado,fecha_firma_acta,fecha_limite_rendicion,fecha_prorroga,acta_url,matriz_jurado_url,puntaje_jurado,feedback_jurado,conv:convocatorias(id,codigo,nombre,anio),emp:empresas(id,nombre),equipo:postulacion_equipo(cargo,persona:personas(id,nombre,alias,foto_url))")
         .eq("proyecto_id", params.id).order("creado_en", { ascending: false }),
       /* Quién hace esta película, desde «idea». Distinto de
          `postulacion_equipo`: ese es quién se presentó a UN concurso. */
@@ -479,6 +480,15 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     cronoActs = ca.data || [];
     perfilesCat = pf.data || [];
     postusProy = pp.data || [];
+    /* Logo (cartel) de cada empresa que postuló, para el chip con imagen. */
+    const idsEmpProy = [...new Set(postusProy.map((p: any) => p.emp?.id).filter(Boolean))] as string[];
+    if (idsEmpProy.length) {
+      const { data: mediaEmp } = await supabase.from("entidad_media")
+        .select("entidad_id,cartel_url").eq("entidad_tipo", "empresa").in("entidad_id", idsEmpProy);
+      const logoDe = new Map<string, string>();
+      (mediaEmp || []).forEach((mm: any) => { if (mm.cartel_url) logoDe.set(mm.entidad_id, mm.cartel_url); });
+      postusProy = postusProy.map((p: any) => ({ ...p, _logoEmp: p.emp?.id ? logoDe.get(p.emp.id) || null : null }));
+    }
     equipoProy = eq.data || [];
     // Protagonistas primero, luego secundarios, luego los demás.
     actoresProy = ordenarActores(ac.data || []);
@@ -490,7 +500,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       n: x.acts?.[0]?.count ?? 0,
     }));
   }
-  let postus: any[] = [], proyectosCat: any[] = [], empresasCat: any[] = [], cartelesProy: Record<string, string> = {};
+  let postus: any[] = [], proyectosCat: any[] = [], empresasCat: any[] = [], cartelesProy: Record<string, string> = {}, logosEmp: Record<string, string> = {};
   if (params.tipo === "convocatoria") {
     const [ca, pf, po, pr, em, mm] = await Promise.all([
       supabase.from("cronograma_actividades")
@@ -500,19 +510,24 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       /* Cada postulación con su proyecto, la empresa que la presentó y su
          equipo —para dar contexto en la pestaña sin entrar a cada una. */
       supabase.from("postulaciones")
-        .select("*, proy:proyectos(id,nombre), emp:empresas(id,nombre,codigo), equipo:postulacion_equipo(cargo,persona:personas(id,nombre,alias))")
+        .select("*, proy:proyectos(id,nombre), emp:empresas(id,nombre,codigo), equipo:postulacion_equipo(cargo,persona:personas(id,nombre,alias,foto_url))")
         .eq("convocatoria_id", params.id).order("creado_en"),
       supabase.from("proyectos").select("id,nombre").order("nombre"),
       supabase.from("empresas").select("id,nombre,codigo").order("codigo"),
-      // Pósters de proyecto, para identificar cada postulación de un vistazo.
-      supabase.from("entidad_media").select("entidad_id,cartel_url").eq("entidad_tipo", "proyecto"),
+      // Pósters (cartel) de proyecto Y logo de empresa, para ponerle cara a cada
+      // postulación y a la empresa que la presenta.
+      supabase.from("entidad_media").select("entidad_id,entidad_tipo,cartel_url").in("entidad_tipo", ["proyecto", "empresa"]),
     ]);
     cronoActs = ca.data || [];
     perfilesCat = pf.data || [];
     postus = po.data || [];
     proyectosCat = pr.data || [];
     empresasCat = (em.data || []).map((x: any) => ({ id: x.id, nombre: x.codigo ? `${x.codigo} · ${x.nombre}` : x.nombre }));
-    (mm.data || []).forEach((m: any) => { if (m.cartel_url) cartelesProy[m.entidad_id] = m.cartel_url; });
+    (mm.data || []).forEach((m: any) => {
+      if (!m.cartel_url) return;
+      if (m.entidad_tipo === "proyecto") cartelesProy[m.entidad_id] = m.cartel_url;
+      else if (m.entidad_tipo === "empresa") logosEmp[m.entidad_id] = m.cartel_url;
+    });
   }
   let prestamos: any[] = [], proyectosPrest: any[] = [], prestamoPerfiles: { id: string; nombre: string }[] = [], bitacoraEq: any[] = [];
   let relacionados: any[] = []; const cartelRel = new Map<string, string>();
@@ -584,6 +599,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   }
 
   let postCtx: any = null, equipoPost: any[] = [], credsEmp: any[] = [], plantillasPre: any[] = [], hitosConc: any[] = [];
+  let otrasPostus: any[] = [];   // otras ediciones del MISMO proyecto (para cruzar equipo/empresa)
   let cartelProy: string | null = null;
   let portadaProy: string | null = null;
   let cartelEmp: string | null = null;
@@ -640,6 +656,23 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       equipoProy = pe || [];
       cartelProy = (mp as any)?.cartel_url || null;
       portadaProy = (mp as any)?.portada_url || null;
+      /* OTRAS ediciones del mismo proyecto: con qué empresa y equipo se presentó
+         antes —para cruzar la información entre convocatorias. Excluye ESTA. */
+      const { data: op } = await supabase.from("postulaciones")
+        .select("id,codigo,estado,creado_en,emp:empresas(id,nombre),conv:convocatorias(id,codigo,nombre,anio),equipo:postulacion_equipo(cargo,persona:personas(id,nombre,alias,foto_url))")
+        .eq("proyecto_id", proyId).neq("id", params.id)
+        .order("creado_en", { ascending: false });
+      otrasPostus = op || [];
+      /* Logo (cartel) de cada empresa de esas ediciones, para ponerle cara al
+         nombre —igual que el trío de arriba. */
+      const idsEmpEdic = [...new Set(otrasPostus.map((o: any) => o.emp?.id).filter(Boolean))] as string[];
+      if (idsEmpEdic.length) {
+        const { data: mediaEdic } = await supabase.from("entidad_media")
+          .select("entidad_id,cartel_url").eq("entidad_tipo", "empresa").in("entidad_id", idsEmpEdic);
+        const cartelEmpDe = new Map<string, string>();
+        (mediaEdic || []).forEach((m: any) => { if (m.cartel_url) cartelEmpDe.set(m.entidad_id, m.cartel_url); });
+        otrasPostus = otrasPostus.map((o: any) => ({ ...o, _cartelEmp: o.emp?.id ? cartelEmpDe.get(o.emp.id) || null : null }));
+      }
     }
     // El cartel/logo de la EMPRESA: es el otro protagonista del concurso y va
     // junto al del proyecto en la cabecera de contexto de la pestaña Equipo.
@@ -973,7 +1006,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
            «sin región» aunque la ficha la tenga cargada — un hueco de consulta
            que se lee igual que un hueco de dato. Es exactamente contra lo que
            existe `SEL_FONDO` en lib/fondos.ts, y lo repetí aquí igual. */
-        .select("id,cargo,fecha_inicio,fecha_fin,estado,persona:personas(id,nombre,alias,region,ruc_dni,dni_vencimiento,estado_sunat,condicion_sunat,nombre_reniec)")
+        .select("id,cargo,fecha_inicio,fecha_fin,estado,persona:personas(id,nombre,alias,foto_url,region,ruc_dni,dni_vencimiento,estado_sunat,condicion_sunat,nombre_reniec)")
         .eq("empresa_id", params.id).order("cargo"),
       supabase.from("personas").select("id,nombre,alias,tipo").order("nombre"),
       /* Con qué proyectos postuló, qué ganó y con qué equipo. Las fechas de
@@ -981,12 +1014,19 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
          si puede tomar otro—: sin `fecha_rendicion_real`, `ejecutando()`
          leería el hueco como «ya entregó». */
       supabase.from("postulaciones")
-        .select("id,codigo,estado,monto_adjudicado,fecha_limite_rendicion,fecha_prorroga,fecha_rendicion_real,codigo_acta,fecha_firma_acta,acta_url,matriz_jurado_url,puntaje_jurado,feedback_jurado,proy:proyectos(id,nombre),conv:convocatorias(id,nombre,anio),equipo:postulacion_equipo(cargo,persona:personas(id,nombre,alias))")
+        .select("id,codigo,estado,monto_adjudicado,fecha_limite_rendicion,fecha_prorroga,fecha_rendicion_real,codigo_acta,fecha_firma_acta,acta_url,matriz_jurado_url,puntaje_jurado,feedback_jurado,proy:proyectos(id,nombre),conv:convocatorias(id,nombre,anio),equipo:postulacion_equipo(cargo,persona:personas(id,nombre,alias,foto_url))")
         .eq("empresa_id", params.id).order("creado_en", { ascending: false }),
     ]);
     miembros = m.data || [];
     personasCat = (pc.data || []).map((x: any) => ({ ...x, nombre: x.alias ? `${x.nombre} · ${x.alias}` : x.nombre }));
     postusEmp = pe.data || [];
+    /* Portadas de los proyectos con que postuló, para el chip con imagen. */
+    const idsProyEmp = [...new Set(postusEmp.map((p: any) => p.proy?.id).filter(Boolean))] as string[];
+    if (idsProyEmp.length) {
+      const { data: mediaProy } = await supabase.from("entidad_media")
+        .select("entidad_id,cartel_url").eq("entidad_tipo", "proyecto").in("entidad_id", idsProyEmp);
+      (mediaProy || []).forEach((mm: any) => { if (mm.cartel_url) cartelesProy[mm.entidad_id] = mm.cartel_url; });
+    }
 
     /* 🧱 Muro de la empresa — mismo componente y motor que el del proyecto.
        Necesita perfiles (para el @ de las menciones) y sus notas de bitácora. */
@@ -1048,7 +1088,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         .eq("persona_id", params.id).gte("fecha", `${new Date().getFullYear()}-01-01`),
       // Con qué postuló, con quién y por cuál empresa: el contexto completo
       supabase.from("postulacion_equipo")
-        .select("id,cargo,post:postulaciones(id,codigo,estado,monto_adjudicado,proy:proyectos(id,nombre),conv:convocatorias(id,nombre,anio),emp:empresas(id,nombre),equipo:postulacion_equipo(cargo,persona:personas(id,nombre,alias)))")
+        .select("id,cargo,post:postulaciones(id,codigo,estado,monto_adjudicado,proy:proyectos(id,nombre),conv:convocatorias(id,nombre,anio),emp:empresas(id,nombre),equipo:postulacion_equipo(cargo,persona:personas(id,nombre,alias,foto_url)))")
         .eq("persona_id", params.id),
       supabase.from("equipo_prestamos")
         .select("id,desde,equipo:equipamiento(id,folio,nombre)")
@@ -1091,8 +1131,19 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     // `titulo` → `enfoque`: la sección de CVs y sus alertas siguen igual.
     cvsDe = (cv.data || []).map((c: any) => ({ ...c, enfoque: c.titulo }));
     acum4ta = (rh.data || []).reduce((s: number, r: any) => s + Number(r.monto || 0), 0);
-    postDe = (pe.data || []).sort((a: any, b: any) =>
-      (b.post?.conv?.anio || 0) - (a.post?.conv?.anio || 0));
+    /* Una persona puede tener VARIAS filas en la misma postulación (Director +
+       Autor): dedup por postulación para que su tarjeta no se duplique (sus
+       roles se juntan luego, dentro de la fila, desde el equipo de la postu). */
+    {
+      const vistas = new Set<string>();
+      postDe = (pe.data || [])
+        .sort((a: any, b: any) => (b.post?.conv?.anio || 0) - (a.post?.conv?.anio || 0))
+        .filter((r: any) => {
+          const pid = r.post?.id; if (!pid) return true;
+          if (vistas.has(pid)) return false;
+          vistas.add(pid); return true;
+        });
+    }
     equiposEnMano = pr.data || [];
     clienteEnProy = cl.data || [];
 
@@ -1107,6 +1158,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     rheGirados.forEach((r: any) => r.post?.proy?.id && idsProy.add(r.post.proy.id));
     const idsEmp = new Set<string>();
     cargosDe.forEach((c: any) => c.empresa?.id && idsEmp.add(c.empresa.id));
+    postDe.forEach((r: any) => r.post?.emp?.id && idsEmp.add(r.post.emp.id));
     const idsMedia = [...idsProy, ...idsEmp];
     if (idsMedia.length) {
       const { data: mm } = await supabase.from("entidad_media")
@@ -1479,9 +1531,10 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             <Copiar valor={nombre} etiqueta="el nombre">{nombre}</Copiar>
           </h1>
         )}
-        {/* De quién es la empresa: se lee sin bajar a la ficha. Solo las
-            propias generan alertas, así que conviene tenerlo a la vista. */}
-        {params.tipo === "empresa" && ent.relacion && (() => {
+        {/* De quién es (empresa o proyecto): nuestro, de un aliado o externo —
+            se lee sin bajar a la ficha. En empresa, solo las propias generan
+            alertas. */}
+        {(params.tipo === "empresa" || params.tipo === "proyecto") && ent.relacion && (() => {
           const t: Record<string, [string, string]> = {
             propia: ["var(--violet)", "rgba(167,139,250,.14)"],
             aliada: ["var(--teal)", "rgba(45,212,191,.12)"],
@@ -1608,6 +1661,36 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                 </div>
               </div>
             )}
+            {/* 👥 Miembros de la empresa (activos) con su rostro, al tope del
+                carné —quién la constituye—, igual que los actores de un
+                proyecto. La edición/altas siguen en la pestaña Trayectoria. */}
+            {params.tipo === "empresa" && (() => {
+              const act = miembros.filter((m: any) => m.estado === "activo");
+              if (!act.length) return null;
+              const fmtDesde = (f?: string | null) => f
+                ? new Date(f + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" })
+                : null;
+              return (
+                <div className="carne-actores" style={{ marginTop: 0, paddingTop: 0, borderTop: "none", marginBottom: 4 }}>
+                  <div className="ca-lista">
+                    {act.map((m: any) => (
+                      <Link key={m.id} href={`/entidad/persona/${m.persona?.id}`} className="ca-item"
+                        title={m.cargo || m.persona?.nombre}>
+                        {m.persona?.foto_url
+                          ? // eslint-disable-next-line @next/next/no-img-element
+                            <img src={m.persona.foto_url} alt="" referrerPolicy="no-referrer" className="ca-foto" />
+                          : <span className="ca-foto ca-foto-ph">👤</span>}
+                        <span className="ca-txt">
+                          <span className="ca-nom">{m.persona?.alias || m.persona?.nombre || "—"}</span>
+                          {m.cargo && <span className="ca-rol">{m.cargo}</span>}
+                          {fmtDesde(m.fecha_inicio) && <span className="ca-desde">desde {fmtDesde(m.fecha_inicio)}</span>}
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
             {/* La sinopsis/logline del proyecto: sube aquí, debajo de los actores
                 —es de qué va la obra, el corazón—, antes de los datos técnicos
                 (tipo, etapa, folio). En las demás entidades sigue al pie. */}
@@ -2514,8 +2597,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                  directora): es quien da la cara ante el jurado. Nace con el
                  proyecto (proyecto_equipo); si no, se busca en el equipo de la
                  postulación. Un director/a o codirector/a. */
-              const directora = (equipoProy.find((r: any) => /direc|codirec/i.test(r.cargo || ""))
-                || equipoPost.find((r: any) => /direc|codirec/i.test(r.cargo || "")))?.persona || null;
+              const directora = (equipoProy.find((r: any) => esDirectorObra(r.cargo))
+                || equipoPost.find((r: any) => esDirectorObra(r.cargo)))?.persona || null;
               // Veredicto del concurso (si ya terminó): se estampa sobre la cancha.
               const resPost = resultadoPostulacion(ent.estado);
               const equipoNode = (
@@ -2686,6 +2769,59 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                         del equipo completo (proyecto + postulación). */}
                     <EquipoPorcentajes equipo={[...equipoPost, ...equipoProy]} />
                   </div>
+                  {/* EDICIONES ANTERIORES: con qué empresa y equipo se presentó
+                      ESTE proyecto en otras convocatorias —para cruzar la
+                      información entre ediciones (quién iba, con quién, cómo le
+                      fue). Al pie de la pestaña Equipo. */}
+                  {otrasPostus.length > 0 && (
+                    <div className="linked" style={{ marginTop: 14 }}>
+                      <h4 style={{ margin: "0 0 4px", fontSize: TXT.chip, letterSpacing: 1.2, textTransform: "uppercase", color: "var(--dim)" }}>
+                        🔁 Ediciones anteriores del proyecto · {otrasPostus.length}
+                      </h4>
+                      <p style={{ color: "var(--dim)", fontSize: TXT.chip, marginTop: 0, marginBottom: 10 }}>
+                        Con qué empresa y equipo se presentó este proyecto en otras convocatorias.
+                      </p>
+                      {otrasPostus.map((o: any) => (
+                        <div key={o.id} className="edic-ant">
+                          <div className="edic-ant-h">
+                            <Link href={`/entidad/postulacion/${o.id}`} className="edic-ant-tit">
+                              {ICONO_ESTADO[o.estado] || "🎯"} {o.codigo || "Postulación"}{o.conv?.nombre ? ` · ${o.conv.nombre}` : ""}{o.conv?.anio ? ` · ${o.conv.anio}` : ""} →
+                            </Link>
+                            <span className="badge" style={{ color: o.estado === "ganadora" ? "var(--green)" : "var(--muted)", background: "#1c1c2c", textTransform: "none", letterSpacing: 0 }}>
+                              {(o.estado || "").replace(/_/g, " ")}
+                            </span>
+                          </div>
+                          {/* La empresa como chip clicable, igual que las personas. */}
+                          <div className="edic-ant-emp">
+                            {o.emp?.id ? (
+                              <Link href={`/entidad/empresa/${o.emp.id}`} className="pers-chip" title={o.emp.nombre}>
+                                {o._cartelEmp
+                                  ? // eslint-disable-next-line @next/next/no-img-element
+                                    <img src={o._cartelEmp} alt="" referrerPolicy="no-referrer" className="edic-ant-emp-logo" />
+                                  : <span className="edic-ant-emp-ph">🏢</span>}
+                                <span className="pers-chip-txt">{o.emp.nombre}</span>
+                              </Link>
+                            ) : (
+                              <span className="edic-ant-emp-ph" style={{ color: "var(--red)" }}>🏢 sin empresa</span>
+                            )}
+                          </div>
+                          {(o.equipo || []).length > 0 && (
+                            <div className="edic-ant-eq">
+                              {o.equipo.map((e: any, i: number) => (
+                                <Link key={i} href={`/entidad/persona/${e.persona?.id}`} className="pers-chip" title={e.cargo || ""}>
+                                  <Avatar nombre={e.persona?.nombre} src={e.persona?.foto_url} size={24} />
+                                  <span className="pers-chip-txt">
+                                    {e.persona?.alias || e.persona?.nombre}
+                                    {e.cargo && <span className="pers-chip-rol"> · {e.cargo}</span>}
+                                  </span>
+                                </Link>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </>
               );
 
@@ -2753,11 +2889,32 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                 return <img src={url} alt="" className="tr-poster" referrerPolicy="no-referrer"
                   style={{ width: size, height: size }} />;
               };
+              const empLogo = (id?: string | null) => (id ? carteles.get(`empresa:${id}`) : null);
+              /* Agrupa el equipo por persona y junta TODOS sus cargos (una misma
+                 persona puede tener varios en la postulación: Directora + Autora),
+                 ordenando sus roles por importancia y a las personas por su rol más
+                 importante. Así no se «pierde» un rol por elegir una sola fila. */
+              const equipoConRoles = (equipo: any[]) => {
+                const byId = new Map<string, { persona: any; cargos: string[] }>();
+                for (const e of equipo || []) {
+                  const pid = e.persona?.id; if (!pid) continue;
+                  const cur = byId.get(pid) || { persona: e.persona, cargos: [] };
+                  const c = (e.cargo || "").trim();
+                  if (c && !cur.cargos.includes(c)) cur.cargos.push(c);
+                  byId.set(pid, cur);
+                }
+                return [...byId.values()]
+                  .map(x => ({ ...x, cargos: [...x.cargos].sort((a, b) => rangoRol(a) - rangoRol(b)) }))
+                  .sort((a, b) => (rangoRol(a.cargos[0]) - rangoRol(b.cargos[0]))
+                    || (a.persona?.nombre || "").localeCompare(b.persona?.nombre || ""));
+              };
               const filaPost = (r: any) => {
                 const p = r.post || {};
-                const otros = (p.equipo || []).filter((e: any) => e.persona?.id !== params.id);
+                const equipo = equipoConRoles(p.equipo || []);
+                // Los roles de ESTA persona (todos), y el resto del equipo.
+                const logo = empLogo(p.emp?.id);
                 return (
-                  <div key={r.id} style={{ borderTop: "1px solid var(--border)", padding: "10px 0", display: "flex", gap: 12, alignItems: "flex-start" }}>
+                  <div key={r.id} className="tray-post" style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
                     {poster("proyecto", p.proy?.id, 56)}
                     <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
@@ -2765,9 +2922,6 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                         style={{ color: "var(--text)", fontWeight: 600, fontSize: TXT.base }}>
                         {ICONO_ESTADO[p.estado] || "🎯"} {p.proy?.nombre || p.codigo} →
                       </Link>
-                      <span className="badge" style={{ color: "var(--violet)", background: "rgba(167,139,250,.10)", textTransform: "none", letterSpacing: 0, fontWeight: 700 }}>
-                        {r.cargo || "—"}
-                      </span>
                       {p.conv?.anio && (
                         <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{p.conv.anio}</span>
                       )}
@@ -2787,23 +2941,36 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                         </Link>
                       )}
                     </div>
-                    <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 5 }}>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 6 }}>
                       {p.emp?.id && (
-                        <Link href={`/entidad/empresa/${p.emp.id}`} className="badge"
-                          style={{ color: "var(--muted)", background: "#1c1c2c" }}>🏢 {p.emp.nombre}</Link>
+                        <Link href={`/entidad/empresa/${p.emp.id}`} className="post-proy-chip" title={p.emp.nombre}>
+                          {logo ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={logo} alt="" referrerPolicy="no-referrer" className="post-proy-chip-img" />
+                          ) : (
+                            <span className="post-proy-chip-ph">🏢</span>
+                          )}
+                          <span className="post-proy-chip-txt">{p.emp.nombre}</span>
+                        </Link>
                       )}
                       {p.conv?.nombre && <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>· {p.conv.nombre}</span>}
                     </div>
-                    {otros.length > 0 && (
-                      <div style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap", marginTop: 6 }}>
-                        <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>👥</span>
-                        {otros.map((e: any, i: number) => (
-                          <Link key={i} href={`/entidad/persona/${e.persona?.id}`} className="badge" title={e.cargo || ""}
-                            style={{ color: "var(--violet)", background: "rgba(167,139,250,.10)", textTransform: "none", letterSpacing: 0, fontWeight: 600 }}>
-                            {e.persona?.alias || e.persona?.nombre}
-                            {e.cargo && <span style={{ color: "var(--dim)", fontWeight: 400 }}> · {e.cargo}</span>}
-                          </Link>
-                        ))}
+                    {equipo.length > 0 && (
+                      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
+                        {equipo.map((e: any, i: number) => {
+                          const roles = e.cargos.join(" · ");
+                          const esYo = e.persona?.id === params.id;
+                          return (
+                            <Link key={i} href={`/entidad/persona/${e.persona?.id}`}
+                              className={`pers-chip${esYo ? " pers-chip-yo" : ""}`} title={roles}>
+                              <Avatar nombre={e.persona?.nombre} src={e.persona?.foto_url} size={26} />
+                              <span className="pers-chip-txt">
+                                {e.persona?.alias || e.persona?.nombre}
+                                {roles && <span className="pers-chip-rol"> · {roles}</span>}
+                              </span>
+                            </Link>
+                          );
+                        })}
                       </div>
                     )}
                     </div>
@@ -2945,7 +3112,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                         {` · ${postDe.length} postulaciones en total`}
                         {montoGanado > 0 && <> · <b style={{ color: "var(--teal)" }}>S/ {montoGanado.toLocaleString("es-PE")} adjudicado</b></>}
                       </div>
-                      {ganadas.map(filaPost)}
+                      <div className="tray-postus">{ganadas.map(filaPost)}</div>
                     </div>
                   )}
                   {resto.length > 0 && (
@@ -2954,7 +3121,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                       <div style={{ color: "var(--muted)", fontSize: TXT.micro }}>
                         Concursos a los que se presentó{nFinResto > 0 ? ` · ${nFinResto} llegó a finalista` : ""}.
                       </div>
-                      {resto.map(filaPost)}
+                      <div className="tray-postus">{resto.map(filaPost)}</div>
                     </div>
                   )}
                   {/* «Sin postulaciones» solo si NO tiene otra trayectoria: para un
@@ -3157,16 +3324,16 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                 <TabsPanel extra={driveTab} masUltima
                   labels={[
                     `📝 Muro · ${muroPosts.length}`,
-                    `📋 Casos · ${activas.length}`,
                     `🏆 Trayectoria · ${nTrayectoria}`,
+                    `📋 Casos · ${activas.length}`,
                     `📚 Repositorio · ${objetosDe.length}`,
                     `🧾 Economía · ${rheGirados.length}`,
                     `🕐 Historial · ${actividadUsuario.length + eventosVis.length}`,
                   ]}
                   paneles={[
                     muroPer,
-                    <>{pulsoNode}{trabajoNode}</>,
                     trayectoria,
+                    <>{pulsoNode}{trabajoNode}</>,
                     repositorioNode,
                     economiaNode,
                     historialNode,
@@ -3180,11 +3347,25 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                Elegibilidad DAFO = la HojaPostulacion; Historial = solo lo que le
                pasó a su ficha (una empresa no «actúa», no tiene cuenta). */
             if (params.tipo === "empresa") {
-              const empPostusCard = postusEmp.length > 0 ? (
+              /* Orden CRONOLÓGICO: lo más reciente arriba (por año de la
+                 convocatoria, descendente); a igual año, el mejor desenlace
+                 primero (ganó → finalista → en proceso → descartada). Antes
+                 mandaba el desenlace y mezclaba años; ahora manda el tiempo. */
+              const rankPostEmp = (e?: string) =>
+                e === "ganadora" ? 0
+                : (e === "finalista" || e === "finalista_no_ganadora") ? 1
+                : ["en_preparacion", "enviada", "apta"].includes(e || "") ? 2 : 3;
+              const postusEmpOrd = [...postusEmp].sort((a: any, b: any) => {
+                const y = (Number(b.conv?.anio) || 0) - (Number(a.conv?.anio) || 0);
+                if (y) return y;
+                return rankPostEmp(a.estado) - rankPostEmp(b.estado);
+              });
+              const empPostusCard = postusEmpOrd.length > 0 ? (
                 <div className="card">
-                  <div className="panel-h">🎯 Postuló con · {postusEmp.length}</div>
-                  {postusEmp.map((p: any) => (
-                    <div key={p.id} style={{ borderTop: "1px solid var(--border)", padding: "9px 0" }}>
+                  <div className="panel-h">🎯 Postuló con · {postusEmpOrd.length}</div>
+                  <div className="tray-postus">
+                  {postusEmpOrd.map((p: any) => (
+                    <div key={p.id} className="tray-post">
                       <Link href={`/entidad/postulacion/${p.id}`}
                         style={{ color: "var(--text)", fontWeight: 600, fontSize: TXT.meta, display: "block", lineHeight: 1.4 }}>
                         {ICONO_ESTADO[p.estado] || "🎯"} {p.proy?.nombre || p.codigo || "Postulación"} →
@@ -3199,9 +3380,14 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                         )}
                         {p.conv?.nombre && <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>· {p.conv.nombre}</span>}
                         {p.proy?.id && (
-                          <Link href={`/entidad/proyecto/${p.proy.id}`}
-                            style={{ color: "var(--dim)", fontSize: TXT.chip, textDecoration: "underline dotted", textUnderlineOffset: 3 }}>
-                            📁 ver proyecto →
+                          <Link href={`/entidad/proyecto/${p.proy.id}`} className="post-proy-chip" title={p.proy?.nombre || "proyecto"}>
+                            {cartelesProy[p.proy.id] ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={cartelesProy[p.proy.id]} alt="" referrerPolicy="no-referrer" className="post-proy-chip-img" />
+                            ) : (
+                              <span className="post-proy-chip-ph">📁</span>
+                            )}
+                            <span className="post-proy-chip-txt">{p.proy?.nombre || "—"} →</span>
                           </Link>
                         )}
                       </div>
@@ -3256,26 +3442,48 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                         )
                       )}
                       {(p.equipo || []).length > 0 && (
-                        <div style={{ display: "flex", gap: 5, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
-                          {p.equipo.map((e: any, i: number) => (
-                            <Link key={i} href={`/entidad/persona/${e.persona?.id}`} className="badge" title={e.cargo || ""}
-                              style={{ color: "var(--violet)", background: "rgba(167,139,250,.10)", textTransform: "none", letterSpacing: 0, fontWeight: 600, fontSize: TXT.chip }}>
-                              {e.persona?.alias || e.persona?.nombre}
-                              {e.cargo && <span style={{ color: "var(--dim)", fontWeight: 400 }}> · {e.cargo}</span>}
+                        <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+                          {ordenarEquipo(p.equipo).map((e: any, i: number) => (
+                            <Link key={i} href={`/entidad/persona/${e.persona?.id}`} className="pers-chip" title={e.cargo || ""}>
+                              <Avatar nombre={e.persona?.nombre} src={e.persona?.foto_url} size={26} />
+                              <span className="pers-chip-txt">
+                                {e.persona?.alias || e.persona?.nombre}
+                                {e.cargo && <span className="pers-chip-rol"> · {e.cargo}</span>}
+                              </span>
                             </Link>
                           ))}
                         </div>
                       )}
                     </div>
                   ))}
+                  </div>
                 </div>
               ) : (
                 <div className="empty" style={{ padding: "18px 0" }}>Sin postulaciones registradas para {nombre}.</div>
               );
+              /* Antigüedad: fecha de constitución + años cumplidos desde
+                 entonces (una trayectoria empieza por cuándo nació la empresa). */
+              const fundada = ent.fecha_constitucion ? new Date(ent.fecha_constitucion + "T12:00:00") : null;
+              const aniosFund = fundada && !isNaN(+fundada)
+                ? Math.max(0, Math.floor((Date.now() - fundada.getTime()) / (365.25 * 24 * 3600 * 1000)))
+                : null;
               const trayectoriaEmp = (
                 <>
                   {empPostusCard}
+                  {/* Miembros y cargos es su propia tarjeta (`.linked` ya es una
+                      caja): «con quién compite» arriba, «quién la constituye»
+                      abajo — dos cosas distintas, separadas. */}
                   <Miembros empresaId={params.id} miembros={miembros} personas={personasCat} />
+                  {/* La antigüedad cierra la trayectoria: cuándo nació y cuánto
+                      lleva —el dato de fondo, al pie. */}
+                  {fundada && !isNaN(+fundada) && (
+                    <div className="card emp-fundada">
+                      <span>🏛 Fundada el {fundada.toLocaleDateString("es-PE", { day: "numeric", month: "long", year: "numeric" })}</span>
+                      {aniosFund != null && (
+                        <span className="emp-fundada-anios">{aniosFund === 0 ? "menos de 1 año" : `${aniosFund} año${aniosFund === 1 ? "" : "s"}`} de fundada</span>
+                      )}
+                    </div>
+                  )}
                 </>
               );
               const dafoNode = (
@@ -3316,14 +3524,14 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                 <TabsPanel extra={driveTab} masUltima
                   labels={[
                     `📝 Muro · ${muroPosts.length}`,
-                    `📋 Casos · ${activas.length}`,
                     `🏆 Trayectoria · ${postusEmp.length + miembros.length}`,
+                    `📋 Casos · ${activas.length}`,
                     "🎬 Elegibilidad DAFO",
                     `📚 Repositorio · ${objetosDe.length}`,
                     `🕐 Historial · ${eventosVis.length}`,
                   ]}
-                  paneles={[muroEmp, trabajoNode, trayectoriaEmp, dafoNode, repoEmp, histEmp]}
-                  iconoSolo={[5]}
+                  paneles={[muroEmp, trayectoriaEmp, trabajoNode, dafoNode, repoEmp, histEmp]}
+                  iconoSolo={[4, 5]}
                 />
               );
             }
@@ -3399,11 +3607,15 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                La Trayectoria reúne lo que antes vivía apilado en el carné:
                postulaciones y fondos, el equipo del proyecto y su cliente. */
             if (params.tipo === "proyecto") {
-              const postusCard = postusProy.length > 0 ? (
+              // Lo más reciente arriba (por año de la convocatoria descendente).
+              const postusProyOrd = [...postusProy].sort((a: any, b: any) =>
+                (Number(b.conv?.anio) || 0) - (Number(a.conv?.anio) || 0));
+              const postusCard = postusProyOrd.length > 0 ? (
                 <div className="linked">
-                  <h4>🎯 Postulaciones y fondos · {postusProy.length}</h4>
-                  {postusProy.map((p: any) => (
-                    <div key={p.id} style={{ borderBottom: "1px solid var(--border)", padding: "10px 0" }}>
+                  <h4>🎯 Postulaciones y fondos · {postusProyOrd.length}</h4>
+                  <div className="tray-postus">
+                  {postusProyOrd.map((p: any) => (
+                    <div key={p.id} className="tray-post">
                       <Link href={`/entidad/postulacion/${p.id}`}
                         style={{ color: "var(--text)", fontWeight: 600, fontSize: TXT.meta, display: "block", lineHeight: 1.4 }}>
                         {ICONO_ESTADO[p.estado] || "🎯"} {p.conv?.nombre || p.codigo || "Postulación"} →
@@ -3416,9 +3628,14 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                         {/* Con qué empresa se presentó: contexto que faltaba —un
                             proyecto se presenta a través de una persona jurídica. */}
                         {p.emp && (
-                          <Link href={`/entidad/empresa/${p.emp.id}`} className="badge"
-                            style={{ color: "var(--teal)", background: "rgba(45,212,191,.10)", textTransform: "none", letterSpacing: 0, fontWeight: 600, fontSize: TXT.chip }}>
-                            🏢 {p.emp.nombre}
+                          <Link href={`/entidad/empresa/${p.emp.id}`} className="post-proy-chip" title={p.emp.nombre}>
+                            {p._logoEmp ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={p._logoEmp} alt="" referrerPolicy="no-referrer" className="post-proy-chip-img" />
+                            ) : (
+                              <span className="post-proy-chip-ph">🏢</span>
+                            )}
+                            <span className="post-proy-chip-txt">{p.emp.nombre} →</span>
                           </Link>
                         )}
                       </div>
@@ -3493,18 +3710,21 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                           del equipo del proyecto). En la ganadora es «el equipo
                           ganador»: el dato de contexto que faltaba. */}
                       {(p.equipo || []).length > 0 && (
-                        <div style={{ display: "flex", gap: 5, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
-                          {p.equipo.map((e: any, i: number) => (
-                            <Link key={i} href={`/entidad/persona/${e.persona?.id}`} className="badge" title={e.cargo || ""}
-                              style={{ color: "var(--violet)", background: "rgba(167,139,250,.10)", textTransform: "none", letterSpacing: 0, fontWeight: 600, fontSize: TXT.chip }}>
-                              {e.persona?.alias || e.persona?.nombre}
-                              {e.cargo && <span style={{ color: "var(--dim)", fontWeight: 400 }}> · {e.cargo}</span>}
+                        <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+                          {ordenarEquipo(p.equipo).map((e: any, i: number) => (
+                            <Link key={i} href={`/entidad/persona/${e.persona?.id}`} className="pers-chip" title={e.cargo || ""}>
+                              <Avatar nombre={e.persona?.nombre} src={e.persona?.foto_url} size={26} />
+                              <span className="pers-chip-txt">
+                                {e.persona?.alias || e.persona?.nombre}
+                                {e.cargo && <span className="pers-chip-rol"> · {e.cargo}</span>}
+                              </span>
                             </Link>
                           ))}
                         </div>
                       )}
                     </div>
                   ))}
+                  </div>
                 </div>
               ) : null;
               /* Orden de la Trayectoria: primero quién hace la película (el
@@ -3571,7 +3791,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                presentamos a este concurso) y el cronograma del concurso. */
             const postusConv = (
               <Postulaciones convocatoriaId={params.id} postulaciones={postus}
-                proyectos={proyectosCat} empresas={empresasCat} carteles={cartelesProy} />
+                proyectos={proyectosCat} empresas={empresasCat} carteles={cartelesProy} logosEmp={logosEmp} />
             );
             const repoConv = (
               <>

@@ -2,19 +2,10 @@
 import { agregarEquipoPostulacion, quitarEquipoPostulacion } from "@/app/actions";
 import { EntPicker, type CatalogoItem } from "@/components/Composer";
 import Avatar from "@/components/Avatar";
+import { ROLES_EQUIPO as ROLES, ordenarEquipo } from "@/lib/rolesEquipo";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
-
-const ROLES = [
-  "Responsable General", "Representante Legal", "Titular",
-  "Director/a", "Asistente de Dirección",
-  "Productor/a", "Productor/a Ejecutivo/a", "Jefe/a de Producción", "Asistente de Producción",
-  "Creador/a del concepto artístico", "Autor/a del tratamiento o guión", "Guionista",
-  "Director/a de Fotografía", "Sonidista", "Director/a de Arte",
-  "Editor/a", "Asistente de Edición", "Investigador/a", "Facilitador/a",
-  "Compositor/a de Música", "Operador/a de Drone", "Animador/a",
-];
 
 export default function EquipoPostulacion({ postulacionId, equipo, personas }: {
   postulacionId: string;
@@ -23,7 +14,7 @@ export default function EquipoPostulacion({ postulacionId, equipo, personas }: {
 }) {
   const [agregando, setAgregando] = useState(false);
   const [sel, setSel] = useState<{ id: string; nombre: string } | null>(null);
-  const [rol, setRol] = useState("Director/a");
+  const [rol, setRol] = useState("");   // vacío: obliga a elegir, no se queda pegado en «Director/a»
   const [guardando, setGuardando] = useState(false);
   const [quitando, setQuitando] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -35,7 +26,7 @@ export default function EquipoPostulacion({ postulacionId, equipo, personas }: {
     const res = await agregarEquipoPostulacion(postulacionId, sel.id, rol);
     setGuardando(false);
     if (res?.error) { setError(res.error); return; }
-    setSel(null); setRol("Director/a"); setAgregando(false);
+    setSel(null); setRol(""); setAgregando(false);
     router.refresh();
   };
 
@@ -45,18 +36,9 @@ export default function EquipoPostulacion({ postulacionId, equipo, personas }: {
     if (res?.error) setError(res.error); else router.refresh();
   };
 
-  /* El equipo se ordena por jerarquía del rol (el orden de ROLES: responsable →
-     dirección → producción → técnicos…), no por cómo se fueron agregando. Los
-     cargos fuera de la lista van al final; a igual rango, alfabético por nombre. */
-  const rangoCargo = (c?: string | null) => {
-    const i = ROLES.indexOf((c || "").trim());
-    return i < 0 ? ROLES.length + 1 : i;
-  };
-  const equipoOrd = [...equipo].sort((a: any, b: any) => {
-    const d = rangoCargo(a.cargo) - rangoCargo(b.cargo);
-    if (d) return d;
-    return (a.persona?.nombre || "").localeCompare(b.persona?.nombre || "");
-  });
+  /* El equipo se ordena por jerarquía del rol (fuente única en lib/rolesEquipo:
+     dirección → producción → técnicos…), no por cómo se fueron agregando. */
+  const equipoOrd = ordenarEquipo(equipo);
 
   return (
     <div className="linked" style={{ marginTop: 14 }}>
@@ -75,9 +57,12 @@ export default function EquipoPostulacion({ postulacionId, equipo, personas }: {
           <EntPicker etiqueta={sel ? `👤 ${sel.nombre}` : "👤 Elegir persona"} items={personas}
             onPick={id => { const p = personas.find(x => x.id === id); if (p) setSel({ id: p.id, nombre: p.nombre }); }} />
           <input list="roles-postulacion" value={rol} onChange={e => setRol(e.target.value)}
+            placeholder="Rol / cargo…"
             style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, outline: "none", width: 180 }} />
           <datalist id="roles-postulacion">{ROLES.map(r => <option key={r} value={r} />)}</datalist>
-          <button className="btn" style={{ padding: "7px 14px", fontSize: 12 }} disabled={!sel || guardando} onClick={guardar}>
+          <button className="btn" style={{ padding: "7px 14px", fontSize: 12 }}
+            title={!sel ? "Elige la persona" : !rol.trim() ? "Elige el cargo" : "Guardar"}
+            disabled={!sel || !rol.trim() || guardando} onClick={guardar}>
             {guardando ? "..." : "Guardar"}
           </button>
           <button className="btn btn-ghost" style={{ padding: "7px 10px", fontSize: 12 }}

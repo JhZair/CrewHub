@@ -306,6 +306,7 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
       { key: "nombre_corto", label: "Nombre corto" },
       { key: "tipo", label: "Tipo", tipo: "select", opciones: ["documental", "animacion", "videojuego", "ficcion", "experimental", "gestion_cultural", "cobertura"] },
       { key: "modalidad", label: "Modalidad", tipo: "select", opciones: ["concurso", "encargo", "autofinanciado", "coproduccion"] },
+      { key: "relacion", label: "Relación (nuestro, de un aliado o externo)", corto: "Relación", tipo: "select", opciones: ["propia", "aliada", "externa"] },
       /* La etapa (el ciclo de vida macro del proyecto) depende del TIPO: un
          documental estrena en festivales y se distribuye; un videojuego
          prototipa, lanza y hace post-lanzamiento; una gestión cultural formula,

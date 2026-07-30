@@ -1,6 +1,7 @@
 "use client";
 import { agregarMiembro, bajaMiembro, editarFechaMiembro, editarCargoMiembro } from "@/app/actions";
 import { EntPicker, type CatalogoItem } from "@/components/Composer";
+import Avatar from "@/components/Avatar";
 import MiniSelect from "@/components/MiniSelect";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -8,6 +9,23 @@ import { useState } from "react";
 
 const fmtF = (f: string) =>
   new Date(f + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" });
+
+/* Cuánto lleva en el cargo: años y meses cumplidos desde la fecha de inicio. */
+const tiempoEnCargo = (f?: string | null): string | null => {
+  if (!f) return null;
+  const ini = new Date(f + "T12:00:00");
+  if (isNaN(+ini)) return null;
+  const hoy = new Date();
+  let meses = (hoy.getFullYear() - ini.getFullYear()) * 12 + (hoy.getMonth() - ini.getMonth());
+  if (hoy.getDate() < ini.getDate()) meses -= 1;
+  if (meses < 0) return null;
+  const a = Math.floor(meses / 12), m = meses % 12;
+  if (a === 0 && m === 0) return "menos de 1 mes";
+  const partes: string[] = [];
+  if (a) partes.push(`${a} año${a === 1 ? "" : "s"}`);
+  if (m) partes.push(`${m} mes${m === 1 ? "" : "es"}`);
+  return partes.join(" ");
+};
 
 const CARGOS = [
   "Representante Legal", "Titular-Gerente", "Gerente General", "CEO",
@@ -103,6 +121,8 @@ export default function Miembros({ empresaId, miembros, personas }: {
 
       {activos.map(m => (
         <div key={m.id} className="eq-row" style={{ alignItems: "center" }}>
+          {/* Foto de la persona: pone cara al cargo. */}
+          <Avatar nombre={m.persona?.nombre} src={m.persona?.foto_url} size={40} />
           {/* El cargo es siempre un combo: un clic abre, elegir guarda.
               Sin modo edición aparte, no hay estado que se quede pegado. */}
           <MiniSelect value={m.cargo || ""} options={OPC_CARGOS}
@@ -122,11 +142,19 @@ export default function Miembros({ empresaId, miembros, personas }: {
                 {" "}<button style={{ color: "var(--dim)", fontSize: 11.5 }} onClick={() => { setEditandoF(null); setNuevaF(""); }}>✕</button>
               </span>
             ) : (
-              <button title="Corregir la fecha real del cargo (la de SUNAT)"
-                style={{ color: "var(--dim)", fontSize: 11, marginLeft: 8, cursor: "pointer", background: "none", border: "none", padding: 0, textDecoration: "underline dotted", textUnderlineOffset: 3 }}
-                onClick={() => { setEditandoF(m.id); setNuevaF(m.fecha_inicio || ""); }}>
-                {m.fecha_inicio ? `desde ${fmtF(m.fecha_inicio)}` : "¿desde cuándo?"}
-              </button>
+              <>
+                <button title="Corregir la fecha real del cargo (la de SUNAT)"
+                  style={{ color: "var(--dim)", fontSize: 11, marginLeft: 8, cursor: "pointer", background: "none", border: "none", padding: 0, textDecoration: "underline dotted", textUnderlineOffset: 3 }}
+                  onClick={() => { setEditandoF(m.id); setNuevaF(m.fecha_inicio || ""); }}>
+                  {m.fecha_inicio ? `desde ${fmtF(m.fecha_inicio)}` : "¿desde cuándo?"}
+                </button>
+                {tiempoEnCargo(m.fecha_inicio) && (
+                  <span title="Tiempo en el cargo"
+                    style={{ color: "var(--teal)", fontSize: 11, fontWeight: 700, marginLeft: 6, whiteSpace: "nowrap" }}>
+                    · {tiempoEnCargo(m.fecha_inicio)}
+                  </span>
+                )}
+              </>
             )}
           </span>
           {bajando === m.id ? (

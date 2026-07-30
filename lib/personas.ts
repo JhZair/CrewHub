@@ -12,6 +12,21 @@
 
 export const TIPOS_EQUIPO = ["personal", "colaborador"];
 
+/* ── El DIRECTOR/A de la obra ──
+   Para armar el trío proyecto × empresa × director en listados y fichas hay que
+   distinguir al director/a (o realizador/a) de las direcciones TÉCNICAS
+   —Dirección de Fotografía, de Arte, de Producción…—, que también empiezan por
+   «Director/a». La regla: es director/a de la obra si el cargo dice director o
+   realizador y NO lleva un « de …» (que marca la especialidad técnica).
+   Así «Director/a», «Director/a Documental», «Realizador/a» sí; «Director/a de
+   Fotografía» no. */
+export function esDirectorObra(cargo?: string | null): boolean {
+  const c = (cargo || "").toLowerCase();
+  if (!/director|realizador/.test(c)) return false;
+  if (/\bde\b/.test(c)) return false;
+  return true;
+}
+
 export const esDelEquipo = (p: { estado?: string | null; tipo?: string | null }) =>
   p.estado === "activo" && TIPOS_EQUIPO.includes(p.tipo || "");
 

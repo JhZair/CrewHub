@@ -37,6 +37,13 @@ export const CATEGORIAS: { nombre: string; etapas: Etapa[] }[] = [
     e("postproduccion", "Postproducción", C.teal),
     e("entrega", "Entrega", C.verde),
   ] },
+  { nombre: "Documental", etapas: [
+    e("investigacion", "Investigación", C.azul),
+    e("preproduccion", "Preproducción", C.gris),
+    e("produccion", "Rodaje", C.ambar),
+    e("postproduccion", "Postproducción", C.teal),
+    e("entrega", "Entrega", C.verde),
+  ] },
   { nombre: "Desarrollo de proyecto", etapas: [
     e("investigacion", "Investigación / Guion", C.azul),
     e("desarrollo", "Desarrollo (arte, layout)", C.violeta),

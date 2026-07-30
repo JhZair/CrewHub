@@ -5,7 +5,13 @@ import { TIPO_COLOR } from "@/lib/entidades";
 // EN_JUEGO y la regla de ejecución viven en lib/fondos.ts: /empresas las
 // tenía escritas aparte, y ya no decían lo mismo.
 import { EN_JUEGO, ejecutando, rendicionVencida, plazoRendicion } from "@/lib/fondos";
+import { avisoVencido } from "@/lib/estados";
 import { buscadorDe, pal } from "@/lib/buscar";
+import { esDirectorObra } from "@/lib/personas";
+import { resultadoPostulacion } from "@/lib/resultados";
+import { ordenarEquipo } from "@/lib/rolesEquipo";
+import Avatar from "@/components/Avatar";
+import RielHitos from "@/components/RielHitos";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
@@ -28,8 +34,6 @@ const EST_META: Record<string, [string, string]> = {
   retirada: ["↩ Retiradas", "var(--dim)"],
 };
 const dias = (f: string) => Math.ceil((new Date(f + "T12:00:00").getTime() - Date.now()) / 86400000);
-const fmt = (f: string) => new Date(f + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short" });
-const colorD = (d: number) => (d <= 2 ? "var(--red)" : d <= 7 ? "var(--yellow)" : "var(--muted)");
 
 const ABIERTOS = ["abierta", "en_progreso", "seguimiento"];
 
@@ -47,12 +51,12 @@ export default async function Postulaciones({ searchParams }: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: postsAll, error: qErr }, { data: vincs }, { data: coms }, { data: peq }, { data: pyeq }, { data: media }] = await Promise.all([
+  const [{ data: postsAll, error: qErr }, { data: vincs }, { data: coms }, { data: peq }, { data: pyeq }, { data: media }, { data: hitosAll }] = await Promise.all([
     supabase.from("postulaciones")
-      .select("*,conv:convocatorias(id,codigo,nombre,anio,estado,monto_adjudicado),proy:proyectos(id,nombre,tipo),emp:empresas(id,nombre)")
+      .select("*,conv:convocatorias(id,codigo,nombre,anio,estado,monto_adjudicado),proy:proyectos(id,nombre,tipo,relacion),emp:empresas(id,nombre,relacion)")
       .order("creado_en", { ascending: false }),
     supabase.from("publicacion_vinculos")
-      .select("entidad_id,publicacion_id,pub:publicaciones(estado)").eq("entidad_tipo", "postulacion"),
+      .select("entidad_id,publicacion_id,pub:publicaciones(estado,tipo,archivado_en,fecha_limite)").eq("entidad_tipo", "postulacion"),
     /* Solo los de caso: desde que los objetos del repositorio comentan en
        esta misma tabla, sin el filtro sus filas gastan el tope de PostgREST
        (1000) y el contador 💬 se queda corto en silencio. */
@@ -64,20 +68,47 @@ export default async function Postulaciones({ searchParams }: {
     /* Las imágenes del trío: cartel del proyecto y logo de la empresa (la foto
        del director viaja con la persona). Para mostrar caras, no solo texto. */
     supabase.from("entidad_media").select("entidad_tipo,entidad_id,cartel_url").in("entidad_tipo", ["proyecto", "empresa"]),
+    /* Los hitos (fechas del cronograma) de cada convocatoria: la MISMA línea de
+       tiempo de la cancha, reusada como tercera fila en cada postulación. */
+    supabase.from("cronograma_actividades")
+      .select("id,nombre,fecha_inicio,convocatoria_id").not("convocatoria_id", "is", null),
   ]);
 
   const cartelDe = new Map<string, string>();
   (media || []).forEach((m: any) => { if (m.cartel_url) cartelDe.set(`${m.entidad_tipo}:${m.entidad_id}`, m.cartel_url); });
 
+  /* Hitos por convocatoria, mapeados al formato del riel ({id,nombre,fecha}).
+     Cada postulación toma los de su convocatoria para ver la fecha más próxima. */
+  const hitosPorConv = new Map<string, { id: string; nombre: string; fecha: string }[]>();
+  (hitosAll || []).forEach((h: any) => {
+    if (!h.fecha_inicio) return;
+    const l = hitosPorConv.get(h.convocatoria_id) || [];
+    l.push({ id: h.id, nombre: h.nombre, fecha: h.fecha_inicio });
+    hitosPorConv.set(h.convocatoria_id, l);
+  });
+  const hoyS = new Date().toLocaleDateString("en-CA", { timeZone: "America/Lima" }); // YYYY-MM-DD
+
   /* El trío que define una postulación: Proyecto × Empresa × Director(a). Los
      dos primeros vienen en la fila; el director se arma aquí. Se prefiere el de
      la postulación y, si no hay, el del proyecto (que aquella hereda). */
-  const esDir = (c: string) => /director|realizador/i.test(c || "");
+  /* Director/a de la OBRA (no direcciones técnicas como «Director/a de
+     Fotografía» — antes esas se colaban como director del trío). */
+  const esDir = (c: string) => esDirectorObra(c);
   const dirPost = new Map<string, any>();
   (peq || []).forEach((r: any) => { if (esDir(r.cargo) && r.persona && !dirPost.has(r.postulacion_id)) dirPost.set(r.postulacion_id, r.persona); });
   const dirProy = new Map<string, any>();
   (pyeq || []).forEach((r: any) => { if (esDir(r.cargo) && r.persona && !dirProy.has(r.proyecto_id)) dirProy.set(r.proyecto_id, r.persona); });
   const directorDe = (p: any) => dirPost.get(p.id) || (p.proy?.id ? dirProy.get(p.proy.id) : null);
+
+  /* El EQUIPO completo que postula, agrupado por postulación (mismo `peq` del
+     que sale el director). Se muestra como una fila de solo-avatares. */
+  const equipoPorPost = new Map<string, any[]>();
+  (peq || []).forEach((r: any) => {
+    if (!r.persona) return;
+    const l = equipoPorPost.get(r.postulacion_id) || [];
+    l.push(r);
+    equipoPorPost.set(r.postulacion_id, l);
+  });
 
   /* Su vida en CrewHub+: cuánto trabajo cuelga de cada postulación.
      Empresas y personas ya la muestran; aquí la fila terminaba en el estado
@@ -90,8 +121,14 @@ export default async function Postulaciones({ searchParams }: {
   const act = new Map<string, Act>();
   (vincs || []).forEach((v: any) => {
     const x = act.get(v.entidad_id) || { ...VACIO };
+    const pub = v.pub as any;
     x.casos++;
-    if (ABIERTOS.includes((v.pub as any)?.estado)) x.abiertos++;
+    /* «Sin resolver» solo si sigue vivo Y no está archivado NI es un aviso ya
+       vencido: un aviso archivado se queda en estado 'abierta' (los avisos no
+       cambian de estado, se cierran archivándose o al vencer), y sin este
+       filtro se contaba como pendiente. */
+    if (pub && ABIERTOS.includes(pub.estado) && !pub.archivado_en
+        && !avisoVencido(pub.tipo, pub.fecha_limite)) x.abiertos++;
     x.coments += comentPorPub.get(v.publicacion_id) || 0;
     act.set(v.entidad_id, x);
   });
@@ -206,9 +243,20 @@ export default async function Postulaciones({ searchParams }: {
        rendida no «vence» nada, y pintarla en rojo por una fecha vieja manda
        a alguien a resolver algo que ya está hecho. */
     const dRend = ejecutando(p) && rend ? dias(rend) : null;
+    /* Las que ya cerraron SIN ganar salen apagadas: son historia, no compiten.
+       Dos casos: (1) el estado ya lo dice (no apta, retirada, no seleccionada,
+       finalista que no ganó); (2) quedó como «finalista» pero su concurso YA
+       cerró (con resultados / finalizada) sin que ganara —también perdió, aunque
+       nadie actualizara el estado—. La ganadora NUNCA se apaga: es el logro. */
+    const convCerrada = ["con_resultados", "finalizada"].includes(p.conv?.estado || "");
+    /* Externa = ni el proyecto ni la empresa son nuestros: la seguimos por
+       contexto pero no es trabajo de la casa, así que también va apagada. */
+    const externa = p.proy?.relacion === "externa" || p.emp?.relacion === "externa";
+    const apagada = externa || (p.estado !== "ganadora"
+      && (!!resultadoPostulacion(p.estado) || (p.estado === "finalista" && convCerrada)));
     return (
     <Link key={p.id} href={`/entidad/postulacion/${p.id}`}>
-      <div className="card link" style={{ cursor: "pointer", padding: "12px 16px" }}>
+      <div className={`card link${apagada ? " post-apagada" : ""}`} style={{ cursor: "pointer", padding: "12px 16px" }}>
         {/* línea 1: identidad de la postulación — código, concurso y estado */}
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <b style={{ fontSize: 14.5 }}>🎯 {p.codigo || "—"}</b>
@@ -297,8 +345,31 @@ export default async function Postulaciones({ searchParams }: {
             </div>
           );
         })()}
-        {/* La barra de completitud se retiró de postulaciones: son pocos
-            campos y no aporta al escaneo del listado. */}
+        {/* fila del EQUIPO que postula: solo caras (avatares), ordenadas por
+            jerarquía de rol (director primero). Para no cargar la fila, el
+            nombre corto y el cargo aparecen al pasar el cursor. */}
+        {(() => {
+          const eqp = ordenarEquipo(equipoPorPost.get(p.id) || []);
+          if (!eqp.length) return null;
+          return (
+            <div className="post-equipo">
+              {eqp.map((r: any, i: number) => (
+                <span key={i} className="post-eq-av"
+                  title={`${r.persona?.alias || r.persona?.nombre}${r.cargo ? ` · ${r.cargo}` : ""}`}>
+                  <Avatar nombre={r.persona?.nombre} src={r.persona?.foto_url} size={33} />
+                </span>
+              ))}
+            </div>
+          );
+        })()}
+        {/* línea 3: la LÍNEA DE TIEMPO del concurso (los hitos de su
+            convocatoria) — la misma de la cancha, para ver de un vistazo qué
+            fecha se viene. Solo si la convocatoria tiene fechas cargadas. */}
+        {p.conv?.id && (hitosPorConv.get(p.conv.id)?.length ?? 0) > 0 && (
+          <div className="post-riel">
+            <RielHitos hitos={hitosPorConv.get(p.conv.id) || []} hoy={hoyS} />
+          </div>
+        )}
       </div>
     </Link>
     );

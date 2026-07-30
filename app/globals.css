@@ -193,6 +193,7 @@ a{color:inherit;text-decoration:none}
 .ca-txt{display:flex;flex-direction:column;min-width:0}
 .ca-nom{color:var(--text);font-weight:700;font-size:13.5px;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ca-rol{color:var(--dim);font-size:11.5px;margin-top:2px}
+.ca-desde{color:var(--muted);font-size:10.5px;margin-top:2px}
 /* 🎥 Equipo audiovisual en el carné: estado + quién lo tiene ahora. */
 .carne-equipo{margin-bottom:6px}
 .ce-estado{font-size:14px;font-weight:800;margin-bottom:7px}
@@ -289,11 +290,23 @@ a{color:inherit;text-decoration:none}
 .pl-seccion{margin-bottom:14px}
 .pl-seccion-h{font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);
   padding:4px 0 6px;border-bottom:1px solid var(--border);margin-bottom:2px}
-.pl-fila{position:relative;display:flex;gap:12px;align-items:flex-start;padding:12px 10px 12px 11px;
-  border-left:3px solid var(--border);border-radius:0 9px 9px 0;
+.pl-fila{position:relative;display:flex;gap:12px;align-items:flex-start;padding:14px 12px 14px 13px;
+  border:1px solid var(--border);border-left:3px solid var(--border);border-radius:0 11px 11px 0;
   background:linear-gradient(90deg,color-mix(in srgb,var(--pl-col,transparent) 7%,transparent),transparent 55%);
-  margin-bottom:2px}
+  margin-bottom:12px}
 /* `--pl-col` (color del estado) lo fija cada fila con style. */
+/* Logo de la empresa que postula, al lado de su selector. */
+.post-emp-logo{width:30px;height:30px;border-radius:7px;object-fit:cover;flex-shrink:0;
+  border:1px solid var(--border);background:var(--card)}
+/* Chip del proyecto junto a la empresa: miniatura (o 📁) + nombre + link. */
+.post-proy-chip{display:inline-flex;align-items:center;gap:7px;padding:3px 10px 3px 4px;
+  background:var(--card);border:1px solid var(--border);border-radius:20px;
+  color:var(--text);font-size:12.5px;font-weight:600;text-decoration:none;max-width:260px}
+.post-proy-chip:hover{border-color:var(--violet)}
+.post-proy-chip-img{width:26px;height:26px;border-radius:50%;object-fit:cover;flex-shrink:0}
+.post-proy-chip-ph{display:flex;align-items:center;justify-content:center;width:26px;height:26px;
+  border-radius:50%;background:var(--bg);flex-shrink:0;font-size:14px}
+.post-proy-chip-txt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* Fila SELLADA: su contenido se atenúa MIENTRAS el sello está presente. Con
    `:has` el atenuado se ata al sello real: al cerrarlo (✕), el sello se
    desmonta y la fila recupera su opacidad al instante, sin recargar. */
@@ -437,6 +450,12 @@ a{color:inherit;text-decoration:none}
 .vtab{flex:0 0 auto;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:8px 14px;font-size:12.5px;color:var(--muted);font-weight:600;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
 .vtab:hover{border-color:var(--border2);color:var(--text)}
 .vtab.on{border-color:var(--accent);color:var(--text);background:rgba(124,92,255,.12)}
+/* Combo de filtro (rol/especialidad): mismo lenguaje visual que los chips. */
+.combo-filtro{background:var(--card);border:1px solid var(--border);border-radius:10px;
+  padding:8px 12px;font-size:12.5px;color:var(--text);font-weight:600;cursor:pointer;
+  min-width:220px;outline:none}
+.combo-filtro:hover{border-color:var(--border2)}
+.combo-filtro:focus{border-color:var(--accent)}
 .vtab-n{display:inline-block;min-width:18px;padding:0 5px;margin-left:3px;border-radius:8px;background:rgba(255,255,255,.07);color:var(--muted);font-size:10.5px;font-weight:700;text-align:center;vertical-align:middle}
 .vtab.on .vtab-n{background:rgba(124,92,255,.22);color:var(--text)}
 /* Nota breve de una pestaña (p. ej. «próx. 1 set.»): tenue, compacta y en una
@@ -1682,6 +1701,60 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(.65);cursor:
 .linked{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:12px}
 .linked h4{margin:0 0 10px;font-size:12px;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim)}
 .eq-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;flex-wrap:wrap}
+/* Chip persona con foto (equipo de «Postuló con»): avatar + nombre · cargo. */
+.pers-chip{display:inline-flex;align-items:center;gap:7px;text-decoration:none;
+  background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.18);
+  border-radius:22px;padding:3px 11px 3px 3px;transition:background .12s,border-color .12s}
+.pers-chip:hover{background:rgba(167,139,250,.16);border-color:rgba(167,139,250,.32)}
+.pers-chip-txt{font-size:12px;font-weight:600;color:var(--violet);line-height:1.2}
+.pers-chip-rol{color:var(--dim);font-weight:400}
+/* La persona de esta ficha, resaltada dentro de su equipo (color distinto). */
+.pers-chip-yo{background:rgba(45,212,191,.14);border-color:rgba(45,212,191,.4)}
+.pers-chip-yo:hover{background:rgba(45,212,191,.22);border-color:rgba(45,212,191,.55)}
+.pers-chip-yo .pers-chip-txt{color:var(--teal)}
+.pers-chip-yo .pers-chip-rol{color:rgba(45,212,191,.7)}
+/* Ediciones anteriores del proyecto (pie de la pestaña Equipo). */
+.edic-ant{padding:10px 0;border-top:1px solid var(--border)}
+.edic-ant:first-of-type{border-top:none}
+.edic-ant-h{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.edic-ant-tit{color:var(--text);font-weight:600;font-size:13.5px;text-decoration:none}
+.edic-ant-tit:hover{color:var(--violet)}
+.edic-ant-emp{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:12.5px;margin-top:4px}
+.edic-ant-emp-logo{width:22px;height:22px;border-radius:5px;object-fit:cover;border:1px solid var(--border);flex:none}
+.edic-ant-emp-ph{font-size:14px;line-height:1}
+.edic-ant-eq{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:7px}
+/* Postulación cerrada sin ganar: se apaga en el listado (historia, no compite).
+   Al pasar el cursor recupera algo de presencia para poder leerla. */
+.post-apagada{opacity:.5;filter:saturate(.55)}
+.post-apagada:hover{opacity:.82;filter:saturate(.8)}
+/* Tercera fila de una postulación: la línea de tiempo del concurso (riel de
+   hitos de su convocatoria), separada del trío. */
+.post-riel{margin-top:11px;padding-top:9px;border-top:1px solid var(--border)}
+/* Listado de convocatorias: cada postulación en su propia fila (proyecto ·
+   empresa · equipo en avatares). */
+.conv-posts{display:flex;flex-direction:column;gap:7px;margin-top:9px}
+.conv-post-fila{display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+  padding:6px 8px;background:var(--bg);border-radius:9px}
+.conv-post-eq{display:inline-flex;gap:3px;align-items:center;flex-wrap:wrap;margin-left:auto}
+/* Postulación externa (proyecto o empresa ajenos): se sigue por contexto, apagada.
+   Se aclara al pasar el cursor por la TARJETA (la capa-enlace que la cubre tapa
+   el :hover de la fila interna, por eso el hover va en la tarjeta). */
+.conv-post-ext{opacity:.5;filter:grayscale(.5);transition:opacity .15s ease,filter .15s ease}
+.card.link:hover .conv-post-ext{opacity:1;filter:none}
+/* Equipo que postula: fila de solo-avatares (nombre al hover vía title). */
+.post-equipo{display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-top:9px}
+.post-eq-av{display:inline-flex;border-radius:50%;cursor:help;
+  transition:transform .12s ease}
+.post-eq-av:hover{transform:translateY(-2px) scale(1.12);z-index:1}
+/* Antigüedad de la empresa (banner al tope de Trayectoria). */
+/* ── «Postuló con»: cada postulación en su propia caja, separadas ── */
+.tray-postus{display:flex;flex-direction:column;gap:12px;margin-top:10px}
+.tray-post{padding:12px 14px;background:var(--bg);border:1px solid var(--border);
+  border-radius:12px;border-left:3px solid var(--violet)}
+.tray-post:first-child{border-top-color:var(--border)}
+.emp-fundada{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:13.5px;color:var(--muted)}
+.emp-fundada-anios{margin-left:auto;font-weight:800;color:var(--teal);
+  background:rgba(45,212,191,.12);border-radius:20px;padding:3px 12px;font-size:12.5px}
 .eq-row:last-child{border-bottom:none}
 .cargo{color:var(--violet);background:rgba(167,139,250,.12);border-radius:7px;padding:2px 9px;font-size:11px;font-weight:700;white-space:nowrap}
 /* ── Tarjeta de miembro del equipo (postulación / proyecto) ──

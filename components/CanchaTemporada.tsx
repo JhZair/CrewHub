@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { TXT } from "@/lib/texto";
+import RielHitos from "@/components/RielHitos";
 
 /* LA CANCHA DE LA TEMPORADA.
    Una convocatoria es una cancha: varios compiten (las postulaciones) y pocos
@@ -26,16 +27,19 @@ const V = {
 };
 
 /* Cada etapa de una postulación es un punto de avance en la carrera: cuánto
-   ha corrido (0→1), su color y su etiqueta. Las salidas (no apta) quedan a 0. */
+   ha corrido (0→1), su color y su etiqueta. Las SALIDAS se ubican donde a cada
+   una la eliminaron —no en cero—: una «no apta» ya se envió y pasó por revisión
+   administrativa antes de caer, así que llegó más lejos que una que apenas se
+   prepara; y una «no seleccionada» pasó el filtro y llegó hasta el jurado. */
 const STAGE: Record<string, { f: number; c: string; ic: string; lbl: string }> = {
   ganadora: { f: 1, c: V.green, ic: "🏆", lbl: "ganó" },
   finalista: { f: 0.84, c: V.yellow, ic: "🎯", lbl: "finalista" },
   finalista_no_ganadora: { f: 0.84, c: V.yellow, ic: "🥈", lbl: "rozó la meta" },
+  no_seleccionada: { f: 0.72, c: V.red, ic: "✖", lbl: "no seleccionada" },  // llegó al jurado
   apta: { f: 0.6, c: V.teal, ic: "🎯", lbl: "apta" },
+  no_apta: { f: 0.5, c: V.red, ic: "✖", lbl: "quedó fuera" },               // cayó en revisión (ya enviada)
   enviada: { f: 0.4, c: V.violet, ic: "🎯", lbl: "enviada" },
   en_preparacion: { f: 0.15, c: V.blue, ic: "✏️", lbl: "preparando" },
-  no_apta: { f: 0.06, c: V.red, ic: "✖", lbl: "quedó fuera" },
-  no_seleccionada: { f: 0.06, c: V.red, ic: "✖", lbl: "no seleccionada" },
 };
 const stageOf = (e: string) => STAGE[e] || { f: 0.3, c: V.violet, ic: "🎯", lbl: (e || "").replace(/_/g, " ") };
 
@@ -104,7 +108,7 @@ function Cabecera({ f }: { f: Frente }) {
       </Link>
       {f.categoria ? (
         <span className="cn-cat" style={{ fontSize: TXT.chip }}>
-          {CAT_IC[f.categoria] || "🏷"} {f.categoria.replace(/_/g, " ")}
+          {CAT_IC[f.categoria.toLowerCase()] || "🏷"} {f.categoria.replace(/_/g, " ")}
         </span>
       ) : (
         <span className="cn-cat cn-cat-falta" style={{ fontSize: TXT.chip }}
@@ -123,52 +127,21 @@ function Cabecera({ f }: { f: Frente }) {
 
 /* LA VISTA CANCHA: riel de tiempo real + carrera de jugadores. */
 function Cancha({ f, hoy }: { f: Frente; hoy: string }) {
-  const hs = [...f.hitos].sort((a, b) => d(a.fecha) - d(b.fecha));
-  const hoyT = d(hoy);
-  // Dominio del riel: incluye HOY para que su marca siempre caiga dentro.
-  const ts = [...hs.map(h => d(h.fecha)), hoyT];
-  let min = Math.min(...ts), max = Math.max(...ts);
-  if (max === min) max = min + 86400000; // un concurso de un solo hito
-  const pad = (max - min) * 0.06;
-  min -= pad; max += pad;
-  const pos = (t: number) => Math.max(0, Math.min(100, ((t - min) / (max - min)) * 100));
-  const hoyPct = pos(hoyT);
-  const iProx = hs.findIndex(h => h.fecha >= hoy);
-
-  // Jugadores ordenados por quién va más adelante en la carrera.
-  const players = [...f.posts].sort((a, b) => stageOf(b.estado).f - stageOf(a.estado).f);
+  // Jugadores ordenados por quién va más adelante en la carrera; a igual etapa,
+  // alfabético por nombre (desempate estable: antes quedaban en el orden crudo
+  // de la base y parecía azaroso).
+  const players = [...f.posts].sort((a, b) => {
+    const d = stageOf(b.estado).f - stageOf(a.estado).f;
+    return d !== 0 ? d : (a.nombre || "").localeCompare(b.nombre || "");
+  });
 
   return (
     <div className="cn-frente">
       <Cabecera f={f} />
 
-      {hs.length > 0 ? (
-        <div className="cn-time">
-          <div className="cn-track">
-            <div className="cn-past" style={{ width: `${hoyPct}%` }} />
-            <div className="cn-hoy" style={{ left: `${hoyPct}%` }}><span>hoy</span></div>
-            {hs.map((h, i) => {
-              const cls = i < iProx || iProx < 0 ? "hecho" : i === iProx ? "prox" : "";
-              return (
-                <div key={h.id} className={`cn-hito ${cls}`} style={{ left: `${pos(d(h.fecha))}%` }}
-                  title={`${h.nombre || "hito"} · ${fmt(h.fecha)}`}>
-                  <span className="cn-hdot" />
-                  <span className="cn-hdate">{fmt(h.fecha)}</span>
-                </div>
-              );
-            })}
-          </div>
-          {iProx >= 0 ? (
-            <div className="cn-next" style={{ color: colorD(dias(hs[iProx].fecha)) }}>
-              ⏱ sigue: <b>{hs[iProx].nombre || "hito"}</b> · {fmt(hs[iProx].fecha)} · en {dias(hs[iProx].fecha)} días
-            </div>
-          ) : (
-            <div className="cn-next" style={{ color: V.green }}>✅ todos los hitos cumplidos</div>
-          )}
-        </div>
-      ) : (
-        <div style={{ color: V.dim, fontSize: TXT.micro, margin: "6px 0 2px" }}>⏱ sin hitos cargados</div>
-      )}
+      {/* El riel de hitos: la MISMA línea de tiempo que se reusa en el listado
+          de postulaciones (componente RielHitos). */}
+      <RielHitos hitos={f.hitos} hoy={hoy} />
 
       {/* La carrera: cada jugador corre hacia la meta 🏁 según su etapa. */}
       <div className="cn-players">

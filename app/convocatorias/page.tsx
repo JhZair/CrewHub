@@ -5,6 +5,9 @@ import { TIPO_COLOR, EST_CONVOCATORIA } from "@/lib/entidades";
 import { TXT } from "@/lib/texto";
 import CanchaTemporada, { type Frente } from "@/components/CanchaTemporada";
 import { buscadorDe, pal } from "@/lib/buscar";
+import { EN_JUEGO } from "@/lib/fondos";
+import { ordenarEquipo } from "@/lib/rolesEquipo";
+import Avatar from "@/components/Avatar";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
@@ -33,7 +36,7 @@ export default async function Convocatorias({ searchParams }: {
     supabase.from("convocatorias").select("*")
       .order("anio", { ascending: false }).order("codigo"),
     supabase.from("postulaciones")
-      .select("id,codigo,estado,monto_adjudicado,fecha_limite_rendicion,fecha_prorroga,conv:convocatorias(id,codigo,nombre,estado,anio,categoria,monto_adjudicado),proy:proyectos(id,nombre,tipo)"),
+      .select("id,codigo,estado,monto_adjudicado,fecha_limite_rendicion,fecha_prorroga,conv:convocatorias(id,codigo,nombre,estado,anio,categoria,monto_adjudicado),proy:proyectos(id,nombre,tipo,relacion),emp:empresas(id,nombre,relacion),equipo:postulacion_equipo(cargo,persona:personas(id,nombre,alias,foto_url))"),
     supabase.from("publicacion_vinculos")
       .select("entidad_id,publicacion_id,pub:publicaciones(estado)").eq("entidad_tipo", "convocatoria"),
     /* Solo los de caso: desde que los objetos del repositorio comentan en
@@ -70,6 +73,14 @@ export default async function Convocatorias({ searchParams }: {
   // El marcador de Kawsay: las postulaciones son el partido,
   // la convocatoria es la cancha y el calendario
   const posts = postsAll || [];
+  /* Logo (cartel) de cada empresa que postula, para el chip con imagen. */
+  const logoEmpDe = new Map<string, string>();
+  const idsEmp = [...new Set(posts.map((p: any) => p.emp?.id).filter(Boolean))] as string[];
+  if (idsEmp.length) {
+    const { data: mediaEmp } = await supabase.from("entidad_media")
+      .select("entidad_id,cartel_url").eq("entidad_tipo", "empresa").in("entidad_id", idsEmp);
+    (mediaEmp || []).forEach((m: any) => { if (m.cartel_url) logoEmpDe.set(m.entidad_id, m.cartel_url); });
+  }
   /* Las postulaciones de cada convocatoria, para mostrar CON QUÉ presentamos
      —no solo cuántas— en su fila, como en el listado de empresas. */
   const postsPorConv = new Map<string, any[]>();
@@ -87,7 +98,10 @@ export default async function Convocatorias({ searchParams }: {
     (hitosPorConv.get(h.convocatoria_id) || hitosPorConv.set(h.convocatoria_id, []).get(h.convocatoria_id)!).push(h);
   });
   const ganas = posts.filter((p: any) => p.estado === "ganadora");
-  const enJuego = posts.filter((p: any) => ["en_preparacion", "enviada", "finalista"].includes(p.estado));
+  // «En juego» desde la fuente única (lib/fondos): incluye «apta» —una
+  // postulación que pasó el filtro de DAFO y espera al jurado SIGUE jugando; la
+  // lista propia de antes la omitía y su convocatoria no salía en la cancha.
+  const enJuego = posts.filter((p: any) => EN_JUEGO.includes(p.estado));
   const decididas = posts.length - enJuego.length;
   const efectividad = decididas > 0 ? Math.round((ganas.length / decididas) * 100) : null;
   const montoHist = ganas.reduce((s: number, g: any) => s + (parseFloat(g.monto_adjudicado) || 0), 0);
@@ -322,17 +336,46 @@ export default async function Convocatorias({ searchParams }: {
                       {(c.estado || "—").replace(/_/g, " ")}
                     </span>
                   </div>
-                  {/* CON QUÉ postulamos a este concurso: cada proyecto, con su
-                      estado por color, enlazando a su postulación. */}
+                  {/* CON QUÉ postulamos: cada postulación en SU PROPIA FILA —
+                      proyecto (enlace a la postulación), la empresa con que se
+                      presentó, y el equipo con solo su avatar (nombre al hover). */}
                   {(postsPorConv.get(c.id) || []).length > 0 && (
-                    <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
-                      {(postsPorConv.get(c.id) || []).map((p: any) => (
-                        <Link key={p.id} href={`/entidad/postulacion/${p.id}`} className="badge fila-encima"
-                          title={`${p.codigo || ""} · ${(p.estado || "").replace(/_/g, " ")}`}
-                          style={{ color: colPost(p.estado), background: "#1c1c2c", textTransform: "none", letterSpacing: 0, textDecoration: "none", fontSize: 11.5 }}>
-                          🎯 {p.proy?.nombre || p.codigo || "Postulación"} ↗
-                        </Link>
-                      ))}
+                    <div className="conv-posts">
+                      {(postsPorConv.get(c.id) || []).map((p: any) => {
+                        // Externa = el proyecto o la empresa no son nuestros: se
+                        // sigue por contexto, pero va apagada.
+                        const externa = p.proy?.relacion === "externa" || p.emp?.relacion === "externa";
+                        return (
+                        <div key={p.id} className={`conv-post-fila${externa ? " conv-post-ext" : ""}`}>
+                          <Link href={`/entidad/postulacion/${p.id}`} className="badge fila-encima"
+                            title={`${p.codigo || ""} · ${(p.estado || "").replace(/_/g, " ")}`}
+                            style={{ color: colPost(p.estado), background: "#1c1c2c", textTransform: "none", letterSpacing: 0, textDecoration: "none", fontSize: 11.5 }}>
+                            🎯 {p.proy?.nombre || p.codigo || "Postulación"} ↗
+                          </Link>
+                          {p.emp?.id && (
+                            <Link href={`/entidad/empresa/${p.emp.id}`} className="post-proy-chip fila-encima" title={p.emp.nombre}>
+                              {logoEmpDe.get(p.emp.id) ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={logoEmpDe.get(p.emp.id)} alt="" referrerPolicy="no-referrer" className="post-proy-chip-img" />
+                              ) : (
+                                <span className="post-proy-chip-ph">🏢</span>
+                              )}
+                              <span className="post-proy-chip-txt">{p.emp.nombre}</span>
+                            </Link>
+                          )}
+                          {(p.equipo || []).length > 0 && (
+                            <span className="conv-post-eq">
+                              {ordenarEquipo(p.equipo).map((r: any, i: number) => (
+                                <span key={i} className="post-eq-av fila-encima"
+                                  title={`${r.persona?.alias || r.persona?.nombre}${r.cargo ? ` · ${r.cargo}` : ""}`}>
+                                  <Avatar nombre={r.persona?.nombre} src={r.persona?.foto_url} size={28} />
+                                </span>
+                              ))}
+                            </span>
+                          )}
+                        </div>
+                        );
+                      })}
                     </div>
                   )}
                   {/* La barra de completitud se retiró de convocatorias: son

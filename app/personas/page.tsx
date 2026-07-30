@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
+import ComboFiltro from "@/components/ComboFiltro";
 import { esDelEquipo } from "@/lib/personas";
 import { CERRADOS } from "@/lib/familia";
 import { esProblematico, textoSunat } from "@/lib/sunat";
@@ -8,7 +9,7 @@ import { rucDePersona } from "@/lib/ruc";
 import { buscadorDe, pal } from "@/lib/buscar";
 import Avatar from "@/components/Avatar";
 import Completitud from "@/components/Completitud";
-import { completitud, EQUIPOS_PERSONA } from "@/lib/entidades";
+import { completitud, EQUIPOS_PERSONA, ESPECIALIDADES } from "@/lib/entidades";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
@@ -29,14 +30,16 @@ const dias = (f: string) => Math.ceil((new Date(f + "T12:00:00").getTime() - Dat
 const fmt = (f: string) => new Date(f + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" });
 
 export default async function Personas({ searchParams }: {
-  searchParams: { q?: string; e?: string; t?: string; eq?: string; a?: string };
+  searchParams: { q?: string; e?: string; t?: string; eq?: string; a?: string; r?: string; g?: string };
 }) {
   const q = (searchParams?.q || "").trim();
   const e = searchParams?.e || "";
   const t = searchParams?.t || "";
   const eq = searchParams?.eq || "";
   const a = searchParams?.a || "";
-  const listar = !!(q || e || t || eq || a);
+  const r = searchParams?.r || "";
+  const g = searchParams?.g || "";
+  const listar = !!(q || e || t || eq || a || r || g);
 
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -55,7 +58,7 @@ export default async function Personas({ searchParams }: {
     supabase.from("comentarios").select("publicacion_id").not("publicacion_id", "is", null),
     // Su palmarés ante los fondos: en cuántas estuvo (🎯), cuántas ganó (🏆) y
     // en cuántas fue finalista sin ganar (🥈). Antes solo se contaba el total.
-    supabase.from("postulacion_equipo").select("persona_id,post:postulaciones(estado)"),
+    supabase.from("postulacion_equipo").select("persona_id,post:postulaciones(id,estado,proy:proyectos(nombre,nombre_corto),conv:convocatorias(anio))"),
     /* Qué películas hace cada quien. Este listado sabía el DNI, el RUC, el
        estado SUNAT y el tope de 4ta de cada persona — y no sabía que Yajaida
        dirige un documental. Sabía todo de su papelería y nada de su trabajo. */
@@ -97,15 +100,38 @@ export default async function Personas({ searchParams }: {
   // t = total (🎯) · g = ganadas (🏆) · c = finalista sin ganar (🥈).
   const postDe = new Map<string, number>();
   const palmar = new Map<string, { t: number; g: number; c: number }>();
+  // Nombres de proyecto por grupo (con año, para ordenar), para el tooltip.
+  type Det = { etq: string; anio: number };
+  const palmarDet = new Map<string, { g: Det[]; c: Det[]; t: Det[] }>();
+  /* Una persona puede tener VARIAS filas en la misma postulación (Director +
+     Autor): se cuenta cada postulación UNA vez por persona, si no el palmarés
+     se infla (4 ganadas cuando eran 3). Dedup por (persona, postulación). */
+  const vistoPost = new Set<string>();
   (equipoPost || []).forEach((r: any) => {
+    const post = Array.isArray(r.post) ? r.post[0] : r.post;
+    const clave = `${r.persona_id}:${post?.id || ""}`;
+    if (post?.id && vistoPost.has(clave)) return;
+    if (post?.id) vistoPost.add(clave);
     postDe.set(r.persona_id, (postDe.get(r.persona_id) || 0) + 1);
     const s = palmar.get(r.persona_id) || { t: 0, g: 0, c: 0 };
     s.t++;
-    // `post` puede llegar como objeto o como arreglo (PostgREST); se normaliza.
-    const est = (Array.isArray(r.post) ? r.post[0] : r.post)?.estado;
+    const est = post?.estado;
     if (est === "ganadora") s.g++;
     if (est === "finalista_no_ganadora") s.c++;
     palmar.set(r.persona_id, s);
+    // Etiqueta legible del proyecto: nombre (corto si hay) + año.
+    const proy = Array.isArray(post?.proy) ? post.proy[0] : post?.proy;
+    const conv = Array.isArray(post?.conv) ? post.conv[0] : post?.conv;
+    const nom = proy?.nombre_corto || proy?.nombre;
+    if (nom) {
+      const anio = Number(conv?.anio) || 0;
+      const it = { etq: `${nom}${anio ? ` (${anio})` : ""}`, anio };
+      const d = palmarDet.get(r.persona_id) || { g: [], c: [], t: [] };
+      d.t.push(it);
+      if (est === "ganadora") d.g.push(it);
+      if (est === "finalista_no_ganadora") d.c.push(it);
+      palmarDet.set(r.persona_id, d);
+    }
   });
 
   /* Qué películas hace cada quien. Dirigir se separa del resto a propósito:
@@ -118,6 +144,22 @@ export default async function Personas({ searchParams }: {
     const l = proysDe.get(r.persona_id) || [];
     l.push(r); proysDe.set(r.persona_id, l);
   });
+
+  /* Las ESPECIALIDADES/roles de cada persona salen de su propio campo `rol`
+     (el del formulario de alta: opciones de ESPECIALIDADES, guardado como texto
+     separado por comas porque es múltiple). Ese es «su rol». */
+  const rolesPersona = (p: any): string[] =>
+    (p.rol || "").split(",").map((s: string) => s.trim()).filter(Boolean);
+  // Cuántas personas tienen cada rol (para el conteo del chip).
+  const cntR = (rol: string) => todas.filter((p: any) => rolesPersona(p).includes(rol)).length;
+  // Género (del formulario de alta): femenino / masculino / no binario / otro.
+  const GENEROS: [string, string, string][] = [
+    ["femenino", "♀ Femenino", "#ec4899"],
+    ["masculino", "♂ Masculino", "var(--blue)"],
+    ["no binario", "⚧ No binario", "var(--violet)"],
+    ["otro", "Otro", "var(--dim)"],
+  ];
+  const cntG = (gen: string) => todas.filter((p: any) => (p.genero || "") === gen).length;
 
   // En qué obras figura como actor social (comunero, protagonista, sujeto).
   const actorEn = new Map<string, any[]>();
@@ -150,6 +192,8 @@ export default async function Personas({ searchParams }: {
     (!e || p.estado === e) &&
     (!t || (p.tipo || "contacto") === t) &&
     (!eq || p.equipo === eq) &&
+    (!r || rolesPersona(p).includes(r)) &&
+    (!g || (p.genero || "") === g) &&
     (!a || PRUEBA_A[a]?.(p)) &&
     // El DNI, el RUC deducido y la clasificación también se buscan aquí
     (!q || coincide(pal(
@@ -207,15 +251,22 @@ export default async function Personas({ searchParams }: {
               <span className="badge" style={{ color: "var(--violet)", background: "rgba(167,139,250,.12)" }}>{p.equipo}</span>
             )}
             {/* Palmarés ante los fondos: intentos (🎯), y de ellos los que ganó
-                (🏆) y en los que quedó finalista sin ganar (🥈). */}
-            {pal && pal.t > 0 && (
-              <span title={`${pal.t} postulación(es) · ${pal.g} ganada(s) · ${pal.c} finalista sin ganar`}
-                style={{ display: "inline-flex", gap: 5 }}>
-                {pal.g > 0 && <span className="badge" style={{ color: "var(--green)", background: "rgba(46,204,113,.12)" }}>🏆 {pal.g}</span>}
-                {pal.c > 0 && <span className="badge" style={{ color: "var(--yellow)", background: "rgba(244,180,0,.12)" }}>🥈 {pal.c}</span>}
-                <span className="badge" style={{ color: "var(--blue)", background: "rgba(59,130,246,.12)" }}>🎯 {pal.t}</span>
-              </span>
-            )}
+                (🏆) y en los que quedó finalista sin ganar (🥈). Cada chip lleva
+                en su tooltip la lista de proyectos de ese grupo —para ver al
+                vuelo cuáles son sin abrir la ficha. */}
+            {pal && pal.t > 0 && (() => {
+              const det = palmarDet.get(p.id) || { g: [], c: [], t: [] };
+              // Más reciente primero.
+              const lista = (arr: { etq: string; anio: number }[]) =>
+                [...arr].sort((a, b) => b.anio - a.anio).map(x => x.etq).join("\n");
+              return (
+                <span className="fila-encima" style={{ display: "inline-flex", gap: 5 }}>
+                  {pal.g > 0 && <span className="badge" title={`Ganó:\n${lista(det.g)}`} style={{ color: "var(--green)", background: "rgba(46,204,113,.12)", cursor: "help" }}>🏆 {pal.g}</span>}
+                  {pal.c > 0 && <span className="badge" title={`Finalista sin ganar:\n${lista(det.c)}`} style={{ color: "var(--yellow)", background: "rgba(244,180,0,.12)", cursor: "help" }}>🥈 {pal.c}</span>}
+                  <span className="badge" title={`Postuló en:\n${lista(det.t)}`} style={{ color: "var(--blue)", background: "rgba(59,130,246,.12)", cursor: "help" }}>🎯 {pal.t}</span>
+                </span>
+              );
+            })()}
             {d !== null && d < 0 && (
               <span className="badge" style={{ color: "var(--red)", background: "rgba(255,77,94,.12)" }}>
                 🪪 vencido hace {-d} d
@@ -318,6 +369,8 @@ export default async function Personas({ searchParams }: {
         {e && <input type="hidden" name="e" value={e} />}
         {t && <input type="hidden" name="t" value={t} />}
         {eq && <input type="hidden" name="eq" value={eq} />}
+        {r && <input type="hidden" name="r" value={r} />}
+        {g && <input type="hidden" name="g" value={g} />}
         {a && <input type="hidden" name="a" value={a} />}
         <span className="buscador-lista">
           <span className="bg-lupa">🔍</span>
@@ -346,6 +399,20 @@ export default async function Personas({ searchParams }: {
             const n = cntEq(ee);
             return n === 0 ? null : (
               <Chip key={ee} href={`/personas?eq=${ee}`} on={eq === ee} color="var(--violet)">{ee} · {n}</Chip>
+            );
+          })}
+        </FilaFiltro>
+        <FilaFiltro titulo="Rol / especialidad">
+          <ComboFiltro value={r} placeholder="Todos los roles" emptyHref="/personas"
+            options={ESPECIALIDADES.filter(rr => cntR(rr) > 0).map(rr => ({
+              val: rr, label: `${rr} · ${cntR(rr)}`, href: `/personas?r=${encodeURIComponent(rr)}`,
+            }))} />
+        </FilaFiltro>
+        <FilaFiltro titulo="Género">
+          {GENEROS.map(([k, lbl, col]) => {
+            const n = cntG(k);
+            return n === 0 ? null : (
+              <Chip key={k} href={`/personas?g=${encodeURIComponent(k)}`} on={g === k} color={col}>{lbl} · {n}</Chip>
             );
           })}
         </FilaFiltro>
@@ -465,7 +532,7 @@ export default async function Personas({ searchParams }: {
           <div style={{ color: "var(--muted)", fontSize: 13, margin: "2px 4px 10px" }}>
             {filtradas.length} resultado{filtradas.length === 1 ? "" : "s"}
             {e && ` · ${(EST_META[e]?.[0] || e).toLowerCase()}`}
-            {t && ` · ${t}`}{eq && ` · ${eq}`}
+            {t && ` · ${t}`}{eq && ` · ${eq}`}{r && ` · ${r}`}{g && ` · ${g}`}
             {a && ` · ${a.replace(/_/g, " ")}`}{q && ` · «${q}»`}
           </div>
 
