@@ -226,6 +226,19 @@ export async function POST(req: Request) {
       filasN.push({
         usuario_id: p.id, dafo_id: c.id,
         tipo: c.pide_accion ? "dafo_accion" : "dafo",
+        /* ── QUIÉN HABLA, y por qué eso decide si suena ──
+           El eje de las dos pestañas es «¿te habla una persona o te recuerda el
+           sistema?», y el timbre solo cuenta lo primero (actor_nombre no nulo).
+           Un requerimiento con plazo de cinco días hábiles es la notificación
+           más consecuente del sistema: dejarla sin actor la mandaba a «Del
+           Bot», la pestaña que NO suena, con el mismo peso que un recordatorio
+           de cronograma.
+           Y no es una etiqueta inventada para colarla ahí: DAFO escribió ese
+           correo. Es alguien externo hablándote, no el sistema recordándote
+           algo — el eje se respeta, no se rompe.
+           Lo rutinario (acuses, resoluciones que solo se archivan) sigue sin
+           actor: si todo suena, nada suena. */
+        ...(c.pide_accion ? { actor_nombre: "DAFO" } : {}),
         /* El asunto va entre « » porque la campanita se queda solo con eso
            (tituloDe); lo de delante lo lee quien recibe el push, donde el
            mensaje llega entero. */

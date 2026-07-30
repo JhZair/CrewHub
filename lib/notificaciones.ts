@@ -38,6 +38,9 @@ export const ICONO: Record<string, string> = {
 
 export const ETIQ: Record<string, string> = {
   asignacion: "te asignó", comentario: "comentó", vencimiento: "vence",
+  /* Solo los correos de DAFO que exigen respuesta llevan actor («DAFO»), y
+     esta es la línea que los explica: «DAFO te escribió · 1h». */
+  dafo_accion: "te escribió",
   cambio_estado: "cambió el estado", mencion: "te mencionó", reaccion: "reaccionó",
   vinculo: "te vinculó",
 };

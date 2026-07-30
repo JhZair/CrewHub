@@ -161,6 +161,17 @@ Vercel y esta llave escribe en la base.)
   «ya estaba».
 - **Más de 6 correos de golpe = un solo push.** Los demás quedan en la campanita
   🔔 (que es el registro) con el push ya marcado como despachado.
+- **Solo lo que exige respuesta suena en el timbre.** Los correos con 🚨
+  (subsanación, requerimiento, apercibimiento, observaciones…) se guardan con
+  `actor_nombre = 'DAFO'`, así que caen en la pestaña **«Para ti»** y encienden
+  el badge rojo: «📬 Requerimiento de subsanación… / DAFO · 1h». Lo rutinario
+  —acuses de recibo, resoluciones que solo se archivan— va sin actor a **«Del
+  Bot»**, junto a los recordatorios de Qhaway.
+
+  No es una etiqueta puesta para colarlos ahí: el eje de las dos pestañas es
+  «¿te habla alguien o te recuerda el sistema?», y DAFO escribió ese correo. Si
+  todo sonara, nada sonaría — y un requerimiento con plazo de cinco días
+  hábiles no puede llegar con el mismo peso que un aviso de cronograma.
 
 ## Archivos
 
