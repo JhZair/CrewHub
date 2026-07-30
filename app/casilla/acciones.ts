@@ -10,6 +10,24 @@ import { revalidatePath } from "next/cache";
    Las tres revalidan /casilla y nada más: el panel es el único sitio que las
    muestra. */
 
+/* Cuántos correos de la casilla están sin leer. Lo pide la navegación desde el
+   cliente, en cada pantalla: por eso es `head: true` —solo el número, ninguna
+   fila— y por eso NUNCA lanza. Si la tabla no existe todavía (falta correr
+   db/casilla-dafo.sql) devuelve 0 y la nav se dibuja igual. Un indicador que
+   tumba el menú de todo el sistema no es un indicador, es una trampa. */
+export async function casillaSinLeer(): Promise<number> {
+  try {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return 0;
+    const { count } = await supabase.from("dafo_comunicaciones")
+      .select("id", { count: "exact", head: true }).is("leido_en", null);
+    return count || 0;
+  } catch {
+    return 0;
+  }
+}
+
 /* Leído / sin leer. El estado no es un booleano sino CUÁNDO y QUIÉN: en un
    equipo, «alguien ya lo vio» sin decir quién es lo mismo que no saberlo. */
 export async function marcarComunicacion(id: string, leido: boolean) {

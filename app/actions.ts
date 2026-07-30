@@ -14,7 +14,7 @@ import { SECCIONES } from "@/lib/secciones";
 import { TIPOS_OBJETO } from "@/lib/objetos";
 import { catalogoObjetos, catalogosEntidades } from "@/lib/catalogos";
 import { resolverNombres } from "@/lib/nombres";
-import { COL_DAFO, sinColumna, sinDafoId } from "@/lib/notificaciones";
+import { COL_DAFO, sinColumna, sinDafoId, TIPOS_DAFO } from "@/lib/notificaciones";
 
 /* Crear o actualizar una entidad núcleo (proyecto/empresa/persona).
    La config compartida actúa como whitelist de tabla y campos. */
@@ -4832,6 +4832,7 @@ export async function notificacionesTodas(desde = 0, filtro?: "personal" | "bot"
     else if (chip === "mencion") q = q.eq("tipo", "mencion");
     else if (chip === "comentario") q = q.eq("tipo", "comentario");
     else if (chip === "asignacion") q = q.eq("tipo", "asignacion");
+    else if (chip === "dafo") q = q.in("tipo", TIPOS_DAFO);
     return q;
   };
   const q = consulta(COLS);

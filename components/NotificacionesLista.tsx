@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { notificacionesTodas, marcarNotifLeida, marcarNotifsLeidas, actividadDeCaso } from "@/app/actions";
 import { createClient } from "@/lib/supabase/client";
-import { rutaNotif, esAutomatica, bucketFecha, CHIPS, ICONO, ETIQ, hace, tituloDe } from "@/lib/notificaciones";
+import { rutaNotif, esAutomatica, bucketFecha, CHIPS, CHIPS_BOT, ICONO, ETIQ, hace, tituloDe } from "@/lib/notificaciones";
 import { ICO_ENT } from "@/lib/secciones";
 import { rotuloEstado } from "@/lib/estados";
 import { plazoDe } from "@/lib/plazo";
@@ -63,7 +63,7 @@ export default function NotificacionesLista({
   // Bajo "No leídas", lo ya leído no debe seguir a la vista.
   const bajoChip = (list: any[]) => chipRef.current === "no_leidas" ? list.filter(x => !x.leida) : list;
   // Al Bot casi nunca le aplican menciones/comentarios/asignaciones.
-  const chipsVisibles = pestana === "bot" ? CHIPS.filter(c => c.clave === "todas" || c.clave === "no_leidas") : CHIPS;
+  const chipsVisibles = pestana === "bot" ? CHIPS.filter(c => CHIPS_BOT.includes(c.clave)) : CHIPS;
 
   const traer = async (offset: number) =>
     notificacionesTodas(offset, filtroDe(pestanaRef.current), chipRef.current) as any;
@@ -178,7 +178,7 @@ export default function NotificacionesLista({
             👤 Para ti{sinLeerP > 0 && <span className="camp-tabn">{sinLeerP}</span>}
           </button>
           <button className={`camp-tab ${pestana === "bot" ? "on" : ""}`}
-            onClick={() => { setPestana("bot"); if (chip !== "todas" && chip !== "no_leidas") setChip("todas"); }}>
+            onClick={() => { setPestana("bot"); if (!CHIPS_BOT.includes(chip)) setChip("todas"); }}>
             🤖 Del Bot{sinLeerB > 0 && <span className="camp-tabn">{sinLeerB}</span>}
           </button>
           {nSinLeer > 0 && <button className="camp-marcar" onClick={marcarTodas}>✓ marcar leídas</button>}

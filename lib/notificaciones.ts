@@ -101,6 +101,12 @@ export function bucketFecha(iso: string): string {
   return "Más antiguas";
 }
 
+/* Los dos tipos de la casilla DAFO. En un solo sitio porque el chip los junta y
+   la ingesta los reparte: el que exige respuesta lleva actor («DAFO») y suena,
+   el rutinario no. Enumerarlos aquí evita que una pantalla filtre por uno y se
+   olvide del otro. */
+export const TIPOS_DAFO = ["dafo", "dafo_accion"];
+
 /* Chips que afinan dentro de la pestaña (Para ti / Del Bot). `clave` va a la
    server action; "todas" no filtra. */
 export const CHIPS: { clave: string; label: string }[] = [
@@ -109,7 +115,18 @@ export const CHIPS: { clave: string; label: string }[] = [
   { clave: "mencion", label: "Menciones" },
   { clave: "comentario", label: "Comentarios" },
   { clave: "asignacion", label: "Asignaciones" },
+  /* 📬 DAFO va al final y vale en LAS DOS pestañas, porque los correos de la
+     casilla viven repartidos entre ambas por diseño: el requerimiento con plazo
+     tiene actor y está en «Para ti»; el acuse de recibo no y está en «Del Bot».
+     Aquí el chip hace lo que una tercera pestaña haría —aislarlos— sin partir la
+     barra por un eje distinto al de las dos que ya hay. */
+  { clave: "dafo", label: "📬 DAFO" },
 ];
+
+/* Los chips que siguen valiendo en la pestaña del Bot: allí no hay menciones ni
+   asignaciones que filtrar. Escrito aquí y no en la pantalla para que agregar un
+   chip sea una línea en un solo archivo. */
+export const CHIPS_BOT = ["todas", "no_leidas", "dafo"];
 
 /* El título entre comillas angulares del mensaje del bot */
 export const tituloDe = (m: string) => {

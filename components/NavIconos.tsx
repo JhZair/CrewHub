@@ -3,6 +3,7 @@ import { usePathname } from "next/navigation";
 import { SECCIONES } from "@/lib/secciones";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { casillaSinLeer } from "@/app/casilla/acciones";
 
 /* LA NAVEGACIÓN ENTRE SECCIONES, en un solo control.
 
@@ -20,6 +21,17 @@ import { useEffect, useState } from "react";
 export default function NavIconos() {
   const pathname = usePathname() || "";
   const [abierto, setAbierto] = useState(false);
+  /* Los correos de DAFO sin leer. Se pide desde el cliente y no por props
+     porque esta nav vive dentro de <Volver>, que está en las 19 pantallas:
+     enhebrar el dato por diecinueve páginas era la otra opción.
+     Se relee al navegar —marcar uno como leído en /casilla tiene que bajar el
+     número— y es un `count` sin filas, así que cuesta casi nada. */
+  const [casilla, setCasilla] = useState(0);
+  useEffect(() => {
+    let vivo = true;
+    casillaSinLeer().then(n => { if (vivo) setCasilla(n); }).catch(() => {});
+    return () => { vivo = false; };
+  }, [pathname]);
 
   /* Dónde estás. Cuenta la sección entera: la ficha, su historial y sus casos
      también son «estar ahí». */
@@ -58,6 +70,17 @@ export default function NavIconos() {
         <span className="nav-ico">{enCasilla ? "📬" : enFondos ? "🎬" : aqui ? aqui.ico : "☰"}</span>
         <span className="nav-txt">{enCasilla ? "casilla" : enFondos ? "fondos" : aqui ? aqui.plural : "Secciones"}</span>
         <span className="nav-cheb">▾</span>
+        {/* El punto rojo cuando hay correo de DAFO sin leer. Es el indicador
+            PERMANENTE: la campanita habla de lo que acaba de pasar y se calla al
+            leerse; esto sigue ahí mientras quede algo pendiente en la casilla. No
+            se pinta estando en /casilla, donde el pendiente ya está a la vista. */}
+        {casilla > 0 && !enCasilla && (
+          <span title={`${casilla} correo(s) de DAFO sin leer`}
+            style={{
+              background: "var(--red)", color: "#fff", fontSize: 9.5, fontWeight: 800,
+              borderRadius: 8, padding: "1px 5px", minWidth: 16, textAlign: "center",
+            }}>{casilla > 99 ? "99+" : casilla}</span>
+        )}
       </button>
       {abierto && (
         <>
@@ -94,6 +117,12 @@ export default function NavIconos() {
               onClick={() => setAbierto(false)}>
               <span className="nav-item-ico">📬</span>
               <span>casilla DAFO</span>
+              {casilla > 0 && (
+                <span style={{
+                  marginLeft: "auto", background: "var(--red)", color: "#fff",
+                  fontSize: 9.5, fontWeight: 800, borderRadius: 8, padding: "1px 6px",
+                }}>{casilla > 99 ? "99+" : casilla}</span>
+              )}
             </Link>
           </div>
         </>

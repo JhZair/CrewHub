@@ -173,6 +173,28 @@ Vercel y esta llave escribe en la base.)
   todo sonara, nada sonaría — y un requerimiento con plazo de cinco días
   hábiles no puede llegar con el mismo peso que un aviso de cronograma.
 
+## Dónde se ven, y por qué ahí
+
+| Sitio | Qué dice | Cuándo se apaga |
+|---|---|---|
+| 🔔 **campanita**, «Para ti» | lo que exige respuesta (🚨), con el timbre rojo | al marcar la notificación como leída |
+| 🔔 **campanita**, «Del Bot» | lo rutinario y el resumen de las ráfagas | igual |
+| **chip 📬 DAFO** en `/notificaciones` | aísla los de la casilla **dentro de cada pestaña** | — (es un filtro) |
+| **badge en el ☰ de la nav** | correos de la casilla **sin leer**, en las 19 pantallas | al marcarlos leídos en `/casilla` |
+| **📬 casilla DAFO** (el panel) | todo, agrupado por postulación, con el silencio medido | — |
+
+Dos cosas que conviene tener claras:
+
+- **No hay una tercera pestaña «DAFO», y es a propósito.** Las dos que hay parten
+  por *¿te habla alguien o te recuerda el sistema?*; una pestaña DAFO partiría por
+  el *origen del contenido*, que es otro eje — y con dos criterios mezclados,
+  mañana SUNAT pide la suya. El chip hace el mismo trabajo sin romper la barra, y
+  para ver la casilla entera junta ya existe `/casilla`.
+- **El badge de la nav cuenta para todo el equipo, no por persona.** `leido_en`
+  vive en el correo, no en el lector: si Katy marca uno como leído, baja para
+  todos. Es una bandeja compartida, como la casilla real — pero si algún día se
+  quiere «leído por mí», hay que mover ese estado a una tabla por usuario.
+
 ## Archivos
 
 | Archivo | Qué es |
