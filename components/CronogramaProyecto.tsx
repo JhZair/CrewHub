@@ -52,6 +52,8 @@ const fmt = (s: string) =>
 type Campos = { nombre: string; etapa: string; ini: string; fin: string;
   responsable: string; antic: string; clase: string; descripcion: string; equipo: string[] };
 
+const capi = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
 /* Como `fmt` pero con el año: para rangos que cruzan diciembre. */
 const fmtAnio = (s: string) =>
   new Date(s + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" });
@@ -375,11 +377,15 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
     if (c.getTime() < desdeT) c.setMonth(c.getMonth() + 1);
     while (c.getTime() < hastaT - dia) {
       const enero = c.getMonth() === 0;
+      /* Mayúscula a mano. El español tiene dos formas del mes abreviado: la
+         SUELTA («Dic.», que es la que da pedir solo el mes) y la de FRASE
+         («dic. 26», la que da pedir mes+año). Mezcladas en el mismo eje se ven
+         como un error de tipeo: «Dic.» junto a «ene. 27». Se igualan aquí. */
       marcas.push({
         pct: pct(c.getTime()),
-        lbl: enero || marcas.length === 0
+        lbl: capi(enero || marcas.length === 0
           ? c.toLocaleDateString("es-PE", { month: "short", year: "2-digit" })
-          : c.toLocaleDateString("es-PE", { month: "short" }),
+          : c.toLocaleDateString("es-PE", { month: "short" })),
         fuerte: enero,
       });
       c.setMonth(c.getMonth() + salto);
@@ -714,7 +720,7 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
                       el `title` y en la vista de lista, que es donde se asigna. */}
                   {a.responsable && (
                     <span title={respDe(a.responsable)?.nombre || "responsable"} style={{ flexShrink: 0, display: "inline-flex" }}>
-                      <Avatar size={18} nombre={respDe(a.responsable)?.nombre}
+                      <Avatar size={22} nombre={respDe(a.responsable)?.nombre}
                         src={fotoDe(respDe(a.responsable))} color={respDe(a.responsable)?.color} />
                     </span>
                   )}
