@@ -1,10 +1,11 @@
 "use client";
 import NavFechas from "@/components/NavFechas";
+import Avatar from "@/components/Avatar";
 import { useState, useEffect, type Dispatch, type SetStateAction } from "react";
 import Link from "next/link";
 import { icoTipo, colorTipo } from "@/lib/tipos";
 import VistaRapida from "@/components/VistaRapida";
-import { colorEtapa, ETAPAS_CINE } from "@/lib/etapas";
+import { colorEtapa, nombreEtapa, ETAPAS_CINE } from "@/lib/etapas";
 import { TXT } from "@/lib/texto";
 
 /* AGENDA — todo lo que tiene fecha, en dos vistas.
@@ -54,7 +55,7 @@ const fmtCorto = (s: string) => new Date(s + "T12:00:00").toLocaleDateString("es
 
 export default function Agenda({ items, perfiles, miId }: {
   items: ItemAgenda[];
-  perfiles: { id: string; nombre: string }[];
+  perfiles: { id: string; nombre: string; avatar_url?: string | null; color?: string | null }[];
   miId: string;
 }) {
   const [vista, setVista] = useState<"tl" | "cal">("tl");
@@ -64,6 +65,7 @@ export default function Agenda({ items, perfiles, miId }: {
 
   const nombreDe = (id: string | null) => id ? (perfiles.find(p => p.id === id)?.nombre || "") : "";
   const cortoDe = (id: string | null) => nombreDe(id).split(" ")[0];
+  const perfilDe = (id: string | null) => (id ? perfiles.find(p => p.id === id) : null) || null;
 
   const vis = items.filter(it => !persona || it.personas.includes(persona));
 
@@ -109,7 +111,7 @@ export default function Agenda({ items, perfiles, miId }: {
       </div>
 
       {vista === "tl"
-        ? <Timeline vis={vis} shift={shift} setShift={setShift} colorDe={colorDe} icoDe={icoDe} cortoDe={cortoDe} apagado={apagado} />
+        ? <Timeline vis={vis} shift={shift} setShift={setShift} colorDe={colorDe} icoDe={icoDe} cortoDe={cortoDe} perfilDe={perfilDe} apagado={apagado} />
         : <Calendario vis={vis} mesOff={mesOff} setMesOff={setMesOff} colorDe={colorDe} icoDe={icoDe} apagado={apagado} />}
 
       {/* Leyenda de etapas. Muestra las de cine (las comunes); cada categoría
@@ -126,9 +128,10 @@ export default function Agenda({ items, perfiles, miId }: {
 }
 
 /* ───────────────────────── LÍNEA DE TIEMPO ───────────────────────── */
-function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, apagado }: {
+function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, perfilDe, apagado }: {
   vis: ItemAgenda[]; shift: number; setShift: Dispatch<SetStateAction<number>>;
   colorDe: (it: ItemAgenda) => string; icoDe: (it: ItemAgenda) => string; cortoDe: (id: string | null) => string;
+  perfilDe: (id: string | null) => { nombre: string; avatar_url?: string | null; color?: string | null } | null;
   apagado: (it: ItemAgenda) => boolean;
 }) {
   /* Grupos plegables (como el tablero): plegar los proyectos que uno no mira
@@ -252,7 +255,32 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, apagado }: {
                   : <span className="ag-tl-gtit">{titulo}</span>}
                 <span className="ag-tl-gn">{g.items.length}</span>
               </div>
-              {!cerrado && g.items.map(it => {
+              {/* FASES dentro del grupo. Un proyecto de veintitrés actividades
+                   es ilegible de corrido: separarlo por etapa devuelve la
+                   lectura de «en qué momento del proyecto va esto».
+                   Las fases se ordenan por su PRIMERA fecha, no por un orden
+                   fijo de etapas: la agenda mezcla categorías —cine, videojuego,
+                   gestión— y no tiene a mano el preset de ninguna. Cronológico
+                   es lo que una agenda promete. Los grupos sin etapa (los Casos)
+                   caen en un solo bloque sin rótulo y se pintan como antes. */}
+              {!cerrado && (() => {
+                const porEtapa = new Map<string, ItemAgenda[]>();
+                g.items.forEach(it => {
+                  const k = it.etapa || "";
+                  porEtapa.set(k, [...(porEtapa.get(k) || []), it]);
+                });
+                const fases = [...porEtapa.entries()]
+                  .sort((a, b) => (a[1][0]?.ini || "") < (b[1][0]?.ini || "") ? -1 : 1);
+                const hayFases = fases.some(([k]) => k);
+                return fases.map(([et, items]) => (
+                  <div key={et || "_"}>
+                    {hayFases && et && (
+                      <div className="ag-tl-fase">
+                        <i style={{ background: colorEtapa(et) }} />
+                        {nombreEtapa(et)}
+                      </div>
+                    )}
+                    {items.map(it => {
                 const left = Math.max(0, pct(pd(it.ini)));
                 const right = Math.min(100, pct(pd(it.fin) + DAY));
                 const w = Math.max(right - left, 1.5);
@@ -264,15 +292,25 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, apagado }: {
                       {/* Trabajar al vuelo: solo los casos son publicaciones; las
                           actividades del cronograma no. Va dentro del rótulo (ancho
                           fijo) para no descuadrar el eje temporal de la pista. */}
-                      {it.kind === "caso" && it.href.startsWith("/caso/") && (
+                      {/* Cualquier fila que apunte a un caso, no solo las del
+                          grupo «Casos»: una actividad de cronograma ya
+                          materializada TIENE caso, y su href ya es /caso/… —
+                          solo faltaba dejar de preguntar por el `kind`. */}
+                      {it.href.startsWith("/caso/") && (
                         <VistaRapida pubId={it.href.slice("/caso/".length)} />
                       )}
                       <Link href={it.href} className="ag-tl-lbl-txt" title={it.titulo}>
                         {icoDe(it)} {it.titulo}
                       </Link>
                     </div>
-                    <span className="ag-tl-resp" title={it.respId ? cortoDe(it.respId) : "sin responsable"}>
-                      {it.respId ? cortoDe(it.respId) : "—"}
+                    {/* La cara y no el nombre: en una lista de veintitrés filas,
+                        «Michel» repetido quince veces no distingue nada y ocupa
+                        una columna entera. El nombre vive en el `title`. */}
+                    <span className="ag-tl-resp" title={perfilDe(it.respId)?.nombre || "sin responsable"}>
+                      {it.respId
+                        ? <Avatar size={20} nombre={perfilDe(it.respId)?.nombre}
+                            src={perfilDe(it.respId)?.avatar_url} color={perfilDe(it.respId)?.color} />
+                        : <i style={{ opacity: .35, fontStyle: "normal" }}>—</i>}
                     </span>
                     <div className="ag-tl-track">
                       {/* El tramo inicio→fin va tenue y punteado: dice cuánto dura
@@ -297,6 +335,9 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, apagado }: {
                   </div>
                 );
               })}
+                  </div>
+                ));
+              })()}
             </div>
             );
           })}

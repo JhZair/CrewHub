@@ -1999,6 +1999,11 @@ a.stat-card:hover{border-color:var(--border2)}
 .ag-tl-axis{position:relative;height:16px;margin-bottom:8px}
 .ag-tl-axis>span{position:absolute;transform:translateX(-50%);font-size:12px;color:var(--dim);white-space:nowrap}
 /* Rejilla semanal + línea de HOY, superpuestas (no bloquean el clic) */
+/* Rótulo de fase dentro de un grupo del timeline: separa las etapas de un
+   proyecto largo sin robarle sitio a la pista. */
+.ag-tl-fase{display:flex;align-items:center;gap:6px;margin:7px 0 3px;font-size:9.5px;font-weight:800;
+  letter-spacing:.5px;text-transform:uppercase;color:var(--dim)}
+.ag-tl-fase>i{display:inline-block;width:12px;height:6px;border-radius:3px;flex-shrink:0}
 .ag-tl-lineas{position:absolute;top:24px;bottom:4px;right:0;pointer-events:none;z-index:3}
 .ag-tl-lineas>i{position:absolute;top:0;bottom:0;width:1px;background:var(--border);opacity:.6}
 .ag-tl-lineas>.hoy{position:absolute;top:0;bottom:0;width:2px;background:var(--red);opacity:.7}
@@ -2022,7 +2027,9 @@ a.stat-card:hover{border-color:var(--border2)}
 .ag-tl-lbl-txt:hover{color:var(--accent)}
 .ag-tl-lbl .vr-btn{flex:none;padding:0 4px;font-size:12px;line-height:1.5}
 /* Nombre corto del responsable, entre el rótulo y la barra */
-.ag-tl-resp{flex:0 0 68px;width:68px;font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:8px}
+/* Ahora lleva la cara del responsable en vez de su nombre: mismo ancho (el eje
+   temporal se ancla a él), centrada. */
+.ag-tl-resp{flex:0 0 68px;width:68px;font-size:13px;color:var(--muted);display:flex;align-items:center;justify-content:center;padding-right:8px}
 .ag-tl-track{position:relative;flex:1;height:100%}
 .ag-tl-bar{position:absolute;top:4px;height:18px;border-radius:5px;min-width:6px;box-sizing:border-box;transition:filter .12s}
 .ag-tl-bar:hover{filter:brightness(1.15)}

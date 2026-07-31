@@ -35,7 +35,7 @@ export default async function AgendaPage() {
       .select("id,titulo,tipo,estado,fecha_limite,responsable,creado_en")
       .in("estado", VIVOS).not("fecha_limite", "is", null).is("archivado_en", null)
       .neq("tipo", "bitacora"),   // las notas del muro solo viven en su proyecto
-    supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
+    supabase.from("perfiles").select("id,nombre,avatar_url,color").eq("activo", true).order("nombre"),
   ]);
 
   // ── Actividades → items. Grupo = su proyecto/convocatoria. ──
