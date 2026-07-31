@@ -3152,6 +3152,17 @@ export async function asignarClienteProyecto(proyectoId: string, personaId: stri
    postulación (cada postulación arma el suyo, independiente). El dueño se
    pasa como `dueno` y aquí se traduce a su columna. */
 type DuenoCrono = "proyecto" | "convocatoria" | "postulacion";
+/* Las clases válidas de una actividad del cronograma. Antes esto era un
+   ternario —«si no es hito_externo, es trabajo»— y con dos valores funcionaba.
+   Al aparecer el tercero («continua»), ese ternario lo convertía en «trabajo»
+   al guardar: el formulario lo mostraba elegido, la acción respondía OK y el
+   valor se perdía por el camino. Una lista blanca no se olvida de crecer.
+   Lo que NO esté aquí cae a `trabajo`, que es el valor seguro: se materializa,
+   se ve y alguien lo corrige. */
+const CLASES_ACT = ["trabajo", "hito_externo", "continua"];
+const claseVal = (c?: string | null) =>
+  CLASES_ACT.includes(String(c || "")) ? String(c) : "trabajo";
+
 const colCrono = (d: DuenoCrono) =>
   d === "proyecto" ? "proyecto_id" : d === "convocatoria" ? "convocatoria_id" : "postulacion_id";
 
@@ -3196,7 +3207,7 @@ export async function agregarActividadCrono(
     [colDueno]: duenoId,
     nombre: d.nombre.trim(),
     etapa: d.etapa || null,
-    clase: d.clase === "hito_externo" ? "hito_externo" : "trabajo",
+    clase: claseVal(d.clase),
     fecha_inicio: d.ini,
     fecha_fin: d.fin || d.ini,
     ...campoResp(dueno, d.responsable),
@@ -3365,7 +3376,7 @@ export async function editarActividadCrono(
   const fila = {
     nombre: d.nombre.trim(),
     etapa: d.etapa || null,
-    clase: d.clase === "hito_externo" ? "hito_externo" : "trabajo",
+    clase: claseVal(d.clase),
     fecha_inicio: d.ini,
     fecha_fin: fin,
     ...campoResp(dueno, d.responsable),
