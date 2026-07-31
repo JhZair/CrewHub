@@ -5,7 +5,7 @@ import { useState, useEffect, type Dispatch, type SetStateAction } from "react";
 import Link from "next/link";
 import { icoTipo, colorTipo } from "@/lib/tipos";
 import VistaRapida from "@/components/VistaRapida";
-import { colorEtapa, nombreEtapa, ETAPAS_CINE } from "@/lib/etapas";
+import { colorEtapa, nombreEtapa, etapasDe, ETAPAS_CINE } from "@/lib/etapas";
 import { TXT } from "@/lib/texto";
 
 /* AGENDA — todo lo que tiene fecha, en dos vistas.
@@ -22,6 +22,9 @@ export type ItemAgenda = {
   fin: string;             // YYYY-MM-DD (caso: = fecha límite)
   estado: string;
   etapa?: string;          // color de la actividad
+  orden?: number;          // desempate manual dentro de la etapa (del cronograma)
+  creado?: string;         // desempata el desempate, para que no bailen
+  cat?: string;            // categoría de la convocatoria → preset de etapas
   tipo?: string;           // ícono del caso
   respId: string | null;
   nc?: number;             // comentarios del caso (0 o ausente = no se pinta)
@@ -200,7 +203,21 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, perfilDe, apa
       : gid.startsWith("p:") ? 1 : gid.startsWith("c:") ? 3 : 4;
   const grupos = [...byGroup.entries()].sort((a, b) =>
     rango(a[0]) - rango(b[0]) || a[1].label.localeCompare(b[1].label));
-  grupos.forEach(([, g]) => g.items.sort((x, y) => x.ini < y.ini ? -1 : x.ini > y.ini ? 1 : 0));
+  /* Dentro de cada grupo, el MISMO orden que su cronograma: el `orden` manual
+     manda —la secuencia que decidió una persona: primero se alistan los
+     equipos, después rueda cámara A, después B—, la fecha es el desempate por
+     defecto y `creado_en` desempata el desempate para que dos con el mismo
+     orden no bailen entre recargas.
+     ⚠ Tiene que ser idéntico al comparador de CronogramaProyecto.tsx (y al
+     `cmpEtapa` de actions.ts): si la agenda ordena por fecha a secas, la misma
+     etapa se lee en un orden aquí y en otro allá, y ninguno de los dos parece
+     roto — solo se contradicen. Los casos no tienen `orden`: caen todos en 0 y
+     el comparador se reduce a la fecha, que es como estaban. */
+  const cmp = (x: ItemAgenda, y: ItemAgenda) =>
+    (x.orden ?? 0) !== (y.orden ?? 0) ? (x.orden ?? 0) - (y.orden ?? 0)
+    : x.ini !== y.ini ? (x.ini < y.ini ? -1 : 1)
+    : (x.creado || "") < (y.creado || "") ? -1 : (x.creado || "") > (y.creado || "") ? 1 : 0;
+  grupos.forEach(([, g]) => g.items.sort(cmp));
 
   // Marcas del eje: el paso se adapta al zoom para no amontonar etiquetas
   // (semanal en ventanas cortas, quincenal/mensual en las largas). Sin el tick
@@ -264,19 +281,27 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, perfilDe, apa
               {/* FASES dentro del grupo. Un proyecto de veintitrés actividades
                    es ilegible de corrido: separarlo por etapa devuelve la
                    lectura de «en qué momento del proyecto va esto».
-                   Las fases se ordenan por su PRIMERA fecha, no por un orden
-                   fijo de etapas: la agenda mezcla categorías —cine, videojuego,
-                   gestión— y no tiene a mano el preset de ninguna. Cronológico
-                   es lo que una agenda promete. Los grupos sin etapa (los Casos)
-                   caen en un solo bloque sin rótulo y se pintan como antes. */}
+                   Las fases van en el orden de su PRESET, no por su primera
+                   fecha: un documental empieza por Investigación aunque alguna
+                   tarea de Preproducción arranque antes, y ordenarlas por
+                   calendario ponía la agenda a contradecir al cronograma. Cada
+                   grupo es un solo proyecto/convocatoria, así que su categoría
+                   —la de todos sus ítems— basta para saber cuál es el preset;
+                   sin categoría, `etapasDe` devuelve el de cine, que es el que
+                   usan los cronogramas de proyecto. Una etapa que no esté en el
+                   preset cae al final, y ahí sí manda la fecha. Los grupos sin
+                   etapa (los Casos) caen en un bloque sin rótulo, como antes. */}
               {!cerrado && (() => {
                 const porEtapa = new Map<string, ItemAgenda[]>();
                 g.items.forEach(it => {
                   const k = it.etapa || "";
                   porEtapa.set(k, [...(porEtapa.get(k) || []), it]);
                 });
-                const fases = [...porEtapa.entries()]
-                  .sort((a, b) => (a[1][0]?.ini || "") < (b[1][0]?.ini || "") ? -1 : 1);
+                const preset = etapasDe(g.items[0]?.cat || "").map(e => e.clave);
+                const pos = (et: string) => { const i = preset.indexOf(et); return i < 0 ? 999 : i; };
+                const fases = [...porEtapa.entries()].sort((a, b) =>
+                  pos(a[0]) !== pos(b[0]) ? pos(a[0]) - pos(b[0])
+                  : (a[1][0]?.ini || "") < (b[1][0]?.ini || "") ? -1 : 1);
                 const hayFases = fases.some(([k]) => k);
                 return fases.map(([et, items]) => (
                   <div key={et || "_"}>

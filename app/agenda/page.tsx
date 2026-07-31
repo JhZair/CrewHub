@@ -27,9 +27,15 @@ export default async function AgendaPage() {
 
   const [{ data: acts }, { data: casos }, { data: perfs }] = await Promise.all([
     supabase.from("cronograma_actividades")
-      .select("id,nombre,fecha_inicio,fecha_fin,etapa,estado,responsable,equipo,publicacion_id," +
-        "proy:proyectos(id,nombre,nombre_corto),conv:convocatorias(id,codigo,nombre)," +
-        "postu:postulaciones(id,codigo)")
+      /* `orden` y `creado_en` viajan porque la agenda tiene que ordenar
+         EXACTAMENTE igual que el cronograma de donde salen las actividades;
+         y `categoria` (de la convocatoria, propia o vía postulación) porque el
+         orden de las FASES sale del preset de esa categoría, no del calendario:
+         un documental empieza por Investigación aunque su primera fecha caiga
+         después de algo de Preproducción. */
+      .select("id,nombre,fecha_inicio,fecha_fin,etapa,estado,responsable,equipo,publicacion_id,orden,creado_en," +
+        "proy:proyectos(id,nombre,nombre_corto),conv:convocatorias(id,codigo,nombre,categoria)," +
+        "postu:postulaciones(id,codigo,conv:convocatorias(categoria))")
       .neq("estado", "cancelada").not("fecha_inicio", "is", null),
     supabase.from("publicaciones")
       .select("id,titulo,tipo,estado,fecha_limite,responsable,creado_en")
@@ -75,6 +81,10 @@ export default async function AgendaPage() {
       respId: a.responsable || null,
       personas: [a.responsable, ...((a.equipo as string[]) || [])].filter(Boolean) as string[],
       nc: a.publicacion_id ? nComs.get(a.publicacion_id) || 0 : 0,
+      orden: a.orden ?? 0, creado: a.creado_en || "",
+      // Sin categoría (los cronogramas de proyecto) manda el preset de cine,
+      // que es justo lo que `etapasDe` devuelve cuando no reconoce nada.
+      cat: conv?.categoria || (postu?.conv as any)?.categoria || "",
       grupo: grupo.label, grupoId: grupo.id, href,
     };
   });
@@ -98,6 +108,7 @@ export default async function AgendaPage() {
     respId: c.responsable || null,
     personas: [c.responsable].filter(Boolean) as string[],
     nc: nComs.get(c.id) || 0,
+    creado: c.creado_en || "",
     grupo: "Casos", grupoId: "__casos__", href: `/caso/${c.id}`,
   }; });
 
