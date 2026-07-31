@@ -116,9 +116,27 @@ distinción. **Confírmala antes de aplicarla.**
 Si la categoría no está en esa lista, **pregunta** en vez de inventar una clave:
 una etapa desconocida se pinta gris y desordena el Gantt de la aplicación.
 
-Las FASES del documento (FASE 1 · ARRANQUE, FASE 2 · MECÁNICA CENTRAL…) no son
-etapas: son agrupaciones del formulario. Se mapean a la etapa que les corresponde
-y, si aporta, el nombre de la fase se conserva dentro de `nombre`.
+> **De dónde salen estas claves, y por qué importa.** No son del cronograma:
+> salen del **PRESUPUESTO** de DAFO, que para videojuego se organiza en
+> Desarrollo conceptual · Diseño · Programación · Pruebas de prototipo ·
+> Licencias. El formulario de cronograma de DAFO, en cambio, solo pide «Inicio
+> del Proyecto», filas libres de actividades y «Fin del Proyecto» con las
+> obligaciones. O sea: la etapa dice **de qué disciplina se paga** cada
+> actividad, y por eso el cronograma cruza con el presupuesto.
+>
+> Si el documento que te pasan agrupa por FASES inventadas (ARRANQUE, MECÁNICA
+> CENTRAL, IDENTIDAD VISUAL…), esas fases **no son etapas**: son estructura
+> narrativa del documento de presentación. Mapea cada actividad a su disciplina
+> real, y si el documento y las etapas no se parecen en nada, **dilo** — puede
+> que convenga rearmar el documento antes de cargarlo, no forzar el sistema.
+> (Pasó con PO-040 · HexaFill el 30/07/2026: se cargó forzando el mapeo, no
+> cuadraba con nada, y se borró para rehacer el cronograma desde el formato.)
+
+**Ojo con las actividades que se repiten.** En un Gantt, dos celdas separadas de
+la misma fila son DOS eventos, no uno largo. «Entrega de informe(s)
+semestral(es)» marcada en mayo y en octubre son dos entregas: van como dos filas
+con sus fechas, no como una barra de seis meses. Ese fue el error concreto de la
+primera carga de PO-040.
 
 **No llenar:** `responsable`, `publicacion_id`, `plantilla_act`,
 `ancla_evento`, `offset_dias_habiles`. `dias_anticipacion` se deja en su valor por
