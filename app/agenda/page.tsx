@@ -38,6 +38,25 @@ export default async function AgendaPage() {
     supabase.from("perfiles").select("id,nombre,avatar_url,color").eq("activo", true).order("nombre"),
   ]);
 
+  // ── Cuántos comentarios tiene cada caso ──
+  // Las dos mitades de la agenda desembocan en el mismo sitio: un caso es una
+  // publicación, y una actividad de cronograma ya materializada TIENE una
+  // (`publicacion_id`). Así que se pregunta una sola vez, por id de publicación,
+  // y sirve a las dos. Se usa el agregado embebido en vez de traer la tabla
+  // `comentarios` entera y contar en memoria: los comentarios de objetos,
+  // préstamos, equipamiento y postulaciones viven en esa misma tabla y gastarían
+  // el tope de filas de PostgREST, dejando el contador corto EN SILENCIO.
+  // El `limit` explícito es por lo mismo: el default (1000) truncaría sin avisar.
+  const idsPub = [...new Set([
+    ...(acts || []).map((a: any) => a.publicacion_id),
+    ...(casos || []).map((c: any) => c.id),
+  ].filter(Boolean))] as string[];
+  const { data: conteos } = idsPub.length
+    ? await supabase.from("publicaciones").select("id,comentarios(count)").in("id", idsPub).limit(5000)
+    : { data: [] as any[] };
+  const nComs = new Map<string, number>();
+  (conteos || []).forEach((p: any) => nComs.set(p.id, p.comentarios?.[0]?.count ?? 0));
+
   // ── Actividades → items. Grupo = su proyecto/convocatoria. ──
   const itemsAct: ItemAgenda[] = (acts || []).map((a: any) => {
     const proy = a.proy as any, conv = a.conv as any, postu = a.postu as any;
@@ -55,6 +74,7 @@ export default async function AgendaPage() {
       estado: a.estado, etapa: a.etapa || "",
       respId: a.responsable || null,
       personas: [a.responsable, ...((a.equipo as string[]) || [])].filter(Boolean) as string[],
+      nc: a.publicacion_id ? nComs.get(a.publicacion_id) || 0 : 0,
       grupo: grupo.label, grupoId: grupo.id, href,
     };
   });
@@ -77,13 +97,16 @@ export default async function AgendaPage() {
     estado: c.estado, tipo: c.tipo,
     respId: c.responsable || null,
     personas: [c.responsable].filter(Boolean) as string[],
+    nc: nComs.get(c.id) || 0,
     grupo: "Casos", grupoId: "__casos__", href: `/caso/${c.id}`,
   }; });
 
   return (
     <div className="shell" style={{ maxWidth: "min(1800px, 98vw)" }}>
       {/* Refresco en vivo: la agenda sale de cronograma + casos con fecha. */}
-      <Realtime tablas={["cronograma_actividades", "publicaciones"]} token={session?.access_token} />
+      {/* «comentarios» entra a la lista porque ahora la agenda muestra su
+          conteo: sin eso el 💬 se quedaría congelado hasta recargar. */}
+      <Realtime tablas={["cronograma_actividades", "publicaciones", "comentarios"]} token={session?.access_token} />
       <div className="topbar">
         <Volver />
         <span className="spacer" />

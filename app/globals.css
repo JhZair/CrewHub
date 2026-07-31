@@ -2026,6 +2026,8 @@ a.stat-card:hover{border-color:var(--border2)}
 .ag-tl-lbl-txt{flex:1;min-width:0;font-size:14px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ag-tl-lbl-txt:hover{color:var(--accent)}
 .ag-tl-lbl .vr-btn{flex:none;padding:0 4px;font-size:12px;line-height:1.5}
+.ag-tl-nc{flex:none;font-size:11px;color:var(--dim);white-space:nowrap}
+.ag-tl-row:hover .ag-tl-nc{color:var(--muted)}
 /* Nombre corto del responsable, entre el rótulo y la barra */
 /* Ahora lleva la cara del responsable en vez de su nombre: mismo ancho (el eje
    temporal se ancla a él), centrada. */

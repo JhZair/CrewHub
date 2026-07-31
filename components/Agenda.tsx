@@ -24,6 +24,7 @@ export type ItemAgenda = {
   etapa?: string;          // color de la actividad
   tipo?: string;           // ícono del caso
   respId: string | null;
+  nc?: number;             // comentarios del caso (0 o ausente = no se pinta)
   personas: string[];      // responsable + equipo, para el filtro
   grupo: string;           // rótulo del grupo (proyecto / "Casos")
   grupoId: string;
@@ -311,6 +312,14 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, perfilDe, apa
                       <Link href={it.href} className="ag-tl-lbl-txt" title={it.titulo}>
                         {icoDe(it)} {it.titulo}
                       </Link>
+                      {/* Solo las filas que tienen conversación gastan ancho:
+                          un «💬 0» en veintitrés filas es ruido, y el título
+                          necesita cada píxel. */}
+                      {!!it.nc && (
+                        <span className="ag-tl-nc" title={`${it.nc} comentario${it.nc === 1 ? "" : "s"}`}>
+                          💬 {it.nc}
+                        </span>
+                      )}
                     </div>
                     {/* La cara y no el nombre: en una lista de veintitrés filas,
                         «Michel» repetido quince veces no distingue nada y ocupa
@@ -407,7 +416,8 @@ function Calendario({ vis, mesOff, setMesOff, colorDe, icoDe, apagado }: {
             <div key={i} className={`ag-cal-dia ${key === hoyKey ? "hoy" : ""}`}>
               <span className="ag-cal-num">{dia}</span>
               {items.slice(0, TOPE).map(it => (
-                <Link key={it.id} href={it.href} className={`ag-cal-chip ${apagado(it) ? "ag-ajena" : ""}`} title={it.titulo}
+                <Link key={it.id} href={it.href} className={`ag-cal-chip ${apagado(it) ? "ag-ajena" : ""}`}
+                  title={it.nc ? `${it.titulo} · 💬 ${it.nc}` : it.titulo}
                   style={{ borderLeft: `3px solid ${colorDe(it)}` }}>
                   {icoDe(it)} {it.titulo}
                 </Link>
