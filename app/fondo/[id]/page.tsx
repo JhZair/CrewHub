@@ -84,7 +84,7 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
 
   const categoria = ent.conv?.categoria || null;
 
-  const [cp, pl, pf, plPre, pc, ec, rf, mb, au, vf] = await Promise.all([
+  const [cp, pl, pf, plPre, pc, ec, rf, mb, au, vf, eqp] = await Promise.all([
     supabase.from("cronograma_actividades").select("*, resp:perfiles(nombre)")
       .eq("postulacion_id", params.id)
       .order("etapa").order("orden").order("fecha_inicio").order("creado_en"),
@@ -112,10 +112,29 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
     supabase.from("version_fondo")
       .select("id,tipo,etiqueta,motivo,vigente,creado_en,datos,creado:perfiles!creado_por(nombre)")
       .eq("postulacion_id", params.id).order("creado_en", { ascending: false }),
+    /* El equipo que se presentó: es la nómina del cronograma de esta
+       postulación, aquí igual que en la ficha. Sin esto, la misma actividad
+       ofrecería responsables distintos según por qué pantalla se entre. */
+    supabase.from("postulacion_equipo")
+      .select("cargo,persona:personas(id,nombre,alias)")
+      .eq("postulacion_id", params.id),
   ]);
 
-  const cronoPost = cp.data || [];
+  /* Responsable de actividad de postulación = persona del equipo
+     (`responsable_persona`), no cuenta del sistema. Se normaliza a
+     `responsable` al leer — ver db/crono-responsable-persona.sql. */
+  const cronoPost = (cp.data || []).map((a: any) => ({ ...a, responsable: a.responsable_persona || null }));
   const perfilesCat = pf.data || [];
+  const cargosF = new Map<string, string[]>();
+  const nombresF = new Map<string, string>();
+  for (const m of (eqp.data || []) as any[]) {
+    const p = m?.persona; if (!p?.id) continue;
+    nombresF.set(p.id, p.alias || p.nombre || "—");
+    cargosF.set(p.id, [...(cargosF.get(p.id) || []), m.cargo].filter(Boolean));
+  }
+  const plantelPost = [...nombresF].map(([id, n]) => ({
+    id, nombre: (cargosF.get(id) || []).length ? `${n} · ${(cargosF.get(id) || []).join(" / ")}` : n,
+  }));
   const plantillas = (pl.data || []).map((x: any) => ({
     id: x.id, nombre: x.nombre, tipo_proyecto: x.tipo_proyecto, n: x.acts?.[0]?.count ?? 0,
   }));
@@ -286,7 +305,7 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
                 resumen={dim(cronoPost.filter((a: any) => a.estado !== "cancelada").length
                   ? `${cronoPost.filter((a: any) => a.estado !== "cancelada").length} actividades` : "sin actividades")}>
                 <CronogramaPostulacion key={`crono-${params.id}`} postulacionId={params.id}
-                  actividades={cronoPost} perfiles={perfilesCat}
+                  actividades={cronoPost} perfiles={plantelPost}
                   plantillas={plantillas} tipoProyecto={ent.proy?.tipo || ""}
                   etapas={etapasDe(categoria)}
                   postulado={vigCrono?.datos || null}

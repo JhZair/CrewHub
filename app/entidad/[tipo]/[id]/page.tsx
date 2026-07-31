@@ -442,7 +442,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   let comp = SIN_COMPROMISO, empLibre = false, trabasEmp: string[] = [], miembrosHoja: any[] = [];
   let partesReserva: any[] = [], reserva: "si" | "no" | "falta" = "falta";
   let clienteDe: { id: string; nombre: string } | null = null;
-  let cronoActs: any[] = [], perfilesCat: any[] = [], cronoPost: any[] = [];
+  let cronoActs: any[] = [], perfilesCat: any[] = [], cronoPost: any[] = [], plantelPost: any[] = [];
   let postusProy: any[] = [], equipoProy: any[] = [], plantillas: any[] = [], actoresProy: any[] = [];
   let muroPosts: any[] = [], muroEtqs: any[] = [];
   // Interacción de cada postulación (💬 comentarios + 😊 reacciones), para
@@ -905,8 +905,29 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         .select("id,nombre,tipo_proyecto,acts:plantilla_actividades(count)").order("nombre"),
       supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
     ]);
-    cronoPost = cp.data || [];
+    /* El responsable de una actividad de POSTULACIÓN vive en
+       `responsable_persona` (el equipo que se presenta), no en `responsable`
+       (las cuentas del sistema) — ver db/crono-responsable-persona.sql. Se
+       normaliza aquí, al leer, para que el componente del cronograma siga
+       hablando de `responsable` y no haya que ramificarlo por dentro. */
+    cronoPost = (cp.data || []).map((a: any) => ({ ...a, responsable: a.responsable_persona || null }));
     perfilesCat = pf2.data || [];
+    /* Y su «nómina» es el equipo de postulación, con el cargo al lado: en una
+       lista de ocho nombres, «Programador/a» es lo que te dice a quién le toca.
+       Una persona con dos cargos sale una vez con los dos.
+       Si el equipo está vacío no hay a quién asignar, y eso es correcto: se
+       agrega gente al equipo primero. Caer de vuelta a los perfiles guardaría
+       un id de cuenta en una columna que apunta a personas. */
+    const cargos = new Map<string, string[]>();
+    const nombres = new Map<string, string>();
+    for (const m of equipoPost as any[]) {
+      const p = m?.persona; if (!p?.id) continue;
+      nombres.set(p.id, p.alias || p.nombre || "—");
+      cargos.set(p.id, [...(cargos.get(p.id) || []), m.cargo].filter(Boolean));
+    }
+    plantelPost = [...nombres].map(([id, n]) => ({
+      id, nombre: (cargos.get(id) || []).length ? `${n} · ${(cargos.get(id) || []).join(" / ")}` : n,
+    }));
     plantillas = (pl2.data || []).map((x: any) => ({
       id: x.id, nombre: x.nombre, tipo_proyecto: x.tipo_proyecto, n: x.acts?.[0]?.count ?? 0,
     }));
@@ -2530,7 +2551,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                       abiertoPorDefecto={!esGanadora}
                       resumen={dim(cronoResumen || "")}>
                       <CronogramaPostulacion key={`crono-${params.id}`} postulacionId={params.id}
-                        actividades={cronoPost} perfiles={perfilesCat}
+                        actividades={cronoPost} perfiles={plantelPost}
                         plantillas={plantillas} tipoProyecto={(postCtx?.proy as any)?.tipo || ""}
                         etapas={etapasDe((postCtx?.conv as any)?.categoria)}
                         postulado={ent.cronograma_postulado || null}

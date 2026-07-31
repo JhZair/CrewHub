@@ -3154,6 +3154,20 @@ type DuenoCrono = "proyecto" | "convocatoria" | "postulacion";
 const colCrono = (d: DuenoCrono) =>
   d === "proyecto" ? "proyecto_id" : d === "convocatoria" ? "convocatoria_id" : "postulacion_id";
 
+/* En QUÉ columna vive el responsable, según de quién cuelgue el cronograma.
+   El de un proyecto o una convocatoria es trabajo interno: lo lleva alguien con
+   cuenta (`perfiles`). El de una POSTULACIÓN lo ejecuta el equipo que se
+   presenta al concurso, que sale de postulacion_equipo → `personas` y en buena
+   parte no tiene cuenta (colaboradores eventuales). Ver
+   db/crono-responsable-persona.sql. La fila usa una columna o la otra, nunca
+   las dos: por eso se limpia la que no toca. */
+const colResp = (d: DuenoCrono) =>
+  d === "postulacion" ? "responsable_persona" : "responsable";
+const campoResp = (d: DuenoCrono, valor: string | null) =>
+  d === "postulacion"
+    ? { responsable_persona: valor || null, responsable: null }
+    : { responsable: valor || null, responsable_persona: null };
+
 export async function agregarActividadCrono(
   dueno: DuenoCrono, duenoId: string,
   d: { nombre: string; etapa: string; ini: string; fin: string;
@@ -3184,7 +3198,7 @@ export async function agregarActividadCrono(
     clase: d.clase === "hito_externo" ? "hito_externo" : "trabajo",
     fecha_inicio: d.ini,
     fecha_fin: d.fin || d.ini,
-    responsable: d.responsable || null,
+    ...campoResp(dueno, d.responsable),
     descripcion: d.descripcion?.trim() || null,
     equipo: equipo.length ? equipo : null,
     dias_anticipacion: parseInt(d.antic) || 7,
@@ -3342,7 +3356,7 @@ export async function editarActividadCrono(
   const equipoEd = [...new Set((d.equipo || []).filter(id => id && id !== d.responsable))];
 
   const { data: antes } = await supabase.from("cronograma_actividades")
-    .select("nombre,etapa,clase,fecha_inicio,fecha_fin,responsable,dias_anticipacion")
+    .select(`nombre,etapa,clase,fecha_inicio,fecha_fin,${colResp(dueno)},dias_anticipacion`)
     .eq("id", actId).maybeSingle();
 
   const fila = {
@@ -3351,7 +3365,7 @@ export async function editarActividadCrono(
     clase: d.clase === "hito_externo" ? "hito_externo" : "trabajo",
     fecha_inicio: d.ini,
     fecha_fin: fin,
-    responsable: d.responsable || null,
+    ...campoResp(dueno, d.responsable),
     descripcion: d.descripcion?.trim() || null,
     equipo: equipoEd.length ? equipoEd : null,
     dias_anticipacion: parseInt(d.antic) || 7,
@@ -3477,7 +3491,7 @@ export async function asignarResponsableActividad(
     .select("equipo").eq("id", actId).maybeSingle();
   const equipo = ((act?.equipo as string[] | null) || []).filter(id => id && id !== respId);
   const { data, error } = await supabase.from("cronograma_actividades")
-    .update({ responsable: respId || null, equipo: equipo.length ? equipo : null })
+    .update({ ...campoResp(dueno, respId), equipo: equipo.length ? equipo : null })
     .eq("id", actId).select("id");
   if (error) return { error: error.message };
   if (!data?.length) return { error: "No se guardó: no tienes permiso." };
