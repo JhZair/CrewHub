@@ -639,7 +639,10 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
     <div className="modal-fondo" onClick={() => setAncho(false)}>
       {/* stopPropagation: sin esto, editar una fecha cierra la ventana —
           el clic en cualquier input llegaría al fondo. */}
-      <div className="modal-ancho" onClick={e => e.stopPropagation()}>{cuerpo}</div>
+      {/* `modal-gantt` en vez del ancho estándar: un cronograma de dos años son
+          veinticuatro meses en una fila, y cada 100px de más son días que se
+          distinguen. El resto de la aplicación conserva su tope de 1280. */}
+      <div className="modal-ancho modal-gantt" onClick={e => e.stopPropagation()}>{cuerpo}</div>
     </div>
   );
 }

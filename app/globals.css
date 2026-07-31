@@ -1690,6 +1690,10 @@ button.obj-mini:hover,a.obj-mini:hover{border-color:var(--accent)}
    aplican. Ésta es la que vale para el Gantt y el presupuesto ampliado, que
    usan `modal-ancho` a secas. */
 .modal-ancho{width:100%;max-width:1280px}
+/* El cronograma pide toda la pantalla: es la única vista donde el ancho ES
+   resolución temporal. Se le da su propia clase para no ensanchar de paso las
+   otras ventanas que usan `modal-ancho`. */
+.modal-ancho.modal-gantt{max-width:min(2200px,97vw)}
 @media(max-width:1340px){ .modal-ancho{max-width:calc(100vw - 32px)} }
 .perfil-grid aside .modal-ed .card{border:1px solid var(--border2);background:var(--panel);padding:18px 22px;margin:0;border-radius:16px}
 .perfil-grid aside .modal-ed .f-grid{grid-template-columns:1fr 1fr}
