@@ -11,6 +11,7 @@ import { Fragment, useEffect, useState } from "react";
 import MiniSelect from "@/components/MiniSelect";
 import NavFechas from "@/components/NavFechas";
 import Avatar from "@/components/Avatar";
+import VistaRapida from "@/components/VistaRapida";
 import FechaMini from "@/components/FechaMini";
 import { sinBot } from "@/lib/personas";
 import { type Etapa, ETAPAS_CINE, nombreEtapa } from "@/lib/etapas";
@@ -365,6 +366,12 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
   const span = Math.max(hastaT - desdeT, 7 * dia);
   const pct = (t: number) => Math.min(100, Math.max(0, ((t - desdeT) / span) * 100));
   const hoyT = Date.now();
+  /* Hoy como fecha ISO LOCAL, no `toISOString()` a secas: en Lima (UTC-5) el
+     UTC ya está en el día siguiente desde las 19:00, y las actividades que
+     terminan hoy se habrían apagado seis horas antes de tiempo. Se compara
+     texto contra texto, que es como están guardadas las fechas. */
+  const hoyISO = new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
+    .toISOString().slice(0, 10);
   const hoyPct = pct(hoyT);
   const hoyDentro = hoyT >= desdeT && hoyT < hastaT;
   const isoDe = (t: number) => new Date(t).toISOString().slice(0, 10);
@@ -692,6 +699,13 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
                cada una. Sale del propio orden, sin agrupar aparte: así no hay
                dos fuentes de verdad sobre en qué fase va una actividad. */
             const abreEtapa = i === 0 || arr[i - 1].etapa !== a.etapa;
+            /* Lo que ya terminó se apaga: en un cronograma de un año, la mitad
+               de las barras son historia y compiten por la atención con lo que
+               viene. Se apaga la FILA entera —nombre, avatar y barra—, no solo
+               el texto, y se recupera al pasar el cursor por si hay que
+               consultarla. Es por FECHA, no por estado: una actividad sin
+               marcar que ya venció también es pasado. */
+            const pasada = (a.fecha_fin || a.fecha_inicio) < hoyISO;
             const ini = pct(pd(a.fecha_inicio));
             const fin = pct(pd(a.fecha_fin || a.fecha_inicio) + dia);
             const w = Math.max(fin - ini, 1.5);
@@ -703,7 +717,9 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
                     left: `${ini}%`, width: `${w}%`,
                     background: a.estado === "planificada" ? `${etCol}26` : etCol,
                     border: a.estado === "planificada" ? `1px dashed ${etCol}` : "none",
-                    opacity: a.estado === "finalizada" ? .45 : 1,
+                    /* Sin doble atenuación: si la fila ya está apagada por
+                       pasada, la barra no se apaga otra vez o queda invisible. */
+                    opacity: a.estado === "finalizada" && !pasada ? .45 : 1,
                   }} />
               </div>
             );
@@ -716,8 +732,12 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
                   <hr />
                 </div>
               )}
-              <div className="gt-row">
+              <div className={`gt-row${pasada ? " pasada" : ""}`}>
                 <div className="gt-nombre" title={a.nombre}>
+                  {/* Trabajar el caso al vuelo, sin salir del Gantt. Va DENTRO
+                      del rótulo, que tiene ancho fijo: fuera descuadraría el
+                      eje temporal. Mismo criterio que en la Agenda. */}
+                  {a.publicacion_id && <VistaRapida pubId={a.publicacion_id} />}
                   <span className="gt-nombre-txt">
                     {a.estado === "finalizada" ? "✅ " : a.estado === "planificada" ? "" : "🟣 "}
                     {a.publicacion_id

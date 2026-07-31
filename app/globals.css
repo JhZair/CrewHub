@@ -2084,6 +2084,10 @@ img.av{border:1px solid var(--border2)}
 .gt-row:hover{background:rgba(124,92,255,.10)}
 .gt-row:hover .gt-nombre{color:var(--text)}
 .gt-row:hover .gt-track{background:#16161f}
+/* Lo que ya pasó, apagado: en un año de cronograma la mitad es historia y
+   compite con lo que viene. Vuelve al pasar el cursor, por si hay que mirarla. */
+.gt-row.pasada{opacity:.42}
+.gt-row.pasada:hover{opacity:1}
 .gt-nombre{width:240px;flex-shrink:0;font-size:13px;color:#c6c6da;padding-right:10px;display:flex;align-items:center;gap:6px}
 .gt-nombre-txt{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* Rejilla de meses: detrás de las barras, encima del fondo. Las de enero más
