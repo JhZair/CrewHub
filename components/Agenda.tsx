@@ -291,6 +291,10 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, perfilDe, apa
                 const w = Math.max(right - left, 1.5);
                 const col = colorDe(it);
                 const rango = it.fin !== it.ini;   // tiene inicio y fin distintos
+                /* Un solo texto para las dos marcas de la fila: si el punto de
+                   inicio y la marca final dijeran cosas distintas, la misma
+                   actividad se leería como dos. */
+                const tip = `${it.titulo} · ${fmtCorto(it.ini)}${rango ? ` → ${fmtCorto(it.fin)}` : ""}${it.respId ? ` · ${cortoDe(it.respId)}` : ""}`;
                 return (
                   <div className={`ag-tl-row ${apagado(it) ? "ag-ajena" : ""}`} key={it.id}>
                     <div className="ag-tl-lbl">
@@ -329,14 +333,14 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, perfilDe, apa
                           contra la rejilla y solo se ve la fecha final. El punto
                           dice «aquí empieza» sin competir con la marca clave. */}
                       {rango && (
-                        <span className="ag-tl-ini"
+                        <Link href={it.href} className="ag-tl-ini" title={tip}
                           style={{ left: `${left}%`, background: col }} />
                       )}
                       {/* Marca en la fecha clave: al final del rango, o en su única
                           fecha si no hay rango. Hueca para casos, rellena para
                           actividades — la misma identidad de color de siempre. */}
                       <Link href={it.href} className="ag-tl-bar"
-                        title={`${it.titulo} · ${fmtCorto(it.ini)}${it.fin !== it.ini ? ` → ${fmtCorto(it.fin)}` : ""}${it.respId ? ` · ${cortoDe(it.respId)}` : ""}`}
+                        title={tip}
                         style={{
                           left: `${rango ? Math.max(0, right - 1.6) : left}%`,
                           width: `${rango ? 1.6 : w}%`,

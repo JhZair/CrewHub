@@ -2036,7 +2036,8 @@ a.stat-card:hover{border-color:var(--border2)}
 /* Tramo inicio→fin: línea horizontal tenue y punteada centrada en la fila.
    No captura clics (la marca y la fila siguen siendo lo interactivo). */
 .ag-tl-span{position:absolute;top:13px;height:0;border-top:2px dotted;opacity:.5;pointer-events:none}
-.ag-tl-ini{position:absolute;top:9px;width:8px;height:8px;margin-left:-2px;border-radius:50%;opacity:.75;pointer-events:none}
+.ag-tl-ini{position:absolute;top:9px;width:8px;height:8px;margin-left:-2px;border-radius:50%;opacity:.75;display:block;transition:filter .12s,opacity .12s}
+.ag-tl-ini:hover{opacity:1;filter:brightness(1.25)}
 /* Apagado lo que no es del foco (uno mismo o la persona filtrada); al pasar el
    mouse vuelve a plena, igual que el tablero y el feed. */
 .ag-tl-row.ag-ajena{opacity:.4;transition:opacity .16s ease}
