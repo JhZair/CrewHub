@@ -31,8 +31,13 @@ export type ItemAgenda = {
 };
 
 const DAY = 86400000;
-const LBL = 212;           // ancho de la columna de rótulos (px)
-const RESP = 68;           // ancho de la columna del responsable (px)
+/* Los tres anchos viajan juntos: LBL y RESP tienen copia en el CSS
+   (.ag-tl-lbl / .ag-tl-resp) y OFF ancla rejilla, eje y línea de HOY. Si uno
+   se mueve sin el otro, el eje deja de coincidir con las barras.
+   La columna del responsable ya no lleva texto sino una cara de 20px: los
+   32px que sobraban se los queda el título, que sí los necesita. */
+const LBL = 244;           // ancho de la columna de rótulos (px)
+const RESP = 36;           // ancho de la columna del responsable (px)
 const OFF = LBL + RESP;    // dónde empieza la pista: rejilla y eje se anclan aquí
 // Zoom de la ventana visible del timeline (días). El default (2 meses) es
 // parecido a las 10 semanas de antes.
@@ -319,6 +324,13 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, perfilDe, apa
                       {rango && (
                         <span className="ag-tl-span"
                           style={{ left: `${left}%`, width: `${w}%`, borderColor: col }} />
+                      )}
+                      {/* Punto de arranque: sin él, el tramo punteado se pierde
+                          contra la rejilla y solo se ve la fecha final. El punto
+                          dice «aquí empieza» sin competir con la marca clave. */}
+                      {rango && (
+                        <span className="ag-tl-ini"
+                          style={{ left: `${left}%`, background: col }} />
                       )}
                       {/* Marca en la fecha clave: al final del rango, o en su única
                           fecha si no hay rango. Hueca para casos, rellena para

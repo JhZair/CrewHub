@@ -2022,20 +2022,21 @@ a.stat-card:hover{border-color:var(--border2)}
 .ag-tl-row{display:flex;align-items:center;height:26px;border-bottom:1px solid rgba(255,255,255,.045)}
 .ag-tl-row:hover{background:rgba(167,139,250,.09)}
 .ag-tl-row:hover .ag-tl-lbl-txt{color:var(--text)}
-.ag-tl-lbl{flex:0 0 212px;width:212px;display:flex;align-items:center;gap:4px;overflow:hidden;padding-right:10px}
+.ag-tl-lbl{flex:0 0 244px;width:244px;display:flex;align-items:center;gap:4px;overflow:hidden;padding-right:10px}
 .ag-tl-lbl-txt{flex:1;min-width:0;font-size:14px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ag-tl-lbl-txt:hover{color:var(--accent)}
 .ag-tl-lbl .vr-btn{flex:none;padding:0 4px;font-size:12px;line-height:1.5}
 /* Nombre corto del responsable, entre el rótulo y la barra */
 /* Ahora lleva la cara del responsable en vez de su nombre: mismo ancho (el eje
    temporal se ancla a él), centrada. */
-.ag-tl-resp{flex:0 0 68px;width:68px;font-size:13px;color:var(--muted);display:flex;align-items:center;justify-content:center;padding-right:8px}
+.ag-tl-resp{flex:0 0 36px;width:36px;font-size:13px;color:var(--muted);display:flex;align-items:center;justify-content:center;padding-right:6px}
 .ag-tl-track{position:relative;flex:1;height:100%}
 .ag-tl-bar{position:absolute;top:4px;height:18px;border-radius:5px;min-width:6px;box-sizing:border-box;transition:filter .12s}
 .ag-tl-bar:hover{filter:brightness(1.15)}
 /* Tramo inicio→fin: línea horizontal tenue y punteada centrada en la fila.
    No captura clics (la marca y la fila siguen siendo lo interactivo). */
 .ag-tl-span{position:absolute;top:13px;height:0;border-top:2px dotted;opacity:.5;pointer-events:none}
+.ag-tl-ini{position:absolute;top:9px;width:8px;height:8px;margin-left:-2px;border-radius:50%;opacity:.75;pointer-events:none}
 /* Apagado lo que no es del foco (uno mismo o la persona filtrada); al pasar el
    mouse vuelve a plena, igual que el tablero y el feed. */
 .ag-tl-row.ag-ajena{opacity:.4;transition:opacity .16s ease}
