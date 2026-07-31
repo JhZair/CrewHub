@@ -20,10 +20,24 @@ const e = (clave: string, nombre: string, color: string): Etapa => ({ clave, nom
 /* Default: cine. Lo usan los cronogramas de proyecto y de convocatoria (los
    que no cuelgan de una categoría). Incluye "administración" para los hitos. */
 export const ETAPAS_CINE: Etapa[] = [
+  /* «Desarrollo» abre el ciclo de un documental: idea, investigación, escritura
+     y financiamiento, antes de que exista nada que preproducir.
+     ⚠ La clave `desarrollo` la usa también «Desarrollo de proyecto» con otro
+     nombre («Desarrollo (arte, layout)»). Dentro del cronograma no hay
+     problema: desde este commit los nombres salen del preset de la categoría,
+     no del mapa global. Pero `nombreEtapa()` —el respaldo que usa la agenda,
+     que mezcla categorías y solo tiene la clave suelta— devuelve uno de los
+     dos. Si algún día molesta, la salida es separar las claves, no renombrar
+     una de las dos a espaldas de la otra. */
+  e("desarrollo", "Desarrollo", C.rosa),
   e("preproduccion", "Preproducción", C.gris),
   e("produccion", "Rodaje", C.ambar),
   e("postproduccion", "Postproducción", C.teal),
-  e("entrega", "Entrega", C.verde),
+  /* «Fin del proyecto» y no «Entrega»: es como lo llaman los formularios DAFO,
+     y ahí no se entrega solamente — se cierra (informes, devolución a la
+     ciudadanía, culminación). Las otras categorías conservan «Entrega» porque
+     ahí sí es la entrega del material. */
+  e("entrega", "Fin del proyecto", C.verde),
   e("administracion", "Administración", C.violeta),
 ];
 

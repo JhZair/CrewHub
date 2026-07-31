@@ -14,6 +14,7 @@ import Avatar from "@/components/Avatar";
 import FechaMini from "@/components/FechaMini";
 import { sinBot } from "@/lib/personas";
 import { type Etapa, ETAPAS_CINE, nombreEtapa } from "@/lib/etapas";
+/* `nombreEtapa` queda solo de respaldo: ver `nomEtapa` abajo. */
 
 /* Las etapas ya no son fijas: llegan por prop (la categoría de la convocatoria
    las decide; ver lib/etapas). Por defecto, las de cine. El ORDEN y el mapa de
@@ -169,6 +170,14 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
      antes, cuando eran constantes fijas. */
   const ETAPA_ORDEN = etapas.map(e => e.clave);
   const ETAPA_COLOR: Record<string, string> = Object.fromEntries(etapas.map(e => [e.clave, e.color]));
+  /* El nombre sale del preset de ESTA categoría, no del mapa global de
+     lib/etapas. El mapa es por clave y el último gana, así que dos categorías
+     que comparten clave con distinto nombre —pasa: `desarrollo` es «Desarrollo»
+     en cine y «Desarrollo (arte, layout)» en Desarrollo de proyecto— hacían que
+     el rótulo de una saliera con el texto de la otra. Aquí siempre hay preset a
+     la mano; `nombreEtapa` queda para quien no lo tiene (la agenda). */
+  const ETAPA_NOMBRE: Record<string, string> = Object.fromEntries(etapas.map(e => [e.clave, e.nombre]));
+  const nomEtapa = (clave: string) => ETAPA_NOMBRE[clave] || nombreEtapa(clave);
   // Etapa por defecto de una actividad nueva: rodaje/producción si existe, si
   // no la primera de la categoría.
   const etapaDef = etapas.some(e => e.clave === "produccion") ? "produccion" : (etapas[0]?.clave || "produccion");
@@ -507,7 +516,7 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
         if (!grupo.length) return null;
         return (
           <div key={et}>
-            <div className="cr-etapa-h">{nombreEtapa(et)}</div>
+            <div className="cr-etapa-h">{nomEtapa(et)}</div>
             {grupo.map(a => {
               const [txt, col] = CHIP[a.estado] || CHIP.planificada;
               /* Se reordena dentro de toda la ETAPA (a cualquier fecha), no ya
@@ -689,7 +698,7 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
             const etCol = ETAPA_COLOR[a.etapa] || "#8b8ba3";
             const barra = (
               <div className="gt-track">
-                <div className="gt-bar" title={`${a.nombre} · ${nombreEtapa(a.etapa)}: ${fmt(a.fecha_inicio)} → ${a.fecha_fin ? fmt(a.fecha_fin) : "—"}`}
+                <div className="gt-bar" title={`${a.nombre} · ${nomEtapa(a.etapa)}: ${fmt(a.fecha_inicio)} → ${a.fecha_fin ? fmt(a.fecha_fin) : "—"}`}
                   style={{
                     left: `${ini}%`, width: `${w}%`,
                     background: a.estado === "planificada" ? `${etCol}26` : etCol,
@@ -703,7 +712,7 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
               {abreEtapa && (
                 <div className="gt-fase">
                   <i style={{ background: etCol }} />
-                  <b>{nombreEtapa(a.etapa)}</b>
+                  <b>{nomEtapa(a.etapa)}</b>
                   <hr />
                 </div>
               )}
@@ -734,7 +743,7 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
             {ETAPA_ORDEN.filter(et => visibles.some(a => a.etapa === et)).map(et => (
               <span key={et}>
                 <i style={{ display: "inline-block", width: 16, height: 7, background: ETAPA_COLOR[et], borderRadius: 4, verticalAlign: "middle", marginRight: 4 }} />
-                {nombreEtapa(et)}
+                {nomEtapa(et)}
               </span>
             ))}
             <span style={{ marginLeft: 10 }}>· punteada = planificada · sólida = en curso · tenue = finalizada</span>

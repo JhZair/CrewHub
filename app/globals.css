@@ -2077,7 +2077,13 @@ img.av{border:1px solid var(--border2)}
 .cr-etapa-h{font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim);padding:12px 2px 6px}
 .cr-item{display:flex;gap:10px;align-items:center;padding:9px 12px;border:1px solid var(--border);border-radius:10px;margin-bottom:6px;background:var(--bg)}
 .gt-axis{display:flex;justify-content:space-between;font-size:10.5px;color:var(--dim);padding-left:240px;margin-bottom:6px}
-.gt-row{display:flex;align-items:center;gap:0;margin-bottom:5px}
+/* La fila se prende al pasar el cursor. En veinte filas y un año de ancho, el
+   ojo pierde la horizontal entre el nombre y su barra: el realce es la regla
+   que uno pondría con el dedo sobre la pantalla. */
+.gt-row{display:flex;align-items:center;gap:0;margin-bottom:5px;border-radius:7px;transition:background .12s}
+.gt-row:hover{background:rgba(124,92,255,.10)}
+.gt-row:hover .gt-nombre{color:var(--text)}
+.gt-row:hover .gt-track{background:#16161f}
 .gt-nombre{width:240px;flex-shrink:0;font-size:13px;color:#c6c6da;padding-right:10px;display:flex;align-items:center;gap:6px}
 .gt-nombre-txt{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* Rejilla de meses: detrás de las barras, encima del fondo. Las de enero más
