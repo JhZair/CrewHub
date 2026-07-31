@@ -1,4 +1,5 @@
 "use client";
+import NavFechas from "@/components/NavFechas";
 import { useState, useEffect, type Dispatch, type SetStateAction } from "react";
 import Link from "next/link";
 import { icoTipo, colorTipo } from "@/lib/tipos";
@@ -203,23 +204,13 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, apagado }: {
 
   return (
     <div className="card">
-      <div className="ag-tl-nav">
-        <button className="vtab" onClick={() => setShift(0)}>Hoy</button>
-        <button className="vtab" title="Un mes antes" onClick={() => setShift(s => s - 30)}>‹</button>
-        <button className="vtab" title="Un mes después" onClick={() => setShift(s => s + 30)}>›</button>
-        {/* Ir a una fecha */}
-        <label className="ag-tl-ir" title="Ir a una fecha">
-          📅
-          <input type="date" value={fechaFoco} onChange={e => irAFecha(e.target.value)} />
-        </label>
-        {/* Zoom de la ventana */}
-        <span className="ag-tl-zoom">
-          {ZOOMS.map((z, i) => (
-            <button key={i} className={`vtab ${zoom === i ? "on" : ""}`} onClick={() => cambiarZoom(i)}>{z.lbl}</button>
-          ))}
-        </span>
-        <span style={{ color: "var(--muted)", fontSize: TXT.micro, marginLeft: "auto" }}>{fmtCorto(ymd(new Date(inicioT)))} — {fmtCorto(ymd(new Date(finT - DAY)))}</span>
-      </div>
+      <NavFechas
+        onHoy={() => setShift(0)}
+        onPrev={() => setShift(s => s - 30)}
+        onNext={() => setShift(s => s + 30)}
+        fecha={fechaFoco} onFecha={irAFecha}
+        zooms={ZOOMS} zoom={zoom} onZoom={cambiarZoom}
+        rango={`${fmtCorto(ymd(new Date(inicioT)))} — ${fmtCorto(ymd(new Date(finT - DAY)))}`} />
 
       {!dentro.length && <div className="empty" style={{ padding: "20px 0" }}>Nada con fecha en esta ventana.</div>}
 

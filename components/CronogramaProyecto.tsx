@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Fragment, useEffect, useState } from "react";
 import MiniSelect from "@/components/MiniSelect";
+import NavFechas from "@/components/NavFechas";
 import FechaMini from "@/components/FechaMini";
 import { sinBot } from "@/lib/personas";
 import { type Etapa, ETAPAS_CINE, nombreEtapa } from "@/lib/etapas";
@@ -29,6 +30,18 @@ const BARRA: Record<string, string> = {
   en_progreso: "var(--yellow)",
   finalizada: "var(--green)",
 };
+
+/* Ventanas del Gantt. «Todo» primero y por defecto: es lo que había antes y lo
+   correcto para un cronograma corto. Las largas existen para los de ejecución
+   de un fondo, que llegan a dos años y donde meter todo en el ancho de la
+   pantalla es no distinguir nada. */
+const ZOOM_G = [
+  { lbl: "Todo", d: 0 },
+  { lbl: "3 meses", d: 93 },
+  { lbl: "6 meses", d: 186 },
+  { lbl: "1 año", d: 366 },
+  { lbl: "2 años", d: 731 },
+];
 
 const dia = 86400000;
 const pd = (s: string) => new Date(s + "T12:00:00").getTime();
@@ -152,6 +165,12 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
   const etapaDef = etapas.some(e => e.clave === "produccion") ? "produccion" : (etapas[0]?.clave || "produccion");
 
   const [vista, setVista] = useState<"lista" | "gantt">("lista");
+  /* Ventana visible del Gantt. Arranca en «Todo» —el comportamiento de
+     siempre: que quepa el cronograma entero— porque para uno de doce
+     actividades es lo que uno quiere ver. Los de dos años son los que piden
+     ventana, y ahí se elige. */
+  const [zoomG, setZoomG] = useState(0);
+  const [desdeG, setDesdeG] = useState("");   // ISO; vacío = el inicio del cronograma
   const [ancho, setAncho] = useState(false);
   const [confirmando, setConfirmando] = useState<{ id: string; accion: "mat" | "del" } | null>(null);
   const [agregando, setAgregando] = useState(false);
@@ -311,10 +330,21 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
   /* --- cálculo del Gantt --- */
   const minT = visibles.length ? Math.min(...visibles.map(a => pd(a.fecha_inicio))) : 0;
   const maxT = visibles.length ? Math.max(...visibles.map(a => pd(a.fecha_fin || a.fecha_inicio))) + dia : dia;
-  const span = Math.max(maxT - minT, 7 * dia);
-  const pct = (t: number) => Math.min(100, Math.max(0, ((t - minT) / span) * 100));
+  /* La ventana. Con «Todo» son los extremos del cronograma (lo de siempre);
+     con un zoom, un rango que empieza donde diga `desdeG` y dura lo elegido.
+     Se ancla al INICIO DEL CRONOGRAMA y no a hoy: un cronograma de postulación
+     empieza dentro de un año, y abrirlo en «hoy» habría mostrado una ventana
+     vacía y la sensación de que no se cargó nada. Para ir a hoy está el botón. */
+  const desdeT = ZOOM_G[zoomG].d === 0 ? minT
+    : (desdeG ? pd(desdeG) : minT);
+  const hastaT = ZOOM_G[zoomG].d === 0 ? maxT : desdeT + ZOOM_G[zoomG].d * dia;
+  const span = Math.max(hastaT - desdeT, 7 * dia);
+  const pct = (t: number) => Math.min(100, Math.max(0, ((t - desdeT) / span) * 100));
   const hoyT = Date.now();
   const hoyPct = pct(hoyT);
+  const hoyDentro = hoyT >= desdeT && hoyT < hastaT;
+  const isoDe = (t: number) => new Date(t).toISOString().slice(0, 10);
+  const moverG = (dias: number) => setDesdeG(isoDe((desdeG ? pd(desdeG) : minT) + dias * dia));
   /* El orden, en este orden: primero la ETAPA (no se rueda antes de alistar);
      dentro de la etapa manda el `orden` MANUAL —la secuencia que decide una
      persona: Sincronización → Color → Logging→…—; la fecha es el desempate por
@@ -322,6 +352,8 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
      `creado_en` desempata el desempate, para que dos no bailen entre recargas.
      ⚠ Este comparador dentro de la etapa TIENE que ser idéntico a `cmpEtapa`
      de actions.ts (moverActividadCrono), o «subir» movería otra cosa. */
+  const enVentana = (a: any) =>
+    pd(a.fecha_fin || a.fecha_inicio) + dia >= desdeT && pd(a.fecha_inicio) < hastaT;
   const ordenadas = [...visibles].sort((a, b) =>
     a.etapa !== b.etapa ? ETAPA_ORDEN.indexOf(a.etapa) - ETAPA_ORDEN.indexOf(b.etapa)
     : (a.orden ?? 0) !== (b.orden ?? 0) ? (a.orden ?? 0) - (b.orden ?? 0)
@@ -561,22 +593,34 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
       {/* ===== VISTA GANTT ===== */}
       {vista === "gantt" && visibles.length > 0 && (
         <div className="gt" style={{ position: "relative", marginTop: 12 }}>
+          <NavFechas
+            onHoy={() => { if (ZOOM_G[zoomG].d === 0) setZoomG(2); setDesdeG(isoDe(Date.now() - 15 * dia)); }}
+            onPrev={() => moverG(-30)} onNext={() => moverG(30)}
+            fecha={isoDe(desdeT)} onFecha={iso => { if (iso) { if (ZOOM_G[zoomG].d === 0) setZoomG(2); setDesdeG(iso); } }}
+            zooms={ZOOM_G} zoom={zoomG}
+            onZoom={i => { setZoomG(i); if (i === 0) setDesdeG(""); }}
+            rango={`${fmt(isoDe(desdeT))} — ${fmt(isoDe(hastaT - dia))}`} />
           <div className="gt-axis">
-            <span>{fmt(new Date(minT).toISOString().slice(0, 10))}</span>
-            <span>{fmt(new Date(maxT - dia).toISOString().slice(0, 10))}</span>
+            <span>{fmt(isoDe(desdeT))}</span>
+            <span>{fmt(isoDe(hastaT - dia))}</span>
           </div>
-          {hoyPct > 0 && hoyPct < 100 && (
+          {hoyDentro && hoyPct > 0 && hoyPct < 100 && (
             <div className="gt-hoy" style={{ left: `calc(${GT_NOMBRE}px + (100% - ${GT_NOMBRE}px) * ${hoyPct / 100})` }}>
               <i>HOY</i>
             </div>
           )}
-          {ordenadas.map((a, i) => {
+          {ordenadas.filter(enVentana).length === 0 && (
+            <div className="empty" style={{ padding: "18px 0" }}>
+              Nada en esta ventana. Prueba «Todo» o mueve las fechas.
+            </div>
+          )}
+          {ordenadas.filter(enVentana).map((a, i, arr) => {
             /* Rótulo de fase: se pinta al entrar a cada etapa. El Gantt ya venía
                ordenado por etapa —igual que la vista de lista, que sí las
                titulaba—, así que solo faltaba decir en voz alta dónde empieza
                cada una. Sale del propio orden, sin agrupar aparte: así no hay
                dos fuentes de verdad sobre en qué fase va una actividad. */
-            const abreEtapa = i === 0 || ordenadas[i - 1].etapa !== a.etapa;
+            const abreEtapa = i === 0 || arr[i - 1].etapa !== a.etapa;
             const ini = pct(pd(a.fecha_inicio));
             const fin = pct(pd(a.fecha_fin || a.fecha_inicio) + dia);
             const w = Math.max(fin - ini, 1.5);
