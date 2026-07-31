@@ -58,11 +58,25 @@ export const CATEGORIAS: { nombre: string; etapas: Etapa[] }[] = [
     e("postproduccion", "Postproducción", C.teal),
     e("entrega", "Entrega", C.verde),
   ] },
+  /* El orden ES el del formulario DAFO de videojuego: inicio → las cuatro
+     disciplinas del presupuesto → difusión → cierre. Así el cronograma que se
+     arma aquí se puede volcar al formulario sin reordenar, y cada etapa cruza
+     con su partida del presupuesto (que se organiza igual). */
   { nombre: "Videojuego", etapas: [
+    /* «Inicio del Proyecto» es un bloque del formulario de VIDEOJUEGO y solo de
+       ese: lleva la charla obligatoria de acoso y hostigamiento y la producción
+       que corre todo el proyecto. En las demás categorías NO existe como bloque
+       —la charla se ubica justo antes del rodaje, dentro de Producción—, así que
+       esta clave no se replica al resto. */
+    e("inicio", "Inicio del proyecto", C.gris),
     e("desarrollo_conceptual", "Desarrollo conceptual", C.azul),
     e("diseno", "Diseño", C.violeta),
     e("programacion", "Programación", C.ambar),
     e("pruebas", "Pruebas de prototipo", C.cian),
+    /* Misma clave, nombre y color que en «Gestión de proyectos»: los mapas
+       globales de abajo son por clave y el último gana, así que repetir una
+       clave con otro nombre la renombraría en silencio en toda la aplicación. */
+    e("difusion", "Difusión", C.rosa),
     e("entrega", "Entrega", C.verde),
   ] },
   { nombre: "Cine en construcción", etapas: [
