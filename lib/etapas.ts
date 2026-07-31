@@ -32,7 +32,12 @@ export const ETAPAS_CINE: Etapa[] = [
      pintadas de gris y sin nombre. La clave no se ve nunca; el nombre sí. */
   e("desarrollo_ini", "Desarrollo", C.rosa),
   e("preproduccion", "Preproducción", C.gris),
-  e("produccion", "Rodaje", C.ambar),
+  /* «Rodaje / Producción», idéntico en todas las categorías: los formularios
+     DAFO dicen «Producción» y el equipo dice «Rodaje», y las dos palabras
+     aportan —una es la del trámite, la otra la del oficio—. Mismo criterio que
+     «Entrega / Fin del proyecto», y mismo motivo para no variarlo por
+     categoría: el mapa global es por clave y gana el último. */
+  e("produccion", "Rodaje / Producción", C.ambar),
   e("postproduccion", "Postproducción", C.teal),
   /* «Entrega / Fin del proyecto», y EXACTAMENTE igual en todas las categorías.
      Los formularios DAFO lo llaman «Fin del Proyecto» y ahí no se entrega
@@ -52,14 +57,14 @@ export const ETAPAS_CINE: Etapa[] = [
 export const CATEGORIAS: { nombre: string; etapas: Etapa[] }[] = [
   { nombre: "Producción audiovisual", etapas: [
     e("preproduccion", "Preproducción", C.gris),
-    e("produccion", "Rodaje", C.ambar),
+    e("produccion", "Rodaje / Producción", C.ambar),
     e("postproduccion", "Postproducción", C.teal),
     e("entrega", "Entrega / Fin del proyecto", C.verde),
   ] },
   { nombre: "Documental", etapas: [
     e("investigacion", "Investigación", C.azul),
     e("preproduccion", "Preproducción", C.gris),
-    e("produccion", "Rodaje", C.ambar),
+    e("produccion", "Rodaje / Producción", C.ambar),
     e("postproduccion", "Postproducción", C.teal),
     e("entrega", "Entrega / Fin del proyecto", C.verde),
   ] },
@@ -73,7 +78,7 @@ export const CATEGORIAS: { nombre: string; etapas: Etapa[] }[] = [
     e("formacion", "Formación", C.rosa),
     e("proceso_creativo", "Proceso creativo y colectivo", C.cian),
     e("preproduccion", "Preproducción", C.gris),
-    e("produccion", "Rodaje", C.ambar),
+    e("produccion", "Rodaje / Producción", C.ambar),
     e("postproduccion", "Postproducción", C.teal),
     e("entrega", "Entrega / Fin del proyecto", C.verde),
   ] },
