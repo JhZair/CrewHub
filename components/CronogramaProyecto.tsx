@@ -706,6 +706,12 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
                consultarla. Es por FECHA, no por estado: una actividad sin
                marcar que ya venció también es pasado. */
             const pasada = (a.fecha_fin || a.fecha_inicio) < hoyISO;
+            /* Y se apaga también lo TERMINADO, aunque su fecha siga por venir:
+               una actividad resuelta antes de plazo dejó de pedir atención el
+               día que se resolvió, no el día que decía el plan. Las dos reglas
+               responden a la misma pregunta —¿esto todavía me toca?— y por eso
+               comparten el mismo apagado. */
+            const apagada = pasada || a.estado === "finalizada";
             const ini = pct(pd(a.fecha_inicio));
             const fin = pct(pd(a.fecha_fin || a.fecha_inicio) + dia);
             const w = Math.max(fin - ini, 1.5);
@@ -717,9 +723,10 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
                     left: `${ini}%`, width: `${w}%`,
                     background: a.estado === "planificada" ? `${etCol}26` : etCol,
                     border: a.estado === "planificada" ? `1px dashed ${etCol}` : "none",
-                    /* Sin doble atenuación: si la fila ya está apagada por
-                       pasada, la barra no se apaga otra vez o queda invisible. */
-                    opacity: a.estado === "finalizada" && !pasada ? .45 : 1,
+                    /* Sin doble atenuación: el apagado es de la FILA entera y
+                       la barra ya va dentro; si además se descontara aquí,
+                       quedaría invisible. */
+                    opacity: 1,
                   }} />
               </div>
             );
@@ -732,7 +739,7 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
                   <hr />
                 </div>
               )}
-              <div className={`gt-row${pasada ? " pasada" : ""}`}>
+              <div className={`gt-row${apagada ? " pasada" : ""}`}>
                 <div className="gt-nombre" title={a.nombre}>
                   {/* Trabajar el caso al vuelo, sin salir del Gantt. Va DENTRO
                       del rótulo, que tiene ancho fijo: fuera descuadraría el
