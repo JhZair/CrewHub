@@ -3562,18 +3562,42 @@ export async function fijarEquipoActividad(
    está ahora —lo que se envía a DAFO—. El vivo (cronograma_actividades) sigue
    editándose; esto es el registro de lo presentado, para el expediente y para
    comparar después qué cambió si se gana el fondo. */
-export async function fijarCronogramaPostulado(postulacionId: string) {
+export async function fijarCronogramaPostulado(postulacionId: string, rehacer = false) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
+
+  /* ── LA FOTO NO SE PISA SIN DECIRLO ──
+     Regla del negocio, dicha así: «luego de postular, la foto final no cambia
+     para nada ni por ningún motivo». Es la prueba de qué cronograma se presentó
+     a DAFO — si el fondo se gana, el cronograma vivo se mueve por mil razones
+     (recomendaciones del jurado, el dinero que tarda en llegar al banco, la
+     realidad de rodar un documental) y la única forma de saber qué se prometió
+     es esta foto.
+     Y sin embargo el botón decía «Volver a fijar» y la pisaba en un clic, sin
+     preguntar y sin guardar la anterior. Ahora hay que pedirlo aparte. */
+  if (!rehacer) {
+    const { data: ya } = await supabase.from("postulaciones")
+      .select("cronograma_postulado_en").eq("id", postulacionId).maybeSingle();
+    if (ya?.cronograma_postulado_en) {
+      const f = new Date(ya.cronograma_postulado_en).toLocaleDateString("es-PE",
+        { day: "numeric", month: "long", year: "numeric" });
+      return { error: `Ya hay una foto fijada el ${f}: es lo que fue a DAFO y no se cambia. Si de verdad hay que rehacerla, confirma la advertencia.` };
+    }
+  }
+
+  /* El responsable sale de `responsable_persona` (el equipo que postula), no de
+     `perfiles`: ver db/crono-responsable-persona.sql. Con el select viejo la
+     foto guardaba `responsable: null` en TODAS las actividades — y una foto sin
+     responsables no sirve como prueba de nada. */
   const { data: acts } = await supabase.from("cronograma_actividades")
-    .select("nombre,etapa,fecha_inicio,fecha_fin,descripcion,resp:perfiles(nombre)")
+    .select("nombre,etapa,fecha_inicio,fecha_fin,descripcion,respP:personas!responsable_persona(nombre,alias)")
     .eq("postulacion_id", postulacionId).neq("estado", "cancelada").not("fecha_inicio", "is", null)
     .order("etapa").order("orden").order("fecha_inicio").order("creado_en");
   const foto = (acts || []).map((a: any) => ({
     nombre: a.nombre, etapa: a.etapa,
     fecha_inicio: a.fecha_inicio, fecha_fin: a.fecha_fin,
-    responsable: (a.resp as any)?.nombre || null,
+    responsable: (a.respP as any)?.alias || (a.respP as any)?.nombre || null,
     descripcion: a.descripcion || null,
   }));
   if (!foto.length) return { error: "El cronograma está vacío — arma al menos una actividad antes de fijar." };
@@ -3585,7 +3609,9 @@ export async function fijarCronogramaPostulado(postulacionId: string) {
   // Hito en la bitácora: presentar el cronograma es una decisión, no un tecleo.
   await supabase.from("actividad").insert({
     entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "editado",
-    detalle: { mensaje: `📸 fijó el cronograma postulado (${foto.length} actividades)` },
+    detalle: { mensaje: rehacer
+      ? `📸 REHÍZO el cronograma postulado (${foto.length} actividades) — la foto anterior se perdió`
+      : `📸 fijó el cronograma postulado (${foto.length} actividades)` },
   });
   revalidatePath(`/entidad/postulacion/${postulacionId}`);
   return {};

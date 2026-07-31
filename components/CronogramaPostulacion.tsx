@@ -43,15 +43,19 @@ export default function CronogramaPostulacion({
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState("");
   const [verFoto, setVerFoto] = useState(false);
+  /* Rehacer la foto es destructivo y no tiene deshacer: la anterior no se
+     guarda en ningún sitio. Un clic no puede bastar. */
+  const [confirmaRehacer, setConfirmaRehacer] = useState(false);
   const router = useRouter();
 
   const vivas = actividades.filter(a => a.estado !== "cancelada" && a.fecha_inicio);
 
-  const fijar = async () => {
+  const fijar = async (rehacer = false) => {
     if (ocupado) return;
     setOcupado(true); setError("");
-    const res: any = await fijarCronogramaPostulado(postulacionId);
+    const res: any = await fijarCronogramaPostulado(postulacionId, rehacer);
     setOcupado(false);
+    setConfirmaRehacer(false);
     if (res?.error) { setError(res.error); return; }
     router.refresh();
   };
@@ -92,10 +96,30 @@ export default function CronogramaPostulacion({
             <button className="btn btn-ghost" style={{ padding: "6px 12px", fontSize: 12 }}
               onClick={() => setVerFoto(v => !v)}>{verFoto ? "Ocultar la foto" : "👁 Ver la foto"}</button>
           )}
-          <button className="btn" style={{ padding: "7px 14px", fontSize: 12.5 }} disabled={ocupado}
-            onClick={fijar} title="Congela el cronograma actual como lo presentado a DAFO">
-            {ocupado ? "…" : postulado ? "📸 Volver a fijar" : "📸 Fijar como postulado"}
-          </button>
+          {!postulado && (
+            <button className="btn" style={{ padding: "7px 14px", fontSize: 12.5 }} disabled={ocupado}
+              onClick={() => fijar()} title="Congela el cronograma actual como lo presentado a DAFO">
+              {ocupado ? "…" : "📸 Fijar como postulado"}
+            </button>
+          )}
+          {/* Con foto ya fijada NO hay botón directo: lo presentado a DAFO no se
+              cambia. Rehacerla existe para el error humano —fijarla antes de
+              terminar—, y por eso pide confirmación y dice qué se pierde. */}
+          {postulado && !confirmaRehacer && (
+            <button className="btn btn-ghost" style={{ padding: "6px 12px", fontSize: 11.5, color: "var(--dim)" }}
+              onClick={() => setConfirmaRehacer(true)}>rehacer la foto…</button>
+          )}
+          {postulado && confirmaRehacer && (
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <span style={{ fontSize: 11.5, color: "var(--orange)" }}>
+                ⚠ La foto del {postuladoEn ? new Date(postuladoEn).toLocaleDateString("es-PE", { day: "numeric", month: "short" }) : "—"} se pierde y no hay vuelta atrás.
+              </span>
+              <button className="btn" style={{ padding: "6px 12px", fontSize: 12 }} disabled={ocupado}
+                onClick={() => fijar(true)}>{ocupado ? "…" : "Sí, rehacerla"}</button>
+              <button className="btn btn-ghost" style={{ padding: "6px 12px", fontSize: 12 }}
+                onClick={() => setConfirmaRehacer(false)}>Cancelar</button>
+            </div>
+          )}
         </div>
       )}
       {error && <div className="err-inline" style={{ marginBottom: 12 }}>⚠ {error}</div>}
