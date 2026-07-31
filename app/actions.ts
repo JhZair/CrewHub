@@ -15,6 +15,7 @@ import { TIPOS_OBJETO } from "@/lib/objetos";
 import { catalogoObjetos, catalogosEntidades } from "@/lib/catalogos";
 import { resolverNombres } from "@/lib/nombres";
 import { COL_DAFO, sinColumna, sinDafoId, TIPOS_DAFO } from "@/lib/notificaciones";
+import { DIAS_AVISO_DEF } from "@/lib/plazo";
 
 /* Crear o actualizar una entidad núcleo (proyecto/empresa/persona).
    La config compartida actúa como whitelist de tabla y campos. */
@@ -3201,7 +3202,9 @@ export async function agregarActividadCrono(
     ...campoResp(dueno, d.responsable),
     descripcion: d.descripcion?.trim() || null,
     equipo: equipo.length ? equipo : null,
-    dias_anticipacion: parseInt(d.antic) || 7,
+    /* `|| DEF` no: un 0 es una elección válida —«ábrelo el día que
+       empieza»— y con `||` se convertía en el valor por defecto. */
+    dias_anticipacion: Number.isFinite(parseInt(d.antic)) ? parseInt(d.antic) : DIAS_AVISO_DEF,
     orden,
     estado: "planificada",
   });
@@ -3262,7 +3265,7 @@ export async function guardarComoPlantilla(
     offset_dias: off(a.fecha_inicio),
     duracion_dias: a.fecha_fin ? Math.max(0, off(a.fecha_fin) - off(a.fecha_inicio)) : 0,
     responsable: a.responsable || null,
-    dias_anticipacion: a.dias_anticipacion ?? 7,
+    dias_anticipacion: a.dias_anticipacion ?? DIAS_AVISO_DEF,
   }));
   const { error: e2 } = await supabase.from("plantilla_actividades").insert(filas);
   if (e2) {
@@ -3310,7 +3313,7 @@ export async function aplicarPlantilla(
     fecha_inicio: fecha(a.offset_dias || 0),
     fecha_fin: fecha((a.offset_dias || 0) + (a.duracion_dias || 0)),
     responsable: a.responsable || null,
-    dias_anticipacion: a.dias_anticipacion ?? 7,
+    dias_anticipacion: a.dias_anticipacion ?? DIAS_AVISO_DEF,
     orden: a.orden ?? 0,
     estado: "planificada",
   }));
@@ -3368,7 +3371,9 @@ export async function editarActividadCrono(
     ...campoResp(dueno, d.responsable),
     descripcion: d.descripcion?.trim() || null,
     equipo: equipoEd.length ? equipoEd : null,
-    dias_anticipacion: parseInt(d.antic) || 7,
+    /* `|| DEF` no: un 0 es una elección válida —«ábrelo el día que
+       empieza»— y con `||` se convertía en el valor por defecto. */
+    dias_anticipacion: Number.isFinite(parseInt(d.antic)) ? parseInt(d.antic) : DIAS_AVISO_DEF,
   };
   // El .select() otra vez: un UPDATE bloqueado por RLS no da error, afecta
   // cero filas y responde OK — y la bitácora contaría un cambio que no pasó.

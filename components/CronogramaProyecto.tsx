@@ -15,6 +15,7 @@ import VistaRapida from "@/components/VistaRapida";
 import FechaMini from "@/components/FechaMini";
 import { sinBot } from "@/lib/personas";
 import { type Etapa, ETAPAS_CINE, nombreEtapa } from "@/lib/etapas";
+import { DIAS_AVISO_DEF } from "@/lib/plazo";
 /* `nombreEtapa` queda solo de respaldo: ver `nomEtapa` abajo. */
 
 /* Las etapas ya no son fijas: llegan por prop (la categoría de la convocatoria
@@ -193,7 +194,7 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
   const [ancho, setAncho] = useState(false);
   const [confirmando, setConfirmando] = useState<{ id: string; accion: "mat" | "del" } | null>(null);
   const [agregando, setAgregando] = useState(false);
-  const VACIO: Campos = { nombre: "", etapa: etapaDef, ini: "", fin: "", responsable: "", antic: "7", clase: "trabajo", descripcion: "", equipo: [] };
+  const VACIO: Campos = { nombre: "", etapa: etapaDef, ini: "", fin: "", responsable: "", antic: String(DIAS_AVISO_DEF), clase: "trabajo", descripcion: "", equipo: [] };
   const [f, setF] = useState<Campos>(VACIO);
   // Editar: faltaba entero. Una fecha mal puesta solo se podía arreglar
   // cancelando la actividad y creándola de nuevo, perdiendo su historia.
@@ -283,7 +284,7 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
     setEf({
       nombre: a.nombre || "", etapa: a.etapa || etapaDef,
       ini: a.fecha_inicio || "", fin: a.fecha_fin || "",
-      responsable: a.responsable || "", antic: String(a.dias_anticipacion ?? 7),
+      responsable: a.responsable || "", antic: String(a.dias_anticipacion ?? DIAS_AVISO_DEF),
       clase: a.clase || "trabajo", descripcion: a.descripcion || "",
       equipo: a.equipo || [],
     });
@@ -584,7 +585,7 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
                         etiqueta="👥﹢"
                         onSelect={v => { if (v) alVuelo(a.id, () => fijarEquipoActividad(a.id, dueno, duenoId, [...(a.equipo || []), v])); }}
                         buttonClass="sc-btn" />
-                      {a.estado === "planificada" && <span>🔕 −{a.dias_anticipacion ?? 7}d</span>}
+                      {a.estado === "planificada" && <span>🔕 −{a.dias_anticipacion ?? DIAS_AVISO_DEF}d</span>}
                     </div>
                     {/* La descripción, si la hay: el «cómo» de la actividad,
                         debajo del «cuándo/quién». whiteSpace pre-wrap respeta

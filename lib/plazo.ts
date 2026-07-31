@@ -38,6 +38,15 @@ import { CERRADOS } from "@/lib/familia";
  *  que algo deja de ser «del calendario» y pasa a ser «de esta semana». */
 export const HORIZONTE = 7;
 
+/* Días de anticipación con que el Bot convierte una actividad del cronograma en
+   un caso de trabajo. Tres y no siete: con siete, la postproducción de un rodaje
+   que empieza en un mes ya aparecía abierta en el tablero — y un caso abierto
+   que nadie puede empezar todavía es ruido que enseña a ignorar el tablero.
+   El valor por actividad manda; esto es solo el que se propone al crearla.
+   ⚠ El Bot tiene su propia copia en db/qhaway-matutino.sql (vive en Postgres y
+   no puede importar de aquí): si cambia este número, cambia también aquel. */
+export const DIAS_AVISO_DEF = 3;
+
 /* Mediodía a propósito, no medianoche. Esto corre en el servidor (UTC) y
    nosotros vivimos en UTC-5: con `T00:00` o `T23:59` el desfase de cinco
    horas cruza el día y el conteo se equivoca en uno cerca de la medianoche.

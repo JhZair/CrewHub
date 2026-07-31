@@ -107,7 +107,13 @@ begin
       -- Y sin proyecto NI convocatoria no hay a qué vincular el caso. Se
       -- salta: una fila mal formada no puede tumbar la ronda del equipo.
       and (ca.proyecto_id is not null or ca.convocatoria_id is not null)
-      and ca.fecha_inicio - coalesce(ca.dias_anticipacion, 7) <= current_date
+      /* 3 y no 7: con siete días, la postproducción de un rodaje que empieza
+         en un mes ya aparecía abierta en el tablero, y un caso que nadie puede
+         empezar todavía enseña a ignorar el tablero. Este número es el
+         RESPALDO, para filas sin valor propio; el de cada actividad manda.
+         ⚠ Copia de DIAS_AVISO_DEF en lib/plazo.ts — esta función vive en
+         Postgres y no puede importar de allá. Si cambia uno, cambia el otro. */
+      and ca.fecha_inicio - coalesce(ca.dias_anticipacion, 3) <= current_date
       and (
         ca.convocatoria_id is null
         or ca.clase <> 'hito_externo'
@@ -146,7 +152,7 @@ begin
     insert into actividad (entidad_tipo, entidad_id, tipo, detalle)
     values ('publicacion', nueva_pub, 'bot', jsonb_build_object(
       'mensaje', case when es_hito then 'Hito del concurso acercándose — lo puse en el radar'
-                      else 'Creé este caso desde el cronograma (' || coalesce(r.dias_anticipacion,7) || ' días antes)' end,
+                      else 'Creé este caso desde el cronograma (' || coalesce(r.dias_anticipacion,3) || ' días antes)' end,
       'regla', 'cronograma'));
     update cronograma_actividades set estado = 'materializada', publicacion_id = nueva_pub
     where id = r.id;
