@@ -90,7 +90,7 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
       .order("etapa").order("orden").order("fecha_inicio").order("creado_en"),
     supabase.from("plantillas_cronograma")
       .select("id,nombre,tipo_proyecto,acts:plantilla_actividades(count)").order("nombre"),
-    supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
+    supabase.from("perfiles").select("id,nombre,avatar_url,color").eq("activo", true).order("nombre"),
     supabase.from("plantillas_presupuesto").select("id,nombre,categoria,items").order("nombre"),
     supabase.from("personas").select("id,nombre,alias").order("nombre"),
     supabase.from("estado_cuenta")
@@ -116,7 +116,7 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
        postulación, aquí igual que en la ficha. Sin esto, la misma actividad
        ofrecería responsables distintos según por qué pantalla se entre. */
     supabase.from("postulacion_equipo")
-      .select("cargo,persona:personas(id,nombre,alias)")
+      .select("cargo,persona:personas(id,nombre,alias,foto_url)")
       .eq("postulacion_id", params.id),
   ]);
 
@@ -127,13 +127,16 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
   const perfilesCat = pf.data || [];
   const cargosF = new Map<string, string[]>();
   const nombresF = new Map<string, string>();
+  const fotosF = new Map<string, string | null>();
   for (const m of (eqp.data || []) as any[]) {
     const p = m?.persona; if (!p?.id) continue;
     nombresF.set(p.id, p.alias || p.nombre || "—");
+    fotosF.set(p.id, p.foto_url || null);
     cargosF.set(p.id, [...(cargosF.get(p.id) || []), m.cargo].filter(Boolean));
   }
   const plantelPost = [...nombresF].map(([id, n]) => ({
     id, nombre: (cargosF.get(id) || []).length ? `${n} · ${(cargosF.get(id) || []).join(" / ")}` : n,
+    foto: fotosF.get(id) || null,
   }));
   const plantillas = (pl.data || []).map((x: any) => ({
     id: x.id, nombre: x.nombre, tipo_proyecto: x.tipo_proyecto, n: x.acts?.[0]?.count ?? 0,

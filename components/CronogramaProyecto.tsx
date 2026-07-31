@@ -10,6 +10,7 @@ import Link from "next/link";
 import { Fragment, useEffect, useState } from "react";
 import MiniSelect from "@/components/MiniSelect";
 import NavFechas from "@/components/NavFechas";
+import Avatar from "@/components/Avatar";
 import FechaMini from "@/components/FechaMini";
 import { sinBot } from "@/lib/personas";
 import { type Etapa, ETAPAS_CINE, nombreEtapa } from "@/lib/etapas";
@@ -39,8 +40,8 @@ const ZOOM_G = [
   { lbl: "Todo", d: 0 },
   { lbl: "3 meses", d: 93 },
   { lbl: "6 meses", d: 186 },
-  { lbl: "1 año", d: 366 },
-  { lbl: "2 años", d: 731 },
+  { lbl: "1 año", d: 365 },
+  { lbl: "2 años", d: 730 },
 ];
 
 const dia = 86400000;
@@ -50,6 +51,10 @@ const fmt = (s: string) =>
 
 type Campos = { nombre: string; etapa: string; ini: string; fin: string;
   responsable: string; antic: string; clase: string; descripcion: string; equipo: string[] };
+
+/* Como `fmt` pero con el año: para rangos que cruzan diciembre. */
+const fmtAnio = (s: string) =>
+  new Date(s + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" });
 
 const inp = { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8,
   padding: "7px 10px", fontSize: 12.5, outline: "none", color: "var(--text)" } as const;
@@ -149,7 +154,9 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
   dueno?: "proyecto" | "convocatoria" | "postulacion";
   duenoId: string;
   actividades: any[];
-  perfiles: { id: string; nombre: string }[];
+  /* `foto`/`color` son opcionales: solo se usan para el avatar del Gantt, y
+     quien no los mande verá las iniciales sobre su color por defecto. */
+  perfiles: { id: string; nombre: string; foto?: string | null; avatar_url?: string | null; foto_url?: string | null; color?: string | null }[];
   plantillas?: { id: string; nombre: string; tipo_proyecto: string | null; n: number }[];
   tipoProyecto?: string;
   /** Etapas de esta categoría; por defecto las de cine. */
@@ -224,6 +231,12 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
   ];
   const cortoResp = (id: string) => (plantel.find(p => p.id === id)?.nombre || "").split(" ")[0];
   const respInactivo = (id: string) => !!id && !plantel.some(p => p.id === id);
+  const respDe = (id?: string | null) => (id ? plantel.find(p => p.id === id) : null) || null;
+  /* La foto viene con tres nombres según de dónde salga la nómina: `foto` (lo
+     que arma la página para el equipo de postulación), `avatar_url` (perfiles)
+     o `foto_url` (personas). Se resuelve aquí y no en cada página para que
+     agregar una nómina nueva no obligue a recordar el nombre correcto. */
+  const fotoDe = (p: any) => p?.foto || p?.avatar_url || p?.foto_url || null;
 
   /* Escape cierra. Pero no si hay algo abierto encima —editando, agregando o
      una plantilla a medias—: ahí Escape cancela ESO, y cerrar la ventana
@@ -345,6 +358,33 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
   const hoyDentro = hoyT >= desdeT && hoyT < hastaT;
   const isoDe = (t: number) => new Date(t).toISOString().slice(0, 10);
   const moverG = (dias: number) => setDesdeG(isoDe((desdeG ? pd(desdeG) : minT) + dias * dia));
+  /* Las marcas del eje. El paso se elige por el largo de la ventana: en una
+     corta, semanas; a partir de ahí, el primero de cada mes —que es como se
+     lee un cronograma—, y cada dos meses cuando son dos años, para que las
+     etiquetas no se toquen. Sin la última marca: su etiqueta, centrada, se
+     saldría por la derecha. */
+  const diasVentana = Math.round((hastaT - desdeT) / dia);
+  const marcas: { pct: number; lbl: string; fuerte: boolean }[] = [];
+  if (diasVentana <= 80) {
+    for (let t = desdeT; t < hastaT - dia; t += 7 * dia)
+      marcas.push({ pct: pct(t), lbl: fmt(isoDe(t)), fuerte: false });
+  } else {
+    const salto = diasVentana > 400 ? 2 : 1;
+    const d0 = new Date(desdeT);
+    const c = new Date(d0.getFullYear(), d0.getMonth(), 1, 12);
+    if (c.getTime() < desdeT) c.setMonth(c.getMonth() + 1);
+    while (c.getTime() < hastaT - dia) {
+      const enero = c.getMonth() === 0;
+      marcas.push({
+        pct: pct(c.getTime()),
+        lbl: enero || marcas.length === 0
+          ? c.toLocaleDateString("es-PE", { month: "short", year: "2-digit" })
+          : c.toLocaleDateString("es-PE", { month: "short" }),
+        fuerte: enero,
+      });
+      c.setMonth(c.getMonth() + salto);
+    }
+  }
   /* El orden, en este orden: primero la ETAPA (no se rueda antes de alistar);
      dentro de la etapa manda el `orden` MANUAL —la secuencia que decide una
      persona: Sincronización → Color → Logging→…—; la fecha es el desempate por
@@ -599,10 +639,26 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
             fecha={isoDe(desdeT)} onFecha={iso => { if (iso) { if (ZOOM_G[zoomG].d === 0) setZoomG(2); setDesdeG(iso); } }}
             zooms={ZOOM_G} zoom={zoomG}
             onZoom={i => { setZoomG(i); if (i === 0) setDesdeG(""); }}
-            rango={`${fmt(isoDe(desdeT))} — ${fmt(isoDe(hastaT - dia))}`} />
-          <div className="gt-axis">
-            <span>{fmt(isoDe(desdeT))}</span>
-            <span>{fmt(isoDe(hastaT - dia))}</span>
+            /* Con año: una ventana de doce meses empieza y termina el mismo
+                día de meses distintos, y «1 nov. — 1 nov.» no dice nada. */
+            rango={`${fmtAnio(isoDe(desdeT))} — ${fmtAnio(isoDe(hastaT - dia))}`} />
+          {/* Rejilla de meses sobre las barras + sus etiquetas arriba. Un Gantt
+              sin marcas obliga a calcular a ojo dónde cae marzo. */}
+          <div className="gt-axis" style={{ position: "relative", height: 14 }}>
+            {marcas.map((m, i) => (
+              <span key={i} style={{
+                position: "absolute",
+                left: `calc(${GT_NOMBRE}px + (100% - ${GT_NOMBRE}px) * ${m.pct / 100})`,
+                transform: "translateX(-50%)", whiteSpace: "nowrap",
+                color: m.fuerte ? "var(--text)" : undefined,
+                fontWeight: m.fuerte ? 700 : undefined,
+              }}>{m.lbl}</span>
+            ))}
+          </div>
+          <div className="gt-lineas" style={{ left: GT_NOMBRE }}>
+            {marcas.map((m, i) => (
+              <i key={i} className={m.fuerte ? "fuerte" : ""} style={{ left: `${m.pct}%` }} />
+            ))}
           </div>
           {hoyDentro && hoyPct > 0 && hoyPct < 100 && (
             <div className="gt-hoy" style={{ left: `calc(${GT_NOMBRE}px + (100% - ${GT_NOMBRE}px) * ${hoyPct / 100})` }}>
@@ -647,10 +703,21 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
               )}
               <div className="gt-row">
                 <div className="gt-nombre" title={a.nombre}>
-                  {a.estado === "finalizada" ? "✅ " : a.estado === "planificada" ? "" : "🟣 "}
-                  {a.publicacion_id
-                    ? <Link href={`/caso/${a.publicacion_id}`} style={{ color: "var(--text)" }}>{a.nombre}</Link>
-                    : a.nombre}
+                  <span className="gt-nombre-txt">
+                    {a.estado === "finalizada" ? "✅ " : a.estado === "planificada" ? "" : "🟣 "}
+                    {a.publicacion_id
+                      ? <Link href={`/caso/${a.publicacion_id}`} style={{ color: "var(--text)" }}>{a.nombre}</Link>
+                      : a.nombre}
+                  </span>
+                  {/* Solo el avatar: en veinte filas, veinte nombres repetidos
+                      se comen la columna y no se lee ninguno. El nombre está en
+                      el `title` y en la vista de lista, que es donde se asigna. */}
+                  {a.responsable && (
+                    <span title={respDe(a.responsable)?.nombre || "responsable"} style={{ flexShrink: 0, display: "inline-flex" }}>
+                      <Avatar size={18} nombre={respDe(a.responsable)?.nombre}
+                        src={fotoDe(respDe(a.responsable))} color={respDe(a.responsable)?.color} />
+                    </span>
+                  )}
                 </div>
                 {barra}
               </div>

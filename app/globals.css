@@ -2078,7 +2078,13 @@ img.av{border:1px solid var(--border2)}
 .cr-item{display:flex;gap:10px;align-items:center;padding:9px 12px;border:1px solid var(--border);border-radius:10px;margin-bottom:6px;background:var(--bg)}
 .gt-axis{display:flex;justify-content:space-between;font-size:10.5px;color:var(--dim);padding-left:240px;margin-bottom:6px}
 .gt-row{display:flex;align-items:center;gap:0;margin-bottom:5px}
-.gt-nombre{width:240px;flex-shrink:0;font-size:13px;color:#c6c6da;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:10px}
+.gt-nombre{width:240px;flex-shrink:0;font-size:13px;color:#c6c6da;padding-right:10px;display:flex;align-items:center;gap:6px}
+.gt-nombre-txt{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Rejilla de meses: detrás de las barras, encima del fondo. Las de enero más
+   marcadas — en un cronograma de dos años, el cambio de año es la referencia. */
+.gt-lineas{position:absolute;top:14px;bottom:26px;right:0;pointer-events:none;z-index:1}
+.gt-lineas>i{position:absolute;top:0;bottom:0;width:1px;background:var(--border);opacity:.45}
+.gt-lineas>i.fuerte{opacity:.9;background:var(--violet)}
 .gt-track{flex:1;position:relative;height:18px;background:#101018;border-radius:6px;overflow:hidden}
 .gt-bar{position:absolute;top:3px;bottom:3px;border-radius:5px;min-width:6px}
 /* Rótulo de fase dentro del Gantt: separa las etapas como en el formulario

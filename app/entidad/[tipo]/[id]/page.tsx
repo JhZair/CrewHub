@@ -373,7 +373,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
      aviso a la vista: en una ficha sin avisos sería una consulta de más. */
   const equipoAvisos = pubs.some((p: any) => p.tipo === "aviso")
     // Qhaway no se entera de nada: reparte, no lee.
-    ? sinBot((await supabase.from("perfiles").select("id,nombre").eq("activo", true)).data)
+    ? sinBot((await supabase.from("perfiles").select("id,nombre,avatar_url,color").eq("activo", true)).data)
     : [];
 
   /* 🧱 MURO reutilizable (proyecto y empresa): las notas de bitácora (tipo
@@ -461,7 +461,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
            de rodaje tiene secuencia— y `creado_en` desempata el desempate,
            para que dos con el mismo orden no bailen entre recargas. */
         .eq("proyecto_id", params.id).order("fecha_inicio").order("orden").order("creado_en"),
-      supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
+      supabase.from("perfiles").select("id,nombre,avatar_url,color").eq("activo", true).order("nombre"),
       supabase.from("postulaciones")
         .select("id,codigo,estado,codigo_acta,monto_adjudicado,fecha_firma_acta,fecha_limite_rendicion,fecha_prorroga,acta_url,matriz_jurado_url,puntaje_jurado,feedback_jurado,conv:convocatorias(id,codigo,nombre,anio),emp:empresas(id,nombre),equipo:postulacion_equipo(cargo,persona:personas(id,nombre,alias,foto_url))")
         .eq("proyecto_id", params.id).order("creado_en", { ascending: false }),
@@ -511,7 +511,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       supabase.from("cronograma_actividades")
         .select("*, resp:perfiles(nombre)")
         .eq("convocatoria_id", params.id).order("fecha_inicio").order("orden").order("creado_en"),
-      supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
+      supabase.from("perfiles").select("id,nombre,avatar_url,color").eq("activo", true).order("nombre"),
       /* Cada postulación con su proyecto, la empresa que la presentó y su
          equipo —para dar contexto en la pestaña sin entrar a cada una. */
       supabase.from("postulaciones")
@@ -578,7 +578,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
           ? supabase.from("comentarios").select(comSel).in("prestamo_id", prestamos.map((p: any) => p.id)).order("creado_en")
           : Promise.resolve({ data: [] as any[] }),
         supabase.from("comentarios").select(comSel).eq("equipamiento_id", params.id).order("creado_en"),
-        supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
+        supabase.from("perfiles").select("id,nombre,avatar_url,color").eq("activo", true).order("nombre"),
       ]);
       const comIds = [...(coms || []), ...(comsEq || [])].map((c: any) => c.id);
       const { data: rxC } = comIds.length
@@ -903,7 +903,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         .order("etapa").order("orden").order("fecha_inicio").order("creado_en"),
       supabase.from("plantillas_cronograma")
         .select("id,nombre,tipo_proyecto,acts:plantilla_actividades(count)").order("nombre"),
-      supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
+      supabase.from("perfiles").select("id,nombre,avatar_url,color").eq("activo", true).order("nombre"),
     ]);
     /* El responsable de una actividad de POSTULACIÓN vive en
        `responsable_persona` (el equipo que se presenta), no en `responsable`
@@ -920,13 +920,16 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
        un id de cuenta en una columna que apunta a personas. */
     const cargos = new Map<string, string[]>();
     const nombres = new Map<string, string>();
+    const fotos = new Map<string, string | null>();
     for (const m of equipoPost as any[]) {
       const p = m?.persona; if (!p?.id) continue;
       nombres.set(p.id, p.alias || p.nombre || "—");
+      fotos.set(p.id, p.foto_url || null);
       cargos.set(p.id, [...(cargos.get(p.id) || []), m.cargo].filter(Boolean));
     }
     plantelPost = [...nombres].map(([id, n]) => ({
       id, nombre: (cargos.get(id) || []).length ? `${n} · ${(cargos.get(id) || []).join(" / ")}` : n,
+      foto: fotos.get(id) || null,
     }));
     plantillas = (pl2.data || []).map((x: any) => ({
       id: x.id, nombre: x.nombre, tipo_proyecto: x.tipo_proyecto, n: x.acts?.[0]?.count ?? 0,
@@ -1065,7 +1068,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
 
     /* 🧱 Muro de la empresa — mismo componente y motor que el del proyecto.
        Necesita perfiles (para el @ de las menciones) y sus notas de bitácora. */
-    const { data: pfE } = await supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre");
+    const { data: pfE } = await supabase.from("perfiles").select("id,nombre,avatar_url,color").eq("activo", true).order("nombre");
     perfilesCat = pfE || [];
     { const mm = await cargarMuro(); muroPosts = mm.posts; muroEtqs = mm.etqs; }
 
