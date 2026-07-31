@@ -367,12 +367,6 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
   const span = Math.max(hastaT - desdeT, 7 * dia);
   const pct = (t: number) => Math.min(100, Math.max(0, ((t - desdeT) / span) * 100));
   const hoyT = Date.now();
-  /* Hoy como fecha ISO LOCAL, no `toISOString()` a secas: en Lima (UTC-5) el
-     UTC ya está en el día siguiente desde las 19:00, y las actividades que
-     terminan hoy se habrían apagado seis horas antes de tiempo. Se compara
-     texto contra texto, que es como están guardadas las fechas. */
-  const hoyISO = new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
-    .toISOString().slice(0, 10);
   const hoyPct = pct(hoyT);
   const hoyDentro = hoyT >= desdeT && hoyT < hastaT;
   const isoDe = (t: number) => new Date(t).toISOString().slice(0, 10);
@@ -706,13 +700,12 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
                el texto, y se recupera al pasar el cursor por si hay que
                consultarla. Es por FECHA, no por estado: una actividad sin
                marcar que ya venció también es pasado. */
-            const pasada = (a.fecha_fin || a.fecha_inicio) < hoyISO;
-            /* Y se apaga también lo TERMINADO, aunque su fecha siga por venir:
-               una actividad resuelta antes de plazo dejó de pedir atención el
-               día que se resolvió, no el día que decía el plan. Las dos reglas
-               responden a la misma pregunta —¿esto todavía me toca?— y por eso
-               comparten el mismo apagado. */
-            const apagada = pasada || a.estado === "finalizada";
+            /* Se apaga SOLO lo resuelto, nunca por fecha. Probamos apagar lo
+               vencido y estaba mal: una actividad que pasó su fecha y NADIE
+               resolvió es exactamente la que hay que ver — atenuarla escondía
+               el problema en vez de mostrarlo. El plan no dice si algo está
+               hecho; solo el estado lo dice. */
+            const apagada = a.estado === "finalizada";
             const ini = pct(pd(a.fecha_inicio));
             const fin = pct(pd(a.fecha_fin || a.fecha_inicio) + dia);
             const w = Math.max(fin - ini, 1.5);
@@ -740,7 +733,7 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
                   <hr />
                 </div>
               )}
-              <div className={`gt-row${apagada ? " pasada" : ""}`}>
+              <div className={`gt-row${apagada ? " resuelta" : ""}`}>
                 <div className="gt-nombre" title={a.nombre}>
                   {/* Trabajar el caso al vuelo, sin salir del Gantt. Va DENTRO
                       del rótulo, que tiene ancho fijo: fuera descuadraría el
