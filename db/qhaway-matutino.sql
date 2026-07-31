@@ -107,6 +107,15 @@ begin
       -- Y sin proyecto NI convocatoria no hay a qué vincular el caso. Se
       -- salta: una fila mal formada no puede tumbar la ronda del equipo.
       and (ca.proyecto_id is not null or ca.convocatoria_id is not null)
+      /* La PRÁCTICA CONTINUA no se materializa nunca sola. No es una tarea que
+         empieza y termina: es cómo se trabaja durante todo un tramo —dirección
+         narrativa en tiempo real, cierre de jornada, respaldo de datos—. Un
+         caso para eso no lo cierra nadie, y un tablero con casos que nadie
+         cierra deja de significar algo.
+         No es un descarte silencioso: la actividad se ve en el cronograma con
+         su marca 🔁, y desde la lista se puede materializar A MANO el día que
+         de verdad haga falta seguirla. */
+      and coalesce(ca.clase, 'trabajo') <> 'continua'
       /* 3 y no 7: con siete días, la postproducción de un rodaje que empieza
          en un mes ya aparecía abierta en el tablero, y un caso que nadie puede
          empezar todavía enseña a ignorar el tablero. Este número es el

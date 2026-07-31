@@ -88,10 +88,19 @@ function FormAct({ f, setF, perfiles, etapas, onSave, onCancel, ocupado, editar 
   const cortoF = (id: string) => (plantelF.find(p => p.id === id)?.nombre || "").split(" ")[0];
   return (
     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "12px 0", padding: 10, background: "var(--bg)", borderRadius: 10 }}>
-      <select style={{ ...inp, borderColor: f.clase === "hito_externo" ? "var(--blue)" : "var(--border)" }}
+      {/* Tres clases, y la diferencia entre ellas es QUIÉN abre el caso:
+          · trabajo       → el Bot lo abre solo cuando se acerca la fecha
+          · hito_externo  → lo abre igual, pero como aviso con cuenta regresiva
+          · continua      → NADIE lo abre solo; se materializa a mano si algún
+            día hace falta. Es para lo que ocurre durante todo un tramo en vez
+            de resolverse un día: dirección en tiempo real, cierre de jornada,
+            respaldo de datos. Un caso para eso nace muerto — nadie lo cierra —
+            y el tablero aprende a tener casos que nadie cierra. */}
+      <select style={{ ...inp, borderColor: f.clase === "hito_externo" ? "var(--blue)" : f.clase === "continua" ? "var(--teal)" : "var(--border)" }}
         value={f.clase} onChange={e => setF({ ...f, clase: e.target.value })}>
         <option value="trabajo">✅ Trabajo nuestro</option>
         <option value="hito_externo">🏛 Hito del concurso</option>
+        <option value="continua">🔁 Práctica continua</option>
       </select>
       <input style={{ ...inp, flex: 1, minWidth: 180 }} placeholder="Actividad *"
         value={f.nombre} onChange={e => setF({ ...f, nombre: e.target.value })} />
@@ -539,7 +548,8 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
                   borderLeft: `3px solid ${ETAPA_COLOR[a.etapa] || "var(--border)"}`,
                 }}>
                   <span style={{ width: 18, textAlign: "center", flexShrink: 0 }}>
-                    {a.clase === "hito_externo" ? "🏛" : a.estado === "finalizada" ? "✅" : a.estado === "planificada" ? "⚪" : "🟣"}
+                    {a.clase === "hito_externo" ? "🏛" : a.clase === "continua" ? "🔁"
+                      : a.estado === "finalizada" ? "✅" : a.estado === "planificada" ? "⚪" : "🟣"}
                   </span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -715,8 +725,14 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
                 <div className="gt-bar" title={`${a.nombre} · ${nomEtapa(a.etapa)}: ${fmt(a.fecha_inicio)} → ${a.fecha_fin ? fmt(a.fecha_fin) : "—"}`}
                   style={{
                     left: `${ini}%`, width: `${w}%`,
-                    background: a.estado === "planificada" ? `${etCol}26` : etCol,
-                    border: a.estado === "planificada" ? `1px dashed ${etCol}` : "none",
+                    /* La práctica continua va rayada: no es un bloque de
+                       trabajo que empieza y termina, es algo que ocurre a lo
+                       largo del tramo. Se distingue de un vistazo sin leer. */
+                    background: a.clase === "continua"
+                      ? `repeating-linear-gradient(90deg, ${etCol}99 0 5px, transparent 5px 11px)`
+                      : a.estado === "planificada" ? `${etCol}26` : etCol,
+                    border: a.clase === "continua" ? "none"
+                      : a.estado === "planificada" ? `1px dashed ${etCol}` : "none",
                     /* Sin doble atenuación: el apagado es de la FILA entera y
                        la barra ya va dentro; si además se descontara aquí,
                        quedaría invisible. */
@@ -740,7 +756,8 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
                       eje temporal. Mismo criterio que en la Agenda. */}
                   {a.publicacion_id && <VistaRapida pubId={a.publicacion_id} />}
                   <span className="gt-nombre-txt">
-                    {a.estado === "finalizada" ? "✅ " : a.estado === "planificada" ? "" : "🟣 "}
+                    {a.clase === "continua" ? "🔁 "
+                      : a.estado === "finalizada" ? "✅ " : a.estado === "planificada" ? "" : "🟣 "}
                     {a.publicacion_id
                       ? <Link href={`/caso/${a.publicacion_id}`} style={{ color: "var(--text)" }}>{a.nombre}</Link>
                       : a.nombre}
