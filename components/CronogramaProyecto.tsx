@@ -7,7 +7,7 @@ import {
 } from "@/app/actions";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import MiniSelect from "@/components/MiniSelect";
 import FechaMini from "@/components/FechaMini";
 import { sinBot } from "@/lib/personas";
@@ -328,6 +328,13 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
     : a.fecha_inicio !== b.fecha_inicio ? (a.fecha_inicio < b.fecha_inicio ? -1 : 1)
     : (a.creado_en < b.creado_en ? -1 : a.creado_en > b.creado_en ? 1 : 0));
 
+  /* El ancho de la columna de nombres del Gantt. Tiene que ser el MISMO que
+     `.gt-nombre` en globals.css: la línea de HOY y la leyenda se posicionan con
+     él a mano. Estaban en 170 mientras el CSS decía 240, así que la línea de
+     HOY caía 70px a la izquierda de donde debía — con un cronograma de un año,
+     casi un mes de error, y en silencio. */
+  const GT_NOMBRE = 240;
+
   const cuerpo = (
     <div className="card" style={{ marginBottom: ancho ? 0 : 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -559,11 +566,17 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
             <span>{fmt(new Date(maxT - dia).toISOString().slice(0, 10))}</span>
           </div>
           {hoyPct > 0 && hoyPct < 100 && (
-            <div className="gt-hoy" style={{ left: `calc(170px + (100% - 170px) * ${hoyPct / 100})` }}>
+            <div className="gt-hoy" style={{ left: `calc(${GT_NOMBRE}px + (100% - ${GT_NOMBRE}px) * ${hoyPct / 100})` }}>
               <i>HOY</i>
             </div>
           )}
-          {ordenadas.map(a => {
+          {ordenadas.map((a, i) => {
+            /* Rótulo de fase: se pinta al entrar a cada etapa. El Gantt ya venía
+               ordenado por etapa —igual que la vista de lista, que sí las
+               titulaba—, así que solo faltaba decir en voz alta dónde empieza
+               cada una. Sale del propio orden, sin agrupar aparte: así no hay
+               dos fuentes de verdad sobre en qué fase va una actividad. */
+            const abreEtapa = i === 0 || ordenadas[i - 1].etapa !== a.etapa;
             const ini = pct(pd(a.fecha_inicio));
             const fin = pct(pd(a.fecha_fin || a.fecha_inicio) + dia);
             const w = Math.max(fin - ini, 1.5);
@@ -580,7 +593,15 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
               </div>
             );
             return (
-              <div className="gt-row" key={a.id}>
+              <Fragment key={a.id}>
+              {abreEtapa && (
+                <div className="gt-fase">
+                  <i style={{ background: etCol }} />
+                  <b>{nombreEtapa(a.etapa)}</b>
+                  <hr />
+                </div>
+              )}
+              <div className="gt-row">
                 <div className="gt-nombre" title={a.nombre}>
                   {a.estado === "finalizada" ? "✅ " : a.estado === "planificada" ? "" : "🟣 "}
                   {a.publicacion_id
@@ -589,9 +610,10 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
                 </div>
                 {barra}
               </div>
+              </Fragment>
             );
           })}
-          <div style={{ display: "flex", gap: 14, marginTop: 10, fontSize: 10.5, color: "var(--dim)", paddingLeft: 170, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 14, marginTop: 10, fontSize: 10.5, color: "var(--dim)", paddingLeft: GT_NOMBRE, flexWrap: "wrap" }}>
             {ETAPA_ORDEN.filter(et => visibles.some(a => a.etapa === et)).map(et => (
               <span key={et}>
                 <i style={{ display: "inline-block", width: 16, height: 7, background: ETAPA_COLOR[et], borderRadius: 4, verticalAlign: "middle", marginRight: 4 }} />
