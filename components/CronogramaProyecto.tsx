@@ -420,8 +420,12 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
      de actions.ts (moverActividadCrono), o «subir» movería otra cosa. */
   const enVentana = (a: any) =>
     pd(a.fecha_fin || a.fecha_inicio) + dia >= desdeT && pd(a.fecha_inicio) < hastaT;
+  /* Una etapa que no está en el preset (una convocatoria a la que le cambiaron
+     la categoría, una actividad sin etapa) va al FINAL, no al principio:
+     `indexOf` devuelve -1 y sin esto lo desconocido encabezaba el cronograma. */
+  const posEt = (et?: string | null) => { const i = ETAPA_ORDEN.indexOf(et || ""); return i < 0 ? 999 : i; };
   const ordenadas = [...visibles].sort((a, b) =>
-    a.etapa !== b.etapa ? ETAPA_ORDEN.indexOf(a.etapa) - ETAPA_ORDEN.indexOf(b.etapa)
+    posEt(a.etapa) !== posEt(b.etapa) ? posEt(a.etapa) - posEt(b.etapa)
     : (a.orden ?? 0) !== (b.orden ?? 0) ? (a.orden ?? 0) - (b.orden ?? 0)
     : a.fecha_inicio !== b.fecha_inicio ? (a.fecha_inicio < b.fecha_inicio ? -1 : 1)
     : (a.creado_en < b.creado_en ? -1 : a.creado_en > b.creado_en ? 1 : 0));
@@ -522,12 +526,20 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
       )}
 
       {/* ===== VISTA LISTA, agrupada por etapa ===== */}
-      {vista === "lista" && ETAPA_ORDEN.map(et => {
-        const grupo = ordenadas.filter(a => a.etapa === et);
+      {/* La lista recorre el preset MÁS lo que sobre: una actividad cuya etapa
+          no esté en el preset —o que no tenga etapa— antes no se pintaba en
+          ninguna parte. No salía vacía ni en gris: no estaba, y el cronograma
+          se veía completo. Pasa si a una convocatoria se le cambia la categoría
+          después de crear actividades. Ahora caen en su propio bloque al final,
+          que es feo pero visible. */}
+      {vista === "lista" && [...ETAPA_ORDEN,
+        ...Array.from(new Set(ordenadas.map((a: any) => a.etapa || "")))
+          .filter(et => !ETAPA_ORDEN.includes(et))].map(et => {
+        const grupo = ordenadas.filter((a: any) => (a.etapa || "") === et);
         if (!grupo.length) return null;
         return (
-          <div key={et}>
-            <div className="cr-etapa-h">{nomEtapa(et)}</div>
+          <div key={et || "_sin"}>
+            <div className="cr-etapa-h">{et ? nomEtapa(et) : "Sin etapa"}</div>
             {grupo.map(a => {
               const [txt, col] = CHIP[a.estado] || CHIP.planificada;
               /* Se reordena dentro de toda la ETAPA (a cualquier fecha), no ya
