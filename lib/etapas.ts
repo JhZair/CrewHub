@@ -22,22 +22,27 @@ const e = (clave: string, nombre: string, color: string): Etapa => ({ clave, nom
 export const ETAPAS_CINE: Etapa[] = [
   /* «Desarrollo» abre el ciclo de un documental: idea, investigación, escritura
      y financiamiento, antes de que exista nada que preproducir.
-     ⚠ La clave `desarrollo` la usa también «Desarrollo de proyecto» con otro
-     nombre («Desarrollo (arte, layout)»). Dentro del cronograma no hay
-     problema: desde este commit los nombres salen del preset de la categoría,
-     no del mapa global. Pero `nombreEtapa()` —el respaldo que usa la agenda,
-     que mezcla categorías y solo tiene la clave suelta— devuelve uno de los
-     dos. Si algún día molesta, la salida es separar las claves, no renombrar
-     una de las dos a espaldas de la otra. */
-  e("desarrollo", "Desarrollo", C.rosa),
+     Clave PROPIA (`desarrollo_ini`) y no `desarrollo`, que ya la usa «Desarrollo
+     de proyecto» para otra cosa («Desarrollo (arte, layout)»). Dos nombres
+     distintos bajo una misma clave hacen que el mapa global de lib/etapas
+     —que es por clave y donde gana el último— devuelva el texto de la otra
+     categoría en cualquier pantalla sin preset a la mano, como la agenda.
+     Se separa la clave nueva en vez de renombrar la vieja porque la vieja puede
+     tener actividades guardadas: cambiarle la clave las dejaría huérfanas,
+     pintadas de gris y sin nombre. La clave no se ve nunca; el nombre sí. */
+  e("desarrollo_ini", "Desarrollo", C.rosa),
   e("preproduccion", "Preproducción", C.gris),
   e("produccion", "Rodaje", C.ambar),
   e("postproduccion", "Postproducción", C.teal),
-  /* «Fin del proyecto» y no «Entrega»: es como lo llaman los formularios DAFO,
-     y ahí no se entrega solamente — se cierra (informes, devolución a la
-     ciudadanía, culminación). Las otras categorías conservan «Entrega» porque
-     ahí sí es la entrega del material. */
-  e("entrega", "Fin del proyecto", C.verde),
+  /* «Entrega / Fin del proyecto», y EXACTAMENTE igual en todas las categorías.
+     Los formularios DAFO lo llaman «Fin del Proyecto» y ahí no se entrega
+     solamente: se cierra (informe semestral, devolución a la ciudadanía,
+     culminación, entrega del material). El nombre doble sirve para los dos
+     mundos — el encargo que solo entrega y el fondo que además cierra.
+     Que sea idéntico en todas no es cosmético: el mapa global es por clave y
+     gana el último, así que dos nombres para `entrega` harían que la agenda
+     mostrara uno u otro según el orden del archivo. */
+  e("entrega", "Entrega / Fin del proyecto", C.verde),
   e("administracion", "Administración", C.violeta),
 ];
 
@@ -49,20 +54,20 @@ export const CATEGORIAS: { nombre: string; etapas: Etapa[] }[] = [
     e("preproduccion", "Preproducción", C.gris),
     e("produccion", "Rodaje", C.ambar),
     e("postproduccion", "Postproducción", C.teal),
-    e("entrega", "Entrega", C.verde),
+    e("entrega", "Entrega / Fin del proyecto", C.verde),
   ] },
   { nombre: "Documental", etapas: [
     e("investigacion", "Investigación", C.azul),
     e("preproduccion", "Preproducción", C.gris),
     e("produccion", "Rodaje", C.ambar),
     e("postproduccion", "Postproducción", C.teal),
-    e("entrega", "Entrega", C.verde),
+    e("entrega", "Entrega / Fin del proyecto", C.verde),
   ] },
   { nombre: "Desarrollo de proyecto", etapas: [
     e("investigacion", "Investigación / Guion", C.azul),
     e("desarrollo", "Desarrollo (arte, layout)", C.violeta),
     e("preproduccion", "Preproducción", C.gris),
-    e("entrega", "Entrega", C.verde),
+    e("entrega", "Entrega / Fin del proyecto", C.verde),
   ] },
   { nombre: "Video y Cine Indígena", etapas: [
     e("formacion", "Formación", C.rosa),
@@ -70,7 +75,7 @@ export const CATEGORIAS: { nombre: string; etapas: Etapa[] }[] = [
     e("preproduccion", "Preproducción", C.gris),
     e("produccion", "Rodaje", C.ambar),
     e("postproduccion", "Postproducción", C.teal),
-    e("entrega", "Entrega", C.verde),
+    e("entrega", "Entrega / Fin del proyecto", C.verde),
   ] },
   /* El orden ES el del formulario DAFO de videojuego: inicio → las cuatro
      disciplinas del presupuesto → difusión → cierre. Así el cronograma que se
@@ -91,7 +96,7 @@ export const CATEGORIAS: { nombre: string; etapas: Etapa[] }[] = [
        globales de abajo son por clave y el último gana, así que repetir una
        clave con otro nombre la renombraría en silencio en toda la aplicación. */
     e("difusion", "Difusión", C.rosa),
-    e("entrega", "Entrega", C.verde),
+    e("entrega", "Entrega / Fin del proyecto", C.verde),
   ] },
   { nombre: "Cine en construcción", etapas: [
     e("montaje", "Montaje", C.ambar),
