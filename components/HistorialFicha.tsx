@@ -19,10 +19,13 @@ import { BOT } from "@/lib/personas";
  * Los conteos de los chips salen del total, no de lo ya filtrado: un chip que
  * dijera «2» porque hay otro filtro puesto haría creer que solo hay dos.
  */
-export default function HistorialFicha({ eventos, fecha, vacio }: {
-  eventos: (Evento & { actor_id?: string | null; entidad_id?: string })[];
-  /** Cómo se escribe la hora/fecha de cada línea (lo decide la ficha). */
-  fecha: (iso: string) => string;
+export default function HistorialFicha({ eventos, vacio }: {
+  /* Cada evento trae su fecha YA ESCRITA en `hora`. No se recibe la función que
+     la escribe: cruzar la frontera servidor→cliente con una función es un error
+     de ejecución («Functions cannot be passed directly to Client Components»),
+     y el typecheck no lo ve. El formato lo sigue decidiendo la ficha; lo que
+     cruza es texto. */
+  eventos: (Evento & { actor_id?: string | null; entidad_id?: string; hora?: string })[];
   /** Qué decir cuando no hay nada — el texto cambia según la entidad. */
   vacio: string;
 }) {
@@ -129,9 +132,9 @@ export default function HistorialFicha({ eventos, fecha, vacio }: {
         )}
         {agruparEventos(lista as any[]).map((f, i) =>
           f.grupo
-            ? <EventoGrupo key={i} items={f.grupo} horaDe={(x: any) => fecha(x.creado_en)}
+            ? <EventoGrupo key={i} items={f.grupo} horaDe={(x: any) => x.hora || ""}
                 conEntidad={!!(f.grupo[0] as any)?.entidadNombre} />
-            : <EventoHistorial key={i} e={f.solo} hora={fecha(f.solo.creado_en)}
+            : <EventoHistorial key={i} e={f.solo} hora={(f.solo as any).hora || ""}
                 conEntidad={!!(f.solo as any).entidadNombre} />
         )}
       </div>

@@ -2502,8 +2502,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                una ficha que reúne 120 eventos de casos, cronograma y
                postulaciones no se lee de corrido, se hojea. */
             const histInner = (
-              <HistorialFicha eventos={eventosVis as any[]} fecha={fecha}
-                vacio="Sin eventos registrados aún." />
+              <HistorialFicha vacio="Sin eventos registrados aún."
+                eventos={(eventosVis as any[]).map(e => ({ ...e, hora: fecha(e.creado_en) }))} />
             );
             /* Metadatos de un caso para la lista con filtros. «Mío» = soy el
                responsable (viewer); apagado = me incumbe pero lo trabaja otro. */
