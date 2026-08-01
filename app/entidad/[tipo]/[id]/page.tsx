@@ -364,7 +364,6 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
      traídas, así que una ficha con 214 eventos anunciaba exactamente el tope de
      la consulta —un número redondo que parecía un total y era un techo—. */
   const totEventos = (nEventos ?? 0) + totalHijos || eventosVis.length;
-  const recorte = totEventos > eventosVis.length ? ` de ${totEventos}` : "";
 
   /* LO QUE ESTA PERSONA HIZO EN TODO EL SISTEMA — no solo sobre su ficha.
      Es lo mismo que el diario (/historial) filtrado por ella: `actividad`
@@ -2502,7 +2501,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                una ficha que reúne 120 eventos de casos, cronograma y
                postulaciones no se lee de corrido, se hojea. */
             const histInner = (
-              <HistorialFicha vacio="Sin eventos registrados aún."
+              <HistorialFicha vacio="Sin eventos registrados aún." total={totEventos}
                 eventos={(eventosVis as any[]).map(e => ({ ...e, hora: fecha(e.creado_en) }))} />
             );
             /* Metadatos de un caso para la lista con filtros. «Mío» = soy el
@@ -2564,7 +2563,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                 {eventosVis.length > 0 && (
                   <details open style={{ marginTop: 16 }}>
                     <summary style={{ color: "var(--muted)", fontSize: TXT.micro, cursor: "pointer", padding: "6px 0" }}>
-                      🕐 Historial de {nombre} · {eventosVis.length}{recorte} eventos
+                      🕐 Historial de {nombre} · {totEventos} eventos
                     </summary>
                     {histInner}
                   </details>
@@ -3013,7 +3012,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                     `👥 Equipo · ${equipoProy.length + equipoPost.length}`,
                     `📋 Casos · ${activas.length}`,
                     `📚 Repositorio${objetosDe.length ? ` · ${objetosDe.length}` : ""}`,
-                    `🕐 Historial · ${eventosVis.length}${recorte}`,
+                    `🕐 Historial · ${totEventos}`,
                   ]}
                   paneles={[
                     expedienteNode,
@@ -3458,7 +3457,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                   {histGlobal}
                   {eventosVis.length > 0 && (
                     <Plegable id={`persona:${params.id}:hist-ficha`} nivel={2}
-                      titulo="📄 Cambios en esta ficha" resumen={`${eventosVis.length}${recorte} eventos`}
+                      titulo="📄 Cambios en esta ficha" resumen={`${totEventos} eventos`}
                       abiertoPorDefecto={actividadUsuario.length === 0}>
                       {histInner}
                     </Plegable>
@@ -3484,7 +3483,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                     `📋 Casos · ${activas.length}`,
                     `📚 Repositorio · ${objetosDe.length}`,
                     `🧾 Economía · ${rheGirados.length}`,
-                    `🕐 Historial · ${actividadUsuario.length + eventosVis.length}${recorte}`,
+                    `🕐 Historial · ${actividadUsuario.length + totEventos}`,
                   ]}
                   paneles={[
                     muroPer,
@@ -3699,7 +3698,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                     `📋 Casos · ${activas.length}`,
                     "🎬 Elegibilidad DAFO",
                     `📚 Repositorio · ${objetosDe.length}`,
-                    `🕐 Historial · ${eventosVis.length}${recorte}`,
+                    `🕐 Historial · ${totEventos}`,
                   ]}
                   paneles={[muroEmp, trayectoriaEmp, trabajoNode, dafoNode, repoEmp, histEmp]}
                   iconoSolo={[4, 5]}
@@ -3751,7 +3750,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                     `🗒 Bitácora · ${nBita}`,
                     `📋 Casos · ${activas.length}`,
                     `📚 Repositorio · ${objetosDe.length}`,
-                    `🕐 Historial · ${eventosVis.length}${recorte}`,
+                    `🕐 Historial · ${totEventos}`,
                   ]}
                   paneles={[bitacoraNode, trabajoNode, repoEq, histEq]}
                   iconoSolo={[3]}
@@ -3953,7 +3952,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                     `🏆 Trayectoria · ${postusProy.length + equipoProy.length + actoresProy.length}`,
                     `📋 Casos · ${activas.length}`,
                     `📚 Repositorio · ${objetosDe.length}`,
-                    `🕐 Historial · ${eventosVis.length}${recorte}`,
+                    `🕐 Historial · ${totEventos}`,
                   ]}
                   paneles={[muroNode, cronoNode, trayectoriaProy, trabajoNode, repoProy, histProy]}
                   iconoSolo={[3, 4, 5]}
@@ -4003,7 +4002,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                   etiquetaCrono,
                   `📋 Casos · ${activas.length}`,
                   `📚 Repositorio · ${objetosDe.length}`,
-                  `🕐 Historial · ${eventosVis.length}${recorte}`,
+                  `🕐 Historial · ${totEventos}`,
                 ]}
                 paneles={[postusConv, cronoNode, trabajoNode, repoConv, histConv]}
                 iconoSolo={[4]}

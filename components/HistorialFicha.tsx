@@ -19,7 +19,7 @@ import { BOT } from "@/lib/personas";
  * Los conteos de los chips salen del total, no de lo ya filtrado: un chip que
  * dijera «2» porque hay otro filtro puesto haría creer que solo hay dos.
  */
-export default function HistorialFicha({ eventos, vacio }: {
+export default function HistorialFicha({ eventos, vacio, total }: {
   /* Cada evento trae su fecha YA ESCRITA en `hora`. No se recibe la función que
      la escribe: cruzar la frontera servidor→cliente con una función es un error
      de ejecución («Functions cannot be passed directly to Client Components»),
@@ -28,6 +28,8 @@ export default function HistorialFicha({ eventos, vacio }: {
   eventos: (Evento & { actor_id?: string | null; entidad_id?: string; hora?: string })[];
   /** Qué decir cuando no hay nada — el texto cambia según la entidad. */
   vacio: string;
+  /** Cuántos hay en total. Si es mayor que los traídos, se avisa del tope. */
+  total?: number;
 }) {
   const [fEv, setFEv] = useState("");
   const [fEnt, setFEnt] = useState("");
@@ -35,6 +37,11 @@ export default function HistorialFicha({ eventos, vacio }: {
 
   const nomActor = (x: any) => x.actor?.alias || x.actor?.nombre || `🤖 ${BOT}`;
   const entDe = (x: any) => tipoCanonico(x.entidad_tipo || "");
+  /* El rótulo, con red: si una grafía no está en el diccionario se muestra
+     legible («cronograma actividades») en vez de la clave cruda con guiones
+     bajos, que delata la tabla y no dice nada a quien lee. */
+  const rotEnt = (t: string) => ROTULO_ENT[t] || ROTULO_ENT[tipoCanonico(t)] || t.replace(/_/g, " ");
+  const icoEnt = (t: string) => ICO_ENT[t] || ICO_ENT[tipoCanonico(t)] || "🔗";
 
   const cuenta = (f: (x: any) => any) => {
     const m = new Map<string, number>();
@@ -89,22 +96,29 @@ export default function HistorialFicha({ eventos, vacio }: {
                 onClick={limpiar}>✕ limpiar filtros</button>
             )}
           </div>
-          {porEntidad.length > 1 && (
-            <Fila titulo="Sobre qué">
-              {porEntidad.map(([t, n]) => (
-                <Chip key={t} on={fEnt === t} onClick={() => setFEnt(fEnt === t ? "" : t)}>
-                  {ICO_ENT[t] || "🔗"} {ROTULO_ENT[t] || t} · {n}
-                </Chip>
-              ))}
-            </Fila>
-          )}
-          {porEvento.length > 1 && (
-            <Fila titulo="Qué pasó">
-              {porEvento.map(([t, n]) => (
-                <Chip key={t} on={fEv === t} onClick={() => setFEv(fEv === t ? "" : t)}>
-                  {icoDe(t)} {ROTULO_EV[t] || t} · {n}
-                </Chip>
-              ))}
+          {/* «Sobre qué» y «qué pasó» van en combo y no en chips: con nueve
+              opciones, los chips se reparten en tres renglones y el filtro pasa
+              a ocupar más pantalla que la lista que filtra. Un combo cerrado es
+              una línea y dice lo mismo. «Quién» se queda en chips —son pocos,
+              llevan color y se reconocen de un vistazo—. */}
+          {(porEntidad.length > 1 || porEvento.length > 1) && (
+            <Fila titulo="Filtrar">
+              {porEntidad.length > 1 && (
+                <select className="hf-sel" value={fEnt} onChange={ev => setFEnt(ev.target.value)}>
+                  <option value="">🔎 Sobre qué · todo ({eventos.length})</option>
+                  {porEntidad.map(([t, n]) => (
+                    <option key={t} value={t}>{icoEnt(t)} {rotEnt(t)} · {n}</option>
+                  ))}
+                </select>
+              )}
+              {porEvento.length > 1 && (
+                <select className="hf-sel" value={fEv} onChange={ev => setFEv(ev.target.value)}>
+                  <option value="">✳ Qué pasó · todo ({eventos.length})</option>
+                  {porEvento.map(([t, n]) => (
+                    <option key={t} value={t}>{icoDe(t)} {ROTULO_EV[t] || t} · {n}</option>
+                  ))}
+                </select>
+              )}
             </Fila>
           )}
           {porActor.length > 1 && (
@@ -120,9 +134,16 @@ export default function HistorialFicha({ eventos, vacio }: {
         </div>
       )}
 
-      {hayFiltro && (
-        <div style={{ color: "var(--muted)", fontSize: 12, margin: "8px 0 2px" }}>
-          {lista.length} de {eventos.length}
+      {(hayFiltro || (total && total > eventos.length)) && (
+        <div style={{ color: "var(--muted)", fontSize: 12, margin: "8px 0 2px", display: "flex", gap: 10, flexWrap: "wrap" }}>
+          {hayFiltro && <span>{lista.length} de {eventos.length}</span>}
+          {/* El tope se dice. Un historial que muestra 120 de 187 sin avisarlo
+              se lee como completo, y lo que falta es justo lo más viejo. */}
+          {total && total > eventos.length ? (
+            <span style={{ color: "var(--yellow)" }}>
+              ⚠ se muestran los {eventos.length} más recientes de {total}
+            </span>
+          ) : null}
         </div>
       )}
 

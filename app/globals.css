@@ -2503,3 +2503,11 @@ button.repo-tit{text-align:left}
 .ent-lote-fila:last-child{border-bottom:none}
 .ent-lote-fila:hover{background:rgba(167,139,250,.09)}
 .ent-lote-fila input[type=checkbox]{accent-color:var(--accent);cursor:pointer;flex:none}
+
+/* ── Combos de filtro del historial de una ficha ── */
+.hf-sel{background:var(--card);border:1px solid var(--border);border-radius:8px;
+  padding:4px 8px;font-size:12px;color:var(--text);font-family:inherit;cursor:pointer;
+  outline:none;max-width:260px}
+.hf-sel:hover{border-color:var(--border2)}
+.hf-sel:focus{border-color:var(--accent)}
+.hf-sel option{background:var(--card);color:var(--text)}
