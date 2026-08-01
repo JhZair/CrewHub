@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { claseEstado, textoEstado } from "@/lib/estados";
 import { icoTipo, rotuloMonton } from "@/lib/tipos";
 import { BOT } from "@/lib/personas";
+import { grafiasDe } from "@/lib/secciones";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "📊 Pulso del equipo" };
@@ -155,10 +156,14 @@ export default async function PulsoPage({ searchParams }: {
     supabase.from("publicaciones").select("id,titulo,responsable,fecha_limite")
       .in("estado", ["abierta", "en_progreso", "seguimiento", "en_pausa"]).is("archivado_en", null)
       .neq("tipo", "bitacora").limit(1500),
-    supabase.from("actividad").select("entidad_id").eq("entidad_tipo", "publicacion")
+    /* Las dos grafías. Este segundo contador estaba en CERO permanente y sin
+       parecerlo: los cambios de estado los escribe el trigger como
+       «publicaciones», y aquí se preguntaba por «publicacion». Un caso resuelto
+       nunca llegaba a contarse. */
+    supabase.from("actividad").select("entidad_id").in("entidad_tipo", grafiasDe("publicacion"))
       .gte("creado_en", hace3d).limit(4000),
     supabase.from("actividad").select("id", { count: "exact", head: true })
-      .eq("entidad_tipo", "publicacion").eq("tipo", "estado")
+      .in("entidad_tipo", grafiasDe("publicacion")).eq("tipo", "estado")
       .eq("detalle->>a", "resuelta").gte("creado_en", hace7d),
   ]);
   const conActividad = new Set((act3d || []).map((a: any) => a.entidad_id));

@@ -73,6 +73,19 @@ const SINGULAR_DE: Record<string, string> = {
 };
 export const tipoCanonico = (t: string) => SINGULAR_DE[t] || t;
 
+/* Y el camino de vuelta: dada una ruta (singular), TODAS las grafías con las
+   que ese tipo pudo quedar escrito en `actividad`.
+   Hace falta porque leer la bitácora de una entidad con `.eq("entidad_tipo",
+   "proyecto")` deja fuera, en silencio, todo lo que escribió el trigger como
+   "proyectos": la creación del proyecto y cada cambio de estado, etapa,
+   prioridad y responsable. La ficha no salía vacía —salía a medias, que es
+   peor, porque parece completa—. Reconciliar solo al pintar (tipoCanonico) no
+   alcanza: hay que reconciliar también al PREGUNTAR. */
+const PLURAL_DE: Record<string, string> = Object.fromEntries(
+  Object.entries(SINGULAR_DE).map(([plural, singular]) => [singular, plural]));
+export const grafiasDe = (t: string) =>
+  PLURAL_DE[t] && PLURAL_DE[t] !== t ? [t, PLURAL_DE[t]] : [t];
+
 /* Los tipos con ficha en /entidad/[tipo]/[id] — las claves de CONF en esa
    página. No incluye `publicacion` (vive en /caso) ni los que no tienen
    página (empresa_miembro, cronograma_actividades, vehiculo). */

@@ -13,7 +13,7 @@ import VinculosEditor from "@/components/VinculosEditor";
 import EventoHistorial from "@/components/EventoHistorial";
 import BarrasProgreso from "@/components/BarrasProgreso";
 import { progresoDe, esMovimientoReal } from "@/lib/progreso";
-import { tipoCanonico } from "@/lib/secciones";
+import { tipoCanonico, grafiasDe } from "@/lib/secciones";
 import { agruparEventos } from "@/lib/agrupar";
 import ComentarioTexto from "@/components/ComentarioTexto";
 import RespuestaBox from "@/components/RespuestaBox";
@@ -83,7 +83,9 @@ export default async function Caso({ params }: { params: { id: string } }) {
          ents, proy, emp, pers, conv, equi, luga, etiq, postu] = await Promise.all([
     supabase.from("actividad")
       .select("*, actor:perfiles(nombre)")
-      .eq("entidad_tipo", "publicacion").eq("entidad_id", p.id)
+      /* Igual que en la ficha de entidad: «publicacion» a mano, «publicaciones»
+         del trigger. Sin las dos, el caso no muestra ni su propia creación. */
+      .in("entidad_tipo", grafiasDe("publicacion")).eq("entidad_id", p.id)
       .order("creado_en"),
     supabase.from("comentarios")
       .select("*, autor:perfiles(nombre, color, avatar_url)")

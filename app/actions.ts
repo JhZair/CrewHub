@@ -10,7 +10,7 @@ import { TOKEN } from "@/lib/puertas";
 import { BOT, sinBot } from "@/lib/personas";
 import { CAMPOS_TABLA } from "@/lib/tablas-expediente";
 import { esCampoDelTrigger } from "@/lib/actividad";
-import { SECCIONES } from "@/lib/secciones";
+import { SECCIONES, grafiasDe } from "@/lib/secciones";
 import { TIPOS_OBJETO } from "@/lib/objetos";
 import { catalogoObjetos, catalogosEntidades } from "@/lib/catalogos";
 import { resolverNombres } from "@/lib/nombres";
@@ -4908,7 +4908,7 @@ export async function actividadDeCaso(pubId: string) {
       .eq("id", pubId).single(),
     supabase.from("actividad")
       .select("id,tipo,detalle,creado_en,actor:perfiles(nombre)")
-      .eq("entidad_tipo", "publicacion").eq("entidad_id", pubId)
+      .in("entidad_tipo", grafiasDe("publicacion")).eq("entidad_id", pubId)
       .order("creado_en", { ascending: false }).limit(12),
     supabase.from("comentarios").select("id", { count: "exact", head: true }).eq("publicacion_id", pubId),
     supabase.from("reacciones").select("emoji").eq("publicacion_id", pubId).is("comentario_id", null),

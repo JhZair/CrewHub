@@ -78,7 +78,7 @@ import Completitud from "@/components/Completitud";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
-import { ICO_ENT, nombreDe } from "@/lib/secciones";
+import { ICO_ENT, nombreDe, grafiasDe } from "@/lib/secciones";
 
 /* PERFIL DE ENTIDAD VIVA — dos columnas:
    izquierda = el carné (datos estáticos, relaciones, credenciales)
@@ -262,15 +262,22 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   const { data: ent } = await supabase.from(conf.tabla).select("*").eq("id", params.id).single();
   if (!ent) notFound();
 
-  const [{ data: vincs }, { data: eventos }, urlSunat] = await Promise.all([
+  const [{ data: vincs }, { data: eventos, count: nEventos }, urlSunat] = await Promise.all([
     supabase.from("publicacion_vinculos")
       .select("publicacion_id")
       .eq("entidad_tipo", params.tipo).eq("entidad_id", params.id)
       .limit(300),
+    /* Las DOS grafías: la ruta dice «proyecto» pero el trigger de la bitácora
+       escribe el nombre de la tabla, «proyectos». Preguntando solo por la
+       singular, la creación de la entidad y todos sus cambios de estado, etapa,
+       prioridad y responsable quedaban fuera —sin error y sin hueco visible—.
+       Y `count` para poder decir cuántos hay de verdad: el número del rótulo
+       venía de las filas traídas, así que un historial de 214 eventos se
+       anunciaba como «30», que es justo el tope. */
     supabase.from("actividad")
-      .select("tipo,detalle,creado_en,actor_id,actor:perfiles(nombre)")
-      .eq("entidad_tipo", params.tipo).eq("entidad_id", params.id)
-      .order("creado_en", { ascending: false }).limit(30),
+      .select("tipo,detalle,creado_en,actor_id,actor:perfiles(nombre)", { count: "exact" })
+      .in("entidad_tipo", grafiasDe(params.tipo)).eq("entidad_id", params.id)
+      .order("creado_en", { ascending: false }).limit(120),
     // El link de SUNAT sale del admin, no del código: si SUNAT lo cambia
     // —lo ha hecho— se corrige ahí sin esperar un deploy.
     urlPlataforma(PLAT.sunatConsultaRuc),
@@ -286,6 +293,11 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   const nomEv = await nombresDeEventos(supabase, eventos || []);
   const eventosVis = conAlias(conNombresEventos((eventos || []).filter((e: any) =>
     !(e.tipo === "estado" && ["estado_sunat", "condicion_sunat"].includes(e.detalle?.campo))), nomEv) as any[], alias);
+  /* Cuántos hay DE VERDAD, no cuántos cupieron. El rótulo mostraba las filas
+     traídas, así que una ficha con 214 eventos anunciaba exactamente el tope de
+     la consulta —un número redondo que parecía un total y era un techo—. */
+  const totEventos = nEventos ?? eventosVis.length;
+  const recorte = totEventos > eventosVis.length ? ` de ${totEventos}` : "";
 
   /* LO QUE ESTA PERSONA HIZO EN TODO EL SISTEMA — no solo sobre su ficha.
      Es lo mismo que el diario (/historial) filtrado por ella: `actividad`
@@ -2486,7 +2498,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                 {eventosVis.length > 0 && (
                   <details open style={{ marginTop: 16 }}>
                     <summary style={{ color: "var(--muted)", fontSize: TXT.micro, cursor: "pointer", padding: "6px 0" }}>
-                      🕐 Historial de {nombre} · {eventosVis.length} eventos
+                      🕐 Historial de {nombre} · {eventosVis.length}{recorte} eventos
                     </summary>
                     {histInner}
                   </details>
@@ -2935,7 +2947,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                     `👥 Equipo · ${equipoProy.length + equipoPost.length}`,
                     `📋 Casos · ${activas.length}`,
                     `📚 Repositorio${objetosDe.length ? ` · ${objetosDe.length}` : ""}`,
-                    `🕐 Historial · ${eventosVis.length}`,
+                    `🕐 Historial · ${eventosVis.length}${recorte}`,
                   ]}
                   paneles={[
                     expedienteNode,
@@ -3380,7 +3392,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                   {histGlobal}
                   {eventosVis.length > 0 && (
                     <Plegable id={`persona:${params.id}:hist-ficha`} nivel={2}
-                      titulo="📄 Cambios en esta ficha" resumen={`${eventosVis.length} eventos`}
+                      titulo="📄 Cambios en esta ficha" resumen={`${eventosVis.length}${recorte} eventos`}
                       abiertoPorDefecto={actividadUsuario.length === 0}>
                       {histInner}
                     </Plegable>
@@ -3406,7 +3418,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                     `📋 Casos · ${activas.length}`,
                     `📚 Repositorio · ${objetosDe.length}`,
                     `🧾 Economía · ${rheGirados.length}`,
-                    `🕐 Historial · ${actividadUsuario.length + eventosVis.length}`,
+                    `🕐 Historial · ${actividadUsuario.length + eventosVis.length}${recorte}`,
                   ]}
                   paneles={[
                     muroPer,
@@ -3621,7 +3633,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                     `📋 Casos · ${activas.length}`,
                     "🎬 Elegibilidad DAFO",
                     `📚 Repositorio · ${objetosDe.length}`,
-                    `🕐 Historial · ${eventosVis.length}`,
+                    `🕐 Historial · ${eventosVis.length}${recorte}`,
                   ]}
                   paneles={[muroEmp, trayectoriaEmp, trabajoNode, dafoNode, repoEmp, histEmp]}
                   iconoSolo={[4, 5]}
@@ -3673,7 +3685,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                     `🗒 Bitácora · ${nBita}`,
                     `📋 Casos · ${activas.length}`,
                     `📚 Repositorio · ${objetosDe.length}`,
-                    `🕐 Historial · ${eventosVis.length}`,
+                    `🕐 Historial · ${eventosVis.length}${recorte}`,
                   ]}
                   paneles={[bitacoraNode, trabajoNode, repoEq, histEq]}
                   iconoSolo={[3]}
@@ -3875,7 +3887,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                     `🏆 Trayectoria · ${postusProy.length + equipoProy.length + actoresProy.length}`,
                     `📋 Casos · ${activas.length}`,
                     `📚 Repositorio · ${objetosDe.length}`,
-                    `🕐 Historial · ${eventosVis.length}`,
+                    `🕐 Historial · ${eventosVis.length}${recorte}`,
                   ]}
                   paneles={[muroNode, cronoNode, trayectoriaProy, trabajoNode, repoProy, histProy]}
                   iconoSolo={[3, 4, 5]}
@@ -3925,7 +3937,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                   etiquetaCrono,
                   `📋 Casos · ${activas.length}`,
                   `📚 Repositorio · ${objetosDe.length}`,
-                  `🕐 Historial · ${eventosVis.length}`,
+                  `🕐 Historial · ${eventosVis.length}${recorte}`,
                 ]}
                 paneles={[postusConv, cronoNode, trabajoNode, repoConv, histConv]}
                 iconoSolo={[4]}
