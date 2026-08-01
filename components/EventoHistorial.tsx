@@ -37,6 +37,21 @@ export const ICO_EVENTO: Record<string, string> = {
 };
 export const icoDe = (t: string) => ICO_EVENTO[t] || "🤖";
 
+/* Cómo se llama cada cosa en los filtros. Vive aquí, junto a los íconos, porque
+   ahora lo usan dos pantallas —el diario y el historial de una ficha— y dos
+   copias del mismo vocabulario terminan divergiendo: la misma columna de la
+   misma tabla llamada de dos maneras según dónde la mires. */
+export const ROTULO_EV: Record<string, string> = {
+  creado: "altas", estado: "cambios de estado", editado: "ediciones",
+  dato: "datos y verificaciones", miembro: "cargos", bot: "del bot",
+};
+export const ROTULO_ENT: Record<string, string> = {
+  publicacion: "casos", proyecto: "proyectos", empresa: "empresas",
+  persona: "personas", postulacion: "postulaciones", convocatoria: "convocatorias",
+  equipamiento: "equipos", lugar: "lugares", etiqueta: "etiquetas",
+  empresa_miembro: "cargos de empresa", cronograma_actividades: "cronograma",
+};
+
 export { ICO_ENT } from "@/lib/secciones";
 
 /* Qué dice el evento. El bot no tiene actor: por eso "Sistema"/"Bot Qhaway"

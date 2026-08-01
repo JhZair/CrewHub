@@ -32,6 +32,7 @@ import BotonFichaSunat from "@/components/BotonFichaSunat";
 import Copiar from "@/components/Copiar";
 import EventoHistorial from "@/components/EventoHistorial";
 import EventoGrupo from "@/components/EventoGrupo";
+import HistorialFicha from "@/components/HistorialFicha";
 import { resolverNombres, nombresDeEventos, conNombresEventos } from "@/lib/nombres";
 import { agruparEventos } from "@/lib/agrupar";
 import { claseEstado, rotuloEstado, esAviso, avisoVencido } from "@/lib/estados";
@@ -2496,21 +2497,13 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             /* El historial, solo la línea de tiempo (sin el <details>): así se
                puede montar tanto dentro de `vida` (plegado, para los demás
                tipos) como suelto en su propia pestaña (persona). */
+            /* Los filtros del diario, aquí dentro. El agrupado, el `conEntidad`
+               por línea y el «nada con esos filtros» viven en el componente:
+               una ficha que reúne 120 eventos de casos, cronograma y
+               postulaciones no se lee de corrido, se hojea. */
             const histInner = (
-              <div className="tl" style={{ marginTop: 12 }}>
-                {/* `conEntidad` va por LÍNEA y no por pantalla: los eventos de
-                    la propia ficha se leen «registró esta entidad» y los que
-                    vienen de un caso o una actividad necesitan decir de cuál.
-                    Una sola bandera para toda la lista obligaba a elegir cuál
-                    de las dos mitades se leía mal. */}
-                {agruparEventos(eventosVis as any[]).map((f, i) =>
-                  f.grupo
-                    ? <EventoGrupo key={i} items={f.grupo} horaDe={(x: any) => fecha(x.creado_en)}
-                        conEntidad={!!(f.grupo[0] as any)?.entidadNombre} />
-                    : <EventoHistorial key={i} e={f.solo} hora={fecha(f.solo.creado_en)}
-                        conEntidad={!!(f.solo as any).entidadNombre} />
-                )}
-              </div>
+              <HistorialFicha eventos={eventosVis as any[]} fecha={fecha}
+                vacio="Sin eventos registrados aún." />
             );
             /* Metadatos de un caso para la lista con filtros. «Mío» = soy el
                responsable (viewer); apagado = me incumbe pero lo trabaja otro. */

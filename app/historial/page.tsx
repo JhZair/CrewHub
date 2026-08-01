@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
-import EventoHistorial, { icoDe, type Evento } from "@/components/EventoHistorial";
+import EventoHistorial, { icoDe, ROTULO_EV, ROTULO_ENT, type Evento } from "@/components/EventoHistorial";
 import EventoGrupo from "@/components/EventoGrupo";
 import { agruparEventos } from "@/lib/agrupar";
 import { PERIODOS, desdeDe, diaLima, horaLima, rotuloDia, type Periodo } from "@/lib/periodo";
@@ -19,16 +19,6 @@ export const metadata: Metadata = { title: "🕐 Historial" };
    completo, para cuando hay que reconstruir cómo se llegó a algo.
    Es la bitácora de Qhaway, por eso se entra desde su perfil. */
 
-const ROTULO_EV: Record<string, string> = {
-  creado: "altas", estado: "cambios de estado", editado: "ediciones",
-  dato: "datos y verificaciones", miembro: "cargos", bot: "del bot",
-};
-const ROTULO_ENT: Record<string, string> = {
-  publicacion: "casos", proyecto: "proyectos", empresa: "empresas",
-  persona: "personas", postulacion: "postulaciones", convocatoria: "convocatorias",
-  equipamiento: "equipos", lugar: "lugares", etiqueta: "etiquetas",
-  empresa_miembro: "cargos de empresa", cronograma_actividades: "cronograma",
-};
 const TOPE = 500;
 
 const cortoActor = (n?: string | null) => {
