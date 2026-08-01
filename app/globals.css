@@ -2493,3 +2493,13 @@ img.av{border:1px solid var(--border2)}
 button.fila-cubre{background:none;border:none;cursor:pointer;padding:0}
 button.repo-tit,button.dest-obj{background:none;border:none;cursor:pointer;padding:0;font:inherit}
 button.repo-tit{text-align:left}
+
+/* ── Entrega de equipos en lote (salida a rodaje) ── */
+.ent-lote-inp{background:var(--card);border:1px solid var(--border);border-radius:8px;
+  padding:7px 10px;font-size:12.5px;outline:none;color:var(--text);font-family:inherit}
+.ent-lote-inp:focus{border-color:var(--border2)}
+.ent-lote-fila{display:flex;align-items:center;gap:8px;padding:5px 10px;cursor:pointer;
+  border-bottom:1px solid rgba(255,255,255,.04)}
+.ent-lote-fila:last-child{border-bottom:none}
+.ent-lote-fila:hover{background:rgba(167,139,250,.09)}
+.ent-lote-fila input[type=checkbox]{accent-color:var(--accent);cursor:pointer;flex:none}

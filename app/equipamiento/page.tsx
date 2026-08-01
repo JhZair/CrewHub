@@ -2,6 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import BotonComprobar from "@/components/BotonComprobar";
 import BotonDevolver from "@/components/BotonDevolver";
+import EntregaLote from "@/components/EntregaLote";
+import DevolverLote from "@/components/DevolverLote";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import { buscadorDe, pal } from "@/lib/buscar";
 import { completitud } from "@/lib/entidades";
@@ -40,7 +42,7 @@ export default async function Equipamiento({ searchParams }: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: eqs }, { data: enManos }, { data: vincs }, { data: coms }, { data: media }, comsBita, comsUso, usosRec, { data: comBita }, { data: prestAll }] = await Promise.all([
+  const [{ data: eqs }, { data: enManos }, { data: vincs }, { data: coms }, { data: media }, comsBita, comsUso, usosRec, { data: comBita }, { data: prestAll }, personasRaw, proyectosRaw] = await Promise.all([
     // `*`: para calcular la completitud de la ficha de cada equipo.
     supabase.from("equipamiento").select("*").order("folio"),
     supabase.from("equipo_prestamos")
@@ -73,7 +75,14 @@ export default async function Equipamiento({ searchParams }: {
     supabase.from("comentarios").select("equipamiento_id,prestamo_id")
       .or("equipamiento_id.not.is.null,prestamo_id.not.is.null"),
     supabase.from("equipo_prestamos").select("id,equipamiento_id"),
+    /* Catálogos para la entrega en lote: a quién y para qué proyecto. Personas
+       —no perfiles—: quien se lleva una cámara puede no tener cuenta. */
+    supabase.from("personas").select("id,nombre,alias,tipo").order("nombre"),
+    supabase.from("proyectos").select("id,nombre").order("nombre"),
   ]);
+  const personasCat = ((personasRaw as any)?.data || []).map((x: any) =>
+    ({ ...x, nombre: x.alias ? `${x.nombre} · ${x.alias}` : x.nombre }));
+  const proyectosCat = (proyectosRaw as any)?.data || [];
   const un1 = (v: any) => (Array.isArray(v) ? v[0] : v);
   const cartelPorEq = new Map<string, string>();
   (media || []).forEach((m: any) => { if (m.cartel_url) cartelPorEq.set(m.entidad_id, m.cartel_url); });
@@ -316,20 +325,44 @@ export default async function Equipamiento({ searchParams }: {
             </span>
           </div>
 
+          {/* La salida a rodaje: una persona, un proyecto, N equipos, un botón.
+              Va ANTES del panel de «en uso» porque el orden de la página sigue
+              el orden del día: primero se entrega, después se mira quién tiene
+              qué. */}
+          <EntregaLote equipos={(eqs || []) as any} personas={personasCat} proyectos={proyectosCat} />
+
           {(enManos || []).length > 0 && (
             <div className="card">
               <div className="panel-h" style={{ color: "var(--yellow)" }}>🤝 En uso ahora — quién tiene qué</div>
-              {(enManos || []).map((p: any) => (
+              {/* Agrupado por PERSONA y no plano: la pregunta que se hace de
+                  verdad no es «dónde está la A-090», es «qué se llevó Michel» —
+                  y a la vuelta, qué tiene que devolver. Doce filas sueltas
+                  obligan a leerlas todas para reconstruir eso a ojo. */}
+              {[...(enManos || []).reduce((m: Map<string, any>, p: any) => {
+                const per = un1(p.persona);
+                const k = per?.id || "_";
+                const g = m.get(k) || { per, items: [] as any[] };
+                g.items.push(p); m.set(k, g); return m;
+              }, new Map()).values()].map((g: any) => (
+                <div key={g.per?.id || "_"} style={{ marginBottom: 10 }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "6px 0" }}>
+                    <Link href={`/entidad/persona/${g.per?.id}`} style={{ color: "var(--blue)", fontWeight: 700, fontSize: TXT.base, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      {avatarPersona(g.per?.foto_url, 28)} {g.per?.alias || g.per?.nombre || "sin registrar"}
+                    </Link>
+                    <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>{g.items.length} equipo(s)</span>
+                    <span style={{ flex: 1 }} />
+                    <DevolverLote quien={g.per?.alias || g.per?.nombre || "esta persona"}
+                      prestamoIds={g.items.map((x: any) => x.id)} />
+                  </div>
+              {g.items.map((p: any) => (
                 <div className="info-row" key={p.id}>
                   {miniEquipo(cartelPorEq.get(un1(p.equipo)?.id), 42)}
                   {p.equipo?.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c", fontSize: TXT.chip }}>{p.equipo.folio}</span>}
                   <Link href={`/entidad/equipamiento/${p.equipo?.id}`} style={{ fontWeight: 600, fontSize: TXT.base }}>
                     {p.equipo?.nombre} →
                   </Link>
-                  <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>en manos de</span>
-                  <Link href={`/entidad/persona/${p.persona?.id}`} style={{ color: "var(--blue)", fontWeight: 600, fontSize: TXT.micro, display: "inline-flex", alignItems: "center", gap: 5 }}>
-                    {avatarPersona(un1(p.persona)?.foto_url, 28)} {p.persona?.alias || p.persona?.nombre}
-                  </Link>
+                  {/* El nombre de quien lo tiene ya está en la cabecera del
+                      grupo: repetirlo en cada fila era la mitad del ruido. */}
                   {p.proy && (
                     <Link href={`/entidad/proyecto/${p.proy.id}`} className="badge"
                       style={{ color: "var(--violet)", background: "rgba(167,139,250,.12)", fontSize: TXT.chip }}>📁 {p.proy.nombre}</Link>
@@ -339,6 +372,8 @@ export default async function Equipamiento({ searchParams }: {
                     desde {new Date(p.desde + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short" })}
                   </span>
                   <BotonDevolver prestamoId={p.id} equipoId={p.equipo?.id} />
+                </div>
+              ))}
                 </div>
               ))}
             </div>

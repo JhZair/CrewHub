@@ -4109,6 +4109,96 @@ export async function prestarEquipo(equipoId: string, personaId: string, proyect
   return {};
 }
 
+/* ===== ENTREGA EN LOTE — la salida a rodaje =====
+ * Un rodaje no presta un equipo: presta doce. Hacerlo de a uno son doce fichas
+ * abiertas y doce formularios, y lo que pasa de verdad es que nadie lo registra
+ * y el inventario miente mientras la camioneta ya salió.
+ *
+ * No es un bucle de `prestarEquipo`: son tres consultas para todo el lote, no
+ * tres por equipo. Y NO presta a ciegas —lo que está en reparación, perdido o
+ * de baja se queda fuera y VUELVE nombrado en `omitidos`, para que quien
+ * entrega vea qué no salió en vez de creer que salió todo—.
+ */
+export async function prestarEquipos(
+  equipoIds: string[], personaId: string, proyectoId: string | null, nota: string
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  const ids = [...new Set((equipoIds || []).filter(Boolean))];
+  if (!ids.length) return { error: "No hay equipos seleccionados." };
+  if (!personaId) return { error: "Falta a quién se le entrega." };
+
+  /* Se relee el estado en el servidor: la lista que vio el navegador puede
+     tener minutos y el equipo pudo pasar a reparación mientras tanto. */
+  const { data: eqs, error: e0 } = await supabase.from("equipamiento")
+    .select("id,folio,nombre,estado").in("id", ids);
+  if (e0) return { error: e0.message };
+
+  const VETADOS: Record<string, string> = {
+    en_reparacion: "en reparación", perdido: "perdido", de_baja: "de baja",
+  };
+  const omitidos = (eqs || []).filter((e: any) => VETADOS[e.estado])
+    .map((e: any) => `${e.folio || ""} ${e.nombre} (${VETADOS[e.estado]})`.trim());
+  const buenos = (eqs || []).filter((e: any) => !VETADOS[e.estado]).map((e: any) => e.id);
+  if (!buenos.length) return { error: `Ninguno se puede entregar: ${omitidos.join(", ")}` };
+
+  const hoy = new Date().toISOString().slice(0, 10);
+  // Lo que alguien más tuviera abierto se cierra hoy, igual que en el préstamo
+  // de a uno — pero para todo el lote de una vez.
+  await supabase.from("equipo_prestamos").update({ hasta: hoy })
+    .in("equipamiento_id", buenos).is("hasta", null);
+
+  const { error } = await supabase.from("equipo_prestamos").insert(
+    buenos.map(id => ({
+      equipamiento_id: id, persona_id: personaId,
+      proyecto_id: proyectoId || null, nota: (nota || "").trim() || null,
+    })));
+  if (error) return { error: error.message };
+
+  const { error: e2 } = await supabase.from("equipamiento")
+    .update({ estado: "en_uso" }).in("id", buenos);
+  if (e2) return { error: `Se registraron ${buenos.length}, pero el estado no se actualizó: ${e2.message}` };
+
+  buenos.forEach(id => revalidatePath(`/entidad/equipamiento/${id}`));
+  revalidatePath("/equipamiento");
+  return { entregados: buenos.length, omitidos };
+}
+
+/* Devolver de golpe todo lo que tiene una persona. El reverso exacto de la
+ * entrega: si entregar de a uno no se hace, devolver de a uno tampoco, y el
+ * inventario se queda diciendo «en uso» semanas después del rodaje. */
+export async function devolverEquipos(prestamoIds: string[]) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  const ids = [...new Set((prestamoIds || []).filter(Boolean))];
+  if (!ids.length) return { error: "No hay préstamos que cerrar." };
+
+  /* Los ids de equipo salen de los propios préstamos, no del navegador: así no
+     hay forma de cerrar un préstamo y liberar otro equipo. */
+  const { data: pres, error: e0 } = await supabase.from("equipo_prestamos")
+    .select("id,equipamiento_id").in("id", ids).is("hasta", null);
+  if (e0) return { error: e0.message };
+  if (!pres?.length) return { error: "Esos préstamos ya estaban cerrados." };
+
+  const hoy = new Date().toISOString().slice(0, 10);
+  const { error } = await supabase.from("equipo_prestamos")
+    .update({ hasta: hoy }).in("id", pres.map((p: any) => p.id));
+  if (error) return { error: error.message };
+
+  const eqIds = pres.map((p: any) => p.equipamiento_id).filter(Boolean);
+  const { error: e2 } = await supabase.from("equipamiento")
+    .update({ estado: "disponible" }).in("id", eqIds);
+  if (e2) return { error: `Se cerraron ${pres.length}, pero el estado no se actualizó: ${e2.message}` };
+
+  eqIds.forEach((id: string) => revalidatePath(`/entidad/equipamiento/${id}`));
+  revalidatePath("/equipamiento");
+  return { devueltos: pres.length };
+}
+
 export async function devolverEquipo(prestamoId: string, equipoId: string) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
