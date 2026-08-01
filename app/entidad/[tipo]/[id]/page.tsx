@@ -78,7 +78,7 @@ import Completitud from "@/components/Completitud";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
-import { ICO_ENT, nombreDe, grafiasDe } from "@/lib/secciones";
+import { ICO_ENT, nombreDe, grafiasDe, TABLA_DE, tipoCanonico } from "@/lib/secciones";
 
 /* PERFIL DE ENTIDAD VIVA — dos columnas:
    izquierda = el carné (datos estáticos, relaciones, credenciales)
@@ -289,14 +289,80 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   const { data: aliasPers } = await supabase.from("personas").select("usuario_id,alias")
     .not("alias", "is", null).not("usuario_id", "is", null);
   const alias = mapaAlias(aliasPers);
+  /* ── QUÉ PASÓ EN ESTE PROYECTO, no solo en su ficha ──
+     Hasta aquí el historial contaba únicamente los eventos dirigidos al
+     proyecto mismo. Pero abrir un caso de «A-roll», resolverlo, mover una
+     actividad del cronograma o presentar una postulación SON cosas que pasaron
+     en el proyecto; vivían cada una en su propia ficha y desde el proyecto no
+     se veían. Es un cambio de criterio, no un arreglo: el historial deja de
+     responder «qué le pasó a esta ficha» y responde «qué pasó aquí».
+
+     Se pregunta por `entidad_id` sin filtrar el tipo: los uuid no se repiten
+     entre tablas, así que un solo pedido trae los eventos de casos, actividades
+     y postulaciones a la vez. En trozos, porque un proyecto con 200 casos haría
+     una URL que el servidor corta.
+
+     Los EQUIPOS no entran por esta vía a propósito: los eventos de una cámara
+     son de la cámara, no de este proyecto —la misma cámara rueda en cinco—. Su
+     salida a este rodaje se anota como evento del proyecto al entregarla. */
+  let eventosHijos: any[] = [];
+  let totalHijos = 0;
+  if (params.tipo === "proyecto") {
+    const [ca, po] = await Promise.all([
+      supabase.from("cronograma_actividades").select("id").eq("proyecto_id", params.id).limit(500),
+      supabase.from("postulaciones").select("id").eq("proyecto_id", params.id).limit(200),
+    ]);
+    const ids = [...new Set([
+      ...(vincs || []).map((v: any) => v.publicacion_id),
+      ...(ca.data || []).map((x: any) => x.id),
+      ...(po.data || []).map((x: any) => x.id),
+    ].filter(Boolean))] as string[];
+
+    const TROZO = 80;
+    const trozos: string[][] = [];
+    for (let i = 0; i < ids.length; i += TROZO) trozos.push(ids.slice(i, i + TROZO));
+    const res = await Promise.all(trozos.map(t =>
+      supabase.from("actividad")
+        .select("tipo,detalle,creado_en,actor_id,entidad_tipo,entidad_id,actor:perfiles(nombre)", { count: "exact" })
+        .in("entidad_id", t).order("creado_en", { ascending: false }).limit(120)));
+    eventosHijos = res.flatMap(r => r.data || []);
+    totalHijos = res.reduce((n, r) => n + (r.count ?? 0), 0);
+
+    /* El nombre de DÓNDE pasó cada cosa. Sin esto una línea dice «cambió el
+       estado de abierta a resuelta» y no dice de qué: el historial se vuelve
+       una lista de sucesos sin sujeto. Una consulta por tabla, no por evento. */
+    const porTabla = new Map<string, Set<string>>();
+    eventosHijos.forEach((e: any) => {
+      const t = tipoCanonico(e.entidad_tipo || "");
+      if (!TABLA_DE[t]) return;
+      if (!porTabla.has(t)) porTabla.set(t, new Set());
+      porTabla.get(t)!.add(e.entidad_id);
+    });
+    const nomEnt = new Map<string, string>();
+    await Promise.all([...porTabla.entries()].map(async ([t, idsT]) => {
+      const [tabla, campo] = TABLA_DE[t];
+      const { data } = await supabase.from(tabla).select(`id,${campo}`).in("id", [...idsT]);
+      (data || []).forEach((r: any) => nomEnt.set(`${t}:${r.id}`, r[campo] || "—"));
+    }));
+    eventosHijos = eventosHijos.map((e: any) => ({
+      ...e, entidadNombre: nomEnt.get(`${tipoCanonico(e.entidad_tipo || "")}:${e.entidad_id}`),
+    }));
+  }
+
+  /* Se funden y se reordenan como una sola línea de tiempo: el orden lo da la
+     hora, no de qué tabla vino cada cosa. */
+  const eventosTodos = [...(eventos || []), ...eventosHijos]
+    .sort((a: any, b: any) => (a.creado_en < b.creado_en ? 1 : a.creado_en > b.creado_en ? -1 : 0))
+    .slice(0, 120);
+
   // Traduce los UUID sueltos (responsable, etc.) a nombres antes de mostrar.
-  const nomEv = await nombresDeEventos(supabase, eventos || []);
-  const eventosVis = conAlias(conNombresEventos((eventos || []).filter((e: any) =>
+  const nomEv = await nombresDeEventos(supabase, eventosTodos);
+  const eventosVis = conAlias(conNombresEventos(eventosTodos.filter((e: any) =>
     !(e.tipo === "estado" && ["estado_sunat", "condicion_sunat"].includes(e.detalle?.campo))), nomEv) as any[], alias);
   /* Cuántos hay DE VERDAD, no cuántos cupieron. El rótulo mostraba las filas
      traídas, así que una ficha con 214 eventos anunciaba exactamente el tope de
      la consulta —un número redondo que parecía un total y era un techo—. */
-  const totEventos = nEventos ?? eventosVis.length;
+  const totEventos = (nEventos ?? 0) + totalHijos || eventosVis.length;
   const recorte = totEventos > eventosVis.length ? ` de ${totEventos}` : "";
 
   /* LO QUE ESTA PERSONA HIZO EN TODO EL SISTEMA — no solo sobre su ficha.
@@ -2432,10 +2498,17 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                tipos) como suelto en su propia pestaña (persona). */
             const histInner = (
               <div className="tl" style={{ marginTop: 12 }}>
+                {/* `conEntidad` va por LÍNEA y no por pantalla: los eventos de
+                    la propia ficha se leen «registró esta entidad» y los que
+                    vienen de un caso o una actividad necesitan decir de cuál.
+                    Una sola bandera para toda la lista obligaba a elegir cuál
+                    de las dos mitades se leía mal. */}
                 {agruparEventos(eventosVis as any[]).map((f, i) =>
                   f.grupo
-                    ? <EventoGrupo key={i} items={f.grupo} horaDe={(x: any) => fecha(x.creado_en)} />
-                    : <EventoHistorial key={i} e={f.solo} hora={fecha(f.solo.creado_en)} />
+                    ? <EventoGrupo key={i} items={f.grupo} horaDe={(x: any) => fecha(x.creado_en)}
+                        conEntidad={!!(f.grupo[0] as any)?.entidadNombre} />
+                    : <EventoHistorial key={i} e={f.solo} hora={fecha(f.solo.creado_en)}
+                        conEntidad={!!(f.solo as any).entidadNombre} />
                 )}
               </div>
             );

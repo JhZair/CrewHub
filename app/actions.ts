@@ -4161,6 +4161,17 @@ export async function prestarEquipos(
     .update({ estado: "en_uso" }).in("id", buenos);
   if (e2) return { error: `Se registraron ${buenos.length}, pero el estado no se actualizó: ${e2.message}` };
 
+  /* La salida de equipos ES un suceso del proyecto, y por eso se anota contra
+     el proyecto y no contra cada cámara: los eventos de una cámara son de la
+     cámara —rueda en cinco proyectos— y arrastrarlos al historial del proyecto
+     lo llenaría de cosas ajenas. Una línea por entrega, no doce. */
+  if (proyectoId) {
+    const quien = (await supabase.from("personas").select("nombre,alias").eq("id", personaId).single()).data;
+    await supabase.from("actividad").insert({
+      entidad_tipo: "proyecto", entidad_id: proyectoId, actor_id: user.id, tipo: "edicion",
+      detalle: { mensaje: `entregó ${buenos.length} equipo(s) a ${quien?.alias || quien?.nombre || "alguien"}` },
+    });
+  }
   buenos.forEach(id => revalidatePath(`/entidad/equipamiento/${id}`));
   revalidatePath("/equipamiento");
   return { entregados: buenos.length, omitidos };

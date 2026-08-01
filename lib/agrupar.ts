@@ -25,6 +25,9 @@ type Ev = {
   tipo: string;
   creado_en: string;
   actor_id?: string | null;
+  /* De qué entidad es el evento. Sin él (la ficha propia no lo trae) todos
+     valen `undefined` y se comparan iguales, que es el comportamiento de antes. */
+  entidad_id?: string | null;
   /* La línea de tiempo del caso mezcla comentarios: los trae con el comentario
      colgado, y ésos jamás se agrupan. */
   comentario?: any;
@@ -47,6 +50,13 @@ export function agruparEventos<T extends Ev>(eventos: T[] | null | undefined, mi
   const sigue = (a: T, b: T) =>
     a.tipo === b.tipo
     && (a.actor_id ?? null) === (b.actor_id ?? null)
+    /* Y la MISMA entidad. El rótulo del grupo es el texto del primero, así que
+       juntar eventos de cosas distintas produce «cambió el caso X · +20 más»
+       donde veinte de esos veintiuno no son X. Se leía como una ráfaga sobre X
+       y era una ráfaga sobre otras veinte cosas —el resumen mentía y había que
+       desplegarlo para descubrirlo—. Los eventos sin `entidad_id` (los de la
+       propia ficha, que no lo traen) siguen agrupándose entre ellos. */
+    && (a.entidad_id ?? null) === (b.entidad_id ?? null)
     && Math.abs(new Date(a.creado_en).getTime() - new Date(b.creado_en).getTime()) <= VENTANA_MIN * 60000;
 
   for (const e of eventos || []) {
