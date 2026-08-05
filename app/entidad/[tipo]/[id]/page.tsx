@@ -3020,18 +3020,18 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               return (
                 <TabsPanel extra={driveTab} masUltima
                   labels={[
+                    `📝 Muro · ${muroPosts.length}`,
                     conPlantilla || esGanadora ? "🗂 Expediente" : "📎 Materiales",
                     `👥 Equipo · ${equipoProy.length + equipoPost.length}`,
                     `📋 Casos · ${activas.length}`,
-                    `📝 Muro · ${muroPosts.length}`,
                     `📚 Repositorio${objetosDe.length ? ` · ${objetosDe.length}` : ""}`,
                     `🕐 Historial · ${totEventos}`,
                   ]}
                   paneles={[
+                    muroNode,
                     expedienteNode,
                     equipoNode,
                     trabajoNode,
-                    muroNode,
                     repoNode,
                     historialNode,
                   ]}
