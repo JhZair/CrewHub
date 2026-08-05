@@ -150,7 +150,7 @@ export default async function Qhaway({ searchParams }: { searchParams: { bit?: s
     supabase.from("postulaciones")
       .select("id,codigo,estado,proy:proyectos(nombre)")
       .is("empresa_id", null)
-      .in("estado", ["en_preparacion", "enviada", "finalista", "ganadora"]).limit(30),
+      .in("estado", ["en_preparacion", "enviada", "en_subsanacion", "finalista", "ganadora"]).limit(30),
     supabase.from("postulaciones")
       .select("id,codigo,monto_adjudicado,codigo_acta,fecha_limite_rendicion,proy:proyectos(nombre)")
       .eq("estado", "ganadora")
@@ -220,7 +220,7 @@ export default async function Qhaway({ searchParams }: { searchParams: { bit?: s
       emp:empresas(id,nombre,renca,estado_sunat,condicion_sunat,fecha_verificacion_sunat,vigencia_poder_fecha),
       conv:convocatorias(id,codigo,nombre,anio,plantilla_formulario),
       equipo:postulacion_equipo(persona:personas(id,nombre,alias,dni_vencimiento))`)
-    .in("estado", ["en_preparacion", "enviada"]);
+    .in("estado", ["en_preparacion", "enviada", "en_subsanacion"]);
 
   const semaforo = (enPrep || []).map((p: any) => {
     const criticos: string[] = [];

@@ -23,7 +23,7 @@ import { urlPlataforma, conPlataforma, PLAT } from "@/lib/plataformas";
 import {
   rendicionVencida, plazoRendicion, compromisoDe, empresaLibre,
   trabasEmpresa, trabasMiembro, dudasMiembro, SIN_COMPROMISO,
-  reservaEmpresa, reservaMiembro, reservaCompleta,
+  reservaEmpresa, reservaMiembro, reservaCompleta, EN_JUEGO,
 } from "@/lib/fondos";
 import HojaPostulacion from "@/components/HojaPostulacion";
 import { sinBot, mapaAlias, conAlias, esDirectorObra } from "@/lib/personas";
@@ -2363,7 +2363,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               {/* La línea de tiempo del concurso va en la columna pequeña: es
                   una referencia (fechas del Ministerio), no el trabajo — la
                   columna ancha queda para el cronograma y el presupuesto. */}
-              {hitosConc.length > 0 && ["en_preparacion", "enviada", "finalista"].includes(ent.estado) && (
+              {hitosConc.length > 0 && EN_JUEGO.includes(ent.estado) && (
                 <div className="card" style={{ marginTop: 14 }}>
                   <div className="panel-h">📅 Línea de tiempo del concurso — la carrera de esta postulación</div>
                   <LineaTiempo eventos={hitosConc.map((h: any) => ({
@@ -3524,7 +3524,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               const rankPostEmp = (e?: string) =>
                 e === "ganadora" ? 0
                 : (e === "finalista" || e === "finalista_no_ganadora") ? 1
-                : ["en_preparacion", "enviada", "apta"].includes(e || "") ? 2 : 3;
+                : ["en_preparacion", "enviada", "en_subsanacion", "apta"].includes(e || "") ? 2 : 3;
               const postusEmpOrd = [...postusEmp].sort((a: any, b: any) => {
                 const y = (Number(b.conv?.anio) || 0) - (Number(a.conv?.anio) || 0);
                 if (y) return y;

@@ -66,7 +66,7 @@ export default async function Pantalla() {
 
   // ===== MARCADOR 🎯: la temporada de un vistazo =====
   const posts = postQ.data || [];
-  const enJuego = posts.filter((p: any) => ["en_preparacion", "enviada", "finalista"].includes(p.estado));
+  const enJuego = posts.filter((p: any) => ["en_preparacion", "enviada", "en_subsanacion", "finalista"].includes(p.estado));
   const ganadas = posts.filter((p: any) => p.estado === "ganadora");
   const montoJuego = enJuego.reduce((s: number, p: any) =>
     s + (parseFloat(p.conv?.monto_adjudicado) || 0), 0);

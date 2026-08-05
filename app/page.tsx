@@ -252,7 +252,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
         .in("tipo", ["personal", "colaborador"]).not("fecha_nacimiento", "is", null),
       supabase.from("postulaciones")
         .select("estado, proy:proyectos(nombre), conv:convocatorias(anio)")
-        .in("estado", ["en_preparacion", "enviada", "finalista", "ganadora"]),
+        .in("estado", ["en_preparacion", "enviada", "en_subsanacion", "finalista", "ganadora"]),
     ]);
 
   // 🎂 Cumpleaños de hoy (compara mes-día)
