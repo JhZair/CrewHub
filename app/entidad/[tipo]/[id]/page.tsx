@@ -990,6 +990,9 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
        hablando de `responsable` y no haya que ramificarlo por dentro. */
     cronoPost = (cp.data || []).map((a: any) => ({ ...a, responsable: a.responsable_persona || null }));
     perfilesCat = pf2.data || [];
+    /* 🧱 Muro de la postulación — mismo motor que proyecto/empresa/persona: junta
+       las notas de bitácora vinculadas a esta postulación. */
+    { const mm = await cargarMuro(); muroPosts = mm.posts; muroEtqs = mm.etqs; }
     /* Y su «nómina» es el equipo de postulación, con el cargo al lado: en una
        lista de ocho nombres, «Programador/a» es lo que te dice a quién le toca.
        Una persona con dos cargos sale una vez con los dos.
@@ -3005,12 +3008,22 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                 <div className="empty" style={{ padding: "18px 0" }}>Sin eventos registrados aún.</div>
               );
 
+              /* 📝 MURO de la postulación: mismo componente que empresa/proyecto.
+                 Un lugar para las notas del equipo mientras se arma la postulación
+                 —avances, pendientes, acuerdos—, con imágenes, @menciones y
+                 reacciones. Las notas cuelgan de la propia postulación. */
+              const muroNode = (
+                <MuroProyecto proyectoId={params.id} entidadTipo="postulacion" userId={user.id}
+                  perfiles={perfilesCat} sugerencias={muroEtqs} posts={muroPosts} materiales={objetosDe} />
+              );
+
               return (
                 <TabsPanel extra={driveTab} masUltima
                   labels={[
                     conPlantilla || esGanadora ? "🗂 Expediente" : "📎 Materiales",
                     `👥 Equipo · ${equipoProy.length + equipoPost.length}`,
                     `📋 Casos · ${activas.length}`,
+                    `📝 Muro · ${muroPosts.length}`,
                     `📚 Repositorio${objetosDe.length ? ` · ${objetosDe.length}` : ""}`,
                     `🕐 Historial · ${totEventos}`,
                   ]}
@@ -3018,9 +3031,11 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                     expedienteNode,
                     equipoNode,
                     trabajoNode,
+                    muroNode,
                     repoNode,
                     historialNode,
                   ]}
+                  iconoSolo={[4, 5]}
                 />
               );
             }
