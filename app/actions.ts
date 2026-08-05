@@ -2874,7 +2874,7 @@ export async function quitarEquipoProyecto(id: string, proyectoId: string) {
  *
  * Solo hace el UPDATE: el trigger `registrar_evento_estado` (db/schema.sql) ya
  * escribe el cambio en el historial con el actor, como en los casos. */
-const ESTADOS_POST = ["en_preparacion", "enviada", "apta", "no_apta", "finalista", "ganadora", "finalista_no_ganadora"];
+const ESTADOS_POST = ["en_preparacion", "enviada", "en_subsanacion", "apta", "no_apta", "finalista", "ganadora", "finalista_no_ganadora"];
 export async function cambiarEstadoPostulacion(id: string, estado: string) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();

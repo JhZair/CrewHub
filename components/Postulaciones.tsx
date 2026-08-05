@@ -17,6 +17,7 @@ import { useState } from "react";
 const ESTADOS: [string, string, string][] = [
   ["en_preparacion", "🛠 En preparación", "var(--violet)"],
   ["enviada", "📨 Enviada", "var(--blue)"],
+  ["en_subsanacion", "🔧 En subsanación", "var(--yellow)"],
   ["apta", "✅ Apta", "var(--teal)"],
   ["no_apta", "⛔ No apta", "var(--red)"],
   ["finalista", "⭐ Finalista", "var(--yellow)"],
@@ -39,7 +40,7 @@ const SECCIONES_POST: { clave: string; label: string }[] = [
 const seccionDe = (estado: string): string =>
   estado === "ganadora" ? "ganadora"
   : (estado === "finalista" || estado === "finalista_no_ganadora") ? "finalista"
-  : ["en_preparacion", "enviada", "apta"].includes(estado) ? "proceso"
+  : ["en_preparacion", "enviada", "en_subsanacion", "apta"].includes(estado) ? "proceso"
   : "descartada";   // no_apta, no_seleccionada, retirada
 
 const inputCss: React.CSSProperties = {

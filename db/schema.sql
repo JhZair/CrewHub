@@ -346,8 +346,9 @@ create table postulaciones (
   empresa_id       uuid not null references empresas(id),       -- empresa postulante
   representante_id uuid references personas(id),                -- rep. legal que firma
   estado           text default 'en_preparacion',
-    -- en_preparacion | enviada | subsanacion | finalista
-    -- | beneficiaria | no_seleccionada | retirada
+    -- Valores reales (ver ESTADOS_POST en app/actions.ts):
+    -- en_preparacion | enviada | en_subsanacion | apta | no_apta
+    -- | finalista | ganadora | finalista_no_ganadora | no_seleccionada | retirada
   monto_solicitado numeric(12,2),
   avance_pct       int default 0,      -- % de la carpeta lista
   documentos       jsonb default '{}',

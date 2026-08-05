@@ -128,7 +128,8 @@ begin
         or ca.clase <> 'hito_externo'
         or exists (select 1 from postulaciones po
                    where po.convocatoria_id = ca.convocatoria_id
-                     and po.estado in ('en_preparacion','enviada','finalista'))
+                     -- Espejo de EN_JUEGO en lib/fondos.ts (postulación viva).
+                     and po.estado in ('en_preparacion','enviada','en_subsanacion','apta','finalista'))
       )
   loop
     es_hito := (r.clase = 'hito_externo');

@@ -21,6 +21,7 @@ export function resultadoPostulacion(estado?: string | null): Veredicto | null {
 const COLOR_ESTADO_POST: Record<string, string> = {
   en_preparacion: "var(--violet)",
   enviada: "var(--blue)",
+  en_subsanacion: "var(--yellow)",
   apta: "var(--teal)",
   no_apta: "var(--red)",
   finalista: "var(--yellow)",

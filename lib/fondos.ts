@@ -24,7 +24,7 @@ import { vigenciaVencida } from "@/lib/vigencia";
    jurado todavía no la vio. Está más viva que nunca — sin esto, una
    postulación que acaba de pasar el primer filtro desaparecía de «en juego»
    justo cuando empieza lo bueno. */
-export const EN_JUEGO = ["en_preparacion", "enviada", "apta", "finalista"];
+export const EN_JUEGO = ["en_preparacion", "enviada", "en_subsanacion", "apta", "finalista"];
 export const enJuego = (p: { estado?: string | null }) => EN_JUEGO.includes(p.estado || "");
 
 /* Ejecutando: ganó y todavía no entregó la rendición.

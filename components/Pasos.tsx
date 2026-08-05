@@ -15,7 +15,7 @@ import { useState } from "react";
  * verdad llegó. El cambio queda en el historial solo (trigger de la base). */
 
 type Paso = { e: string; label: string; ico: string };
-type Salida = { e: string; label: string; col: string; bg: string; llego: number };
+type Salida = { e: string; label: string; col: string; bg: string; llego: number; pre?: string };
 
 const CFG: Record<string, { pasos: Paso[]; salidas: Salida[]; set: (id: string, e: string) => Promise<any> }> = {
   postulacion: {
@@ -27,6 +27,9 @@ const CFG: Record<string, { pasos: Paso[]; salidas: Salida[]; set: (id: string, 
       { e: "ganadora", label: "Ganadora", ico: "🏆" },
     ],
     salidas: [
+      // En subsanación NO es un final: es un desvío temporal (DAFO observó, hay
+      // que corregir y reenviar). Va con 🔧, no con ✕, y marca hasta «enviada».
+      { e: "en_subsanacion", label: "En subsanación", col: "var(--yellow)", bg: "rgba(244,180,0,.16)", llego: 1, pre: "🔧" },
       { e: "no_apta", label: "No apta", col: "var(--red)", bg: "rgba(255,77,94,.14)", llego: 1 },
       { e: "finalista_no_ganadora", label: "No ganó", col: "var(--yellow)", bg: "rgba(244,180,0,.16)", llego: 3 },
     ],
@@ -103,7 +106,7 @@ export default function Pasos({ tipo, id, estado, subtipo }: {
             <button key={s.e} className={`pp-salida${on ? " on" : ""}`}
               disabled={!!guardando} onClick={() => ir(s.e)} title={`Marcar: ${s.label}`}
               style={on ? { color: s.col, background: s.bg, borderColor: s.col } : undefined}>
-              {guardando === s.e ? "…" : `✕ ${s.label}`}
+              {guardando === s.e ? "…" : `${s.pre || "✕"} ${s.label}`}
             </button>
           );
         })}

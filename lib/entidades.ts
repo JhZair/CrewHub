@@ -421,7 +421,7 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
          rendiciones vencidas, por papeles. Faltaba, y sin él «no seleccionada»
          mezclaba dos cosas: al que descartó un revisor por un papel y al que
          no eligió un jurado por su película. */
-      { key: "estado", label: "Estado", tipo: "select", opciones: ["en_preparacion", "enviada", "apta", "no_apta", "finalista", "ganadora", "finalista_no_ganadora", "no_seleccionada", "retirada"] },
+      { key: "estado", label: "Estado", tipo: "select", opciones: ["en_preparacion", "enviada", "en_subsanacion", "apta", "no_apta", "finalista", "ganadora", "finalista_no_ganadora", "no_seleccionada", "retirada"] },
       { key: "lenguas_originarias", label: "¿Uso de lenguas originarias?", tipo: "select", opciones: ["no", "quechua", "aymara", "mixto"] },
       // — Lo que aparece cuando el jurado publica —
       { key: "puntaje_jurado", label: "Puntaje matriz del jurado", valida: "puntaje", grupo: JURADO_POST },
