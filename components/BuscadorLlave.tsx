@@ -2,7 +2,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import Avatar from "@/components/Avatar";
-import { clavePhone } from "@/lib/llaves";
+import { clavePhone, digitos } from "@/lib/llaves";
 
 /* «Me llegó un código a 964 501 370 — ¿de quién es y qué abre?»
  *
@@ -21,29 +21,45 @@ export default function BuscadorLlave({ personas, llaves }: { personas: Persona[
   const limpio = q.trim();
 
   const res = useMemo(() => {
-    if (limpio.length < 3) return null;
+    if (limpio.length < 2) return null;
     const k = clavePhone(limpio);
     const txt = limpio.toLowerCase();
-    /* Si parece número se compara por los últimos 9 dígitos —así «964 501 370»,
-       «+51964501370» y «964501370» son el mismo—; si no, por texto. */
+    /* Google casi nunca enseña el número entero: dice «•••• •70». Exigir nueve
+       dígitos dejaba fuera el caso REAL —el que obliga a escarbar— y solo
+       servía para el raro en que se ve completo.
+       Con pocos dígitos se busca por TERMINACIÓN, que es lo que Google
+       muestra. Da varios resultados y está bien que los dé: elegir entre tres
+       personas es el trabajo; adivinar entre ciento veinte, no. */
+    const cola = digitos(limpio);
+    const porCola = (v?: string | null) =>
+      cola.length >= 2 && cola.length < 9 && digitos(v).endsWith(cola);
+
     const quien = personas.filter(p =>
       (k && clavePhone(p.telefono) === k)
-      || String(p.email || "").toLowerCase().includes(txt)
-      || `${p.nombre} ${p.alias || ""}`.toLowerCase().includes(txt));
+      || porCola(p.telefono)
+      || (limpio.length >= 3 && String(p.email || "").toLowerCase().includes(txt))
+      || (limpio.length >= 3 && `${p.nombre} ${p.alias || ""}`.toLowerCase().includes(txt)));
     const abre = llaves.filter(l =>
-      (k && l.k === k) || String(l.valor || "").toLowerCase().includes(txt));
-    return { quien, abre };
+      (k && l.k === k) || porCola(l.valor)
+      || (limpio.length >= 3 && String(l.valor || "").toLowerCase().includes(txt)));
+    return { quien, abre, parcial: cola.length >= 2 && cola.length < 9 };
   }, [limpio, personas, llaves]);
 
   return (
     <div className="card">
       <div className="panel-h">🔎 ¿De quién es este número?</div>
       <input className="ent-lote-inp" style={{ width: "100%" }}
-        placeholder="Pega el número tal como lo muestra Google: 964 501 370"
+        placeholder="El número, o solo el final que muestra Google: 70"
         value={q} onChange={e => setQ(e.target.value)} />
 
       {res && (
         <div style={{ marginTop: 10 }}>
+          {res.parcial && (res.quien.length > 0 || res.abre.length > 0) && (
+            <div style={{ color: "var(--dim)", fontSize: 11.5, marginBottom: 5 }}>
+              Buscando por terminación «{digitos(limpio)}» — {res.quien.length} coincidencia(s).
+              Google oculta el resto del número, así que puede haber más de una.
+            </div>
+          )}
           {res.quien.length === 0 && res.abre.length === 0 && (
             <div style={{ color: "var(--yellow)", fontSize: 12.5 }}>
               ⚠ No coincide con nadie de la base ni con ninguna llave registrada.
