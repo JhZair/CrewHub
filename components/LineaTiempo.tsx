@@ -13,9 +13,17 @@ export type EventoLT = {
   href?: string;        // destino del clic
 };
 
-const dias = (f: string) => Math.ceil((new Date(f + "T12:00:00").getTime() - Date.now()) / 86400000);
-// Incluye el día de la semana: saber que un cierre cae viernes cambia el plan.
-const fmt = (f: string) => new Date(f + "T12:00:00").toLocaleDateString("es-PE", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+/* "Hoy" SIEMPRE en la zona de Perú. Este componente se renderiza en el servidor
+   (que corre en UTC) y antes se calculaba el día con toISOString() —en UTC—, así
+   que al anochecer en Perú (UTC-5) ya marcaba el día siguiente: mostraba «jueves
+   6» un miércoles 5. `en-CA` da el formato YYYY-MM-DD. */
+const HOY = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Lima" });
+/* Diferencia en días enteros contra HOY, anclando ambos al mediodía UTC para que
+   ningún cambio de huso corra la fecha. */
+const diasEntre = (hoyS: string, f: string) =>
+  Math.round((Date.parse(f + "T12:00:00Z") - Date.parse(hoyS + "T12:00:00Z")) / 86400000);
+// Incluye el día de la semana (en zona de Perú): un cierre en viernes cambia el plan.
+const fmt = (f: string) => new Date(f + "T12:00:00Z").toLocaleDateString("es-PE", { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "America/Lima" });
 
 /* Una distancia en días se lee mejor en la unidad que le queda cómoda: hasta 13
    días se dicen los días; hasta ~2 meses, en semanas; más allá, en meses. Así
@@ -32,7 +40,7 @@ type Nodo = (EventoLT & { esHoy?: false }) | { esHoy: true; fecha: string };
 export default function LineaTiempo({ eventos }: { eventos: EventoLT[] }) {
   if (!eventos.length) return <div style={{ color: "var(--dim)", fontSize: 13 }}>Sin fechas en el horizonte.</div>;
 
-  const hoyS = new Date().toISOString().slice(0, 10);
+  const hoyS = HOY();
   const orden: Nodo[] = [...eventos].sort((a, b) => (a.fecha < b.fecha ? -1 : 1));
   // HOY entra en su posición cronológica
   const idx = orden.findIndex(e => e.fecha >= hoyS);
@@ -61,7 +69,7 @@ export default function LineaTiempo({ eventos }: { eventos: EventoLT[] }) {
               </div>
             ) : (() => {
               const e = n as EventoLT;
-              const d = dias(e.fecha);
+              const d = diasEntre(hoyS, e.fecha);
               const cuenta = d === 0 ? "HOY" : d > 0 ? `en ${humano(d)}` : `hace ${humano(d)}`;
               // Pasado = historia (gris tenue). Lo que vence en ≤7 días = ámbar,
               // que es lo único aquí que pide atención. El resto, normal.
