@@ -11,6 +11,8 @@ import Avatar from "@/components/Avatar";
 import { OjoPersona } from "@/components/Ojo";
 import Completitud from "@/components/Completitud";
 import { completitud, EQUIPOS_PERSONA, ESPECIALIDADES } from "@/lib/entidades";
+import TablaVistas from "@/components/TablaVistas";
+import { COLS_PERSONA } from "@/lib/tabla";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
@@ -31,7 +33,7 @@ const dias = (f: string) => Math.ceil((new Date(f + "T12:00:00").getTime() - Dat
 const fmt = (f: string) => new Date(f + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" });
 
 export default async function Personas({ searchParams }: {
-  searchParams: { q?: string; e?: string; t?: string; eq?: string; a?: string; r?: string; g?: string };
+  searchParams: { q?: string; e?: string; t?: string; eq?: string; a?: string; r?: string; g?: string; v?: string };
 }) {
   const q = (searchParams?.q || "").trim();
   const e = searchParams?.e || "";
@@ -40,6 +42,7 @@ export default async function Personas({ searchParams }: {
   const a = searchParams?.a || "";
   const r = searchParams?.r || "";
   const g = searchParams?.g || "";
+  const vistaTabla = searchParams?.v === "tabla";
   const listar = !!(q || e || t || eq || a || r || g);
 
   const supabase = createClient();
@@ -47,7 +50,7 @@ export default async function Personas({ searchParams }: {
   if (!user) redirect("/login");
 
   const [{ data: pers }, { data: vincs }, { data: coms }, { data: equipoPost },
-         { data: equipoProy }, { data: actoresProy }] = await Promise.all([
+         { data: vistasT }, { data: equipoProy }, { data: actoresProy }] = await Promise.all([
     // `*`: el listado necesita todos los campos para calcular la completitud
     // de cada ficha (la barrita). La tabla es chica, no pesa.
     supabase.from("personas").select("*").order("nombre"),
@@ -67,6 +70,11 @@ export default async function Personas({ searchParams }: {
     supabase.from("postulacion_equipo")
       .select("persona_id,post:postulaciones(id,estado,proy:proyectos(nombre,nombre_corto),conv:convocatorias(anio))")
       .limit(20000),
+    /* Las vistas de tabla guardadas. Van en el mismo Promise.all aunque solo
+       las use una de las dos pestañas: son pocas filas y pedirlas aparte
+       añadiría un viaje al servidor al cambiar de pestaña. */
+    supabase.from("vistas_guardadas").select("id,nombre,icono,usuario_id,config")
+      .eq("entidad", "persona").order("orden").order("nombre"),
     /* Qué películas hace cada quien. Este listado sabía el DNI, el RUC, el
        estado SUNAT y el tope de 4ta de cada persona — y no sabía que Yajaida
        dirige un documental. Sabía todo de su papelería y nada de su trabajo. */
@@ -374,6 +382,21 @@ export default async function Personas({ searchParams }: {
       </div>
       <h1 className="title-lg">👤 Personas</h1>
 
+      {/* Dos maneras de mirar lo mismo, no una en lugar de la otra: la ficha
+          enseña cara, palmarés y completitud —cosas calculadas—; la tabla sirve
+          para comparar muchas filas por pocos campos, que es lo que hasta hoy
+          obligaba a exportar a mano. */}
+      <div className="tv-pestanas">
+        <Link href="/personas" className={`vtab${vistaTabla ? "" : " on"}`}>🗂 Fichas</Link>
+        <Link href="/personas?v=tabla" className={`vtab${vistaTabla ? " on" : ""}`}>📊 Tabla</Link>
+      </div>
+
+      {vistaTabla ? (
+        <TablaVistas entidad="persona" columnas={COLS_PERSONA} filas={todas}
+          vistas={(vistasT as any[]) || []} miId={user.id}
+          hrefDe={(f: any) => `/entidad/persona/${f.id}`} />
+      ) : (
+      <>
       <form className="card" style={{ display: "flex", gap: 10, padding: 12 }}>
         {e && <input type="hidden" name="e" value={e} />}
         {t && <input type="hidden" name="t" value={t} />}
@@ -571,6 +594,8 @@ export default async function Personas({ searchParams }: {
           {!filtradas.length && <div className="empty">Sin resultados{q && ` para «${q}»`}.</div>}
           {filtradas.length === 150 && <div className="empty">Mostrando 150 — afina la búsqueda para ver más.</div>}
         </>
+      )}
+      </>
       )}
     </div>
   );

@@ -4136,6 +4136,41 @@ export async function prestarEquipo(equipoId: string, personaId: string, proyect
   return {};
 }
 
+/* ===== VISTAS DE TABLA GUARDADAS =====
+ * Se reaprovecha `vistas_guardadas`, que existía desde el primer esquema sin
+ * usarse. `usuario_id` null = compartida con el equipo; con id = privada de
+ * quien la creó, que es lo que esa columna ya significaba.
+ * Requiere haber corrido db/vistas-tabla.sql.
+ */
+export async function guardarVista(
+  entidad: string, nombre: string, config: any, compartida: boolean, id?: string | null
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const n = (nombre || "").trim();
+  if (!n) return { error: "Ponle un nombre a la vista." };
+
+  const fila = { nombre: n, entidad, config, usuario_id: compartida ? null : user.id };
+  const q = id
+    ? supabase.from("vistas_guardadas").update(fila).eq("id", id)
+    : supabase.from("vistas_guardadas").insert(fila);
+  const { error } = await q;
+  if (error) return { error: error.message };
+  revalidatePath("/personas");
+  return {};
+}
+
+export async function borrarVista(id: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { error } = await supabase.from("vistas_guardadas").delete().eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath("/personas");
+  return {};
+}
+
 /* ===== VISTA RÁPIDA DE PERSONA Y EMPRESA =====
  * Read-only: el pop-up orienta, no es un sitio de trabajo. Formato final lo
  * arma el cliente; aquí solo se leen datos crudos.
