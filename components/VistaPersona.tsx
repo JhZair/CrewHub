@@ -105,8 +105,11 @@ export default function VistaPersona({ personaId, children }: {
                 {pal.total > 0 && (
                   <Bloque titulo="🏆 Palmarés">
                     <div className="vp-lineas">
+                      {/* El mismo ámbar que marca las filas encabezadas: así
+                          «2 ganadas dirigiendo» se comprueba buscando dos 🏆
+                          con filo, sin memorizar qué significa cada glifo. */}
                       {lineas.map((l, i) => (
-                        <span key={i} className="vp-linea" title={l.titulo}>
+                        <span key={i} className={`vp-linea${l.lider ? " lider" : ""}`} title={l.titulo}>
                           {l.ico} <b>{l.n}</b> {l.txt}
                         </span>
                       ))}
@@ -186,7 +189,7 @@ export default function VistaPersona({ personaId, children }: {
                                   desglose: un 🏆 en la lista es una ganada
                                   dirigiendo, y hay tantos como dice arriba. */}
                               <td className="vp-td-i" title={tituloMerito(x.estado, x.cargo)}>
-                                {icoMerito(x.estado, x.cargo) || ICO_EST[x.estado] || "•"}
+                                {icoMerito(x.estado) || ICO_EST[x.estado] || "•"}
                               </td>
                               <td>
                                 <a href={`/entidad/postulacion/${x.id}`} target="_blank" rel="noopener noreferrer">

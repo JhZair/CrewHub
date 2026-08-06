@@ -2582,7 +2582,10 @@ button.repo-tit{text-align:left}
 .vp-tabla tr:last-child td{border-bottom:none}
 .vp-tabla a{color:var(--text);text-decoration:none}
 .vp-tabla a:hover{color:var(--accent)}
-.vp-td-a{color:var(--dim);width:38px;white-space:nowrap}
+/* El filo de liderazgo se dibujaba encima del año. La sangría va en TODAS las
+   filas —no solo en las marcadas— o la columna del año baila 6px según el
+   cargo, que es peor que el solape. */
+.vp-td-a{color:var(--dim);width:46px;white-space:nowrap;padding-left:8px}
 .vp-td-i{width:20px;text-align:center}
 .vp-td-d{color:var(--dim);font-size:11.5px;max-width:38%;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap;text-align:right}
@@ -2593,5 +2596,8 @@ button.repo-tit{text-align:left}
 /* La fila de una postulación que se encabezó: un filo a la izquierda. El
    ícono ya lo dice, pero en una tabla de diez filas el filo se ve de un
    vistazo y el ícono hay que leerlo uno por uno. */
-.vp-tabla tr.vp-lider td:first-child{box-shadow:inset 2px 0 0 var(--yellow)}
+.vp-tabla tr.vp-lider td:first-child{box-shadow:inset 3px 0 0 var(--yellow)}
 .vp-tabla tr.vp-lider .vp-td-d{color:var(--yellow)}
+/* Las líneas del desglose que hablan de liderazgo llevan el mismo filo: el
+   resumen y la tabla se leen con la misma clave visual. */
+.vp-linea.lider{border-left:3px solid var(--yellow);padding-left:7px;margin-left:-10px}

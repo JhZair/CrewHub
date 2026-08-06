@@ -136,31 +136,33 @@ export const palmaresDePersona = (filas: any[] | null | undefined): Palmares =>
 
 /* Las líneas del desglose, cada una con su razón. Se devuelven como datos y no
    como texto armado para que cada pantalla decida cómo pintarlas. */
-export function lineasPalmares(p: Palmares): { ico: string; n: number; txt: string; titulo: string }[] {
+export function lineasPalmares(p: Palmares): {
+  ico: string; n: number; txt: string; titulo: string; lider?: boolean;
+}[] {
   return [
-    { ico: "🏆", n: p.ganadasLider, txt: "ganadas dirigiendo",
+    { ico: "🏆", n: p.ganadasLider, txt: "ganadas dirigiendo", lider: true,
       titulo: "Ganó encabezando la postulación (dirección o titularidad)" },
-    { ico: "⭐", n: p.finalLider, txt: "al jurado dirigiendo",
+    { ico: "⭐", n: p.finalLider, txt: "al jurado dirigiendo", lider: true,
       titulo: "Llegó al encuentro con jurado encabezando, sin ganar" },
-    { ico: "🥇", n: p.ganadasEquipo, txt: "ganadas en equipo",
+    { ico: "🏆", n: p.ganadasEquipo, txt: "ganadas en equipo",
       titulo: "Ganó como integrante del equipo" },
-    { ico: "🎖", n: p.finalEquipo, txt: "al jurado en equipo",
+    { ico: "⭐", n: p.finalEquipo, txt: "al jurado en equipo",
       titulo: "Llegó al encuentro con jurado como integrante" },
     { ico: "🎯", n: p.total, txt: "postulaciones",
       titulo: "Todas las ediciones en las que se presentó, con o sin resultado" },
   ].filter(l => l.n > 0);
 }
 
-/* El ícono de UNA postulación, según su resultado Y el papel que jugó.
-   Son los MISMOS cuatro del desglose de arriba, y eso es a propósito: el
-   resumen dice «🏆 1 ganadas dirigiendo» y en la lista hay exactamente un 🏆.
-   Con un solo 🏆 para todas las ganadas, el desglose obligaba a fiarse —había
-   que creerle cuál de los cuatro trofeos era el suyo—.
-   Lo que no llegó al jurado conserva su ícono de estado de siempre. */
-export function icoMerito(estado?: string | null, cargo?: string | null): string | null {
-  const lider = esLiderazgo(cargo);
-  if (estado === "ganadora") return lider ? "🏆" : "🥇";
-  if (LLEGO_AL_JURADO.includes(estado || "")) return lider ? "⭐" : "🎖";
+/* El ícono de UNA postulación. Dice el RESULTADO y solo el resultado.
+   Hubo una versión con cuatro (🏆 🥇 ⭐ 🎖) para cruzar resultado y papel en un
+   glifo: a 12px 🥇 y 🎖 no se distinguen de 🏆 y ⭐, y un icono que hay que
+   descifrar no informa, estorba. Son dos dimensiones y piden dos canales: el
+   ícono lleva el resultado, el color el papel (la fila que se encabezó va con
+   filo ámbar y su cargo en ámbar). Así el desglose se sigue pudiendo contar
+   —«2 ganadas dirigiendo» = dos 🏆 con filo— sin memorizar una tabla. */
+export function icoMerito(estado?: string | null): string | null {
+  if (estado === "ganadora") return "🏆";
+  if (LLEGO_AL_JURADO.includes(estado || "")) return "⭐";
   return null;   // el llamador cae a su mapa de estados
 }
 
