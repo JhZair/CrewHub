@@ -85,7 +85,7 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
   const categoria = ent.conv?.categoria || null;
 
   const [cp, pl, pf, plPre, pc, ec, rf, mb, au, vf, eqp] = await Promise.all([
-    supabase.from("cronograma_actividades").select("*, resp:perfiles(nombre)")
+    supabase.from("cronograma_actividades").select("*, resp:perfiles!responsable(nombre)")
       .eq("postulacion_id", params.id)
       .order("etapa").order("orden").order("fecha_inicio").order("creado_en"),
     supabase.from("plantillas_cronograma")

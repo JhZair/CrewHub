@@ -542,7 +542,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         ? supabase.from("personas").select("id,nombre,alias").eq("id", ent.cliente_id).single()
         : Promise.resolve({ data: null }),
       supabase.from("cronograma_actividades")
-        .select("*, resp:perfiles(nombre)")
+        .select("*, resp:perfiles!responsable(nombre)")
         /* La fecha manda; `orden` desempata lo que cae el mismo día —un día
            de rodaje tiene secuencia— y `creado_en` desempata el desempate,
            para que dos con el mismo orden no bailen entre recargas. */
@@ -595,7 +595,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   if (params.tipo === "convocatoria") {
     const [ca, pf, po, pr, em, mm] = await Promise.all([
       supabase.from("cronograma_actividades")
-        .select("*, resp:perfiles(nombre)")
+        .select("*, resp:perfiles!responsable(nombre)")
         .eq("convocatoria_id", params.id).order("fecha_inicio").order("orden").order("creado_en"),
       supabase.from("perfiles").select("id,nombre,avatar_url,color").eq("activo", true).order("nombre"),
       /* Cada postulación con su proyecto, la empresa que la presentó y su
@@ -984,7 +984,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     /* Cronograma PROPIO de la postulación (independiente del plan del
        proyecto) + plantillas por tipo + perfiles, para su pestaña. */
     const [cp, pl2, pf2] = await Promise.all([
-      supabase.from("cronograma_actividades").select("*, resp:perfiles(nombre)")
+      supabase.from("cronograma_actividades").select("*, resp:perfiles!responsable(nombre)")
         .eq("postulacion_id", params.id)
         .order("etapa").order("orden").order("fecha_inicio").order("creado_en"),
       supabase.from("plantillas_cronograma")

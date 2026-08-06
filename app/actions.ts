@@ -3651,7 +3651,7 @@ async function fotoVivaDelFondo(supabase: any, postulacionId: string, tipo: stri
   }
   // cronograma: se captura de las filas vivas (mismo shape que la foto vieja)
   const { data: acts } = await supabase.from("cronograma_actividades")
-    .select("nombre,etapa,fecha_inicio,fecha_fin,descripcion,resp:perfiles(nombre)")
+    .select("nombre,etapa,fecha_inicio,fecha_fin,descripcion,resp:perfiles!responsable(nombre)")
     .eq("postulacion_id", postulacionId).neq("estado", "cancelada").not("fecha_inicio", "is", null)
     .order("etapa").order("orden").order("fecha_inicio").order("creado_en");
   const foto = (acts || []).map((a: any) => ({
