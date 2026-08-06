@@ -2,7 +2,7 @@
 import { liquidarMes, reabrirLiquidacion } from "@/app/actions";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { fechaHum, esFinde, ICO_TIPO } from "@/lib/jornadas";
+import { fechaHum, esFinde, ICO_TIPO, FRACCIONES } from "@/lib/jornadas";
 
 const money = (n: number) => `S/ ${Math.round(n || 0).toLocaleString("es-PE")}`;
 
@@ -82,6 +82,21 @@ export default function LiquidacionAdmin({ anio, mes, filas }: {
              calendario. La bitácora sigue al revés porque ahí lo último es lo
              que interesa; aquí lo que interesa es el mes entero. */
           const vacios = diasMes.filter(d => !porDia.has(d)).length;
+
+          /* Cuántos días de cada tamaño. «21.5 jornadas» no dice si fueron
+             veintiún días completos y uno medio o catorce dobles: son cosas
+             distintas para quien revisa, y el total las esconde por igual.
+             Se ordena por la escalera de lib/jornadas; un valor que no esté en
+             ella (dato viejo, o metido por fuera) se muestra igual al final en
+             vez de desaparecer del recuento. */
+          const porFrac = new Map<number, number>();
+          (f.items || []).forEach(j => porFrac.set(j.fraccion, (porFrac.get(j.fraccion) || 0) + 1));
+          const escalera = FRACCIONES.map(x => x.v);
+          const conteo = [...porFrac.entries()].sort((a, b) => {
+            const ia = escalera.indexOf(a[0]), ib = escalera.indexOf(b[0]);
+            return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a[0] - b[0];
+          });
+          const etq = (v: number) => FRACCIONES.find(x => x.v === v)?.corto || `${v}`;
           return (
             <div className="liq-det">
               {diasMes.length === 0 && (
@@ -116,6 +131,15 @@ export default function LiquidacionAdmin({ anio, mes, filas }: {
                 ));
               })}
               <div className="liq-pie">
+                {conteo.length > 0 && (
+                  <div className="liq-frac">
+                    {conteo.map(([v, n]) => (
+                      <span key={v} title={`${n} registro(s) de ${etq(v)} jornada`}>
+                        <b>{n}</b> × {etq(v)}j
+                      </span>
+                    ))}
+                  </div>
+                )}
                 {f.items?.length || 0} registro(s) · {f.dias} jornadas ·
                 {" "}<b style={{ color: "var(--teal)" }}>{money(f.monto)}</b> aprobado
                 {f.pend > 0 && <> · <b style={{ color: "var(--yellow)" }}>{f.pend} sin aprobar</b> quedan fuera del recibo</>}
