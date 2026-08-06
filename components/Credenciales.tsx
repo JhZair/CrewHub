@@ -1,7 +1,7 @@
 "use client";
 import {
   agregarCredencial, editarCredencial, borrarCredencial,
-  agregarDato, editarDato, verificarDato, borrarDato,
+  agregarDato, editarDato, verificarDato, desverificarDato, borrarDato,
 } from "@/app/actions";
 import Copiar from "@/components/Copiar";
 import { useRouter } from "next/navigation";
@@ -334,6 +334,19 @@ export default function Credenciales({ dueno, duenoId, credenciales }: {
                   </span>
                   {(() => { const fr = frescura(d.verificado_en); return <span className={`dato-verif ${fr.cls}`}>{fr.cls === "verde" ? "✅" : fr.cls === "ambar" ? "⚠" : "⛔"} {fr.txt}</span>; })()}
                   <button className="dato-btn" title="Confirmé que sigue vigente" onClick={() => verificar(d.id)}>✓ verifiqué</button>
+                  {/* Deshacer la verificación. Mismo motivo que en los
+                      contactos de una postulación: sin vuelta atrás, un clic
+                      de más deja el dato en verde para siempre. */}
+                  {d.verificado_en && (
+                    <button className="dato-btn" title="Quitar la confirmación — vuelve a «sin verificar»"
+                      style={{ color: "var(--dim)" }} disabled={ocupadoDato}
+                      onClick={async () => {
+                        setOcupadoDato(true);
+                        const r: any = await desverificarDato(d.id, dueno, duenoId);
+                        setOcupadoDato(false);
+                        if (r?.error) setError(r.error); else router.refresh();
+                      }}>↺</button>
+                  )}
                   <button className="dato-btn" title="Editar dato" onClick={() => { setEdDatoId(d.id); setEd({ etiqueta: d.etiqueta || "", valor: d.valor || "" }); }}>✎</button>
                   <button className="dato-btn" title="Quitar dato" style={{ color: "var(--dim)" }} onClick={() => quitarDato(d.id)}>✕</button>
                 </div>

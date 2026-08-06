@@ -2615,6 +2615,33 @@ export async function verificarDato(id: string, dueno: string, duenoId: string) 
   return {};
 }
 
+/* Quitar la confirmación: el dato vuelve a «sin confirmar».
+ *
+ * Hace falta porque `verificarDato` no tenía vuelta atrás, y un ✔ que no se
+ * puede deshacer convierte un clic equivocado en tranquilidad falsa
+ * PERMANENTE. Peor todavía: al descubrir que un teléfono ya no responde, la
+ * única salida era borrar el dato —perdiendo el rastro de que ese número se
+ * declaró— o dejarlo en verde mintiendo.
+ *
+ * Vuelve a null y no a una fecha vieja: «nadie lo ha comprobado» y «se
+ * comprobó hace mucho» son estados distintos y el sistema ya los distingue.
+ */
+export async function desverificarDato(id: string, dueno: string, duenoId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: prev } = await supabase.from("credencial_datos").select("etiqueta").eq("id", id).maybeSingle();
+  const { error } = await supabase.from("credencial_datos")
+    .update({ verificado_en: null }).eq("id", id);
+  if (error) return { error: error.message };
+  await supabase.from("actividad").insert({
+    entidad_tipo: dueno, entidad_id: duenoId, actor_id: user.id, tipo: "dato",
+    detalle: { mensaje: `quitó la confirmación de «${prev?.etiqueta || "—"}»` },
+  });
+  revalidatePath(`/entidad/${dueno}/${duenoId}`);
+  return {};
+}
+
 /* Registrar el veredicto de un humano sobre el link de un documento: correcto
    (`correcto=true`) o equivocado (`false`, hay que corregir el link). Toggle: si
    ya está marcado ESE MISMO link con el MISMO veredicto, lo quita (vuelve a «sin

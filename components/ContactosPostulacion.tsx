@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Copiar from "@/components/Copiar";
-import { agregarDatoPostulacion, editarDato, verificarDato, borrarDato } from "@/app/actions";
+import { agregarDatoPostulacion, editarDato, verificarDato, desverificarDato, borrarDato } from "@/app/actions";
 
 /* CONTACTOS DECLARADOS EN LA POSTULACIÓN
  *
@@ -98,11 +98,23 @@ export default function ContactosPostulacion({ postulacionId, datos }: {
                   <span className="cp-et">{d.etiqueta}</span>
                   {/* Un contacto sin confirmar no está mal, pero tampoco está
                       comprobado: se distingue en vez de pintarlo todo igual. */}
+                  {/* El estado es un BOTÓN cuando está confirmado: así se puede
+                      deshacer. Un ✔ sin vuelta atrás hace de un clic
+                      equivocado una tranquilidad falsa para siempre —y al
+                      descubrir que un número ya no responde, la única salida
+                      era borrar el dato y perder el rastro de que se declaró. */}
                   {n === null
                     ? <span className="badge" style={{ color: "var(--red)", background: "rgba(239,68,68,.12)" }}>sin confirmar</span>
-                    : n > STALE
-                      ? <span className="badge" style={{ color: "var(--yellow)", background: "rgba(244,180,0,.12)" }}>hace {n} d</span>
-                      : <span className="badge" style={{ color: "var(--green)", background: "rgba(46,204,113,.12)" }}>✓</span>}
+                    : (
+                      <button className="badge cp-badge-btn" disabled={ocupado}
+                        title={`Confirmado hace ${n} día(s). Clic para quitar la confirmación y volver a «sin confirmar».`}
+                        style={n > STALE
+                          ? { color: "var(--yellow)", background: "rgba(244,180,0,.12)" }
+                          : { color: "var(--green)", background: "rgba(46,204,113,.12)" }}
+                        onClick={() => correr(() => desverificarDato(d.id, "postulacion", postulacionId))}>
+                        {n > STALE ? `hace ${n} d ✕` : "✓ ✕"}
+                      </button>
+                    )}
                   <span style={{ flex: 1 }} />
                   <button className="dato-btn" title="Confirmar que sigue vigente" disabled={ocupado}
                     onClick={() => correr(() => verificarDato(d.id, "postulacion", postulacionId))}>✔</button>
