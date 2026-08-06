@@ -3,9 +3,8 @@ import { aprobarJornada, editarJornada, borrarJornada } from "@/app/actions";
 import MiniSelect from "@/components/MiniSelect";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { FRACCIONES, fechaHum, esFinde } from "@/lib/jornadas";
+import { FRACCIONES, fechaHum, esFinde, ICO_TIPO } from "@/lib/jornadas";
 
-const ICO: Record<string, string> = { rodaje: "🎬", oficina: "🏢", scouting: "🚙" };
 const TIPOS: [string, string][] = [["rodaje", "🎬"], ["oficina", "🏢"], ["scouting", "🚙"]];
 
 const money = (n: number | null) => n != null ? `S/ ${Math.round(n).toLocaleString("es-PE")}` : "—";
@@ -73,7 +72,7 @@ function FilaJornada({ j, esAdmin, puedeEditar, proyectos, onChange }: {
       <span className={`jr-fecha${esFinde(j.fecha) ? " finde" : ""}`} title={j.fecha}>
         {fechaHum(j.fecha)}
       </span>
-      <span style={{ fontWeight: 600, fontSize: 12.5 }}>{ICO[j.tipo] || ""} {j.persona}</span>
+      <span style={{ fontWeight: 600, fontSize: 12.5 }}>{ICO_TIPO[j.tipo] || ""} {j.persona}</span>
       <span style={{ color: "var(--dim)", fontSize: 12 }}>{j.proyecto || "sin proyecto"}</span>
       <span style={{ fontSize: 12 }}>{j.fraccion}j{j.noche ? " 🏕" : ""}</span>
       <span style={{ color: "var(--teal)", fontSize: 12, fontWeight: 700 }}>{money(j.monto)}</span>
@@ -94,8 +93,35 @@ function FilaJornada({ j, esAdmin, puedeEditar, proyectos, onChange }: {
   );
 }
 
-export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId = "", proyectos = [], titulo = "🗒 Jornadas del mes", bloqueado = false }: {
+/* Nombre del mes de una fecha ISO: «2026-07-…» → «julio 2026». */
+const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio",
+  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+const rotuloMes = (ym: string) => {
+  const [a, m] = ym.split("-").map(Number);
+  return `${MESES[(m || 1) - 1]} ${a}`;
+};
+/** Todos los días de un mes «AAAA-MM», sin pasar de hoy. */
+const diasDelMes = (ym: string) => {
+  const [a, m] = ym.split("-").map(Number);
+  const hoy = new Date(); hoy.setHours(12, 0, 0, 0);
+  const ultimo = new Date(a, m, 0).getDate();
+  const enCurso = hoy.getFullYear() === a && hoy.getMonth() + 1 === m;
+  /* En el mes en curso se corta en HOY: pintar en cero los días que aún no han
+     llegado sería contarlos como no trabajados. */
+  const tope = enCurso ? hoy.getDate() : (new Date(a, m - 1, 1) > hoy ? 0 : ultimo);
+  return Array.from({ length: tope }, (_, i) =>
+    `${a}-${String(m).padStart(2, "0")}-${String(i + 1).padStart(2, "0")}`);
+};
+
+export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId = "", proyectos = [], titulo = "🗒 Jornadas del mes", bloqueado = false, porMes = false, diasVacios = false }: {
   items: any[]; esAdmin?: boolean; miPersonaId?: string; proyectos?: { id: string; nombre: string }[]; titulo?: string; bloqueado?: boolean;
+  /** Subdivide cada persona por mes. Para listas que cruzan varios. */
+  porMes?: boolean;
+  /** Pinta también los días sin jornada, apagados y en 0.
+   *  ⚠ Solo tiene sentido si `items` trae el mes COMPLETO. Con una lista
+   *  filtrada (p. ej. solo pendientes), un día ya aprobado se dibujaría como
+   *  «no trabajado», que es mentira sobre lo que ya se revisó. */
+  diasVacios?: boolean;
 }) {
   const router = useRouter();
   const onChange = () => router.refresh();
@@ -151,11 +177,59 @@ export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId =
                 : <span className="badge" style={{ color: "var(--green)", background: "rgba(46,204,113,.12)" }}>✅ al día</span>}
               <span className="jr-grupo-t">{soles(g.monto)}</span>
             </div>
-            {g.items.map(j => (
-              <FilaJornada key={j.id} j={j} esAdmin={esAdmin}
-                puedeEditar={!bloqueado && (esAdmin || (j.persona_id === miPersonaId && !j.aprobada))}
-                proyectos={proyectos} onChange={onChange} />
-            ))}
+            {(() => {
+              const pinta = (j: any) => (
+                <FilaJornada key={j.id} j={j} esAdmin={esAdmin}
+                  puedeEditar={!bloqueado && (esAdmin || (j.persona_id === miPersonaId && !j.aprobada))}
+                  proyectos={proyectos} onChange={onChange} />
+              );
+              if (!porMes) return g.items.map(pinta);
+
+              /* Por mes: una lista que cruza julio y agosto se lee como una
+                 sola tanda y esconde que lo de julio lleva ahí un mes. Cada
+                 mes con su propio recuento, del más reciente al más viejo —lo
+                 nuevo es lo que se aprueba primero—. */
+              const meses = new Map<string, any[]>();
+              g.items.forEach(j => {
+                const k = String(j.fecha || "").slice(0, 7);
+                meses.set(k, [...(meses.get(k) || []), j]);
+              });
+              return [...meses.entries()].sort((a, b) => b[0].localeCompare(a[0])).map(([ym, js]) => {
+                const nP = js.filter(j => !j.aprobada).length;
+                const porDia = new Map<string, any[]>();
+                js.forEach(j => porDia.set(j.fecha, [...(porDia.get(j.fecha) || []), j]));
+                const dias = diasVacios ? diasDelMes(ym) : [];
+                const vacios = dias.filter(d => !porDia.has(d)).length;
+                return (
+                  <div key={ym} className="jr-mes">
+                    <div className="jr-mes-h">
+                      <span>{rotuloMes(ym)}</span>
+                      <span className="jr-grupo-n">
+                        {js.reduce((s, j) => s + (Number(j.fraccion) || 0), 0)}j
+                        {nP > 0 && <> · ⏳ {nP}</>}
+                        {vacios > 0 && <> · {vacios} día(s) sin registrar</>}
+                      </span>
+                    </div>
+                    {diasVacios
+                      ? dias.slice().reverse().map(d => {
+                          const js2 = porDia.get(d);
+                          if (js2) return js2.map(pinta);
+                          /* Un día sin jornada se ve, apagado: el hueco es el
+                             dato —no se distingue «descansó» de «lo olvidó»—
+                             y después de aprobar el mes corregirlo cuesta. */
+                          return (
+                            <div key={d} className="jr-dia-vacio">
+                              <span className={`jr-fecha${esFinde(d) ? " finde" : ""}`}>{fechaHum(d)}</span>
+                              <span style={{ flex: 1, color: "var(--dim)" }}>—</span>
+                              <span style={{ fontWeight: 700 }}>0j</span>
+                            </div>
+                          );
+                        })
+                      : js.map(pinta)}
+                  </div>
+                );
+              });
+            })()}
           </div>
         ))}
         {!items.length && <div className="empty">Sin jornadas este mes.</div>}

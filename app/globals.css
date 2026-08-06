@@ -2705,3 +2705,10 @@ button.repo-tit{text-align:left}
 .liq-dia.vacio span{color:var(--dim)}
 .liq-frac{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:4px;font-size:12px;color:var(--muted)}
 .liq-frac b{color:var(--blue)}
+.jr-mes{margin:6px 0 4px}
+.jr-mes-h{display:flex;align-items:center;gap:9px;font-size:10.5px;text-transform:uppercase;
+  letter-spacing:.8px;color:var(--dim);font-weight:700;padding:5px 2px 3px;
+  border-bottom:1px solid rgba(255,255,255,.06);margin-bottom:2px}
+.jr-mes-h .jr-grupo-n{text-transform:none;letter-spacing:0;font-weight:600}
+.jr-dia-vacio{display:flex;align-items:center;gap:9px;font-size:12px;color:var(--dim);
+  padding:4px 0;opacity:.4}

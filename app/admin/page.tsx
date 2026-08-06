@@ -159,11 +159,31 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
   const tarifaLista = (personas || []).map((p: any) => ({
     id: p.id, nombre: p.alias || p.nombre, tarifa_dia: p.tarifa_dia, tarifa_rodaje: p.tarifa_rodaje, tarifa_noche: p.tarifa_noche,
   }));
-  const porAprobar = (jornsPend || []).map((j: any) => ({
+  /* Para poder pintar los días NO trabajados hace falta el mes completo, no
+     solo lo pendiente: con la lista de pendientes a secas, un día ya aprobado
+     se dibujaría como «no trabajado» — una mentira, y justo sobre lo que ya se
+     revisó. Se pide desde el inicio del mes más viejo con algo pendiente.
+     Va en secuencia y no en el Promise.all porque el rango depende de lo que
+     devuelva la primera consulta; sin pendientes, ni se pregunta. */
+  const fechasPend = (jornsPend || []).map((j: any) => String(j.fecha)).sort();
+  const desdePend = fechasPend.length ? `${fechasPend[0].slice(0, 7)}-01` : null;
+  const { data: jornsCtx } = desdePend
+    ? await supabase.from("jornadas")
+        .select("id,persona_id,fecha,proyecto_id,tipo,fraccion,noche,monto,aprobada,per:personas(nombre,alias),proy:proyectos(nombre)")
+        .gte("fecha", desdePend).order("fecha", { ascending: false }).limit(3000)
+    : { data: [] };
+
+  /* `filasJornadas` es lo que se PINTA (el mes entero, para ver los huecos);
+     `porAprobar` es lo que se CUENTA. Separarlos no es cosmético: si los
+     contadores de la portada leyeran la lista completa, «20 jornadas
+     esperando aprobación» pasaría a decir 47 sin que nada fallara. */
+  const filasJornadas = (jornsCtx || []).map((j: any) => ({
     id: j.id, persona_id: j.persona_id, proyecto_id: j.proyecto_id, aprobada: j.aprobada,
     fecha: j.fecha, persona: j.per?.alias || j.per?.nombre || "—",
     proyecto: j.proy?.nombre || null, tipo: j.tipo, fraccion: j.fraccion, noche: j.noche, monto: j.monto,
   }));
+
+  const porAprobar = filasJornadas.filter((j: any) => !j.aprobada);
 
   const estadoDe = new Map((liqs || []).map((l: any) => [l.persona_id, l.estado]));
   const agg = new Map<string, { nombre: string; dias: number; pend: number; monto: number }>();
@@ -617,7 +637,8 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
           <p style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 0 }}>
             Jornadas pendientes de aprobación. Al aprobar, entran al monto "a pagar". Puedes editar o borrar si hay un error.
           </p>
-          <BitacoraJornadas items={porAprobar} esAdmin miPersonaId="" proyectos={proyectos || []} titulo="⏳ Por aprobar" />
+          <BitacoraJornadas items={filasJornadas} esAdmin miPersonaId="" proyectos={proyectos || []}
+            titulo="⏳ Por aprobar" porMes diasVacios />
         </>
       )}
 
