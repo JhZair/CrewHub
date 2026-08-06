@@ -293,3 +293,65 @@ export const dudasMiembro = (p: any): string[] => {
   if (!p.dni_vencimiento) d.push("DNI sin fecha de vencimiento");
   return d;
 };
+
+/* ── EL VEREDICTO DE ELEGIBILIDAD, en un solo sitio ──
+ *
+ * La hoja de postulación (ficha) y la vista rápida responden la misma
+ * pregunta —«¿puedo presentar con ésta?»— y la respondían por separado: la
+ * hoja con cuatro estados y su matiz, el pop-up con un «✕ No puede postular»
+ * que mezclaba «ya está en concurso» con «le falta el RENCA». Son cosas
+ * distintas: la primera no se arregla con un trámite.
+ *
+ * Aquí vive la CLASIFICACIÓN; el texto largo lo pone cada pantalla, porque una
+ * hoja tiene sitio para explicar y un pop-up no. Lo que no puede diferir es en
+ * qué casillero cae una empresa.
+ */
+export type EstadoElegibilidad = "bloqueada" | "concurso" | "lista" | "pendiente";
+
+/* Lo MÍNIMO que hace falta para clasificar; cada pantalla trae además lo suyo
+   (id, cargo, ruc, reserva…) y el índice lo deja pasar. */
+export type MiembroEval = { trabas: string[]; dudas: string[]; persona?: any;[k: string]: any };
+
+export function elegibilidadDe({ libre, trabasEmp, miembros, bloqueada, enConcurso }: {
+  /** `empresaLibre(...)` — solo los papeles de la EMPRESA. */
+  libre: boolean;
+  trabasEmp: string[];
+  miembros: MiembroEval[];
+  /** Ejecuta un fondo ganado: no puede tomar otro. */
+  bloqueada: boolean;
+  /** Ya postula con ésta. */
+  enConcurso: boolean;
+}) {
+  const conProblema = miembros.filter(m => m.trabas.length > 0);
+  const conDuda = miembros.filter(m => !m.trabas.length && m.dudas.length > 0);
+  /* Listo de verdad = la empresa Y su gente. Mirando solo la empresa, alguien
+     podía irse tranquilo a postular con un representante de DNI vencido. */
+  const todoOk = libre && conProblema.length === 0;
+  /* Puede postular, pero hay cosas que NADIE miró. No es lo mismo que estar
+     bien, y decir que lo está es dar tranquilidad falsa justo antes de firmar. */
+  const conReparo = todoOk && conDuda.length > 0;
+
+  /* Un fondo encima se dice distinto de un trámite pendiente: «ejecutando» o
+     «rendición vencida» no se arreglan llenando un papel. */
+  const trabaFondo = trabasEmp.find(t => /ejecutando|rendición vencida/i.test(t));
+  const otrasTrabasEmp = trabasEmp.filter(t => t !== "en concurso" && t !== trabaFondo);
+  /* Sin miembros no es «todo en orden»: es que no sabemos quién firma. Un
+     `every` sobre lista vacía devuelve true, y ese true es una trampa. */
+  const hayPendientes = otrasTrabasEmp.length > 0 || conProblema.length > 0 || !miembros.length;
+
+  const estado: EstadoElegibilidad =
+    bloqueada ? "bloqueada"
+    : enConcurso ? "concurso"
+    : todoOk ? "lista"
+    : "pendiente";
+
+  return { estado, conProblema, conDuda, todoOk, conReparo, trabaFondo, otrasTrabasEmp, hayPendientes };
+}
+
+/** El rótulo corto de cada estado, para donde no cabe la explicación larga. */
+export const ROTULO_ELEGIBILIDAD: Record<EstadoElegibilidad, { ico: string; txt: string; clase: string }> = {
+  bloqueada: { ico: "⛔", txt: "No puede postular — ya tiene un fondo encima", clase: "no" },
+  concurso:  { ico: "▶", txt: "Ya está en concurso", clase: "concurso" },
+  lista:     { ico: "✅", txt: "Lista para postular", clase: "si" },
+  pendiente: { ico: "⚠", txt: "Todavía no", clase: "casi" },
+};

@@ -2547,7 +2547,14 @@ button.repo-tit{text-align:left}
 .vp-ok{color:var(--green);font-size:12.5px}
 .vp-trabas{display:flex;flex-direction:column;gap:2px;color:var(--yellow);font-size:12.5px}
 .vp-nota{color:var(--muted);font-size:12px}
-.vp-veredicto{font-size:13px;font-weight:700;border-radius:9px;padding:8px 11px;border:1px solid}
+.vp-veredicto{font-size:13px;border-radius:9px;padding:9px 12px;border:1px solid}
+.vp-ver-t{font-weight:700;font-size:13.5px}
+.vp-ver-x{color:var(--muted);font-size:12px;margin-top:4px;line-height:1.5;font-weight:400}
+.vp-pend{margin-top:7px;font-size:12px;color:var(--muted);font-weight:400}
+.vp-pend-h{font-size:11px;font-weight:700;color:var(--dim);margin-bottom:2px}
+.vp-pend .mal{color:var(--red)}
+.vp-veredicto.concurso{color:var(--violet);background:rgba(167,139,250,.07);border-color:rgba(167,139,250,.4)}
+.vp-tabla tr.vp-mal .vp-td-d{color:var(--red)}
 .vp-veredicto.si{color:var(--green);background:rgba(46,204,113,.10);border-color:rgba(46,204,113,.35)}
 .vp-veredicto.casi{color:var(--yellow);background:rgba(245,158,11,.10);border-color:rgba(245,158,11,.35)}
 .vp-veredicto.no{color:var(--red);background:rgba(239,68,68,.09);border-color:rgba(239,68,68,.3)}

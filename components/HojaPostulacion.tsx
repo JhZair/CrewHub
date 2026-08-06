@@ -1,4 +1,5 @@
 "use client";
+import { elegibilidadDe } from "@/lib/fondos";
 import { useEffect, useState } from "react";
 import Copiar from "@/components/Copiar";
 
@@ -54,33 +55,13 @@ export default function HojaPostulacion({
     return () => window.removeEventListener("keydown", f);
   }, [abierto]);
 
-  const conProblema = miembros.filter(m => m.trabas.length > 0);
-  const conDuda = miembros.filter(m => !m.trabas.length && m.dudas.length > 0);
-  /* Listo de verdad = la empresa Y su gente. Antes «libre» solo miraba la
-     empresa, y con eso alguien podía irse tranquilo a postular con un
-     presidente de DNI vencido. */
-  const todoOk = libre && conProblema.length === 0;
-  // Puede postular, pero hay cosas que nadie miró. No es lo mismo que estar bien.
-  const conReparo = todoOk && conDuda.length > 0;
-
-  /* Un fondo encima se dice distinto de un trámite pendiente, porque son cosas
-     distintas: «en concurso» / «ejecutando» no se arreglan llenando un papel —
-     es que la empresa ya está comprometida. Se separan del resto de trabas para
-     no mezclar «ya tiene un fondo» con «le falta el RENCA». */
-  const trabaFondo = trabasEmp.find(t => /ejecutando|rendición vencida/i.test(t));
-  const otrasTrabasEmp = trabasEmp.filter(t => t !== "en concurso" && t !== trabaFondo);
-  const hayPendientes = otrasTrabasEmp.length > 0 || conProblema.length > 0 || !miembros.length;
-
-  /* El veredicto, en orden de peso:
-       bloqueada → ejecuta un fondo ganado: no puede tomar otro (apaga el form).
-       concurso  → ya postula con ésta: comprometida, no un «todavía no».
-       lista     → papeles y gente en regla.
-       pendiente → le falta algo para poder postular. */
-  const estado: "bloqueada" | "concurso" | "lista" | "pendiente" =
-    bloqueada ? "bloqueada"
-      : enConcurso ? "concurso"
-        : todoOk ? "lista"
-          : "pendiente";
+  /* La clasificación vive en lib/fondos.ts: la misma que usa la vista rápida.
+     Cuando estaba escrita aquí, el pop-up decidía por su cuenta y mezclaba «ya
+     está en concurso» con «le falta el RENCA» — dos pantallas contestando
+     distinto a la misma pregunta. Aquí queda el TEXTO, que es lo propio de una
+     hoja con sitio para explicar. */
+  const { estado, conProblema, conDuda, todoOk, conReparo, trabaFondo, otrasTrabasEmp, hayPendientes } =
+    elegibilidadDe({ libre, trabasEmp, miembros, bloqueada: !!bloqueada, enConcurso: !!enConcurso });
 
   /* La lista de lo que hay que arreglar — empresa y responsables. Se usa en el
      estado «pendiente» y, dentro de «concurso», como lo que falta aparte. */

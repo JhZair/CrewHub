@@ -4241,7 +4241,7 @@ export async function cargarEmpresaRapida(empresaId: string) {
        pedir solo nombre y foto haría que el pop-up dijera «libre para postular»
        por no tener con qué desmentirlo. */
     supabase.from("empresa_miembros")
-      .select("cargo,estado,persona:personas(id,nombre,alias,foto_url,"
+      .select("cargo,estado,persona:personas(id,nombre,alias,foto_url,region,"
         + "ruc_dni,dni_vencimiento,estado_sunat,condicion_sunat,nombre_reniec)")
       .eq("empresa_id", empresaId).order("cargo").limit(40),
     supabase.from("entidad_media").select("cartel_url")
