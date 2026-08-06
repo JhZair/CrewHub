@@ -4157,7 +4157,8 @@ export async function guardarVista(
     : supabase.from("vistas_guardadas").insert(fila);
   const { error } = await q;
   if (error) return { error: error.message };
-  revalidatePath("/personas");
+  // Las dos listas que hoy tienen pestaña de tabla.
+  revalidatePath("/personas"); revalidatePath("/empresas");
   return {};
 }
 
@@ -4167,7 +4168,7 @@ export async function borrarVista(id: string) {
   if (!user) return { error: "Sesión no encontrada." };
   const { error } = await supabase.from("vistas_guardadas").delete().eq("id", id);
   if (error) return { error: error.message };
-  revalidatePath("/personas");
+  revalidatePath("/personas"); revalidatePath("/empresas");
   return {};
 }
 

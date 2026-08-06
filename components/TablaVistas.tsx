@@ -292,6 +292,10 @@ export default function TablaVistas({ entidad, filas, vistas }: {
                   <td key={c.key}>
                     {j === 0
                       ? <span className="tv-primera">
+                          {/* `foto_url` solo existe en personas; en empresas el
+                              Avatar cae a las iniciales, que es lo correcto —el
+                              logo vive en `entidad_media` y traerlo aquí sería
+                              una consulta más por una miniatura de 22px. */}
                           <Avatar nombre={f.nombre} src={f.foto_url} size={22} />
                           <Link href={hrefDe(f)}>{c.valor ? c.valor(f) : f[c.key]}</Link>
                         </span>

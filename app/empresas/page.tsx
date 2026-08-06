@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { BotonVerificarLote } from "@/components/VerificarSunat";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
+import TablaVistas from "@/components/TablaVistas";
 import Avatar from "@/components/Avatar";
 import { OjoEmpresa } from "@/components/Ojo";
 import { alertaSunat, empresaDeCasa, esNuestra, esProblematico, textoSunat } from "@/lib/sunat";
@@ -50,7 +51,7 @@ const nosCompete = esNuestra;
 
 
 export default async function Empresas({ searchParams }: {
-  searchParams: { q?: string; e?: string; sunat?: string; t?: string; r?: string; f?: string };
+  searchParams: { q?: string; e?: string; sunat?: string; t?: string; r?: string; f?: string; v?: string };
 }) {
   const q = (searchParams?.q || "").trim();
   const e = searchParams?.e || "";
@@ -58,6 +59,7 @@ export default async function Empresas({ searchParams }: {
   const r = searchParams?.r || "";
   const f = searchParams?.f || "";
   const sunat = searchParams?.sunat === "1";
+  const vistaTabla = searchParams?.v === "tabla";
   const listar = !!(q || e || sunat || t || r || f);
 
   const supabase = createClient();
@@ -65,7 +67,7 @@ export default async function Empresas({ searchParams }: {
   if (!user) redirect("/login");
 
   const [{ data: emps }, { data: vincs }, { data: postsEmp }, { data: coms }, urlSunat,
-         { data: directoras }, { data: medias }] = await Promise.all([
+         { data: directoras }, { data: medias }, { data: vistasT }] = await Promise.all([
     supabase.from("empresas").select("*").order("codigo"),
     supabase.from("publicacion_vinculos")
       .select("entidad_id,publicacion_id,pub:publicaciones(estado)").eq("entidad_tipo", "empresa"),
@@ -92,6 +94,9 @@ export default async function Empresas({ searchParams }: {
        entidad_media —la misma tabla que la portada de la ficha— y si no hay,
        Avatar cae a las iniciales con el color de la relación. */
     supabase.from("entidad_media").select("entidad_id,cartel_url").eq("entidad_tipo", "empresa"),
+    // Las vistas de tabla guardadas para empresas (db/vistas-tabla.sql).
+    supabase.from("vistas_guardadas").select("id,nombre,icono,usuario_id,config")
+      .eq("entidad", "empresa").order("orden").order("nombre"),
   ]);
 
   const logos = new Map<string, string>();
@@ -196,6 +201,33 @@ export default async function Empresas({ searchParams }: {
       x.estado, x.relacion, x.tipo, x.estado_sunat, x.condicion_sunat))));
   const cnt = (est: string) => todas.filter((x: any) => x.estado === est).length;
   const cntF = (k: string) => todas.filter(PRUEBA_F[k]).length;
+
+  /* Las filas de la vista TABLA. Lo calculado se resuelve aquí y viaja como
+     valor plano: el veredicto de elegibilidad sale de lib/fondos —las mismas
+     reglas que la lista, la ficha y la vista rápida—, y recalcularlo dentro de
+     la tabla sería la cuarta copia de esa regla. También evita cruzar
+     funciones al cliente, que ya nos costó tres errores. */
+  const filasTabla = todas.map((x: any) => {
+    const c = compDe(x);
+    const m = marca.get(x.id);
+    const t = trabas(x);
+    return {
+      ...x,
+      _elegible: c.ejec > 0 ? "ejecutando"
+        : c.juego > 0 ? "en concurso"
+        : libre(x) ? "lista"
+        : casiLibre(x) ? "a un trámite"
+        : "no puede",
+      /* Solo lo que FALTA. Una empresa en concurso no «tiene trabas»: está
+         comprometida, que es distinto — y mezclarlas haría leer un estado
+         como un defecto. */
+      _trabas: t.filter((z: string) => z !== "en concurso").join(" · "),
+      _postulaciones: m?.total || 0,
+      _ganadas: m?.ganadas || 0,
+      _monto: Math.round(m?.monto || 0),
+      _juego: c.juego, _ejec: c.ejec,
+    };
+  });
 
   // Palmarés competitivo: qué empresa gana, roza y persiste
   const palmares = todas
@@ -465,6 +497,17 @@ export default async function Empresas({ searchParams }: {
       </div>
       <h1 className="title-lg">🏢 Empresas</h1>
 
+      {/* Igual que en personas: la ficha enseña el semáforo de elegibilidad y
+          el palmarés; la tabla sirve para comparar muchas por pocos campos. */}
+      <div className="tv-pestanas">
+        <Link href="/empresas" className={`vtab${vistaTabla ? "" : " on"}`}>🗂 Fichas</Link>
+        <Link href="/empresas?v=tabla" className={`vtab${vistaTabla ? " on" : ""}`}>📊 Tabla</Link>
+      </div>
+
+      {vistaTabla ? (
+        <TablaVistas entidad="empresa" filas={filasTabla} vistas={(vistasT as any[]) || []} />
+      ) : (
+      <>
       <form className="card" style={{ display: "flex", gap: 10, padding: 12 }}>
         {e && <input type="hidden" name="e" value={e} />}
         {t && <input type="hidden" name="t" value={t} />}
@@ -727,6 +770,8 @@ export default async function Empresas({ searchParams }: {
           })()}
           {!filtradas.length && <div className="empty">Sin resultados{q && ` para «${q}»`}.</div>}
         </>
+      )}
+      </>
       )}
     </div>
   );

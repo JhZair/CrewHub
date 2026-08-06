@@ -201,6 +201,46 @@ export function diasParaCumple(f?: string | null): number | null {
   return Math.round((prox.getTime() - hoy.getTime()) / 86400000);
 }
 
+/* ── Las columnas de EMPRESAS ──
+ * Mismo criterio que personas: selección editorial, no volcado del formulario.
+ * Las columnas que empiezan por `_` son CALCULADAS en el servidor y viajan ya
+ * resueltas en cada fila —no como función—: postulaciones, ganadas, monto y el
+ * veredicto de elegibilidad salen de cruzar `postulaciones` con lib/fondos, y
+ * recalcularlos aquí sería una cuarta copia de esas reglas. */
+export const COLS_EMPRESA: Columna[] = [
+  { key: "nombre", lbl: "Nombre", tipo: "texto", ancho: 190 },
+  { key: "codigo", lbl: "Código", tipo: "texto", ancho: 90 },
+  { key: "razon_social", lbl: "Razón social", tipo: "texto", ancho: 230 },
+  { key: "ruc", lbl: "RUC", tipo: "texto", ancho: 120 },
+  { key: "_elegible", lbl: "¿Puede postular?", tipo: "opcion", ancho: 150,
+    opciones: ["lista", "a un trámite", "en concurso", "ejecutando", "no puede"] },
+  { key: "_trabas", lbl: "Qué le falta", tipo: "texto", ancho: 240 },
+  { key: "estado", lbl: "Estado", tipo: "opcion", ancho: 120,
+    opciones: ["en_constitucion", "activa", "inactiva", "en_proceso_de_cierre", "cerrada"] },
+  { key: "relacion", lbl: "Relación", tipo: "opcion", ancho: 100,
+    opciones: ["propia", "aliada", "externa"] },
+  { key: "tipo", lbl: "Tipo", tipo: "opcion", ancho: 100,
+    opciones: ["eirl", "sac", "asociacion", "ong", "municipalidad", "otro"] },
+  { key: "estado_sunat", lbl: "Estado SUNAT", tipo: "opcion", ancho: 140,
+    opciones: ["activo", "suspension_temporal", "baja_provisional", "baja_definitiva"] },
+  { key: "condicion_sunat", lbl: "Condición SUNAT", tipo: "opcion", ancho: 120,
+    opciones: ["habido", "no_habido"] },
+  { key: "renca", lbl: "RENCA", tipo: "texto", ancho: 170 },
+  { key: "partida_electronica", lbl: "Partida electrónica", tipo: "texto", ancho: 140 },
+  { key: "vigencia_poder_fecha", lbl: "Vigencia de poder", tipo: "fecha", ancho: 120 },
+  { key: "region", lbl: "Región", tipo: "texto", ancho: 100 },
+  { key: "domicilio_fiscal", lbl: "Domicilio fiscal", tipo: "texto", ancho: 240 },
+  { key: "departamento_fiscal", lbl: "Departamento", tipo: "texto", ancho: 110 },
+  { key: "provincia_fiscal", lbl: "Provincia", tipo: "texto", ancho: 110 },
+  { key: "distrito_fiscal", lbl: "Distrito", tipo: "texto", ancho: 110 },
+  { key: "fecha_constitucion", lbl: "Constituida el", tipo: "fecha", ancho: 110 },
+  { key: "_postulaciones", lbl: "Postulaciones", tipo: "numero", ancho: 90 },
+  { key: "_ganadas", lbl: "Ganadas", tipo: "numero", ancho: 80 },
+  { key: "_monto", lbl: "S/ adjudicado", tipo: "numero", ancho: 110 },
+  { key: "_juego", lbl: "En concurso", tipo: "numero", ancho: 90 },
+  { key: "_ejec", lbl: "Ejecutando", tipo: "numero", ancho: 90 },
+];
+
 /* ── El registro por entidad ──
  * Las columnas NO se pasan como prop desde la página: llevan funciones
  * (`valor`) y cruzar una función de servidor a cliente es un error de
@@ -210,9 +250,11 @@ export function diasParaCumple(f?: string | null): number | null {
  * "persona"; las funciones nunca salen de este módulo. */
 export const COLUMNAS_DE: Record<string, Columna[]> = {
   persona: COLS_PERSONA,
+  empresa: COLS_EMPRESA,
 };
 
 /** A dónde lleva cada fila. También aquí, por lo mismo. */
 export const RUTA_DE: Record<string, (id: string) => string> = {
   persona: id => `/entidad/persona/${id}`,
+  empresa: id => `/entidad/empresa/${id}`,
 };
