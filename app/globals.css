@@ -2579,13 +2579,18 @@ button.repo-tit{text-align:left}
 .vp-scroll{max-height:230px;overflow-y:auto}
 .vp-tabla{width:100%;border-collapse:collapse;font-size:12.5px}
 .vp-tabla td{padding:3px 6px 3px 0;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:top}
+/* La sangría de la primera celda va AQUÍ y no en `.vp-td-a`: `.vp-tabla td` es
+   más específica (clase+elemento) que una clase sola, así que el
+   `padding-left` de `.vp-td-a` lo perdía en silencio —la regla estaba escrita,
+   se veía correcta en el archivo, y el filo seguía encima del año—. */
+.vp-tabla td:first-child{padding-left:9px}
 .vp-tabla tr:last-child td{border-bottom:none}
 .vp-tabla a{color:var(--text);text-decoration:none}
 .vp-tabla a:hover{color:var(--accent)}
 /* El filo de liderazgo se dibujaba encima del año. La sangría va en TODAS las
    filas —no solo en las marcadas— o la columna del año baila 6px según el
    cargo, que es peor que el solape. */
-.vp-td-a{color:var(--dim);width:46px;white-space:nowrap;padding-left:8px}
+.vp-td-a{color:var(--dim);width:46px;white-space:nowrap}
 .vp-td-i{width:20px;text-align:center}
 .vp-td-d{color:var(--dim);font-size:11.5px;max-width:38%;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap;text-align:right}
