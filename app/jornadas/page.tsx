@@ -247,14 +247,20 @@ export default async function Jornadas({ searchParams }: { searchParams: { m?: s
               <tr><td className="quien" colSpan={nSem + 3} style={{ color: "var(--dim)" }}>— sin jornadas este mes —</td></tr>
             )}
           </tbody>
-          <tfoot>
-            <tr>
-              <td className="quien">Total</td>
-              {totSem.map((n, i) => <td key={i} style={{ textAlign: "center" }}>{n}</td>)}
-              <td style={{ textAlign: "center" }}>{totalDias}</td>
-              <td className="sep" style={{ textAlign: "center" }}>{soles(totalAprob)}</td>
-            </tr>
-          </tfoot>
+          {/* La fila «Total» solo suma si hay algo que sumar. Desde que esta
+              página es personal, `filas` trae exactamente una persona y el pie
+              repetía la fila de arriba cifra por cifra: un total de una sola
+              cosa no es un total, es la misma línea dos veces. */}
+          {filas.length > 1 && (
+            <tfoot>
+              <tr>
+                <td className="quien">Total</td>
+                {totSem.map((n, i) => <td key={i} style={{ textAlign: "center" }}>{n}</td>)}
+                <td style={{ textAlign: "center" }}>{totalDias}</td>
+                <td className="sep" style={{ textAlign: "center" }}>{soles(totalAprob)}</td>
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
       <div style={{ color: "var(--dim)", fontSize: 12, margin: "8px 2px" }}>
@@ -262,7 +268,12 @@ export default async function Jornadas({ searchParams }: { searchParams: { m?: s
       </div>
 
       {/* Detalle diario (pegado al pago) */}
-      <BitacoraJornadas items={bitacora} esAdmin={false} miPersonaId={miPersonaId} proyectos={proyectos || []} titulo="🗒 Detalle diario del mes" bloqueado={!!miLiq} />
+      {/* `diasVacios` pinta en 0 los días sin registrar. Su condición —que
+          `items` traiga el mes COMPLETO— se cumple aquí: `jorns` es todo el mes
+          de esta persona, sin filtrar por aprobada. El hueco es el dato: sin él
+          no se distingue «descansé» de «se me olvidó anotarlo», y una vez
+          liquidado el mes corregirlo ya cuesta. */}
+      <BitacoraJornadas items={bitacora} esAdmin={false} miPersonaId={miPersonaId} proyectos={proyectos || []} titulo="🗒 Detalle diario del mes" bloqueado={!!miLiq} porMes diasVacios />
 
       {/* ══ CONTEXTO (abajo, ordenado) ══ */}
       <div className="h4" style={{ marginTop: 22, color: "var(--dim)", letterSpacing: 1, textTransform: "uppercase", fontSize: 12 }}>Contexto adicional</div>
