@@ -20,6 +20,11 @@ export const metadata: Metadata = { title: "🕐 Historial" };
    Es la bitácora de Qhaway, por eso se entra desde su perfil. */
 
 const TOPE = 500;
+/* Hasta dónde se puede estirar con «ver más». No es infinito a propósito: cada
+   fila resuelve nombres y se pinta, y una página de veinte mil filas no se
+   lee — se cuelga. Con el tope a la vista y un botón para subirlo, quien
+   necesita el mes entero lo pide; quien solo mira, no lo paga. */
+const TOPE_MAX = 6000;
 /* Los conteos de los chips van con su propio tope, más alto: son tres columnas
    por fila y lo que se muestra es un número del PERIODO, no de la página. */
 const TOPE_CUENTA = 20000;
@@ -39,12 +44,16 @@ const cortoActor = (n?: string | null) => {
 };
 
 export default async function HistorialTodo({ searchParams }: {
-  searchParams: { p?: string; e?: string; t?: string; a?: string };
+  searchParams: { p?: string; e?: string; t?: string; a?: string; n?: string };
 }) {
   const p = (PERIODOS.some(([k]) => k === searchParams?.p) ? searchParams!.p : "semana") as Periodo;
   const filtroEv = searchParams?.e || "";     // tipo de evento
   const filtroEnt = searchParams?.t || "";    // tipo de entidad
   const filtroActor = searchParams?.a || "";  // quién
+  /* Cuántas filas traer. Sale de la URL para que «ver más» sea un enlace —se
+     puede compartir, y volver atrás deshace—. Acotado por los dos lados: un
+     `n` inventado a mano no tumba la página. */
+  const nPedido = Math.max(TOPE, Math.min(TOPE_MAX, Number(searchParams?.n) || TOPE));
 
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -81,7 +90,7 @@ export default async function HistorialTodo({ searchParams }: {
   const [{ data: evs }, { data: crudos }] = await Promise.all([
     conFiltros(supabase.from("actividad")
       .select("tipo,detalle,creado_en,entidad_tipo,entidad_id,actor_id,actor:perfiles(nombre)")
-      .order("creado_en", { ascending: false })).limit(TOPE),
+      .order("creado_en", { ascending: false })).limit(nPedido),
     qCuenta.limit(TOPE_CUENTA),
   ]);
   /* Nombre de cada actor para los chips: el conteo solo trae `actor_id`. */
@@ -189,9 +198,13 @@ export default async function HistorialTodo({ searchParams }: {
 
   const hora = (iso: string) => new Date(iso).toLocaleTimeString("es-PE",
     { hour: "2-digit", minute: "2-digit", timeZone: "America/Lima" });
+  /* Los enlaces de los chips NO arrastran `n`: al cambiar de filtro el
+     conjunto es otro y volver a pedir seis mil filas de algo que no se ha
+     mirado es pagar por adelantado. El «ver más» sí lo lleva, porque es
+     justo lo que se está pidiendo. */
   const url = (np: Periodo | string, ne: string, nt: string, na: string) =>
     `/historial?p=${np}${ne ? `&e=${ne}` : ""}${nt ? `&t=${nt}` : ""}${na ? `&a=${encodeURIComponent(na)}` : ""}`;
-  const filtrado = !!(filtroEv || filtroEnt || filtroActor) || p !== "semana";
+  const filtrado = !!(filtroEv || filtroEnt || filtroActor) || p !== "semana" || nPedido > TOPE;
 
   return (
     <div className="shell">
@@ -256,7 +269,17 @@ export default async function HistorialTodo({ searchParams }: {
         <span style={{ flex: 1 }} />
         {lista.length < nFiltrado && (
           <span style={{ color: "var(--yellow)", fontSize: 11.5 }}>
-            ⚠ se listan los {lista.length} más recientes de {nFiltrado} — acota el periodo
+            ⚠ se listan los {lista.length} más recientes de {nFiltrado}
+            {nPedido < TOPE_MAX && (
+              <>
+                {" — "}
+                <Link href={`${url(p, filtroEv, filtroEnt, filtroActor)}&n=${Math.min(TOPE_MAX, nPedido * 3)}`}
+                  style={{ color: "var(--accent)", fontWeight: 700 }}>
+                  ver más
+                </Link>
+              </>
+            )}
+            {nPedido >= TOPE_MAX && " — acota el periodo o filtra por persona para verlo completo"}
           </span>
         )}
         {topeCuenta && (
