@@ -117,8 +117,11 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
     /* `proy` y `fecha` entran para la portada: sin proyecto no se puede decir
        en qué se fue el mes, que es la única pregunta que un gráfico de barras
        contesta mejor que una tabla. */
-    supabase.from("jornadas").select("persona_id,fecha,fraccion,monto,aprobada,per:personas(nombre,alias),proy:proyectos(nombre)")
-      .gte("fecha", lInicio).lt("fecha", lFin).limit(3000),
+    /* `id`, `tipo` y `noche` entran para poder ABRIR el detalle de cada
+       persona antes de liquidar: firmar S/ 2,310 sin ver de qué se componen
+       es pedirle a alguien que confíe en un total. */
+    supabase.from("jornadas").select("id,persona_id,fecha,tipo,noche,fraccion,monto,aprobada,per:personas(nombre,alias),proy:proyectos(nombre)")
+      .gte("fecha", lInicio).lt("fecha", lFin).order("fecha", { ascending: false }).limit(3000),
     supabase.from("liquidaciones").select("persona_id,estado").eq("anio", lAnio).eq("mes", lMes + 1),
     // Las puertas del sistema + qué credenciales entran por cada una.
     // `puertas` son las entradas adicionales: Clave SOL es una cuenta con
@@ -171,8 +174,26 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
     a.monto += j.aprobada ? Number(j.monto || 0) : 0;
     agg.set(j.persona_id, a);
   });
+  /* El detalle de cada persona, para desplegarlo en la fila. Se arma del mismo
+     `jornsMes` que ya calcula los totales: si viniera de otra consulta, un día
+     el total y el detalle dirían cosas distintas y no habría forma de saber
+     cuál miente. */
+  const detalleLiq = new Map<string, any[]>();
+  (jornsMes || []).forEach((j: any) => {
+    const l = detalleLiq.get(j.persona_id) || [];
+    l.push({
+      id: j.id, fecha: j.fecha, tipo: j.tipo, noche: j.noche,
+      fraccion: Number(j.fraccion || 0), monto: Number(j.monto || 0),
+      aprobada: !!j.aprobada, proyecto: (j.proy as any)?.nombre || null,
+    });
+    detalleLiq.set(j.persona_id, l);
+  });
   const filasLiq = [...agg.entries()]
-    .map(([personaId, a]) => ({ personaId, nombre: a.nombre, dias: a.dias, pend: a.pend, monto: a.monto, estado: estadoDe.get(personaId) || null }))
+    .map(([personaId, a]) => ({
+      personaId, nombre: a.nombre, dias: a.dias, pend: a.pend, monto: a.monto,
+      estado: estadoDe.get(personaId) || null,
+      items: detalleLiq.get(personaId) || [],
+    }))
     .sort((x, y) => x.nombre.localeCompare(y.nombre));
 
   // Cuántos rozan o pasaron el tope de 4ta: eso es lo que pide atención

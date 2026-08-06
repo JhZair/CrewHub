@@ -22,3 +22,23 @@ export const FRACCIONES: { v: number; corto: string; largo: string }[] = [
 
 /** ¿Es una fracción que ofrecemos? Para no guardar valores que nadie eligió. */
 export const fraccionValida = (n: number) => FRACCIONES.some(f => f.v === Number(n));
+
+/* «07-13» obliga a traducir mentalmente y no dice qué día de la semana fue —
+   que es justo lo que se comprueba al aprobar o al liquidar: si ese sábado se
+   trabajó de verdad. Vive aquí porque ya lo usan la bitácora y la liquidación. */
+export const fechaHum = (f?: string | null) => {
+  const s = String(f ?? "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const d = new Date(s + "T12:00:00");
+  return d.toLocaleDateString("es-PE", { weekday: "short", day: "numeric", month: "short" }).replace(/\./g, "");
+};
+
+/** Sábado o domingo: no está mal, pero es lo primero que se mira. */
+export const esFinde = (f?: string | null) => {
+  const s = String(f ?? "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const n = new Date(s + "T12:00:00").getDay();
+  return n === 0 || n === 6;
+};
+
+export const ICO_TIPO: Record<string, string> = { rodaje: "🎬", oficina: "🏢", scouting: "🚙" };
