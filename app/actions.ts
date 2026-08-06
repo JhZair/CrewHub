@@ -4161,7 +4161,12 @@ export async function cargarPersonaRapida(personaId: string) {
      `p.usuario_id` no compila. Se nombra una vez y se sigue. */
   const per = p as any;
 
-  const [pe, em, pq, pa, pr, cta] = await Promise.all([
+  /* ¿Sigue viva en el sistema? Dos cifras: cuántos movimientos hizo en 30 días
+     y cuándo fue el último. La segunda hace falta porque un 0 en la primera es
+     ambiguo —puede ser alguien que dejó de entrar la semana pasada o hace dos
+     años— y esa diferencia es justo la que se quiere saber. */
+  const hace30 = new Date(Date.now() - 30 * 86400000).toISOString();
+  const [pe, em, pq, pa, pr, cta, act30, ultAct] = await Promise.all([
     /* Postulaciones donde participa. Vienen por `postulacion_equipo`, así que
        la misma persona puede aparecer dos veces en una (Director Y Autor): el
        dedup lo hace `palmaresDe` en el cliente, con la lista completa. */
@@ -4186,9 +4191,19 @@ export async function cargarPersonaRapida(personaId: string) {
       .select("id,desde,equipo:equipamiento(id,folio,nombre)")
       .eq("persona_id", personaId).is("hasta", null).limit(60),
     per.usuario_id
-      // `.eq("activo", true)`: una cuenta desactivada no es «tiene cuenta».
-      ? supabase.from("perfiles").select("id,nombre,avatar_url,color")
-          .eq("id", per.usuario_id).eq("activo", true).maybeSingle()
+      /* `activo` viaja en vez de filtrarse: una cuenta desactivada NO es lo
+         mismo que no tener cuenta, y colapsarlas hacía que un ex-usuario se
+         leyera igual que una persona externa. */
+      ? supabase.from("perfiles").select("id,nombre,avatar_url,color,activo")
+          .eq("id", per.usuario_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+    per.usuario_id
+      ? supabase.from("actividad").select("id", { count: "exact", head: true })
+          .eq("actor_id", per.usuario_id).gte("creado_en", hace30)
+      : Promise.resolve({ count: 0 }),
+    per.usuario_id
+      ? supabase.from("actividad").select("creado_en").eq("actor_id", per.usuario_id)
+          .order("creado_en", { ascending: false }).limit(1)
       : Promise.resolve({ data: null }),
   ]);
 
@@ -4200,6 +4215,8 @@ export async function cargarPersonaRapida(personaId: string) {
     actor: pa.data || [],
     prestamos: pr.data || [],
     cuenta: (cta as any)?.data || null,
+    act30: (act30 as any)?.count || 0,
+    ultimaAct: ((ultAct as any)?.data || [])[0]?.creado_en || null,
   };
 }
 

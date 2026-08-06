@@ -7,7 +7,7 @@ import { palmaresDePersona, postulacionesDePersona, lineasPalmares,
   icoMerito, tituloMerito } from "@/lib/palmares";
 import { esLiderazgo } from "@/lib/rolesEquipo";
 import { trabasMiembro, dudasMiembro } from "@/lib/fondos";
-import { ICO_EST, soles, un, nomProy } from "@/lib/vistaRapida";
+import { ICO_EST, soles, un, nomProy, haceCuanto } from "@/lib/vistaRapida";
 
 /* VISTA RÁPIDA DE UNA PERSONA — orientarse sin salir de donde estás.
  *
@@ -83,7 +83,7 @@ export default function VistaPersona({ personaId, children }: {
                   {p.tipo && <span className="vp-b">{p.tipo}</span>}
                   {p.equipo && <span className="vp-b">{p.equipo}</span>}
                   {p.estado && p.estado !== "activo" && <span className="vp-b alerta">{p.estado}</span>}
-                  {d.cuenta && <span className="vp-b ok">tiene cuenta</span>}
+                  {d.cuenta?.activo && <span className="vp-b ok">tiene cuenta</span>}
                   {p.es_comunero && <span className="vp-b">comunero</span>}
                 </div>
               </div>
@@ -125,6 +125,35 @@ export default function VistaPersona({ personaId, children }: {
                     </div>
                   </Bloque>
                 )}
+
+                {/* ── ¿Sigue viva en el sistema? ──
+                    Sin cuenta NO se muestra un cero: un 0 se lee como «no hace
+                    nada» cuando la verdad es «no usa esto». La mitad de la
+                    gente del sistema no tiene cuenta —Roxana, por ejemplo— y
+                    medirlos con la vara de los clics los dejaría a todos en
+                    cero, que es una mentira sobre media plantilla. */}
+                <Bloque titulo="🕐 En el sistema">
+                  {!p.usuario_id ? (
+                    <div className="vp-nota">Sin cuenta — no trabaja dentro del sistema.
+                      Su rastro está en postulaciones, proyectos y equipos.</div>
+                  ) : !d.cuenta ? (
+                    <div className="vp-trabas"><span>⚠ Tiene usuario asignado pero el perfil no existe</span></div>
+                  ) : !d.cuenta.activo ? (
+                    <div className="vp-nota">Cuenta desactivada
+                      {d.ultimaAct && <> · última vez {haceCuanto(d.ultimaAct)}</>}</div>
+                  ) : !d.ultimaAct ? (
+                    <div className="vp-nota">Tiene cuenta y aún no ha hecho nada.</div>
+                  ) : (
+                    <div className="vp-act">
+                      <span className={d.act30 > 0 ? "vivo" : ""}>
+                        <b>{d.act30}</b> movimiento{d.act30 === 1 ? "" : "s"} en 30 días
+                      </span>
+                      <span title={new Date(d.ultimaAct).toLocaleString("es-PE")}>
+                        última vez {haceCuanto(d.ultimaAct)}
+                      </span>
+                    </div>
+                  )}
+                </Bloque>
 
                 <Bloque titulo="📋 Papeles">
                   {trabas.length > 0 && (
