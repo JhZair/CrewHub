@@ -14,7 +14,8 @@ export type EventoLT = {
 };
 
 const dias = (f: string) => Math.ceil((new Date(f + "T12:00:00").getTime() - Date.now()) / 86400000);
-const fmt = (f: string) => new Date(f + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" });
+// Incluye el día de la semana: saber que un cierre cae viernes cambia el plan.
+const fmt = (f: string) => new Date(f + "T12:00:00").toLocaleDateString("es-PE", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
 
 /* Una distancia en días se lee mejor en la unidad que le queda cómoda: hasta 13
    días se dicen los días; hasta ~2 meses, en semanas; más allá, en meses. Así
