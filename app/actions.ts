@@ -3222,6 +3222,13 @@ export async function agregarActividadCrono(
     creado_por: user.id,
   });
   if (error) return { error: error.message };
+  /* Queda en el historial de la ficha, con nombre —igual que una edición. El
+     trigger de la BD ya deja un «creado» genérico contra la actividad; la página
+     lo oculta para no duplicar, y muestra este, que sí dice cuál. */
+  await supabase.from("actividad").insert({
+    entidad_tipo: dueno, entidad_id: duenoId, actor_id: user.id, tipo: "creado",
+    detalle: { mensaje: `creó la actividad «${d.nombre.trim()}» del cronograma` },
+  });
   revalidatePath(`/entidad/${dueno}/${duenoId}`);
   return {};
 }

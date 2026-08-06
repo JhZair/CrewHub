@@ -336,7 +336,11 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       supabase.from("actividad")
         .select("tipo,detalle,creado_en,actor_id,entidad_tipo,entidad_id,actor:perfiles(nombre)", { count: "exact" })
         .in("entidad_id", t).order("creado_en", { ascending: false }).limit(120)));
-    eventosHijos = res.flatMap(r => r.data || []);
+    eventosHijos = res.flatMap(r => r.data || [])
+      /* El «creado» genérico de una actividad del cronograma («registró esta
+         entidad») lo reemplaza el log CON NOMBRE que deja agregarActividadCrono
+         contra la ficha; aquí se descarta para no duplicar ni mostrar el genérico. */
+      .filter((e: any) => !(e.tipo === "creado" && e.entidad_tipo === "cronograma_actividades"));
     totalHijos = res.reduce((n, r) => n + (r.count ?? 0), 0);
 
     /* El nombre de DÓNDE pasó cada cosa. Sin esto una línea dice «cambió el

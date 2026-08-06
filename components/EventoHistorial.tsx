@@ -67,7 +67,12 @@ export function textoEvento(e: Evento, conEntidad?: boolean): string {
      ésta), y ahí «esta entidad» sí es el objeto del verbo. «registrado por» es
      neutro en género —vale para proyecto, empresa, persona…—. */
   if (e.tipo === "creado")
-    return conEntidad
+    // Un «creado» con mensaje propio (p. ej. «creó la actividad «X» del
+    // cronograma») se cuenta tal cual; el de una ficha nueva no lleva mensaje y
+    // cae al texto genérico de alta.
+    return e.detalle?.mensaje
+      ? `${quien || "Alguien"} ${e.detalle.mensaje}`
+      : conEntidad
       ? `registrado por ${quien || "el sistema"}`
       : `${quien || "Sistema"} registró esta entidad`;
   if (e.tipo === "estado") {
