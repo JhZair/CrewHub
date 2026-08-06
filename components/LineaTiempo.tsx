@@ -16,6 +16,16 @@ export type EventoLT = {
 const dias = (f: string) => Math.ceil((new Date(f + "T12:00:00").getTime() - Date.now()) / 86400000);
 const fmt = (f: string) => new Date(f + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" });
 
+/* Una distancia en días se lee mejor en la unidad que le queda cómoda: hasta 13
+   días se dicen los días; hasta ~2 meses, en semanas; más allá, en meses. Así
+   «68 días» se vuelve «2 meses» y «en 62 días» se vuelve «en 2 meses». */
+const humano = (n: number) => {
+  const a = Math.abs(n);
+  if (a < 14) return `${a} día${a === 1 ? "" : "s"}`;
+  if (a < 60) { const s = Math.round(a / 7); return `${s} semana${s === 1 ? "" : "s"}`; }
+  const m = Math.round(a / 30); return `${m} mes${m === 1 ? "" : "es"}`;
+};
+
 type Nodo = (EventoLT & { esHoy?: false }) | { esHoy: true; fecha: string };
 
 export default function LineaTiempo({ eventos }: { eventos: EventoLT[] }) {
@@ -40,7 +50,7 @@ export default function LineaTiempo({ eventos }: { eventos: EventoLT[] }) {
           <div key={i}>
             {i > 0 && (
               <div className="lt-conn" style={{ height: alto }}>
-                {gap >= 2 && <i>{gap} días</i>}
+                {gap >= 2 && <i>{humano(gap)}</i>}
               </div>
             )}
             {"esHoy" in n && n.esHoy ? (
@@ -51,10 +61,12 @@ export default function LineaTiempo({ eventos }: { eventos: EventoLT[] }) {
             ) : (() => {
               const e = n as EventoLT;
               const d = dias(e.fecha);
-              const cuenta = d === 0 ? "HOY" : d > 0 ? `en ${d} día${d === 1 ? "" : "s"}` : `hace ${-d} día${d === -1 ? "" : "s"}`;
+              const cuenta = d === 0 ? "HOY" : d > 0 ? `en ${humano(d)}` : `hace ${humano(d)}`;
+              // Pasado = historia (gris tenue). Lo que vence en ≤7 días = ámbar,
+              // que es lo único aquí que pide atención. El resto, normal.
               const cuerpo = (
                 <>
-                  <span className="lt-fecha" style={d < 0 ? { color: "var(--red)" } : d <= 7 ? { color: "var(--yellow)" } : undefined}>
+                  <span className="lt-fecha" style={d < 0 ? { color: "var(--dim)" } : d <= 7 ? { color: "var(--yellow)" } : undefined}>
                     {fmt(e.fecha)} · {cuenta}
                   </span>
                   <span style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -64,8 +76,8 @@ export default function LineaTiempo({ eventos }: { eventos: EventoLT[] }) {
                 </>
               );
               return (
-                <div className="lt-ev">
-                  <span className="lt-dot" style={{ background: e.color || "var(--violet)" }} />
+                <div className="lt-ev" style={d < 0 ? { opacity: 0.6 } : undefined}>
+                  <span className="lt-dot" style={{ background: d < 0 ? "var(--dim)" : (e.color || "var(--violet)") }} />
                   {e.href
                     ? <Link href={e.href} className="lt-info" style={{ color: "var(--text)" }}>{cuerpo}</Link>
                     : <div className="lt-info">{cuerpo}</div>}
