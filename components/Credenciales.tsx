@@ -35,7 +35,12 @@ const ES_CLASICO = (m?: string | null) =>
   m === METODO_CLASICO || m === METODO_SOL || m === "Correo y contraseña";
 // Sugerencias comunes para los datos de cada cuenta
 const DATO_SOL = "usuario SOL";
-const DATOS_SUG = ["correo de contacto", "teléfono de contacto", "correo de recuperación", "pregunta de seguridad", "quién administra", "PIN / token"];
+/* «teléfono de recuperación» encabeza y no estaba: es la LLAVE de la cuenta,
+   no un dato más. Sin él, recuperar un Gmail obliga a adivinar a quién le
+   llega el código —y eso es lo que hoy frena sumar cuentas a la casilla—.
+   Va separado de «teléfono de contacto» a propósito: uno sirve para llamar,
+   el otro para entrar, y confundirlos hace creer que la cuenta está cubierta. */
+const DATOS_SUG = ["teléfono de recuperación", "correo de recuperación", "correo de contacto", "teléfono de contacto", "pregunta de seguridad", "quién administra", "PIN / token"];
 /* Con Clave SOL el usuario SOL encabeza las sugerencias: es el dato que
    falta, no uno más de la lista. */
 const sugDe = (metodo?: string | null) => metodo === METODO_SOL ? [DATO_SOL, ...DATOS_SUG] : DATOS_SUG;
