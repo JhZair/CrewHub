@@ -611,6 +611,19 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
                         {a.descripcion}
                       </div>
                     )}
+                    {/* Quién puso este hito en el cronograma (no confundir con el
+                        responsable, que es a quién le toca hacerlo). El creador es
+                        una CUENTA del sistema; cuando la nómina de aquí son
+                        personas (postulación), el nombre viene ya resuelto del
+                        servidor en `_creadoPor`. */}
+                    {(() => {
+                      const nom = a._creadoPor || perfiles.find(p => p.id === a.creado_por)?.nombre;
+                      return a.creado_por && nom ? (
+                        <div style={{ fontSize: 10.5, color: "var(--dim)", marginTop: 3 }}>
+                          ✎ puesto por {String(nom).split(" ")[0]}
+                        </div>
+                      ) : null;
+                    })()}
                   </div>
                   <span className="badge" style={{ color: col, background: "#1c1c2c", whiteSpace: "nowrap", flexShrink: 0 }}>{txt}</span>
                   <span style={{ display: "flex", gap: 8, flexShrink: 0, alignItems: "center" }}>

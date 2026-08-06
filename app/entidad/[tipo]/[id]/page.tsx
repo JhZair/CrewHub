@@ -447,6 +447,14 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       reaccDe.set(r.publicacion_id, l);
     });
   }
+  /* Nombre de CUALQUIER cuenta —también inactivas—, para atribuir «quién creó»
+     un hito del cronograma. El creador puede haber dejado el equipo, y ese es
+     justo el caso donde saber quién fue importa más; los mapas de nómina activa
+     lo perderían. Una consulta chica que corre para cualquier ficha. */
+  const nombreCuenta = new Map(
+    (((await supabase.from("perfiles").select("id,nombre")).data as any[]) || []).map((x: any) => [x.id, x.nombre])
+  );
+
   /* El equipo es el denominador de "Enterados N/M". Solo se pide si hay algún
      aviso a la vista: en una ficha sin avisos sería una consulta de más. */
   const equipoAvisos = pubs.some((p: any) => p.tipo === "aviso")
@@ -698,7 +706,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   if (params.tipo === "postulacion") {
     const [ctx, eq, pc, ec] = await Promise.all([
       supabase.from("postulaciones")
-        .select("proy:proyectos(id,nombre,tipo,renca), emp:empresas(id,nombre,codigo,ruc,razon_social,renca,partida_electronica,estado_sunat,domicilio_fiscal,region,departamento_fiscal,provincia_fiscal,distrito_fiscal), conv:convocatorias(id,codigo,nombre,anio,categoria,monto_adjudicado,bases_url,plantilla_formulario,hitos:cronograma_actividades(id,nombre,fecha_inicio,estado,clase))")
+        .select("proy:proyectos(id,nombre,tipo,renca), emp:empresas(id,nombre,codigo,ruc,razon_social,renca,partida_electronica,estado_sunat,domicilio_fiscal,region,departamento_fiscal,provincia_fiscal,distrito_fiscal), conv:convocatorias(id,codigo,nombre,anio,categoria,monto_adjudicado,bases_url,plantilla_formulario,hitos:cronograma_actividades(id,nombre,fecha_inicio,estado,clase,creado_por))")
         .eq("id", params.id).single(),
       supabase.from("postulacion_equipo")
         .select("id,cargo,cv_url,cv_actualizado,persona:personas(id,nombre,alias,foto_url,tipo,es_comunero,ruc_dni,genero,nacionalidad,autoident,lengua_materna,otras_lenguas,discapacidad,direccion,region,provincia,distrito,fecha_nacimiento)")
@@ -988,7 +996,14 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
        (las cuentas del sistema) — ver db/crono-responsable-persona.sql. Se
        normaliza aquí, al leer, para que el componente del cronograma siga
        hablando de `responsable` y no haya que ramificarlo por dentro. */
-    cronoPost = (cp.data || []).map((a: any) => ({ ...a, responsable: a.responsable_persona || null }));
+    /* La nómina que ve el cronograma de postulación son PERSONAS del equipo,
+       pero `creado_por` es una CUENTA del sistema (otra tabla). Adjuntamos aquí
+       su nombre (de `nombreCuenta`, que incluye inactivos) como `_creadoPor`
+       para que el componente lo muestre sin cruzar los dos universos de ids. */
+    cronoPost = (cp.data || []).map((a: any) => ({
+      ...a, responsable: a.responsable_persona || null,
+      _creadoPor: nombreCuenta.get(a.creado_por) || null,
+    }));
     perfilesCat = pf2.data || [];
     /* 🧱 Muro de la postulación — mismo motor que proyecto/empresa/persona: junta
        las notas de bitácora vinculadas a esta postulación. */
@@ -1474,6 +1489,11 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     : params.tipo === "convocatoria"
     ? [ent.nombre || ent.codigo || "—", ent.anio || null].filter(Boolean).join(" · ")
     : ent.nombre || ent.codigo || "—";
+
+  /* «Puesto por» también en el cronograma de proyecto/convocatoria: resolvemos
+     el nombre de la cuenta creadora (incluidas inactivas) y lo adjuntamos, para
+     que el componente no dependa de la nómina activa que recibe. */
+  cronoActs = cronoActs.map((a: any) => ({ ...a, _creadoPor: a._creadoPor ?? (nombreCuenta.get(a.creado_por) || null) }));
 
   /* Resumen de interacción por postulación (la MISMA en las tres fichas):
      cuántos comentarios y cuántas reacciones tiene, para el chip del hilo.
@@ -2369,6 +2389,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                   <LineaTiempo eventos={hitosConc.map((h: any) => ({
                     fecha: h.fecha_inicio, titulo: h.nombre, icono: "🏛",
                     color: h.estado === "finalizada" ? "#4a4a5e" : "var(--violet)",
+                    autor: (nombreCuenta.get(h.creado_por) || "").split(" ")[0] || undefined,
                   }))} />
                 </div>
               )}

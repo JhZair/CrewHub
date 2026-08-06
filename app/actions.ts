@@ -880,6 +880,7 @@ export async function importarEntidades(entidad: string, filas: Record<string, s
             fecha_inicio: d, fecha_fin: d,
             estado: d <= hoyS ? "finalizada" : "planificada",
             dias_anticipacion: anticipacionDe(nombre),
+            creado_por: user.id,
           });
           hitosCreados++;
         };
@@ -3218,6 +3219,7 @@ export async function agregarActividadCrono(
     dias_anticipacion: Number.isFinite(parseInt(d.antic)) ? parseInt(d.antic) : DIAS_AVISO_DEF,
     orden,
     estado: "planificada",
+    creado_por: user.id,
   });
   if (error) return { error: error.message };
   revalidatePath(`/entidad/${dueno}/${duenoId}`);
@@ -3327,6 +3329,7 @@ export async function aplicarPlantilla(
     dias_anticipacion: a.dias_anticipacion ?? DIAS_AVISO_DEF,
     orden: a.orden ?? 0,
     estado: "planificada",
+    creado_por: user.id,
   }));
   const { error } = await supabase.from("cronograma_actividades").insert(filas);
   if (error) return { error: error.message };

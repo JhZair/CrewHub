@@ -11,6 +11,7 @@ export type EventoLT = {
   color?: string;       // color del punto
   chip?: string;        // etiqueta pequeña (ej. código del concurso)
   href?: string;        // destino del clic
+  autor?: string;       // quién creó el hito (nombre corto)
 };
 
 /* "Hoy" SIEMPRE en la zona de Perú. Este componente se renderiza en el servidor
@@ -82,6 +83,7 @@ export default function LineaTiempo({ eventos }: { eventos: EventoLT[] }) {
                     {e.icono} {e.titulo}
                     {e.chip && <span className="badge" style={{ color: "var(--violet)", background: "rgba(167,139,250,.12)", fontSize: 10.5 }}>{e.chip}</span>}
                   </span>
+                  {e.autor && <span style={{ fontSize: 10.5, color: "var(--dim)" }}>✎ puesto por {e.autor}</span>}
                 </>
               );
               return (
