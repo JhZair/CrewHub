@@ -2684,3 +2684,9 @@ button.repo-tit{text-align:left}
 .cp-val .copiable{max-width:100%}
 .cp-badge-btn{border:1px solid transparent;cursor:pointer;font-family:inherit}
 .cp-badge-btn:hover{border-color:currentColor}
+/* Jornadas agrupadas por persona */
+.jr-grupo{margin-bottom:10px}
+.jr-grupo-h{display:flex;align-items:center;gap:8px;padding:6px 4px 5px;
+  border-bottom:1px solid var(--border2);margin-bottom:3px;font-size:13px;flex-wrap:wrap}
+.jr-grupo-n{color:var(--dim);font-size:11.5px}
+.jr-grupo-t{color:var(--teal);font-size:12.5px;font-weight:700;white-space:nowrap}

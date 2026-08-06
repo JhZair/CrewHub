@@ -96,16 +96,63 @@ export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId =
   const router = useRouter();
   const onChange = () => router.refresh();
   const pend = items.filter(j => !j.aprobada).length;
+
+  /* ── Agrupado por PERSONA ──
+   * Treinta y nueve filas seguidas ordenadas por fecha obligan a reconstruir a
+   * ojo cuánto lleva cada quien: la fila dice el nombre, pero el total no está
+   * en ninguna parte y hay que sumarlo mentalmente saltando entre nombres.
+   * Aprobar es una decisión POR PERSONA —«¿le corresponden estas doce
+   * jornadas?»—, así que ese es el grupo natural.
+   * Dentro de cada persona se conserva el orden que traía (por fecha): el
+   * detalle diario sigue leyéndose como un diario. */
+  const grupos = new Map<string, { nombre: string; items: any[] }>();
+  items.forEach(j => {
+    const k = j.persona_id || j.persona || "—";
+    const g = grupos.get(k) || { nombre: j.persona || "—", items: [] };
+    g.items.push(j); grupos.set(k, g);
+  });
+  /* Primero quien tiene más por aprobar: es lo accionable. A igual pendiente,
+     alfabético — un orden que no depende de los datos no se mueve solo. */
+  const lista = [...grupos.entries()]
+    .map(([id, g]) => {
+      const p = g.items.filter(j => !j.aprobada);
+      return {
+        id, ...g,
+        nPend: p.length,
+        jorn: g.items.reduce((s, j) => s + (Number(j.fraccion) || 0), 0),
+        montoPend: p.reduce((s, j) => s + (Number(j.monto) || 0), 0),
+        monto: g.items.reduce((s, j) => s + (Number(j.monto) || 0), 0),
+      };
+    })
+    .sort((a, b) => b.nPend - a.nPend || a.nombre.localeCompare(b.nombre, "es"));
+
+  const soles = (n: number) => `S/ ${Math.round(n).toLocaleString("es-PE")}`;
+
   return (
     <details className="card" style={{ marginTop: 14 }} open>
       <summary style={{ cursor: "pointer", fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>
         {titulo} · {items.length}{pend ? ` · ⏳ ${pend} por aprobar` : " · todas aprobadas ✅"}
       </summary>
       <div style={{ marginTop: 8 }}>
-        {items.map(j => (
-          <FilaJornada key={j.id} j={j} esAdmin={esAdmin}
-            puedeEditar={!bloqueado && (esAdmin || (j.persona_id === miPersonaId && !j.aprobada))}
-            proyectos={proyectos} onChange={onChange} />
+        {lista.map(g => (
+          <div key={g.id} className="jr-grupo">
+            <div className="jr-grupo-h">
+              <b>{g.nombre}</b>
+              <span className="jr-grupo-n">{g.jorn}j · {g.items.length} registro{g.items.length === 1 ? "" : "s"}</span>
+              <span style={{ flex: 1 }} />
+              {g.nPend > 0
+                ? <span className="badge" style={{ color: "var(--yellow)", background: "rgba(244,180,0,.12)" }}>
+                    ⏳ {g.nPend} · {soles(g.montoPend)}
+                  </span>
+                : <span className="badge" style={{ color: "var(--green)", background: "rgba(46,204,113,.12)" }}>✅ al día</span>}
+              <span className="jr-grupo-t">{soles(g.monto)}</span>
+            </div>
+            {g.items.map(j => (
+              <FilaJornada key={j.id} j={j} esAdmin={esAdmin}
+                puedeEditar={!bloqueado && (esAdmin || (j.persona_id === miPersonaId && !j.aprobada))}
+                proyectos={proyectos} onChange={onChange} />
+            ))}
+          </div>
         ))}
         {!items.length && <div className="empty">Sin jornadas este mes.</div>}
       </div>
