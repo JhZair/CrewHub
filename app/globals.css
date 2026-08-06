@@ -2718,3 +2718,5 @@ button.repo-tit{text-align:left}
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .jr-fila .jr-est{flex:none;white-space:nowrap}
 .jr-fila .dato-btn{flex:none}
+.jr-plegar{min-width:24px;padding:1px 6px;flex:none}
+.jr-grupo-h{cursor:default}

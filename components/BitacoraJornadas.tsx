@@ -163,6 +163,18 @@ export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId =
 
   const soles = (n: number) => `S/ ${Math.round(n).toLocaleString("es-PE")}`;
 
+  /* Plegable por persona. Arranca ABIERTO quien tiene algo por aprobar y
+     cerrado quien no: lo que está resuelto no necesita ocupar pantalla, y así
+     lo primero que se ve es lo que hay que hacer. Con una sola persona
+     —/jornadas, que es personal— se abre igual: plegar tu propio mes cuando es
+     lo único que hay solo esconde la página.
+     `useState` con inicializador y no un `<details open>`: React reescribe el
+     atributo en cada render y el panel se volvería a abrir solo. */
+  const [cerrados, setCerrados] = useState<Set<string>>(() =>
+    new Set(lista.length > 1 ? lista.filter(g => g.nPend === 0).map(g => g.id) : []));
+  const alternar = (id: string) =>
+    setCerrados(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
   return (
     <details className="card" style={{ marginTop: 14 }} open>
       <summary style={{ cursor: "pointer", fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>
@@ -172,6 +184,9 @@ export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId =
         {lista.map(g => (
           <div key={g.id} className="jr-grupo">
             <div className="jr-grupo-h">
+              <button className="dato-btn jr-plegar"
+                title={cerrados.has(g.id) ? `Ver las jornadas de ${g.nombre}` : "Plegar"}
+                onClick={() => alternar(g.id)}>{cerrados.has(g.id) ? "▸" : "▾"}</button>
               <b>{g.nombre}</b>
               <span className="jr-grupo-n">{g.jorn}j · {g.items.length} registro{g.items.length === 1 ? "" : "s"}</span>
               <span style={{ flex: 1 }} />
@@ -182,7 +197,7 @@ export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId =
                 : <span className="badge" style={{ color: "var(--green)", background: "rgba(46,204,113,.12)" }}>✅ al día</span>}
               <span className="jr-grupo-t">{soles(g.monto)}</span>
             </div>
-            {(() => {
+            {!cerrados.has(g.id) && (() => {
               const pinta = (j: any) => (
                 <FilaJornada key={j.id} j={j} esAdmin={esAdmin}
                   puedeEditar={!bloqueado && (esAdmin || (j.persona_id === miPersonaId && !j.aprobada))}
