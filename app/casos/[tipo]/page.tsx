@@ -5,7 +5,7 @@ import { ESTADO_ICO, ESTADO_TXT, ESTADO_COL, claseEstado, rotuloEstado } from "@
 import { contarHijos, colorFamilia } from "@/lib/familia";
 import { plazoDe } from "@/lib/plazo";
 import { icoTipo } from "@/lib/tipos";
-import { PERIODOS, desdeDe, type Periodo } from "@/lib/periodo";
+import { PERIODOS, rangoDe, type Periodo } from "@/lib/periodo";
 import { seccionDe } from "@/lib/secciones";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
@@ -56,8 +56,10 @@ export default async function CasosPorEntidad({ params, searchParams }: {
       .neq("tipo", "bitacora")   // las notas del muro solo viven en su proyecto
       .order("creado_en", { ascending: false })
       .limit(1000);
-    const desde = desdeDe(p);
+    // Las dos puntas: un periodo cerrado sin `hasta` no está cerrado.
+    const { desde, hasta } = rangoDe(p);
     if (desde) q = q.gte("creado_en", desde);
+    if (hasta) q = q.lt("creado_en", hasta);
     const { data } = await q;
     pubs = data || [];
   }

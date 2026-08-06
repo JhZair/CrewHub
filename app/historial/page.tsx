@@ -4,8 +4,8 @@ import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import EventoHistorial, { icoDe, ROTULO_EV, ROTULO_ENT, type Evento } from "@/components/EventoHistorial";
 import EventoGrupo from "@/components/EventoGrupo";
 import { agruparEventos } from "@/lib/agrupar";
-import { PERIODOS, desdeDe, diaLima, horaLima, rotuloDia, type Periodo } from "@/lib/periodo";
-import { ICO_ENT, TABLA_DE } from "@/lib/secciones";
+import { PERIODOS, rangoDe, diaLima, horaLima, rotuloDia, type Periodo } from "@/lib/periodo";
+import { ICO_ENT, TABLA_DE, grafiasDe, tipoCanonico } from "@/lib/secciones";
 import { BOT, mapaAlias } from "@/lib/personas";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -20,6 +20,18 @@ export const metadata: Metadata = { title: "🕐 Historial" };
    Es la bitácora de Qhaway, por eso se entra desde su perfil. */
 
 const TOPE = 500;
+/* Los conteos de los chips van con su propio tope, más alto: son tres columnas
+   por fila y lo que se muestra es un número del PERIODO, no de la página. */
+const TOPE_CUENTA = 20000;
+
+/** Consulta mínima para contar: sin los filtros de tipo/actor (ver abajo). */
+const conteoBase = (sb: any, desde: string | null, hasta: string | null) => {
+  let x = sb.from("actividad").select("tipo,entidad_tipo,actor_id")
+    .order("creado_en", { ascending: false });
+  if (desde) x = x.gte("creado_en", desde);
+  if (hasta) x = x.lt("creado_en", hasta);
+  return x;
+};
 
 const cortoActor = (n?: string | null) => {
   const p = (n || "").trim().split(/\s+/);
@@ -38,13 +50,43 @@ export default async function HistorialTodo({ searchParams }: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const desde = desdeDe(p);
-  let q = supabase.from("actividad")
-    .select("tipo,detalle,creado_en,entidad_tipo,entidad_id,actor_id,actor:perfiles(nombre)")
-    .order("creado_en", { ascending: false })
-    .limit(TOPE);
-  if (desde) q = q.gte("creado_en", desde);
-  const { data: evs } = await q;
+  const { desde, hasta } = rangoDe(p);
+
+  /* DOS consultas, y no una filtrada en memoria.
+   *
+   * Antes se traían los últimos 500 eventos del sistema y los filtros se
+   * aplicaban sobre ese montón. Con «Todo», los chips repartían exactamente
+   * 500 entre los actores —212 + 208 + 58 + 21 + 1— y «Michel · 21» se leía
+   * como «Michel ha hecho 21 cosas» cuando significaba «21 de los últimos 500
+   * del equipo». Peor: al pulsar el chip no se iba a buscar más, así que la
+   * historia de Michel era inalcanzable por diseño.
+   *
+   * Ahora los filtros van a la BASE. La lista es de lo filtrado, así que el
+   * tope de 500 se gasta en Michel y no en el equipo entero.
+   */
+  const conFiltros = (b: any) => {
+    let x = b;
+    if (desde) x = x.gte("creado_en", desde);
+    if (hasta) x = x.lt("creado_en", hasta);
+    if (filtroEv) x = x.eq("tipo", filtroEv);
+    if (filtroEnt) x = x.in("entidad_tipo", grafiasDe(filtroEnt));
+    if (filtroActor) x = filtroActor === "bot" ? x.is("actor_id", null) : x.eq("actor_id", filtroActor);
+    return x;
+  };
+  /* Los CHIPS se cuentan aparte y sin los filtros de tipo/actor: si salieran
+     de la lista ya filtrada, al elegir a Michel desaparecerían los demás y no
+     habría cómo cambiar de persona. Solo tres columnas y tope alto: contar es
+     barato, y el número que se enseña debe ser del periodo, no de la página. */
+  const qCuenta = conteoBase(supabase, desde, hasta);
+  const [{ data: evs }, { data: crudos }] = await Promise.all([
+    conFiltros(supabase.from("actividad")
+      .select("tipo,detalle,creado_en,entidad_tipo,entidad_id,actor_id,actor:perfiles(nombre)")
+      .order("creado_en", { ascending: false })).limit(TOPE),
+    qCuenta.limit(TOPE_CUENTA),
+  ]);
+  /* Nombre de cada actor para los chips: el conteo solo trae `actor_id`. */
+  const { data: perfilesTodos } = await supabase.from("perfiles").select("id,nombre");
+  const nomActor = new Map<string, string>((perfilesTodos || []).map((x: any) => [x.id, x.nombre]));
 
   // Alias del actor (JohnO): manda sobre el nombre corto derivado (cortoActor).
   const { data: aliasPers } = await supabase.from("personas").select("usuario_id,alias")
@@ -97,20 +139,29 @@ export default async function HistorialTodo({ searchParams }: {
     actor: x.actor ? { ...x.actor, nombre: cortoActor(x.actor.nombre), alias: alias[x.actor_id] } : x.actor,
   }));
 
-  // Los conteos salen del periodo completo; los chips filtran la lista
+  /* Los conteos salen de `crudos` —todo el periodo—, no de la página traída.
+     Un chip que dice «21» sobre una muestra de 500 no es un dato, es el tamaño
+     de la muestra disfrazado de dato. */
   const cuenta = (f: (x: any) => any) => {
     const m = new Map<string, number>();
-    todos.forEach(x => { const k = f(x); if (k) m.set(k, (m.get(k) || 0) + 1); });
+    (crudos || []).forEach((x: any) => { const k = f(x); if (k) m.set(k, (m.get(k) || 0) + 1); });
     return [...m.entries()].sort((a, b) => b[1] - a[1]);
   };
   const porEvento = cuenta((x: any) => x.tipo);
-  const porEntidad = cuenta((x: any) => x.entidad_tipo);
-  const porActor = cuenta((x: any) => (x as any).actor?.nombre || `🤖 ${BOT}`);
+  const porEntidad = cuenta((x: any) => tipoCanonico(x.entidad_tipo || ""));
+  /* Por id y no por nombre: dos personas pueden llamarse igual, y el filtro
+     viaja en la URL —un nombre con espacios y tildes es frágil ahí. */
+  const porActor = cuenta((x: any) => x.actor_id || "bot");
 
-  const lista = todos.filter((x: any) =>
-    (!filtroEv || x.tipo === filtroEv) &&
-    (!filtroEnt || x.entidad_tipo === filtroEnt) &&
-    (!filtroActor || (x.actor?.nombre || `🤖 ${BOT}`) === filtroActor));
+  // La lista ya viene filtrada de la base.
+  const lista = todos;
+  const topeCuenta = (crudos || []).length >= TOPE_CUENTA;
+  /* Cuántos hay DE VERDAD con los filtros puestos: se cuenta sobre `crudos`,
+     que es el periodo entero, y no sobre la página. */
+  const nFiltrado = (crudos || []).filter((x: any) =>
+    (!filtroEv || x.tipo === filtroEv)
+    && (!filtroEnt || tipoCanonico(x.entidad_tipo || "") === filtroEnt)
+    && (!filtroActor || (x.actor_id || "bot") === filtroActor)).length;
 
   /* A qué hora se trabaja. El bot va aparte dentro de cada barra: escribe
      decenas de eventos de una sentada en su ronda de las 7:30, y mezclado
@@ -179,28 +230,38 @@ export default async function HistorialTodo({ searchParams }: {
         )}
         {porActor.length > 0 && (
           <FilaFiltro titulo="Quién">
-            {porActor.map(([a, n]) => (
-              <Chip key={a} href={url(p, filtroEv, filtroEnt, filtroActor === a ? "" : a)}
-                on={filtroActor === a} color={a.startsWith("🤖") ? "var(--dim)" : "var(--teal)"}>
-                {a} · {n}
-              </Chip>
-            ))}
+            {porActor.map(([a, n]) => {
+              const esBot = a === "bot";
+              const nom = esBot ? `🤖 ${BOT}` : (alias[a] || cortoActor(nomActor.get(a)) || "—");
+              return (
+                <Chip key={a} href={url(p, filtroEv, filtroEnt, filtroActor === a ? "" : a)}
+                  on={filtroActor === a} color={esBot ? "var(--dim)" : "var(--teal)"}>
+                  {nom} · {n}
+                </Chip>
+              );
+            })}
           </FilaFiltro>
         )}
       </PanelFiltros>
 
       <div className="card" style={{ display: "flex", gap: 18, flexWrap: "wrap", alignItems: "baseline" }}>
-        <span style={{ fontSize: 22, fontWeight: 800, color: "var(--violet)" }}>{lista.length}</span>
+        {/* El número grande es el TOTAL del periodo con los filtros puestos, no
+            el de las filas traídas: si el tope recorta, se dice aparte en vez
+            de rebajar el total y hacerlo pasar por completo. */}
+        <span style={{ fontSize: 22, fontWeight: 800, color: "var(--violet)" }}>{nFiltrado}</span>
         <span style={{ color: "var(--muted)", fontSize: 13 }}>
-          movimiento{lista.length === 1 ? "" : "s"}
-          {lista.length !== todos.length && <> de {todos.length}</>}
+          movimiento{nFiltrado === 1 ? "" : "s"}
           {" · "}{(PERIODOS.find(([k]) => k === p)?.[1] || "").toLowerCase()}
         </span>
         <span style={{ flex: 1 }} />
-        {/* Si hay tope, la pantalla lo dice cuando lo toca */}
-        {todos.length >= TOPE && (
+        {lista.length < nFiltrado && (
           <span style={{ color: "var(--yellow)", fontSize: 11.5 }}>
-            ⚠ tope de {TOPE} — acota el periodo para verlo completo
+            ⚠ se listan los {lista.length} más recientes de {nFiltrado} — acota el periodo
+          </span>
+        )}
+        {topeCuenta && (
+          <span style={{ color: "var(--yellow)", fontSize: 11.5 }}>
+            ⚠ hay más de {TOPE_CUENTA} eventos en el periodo: los conteos van cortos
           </span>
         )}
       </div>

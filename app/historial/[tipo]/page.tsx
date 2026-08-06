@@ -4,7 +4,7 @@ import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import EventoHistorial, { icoDe, type Evento } from "@/components/EventoHistorial";
 import EventoGrupo from "@/components/EventoGrupo";
 import { agruparEventos } from "@/lib/agrupar";
-import { PERIODOS, desdeDe, diaLima, rotuloDia, type Periodo } from "@/lib/periodo";
+import { PERIODOS, rangoDe, diaLima, rotuloDia, type Periodo } from "@/lib/periodo";
 import { seccionDe } from "@/lib/secciones";
 import { nombresDeEventos, conNombresEventos } from "@/lib/nombres";
 import { mapaAlias } from "@/lib/personas";
@@ -49,13 +49,16 @@ export default async function HistorialTipo({ params, searchParams }: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const desde = desdeDe(p);
+  /* `rangoDe` y no solo `desdeDe`: «mes pasado» necesita las DOS puntas o
+     acaba mostrando también este mes —y diciendo lo mismo que «este año»—. */
+  const { desde, hasta } = rangoDe(p);
   let q = supabase.from("actividad")
     .select("tipo,detalle,creado_en,entidad_tipo,entidad_id,actor_id,actor:perfiles(nombre)")
     .eq("entidad_tipo", params.tipo)
     .order("creado_en", { ascending: false })
     .limit(400);
   if (desde) q = q.gte("creado_en", desde);
+  if (hasta) q = q.lt("creado_en", hasta);
   const { data: evs } = await q;
 
   const { data: aliasPers } = await supabase.from("personas").select("usuario_id,alias")

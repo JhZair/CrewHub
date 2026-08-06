@@ -8,20 +8,35 @@ import { fechaConDia } from "@/lib/fechas";
 
 const LIMA_OFFSET_MS = 5 * 3600000;   // UTC-5, todo el año
 
-export type Periodo = "hoy" | "semana" | "mes" | "anio" | "todo";
+export type Periodo = "hoy" | "semana" | "mes" | "mes_pasado" | "anio" | "anio_pasado" | "todo";
 
 export const PERIODOS: [Periodo, string][] = [
   ["hoy", "Hoy"], ["semana", "Esta semana"], ["mes", "Este mes"],
-  ["anio", "Este año"], ["todo", "Todo"],
+  ["mes_pasado", "Mes pasado"], ["anio", "Este año"], ["anio_pasado", "Año pasado"],
+  ["todo", "Todo"],
 ];
 
 /* Desde cuándo cuenta el periodo, en ISO/UTC listo para la consulta.
    `todo` devuelve null: sin corte. */
+/* ⚠ Solo la punta de abajo. Sirve para periodos ABIERTOS («este mes», «este
+   año»); con uno cerrado («mes pasado») deja fuera el corte de arriba y el
+   resultado incluye hasta hoy — sin fallar, solo mintiendo. Para eso está
+   `rangoDe`, que es lo que deberían usar los llamadores nuevos.
+   Se conserva porque no cuesta nada y evita romper lo que quede fuera. */
 export function desdeDe(p: Periodo): string | null {
-  if (p === "todo") return null;
+  return rangoDe(p).desde;
+}
+
+/* Los periodos CERRADOS («mes pasado», «año pasado») necesitan las dos puntas:
+   con solo `desde`, «mes pasado» incluiría también este mes y diría lo mismo
+   que «este año» hasta que alguien lo comprobara. */
+export function rangoDe(p: Periodo): { desde: string | null; hasta: string | null } {
+  if (p === "todo") return { desde: null, hasta: null };
   // "Ahora" visto como si Lima fuera UTC: así los get/set UTC dan la fecha local
+  const iso = (d: Date) => new Date(d.getTime() + LIMA_OFFSET_MS).toISOString();
   const l = new Date(Date.now() - LIMA_OFFSET_MS);
   l.setUTCHours(0, 0, 0, 0);
+
   if (p === "semana") {
     // La semana arranca el lunes: el domingo es descanso, no inicio de nada
     const dia = (l.getUTCDay() + 6) % 7;   // 0 = lunes
@@ -30,8 +45,18 @@ export function desdeDe(p: Periodo): string | null {
     l.setUTCDate(1);
   } else if (p === "anio") {
     l.setUTCMonth(0, 1);
+  } else if (p === "mes_pasado") {
+    l.setUTCDate(1);
+    const fin = new Date(l);
+    l.setUTCMonth(l.getUTCMonth() - 1);
+    return { desde: iso(l), hasta: iso(fin) };
+  } else if (p === "anio_pasado") {
+    l.setUTCMonth(0, 1);
+    const fin = new Date(l);
+    l.setUTCFullYear(l.getUTCFullYear() - 1);
+    return { desde: iso(l), hasta: iso(fin) };
   }
-  return new Date(l.getTime() + LIMA_OFFSET_MS).toISOString();
+  return { desde: iso(l), hasta: null };
 }
 
 /* Día en Lima de una marca de tiempo — para agrupar el historial por fecha */
