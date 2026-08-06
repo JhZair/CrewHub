@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Avatar from "@/components/Avatar";
 import Copiar from "@/components/Copiar";
 import { guardarVista, borrarVista } from "@/app/actions";
-import { OPS, aplicar, type Columna, type Filtro, type Orden, type ConfigVista } from "@/lib/tabla";
+import { OPS, aplicar, COLUMNAS_DE, RUTA_DE, type Columna, type Filtro, type Orden, type ConfigVista } from "@/lib/tabla";
 
 /* TABLA CON VISTAS — filtrar, ordenar, ocultar columnas, y guardarlo con un
  * nombre. Lo que SeaTable daba y se perdió al migrar.
@@ -22,15 +22,18 @@ import { OPS, aplicar, type Columna, type Filtro, type Orden, type ConfigVista }
 
 type Vista = { id: string; nombre: string; icono?: string | null; usuario_id: string | null; config: ConfigVista };
 
-export default function TablaVistas({ entidad, columnas, filas, vistas, hrefDe, miId }: {
+export default function TablaVistas({ entidad, filas, vistas }: {
+  /* Solo cadenas y datos cruzan desde el servidor. Las columnas llevan
+     funciones (`valor`) y se resuelven AQUÍ, ya en el cliente: pasarlas como
+     prop es el error «Functions cannot be passed directly to Client
+     Components», que el typecheck no detecta y solo aparece al abrir la
+     página. Es la tercera vez en este proyecto; por eso deja de ser posible. */
   entidad: string;
-  columnas: Columna[];
   filas: any[];
   vistas: Vista[];
-  /** A dónde lleva cada fila (la ficha completa). */
-  hrefDe: (f: any) => string;
-  miId: string;
 }) {
+  const columnas = COLUMNAS_DE[entidad] || [];
+  const hrefDe = (f: any) => (RUTA_DE[entidad] || ((id: string) => "#"))(f.id);
   const router = useRouter();
   const DEF = columnas.slice(0, 7).map(c => c.key);
   const [cols, setCols] = useState<string[]>(DEF);

@@ -177,3 +177,19 @@ export function diasParaCumple(f?: string | null): number | null {
   if (prox < hoy) prox = new Date(hoy.getFullYear() + 1, mm - 1, dd, 12);
   return Math.round((prox.getTime() - hoy.getTime()) / 86400000);
 }
+
+/* ── El registro por entidad ──
+ * Las columnas NO se pasan como prop desde la página: llevan funciones
+ * (`valor`) y cruzar una función de servidor a cliente es un error de
+ * ejecución que el typecheck no ve —van tres veces en este proyecto—. El
+ * cliente pide su juego de columnas por NOMBRE y las resuelve aquí, donde ya
+ * está del lado del navegador. Lo que cruza la frontera es la cadena
+ * "persona"; las funciones nunca salen de este módulo. */
+export const COLUMNAS_DE: Record<string, Columna[]> = {
+  persona: COLS_PERSONA,
+};
+
+/** A dónde lleva cada fila. También aquí, por lo mismo. */
+export const RUTA_DE: Record<string, (id: string) => string> = {
+  persona: id => `/entidad/persona/${id}`,
+};

@@ -12,7 +12,6 @@ import { OjoPersona } from "@/components/Ojo";
 import Completitud from "@/components/Completitud";
 import { completitud, EQUIPOS_PERSONA, ESPECIALIDADES } from "@/lib/entidades";
 import TablaVistas from "@/components/TablaVistas";
-import { COLS_PERSONA } from "@/lib/tabla";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
@@ -392,9 +391,7 @@ export default async function Personas({ searchParams }: {
       </div>
 
       {vistaTabla ? (
-        <TablaVistas entidad="persona" columnas={COLS_PERSONA} filas={todas}
-          vistas={(vistasT as any[]) || []} miId={user.id}
-          hrefDe={(f: any) => `/entidad/persona/${f.id}`} />
+        <TablaVistas entidad="persona" filas={todas} vistas={(vistasT as any[]) || []} />
       ) : (
       <>
       <form className="card" style={{ display: "flex", gap: 10, padding: 12 }}>
