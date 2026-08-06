@@ -57,7 +57,7 @@ export default function VistaHilo({
   children, tituloCab, abrirCompletoHref, abrirCompletoTitle, ariaLabel,
   cargar, listo, selComentarios, selReaccionesPorComentario, selPerfiles, selUserId,
   cabecera, onComentar, onReaccionarComentario,
-  conHilo = true,
+  conHilo = true, claseCaja = "",
   permitirResponder = false, reaccionesHilo, onReaccionarHilo,
   textoVacio = "Aún no hay comentarios.", placeholder = "Comentar al vuelo…  (@ para mencionar)",
 }: {
@@ -84,6 +84,8 @@ export default function VistaHilo({
      conversación y el composer, y el shell (portal, Esc, fondo, cargar al
      abrir, «abrir completo») se reusa tal cual en vez de copiarse. */
   conHilo?: boolean;
+  /** Clase extra para la caja: una vista de datos necesita más ancho que un hilo. */
+  claseCaja?: string;
   onComentar?: (texto: string, respondeA: string | null) => Promise<any>;
   onReaccionarComentario?: (comentarioId: string, emoji: string) => Promise<any>;
   permitirResponder?: boolean;
@@ -171,7 +173,7 @@ export default function VistaHilo({
         <div className="modal-fondo"
           onClick={e => e.stopPropagation()}
           onMouseDown={e => { e.stopPropagation(); if (e.target === e.currentTarget) cerrar(); }}>
-          <div className="modal-caja vo-caja" role="dialog" aria-modal="true"
+          <div className={`modal-caja vo-caja ${claseCaja}`} role="dialog" aria-modal="true"
             aria-label={ariaLabel || "Vista del hilo"} onMouseDown={e => e.stopPropagation()}>
             <div className="modal-cab">
               <b>{typeof tituloCab === "function" ? (tituloCab as (d: any) => ReactNode)(data) : tituloCab}</b>

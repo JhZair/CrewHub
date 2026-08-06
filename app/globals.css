@@ -2560,3 +2560,29 @@ button.repo-tit{text-align:left}
 .chip-ojo:hover{color:var(--violet)}
 .emp-chip{background:rgba(59,130,246,.07)}
 .emp-chip-logo{width:26px;height:26px;border-radius:6px;object-fit:contain;background:#12121c;flex:none}
+
+/* La vista de datos necesita más ancho que un hilo de comentarios. */
+.modal-caja.vp-caja{max-width:min(1020px,96vw)}
+.vp-cols{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+@media (max-width:820px){.vp-cols{grid-template-columns:1fr}}
+.vp-col{display:flex;flex-direction:column;gap:12px;min-width:0}
+.vp-lineas{display:flex;flex-direction:column;gap:2px}
+.vp-linea{font-size:12.5px;color:var(--muted);cursor:help}
+.vp-linea b{color:var(--text);font-size:13.5px}
+.vp-punt{font-size:11.5px;color:var(--dim);cursor:help;border:1px solid var(--border);
+  border-radius:20px;padding:1px 8px}
+.vp-mas-inline{color:var(--dim);cursor:help}
+.vp-scroll{max-height:230px;overflow-y:auto}
+.vp-tabla{width:100%;border-collapse:collapse;font-size:12.5px}
+.vp-tabla td{padding:3px 6px 3px 0;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:top}
+.vp-tabla tr:last-child td{border-bottom:none}
+.vp-tabla a{color:var(--text);text-decoration:none}
+.vp-tabla a:hover{color:var(--accent)}
+.vp-td-a{color:var(--dim);width:38px;white-space:nowrap}
+.vp-td-i{width:20px;text-align:center}
+.vp-td-d{color:var(--dim);font-size:11.5px;max-width:38%;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;text-align:right}
+.vp-equipos{display:flex;gap:5px;flex-wrap:wrap}
+.vp-eq{font-size:11px;color:var(--muted);background:#1c1c2c;border-radius:5px;
+  padding:2px 7px;text-decoration:none}
+.vp-eq:hover{color:var(--accent)}

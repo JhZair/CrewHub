@@ -23,6 +23,7 @@ export default function VistaEmpresa({ empresaId, children }: {
   return (
     <VistaHilo
       conHilo={false}
+      claseCaja="vp-caja"
       ariaLabel="Vista rápida de la empresa"
       abrirCompletoHref={`/entidad/empresa/${empresaId}`}
       abrirCompletoTitle="Abrir la ficha completa"
@@ -112,16 +113,29 @@ export default function VistaEmpresa({ empresaId, children }: {
                   <span className="vp-pal-n">{resumenPalmares(pal)}</span>
                   {pal.monto > 0 && <span className="vp-pal-m">{soles(pal.monto)} adjudicado</span>}
                 </div>
-                <div className="vp-lista">
-                  {posts.slice(0, 6).map((x: any) => (
-                    <a key={x.id} href={`/entidad/postulacion/${x.id}`} className="vp-item"
-                      target="_blank" rel="noopener noreferrer">
-                      <span>{ICO_EST[x.estado] || "•"}</span>
-                      <span className="vp-item-t">{nomProy(x.proy)}</span>
-                      <span className="vp-item-d">{un(x.conv)?.anio || ""}</span>
-                    </a>
-                  ))}
-                  {posts.length > 6 && <div className="vp-mas">y {posts.length - 6} más</div>}
+                {/* Completa y con scroll: un «y N más» que esconde justo una
+                    ganadora hace que el 🏆 de arriba parezca un error. */}
+                <div className="vp-scroll">
+                  <table className="vp-tabla">
+                    <tbody>
+                      {[...posts].sort((a: any, b: any) =>
+                        (Number(un(b.conv)?.anio) || 0) - (Number(un(a.conv)?.anio) || 0)
+                      ).map((x: any) => (
+                        <tr key={x.id}>
+                          <td className="vp-td-a">{un(x.conv)?.anio || "—"}</td>
+                          <td className="vp-td-i" title={x.estado || ""}>{ICO_EST[x.estado] || "•"}</td>
+                          <td>
+                            <a href={`/entidad/postulacion/${x.id}`} target="_blank" rel="noopener noreferrer">
+                              {nomProy(x.proy)}
+                            </a>
+                          </td>
+                          <td className="vp-td-d">
+                            {Number(x.monto_adjudicado) > 0 ? soles(Number(x.monto_adjudicado)) : ""}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}

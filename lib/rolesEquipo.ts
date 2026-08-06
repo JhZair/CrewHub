@@ -19,6 +19,21 @@ export const ROLES_EQUIPO = [
   "Actor/Actriz de Voz", "Desarrollador/a de IA", "Especialista en Unreal Engine",
 ];
 
+/* Los cargos que ENCABEZAN una postulación: quien responde por ella.
+   Se deriva de la lista de arriba (los cuatro primeros) en vez de repetirla,
+   para que reordenar ROLES_EQUIPO no descuadre el palmarés en silencio.
+
+   El corte lo decidió John: dirección y titularidad, sin producción. Un
+   productor ejecutivo es equipo para este recuento —cuenta, pero en el
+   escalón de abajo—. Cambiar el corte es cambiar `N_LIDERAZGO`, y hay que
+   hacerlo a sabiendas: mueve todos los méritos ya mostrados. */
+const N_LIDERAZGO = 4;
+export const CARGOS_LIDERAZGO = ROLES_EQUIPO.slice(0, N_LIDERAZGO);
+
+/** ¿Este cargo encabeza la postulación (dirección o titularidad)? */
+export const esLiderazgo = (cargo?: string | null): boolean =>
+  CARGOS_LIDERAZGO.includes((cargo || "").trim());
+
 /** Rango de un cargo (menor = más arriba). Fuera de la lista → al final. */
 export function rangoRol(cargo?: string | null): number {
   const i = ROLES_EQUIPO.indexOf((cargo || "").trim());

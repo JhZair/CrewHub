@@ -1,47 +1,79 @@
-/* ── PALMARÉS: qué gana, qué roza, cuánto adjudicó ──
+import { esLiderazgo, rangoRol } from "@/lib/rolesEquipo";
+
+/* ── PALMARÉS: qué ganó, con qué papel, y cuánta cancha tiene ──
  *
- * El mismo recuento estaba escrito en tres sitios (/personas, /empresas y la
- * pestaña Trayectoria de la ficha) y YA no decían lo mismo:
+ * El recuento estaba escrito en tres sitios (/personas, /empresas y la pestaña
+ * Trayectoria) y YA no decían lo mismo: dos contaban «rozó» como
+ * `finalista_no_ganadora` y la ficha sumaba además `finalista`. Decía 3 donde
+ * las otras decían 2 y ninguna parecía rota. Aquí vive la definición, una vez.
  *
- *   /personas          «roza» = finalista_no_ganadora
- *   ficha de persona   «roza» = finalista  O  finalista_no_ganadora
- *   /empresas          «roza» = finalista_no_ganadora
+ * ── Las dos preguntas, que no son la misma ──
  *
- * Así que una persona finalista de un concurso vivo salía con un 🥈 en su
- * ficha y sin nada en la lista, sin que ninguna de las dos pantallas pareciera
- * rota. Eso es lo que pasa cuando una definición vive en tres archivos: no se
- * rompe, se desincroniza — y el usuario acaba desconfiando de las dos.
+ *   RESULTADO   ¿ganó?  → `ganadora`. ¿Llegó al final y no ganó? →
+ *               `finalista_no_ganadora`. ¿Sigue viva? → `finalista`.
+ *   MÉRITO      ¿llegó al encuentro con jurado? → `finalista` O
+ *               `finalista_no_ganadora`, indistintamente: superar la
+ *               evaluación hasta la instancia final ya ocurrió, esté o no
+ *               resuelto el concurso. Un concurso abierto no borra el hito.
  *
- * La definición, una sola vez:
- *   GANADA  = estado 'ganadora'.
- *   ROZÓ    = 'finalista_no_ganadora' — llegó al final y NO ganó. `finalista`
- *             a secas es un concurso todavía abierto: no es un resultado, es
- *             un estado de tránsito, y contarlo como «casi» da por perdido
- *             algo que aún se puede ganar.
- *   VIVA    = 'finalista' — se cuenta aparte, que es la información útil.
- *   MONTO   = suma de `monto_adjudicado` de las ganadas. NO `monto_solicitado`:
- *             lo pedido no es lo recibido.
+ * ── Y el PAPEL desempeñado, que es lo que jerarquiza ──
+ *
+ *   Ganar dirigiendo no es lo mismo que ganar en el equipo: en el primero el
+ *   liderazgo y la responsabilidad recaen en esa persona. Los cargos que
+ *   encabezan salen de `CARGOS_LIDERAZGO` (lib/rolesEquipo), no de una regexp
+ *   sobre texto libre: «Asistente de Dirección» contiene «Direcc» y no dirige.
+ *
+ * ── El puntaje ──
+ *
+ *   ⚠ Es una CONVENCIÓN nuestra, no una medida. Sirve para ordenar listas —no
+ *   para decidir por nadie—, y por eso las cifras del desglose se muestran
+ *   siempre: quien queda debajo puede ver de qué se compone. Si algún día se
+ *   cambian los pesos, cambia el orden de todas las listas a la vez: es el
+ *   precio de tener una sola definición, y es el precio correcto.
  */
 
+export const PESOS = {
+  ganadaLider: 5,     // ganó encabezando
+  finalLider: 3,      // llegó al jurado encabezando
+  ganadaEquipo: 2,    // ganó como integrante
+  finalEquipo: 1,     // llegó al jurado como integrante
+  /* La experiencia cuenta, pero no puede competir con un premio: diez
+     postulaciones suman 2, menos que una sola ganada dirigiendo. Presentarse
+     tiene mérito; presentarse mucho no equivale a haber ganado. */
+  postulacion: 0.2,
+} as const;
+
 export type Palmares = {
-  total: number;      // 🎯 en cuántas ha estado
-  ganadas: number;    // 🏆
-  rozo: number;       // 🥈 finalista que no ganó
-  vivas: number;      // ⭐ finalista, aún sin resolver
-  monto: number;      // S/ adjudicado
+  total: number;        // 🎯 postulaciones, TODAS las ediciones (ganó, rozó o no)
+  ganadas: number;      // 🏆
+  rozo: number;         // 🥈 llegó al final y no ganó (concurso resuelto)
+  vivas: number;        // ⭐ finalista, aún sin resolver
+  monto: number;        // S/ adjudicado
+  // Desglose por papel. Solo se llena cuando las filas traen cargo.
+  ganadasLider: number;
+  ganadasEquipo: number;
+  finalLider: number;   // llegó al jurado encabezando y NO ganó
+  finalEquipo: number;
+  puntaje: number;
 };
 
-export const PALMARES_CERO: Palmares = { total: 0, ganadas: 0, rozo: 0, vivas: 0, monto: 0 };
+export const PALMARES_CERO: Palmares = {
+  total: 0, ganadas: 0, rozo: 0, vivas: 0, monto: 0,
+  ganadasLider: 0, ganadasEquipo: 0, finalLider: 0, finalEquipo: 0, puntaje: 0,
+};
 
-/** Una postulación, en lo mínimo que hace falta para contarla. */
 export type PostMin = { id?: string | null; estado?: string | null; monto_adjudicado?: any };
+/** Una postulación con el papel que jugó la persona en ella. */
+export type PostConRol = PostMin & { cargo?: string | null };
 
-/* Cuenta una lista de postulaciones. `dedup` importa cuando la lista viene de
+const LLEGO_AL_JURADO = ["finalista", "finalista_no_ganadora"];
+
+/* Cuenta una lista de postulaciones. `dedup` importa cuando vienen de
    `postulacion_equipo`: una persona puede figurar como Director Y Autor en la
-   MISMA postulación, y sin deduplicar el palmarés se infla (4 ganadas cuando
-   eran 3). Por id de postulación; las filas sin id se cuentan igual, porque
-   descartarlas silenciosamente sería peor que contarlas de más. */
-export function palmaresDe(posts: (PostMin | null | undefined)[], dedup = true): Palmares {
+   MISMA postulación y sin deduplicar el palmarés se infla (4 ganadas cuando
+   eran 3). Las filas sin id se cuentan igual — descartarlas en silencio sería
+   peor que contarlas de más. */
+export function palmaresDe(posts: (PostConRol | null | undefined)[], dedup = true): Palmares {
   const r: Palmares = { ...PALMARES_CERO };
   const visto = new Set<string>();
   for (const p of posts) {
@@ -51,13 +83,26 @@ export function palmaresDe(posts: (PostMin | null | undefined)[], dedup = true):
       visto.add(p.id);
     }
     r.total++;
+    const lider = esLiderazgo(p.cargo);
     if (p.estado === "ganadora") {
       r.ganadas++;
       r.monto += Number(p.monto_adjudicado) || 0;
+      if (lider) r.ganadasLider++; else r.ganadasEquipo++;
+    } else if (LLEGO_AL_JURADO.includes(p.estado || "")) {
+      /* El hito (llegar al jurado) no distingue si el concurso ya cerró; el
+         RESULTADO sí, y por eso `rozo` y `vivas` se cuentan aparte. */
+      if (lider) r.finalLider++; else r.finalEquipo++;
+      if (p.estado === "finalista_no_ganadora") r.rozo++;
+      else r.vivas++;
     }
-    if (p.estado === "finalista_no_ganadora") r.rozo++;
-    if (p.estado === "finalista") r.vivas++;
   }
+  r.puntaje = Number((
+    r.ganadasLider * PESOS.ganadaLider
+    + r.finalLider * PESOS.finalLider
+    + r.ganadasEquipo * PESOS.ganadaEquipo
+    + r.finalEquipo * PESOS.finalEquipo
+    + r.total * PESOS.postulacion
+  ).toFixed(2));
   return r;
 }
 
@@ -67,15 +112,48 @@ export const postDeFila = (fila: any): PostMin | null => {
   return p || null;
 };
 
+/* Las filas de `postulacion_equipo` de una persona, agrupadas por postulación.
+   Cuando figura con dos cargos en la misma, MANDA EL MÁS ALTO: si dirigió y
+   además escribió el guion, ganó dirigiendo. Quedarse con la primera fila que
+   llega haría que el mérito dependiera del orden en que responde la base. */
+export function postulacionesDePersona(filas: any[] | null | undefined): PostConRol[] {
+  const porPost = new Map<string, PostConRol>();
+  const sueltas: PostConRol[] = [];
+  for (const f of filas || []) {
+    const post = postDeFila(f);
+    if (!post) continue;
+    const item: PostConRol = { ...post, cargo: f?.cargo || null };
+    if (!post.id) { sueltas.push(item); continue; }
+    const previo = porPost.get(post.id);
+    if (!previo || rangoRol(item.cargo) < rangoRol(previo.cargo)) porPost.set(post.id, item);
+  }
+  return [...porPost.values(), ...sueltas];
+}
+
 /** El palmarés de una persona a partir de sus filas de `postulacion_equipo`. */
 export const palmaresDePersona = (filas: any[] | null | undefined): Palmares =>
-  palmaresDe((filas || []).map(postDeFila));
+  palmaresDe(postulacionesDePersona(filas), false);   // ya viene deduplicado
+
+/* Las líneas del desglose, cada una con su razón. Se devuelven como datos y no
+   como texto armado para que cada pantalla decida cómo pintarlas. */
+export function lineasPalmares(p: Palmares): { ico: string; n: number; txt: string; titulo: string }[] {
+  return [
+    { ico: "🏆", n: p.ganadasLider, txt: "ganadas dirigiendo",
+      titulo: "Ganó encabezando la postulación (dirección o titularidad)" },
+    { ico: "⭐", n: p.finalLider, txt: "al jurado dirigiendo",
+      titulo: "Llegó al encuentro con jurado encabezando, sin ganar" },
+    { ico: "🥇", n: p.ganadasEquipo, txt: "ganadas en equipo",
+      titulo: "Ganó como integrante del equipo" },
+    { ico: "🎖", n: p.finalEquipo, txt: "al jurado en equipo",
+      titulo: "Llegó al encuentro con jurado como integrante" },
+    { ico: "🎯", n: p.total, txt: "postulaciones",
+      titulo: "Todas las ediciones en las que se presentó, con o sin resultado" },
+  ].filter(l => l.n > 0);
+}
 
 /** Una línea corta para chips y cabeceras. Vacía si nunca postuló. */
 export function resumenPalmares(p: Palmares): string {
   if (!p.total) return "";
-  /* Un `🏆 0` no informa de nada y se lee como un defecto —además /personas y
-     /empresas ya lo suprimen, así que pintarlo aquí era discrepar por nada. */
   const t: string[] = [];
   if (p.ganadas) t.push(`🏆 ${p.ganadas}`);
   if (p.rozo) t.push(`🥈 ${p.rozo}`);
