@@ -1538,9 +1538,10 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
      que el componente no dependa de la nómina activa que recibe. */
   cronoActs = cronoActs.map((a: any) => ({ ...a, _creadoPor: a._creadoPor ?? (nombreCuenta.get(a.creado_por) || null) }));
 
-  /* Resumen de interacción por postulación (la MISMA en las tres fichas):
-     cuántos comentarios y cuántas reacciones tiene, para el chip del hilo.
-     Se cuenta sobre los ids de la rama que se haya cargado. */
+  /* Contador del chip de cada postulación: cuántas NOTAS tiene su MURO (la
+     conversación de una postulación vive en su muro; el chip lleva ahí). Se
+     cuentan las bitácoras vinculadas a cada postulación, sobre los ids de la
+     rama que se haya cargado. */
   {
     const idsPost = [
       ...postusProy.map((p: any) => p.id),
@@ -1549,13 +1550,14 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     ].filter(Boolean) as string[];
     const uniq = [...new Set(idsPost)];
     if (uniq.length) {
-      const [cc, rr] = await Promise.all([
-        supabase.from("comentarios").select("postulacion_id").in("postulacion_id", uniq),
-        supabase.from("reacciones").select("postulacion_id").in("postulacion_id", uniq).is("comentario_id", null),
-      ]);
+      const { data: vinc } = await supabase.from("publicacion_vinculos")
+        .select("entidad_id, publi:publicaciones(tipo)")
+        .eq("entidad_tipo", "postulacion").in("entidad_id", uniq);
       for (const id of uniq) contadoresPost[id] = { c: 0, r: 0 };
-      (cc.data || []).forEach((x: any) => { if (contadoresPost[x.postulacion_id]) contadoresPost[x.postulacion_id].c++; });
-      (rr.data || []).forEach((x: any) => { if (contadoresPost[x.postulacion_id]) contadoresPost[x.postulacion_id].r++; });
+      (vinc || []).forEach((v: any) => {
+        const tipo = Array.isArray(v.publi) ? v.publi[0]?.tipo : v.publi?.tipo;
+        if (tipo === "bitacora" && contadoresPost[v.entidad_id]) contadoresPost[v.entidad_id].c++;
+      });
     }
   }
 
