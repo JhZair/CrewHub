@@ -2700,3 +2700,6 @@ button.repo-tit{text-align:left}
 .liq-proy{flex:1;min-width:90px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .liq-pie{margin-top:6px;padding-top:5px;border-top:1px solid var(--border);
   font-size:11.5px;color:var(--muted)}
+/* Un día sin trabajar no es un error: se ve, pero apagado. */
+.liq-dia.vacio{opacity:.38}
+.liq-dia.vacio span{color:var(--dim)}

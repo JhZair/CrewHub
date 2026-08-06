@@ -23,6 +23,22 @@ export default function LiquidacionAdmin({ anio, mes, filas }: {
      se toma AQUÍ, y mandar a revisar a otro sitio hace perder el hilo de en
      cuál ibas —con seis personas, volver es acordarse. */
   const [abierto, setAbierto] = useState<string | null>(null);
+
+  /* TODOS los días del mes, no solo los registrados.
+   *
+   * Con solo los trabajados, un mes con nueve registros se lee como nueve días
+   * de trabajo — y no se distingue «no trabajó el 5» de «trabajó y no lo
+   * registró». El hueco es justo lo que hay que mirar antes de congelar el
+   * mes: después de liquidar, agregar una jornada olvidada obliga a reabrir.
+   *
+   * En el mes en curso se corta en HOY: pintar en cero los días que todavía no
+   * han llegado sería contarlos como no trabajados. */
+  const hoy = new Date(); hoy.setHours(12, 0, 0, 0);
+  const ultimo = new Date(anio, mes, 0).getDate();          // `mes` viene 1-12
+  const esMesEnCurso = hoy.getFullYear() === anio && hoy.getMonth() + 1 === mes;
+  const hastaDia = esMesEnCurso ? hoy.getDate() : (new Date(anio, mes - 1, 1) > hoy ? 0 : ultimo);
+  const diasMes = Array.from({ length: hastaDia }, (_, i) =>
+    `${anio}-${String(mes).padStart(2, "0")}-${String(i + 1).padStart(2, "0")}`);
   const act = async (pid: string, fn: () => Promise<any>) => {
     setOcupado(pid); const r: any = await fn(); setOcupado(null);
     if (r?.error) alert(r.error); else router.refresh();
@@ -59,36 +75,57 @@ export default function LiquidacionAdmin({ anio, mes, filas }: {
           )}
         </div>
 
-        {abierto === f.personaId && (
-          <div className="liq-det">
-            {(f.items || []).length === 0 && (
-              <div style={{ color: "var(--dim)", fontSize: 12 }}>Sin jornadas registradas este mes.</div>
-            )}
-            {(f.items || []).map(j => (
-              <div key={j.id} className={`liq-dia${j.aprobada ? "" : " pend"}`}>
-                <span className={`jr-fecha${esFinde(j.fecha) ? " finde" : ""}`}>{fechaHum(j.fecha)}</span>
-                <span title={j.tipo}>{ICO_TIPO[j.tipo] || "•"}</span>
-                {/* Sin proyecto se DICE, no se deja en blanco: al liquidar es
-                    la última oportunidad de saber a qué se imputa el gasto. */}
-                <span className="liq-proy">{j.proyecto || <i style={{ color: "var(--yellow)", fontStyle: "normal" }}>sin proyecto</i>}</span>
-                {j.noche && <span title="Pernocte">🏕</span>}
-                <span style={{ color: "var(--blue)", fontWeight: 700 }}>{j.fraccion}j</span>
-                <span style={{ color: "var(--teal)", fontWeight: 700 }}>{money(j.monto)}</span>
-                {/* Lo NO aprobado no entra en el monto que se liquida. Verlo
-                    aquí explica por qué el total no cuadra con la suma de la
-                    lista —que si no, parece un error de cálculo—. */}
-                {!j.aprobada && <span className="badge" style={{ color: "var(--yellow)", background: "rgba(244,180,0,.12)", fontSize: 10 }}>⏳ no entra</span>}
-              </div>
-            ))}
-            {(f.items || []).length > 0 && (
+        {abierto === f.personaId && (() => {
+          const porDia = new Map<string, Item[]>();
+          (f.items || []).forEach(j => porDia.set(j.fecha, [...(porDia.get(j.fecha) || []), j]));
+          /* Ascendente: con el mes completo delante, 1→31 se lee como un
+             calendario. La bitácora sigue al revés porque ahí lo último es lo
+             que interesa; aquí lo que interesa es el mes entero. */
+          const vacios = diasMes.filter(d => !porDia.has(d)).length;
+          return (
+            <div className="liq-det">
+              {diasMes.length === 0 && (
+                <div style={{ color: "var(--dim)", fontSize: 12 }}>Ese mes todavía no ha empezado.</div>
+              )}
+              {diasMes.map(d => {
+                const js = porDia.get(d);
+                if (!js) {
+                  return (
+                    <div key={d} className="liq-dia vacio">
+                      <span className={`jr-fecha${esFinde(d) ? " finde" : ""}`}>{fechaHum(d)}</span>
+                      <span className="liq-proy">—</span>
+                      <span style={{ fontWeight: 700 }}>0j</span>
+                    </div>
+                  );
+                }
+                return js.map(j => (
+                  <div key={j.id} className={`liq-dia${j.aprobada ? "" : " pend"}`}>
+                    <span className={`jr-fecha${esFinde(j.fecha) ? " finde" : ""}`}>{fechaHum(j.fecha)}</span>
+                    <span title={j.tipo}>{ICO_TIPO[j.tipo] || "•"}</span>
+                    {/* Sin proyecto se DICE, no se deja en blanco: al liquidar
+                        es la última oportunidad de saber a qué se imputa. */}
+                    <span className="liq-proy">{j.proyecto || <i style={{ color: "var(--yellow)", fontStyle: "normal" }}>sin proyecto</i>}</span>
+                    {j.noche && <span title="Pernocte">🏕</span>}
+                    <span style={{ color: "var(--blue)", fontWeight: 700 }}>{j.fraccion}j</span>
+                    <span style={{ color: "var(--teal)", fontWeight: 700 }}>{money(j.monto)}</span>
+                    {/* Lo NO aprobado no entra en el monto que se liquida.
+                        Verlo explica por qué el total no cuadra con la suma de
+                        la lista — si no, parece un error de cálculo. */}
+                    {!j.aprobada && <span className="badge" style={{ color: "var(--yellow)", background: "rgba(244,180,0,.12)", fontSize: 10 }}>⏳ no entra</span>}
+                  </div>
+                ));
+              })}
               <div className="liq-pie">
-                {f.items!.length} registro(s) · {f.dias} jornadas ·
+                {f.items?.length || 0} registro(s) · {f.dias} jornadas ·
                 {" "}<b style={{ color: "var(--teal)" }}>{money(f.monto)}</b> aprobado
                 {f.pend > 0 && <> · <b style={{ color: "var(--yellow)" }}>{f.pend} sin aprobar</b> quedan fuera del recibo</>}
+                {/* El hueco es el dato: un día en cero puede ser descanso o un
+                    olvido, y después de liquidar corregirlo obliga a reabrir. */}
+                {vacios > 0 && <> · <b>{vacios} día(s) sin registrar</b> — descanso u olvido</>}
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          );
+        })()}
         </div>
       ))}
       {!filas.length && <div className="empty">Sin jornadas este mes.</div>}
