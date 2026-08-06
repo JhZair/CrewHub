@@ -32,6 +32,9 @@ import BotonFichaSunat from "@/components/BotonFichaSunat";
 import Copiar from "@/components/Copiar";
 import EventoHistorial from "@/components/EventoHistorial";
 import EventoGrupo from "@/components/EventoGrupo";
+import PersonaChip from "@/components/PersonaChip";
+import { palmaresDePersona } from "@/lib/palmares";
+import EmpresaChip from "@/components/EmpresaChip";
 import HistorialFicha from "@/components/HistorialFicha";
 import { resolverNombres, nombresDeEventos, conNombresEventos } from "@/lib/nombres";
 import { agruparEventos } from "@/lib/agrupar";
@@ -3006,13 +3009,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                           {/* La empresa como chip clicable, igual que las personas. */}
                           <div className="edic-ant-emp">
                             {o.emp?.id ? (
-                              <Link href={`/entidad/empresa/${o.emp.id}`} className="pers-chip" title={o.emp.nombre}>
-                                {o._cartelEmp
-                                  ? // eslint-disable-next-line @next/next/no-img-element
-                                    <img src={o._cartelEmp} alt="" referrerPolicy="no-referrer" className="edic-ant-emp-logo" />
-                                  : <span className="edic-ant-emp-ph">🏢</span>}
-                                <span className="pers-chip-txt">{o.emp.nombre}</span>
-                              </Link>
+                              <EmpresaChip id={o.emp.id} nombre={o.emp.nombre}
+                                logo={o._cartelEmp} titulo={o.emp.nombre} />
                             ) : (
                               <span className="edic-ant-emp-ph" style={{ color: "var(--red)" }}>🏢 sin empresa</span>
                             )}
@@ -3020,13 +3018,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                           {(o.equipo || []).length > 0 && (
                             <div className="edic-ant-eq">
                               {o.equipo.map((e: any, i: number) => (
-                                <Link key={i} href={`/entidad/persona/${e.persona?.id}`} className="pers-chip" title={e.cargo || ""}>
-                                  <Avatar nombre={e.persona?.nombre} src={e.persona?.foto_url} size={24} />
-                                  <span className="pers-chip-txt">
-                                    {e.persona?.alias || e.persona?.nombre}
-                                    {e.cargo && <span className="pers-chip-rol"> · {e.cargo}</span>}
-                                  </span>
-                                </Link>
+                                <PersonaChip key={i} id={e.persona?.id} nombre={e.persona?.nombre} size={24}
+                                  alias={e.persona?.alias} foto={e.persona?.foto_url} rol={e.cargo} />
                               ))}
                             </div>
                           )}
@@ -3192,14 +3185,9 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                           const roles = e.cargos.join(" · ");
                           const esYo = e.persona?.id === params.id;
                           return (
-                            <Link key={i} href={`/entidad/persona/${e.persona?.id}`}
-                              className={`pers-chip${esYo ? " pers-chip-yo" : ""}`} title={roles}>
-                              <Avatar nombre={e.persona?.nombre} src={e.persona?.foto_url} size={26} />
-                              <span className="pers-chip-txt">
-                                {e.persona?.alias || e.persona?.nombre}
-                                {roles && <span className="pers-chip-rol"> · {roles}</span>}
-                              </span>
-                            </Link>
+                            <PersonaChip key={i} id={e.persona?.id} nombre={e.persona?.nombre}
+                              alias={e.persona?.alias} foto={e.persona?.foto_url}
+                              rol={roles} titulo={roles} yo={esYo} />
                           );
                         })}
                       </div>
@@ -3209,7 +3197,6 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                 );
               };
               const ganadas = postDe.filter((r: any) => r.post?.estado === "ganadora");
-              const finalistas = postDe.filter((r: any) => ["finalista", "finalista_no_ganadora"].includes(r.post?.estado));
               const resto = postDe.filter((r: any) => r.post?.estado !== "ganadora");
               /* Trayectoria = todo el recorrido profesional, en este orden:
                  logros (Palmarés) → intentos (postulaciones) → dónde milita
@@ -3327,8 +3314,15 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                 </div>
               ) : null;
               // Contexto del palmarés: cuánto estímulo ha adjudicado en total.
-              const montoGanado = ganadas.reduce((s: number, r: any) => s + Number(r.post?.monto_adjudicado || 0), 0);
-              const nFinResto = resto.filter((r: any) => ["finalista", "finalista_no_ganadora"].includes(r.post?.estado)).length;
+              /* Los NÚMEROS salen de lib/palmares (la misma definición que
+                 /personas, /empresas y la vista rápida); las LISTAS se siguen
+                 armando aquí, que es lo propio de esta pantalla.
+                 Antes esta ficha juntaba `finalista` con `finalista_no_ganadora`
+                 bajo un solo «N finalistas», así que decía 3 donde las demás
+                 pantallas decían 2 — y las dos parecían correctas. Un concurso
+                 todavía abierto no es un «casi»: es una postulación viva. */
+              const pal = palmaresDePersona(postDe);
+              const montoGanado = pal.monto;
               const trayectoria = (
                 <>
                   {/* Palmarés y «En postulaciones» ya no comparten tarjeta: son dos
@@ -3339,8 +3333,9 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                       <div className="panel-h" style={{ color: "var(--green)" }}>🏆 Palmarés · {ganadas.length}</div>
                       <div style={{ color: "var(--muted)", fontSize: TXT.micro }}>
                         {ganadas.length} estímulo{ganadas.length === 1 ? "" : "s"} ganado{ganadas.length === 1 ? "" : "s"}
-                        {finalistas.length > 0 && ` · ${finalistas.length} finalista${finalistas.length === 1 ? "" : "s"}`}
-                        {` · ${postDe.length} postulaciones en total`}
+                        {pal.rozo > 0 && ` · ${pal.rozo} llegó a la final sin ganar`}
+                        {pal.vivas > 0 && ` · ${pal.vivas} finalista aún en juego`}
+                        {` · ${pal.total} postulaciones en total`}
                         {montoGanado > 0 && <> · <b style={{ color: "var(--teal)" }}>S/ {montoGanado.toLocaleString("es-PE")} adjudicado</b></>}
                       </div>
                       <div className="tray-postus">{ganadas.map(filaPost)}</div>
@@ -3350,7 +3345,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                     <div className="card" style={{ marginTop: ganadas.length ? 14 : 0 }}>
                       <div className="panel-h">🎯 En postulaciones · {resto.length}</div>
                       <div style={{ color: "var(--muted)", fontSize: TXT.micro }}>
-                        Concursos a los que se presentó{nFinResto > 0 ? ` · ${nFinResto} llegó a finalista` : ""}.
+                        Concursos a los que se presentó{pal.rozo > 0 ? ` · ${pal.rozo} llegó a la final sin ganar` : ""}.
                       </div>
                       <div className="tray-postus">{resto.map(filaPost)}</div>
                     </div>
@@ -3689,13 +3684,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                       {(p.equipo || []).length > 0 && (
                         <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
                           {ordenarEquipo(p.equipo).map((e: any, i: number) => (
-                            <Link key={i} href={`/entidad/persona/${e.persona?.id}`} className="pers-chip" title={e.cargo || ""}>
-                              <Avatar nombre={e.persona?.nombre} src={e.persona?.foto_url} size={26} />
-                              <span className="pers-chip-txt">
-                                {e.persona?.alias || e.persona?.nombre}
-                                {e.cargo && <span className="pers-chip-rol"> · {e.cargo}</span>}
-                              </span>
-                            </Link>
+                            <PersonaChip key={i} id={e.persona?.id} nombre={e.persona?.nombre}
+                              alias={e.persona?.alias} foto={e.persona?.foto_url} rol={e.cargo} />
                           ))}
                         </div>
                       )}
@@ -3963,13 +3953,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                       {(p.equipo || []).length > 0 && (
                         <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
                           {ordenarEquipo(p.equipo).map((e: any, i: number) => (
-                            <Link key={i} href={`/entidad/persona/${e.persona?.id}`} className="pers-chip" title={e.cargo || ""}>
-                              <Avatar nombre={e.persona?.nombre} src={e.persona?.foto_url} size={26} />
-                              <span className="pers-chip-txt">
-                                {e.persona?.alias || e.persona?.nombre}
-                                {e.cargo && <span className="pers-chip-rol"> · {e.cargo}</span>}
-                              </span>
-                            </Link>
+                            <PersonaChip key={i} id={e.persona?.id} nombre={e.persona?.nombre}
+                              alias={e.persona?.alias} foto={e.persona?.foto_url} rol={e.cargo} />
                           ))}
                         </div>
                       )}

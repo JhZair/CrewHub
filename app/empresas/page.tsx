@@ -3,6 +3,7 @@ import Volver from "@/components/Volver";
 import { BotonVerificarLote } from "@/components/VerificarSunat";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import Avatar from "@/components/Avatar";
+import { OjoEmpresa } from "@/components/Ojo";
 import { alertaSunat, empresaDeCasa, esNuestra, esProblematico, textoSunat } from "@/lib/sunat";
 import { REL_EMPRESA, EST_EMPRESA, completitud } from "@/lib/entidades";
 import { TXT } from "@/lib/texto";
@@ -265,6 +266,7 @@ export default async function Empresas({ searchParams }: {
           {/* línea 1: quién es */}
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <b style={{ fontSize: TXT.titulo }}>{emp.nombre}</b>
+            <OjoEmpresa id={emp.id} />
             {emp.relacion && (
               <span className="badge" style={{ color: REL_META[emp.relacion]?.[1] || "var(--dim)", background: "#1c1c2c" }}>
                 {emp.relacion}

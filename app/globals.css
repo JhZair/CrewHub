@@ -2511,3 +2511,52 @@ button.repo-tit{text-align:left}
 .hf-sel:hover{border-color:var(--border2)}
 .hf-sel:focus{border-color:var(--accent)}
 .hf-sel option{background:var(--card);color:var(--text)}
+
+/* ── Vista rápida de persona / empresa ── */
+.vp-cuerpo{display:flex;flex-direction:column;gap:12px}
+.vp-head{display:flex;gap:12px;align-items:flex-start}
+.vp-logo{width:54px;height:54px;border-radius:10px;object-fit:contain;background:#12121c;border:1px solid var(--border)}
+.vp-nom{font-size:16px;font-weight:800;color:var(--text);line-height:1.25}
+.vp-sub{font-size:12.5px;color:var(--muted);margin-top:2px}
+.vp-badges{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}
+.vp-b{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;
+  padding:2px 7px;border-radius:6px;background:#1c1c2c;color:var(--muted)}
+.vp-b.ok{color:var(--green);background:rgba(46,204,113,.12)}
+.vp-b.alerta{color:var(--yellow);background:rgba(245,158,11,.12)}
+.vp-datos{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);
+  border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:8px 0}
+.vp-datos b{color:var(--dim);font-weight:700;font-size:10px;text-transform:uppercase;
+  letter-spacing:.5px;margin-right:4px}
+.vp-datos .mal{color:var(--red)}
+.vp-bloque{display:flex;flex-direction:column;gap:5px}
+.vp-lbl{font-size:9.5px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);font-weight:700}
+.vp-dudas{display:flex;flex-direction:column;gap:2px;color:var(--dim);font-size:12.5px}
+.vp-pal{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
+.vp-pal-n{font-size:14px;font-weight:700;color:var(--text)}
+.vp-pal-m{font-size:12px;color:var(--green)}
+.vp-lista{display:flex;flex-direction:column}
+.vp-item{display:flex;gap:8px;align-items:center;padding:3px 0;text-decoration:none;font-size:12.5px}
+.vp-item:hover .vp-item-t{color:var(--accent)}
+.vp-item-t{flex:1;min-width:0;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vp-item-d{color:var(--dim);font-size:11.5px;flex:none;max-width:40%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vp-mas{color:var(--dim);font-size:11.5px;padding-top:3px}
+.vp-ok{color:var(--green);font-size:12.5px}
+.vp-trabas{display:flex;flex-direction:column;gap:2px;color:var(--yellow);font-size:12.5px}
+.vp-nota{color:var(--muted);font-size:12px}
+.vp-veredicto{font-size:13px;font-weight:700;border-radius:9px;padding:8px 11px;border:1px solid}
+.vp-veredicto.si{color:var(--green);background:rgba(46,204,113,.10);border-color:rgba(46,204,113,.35)}
+.vp-veredicto.casi{color:var(--yellow);background:rgba(245,158,11,.10);border-color:rgba(245,158,11,.35)}
+.vp-veredicto.no{color:var(--red);background:rgba(239,68,68,.09);border-color:rgba(239,68,68,.3)}
+.vp-comp{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.vp-comp .mal{color:var(--red)}
+.vp-miembros{display:flex;gap:8px;flex-wrap:wrap}
+.vp-mini{display:inline-flex;align-items:center;gap:6px;text-decoration:none;font-size:12px;
+  color:var(--blue);background:rgba(59,130,246,.10);border:1px solid rgba(59,130,246,.2);
+  border-radius:20px;padding:2px 9px 2px 2px}
+.vp-mini:hover{background:rgba(59,130,246,.18)}
+.pers-chip-wrap{display:inline-flex;align-items:center;gap:2px}
+.chip-ojo{background:none;border:none;color:var(--dim);font-size:11px;cursor:pointer;
+  padding:0 3px;line-height:1;border-radius:5px;transition:color .12s}
+.chip-ojo:hover{color:var(--violet)}
+.emp-chip{background:rgba(59,130,246,.07)}
+.emp-chip-logo{width:26px;height:26px;border-radius:6px;object-fit:contain;background:#12121c;flex:none}

@@ -57,6 +57,7 @@ export default function VistaHilo({
   children, tituloCab, abrirCompletoHref, abrirCompletoTitle, ariaLabel,
   cargar, listo, selComentarios, selReaccionesPorComentario, selPerfiles, selUserId,
   cabecera, onComentar, onReaccionarComentario,
+  conHilo = true,
   permitirResponder = false, reaccionesHilo, onReaccionarHilo,
   textoVacio = "Aún no hay comentarios.", placeholder = "Comentar al vuelo…  (@ para mencionar)",
 }: {
@@ -77,8 +78,14 @@ export default function VistaHilo({
   selUserId?: (d: any) => string;
   /** Cabecera propia de cada dueño (título, portada, contexto…). */
   cabecera: (d: any, cerrar: () => void) => ReactNode;
-  onComentar: (texto: string, respondeA: string | null) => Promise<any>;
-  onReaccionarComentario: (comentarioId: string, emoji: string) => Promise<any>;
+  /* Hay superficies que solo se MIRAN: la vista rápida de una persona o de una
+     empresa orienta, no es un sitio de trabajo —y `comentarios` ni siquiera
+     tiene de dónde colgar una persona—. Con `conHilo={false}` desaparecen la
+     conversación y el composer, y el shell (portal, Esc, fondo, cargar al
+     abrir, «abrir completo») se reusa tal cual en vez de copiarse. */
+  conHilo?: boolean;
+  onComentar?: (texto: string, respondeA: string | null) => Promise<any>;
+  onReaccionarComentario?: (comentarioId: string, emoji: string) => Promise<any>;
   permitirResponder?: boolean;
   /** Si se pasa, muestra una fila de reacciones al HILO (p. ej. la postulación). */
   reaccionesHilo?: (d: any) => RxItem[];
@@ -146,13 +153,14 @@ export default function VistaHilo({
   const invocarMencion = (nombre: string) => setTexto(aplicar(nombre));
 
   const enviarComentario = () => {
-    if (!texto.trim()) return;
+    if (!texto.trim() || !onComentar) return;
     correr(() => onComentar(texto.trim(), respondeA), () => {
       setTexto(""); setRespondeA(null);
       setTimeout(() => finRef.current?.scrollIntoView({ behavior: "smooth" }), 60);
     });
   };
-  const reaccionarCom = (comentarioId: string, emoji: string) => correr(() => onReaccionarComentario(comentarioId, emoji));
+  const reaccionarCom = (comentarioId: string, emoji: string) =>
+    onReaccionarComentario && correr(() => onReaccionarComentario(comentarioId, emoji));
   const reaccionarHilo = (emoji: string) => onReaccionarHilo && correr(() => onReaccionarHilo(emoji));
 
   return (
@@ -187,6 +195,7 @@ export default function VistaHilo({
                 )}
 
                 {/* Conversación: comentarios con reacciones */}
+                {conHilo && <>
                 <div className="vo-coms">
                   <div className="vo-coms-h">💬 Conversación · {comentarios.length}</div>
                   {comentarios.length === 0 && (
@@ -251,6 +260,7 @@ export default function VistaHilo({
                     {ocupado ? "…" : "Comentar"}
                   </button>
                 </div>
+                </>}
                 {error && <div className="err-inline" style={{ marginTop: 6 }}>⚠ {error}</div>}
               </div>
             )}

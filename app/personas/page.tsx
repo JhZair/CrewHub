@@ -8,6 +8,7 @@ import { esProblematico, textoSunat } from "@/lib/sunat";
 import { rucDePersona } from "@/lib/ruc";
 import { buscadorDe, pal } from "@/lib/buscar";
 import Avatar from "@/components/Avatar";
+import { OjoPersona } from "@/components/Ojo";
 import Completitud from "@/components/Completitud";
 import { completitud, EQUIPOS_PERSONA, ESPECIALIDADES } from "@/lib/entidades";
 import Link from "next/link";
@@ -58,7 +59,14 @@ export default async function Personas({ searchParams }: {
     supabase.from("comentarios").select("publicacion_id").not("publicacion_id", "is", null),
     // Su palmarés ante los fondos: en cuántas estuvo (🎯), cuántas ganó (🏆) y
     // en cuántas fue finalista sin ganar (🥈). Antes solo se contaba el total.
-    supabase.from("postulacion_equipo").select("persona_id,post:postulaciones(id,estado,proy:proyectos(nombre,nombre_corto),conv:convocatorias(anio))"),
+    /* `limit` explícito: sin él manda el tope por defecto de PostgREST (1000),
+       que no avisa. Con ~10 personas por postulación se cruza a las cien
+       postulaciones, y a partir de ahí el 🎯/🏆 de esta lista empieza a perder
+       gente EN SILENCIO mientras la ficha y la vista rápida —que consultan por
+       persona— siguen contando bien. Dos pantallas, dos números, sin error. */
+    supabase.from("postulacion_equipo")
+      .select("persona_id,post:postulaciones(id,estado,proy:proyectos(nombre,nombre_corto),conv:convocatorias(anio))")
+      .limit(20000),
     /* Qué películas hace cada quien. Este listado sabía el DNI, el RUC, el
        estado SUNAT y el tope de 4ta de cada persona — y no sabía que Yajaida
        dirige un documental. Sabía todo de su papelería y nada de su trabajo. */
@@ -242,6 +250,7 @@ export default async function Personas({ searchParams }: {
             {/* El nombre COMPLETO manda —es el listado de personas, se busca por
                 nombre—; el alias va al lado, tenue, para quien lo reconoce así. */}
             <b style={{ fontSize: 14.5 }}>{p.nombre}</b>
+            <OjoPersona id={p.id} />
             {p.alias && p.alias !== p.nombre && (
               <span style={{ color: "var(--dim)", fontSize: 12.5, fontWeight: 500 }}>{p.alias}</span>
             )}

@@ -4136,6 +4136,109 @@ export async function prestarEquipo(equipoId: string, personaId: string, proyect
   return {};
 }
 
+/* ===== VISTA RÁPIDA DE PERSONA Y EMPRESA =====
+ * Read-only: el pop-up orienta, no es un sitio de trabajo. Formato final lo
+ * arma el cliente; aquí solo se leen datos crudos.
+ *
+ * Mismo molde que `cargarCasoRapido`: sesión, el registro principal con guarda,
+ * y TODO lo demás en un solo Promise.all. Un pop-up que se abre en cualquier
+ * pantalla se pide muchas veces al día: encadenar consultas se paga en cada
+ * apertura.
+ */
+export async function cargarPersonaRapida(personaId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  const { data: p, error } = await supabase.from("personas")
+    .select("id,nombre,alias,tipo,equipo,estado,rol,region,ruc_dni,telefono,email,foto_url,"
+      + "estado_sunat,condicion_sunat,dni_vencimiento,suspension_4ta_anio,"
+      + "es_comunero,organizacion,usuario_id,nombre_reniec")
+    .eq("id", personaId).single();
+  if (error || !p) return { error: "No se encontró a la persona." };
+  /* El `select` va partido en varias cadenas por largo, y así PostgREST no
+     puede inferir el tipo de la fila: `p` sale como un error genérico y leer
+     `p.usuario_id` no compila. Se nombra una vez y se sigue. */
+  const per = p as any;
+
+  const [pe, em, pq, pa, pr, cta] = await Promise.all([
+    /* Postulaciones donde participa. Vienen por `postulacion_equipo`, así que
+       la misma persona puede aparecer dos veces en una (Director Y Autor): el
+       dedup lo hace `palmaresDe` en el cliente, con la lista completa. */
+    supabase.from("postulacion_equipo")
+      .select("cargo,post:postulaciones(id,codigo,estado,monto_adjudicado,"
+        + "proy:proyectos(id,nombre,nombre_corto),conv:convocatorias(id,nombre,anio))")
+      /* Con `limit` y sin `order`, «los 6 primeros» son 6 filas cualesquiera
+         —y distintas entre aperturas—: la del año en curso podía quedar entre
+         las escondidas. El orden manda antes que el recorte. */
+      .eq("persona_id", personaId).order("id", { ascending: false }).limit(120),
+    supabase.from("empresa_miembros")
+      .select("cargo,estado,fecha_inicio,fecha_fin,empresa:empresas(id,nombre,codigo)")
+      .eq("persona_id", personaId).order("fecha_inicio", { ascending: false, nullsFirst: false }).limit(30),
+    supabase.from("proyecto_equipo")
+      .select("cargo,desde,hasta,proyecto:proyectos(id,nombre,nombre_corto,etapa)")
+      .eq("persona_id", personaId).order("desde", { ascending: false, nullsFirst: false }).limit(60),
+    supabase.from("proyecto_actores")
+      .select("rol,orden,proyecto:proyectos(id,nombre,nombre_corto)")
+      .eq("persona_id", personaId).order("orden").limit(40),
+    // Solo lo que TIENE ahora: un préstamo cerrado no es responsabilidad viva.
+    supabase.from("equipo_prestamos")
+      .select("id,desde,equipo:equipamiento(id,folio,nombre)")
+      .eq("persona_id", personaId).is("hasta", null).limit(60),
+    per.usuario_id
+      // `.eq("activo", true)`: una cuenta desactivada no es «tiene cuenta».
+      ? supabase.from("perfiles").select("id,nombre,avatar_url,color")
+          .eq("id", per.usuario_id).eq("activo", true).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+
+  return {
+    persona: per,
+    postulaciones: pe.data || [],
+    cargos: em.data || [],
+    proyectos: pq.data || [],
+    actor: pa.data || [],
+    prestamos: pr.data || [],
+    cuenta: (cta as any)?.data || null,
+  };
+}
+
+export async function cargarEmpresaRapida(empresaId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  /* `*` y no una lista de columnas: las reglas de elegibilidad (lib/fondos.ts)
+     leen media ficha —RENCA, vigencia de poder, SUNAT, constitución— y una
+     lista se queda corta en silencio en cuanto se agrega un campo a la regla. */
+  const { data: e, error } = await supabase.from("empresas").select("*").eq("id", empresaId).single();
+  if (error || !e) return { error: "No se encontró la empresa." };
+
+  const [po, mi, lg] = await Promise.all([
+    supabase.from("postulaciones")
+      .select("id,codigo,estado,monto_adjudicado,fecha_limite_rendicion,fecha_prorroga,"
+        + "fecha_rendicion_real,proy:proyectos(id,nombre,nombre_corto),conv:convocatorias(id,nombre,anio)")
+      .eq("empresa_id", empresaId).order("creado_en", { ascending: false }).limit(120),
+    /* Los papeles de cada miembro viajan aunque no se pinten: el veredicto de
+       elegibilidad mira TAMBIÉN a los responsables (la ficha lo hace así), y
+       pedir solo nombre y foto haría que el pop-up dijera «libre para postular»
+       por no tener con qué desmentirlo. */
+    supabase.from("empresa_miembros")
+      .select("cargo,estado,persona:personas(id,nombre,alias,foto_url,"
+        + "ruc_dni,dni_vencimiento,estado_sunat,condicion_sunat,nombre_reniec)")
+      .eq("empresa_id", empresaId).order("cargo").limit(40),
+    supabase.from("entidad_media").select("cartel_url")
+      .eq("entidad_tipo", "empresa").eq("entidad_id", empresaId).maybeSingle(),
+  ]);
+
+  return {
+    empresa: e,
+    postulaciones: po.data || [],
+    miembros: mi.data || [],
+    logo: (lg as any)?.data?.cartel_url || null,
+  };
+}
+
 /* ===== ENTREGA EN LOTE — la salida a rodaje =====
  * Un rodaje no presta un equipo: presta doce. Hacerlo de a uno son doce fichas
  * abiertas y doce formularios, y lo que pasa de verdad es que nadie lo registra

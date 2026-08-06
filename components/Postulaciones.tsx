@@ -1,7 +1,7 @@
 "use client";
 import { crearPostulacion, actualizarPostulacion, borrarPostulacion } from "@/app/actions";
 import { EntPicker, type CatalogoItem } from "@/components/Composer";
-import Avatar from "@/components/Avatar";
+import PersonaChip from "@/components/PersonaChip";
 import SelloResultado from "@/components/SelloResultado";
 import { resultadoPostulacion } from "@/lib/resultados";
 import { TXT } from "@/lib/texto";
@@ -233,13 +233,8 @@ export default function Postulaciones({ convocatoriaId, postulaciones, proyectos
               {(p.equipo || []).length > 0 && (
                 <div style={{ display: "flex", gap: 5, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
                   {p.equipo.map((e: any, i: number) => (
-                    <Link key={i} href={`/entidad/persona/${e.persona?.id}`} className="pers-chip" title={e.cargo || ""}>
-                      <Avatar nombre={e.persona?.nombre} src={e.persona?.foto_url} size={26} />
-                      <span className="pers-chip-txt">
-                        {e.persona?.alias || e.persona?.nombre}
-                        {e.cargo && <span className="pers-chip-rol"> · {e.cargo}</span>}
-                      </span>
-                    </Link>
+                    <PersonaChip key={i} id={e.persona?.id} nombre={e.persona?.nombre}
+                      alias={e.persona?.alias} foto={e.persona?.foto_url} rol={e.cargo} />
                   ))}
                 </div>
               )}
