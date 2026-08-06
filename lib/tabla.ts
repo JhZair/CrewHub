@@ -89,9 +89,32 @@ export function pasa(fila: any, f: Filtro, cols: Columna[]): boolean {
   }
 }
 
-/** Aplica filtros y orden. Los filtros se acumulan con Y (todos deben pasar). */
+/* Los operadores de IGUALDAD se agrupan con O dentro de una misma columna.
+ *
+ * «Tipo es personal» Y «Tipo es colaborador» no puede cumplirlo ninguna fila:
+ * una persona tiene un tipo, no dos. Un filtro que SIEMPRE devuelve cero no es
+ * una opción rara, es una trampa — y era lo primero que uno intenta al querer
+ * ver dos tipos a la vez. Así que dos «es» sobre la misma columna se leen como
+ * «es cualquiera de los dos», que es lo único que pudo querer decir.
+ *
+ * `no_es` NO entra: excluir dos cosas a la vez sí es posible y sí es útil
+ * («ni contacto ni vetado»), así que ahí la Y es correcta.
+ * `contiene` tampoco: buscar dos palabras en el mismo campo es legítimo.
+ */
+const OPS_O = ["es"];
+
+/** Aplica filtros y orden. Columnas distintas se acumulan con Y. */
 export function aplicar(filas: any[], filtros: Filtro[], orden: Orden, cols: Columna[]): any[] {
-  let r = filas.filter(f => (filtros || []).every(x => pasa(f, x, cols)));
+  const porCol = new Map<string, Filtro[]>();
+  (filtros || []).forEach(f => porCol.set(f.col, [...(porCol.get(f.col) || []), f]));
+
+  let r = filas.filter(fila =>
+    [...porCol.values()].every(grupo => {
+      const conO = grupo.filter(x => OPS_O.includes(x.op) && txt(x.val) !== "");
+      const conY = grupo.filter(x => !conO.includes(x));
+      const pasaO = conO.length === 0 || conO.some(x => pasa(fila, x, cols));
+      return pasaO && conY.every(x => pasa(fila, x, cols));
+    }));
   if (orden) {
     const c = cols.find(x => x.key === orden.col);
     if (c) {

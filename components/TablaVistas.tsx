@@ -149,13 +149,20 @@ export default function TablaVistas({ entidad, filas, vistas }: {
 
       {panel === "filtros" && (
         <div className="card tv-panel">
-          <div className="tv-panel-h">Filtros — se acumulan: una fila tiene que pasarlos todos</div>
+          <div className="tv-panel-h">
+            Filtros — columnas distintas se suman con «y»; dos «es» de la misma columna, con «o»
+          </div>
           {filtros.map((f, i) => {
             const c = columnas.find(x => x.key === f.col);
             const ops = OPS[c?.tipo || "texto"];
             const opDef = ops.find(o => o.op === f.op);
+            /* El conector se DIBUJA: si no se ve, «Tipo es personal» seguido de
+               «Tipo es colaborador» se lee como una resta y no como una suma. */
+            const previo = i > 0 ? filtros[i - 1] : null;
+            const conector = !previo ? "" : (previo.col === f.col && f.op === "es" && previo.op === "es") ? "o" : "y";
             return (
               <div key={i} className="tv-filtro">
+                {conector && <span className="tv-conector">{conector}</span>}
                 <select className="hf-sel" value={f.col}
                   onChange={e => setFiltros(s => s.map((x, j) => j === i
                     ? { col: e.target.value, op: OPS[columnas.find(c2 => c2.key === e.target.value)?.tipo || "texto"][0].op, val: "" }

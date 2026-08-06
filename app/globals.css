@@ -2659,3 +2659,5 @@ button.repo-tit{text-align:left}
 .tv-primera{display:inline-flex;align-items:center;gap:7px;font-weight:600}
 .tv-vacio{color:var(--dim)}
 .tv-ir{color:var(--accent);font-weight:700}
+.tv-conector{font-size:10.5px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);
+  font-weight:700;width:18px;flex:none;text-align:right}
