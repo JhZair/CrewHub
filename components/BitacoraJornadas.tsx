@@ -67,21 +67,26 @@ function FilaJornada({ j, esAdmin, puedeEditar, proyectos, onChange }: {
     );
   }
 
+  /* Una sola línea, sin `flex-wrap`. Con wrap, el ✕ de borrar caía a un
+     segundo renglón en cuanto la fila crecía un poco —el 🏕 del pernocte
+     bastaba— y esa fila pasaba a ocupar el doble sin decir por qué. Lo que
+     cede es el NOMBRE DEL PROYECTO, con puntos suspensivos: es el único dato
+     de la fila que se puede recortar sin perder sentido, y el completo queda
+     en el tooltip. Los botones nunca se mueven de sitio. */
   return (
-    <div className="info-row" style={{ gap: 10, flexWrap: "wrap" }}>
+    <div className="info-row jr-fila">
       <span className={`jr-fecha${esFinde(j.fecha) ? " finde" : ""}`} title={j.fecha}>
         {fechaHum(j.fecha)}
       </span>
-      <span style={{ fontWeight: 600, fontSize: 12.5 }}>{ICO_TIPO[j.tipo] || ""} {j.persona}</span>
-      <span style={{ color: "var(--dim)", fontSize: 12 }}>{j.proyecto || "sin proyecto"}</span>
-      <span style={{ fontSize: 12 }}>{j.fraccion}j{j.noche ? " 🏕" : ""}</span>
-      <span style={{ color: "var(--teal)", fontSize: 12, fontWeight: 700 }}>{money(j.monto)}</span>
-      <span className="badge" style={{
+      <span className="jr-quien">{ICO_TIPO[j.tipo] || ""} {j.persona}</span>
+      <span className="jr-proy" title={j.proyecto || "sin proyecto"}>{j.proyecto || "sin proyecto"}</span>
+      <span style={{ fontSize: 12, whiteSpace: "nowrap" }}>{j.fraccion}j{j.noche ? " 🏕" : ""}</span>
+      <span style={{ color: "var(--teal)", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>{money(j.monto)}</span>
+      <span className="badge jr-est" style={{
         fontSize: 10.5,
         color: j.aprobada ? "var(--green)" : "var(--yellow)",
         background: j.aprobada ? "rgba(46,204,113,.12)" : "rgba(244,180,0,.12)",
       }}>{j.aprobada ? "✅ aprobada" : "⏳ pendiente"}</span>
-      <span style={{ flex: 1 }} />
       {esAdmin && (j.aprobada
         ? <button className="dato-btn" disabled={ocupado} onClick={() => aprobar(false)}>↩ quitar</button>
         : <button className="dato-btn" disabled={ocupado} onClick={() => aprobar(true)}>✅ aprobar</button>)}
@@ -218,10 +223,10 @@ export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId =
                              dato —no se distingue «descansó» de «lo olvidó»—
                              y después de aprobar el mes corregirlo cuesta. */
                           return (
-                            <div key={d} className="jr-dia-vacio">
+                            <div key={d} className="info-row jr-fila jr-dia-vacio">
                               <span className={`jr-fecha${esFinde(d) ? " finde" : ""}`}>{fechaHum(d)}</span>
-                              <span style={{ flex: 1, color: "var(--dim)" }}>—</span>
-                              <span style={{ fontWeight: 700 }}>0j</span>
+                              <span className="jr-proy">—</span>
+                              <span style={{ fontWeight: 700, whiteSpace: "nowrap" }}>0j</span>
                             </div>
                           );
                         })

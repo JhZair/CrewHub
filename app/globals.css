@@ -2710,5 +2710,11 @@ button.repo-tit{text-align:left}
   letter-spacing:.8px;color:var(--dim);font-weight:700;padding:5px 2px 3px;
   border-bottom:1px solid rgba(255,255,255,.06);margin-bottom:2px}
 .jr-mes-h .jr-grupo-n{text-transform:none;letter-spacing:0;font-weight:600}
-.jr-dia-vacio{display:flex;align-items:center;gap:9px;font-size:12px;color:var(--dim);
-  padding:4px 0;opacity:.4}
+.jr-dia-vacio{font-size:12px;color:var(--dim);opacity:.4}
+/* Fila de jornada: una sola línea. El proyecto es lo que cede. */
+.jr-fila{display:flex;align-items:center;gap:9px;flex-wrap:nowrap}
+.jr-quien{font-weight:600;font-size:12.5px;white-space:nowrap;flex:none}
+.jr-proy{color:var(--dim);font-size:12px;flex:1;min-width:40px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.jr-fila .jr-est{flex:none;white-space:nowrap}
+.jr-fila .dato-btn{flex:none}
