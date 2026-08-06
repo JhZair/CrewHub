@@ -375,9 +375,24 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     }));
   }
 
+  /* Los posts del MURO (bitácora) son publicaciones, pero NO son trabajo: viven
+     en su pestaña Muro. Sus eventos («creó la publicación»…) no entran al
+     historial de trabajo —confunden y llevaban a una página de caso que no les
+     aplica—. Se detectan entre los ids de publicación tocados por los eventos. */
+  const idsPubEv = [...new Set(eventosHijos
+    .filter((e: any) => ["publicaciones", "publicacion"].includes(e.entidad_tipo))
+    .map((e: any) => e.entidad_id))] as string[];
+  let idsBitacora = new Set<string>();
+  if (idsPubEv.length) {
+    const { data: bits } = await supabase.from("publicaciones")
+      .select("id").eq("tipo", "bitacora").in("id", idsPubEv);
+    idsBitacora = new Set((bits || []).map((x: any) => x.id));
+  }
+
   /* Se funden y se reordenan como una sola línea de tiempo: el orden lo da la
      hora, no de qué tabla vino cada cosa. */
   const eventosTodos = [...(eventos || []), ...eventosHijos]
+    .filter((e: any) => !idsBitacora.has(e.entidad_id))
     .sort((a: any, b: any) => (a.creado_en < b.creado_en ? 1 : a.creado_en > b.creado_en ? -1 : 0))
     .slice(0, 120);
 
