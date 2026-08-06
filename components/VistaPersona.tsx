@@ -2,6 +2,7 @@
 import { type ReactNode } from "react";
 import VistaHilo from "@/components/VistaHilo";
 import Avatar from "@/components/Avatar";
+import Copiar from "@/components/Copiar";
 import { cargarPersonaRapida } from "@/app/actions";
 import { palmaresDePersona, postulacionesDePersona, lineasPalmares,
   icoMerito, tituloMerito } from "@/lib/palmares";
@@ -68,7 +69,10 @@ export default function VistaPersona({ personaId, children }: {
             <div className="vp-head">
               <Avatar nombre={p.nombre} src={p.foto_url} size={58} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div className="vp-nom">{p.nombre}</div>
+                {/* El nombre COMPLETO se copia: es lo que va en los
+                    formularios de DAFO, y transcribirlo a mano es donde se
+                    pierde una tilde o un apellido. */}
+                <div className="vp-nom"><Copiar valor={p.nombre} etiqueta="el nombre">{p.nombre}</Copiar></div>
                 <div className="vp-sub">
                   {/* Diez especialidades ocupaban tres renglones y empujaban
                       todo lo demás fuera de la vista. Se ven tres; el resto
@@ -89,13 +93,19 @@ export default function VistaPersona({ personaId, children }: {
               </div>
             </div>
 
+            {/* Todos copiables: un DNI pasado a mano a un formulario pierde
+                un dígito y no falla —valida como otro DNI o como ninguno—, y
+                el error aparece semanas después sin saber de dónde vino. */}
             <div className="vp-datos">
-              {p.ruc_dni && <span><b>DNI/RUC</b> {p.ruc_dni}</span>}
-              {p.telefono && <span><b>Tel</b> {p.telefono}</span>}
-              {p.email && <span><b>Correo</b> {p.email}</span>}
+              {p.ruc_dni && <span><b>DNI/RUC</b> <Copiar valor={p.ruc_dni} etiqueta="el DNI/RUC" /></span>}
+              {p.telefono && <span><b>Tel</b> <Copiar valor={p.telefono} etiqueta="el teléfono" /></span>}
+              {p.email && <span><b>Correo</b> <Copiar valor={p.email} etiqueta="el correo" /></span>}
               {p.nombre_reniec && (
-                <span title="Nombre según RENIEC"><b>RENIEC</b> {p.nombre_reniec}</span>
+                <span title="Nombre según RENIEC">
+                  <b>RENIEC</b> <Copiar valor={p.nombre_reniec} etiqueta="el nombre RENIEC" />
+                </span>
               )}
+              {p.direccion && <span><b>Dirección</b> <Copiar valor={p.direccion} etiqueta="la dirección" /></span>}
             </div>
 
             {/* ── Dos columnas: el espacio sobraba y la lista se leía apretada ── */}

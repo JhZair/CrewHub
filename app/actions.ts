@@ -4151,7 +4151,7 @@ export async function cargarPersonaRapida(personaId: string) {
   if (!user) return { error: "Sesión no encontrada." };
 
   const { data: p, error } = await supabase.from("personas")
-    .select("id,nombre,alias,tipo,equipo,estado,rol,region,ruc_dni,telefono,email,foto_url,"
+    .select("id,nombre,alias,tipo,equipo,estado,rol,region,direccion,ruc_dni,telefono,email,foto_url,"
       + "estado_sunat,condicion_sunat,dni_vencimiento,suspension_4ta_anio,"
       + "es_comunero,organizacion,usuario_id,nombre_reniec")
     .eq("id", personaId).single();
