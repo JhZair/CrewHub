@@ -2673,3 +2673,12 @@ button.repo-tit{text-align:left}
 .dato-fila{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:5px 0;
   border-bottom:1px solid rgba(255,255,255,.05);font-size:12.5px}
 .dato-fila:last-child{border-bottom:none}
+/* Contactos declarados: rótulo + controles arriba, valor abajo a todo el
+   ancho. Un correo de DAFO no cabe al lado de nada en la columna del carné. */
+.cp-item{padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+.cp-item:last-child{border-bottom:none}
+.cp-cab{display:flex;align-items:center;gap:6px}
+.cp-et{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);
+  font-weight:700;white-space:nowrap}
+.cp-val{font-size:12.5px;color:var(--text);margin-top:2px;word-break:break-all;line-height:1.4}
+.cp-val .copiable{max-width:100%}

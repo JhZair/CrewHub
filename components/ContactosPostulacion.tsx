@@ -68,10 +68,16 @@ export default function ContactosPostulacion({ postulacionId, datos }: {
         </div>
       )}
 
-      {datos.map((d: any) => {
+      {/* Teléfonos primero: son la vía por la que DAFO llama y la que caduca
+          —un chip cambia; un correo, casi nunca—. Dentro de cada grupo, por
+          etiqueta, para que el orden no dependa de en qué momento se cargó. */}
+      {[...datos].sort((a: any, b: any) => {
+        const tel = (x: any) => /tel|cel|m[oó]vil|fijo/i.test(x.etiqueta || "") ? 0 : 1;
+        return tel(a) - tel(b) || String(a.etiqueta || "").localeCompare(String(b.etiqueta || ""), "es");
+      }).map((d: any) => {
         const n = dias(d.verificado_en);
         return (
-          <div key={d.id} className="dato-fila">
+          <div key={d.id} className="cp-item">
             {edId === d.id ? (
               <>
                 <input value={edEt} onChange={e => setEdEt(e.target.value)} style={{ ...inp, width: 150 }} />
@@ -82,23 +88,32 @@ export default function ContactosPostulacion({ postulacionId, datos }: {
                   onClick={() => setEdId(null)}>Cancelar</button>
               </>
             ) : (
+              /* Dos líneas y no una: un correo de DAFO mide cuarenta caracteres
+                 y esta tarjeta vive en la columna estrecha del carné. En una
+                 sola fila el valor se desbordaba y el resto se pintaba encima
+                 —se leía «964501370confirmado»—. Arriba el rótulo con sus
+                 controles, abajo el valor con todo el ancho. */
               <>
-                <span className="dato-et">{d.etiqueta}</span>
-                <span style={{ flex: 1, minWidth: 0 }}>
+                <div className="cp-cab">
+                  <span className="cp-et">{d.etiqueta}</span>
+                  {/* Un contacto sin confirmar no está mal, pero tampoco está
+                      comprobado: se distingue en vez de pintarlo todo igual. */}
+                  {n === null
+                    ? <span className="badge" style={{ color: "var(--red)", background: "rgba(239,68,68,.12)" }}>sin confirmar</span>
+                    : n > STALE
+                      ? <span className="badge" style={{ color: "var(--yellow)", background: "rgba(244,180,0,.12)" }}>hace {n} d</span>
+                      : <span className="badge" style={{ color: "var(--green)", background: "rgba(46,204,113,.12)" }}>✓</span>}
+                  <span style={{ flex: 1 }} />
+                  <button className="dato-btn" title="Confirmar que sigue vigente" disabled={ocupado}
+                    onClick={() => correr(() => verificarDato(d.id, "postulacion", postulacionId))}>✔</button>
+                  <button className="dato-btn" title="Editar"
+                    onClick={() => { setEdId(d.id); setEdEt(d.etiqueta || ""); setEdVal(d.valor || ""); }}>✎</button>
+                  <button className="dato-btn" title="Quitar" disabled={ocupado}
+                    onClick={() => correr(() => borrarDato(d.id, "postulacion", postulacionId))}>🗑</button>
+                </div>
+                <div className="cp-val">
                   {d.valor ? <Copiar valor={d.valor} etiqueta={d.etiqueta} /> : <i style={{ color: "var(--dim)" }}>—</i>}
-                </span>
-                {/* Un contacto sin confirmar no está mal, pero tampoco está
-                    comprobado: se dice cuál es cuál en vez de pintarlo todo igual. */}
-                {n === null
-                  ? <span className="badge" style={{ color: "var(--red)", background: "rgba(239,68,68,.12)" }}>sin confirmar</span>
-                  : n > STALE
-                    ? <span className="badge" style={{ color: "var(--yellow)", background: "rgba(244,180,0,.12)" }}>hace {n} d</span>
-                    : <span className="badge" style={{ color: "var(--green)", background: "rgba(46,204,113,.12)" }}>confirmado</span>}
-                <button className="dato-btn" title="Confirmar que sigue vigente" disabled={ocupado}
-                  onClick={() => correr(() => verificarDato(d.id, "postulacion", postulacionId))}>✔</button>
-                <button className="dato-btn" title="Editar" onClick={() => { setEdId(d.id); setEdEt(d.etiqueta || ""); setEdVal(d.valor || ""); }}>✎</button>
-                <button className="dato-btn" title="Quitar" disabled={ocupado}
-                  onClick={() => correr(() => borrarDato(d.id, "postulacion", postulacionId))}>🗑</button>
+                </div>
               </>
             )}
           </div>
