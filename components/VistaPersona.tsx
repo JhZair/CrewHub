@@ -3,7 +3,9 @@ import { type ReactNode } from "react";
 import VistaHilo from "@/components/VistaHilo";
 import Avatar from "@/components/Avatar";
 import { cargarPersonaRapida } from "@/app/actions";
-import { palmaresDePersona, postulacionesDePersona, lineasPalmares } from "@/lib/palmares";
+import { palmaresDePersona, postulacionesDePersona, lineasPalmares,
+  icoMerito, tituloMerito } from "@/lib/palmares";
+import { esLiderazgo } from "@/lib/rolesEquipo";
 import { trabasMiembro, dudasMiembro } from "@/lib/fondos";
 import { ICO_EST, soles, un, nomProy } from "@/lib/vistaRapida";
 
@@ -178,15 +180,22 @@ export default function VistaPersona({ personaId, children }: {
                       <table className="vp-tabla">
                         <tbody>
                           {posts.map((x: any) => (
-                            <tr key={x.id}>
+                            <tr key={x.id} className={esLiderazgo(x.cargo) ? "vp-lider" : ""}>
                               <td className="vp-td-a">{anioDe(x) || "—"}</td>
-                              <td className="vp-td-i" title={x.estado || ""}>{ICO_EST[x.estado] || "•"}</td>
+                              {/* El ícono dice resultado Y papel, igual que el
+                                  desglose: un 🏆 en la lista es una ganada
+                                  dirigiendo, y hay tantos como dice arriba. */}
+                              <td className="vp-td-i" title={tituloMerito(x.estado, x.cargo)}>
+                                {icoMerito(x.estado, x.cargo) || ICO_EST[x.estado] || "•"}
+                              </td>
                               <td>
                                 <a href={`/entidad/postulacion/${x.id}`} target="_blank" rel="noopener noreferrer">
                                   {nomProy(x.proy)}
                                 </a>
                               </td>
-                              <td className="vp-td-d" title={x.cargo || ""}>{x.cargo || "—"}</td>
+                              <td className="vp-td-d" title={tituloMerito(x.estado, x.cargo)}>
+                                {x.cargo || "—"}
+                              </td>
                             </tr>
                           ))}
                         </tbody>

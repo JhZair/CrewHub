@@ -151,6 +151,30 @@ export function lineasPalmares(p: Palmares): { ico: string; n: number; txt: stri
   ].filter(l => l.n > 0);
 }
 
+/* El ícono de UNA postulación, según su resultado Y el papel que jugó.
+   Son los MISMOS cuatro del desglose de arriba, y eso es a propósito: el
+   resumen dice «🏆 1 ganadas dirigiendo» y en la lista hay exactamente un 🏆.
+   Con un solo 🏆 para todas las ganadas, el desglose obligaba a fiarse —había
+   que creerle cuál de los cuatro trofeos era el suyo—.
+   Lo que no llegó al jurado conserva su ícono de estado de siempre. */
+export function icoMerito(estado?: string | null, cargo?: string | null): string | null {
+  const lider = esLiderazgo(cargo);
+  if (estado === "ganadora") return lider ? "🏆" : "🥇";
+  if (LLEGO_AL_JURADO.includes(estado || "")) return lider ? "⭐" : "🎖";
+  return null;   // el llamador cae a su mapa de estados
+}
+
+/** Texto del tooltip de esa fila: el estado exacto y el papel, sin abreviar. */
+export function tituloMerito(estado?: string | null, cargo?: string | null): string {
+  const ROT: Record<string, string> = {
+    ganadora: "Ganada", finalista: "Finalista — el concurso sigue abierto",
+    finalista_no_ganadora: "Llegó al jurado y no ganó",
+  };
+  const base = ROT[estado || ""] || (estado || "").replace(/_/g, " ");
+  const papel = esLiderazgo(cargo) ? "encabezando la postulación" : "como integrante del equipo";
+  return `${base} · ${cargo || "sin cargo"} (${papel})`;
+}
+
 /** Una línea corta para chips y cabeceras. Vacía si nunca postuló. */
 export function resumenPalmares(p: Palmares): string {
   if (!p.total) return "";
