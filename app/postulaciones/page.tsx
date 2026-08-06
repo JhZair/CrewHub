@@ -116,20 +116,26 @@ export default async function Postulaciones({ searchParams }: {
   const comentPorPub = new Map<string, number>();
   (coms || []).forEach((c: any) => comentPorPub.set(c.publicacion_id, (comentPorPub.get(c.publicacion_id) || 0) + 1));
 
-  type Act = { casos: number; abiertos: number; coments: number };
-  const VACIO: Act = { casos: 0, abiertos: 0, coments: 0 };
+  type Act = { casos: number; abiertos: number; coments: number; muro: number };
+  const VACIO: Act = { casos: 0, abiertos: 0, coments: 0, muro: 0 };
   const act = new Map<string, Act>();
   (vincs || []).forEach((v: any) => {
     const x = act.get(v.entidad_id) || { ...VACIO };
     const pub = v.pub as any;
-    x.casos++;
-    /* «Sin resolver» solo si sigue vivo Y no está archivado NI es un aviso ya
-       vencido: un aviso archivado se queda en estado 'abierta' (los avisos no
-       cambian de estado, se cierran archivándose o al vencer), y sin este
-       filtro se contaba como pendiente. */
-    if (pub && ABIERTOS.includes(pub.estado) && !pub.archivado_en
-        && !avisoVencido(pub.tipo, pub.fecha_limite)) x.abiertos++;
-    x.coments += comentPorPub.get(v.publicacion_id) || 0;
+    /* Los posts del MURO (bitácora) cuelgan de la postulación como los casos,
+       pero NO son trabajo: se cuentan aparte (contador de muro), no como caso. */
+    if (pub?.tipo === "bitacora") {
+      x.muro++;
+    } else {
+      x.casos++;
+      /* «Sin resolver» solo si sigue vivo Y no está archivado NI es un aviso ya
+         vencido: un aviso archivado se queda en estado 'abierta' (los avisos no
+         cambian de estado, se cierran archivándose o al vencer), y sin este
+         filtro se contaba como pendiente. */
+      if (pub && ABIERTOS.includes(pub.estado) && !pub.archivado_en
+          && !avisoVencido(pub.tipo, pub.fecha_limite)) x.abiertos++;
+      x.coments += comentPorPub.get(v.publicacion_id) || 0;
+    }
     act.set(v.entidad_id, x);
   });
 
@@ -353,7 +359,8 @@ export default async function Postulaciones({ searchParams }: {
                 {x.abiertos > 0 && <span style={{ color: "var(--red)" }}>❗ {x.abiertos} sin resolver</span>}
                 <span style={{ color: "var(--dim)" }} title="Casos vinculados">📌 {x.casos}</span>
                 <span style={{ color: "var(--muted)" }} title="Comentarios">💬 {x.coments}</span>
-                {!x.casos && <span style={{ color: "var(--dim)" }}>sin actividad</span>}
+                {x.muro > 0 && <span style={{ color: "var(--muted)" }} title="Notas del muro">📝 {x.muro}</span>}
+                {!x.casos && !x.muro && <span style={{ color: "var(--dim)" }}>sin actividad</span>}
               </span>
             </div>
           );
