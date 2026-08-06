@@ -11,6 +11,7 @@ import { BOT, sinBot } from "@/lib/personas";
 import { CAMPOS_TABLA } from "@/lib/tablas-expediente";
 import { esCampoDelTrigger } from "@/lib/actividad";
 import { SECCIONES, grafiasDe } from "@/lib/secciones";
+import { fraccionValida } from "@/lib/jornadas";
 import { TIPOS_OBJETO } from "@/lib/objetos";
 import { catalogoObjetos, catalogosEntidades } from "@/lib/catalogos";
 import { resolverNombres } from "@/lib/nombres";
@@ -984,10 +985,15 @@ export async function registrarMiJornada(
   if (estMes === "liquidado") return { error: "Ese mes ya está liquidado; no puedes agregar jornadas." };
   if (estMes === "confirmado") return { error: "Ya confirmaste ese mes. Reábrelo si necesitas agregar una jornada." };
 
-  // Las fracciones (½, 1½) solo aplican a oficina; rodaje/scouting = día completo.
-  // scouting/oficina pagan con tarifa de día; solo rodaje usa la de rodaje.
-  // El pernocte no aplica en oficina.
-  const frac = tipo === "oficina" ? fraccion : 1;
+  /* Las fracciones solo aplican a oficina; rodaje/scouting = día completo.
+     scouting/oficina pagan con tarifa de día; solo rodaje usa la de rodaje.
+     El pernocte no aplica en oficina.
+
+     `fraccionValida` no es paranoia: `jornadas.fraccion` es un `numeric` sin
+     check, así que la única barrera contra un 7 son los botones — y una acción
+     de servidor se puede llamar sin pasar por ellos. Un valor inventado aquí
+     se convierte en dinero en el monto, callado. */
+  const frac = tipo === "oficina" ? (fraccionValida(fraccion) ? fraccion : 1) : 1;
   const nocheOk = tipo !== "oficina" && !!noche;
   const base = tipo === "rodaje" ? (yo.tarifa_rodaje ?? yo.tarifa_dia) : yo.tarifa_dia;
   const extraNoche = nocheOk ? Number(yo.tarifa_noche ?? yo.tarifa_rodaje ?? yo.tarifa_dia ?? 0) : 0;
@@ -1064,7 +1070,8 @@ export async function editarJornada(
   if (est === "liquidado") return { error: "Ese mes está liquidado; reábrelo para editar." };
   if (est === "confirmado" && !perfil?.es_admin) return { error: "Confirmaste ese mes; reábrelo para editar." };
 
-  const frac = tipo === "oficina" ? fraccion : 1;
+  // Misma guarda que al registrar: editar es otra puerta a la misma tabla.
+  const frac = tipo === "oficina" ? (fraccionValida(fraccion) ? fraccion : 1) : 1;
   const nocheOk = tipo !== "oficina" && !!noche;
   const base = tipo === "rodaje" ? (dueno!.tarifa_rodaje ?? dueno!.tarifa_dia) : dueno!.tarifa_dia;
   const extraNoche = nocheOk ? Number(dueno!.tarifa_noche ?? dueno!.tarifa_rodaje ?? dueno!.tarifa_dia ?? 0) : 0;

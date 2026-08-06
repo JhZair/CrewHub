@@ -3,10 +3,11 @@ import { aprobarJornada, editarJornada, borrarJornada } from "@/app/actions";
 import MiniSelect from "@/components/MiniSelect";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { FRACCIONES } from "@/lib/jornadas";
 
 const ICO: Record<string, string> = { rodaje: "🎬", oficina: "🏢", scouting: "🚙" };
 const TIPOS: [string, string][] = [["rodaje", "🎬"], ["oficina", "🏢"], ["scouting", "🚙"]];
-const FRAC: [number, string][] = [[0.5, "½"], [1, "1"], [1.5, "1½"]];
+
 const money = (n: number | null) => n != null ? `S/ ${Math.round(n).toLocaleString("es-PE")}` : "—";
 /* «07-13» obliga a traducir mentalmente y no dice qué día de la semana fue —
    que es justo lo que uno comprueba al revisar jornadas: si ese sábado se
@@ -71,7 +72,7 @@ function FilaJornada({ j, esAdmin, puedeEditar, proyectos, onChange }: {
         </span>
         {tipo === "oficina" && (
           <span className="jr-seg">
-            {FRAC.map(([v, l]) => <button key={v} className={fraccion === v ? "on" : ""} onClick={() => setFraccion(v)}>{l}</button>)}
+            {FRACCIONES.map(f => <button key={f.v} className={fraccion === f.v ? "on" : ""} onClick={() => setFraccion(f.v)}>{f.corto}</button>)}
           </span>
         )}
         {tipo !== "oficina" && (

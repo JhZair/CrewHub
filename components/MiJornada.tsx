@@ -3,9 +3,10 @@ import { registrarMiJornada } from "@/app/actions";
 import MiniSelect from "@/components/MiniSelect";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { FRACCIONES } from "@/lib/jornadas";
 
 const TIPOS: [string, string][] = [["rodaje", "🎬 Rodaje"], ["oficina", "🏢 Oficina"], ["scouting", "🚙 Scouting"]];
-const FRAC: [number, string][] = [[0.5, "½ Medio"], [1, "1 Completo"], [1.5, "1½ Día y medio"]];
+
 
 /* Registro PERSONAL: el usuario logueado registra su propia jornada. */
 export default function MiJornada({ proyectos, mi }: {
@@ -74,8 +75,8 @@ export default function MiJornada({ proyectos, mi }: {
         </span>
         {tipo === "oficina" && (
           <span className="jr-seg">
-            {FRAC.map(([v, l]) => (
-              <button key={v} className={fraccion === v ? "on" : ""} onClick={() => setFraccion(v)}>{l}</button>
+            {FRACCIONES.map(f => (
+              <button key={f.v} className={fraccion === f.v ? "on" : ""} onClick={() => setFraccion(f.v)}>{f.largo}</button>
             ))}
           </span>
         )}
