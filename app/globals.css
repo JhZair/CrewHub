@@ -2616,3 +2616,12 @@ button.repo-tit{text-align:left}
 .vp-act{display:flex;gap:12px;flex-wrap:wrap;font-size:12.5px;color:var(--muted)}
 .vp-act b{color:var(--text);font-size:13.5px}
 .vp-act .vivo b{color:var(--green)}
+/* La fila de compromiso separada del veredicto: es otro dato, no su remate. */
+.vp-bloque-sep{padding-top:11px;border-top:1px solid var(--border)}
+/* Vivas encendidas, cerradas apagadas —pero no invisibles: una ganada de 2021
+   sigue siendo el palmarés y tiene que poder leerse. */
+.vp-tabla tr.vp-viva td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
+.vp-tabla tr.vp-viva a{color:var(--text);font-weight:600}
+.vp-tabla tr.vp-pasada{opacity:.62}
+.vp-tabla tr.vp-pasada:hover{opacity:1}
+.vp-resp{display:inline-flex;align-items:center;gap:6px}

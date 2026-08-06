@@ -7,7 +7,7 @@ import { cargarEmpresaRapida } from "@/app/actions";
 import { palmaresDe, lineasPalmares, icoMerito } from "@/lib/palmares";
 import {
   compromisoDe, empresaLibre, trabasEmpresa, trabasMiembro, dudasMiembro,
-  elegibilidadDe, ROTULO_ELEGIBILIDAD,
+  elegibilidadDe, ROTULO_ELEGIBILIDAD, enJuego,
 } from "@/lib/fondos";
 import { ICO_EST, soles, un, nomProy } from "@/lib/vistaRapida";
 
@@ -155,7 +155,7 @@ export default function VistaEmpresa({ empresaId, children }: {
             </div>
 
             {(comp.juego > 0 || comp.ejec > 0 || comp.debe > 0 || comp.sinPlazo > 0) && (
-              <div className="vp-comp">
+              <div className="vp-comp vp-bloque-sep">
                 {comp.juego > 0 && <span>🎯 {comp.juego} en concurso</span>}
                 {comp.ejec > 0 && <span>⚙ {comp.ejec} ejecutando</span>}
                 {comp.debe > 0 && <span className="mal">⚠ {comp.debe} con rendición vencida</span>}
@@ -168,7 +168,8 @@ export default function VistaEmpresa({ empresaId, children }: {
                 {pal.total > 0 && (
                   <Bloque titulo="🏆 Palmarés">
                     <div className="vp-lineas">
-                      {lineasPalmares(pal).map((l, i) => (
+                      {/* Sin desglose por rol: la empresa ES la postulante. */}
+                      {lineasPalmares(pal, false).map((l, i) => (
                         <span key={i} className="vp-linea" title={l.titulo}>
                           {l.ico} <b>{l.n}</b> {l.txt}
                         </span>
@@ -190,7 +191,9 @@ export default function VistaEmpresa({ empresaId, children }: {
                               {m.trabas.length ? "⚠" : m.dudas.length ? "◌" : "✓"}
                             </td>
                             <td>
-                              <a href={`/entidad/persona/${m.persona?.id}`} target="_blank" rel="noopener noreferrer">
+                              <a href={`/entidad/persona/${m.persona?.id}`} className="vp-resp"
+                                target="_blank" rel="noopener noreferrer">
+                                <Avatar nombre={m.persona?.nombre} src={m.persona?.foto_url} size={22} />
                                 {nom(m.persona)}
                               </a>
                             </td>
@@ -213,8 +216,12 @@ export default function VistaEmpresa({ empresaId, children }: {
                     <div className="vp-scroll">
                       <table className="vp-tabla">
                         <tbody>
+                          {/* Las vivas se ven; las cerradas se apagan. Diez
+                              filas iguales obligan a leer estado por estado
+                              para saber cuáles siguen en juego, que es lo
+                              único accionable de la lista. */}
                           {ordenadas.map((x: any) => (
-                            <tr key={x.id}>
+                            <tr key={x.id} className={enJuego(x) ? "vp-viva" : "vp-pasada"}>
                               <td className="vp-td-a">{anio(x) || "—"}</td>
                               <td className="vp-td-i" title={x.estado || ""}>
                                 {icoMerito(x.estado) || ICO_EST[x.estado] || "•"}

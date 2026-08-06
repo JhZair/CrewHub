@@ -136,9 +136,22 @@ export const palmaresDePersona = (filas: any[] | null | undefined): Palmares =>
 
 /* Las líneas del desglose, cada una con su razón. Se devuelven como datos y no
    como texto armado para que cada pantalla decida cómo pintarlas. */
-export function lineasPalmares(p: Palmares): {
+export function lineasPalmares(p: Palmares, conRol = true): {
   ico: string; n: number; txt: string; titulo: string; lider?: boolean;
 }[] {
+  /* Una EMPRESA no tiene papel: es la postulante, siempre. Desglosarla en
+     «dirigiendo / en equipo» la mandaba entera al segundo escalón —porque no
+     hay cargo que mirar— y quedaba un «3 al jurado en equipo» que sugería un
+     matiz inexistente. Sin rol, las dos mitades se suman. */
+  if (!conRol) {
+    return [
+      { ico: "🏆", n: p.ganadas, txt: "ganadas", titulo: "Postulaciones ganadas" },
+      { ico: "⭐", n: p.finalLider + p.finalEquipo, txt: "al jurado",
+        titulo: "Llegaron al encuentro con jurado sin ganar" },
+      { ico: "🎯", n: p.total, txt: "postulaciones",
+        titulo: "Todas las ediciones en que se presentó, con o sin resultado" },
+    ].filter(l => l.n > 0);
+  }
   return [
     { ico: "🏆", n: p.ganadasLider, txt: "ganadas dirigiendo", lider: true,
       titulo: "Ganó encabezando la postulación (dirección o titularidad)" },
