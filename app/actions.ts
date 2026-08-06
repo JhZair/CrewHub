@@ -2555,6 +2555,31 @@ export async function agregarDato(
   return {};
 }
 
+/* Los contactos declarados en el formulario de una POSTULACIÓN. Misma tabla y
+ * mismas acciones de edición/verificación que los datos de una credencial; solo
+ * cambia de qué cuelgan. Requiere db/postulacion-contactos.sql. */
+export async function agregarDatoPostulacion(
+  postulacionId: string, etiqueta: string, valor: string
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!etiqueta.trim()) return { error: "La etiqueta es obligatoria." };
+  const { error } = await supabase.from("credencial_datos").insert({
+    postulacion_id: postulacionId,
+    etiqueta: etiqueta.trim(),
+    valor: valor.trim() || null,
+    verificado_en: new Date().toISOString().slice(0, 10),
+  });
+  if (error) return { error: error.message };
+  await supabase.from("actividad").insert({
+    entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "dato",
+    detalle: { mensaje: `declaró «${etiqueta.trim()}» en la postulación` },
+  });
+  revalidatePath(`/entidad/postulacion/${postulacionId}`);
+  return {};
+}
+
 export async function editarDato(
   id: string, dueno: string, duenoId: string, etiqueta: string, valor: string
 ) {

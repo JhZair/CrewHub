@@ -2670,3 +2670,6 @@ button.repo-tit{text-align:left}
 .tv-tabla th.orden-on .tv-th-ord{color:var(--accent)}
 .tv-tabla th:hover .tv-th-ord{color:var(--muted)}
 .tv-tabla th .tv-th-ord:only-child{margin-left:0}
+.dato-fila{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:5px 0;
+  border-bottom:1px solid rgba(255,255,255,.05);font-size:12.5px}
+.dato-fila:last-child{border-bottom:none}

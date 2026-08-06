@@ -64,6 +64,7 @@ import CronogramaProyecto from "@/components/CronogramaProyecto";
 import CronogramaPostulacion from "@/components/CronogramaPostulacion";
 import Presupuesto from "@/components/Presupuesto";
 import CredencialesRef from "@/components/CredencialesRef";
+import ContactosPostulacion from "@/components/ContactosPostulacion";
 import TablaSimple from "@/components/TablaSimple";
 import EquipoPorcentajes from "@/components/EquipoPorcentajes";
 import Precontratos from "@/components/Precontratos";
@@ -732,7 +733,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     }
   }
 
-  let postCtx: any = null, equipoPost: any[] = [], credsEmp: any[] = [], plantillasPre: any[] = [], hitosConc: any[] = [];
+  let postCtx: any = null, equipoPost: any[] = [], credsEmp: any[] = [], contactosPost: any[] = [], plantillasPre: any[] = [], hitosConc: any[] = [];
   let otrasPostus: any[] = [];   // otras ediciones del MISMO proyecto (para cruzar equipo/empresa)
   let cartelProy: string | null = null;
   let portadaProy: string | null = null;
@@ -1082,6 +1083,13 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         .eq("empresa_id", postCtx.emp.id).order("plataforma");
       credsEmp = await conPlataforma(cd || []);
     }
+    /* Los contactos declarados en el formulario de ESTA postulación —móvil,
+       fijo y los dos correos—. Cuelgan de la postulación y no de la empresa:
+       el correo 2 suele ser el personal de quien la presentó. */
+    const { data: cdp } = await supabase.from("credencial_datos")
+      .select("id,etiqueta,valor,verificado_en")
+      .eq("postulacion_id", params.id).order("etiqueta");
+    contactosPost = cdp || [];
 
     // Plantillas de presupuesto (reusables por categoría).
     const { data: plPre } = await supabase.from("plantillas_presupuesto")
@@ -2441,6 +2449,10 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               {/* Los accesos de la empresa van al final del carné: son una
                   herramienta (entrar a DAFO / al correo), no datos de la
                   postulación — cierran la columna sin robar la vista. */}
+              {/* Primero lo de la POSTULACIÓN y después lo de la empresa: son
+                  cosas distintas y el orden lo dice —lo declarado en este
+                  expediente arriba, la herramienta para entrar abajo—. */}
+              <ContactosPostulacion postulacionId={params.id} datos={contactosPost} />
               <CredencialesRef creds={credsEmp} empresaId={(postCtx?.emp as any)?.id} />
             </div>
           )}

@@ -30,7 +30,7 @@ export default async function Llaves() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: creds }, { data: pers }] = await Promise.all([
+  const [{ data: creds }, { data: pers }, { data: datosPost }] = await Promise.all([
     supabase.from("credenciales")
       .select("id,plataforma,identificador,metodo_acceso,empresa_id,persona_id,"
         + "emp:empresas(id,nombre),per:personas(id,nombre,alias),"
@@ -39,6 +39,13 @@ export default async function Llaves() {
     supabase.from("personas")
       .select("id,nombre,alias,telefono,email,estado,tipo,foto_url")
       .limit(2000),
+    /* Los contactos declarados en cada POSTULACIÓN. Entran aquí porque la
+       pregunta es la misma —«este número, qué abre y de quién es»— y un
+       teléfono puesto en un expediente de DAFO es tan reclamable como uno de
+       recuperación: si muere, la notificación de subsanación no llega. */
+    supabase.from("credencial_datos")
+      .select("id,etiqueta,valor,verificado_en,post:postulaciones(id,codigo,proy:proyectos(nombre,nombre_corto))")
+      .not("postulacion_id", "is", null).limit(2000),
   ]);
 
   /* Índice número → persona. Por los últimos 9 dígitos, porque en la base
@@ -61,7 +68,22 @@ export default async function Llaves() {
   const filas: Fila[] = [];
   const sinLlave: any[] = [];
 
-  (creds || []).forEach((c: any) => {
+  /* Cada contacto declarado se presenta como una «cuenta» más: no lo es —una
+     postulación no tiene acceso— pero para esta pantalla se comporta igual, y
+     tratarla aparte habría duplicado el agrupado y la búsqueda. */
+  const credsPost = (datosPost || []).map((d: any) => {
+    const p = Array.isArray(d.post) ? d.post[0] : d.post;
+    const proy = Array.isArray(p?.proy) ? p.proy[0] : p?.proy;
+    return {
+      id: `post:${d.id}`,
+      plataforma: "Postulación",
+      identificador: [p?.codigo, proy?.nombre_corto || proy?.nombre].filter(Boolean).join(" · "),
+      emp: null, per: null, _post: p?.id,
+      datos: [{ id: d.id, etiqueta: d.etiqueta, valor: d.valor, verificado_en: d.verificado_en }],
+    };
+  });
+
+  ([...(creds || []), ...credsPost] as any[]).forEach((c: any) => {
     const datos = (c.datos || []).map((d: any) => {
       const clase = claseDeDato(d.etiqueta, d.valor);
       const duenoLlave = clase.startsWith("tel")
@@ -70,7 +92,10 @@ export default async function Llaves() {
       return { cred: c, dato: d, clase, duenoLlave, dias: diasDesde(d.verificado_en) };
     });
     const llaves = datos.filter((x: any) => esLlave(x.clase) || esLlaveProbable(x.clase));
-    if (llaves.length === 0) sinLlave.push(c);
+    /* Una postulación sin contactos declarados no va a «sin llave»: no tiene
+       acceso que recuperar. Se le reclama en su propia ficha, que es donde
+       alguien puede hacer algo al respecto. */
+    if (llaves.length === 0 && !c._post) sinLlave.push(c);
     filas.push(...datos);
   });
 
@@ -92,6 +117,7 @@ export default async function Llaves() {
 
   const nom = (p: any) => p?.alias || p?.nombre || "";
   const duenoCuenta = (c: any) => {
+    if (c._post) return { tipo: "postulacion", id: c._post, nombre: c.identificador };
     const e = Array.isArray(c.emp) ? c.emp[0] : c.emp;
     const p = Array.isArray(c.per) ? c.per[0] : c.per;
     return e ? { tipo: "empresa", ...e } : p ? { tipo: "persona", ...p } : null;
