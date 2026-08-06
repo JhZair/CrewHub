@@ -8,6 +8,24 @@ const ICO: Record<string, string> = { rodaje: "🎬", oficina: "🏢", scouting:
 const TIPOS: [string, string][] = [["rodaje", "🎬"], ["oficina", "🏢"], ["scouting", "🚙"]];
 const FRAC: [number, string][] = [[0.5, "½"], [1, "1"], [1.5, "1½"]];
 const money = (n: number | null) => n != null ? `S/ ${Math.round(n).toLocaleString("es-PE")}` : "—";
+/* «07-13» obliga a traducir mentalmente y no dice qué día de la semana fue —
+   que es justo lo que uno comprueba al revisar jornadas: si ese sábado se
+   trabajó de verdad. «sáb 13 jul» se lee sin traducir. */
+const fechaHum = (f?: string | null) => {
+  const s = String(f ?? "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const d = new Date(s + "T12:00:00");
+  const txt = d.toLocaleDateString("es-PE", { weekday: "short", day: "numeric", month: "short" });
+  return txt.replace(/\./g, "");
+};
+/* Sábado y domingo, marcados: una jornada en fin de semana no está mal, pero
+   es lo primero que se mira al aprobar. */
+const esFinde = (f?: string | null) => {
+  const s = String(f ?? "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const n = new Date(s + "T12:00:00").getDay();
+  return n === 0 || n === 6;
+};
 const inp = { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "5px 8px", fontSize: 12, color: "var(--text)", outline: "none" } as const;
 
 function FilaJornada({ j, esAdmin, puedeEditar, proyectos, onChange }: {
@@ -68,7 +86,9 @@ function FilaJornada({ j, esAdmin, puedeEditar, proyectos, onChange }: {
 
   return (
     <div className="info-row" style={{ gap: 10, flexWrap: "wrap" }}>
-      <span style={{ color: "var(--dim)", fontSize: 12, minWidth: 52 }}>{j.fecha?.slice(5)}</span>
+      <span className={`jr-fecha${esFinde(j.fecha) ? " finde" : ""}`} title={j.fecha}>
+        {fechaHum(j.fecha)}
+      </span>
       <span style={{ fontWeight: 600, fontSize: 12.5 }}>{ICO[j.tipo] || ""} {j.persona}</span>
       <span style={{ color: "var(--dim)", fontSize: 12 }}>{j.proyecto || "sin proyecto"}</span>
       <span style={{ fontSize: 12 }}>{j.fraccion}j{j.noche ? " 🏕" : ""}</span>

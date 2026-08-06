@@ -54,16 +54,30 @@ export default async function Jornadas({ searchParams }: { searchParams: { m?: s
   }
   const nSem = semRango.length;
 
-  const [{ data: jorns }, { data: proyectos }, { data: miData }, { data: perfilData }] = await Promise.all([
-    supabase.from("jornadas")
-      .select("id,persona_id,fecha,proyecto_id,tipo,fraccion,noche,monto,aprobada,per:personas(nombre,alias),proy:proyectos(nombre)")
-      .gte("fecha", inicio).lt("fecha", fin).order("fecha", { ascending: false }),
-    supabase.from("proyectos").select("id,nombre").order("nombre"),
+  /* Quién soy, ANTES de pedir las jornadas: esta página es personal y sin saber
+     a qué persona corresponde la cuenta no se puede acotar la consulta. */
+  const [{ data: miData }, { data: proyectos }, { data: perfilData }] = await Promise.all([
     supabase.from("personas").select("id,nombre,alias,tarifa_dia,tarifa_rodaje,tarifa_noche").eq("usuario_id", user.id).maybeSingle(),
+    supabase.from("proyectos").select("id,nombre").order("nombre"),
     supabase.from("perfiles").select("es_admin").eq("id", user.id).single(),
   ]);
+  const miPersonaIdRaw = (miData as any)?.id || "";
+
+  /* SOLO LO MÍO. Esta página mostraba las jornadas de todo el equipo: cualquiera
+     veía cuántos días trabajó cada quien y —peor— a cuánto le pagan, porque el
+     monto por jornada revela la tarifa. Nadie lo pidió; simplemente la consulta
+     no filtraba y la tabla agrupaba por persona porque los datos venían así.
+     El filtro va en la CONSULTA y no al pintar: filtrar en el navegador manda
+     igual los sueldos ajenos al cliente, donde se leen en dos clics.
+     La vista de equipo vive en /admin, que ya comprueba `es_admin`. */
+  const { data: jorns } = miPersonaIdRaw
+    ? await supabase.from("jornadas")
+        .select("id,persona_id,fecha,proyecto_id,tipo,fraccion,noche,monto,aprobada,per:personas(nombre,alias),proy:proyectos(nombre)")
+        .eq("persona_id", miPersonaIdRaw)
+        .gte("fecha", inicio).lt("fecha", fin).order("fecha", { ascending: false })
+    : { data: [] };
   const mi = miData ? { nombre: (miData as any).alias || (miData as any).nombre, tarifa_dia: (miData as any).tarifa_dia, tarifa_rodaje: (miData as any).tarifa_rodaje, tarifa_noche: (miData as any).tarifa_noche } : null;
-  const miPersonaId = (miData as any)?.id || "";
+  const miPersonaId = miPersonaIdRaw;
   const esAdmin = !!(perfilData as any)?.es_admin;
   const mesNum = mes + 1; // 1-12 para liquidaciones
   const { data: miLiq } = miPersonaId
@@ -188,13 +202,22 @@ export default async function Jornadas({ searchParams }: { searchParams: { m?: s
         </>
       )}
 
+      {/* Una cuenta sin ficha de persona no tiene jornadas que mostrar. Sin
+          decirlo, la página sale vacía y parece que no se registró nada. */}
+      {!miPersonaId && (
+        <div className="card" style={{ borderColor: "rgba(244,180,0,.4)", color: "var(--yellow)", fontSize: 13 }}>
+          ⚠ Tu cuenta no está vinculada a una ficha de persona, así que aquí no hay jornadas que mostrar.
+          Pídele a administración que la vincule.
+        </div>
+      )}
+
       {/* Detalle del pago por semana (foco) */}
       <div className="h4" style={{ marginTop: 14 }}>📅 Detalle del pago por semana</div>
       <div className="pulso-wrap">
         <table className="pulso">
           <thead>
             <tr>
-              <th className="quien">Persona</th>
+              <th className="quien">Quién</th>
               {semRango.map((r, i) => <th key={i}>Sem {i + 1}<span className="rng">{r.ini}–{r.fin} {MESES[mes].slice(0, 3)}</span></th>)}
               <th>Mes</th>
               <th className="sep">A pagar</th>
