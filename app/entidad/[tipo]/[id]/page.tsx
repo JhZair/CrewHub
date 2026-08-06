@@ -308,10 +308,20 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
      salida a este rodaje se anota como evento del proyecto al entregarla. */
   let eventosHijos: any[] = [];
   let totalHijos = 0;
-  if (params.tipo === "proyecto") {
+  /* Eventos de las «hijas» (actividades del cronograma y postulaciones). Se
+     traen para proyecto, convocatoria y postulación —los tres dueños de un
+     cronograma— para que el historial refleje TODO cambio del cronograma
+     (crear, cambiar estado/responsable, cancelar), no solo lo que la app anota
+     a mano contra el padre. Antes solo corría para proyecto: por eso en una
+     convocatoria no salía la creación de un hito. */
+  if (["proyecto", "convocatoria", "postulacion"].includes(params.tipo)) {
+    const colDueno = `${params.tipo}_id`;
     const [ca, po] = await Promise.all([
-      supabase.from("cronograma_actividades").select("id").eq("proyecto_id", params.id).limit(500),
-      supabase.from("postulaciones").select("id").eq("proyecto_id", params.id).limit(200),
+      supabase.from("cronograma_actividades").select("id").eq(colDueno, params.id).limit(500),
+      // Una postulación no tiene postulaciones hijas.
+      params.tipo === "postulacion"
+        ? Promise.resolve({ data: [] as any[] })
+        : supabase.from("postulaciones").select("id").eq(colDueno, params.id).limit(200),
     ]);
     const ids = [...new Set([
       ...(vincs || []).map((v: any) => v.publicacion_id),
