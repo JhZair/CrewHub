@@ -39,7 +39,7 @@ export default function TablaVistas({ entidad, filas, vistas }: {
   const [cols, setCols] = useState<string[]>(DEF);
   const [filtros, setFiltros] = useState<Filtro[]>([]);
   const [orden, setOrden] = useState<Orden>(null);
-  const [panel, setPanel] = useState<"" | "cols" | "filtros" | "vistas">("");
+  const [panel, setPanel] = useState<"" | "cols" | "filtros" | "orden" | "vistas">("");
   const [vistaId, setVistaId] = useState<string>("");
   const [nombre, setNombre] = useState("");
   const [compartida, setCompartida] = useState(true);
@@ -49,6 +49,13 @@ export default function TablaVistas({ entidad, filas, vistas }: {
   const visibles = useMemo(
     () => cols.map(k => columnas.find(c => c.key === k)).filter(Boolean) as Columna[],
     [cols, columnas]);
+  /* Cuenta solo los que de verdad filtran: anunciar «2 filtros» cuando uno
+     está a medio escribir hace dudar del resultado que se está viendo. */
+  const nFiltran = filtros.filter(f => {
+    const c = columnas.find(x => x.key === f.col);
+    const op = OPS[c?.tipo || "texto"].find(o => o.op === f.op);
+    return op?.sinValor || String(f.val || "").trim() !== "";
+  }).length;
   const datos = useMemo(
     () => aplicar(filas, filtros, orden, columnas),
     [filas, filtros, orden, columnas]);
@@ -122,7 +129,15 @@ export default function TablaVistas({ entidad, filas, vistas }: {
         </button>
         <button className={`vtab${panel === "filtros" ? " on" : ""}`}
           onClick={() => setPanel(p => p === "filtros" ? "" : "filtros")}>
-          ⚗ {filtros.length} filtro{filtros.length === 1 ? "" : "s"}
+          ⚗ {nFiltran} filtro{nFiltran === 1 ? "" : "s"}
+        </button>
+        {/* Las cabeceras ya ordenaban al hacer clic, pero eso no se ve —y algo
+            que hay que descubrir no existe para quien no sabe que está—. El
+            botón dice además POR QUÉ columna se está ordenando, que es lo que
+            uno se pregunta al ver una lista y no entender su orden. */}
+        <button className={`vtab${panel === "orden" ? " on" : ""}`}
+          onClick={() => setPanel(p => p === "orden" ? "" : "orden")}>
+          ↕ {orden ? `${columnas.find(c => c.key === orden.col)?.lbl} ${orden.asc ? "↑" : "↓"}` : "Sin ordenar"}
         </button>
         <button className={`vtab${panel === "vistas" ? " on" : ""}`}
           onClick={() => setPanel(p => p === "vistas" ? "" : "vistas")}>💾 Guardar vista</button>
@@ -160,8 +175,12 @@ export default function TablaVistas({ entidad, filas, vistas }: {
                «Tipo es colaborador» se lee como una resta y no como una suma. */
             const previo = i > 0 ? filtros[i - 1] : null;
             const conector = !previo ? "" : (previo.col === f.col && f.op === "es" && previo.op === "es") ? "o" : "y";
+            /* Un filtro sin valor no filtra —y está bien que no lo haga—, pero
+               si se ve igual que los demás parece que sí. En gris se lee lo
+               que es: escrito a medias, todavía sin efecto. */
+            const inerte = !opDef?.sinValor && !String(f.val || "").trim();
             return (
-              <div key={i} className="tv-filtro">
+              <div key={i} className={`tv-filtro${inerte ? " tv-inerte" : ""}`}>
                 {conector && <span className="tv-conector">{conector}</span>}
                 <select className="hf-sel" value={f.col}
                   onChange={e => setFiltros(s => s.map((x, j) => j === i
@@ -195,6 +214,27 @@ export default function TablaVistas({ entidad, filas, vistas }: {
             onClick={() => setFiltros(s => [...s, { col: columnas[0].key, op: OPS[columnas[0].tipo][0].op, val: "" }])}>
             + Añadir filtro
           </button>
+        </div>
+      )}
+
+      {panel === "orden" && (
+        <div className="card tv-panel">
+          <div className="tv-panel-h">Ordenar por</div>
+          <div className="tv-filtro">
+            <select className="hf-sel" value={orden?.col || ""}
+              onChange={e => setOrden(e.target.value ? { col: e.target.value, asc: orden?.asc ?? true } : null)}>
+              <option value="">— sin ordenar —</option>
+              {columnas.map(c => <option key={c.key} value={c.key}>{c.lbl}</option>)}
+            </select>
+            {orden && (
+              <button className="vtab" onClick={() => setOrden({ ...orden, asc: !orden.asc })}>
+                {orden.asc ? "↑ de menor a mayor" : "↓ de mayor a menor"}
+              </button>
+            )}
+            <span style={{ color: "var(--dim)", fontSize: 11.5 }}>
+              También se ordena haciendo clic en el título de una columna.
+            </span>
+          </div>
         </div>
       )}
 
@@ -236,8 +276,10 @@ export default function TablaVistas({ entidad, filas, vistas }: {
             <tr>
               {visibles.map(c => (
                 <th key={c.key} onClick={() => cambiarOrden(c.key)} title="Clic para ordenar"
+                  className={orden?.col === c.key ? "orden-on" : ""}
                   style={{ minWidth: c.ancho || 120 }}>
-                  {c.lbl}{orden?.col === c.key ? (orden.asc ? " ↑" : " ↓") : ""}
+                  {c.lbl}
+                  <span className="tv-th-ord">{orden?.col === c.key ? (orden.asc ? "↑" : "↓") : "↕"}</span>
                 </th>
               ))}
               <th style={{ width: 40 }} />

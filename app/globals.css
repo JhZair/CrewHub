@@ -2661,3 +2661,12 @@ button.repo-tit{text-align:left}
 .tv-ir{color:var(--accent);font-weight:700}
 .tv-conector{font-size:10.5px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);
   font-weight:700;width:18px;flex:none;text-align:right}
+.tv-filtro.tv-inerte{opacity:.5}
+.tv-filtro.tv-inerte::after{content:"sin efecto hasta que tenga valor";
+  font-size:10.5px;color:var(--dim)}
+/* La flecha ↕ en gris invita al clic; la activa toma color. */
+.tv-th-ord{margin-left:5px;color:rgba(255,255,255,.18);font-size:10px}
+.tv-tabla th.orden-on{color:var(--text)}
+.tv-tabla th.orden-on .tv-th-ord{color:var(--accent)}
+.tv-tabla th:hover .tv-th-ord{color:var(--muted)}
+.tv-tabla th .tv-th-ord:only-child{margin-left:0}
