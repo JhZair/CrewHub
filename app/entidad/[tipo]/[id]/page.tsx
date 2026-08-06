@@ -337,10 +337,21 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         .select("tipo,detalle,creado_en,actor_id,entidad_tipo,entidad_id,actor:perfiles(nombre)", { count: "exact" })
         .in("entidad_id", t).order("creado_en", { ascending: false }).limit(120)));
     eventosHijos = res.flatMap(r => r.data || [])
-      /* El «creado» genérico de una actividad del cronograma («registró esta
-         entidad») lo reemplaza el log CON NOMBRE que deja agregarActividadCrono
-         contra la ficha; aquí se descarta para no duplicar ni mostrar el genérico. */
-      .filter((e: any) => !(e.tipo === "creado" && e.entidad_tipo === "cronograma_actividades"));
+      /* Los cambios del cronograma que la app registra a mano CON NOMBRE (crear,
+         responsable, etapa, cancelar) dejan además un evento genérico del trigger
+         de la BD, sin nombre. Se descartan aquí para no duplicar ni mostrar el
+         genérico. Se conservan las transiciones automáticas (materializada,
+         finalizada) y todo lo que no sea del cronograma. */
+      .filter((e: any) => {
+        if (e.entidad_tipo !== "cronograma_actividades") return true;
+        if (e.tipo === "creado") return false;
+        if (e.tipo === "estado") {
+          const campo = e.detalle?.campo;
+          if (campo === "responsable" || campo === "etapa") return false;
+          if (campo === "estado" && e.detalle?.a === "cancelada") return false;
+        }
+        return true;
+      });
     totalHijos = res.reduce((n, r) => n + (r.count ?? 0), 0);
 
     /* El nombre de DÓNDE pasó cada cosa. Sin esto una línea dice «cambió el

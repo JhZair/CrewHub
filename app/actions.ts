@@ -3501,9 +3501,9 @@ export async function moverActividadCrono(
    Como en sub-casos: repartir responsables y ajustar fechas sin abrir el
    editor entero de la actividad. Cada uno toca UN campo. */
 
-/* Responsable al vuelo. No registra a mano en la bitácora: el trigger
-   `registrar_evento_estado` ya vigila `responsable` en cronograma_actividades
-   y lo deja escrito solo. Si lo escribiéramos otra vez aquí, saldría doble. */
+/* Responsable al vuelo. Se registra a mano CON NOMBRE del hito (como los demás
+   cambios del cronograma); el trigger `registrar_evento_estado` deja además un
+   evento genérico sin nombre que la ficha filtra para no duplicar. */
 export async function asignarResponsableActividad(
   actId: string, dueno: DuenoCrono, duenoId: string, respId: string | null
 ) {
@@ -3514,13 +3514,17 @@ export async function asignarResponsableActividad(
      líder, no apoyo — nadie debe figurar en los dos a la vez, o saldría
      duplicado en la fila. */
   const { data: act } = await supabase.from("cronograma_actividades")
-    .select("equipo").eq("id", actId).maybeSingle();
+    .select("nombre,equipo").eq("id", actId).maybeSingle();
   const equipo = ((act?.equipo as string[] | null) || []).filter(id => id && id !== respId);
   const { data, error } = await supabase.from("cronograma_actividades")
     .update({ ...campoResp(dueno, respId), equipo: equipo.length ? equipo : null })
     .eq("id", actId).select("id");
   if (error) return { error: error.message };
   if (!data?.length) return { error: "No se guardó: no tienes permiso." };
+  if (act) await supabase.from("actividad").insert({
+    entidad_tipo: dueno, entidad_id: duenoId, actor_id: user.id, tipo: "editado",
+    detalle: { mensaje: `${respId ? "cambió" : "quitó"} el responsable de la actividad «${act.nombre}» del cronograma` },
+  });
   revalidatePath(`/entidad/${dueno}/${duenoId}`);
   return {};
 }
@@ -3575,11 +3579,17 @@ export async function fijarEquipoActividad(
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
+  const { data: act } = await supabase.from("cronograma_actividades")
+    .select("nombre").eq("id", actId).maybeSingle();
   const limpio = [...new Set((equipo || []).filter(Boolean))];
   const { data, error } = await supabase.from("cronograma_actividades")
     .update({ equipo: limpio.length ? limpio : null }).eq("id", actId).select("id");
   if (error) return { error: error.message };
   if (!data?.length) return { error: "No se guardó: no tienes permiso." };
+  if (act) await supabase.from("actividad").insert({
+    entidad_tipo: dueno, entidad_id: duenoId, actor_id: user.id, tipo: "editado",
+    detalle: { mensaje: `cambió el equipo de apoyo de la actividad «${act.nombre}» del cronograma` },
+  });
   revalidatePath(`/entidad/${dueno}/${duenoId}`);
   return {};
 }
@@ -3745,9 +3755,16 @@ export async function cancelarActividadCrono(actId: string, dueno: string, dueno
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
+  const { data: antes } = await supabase.from("cronograma_actividades")
+    .select("nombre").eq("id", actId).maybeSingle();
   const { error } = await supabase.from("cronograma_actividades")
     .update({ estado: "cancelada" }).eq("id", actId);
   if (error) return { error: error.message };
+  // Log con nombre (el trigger deja un estado genérico que la ficha filtra).
+  if (antes) await supabase.from("actividad").insert({
+    entidad_tipo: dueno, entidad_id: duenoId, actor_id: user.id, tipo: "editado",
+    detalle: { mensaje: `canceló la actividad «${antes.nombre}» del cronograma` },
+  });
   revalidatePath(`/entidad/${dueno}/${duenoId}`);
   return {};
 }
