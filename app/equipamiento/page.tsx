@@ -2,6 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import BotonComprobar from "@/components/BotonComprobar";
 import EntregaLote from "@/components/EntregaLote";
+import PanelKits from "@/components/PanelKits";
+import type { KitVista } from "@/lib/kits";
 import EnUsoAhora, { type UsoItem } from "@/components/EnUsoAhora";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import { buscadorDe, pal } from "@/lib/buscar";
@@ -28,24 +30,25 @@ const TOPE = 200;
 const ABIERTOS = ["abierta", "en_progreso", "seguimiento"];
 
 export default async function Equipamiento({ searchParams }: {
-  searchParams: { q?: string; e?: string; c?: string; f?: string; ronda?: string };
+  searchParams: { q?: string; e?: string; c?: string; f?: string; ronda?: string; kit?: string };
 }) {
   const q = (searchParams?.q || "").trim();
   const e = searchParams?.e || "";
   const c = searchParams?.c || "";
   const f = searchParams?.f || "";
   const ronda = searchParams?.ronda === "1";
+  const kitPre = searchParams?.kit || "";   // llegó desde «🤝 Entregar» de un kit
   const listar = !!(q || e || c || f || ronda);
 
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: eqs }, { data: enManos }, { data: vincs }, { data: coms }, { data: media }, comsBita, comsUso, usosRec, { data: comBita }, { data: prestAll }, personasRaw, proyectosRaw] = await Promise.all([
+  const [{ data: eqs }, { data: enManos }, { data: vincs }, { data: coms }, { data: media }, comsBita, comsUso, usosRec, { data: comBita }, { data: prestAll }, personasRaw, proyectosRaw, { data: kitsRaw }, { data: kitEqs }] = await Promise.all([
     // `*`: para calcular la completitud de la ficha de cada equipo.
     supabase.from("equipamiento").select("*").order("folio"),
     supabase.from("equipo_prestamos")
-      .select("id,desde,equipo:equipamiento(id,folio,nombre),persona:personas(id,nombre,alias,foto_url),proy:proyectos(id,nombre)")
+      .select("id,desde,kit_id,equipo:equipamiento(id,folio,nombre),persona:personas(id,nombre,alias,foto_url),proy:proyectos(id,nombre)")
       .is("hasta", null).order("desde", { ascending: false }),
     supabase.from("publicacion_vinculos")
       .select("entidad_id,publicacion_id,pub:publicaciones(estado)").eq("entidad_tipo", "equipamiento"),
@@ -78,11 +81,39 @@ export default async function Equipamiento({ searchParams }: {
        —no perfiles—: quien se lleva una cámara puede no tener cuenta. */
     supabase.from("personas").select("id,nombre,alias,tipo").order("nombre"),
     supabase.from("proyectos").select("id,nombre").order("nombre"),
+    /* Los kits: qué sale junto. Dos tablas que llevaban un año en el schema
+       sin una sola línea que las nombrara (ver db/kits.sql). */
+    supabase.from("kits").select("id,nombre,uso,descripcion,retirado_en").order("nombre"),
+    supabase.from("kit_equipos").select("kit_id,equipamiento_id"),
   ]);
   const personasCat = ((personasRaw as any)?.data || []).map((x: any) =>
     ({ ...x, nombre: x.alias ? `${x.nombre} · ${x.alias}` : x.nombre }));
   const proyectosCat = (proyectosRaw as any)?.data || [];
   const un1 = (v: any) => (Array.isArray(v) ? v[0] : v);
+
+  /* ── KITS ──
+     `equipoIds` en el orden en que se armó el kit, no el de la tabla puente:
+     un kit se lee como una lista de empaque y el orden es parte de lo que
+     alguien decidió. */
+  const eqsDeKit = new Map<string, string[]>();
+  (kitEqs || []).forEach((r: any) =>
+    eqsDeKit.set(r.kit_id, [...(eqsDeKit.get(r.kit_id) || []), r.equipamiento_id]));
+  const kits: KitVista[] = (kitsRaw || []).map((k: any) => ({
+    id: k.id, nombre: k.nombre, uso: k.uso, descripcion: k.descripcion,
+    retirado: !!k.retirado_en, equipoIds: eqsDeKit.get(k.id) || [],
+  }));
+  const kitPorId = new Map(kits.map(k => [k.id, k]));
+
+  /* Quién tiene cada equipo AHORA. Sin esto, el panel de kits solo puede
+     decir «no disponible», que no sirve para nada: lo que hace falta saber
+     es a quién llamar. */
+  const quienTiene = new Map<string, string>();
+  (enManos || []).forEach((p: any) => {
+    const eq = un1(p.equipo), per = un1(p.persona);
+    if (eq?.id) quienTiene.set(eq.id, per?.alias || per?.nombre || "alguien");
+  });
+  const eqsConDueno = (eqs || []).map((e: any) => ({ ...e, quien: quienTiene.get(e.id) || null }));
+
   const cartelPorEq = new Map<string, string>();
   (media || []).forEach((m: any) => { if (m.cartel_url) cartelPorEq.set(m.entidad_id, m.cartel_url); });
 
@@ -328,7 +359,12 @@ export default async function Equipamiento({ searchParams }: {
               Va ANTES del panel de «en uso» porque el orden de la página sigue
               el orden del día: primero se entrega, después se mira quién tiene
               qué. */}
-          <EntregaLote equipos={(eqs || []) as any} personas={personasCat} proyectos={proyectosCat} />
+          <EntregaLote equipos={eqsConDueno as any} personas={personasCat} proyectos={proyectosCat}
+            kits={kits} kitInicial={kitPre} />
+
+          {/* Los kits van DESPUÉS de la entrega: primero se entrega —es lo del
+              día— y armar el kit es mantenimiento, se hace de vez en cuando. */}
+          <PanelKits kits={kits} equipos={eqsConDueno as any} />
 
           {/* Quién tiene qué —y la devolución a media vuelta de rodaje—.
               El panel entero es cliente porque las casillas son estado, así
@@ -344,6 +380,9 @@ export default async function Equipamiento({ searchParams }: {
                 perId: per?.id || "_", per: per?.alias || per?.nombre || "sin registrar",
                 foto: per?.foto_url || null,
                 proyId: pr?.id || null, proy: pr?.nombre || null,
+                kitId: p.kit_id || null,
+                kit: p.kit_id ? kitPorId.get(p.kit_id)?.nombre || null : null,
+                kitTotal: p.kit_id ? kitPorId.get(p.kit_id)?.equipoIds.length || 0 : 0,
               };
             })} />
           )}

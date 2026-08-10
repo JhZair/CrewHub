@@ -4361,8 +4361,127 @@ export async function cargarEmpresaRapida(empresaId: string) {
  * de baja se queda fuera y VUELVE nombrado en `omitidos`, para que quien
  * entrega vea qué no salió en vez de creer que salió todo—.
  */
+/* ══════════════ KITS ══════════════
+ * Un kit es un puñado de equipos que salen juntos. Las tablas existían desde
+ * el schema original con el comentario «al publicar desde rodaje se vincula el
+ * kit completo en un clic»; el clic nunca se escribió. Esto es el clic.
+ *
+ * Todas estas acciones releen en el servidor: la lista que vio el navegador
+ * puede tener minutos, y un kit se arma justo mientras alguien más entrega.
+ */
+
+const KIT_MAX = 60;   // un «kit» de 200 piezas es el inventario, no un kit
+
+export async function crearKit(nombre: string, uso: string, descripcion: string, equipoIds: string[]) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  const nom = (nombre || "").trim();
+  if (!nom) return { error: "El kit necesita un nombre." };
+
+  const { data: kit, error } = await supabase.from("kits").insert({
+    nombre: nom, uso: (uso || "").trim() || null,
+    descripcion: (descripcion || "").trim() || null, creado_por: user.id,
+  }).select("id").single();
+  if (error) return { error: error.message };
+
+  const r = await setKitEquipos(kit.id, equipoIds || []);
+  if (r?.error) return { error: `El kit se creó, pero sus equipos no: ${r.error}`, id: kit.id };
+
+  revalidatePath("/equipamiento");
+  return { id: kit.id, n: (equipoIds || []).length };
+}
+
+export async function guardarKit(kitId: string, nombre: string, uso: string, descripcion: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const nom = (nombre || "").trim();
+  if (!kitId || !nom) return { error: "Falta el kit o su nombre." };
+
+  const { error } = await supabase.from("kits").update({
+    nombre: nom, uso: (uso || "").trim() || null,
+    descripcion: (descripcion || "").trim() || null,
+  }).eq("id", kitId);
+  if (error) return { error: error.message };
+  revalidatePath("/equipamiento");
+  return { ok: true };
+}
+
+/* Deja el kit EXACTAMENTE con estos equipos. Se calcula la diferencia en vez
+   de borrar todo y volver a insertar: un `delete` + `insert` deja el kit vacío
+   durante un instante y, si el insert falla, para siempre. */
+export async function setKitEquipos(kitId: string, equipoIds: string[]) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!kitId) return { error: "Falta el kit." };
+
+  const quiero = [...new Set((equipoIds || []).filter(Boolean))];
+  if (quiero.length > KIT_MAX) return { error: `Un kit no puede tener más de ${KIT_MAX} equipos.` };
+
+  const { data: hay, error: e0 } = await supabase.from("kit_equipos")
+    .select("equipamiento_id").eq("kit_id", kitId);
+  if (e0) return { error: e0.message };
+
+  const tengo = new Set((hay || []).map((x: any) => x.equipamiento_id));
+  const meter = quiero.filter(id => !tengo.has(id));
+  const sacar = [...tengo].filter((id: any) => !quiero.includes(id));
+
+  if (sacar.length) {
+    const { error } = await supabase.from("kit_equipos")
+      .delete().eq("kit_id", kitId).in("equipamiento_id", sacar);
+    if (error) return { error: error.message };
+  }
+  if (meter.length) {
+    const { error } = await supabase.from("kit_equipos")
+      .insert(meter.map(id => ({ kit_id: kitId, equipamiento_id: id })));
+    if (error) return { error: error.message };
+  }
+  revalidatePath("/equipamiento");
+  return { meter: meter.length, sacar: sacar.length };
+}
+
+/* Un kit no se borra si ya salió a rodaje: sus préstamos lo nombran y esa
+   etiqueta es parte del historial. Se retira —deja de ofrecerse— y ya. Lo que
+   nunca salió sí se borra: es un error de tecleo, no historia. */
+export async function borrarKit(kitId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!kitId) return { error: "Falta el kit." };
+
+  const { count, error: e0 } = await supabase.from("equipo_prestamos")
+    .select("id", { count: "exact", head: true }).eq("kit_id", kitId);
+  if (e0) return { error: e0.message };
+
+  if (count && count > 0) {
+    const { error } = await supabase.from("kits")
+      .update({ retirado_en: new Date().toISOString() }).eq("id", kitId);
+    if (error) return { error: error.message };
+    revalidatePath("/equipamiento");
+    return { retirado: true, usos: count };
+  }
+  const { error } = await supabase.from("kits").delete().eq("id", kitId);
+  if (error) return { error: error.message };
+  revalidatePath("/equipamiento");
+  return { borrado: true };
+}
+
+export async function revivirKit(kitId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { error } = await supabase.from("kits").update({ retirado_en: null }).eq("id", kitId);
+  if (error) return { error: error.message };
+  revalidatePath("/equipamiento");
+  return { ok: true };
+}
+
 export async function prestarEquipos(
-  equipoIds: string[], personaId: string, proyectoId: string | null, nota: string
+  equipoIds: string[], personaId: string, proyectoId: string | null, nota: string,
+  kitId?: string | null
 ) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -4392,10 +4511,15 @@ export async function prestarEquipos(
   await supabase.from("equipo_prestamos").update({ hasta: hoy })
     .in("equipamiento_id", buenos).is("hasta", null);
 
+  /* El préstamo recuerda de qué kit salió. Sin esto, los tres equipos de
+     Roxana vuelven a ser tres fichas sueltas en cuanto salen por la puerta:
+     el kit habría servido para marcarlos rápido y para nada más, y a la
+     vuelta nadie sabría que faltaba cerrar una cuarta pieza. */
   const { error } = await supabase.from("equipo_prestamos").insert(
     buenos.map(id => ({
       equipamiento_id: id, persona_id: personaId,
       proyecto_id: proyectoId || null, nota: (nota || "").trim() || null,
+      kit_id: kitId || null,
     })));
   if (error) return { error: error.message };
 

@@ -2769,3 +2769,41 @@ button.repo-tit{text-align:left}
   .eq-uso-desde{display:none}   /* en móvil manda QUÉ y PARA QUÉ, no el día */
   .eq-uso-fila{gap:8px;padding:6px 4px}
 }
+
+/* ── KITS · lo que sale junto (app/equipamiento) ── */
+.kit-caja{border-top:1px solid var(--border);padding:9px 0 4px;margin-top:8px}
+.kit-h{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.kit-uso{color:var(--violet);background:rgba(167,139,250,.12);font-size:10.5px;
+  text-transform:uppercase;letter-spacing:.4px}
+.kit-desc{color:var(--dim);font-size:11.5px;margin:3px 0 0 2px}
+.kit-piezas{display:flex;gap:6px;flex-wrap:wrap;margin:7px 0 2px}
+.kit-pieza{background:rgba(46,204,113,.10);color:var(--green);font-size:11px;
+  max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Lo que hoy no puede salir se apaga pero NO se esconde: el kit es la lista de
+   empaque completa, y una pieza que desaparece de la lista es una pieza que
+   nadie echa en falta hasta el rodaje. */
+.kit-pieza.ocupada{background:rgba(255,255,255,.05);color:var(--dim)}
+.kit-pieza-por{opacity:.8;font-style:italic}
+.kit-folio{color:var(--muted);background:#1c1c2c;font-size:10.5px}
+.kit-aviso{color:var(--yellow);font-size:10.5px;font-style:italic}
+.kit-editor{border-left:2px solid var(--accent);padding:8px 0 4px 10px;margin:9px 0 4px}
+.kit-escoge{max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:8px}
+
+/* Elegir kit dentro de la entrega en lote */
+.kit-elige{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+.kit-chip{background:var(--card);border:1px solid var(--border);border-radius:999px;
+  padding:3px 11px;font-size:11.5px;color:var(--text);cursor:pointer;font-family:inherit}
+.kit-chip:hover{border-color:var(--violet)}
+.kit-chip.on{background:rgba(167,139,250,.18);border-color:var(--violet);
+  color:var(--violet);font-weight:600}
+.kit-marca{color:var(--violet);font-size:10px;background:rgba(167,139,250,.14);
+  border-radius:999px;padding:1px 7px;flex:none}
+.kit-fuera{background:rgba(244,180,0,.10);border:1px solid rgba(244,180,0,.32);
+  border-radius:8px;padding:7px 10px;margin-bottom:8px;font-size:11.5px;
+  color:var(--yellow);line-height:1.55}
+.kit-fuera b{color:var(--text)}
+
+/* El kit dentro de «En uso ahora» */
+.eq-uso-kit{border-left:2px solid rgba(167,139,250,.45);padding-left:8px;margin:4px 0 6px}
+.eq-uso-kit-h{display:flex;gap:8px;align-items:center;padding:3px 2px 4px}
+.eq-uso-kit-n{color:var(--violet);font-size:12px;font-weight:700}
