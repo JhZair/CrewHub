@@ -11,12 +11,12 @@
  * en cambiar de criterio dejaría a las otras diciendo otra cosa.
  */
 
-/** Estados de equipo que impiden entregar. Los mismos que veta `prestarEquipos`
- *  en el servidor: si esta lista y aquélla se separan, la pantalla ofrece algo
- *  que el servidor rechaza —y el rechazo llega después del clic. */
-export const NO_ENTREGABLE: Record<string, string> = {
-  en_reparacion: "en reparación", perdido: "perdido", de_baja: "de baja",
-};
+/* La lista de «qué no se puede entregar» vivía aquí, copiada. Ahora sale de
+   lib/estadosEquipo, que es donde vive el estado de un equipo entero —color,
+   rótulo, si cuenta en el inventario, si pide atención—. Se re-exporta para
+   no romper a quien ya la importaba de aquí. */
+export { NO_ENTREGABLE } from "@/lib/estadosEquipo";
+import { NO_ENTREGABLE } from "@/lib/estadosEquipo";
 
 /** Un equipo tal como lo necesitan las pantallas de kits: qué es, cómo está,
  *  y quién lo tiene si está fuera. */

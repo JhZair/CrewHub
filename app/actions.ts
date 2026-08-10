@@ -1,6 +1,7 @@
 "use server";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { NO_ENTREGABLE as NO_ENTREGABLE_EQ } from "@/lib/estadosEquipo";
 import { FORM_CONF, nombreCorto } from "@/lib/entidades";
 import { ETAPAS_PROY_VALIDAS } from "@/lib/etapasProyecto";
 import { nrmQ } from "@/lib/quechua";
@@ -727,6 +728,12 @@ export async function importarEntidades(entidad: string, filas: Record<string, s
       if (v.includes("baja")) return "de_baja";
       if (v.includes("repara")) return "en_reparacion";
       if (v.includes("perdido")) return "perdido";
+      /* «No aparece» va ANTES de «disponible» y después de «perdido»: una
+         hoja que diga «no aparece / no ubicado / extraviado» no es lo mismo
+         que una que diga «perdido», y meterlas en el mismo cajón borra la
+         única distinción que importa aquí. */
+      if (v.includes("no aparece") || v.includes("no ubica") || v.includes("extravi") || v.includes("sin ubicar"))
+        return "no_aparece";
       // OJO al orden: "no disponible" contiene "disponible"
       if (v.includes("no disponible")) return "en_uso";
       if (v.includes("asignado")) return "en_uso";
@@ -4594,9 +4601,10 @@ export async function prestarEquipos(
     .select("id,folio,nombre,estado").in("id", ids);
   if (e0) return { error: e0.message };
 
-  const VETADOS: Record<string, string> = {
-    en_reparacion: "en reparación", perdido: "perdido", de_baja: "de baja",
-  };
+  /* La MISMA lista que usa la pantalla (lib/estadosEquipo). Estaba escrita
+     aquí a mano, así que añadir un estado nuevo dejaba al servidor
+     aceptando lo que la pantalla ya no ofrecía. */
+  const VETADOS = NO_ENTREGABLE_EQ;
   const omitidos = (eqs || []).filter((e: any) => VETADOS[e.estado])
     .map((e: any) => `${e.folio || ""} ${e.nombre} (${VETADOS[e.estado]})`.trim());
   const buenos = (eqs || []).filter((e: any) => !VETADOS[e.estado]).map((e: any) => e.id);

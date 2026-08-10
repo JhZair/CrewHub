@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { agruparUnidades, esGrupo, type Unidad, type GrupoUnidades } from "@/lib/compras";
+import { colorEstadoEq } from "@/lib/estadosEquipo";
 
 /* CINCO FILAS QUE DICEN LO MISMO NO INFORMAN CINCO VECES.
  *
@@ -17,11 +18,6 @@ import { agruparUnidades, esGrupo, type Unidad, type GrupoUnidades } from "@/lib
  * «5 unidades» esconde justo el dato que importa, que una está en
  * reparación. El grupo con algo que no está disponible arranca ABIERTO.
  */
-
-const COL_EST: Record<string, string> = {
-  disponible: "var(--green)", en_uso: "var(--blue)", en_reparacion: "var(--yellow)",
-  perdido: "var(--red)", de_baja: "var(--dim)",
-};
 
 export default function FilasEquipo({ unidades, filas }: {
   unidades: Unidad[];
@@ -56,7 +52,7 @@ export default function FilasEquipo({ unidades, filas }: {
               <span className="ug-n">{gr.unidades.length} unidades</span>
               <span style={{ flex: 1 }} />
               {gr.porEstado.map(([e, n]) => (
-                <span key={e} className="ug-est" style={{ color: COL_EST[e] || "var(--dim)" }}>
+                <span key={e} className="ug-est" style={{ color: colorEstadoEq(e) }}>
                   {n} {e.replace(/_/g, " ")}
                 </span>
               ))}

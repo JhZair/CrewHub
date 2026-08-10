@@ -15,10 +15,11 @@
  * el listado, la ficha de la compra y el KPI del inventario.
  */
 
-/** Estados que no cuentan como inventario vivo. Los mismos en las tres
- *  pantallas: si esta lista se separa, cada una da un total distinto y las
- *  tres parecen ciertas. */
-export const FUERA_DE_INVENTARIO = ["de_baja", "perdido"];
+/* Qué no cuenta como inventario vivo: de lib/estadosEquipo, no de una copia
+   local. Importa quién decide esto —«no aparece» SÍ cuenta, porque no está
+   confirmado que se perdiera— y esa decisión no puede vivir en tres sitios. */
+export { FUERA_DE_INVENTARIO } from "@/lib/estadosEquipo";
+import { FUERA_DE_INVENTARIO } from "@/lib/estadosEquipo";
 
 export type Unidad = {
   id: string; folio?: string | null; nombre: string;

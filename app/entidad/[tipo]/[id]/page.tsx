@@ -85,6 +85,7 @@ import type { Metadata } from "next";
 import { ICO_ENT, nombreDe, grafiasDe, TABLA_DE, tipoCanonico } from "@/lib/secciones";
 import { estadoKit, resumenKit, type PiezaKit } from "@/lib/kits";
 import { ordenarActores, rotuloActores, leerActor, personaDe } from "@/lib/actores";
+import { metaEstado, colorEstadoEq, txtEstadoEq } from "@/lib/estadosEquipo";
 import PiezasKit from "@/components/PiezasKit";
 import ComboDelEquipo from "@/components/ComboDelEquipo";
 
@@ -1966,14 +1967,10 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                 registro de préstamos completo vive en su pestaña. */}
             {params.tipo === "equipamiento" && (() => {
               const actual = (prestamos as any[]).find(p => !p.hasta);
-              const EST: Record<string, [string, string]> = {
-                disponible: ["🟢 Disponible", "var(--green)"],
-                en_uso: ["🔵 En uso", "var(--blue)"],
-                en_reparacion: ["🛠 En reparación", "var(--yellow)"],
-                perdido: ["❌ Perdido", "var(--red)"],
-                de_baja: ["⬇ De baja", "var(--dim)"],
-              };
-              const est = EST[ent.estado] || [String(ent.estado || "—"), "var(--muted)"];
+              /* De lib/estadosEquipo: esta copia pintaba «perdido» en
+                 var(--red) y la lista de abajo en var(--dano). */
+              const m = metaEstado(ent.estado);
+              const est: [string, string] = [`${m.ico} ${m.txt}`, m.color];
               const fmtD = (f: string) => new Date(f + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" });
               return (
                 <div className="carne-equipo">
@@ -2612,7 +2609,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               </h4>
               {relacionados.map((r: any) => {
                 const cartel = cartelRel.get(r.id);
-                const ESTC: Record<string, string> = { disponible: "var(--green)", en_uso: "var(--blue)", en_reparacion: "var(--yellow)", perdido: "var(--dano)", de_baja: "var(--dim)" };
+
                 return (
                   <Link key={r.id} href={`/entidad/equipamiento/${r.id}`} className="info-row" style={{ textDecoration: "none" }}>
                     <span style={{ width: 34, height: 34, borderRadius: 7, flexShrink: 0, overflow: "hidden", background: "var(--bg)", border: "1px solid var(--border)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 17 }}>
@@ -2623,7 +2620,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                     </span>
                     {r.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c", fontSize: TXT.chip }}>{r.folio}</span>}
                     <b style={{ flex: 1, fontSize: TXT.micro, color: "var(--text)" }}>{r.nombre}</b>
-                    <span style={{ color: ESTC[r.estado] || "var(--dim)", fontSize: TXT.chip }}>{(r.estado || "").replace(/_/g, " ")}</span>
+                    <span style={{ color: colorEstadoEq(r.estado), fontSize: TXT.chip }}>{txtEstadoEq(r.estado)}</span>
                   </Link>
                 );
               })}

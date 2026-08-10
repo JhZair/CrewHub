@@ -4,6 +4,7 @@ import VistaHilo from "@/components/VistaHilo";
 import Copiar from "@/components/Copiar";
 import { cargarCompraRapida } from "@/app/compras/acciones";
 import { soles } from "@/lib/compras";
+import { colorEstadoEq, txtEstadoEq } from "@/lib/estadosEquipo";
 import { urlCorta } from "@/components/MasDatos";
 
 /* VISTA RÁPIDA DE UN COMBO — qué se compró, cuánto costó y qué trajo.
@@ -27,11 +28,6 @@ function Fila({ k, children }: { k: string; children: ReactNode }) {
     </div>
   );
 }
-
-const COL_EST: Record<string, string> = {
-  disponible: "var(--green)", en_uso: "var(--blue)", en_reparacion: "var(--yellow)",
-  perdido: "var(--red)", de_baja: "var(--dim)",
-};
 
 export default function VistaCompra({ compraId, children }: {
   compraId: string;
@@ -127,8 +123,8 @@ export default function VistaCompra({ compraId, children }: {
                         {soles(Number(u.valor_compra), c.moneda || "PEN")}
                       </span>
                     )}
-                    <span style={{ color: COL_EST[u.estado] || "var(--dim)", fontSize: 11, whiteSpace: "nowrap" }}>
-                      {u.quien ? `lo tiene ${u.quien}` : (u.estado || "").replace(/_/g, " ")}
+                    <span style={{ color: colorEstadoEq(u.estado), fontSize: 11, whiteSpace: "nowrap" }}>
+                      {u.quien ? `lo tiene ${u.quien}` : txtEstadoEq(u.estado)}
                     </span>
                   </a>
                 ))}

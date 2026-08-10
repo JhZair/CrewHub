@@ -1,4 +1,5 @@
 "use client";
+import { ESTADOS_EQUIPO } from "@/lib/estadosEquipo";
 import { prestarEquipo, devolverEquipo, comentarEquipo, comentarPrestamo, editarComentarioEquipo } from "@/app/actions";
 import { EntPicker, type CatalogoItem } from "@/components/Composer";
 import Avatar from "@/components/Avatar";
@@ -23,14 +24,11 @@ const nrm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCas
 const tagEsDano = (t: string) => nrm(t).includes("dano");
 const tagEsMant = (t: string) => nrm(t).includes("manten");
 const MANT = "#4a9d9d"; // color tenue del mantenimiento (verde azulado)
-// Estado del equipo → rótulo + color (mismo criterio que el carné).
-const EST: Record<string, [string, string]> = {
-  disponible: ["🟢 Disponible", "var(--green)"],
-  en_uso: ["🔵 En uso", "var(--blue)"],
-  en_reparacion: ["🛠 En reparación", "var(--yellow)"],
-  perdido: ["❌ Perdido", "var(--dano)"],
-  de_baja: ["⬇ De baja", "var(--dim)"],
-};
+/* Rótulo + color del estado: de lib/estadosEquipo, no de una copia. Ésta
+   pintaba «perdido» en var(--dano) y el carné en var(--red) — el mismo
+   estado, dos rojos, en dos sitios de la misma pantalla. */
+const EST: Record<string, [string, string]> = Object.fromEntries(
+  ESTADOS_EQUIPO.map(e => [e.k, [`${e.ico} ${e.txt}`, e.color] as [string, string]]));
 
 type Modo = "nota" | "dano" | "mant" | "uso";
 

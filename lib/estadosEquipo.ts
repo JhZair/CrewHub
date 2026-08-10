@@ -1,0 +1,102 @@
+/* EL ESTADO DE UN EQUIPO, EN UN SOLO SITIO.
+ *
+ * Estaba escrito en OCHO archivos —/equipamiento, la ficha, el buscador,
+ * la vista del combo, la lista agrupada, el préstamo, los kits y las
+ * acciones— y ya había divergido: el rojo de «perdido» era `var(--dano)`
+ * en la ficha, `var(--red)` en la lista y `#ff4d5e` en el buscador, y la
+ * lista de «qué no se puede entregar» vivía en dos sitios que tenían que
+ * coincidir a mano o la pantalla ofrecía lo que el servidor rechazaba.
+ *
+ * ── EL ESTADO QUE FALTABA ──
+ * «Perdido» es una CONCLUSIÓN, y la conclusión llega semanas después de
+ * la pregunta. Lo que pasa de verdad es que alguien va al almacén, no
+ * encuentra la jaula, y no tiene dónde anotarlo: marcarla «perdida» es
+ * afirmar algo que no se sabe, y dejarla «disponible» es peor —el sistema
+ * la sigue ofreciendo para un rodaje y el problema se descubre el sábado,
+ * cargando la camioneta—.
+ *
+ * `no_aparece` es ese hueco. Cuenta en el inventario (no está confirmado
+ * que se perdiera: sigue siendo patrimonio), no se puede entregar, y sale
+ * en «requieren atención» — porque lo que hay que hacer con él es
+ * buscarlo, y un equipo que nadie busca acaba perdido de verdad.
+ */
+
+export type EstadoEquipo =
+  | "disponible" | "en_uso" | "no_aparece" | "en_reparacion" | "perdido" | "de_baja";
+
+export type MetaEstado = {
+  k: EstadoEquipo;
+  ico: string;
+  txt: string;          // singular, para una ficha
+  plural: string;       // para los chips de filtro
+  color: string;
+  /** Fondo tenue para resaltar la fila. Vacío = no se resalta. */
+  tinte: string;
+  /** ¿Se puede entregar a alguien? */
+  entregable: boolean;
+  /** ¿Cuenta como patrimonio en el valor del inventario? */
+  inventario: boolean;
+  /** ¿Sale en «requieren atención»? */
+  atencion: boolean;
+  /** Por qué NO se puede entregar, dicho para quien lo lee. */
+  porque?: string;
+  ayuda?: string;
+};
+
+export const ESTADOS_EQUIPO: MetaEstado[] = [
+  { k: "disponible", ico: "🟢", txt: "Disponible", plural: "Disponibles",
+    color: "var(--green)", tinte: "", entregable: true, inventario: true, atencion: false },
+  { k: "en_uso", ico: "🤝", txt: "En uso", plural: "En uso",
+    color: "var(--blue)", tinte: "rgba(59,130,246,.05)",
+    entregable: false, inventario: true, atencion: false, porque: "lo tiene alguien" },
+  /* Entre «disponible» y «perdido», que es donde vive la realidad la mayor
+     parte del tiempo. Naranja: ni el amarillo de reparación —eso se sabe
+     dónde está— ni el rojo de perdido, que ya es un veredicto. */
+  { k: "no_aparece", ico: "🔍", txt: "No aparece", plural: "No aparecen",
+    color: "#fb923c", tinte: "rgba(251,146,60,.07)",
+    entregable: false, inventario: true, atencion: true,
+    porque: "no aparece",
+    ayuda: "No está donde debería y todavía no se da por perdido. Sigue contando en el inventario: lo que hay que hacer con él es buscarlo." },
+  { k: "en_reparacion", ico: "🛠", txt: "En reparación", plural: "En reparación",
+    color: "var(--yellow)", tinte: "rgba(244,180,0,.05)",
+    entregable: false, inventario: true, atencion: true, porque: "en reparación" },
+  { k: "perdido", ico: "❌", txt: "Perdido", plural: "Perdidos",
+    color: "var(--red)", tinte: "rgba(255,77,94,.06)",
+    entregable: false, inventario: false, atencion: true, porque: "perdido",
+    ayuda: "Se da por perdido: ya no cuenta en el inventario. Si solo no aparece, usa «No aparece»." },
+  { k: "de_baja", ico: "⬛", txt: "De baja", plural: "De baja",
+    color: "var(--dim)", tinte: "", entregable: false, inventario: false, atencion: false,
+    porque: "de baja" },
+];
+
+const POR_K = new Map(ESTADOS_EQUIPO.map(e => [e.k, e]));
+const NINGUNO: MetaEstado = {
+  k: "disponible", ico: "·", txt: "—", plural: "—", color: "var(--dim)", tinte: "",
+  entregable: false, inventario: true, atencion: false,
+};
+
+export const metaEstado = (k?: string | null): MetaEstado => POR_K.get(String(k ?? "") as EstadoEquipo) || NINGUNO;
+export const colorEstadoEq = (k?: string | null) => metaEstado(k).color;
+export const txtEstadoEq = (k?: string | null) => metaEstado(k).txt;
+export const icoEstadoEq = (k?: string | null) => metaEstado(k).ico;
+export const tinteEstadoEq = (k?: string | null) => metaEstado(k).tinte;
+
+/** Las opciones que se le pueden PONER a mano. «en uso» no está: lo gobiernan
+ *  los préstamos, y ponerlo a dedo dejaría un equipo «en uso» sin que nadie
+ *  lo tenga. */
+export const ESTADOS_ELEGIBLES: EstadoEquipo[] =
+  ESTADOS_EQUIPO.filter(e => e.k !== "en_uso").map(e => e.k);
+
+/** Qué NO se puede entregar, y por qué —con estas palabras—. Es la MISMA
+ *  lista que veta el servidor: si se separan, la pantalla ofrece algo que el
+ *  servidor rechaza, y el rechazo llega después del clic. */
+export const NO_ENTREGABLE: Record<string, string> = Object.fromEntries(
+  ESTADOS_EQUIPO.filter(e => !e.entregable && e.k !== "en_uso").map(e => [e.k, e.porque || e.txt]));
+
+/** Lo que ya no es patrimonio. */
+export const FUERA_DE_INVENTARIO: string[] =
+  ESTADOS_EQUIPO.filter(e => !e.inventario).map(e => e.k);
+
+/** Lo que hay que mirar hoy. */
+export const NECESITA_ATENCION: string[] =
+  ESTADOS_EQUIPO.filter(e => e.atencion).map(e => e.k);

@@ -26,6 +26,7 @@ import BotonFichaSunat from "@/components/BotonFichaSunat";
 import Volver from "@/components/Volver";
 import BuscadorGlobal from "@/components/BuscadorGlobal";
 import VistaCompra from "@/components/VistaCompra";
+import { ESTADOS_EQUIPO } from "@/lib/estadosEquipo";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -661,10 +662,8 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
      empresas candidatas y los concursos donde nunca postulamos. */
   // `resaltar`: al revés de `tenue` — pide un poco de atención (en uso, en
   // reparación). Un filo de color a la izquierda y un tinte muy leve; nada más.
-  const RES: Record<string, [string, string]> = {
-    en_uso: ["var(--blue)", "rgba(59,130,246,.06)"],
-    en_reparacion: ["var(--yellow)", "rgba(244,180,0,.06)"],
-  };
+  const RES: Record<string, [string, string]> = Object.fromEntries(
+    ESTADOS_EQUIPO.filter(e => e.tinte).map(e => [e.k, [e.color, e.tinte] as [string, string]]));
   const Fila = ({ href, children, docs, tenue, resaltar, avatar }: any) => {
     const contenido = (
       <>
@@ -1030,7 +1029,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
           return (
             <Fila key={e.id} href={`/entidad/equipamiento/${e.id}`}
               avatar={avatarEntidad("equipamiento", e.id, "🎥")}
-              resaltar={e.estado === "en_uso" ? "en_uso" : e.estado === "en_reparacion" ? "en_reparacion" : undefined}>
+              resaltar={RES[e.estado] ? e.estado : undefined}>
               {e.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{e.folio}</span>}
               <b>{e.nombre}</b>
               <span style={{ color: "var(--dim)", fontSize: TXT.meta }}>{e.categoria} · {(e.estado || "").replace(/_/g, " ")}</span>

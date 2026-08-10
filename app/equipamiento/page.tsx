@@ -6,6 +6,7 @@ import PanelKits from "@/components/PanelKits";
 import PanelCombos from "@/components/PanelCombos";
 import FilasEquipo from "@/components/FilasEquipo";
 import { valorInventario, soles } from "@/lib/compras";
+import { ESTADOS_EQUIPO, NECESITA_ATENCION, FUERA_DE_INVENTARIO, metaEstado, txtEstadoEq } from "@/lib/estadosEquipo";
 import type { KitVista } from "@/lib/kits";
 import EnUsoAhora, { type UsoItem } from "@/components/EnUsoAhora";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
@@ -21,13 +22,10 @@ export const metadata: Metadata = { title: "🎥 Equipos" };
 
 const diasDesde = (f: string) => Math.floor((Date.now() - new Date(f + "T12:00:00").getTime()) / 86400000);
 
-const EST_META: Record<string, [string, string]> = {
-  disponible: ["Disponibles", "var(--green)"],
-  en_uso: ["En uso", "var(--yellow)"],
-  en_reparacion: ["En reparación", "#f59e0b"],
-  perdido: ["Perdidos", "var(--red)"],
-  de_baja: ["De baja", "var(--dim)"],
-};
+/* Los rótulos y colores salen de lib/estadosEquipo. Esta copia decía que
+   «en uso» era amarillo y todas las demás pantallas lo pintaban azul. */
+const EST_META: Record<string, [string, string]> = Object.fromEntries(
+  ESTADOS_EQUIPO.map(e => [e.k, [e.plural, e.color] as [string, string]]));
 
 const TOPE = 200;
 const ABIERTOS = ["abierta", "en_progreso", "seguimiento"];
@@ -132,8 +130,8 @@ export default async function Equipamiento({ searchParams }: {
     return {
       ...c,
       nUnidades: us.length,
-      nVivas: us.filter((u: any) => !["de_baja", "perdido"].includes(u.estado)).length,
-      nProblema: us.filter((u: any) => ["en_reparacion", "perdido", "de_baja"].includes(u.estado)).length,
+      nVivas: us.filter((u: any) => !FUERA_DE_INVENTARIO.includes(u.estado)).length,
+      nProblema: us.filter((u: any) => NECESITA_ATENCION.includes(u.estado) || u.estado === "de_baja").length,
     };
   });
 
@@ -189,12 +187,12 @@ export default async function Equipamiento({ searchParams }: {
   const todos = eqs || [];
   const coincide = buscadorDe(q);   // el mismo motor que el buscador global
   const porComprobar = (x: any) =>
-    !["de_baja"].includes(x.estado) &&
+    x.estado !== "de_baja" &&
     (!x.ultima_comprobacion || diasDesde(x.ultima_comprobacion) > 90);
 
   const PRUEBA_F: Record<string, (x: any) => boolean> = {
     // Sin valor no suma al inventario: el total de arriba miente por omisión
-    sin_valor: x => !["de_baja", "perdido"].includes(x.estado) && !x.valor_compra,
+    sin_valor: x => !FUERA_DE_INVENTARIO.includes(x.estado) && !x.valor_compra,
     sin_folio: x => !x.folio,
     sin_categoria: x => !x.categoria,
   };
@@ -208,14 +206,18 @@ export default async function Equipamiento({ searchParams }: {
     (!c || (x.categoria || "") === c) &&
     (!f || PRUEBA_F[f]?.(x)) &&
     (!ronda || porComprobar(x)) &&
-    (!q || coincide(pal(x.nombre, x.folio, x.categoria, x.subcategoria, x.estado))));
+    /* `txtEstadoEq` además del `estado` crudo: la columna guarda
+       «no_aparece» y nadie escribe eso en el buscador. Sin el rótulo
+       humano, buscar «no aparece» no encontraría nada y parecería que no
+       hay ninguno. */
+    (!q || coincide(pal(x.nombre, x.folio, x.categoria, x.subcategoria, x.estado, txtEstadoEq(x.estado)))));
   const filtrados = filtradosTodos.slice(0, TOPE);
   const pendientesRonda = todos.filter(porComprobar).length;
   const cntF = (k: string) => todos.filter(PRUEBA_F[k]).length;
 
   const cnt = (est: string) => todos.filter((x: any) => x.estado === est).length;
   const valorTotal = todos
-    .filter((x: any) => !["de_baja", "perdido"].includes(x.estado))
+    .filter((x: any) => !FUERA_DE_INVENTARIO.includes(x.estado))
     .reduce((s: number, x: any) => s + (parseFloat(x.valor_compra) || 0), 0);
   void valorTotal;   // (lo sustituye `inv`; se conserva el cálculo por si vuelve a hacer falta)
   /* DOS cifras que no se mezclan. Lo que tiene precio propio suma por su
@@ -224,7 +226,9 @@ export default async function Equipamiento({ searchParams }: {
      200 por una batería que costó 60, y esa cifra inventada acabaría en un
      inventario para un seguro o para rendir un fondo. */
   const inv = valorInventario(todos as any, (comprasRaw as any) || []);
-  const atencion = todos.filter((x: any) => ["en_reparacion", "perdido"].includes(x.estado));
+  /* «Requieren atención»: ahora incluye lo que no aparece, que es justo
+     donde sirve —un equipo que nadie busca acaba perdido de verdad—. */
+  const atencion = todos.filter((x: any) => NECESITA_ATENCION.includes(x.estado));
   const porCat = new Map<string, number>();
   todos.forEach((x: any) => {
     const c = x.categoria || "sin categoría";
@@ -249,11 +253,9 @@ export default async function Equipamiento({ searchParams }: {
     </span>
   );
 
-  // Resaltado tenue por estado: en uso (azul) y en reparación (amarillo).
-  const RES_EST: Record<string, [string, string]> = {
-    en_uso: ["var(--blue)", "rgba(59,130,246,.05)"],
-    en_reparacion: ["var(--yellow)", "rgba(244,180,0,.05)"],
-  };
+  // Resaltado tenue por estado: el que lo tenga definido en lib/estadosEquipo.
+  const RES_EST: Record<string, [string, string]> = Object.fromEntries(
+    ESTADOS_EQUIPO.filter(e => e.tinte).map(e => [e.k, [e.color, e.tinte] as [string, string]]));
   const Fila = (x: any) => {
     const a = act.get(x.id) || VACIO;
     const nBita = bitaCount.get(x.id) || 0;
@@ -318,7 +320,7 @@ export default async function Equipamiento({ searchParams }: {
         <span className="buscador-lista">
           <span className="bg-lupa">🔍</span>
           <input name="q" defaultValue={q}
-            placeholder="Nombre, folio, categoría, «en reparación», «perdido»…" />
+            placeholder="Nombre, folio, categoría, «en reparación», «no aparece»…" />
         </span>
         <button className="btn" type="submit">Buscar</button>
       </form>
@@ -493,8 +495,13 @@ export default async function Equipamiento({ searchParams }: {
                   {miniEquipo(cartelPorEq.get(x.id), 38)}
                   {x.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c", fontSize: TXT.chip }}>{x.folio}</span>}
                   <Link href={`/entidad/equipamiento/${x.id}`} style={{ fontWeight: 600, flex: 1, fontSize: TXT.base }}>{x.nombre}</Link>
-                  <span style={{ color: x.estado === "perdido" ? "var(--red)" : "#f59e0b", fontSize: TXT.micro, fontWeight: 700 }}>
-                    {x.estado.replace(/_/g, " ")}
+                  {/* Ícono + rótulo + color del estado, de una sola fuente.
+                      Aquí «perdido» era rojo y todo lo demás ámbar; con el
+                      estado nuevo eso habría pintado igual «no aparece» y «en
+                      reparación», que es justo lo que hay que distinguir. */}
+                  <span style={{ color: metaEstado(x.estado).color, fontSize: TXT.micro, fontWeight: 700, whiteSpace: "nowrap" }}
+                    title={metaEstado(x.estado).ayuda || ""}>
+                    {metaEstado(x.estado).ico} {metaEstado(x.estado).txt}
                   </span>
                 </div>
               ))}

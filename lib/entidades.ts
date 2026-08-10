@@ -2,6 +2,7 @@
    Compartida por el formulario (cliente) y la acción (servidor,
    como whitelist de tablas y campos). */
 import { CATEGORIAS_OPC } from "@/lib/etapas";
+import { ESTADOS_ELEGIBLES } from "@/lib/estadosEquipo";
 import { ETAPAS_KEYS_POR_TIPO } from "@/lib/etapasProyecto";
 import { PROVINCIAS_POR_DEPARTAMENTO, DISTRITOS_POR_PROVINCIA } from "@/lib/ubigeo";
 
@@ -488,8 +489,10 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
       { key: "nombre", label: "Nombre del activo", requerido: true },
       { key: "categoria", label: "Categoría", tipo: "select", opciones: ["cámara", "micrófono", "iluminación", "drone", "energía", "producción", "camping", "pc_accesorios", "cómputo", "otro"] },
       { key: "subcategoria", label: "Subcategoría", sugerenciasPor: { campo: "categoria", mapa: SUBCATS_EQUIPO } },
-      // "en_uso" no es elegible: lo gobiernan los préstamos (🤝 en el perfil)
-      { key: "estado", label: "Estado", tipo: "select", opciones: ["disponible", "en_uso", "en_reparacion", "perdido", "de_baja"] },
+      // "en_uso" no es elegible: lo gobiernan los préstamos (🤝 en el perfil).
+      // La lista sale de lib/estadosEquipo: escrita aquí a mano, un estado
+      // nuevo se quedaba sin poder elegirse y nadie sabía por qué.
+      { key: "estado", label: "Estado", tipo: "select", opciones: [...ESTADOS_ELEGIBLES] },
       { key: "valor_compra", label: "Valor de compra (S/)" },
       { key: "comprado_en", label: "Comprado en" },
       { key: "link", label: "Link (referencia)", valida: "url" },
