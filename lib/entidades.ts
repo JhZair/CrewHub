@@ -176,14 +176,25 @@ export const AYUDA_CATEGORIA: Record<string, string> = {
 
 /* Subcategorías sugeridas según la categoría del equipo. Son SUGERENCIAS: el
    campo es editable, porque el inventario siempre trae algo que ninguna lista
-   previó. */
+   previó.
+   Que sea editable no las hace prescindibles: si cada quien escribe lo suyo,
+   el mismo estuche acaba como «Estuche de baterías», «estuche baterias» y
+   «case de pilas», y ninguna búsqueda encuentra los tres.
+
+   ── LOS ESTUCHES ──
+   Un estuche aparece en casi todas las categorías —de cámara, de drone, de
+   luces, de baterías— y eso no es un problema que resolver: el estuche
+   pertenece a LO QUE PROTEGE, no a una categoría «estuches». Una categoría
+   así cruzaría todas las demás y volvería a poner el mismo objeto en dos
+   sitios, que es justo lo que esta lista vino a quitar. */
 export const SUBCATS_EQUIPO: Record<string, string[]> = {
   "cámara": ["Cuerpo de cámara", "Cámara de acción", "Cámara de bolsillo (Pocket / Nano)",
     "Cámara 360", "Lente", "Filtro ND", "Jaula / Rig", "Monitor externo",
     "Memoria SD / CFexpress", "Batería de cámara", "Cargador de cámara",
-    "Celular / Smartphone", "Visor / Loupe", "Case de cámara"],
+    "Estuche de baterías / memorias", "Celular / Smartphone", "Visor / Loupe",
+    "Case de cámara"],
   "drone": ["Drone", "Batería de drone", "Hélices", "Control remoto", "Hub de carga",
-    "Filtros de drone", "Case de drone", "Antena / Repetidor"],
+    "Filtros de drone", "Estuche de baterías", "Case de drone", "Antena / Repetidor"],
   "sonido": ["Micrófono corbatero", "Micrófono de cañón", "Micrófono inalámbrico",
     "Micrófono de mano", "Grabadora de audio", "Mezcladora", "Audífonos",
     "Caña / Boom pole", "Zeppelin / Paravientos", "Cable XLR", "Adaptador de audio",
@@ -198,8 +209,8 @@ export const SUBCATS_EQUIPO: Record<string, string[]> = {
     "Soporte de cabeza / pecho", "Ventosa / Clamp", "Pértiga / Extension rod",
     "Selfie stick", "Saco de arena / Contrapeso"],
   "energía": ["Batería V-Mount", "Power bank", "Cargador", "Pilas AA / AAA",
-    "Extensión eléctrica", "Regleta", "Generador", "Panel solar",
-    "Inversor", "Estabilizador de corriente"],
+    "Estuche de baterías", "Extensión eléctrica", "Regleta", "Generador",
+    "Panel solar", "Inversor", "Estabilizador de corriente"],
   /* Absorbe «pc_accesorios»: un lector de memorias y el disco donde va el
      material son la misma cadena, y partirlos obliga a buscar en dos sitios. */
   "cómputo": ["Laptop", "PC de edición", "Tableta", "Monitor", "Disco duro externo",
