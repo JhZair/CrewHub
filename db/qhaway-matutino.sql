@@ -27,6 +27,24 @@
 --                         $$select public.qhaway_matutino()$$);
 -- ============================================================
 
+/* ── QUÉ ES UN CASO Y QUÉ NO ──────────────────────────────────────────
+   Una publicación INFORMATIVA no es una deuda: el aviso rige y deja de
+   regir; la bitácora (nota del muro) queda publicada y ya está. Ninguna
+   de las dos se «resuelve» —lib/estados.ts lo dice desde el 17/07 y la
+   bitácora ni siquiera tiene otro estado que ofrecer (OPC_BITACORA)—.
+
+   Doce pantallas de la aplicación escriben `.neq("tipo","bitacora")` a
+   mano. ESTA FUNCIÓN, que vive dentro de Postgres, nunca se enteró: por
+   eso el Bot le preguntaba a una nota del muro «¿sigue vivo?» cada tres
+   días, para siempre, y no había forma de callarlo —una bitácora no se
+   puede cerrar—. El 9 de agosto «Identidad y paleta de colores» llevaba
+   tres avisos idénticos (2, 5 y 9 de agosto) y el buzón del Bot, 262.
+
+   Una sola definición, en SQL, que dice lo mismo que `esInformativo`. */
+create or replace function public.es_informativa(t text) returns boolean
+ language sql immutable parallel safe
+as $$ select coalesce(t, '') in ('aviso', 'bitacora') $$;
+
 create or replace function public.qhaway_matutino()
  returns text
  language plpgsql
@@ -174,8 +192,14 @@ begin
     materializadas := materializadas + 1;
   end loop;
 
-  select count(*) into sinres from publicaciones where estado = 'abierta' and archivado_en is null;
-  select count(*) into enprog from publicaciones where estado = 'en_progreso' and archivado_en is null;
+  /* «🔴 Sin resolver» contaba avisos vigentes y notas del muro. Un aviso
+     abierto se lee «📢 Vigente» en toda la aplicación y una bitácora,
+     «📝 Publicado»; pintarlos de rojo en el mensaje de la mañana es pedir
+     que se resuelva lo que solo hay que leer. */
+  select count(*) into sinres from publicaciones
+   where estado = 'abierta' and archivado_en is null and not es_informativa(tipo);
+  select count(*) into enprog from publicaciones
+   where estado = 'en_progreso' and archivado_en is null and not es_informativa(tipo);
 
   -- 🧱 MURO: borra los mensajes efímeros de más de 2 días (la app solo muestra
   --    HOY; esto mantiene la tabla chica de verdad, no solo por filtro de vista).
@@ -204,6 +228,7 @@ begin
     select p.id, p.titulo, p.responsable, p.autor_id, (p.fecha_limite - current_date) as dias
     from publicaciones p
     where p.estado in ('abierta','en_progreso') and p.archivado_en is null
+      and p.tipo <> 'bitacora'   -- una nota del muro no tiene plazo que vencer
       and p.fecha_limite is not null
       and (p.fecha_limite - current_date) <= 7
     order by p.fecha_limite
@@ -236,6 +261,12 @@ begin
   for r in
     select p.id, p.titulo, p.responsable, p.autor_id from publicaciones p
     where p.estado in ('abierta','en_progreso') and p.archivado_en is null
+      /* Solo lo que puede estar dormido. Un aviso sin movimiento no está
+         dormido: está rigiendo. Una bitácora sin movimiento está
+         publicada. Preguntarles «¿sigue vivo?» es ruido que además no se
+         puede callar —ninguna de las dos se cierra— y el ruido enseña a
+         no leer la lista. */
+      and not es_informativa(p.tipo)
       and not exists (select 1 from actividad a
         where a.entidad_tipo = 'publicacion' and a.entidad_id = p.id
           and a.creado_en > now() - interval '3 days')

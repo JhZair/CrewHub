@@ -69,7 +69,14 @@ export const esAviso = (tipo?: string | null) => tipo === "aviso";
 
 /* INFORMATIVO = no es una deuda ni una tarea: se lee, no se resuelve. El aviso
    rige; la bitácora (nota del muro) queda publicada. Ambos muestran su estado
-   como algo vivo, en violeta, y no ofrecen «Resuelta». */
+   como algo vivo, en violeta, y no ofrecen «Resuelta».
+
+   ⚠ ESTA REGLA TIENE UN GEMELO EN SQL: `public.es_informativa(text)`, en
+   db/qhaway-matutino.sql. El Bot de las 7:30 vive dentro de Postgres y no
+   puede leer este archivo; mientras no lo tuvo, le preguntó a cada nota del
+   muro «¿sigue vivo?» cada tres días durante meses —y una bitácora no se
+   puede cerrar, así que no había forma de callarlo—. Si aquí se agrega un
+   tercer tipo informativo, hay que agregarlo allá EL MISMO DÍA. */
 export const esInformativo = (tipo?: string | null) => tipo === "aviso" || tipo === "bitacora";
 const INFO_TXT: Record<string, Record<string, string>> = {
   aviso: { abierta: "Vigente" },
