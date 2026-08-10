@@ -148,6 +148,20 @@ export default async function Equipamiento({ searchParams }: {
     };
   });
 
+  /* De qué combo y de qué kits es cada equipo, para la lista. Se arma sobre
+     lo que ya está en memoria —`combos` y `eqsDeKit`—: una consulta por fila
+     serían doscientos viajes para dos etiquetas. */
+  const comboPorEq = new Map<string, any>();
+  (eqs || []).forEach((x: any) => {
+    if (x.compra_id) {
+      const cb = combos.find((k: any) => k.id === x.compra_id);
+      if (cb) comboPorEq.set(x.id, cb);
+    }
+  });
+  const kitsPorEq = new Map<string, string[]>();
+  kits.filter(k => !k.retirado).forEach(k =>
+    k.equipoIds.forEach(id => kitsPorEq.set(id, [...(kitsPorEq.get(id) || []), k.nombre])));
+
   const eqsConDueno = (eqs || []).map((e: any) => ({
     ...e, quien: quienTiene.get(e.id) || null, cartel: cartelPorEq.get(e.id) || null,
   }));
@@ -297,6 +311,35 @@ export default async function Equipamiento({ searchParams }: {
               : <span className="badge" style={{ color: "var(--yellow)", background: "rgba(244,180,0,.12)" }}>⚠ sin folio</span>}
             <b style={{ fontSize: TXT.base, flex: 1 }}>{x.nombre}</b>
             {x.subcategoria && <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>{x.subcategoria}</span>}
+
+            {/* De qué COMBO vino y en qué KITS está. Son los dos ejes que
+                acabamos de separar —lo que entró junto y lo que sale junto— y
+                son justo lo que no se puede deducir mirando el equipo. */}
+            {(() => { const cb = comboPorEq.get(x.id); return cb ? (
+              <span className="badge cmp-cod" title={`Vino en ${cb.codigo || ""} ${cb.nombre}`.trim()}>
+                🧾 {cb.codigo || cb.nombre}
+              </span>
+            ) : null; })()}
+            {(kitsPorEq.get(x.id) || []).map((kn: string) => (
+              <span key={kn} className="badge eq-kit-chip" title={`Sale en el kit «${kn}»`}>📦 {kn}</span>
+            ))}
+
+            {/* El precio. Sin precio propio pero con combo, se dice de dónde
+                sale en vez de dejar el hueco: «—» se lee como «no vale nada»
+                y «en C-002» se lee como lo que es, que el dato está en la
+                boleta y no en la ficha. */}
+            {(() => {
+              const v = Number(x.valor_compra);
+              if (v > 0) return <span style={{ color: "var(--teal)", fontSize: TXT.chip, fontWeight: 700, whiteSpace: "nowrap" }}>{soles(v)}</span>;
+              const cb = comboPorEq.get(x.id);
+              if (cb && Number(cb.total) > 0) return (
+                <span style={{ color: "var(--dim)", fontSize: TXT.chip, whiteSpace: "nowrap" }}
+                  title={`Sin precio propio. Su compra ${cb.codigo || ""} costó ${soles(Number(cb.total), cb.moneda)} en total.`}>
+                  en {cb.codigo || "su combo"}
+                </span>
+              );
+              return <span style={{ color: "var(--yellow)", fontSize: TXT.chip, whiteSpace: "nowrap" }} title="Sin precio propio y sin combo: no suma al inventario">⚠ sin precio</span>;
+            })()}
             {/* Lo que cuelga del equipo: una cámara con un caso abierto
                 puede ser una reparación a medias, y eso decide si sale a rodaje */}
             {a.abiertos > 0 && (

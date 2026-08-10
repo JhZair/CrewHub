@@ -3099,3 +3099,7 @@ button.repo-tit{text-align:left}
    en información. «KatyP · 9 equipos» no dice nada que no se supiera. */
 .eq-uso-proys{color:var(--violet);font-size:11px;opacity:.85;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap;min-width:0;margin-left:auto}
+/* En la lista de equipos: de qué kit sale. Violeta como el panel de kits,
+   para que el ojo los relacione sin leer. */
+.eq-kit-chip{color:var(--violet);background:rgba(167,139,250,.12);font-size:10.5px;
+  max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
