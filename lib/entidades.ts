@@ -205,18 +205,37 @@ export const SUBCATS_EQUIPO: Record<string, string[]> = {
   "cómputo": ["Laptop", "PC de edición", "Tableta", "Monitor", "Disco duro externo",
     "SSD", "NAS / Servidor", "Lector de memorias", "Hub USB", "Teclado", "Mouse",
     "Cable HDMI", "Adaptador", "Tableta gráfica", "Router / Red"],
+  /* Sin «mesa plegable», «silla», «toldo» ni «paraguas»: eso es camping, y
+     tenerlo en los dos sitios es volver a crear el solapamiento que esta
+     lista viene a quitar. Aquí queda lo que solo tiene sentido en un rodaje. */
   "producción": ["Claqueta", "Radio walkie-talkie", "Mochila / Case", "Maleta rígida",
-    "Carrito / Transporte", "Mesa plegable", "Silla", "Toldo / Carpa de set",
-    "Cinta / Gaffer", "Herramientas", "Botiquín", "Señalética", "Paraguas / Lluvia"],
+    "Carrito / Transporte", "Cinta / Gaffer", "Herramientas", "Botiquín",
+    "Señalética", "Pizarra / Plan de rodaje", "Chaleco / Identificación"],
   /* Rodar a 4.000 m no es rodar en un set con carpa: es dormir arriba. Por eso
      va aparte de «producción» —lo de producción se guarda en la oficina; esto
      se revisa antes de cada subida, y que falte una bolsa de dormir no es una
-     incomodidad—. */
-  "camping": ["Carpa", "Bolsa de dormir", "Colchoneta / Aislante", "Cocina de campo",
-    "Balón de gas", "Termo", "Menaje de campo", "Linterna / Frontal",
-    "GPS / Radio satelital", "Poncho de lluvia", "Botas", "Cuerda / Driza",
-    "Botiquín de altura", "Oxígeno / Soroche", "Bloqueador solar", "Mochila de trekking",
-    "Guantes / Abrigo"],
+     incomodidad—.
+     La lista se ORDENA por lo que se hace con cada cosa (dormir, comer, dar
+     sombra, alumbrar, aguantar la altura) y no alfabéticamente: así se lee
+     como una lista de empaque antes de subir, que es cuando se usa.
+     Y cubre lo que ya tienes y estaba cayendo en «producción»: mesas de
+     campamento, el Sport-Brella, el toldo de playa, los LED Consciot, las
+     luces telescópicas y las cajas organizadoras. */
+  "camping": [
+    // Dormir
+    "Carpa", "Bolsa de dormir", "Colchoneta / Aislante", "Manta térmica",
+    // Sombra, lluvia y frío
+    "Toldo / Sombra", "Sombrilla / Parasol", "Poncho de lluvia", "Guantes / Abrigo",
+    // Cocina y agua
+    "Cocina de campo", "Balón de gas", "Termo", "Menaje de campo",
+    "Bidón / Agua", "Filtro de agua",
+    // Muebles y carga
+    "Mesa de campo", "Silla de campo", "Caja organizadora", "Mochila de trekking",
+    // Luz
+    "Luz de campamento", "Linterna / Frontal", "Farol recargable",
+    // Altura y seguridad
+    "Botiquín de altura", "Oxígeno / Soroche", "Bloqueador solar",
+    "GPS / Radio satelital", "Botas", "Cuerda / Driza", "Estacas / Martillo"],
   "otro": [],
 };
 
