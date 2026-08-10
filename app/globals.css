@@ -3103,3 +3103,25 @@ button.repo-tit{text-align:left}
    para que el ojo los relacione sin leer. */
 .eq-kit-chip{color:var(--violet);background:rgba(167,139,250,.12);font-size:10.5px;
   max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ── FILA DE EQUIPO, EN DOS LÍNEAS ──
+   Arriba QUÉ es (folio y nombre, que es lo que se busca); abajo todo lo que
+   lo describe. En una sola línea el nombre competía con seis etiquetas y era
+   lo primero que se recortaba —justo lo único que no se puede recortar—. */
+.eqx-card{cursor:pointer;padding:11px 15px}
+.eqx-fila{display:flex;gap:12px;align-items:center}
+.eqx-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.eqx-l1{display:flex;gap:9px;align-items:center;min-width:0}
+.eqx-folio{color:var(--muted);background:#1c1c2c;flex:none}
+.eqx-nom{font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.eqx-l2{display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-width:0;font-size:11.5px}
+.eqx-sub{color:var(--dim)}
+.eqx-precio{color:var(--teal);font-weight:700;white-space:nowrap}
+/* Sin precio propio pero con combo: el dato existe, está en la boleta. En
+   gris y sin repetir el código, que ya lo dice el chip de al lado. */
+.eqx-precio-combo{color:var(--dim);font-style:italic;white-space:nowrap}
+.eqx-sin-precio{color:var(--yellow);white-space:nowrap}
+.eqx-estado{background:#1c1c2c;font-size:10.5px;flex:none;white-space:nowrap}
+@media (max-width:620px){
+  .eqx-nom{white-space:normal}
+}

@@ -300,65 +300,82 @@ export default async function Equipamiento({ searchParams }: {
     const a = act.get(x.id) || VACIO;
     const nBita = bitaCount.get(x.id) || 0;
     const res = RES_EST[x.estado];
+    const cb = comboPorEq.get(x.id);
+    const misKits = kitsPorEq.get(x.id) || [];
+    const propio = Number(x.valor_compra);
+    /* El total del combo SOLO se enseña cuando el equipo no tiene precio
+       propio: ahí informa —«el dato está en la boleta»—. Con precio propio
+       al lado serían dos cifras distintas para la misma fila, y quien la
+       lea rápido se llevará la que no era. */
+    const totalCombo = !(propio > 0) && cb && Number(cb.total) > 0 ? Number(cb.total) : 0;
+
     return (
       <Link key={x.id} href={`/entidad/equipamiento/${x.id}`}>
-        <div className="card link" style={{ cursor: "pointer", padding: "12px 16px",
-          ...(res ? { borderLeft: `3px solid ${res[0]}`, background: res[1] } : {}) }}>
-          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <div className="card link eqx-card" style={res ? { borderLeft: `3px solid ${res[0]}`, background: res[1] } : undefined}>
+          <div className="eqx-fila">
             {miniEquipo(cartelPorEq.get(x.id), 60)}
-            {x.folio
-              ? <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{x.folio}</span>
-              : <span className="badge" style={{ color: "var(--yellow)", background: "rgba(244,180,0,.12)" }}>⚠ sin folio</span>}
-            <b style={{ fontSize: TXT.base, flex: 1 }}>{x.nombre}</b>
-            {x.subcategoria && <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>{x.subcategoria}</span>}
 
-            {/* De qué COMBO vino y en qué KITS está. Son los dos ejes que
-                acabamos de separar —lo que entró junto y lo que sale junto— y
-                son justo lo que no se puede deducir mirando el equipo. */}
-            {(() => { const cb = comboPorEq.get(x.id); return cb ? (
-              <span className="badge cmp-cod" title={`Vino en ${cb.codigo || ""} ${cb.nombre}`.trim()}>
-                🧾 {cb.codigo || cb.nombre}
-              </span>
-            ) : null; })()}
-            {(kitsPorEq.get(x.id) || []).map((kn: string) => (
-              <span key={kn} className="badge eq-kit-chip" title={`Sale en el kit «${kn}»`}>📦 {kn}</span>
-            ))}
+            {/* DOS LÍNEAS. Arriba, QUÉ es —folio y nombre, que es lo que se
+                busca—. Abajo, todo lo que lo describe. En una sola línea, el
+                nombre competía con seis etiquetas y era lo primero que se
+                recortaba, justo lo único que no se puede recortar. */}
+            <div className="eqx-txt">
+              <div className="eqx-l1">
+                {x.folio
+                  ? <span className="badge eqx-folio">{x.folio}</span>
+                  : <span className="badge" style={{ color: "var(--yellow)", background: "rgba(244,180,0,.12)" }}>⚠ sin folio</span>}
+                <b className="eqx-nom">{x.nombre}</b>
+              </div>
 
-            {/* El precio. Sin precio propio pero con combo, se dice de dónde
-                sale en vez de dejar el hueco: «—» se lee como «no vale nada»
-                y «en C-002» se lee como lo que es, que el dato está en la
-                boleta y no en la ficha. */}
-            {(() => {
-              const v = Number(x.valor_compra);
-              if (v > 0) return <span style={{ color: "var(--teal)", fontSize: TXT.chip, fontWeight: 700, whiteSpace: "nowrap" }}>{soles(v)}</span>;
-              const cb = comboPorEq.get(x.id);
-              if (cb && Number(cb.total) > 0) return (
-                <span style={{ color: "var(--dim)", fontSize: TXT.chip, whiteSpace: "nowrap" }}
-                  title={`Sin precio propio. Su compra ${cb.codigo || ""} costó ${soles(Number(cb.total), cb.moneda)} en total.`}>
-                  en {cb.codigo || "su combo"}
-                </span>
-              );
-              return <span style={{ color: "var(--yellow)", fontSize: TXT.chip, whiteSpace: "nowrap" }} title="Sin precio propio y sin combo: no suma al inventario">⚠ sin precio</span>;
-            })()}
-            {/* Lo que cuelga del equipo: una cámara con un caso abierto
-                puede ser una reparación a medias, y eso decide si sale a rodaje */}
-            {a.abiertos > 0 && (
-              <span style={{ color: "var(--red)", fontSize: TXT.chip, fontWeight: 700 }}>❗ {a.abiertos}</span>
-            )}
-            {a.casos > 0 && (
-              <span style={{ color: "var(--dim)", fontSize: TXT.chip }} title="Casos vinculados">📌 {a.casos}</span>
-            )}
-            {nBita > 0 && (
-              <span style={{ color: "var(--muted)", fontSize: TXT.chip }} title="Notas y comentarios en su bitácora">🗒 {nBita}</span>
-            )}
-            {a.coments > 0 && (
-              <span style={{ color: "var(--muted)", fontSize: TXT.chip }} title="Comentarios en casos">💬 {a.coments}</span>
-            )}
+              <div className="eqx-l2">
+                {x.subcategoria && <span className="eqx-sub">{x.subcategoria}</span>}
+
+                {/* Los dos ejes: lo que ENTRÓ junto y lo que SALE junto. No se
+                    pueden deducir mirando la cámara. */}
+                {cb && (
+                  <span className="badge cmp-cod" title={`Vino en ${cb.codigo || ""} ${cb.nombre}`.trim()}>
+                    🧾 {cb.codigo || cb.nombre}
+                    {totalCombo > 0 && <span style={{ opacity: .75, fontWeight: 400 }}> · {soles(totalCombo, cb.moneda)}</span>}
+                  </span>
+                )}
+                {misKits.map((kn: string) => (
+                  <span key={kn} className="badge eq-kit-chip" title={`Sale en el kit «${kn}»`}>📦 {kn}</span>
+                ))}
+
+                {/* El precio propio. Si no lo tiene pero vino en un combo, no
+                    se repite el código —ya está en el chip de al lado, y
+                    «🧾 C-006 · en C-006» decía dos veces lo mismo—: lo que se
+                    dice es que el precio vive en la boleta. */}
+                {propio > 0 ? (
+                  <span className="eqx-precio">{soles(propio)}</span>
+                ) : cb ? (
+                  <span className="eqx-precio-combo" title="No tiene precio propio: lo cubre el total de su compra.">
+                    precio en la boleta
+                  </span>
+                ) : (
+                  <span className="eqx-sin-precio" title="Sin precio propio y sin combo: este equipo no suma al valor del inventario.">
+                    ⚠ sin precio
+                  </span>
+                )}
+
+                <span style={{ flex: 1 }} />
+
+                {/* Lo que cuelga del equipo: una cámara con un caso abierto
+                    puede ser una reparación a medias, y eso decide si sale a
+                    rodaje. */}
+                {a.abiertos > 0 && <span style={{ color: "var(--red)", fontSize: TXT.chip, fontWeight: 700 }}>❗ {a.abiertos}</span>}
+                {a.casos > 0 && <span style={{ color: "var(--dim)", fontSize: TXT.chip }} title="Casos vinculados">📌 {a.casos}</span>}
+                {nBita > 0 && <span style={{ color: "var(--muted)", fontSize: TXT.chip }} title="Notas y comentarios en su bitácora">🗒 {nBita}</span>}
+                {a.coments > 0 && <span style={{ color: "var(--muted)", fontSize: TXT.chip }} title="Comentarios en casos">💬 {a.coments}</span>}
+              </div>
+            </div>
+
             <BotonComprobar equipoId={x.id} ultima={x.ultima_comprobacion} compacto={!ronda} />
-            <span className="badge" style={{ color: EST_META[x.estado]?.[1] || "var(--muted)", background: "#1c1c2c", fontSize: TXT.chip }}>
-              {(x.estado || "").replace(/_/g, " ")}
+            <span className="badge eqx-estado" style={{ color: metaEstado(x.estado).color }}>
+              {metaEstado(x.estado).txt}
             </span>
           </div>
+
           {(() => {
             const c = completitud("equipamiento", x);
             return <Completitud mini pct={c.pct} llenos={c.llenos} total={c.total} faltan={c.faltan} />;
