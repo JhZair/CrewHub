@@ -583,13 +583,14 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
      sección dijo «· 0» con dos personajes dentro— y no había forma de notarlo
      desde la pantalla. El error viaja y se muestra. */
   let actoresError = "";
+  let nSecuencias = 0;
   let muroPosts: any[] = [], muroEtqs: any[] = [];
   // Interacción de cada postulación (💬 comentarios + 😊 reacciones), para
   // mostrar el resumen en las tarjetas de las tres fichas. Se llena abajo, una
   // vez cargadas las postulaciones de la rama que corresponda.
   let contadoresPost: Record<string, { c: number; r: number }> = {};
   if (params.tipo === "proyecto") {
-    const [pc, cl, ca, pf, pp, eq, pl, ac] = await Promise.all([
+    const [pc, cl, ca, pf, pp, eq, pl, ac, gu] = await Promise.all([
       supabase.from("personas").select("id,nombre,alias,tipo").order("nombre"),
       ent.cliente_id
         ? supabase.from("personas").select("id,nombre,alias").eq("id", ent.cliente_id).single()
@@ -620,6 +621,11 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
           rasgos,quiere,quiere_como,necesita,necesita_como,notas,
           persona:personas(id,nombre,alias,foto_url)`)
         .eq("proyecto_id", params.id).order("orden").order("creado_en"),
+      /* Cuántas secuencias de guion tiene, para el botón «✍ Guion». Va en
+         esta ronda y no después: una consulta suelta detrás de un
+         `Promise.all` es un viaje de ida y vuelta en serie en cada carga. */
+      supabase.from("guion_secuencias")
+        .select("id", { count: "exact", head: true }).eq("proyecto_id", params.id),
     ]);
     personasCat = (pc.data || []).map((x: any) => ({ ...x, nombre: x.alias ? `${x.nombre} · ${x.alias}` : x.nombre }));
     const _cl = (cl as any).data; clienteDe = _cl ? { id: _cl.id, nombre: _cl.alias || _cl.nombre } : null;
@@ -638,6 +644,10 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     equipoProy = eq.data || [];
     // Protagonistas primero, luego secundarios, luego los demás.
     actoresProy = ordenarActores(ac.data || []);
+    /* Solo la cuenta: el botón dice si hay tratamiento escrito dentro. Un
+       botón que se ve igual con y sin contenido no invita a entrar.
+       `head: true` no trae filas, solo el número. */
+    nSecuencias = gu.count || 0;
     actoresError = (ac as any).error?.message || "";
 
     /* 🧱 MURO — reutiliza el helper compartido (mismo muro que empresa). */
@@ -1847,6 +1857,15 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             mini-cronograma toma la `etapa`, no el estado. */}
         {params.tipo === "proyecto" && (
           <Pasos tipo="proyecto" id={params.id} estado={ent.etapa} subtipo={ent.tipo} />
+        )}
+        {/* El guion vive en su propia pantalla: la línea de tiempo narrativa
+            es ancha —36 px por minuto— y no cabe junto al carné. Desde aquí
+            se entra; el botón dice si ya hay algo escrito dentro. */}
+        {params.tipo === "proyecto" && (
+          <Link href={`/guion/${params.id}`} className="btn btn-ghost"
+            style={{ padding: "6px 12px", fontSize: 12, whiteSpace: "nowrap" }}>
+            ✍ Guion{nSecuencias ? ` · ${nSecuencias} sec` : ""}
+          </Link>
         )}
         {/* Aquí vivía un "＋ Publicar" que te mandaba al feed con la entidad
             pre-vinculada. Lo hace el FAB flotante, sin sacarte de la ficha. */}
