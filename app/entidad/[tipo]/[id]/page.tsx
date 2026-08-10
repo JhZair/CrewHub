@@ -86,6 +86,7 @@ import { ICO_ENT, nombreDe, grafiasDe, TABLA_DE, tipoCanonico } from "@/lib/secc
 import { estadoKit, resumenKit, type PiezaKit } from "@/lib/kits";
 import { ordenarActores, rotuloActores, leerActor, personaDe } from "@/lib/actores";
 import PiezasKit from "@/components/PiezasKit";
+import AsignarACompra, { SacarDelCombo } from "@/components/AsignarACompra";
 
 /* PERFIL DE ENTIDAD VIVA — dos columnas:
    izquierda = el carné (datos estáticos, relaciones, credenciales)
@@ -701,11 +702,25 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   let kitsDelEq: { id: string; nombre: string; uso?: string | null; retirado: boolean; piezas: PiezaKit[] }[] = [];
   /* Unidades de un combo de compra, y —al revés— de qué combo vino un equipo. */
   let unidadesCompra: any[] = [];
+  let inventarioCompra: any[] = [];
   let comboDelEq: any = null;
   if (params.tipo === "compra") {
-    const { data } = await supabase.from("equipamiento")
-      .select("id,folio,nombre,estado,categoria,valor_compra").eq("compra_id", params.id).order("folio");
-    unidadesCompra = data || [];
+    const [{ data: mias }, { data: todosEq }, { data: otras }] = await Promise.all([
+      supabase.from("equipamiento")
+        .select("id,folio,nombre,estado,categoria,valor_compra").eq("compra_id", params.id).order("folio"),
+      /* El inventario entero para poder asignarle equipos que YA existen: el
+         alta en lote sirve para lo que se compre de ahora en adelante, pero
+         los 208 equipos ya cargados solo necesitan que alguien diga qué vino
+         junto. Es una lista de folios y nombres, no pesa. */
+      supabase.from("equipamiento")
+        .select("id,folio,nombre,categoria,estado,compra_id").order("folio").limit(1500),
+      supabase.from("compras").select("id,codigo,nombre"),
+    ]);
+    unidadesCompra = mias || [];
+    const nomCompra = new Map((otras || []).map((c: any) => [c.id, c.codigo ? `${c.codigo} · ${c.nombre}` : c.nombre]));
+    inventarioCompra = (todosEq || []).map((e: any) => ({
+      ...e, compra: e.compra_id ? nomCompra.get(e.compra_id) || null : null,
+    }));
   }
   if (params.tipo === "equipamiento") {
     const [pr, pc, py] = await Promise.all([
@@ -2573,9 +2588,14 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                       <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>S/ {Math.round(Number(u.valor_compra)).toLocaleString("es-PE")}</span>
                     )}
                     <span style={{ color: ESTC[u.estado] || "var(--dim)", fontSize: TXT.chip }}>{(u.estado || "").replace(/_/g, " ")}</span>
+                    <SacarDelCombo equipoId={u.id} />
                   </Link>
                 );
               })}
+              {/* Los equipos que YA estaban registrados solo necesitan que
+                  alguien diga de qué compra salieron. Las cinco radios ya
+                  existían; lo que faltaba era contar que fueron una sola. */}
+              <AsignarACompra compraId={params.id} equipos={inventarioCompra as any} />
             </div>
           )}
 
