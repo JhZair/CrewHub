@@ -149,6 +149,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
      (el combo de compra) y con QUE SALE (los kits). En la lista de
      /equipamiento ya se ven; aqui no, y buscar es justo donde se llega a un
      equipo sin pasar por la lista —o sea, donde peor se nota no tenerlos—.
+     Se llenan ANTES del filtro: no solo se pintan, tambien se buscan.
      Clave: id de equipamiento. */
   let comboEq = new Map<string, { codigo?: string | null; nombre: string }>();
   let kitsEq = new Map<string, string[]>();
@@ -187,7 +188,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
        el pajar lo arma el servidor y al navegador solo viajan 12 resultados.
        Somos seis personas; si algún día esto pesa, el arreglo de verdad es
        `unaccent` con índice en Postgres, no un ilike que miente. */
-    const [c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12] = await Promise.all([
+    const [c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13] = await Promise.all([
       supabase.from("publicaciones")
         // padre_id: un sub-caso sin su padre es un título huérfano
         // autor_id: para pintar la cara de quien lo creó
@@ -223,11 +224,6 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
       supabase.from("empresas")
         .select("id,nombre,razon_social,codigo,ruc,estado,estado_sunat,condicion_sunat,relacion,region,renca,renca_url,vigencia_poder_fecha,vigencia_poder_url,domicilio_fiscal,carpeta_drive_url"),
       supabase.from("equipamiento").select("id,nombre,folio,categoria,subcategoria,estado,descripcion,compra_id").limit(600),
-      /* Los COMBOS DE COMPRA. Se busca por el código de la boleta, por lo que
-         se compró y por el proveedor: «C-003», «Combo DJI» o «Amazon» son
-         justo las tres formas en que alguien vuelve a una compra meses
-         después, cuando hay que reclamar una garantía. */
-      supabase.from("compras").select("id,codigo,nombre,proveedor,fecha,total,moneda,nota"),
       supabase.from("lugares").select("id,nombre"),
       supabase.from("convocatorias").select("id,codigo,nombre,anio,estado"),
       supabase.from("postulaciones")
@@ -253,6 +249,26 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
         .neq("tipo", "cv")
         .order("fecha", { ascending: false, nullsFirst: false })
         .order("creado_en", { ascending: false }).limit(600),
+      /* Los COMBOS DE COMPRA. Se busca por el código de la boleta, por lo que
+         se compró y por el proveedor: «C-003», «Combo DJI» o «Amazon» son
+         justo las tres formas en que alguien vuelve a una compra meses
+         después, cuando hay que reclamar una garantía.
+
+         ⚠ VA AL FINAL, y el sitio importa. Este `select` se había colado en
+         el puesto 7 y aquí el orden ES el nombre: `Promise.all` reparte por
+         posición, así que `c7` pasó a ser `compras` mientras todo lo de abajo
+         seguía leyendo `c7` como `lugares`, `c8` como `convocatorias`… y `c12`
+         —los combos— como `objetos`. Seis tablas corridas un puesto.
+         Y no fallaba: `.filter()` sobre el arreglo equivocado no revienta,
+         solo devuelve poco o nada. Lugares, concursos, postulaciones, claves,
+         repositorio y combos llevaban desde entonces saliendo mal en la
+         búsqueda global sin un solo error en consola. Al añadir aquí, añade
+         AL FINAL y sube el número. */
+      supabase.from("compras").select("id,codigo,nombre,proveedor,fecha,total,moneda,nota"),
+      /* De qué kit sale cada equipo. Con el nombre del kit dentro, para poder
+         BUSCAR por él: «kit drone» tiene que traer las once piezas del kit,
+         no solo el equipo que se llame «drone». */
+      supabase.from("kit_equipos").select("equipamiento_id,kit:kits(id,nombre,retirado_en)"),
     ]);
 
     // El marcador en los resultados: 🏆 ganados · 🥈 casi · 🎯 intentos
@@ -484,8 +500,38 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
         });
       }
     }
-    const equisTodos = (c6.data || []).filter((e: any) => coincide(
-      `equipo ${e.nombre} ${e.folio} ${e.categoria} ${e.subcategoria} ${e.descripcion} ` + pal(e.estado)));
+    /* Combo y kits de CADA equipo —no solo de los que se pintan—, porque
+       entran en el pajar: si se resolvieran después del filtro, los chips se
+       verían pero «kit drone» no encontraría nada. Ambas tablas ya vinieron
+       enteras arriba; esto es memoria, no consultas. */
+    {
+      const combosPorId = new Map(((c12 as any)?.data || []).map((c: any) => [c.id, c]));
+      (c6.data || []).forEach((e: any) => {
+        const cb = e.compra_id ? combosPorId.get(e.compra_id) : null;
+        if (cb) comboEq.set(e.id, cb as any);
+      });
+      ((c13 as any)?.data || []).forEach((r: any) => {
+        /* La relación vuelve objeto o arreglo según cómo PostgREST resuelva la
+           clave; leer solo una de las dos formas es el fallo que no falla —sale
+           vacío y parece que el equipo no está en ningún kit—. */
+        const k = Array.isArray(r.kit) ? r.kit[0] : r.kit;
+        // Un kit retirado ya no se entrega: ni se pinta ni se busca por él.
+        if (!k || k.retirado_en) return;
+        kitsEq.set(r.equipamiento_id, [...(kitsEq.get(r.equipamiento_id) || []), k.nombre]);
+      });
+    }
+    const equisTodos = (c6.data || []).filter((e: any) => {
+      /* Con QUÉ ENTRÓ y con QUÉ SALE también se busca. Es la forma natural de
+         pedir un equipo cuando no recuerdas su nombre: «lo que vino en la
+         boleta C-006», «lo del kit de entrevista». */
+      const cb = comboEq.get(e.id);
+      const extra = pal(
+        (kitsEq.get(e.id) || []).length ? `kit ${(kitsEq.get(e.id) || []).join(" ")}` : "",
+        cb ? `combo compra ${cb.codigo || ""} ${cb.nombre || ""} ${(cb as any).proveedor || ""}` : "");
+      return coincide(
+        `equipo ${e.nombre} ${e.folio} ${e.categoria} ${e.subcategoria} ${e.descripcion} `
+        + pal(e.estado) + ` ${extra}`);
+    });
     equis = equisTodos.slice(0, 15);
     equisMas = Math.max(0, equisTodos.length - 15);
     /* Cartel (miniatura) y portador (quién lo tiene ahora) de los equipos que se
@@ -506,29 +552,6 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
       ]);
       (cbEq || []).forEach((c: any) => bitaEq.set(c.equipamiento_id, (bitaEq.get(c.equipamiento_id) || 0) + 1));
 
-      /* Combo y kits, solo de los que se van a pintar: son dos consultas
-         acotadas a quince ids, no una por fila. */
-      const idsCompra = [...new Set(equis.map((e: any) => e.compra_id).filter(Boolean))] as string[];
-      const [{ data: kesEq }, cbsRes] = await Promise.all([
-        supabase.from("kit_equipos").select("equipamiento_id,kit:kits(id,nombre,retirado_en)").in("equipamiento_id", idsEq),
-        idsCompra.length
-          ? supabase.from("compras").select("id,codigo,nombre").in("id", idsCompra)
-          : Promise.resolve({ data: [] as any[] }),
-      ]);
-      (kesEq || []).forEach((r: any) => {
-        /* La relacion vuelve objeto o arreglo segun como PostgREST resuelva
-           la clave; leer solo una de las dos formas es el fallo que no falla
-           —sale vacio y parece que el equipo no esta en ningun kit—. */
-        const k = Array.isArray(r.kit) ? r.kit[0] : r.kit;
-        // Un kit retirado ya no dice nada util: no se va a entregar.
-        if (!k || k.retirado_en) return;
-        kitsEq.set(r.equipamiento_id, [...(kitsEq.get(r.equipamiento_id) || []), k.nombre]);
-      });
-      const porId = new Map(((cbsRes as any)?.data || []).map((c: any) => [c.id, c]));
-      equis.forEach((e: any) => {
-        const cb = e.compra_id ? porId.get(e.compra_id) : null;
-        if (cb) comboEq.set(e.id, cb as any);
-      });
       const prestEq = new Map((prsEq || []).map((p: any) => [p.id, p.equipamiento_id]));
       if (prsEq && prsEq.length) {
         const { data: cpEq } = await supabase.from("comentarios").select("prestamo_id").in("prestamo_id", prsEq.map((p: any) => p.id));
