@@ -576,6 +576,13 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   let clienteDe: { id: string; nombre: string } | null = null;
   let cronoActs: any[] = [], perfilesCat: any[] = [], cronoPost: any[] = [], plantelPost: any[] = [];
   let postusProy: any[] = [], equipoProy: any[] = [], plantillas: any[] = [], actoresProy: any[] = [];
+  /* Por qué la lista de personajes vino vacía, si vino vacía por un error.
+     Una consulta que falla devuelve `data: null`, y `|| []` la convierte en
+     «no hay ninguno»: exactamente lo mismo que se ve cuando de verdad no hay
+     ninguno. Pasó —al pedir una columna que aún no existía en la base, la
+     sección dijo «· 0» con dos personajes dentro— y no había forma de notarlo
+     desde la pantalla. El error viaja y se muestra. */
+  let actoresError = "";
   let muroPosts: any[] = [], muroEtqs: any[] = [];
   // Interacción de cada postulación (💬 comentarios + 😊 reacciones), para
   // mostrar el resumen en las tarjetas de las tres fichas. Se llena abajo, una
@@ -631,6 +638,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     equipoProy = eq.data || [];
     // Protagonistas primero, luego secundarios, luego los demás.
     actoresProy = ordenarActores(ac.data || []);
+    actoresError = (ac as any).error?.message || "";
 
     /* 🧱 MURO — reutiliza el helper compartido (mismo muro que empresa). */
     { const m = await cargarMuro(); muroPosts = m.posts; muroEtqs = m.etqs; }
@@ -4103,7 +4111,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                       actores sociales —la persona ES el personaje—; en ficción
                       y animación son personajes, con o sin intérprete. */}
                   <ActoresProyecto proyectoId={params.id} actores={actoresProy}
-                    personas={personasCat} tipo={ent.tipo} />
+                    personas={personasCat} tipo={ent.tipo} error={actoresError} />
                   {postusCard}
                   <ClienteProyecto proyectoId={params.id} cliente={clienteDe} personas={personasCat} />
                 </>

@@ -27,12 +27,15 @@ import { useRef, useState } from "react";
  * tratamiento de un documental pide lo mismo y el jurado DAFO lee justamente
  * eso. Cambia el rótulo según el tipo de proyecto; el modelo es uno solo.
  */
-export default function ActoresProyecto({ proyectoId, actores, personas, tipo }: {
+export default function ActoresProyecto({ proyectoId, actores, personas, tipo, error: errServidor }: {
   proyectoId: string;
   actores: any[];
   personas: CatalogoItem[];
   /** Tipo del proyecto: decide cómo se llama esto y qué se pide. */
   tipo?: string | null;
+  /** Si la consulta falló, POR QUÉ. Sin esto la lista se pinta vacía y eso se
+   *  lee como «no hay personajes», que es justo lo contrario de lo que pasa. */
+  error?: string;
 }) {
   const R = rotuloActores(tipo);
   const ROLES = rolesDe(tipo);
@@ -132,6 +135,15 @@ export default function ActoresProyecto({ proyectoId, actores, personas, tipo }:
       </div>
 
       {error && <div className="err-inline">⚠ {error}</div>}
+      {errServidor && (
+        <div className="err-inline" style={{ lineHeight: 1.5 }}>
+          ⚠ No se pudo leer el reparto, así que esta lista está vacía por un fallo, no porque no haya nadie.
+          <br /><code style={{ fontSize: 11, opacity: .85 }}>{errServidor}</code>
+          {/^column|does not exist|schema cache/i.test(errServidor) && (
+            <><br /><b>Falta correr <code>db/proyecto-personajes.sql</code> en Supabase.</b></>
+          )}
+        </div>
+      )}
 
       {agregando && (
         <div className="pj-nuevo">
@@ -347,7 +359,7 @@ export default function ActoresProyecto({ proyectoId, actores, personas, tipo }:
         );
       })}
 
-      {!actores.length && !agregando && (
+      {!actores.length && !agregando && !errServidor && (
         <div style={{ color: "var(--dim)", fontSize: 12.5, padding: "4px 0" }}>{R.vacio}</div>
       )}
     </div>
