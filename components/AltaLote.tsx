@@ -38,6 +38,7 @@ export default function AltaLote({ categorias = [] }: { categorias?: string[] })
       nombre: String(f.get("nombre") || ""), proveedor: String(f.get("proveedor") || ""),
       fecha: String(f.get("fecha") || ""), total: String(f.get("total") || ""),
       moneda: String(f.get("moneda") || "PEN"), link: String(f.get("link") || ""),
+      comprobante_url: String(f.get("comprobante_url") || ""),
       nota: String(f.get("nota") || ""),
     });
     setOcupado(false);
@@ -94,9 +95,24 @@ export default function AltaLote({ categorias = [] }: { categorias?: string[] })
               <option value="PEN">S/ PEN</option>
               <option value="USD">$ USD</option>
             </select>
-            <input name="link" style={{ ...inp, flex: 1, minWidth: 200 }} placeholder="Link del producto (opcional)" />
+            <input name="nota" style={{ ...inp, flex: 1, minWidth: 200 }} placeholder="Nota (opcional): «llegó sin el cargador, reclamado»" />
           </div>
-          <input name="nota" style={{ ...inp, width: "100%" }} placeholder="Nota (opcional): «llegó sin el cargador, reclamado»" />
+          {/* Los DOS links, igual que al editar. Aquí solo se pedía el del
+              producto, así que la boleta —que es el papel que se tiene en la
+              mano justo al registrar la compra— había que pegarla después,
+              volviendo a abrir el combo. Y el editor ofrecía un campo que el
+              alta no sabía escribir: dos formularios para una misma cosa
+              diciendo cosas distintas. */}
+          <div className="cmp-fila">
+            <label className="cmp-campo" style={{ flex: 1, minWidth: 210 }}>
+              <span className="cmp-lbl">🧾 Comprobante — la boleta o factura</span>
+              <input name="comprobante_url" style={{ ...inp, width: "100%" }} placeholder="https://… (opcional)" />
+            </label>
+            <label className="cmp-campo" style={{ flex: 1, minWidth: 210 }}>
+              <span className="cmp-lbl">🔗 Producto — su ficha en la web del vendedor</span>
+              <input name="link" style={{ ...inp, width: "100%" }} placeholder="https://… (opcional)" />
+            </label>
+          </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <button className="btn" disabled={ocupado}>{ocupado ? "…" : "Crear el combo"}</button>
             <button type="button" className="btn btn-ghost" onClick={() => setAbierto(false)}>Cancelar</button>

@@ -44,7 +44,7 @@ async function proximoCodigo(supabase: any) {
 
 export async function crearCompra(datos: {
   nombre: string; proveedor?: string; fecha?: string; total?: string;
-  moneda?: string; link?: string; nota?: string;
+  moneda?: string; link?: string; nota?: string; comprobante_url?: string;
 }) {
   const { supabase, user } = await sesion();
   if (!user) return { error: "Sesión no encontrada." };
@@ -60,6 +60,11 @@ export async function crearCompra(datos: {
     total: String(datos.total ?? "").trim() === "" ? null : (Number.isFinite(t) && t >= 0 ? t : null),
     moneda: datos.moneda === "USD" ? "USD" : "PEN",
     link: (datos.link || "").trim() || null,
+    /* El comprobante también se pide al dar de alta. Lo aceptaba `guardarCompra`
+       y no `crearCompra`: se podía corregir un campo que no había forma de
+       escribir, y quien tenía la boleta delante al registrar la compra —que es
+       justo cuando se tiene— no podía pegarla hasta volver a editar. */
+    comprobante_url: (datos.comprobante_url || "").trim() || null,
     nota: (datos.nota || "").trim() || null,
     creado_por: user.id,
   }).select("id,codigo,nombre").single();
