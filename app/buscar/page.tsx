@@ -145,6 +145,13 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
   let rlDe = new Map<string, { nombre: string; foto?: string | null }>();
   // Interacción en la bitácora por equipo — clave: id de equipamiento.
   let bitaEq = new Map<string, number>();
+  /* Los dos ejes que no se pueden deducir mirando la camara: con QUE ENTRO
+     (el combo de compra) y con QUE SALE (los kits). En la lista de
+     /equipamiento ya se ven; aqui no, y buscar es justo donde se llega a un
+     equipo sin pasar por la lista —o sea, donde peor se nota no tenerlos—.
+     Clave: id de equipamiento. */
+  let comboEq = new Map<string, { codigo?: string | null; nombre: string }>();
+  let kitsEq = new Map<string, string[]>();
   /* Título del padre de cada sub-caso encontrado: «Cámara A lista» a secas no
      dice nada — la mitad de un sub-caso es de quién es hijo. */
   let padreDe = new Map<string, string>();
@@ -215,7 +222,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
          cualquiera y le reclama la SUNAT a una empresa en cierre. */
       supabase.from("empresas")
         .select("id,nombre,razon_social,codigo,ruc,estado,estado_sunat,condicion_sunat,relacion,region,renca,renca_url,vigencia_poder_fecha,vigencia_poder_url,domicilio_fiscal,carpeta_drive_url"),
-      supabase.from("equipamiento").select("id,nombre,folio,categoria,subcategoria,estado,descripcion").limit(600),
+      supabase.from("equipamiento").select("id,nombre,folio,categoria,subcategoria,estado,descripcion,compra_id").limit(600),
       /* Los COMBOS DE COMPRA. Se busca por el código de la boleta, por lo que
          se compró y por el proveedor: «C-003», «Combo DJI» o «Amazon» son
          justo las tres formas en que alguien vuelve a una compra meses
@@ -498,6 +505,30 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
         supabase.from("equipo_prestamos").select("id,equipamiento_id").in("equipamiento_id", idsEq),
       ]);
       (cbEq || []).forEach((c: any) => bitaEq.set(c.equipamiento_id, (bitaEq.get(c.equipamiento_id) || 0) + 1));
+
+      /* Combo y kits, solo de los que se van a pintar: son dos consultas
+         acotadas a quince ids, no una por fila. */
+      const idsCompra = [...new Set(equis.map((e: any) => e.compra_id).filter(Boolean))] as string[];
+      const [{ data: kesEq }, cbsRes] = await Promise.all([
+        supabase.from("kit_equipos").select("equipamiento_id,kit:kits(id,nombre,retirado_en)").in("equipamiento_id", idsEq),
+        idsCompra.length
+          ? supabase.from("compras").select("id,codigo,nombre").in("id", idsCompra)
+          : Promise.resolve({ data: [] as any[] }),
+      ]);
+      (kesEq || []).forEach((r: any) => {
+        /* La relacion vuelve objeto o arreglo segun como PostgREST resuelva
+           la clave; leer solo una de las dos formas es el fallo que no falla
+           —sale vacio y parece que el equipo no esta en ningun kit—. */
+        const k = Array.isArray(r.kit) ? r.kit[0] : r.kit;
+        // Un kit retirado ya no dice nada util: no se va a entregar.
+        if (!k || k.retirado_en) return;
+        kitsEq.set(r.equipamiento_id, [...(kitsEq.get(r.equipamiento_id) || []), k.nombre]);
+      });
+      const porId = new Map(((cbsRes as any)?.data || []).map((c: any) => [c.id, c]));
+      equis.forEach((e: any) => {
+        const cb = e.compra_id ? porId.get(e.compra_id) : null;
+        if (cb) comboEq.set(e.id, cb as any);
+      });
       const prestEq = new Map((prsEq || []).map((p: any) => [p.id, p.equipamiento_id]));
       if (prsEq && prsEq.length) {
         const { data: cpEq } = await supabase.from("comentarios").select("prestamo_id").in("prestamo_id", prsEq.map((p: any) => p.id));
@@ -1026,6 +1057,8 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
         {equis.map((e: any) => {
           const per = portadorEq.get(e.id);
           const nBita = bitaEq.get(e.id) || 0;
+          const cb = comboEq.get(e.id);
+          const misKits = kitsEq.get(e.id) || [];
           return (
             <Fila key={e.id} href={`/entidad/equipamiento/${e.id}`}
               avatar={avatarEntidad("equipamiento", e.id, "🎥")}
@@ -1033,6 +1066,16 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
               {e.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{e.folio}</span>}
               <b>{e.nombre}</b>
               <span style={{ color: "var(--dim)", fontSize: TXT.meta }}>{e.categoria} · {(e.estado || "").replace(/_/g, " ")}</span>
+              {/* Mismos colores que en /equipamiento —ambar el combo, violeta
+                  el kit— para que se relacionen sin leerlos. */}
+              {cb && (
+                <span className="badge cmp-cod" title={`Vino en el combo ${`${cb.codigo || ""} ${cb.nombre}`.trim()}`}>
+                  🧾 {cb.codigo || cb.nombre}
+                </span>
+              )}
+              {misKits.map((kn: string) => (
+                <span key={kn} className="badge eq-kit-chip" title={`Sale en el kit «${kn}»`}>📦 {kn}</span>
+              ))}
               {nBita > 0 && (
                 <span style={{ color: "var(--muted)", fontSize: TXT.chip }} title="Notas y comentarios en su bitácora">🗒 {nBita}</span>
               )}
