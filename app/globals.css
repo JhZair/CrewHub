@@ -3136,3 +3136,12 @@ button.repo-tit{text-align:left}
   font-weight:700;letter-spacing:1px;text-transform:uppercase;text-align:left}
 .panel-plegar:hover{opacity:.85}
 .panel-flecha{font-size:10px;opacity:.7}
+/* Cabecera de UN kit. Mismo boton que el del panel, pero en minusculas y con
+   el nombre dentro: el area de clic tiene que ser el nombre, no una flecha de
+   diez pixeles. `flex:none` para que no empuje al resumen de la derecha, que
+   es lo que se lee con el kit cerrado. */
+.kit-plegar{display:flex;align-items:center;gap:7px;background:none;border:none;
+  padding:0;cursor:pointer;font-family:inherit;color:inherit;text-align:left;flex:none;
+  min-width:0}
+.kit-plegar:hover{opacity:.85}
+.kit-plegar b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}

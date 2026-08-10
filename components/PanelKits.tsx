@@ -169,6 +169,18 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
      restaurar: si el estado dice cerrado, el contenido no existe. */
   const [abierto, setAbierto] = useState(false);
 
+  /* Y cada kit, tambien cerrado. Con el panel abierto se pintaban de golpe
+     las piezas de TODOS los kits —once, dos y siete, con su miniatura cada
+     una—: veinte filas con imagen para responder algo que la cabecera ya
+     contesta («11 equipos - completo»). Lo que se viene a mirar aqui es que
+     kits hay y cual esta entero; el desglose es la segunda pregunta, y solo
+     de uno.
+     La cabecera sigue diciendo el resumen cerrada, asi que desplegar es una
+     eleccion, no un peaje para leer la lista. */
+  const [desplegados, setDesplegados] = useState<Set<string>>(new Set());
+  const alternaKit = (id: string) =>
+    setDesplegados(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
   const piezasDe = (k: KitVista): PiezaKit[] =>
     k.equipoIds.map(id => porEq.get(id)).filter(Boolean).map((e: any) => ({
       id: e.id, folio: e.folio, nombre: e.nombre, estado: e.estado, quien: e.quien,
@@ -198,11 +210,22 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
           {vivos.map(k => {
             const e = estadoKit(piezasDe(k));
             const res = resumenKit(e);
-            const abierto = editando === k.id;
+            /* `editandoEste` y no `abierto`: aqui dentro habia un `abierto` que
+               significaba «se esta editando» y tapaba al del panel exterior.
+               Dos cosas distintas con el mismo nombre en el mismo archivo es
+               el tipo de detalle que se lee bien y se entiende mal. */
+            const editandoEste = editando === k.id;
+            const desplegado = desplegados.has(k.id);
+            const piezas = [...e.libres, ...e.prestadas, ...e.vetadas];
             return (
               <div key={k.id} className="kit-caja">
                 <div className="kit-h">
-                  <b style={{ fontSize: 13.5 }}>📦 {k.nombre}</b>
+                  <button className="kit-plegar" aria-expanded={desplegado}
+                    onClick={() => alternaKit(k.id)}
+                    title={desplegado ? "Ocultar las piezas" : `Ver las ${piezas.length} piezas de «${k.nombre}»`}>
+                    <span className="panel-flecha">{desplegado ? "▾" : "▸"}</span>
+                    <b style={{ fontSize: 13.5 }}>📦 {k.nombre}</b>
+                  </button>
                   {k.uso && <span className="badge kit-uso">{k.uso}</span>}
                   <span style={{ color: res.color, fontSize: 11.5, fontWeight: 600 }}>{res.txt}</span>
                   <span style={{ flex: 1 }} />
@@ -214,14 +237,14 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
                       href={`/equipamiento?kit=${k.id}#entregar`}>🤝 Entregar</Link>
                   )}
                   <button className="dato-btn" title="Editar el kit"
-                    onClick={() => setEditando(abierto ? null : k.id)}>✎</button>
+                    onClick={() => setEditando(editandoEste ? null : k.id)}>✎</button>
                 </div>
 
                 {k.descripcion && <div className="kit-desc">{k.descripcion}</div>}
 
-                <PiezasKit piezas={[...e.libres, ...e.prestadas, ...e.vetadas]} />
+                {desplegado && <PiezasKit piezas={piezas} />}
 
-                {abierto && <Editor kit={k} equipos={equipos} onCerrar={() => setEditando(null)} />}
+                {editandoEste && <Editor kit={k} equipos={equipos} onCerrar={() => setEditando(null)} />}
               </div>
             );
           })}
