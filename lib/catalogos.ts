@@ -68,7 +68,7 @@ export type ItemCat = { id: string; nombre: string; tipo?: string; sub?: string 
    La regla es la misma en todas: `nombre` identifica, `sub` desempata en
    apagado, `tipo` clasifica como etiqueta. */
 export async function catalogosEntidades(supabase: any): Promise<Record<string, ItemCat[]>> {
-  const [proy, emp, pers, conv, postu, equi, luga] = await Promise.all([
+  const [proy, emp, pers, conv, postu, equi, luga, comp] = await Promise.all([
     supabase.from("proyectos").select("id,nombre,nombre_corto,tipo").order("nombre"),
     supabase.from("empresas").select("id,nombre,codigo,tipo,relacion").order("codigo"),
     supabase.from("personas").select("id,nombre,alias,tipo").order("nombre"),
@@ -81,6 +81,8 @@ export async function catalogosEntidades(supabase: any): Promise<Record<string, 
       .order("codigo"),
     supabase.from("equipamiento").select("id,nombre,folio").order("folio"),
     supabase.from("lugares").select("id,nombre").order("nombre"),
+    supabase.from("compras").select("id,codigo,nombre,proveedor")
+      .order("fecha", { ascending: false, nullsFirst: false }),
   ]);
   return {
     // Qué clase de proyecto: un documental y un videojuego se llaman parecido.
@@ -109,6 +111,14 @@ export async function catalogosEntidades(supabase: any): Promise<Record<string, 
       id: x.id, nombre: x.folio ? `${x.folio} · ${x.nombre}` : x.nombre,
     })),
     lugar: (luga.data || []).map((x: any) => ({ id: x.id, nombre: x.nombre })),
+    /* El combo de compra. Sin esta línea, `catalogosDuenos` grita en el log
+       del servidor en cada carga y la compra desaparece del selector sin
+       decir nada — no se le podría colgar la boleta desde el repositorio,
+       que es justo para lo que existe. */
+    compra: (comp.data || []).map((x: any) => ({
+      id: x.id, nombre: x.codigo ? `${x.codigo} · ${x.nombre}` : x.nombre,
+      sub: x.proveedor || undefined,
+    })),
   };
 }
 

@@ -33,6 +33,13 @@ export const SECCIONES: Seccion[] = [
     plural: "postulaciones", singular: "postulación", tabla: "postulaciones", campo: "codigo" },
   { tipo: "equipamiento", ruta: "/equipamiento", ico: "🎥", titulo: "Equipos audiovisuales",
     plural: "equipos", singular: "equipo", tabla: "equipamiento", campo: "nombre" },
+  /* El COMBO DE COMPRA. Es una sección de pleno derecho y no un panel de
+     equipamiento porque tiene lo que tiene una entidad: una boleta que
+     guardar, un proveedor, una fecha y una bitácora —«llegó incompleto»,
+     «el vendedor cambió la jaula»—. Es además donde vive la prueba de
+     compra, que hace falta para seguros, garantías y rendiciones. */
+  { tipo: "compra", ruta: "/compras", ico: "🧾", titulo: "Combos de compra",
+    plural: "compras", singular: "compra", tabla: "compras", campo: "nombre" },
   { tipo: "convocatoria", ruta: "/convocatorias", ico: "📜", titulo: "Convocatorias y fondos",
     plural: "convocatorias", singular: "convocatoria", tabla: "convocatorias", campo: "codigo" },
   /* El repositorio es una sección de pleno derecho: los objetos se buscan,
@@ -67,6 +74,7 @@ export const ICO_ENT: Record<string, string> = {
    "cronograma_actividades") se devuelve tal cual. */
 const SINGULAR_DE: Record<string, string> = {
   proyectos: "proyecto", empresas: "empresa", personas: "persona",
+  compras: "compra",
   convocatorias: "convocatoria", vehiculos: "vehiculo", lugares: "lugar",
   etiquetas: "etiqueta", publicaciones: "publicacion",
   empresa_miembros: "empresa_miembro", postulaciones: "postulacion",
@@ -90,7 +98,7 @@ export const grafiasDe = (t: string) =>
    página. No incluye `publicacion` (vive en /caso) ni los que no tienen
    página (empresa_miembro, cronograma_actividades, vehiculo). */
 const CON_FICHA = new Set([
-  "proyecto", "empresa", "persona", "equipamiento",
+  "proyecto", "empresa", "persona", "equipamiento", "compra",
   "lugar", "postulacion", "convocatoria", "etiqueta",
 ]);
 

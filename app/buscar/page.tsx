@@ -126,6 +126,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
 
   let casos: any[] = [], coms: any[] = [], pers: any[] = [], proys: any[] = [],
       emps: any[] = [], equis: any[] = [], lugs: any[] = [], convs: any[] = [], postus: any[] = [],
+      comps: any[] = [],
       creds: any[] = [], objs: any[] = [];
   let statProy = new Map<string, any>(), statEmp = new Map<string, any>(),
       statConv = new Map<string, any>(), statPers = new Map<string, any>();
@@ -177,7 +178,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
        el pajar lo arma el servidor y al navegador solo viajan 12 resultados.
        Somos seis personas; si algún día esto pesa, el arreglo de verdad es
        `unaccent` con índice en Postgres, no un ilike que miente. */
-    const [c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11] = await Promise.all([
+    const [c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12] = await Promise.all([
       supabase.from("publicaciones")
         // padre_id: un sub-caso sin su padre es un título huérfano
         // autor_id: para pintar la cara de quien lo creó
@@ -213,6 +214,11 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
       supabase.from("empresas")
         .select("id,nombre,razon_social,codigo,ruc,estado,estado_sunat,condicion_sunat,relacion,region,renca,renca_url,vigencia_poder_fecha,vigencia_poder_url,domicilio_fiscal,carpeta_drive_url"),
       supabase.from("equipamiento").select("id,nombre,folio,categoria,subcategoria,estado,descripcion").limit(600),
+      /* Los COMBOS DE COMPRA. Se busca por el código de la boleta, por lo que
+         se compró y por el proveedor: «C-003», «Combo DJI» o «Amazon» son
+         justo las tres formas en que alguien vuelve a una compra meses
+         después, cuando hay que reclamar una garantía. */
+      supabase.from("compras").select("id,codigo,nombre,proveedor,fecha,total,moneda,nota"),
       supabase.from("lugares").select("id,nombre"),
       supabase.from("convocatorias").select("id,codigo,nombre,anio,estado"),
       supabase.from("postulaciones")
@@ -497,6 +503,9 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
       }
     }
     lugs = (c7.data || []).filter((l: any) => coincide(`lugar ${l.nombre}`)).slice(0, 6);
+    comps = (c12?.data || [])
+      .filter((x: any) => coincide(`compra combo ${x.codigo || ""} ${x.nombre} ${x.proveedor || ""} ${x.nota || ""}`))
+      .slice(0, 8);
 
     /* EL REPOSITORIO. Se busca por título, nota, tipo y DE QUIÉN es: «khipu
        jesus» tiene que encontrar el libro aunque la palabra «jesus» no esté
@@ -1105,6 +1114,24 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
               <span style={{ color: "var(--dim)", fontSize: TXT.micro }}>{c.estado.replace(/_/g, " ")}</span>
             )}
             <Marca s={statConv.get(c.id)} />
+          </Fila>
+        ))}
+      </Seccion>
+
+      {/* Los combos de compra: cómo entró cada cosa. Van justo después de los
+          equipos porque es a donde se salta desde un equipo —«¿qué más vino
+          con esto?», «¿está en garantía?»—. */}
+      <Seccion titulo="🧾 Compras" k="compras" n={comps.length} tinte={COLOR_ENTIDAD.compra}>
+        {comps.map((x: any) => (
+          <Fila key={x.id} href={`/entidad/compra/${x.id}`}>
+            {x.codigo && <span className="badge cmp-cod">{x.codigo}</span>}
+            <b>{x.nombre}</b>
+            {x.proveedor && <span style={{ color: "var(--dim)", fontSize: 11.5 }}>· {x.proveedor}</span>}
+            {x.total != null && (
+              <span style={{ color: "var(--teal)", fontSize: 11.5 }}>
+                {x.moneda === "USD" ? "$" : "S/"} {Math.round(Number(x.total)).toLocaleString("es-PE")}
+              </span>
+            )}
           </Fila>
         ))}
       </Seccion>

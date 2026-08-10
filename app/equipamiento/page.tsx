@@ -3,6 +3,9 @@ import Volver from "@/components/Volver";
 import BotonComprobar from "@/components/BotonComprobar";
 import EntregaLote from "@/components/EntregaLote";
 import PanelKits from "@/components/PanelKits";
+import AltaLote from "@/components/AltaLote";
+import FilasEquipo from "@/components/FilasEquipo";
+import { valorInventario, soles } from "@/lib/compras";
 import type { KitVista } from "@/lib/kits";
 import EnUsoAhora, { type UsoItem } from "@/components/EnUsoAhora";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
@@ -44,7 +47,7 @@ export default async function Equipamiento({ searchParams }: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: eqs }, { data: enManos }, { data: vincs }, { data: coms }, { data: media }, comsBita, comsUso, usosRec, { data: comBita }, { data: prestAll }, personasRaw, proyectosRaw, { data: kitsRaw }, { data: kitEqs }] = await Promise.all([
+  const [{ data: eqs }, { data: enManos }, { data: vincs }, { data: coms }, { data: media }, comsBita, comsUso, usosRec, { data: comBita }, { data: prestAll }, personasRaw, proyectosRaw, { data: kitsRaw }, { data: kitEqs }, { data: comprasRaw }] = await Promise.all([
     // `*`: para calcular la completitud de la ficha de cada equipo.
     supabase.from("equipamiento").select("*").order("folio"),
     supabase.from("equipo_prestamos")
@@ -85,6 +88,9 @@ export default async function Equipamiento({ searchParams }: {
        sin una sola línea que las nombrara (ver db/kits.sql). */
     supabase.from("kits").select("id,nombre,uso,descripcion,retirado_en").order("nombre"),
     supabase.from("kit_equipos").select("kit_id,equipamiento_id"),
+    /* Los combos de compra: donde vive el precio de lo que se compró junto.
+       Es lo que hace que el valor del inventario deje de ir corto. */
+    supabase.from("compras").select("id,codigo,nombre,total,moneda,fecha").order("fecha", { ascending: false, nullsFirst: false }),
   ]);
   const personasCat = ((personasRaw as any)?.data || []).map((x: any) =>
     ({ ...x, nombre: x.alias ? `${x.nombre} · ${x.alias}` : x.nombre }));
@@ -194,6 +200,13 @@ export default async function Equipamiento({ searchParams }: {
   const valorTotal = todos
     .filter((x: any) => !["de_baja", "perdido"].includes(x.estado))
     .reduce((s: number, x: any) => s + (parseFloat(x.valor_compra) || 0), 0);
+  void valorTotal;   // (lo sustituye `inv`; se conserva el cálculo por si vuelve a hacer falta)
+  /* DOS cifras que no se mezclan. Lo que tiene precio propio suma por su
+     cuenta; lo que no lo tiene pero vino en un combo con total, suma por el
+     combo entero y una sola vez. Nunca se reparte: 1200 entre 6 piezas da
+     200 por una batería que costó 60, y esa cifra inventada acabaría en un
+     inventario para un seguro o para rendir un fondo. */
+  const inv = valorInventario(todos as any, (comprasRaw as any) || []);
   const atencion = todos.filter((x: any) => ["en_reparacion", "perdido"].includes(x.estado));
   const porCat = new Map<string, number>();
   todos.forEach((x: any) => {
@@ -316,8 +329,8 @@ export default async function Equipamiento({ searchParams }: {
             🔍 por comprobar · {pendientesRonda}
           </Chip>
           <Chip href="/equipamiento?f=sin_valor" on={f === "sin_valor"} color="var(--yellow)"
-            title="Sin precio no suman al valor del inventario">
-            ⚠ sin precio · {cntF("sin_valor")}
+            title="Sin precio propio. Los que vinieron en un combo con total SÍ suman al inventario, por el combo — por eso este número es mayor que el aviso de arriba.">
+            ⚠ sin precio propio · {cntF("sin_valor")}
           </Chip>
           <Chip href="/equipamiento?f=sin_folio" on={f === "sin_folio"} color="var(--yellow)"
             title="Sin folio no se puede citar en un acta ni etiquetar">
@@ -339,13 +352,20 @@ export default async function Equipamiento({ searchParams }: {
           <div className="stat-grid">
             <span className="stat-card" style={{ display: "block" }}>
               <span className="stat-n" style={{ color: "var(--teal)", fontSize: 19, display: "block" }}>
-                S/ {Math.round(valorTotal).toLocaleString("es-PE")}
+                {soles(inv.total)}
               </span>
               <span className="stat-l">
                 valor del inventario activo
-                {cntF("sin_valor") > 0 && (
+                {/* Se dice de qué está hecho el número. Un total que mezcla
+                    precios exactos con totales de combo sin decirlo es un
+                    total en el que no se puede confiar para un seguro. */}
+                <span style={{ display: "block", color: "var(--dim)", fontSize: 10.5, lineHeight: 1.5 }}>
+                  {soles(inv.propio)} de {inv.nConPrecio} con precio propio
+                  {inv.nCombos > 0 && <> · {soles(inv.porCombo)} de {inv.nCombos} combo(s), sin desglosar</>}
+                </span>
+                {inv.sinValorar > 0 && (
                   <b style={{ color: "var(--yellow)", display: "block" }}>
-                    ⚠ {cntF("sin_valor")} sin precio — el total va corto
+                    ⚠ {inv.sinValorar} sin precio ni combo — el total va corto
                   </b>
                 )}
               </span>
@@ -362,6 +382,11 @@ export default async function Equipamiento({ searchParams }: {
               qué. */}
           <EntregaLote equipos={eqsConDueno as any} personas={personasCat} proyectos={proyectosCat}
             kits={kits} kitInicial={kitPre} />
+
+          {/* Registrar una compra: el combo con la boleta, y sus unidades
+              foliadas de golpe. Va aquí porque es lo que ocurre ANTES de que
+              un equipo exista, y hasta ahora no tenía sitio. */}
+          <AltaLote categorias={[...porCat.keys()].filter(c => c !== "sin categoría")} />
 
           {/* Los kits van DESPUÉS de la entrega: primero se entrega —es lo del
               día— y armar el kit es mantenimiento, se hace de vez en cuando. */}
@@ -481,7 +506,18 @@ export default async function Equipamiento({ searchParams }: {
                     </span>
                     <span style={{ flex: 1, height: 1, background: "var(--border)" }} />
                   </div>
-                  {filas.map(Fila)}
+                  {/* Las unidades iguales se apilan en una fila desplegable.
+                      Las filas las sigue pintando el servidor y viajan ya
+                      dibujadas: así el agrupador no necesita saber cómo se
+                      dibuja un equipo, y ninguna función cruza la frontera
+                      —que es donde esto se nos ha roto tres veces—. */}
+                  {/* `key` con los filtros dentro: sin ella, React reusa la
+                      instancia al cambiar de filtro y el estado de plegado se
+                      queda con las claves viejas —los grupos nuevos con algo
+                      en reparación arrancarían cerrados, que es justo lo que
+                      el inicializador quiere evitar—. */}
+                  <FilasEquipo key={`${cat}|${e}|${c}|${f}|${q}`} unidades={filas as any}
+                    filas={Object.fromEntries(filas.map((x: any) => [x.id, Fila(x)]))} />
                 </div>
               );
             });

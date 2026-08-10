@@ -2991,3 +2991,30 @@ button.repo-tit{text-align:left}
 .gu-beat.es-giro{background:rgba(167,139,250,.16);color:var(--violet)}
 .gu-beat.es-inflexion{background:rgba(45,212,191,.14);color:var(--teal)}
 .gu-beat i{font-weight:400;opacity:.85}
+
+/* ── COMBOS DE COMPRA ── */
+.cmp-form{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.cmp-fila{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.cmp-cab{display:flex;gap:9px;align-items:center;flex-wrap:wrap;padding:7px 0;
+  border-bottom:1px solid var(--border);margin-bottom:8px}
+.cmp-hecho{background:rgba(46,204,113,.08);border:1px solid rgba(46,204,113,.28);
+  border-radius:9px;padding:8px 11px;margin-top:9px;font-size:12px;line-height:1.6;
+  color:var(--green)}
+.cmp-cod{color:#d99a3f;background:rgba(217,154,63,.14);font-size:10.5px;font-weight:700}
+.cmp-item{display:block;text-decoration:none;margin-top:9px}
+.cmp-item:hover{border-color:rgba(217,154,63,.45)}
+
+/* ── UNIDADES IGUALES, APILADAS ──
+   Cinco filas que dicen lo mismo no informan cinco veces: informan una y
+   esconden lo demás. La cabecera da el desglose por estado, que es el dato
+   que «5 unidades» se traga. */
+.ug-caja{border:1px solid var(--border);border-radius:10px;margin:6px 0;overflow:hidden}
+.ug-h{display:flex;gap:9px;align-items:center;width:100%;padding:8px 11px;
+  background:rgba(255,255,255,.02);border:none;cursor:pointer;font-family:inherit;
+  color:var(--text);text-align:left;flex-wrap:wrap}
+.ug-h:hover{background:rgba(255,255,255,.05)}
+.ug-flecha{color:var(--dim);font-size:11px;flex:none}
+.ug-nom{font-size:13.5px}
+.ug-n{font-size:11px;color:var(--dim)}
+.ug-est{font-size:11px;font-weight:600;white-space:nowrap}
+.ug-cuerpo{padding:2px 6px 6px;border-top:1px solid var(--border)}

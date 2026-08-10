@@ -122,6 +122,14 @@ const CONF: Record<string, { tabla: string; icono: string; campos: [string, stri
     ["Suspensión 4ta", "suspension_4ta_anio", SUNAT_PERSONA],
   ] },
   equipamiento: { tabla: "equipamiento", icono: "🎥", campos: [["Folio", "folio"], ["Categoría", "categoria"], ["Subcategoría", "subcategoria"], ["Estado", "estado"], ["Valor (S/)", "valor_compra"], ["Comprado en", "comprado_en"]] },
+  /* El COMBO DE COMPRA. Hereda de la ficha genérica lo que necesita —carné,
+     bitácora, historial y repositorio— y ahí es donde vive el comprobante:
+     la boleta es UNA por compra, y pegarla en las seis fichas del combo DJI
+     serían seis copias del mismo papel y ninguna la buena. */
+  compra: { tabla: "compras", icono: "🧾", campos: [
+    ["Código", "codigo"], ["Proveedor", "proveedor"], ["Fecha", "fecha"],
+    ["Total", "total"], ["Moneda", "moneda"],
+  ] },
   lugar: { tabla: "lugares", icono: "📍", campos: [] },
   postulacion: { tabla: "postulaciones", icono: "🎯", campos: [["Código", "codigo"], ["Código plataforma DAFO", "codigo_plataforma"], ["Código del acta", "codigo_acta"], ["Estado", "estado"], ["Lenguas originarias", "lenguas_originarias"], ["Puntaje jurado", "puntaje_jurado"], ["Monto adjudicado (S/)", "monto_adjudicado"], ["Firma del acta", "fecha_firma_acta"], ["Desembolso del estímulo", "fecha_desembolso"], ["Límite de rendición", "fecha_limite_rendicion"], ["Prórroga", "fecha_prorroga"], ["Rendición entregada", "fecha_rendicion_real"]] },
   convocatoria: { tabla: "convocatorias", icono: "📜", campos: [["Código", "codigo"], ["Institución", "institucion"], ["Año", "anio"], ["Estado", "estado"], ["Monto del estímulo (S/)", "monto_adjudicado"]] },
@@ -152,6 +160,7 @@ const CAMPOS_SECUNDARIOS: Record<string, string[]> = {
   convocatoria: ["codigo"],
   postulacion: ["codigo", "codigo_plataforma", "codigo_acta", "lenguas_originarias", "fecha_firma_acta"],
   equipamiento: ["folio", "comprado_en"],
+  compra: ["codigo", "moneda"],
 };
 
 /* El rótulo de estado ya no se escribe aquí: era la novena copia de un mapa
@@ -165,7 +174,7 @@ const fecha = (d: string) =>
   new Date(d).toLocaleString("es-PE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "America/Lima" });
 
 /* Presentación de valores en la ficha: dinero con miles, fechas legibles */
-const CAMPOS_DINERO = ["monto_adjudicado", "valor_compra"];
+const CAMPOS_DINERO = ["monto_adjudicado", "valor_compra", "total"];
 const ICONO_ESTADO: Record<string, string> = {
   // postulaciones
   ganadora: "🏆", finalista: "⭐", finalista_no_ganadora: "🥈", enviada: "📨", no_seleccionada: "✖", retirada: "↩", en_preparacion: "🛠",
@@ -690,6 +699,14 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   let relacionados: any[] = []; const cartelRel = new Map<string, string>();
   /* De qué kits forma parte este equipo, y cómo están sus compañeros de kit. */
   let kitsDelEq: { id: string; nombre: string; uso?: string | null; retirado: boolean; piezas: PiezaKit[] }[] = [];
+  /* Unidades de un combo de compra, y —al revés— de qué combo vino un equipo. */
+  let unidadesCompra: any[] = [];
+  let comboDelEq: any = null;
+  if (params.tipo === "compra") {
+    const { data } = await supabase.from("equipamiento")
+      .select("id,folio,nombre,estado,categoria,valor_compra").eq("compra_id", params.id).order("folio");
+    unidadesCompra = data || [];
+  }
   if (params.tipo === "equipamiento") {
     const [pr, pc, py] = await Promise.all([
       supabase.from("equipo_prestamos")
@@ -721,6 +738,12 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         (mmR || []).forEach((m: any) => { if (m.cartel_url) cartelRel.set(m.entidad_id, m.cartel_url); });
       }
     }
+    if (ent.compra_id) {
+      const { data } = await supabase.from("compras")
+        .select("id,codigo,nombre,proveedor,fecha,total,moneda").eq("id", ent.compra_id).maybeSingle();
+      comboDelEq = data;
+    }
+
     /* ── DE QUÉ KIT ES ──
        Un equipo no sabe solo que forma parte de algo: la ficha decía todo lo
        suyo —categoría, folio, quién lo tiene— y nada de que sin él «Entrevista
@@ -2493,11 +2516,69 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             </div>
           </div>
 
+          {/* ── DE QUÉ COMPRA VINO ──
+              La procedencia es lo que contesta «¿está en garantía?», «¿qué
+              más vino con esto?» y «¿cuánto costó de verdad?». Estaba en
+              `comprado_en`, un texto suelto que no llevaba a ninguna parte. */}
+          {params.tipo === "equipamiento" && comboDelEq && (
+            <div className="card" style={{ marginTop: 12 }}>
+              <h4 style={{ margin: "0 0 6px", fontSize: 11.5, letterSpacing: 1.2, textTransform: "uppercase", color: "var(--dim)" }}>
+                🧾 Vino en esta compra
+              </h4>
+              <Link href={`/entidad/compra/${comboDelEq.id}`} style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
+                {comboDelEq.codigo && <span className="badge cmp-cod">{comboDelEq.codigo}</span>}
+                <b style={{ fontSize: TXT.micro, color: "var(--text)" }}>{comboDelEq.nombre}</b>
+                {comboDelEq.total != null && (
+                  <span style={{ color: "var(--teal)", fontSize: TXT.chip }}>
+                    {comboDelEq.moneda === "USD" ? "$" : "S/"} {Math.round(Number(comboDelEq.total)).toLocaleString("es-PE")}
+                  </span>
+                )}
+              </Link>
+              <div style={{ color: "var(--dim)", fontSize: TXT.chip, marginTop: 4 }}>
+                {[comboDelEq.proveedor, comboDelEq.fecha && new Date(comboDelEq.fecha + "T12:00:00")
+                  .toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" })]
+                  .filter(Boolean).join(" · ")}
+              </div>
+            </div>
+          )}
+
           {/* ── DE QUÉ KITS FORMA PARTE ──
               Va ANTES de «equipos relacionados» porque no es lo mismo: el kit
               es una decisión que alguien tomó —esto sale junto—, y lo
               relacionado es un parecido que calcula la máquina. Lo decidido
               manda sobre lo inferido. */}
+          {/* ── LAS UNIDADES QUE TRAJO ──
+              Cada una es una cosa física con su folio y su bitácora: la que
+              se malogró tiene que poder decirlo sola. Por eso el combo no
+              guarda «cantidad 10» sino diez unidades de verdad. */}
+          {params.tipo === "compra" && (
+            <div className="card" style={{ marginTop: 12 }}>
+              <h4 style={{ margin: "0 0 8px", fontSize: 11.5, letterSpacing: 1.2, textTransform: "uppercase", color: "var(--dim)" }}>
+                🎥 Unidades que trajo · {unidadesCompra.length}
+              </h4>
+              {!unidadesCompra.length && (
+                <div style={{ color: "var(--yellow)", fontSize: TXT.micro, lineHeight: 1.55 }}>
+                  Todavía no cuelga ninguna unidad de esta compra. Se dan de alta desde{" "}
+                  <Link href="/equipamiento" style={{ color: "var(--violet)" }}>🎥 Equipos</Link>,
+                  con «🧾 Registrar una compra» — o asignando equipos que ya existan.
+                </div>
+              )}
+              {unidadesCompra.map((u: any) => {
+                const ESTC: Record<string, string> = { disponible: "var(--green)", en_uso: "var(--blue)", en_reparacion: "var(--yellow)", perdido: "var(--red)", de_baja: "var(--dim)" };
+                return (
+                  <Link key={u.id} href={`/entidad/equipamiento/${u.id}`} className="info-row" style={{ textDecoration: "none" }}>
+                    {u.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c", fontSize: TXT.chip }}>{u.folio}</span>}
+                    <b style={{ flex: 1, fontSize: TXT.micro, color: "var(--text)" }}>{u.nombre}</b>
+                    {u.valor_compra != null && (
+                      <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>S/ {Math.round(Number(u.valor_compra)).toLocaleString("es-PE")}</span>
+                    )}
+                    <span style={{ color: ESTC[u.estado] || "var(--dim)", fontSize: TXT.chip }}>{(u.estado || "").replace(/_/g, " ")}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+
           {params.tipo === "equipamiento" && kitsDelEq.length > 0 && (
             <div className="card" style={{ marginTop: 12 }}>
               <h4 style={{ margin: "0 0 8px", fontSize: 11.5, letterSpacing: 1.2, textTransform: "uppercase", color: "var(--dim)" }}>

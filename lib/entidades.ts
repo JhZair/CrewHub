@@ -265,6 +265,9 @@ export const COLOR_ENTIDAD: Record<string, string> = {
   convocatoria: "var(--yellow)",
   postulacion: "var(--green)",
   equipamiento: "#ff8c42",
+  /* Ámbar apagado: emparentado con el naranja del equipo —una compra es de
+     dónde vino un equipo— pero distinto, para que el ojo no los confunda. */
+  compra: "#d99a3f",
   lugar: "#ec4899",
   etiqueta: "var(--dim)",
 };
@@ -460,6 +463,21 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
     campos: [
       { key: "nombre", label: "Nombre", requerido: true },
       { key: "direccion", label: "Dirección / referencia" },
+    ],
+  },
+  compra: {
+    tabla: "compras",
+    titulo: "Combo de compra",
+    campos: [
+      { key: "codigo", label: "Código", auto: true },
+      { key: "nombre", label: "Qué se compró", requerido: true },
+      { key: "proveedor", label: "Proveedor / tienda" },
+      { key: "fecha", label: "Fecha de compra", tipo: "date" },
+      { key: "total", label: "Total de la boleta" },
+      { key: "moneda", label: "Moneda", tipo: "select", opciones: ["PEN", "USD"] },
+      { key: "link", label: "Link del producto", valida: "url" },
+      { key: "comprobante_url", label: "Comprobante (boleta/factura)", valida: "url" },
+      { key: "nota", label: "Nota", tipo: "textarea" },
     ],
   },
   equipamiento: {
