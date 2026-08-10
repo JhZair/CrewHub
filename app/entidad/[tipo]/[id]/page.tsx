@@ -50,7 +50,6 @@ import MuroProyecto from "@/components/MuroProyecto";
 import DestacadosMuro from "@/components/DestacadosMuro";
 import HiloPostulacionBtn from "@/components/HiloPostulacionBtn";
 import SelloResultado from "@/components/SelloResultado";
-import { ordenarActores } from "@/lib/actores";
 import { resultadoPostulacion, resultadoConvocatoria, colorEstadoPost } from "@/lib/resultados";
 import { ordenarEquipo, rangoRol } from "@/lib/rolesEquipo";
 import { DIAS_CV, icoObjeto } from "@/lib/objetos";
@@ -85,6 +84,7 @@ import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { ICO_ENT, nombreDe, grafiasDe, TABLA_DE, tipoCanonico } from "@/lib/secciones";
 import { estadoKit, resumenKit, type PiezaKit } from "@/lib/kits";
+import { ordenarActores, rotuloActores, leerActor, personaDe } from "@/lib/actores";
 import PiezasKit from "@/components/PiezasKit";
 
 /* PERFIL DE ENTIDAD VIVA — dos columnas:
@@ -609,7 +609,9 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       /* Actores sociales: los personajes de la vida real que retrata el
          documental. Relación aparte del equipo. */
       supabase.from("proyecto_actores")
-        .select("id,rol,descripcion,orden,persona:personas(id,nombre,alias,foto_url)")
+        .select(`id,rol,descripcion,orden,personaje,imagen_url,arquetipo,edad,genero,
+          rasgos,quiere,quiere_como,necesita,necesita_como,notas,
+          persona:personas(id,nombre,alias,foto_url)`)
         .eq("proyecto_id", params.id).order("orden").order("creado_en"),
     ]);
     personasCat = (pc.data || []).map((x: any) => ({ ...x, nombre: x.alias ? `${x.nombre} · ${x.alias}` : x.nombre }));
@@ -1346,7 +1348,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
          relación vive en `proyecto_actores`. Se mostraba del lado del proyecto
          pero no en la trayectoria de la persona —donde también es «lo suyo»—. */
       supabase.from("proyecto_actores")
-        .select("id,rol,descripcion,proy:proyectos(id,nombre,nombre_corto,tipo,etapa,estado_actividad)")
+        .select("id,rol,descripcion,personaje,proy:proyectos(id,nombre,nombre_corto,tipo,etapa,estado_actividad)")
         .eq("persona_id", params.id),
     ]);
     cargosDe = cg.data || [];
@@ -1914,21 +1916,42 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                 rostro grande. Normalmente uno; a veces dos, lado a lado. */}
             {params.tipo === "proyecto" && actoresProy.length > 0 && (
               <div className="carne-actores" style={{ marginTop: 0, paddingTop: 0, borderTop: "none", marginBottom: 4 }}>
-                <div className="ca-titulo">🎭 {actoresProy.length > 1 ? `Actores sociales · ${actoresProy.length}` : "Actor social"}</div>
+                {/* El rótulo lo decide el tipo, igual que en la pestaña: si aquí
+                    dijera «actores sociales» y allá «personajes», serían dos
+                    nombres para la misma lista en la misma pantalla. */}
+                <div className="ca-titulo">
+                  {rotuloActores(ent.tipo).ico}{" "}
+                  {actoresProy.length > 1
+                    ? `${rotuloActores(ent.tipo).titulo} · ${actoresProy.length}`
+                    : rotuloActores(ent.tipo).titulo}
+                </div>
                 <div className="ca-lista">
-                  {actoresProy.map((a: any) => (
-                    <Link key={a.id} href={`/entidad/persona/${a.persona?.id}`} className="ca-item"
-                      title={a.descripcion || a.persona?.nombre}>
-                      {a.persona?.foto_url
-                        ? // eslint-disable-next-line @next/next/no-img-element
-                          <img src={a.persona.foto_url} alt="" referrerPolicy="no-referrer" className="ca-foto" />
-                        : <span className="ca-foto ca-foto-ph">🎭</span>}
-                      <span className="ca-txt">
-                        <span className="ca-nom">{a.persona?.alias || a.persona?.nombre || "—"}</span>
-                        {a.rol && <span className="ca-rol">{a.rol}</span>}
-                      </span>
-                    </Link>
-                  ))}
+                  {actoresProy.map((a: any) => {
+                    const L = leerActor(a);
+                    const q = personaDe(a);
+                    /* Sin persona NO hay enlace. Con `href` a un id inexistente
+                       salía `/entidad/persona/undefined`: un enlace roto que
+                       parece bueno hasta que alguien lo pulsa. */
+                    const cara = a.imagen_url || q?.foto_url;
+                    const dentro = (
+                      <>
+                        {cara
+                          ? // eslint-disable-next-line @next/next/no-img-element
+                            <img src={cara} alt="" referrerPolicy="no-referrer" className="ca-foto" />
+                          : <span className="ca-foto ca-foto-ph">🎭</span>}
+                        <span className="ca-txt">
+                          <span className="ca-nom">{L.titulo}</span>
+                          {(L.pie || a.rol) && (
+                            <span className="ca-rol">{[a.rol, L.pie].filter(Boolean).join(" · ")}</span>
+                          )}
+                        </span>
+                      </>
+                    );
+                    const tit = a.descripcion || L.titulo;
+                    return q?.id
+                      ? <Link key={a.id} href={`/entidad/persona/${q.id}`} className="ca-item" title={tit}>{dentro}</Link>
+                      : <span key={a.id} className="ca-item" title={tit}>{dentro}</span>;
+                  })}
                 </div>
               </div>
             )}
@@ -3367,7 +3390,14 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                         {poster("proyecto", r.proy?.id, 56)}
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                            <span className="cargo" style={{ color: "var(--teal)" }}>🎭 {r.rol || "actor social"}</span>
+                            {/* A quién interpretó, cuando personaje y persona son
+                                cosas distintas. El campo se traía y se tiraba:
+                                quien pone la voz a Robomac veía «Protagonista» y
+                                nunca de quién. */}
+                            <span className="cargo" style={{ color: "var(--teal)" }}>
+                              🎭 {r.personaje || r.rol || "actor social"}
+                            </span>
+                            {r.personaje && r.rol && <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>· {r.rol}</span>}
                             {ctx && <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>· {ctx}</span>}
                             <span style={{ flex: 1 }} />
                             <Link href={`/entidad/proyecto/${r.proy.id}`} style={{ color: "var(--text)" }}>
@@ -4069,7 +4099,11 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                   <EquipoProyecto proyectoId={params.id} equipo={equipoProy} personas={personasCat} />
                   {/* Los actores sociales van junto al equipo: ambos son las
                       personas del proyecto —quienes lo hacen y a quiénes retrata. */}
-                  <ActoresProyecto proyectoId={params.id} actores={actoresProy} personas={personasCat} />
+                  {/* El tipo decide cómo se llama esto: en documental son
+                      actores sociales —la persona ES el personaje—; en ficción
+                      y animación son personajes, con o sin intérprete. */}
+                  <ActoresProyecto proyectoId={params.id} actores={actoresProy}
+                    personas={personasCat} tipo={ent.tipo} />
                   {postusCard}
                   <ClienteProyecto proyectoId={params.id} cliente={clienteDe} personas={personasCat} />
                 </>

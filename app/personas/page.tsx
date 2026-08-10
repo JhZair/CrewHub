@@ -82,8 +82,13 @@ export default async function Personas({ searchParams }: {
     /* Y en qué obras aparece como ACTOR SOCIAL (comunero, protagonista): su
        palmarés no está en `proyecto_equipo` (el crew) sino en `proyecto_actores`.
        Sin esto, un actor social salía sin obra —solo se le veía la ficha. */
+    /* `personaje`: en ficción el chip tiene que decir a QUIÉN interpretó, no
+       solo en qué obra salió. Y `not.is.null` sobre la persona porque desde que
+       un personaje puede no tener intérprete, esas filas viajarían hasta aquí
+       para no pintarse nunca —y de paso gastan el tope de PostgREST—. */
     supabase.from("proyecto_actores")
-      .select("persona_id,rol,proy:proyectos(id,nombre,nombre_corto,color,etapa)"),
+      .select("persona_id,rol,personaje,proy:proyectos(id,nombre,nombre_corto,color,etapa)")
+      .not("persona_id", "is", null),
   ]);
 
   const todas = pers || [];
@@ -331,10 +336,10 @@ export default async function Personas({ searchParams }: {
                   Va con 🎭 en teal, aparte del crew, porque es otro tipo de aporte. */}
               {comoActor.map((r: any) => (
                 <Link key={`act-${r.proy.id}`} href={`/entidad/proyecto/${r.proy.id}`}
-                  className="badge fila-encima" title={`Actor social${r.rol ? ` · ${r.rol}` : ""} · ${(r.proy.etapa || "").replace(/_/g, " ")}`}
+                  className="badge fila-encima" title={`${r.personaje ? `Interpretó a ${r.personaje}` : "Actor social"}${r.rol ? ` · ${r.rol}` : ""} · ${(r.proy.etapa || "").replace(/_/g, " ")}`}
                   style={{ color: "var(--teal)", background: "rgba(45,212,191,.12)", fontWeight: 700,
                     textTransform: "none", letterSpacing: 0, textDecoration: "none" }}>
-                  🎭 {r.proy.nombre_corto || r.proy.nombre}{r.rol ? <i style={{ opacity: .6, fontStyle: "normal" }}> · {r.rol}</i> : null} ↗
+                  🎭 {r.proy.nombre_corto || r.proy.nombre}{(r.personaje || r.rol) ? <i style={{ opacity: .6, fontStyle: "normal" }}> · {r.personaje || r.rol}</i> : null} ↗
                 </Link>
               ))}
               {dirige.map((r: any) => (

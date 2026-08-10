@@ -2989,59 +2989,152 @@ export async function cambiarEtapaProyecto(id: string, etapa: string) {
  * lo hacen) ni cliente (para quién es un encargo): a quiénes se cuenta. Cada
  * uno enlaza a su ficha de persona y lleva un rol y una descripción del
  * personaje —el jurado DAFO valora a quién se retrata. */
-export async function agregarActorProyecto(proyectoId: string, personaId: string, rol: string, descripcion: string) {
+export async function agregarActorProyecto(
+  proyectoId: string, personaId: string, rol: string, descripcion: string,
+  personaje?: string, imagenUrl?: string | null
+) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
-  if (!personaId) return { error: "Elige la persona." };
+
+  /* Una de las dos, no las dos obligatorias. En documental basta la persona
+     —Braulia ES el personaje—; en ficción basta el personaje, porque el
+     intérprete aparece en casting meses después y exigirlo aquí obligaría a
+     esperar al casting para poder escribir el reparto. */
+  const pj = (personaje || "").trim();
+  if (!personaId && !pj) return { error: "Elige a la persona o escribe el nombre del personaje." };
+
   const { error } = await supabase.from("proyecto_actores").insert({
-    proyecto_id: proyectoId, persona_id: personaId,
+    proyecto_id: proyectoId, persona_id: personaId || null,
+    personaje: pj || null, imagen_url: imagenUrl || null,
     rol: rol.trim() || null, descripcion: descripcion.trim() || null,
   });
   if (error) return { error: error.message };
-  const { data: per } = await supabase.from("personas")
-    .select("nombre,alias").eq("id", personaId).maybeSingle();
+
+  let quien = pj;
+  if (personaId) {
+    const { data: per } = await supabase.from("personas")
+      .select("nombre,alias").eq("id", personaId).maybeSingle();
+    const nom = per?.alias || per?.nombre || "alguien";
+    quien = pj ? `${pj} (${nom})` : nom;
+  }
   await supabase.from("actividad").insert({
     entidad_tipo: "proyecto", entidad_id: proyectoId, actor_id: user.id, tipo: "miembro",
-    detalle: { mensaje: `sumó a ${per?.alias || per?.nombre || "alguien"} como actor social${rol.trim() ? ` (${rol.trim()})` : ""}` },
+    detalle: { mensaje: `sumó a ${quien || "alguien"} al reparto${rol.trim() ? ` (${rol.trim()})` : ""}` },
   });
   revalidatePath(`/entidad/proyecto/${proyectoId}`);
   return {};
 }
 
-export async function editarActorProyecto(id: string, proyectoId: string, rol: string, descripcion: string) {
+/* ── LA FICHA DEL PERSONAJE ──
+ * Qué quiere, qué necesita, y las dos formas de intentarlo. Se guarda entera
+ * de una vez y no campo a campo: son preguntas que se contestan juntas —lo que
+ * quiere solo se entiende contra lo que necesita— y guardar de a una llenaría
+ * el historial de nueve entradas por una sola sesión de escritura.
+ *
+ * La lista de campos permitidos está aquí y NO se toma del objeto que llega:
+ * sin ella, quien llame a esta acción escribe la columna que quiera. */
+const CAMPOS_ACTOR = [
+  "personaje", "imagen_url", "rol", "descripcion", "arquetipo", "edad",
+  "genero", "rasgos", "quiere", "quiere_como", "necesita", "necesita_como", "notas",
+] as const;
+
+export async function guardarFichaActor(id: string, proyectoId: string, campos: Record<string, any>) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
-  const { data: prev } = await supabase.from("proyecto_actores")
-    .select("rol,per:personas(nombre,alias)").eq("id", id).maybeSingle();
-  const { data: post, error } = await supabase.from("proyecto_actores")
-    .update({ rol: rol.trim() || null, descripcion: descripcion.trim() || null }).eq("id", id).select("id");
+  if (!id) return { error: "Falta el actor." };
+
+  const patch: Record<string, any> = {};
+  CAMPOS_ACTOR.forEach(k => {
+    if (!(k in campos)) return;
+    const v = campos[k];
+    patch[k] = typeof v === "string" ? (v.trim() || null) : (v ?? null);
+  });
+  if (!Object.keys(patch).length) return { error: "No hay nada que guardar." };
+
+  /* El CHECK de la base impide dejar la fila sin nadie, pero el error que
+     devuelve es «violates check constraint proyecto_actores_alguien», que no
+     le dice nada a quien está escribiendo. Se comprueba antes, con palabras. */
+  if ("personaje" in patch && !patch.personaje) {
+    const { data: prev } = await supabase.from("proyecto_actores")
+      .select("persona_id").eq("id", id).maybeSingle();
+    if (!prev?.persona_id) return { error: "Sin persona vinculada, el personaje necesita un nombre." };
+  }
+
+  const { data, error } = await supabase.from("proyecto_actores")
+    .update(patch).eq("id", id).select("id,personaje,per:personas(nombre,alias)");
   if (error) return { error: error.message };
-  if (!post?.length) return { error: "No se guardó: no tienes permiso." };
-  const quien = (prev?.per as any)?.alias || (prev?.per as any)?.nombre || "alguien";
+  if (!data?.length) return { error: "No se guardó: no tienes permiso, o ya no existe." };
+
+  const f: any = data[0];
+  const quien = f.personaje || (Array.isArray(f.per) ? f.per[0] : f.per)?.alias
+    || (Array.isArray(f.per) ? f.per[0] : f.per)?.nombre || "alguien";
   await supabase.from("actividad").insert({
     entidad_tipo: "proyecto", entidad_id: proyectoId, actor_id: user.id, tipo: "miembro",
-    detalle: { mensaje: `actualizó al actor social ${quien}` },
+    detalle: { mensaje: `escribió la ficha de ${quien}` },
   });
   revalidatePath(`/entidad/proyecto/${proyectoId}`);
   return {};
 }
+
+/** Vincular (o desvincular) al intérprete de un personaje. Es su propia acción
+ *  porque es su propio momento: el casting llega mucho después del guion. */
+export async function repartirActor(id: string, proyectoId: string, personaId: string | null) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  const { data: prev } = await supabase.from("proyecto_actores")
+    .select("personaje").eq("id", id).maybeSingle();
+  if (!personaId && !(prev?.personaje || "").trim()) {
+    return { error: "No se puede quitar al intérprete: la fila se quedaría sin nadie. Ponle nombre al personaje primero." };
+  }
+
+  const { data, error } = await supabase.from("proyecto_actores")
+    .update({ persona_id: personaId || null }).eq("id", id).select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "No se guardó: no tienes permiso." };
+
+  let nom = "nadie";
+  if (personaId) {
+    const { data: per } = await supabase.from("personas")
+      .select("nombre,alias").eq("id", personaId).maybeSingle();
+    nom = per?.alias || per?.nombre || "alguien";
+  }
+  await supabase.from("actividad").insert({
+    entidad_tipo: "proyecto", entidad_id: proyectoId, actor_id: user.id, tipo: "miembro",
+    detalle: { mensaje: personaId
+      ? `repartió a ${prev?.personaje || "un personaje"}: lo interpreta ${nom}`
+      : `dejó sin repartir a ${prev?.personaje || "un personaje"}` },
+  });
+  revalidatePath(`/entidad/proyecto/${proyectoId}`);
+  return {};
+}
+
+/* (Aquí vivía `editarActorProyecto`, que guardaba rol y descripción. La
+   reemplaza `guardarFichaActor`: hace lo mismo y once campos más, con una lista
+   blanca de columnas. Dejar las dos era dejar dos formas de guardar lo mismo, y
+   la vieja además nombraba en el historial solo a la persona —de un personaje
+   sin intérprete decía «actualizó al actor social alguien»—.) */
 
 export async function quitarActorProyecto(id: string, proyectoId: string) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
   const { data: prev } = await supabase.from("proyecto_actores")
-    .select("per:personas(nombre,alias)").eq("id", id).maybeSingle();
+    .select("personaje,per:personas(nombre,alias)").eq("id", id).maybeSingle();
   const { data: fuera, error } = await supabase.from("proyecto_actores")
     .delete().eq("id", id).select("id");
   if (error) return { error: error.message };
   if (!fuera?.length) return { error: "No se quitó: no tienes permiso, o ya no estaba." };
-  const quien = (prev?.per as any)?.alias || (prev?.per as any)?.nombre || "alguien";
+  /* El personaje manda: sin él, borrar a Robomac dejaba en el historial «quitó
+     a alguien», que es exactamente lo que nadie podrá reconstruir después. */
+  const quien = prev?.personaje
+    || (prev?.per as any)?.alias || (prev?.per as any)?.nombre || "alguien";
   await supabase.from("actividad").insert({
     entidad_tipo: "proyecto", entidad_id: proyectoId, actor_id: user.id, tipo: "miembro",
-    detalle: { mensaje: `quitó a ${quien} de los actores sociales` },
+    detalle: { mensaje: `quitó a ${quien} del reparto` },
   });
   revalidatePath(`/entidad/proyecto/${proyectoId}`);
   return {};
@@ -4279,7 +4372,7 @@ export async function cargarPersonaRapida(personaId: string) {
       .select("cargo,desde,hasta,proyecto:proyectos(id,nombre,nombre_corto,etapa)")
       .eq("persona_id", personaId).order("desde", { ascending: false, nullsFirst: false }).limit(60),
     supabase.from("proyecto_actores")
-      .select("rol,orden,proyecto:proyectos(id,nombre,nombre_corto)")
+      .select("rol,orden,personaje,proyecto:proyectos(id,nombre,nombre_corto)")
       .eq("persona_id", personaId).order("orden").limit(40),
     // Solo lo que TIENE ahora: un préstamo cerrado no es responsabilidad viva.
     supabase.from("equipo_prestamos")

@@ -2829,3 +2829,35 @@ button.repo-tit{text-align:left}
 .kit-pz.yo .kit-pz-img{opacity:1}
 /* En el escogedor la miniatura va más chica: son cien filas, no cinco. */
 .kit-escoge .kit-pz-img{width:26px;height:26px;font-size:13px}
+
+/* ── PERSONAJES Y ELENCO · quién aparece en la película ── */
+.pj-nuevo{display:flex;flex-direction:column;gap:8px;margin-bottom:12px;
+  padding:10px;background:var(--bg);border-radius:10px}
+.pj-fila{padding:9px 0;border-top:1px solid var(--border)}
+.pj-cara{width:38px;height:38px;border-radius:9px;object-fit:cover;flex:none;
+  border:1px solid var(--border2);background:var(--bg)}
+.pj-mini{width:30px;height:30px;border-radius:6px;object-fit:cover;
+  border:1px solid var(--border)}
+.pj-arq{color:var(--teal);background:rgba(45,212,191,.12);text-transform:none;
+  letter-spacing:0;font-weight:600}
+.pj-pie{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:4px;font-size:12px}
+.pj-pie a{color:var(--blue)}
+.pj-pie button{color:var(--dim);font-size:11px}
+/* «Sin repartir» NO es un error: el guion va por delante del casting. En ámbar
+   apagado, no en rojo — no hay nada que arreglar, hay algo que todavía no pasa. */
+.pj-sinrepartir{color:var(--yellow);opacity:.75;font-style:italic;font-size:11.5px}
+.pj-deseo{margin-top:5px;font-size:12.5px;color:var(--muted);line-height:1.5;
+  border-left:2px solid rgba(167,139,250,.35);padding-left:9px}
+.pj-deseo b{color:var(--violet);font-weight:700;margin-right:5px}
+
+.pj-ficha{margin-top:10px;padding:10px 0 4px 12px;
+  border-left:2px solid var(--accent);display:flex;flex-direction:column;gap:9px}
+.pj-detalles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
+.pj-ficha label,.pj-campo{display:flex;flex-direction:column;gap:3px}
+.pj-ficha label>span{font-size:10.5px;letter-spacing:.6px;text-transform:uppercase;
+  color:var(--dim)}
+/* El «cómo» va pegado a su deseo: son una pregunta partida en dos, y separados
+   por el mismo hueco que los demás campos se leen como cuatro cosas sueltas. */
+.pj-campo.par{margin-top:-5px;padding-left:12px;
+  border-left:1px solid rgba(255,255,255,.07)}
+.pj-campo.par>span{color:var(--muted);text-transform:none;letter-spacing:0;font-style:italic}

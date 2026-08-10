@@ -264,7 +264,13 @@ export default function VistaPersona({ personaId, children }: {
                               <td className="vp-td-i">🎭</td>
                               <td><a href={`/entidad/proyecto/${un(c.proyecto)?.id}`} target="_blank"
                                 rel="noopener noreferrer">{nomProy(c.proyecto)}</a></td>
-                              <td className="vp-td-d" title={c.rol || ""}>{c.rol}</td>
+                              {/* A quién interpretó, cuando el personaje y la
+                                  persona son cosas distintas. Con solo el rol,
+                                  quien puso la voz a Robomac salía como
+                                  «Protagonista» de algo, sin decir de quién. */}
+                              <td className="vp-td-d" title={[c.personaje, c.rol].filter(Boolean).join(" · ")}>
+                                {c.personaje || c.rol}
+                              </td>
                             </tr>
                           ))}
                         </tbody>
