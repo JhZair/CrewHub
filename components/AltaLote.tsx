@@ -66,19 +66,17 @@ export default function AltaLote({ categorias = [] }: { categorias?: string[] })
 
   if (!abierto) {
     return (
-      <div className="card">
-        <button className="btn" onClick={() => setAbierto(true)}>🧾 Registrar una compra</button>
+      <div style={{ marginBottom: 8 }}>
+        <button className="btn btn-ghost" onClick={() => setAbierto(true)}>＋ Nuevo combo</button>
         <span style={{ color: "var(--dim)", fontSize: 12, marginLeft: 10 }}>
-          un combo con varias unidades, foliadas de golpe
+          una compra con varias unidades, foliadas de golpe
         </span>
       </div>
     );
   }
 
   return (
-    <div className="card">
-      <div className="panel-h" style={{ color: "#d99a3f" }}>🧾 Registrar una compra</div>
-
+    <div className="cbo-alta">
       {err && <div className="err-inline">⚠ {err}</div>}
 
       {!compra ? (

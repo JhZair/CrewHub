@@ -17,8 +17,11 @@ import { siguientesFolios } from "@/lib/compras";
  */
 
 const revalidar = (compraId?: string) => {
+  /* Los combos viven dentro de /equipamiento: no hay listado propio que
+     revalidar. Lo tuvo media hora y sobraba —nadie piensa «voy a compras»,
+     piensa «¿de dónde salió esta radio?», y eso se pregunta desde los
+     equipos—. */
   revalidatePath("/equipamiento");
-  revalidatePath("/compras");
   if (compraId) revalidatePath(`/entidad/compra/${compraId}`);
 };
 

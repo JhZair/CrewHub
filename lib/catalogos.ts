@@ -111,10 +111,10 @@ export async function catalogosEntidades(supabase: any): Promise<Record<string, 
       id: x.id, nombre: x.folio ? `${x.folio} · ${x.nombre}` : x.nombre,
     })),
     lugar: (luga.data || []).map((x: any) => ({ id: x.id, nombre: x.nombre })),
-    /* El combo de compra. Sin esta línea, `catalogosDuenos` grita en el log
-       del servidor en cada carga y la compra desaparece del selector sin
-       decir nada — no se le podría colgar la boleta desde el repositorio,
-       que es justo para lo que existe. */
+    /* El combo de compra. Sigue aquí aunque ya no esté en SECCIONES —vive
+       plegado dentro de /equipamiento—: `catalogosEntidades` lo usa el
+       selector de vínculos, y sin él no se podría colgar la boleta de una
+       compra desde el repositorio, que es justo para lo que existe. */
     compra: (comp.data || []).map((x: any) => ({
       id: x.id, nombre: x.codigo ? `${x.codigo} · ${x.nombre}` : x.nombre,
       sub: x.proveedor || undefined,

@@ -3,7 +3,7 @@ import Volver from "@/components/Volver";
 import BotonComprobar from "@/components/BotonComprobar";
 import EntregaLote from "@/components/EntregaLote";
 import PanelKits from "@/components/PanelKits";
-import AltaLote from "@/components/AltaLote";
+import PanelCombos from "@/components/PanelCombos";
 import FilasEquipo from "@/components/FilasEquipo";
 import { valorInventario, soles } from "@/lib/compras";
 import type { KitVista } from "@/lib/kits";
@@ -90,7 +90,8 @@ export default async function Equipamiento({ searchParams }: {
     supabase.from("kit_equipos").select("kit_id,equipamiento_id"),
     /* Los combos de compra: donde vive el precio de lo que se compró junto.
        Es lo que hace que el valor del inventario deje de ir corto. */
-    supabase.from("compras").select("id,codigo,nombre,total,moneda,fecha").order("fecha", { ascending: false, nullsFirst: false }),
+    supabase.from("compras").select("id,codigo,nombre,proveedor,total,moneda,fecha,comprobante_url")
+      .order("fecha", { ascending: false, nullsFirst: false }),
   ]);
   const personasCat = ((personasRaw as any)?.data || []).map((x: any) =>
     ({ ...x, nombre: x.alias ? `${x.nombre} · ${x.alias}` : x.nombre }));
@@ -120,6 +121,22 @@ export default async function Equipamiento({ searchParams }: {
     const eq = un1(p.equipo), per = un1(p.persona);
     if (eq?.id) quienTiene.set(eq.id, per?.alias || per?.nombre || "alguien");
   });
+  /* Cada combo con lo que trajo. Se cuenta aquí, sobre `eqs`, que ya está en
+     memoria: una consulta por combo serían N viajes para un número. */
+  const porCombo = new Map<string, any[]>();
+  (eqs || []).forEach((e: any) => {
+    if (e.compra_id) porCombo.set(e.compra_id, [...(porCombo.get(e.compra_id) || []), e]);
+  });
+  const combos = ((comprasRaw as any) || []).map((c: any) => {
+    const us = porCombo.get(c.id) || [];
+    return {
+      ...c,
+      nUnidades: us.length,
+      nVivas: us.filter((u: any) => !["de_baja", "perdido"].includes(u.estado)).length,
+      nProblema: us.filter((u: any) => ["en_reparacion", "perdido", "de_baja"].includes(u.estado)).length,
+    };
+  });
+
   const eqsConDueno = (eqs || []).map((e: any) => ({
     ...e, quien: quienTiene.get(e.id) || null, cartel: cartelPorEq.get(e.id) || null,
   }));
@@ -383,10 +400,11 @@ export default async function Equipamiento({ searchParams }: {
           <EntregaLote equipos={eqsConDueno as any} personas={personasCat} proyectos={proyectosCat}
             kits={kits} kitInicial={kitPre} />
 
-          {/* Registrar una compra: el combo con la boleta, y sus unidades
-              foliadas de golpe. Va aquí porque es lo que ocurre ANTES de que
-              un equipo exista, y hasta ahora no tenía sitio. */}
-          <AltaLote categorias={[...porCat.keys()].filter(c => c !== "sin categoría")} />
+          {/* Los combos, junto a los kits, porque son las dos caras de la
+              misma pregunta: el kit dice qué SALE junto, el combo qué ENTRÓ
+              junto. Verlos en la misma pantalla es lo que hace evidente que
+              no son lo mismo. */}
+          <PanelCombos combos={combos} categorias={[...porCat.keys()].filter(c => c !== "sin categoría")} />
 
           {/* Los kits van DESPUÉS de la entrega: primero se entrega —es lo del
               día— y armar el kit es mantenimiento, se hace de vez en cuando. */}

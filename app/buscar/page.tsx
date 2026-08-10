@@ -1121,7 +1121,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
       {/* Los combos de compra: cómo entró cada cosa. Van justo después de los
           equipos porque es a donde se salta desde un equipo —«¿qué más vino
           con esto?», «¿está en garantía?»—. */}
-      <Seccion titulo="🧾 Compras" k="compras" n={comps.length} tinte={COLOR_ENTIDAD.compra}>
+      <Seccion titulo="🧾 Combos de compra" k="combos" n={comps.length} tinte={COLOR_ENTIDAD.compra}>
         {comps.map((x: any) => (
           <Fila key={x.id} href={`/entidad/compra/${x.id}`}>
             {x.codigo && <span className="badge cmp-cod">{x.codigo}</span>}

@@ -33,13 +33,6 @@ export const SECCIONES: Seccion[] = [
     plural: "postulaciones", singular: "postulación", tabla: "postulaciones", campo: "codigo" },
   { tipo: "equipamiento", ruta: "/equipamiento", ico: "🎥", titulo: "Equipos audiovisuales",
     plural: "equipos", singular: "equipo", tabla: "equipamiento", campo: "nombre" },
-  /* El COMBO DE COMPRA. Es una sección de pleno derecho y no un panel de
-     equipamiento porque tiene lo que tiene una entidad: una boleta que
-     guardar, un proveedor, una fecha y una bitácora —«llegó incompleto»,
-     «el vendedor cambió la jaula»—. Es además donde vive la prueba de
-     compra, que hace falta para seguros, garantías y rendiciones. */
-  { tipo: "compra", ruta: "/compras", ico: "🧾", titulo: "Combos de compra",
-    plural: "compras", singular: "compra", tabla: "compras", campo: "nombre" },
   { tipo: "convocatoria", ruta: "/convocatorias", ico: "📜", titulo: "Convocatorias y fondos",
     plural: "convocatorias", singular: "convocatoria", tabla: "convocatorias", campo: "codigo" },
   /* El repositorio es una sección de pleno derecho: los objetos se buscan,
@@ -121,6 +114,11 @@ export function rutaEntidad(tipo: string, id: string): string | null {
 export const TABLA_DE: Record<string, [string, string]> = {
   ...Object.fromEntries(SECCIONES.map(s => [s.tipo, [s.tabla, s.campo]])),
   publicacion: ["publicaciones", "titulo"],
+  /* El COMBO no tiene listado propio —vive plegado dentro de /equipamiento,
+     que es donde se piensa en equipos— pero SÍ tiene ficha, bitácora y
+     repositorio en /entidad/compra/[id]: ahí está la boleta. Mismo caso que
+     `publicacion`, que tampoco está en SECCIONES y tiene su página. */
+  compra: ["compras", "nombre"],
   lugar: ["lugares", "nombre"],
   etiqueta: ["etiquetas", "nombre"],
   // Para que el historial nombre la actividad (aunque no tenga página: SIN_PAGINA_PROPIA)
