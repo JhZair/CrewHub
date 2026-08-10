@@ -37,6 +37,15 @@ export default function PanelCombos({ combos, categorias = [], inventario = [] }
   inventario?: EqLibre[];
 }) {
   const router = useRouter();
+  /* Arranca CERRADO, y de una forma que el navegador no pueda deshacer.
+     Antes era un `<details>` con `open={abierto}` y `useState(false)`. El
+     estado inicial era correcto y aun así el panel aparecía abierto al
+     volver a la página: Chrome RESTAURA el abierto/cerrado de un `<details>`
+     junto con el scroll, y esa restauración ocurre fuera de React —el estado
+     decía `false` y el DOM decía abierto—. Un fallo que no falla: el código
+     leído era correcto.
+     Con un botón y el cuerpo pintado condicionalmente no hay nada que
+     restaurar: si el estado dice cerrado, el contenido no existe. */
   const [abierto, setAbierto] = useState(false);
   const [edita, setEdita] = useState<string | null>(null);
   const [err, setErr] = useState("");
@@ -50,12 +59,14 @@ export default function PanelCombos({ combos, categorias = [], inventario = [] }
 
   return (
     <div className="card">
-      <details open={abierto} onToggle={ev => setAbierto((ev.target as HTMLDetailsElement).open)}>
-        <summary className="panel-h" style={{ cursor: "pointer", color: "#d99a3f", listStyle: "revert" }}>
-          🧾 Combos de compra — lo que entró junto{combos.length ? ` · ${combos.length}` : ""}
-          {vacios > 0 && <span style={{ color: "var(--yellow)", fontWeight: 400 }}> · {vacios} sin unidades</span>}
-        </summary>
+      <button className="panel-plegar" aria-expanded={abierto}
+        style={{ color: "#d99a3f" }} onClick={() => setAbierto(!abierto)}>
+        <span className="panel-flecha">{abierto ? "▾" : "▸"}</span>
+        🧾 Combos de compra — lo que entró junto{combos.length ? ` · ${combos.length}` : ""}
+        {vacios > 0 && <span style={{ color: "var(--yellow)", fontWeight: 400 }}> · {vacios} sin unidades</span>}
+      </button>
 
+      {abierto && (
         <div style={{ marginTop: 8 }}>
           <AltaLote categorias={categorias} />
 
@@ -127,7 +138,7 @@ export default function PanelCombos({ combos, categorias = [], inventario = [] }
             </div>
           )}
         </div>
-      </details>
+      )}
     </div>
   );
 }

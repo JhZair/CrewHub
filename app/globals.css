@@ -3125,3 +3125,14 @@ button.repo-tit{text-align:left}
 @media (max-width:620px){
   .eqx-nom{white-space:normal}
 }
+
+/* Cabecera de un panel plegable. Es un <button> y no un <summary>: Chrome
+   restaura el abierto/cerrado de un <details> al volver a la página, por
+   encima de React, y un panel que arranca abierto empuja hacia abajo lo que
+   se vino a mirar. Con botón, si el estado dice cerrado el contenido no
+   existe: no hay nada que restaurar. */
+.panel-plegar{display:flex;align-items:center;gap:8px;width:100%;background:none;
+  border:none;padding:0;cursor:pointer;font-family:inherit;font-size:12px;
+  font-weight:700;letter-spacing:1px;text-transform:uppercase;text-align:left}
+.panel-plegar:hover{opacity:.85}
+.panel-flecha{font-size:10px;opacity:.7}

@@ -158,15 +158,15 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
   const vivos = kits.filter(k => !k.retirado);
   const retirados = kits.filter(k => k.retirado);
 
-  /* Arranca CERRADO, siempre. Abría solo cuando había kits, con buena
-     intención: enseñar que existen. Pero /equipamiento tiene ya cinco
-     paneles, y un panel que se abre solo empuja hacia abajo lo que sí se
-     vino a mirar —el inventario— y hay que plegarlo otra vez en cada carga.
-     Lo que se abre solo se cierra a mano; lo que se abre a mano se abre
-     cuando hace falta.
-     `<details>` controlado por estado y no por el atributo a secas: React
-     reescribe `open` en cada render, así que un panel plegado a mano se
-     volvería a abrir solo en cuanto algo refresque la página. */
+  /* Arranca CERRADO, y de una forma que el navegador no pueda deshacer.
+     Antes era un `<details>` con `open={abierto}` y `useState(false)`. El
+     estado inicial era correcto y aun así el panel aparecía abierto al
+     volver a la página: Chrome RESTAURA el abierto/cerrado de un `<details>`
+     junto con el scroll, y esa restauración ocurre fuera de React —el estado
+     decía `false` y el DOM decía abierto—. Un fallo que no falla: el código
+     leído era correcto.
+     Con un botón y el cuerpo pintado condicionalmente no hay nada que
+     restaurar: si el estado dice cerrado, el contenido no existe. */
   const [abierto, setAbierto] = useState(false);
 
   const piezasDe = (k: KitVista): PiezaKit[] =>
@@ -177,11 +177,13 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
 
   return (
     <div className="card">
-      <details open={abierto} onToggle={ev => setAbierto((ev.target as HTMLDetailsElement).open)}>
-        <summary className="panel-h" style={{ cursor: "pointer", color: "var(--violet)", listStyle: "revert" }}>
-          📦 Kits — lo que sale junto{vivos.length ? ` · ${vivos.length}` : ""}
-        </summary>
+      <button className="panel-plegar" aria-expanded={abierto}
+        style={{ color: "var(--violet)" }} onClick={() => setAbierto(!abierto)}>
+        <span className="panel-flecha">{abierto ? "▾" : "▸"}</span>
+        📦 Kits — lo que sale junto{vivos.length ? ` · ${vivos.length}` : ""}
+      </button>
 
+      {abierto && (
         <div style={{ marginTop: 8 }}>
           {editando === "_nuevo"
             ? <Editor kit={null} equipos={equipos} onCerrar={() => setEditando(null)} />
@@ -241,7 +243,7 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
             </details>
           )}
         </div>
-      </details>
+      )}
     </div>
   );
 }
