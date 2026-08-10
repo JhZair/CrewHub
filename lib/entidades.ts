@@ -166,10 +166,10 @@ export const AYUDA_CATEGORIA: Record<string, string> = {
   "drone": "La aeronave y lo suyo. Aparte de cámara porque vuela, se registra y se le cae encima la normativa.",
   "sonido": "Todo lo que capta o escucha: micros, grabadoras, audífonos, caña, cables.",
   "iluminación": "Lo que da o modela la luz, y lo que la sostiene.",
-  "soporte": "Lo que sujeta algo: trípodes, gimbals, placas, brazos, ventosas, pértigas.",
+  "soporte": "Lo que va entre la cámara y algo: trípodes, gimbals, placas, brazos, ventosas, arneses de cámara. Si se lleva puesto pero carga cosas de la persona (cinturón, chaleco), es producción.",
   "energía": "Lo que da corriente: baterías, power banks, cargadores, extensiones, paneles solares.",
   "cómputo": "Lo que procesa o guarda material, y lo que se le conecta.",
-  "producción": "Lo que hace posible el rodaje sin grabar: radios, claqueta, cases, mesas, gaffer.",
+  "producción": "Lo que hace posible el rodaje sin grabar: radios, claqueta, cases, gaffer, y lo que el equipo lleva puesto para cargar (cinturón, chaleco, pouches).",
   "camping": "Lo que permite dormir y trabajar en el campo, a 4.000 m: carpa, cocina, frontal, botiquín de altura.",
   "otro": "Provisional. Si algo lleva meses aquí, es que falta una categoría.",
 };
@@ -206,8 +206,8 @@ export const SUBCATS_EQUIPO: Record<string, string[]> = {
      Claw Mini, la gorra con soporte y la pértiga del Osmo son todas esto. */
   "soporte": ["Trípode", "Monopié", "Cabezal / Rótula", "Estabilizador / Gimbal",
     "Slider / Dolly", "Grúa / Jib", "Brazo mágico", "Placa de liberación rápida",
-    "Soporte de cabeza / pecho", "Ventosa / Clamp", "Pértiga / Extension rod",
-    "Selfie stick", "Saco de arena / Contrapeso"],
+    "Soporte de cabeza / pecho", "Arnés / Chest rig de cámara", "Ventosa / Clamp",
+    "Pértiga / Extension rod", "Selfie stick", "Saco de arena / Contrapeso"],
   "energía": ["Batería V-Mount", "Power bank", "Cargador", "Pilas AA / AAA",
     "Estuche de baterías", "Extensión eléctrica", "Regleta", "Generador",
     "Panel solar", "Inversor", "Estabilizador de corriente"],
@@ -218,10 +218,21 @@ export const SUBCATS_EQUIPO: Record<string, string[]> = {
     "Cable HDMI", "Adaptador", "Tableta gráfica", "Router / Red"],
   /* Sin «mesa plegable», «silla», «toldo» ni «paraguas»: eso es camping, y
      tenerlo en los dos sitios es volver a crear el solapamiento que esta
-     lista viene a quitar. Aquí queda lo que solo tiene sentido en un rodaje. */
+     lista viene a quitar. Aquí queda lo que solo tiene sentido en un rodaje.
+
+     ── LO QUE SE LLEVA PUESTO ──
+     Un cinturón MOLLE, un chaleco de carga o unas rodilleras se llevan
+     encima, igual que un chest rig, y aun así NO son `soporte`. La línea es
+     qué sostienen: si va entre la cámara y algo —placa, gorra con soporte,
+     arnés de pecho— es soporte; si va sobre el cuerpo para cargar lo que la
+     persona necesita a mano, es producción. Sin esa línea, «soporte» se
+     convierte en «todo lo que se sujeta a algo», que es casi el inventario
+     entero. */
   "producción": ["Claqueta", "Radio walkie-talkie", "Mochila / Case", "Maleta rígida",
-    "Carrito / Transporte", "Cinta / Gaffer", "Herramientas", "Botiquín",
-    "Señalética", "Pizarra / Plan de rodaje", "Chaleco / Identificación"],
+    "Carrito / Transporte", "Cinturón / arnés de carga", "Pouch / bolsillo modular",
+    "Chaleco / Identificación", "Rodilleras / protección",
+    "Cinta / Gaffer", "Herramientas", "Botiquín", "Señalética",
+    "Pizarra / Plan de rodaje"],
   /* Rodar a 4.000 m no es rodar en un set con carpa: es dormir arriba. Por eso
      va aparte de «producción» —lo de producción se guarda en la oficina; esto
      se revisa antes de cada subida, y que falte una bolsa de dormir no es una
