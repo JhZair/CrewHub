@@ -3044,7 +3044,7 @@ button.repo-tit{text-align:left}
    columna: trece filas de un renglón desperdiciaban mil píxeles de ancho para
    apilar mil de alto. Se reparten en dos o tres columnas según quepan. */
 .vc-lista{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));
-  gap:0 18px;margin-top:4px}
+  gap:0 18px;margin-top:4px;max-height:46vh;overflow-y:auto}
 .vc-fila{display:flex;gap:9px;align-items:center;padding:5px 4px;text-decoration:none;
   border-bottom:1px solid rgba(255,255,255,.045);min-width:0}
 .vc-fila:last-child{border-bottom:none}
@@ -3075,8 +3075,20 @@ button.repo-tit{text-align:left}
    suspensivos, que para eso está el `title` con la URL entera. */
 .vp-val .fv-link{max-width:100%}
 
-/* Y que nada de la vista al vuelo desborde a lo ancho: el scroll horizontal
-   del pie era una fila interna más ancha que su caja. */
+/* ── LOS CUATRO PÍXELES DEL SCROLL HORIZONTAL ──
+   `.copiable` lleva `margin:0 -4px` a propósito: así el fondo del hover cuadra
+   con el texto en vez de quedar metido hacia dentro. Pero cuando es el ÚLTIMO
+   elemento de una fila —el «S/ 620» de la cabecera, pegado al borde derecho—
+   ese margen negativo lo saca 4 px fuera de la caja. Y `.vo-cuerpo` tiene
+   `overflow-y:auto`, que según la especificación convierte el `overflow-x`
+   en `auto` también: cuatro píxeles bastan para que aparezca una barra que
+   recorre todo el modal y tapa la última línea.
+   Se anula el margen ahí y solo ahí: donde el copiable NO está contra el
+   borde, el margen sigue haciendo su trabajo. */
+.vp-head > .copiable:last-child{margin-right:0}
+/* Y un colchón, para que ningún otro margen negativo de 4 px vuelva a hacer
+   lo mismo sin que nadie entienda de dónde salió. */
+.vo-cuerpo{padding-right:6px}
 .vp-cuerpo,.vp-bloque,.vp-head{min-width:0;max-width:100%}
 .vc-lista,.vc-fila{min-width:0;max-width:100%}
 @media (max-width:520px){

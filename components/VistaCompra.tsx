@@ -110,10 +110,12 @@ export default function VistaCompra({ compraId, children }: {
                   nadie sabe en qué se convirtió — cuélgale sus equipos desde 🎥 Equipos.
                 </div>
               )}
-              {/* NINGUNA lista se recorta ni se lleva su propio scroll: la
-                  caja del modal ya se desplaza, y dos barras anidadas obligan
-                  a elegir cuál mover. Trece piezas se enseñan las trece, en
-                  rejilla —hay ancho de sobra— en vez de trece renglones. */}
+              {/* En rejilla, que hay ancho de sobra: trece filas de un renglón
+                  desperdiciaban mil píxeles de ancho para apilar mil de alto.
+                  Conserva su desplazamiento vertical, pero alto —46vh— así que
+                  con trece piezas no llega a aparecer; solo entra en juego si
+                  un combo trae cuarenta, y entonces evita que la ficha crezca
+                  hasta empujar el resumen del pie fuera de la pantalla. */}
               <div className="vc-lista">
                 {us.map((u: any) => (
                   <a key={u.id} href={`/entidad/equipamiento/${u.id}`} className="vc-fila"
