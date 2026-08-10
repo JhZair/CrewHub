@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import GuionEstructura from "@/components/GuionEstructura";
-import { modoGuion, VOZ, plantillaDe } from "@/lib/guion";
+import { modoGuion, VOZ, plantillaDe, explicar } from "@/lib/guion";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
@@ -30,7 +30,8 @@ export default async function Guion({ params }: { params: { id: string } }) {
     .select("id,nombre,nombre_corto,tipo,etapa,guion_plantilla").eq("id", params.id).maybeSingle();
   if (!proy) notFound();
 
-  const [{ data: actos }, { data: secs, error: eSecs }, { data: hilos }, { data: beats }] = await Promise.all([
+  const [{ data: actos, error: eActos }, { data: secs, error: eSecs },
+    { data: hilos, error: eHilos }, { data: beats, error: eBeats }] = await Promise.all([
     supabase.from("guion_actos").select("id,clave,nombre,orden")
       .eq("proyecto_id", params.id).order("orden"),
     supabase.from("guion_secuencias").select("id,nombre,texto,minutos,acto_id,orden")
@@ -55,10 +56,15 @@ export default async function Guion({ params }: { params: { id: string } }) {
     : { data: [] as any[] };
 
   /* Una consulta rota devuelve `data: null`, y `|| []` la convierte en
-     «no hay nada escrito»: exactamente lo mismo que se ve cuando de
-     verdad no hay nada. Con un tratamiento dentro, eso es aterrador y
-     además mentira. El error se dice. */
-  const fallo = (eSecs as any)?.message || "";
+     «no hay nada escrito»: exactamente lo mismo que se ve cuando de verdad
+     no hay nada. Con un tratamiento dentro eso es aterrador, y además
+     mentira.
+     Se miran las CUATRO. Antes solo se miraba la de secuencias, así que si
+     faltaba `guion_beats` la espina salía vacía sin decir por qué —y la
+     página parecía funcionar—. Es el mismo fallo silencioso que llevo
+     cerrando toda la sesión, cometido otra vez a los diez minutos. */
+  const fallo = explicar([eActos, eSecs, eHilos, eBeats]
+    .map((e: any) => e?.message).filter(Boolean).join(" · "));
 
   const hilosDe = new Map<string, string[]>();
   (marcas || []).forEach((m: any) =>
@@ -87,12 +93,10 @@ export default async function Guion({ params }: { params: { id: string } }) {
       </div>
 
       {fallo && (
-        <div className="err-inline" style={{ lineHeight: 1.5 }}>
-          ⚠ No se pudo leer el guion, así que esto está vacío por un fallo, no porque no haya nada escrito.
-          <br /><code style={{ fontSize: 11, opacity: .85 }}>{fallo}</code>
-          {/relation|does not exist|schema cache/i.test(fallo) && (
-            <><br /><b>Falta correr <code>db/guion.sql</code> y <code>db/guion-beats.sql</code> en Supabase.</b></>
-          )}
+        <div className="err-inline" style={{ lineHeight: 1.5, whiteSpace: "pre-line" }}>
+          ⚠ No se pudo leer parte del guion. Lo que falte aquí abajo está vacío por un fallo,
+          no porque no haya nada escrito.
+          {"\n"}{fallo}
         </div>
       )}
 

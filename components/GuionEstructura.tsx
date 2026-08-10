@@ -6,7 +6,7 @@ import Espina, { type BeatFila } from "@/components/Espina";
 import { crearActo, guardarActo, borrarActo, crearSecuencia,
   elegirPlantilla, crearHilo, borrarHilo, sembrarBeats, crearBeat } from "@/app/guion/acciones";
 import { PLANTILLAS, plantillaDe, VOZ, minutosDe, minutosHum, repartoActos,
-  diagnosticar, type ModoGuion } from "@/lib/guion";
+  diagnosticar, explicar, plantillaDeLosActos, type ModoGuion } from "@/lib/guion";
 
 /* LA ESTRUCTURA: actos con sus secuencias.
  *
@@ -39,9 +39,14 @@ export default function GuionEstructura({ proyectoId, modo, plantilla, actos, se
   const [editActo, setEditActo] = useState<string | null>(null);
   const [panelHilos, setPanelHilos] = useState(false);
 
-  const ok = (r: any) => { if (r?.error) { setErr(r.error); return false; } setErr(""); router.refresh(); return true; };
+  /* `explicar` traduce «Could not find the table …» a «falta correr tal
+     archivo». El mensaje crudo de PostgREST es exacto y no dice qué hacer. */
+  const ok = (r: any) => { if (r?.error) { setErr(explicar(r.error)); return false; } setErr(""); router.refresh(); return true; };
 
   const { total, filas } = repartoActos(actos, secs);
+  const deLosActos = plantillaDeLosActos(actos.map(a => a.nombre));
+  const desajuste = deLosActos && deLosActos !== P.clave
+    ? plantillaDe(deLosActos).nombre : null;
   const sueltas = secs.filter(s => !s.acto_id || !actos.some(a => a.id === s.acto_id));
   // (los avisos se calculan más abajo: necesitan el % real de cada secuencia)
 
@@ -126,7 +131,7 @@ export default function GuionEstructura({ proyectoId, modo, plantilla, actos, se
             <button className="btn btn-ghost" style={{ padding: "4px 10px", fontSize: 11.5 }}
               onClick={async () => {
                 const r: any = await sembrarBeats(proyectoId, P.clave);
-                if (r?.error) { setErr(r.error); return; }
+                if (r?.error) { setErr(explicar(r.error)); return; }
                 setErr(r?.nuevos ? "" : "Ya estaban todos los puntos de esta plantilla.");
                 router.refresh();
               }}>
@@ -152,7 +157,20 @@ export default function GuionEstructura({ proyectoId, modo, plantilla, actos, se
         )}
       </div>
 
-      {err && <div className="err-inline">⚠ {err}</div>}
+      {err && <div className="err-inline" style={{ whiteSpace: "pre-line" }}>⚠ {err}</div>}
+
+      {/* Los actos vienen de una plantilla y el modelo elegido es otro. No es
+          un error —los actos no se reemplazan solos, justo para no perder lo
+          escrito—, pero verlo sin explicación desconcierta: la cabecera dice
+          «Save the Cat» y los actos dicen Truby. */}
+      {desajuste && (
+        <div className="card" style={{ borderColor: "rgba(244,180,0,.35)", fontSize: 12.5, lineHeight: 1.55 }}>
+          ⚠ Tus actos son los de <b>{desajuste}</b> y estás escribiendo contra <b>{P.nombre}</b>.
+          No se reemplazan solos: los actos pueden tener secuencias colgando y cambiarlos
+          se llevaría por delante tu estructura. Renómbralos, o crea los de {P.nombre} y
+          mueve lo que haga falta.
+        </div>
+      )}
 
       {/* ── Hilos de trama ── */}
       <div className="card">

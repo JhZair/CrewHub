@@ -164,6 +164,19 @@ export const ACTOS_BASE: Record<string, { clave: string; nombre: string }[]> = {
   ],
 };
 
+/** ¿De qué plantilla son los actos que tiene el proyecto? Se deduce de sus
+ *  nombres, porque no se guarda: los actos se siembran una vez y después son
+ *  del autor —los renombra, los parte, añade uno—. Sirve solo para avisar de
+ *  que el modelo elegido y los actos que hay no coinciden, que es algo que
+ *  se ve raro en pantalla y no tiene explicación por ningún lado. */
+export function plantillaDeLosActos(nombres: string[]): string | null {
+  const norm = (a: string[]) => a.map(x => x.trim().toLowerCase()).join("|");
+  const mio = norm(nombres);
+  if (!mio) return null;
+  const hit = Object.entries(ACTOS_BASE).find(([, base]) => norm(base.map(b => b.nombre)) === mio);
+  return hit ? hit[0] : null;
+}
+
 /* ══════════ FICCIÓN O DOCUMENTAL ══════════
  * No es un ajuste nuevo: el tipo del proyecto ya lo dice. Guardarlo otra
  * vez en el guion sería tener dos verdades sobre lo mismo, y llegaría el
@@ -233,6 +246,31 @@ export const minutosHum = (m: number) => {
  * hilo» sin decir cuáles obliga a buscarlas a mano, y entonces no se
  * mira. */
 export type Aviso = { grave: boolean; txt: string; secId?: string };
+
+/* ── CUANDO FALTA UNA TABLA ──
+ * PostgREST contesta «Could not find the table 'public.guion_beats' in the
+ * schema cache». Es exacto y no sirve de nada: no dice qué hacer. El repo
+ * tiene la respuesta —un archivo en db/— y decirla aquí, una vez, evita
+ * pegarla en cada pantalla que pueda tropezar con lo mismo. */
+const ARCHIVO_DE: Record<string, string> = {
+  guion_beats: "db/guion-beats.sql",
+  guion_actos: "db/guion.sql",
+  guion_secuencias: "db/guion.sql",
+  guion_hilos: "db/guion.sql",
+  guion_secuencia_hilos: "db/guion.sql",
+};
+
+/** Añade al error de la base la instrucción que falta. Devuelve el mismo
+ *  mensaje si no reconoce nada: nunca se traga el original. */
+export function explicar(msg?: string | null): string {
+  const m = String(msg || "");
+  if (!m) return "";
+  const t = Object.keys(ARCHIVO_DE).find(k => m.includes(k));
+  const falta = /could not find the table|does not exist|schema cache|relation .* does not exist/i.test(m);
+  return t && falta
+    ? `${m}\n→ Falta correr ${ARCHIVO_DE[t]} en Supabase.`
+    : m;
+}
 
 /** Cuánto se puede desviar un punto de donde se esperaba antes de que
  *  signifique algo. Ocho puntos porcentuales, como en el prototipo: por
