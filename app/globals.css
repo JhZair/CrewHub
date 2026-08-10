@@ -2995,6 +2995,12 @@ button.repo-tit{text-align:left}
 /* ── COMBOS DE COMPRA ── */
 .cmp-form{display:flex;flex-direction:column;gap:8px;margin-top:8px}
 .cmp-fila{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+/* Campo con rotulo. Existe porque un `placeholder` se va en cuanto hay
+   valor: sirve para decir que se espera en un campo vacio, no para decir
+   que ES un campo lleno. Donde dos campos se parecen —dos URLs—, eso deja
+   la pantalla sin la unica pista que los distinguia. */
+.cmp-campo{display:flex;flex-direction:column;gap:3px;min-width:0}
+.cmp-lbl{color:var(--dim);font-size:10.5px;letter-spacing:.3px}
 .cmp-cab{display:flex;gap:9px;align-items:center;flex-wrap:wrap;padding:7px 0;
   border-bottom:1px solid var(--border);margin-bottom:8px}
 .cmp-hecho{background:rgba(46,204,113,.08);border:1px solid rgba(46,204,113,.28);

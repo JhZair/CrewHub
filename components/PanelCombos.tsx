@@ -189,19 +189,31 @@ function EditorCombo({ c, inventario, onErr, onListo }: {
           <select name="moneda" defaultValue={c.moneda || "PEN"} style={{ ...inp, width: 88 }}>
             <option value="PEN">S/ PEN</option><option value="USD">$ USD</option>
           </select>
-          <input name="comprobante_url" defaultValue={c.comprobante_url || ""}
-            style={{ ...inp, flex: 1, minWidth: 190 }} placeholder="Link del comprobante (boleta/factura)" />
-        </div>
-        {/* Los dos que faltaban. Mismos nombres y mismo sitio que en el alta
-            —quien escribió la nota ahí la busca aquí—, y el placeholder de la
-            nota es el mismo a propósito: enseña PARA QUÉ es el campo. */}
-        <div className="cmp-fila">
-          <input name="link" defaultValue={c.link || ""}
-            style={{ ...inp, flex: 1, minWidth: 190 }} placeholder="Link del producto (la ficha, no la boleta)" />
-        </div>
-        <div className="cmp-fila">
           <input name="nota" defaultValue={c.nota || ""}
-            style={{ ...inp, width: "100%" }} placeholder="Nota (opcional): «llegó sin el cargador, reclamado»" />
+            style={{ ...inp, flex: 1, minWidth: 200 }} placeholder="Nota (opcional): «llegó sin el cargador, reclamado»" />
+        </div>
+
+        {/* LOS DOS LINKS, JUNTOS Y CON RÓTULO.
+            Son dos papeles distintos —la boleta prueba que se pagó; la ficha
+            del producto dice qué es y cuánto costaba— y por eso viven en dos
+            columnas distintas desde el principio. Pero sueltos parecían el
+            mismo campo repetido, y con razón: un `placeholder` DESAPARECE en
+            cuanto el campo tiene valor. El de arriba estaba vacío y decía qué
+            era; el de abajo, lleno, no decía nada. Dos cajas con una URL y
+            ninguna pista de cuál es cuál.
+            El rótulo no se va al escribir, y ponerlos lado a lado convierte
+            la diferencia en lo primero que se ve. */}
+        <div className="cmp-fila">
+          <label className="cmp-campo" style={{ flex: 1, minWidth: 210 }}>
+            <span className="cmp-lbl">🧾 Comprobante — la boleta o factura</span>
+            <input name="comprobante_url" defaultValue={c.comprobante_url || ""}
+              style={{ ...inp, width: "100%" }} placeholder="https://…" />
+          </label>
+          <label className="cmp-campo" style={{ flex: 1, minWidth: 210 }}>
+            <span className="cmp-lbl">🔗 Producto — su ficha en la web del vendedor</span>
+            <input name="link" defaultValue={c.link || ""}
+              style={{ ...inp, width: "100%" }} placeholder="https://…" />
+          </label>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <button className="btn" style={{ padding: "5px 12px", fontSize: 12 }} disabled={ocupado}>
