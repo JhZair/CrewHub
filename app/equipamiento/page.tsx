@@ -11,7 +11,7 @@ import type { KitVista } from "@/lib/kits";
 import EnUsoAhora, { type UsoItem } from "@/components/EnUsoAhora";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import { buscadorDe, pal } from "@/lib/buscar";
-import { completitud, AYUDA_CATEGORIA, CATEGORIAS_EQUIPO } from "@/lib/entidades";
+import { completitud, AYUDA_CATEGORIA, CATEGORIAS_EQUIPO, SUBCATS_EQUIPO } from "@/lib/entidades";
 import { TXT } from "@/lib/texto";
 import Completitud from "@/components/Completitud";
 import Link from "next/link";
@@ -35,21 +35,24 @@ const EST_META: Record<string, [string, string]> = Object.fromEntries(
    Ni el contador ni el filtro fallaban por su cuenta —cada uno era correcto
    consigo mismo—; fallaba que fueran dos. */
 const SIN_CAT = "sin categoría";
+const SIN_SUB = "sin subcategoría";
 const catDe = (x: any) => (x?.categoria || "").trim() || SIN_CAT;
+const subDe = (x: any) => (x?.subcategoria || "").trim() || SIN_SUB;
 
 const TOPE = 200;
 const ABIERTOS = ["abierta", "en_progreso", "seguimiento"];
 
 export default async function Equipamiento({ searchParams }: {
-  searchParams: { q?: string; e?: string; c?: string; f?: string; ronda?: string; kit?: string };
+  searchParams: { q?: string; e?: string; c?: string; sc?: string; f?: string; ronda?: string; kit?: string };
 }) {
   const q = (searchParams?.q || "").trim();
   const e = searchParams?.e || "";
   const c = searchParams?.c || "";
   const f = searchParams?.f || "";
+  const sc = searchParams?.sc || "";   // subcategoría
   const ronda = searchParams?.ronda === "1";
   const kitPre = searchParams?.kit || "";   // llegó desde «🤝 Entregar» de un kit
-  const listar = !!(q || e || c || f || ronda);
+  const listar = !!(q || e || c || sc || f || ronda);
 
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -214,6 +217,7 @@ export default async function Equipamiento({ searchParams }: {
     // cualquier nombre que la mencionara: el número del chip nunca cuadraba
     // con lo que salía al hacer clic.
     (!c || catDe(x) === c) &&
+    (!sc || subDe(x) === sc) &&
     (!f || PRUEBA_F[f]?.(x)) &&
     (!ronda || porComprobar(x)) &&
     /* `txtEstadoEq` además del `estado` crudo: la columna guarda
@@ -244,6 +248,18 @@ export default async function Equipamiento({ searchParams }: {
     const k = catDe(x);
     porCat.set(k, (porCat.get(k) || 0) + 1);
   });
+
+  /* Las subcategorías de la categoría elegida. Se cuentan sobre TODOS los
+     equipos de esa categoría y no sobre lo ya filtrado, igual que los chips
+     de categoría: un chip que cambia de número según lo que ya filtraste no
+     sirve para decidir a dónde ir. */
+  const porSub = new Map<string, number>();
+  if (c) {
+    todos.filter((x: any) => catDe(x) === c).forEach((x: any) => {
+      const k = subDe(x);
+      porSub.set(k, (porSub.get(k) || 0) + 1);
+    });
+  }
 
   // Miniatura del equipo (cartel) y avatar de una persona, con placeholder.
   const miniEquipo = (url: string | undefined, size = 46) => (
@@ -357,6 +373,39 @@ export default async function Equipamiento({ searchParams }: {
             </Chip>
           ))}
         </FilaFiltro>
+
+        {/* ── SUBCATEGORÍA ──
+            Solo con una categoría elegida. Sin ella serían más de cien chips
+            —la suma de todas las listas— y una fila de cien chips no es un
+            filtro, es un muro. Aquí el orden NO es por cantidad sino el de
+            la lista de lib/entidades: esa lista está ordenada por lo que se
+            hace con cada cosa, y esa agrupación es la que ayuda a encontrar.
+            Lo que exista en los datos y no esté en la lista va al final: es
+            lo que alguien escribió a mano, y verlo junto es lo que permite
+            decidir si merece entrar en la lista o corregirse. */}
+        {c && porSub.size > 1 && (() => {
+          const canon = SUBCATS_EQUIPO[c] || [];
+          const enOrden = [
+            ...canon.filter(k => porSub.has(k)),
+            ...[...porSub.keys()].filter(k => k !== SIN_SUB && !canon.includes(k)).sort(),
+            ...(porSub.has(SIN_SUB) ? [SIN_SUB] : []),
+          ];
+          return (
+            <FilaFiltro titulo="Subcat.">
+              {enOrden.map(sub => (
+                <Chip key={sub}
+                  href={`/equipamiento?c=${encodeURIComponent(c)}${sc === sub ? "" : `&sc=${encodeURIComponent(sub)}`}`}
+                  on={sc === sub} color={sub === SIN_SUB ? "var(--yellow)" : "var(--teal)"}
+                  title={sc === sub ? "Quitar este filtro"
+                    : !canon.includes(sub) && sub !== SIN_SUB
+                      ? "Escrita a mano: no está en la lista sugerida de esta categoría" : ""}>
+                  {sub} · {porSub.get(sub)}
+                </Chip>
+              ))}
+            </FilaFiltro>
+          );
+        })()}
+
         <FilaFiltro titulo="Atención">
           <Chip href="/equipamiento?ronda=1" on={ronda} color="var(--yellow)"
             title="Nadie los ha visto físicamente en 90+ días">
@@ -535,17 +584,33 @@ export default async function Equipamiento({ searchParams }: {
             {ronda && <b style={{ color: "var(--yellow)" }}>🔍 MODO RONDA — marca cada equipo que veas físicamente · </b>}
             {filtradosTodos.length} resultado{filtradosTodos.length === 1 ? "" : "s"}
             {e && ` · ${(EST_META[e]?.[0] || e).toLowerCase()}`}
-            {c && ` · ${c}`}{f && ` · ${f.replace(/_/g, " ")}`}{q && ` · «${q}»`}
+            {c && ` · ${c}`}{sc && ` › ${sc}`}{f && ` · ${f.replace(/_/g, " ")}`}{q && ` · «${q}»`}
           </div>
-          {/* Agrupados por categoría: los lentes con los lentes */}
+          {/* Agrupados: por categoría, o por subcategoría si ya hay una
+              categoría elegida. Los lentes con los lentes. */}
           {(() => {
-            /* Mismo `catDe` que el contador y el filtro. «Sin categoría» va al
-               final: es lo que falta por clasificar, no una categoría más. */
-            const cats = [...new Set(filtrados.map(catDe))]
-              .sort((a: any, b: any) =>
-                (a === SIN_CAT ? 1 : 0) - (b === SIN_CAT ? 1 : 0) || String(a).localeCompare(String(b)));
+            /* Con una categoría elegida, el listado agrupa por SUBCATEGORÍA:
+               ver los 34 soportes en un solo montón no ayuda —trípodes,
+               placas y ventosas son cosas distintas— y el encabezado de
+               grupo pasa a decir algo que no estaba ya en el filtro de
+               arriba. Sin categoría, se agrupa por categoría como siempre.
+               Mismos `catDe`/`subDe` que el contador y el filtro. */
+            const porSubcat = !!c && !sc;
+            const clave = porSubcat ? subDe : catDe;
+            const VACIO = porSubcat ? SIN_SUB : SIN_CAT;
+            const canon = porSubcat ? (SUBCATS_EQUIPO[c] || []) : [];
+            const cats = [...new Set(filtrados.map(clave))].sort((a: any, b: any) => {
+              /* Lo que falta por clasificar, al final. Y dentro del orden, el
+                 de la lista sugerida antes que lo escrito a mano: la lista
+                 está ordenada por lo que se hace con cada cosa. */
+              const vac = (a === VACIO ? 1 : 0) - (b === VACIO ? 1 : 0);
+              if (vac) return vac;
+              const ia = canon.indexOf(a), ib = canon.indexOf(b);
+              if (ia !== ib) return (ia < 0 ? 1e6 : ia) - (ib < 0 ? 1e6 : ib);
+              return String(a).localeCompare(String(b));
+            });
             return cats.map((cat: any) => {
-              const filas = filtrados.filter((x: any) => catDe(x) === cat);
+              const filas = filtrados.filter((x: any) => clave(x) === cat);
               return (
                 <div key={cat || "sin"} style={{ marginTop: 6 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "12px 4px 6px" }}>
