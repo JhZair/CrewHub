@@ -2720,3 +2720,52 @@ button.repo-tit{text-align:left}
 .jr-fila .dato-btn{flex:none}
 .jr-plegar{min-width:24px;padding:1px 6px;flex:none}
 .jr-grupo-h{cursor:default}
+
+/* ── EN USO AHORA · quién tiene qué (app/equipamiento) ──
+   Dos líneas por fila: arriba QUÉ es, abajo PARA QUÉ salió y desde cuándo.
+   En una sola línea, un nombre largo más el chip del proyecto rompían la fila
+   y el ↩ Devolver caía descolgado a un tercer renglón. */
+.eq-uso-grupo{margin-bottom:12px}
+.eq-uso-grupo:last-child{margin-bottom:0}
+.eq-uso-h{display:flex;gap:9px;align-items:center;padding:7px 2px 6px}
+.eq-uso-per{color:var(--blue);font-weight:700;font-size:13.5px;
+  display:inline-flex;align-items:center;gap:7px}
+.eq-uso-avatar,.eq-uso-mini{flex:none;background:var(--bg);display:inline-flex;
+  align-items:center;justify-content:center;overflow:hidden}
+.eq-uso-avatar{border-radius:50%;border:1px solid var(--border2)}
+.eq-uso-mini{border-radius:8px;border:1px solid var(--border)}
+.eq-uso-avatar img,.eq-uso-mini img{width:100%;height:100%;object-fit:cover}
+
+.eq-uso-fila{display:flex;gap:10px;align-items:center;padding:6px 8px;border-radius:8px;
+  border-bottom:1px solid rgba(255,255,255,.045)}
+.eq-uso-fila:last-child{border-bottom:none}
+.eq-uso-fila:hover{background:rgba(255,255,255,.03)}
+/* Lo marcado se ve marcado desde el rabillo del ojo: si la única señal fuera
+   la casilla, a la décima fila ya no se sabe qué se lleva seleccionado. */
+.eq-uso-fila[data-marcada]{background:rgba(167,139,250,.10);
+  box-shadow:inset 3px 0 0 var(--accent)}
+.eq-uso-fila input[type=checkbox],.eq-uso-h input[type=checkbox]{
+  accent-color:var(--accent);cursor:pointer;flex:none;width:16px;height:16px;margin:0}
+
+.eq-uso-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.eq-uso-l1,.eq-uso-l2{display:flex;gap:8px;align-items:center;min-width:0}
+/* `min-width:0` arriba + esto: el nombre largo se corta con puntos suspensivos
+   en vez de empujar la fecha y el botón fuera de la fila. */
+.eq-uso-nom{font-weight:600;font-size:13.5px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.eq-uso-folio{color:var(--muted);background:#1c1c2c;font-size:10.5px;flex:none}
+.eq-uso-l2{font-size:11.5px}
+.eq-uso-proy{color:var(--violet);background:rgba(167,139,250,.12);font-size:11px;
+  max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.eq-uso-sinproy{color:var(--dim);font-style:italic;font-size:11px}
+.eq-uso-desde{color:var(--dim);white-space:nowrap;flex:none}
+
+.eq-uso-barra{position:sticky;top:0;z-index:5;display:flex;gap:10px;align-items:center;
+  flex-wrap:wrap;padding:8px 11px;margin:0 0 10px;border-radius:10px;
+  background:rgba(167,139,250,.16);border:1px solid rgba(167,139,250,.38);
+  backdrop-filter:blur(8px)}
+
+@media (max-width:640px){
+  .eq-uso-desde{display:none}   /* en móvil manda QUÉ y PARA QUÉ, no el día */
+  .eq-uso-fila{gap:8px;padding:6px 4px}
+}

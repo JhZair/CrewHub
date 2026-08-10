@@ -1,9 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import BotonComprobar from "@/components/BotonComprobar";
-import BotonDevolver from "@/components/BotonDevolver";
 import EntregaLote from "@/components/EntregaLote";
-import DevolverLote from "@/components/DevolverLote";
+import EnUsoAhora, { type UsoItem } from "@/components/EnUsoAhora";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import { buscadorDe, pal } from "@/lib/buscar";
 import { completitud } from "@/lib/entidades";
@@ -331,52 +330,22 @@ export default async function Equipamiento({ searchParams }: {
               qué. */}
           <EntregaLote equipos={(eqs || []) as any} personas={personasCat} proyectos={proyectosCat} />
 
+          {/* Quién tiene qué —y la devolución a media vuelta de rodaje—.
+              El panel entero es cliente porque las casillas son estado, así
+              que aquí solo se aplana lo que la consulta ya trajo: nada de
+              funciones cruzando la frontera, que es donde esto se rompe. */}
           {(enManos || []).length > 0 && (
-            <div className="card">
-              <div className="panel-h" style={{ color: "var(--yellow)" }}>🤝 En uso ahora — quién tiene qué</div>
-              {/* Agrupado por PERSONA y no plano: la pregunta que se hace de
-                  verdad no es «dónde está la A-090», es «qué se llevó Michel» —
-                  y a la vuelta, qué tiene que devolver. Doce filas sueltas
-                  obligan a leerlas todas para reconstruir eso a ojo. */}
-              {[...(enManos || []).reduce((m: Map<string, any>, p: any) => {
-                const per = un1(p.persona);
-                const k = per?.id || "_";
-                const g = m.get(k) || { per, items: [] as any[] };
-                g.items.push(p); m.set(k, g); return m;
-              }, new Map()).values()].map((g: any) => (
-                <div key={g.per?.id || "_"} style={{ marginBottom: 10 }}>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "6px 0" }}>
-                    <Link href={`/entidad/persona/${g.per?.id}`} style={{ color: "var(--blue)", fontWeight: 700, fontSize: TXT.base, display: "inline-flex", alignItems: "center", gap: 6 }}>
-                      {avatarPersona(g.per?.foto_url, 28)} {g.per?.alias || g.per?.nombre || "sin registrar"}
-                    </Link>
-                    <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>{g.items.length} equipo(s)</span>
-                    <span style={{ flex: 1 }} />
-                    <DevolverLote quien={g.per?.alias || g.per?.nombre || "esta persona"}
-                      prestamoIds={g.items.map((x: any) => x.id)} />
-                  </div>
-              {g.items.map((p: any) => (
-                <div className="info-row" key={p.id}>
-                  {miniEquipo(cartelPorEq.get(un1(p.equipo)?.id), 42)}
-                  {p.equipo?.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c", fontSize: TXT.chip }}>{p.equipo.folio}</span>}
-                  <Link href={`/entidad/equipamiento/${p.equipo?.id}`} style={{ fontWeight: 600, fontSize: TXT.base }}>
-                    {p.equipo?.nombre} →
-                  </Link>
-                  {/* El nombre de quien lo tiene ya está en la cabecera del
-                      grupo: repetirlo en cada fila era la mitad del ruido. */}
-                  {p.proy && (
-                    <Link href={`/entidad/proyecto/${p.proy.id}`} className="badge"
-                      style={{ color: "var(--violet)", background: "rgba(167,139,250,.12)", fontSize: TXT.chip }}>📁 {p.proy.nombre}</Link>
-                  )}
-                  <span style={{ flex: 1 }} />
-                  <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>
-                    desde {new Date(p.desde + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short" })}
-                  </span>
-                  <BotonDevolver prestamoId={p.id} equipoId={p.equipo?.id} />
-                </div>
-              ))}
-                </div>
-              ))}
-            </div>
+            <EnUsoAhora items={(enManos || []).map((p: any): UsoItem => {
+              const eq = un1(p.equipo), per = un1(p.persona), pr = un1(p.proy);
+              return {
+                id: p.id, desde: p.desde,
+                eqId: eq?.id, folio: eq?.folio, nombre: eq?.nombre || "sin nombre",
+                cartel: cartelPorEq.get(eq?.id) || null,
+                perId: per?.id || "_", per: per?.alias || per?.nombre || "sin registrar",
+                foto: per?.foto_url || null,
+                proyId: pr?.id || null, proy: pr?.nombre || null,
+              };
+            })} />
           )}
 
           {gruposAct.length > 0 && (
