@@ -11,7 +11,7 @@ import type { KitVista } from "@/lib/kits";
 import EnUsoAhora, { type UsoItem } from "@/components/EnUsoAhora";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import { buscadorDe, pal } from "@/lib/buscar";
-import { completitud } from "@/lib/entidades";
+import { completitud, AYUDA_CATEGORIA, CATEGORIAS_EQUIPO } from "@/lib/entidades";
 import { TXT } from "@/lib/texto";
 import Completitud from "@/components/Completitud";
 import Link from "next/link";
@@ -337,9 +337,14 @@ export default async function Equipamiento({ searchParams }: {
           })}
         </FilaFiltro>
         <FilaFiltro titulo="Categoría">
+          {/* `title` con qué es cada categoría: la duda entre «soporte» y
+              «cámara» para una jaula se resuelve leyendo, no adivinando. */}
           {[...porCat.entries()].sort((a, b) => b[1] - a[1]).map(([cat, n]) => (
             <Chip key={cat} href={`/equipamiento?c=${encodeURIComponent(cat)}`}
-              on={c === cat} color="var(--violet)">{cat} · {n}</Chip>
+              on={c === cat} color="var(--violet)"
+              title={AYUDA_CATEGORIA[cat] || (CATEGORIAS_EQUIPO.includes(cat) ? "" : "Categoría antigua: ya no se ofrece al crear un equipo. Ver db/categorias-equipo.sql")}>
+              {cat} · {n}
+            </Chip>
           ))}
         </FilaFiltro>
         <FilaFiltro titulo="Atención">

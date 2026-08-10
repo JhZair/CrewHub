@@ -132,27 +132,91 @@ export const VALIDADORES: Record<string, [RegExp, string]> = {
    de relación, y por eso vive en el eje `tipo` (ver campo tipo de persona). */
 export const EQUIPOS_PERSONA = ["creativo", "tecnico", "artistico", "administrativo"];
 
-/* Subcategorías sugeridas según la categoría del equipo */
+/* ══════════ QUÉ CLASE DE EQUIPO ES ══════════
+ *
+ * La lista vieja tenía tres solapamientos y cinco huérfanas.
+ *
+ * SOLAPAMIENTOS — categorías que eran subcategorías de otra:
+ *   · «tripode» y «monopod» dentro de «soporte»
+ *   · «audio» y «grabadora portátil» dentro de lo que ahora es «sonido»
+ *   · «pc_accesorios» dentro de «cómputo»
+ * Cuando una categoría es hija de otra, el mismo objeto puede caer en las
+ * dos y cada quien elige distinta: buscar «trípode» deja fuera la mitad.
+ *
+ * HUÉRFANAS — `soporte`, `tripode`, `audio`, `grabadora portátil` y
+ * `monopod` estaban en los DATOS pero no en el desplegable: entraron por la
+ * importación del CSV. El formulario las conserva —las enseña como «(valor
+ * actual)», que para eso está— pero no se le podían poner a un equipo
+ * nuevo. Así el inventario acababa con dos vocabularios: el que se importó
+ * y el que se escribe hoy, y ninguna búsqueda cubría los dos.
+ *
+ * La regla para mantener esto: una categoría dice QUÉ ES la cosa, no qué
+ * hace ni de qué marca es. Si una candidata cabe dentro de otra, es una
+ * subcategoría. Y si «otro» crece, es que falta una categoría —no que haga
+ * falta un cajón más grande—.
+ */
+export const CATEGORIAS_EQUIPO = [
+  "cámara", "drone", "sonido", "iluminación", "soporte",
+  "energía", "cómputo", "producción", "camping", "otro",
+];
+
+/** Qué es cada una, para el que duda entre dos. */
+export const AYUDA_CATEGORIA: Record<string, string> = {
+  "cámara": "Lo que capta la imagen y lo que va pegado a ella: cuerpos, ópticas, filtros, jaulas, memorias.",
+  "drone": "La aeronave y lo suyo. Aparte de cámara porque vuela, se registra y se le cae encima la normativa.",
+  "sonido": "Todo lo que capta o escucha: micros, grabadoras, audífonos, caña, cables.",
+  "iluminación": "Lo que da o modela la luz, y lo que la sostiene.",
+  "soporte": "Lo que sujeta algo: trípodes, gimbals, placas, brazos, ventosas, pértigas.",
+  "energía": "Lo que da corriente: baterías, power banks, cargadores, extensiones, paneles solares.",
+  "cómputo": "Lo que procesa o guarda material, y lo que se le conecta.",
+  "producción": "Lo que hace posible el rodaje sin grabar: radios, claqueta, cases, mesas, gaffer.",
+  "camping": "Lo que permite dormir y trabajar en el campo, a 4.000 m: carpa, cocina, frontal, botiquín de altura.",
+  "otro": "Provisional. Si algo lleva meses aquí, es que falta una categoría.",
+};
+
+/* Subcategorías sugeridas según la categoría del equipo. Son SUGERENCIAS: el
+   campo es editable, porque el inventario siempre trae algo que ninguna lista
+   previó. */
 export const SUBCATS_EQUIPO: Record<string, string[]> = {
   "cámara": ["Cuerpo de cámara", "Cámara de acción", "Cámara de bolsillo (Pocket / Nano)",
-    "Cámara 360", "Lente", "Batería", "Cargador", "Memoria SD / CFexpress",
-    "Trípode", "Monopié", "Estabilizador / Gimbal", "Filtro ND", "Jaula / Rig",
-    "Monitor externo", "Celular / Smartphone"],
-  "micrófono": ["Micrófono corbatero", "Micrófono boom / cañón", "Micrófono inalámbrico",
-    "Grabadora de audio", "Audífonos", "Caña / Boom pole", "Zeppelin / Paravientos", "Cable XLR"],
-  "iluminación": ["Luz LED", "Softbox", "Fresnel", "Aro de luz", "Trípode de luz",
-    "Bandera / Difusor", "Reflector", "Gelatinas"],
-  "drone": ["Drone", "Batería de drone", "Hélices", "Control remoto", "Case de drone"],
-  "energía": ["Batería V-Mount", "Cargador", "Generador", "Extensión eléctrica",
-    "Estabilizador de corriente", "Power bank"],
-  "producción": ["Claqueta", "Radio walkie-talkie", "Carpa / Toldo", "Mesa plegable",
-    "Silla", "Mochila / Case", "Botiquín"],
+    "Cámara 360", "Lente", "Filtro ND", "Jaula / Rig", "Monitor externo",
+    "Memoria SD / CFexpress", "Batería de cámara", "Cargador de cámara",
+    "Celular / Smartphone", "Visor / Loupe", "Case de cámara"],
+  "drone": ["Drone", "Batería de drone", "Hélices", "Control remoto", "Hub de carga",
+    "Filtros de drone", "Case de drone", "Antena / Repetidor"],
+  "sonido": ["Micrófono corbatero", "Micrófono de cañón", "Micrófono inalámbrico",
+    "Micrófono de mano", "Grabadora de audio", "Mezcladora", "Audífonos",
+    "Caña / Boom pole", "Zeppelin / Paravientos", "Cable XLR", "Adaptador de audio",
+    "Pilas / Batería de sonido"],
+  "iluminación": ["Panel LED", "Luz de mano / Tubo", "Aro de luz", "Softbox", "Fresnel",
+    "Reflector / Rebotador", "Bandera / Difusor", "Gelatinas", "Trípode de luz",
+    "Batería de luz", "Case de luces"],
+  /* Absorbe «tripode», «monopod» y lo que ya estaba en «soporte». La placa
+     Claw Mini, la gorra con soporte y la pértiga del Osmo son todas esto. */
+  "soporte": ["Trípode", "Monopié", "Cabezal / Rótula", "Estabilizador / Gimbal",
+    "Slider / Dolly", "Grúa / Jib", "Brazo mágico", "Placa de liberación rápida",
+    "Soporte de cabeza / pecho", "Ventosa / Clamp", "Pértiga / Extension rod",
+    "Selfie stick", "Saco de arena / Contrapeso"],
+  "energía": ["Batería V-Mount", "Power bank", "Cargador", "Pilas AA / AAA",
+    "Extensión eléctrica", "Regleta", "Generador", "Panel solar",
+    "Inversor", "Estabilizador de corriente"],
+  /* Absorbe «pc_accesorios»: un lector de memorias y el disco donde va el
+     material son la misma cadena, y partirlos obliga a buscar en dos sitios. */
+  "cómputo": ["Laptop", "PC de edición", "Tableta", "Monitor", "Disco duro externo",
+    "SSD", "NAS / Servidor", "Lector de memorias", "Hub USB", "Teclado", "Mouse",
+    "Cable HDMI", "Adaptador", "Tableta gráfica", "Router / Red"],
+  "producción": ["Claqueta", "Radio walkie-talkie", "Mochila / Case", "Maleta rígida",
+    "Carrito / Transporte", "Mesa plegable", "Silla", "Toldo / Carpa de set",
+    "Cinta / Gaffer", "Herramientas", "Botiquín", "Señalética", "Paraguas / Lluvia"],
+  /* Rodar a 4.000 m no es rodar en un set con carpa: es dormir arriba. Por eso
+     va aparte de «producción» —lo de producción se guarda en la oficina; esto
+     se revisa antes de cada subida, y que falte una bolsa de dormir no es una
+     incomodidad—. */
   "camping": ["Carpa", "Bolsa de dormir", "Colchoneta / Aislante", "Cocina de campo",
     "Balón de gas", "Termo", "Menaje de campo", "Linterna / Frontal",
-    "GPS / Radio satelital", "Poncho de lluvia", "Botas", "Cuerda / Driza", "Botiquín de altura"],
-  "pc_accesorios": ["Teclado", "Mouse", "Hub USB", "Lector de memorias", "Cable HDMI", "Adaptador"],
-  "cómputo": ["Laptop", "PC de edición", "Monitor", "Disco duro externo", "SSD",
-    "NAS / Servidor", "Tableta gráfica"],
+    "GPS / Radio satelital", "Poncho de lluvia", "Botas", "Cuerda / Driza",
+    "Botiquín de altura", "Oxígeno / Soroche", "Bloqueador solar", "Mochila de trekking",
+    "Guantes / Abrigo"],
   "otro": [],
 };
 
@@ -487,7 +551,7 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
     campos: [
       { key: "folio", label: "Folio", auto: true },
       { key: "nombre", label: "Nombre del activo", requerido: true },
-      { key: "categoria", label: "Categoría", tipo: "select", opciones: ["cámara", "micrófono", "iluminación", "drone", "energía", "producción", "camping", "pc_accesorios", "cómputo", "otro"] },
+      { key: "categoria", label: "Categoría", tipo: "select", opciones: [...CATEGORIAS_EQUIPO] },
       { key: "subcategoria", label: "Subcategoría", sugerenciasPor: { campo: "categoria", mapa: SUBCATS_EQUIPO } },
       // "en_uso" no es elegible: lo gobiernan los préstamos (🤝 en el perfil).
       // La lista sale de lib/estadosEquipo: escrita aquí a mano, un estado
