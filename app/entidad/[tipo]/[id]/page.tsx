@@ -84,6 +84,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { ICO_ENT, nombreDe, grafiasDe, TABLA_DE, tipoCanonico } from "@/lib/secciones";
+import { estadoKit, resumenKit, porQueNo, nombraPieza, NO_ENTREGABLE, type PiezaKit } from "@/lib/kits";
 
 /* PERFIL DE ENTIDAD VIVA — dos columnas:
    izquierda = el carné (datos estáticos, relaciones, credenciales)
@@ -666,6 +667,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   }
   let prestamos: any[] = [], proyectosPrest: any[] = [], prestamoPerfiles: { id: string; nombre: string }[] = [], bitacoraEq: any[] = [];
   let relacionados: any[] = []; const cartelRel = new Map<string, string>();
+  /* De qué kits forma parte este equipo, y cómo están sus compañeros de kit. */
+  let kitsDelEq: { id: string; nombre: string; uso?: string | null; retirado: boolean; piezas: PiezaKit[] }[] = [];
   if (params.tipo === "equipamiento") {
     const [pr, pc, py] = await Promise.all([
       supabase.from("equipo_prestamos")
@@ -697,6 +700,48 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         (mmR || []).forEach((m: any) => { if (m.cartel_url) cartelRel.set(m.entidad_id, m.cartel_url); });
       }
     }
+    /* ── DE QUÉ KIT ES ──
+       Un equipo no sabe solo que forma parte de algo: la ficha decía todo lo
+       suyo —categoría, folio, quién lo tiene— y nada de que sin él «Entrevista
+       PRO» sale coja. Y esa es justo la pregunta al ver que está en uso.
+       Se traen también sus compañeros de kit con su estado, porque saber que
+       pertenece a un kit sin saber si el kit está entero no decide nada. */
+    {
+      const { data: mis } = await supabase.from("kit_equipos")
+        .select("kit_id").eq("equipamiento_id", params.id);
+      const idsKit = [...new Set((mis || []).map((x: any) => x.kit_id))];
+      if (idsKit.length) {
+        const [{ data: ks }, { data: todas }] = await Promise.all([
+          supabase.from("kits").select("id,nombre,uso,retirado_en").in("id", idsKit).order("nombre"),
+          supabase.from("kit_equipos").select("kit_id,equipamiento_id").in("kit_id", idsKit),
+        ]);
+        const idsEq = [...new Set((todas || []).map((x: any) => x.equipamiento_id))];
+        const [{ data: eqsK }, { data: fuera }] = await Promise.all([
+          supabase.from("equipamiento").select("id,folio,nombre,estado").in("id", idsEq),
+          supabase.from("equipo_prestamos")
+            .select("equipamiento_id,persona:personas(nombre,alias)")
+            .in("equipamiento_id", idsEq).is("hasta", null),
+        ]);
+        const u1 = (x: any) => (Array.isArray(x) ? x[0] : x);
+        const tiene = new Map<string, string>();
+        (fuera || []).forEach((f: any) => {
+          const pe = u1(f.persona);
+          tiene.set(f.equipamiento_id, pe?.alias || pe?.nombre || "alguien");
+        });
+        const eqPorId = new Map((eqsK || []).map((e: any) => [e.id, e]));
+        kitsDelEq = (ks || []).map((k: any) => ({
+          id: k.id, nombre: k.nombre, uso: k.uso, retirado: !!k.retirado_en,
+          piezas: (todas || []).filter((t: any) => t.kit_id === k.id)
+            .map((t: any) => eqPorId.get(t.equipamiento_id))
+            .filter(Boolean)
+            .map((e: any) => ({
+              id: e.id, folio: e.folio, nombre: e.nombre, estado: e.estado,
+              quien: tiene.get(e.id) || null,
+            })),
+        }));
+      }
+    }
+
     // La bitácora de cada préstamo (comentarios con prestamo_id) + la bitácora
     // SUELTA del equipo (comentarios con equipamiento_id, sin depender de un uso),
     // ambas con sus reacciones (por comentario_id) y quién reaccionó (acuse).
@@ -2392,6 +2437,56 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               {/* Verificar DNI vive ahora en el bloque 🪪 Identidad */}
             </div>
           </div>
+
+          {/* ── DE QUÉ KITS FORMA PARTE ──
+              Va ANTES de «equipos relacionados» porque no es lo mismo: el kit
+              es una decisión que alguien tomó —esto sale junto—, y lo
+              relacionado es un parecido que calcula la máquina. Lo decidido
+              manda sobre lo inferido. */}
+          {params.tipo === "equipamiento" && kitsDelEq.length > 0 && (
+            <div className="card" style={{ marginTop: 12 }}>
+              <h4 style={{ margin: "0 0 8px", fontSize: 11.5, letterSpacing: 1.2, textTransform: "uppercase", color: "var(--dim)" }}>
+                📦 {kitsDelEq.length === 1 ? "Forma parte de un kit" : `Forma parte de ${kitsDelEq.length} kits`}
+              </h4>
+              {kitsDelEq.map(k => {
+                const est = estadoKit(k.piezas);
+                const res = resumenKit(est);
+                /* Este equipo se marca dentro de la lista: sin señal hay que
+                   buscar el folio propio entre cinco para saber cuál es. */
+                const ordenadas = [...est.libres, ...est.prestadas, ...est.vetadas];
+                return (
+                  <div key={k.id} style={{ padding: "6px 0", borderTop: "1px solid var(--border)" }}>
+                    <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
+                      <Link href={`/equipamiento?kit=${k.id}#entregar`} style={{ fontSize: TXT.micro, fontWeight: 700, color: "var(--violet)" }}>
+                        📦 {k.nombre}
+                      </Link>
+                      {k.uso && <span className="badge kit-uso">{k.uso}</span>}
+                      {k.retirado && <span className="badge" style={{ color: "var(--dim)", background: "rgba(255,255,255,.05)", fontSize: 10.5 }}>retirado</span>}
+                      <span style={{ color: res.color, fontSize: TXT.chip, fontWeight: 600 }}>{res.txt}</span>
+                    </div>
+                    <div className="kit-piezas">
+                      {ordenadas.map(pz => {
+                        const yo = pz.id === params.id;
+                        const libre = !pz.quien && !NO_ENTREGABLE[pz.estado || ""];
+                        return yo ? (
+                          <span key={pz.id} className="badge kit-pieza yo" title="este equipo">
+                            ● {nombraPieza(pz)}
+                          </span>
+                        ) : (
+                          <Link key={pz.id} href={`/entidad/equipamiento/${pz.id}`}
+                            className={`badge kit-pieza${libre ? "" : " ocupada"}`}
+                            title={libre ? "disponible" : porQueNo(pz)}>
+                            {nombraPieza(pz)}
+                            {!libre && <span className="kit-pieza-por"> · {porQueNo(pz)}</span>}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {/* Equipos relacionados (automático por categoría): de una cámara de
               acción, las otras cámaras de acción y demás cámaras. Al pie del

@@ -2807,3 +2807,6 @@ button.repo-tit{text-align:left}
 .eq-uso-kit{border-left:2px solid rgba(167,139,250,.45);padding-left:8px;margin:4px 0 6px}
 .eq-uso-kit-h{display:flex;gap:8px;align-items:center;padding:3px 2px 4px}
 .eq-uso-kit-n{color:var(--violet);font-size:12px;font-weight:700}
+/* El propio equipo, dentro de la lista de piezas de su kit: sin marca hay que
+   buscar el folio propio entre cinco para saber cuál es. */
+.kit-pieza.yo{background:rgba(167,139,250,.18);color:var(--violet);font-weight:700}
