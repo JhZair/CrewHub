@@ -3038,8 +3038,13 @@ button.repo-tit{text-align:left}
   font-size:11.5px;color:var(--dim)}
 .cbo-alta{border:1px dashed var(--border2);border-radius:10px;padding:10px;margin-bottom:10px}
 /* Unidades dentro de la vista rápida de un combo. Ninguna lista se recorta:
-   un combo de doce piezas enseña las doce, y si no cabe se desplaza. */
-.vc-lista{display:flex;flex-direction:column;max-height:320px;overflow-y:auto;margin-top:4px}
+   un combo de trece piezas enseña las trece.
+   SIN scroll propio: la caja del modal ya se desplaza (`.vo-cuerpo`, 78vh), y
+   dos barras anidadas obligan a elegir cuál mover. Y en rejilla, no en
+   columna: trece filas de un renglón desperdiciaban mil píxeles de ancho para
+   apilar mil de alto. Se reparten en dos o tres columnas según quepan. */
+.vc-lista{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));
+  gap:0 18px;margin-top:4px}
 .vc-fila{display:flex;gap:9px;align-items:center;padding:5px 4px;text-decoration:none;
   border-bottom:1px solid rgba(255,255,255,.045);min-width:0}
 .vc-fila:last-child{border-bottom:none}
@@ -3051,3 +3056,29 @@ button.repo-tit{text-align:left}
 .cbo-nom{background:none;border:none;padding:0;font:inherit;cursor:pointer;text-align:left}
 .cbo-nom:hover{color:#d99a3f}
 .cbo-editor{border-top:1px dashed var(--border2);margin-top:8px;padding-top:9px}
+
+/* ── FILAS DE LA VISTA AL VUELO ──
+   `.vp-fila` y `.vp-val` se usaban sin estar definidas: sin layout, la
+   etiqueta y el valor caían en el mismo renglón pegados —«CÓDIGOC-002»— y la
+   línea larga del comprobante se comía la fila de abajo. Una clase que no
+   existe no falla: simplemente no hace nada, y eso se ve como un descuido de
+   diseño en vez de como el error que es.
+   Rejilla de dos columnas: la etiqueta manda su ancho y el valor ocupa el
+   resto y parte donde haga falta. */
+.vp-fila{display:grid;grid-template-columns:98px minmax(0,1fr);gap:10px;
+  align-items:baseline;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+.vp-fila:last-child{border-bottom:none}
+.vp-fila .vp-lbl{line-height:1.5}
+.vp-val{font-size:12.5px;color:var(--text);line-height:1.5;min-width:0;
+  overflow-wrap:anywhere}
+/* Un enlace dentro de una fila no puede empujar la caja: se corta con puntos
+   suspensivos, que para eso está el `title` con la URL entera. */
+.vp-val .fv-link{max-width:100%}
+
+/* Y que nada de la vista al vuelo desborde a lo ancho: el scroll horizontal
+   del pie era una fila interna más ancha que su caja. */
+.vp-cuerpo,.vp-bloque,.vp-head{min-width:0;max-width:100%}
+.vc-lista,.vc-fila{min-width:0;max-width:100%}
+@media (max-width:520px){
+  .vp-fila{grid-template-columns:1fr;gap:1px}
+}

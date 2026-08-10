@@ -110,8 +110,10 @@ export default function VistaCompra({ compraId, children }: {
                   nadie sabe en qué se convirtió — cuélgale sus equipos desde 🎥 Equipos.
                 </div>
               )}
-              {/* NINGUNA lista se recorta: un combo con doce piezas tiene que
-                  enseñar las doce. Si no cabe, se desplaza. */}
+              {/* NINGUNA lista se recorta ni se lleva su propio scroll: la
+                  caja del modal ya se desplaza, y dos barras anidadas obligan
+                  a elegir cuál mover. Trece piezas se enseñan las trece, en
+                  rejilla —hay ancho de sobra— en vez de trece renglones. */}
               <div className="vc-lista">
                 {us.map((u: any) => (
                   <a key={u.id} href={`/entidad/equipamiento/${u.id}`} className="vc-fila"
