@@ -3,6 +3,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { asignarACompra } from "@/app/compras/acciones";
+import PiezasKit from "@/components/PiezasKit";
+import type { PiezaKit } from "@/lib/kits";
 
 /* DE QUÉ COMPRA VINO ESTE EQUIPO.
  *
@@ -19,11 +21,17 @@ import { asignarACompra } from "@/app/compras/acciones";
 
 export type ComboOp = { id: string; codigo?: string | null; nombre: string };
 
-export default function ComboDelEquipo({ equipoId, combo, compras }: {
+export default function ComboDelEquipo({ equipoId, combo, compras, hermanas = [] }: {
   equipoId: string;
   combo: { id: string; codigo?: string | null; nombre: string; proveedor?: string | null;
     fecha?: string | null; total?: number | string | null; moneda?: string | null } | null;
   compras: ComboOp[];
+  /** Lo demás que vino en la misma compra. Se lista aquí y no detrás de un
+   *  enlace: «¿qué más vino con esto?» es la pregunta, y hacerla costar un
+   *  clic es dejarla sin contestar. Se pinta con el mismo componente que las
+   *  piezas de un kit —es la misma fila: foto, folio, nombre y por qué no
+   *  está disponible—. */
+  hermanas?: PiezaKit[];
 }) {
   const router = useRouter();
   const [eligiendo, setEligiendo] = useState(false);
@@ -66,9 +74,27 @@ export default function ComboDelEquipo({ equipoId, combo, compras }: {
               {[combo.proveedor, fecha].filter(Boolean).join(" · ")}
             </div>
           )}
-          <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {/* Qué más vino, aquí mismo. El propio equipo va marcado dentro de
+              la lista: sin la marca hay que buscar el folio propio entre
+              seis para saber cuál eres. */}
+          {hermanas.length > 1 && (
+            <>
+              <div style={{ color: "var(--dim)", fontSize: 10.5, letterSpacing: .6,
+                textTransform: "uppercase", margin: "9px 0 2px" }}>
+                Vino con {hermanas.length - 1} cosa{hermanas.length - 1 === 1 ? "" : "s"} más
+              </div>
+              <PiezasKit piezas={hermanas} yo={equipoId} />
+            </>
+          )}
+          {hermanas.length === 1 && (
+            <div style={{ color: "var(--dim)", fontSize: 11.5, marginTop: 7 }}>
+              Es lo único que cuelga de esta compra.
+            </div>
+          )}
+
+          <div style={{ marginTop: 8, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             <Link href={`/entidad/compra/${combo.id}`} className="dato-btn" style={{ color: "var(--violet)", fontSize: 11.5 }}>
-              Ver qué más vino →
+              Ficha de la compra →
             </Link>
             <button className="dato-btn" style={{ color: "var(--dim)", fontSize: 11.5 }}
               disabled={ocupado} onClick={() => asignar(null)}>Sacar del combo</button>

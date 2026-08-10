@@ -706,6 +706,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   let inventarioCompra: any[] = [];
   let comboDelEq: any = null;
   let comprasCat: any[] = [];
+  let hermanasCombo: PiezaKit[] = [];
   if (params.tipo === "compra") {
     const [{ data: mias }, { data: todosEq }, { data: otras }] = await Promise.all([
       supabase.from("equipamiento")
@@ -764,6 +765,37 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         .order("fecha", { ascending: false, nullsFirst: false }).limit(300);
       comprasCat = data || [];
       comboDelEq = ent.compra_id ? (data || []).find((c: any) => c.id === ent.compra_id) || null : null;
+    }
+
+    /* Lo demás que vino en la misma compra, con su foto y quién lo tiene.
+       Se lista en la ficha y no detrás de un enlace: «¿qué más vino con
+       esto?» es LA pregunta que contesta la procedencia, y hacerla costar un
+       clic es dejarla sin contestar. */
+    if (ent.compra_id) {
+      const { data: herm } = await supabase.from("equipamiento")
+        .select("id,folio,nombre,estado").eq("compra_id", ent.compra_id).order("folio");
+      const idsH = (herm || []).map((h: any) => h.id);
+      if (idsH.length) {
+        const [{ data: mmH }, { data: prH }] = await Promise.all([
+          supabase.from("entidad_media").select("entidad_id,cartel_url")
+            .eq("entidad_tipo", "equipamiento").in("entidad_id", idsH),
+          supabase.from("equipo_prestamos")
+            .select("equipamiento_id,persona:personas(nombre,alias)")
+            .in("equipamiento_id", idsH).is("hasta", null),
+        ]);
+        const u1 = (x: any) => (Array.isArray(x) ? x[0] : x);
+        const cartelH = new Map<string, string>();
+        (mmH || []).forEach((m: any) => { if (m.cartel_url) cartelH.set(m.entidad_id, m.cartel_url); });
+        const tieneH = new Map<string, string>();
+        (prH || []).forEach((f: any) => {
+          const pe = u1(f.persona);
+          tieneH.set(f.equipamiento_id, pe?.alias || pe?.nombre || "alguien");
+        });
+        hermanasCombo = (herm || []).map((h: any) => ({
+          id: h.id, folio: h.folio, nombre: h.nombre, estado: h.estado,
+          quien: tieneH.get(h.id) || null, cartel: cartelH.get(h.id) || null,
+        }));
+      }
     }
 
     /* ── DE QUÉ KIT ES ──
@@ -2545,7 +2577,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               Se ve SIEMPRE, con combo o sin él: si el panel solo apareciera
               cuando el dato ya está, no habría forma de ponerlo. */}
           {params.tipo === "equipamiento" && (
-            <ComboDelEquipo equipoId={params.id} combo={comboDelEq}
+            <ComboDelEquipo equipoId={params.id} combo={comboDelEq} hermanas={hermanasCombo}
               compras={comprasCat.map((c: any) => ({ id: c.id, codigo: c.codigo, nombre: c.nombre }))} />
           )}
 
