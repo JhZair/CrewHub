@@ -3094,3 +3094,8 @@ button.repo-tit{text-align:left}
 @media (max-width:520px){
   .vp-fila{grid-template-columns:1fr;gap:1px}
 }
+.eq-uso-plegar{padding:1px 7px;flex:none}
+/* Para qué los tiene, con el grupo plegado: es lo que convierte la cabecera
+   en información. «KatyP · 9 equipos» no dice nada que no se supiera. */
+.eq-uso-proys{color:var(--violet);font-size:11px;opacity:.85;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;min-width:0;margin-left:auto}

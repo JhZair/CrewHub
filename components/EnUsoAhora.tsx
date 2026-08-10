@@ -80,6 +80,16 @@ const avatar = (url?: string | null, size = 28) => (
 
 export default function EnUsoAhora({ items }: { items: UsoItem[] }) {
   const [marcados, setMarcados] = useState<Set<string>>(new Set());
+  /* Cada persona arranca PLEGADA. Con nueve equipos de una y tres de otra,
+     el panel abierto son cuarenta filas antes de llegar al inventario, que
+     es a lo que se entra en esta página. Y la pregunta que se hace de
+     verdad —«¿quién tiene cosas fuera?»— se contesta con la cabecera sola.
+     Abrir es para cuando ya se sabe a quién mirar.
+     La casilla de la cabecera sigue funcionando con el grupo cerrado: se
+     puede marcar los nueve de KatyP sin desplegar nada. */
+  const [abiertos, setAbiertos] = useState<Set<string>>(new Set());
+  const alternarGrupo = (id: string) =>
+    setAbiertos(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   /* Agrupado por PERSONA y no plano: la pregunta que se hace de verdad no es
      «dónde está la A-090», es «qué se llevó Michel» —y a la vuelta, qué tiene
@@ -134,12 +144,22 @@ export default function EnUsoAhora({ items }: { items: UsoItem[] }) {
         const ids = g.items.map(i => i.id);
         const nMarc = ids.filter(id => marcados.has(id)).length;
         const todos = nMarc === ids.length;
+        const abierto = abiertos.has(g.perId);
+        const proys = [...new Set(g.items.map(i => i.proy).filter(Boolean))] as string[];
         return (
           <div key={g.perId} className="eq-uso-grupo">
             <div className="eq-uso-h">
               <input type="checkbox" checked={todos} onChange={() => alternaGrupo(ids, todos)}
                 title={todos ? `Desmarcar lo de ${g.per}` : `Marcar los ${ids.length} de ${g.per}`}
                 ref={el => { if (el) el.indeterminate = nMarc > 0 && !todos; }} />
+              {/* El desplegador es su propio botón y no la fila entera: la
+                  fila lleva dentro un enlace a la persona y una casilla, y
+                  hacerla toda pulsable convertiría cada intento de marcar en
+                  un despliegue. */}
+              <button className="dato-btn eq-uso-plegar" onClick={() => alternarGrupo(g.perId)}
+                title={abierto ? "Plegar" : `Ver los ${ids.length} de ${g.per}`}>
+                {abierto ? "▾" : "▸"}
+              </button>
               <Link href={`/entidad/persona/${g.perId}`} className="eq-uso-per">
                 {avatar(g.foto)} {g.per}
               </Link>
@@ -147,9 +167,18 @@ export default function EnUsoAhora({ items }: { items: UsoItem[] }) {
                 {ids.length} equipo{ids.length === 1 ? "" : "s"}
                 {nMarc > 0 && <span style={{ color: "var(--accent)" }}> · {nMarc} marcado{nMarc === 1 ? "" : "s"}</span>}
               </span>
+              {/* Con el grupo plegado, PARA QUÉ los tiene. Es lo que convierte
+                  la cabecera en información y no en un botón: «KatyP · 9
+                  equipos» no dice nada que no se supiera. */}
+              {!abierto && proys.length > 0 && (
+                <span className="eq-uso-proys">
+                  {proys.slice(0, 2).join(" · ")}
+                  {proys.length > 2 && ` · +${proys.length - 2}`}
+                </span>
+              )}
             </div>
 
-            {(() => {
+            {abierto && (() => {
               const fila = (p: UsoItem) => (
                 <div key={p.id} className="eq-uso-fila" data-marcada={marcado(p.id) ? "1" : undefined}>
                   <input type="checkbox" checked={marcado(p.id)} onChange={() => alterna(p.id)}

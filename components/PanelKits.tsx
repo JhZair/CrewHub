@@ -158,10 +158,16 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
   const vivos = kits.filter(k => !k.retirado);
   const retirados = kits.filter(k => k.retirado);
 
-  /* `<details>` controlado por estado y no por el atributo a secas: React
+  /* Arranca CERRADO, siempre. Abría solo cuando había kits, con buena
+     intención: enseñar que existen. Pero /equipamiento tiene ya cinco
+     paneles, y un panel que se abre solo empuja hacia abajo lo que sí se
+     vino a mirar —el inventario— y hay que plegarlo otra vez en cada carga.
+     Lo que se abre solo se cierra a mano; lo que se abre a mano se abre
+     cuando hace falta.
+     `<details>` controlado por estado y no por el atributo a secas: React
      reescribe `open` en cada render, así que un panel plegado a mano se
      volvería a abrir solo en cuanto algo refresque la página. */
-  const [abierto, setAbierto] = useState(vivos.length > 0);
+  const [abierto, setAbierto] = useState(false);
 
   const piezasDe = (k: KitVista): PiezaKit[] =>
     k.equipoIds.map(id => porEq.get(id)).filter(Boolean).map((e: any) => ({
