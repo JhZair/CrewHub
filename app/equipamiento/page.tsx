@@ -101,7 +101,7 @@ export default async function Equipamiento({ searchParams }: {
     supabase.from("kit_equipos").select("kit_id,equipamiento_id"),
     /* Los combos de compra: donde vive el precio de lo que se compró junto.
        Es lo que hace que el valor del inventario deje de ir corto. */
-    supabase.from("compras").select("id,codigo,nombre,proveedor,total,moneda,fecha,comprobante_url")
+    supabase.from("compras").select("id,codigo,nombre,proveedor,total,moneda,fecha,comprobante_url,link,nota")
       .order("fecha", { ascending: false, nullsFirst: false }),
   ]);
   const personasCat = ((personasRaw as any)?.data || []).map((x: any) =>

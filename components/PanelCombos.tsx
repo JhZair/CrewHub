@@ -26,6 +26,13 @@ export type ComboVista = {
   proveedor?: string | null; fecha?: string | null;
   total?: number | string | null; moneda?: string | null;
   comprobante_url?: string | null;
+  /* La ficha del producto y la nota. Se podían ESCRIBIR al dar de alta el
+     combo (components/AltaLote) y se leían en la vista al vuelo y en la
+     búsqueda global… pero no se podían CORREGIR en ningún sitio: campos de
+     una sola escritura. «llegó sin el cargador, reclamado» se queda dicho
+     para siempre, aunque el cargador llegue. */
+  link?: string | null;
+  nota?: string | null;
   nUnidades: number; nVivas: number; nProblema: number;
 };
 
@@ -184,6 +191,17 @@ function EditorCombo({ c, inventario, onErr, onListo }: {
           </select>
           <input name="comprobante_url" defaultValue={c.comprobante_url || ""}
             style={{ ...inp, flex: 1, minWidth: 190 }} placeholder="Link del comprobante (boleta/factura)" />
+        </div>
+        {/* Los dos que faltaban. Mismos nombres y mismo sitio que en el alta
+            —quien escribió la nota ahí la busca aquí—, y el placeholder de la
+            nota es el mismo a propósito: enseña PARA QUÉ es el campo. */}
+        <div className="cmp-fila">
+          <input name="link" defaultValue={c.link || ""}
+            style={{ ...inp, flex: 1, minWidth: 190 }} placeholder="Link del producto (la ficha, no la boleta)" />
+        </div>
+        <div className="cmp-fila">
+          <input name="nota" defaultValue={c.nota || ""}
+            style={{ ...inp, width: "100%" }} placeholder="Nota (opcional): «llegó sin el cargador, reclamado»" />
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <button className="btn" style={{ padding: "5px 12px", fontSize: 12 }} disabled={ocupado}>
