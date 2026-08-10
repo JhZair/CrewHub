@@ -47,6 +47,15 @@ alter table proyecto_actores add column if not exists necesita       text;
 alter table proyecto_actores add column if not exists necesita_como  text;
 alter table proyecto_actores add column if not exists notas          text;
 
+/* ── LA GALERÍA ──
+   `imagen_url` es UNA imagen: la cara, la que va en la lista. Un personaje de
+   animación trae bastante más —hoja de modelo, vistas ortogonales, paleta,
+   ciclos de poses, sketches— y todo eso ES material de postulación: el diseño
+   de personaje se adjunta al expediente DAFO.
+   Mismo formato que ya usan `comentarios.imagenes` y el muro (jsonb con un
+   array de URLs), para que sirvan el mismo editor y el mismo visor. */
+alter table proyecto_actores add column if not exists imagenes jsonb not null default '[]'::jsonb;
+
 -- ── 3. La persona pasa a ser opcional ──
 --  `drop not null` es idempotente: sobre una columna que ya lo admite, no hace nada.
 alter table proyecto_actores alter column persona_id drop not null;
@@ -67,9 +76,9 @@ select
   (select count(*) from information_schema.columns
     where table_name = 'proyecto_actores'
       and column_name in ('personaje','imagen_url','arquetipo','edad','genero',
-                          'rasgos','quiere','quiere_como','necesita','necesita_como','notas'))
-                                                                           as columnas_nuevas,
+                          'rasgos','quiere','quiere_como','necesita','necesita_como',
+                          'notas','imagenes'))                             as columnas_nuevas,
   (select count(*) from pg_constraint where conname = 'proyecto_actores_alguien')
                                                                            as check_alguien,
   (select count(*) from proyecto_actores)                                  as filas_existentes;
--- persona_opcional = YES · columnas_nuevas = 11 · check_alguien = 1
+-- persona_opcional = YES · columnas_nuevas = 12 · check_alguien = 1

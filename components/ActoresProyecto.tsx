@@ -3,7 +3,9 @@ import { agregarActorProyecto, quitarActorProyecto,
   guardarFichaActor, repartirActor } from "@/app/actions";
 import { EntPicker, type CatalogoItem } from "@/components/Composer";
 import Avatar from "@/components/Avatar";
-import { subirImagen } from "@/lib/subirImagen";
+import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
+import EditorImagenes from "@/components/EditorImagenes";
+import Foto from "@/components/Foto";
 import { rotuloActores, rolesDe, ordenarActores, leerActor, personaDe, esDocumental,
   CAMPOS_FICHA, CAMPOS_DETALLE, ARQUETIPOS, TIENE_FICHA } from "@/lib/actores";
 import { useRouter } from "next/navigation";
@@ -46,7 +48,11 @@ export default function ActoresProyecto({ proyectoId, actores, personas, tipo }:
   const [guardando, setGuardando] = useState(false);
   const [quitando, setQuitando] = useState<string | null>(null);
   const [abierto, setAbierto] = useState<string | null>(null);   // ficha desplegada
-  const [ficha, setFicha] = useState<Record<string, string>>({});
+  const [ficha, setFicha] = useState<Record<string, any>>({});
+  /* La galería viaja aparte del resto de la ficha porque es un array y el
+     resto son cadenas; mezclarlas obligaría a que cada `set` supiera de qué
+     tipo es lo que guarda. */
+  const [gal, setGal] = useState<string[]>([]);
   const [error, setError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
@@ -92,12 +98,13 @@ export default function ActoresProyecto({ proyectoId, actores, personas, tipo }:
     [...CAMPOS_FICHA, ...CAMPOS_DETALLE].forEach(c => { f[c.k] = a[c.k] || ""; });
     f.personaje = a.personaje || ""; f.rol = a.rol || "";
     f.arquetipo = a.arquetipo || ""; f.imagen_url = a.imagen_url || "";
+    setGal(Array.isArray(a.imagenes) ? a.imagenes : []);
     setFicha(f); setAbierto(a.id); setError("");
   };
 
   const guardarFicha = async (id: string) => {
     setGuardando(true); setError("");
-    const r: any = await guardarFichaActor(id, proyectoId, ficha);
+    const r: any = await guardarFichaActor(id, proyectoId, { ...ficha, imagenes: gal });
     setGuardando(false);
     if (r?.error) { setError(r.error); return; }
     setAbierto(null); router.refresh();
@@ -229,6 +236,18 @@ export default function ActoresProyecto({ proyectoId, actores, personas, tipo }:
                     {a.necesita && <div><b>Necesita</b> {a.necesita}</div>}
                   </div>
                 )}
+
+                {/* El arte se ve SIN abrir la ficha. Una galería que solo
+                    aparece en modo edición es una galería que no existe: nadie
+                    entra a editar para mirar. Clic para abrirla a tamaño real
+                    —una hoja de modelo en miniatura no se lee—. */}
+                {!desplegada && (a.imagenes || []).length > 0 && (
+                  <div className="pj-tira">
+                    {(a.imagenes as string[]).map((u, i) => (
+                      <Foto key={i} src={u} maxHeight={96} />
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div style={{ display: "flex", gap: 8, flexShrink: 0, alignItems: "center" }}>
@@ -286,6 +305,31 @@ export default function ActoresProyecto({ proyectoId, actores, personas, tipo }:
                           placeholder={c.hint} style={inputStyle} />}
                   </label>
                 ))}
+
+                {/* ARTE — hoja de modelo, ortogonales, paleta, ciclos de poses.
+                    Todo esto es material de postulación: el diseño de personaje
+                    se adjunta al expediente DAFO. Con una sola imagen no cabía,
+                    y acababa en una carpeta de Drive que no sabe de qué
+                    personaje es. Ctrl+V pega directo, como en el muro. */}
+                <div className="pj-arte"
+                  onPaste={e => {
+                    const files = imagenesDePaste(e);
+                    if (!files.length) return;
+                    e.preventDefault();
+                    (async () => {
+                      const urls: string[] = [];
+                      for (const f of files) {
+                        const r = await subirImagen(f);
+                        if (r.error) { setError(r.error); break; }
+                        if (r.url) urls.push(r.url);
+                      }
+                      if (urls.length) setGal(g => [...g, ...urls]);
+                    })();
+                  }}>
+                  <span className="pj-arte-t">Arte del personaje · {gal.length}</span>
+                  <EditorImagenes imgs={gal} setImgs={setGal} max={12} onError={setError} />
+                  <span className="pj-arte-h">Hoja de modelo, ortogonales, paleta, poses… (o pega con Ctrl+V)</span>
+                </div>
 
                 <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 4 }}>
                   <button className="btn" style={{ padding: "6px 14px", fontSize: 12 }}

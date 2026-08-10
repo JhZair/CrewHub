@@ -609,7 +609,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       /* Actores sociales: los personajes de la vida real que retrata el
          documental. Relación aparte del equipo. */
       supabase.from("proyecto_actores")
-        .select(`id,rol,descripcion,orden,personaje,imagen_url,arquetipo,edad,genero,
+        .select(`id,rol,descripcion,orden,personaje,imagen_url,imagenes,arquetipo,edad,genero,
           rasgos,quiere,quiere_como,necesita,necesita_como,notas,
           persona:personas(id,nombre,alias,foto_url)`)
         .eq("proyecto_id", params.id).order("orden").order("creado_en"),

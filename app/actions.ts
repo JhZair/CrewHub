@@ -3035,7 +3035,7 @@ export async function agregarActorProyecto(
  * La lista de campos permitidos está aquí y NO se toma del objeto que llega:
  * sin ella, quien llame a esta acción escribe la columna que quiera. */
 const CAMPOS_ACTOR = [
-  "personaje", "imagen_url", "rol", "descripcion", "arquetipo", "edad",
+  "personaje", "imagen_url", "imagenes", "rol", "descripcion", "arquetipo", "edad",
   "genero", "rasgos", "quiere", "quiere_como", "necesita", "necesita_como", "notas",
 ] as const;
 
@@ -3049,6 +3049,10 @@ export async function guardarFichaActor(id: string, proyectoId: string, campos: 
   CAMPOS_ACTOR.forEach(k => {
     if (!(k in campos)) return;
     const v = campos[k];
+    /* La galería es un array y su vacío es `[]`, no `null`: la columna es
+       `not null default '[]'` y mandarle null la rechazaría entera —con la
+       ficha completa dentro—. */
+    if (k === "imagenes") { patch[k] = Array.isArray(v) ? v.filter(Boolean) : []; return; }
     patch[k] = typeof v === "string" ? (v.trim() || null) : (v ?? null);
   });
   if (!Object.keys(patch).length) return { error: "No hay nada que guardar." };
