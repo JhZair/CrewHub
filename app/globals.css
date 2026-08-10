@@ -3021,3 +3021,8 @@ button.repo-tit{text-align:left}
 .cmp-asignar{border:1px dashed var(--border2);border-radius:10px;padding:10px;margin-top:9px}
 .cmp-lista{max-height:280px;overflow-y:auto;border:1px solid var(--border);
   border-radius:8px;margin-top:8px}
+/* Un enlace dentro de una fila de datos: corto, pulsable y que no rompa la
+   columna. La URL entera vive en el `title` y en el botón de copiar. */
+.fv-link{color:var(--blue);text-decoration:none;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;max-width:100%;display:inline-block;vertical-align:bottom}
+.fv-link:hover{text-decoration:underline}

@@ -87,6 +87,7 @@ import { estadoKit, resumenKit, type PiezaKit } from "@/lib/kits";
 import { ordenarActores, rotuloActores, leerActor, personaDe } from "@/lib/actores";
 import PiezasKit from "@/components/PiezasKit";
 import AsignarACompra, { SacarDelCombo } from "@/components/AsignarACompra";
+import ComboDelEquipo from "@/components/ComboDelEquipo";
 
 /* PERFIL DE ENTIDAD VIVA — dos columnas:
    izquierda = el carné (datos estáticos, relaciones, credenciales)
@@ -704,6 +705,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   let unidadesCompra: any[] = [];
   let inventarioCompra: any[] = [];
   let comboDelEq: any = null;
+  let comprasCat: any[] = [];
   if (params.tipo === "compra") {
     const [{ data: mias }, { data: todosEq }, { data: otras }] = await Promise.all([
       supabase.from("equipamiento")
@@ -753,10 +755,15 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         (mmR || []).forEach((m: any) => { if (m.cartel_url) cartelRel.set(m.entidad_id, m.cartel_url); });
       }
     }
-    if (ent.compra_id) {
+    /* Se traen TODAS las compras, no solo la suya: la sección se ve siempre
+       y desde ella se puede asignar. Un panel que solo aparece cuando el
+       dato ya está no sirve para ponerlo. */
+    {
       const { data } = await supabase.from("compras")
-        .select("id,codigo,nombre,proveedor,fecha,total,moneda").eq("id", ent.compra_id).maybeSingle();
-      comboDelEq = data;
+        .select("id,codigo,nombre,proveedor,fecha,total,moneda")
+        .order("fecha", { ascending: false, nullsFirst: false }).limit(300);
+      comprasCat = data || [];
+      comboDelEq = ent.compra_id ? (data || []).find((c: any) => c.id === ent.compra_id) || null : null;
     }
 
     /* ── DE QUÉ KIT ES ──
@@ -2532,29 +2539,14 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
           </div>
 
           {/* ── DE QUÉ COMPRA VINO ──
-              La procedencia es lo que contesta «¿está en garantía?», «¿qué
-              más vino con esto?» y «¿cuánto costó de verdad?». Estaba en
-              `comprado_en`, un texto suelto que no llevaba a ninguna parte. */}
-          {params.tipo === "equipamiento" && comboDelEq && (
-            <div className="card" style={{ marginTop: 12 }}>
-              <h4 style={{ margin: "0 0 6px", fontSize: 11.5, letterSpacing: 1.2, textTransform: "uppercase", color: "var(--dim)" }}>
-                🧾 Vino en esta compra
-              </h4>
-              <Link href={`/entidad/compra/${comboDelEq.id}`} style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
-                {comboDelEq.codigo && <span className="badge cmp-cod">{comboDelEq.codigo}</span>}
-                <b style={{ fontSize: TXT.micro, color: "var(--text)" }}>{comboDelEq.nombre}</b>
-                {comboDelEq.total != null && (
-                  <span style={{ color: "var(--teal)", fontSize: TXT.chip }}>
-                    {comboDelEq.moneda === "USD" ? "$" : "S/"} {Math.round(Number(comboDelEq.total)).toLocaleString("es-PE")}
-                  </span>
-                )}
-              </Link>
-              <div style={{ color: "var(--dim)", fontSize: TXT.chip, marginTop: 4 }}>
-                {[comboDelEq.proveedor, comboDelEq.fecha && new Date(comboDelEq.fecha + "T12:00:00")
-                  .toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" })]
-                  .filter(Boolean).join(" · ")}
-              </div>
-            </div>
+              La procedencia contesta «¿está en garantía?», «¿qué más vino con
+              esto?» y «¿cuánto costó de verdad?». Estaba en `comprado_en`, un
+              texto suelto que no llevaba a ninguna parte.
+              Se ve SIEMPRE, con combo o sin él: si el panel solo apareciera
+              cuando el dato ya está, no habría forma de ponerlo. */}
+          {params.tipo === "equipamiento" && (
+            <ComboDelEquipo equipoId={params.id} combo={comboDelEq}
+              compras={comprasCat.map((c: any) => ({ id: c.id, codigo: c.codigo, nombre: c.nombre }))} />
           )}
 
           {/* ── DE QUÉ KITS FORMA PARTE ──

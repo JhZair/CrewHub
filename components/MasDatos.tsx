@@ -21,6 +21,28 @@ export function edadDe(iso?: any): number | null {
   return a >= 0 && a < 130 ? a : null;
 }
 
+/* ── UN ENLACE ES PARA PULSARLO ──
+ * El link de un equipo se pintaba como texto: la URL de MercadoLibre son
+ * 120 caracteres que rompían la columna del carné en cuatro renglones, y
+ * encima no llevaban a ninguna parte —había que seleccionar a mano y pegar—.
+ * Se muestra el dominio, que es lo único que informa de un vistazo («ah, es
+ * de MercadoLibre»), y el enlace lleva a la dirección entera. Lo que se copia
+ * sigue siendo la URL completa: para copiar sirve el largo, para leer no. */
+export const esUrl = (v: any) => /^https?:\/\//i.test(String(v ?? "").trim());
+
+export function urlCorta(u: string): string {
+  try {
+    const x = new URL(u);
+    const host = x.hostname.replace(/^www\./, "");
+    /* El último tramo de la ruta si es corto y dice algo: distingue dos
+       enlaces del mismo sitio sin traerse la URL entera. */
+    const tramos = x.pathname.split("/").filter(Boolean);
+    const ultimo = tramos[tramos.length - 1] || "";
+    return ultimo && ultimo.length <= 22 && !/^index/i.test(ultimo)
+      ? `${host}/…/${ultimo}` : host;
+  } catch { return String(u).slice(0, 40); }
+}
+
 const verVal = (val: any) => {
   if (typeof val === "boolean") return val ? "✅ Sí" : "No";
   const s = String(val);
@@ -65,7 +87,12 @@ export default function FilasDatos({ campos, valores }: { campos: CampoDef[]; va
           <span className="fk">{nombreCorto(c)}</span>
           <span className="fv">
             <Copiar valor={crudoVal(valores[c.key])} etiqueta={nombreCorto(c).toLowerCase()}>
-              {verVal(valores[c.key])}
+              {esUrl(valores[c.key])
+                ? <a href={String(valores[c.key])} target="_blank" rel="noopener noreferrer"
+                    className="fv-link" title={String(valores[c.key])}>
+                    {urlCorta(String(valores[c.key]))} ↗
+                  </a>
+                : verVal(valores[c.key])}
             </Copiar>
             {edad != null && <span style={{ color: "var(--dim)" }}> · {edad} años</span>}
           </span>
