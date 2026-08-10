@@ -23,6 +23,9 @@ export const NO_ENTREGABLE: Record<string, string> = {
 export type EqBase = {
   id: string; folio?: string | null; nombre: string;
   categoria?: string | null; estado?: string | null; quien?: string | null;
+  /** Cartel del equipo (entidad_media). Una lista de equipos sin foto obliga
+   *  a leer folio por folio; con foto se reconoce de un vistazo cuál falta. */
+  cartel?: string | null;
 };
 
 /** Un kit tal como viaja a las pantallas: los ids en el orden en que se armó,
@@ -39,6 +42,7 @@ export type PiezaKit = {
   estado?: string | null;
   /** Quién lo tiene ahora, si está fuera. */
   quien?: string | null;
+  cartel?: string | null;
 };
 
 export type EstadoKit = {

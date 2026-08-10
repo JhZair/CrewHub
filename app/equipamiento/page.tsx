@@ -90,6 +90,8 @@ export default async function Equipamiento({ searchParams }: {
     ({ ...x, nombre: x.alias ? `${x.nombre} · ${x.alias}` : x.nombre }));
   const proyectosCat = (proyectosRaw as any)?.data || [];
   const un1 = (v: any) => (Array.isArray(v) ? v[0] : v);
+  const cartelPorEq = new Map<string, string>();
+  (media || []).forEach((m: any) => { if (m.cartel_url) cartelPorEq.set(m.entidad_id, m.cartel_url); });
 
   /* ── KITS ──
      `equipoIds` en el orden en que se armó el kit, no el de la tabla puente:
@@ -112,10 +114,9 @@ export default async function Equipamiento({ searchParams }: {
     const eq = un1(p.equipo), per = un1(p.persona);
     if (eq?.id) quienTiene.set(eq.id, per?.alias || per?.nombre || "alguien");
   });
-  const eqsConDueno = (eqs || []).map((e: any) => ({ ...e, quien: quienTiene.get(e.id) || null }));
-
-  const cartelPorEq = new Map<string, string>();
-  (media || []).forEach((m: any) => { if (m.cartel_url) cartelPorEq.set(m.entidad_id, m.cartel_url); });
+  const eqsConDueno = (eqs || []).map((e: any) => ({
+    ...e, quien: quienTiene.get(e.id) || null, cartel: cartelPorEq.get(e.id) || null,
+  }));
 
   /* Interacción en la bitácora de cada equipo: comentarios sueltos
      (equipamiento_id) + comentarios de sus usos (prestamo_id → equipo). */

@@ -3,8 +3,9 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { crearKit, guardarKit, setKitEquipos, borrarKit, revivirKit } from "@/app/actions";
-import { estadoKit, resumenKit, porQueNo, nombraPieza, NO_ENTREGABLE,
+import { estadoKit, resumenKit, NO_ENTREGABLE,
   type PiezaKit, type EqBase, type KitVista } from "@/lib/kits";
+import PiezasKit from "@/components/PiezasKit";
 
 /* ARMAR KITS — «Entrevista PRO» es una cosa, no tres fichas que alguien
  * recuerda marcar de a una.
@@ -46,6 +47,14 @@ function Escoge({ equipos, sel, alterna }: {
         {vistos.map(e => (
           <label key={e.id} className="ent-lote-fila">
             <input type="checkbox" checked={sel.has(e.id)} onChange={() => alterna(e.id)} />
+            {/* Con foto se arma el kit mirando los equipos; sin ella hay que
+                reconocerlos por el folio, que nadie se sabe de memoria. */}
+            <span className="kit-pz-img">
+              {e.cartel
+                // eslint-disable-next-line @next/next/no-img-element
+                ? <img src={e.cartel} alt="" referrerPolicy="no-referrer" />
+                : <span>🎥</span>}
+            </span>
             {e.folio && <span className="badge kit-folio">{e.folio}</span>}
             <span style={{ flex: 1, fontSize: 13.5 }}>{e.nombre}</span>
             {/* Un equipo en reparación SÍ puede formar parte del kit: el kit
@@ -157,6 +166,7 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
   const piezasDe = (k: KitVista): PiezaKit[] =>
     k.equipoIds.map(id => porEq.get(id)).filter(Boolean).map((e: any) => ({
       id: e.id, folio: e.folio, nombre: e.nombre, estado: e.estado, quien: e.quien,
+      cartel: e.cartel,
     }));
 
   return (
@@ -201,20 +211,7 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
 
                 {k.descripcion && <div className="kit-desc">{k.descripcion}</div>}
 
-                <div className="kit-piezas">
-                  {!e.total && <span style={{ color: "var(--dim)", fontSize: 11.5 }}>sin equipos — edítalo para armarlo</span>}
-                  {[...e.libres, ...e.prestadas, ...e.vetadas].map(p => {
-                    const libre = !p.quien && !NO_ENTREGABLE[p.estado || ""];
-                    return (
-                      <Link key={p.id} href={`/entidad/equipamiento/${p.id}`}
-                        className={`badge kit-pieza${libre ? "" : " ocupada"}`}
-                        title={libre ? "disponible" : porQueNo(p)}>
-                        {nombraPieza(p)}
-                        {!libre && <span className="kit-pieza-por"> · {porQueNo(p)}</span>}
-                      </Link>
-                    );
-                  })}
-                </div>
+                <PiezasKit piezas={[...e.libres, ...e.prestadas, ...e.vetadas]} />
 
                 {abierto && <Editor kit={k} equipos={equipos} onCerrar={() => setEditando(null)} />}
               </div>

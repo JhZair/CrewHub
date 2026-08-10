@@ -2776,14 +2776,29 @@ button.repo-tit{text-align:left}
 .kit-uso{color:var(--violet);background:rgba(167,139,250,.12);font-size:10.5px;
   text-transform:uppercase;letter-spacing:.4px}
 .kit-desc{color:var(--dim);font-size:11.5px;margin:3px 0 0 2px}
-.kit-piezas{display:flex;gap:6px;flex-wrap:wrap;margin:7px 0 2px}
-.kit-pieza{background:rgba(46,204,113,.10);color:var(--green);font-size:11px;
-  max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Las piezas del kit, con su foto. En rejilla y no en línea: en la ficha del
+   equipo (columna estrecha) cae a una columna sola, y en el panel de
+   /equipamiento se reparte en dos o tres sin tocar nada. */
+.kit-piezas{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));
+  gap:2px 14px;margin:7px 0 2px}
+.kit-pz{display:flex;gap:8px;align-items:center;padding:4px 6px 4px 4px;
+  border-radius:8px;min-width:0;text-decoration:none}
+.kit-pz:hover{background:rgba(255,255,255,.045)}
+.kit-pz-img{width:30px;height:30px;border-radius:6px;flex:none;overflow:hidden;
+  background:var(--bg);border:1px solid var(--border);display:inline-flex;
+  align-items:center;justify-content:center;font-size:15px}
+.kit-pz-img img{width:100%;height:100%;object-fit:cover}
+.kit-pz-folio{color:var(--muted);background:#1c1c2c;border-radius:999px;
+  padding:1px 7px;font-size:10px;flex:none}
+.kit-pz-n{flex:1;min-width:0;font-size:11.5px;color:var(--text);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* Lo que hoy no puede salir se apaga pero NO se esconde: el kit es la lista de
    empaque completa, y una pieza que desaparece de la lista es una pieza que
    nadie echa en falta hasta el rodaje. */
-.kit-pieza.ocupada{background:rgba(255,255,255,.05);color:var(--dim)}
-.kit-pieza-por{opacity:.8;font-style:italic}
+.kit-pz.ocupada .kit-pz-n{color:var(--dim)}
+.kit-pz.ocupada .kit-pz-img{opacity:.5}
+.kit-pz-por{font-size:10px;font-style:italic;color:var(--dim);flex:none;
+  max-width:44%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .kit-folio{color:var(--muted);background:#1c1c2c;font-size:10.5px}
 .kit-aviso{color:var(--yellow);font-size:10.5px;font-style:italic}
 .kit-editor{border-left:2px solid var(--accent);padding:8px 0 4px 10px;margin:9px 0 4px}
@@ -2809,4 +2824,8 @@ button.repo-tit{text-align:left}
 .eq-uso-kit-n{color:var(--violet);font-size:12px;font-weight:700}
 /* El propio equipo, dentro de la lista de piezas de su kit: sin marca hay que
    buscar el folio propio entre cinco para saber cuál es. */
-.kit-pieza.yo{background:rgba(167,139,250,.18);color:var(--violet);font-weight:700}
+.kit-pz.yo{background:rgba(167,139,250,.14);box-shadow:inset 2px 0 0 var(--violet)}
+.kit-pz.yo .kit-pz-n{color:var(--violet);font-weight:700}
+.kit-pz.yo .kit-pz-img{opacity:1}
+/* En el escogedor la miniatura va más chica: son cien filas, no cinco. */
+.kit-escoge .kit-pz-img{width:26px;height:26px;font-size:13px}

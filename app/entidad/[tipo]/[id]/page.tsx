@@ -84,7 +84,8 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { ICO_ENT, nombreDe, grafiasDe, TABLA_DE, tipoCanonico } from "@/lib/secciones";
-import { estadoKit, resumenKit, porQueNo, nombraPieza, NO_ENTREGABLE, type PiezaKit } from "@/lib/kits";
+import { estadoKit, resumenKit, type PiezaKit } from "@/lib/kits";
+import PiezasKit from "@/components/PiezasKit";
 
 /* PERFIL DE ENTIDAD VIVA — dos columnas:
    izquierda = el carné (datos estáticos, relaciones, credenciales)
@@ -716,12 +717,16 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
           supabase.from("kit_equipos").select("kit_id,equipamiento_id").in("kit_id", idsKit),
         ]);
         const idsEq = [...new Set((todas || []).map((x: any) => x.equipamiento_id))];
-        const [{ data: eqsK }, { data: fuera }] = await Promise.all([
+        const [{ data: eqsK }, { data: fuera }, { data: mmK }] = await Promise.all([
           supabase.from("equipamiento").select("id,folio,nombre,estado").in("id", idsEq),
           supabase.from("equipo_prestamos")
             .select("equipamiento_id,persona:personas(nombre,alias)")
             .in("equipamiento_id", idsEq).is("hasta", null),
+          supabase.from("entidad_media").select("entidad_id,cartel_url")
+            .eq("entidad_tipo", "equipamiento").in("entidad_id", idsEq),
         ]);
+        const cartelK = new Map<string, string>();
+        (mmK || []).forEach((m: any) => { if (m.cartel_url) cartelK.set(m.entidad_id, m.cartel_url); });
         const u1 = (x: any) => (Array.isArray(x) ? x[0] : x);
         const tiene = new Map<string, string>();
         (fuera || []).forEach((f: any) => {
@@ -736,7 +741,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             .filter(Boolean)
             .map((e: any) => ({
               id: e.id, folio: e.folio, nombre: e.nombre, estado: e.estado,
-              quien: tiene.get(e.id) || null,
+              quien: tiene.get(e.id) || null, cartel: cartelK.get(e.id) || null,
             })),
         }));
       }
@@ -2464,24 +2469,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                       {k.retirado && <span className="badge" style={{ color: "var(--dim)", background: "rgba(255,255,255,.05)", fontSize: 10.5 }}>retirado</span>}
                       <span style={{ color: res.color, fontSize: TXT.chip, fontWeight: 600 }}>{res.txt}</span>
                     </div>
-                    <div className="kit-piezas">
-                      {ordenadas.map(pz => {
-                        const yo = pz.id === params.id;
-                        const libre = !pz.quien && !NO_ENTREGABLE[pz.estado || ""];
-                        return yo ? (
-                          <span key={pz.id} className="badge kit-pieza yo" title="este equipo">
-                            ● {nombraPieza(pz)}
-                          </span>
-                        ) : (
-                          <Link key={pz.id} href={`/entidad/equipamiento/${pz.id}`}
-                            className={`badge kit-pieza${libre ? "" : " ocupada"}`}
-                            title={libre ? "disponible" : porQueNo(pz)}>
-                            {nombraPieza(pz)}
-                            {!libre && <span className="kit-pieza-por"> · {porQueNo(pz)}</span>}
-                          </Link>
-                        );
-                      })}
-                    </div>
+                    <PiezasKit piezas={ordenadas} yo={params.id} />
                   </div>
                 );
               })}
