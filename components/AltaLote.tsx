@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { crearCompra, altaEnLote } from "@/app/compras/acciones";
+import VistaCompra from "@/components/VistaCompra";
 
 /* DAR DE ALTA UNA COMPRA ENTERA.
  *
@@ -112,8 +113,12 @@ export default function AltaLote({ categorias = [] }: { categorias?: string[] })
             <b>{compra.codigo} · {compra.nombre}</b>
             <span style={{ color: "var(--dim)", fontSize: 11.5 }}>Ahora, qué unidades trajo</span>
             <span style={{ flex: 1 }} />
-            <a className="btn btn-ghost" style={{ padding: "4px 10px", fontSize: 11.5 }}
-              href={`/entidad/compra/${compra.id}`}>Ver la ficha ↗</a>
+            <VistaCompra compraId={compra.id}>
+              {abrir => (
+                <button className="btn btn-ghost" style={{ padding: "4px 10px", fontSize: 11.5 }}
+                  onClick={abrir}>⚡ Ver el combo</button>
+              )}
+            </VistaCompra>
             <button className="dato-btn" onClick={() => { setCompra(null); setMsg([]); setAbierto(false); }}>Terminar</button>
           </div>
 

@@ -16,13 +16,14 @@ import { siguientesFolios } from "@/lib/compras";
  * decirlo sola.
  */
 
-const revalidar = (compraId?: string) => {
+const revalidar = (_compraId?: string) => {
   /* Los combos viven dentro de /equipamiento: no hay listado propio que
      revalidar. Lo tuvo media hora y sobraba —nadie piensa «voy a compras»,
      piensa «¿de dónde salió esta radio?», y eso se pregunta desde los
      equipos—. */
   revalidatePath("/equipamiento");
-  if (compraId) revalidatePath(`/entidad/compra/${compraId}`);
+  /* Ya no hay ficha de compra que revalidar: el combo se mira con una vista
+     al vuelo, que pide sus datos al abrirse. */
 };
 
 async function sesion() {
@@ -70,6 +71,71 @@ export async function crearCompra(datos: {
   });
   revalidar(data.id);
   return { id: data.id, codigo: data.codigo };
+}
+
+/** Todo lo que la vista rápida necesita de un combo, en una llamada. */
+export async function cargarCompraRapida(id: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  const { data: compra, error } = await supabase.from("compras")
+    .select("id,codigo,nombre,proveedor,fecha,total,moneda,link,comprobante_url,nota,creado_en")
+    .eq("id", id).maybeSingle();
+  if (error) return { error: error.message };
+  if (!compra) return { error: "Ese combo ya no está." };
+
+  const { data: us } = await supabase.from("equipamiento")
+    .select("id,folio,nombre,estado,categoria,valor_compra").eq("compra_id", id).order("folio");
+
+  /* Quién tiene cada unidad ahora. Sin esto la vista solo puede decir «en
+     uso», que no sirve: lo que hace falta saber es a quién llamar. */
+  const ids = (us || []).map((u: any) => u.id);
+  const { data: fuera } = ids.length
+    ? await supabase.from("equipo_prestamos")
+        .select("equipamiento_id,persona:personas(nombre,alias)")
+        .in("equipamiento_id", ids).is("hasta", null)
+    : { data: [] as any[] };
+  const u1 = (x: any) => (Array.isArray(x) ? x[0] : x);
+  const tiene = new Map<string, string>();
+  (fuera || []).forEach((f: any) => {
+    const pe = u1(f.persona);
+    tiene.set(f.equipamiento_id, pe?.alias || pe?.nombre || "alguien");
+  });
+
+  return {
+    compra,
+    unidades: (us || []).map((u: any) => ({ ...u, quien: tiene.get(u.id) || null })),
+  };
+}
+
+/** Editar un combo. Lista blanca de columnas: sin ella, quien llame a esta
+ *  acción escribe la que quiera. */
+const CAMPOS_COMPRA = ["nombre", "proveedor", "fecha", "total", "moneda", "link", "comprobante_url", "nota"] as const;
+
+export async function guardarCompra(id: string, campos: Record<string, any>) {
+  const { supabase, user } = await sesion();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!id) return { error: "Falta el combo." };
+
+  const patch: Record<string, any> = {};
+  CAMPOS_COMPRA.forEach(k => {
+    if (!(k in campos)) return;
+    const v = String(campos[k] ?? "").trim();
+    if (k === "total") {
+      const n = Number(v.replace(",", "."));
+      patch[k] = v === "" ? null : (Number.isFinite(n) && n >= 0 ? n : null);
+    } else if (k === "moneda") patch[k] = v === "USD" ? "USD" : "PEN";
+    else patch[k] = v || null;
+  });
+  if ("nombre" in patch && !patch.nombre) return { error: "El combo necesita un nombre." };
+  if (!Object.keys(patch).length) return { error: "No hay nada que guardar." };
+
+  const { data, error } = await supabase.from("compras").update(patch).eq("id", id).select("id,nombre");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "No se guardó: no tienes permiso, o ya no existe." };
+  revalidar(id);
+  return { ok: true };
 }
 
 /* ══════════ ALTA EN LOTE ══════════ */

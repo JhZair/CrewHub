@@ -3037,3 +3037,17 @@ button.repo-tit{text-align:left}
 .cbo-l2{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:3px;
   font-size:11.5px;color:var(--dim)}
 .cbo-alta{border:1px dashed var(--border2);border-radius:10px;padding:10px;margin-bottom:10px}
+/* Unidades dentro de la vista rápida de un combo. Ninguna lista se recorta:
+   un combo de doce piezas enseña las doce, y si no cabe se desplaza. */
+.vc-lista{display:flex;flex-direction:column;max-height:320px;overflow-y:auto;margin-top:4px}
+.vc-fila{display:flex;gap:9px;align-items:center;padding:5px 4px;text-decoration:none;
+  border-bottom:1px solid rgba(255,255,255,.045);min-width:0}
+.vc-fila:last-child{border-bottom:none}
+.vc-fila:hover{background:rgba(255,255,255,.04)}
+.vc-nom{flex:1;min-width:0;font-size:12.5px;color:var(--text);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+/* El nombre del combo, en el panel: se ve como texto y se comporta como
+   botón —abre la vista al vuelo—. */
+.cbo-nom{background:none;border:none;padding:0;font:inherit;cursor:pointer;text-align:left}
+.cbo-nom:hover{color:#d99a3f}
+.cbo-editor{border-top:1px dashed var(--border2);margin-top:8px;padding-top:9px}

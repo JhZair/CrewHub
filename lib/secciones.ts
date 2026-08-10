@@ -90,8 +90,12 @@ export const grafiasDe = (t: string) =>
 /* Los tipos con ficha en /entidad/[tipo]/[id] — las claves de CONF en esa
    página. No incluye `publicacion` (vive en /caso) ni los que no tienen
    página (empresa_miembro, cronograma_actividades, vehiculo). */
+/* `compra` NO está: se ve en una vista al vuelo, no en una página. Sigue en
+   TABLA_DE para que el historial pueda NOMBRARLA —«registró el combo
+   Batería DJI Air 3»— aunque el nombre no lleve a ninguna parte. Poner un
+   enlace a /entidad/compra sería prometer una página que ya no existe. */
 const CON_FICHA = new Set([
-  "proyecto", "empresa", "persona", "equipamiento", "compra",
+  "proyecto", "empresa", "persona", "equipamiento",
   "lugar", "postulacion", "convocatoria", "etiqueta",
 ]);
 
@@ -114,10 +118,10 @@ export function rutaEntidad(tipo: string, id: string): string | null {
 export const TABLA_DE: Record<string, [string, string]> = {
   ...Object.fromEntries(SECCIONES.map(s => [s.tipo, [s.tabla, s.campo]])),
   publicacion: ["publicaciones", "titulo"],
-  /* El COMBO no tiene listado propio —vive plegado dentro de /equipamiento,
-     que es donde se piensa en equipos— pero SÍ tiene ficha, bitácora y
-     repositorio en /entidad/compra/[id]: ahí está la boleta. Mismo caso que
-     `publicacion`, que tampoco está en SECCIONES y tiene su página. */
+  /* El COMBO no tiene listado ni ficha: vive plegado dentro de /equipamiento
+     y se mira con una vista al vuelo. Está aquí solo para que el historial
+     pueda decir su nombre —«registró el combo Batería DJI Air 3»— en vez de
+     un uuid. Es el mismo caso que `cronograma_actividades`. */
   compra: ["compras", "nombre"],
   lugar: ["lugares", "nombre"],
   etiqueta: ["etiquetas", "nombre"],

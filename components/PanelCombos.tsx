@@ -1,8 +1,12 @@
 "use client";
 import { useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import AltaLote from "@/components/AltaLote";
+import VistaCompra from "@/components/VistaCompra";
+import AsignarACompra, { SacarDelCombo } from "@/components/AsignarACompra";
+import { guardarCompra, borrarCompra } from "@/app/compras/acciones";
 import { soles } from "@/lib/compras";
+import type { EqLibre } from "@/components/AsignarACompra";
 
 /* LOS COMBOS — cómo entró cada cosa.
  *
@@ -25,10 +29,17 @@ export type ComboVista = {
   nUnidades: number; nVivas: number; nProblema: number;
 };
 
-export default function PanelCombos({ combos, categorias = [] }: {
+export default function PanelCombos({ combos, categorias = [], inventario = [] }: {
   combos: ComboVista[]; categorias?: string[];
+  /** Todo el inventario, para poder meter en un combo equipos que ya existen.
+   *  Vivía en la ficha de la compra; la ficha se fue y esto se queda, que es
+   *  lo que de verdad se usaba de ella. */
+  inventario?: EqLibre[];
 }) {
+  const router = useRouter();
   const [abierto, setAbierto] = useState(false);
+  const [edita, setEdita] = useState<string | null>(null);
+  const [err, setErr] = useState("");
 
   const totalPEN = combos.filter(c => (c.moneda || "PEN") === "PEN")
     .reduce((a, c) => a + (Number(c.total) || 0), 0);
@@ -56,21 +67,34 @@ export default function PanelCombos({ combos, categorias = [] }: {
             </div>
           )}
 
+          {err && <div className="err-inline" style={{ marginTop: 8 }}>⚠ {err}</div>}
+
           {combos.map(c => {
             const fecha = c.fecha
               ? new Date(String(c.fecha) + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" })
               : null;
             return (
-              <Link key={c.id} href={`/entidad/compra/${c.id}`} className="cbo-fila">
+              <div key={c.id} className="cbo-fila">
                 <div className="cbo-l1">
                   {c.codigo && <span className="badge cmp-cod">{c.codigo}</span>}
-                  <b className="cbo-nom">{c.nombre}</b>
+                  {/* El nombre abre la vista al vuelo. Un combo se ve entero de
+                      un vistazo: no necesita página, necesita no hacerte perder
+                      el sitio. */}
+                  <VistaCompra compraId={c.id}>
+                    {abrir => (
+                      <button className="cbo-nom" onClick={abrir} title="Ver el combo sin salir de aquí">
+                        {c.nombre}
+                      </button>
+                    )}
+                  </VistaCompra>
                   <span style={{ flex: 1 }} />
                   {c.total != null && (
                     <b style={{ color: "var(--teal)", fontSize: 12.5, whiteSpace: "nowrap" }}>
                       {soles(Number(c.total), c.moneda || "PEN")}
                     </b>
                   )}
+                  <button className="dato-btn" title="Editar el combo"
+                    onClick={() => { setEdita(edita === c.id ? null : c.id); setErr(""); }}>✎</button>
                 </div>
                 <div className="cbo-l2">
                   {c.proveedor && <span>{c.proveedor}</span>}
@@ -88,7 +112,12 @@ export default function PanelCombos({ combos, categorias = [] }: {
                     {c.comprobante_url ? "🧾 con comprobante" : "sin comprobante"}
                   </span>
                 </div>
-              </Link>
+
+                {edita === c.id && (
+                  <EditorCombo c={c} inventario={inventario}
+                    onErr={setErr} onListo={() => { setEdita(null); router.refresh(); }} />
+                )}
+              </div>
             );
           })}
 
@@ -99,6 +128,93 @@ export default function PanelCombos({ combos, categorias = [] }: {
           )}
         </div>
       </details>
+    </div>
+  );
+}
+
+/* Editar un combo y manejar sus unidades. Todo esto vivía en la ficha de la
+   compra; la ficha se fue —una compra no tiene movimiento: se registra una
+   vez y no se toca— y esto se queda, que es lo único que de verdad se usaba
+   de ella. */
+function EditorCombo({ c, inventario, onErr, onListo }: {
+  c: ComboVista; inventario: EqLibre[];
+  onErr: (s: string) => void; onListo: () => void;
+}) {
+  const [ocupado, setOcupado] = useState(false);
+  const [pide, setPide] = useState(false);
+  const inp = {
+    background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8,
+    padding: "6px 9px", fontSize: 12.5, color: "var(--text)", fontFamily: "inherit", outline: "none",
+  } as const;
+
+  const suyas = inventario.filter(e => e.compra_id === c.id);
+
+  return (
+    <div className="cbo-editor" onClick={e => e.stopPropagation()}>
+      <form className="cmp-form" onSubmit={async ev => {
+        ev.preventDefault();
+        const f = new FormData(ev.currentTarget as HTMLFormElement);
+        setOcupado(true); onErr("");
+        const r: any = await guardarCompra(c.id, Object.fromEntries(f.entries()));
+        setOcupado(false);
+        if (r?.error) { onErr(r.error); return; }
+        onListo();
+      }}>
+        <div className="cmp-fila">
+          <input name="nombre" defaultValue={c.nombre} style={{ ...inp, flex: 2, minWidth: 200 }} placeholder="Qué se compró" />
+          <input name="proveedor" defaultValue={c.proveedor || ""} style={{ ...inp, flex: 1, minWidth: 130 }} placeholder="Proveedor" />
+          <input name="fecha" type="date" defaultValue={c.fecha || ""} style={{ ...inp, width: 145 }} />
+        </div>
+        <div className="cmp-fila">
+          <input name="total" defaultValue={c.total == null ? "" : String(c.total)} inputMode="decimal"
+            style={{ ...inp, width: 120 }} placeholder="Total" />
+          <select name="moneda" defaultValue={c.moneda || "PEN"} style={{ ...inp, width: 88 }}>
+            <option value="PEN">S/ PEN</option><option value="USD">$ USD</option>
+          </select>
+          <input name="comprobante_url" defaultValue={c.comprobante_url || ""}
+            style={{ ...inp, flex: 1, minWidth: 190 }} placeholder="Link del comprobante (boleta/factura)" />
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <button className="btn" style={{ padding: "5px 12px", fontSize: 12 }} disabled={ocupado}>
+            {ocupado ? "…" : "Guardar"}
+          </button>
+          <span style={{ flex: 1 }} />
+          {/* Borrar el combo NO borra sus equipos: quedan en el inventario sin
+              procedencia. Se dice cuántos, o nadie los buscaría. */}
+          {pide ? (
+            <span style={{ fontSize: 11.5 }}>
+              ¿quitar el combo? sus {c.nUnidades} equipo(s) se quedan, sin procedencia{" "}
+              <button type="button" style={{ color: "var(--red)", fontWeight: 700 }} onClick={async () => {
+                const r: any = await borrarCompra(c.id);
+                if (r?.error) { onErr(r.error); return; }
+                onListo();
+              }}>sí</button>
+              {" / "}<button type="button" style={{ color: "var(--dim)" }} onClick={() => setPide(false)}>no</button>
+            </span>
+          ) : (
+            <button type="button" className="dato-btn" style={{ color: "var(--dim)" }}
+              onClick={() => setPide(true)}>Quitar combo</button>
+          )}
+        </div>
+      </form>
+
+      {suyas.length > 0 && (
+        <div style={{ marginTop: 9 }}>
+          <div style={{ color: "var(--dim)", fontSize: 10.5, letterSpacing: .6, textTransform: "uppercase" }}>
+            Unidades · {suyas.length}
+          </div>
+          {suyas.map(u => (
+            <div key={u.id} className="info-row" style={{ padding: "3px 0" }}>
+              {u.folio && <span className="kit-pz-folio">{u.folio}</span>}
+              <a href={`/entidad/equipamiento/${u.id}`} style={{ flex: 1, fontSize: 12.5, minWidth: 0 }}>{u.nombre}</a>
+              <span style={{ color: "var(--dim)", fontSize: 11 }}>{(u.estado || "").replace(/_/g, " ")}</span>
+              <SacarDelCombo equipoId={u.id} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      <AsignarACompra compraId={c.id} equipos={inventario} />
     </div>
   );
 }

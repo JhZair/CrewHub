@@ -86,7 +86,6 @@ import { ICO_ENT, nombreDe, grafiasDe, TABLA_DE, tipoCanonico } from "@/lib/secc
 import { estadoKit, resumenKit, type PiezaKit } from "@/lib/kits";
 import { ordenarActores, rotuloActores, leerActor, personaDe } from "@/lib/actores";
 import PiezasKit from "@/components/PiezasKit";
-import AsignarACompra, { SacarDelCombo } from "@/components/AsignarACompra";
 import ComboDelEquipo from "@/components/ComboDelEquipo";
 
 /* PERFIL DE ENTIDAD VIVA — dos columnas:
@@ -702,29 +701,14 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   /* De qué kits forma parte este equipo, y cómo están sus compañeros de kit. */
   let kitsDelEq: { id: string; nombre: string; uso?: string | null; retirado: boolean; piezas: PiezaKit[] }[] = [];
   /* Unidades de un combo de compra, y —al revés— de qué combo vino un equipo. */
-  let unidadesCompra: any[] = [];
-  let inventarioCompra: any[] = [];
   let comboDelEq: any = null;
   let comprasCat: any[] = [];
   let hermanasCombo: PiezaKit[] = [];
-  if (params.tipo === "compra") {
-    const [{ data: mias }, { data: todosEq }, { data: otras }] = await Promise.all([
-      supabase.from("equipamiento")
-        .select("id,folio,nombre,estado,categoria,valor_compra").eq("compra_id", params.id).order("folio"),
-      /* El inventario entero para poder asignarle equipos que YA existen: el
-         alta en lote sirve para lo que se compre de ahora en adelante, pero
-         los 208 equipos ya cargados solo necesitan que alguien diga qué vino
-         junto. Es una lista de folios y nombres, no pesa. */
-      supabase.from("equipamiento")
-        .select("id,folio,nombre,categoria,estado,compra_id").order("folio").limit(1500),
-      supabase.from("compras").select("id,codigo,nombre"),
-    ]);
-    unidadesCompra = mias || [];
-    const nomCompra = new Map((otras || []).map((c: any) => [c.id, c.codigo ? `${c.codigo} · ${c.nombre}` : c.nombre]));
-    inventarioCompra = (todosEq || []).map((e: any) => ({
-      ...e, compra: e.compra_id ? nomCompra.get(e.compra_id) || null : null,
-    }));
-  }
+  /* (Aquí se cargaban las unidades de un combo para su ficha. La ficha se
+     fue: un combo se registra una vez y no se toca, así que no necesitaba
+     página con repositorio, casos y portada. Lo reemplaza la vista al
+     vuelo de components/VistaCompra, y editar sus unidades vive en el
+     panel de combos de /equipamiento.) */
   if (params.tipo === "equipamiento") {
     const [pr, pc, py] = await Promise.all([
       supabase.from("equipo_prestamos")
@@ -2586,42 +2570,9 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               es una decisión que alguien tomó —esto sale junto—, y lo
               relacionado es un parecido que calcula la máquina. Lo decidido
               manda sobre lo inferido. */}
-          {/* ── LAS UNIDADES QUE TRAJO ──
-              Cada una es una cosa física con su folio y su bitácora: la que
-              se malogró tiene que poder decirlo sola. Por eso el combo no
-              guarda «cantidad 10» sino diez unidades de verdad. */}
-          {params.tipo === "compra" && (
-            <div className="card" style={{ marginTop: 12 }}>
-              <h4 style={{ margin: "0 0 8px", fontSize: 11.5, letterSpacing: 1.2, textTransform: "uppercase", color: "var(--dim)" }}>
-                🎥 Unidades que trajo · {unidadesCompra.length}
-              </h4>
-              {!unidadesCompra.length && (
-                <div style={{ color: "var(--yellow)", fontSize: TXT.micro, lineHeight: 1.55 }}>
-                  Todavía no cuelga ninguna unidad de esta compra. Se dan de alta desde{" "}
-                  <Link href="/equipamiento" style={{ color: "var(--violet)" }}>🎥 Equipos</Link>,
-                  con «🧾 Registrar una compra» — o asignando equipos que ya existan.
-                </div>
-              )}
-              {unidadesCompra.map((u: any) => {
-                const ESTC: Record<string, string> = { disponible: "var(--green)", en_uso: "var(--blue)", en_reparacion: "var(--yellow)", perdido: "var(--red)", de_baja: "var(--dim)" };
-                return (
-                  <Link key={u.id} href={`/entidad/equipamiento/${u.id}`} className="info-row" style={{ textDecoration: "none" }}>
-                    {u.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c", fontSize: TXT.chip }}>{u.folio}</span>}
-                    <b style={{ flex: 1, fontSize: TXT.micro, color: "var(--text)" }}>{u.nombre}</b>
-                    {u.valor_compra != null && (
-                      <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>S/ {Math.round(Number(u.valor_compra)).toLocaleString("es-PE")}</span>
-                    )}
-                    <span style={{ color: ESTC[u.estado] || "var(--dim)", fontSize: TXT.chip }}>{(u.estado || "").replace(/_/g, " ")}</span>
-                    <SacarDelCombo equipoId={u.id} />
-                  </Link>
-                );
-              })}
-              {/* Los equipos que YA estaban registrados solo necesitan que
-                  alguien diga de qué compra salieron. Las cinco radios ya
-                  existían; lo que faltaba era contar que fueron una sola. */}
-              <AsignarACompra compraId={params.id} equipos={inventarioCompra as any} />
-            </div>
-          )}
+          {/* (Aquí se listaban las unidades del combo, en su ficha. Ahora eso
+              lo enseña la vista al vuelo, y manejarlas vive en el panel de
+              combos de /equipamiento — que es donde se piensa en equipos.) */}
 
           {params.tipo === "equipamiento" && kitsDelEq.length > 0 && (
             <div className="card" style={{ marginTop: 12 }}>

@@ -404,7 +404,12 @@ export default async function Equipamiento({ searchParams }: {
               misma pregunta: el kit dice qué SALE junto, el combo qué ENTRÓ
               junto. Verlos en la misma pantalla es lo que hace evidente que
               no son lo mismo. */}
-          <PanelCombos combos={combos} categorias={[...porCat.keys()].filter(c => c !== "sin categoría")} />
+          <PanelCombos combos={combos} categorias={[...porCat.keys()].filter(c => c !== "sin categoría")}
+            inventario={(eqs || []).map((e: any) => ({
+              id: e.id, folio: e.folio, nombre: e.nombre, categoria: e.categoria,
+              estado: e.estado, compra_id: e.compra_id,
+              compra: e.compra_id ? (combos.find((c: any) => c.id === e.compra_id)?.nombre || null) : null,
+            }))} />
 
           {/* Los kits van DESPUÉS de la entrega: primero se entrega —es lo del
               día— y armar el kit es mantenimiento, se hace de vez en cuando. */}

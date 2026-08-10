@@ -25,6 +25,7 @@ import { ejecutando } from "@/lib/fondos";
 import BotonFichaSunat from "@/components/BotonFichaSunat";
 import Volver from "@/components/Volver";
 import BuscadorGlobal from "@/components/BuscadorGlobal";
+import VistaCompra from "@/components/VistaCompra";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -1123,7 +1124,9 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
           con esto?», «¿está en garantía?»—. */}
       <Seccion titulo="🧾 Combos de compra" k="combos" n={comps.length} tinte={COLOR_ENTIDAD.compra}>
         {comps.map((x: any) => (
-          <Fila key={x.id} href={`/entidad/compra/${x.id}`}>
+          /* Sin `href`: un combo no tiene página. Lo abre el ⚡ de la derecha,
+             que enseña todo lo que hay que saber sin sacarte del buscador. */
+          <Fila key={x.id}>
             {x.codigo && <span className="badge cmp-cod">{x.codigo}</span>}
             <b>{x.nombre}</b>
             {x.proveedor && <span style={{ color: "var(--dim)", fontSize: 11.5 }}>· {x.proveedor}</span>}
@@ -1132,6 +1135,10 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
                 {x.moneda === "USD" ? "$" : "S/"} {Math.round(Number(x.total)).toLocaleString("es-PE")}
               </span>
             )}
+            <span style={{ flex: 1 }} />
+            <VistaCompra compraId={x.id}>
+              {abrir => <button className="chip-ojo fila-encima" onClick={abrir} title="Ver el combo">⚡</button>}
+            </VistaCompra>
           </Fila>
         ))}
       </Seccion>

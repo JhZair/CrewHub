@@ -1,9 +1,9 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { asignarACompra } from "@/app/compras/acciones";
 import PiezasKit from "@/components/PiezasKit";
+import VistaCompra from "@/components/VistaCompra";
 import type { PiezaKit } from "@/lib/kits";
 
 /* DE QUÉ COMPRA VINO ESTE EQUIPO.
@@ -60,15 +60,25 @@ export default function ComboDelEquipo({ equipoId, combo, compras, hermanas = []
 
       {combo ? (
         <>
-          <Link href={`/entidad/compra/${combo.id}`} style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
-            {combo.codigo && <span className="badge cmp-cod">{combo.codigo}</span>}
-            <b style={{ fontSize: 13, color: "var(--text)" }}>{combo.nombre}</b>
-            {combo.total != null && (
-              <span style={{ color: "var(--teal)", fontSize: 11.5 }}>
-                {combo.moneda === "USD" ? "$" : "S/"} {Math.round(Number(combo.total)).toLocaleString("es-PE")}
-              </span>
+          {/* Abre la vista al vuelo, no una página. Un combo se ve entero de
+              un vistazo —qué se compró, cuánto costó, qué trajo— y no tiene
+              movimiento que justifique sacarte de aquí. */}
+          <VistaCompra compraId={combo.id}>
+            {abrir => (
+              <button onClick={abrir} title="Ver el combo sin salir de la ficha"
+                style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap",
+                  background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left", font: "inherit" }}>
+                {combo.codigo && <span className="badge cmp-cod">{combo.codigo}</span>}
+                <b style={{ fontSize: 13, color: "var(--text)" }}>{combo.nombre}</b>
+                {combo.total != null && (
+                  <span style={{ color: "var(--teal)", fontSize: 11.5 }}>
+                    {combo.moneda === "USD" ? "$" : "S/"} {Math.round(Number(combo.total)).toLocaleString("es-PE")}
+                  </span>
+                )}
+                <span style={{ color: "var(--dim)", fontSize: 11 }}>⚡</span>
+              </button>
             )}
-          </Link>
+          </VistaCompra>
           {(combo.proveedor || fecha) && (
             <div style={{ color: "var(--dim)", fontSize: 11.5, marginTop: 4 }}>
               {[combo.proveedor, fecha].filter(Boolean).join(" · ")}
@@ -93,9 +103,6 @@ export default function ComboDelEquipo({ equipoId, combo, compras, hermanas = []
           )}
 
           <div style={{ marginTop: 8, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-            <Link href={`/entidad/compra/${combo.id}`} className="dato-btn" style={{ color: "var(--violet)", fontSize: 11.5 }}>
-              Ficha de la compra →
-            </Link>
             <button className="dato-btn" style={{ color: "var(--dim)", fontSize: 11.5 }}
               disabled={ocupado} onClick={() => asignar(null)}>Sacar del combo</button>
           </div>

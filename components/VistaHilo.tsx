@@ -65,7 +65,11 @@ export default function VistaHilo({
   children: (abrir: (e?: any) => void) => ReactNode;
   /** Rótulo de la cabecera; función si depende de los datos cargados. */
   tituloCab: ReactNode | ((d: any) => ReactNode);
-  abrirCompletoHref: string;
+  /** A dónde lleva «Abrir completo». Opcional: hay vistas rápidas que no
+   *  tienen página detrás —un combo de compra se ve entero de un vistazo y no
+   *  necesita ficha—, y en ésas el enlace no se pinta. Poner uno falso sería
+   *  peor: un botón que promete algo y lleva a un 404. */
+  abrirCompletoHref?: string;
   abrirCompletoTitle?: string;
   ariaLabel?: string;
   /** Lectura: devuelve los datos crudos, o `{ error }`. */
@@ -178,8 +182,10 @@ export default function VistaHilo({
             <div className="modal-cab">
               <b>{typeof tituloCab === "function" ? (tituloCab as (d: any) => ReactNode)(data) : tituloCab}</b>
               <span style={{ flex: 1 }} />
-              <a href={abrirCompletoHref} target="_blank" rel="noopener noreferrer"
-                className="vr-abrir" title={abrirCompletoTitle || "Abrir la página completa"}>Abrir completo ↗</a>
+              {abrirCompletoHref && (
+                <a href={abrirCompletoHref} target="_blank" rel="noopener noreferrer"
+                  className="vr-abrir" title={abrirCompletoTitle || "Abrir la página completa"}>Abrir completo ↗</a>
+              )}
               <button className="modal-x" title="Cerrar (Esc)" onClick={cerrar}>✕</button>
             </div>
 
