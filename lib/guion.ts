@@ -17,62 +17,117 @@
  * es cuál usa cada proyecto.
  */
 
+/* ── UN BEAT ──
+ * Un beat no es un título: es un TRABAJO que la historia tiene que hacer en
+ * un punto concreto. «Catalizador» no le dice nada a quien está delante de
+ * la página en blanco; «la noticia que desordena la vida del protagonista»
+ * sí. Por eso cada beat lleva su `que`: el modelo estructural solo sirve de
+ * guía si dice qué hay que conseguir, no solo cómo se llama.
+ *
+ * `tipo` separa lo que la estructura hace de verdad:
+ *   giro      — la historia cambia de dirección y no puede volver
+ *   inflexion — no cambia de dirección, cambia de naturaleza (o de quién
+ *               lleva la iniciativa). Es lo que suele faltar cuando un
+ *               segundo acto se hace largo.
+ *   estado    — no gira nada: establece, mide o cierra
+ */
+export type TipoBeat = "giro" | "inflexion" | "estado";
 export type Beat = {
   n: string;
   /** Dónde se ESPERA que caiga, en % del metraje. */
   pos: number;
+  tipo: TipoBeat;
+  /** Qué tiene que conseguir. La guía para escribir la secuencia. */
+  que: string;
+  /** A qué acto de la plantilla pertenece (índice en ACTOS_BASE). */
+  acto: number;
 };
 export type Plantilla = { clave: string; nombre: string; fuente: string; beats: Beat[] };
+
+export const ICO_BEAT: Record<TipoBeat, string> = { giro: "◆", inflexion: "◈", estado: "·" };
+export const TXT_BEAT: Record<TipoBeat, string> = {
+  giro: "punto de giro", inflexion: "punto de inflexión", estado: "",
+};
 
 export const PLANTILLAS: Plantilla[] = [
   {
     clave: "tres-actos", nombre: "Tres actos", fuente: "Syd Field",
     beats: [
-      { n: "Detonante", pos: 12 },
-      { n: "Primer punto de giro", pos: 25 },
-      { n: "Punto medio", pos: 50 },
-      { n: "Segundo punto de giro", pos: 75 },
-      { n: "Clímax", pos: 90 },
+      { n: "Detonante", pos: 12, tipo: "giro", acto: 0,
+        que: "El suceso que rompe el equilibrio. Sin él la historia no arranca: el protagonista podría seguir con su vida." },
+      { n: "Primer punto de giro", pos: 25, tipo: "giro", acto: 0,
+        que: "El protagonista DECIDE, y esa decisión lo mete en el segundo acto. A partir de aquí no puede volver a lo de antes." },
+      { n: "Punto medio", pos: 50, tipo: "inflexion", acto: 1,
+        que: "Cambia la naturaleza del conflicto: de reaccionar pasa a actuar (o al revés). Si falta, el segundo acto se hace largo." },
+      { n: "Segundo punto de giro", pos: 75, tipo: "giro", acto: 1,
+        que: "La caída mayor. Lo que creía que le bastaba deja de bastarle, y lo que necesita de verdad se le pone delante." },
+      { n: "Clímax", pos: 90, tipo: "giro", acto: 2,
+        que: "La confrontación final. Aquí se contesta la pregunta dramática, y se contesta con una acción, no con una frase." },
     ],
   },
   {
     clave: "save-the-cat", nombre: "Save the Cat", fuente: "Blake Snyder",
     beats: [
-      { n: "Imagen de apertura", pos: 2 },
-      { n: "Tema declarado", pos: 6 },
-      { n: "Catalizador", pos: 11 },
-      { n: "Ruptura", pos: 22 },
-      { n: "Juegos y diversión", pos: 33 },
-      { n: "Punto medio", pos: 50 },
-      { n: "Todo está perdido", pos: 72 },
-      { n: "Noche oscura del alma", pos: 78 },
-      { n: "Final", pos: 88 },
-      { n: "Imagen de cierre", pos: 99 },
+      { n: "Imagen de apertura", pos: 2, tipo: "estado", acto: 0,
+        que: "El mundo y el tono en un plano. Es el «antes» que la imagen de cierre va a contradecir." },
+      { n: "Tema declarado", pos: 6, tipo: "estado", acto: 0,
+        que: "Alguien dice, casi de pasada, de qué trata la película. El protagonista todavía no lo entiende." },
+      { n: "Catalizador", pos: 11, tipo: "giro", acto: 0,
+        que: "La noticia que desordena su vida. Le llega de fuera: no la busca." },
+      { n: "Ruptura", pos: 22, tipo: "giro", acto: 0,
+        que: "Deja atrás el mundo viejo y entra en el nuevo. Tiene que ser una decisión suya, no un empujón." },
+      { n: "Juegos y diversión", pos: 33, tipo: "estado", acto: 1,
+        que: "La promesa de la premisa: aquello a lo que vino el público. Es el tramo del tráiler." },
+      { n: "Punto medio", pos: 50, tipo: "inflexion", acto: 1,
+        que: "Falsa victoria o falsa derrota, y la apuesta sube. Lo público y lo privado se cruzan." },
+      { n: "Todo está perdido", pos: 72, tipo: "giro", acto: 2,
+        que: "La derrota mayor, con su «olor a muerte»: algo o alguien se pierde de verdad." },
+      { n: "Noche oscura del alma", pos: 78, tipo: "estado", acto: 2,
+        que: "El duelo. No hay plan. Es el único sitio donde el personaje puede mirar lo que evitaba." },
+      { n: "Final", pos: 88, tipo: "giro", acto: 3,
+        que: "Aplica lo aprendido y desmonta lo que lo bloqueaba. Gana con lo que era su debilidad." },
+      { n: "Imagen de cierre", pos: 99, tipo: "estado", acto: 3,
+        que: "El espejo de la apertura. Mide, sin decirlo, cuánto cambió." },
     ],
   },
   {
     clave: "viaje-heroe", nombre: "Viaje del héroe", fuente: "Campbell · Vogler",
     beats: [
-      { n: "Mundo ordinario", pos: 5 },
-      { n: "El llamado", pos: 12 },
-      { n: "Cruce del umbral", pos: 25 },
-      { n: "Pruebas y aliados", pos: 38 },
-      { n: "La caverna profunda", pos: 60 },
-      { n: "La odisea", pos: 75 },
-      { n: "La recompensa", pos: 85 },
-      { n: "El retorno", pos: 97 },
+      { n: "Mundo ordinario", pos: 5, tipo: "estado", acto: 0,
+        que: "Lo que va a perder. Si no se ve lo que tiene, después no duele que lo deje." },
+      { n: "El llamado", pos: 12, tipo: "giro", acto: 0,
+        que: "La invitación a salir. Casi siempre la rechaza primero, y ese rechazo lo define." },
+      { n: "Cruce del umbral", pos: 25, tipo: "giro", acto: 0,
+        que: "Entra en el mundo especial y acepta sus reglas. La puerta se cierra detrás." },
+      { n: "Pruebas y aliados", pos: 38, tipo: "estado", acto: 1,
+        que: "Aprende las reglas nuevas y se rodea. Cada prueba tiene que enseñarle algo distinto." },
+      { n: "La caverna profunda", pos: 60, tipo: "inflexion", acto: 1,
+        que: "Se acerca a lo que más teme. Aquí deja de avanzar por inercia y empieza a elegir." },
+      { n: "La odisea", pos: 75, tipo: "giro", acto: 1,
+        que: "Muerte y resurrección. Algo suyo se queda ahí dentro y no vuelve." },
+      { n: "La recompensa", pos: 85, tipo: "estado", acto: 2,
+        que: "Se lleva el elixir, pero con precio. Un premio sin precio no cierra nada." },
+      { n: "El retorno", pos: 97, tipo: "estado", acto: 2,
+        que: "Vuelve al mundo ordinario cambiado, y se nota en cómo lo mira." },
     ],
   },
   {
     clave: "truby", nombre: "Truby · pasos clave", fuente: "John Truby",
     beats: [
-      { n: "Debilidad y necesidad", pos: 6 },
-      { n: "Deseo", pos: 20 },
-      { n: "Oponente", pos: 35 },
-      { n: "Plan", pos: 45 },
-      { n: "Batalla", pos: 80 },
-      { n: "Autorrevelación", pos: 88 },
-      { n: "Nuevo equilibrio", pos: 98 },
+      { n: "Debilidad y necesidad", pos: 6, tipo: "estado", acto: 0,
+        que: "Qué le falta al protagonista para vivir bien — y que él todavía no sabe que le falta." },
+      { n: "Deseo", pos: 20, tipo: "giro", acto: 0,
+        que: "Lo que persigue, concreto y visible. Es el motor: el público tiene que poder decir si lo consiguió." },
+      { n: "Oponente", pos: 35, tipo: "estado", acto: 1,
+        que: "Quien quiere LO MISMO. No es el malo: es quien compite por el mismo objetivo." },
+      { n: "Plan", pos: 45, tipo: "estado", acto: 1,
+        que: "Cómo piensa vencerlo. Tiene que fallar, y fallar por su debilidad." },
+      { n: "Batalla", pos: 80, tipo: "giro", acto: 2,
+        que: "El enfrentamiento final por el objetivo. Se decide quién se lo lleva." },
+      { n: "Autorrevelación", pos: 88, tipo: "inflexion", acto: 2,
+        que: "Ve lo que no veía de sí mismo. Sin esto la batalla es solo ruido." },
+      { n: "Nuevo equilibrio", pos: 98, tipo: "estado", acto: 2,
+        que: "El nivel nuevo, más alto o más bajo. La medida de todo lo anterior." },
     ],
   },
 ];
@@ -179,11 +234,41 @@ export const minutosHum = (m: number) => {
  * mira. */
 export type Aviso = { grave: boolean; txt: string; secId?: string };
 
+/** Cuánto se puede desviar un punto de donde se esperaba antes de que
+ *  signifique algo. Ocho puntos porcentuales, como en el prototipo: por
+ *  debajo es ruido, y avisar de todo es no avisar de nada. */
+export const DESVIO_MAX = 8;
+
 export function diagnosticar(
   secs: { id: string; nombre: string; texto?: string | null; hilos?: string[] }[],
   hayHilos: boolean,
+  beats: { id: string; nombre: string; tipo: TipoBeat; pos?: number | null; secuencia_id?: string | null }[] = [],
+  pctDe: Map<string, number> = new Map(),
 ): Aviso[] {
   const av: Aviso[] = [];
+
+  /* La estructura primero. Un punto de giro sin escribir pesa más que una
+     secuencia corta: la secuencia corta se alarga, el giro que falta hay
+     que inventarlo. */
+  beats.forEach(b => {
+    if (!b.secuencia_id) {
+      av.push({
+        grave: b.tipo === "giro",
+        txt: `${b.tipo === "giro" ? "El punto de giro" : b.tipo === "inflexion" ? "El punto de inflexión" : "«"}` +
+             `${b.tipo === "estado" ? b.nombre + "»" : ` «${b.nombre}»`} no lo carga ninguna secuencia`,
+      });
+      return;
+    }
+    const real = pctDe.get(b.secuencia_id);
+    if (b.pos == null || real == null) return;
+    const d = Math.round(real - b.pos);
+    if (Math.abs(d) > DESVIO_MAX)
+      av.push({
+        grave: false,
+        txt: `«${b.nombre}» se espera al ${b.pos}% y cae al ${Math.round(real)}% (${d > 0 ? "+" : ""}${d} puntos)`,
+      });
+  });
+
   secs.forEach(s => {
     const p = palabras(s.texto);
     if (!p) av.push({ grave: true, txt: `«${s.nombre}» no tiene tratamiento escrito`, secId: s.id });

@@ -2,9 +2,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Tratamiento from "@/components/Tratamiento";
+import Espina, { type BeatFila } from "@/components/Espina";
 import { crearActo, guardarActo, borrarActo, crearSecuencia,
-  elegirPlantilla, crearHilo, borrarHilo } from "@/app/guion/acciones";
-import { PLANTILLAS, plantillaDe, VOZ, minutosHum, repartoActos,
+  elegirPlantilla, crearHilo, borrarHilo, sembrarBeats, crearBeat } from "@/app/guion/acciones";
+import { PLANTILLAS, plantillaDe, VOZ, minutosDe, minutosHum, repartoActos,
   diagnosticar, type ModoGuion } from "@/lib/guion";
 
 /* LA ESTRUCTURA: actos con sus secuencias.
@@ -25,9 +26,10 @@ type Hilo = { id: string; nombre: string; color: string };
 
 const COLORES = ["#a78bfa", "#2dd4bf", "#f4b400", "#ff4d5e", "#84cc16", "#06b6d4", "#ec4899"];
 
-export default function GuionEstructura({ proyectoId, modo, plantilla, actos, secs, hilos }: {
+export default function GuionEstructura({ proyectoId, modo, plantilla, actos, secs, hilos, beats }: {
   proyectoId: string; modo: ModoGuion; plantilla?: string | null;
   actos: Acto[]; secs: Sec[]; hilos: Hilo[];
+  beats: (BeatFila & { acto_id?: string | null })[];
 }) {
   const router = useRouter();
   const V = VOZ[modo];
@@ -41,7 +43,7 @@ export default function GuionEstructura({ proyectoId, modo, plantilla, actos, se
 
   const { total, filas } = repartoActos(actos, secs);
   const sueltas = secs.filter(s => !s.acto_id || !actos.some(a => a.id === s.acto_id));
-  const avisos = diagnosticar(secs, hilos.length > 0);
+  // (los avisos se calculan más abajo: necesitan el % real de cada secuencia)
 
   /* Los grupos EN EL ORDEN EN QUE SE VEN: primero las sueltas, luego cada
      acto con las suyas. La numeración «SEC 05» se saca de aquí y no del
@@ -56,6 +58,24 @@ export default function GuionEstructura({ proyectoId, modo, plantilla, actos, se
   let k = 0;
   grupos.forEach(g => g.lista.forEach(s => nDe.set(s.id, ++k)));
 
+  /* Dónde cae de VERDAD cada secuencia, en % del metraje: el centro de su
+     tramo. Es contra esto que se mide si un punto de giro llegó donde se
+     esperaba —lo único que un modelo estructural puede diagnosticar—. */
+  const pctDe = new Map<string, number>();
+  {
+    let acum = 0;
+    grupos.forEach(g => g.lista.forEach(s => {
+      const m = minutosDe(s).min;
+      pctDe.set(s.id, total ? ((acum + m / 2) / total) * 100 : 0);
+      acum += m;
+    }));
+  }
+  /* Las opciones del selector de anclaje, en el orden en que se ven. */
+  const opciones = grupos.flatMap(g => g.lista.map(s => ({ id: s.id, nombre: s.nombre, n: nDe.get(s.id) || 0 })));
+  const beatDe = new Map<string, BeatFila[]>();
+  beats.forEach(b => { if (b.secuencia_id) beatDe.set(b.secuencia_id, [...(beatDe.get(b.secuencia_id) || []), b]); });
+  const avisos = diagnosticar(secs, hilos.length > 0, beats, pctDe);
+
   /* ⚠ Esto NO puede ser un componente declarado aquí dentro.
      Lo era, y en cada render el padre creaba una función nueva: React la
      veía como un componente DISTINTO y desmontaba todos los `Tratamiento`
@@ -65,9 +85,24 @@ export default function GuionEstructura({ proyectoId, modo, plantilla, actos, se
      se monta, y el estado de cada `Tratamiento` sobrevive. */
   const filasDe = (lista: Sec[]) => lista.map((s, i) => (
     <Tratamiento key={s.id} sec={s} proyectoId={proyectoId} hilos={hilos} modo={modo}
-      n={nDe.get(s.id) || 0}
+      n={nDe.get(s.id) || 0} beats={beatDe.get(s.id) || []}
       primera={i === 0} ultima={i === lista.length - 1} />
   ));
+
+  /* La espina de un acto. Va ARRIBA de sus secuencias y no al final: es lo
+     que hay que leer antes de escribir, no después. */
+  const espinaDe = (actoId: string | null) => {
+    const suyos = beats.filter(b => (b.acto_id || null) === actoId);
+    if (!suyos.length) return null;
+    return (
+      <div className="es-bloque">
+        {suyos.map(b => (
+          <Espina key={b.id} beat={b} proyectoId={proyectoId} secs={opciones}
+            pctReal={b.secuencia_id ? pctDe.get(b.secuencia_id) ?? null : null} />
+        ))}
+      </div>
+    );
+  };
 
   return (
     <>
@@ -83,8 +118,21 @@ export default function GuionEstructura({ proyectoId, modo, plantilla, actos, se
               da miedo cuando ya hay tratamiento escrito, y ese miedo es el que
               hace que nadie pruebe otra estructura. */}
           <span style={{ color: "var(--dim)", fontSize: 11.5 }}>
-            {P.beats.length} beats · cambiarlo no toca lo escrito
+            {P.beats.length} puntos · cambiarlo no toca lo escrito
           </span>
+          {/* Sembrar AÑADE los que falten; nunca reemplaza. Se dice, porque
+              si no nadie pulsa un botón que podría llevarse sus notas. */}
+          {beats.length < P.beats.length && (
+            <button className="btn btn-ghost" style={{ padding: "4px 10px", fontSize: 11.5 }}
+              onClick={async () => {
+                const r: any = await sembrarBeats(proyectoId, P.clave);
+                if (r?.error) { setErr(r.error); return; }
+                setErr(r?.nuevos ? "" : "Ya estaban todos los puntos de esta plantilla.");
+                router.refresh();
+              }}>
+              ＋ Traer los puntos de {P.nombre}
+            </button>
+          )}
           <span style={{ flex: 1 }} />
           <b style={{ fontSize: 13 }}>
             {actos.length} actos · {secs.length} {V.secs.toLowerCase()} · {minutosHum(total)}
@@ -136,6 +184,14 @@ export default function GuionEstructura({ proyectoId, modo, plantilla, actos, se
           </form>
         )}
       </div>
+
+      {/* ── Puntos de estructura sin acto ── */}
+      {beats.some(b => !b.acto_id) && (
+        <div className="card">
+          <div className="panel-h" style={{ color: "var(--yellow)" }}>◆ Puntos sin acto</div>
+          {espinaDe(null)}
+        </div>
+      )}
 
       {/* ── Secuencias sin acto ── */}
       {sueltas.length > 0 && (
@@ -189,12 +245,19 @@ export default function GuionEstructura({ proyectoId, modo, plantilla, actos, se
               )}
             </div>
 
+            {espinaDe(a.id)}
             {filasDe(suyas)}
 
-            <button className="btn btn-ghost gu-mas"
-              onClick={async () => ok(await crearSecuencia(proyectoId, a.id, ""))}>
-              ＋ {V.sec}
-            </button>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="btn btn-ghost gu-mas"
+                onClick={async () => ok(await crearSecuencia(proyectoId, a.id, ""))}>
+                ＋ {V.sec}
+              </button>
+              <button className="btn btn-ghost gu-mas"
+                onClick={async () => ok(await crearBeat(proyectoId, a.id, "Punto sin nombre"))}>
+                ＋ Punto de giro
+              </button>
+            </div>
           </div>
         );
       })}

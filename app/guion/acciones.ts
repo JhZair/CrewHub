@@ -1,7 +1,7 @@
 "use server";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import { ACTOS_BASE, plantillaDe } from "@/lib/guion";
+import { ACTOS_BASE, plantillaDe, PLANTILLAS } from "@/lib/guion";
 
 /* LAS ACCIONES DEL GUION.
  *
@@ -47,9 +47,9 @@ export async function elegirPlantilla(proyectoId: string, clave: string) {
     .update({ guion_plantilla: p.clave }).eq("id", proyectoId);
   if (error) return { error: error.message };
 
-  /* Solo si está vacío. Sembrar sobre una estructura ya escrita
-     duplicaría los actos —y el guion quedaría con dos «Planteamiento»
-     sin que nadie hubiera pedido uno—. */
+  /* Los actos, solo si está vacío. Sembrar sobre una estructura ya escrita
+     duplicaría los actos —y el guion quedaría con dos «Planteamiento» sin
+     que nadie hubiera pedido uno—. */
   const { count } = await supabase.from("guion_actos")
     .select("id", { count: "exact", head: true }).eq("proyecto_id", proyectoId);
   let sembrados = 0;
@@ -60,12 +60,124 @@ export async function elegirPlantilla(proyectoId: string, clave: string) {
     if (e2) return { error: `Se guardó la plantilla, pero los actos no: ${e2.message}` };
     sembrados = base.length;
   }
+  /* Y la espina. Elegir un modelo estructural y no recibir sus puntos de
+     giro es quedarse con el nombre del modelo: lo que guía es saber dónde
+     va el detonante, no que la plantilla se llame «Save the Cat». */
+  const esp = await sembrarBeats(proyectoId, p.clave);
+
   await supabase.from("actividad").insert({
     entidad_tipo: "proyecto", entidad_id: proyectoId, actor_id: user.id, tipo: "edicion",
-    detalle: { mensaje: `eligió la plantilla narrativa «${p.nombre}»${sembrados ? ` y sembró ${sembrados} actos` : ""}` },
+    detalle: { mensaje: `eligió la plantilla narrativa «${p.nombre}»`
+      + (sembrados ? ` · ${sembrados} actos` : "")
+      + ((esp as any)?.nuevos ? ` · ${(esp as any).nuevos} puntos de estructura` : "") },
   });
   revalidar(proyectoId);
-  return { sembrados };
+  return { sembrados, beats: (esp as any)?.nuevos || 0 };
+}
+
+/* ══════════ LA ESPINA — puntos de giro y de inflexión ══════════ */
+
+/** Baja al proyecto los beats de una plantilla.
+ *
+ *  AÑADE, nunca reemplaza. Los que ya están (misma `clave`) se dejan
+ *  intactos: pueden llevar dentro la nota de qué pasa ahí en ESTA
+ *  historia, y eso es trabajo del autor, no de la plantilla. Cambiar de
+ *  modelo estructural no puede costar lo escrito —es justo lo que hace
+ *  que nadie se atreva a probar otro—.
+ *
+ *  Los actos se emparejan por posición: el beat que el catálogo pone en el
+ *  acto 1 va al segundo acto del proyecto, se llame como se llame. Si el
+ *  proyecto tiene menos actos, cae en el último. */
+export async function sembrarBeats(proyectoId: string, clave: string) {
+  const { supabase, user } = await sesion();
+  if (!user) return { error: "Sesión no encontrada." };
+  const p = plantillaDe(clave);
+
+  const [{ data: actos }, { data: hay }] = await Promise.all([
+    supabase.from("guion_actos").select("id,orden").eq("proyecto_id", proyectoId).order("orden"),
+    supabase.from("guion_beats").select("clave,orden").eq("proyecto_id", proyectoId),
+  ]);
+  const yaEstan = new Set((hay || []).map((b: any) => b.clave).filter(Boolean));
+  const desde = Math.max(-1, ...((hay || []).map((b: any) => b.orden ?? 0))) + 1;
+
+  const slug = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+  const filas = p.beats
+    .map((b, i) => ({ b, i, clave: `${p.clave}:${slug(b.n)}` }))
+    .filter(x => !yaEstan.has(x.clave))
+    .map((x, k) => ({
+      proyecto_id: proyectoId, clave: x.clave, nombre: x.b.n, que: x.b.que,
+      tipo: x.b.tipo, pos: x.b.pos,
+      acto_id: (actos || [])[Math.min(x.b.acto, ((actos || []).length || 1) - 1)]?.id || null,
+      orden: desde + k,
+    }));
+
+  if (!filas.length) return { nuevos: 0, yaEstaban: p.beats.length };
+  const { error } = await supabase.from("guion_beats").insert(filas);
+  if (error) return { error: error.message };
+  revalidar(proyectoId);
+  return { nuevos: filas.length, yaEstaban: p.beats.length - filas.length };
+}
+
+export async function crearBeat(proyectoId: string, actoId: string | null, nombre: string) {
+  const { supabase, user } = await sesion();
+  if (!user) return { error: "Sesión no encontrada." };
+  const n = (nombre || "").trim();
+  if (!n) return { error: "El punto necesita un nombre." };
+  const { error } = await supabase.from("guion_beats").insert({
+    proyecto_id: proyectoId, acto_id: actoId || null, nombre: n, tipo: "giro",
+    orden: await proximoOrden(supabase, "guion_beats", proyectoId),
+  });
+  if (error) return { error: error.message };
+  revalidar(proyectoId);
+  return {};
+}
+
+/** Guardar un beat. Igual que el tratamiento: no revalida —la nota se
+ *  autoguarda mientras se escribe— y quien refresca es el cliente. */
+export async function guardarBeat(
+  id: string, proyectoId: string,
+  campos: { nombre?: string; nota?: string; tipo?: string; pos?: string | number | null; secuencia_id?: string | null; acto_id?: string | null },
+) {
+  const { supabase, user } = await sesion();
+  if (!user) return { error: "Sesión no encontrada." };
+  const patch: Record<string, any> = {};
+  if (campos.nombre !== undefined) {
+    const n = campos.nombre.trim();
+    if (!n) return { error: "El punto necesita un nombre." };
+    patch.nombre = n;
+  }
+  if (campos.nota !== undefined) patch.nota = campos.nota;   // tal cual, sin trim
+  if (campos.tipo !== undefined) patch.tipo = ["giro", "inflexion", "estado"].includes(campos.tipo) ? campos.tipo : "estado";
+  if (campos.acto_id !== undefined) patch.acto_id = campos.acto_id || null;
+  if (campos.secuencia_id !== undefined) patch.secuencia_id = campos.secuencia_id || null;
+  if (campos.pos !== undefined) {
+    const v = Number(String(campos.pos ?? "").replace(",", "."));
+    patch.pos = String(campos.pos ?? "").trim() === "" ? null
+      : (Number.isFinite(v) && v >= 0 && v <= 100 ? v : null);
+  }
+  if (!Object.keys(patch).length) return { error: "No hay nada que guardar." };
+
+  const { data, error } = await supabase.from("guion_beats").update(patch).eq("id", id).select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "No se guardó: no tienes permiso, o ya no existe." };
+  return { ok: true };
+}
+
+/** Quitar un beat. Con nota escrita pide confirmación diciendo qué se va:
+ *  la nota es lo único de aquí que no está en ninguna otra parte. */
+export async function borrarBeat(id: string, proyectoId: string, confirmado = false) {
+  const { supabase, user } = await sesion();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: prev } = await supabase.from("guion_beats")
+    .select("nombre,nota").eq("id", id).maybeSingle();
+  if ((prev?.nota || "").trim() && !confirmado)
+    return { confirmar: true, nombre: prev?.nombre, nota: (prev!.nota as string).trim() };
+  const { error } = await supabase.from("guion_beats").delete().eq("id", id);
+  if (error) return { error: error.message };
+  revalidar(proyectoId);
+  return {};
 }
 
 /* ══════════ ACTOS ══════════ */

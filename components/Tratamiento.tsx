@@ -2,7 +2,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { guardarSecuencia, moverSecuencia, borrarSecuencia, marcarHilo } from "@/app/guion/acciones";
-import { palabras, minutosDe, minutosHum, MIN_PARA_ANALIZAR, VOZ, type ModoGuion } from "@/lib/guion";
+import { palabras, minutosDe, minutosHum, MIN_PARA_ANALIZAR, VOZ, ICO_BEAT, type ModoGuion } from "@/lib/guion";
+import type { BeatFila } from "@/components/Espina";
 
 /* EL TRATAMIENTO DE UNA SECUENCIA.
  *
@@ -40,10 +41,12 @@ type Sec = {
 type Hilo = { id: string; nombre: string; color: string };
 type Estado = "limpio" | "sucio" | "guardando" | "guardado" | "error";
 
-export default function Tratamiento({ sec, proyectoId, hilos, modo, n, primera, ultima }: {
+export default function Tratamiento({ sec, proyectoId, hilos, modo, n, beats = [], primera, ultima }: {
   sec: Sec; proyectoId: string; hilos: Hilo[]; modo: ModoGuion;
   /** Número visible (SEC 01) y si es la primera/última DE SU ACTO. */
   n: number; primera: boolean; ultima: boolean;
+  /** Los puntos de la estructura que esta secuencia carga. */
+  beats?: BeatFila[];
 }) {
   const router = useRouter();
   const V = VOZ[modo];
@@ -182,6 +185,20 @@ export default function Tratamiento({ sec, proyectoId, hilos, modo, n, primera, 
         </div>
       )}
       {err && <div className="err-inline">⚠ {err}</div>}
+
+      {/* Qué punto de la estructura carga esta secuencia. Va PEGADO al
+          nombre y no en un panel aparte: es lo que hay que tener delante
+          mientras se escribe, no algo que se consulta. */}
+      {beats.length > 0 && (
+        <div className="gu-beats">
+          {beats.map(b => (
+            <span key={b.id} className={`gu-beat es-${b.tipo}`} title={b.que || ""}>
+              {ICO_BEAT[b.tipo]} {b.nombre}
+              {b.nota?.trim() && <i> — {b.nota.trim()}</i>}
+            </span>
+          ))}
+        </div>
+      )}
 
       {abierto ? (
         <>

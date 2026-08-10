@@ -30,12 +30,17 @@ export default async function Guion({ params }: { params: { id: string } }) {
     .select("id,nombre,nombre_corto,tipo,etapa,guion_plantilla").eq("id", params.id).maybeSingle();
   if (!proy) notFound();
 
-  const [{ data: actos }, { data: secs, error: eSecs }, { data: hilos }] = await Promise.all([
+  const [{ data: actos }, { data: secs, error: eSecs }, { data: hilos }, { data: beats }] = await Promise.all([
     supabase.from("guion_actos").select("id,clave,nombre,orden")
       .eq("proyecto_id", params.id).order("orden"),
     supabase.from("guion_secuencias").select("id,nombre,texto,minutos,acto_id,orden")
       .eq("proyecto_id", params.id).order("orden"),
     supabase.from("guion_hilos").select("id,nombre,color,orden")
+      .eq("proyecto_id", params.id).order("orden"),
+    /* La espina: los puntos de giro y de inflexión en su orden. Es lo que
+       convierte «Save the Cat» en una guía y no en una etiqueta. */
+    supabase.from("guion_beats")
+      .select("id,nombre,que,tipo,pos,nota,acto_id,secuencia_id,orden")
       .eq("proyecto_id", params.id).order("orden"),
   ]);
 
@@ -86,7 +91,7 @@ export default async function Guion({ params }: { params: { id: string } }) {
           ⚠ No se pudo leer el guion, así que esto está vacío por un fallo, no porque no haya nada escrito.
           <br /><code style={{ fontSize: 11, opacity: .85 }}>{fallo}</code>
           {/relation|does not exist|schema cache/i.test(fallo) && (
-            <><br /><b>Falta correr <code>db/guion.sql</code> en Supabase.</b></>
+            <><br /><b>Falta correr <code>db/guion.sql</code> y <code>db/guion-beats.sql</code> en Supabase.</b></>
           )}
         </div>
       )}
@@ -95,15 +100,18 @@ export default async function Guion({ params }: { params: { id: string } }) {
         <div className="card" style={{ borderColor: "rgba(167,139,250,.35)" }}>
           <b>Todavía no hay estructura.</b>
           <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 6, lineHeight: 1.55 }}>
-            Elige abajo el modelo con el que quieres escribir y se crean sus actos. Después vas
-            añadiendo {V.secs.toLowerCase()} y escribiendo el tratamiento de cada una.
+            Elige abajo el modelo con el que quieres escribir: se crean sus actos y su espina
+            —cada punto de giro y de inflexión, en orden, con qué tiene que conseguir—.
+            Ese es el mapa. Después vas colgando {V.secs.toLowerCase()} de cada punto y
+            escribiendo el tratamiento de cada una.
             <br />La plantilla es una capa: puedes cambiarla más adelante sin perder una palabra.
           </div>
         </div>
       )}
 
       <GuionEstructura proyectoId={proy.id} modo={modo} plantilla={proy.guion_plantilla}
-        actos={(actos as any) || []} secs={secuencias as any} hilos={(hilos as any) || []} />
+        actos={(actos as any) || []} secs={secuencias as any} hilos={(hilos as any) || []}
+        beats={(beats as any) || []} />
     </main>
   );
 }
