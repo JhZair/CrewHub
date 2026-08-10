@@ -27,6 +27,16 @@ const diasDesde = (f: string) => Math.floor((Date.now() - new Date(f + "T12:00:0
 const EST_META: Record<string, [string, string]> = Object.fromEntries(
   ESTADOS_EQUIPO.map(e => [e.k, [e.plural, e.color] as [string, string]]));
 
+/* ── LA CATEGORÍA DE UN EQUIPO, UNA SOLA VEZ ──
+   El chip contaba `x.categoria || "sin categoría"` y el filtro comparaba
+   `(x.categoria || "") === c`. Las dos líneas parecen decir lo mismo y no lo
+   dicen: el chip decía «sin categoría · 9» y al pulsarlo la lista salía con
+   «0 resultados», porque el filtro comparaba «» contra «sin categoría».
+   Ni el contador ni el filtro fallaban por su cuenta —cada uno era correcto
+   consigo mismo—; fallaba que fueran dos. */
+const SIN_CAT = "sin categoría";
+const catDe = (x: any) => (x?.categoria || "").trim() || SIN_CAT;
+
 const TOPE = 200;
 const ABIERTOS = ["abierta", "en_progreso", "seguimiento"];
 
@@ -203,7 +213,7 @@ export default async function Equipamiento({ searchParams }: {
     // así que "cámara" traía también "Cuerpo de cámara" de subcategoría y
     // cualquier nombre que la mencionara: el número del chip nunca cuadraba
     // con lo que salía al hacer clic.
-    (!c || (x.categoria || "") === c) &&
+    (!c || catDe(x) === c) &&
     (!f || PRUEBA_F[f]?.(x)) &&
     (!ronda || porComprobar(x)) &&
     /* `txtEstadoEq` además del `estado` crudo: la columna guarda
@@ -231,8 +241,8 @@ export default async function Equipamiento({ searchParams }: {
   const atencion = todos.filter((x: any) => NECESITA_ATENCION.includes(x.estado));
   const porCat = new Map<string, number>();
   todos.forEach((x: any) => {
-    const c = x.categoria || "sin categoría";
-    porCat.set(c, (porCat.get(c) || 0) + 1);
+    const k = catDe(x);
+    porCat.set(k, (porCat.get(k) || 0) + 1);
   });
 
   // Miniatura del equipo (cartel) y avatar de una persona, con placeholder.
@@ -529,15 +539,18 @@ export default async function Equipamiento({ searchParams }: {
           </div>
           {/* Agrupados por categoría: los lentes con los lentes */}
           {(() => {
-            const cats = [...new Set(filtrados.map((x: any) => x.categoria || ""))]
-              .sort((a: any, b: any) => (a ? 0 : 1) - (b ? 0 : 1) || String(a).localeCompare(String(b)));
+            /* Mismo `catDe` que el contador y el filtro. «Sin categoría» va al
+               final: es lo que falta por clasificar, no una categoría más. */
+            const cats = [...new Set(filtrados.map(catDe))]
+              .sort((a: any, b: any) =>
+                (a === SIN_CAT ? 1 : 0) - (b === SIN_CAT ? 1 : 0) || String(a).localeCompare(String(b)));
             return cats.map((cat: any) => {
-              const filas = filtrados.filter((x: any) => (x.categoria || "") === cat);
+              const filas = filtrados.filter((x: any) => catDe(x) === cat);
               return (
                 <div key={cat || "sin"} style={{ marginTop: 6 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "12px 4px 6px" }}>
                     <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 1.2, color: "var(--dim)", fontWeight: 700 }}>
-                      {cat || "sin categoría"} · {filas.length}
+                      {cat} · {filas.length}
                     </span>
                     <span style={{ flex: 1, height: 1, background: "var(--border)" }} />
                   </div>
