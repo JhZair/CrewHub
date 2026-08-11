@@ -248,7 +248,17 @@ export const SUBCATS_EQUIPO: Record<string, string[]> = {
        nombre propio, no caer en «otro». */
     "Montura / Adaptador Bowens",
     // Sostienen, alimentan y guardan
-    "Trípode de luz", "Batería de luz", "Case de luces"],
+    "Trípode de luz", "Batería de luz",
+    /* El cargador de la NP-F, que faltaba. Era una asimetría de la lista, no
+       una decisión: `cámara` tiene «Batería de cámara» Y «Cargador de
+       cámara», `drone` tiene la batería Y el hub de carga, y aquí estaba la
+       batería sola. Va en iluminación y no en el «Cargador» de energía por lo
+       mismo que cada categoría se queda con el suyo: al armar las luces se
+       piensa en luces, y un cargador de NP-F escondido entre nueve cargadores
+       genéricos no aparece cuando hace falta.
+       «Cargador de batería» a secas —no «de luz»— porque es como está escrito
+       en la A-103, y aquí dentro no hace falta repetir la categoría. */
+    "Cargador de batería", "Case de luces"],
   /* Absorbe «tripode», «monopod» y lo que ya estaba en «soporte». La placa
      Claw Mini, la gorra con soporte y la pértiga del Osmo son todas esto. */
   "soporte": ["Trípode", "Monopié", "Cabezal / Rótula", "Estabilizador / Gimbal",
