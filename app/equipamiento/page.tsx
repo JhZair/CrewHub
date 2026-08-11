@@ -219,6 +219,14 @@ export default async function Equipamiento({ searchParams }: {
   kits.filter(k => !k.retirado).forEach(k =>
     k.equipoIds.forEach(id => kitsPorEq.set(id, [...(kitsPorEq.get(id) || []), { id: k.id, nombre: k.nombre }])));
 
+  /* Cuántas piezas lleva montadas cada equipo. Se cuenta sobre `eqs`, que ya
+     está entero en memoria —`select("*")`—: una consulta por equipo serían
+     doscientos viajes para un número. */
+  const nPiezasDe = new Map<string, number>();
+  (eqs || []).forEach((e: any) => {
+    if (e.ensamblado_en) nPiezasDe.set(e.ensamblado_en, (nPiezasDe.get(e.ensamblado_en) || 0) + 1);
+  });
+
   const eqsConDueno = (eqs || []).map((e: any) => {
     const cb = comboPorEq.get(e.id);
     return {
@@ -230,6 +238,10 @@ export default async function Equipamiento({ searchParams }: {
         total: cb.total != null ? Number(cb.total) : null,
         porPieza: porPiezaDeCombo.get(cb.id) ?? null } : null,
       kits: kitsPorEq.get(e.id) || [],
+      /* Va con piezas dentro. Al entregar hay que decirlo: quien lo recibe
+         firma por un monopod, no por un monopod y tres piezas sueltas — y a
+         la vuelta es lo que hay que contar. */
+      nPiezas: nPiezasDe.get(e.id) || 0,
     };
   });
 
@@ -696,6 +708,7 @@ export default async function Equipamiento({ searchParams }: {
                    palabras, no un objeto con total, moneda y comprobante
                    repetido en cada préstamo. */
                 comboCodigo: eq?.compra_id ? (comboPorEq.get(eq.id)?.codigo || null) : null,
+                nPiezas: nPiezasDe.get(eq?.id) || 0,
                 eqId: eq?.id, folio: eq?.folio, nombre: eq?.nombre || "sin nombre",
                 cartel: cartelPorEq.get(eq?.id) || null,
                 perId: per?.id || "_", per: per?.alias || per?.nombre || "sin registrar",

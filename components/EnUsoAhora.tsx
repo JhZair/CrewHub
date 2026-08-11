@@ -47,6 +47,8 @@ export type UsoItem = {
      recibir de vuelta es la diferencia entre reconocerla y creer
      reconocerla. */
   categoria?: string | null; subcategoria?: string | null;
+  /** Piezas montadas dentro: lo que hay que contar al recibirlo de vuelta. */
+  nPiezas?: number;
   valor?: number | null;
   /** Código de su combo, para cuando el precio vive en la boleta y no aquí. */
   comboCodigo?: string | null;
@@ -206,6 +208,10 @@ export default function EnUsoAhora({ items }: { items: UsoItem[] }) {
                   <div className="eq-uso-txt">
                     <div className="eq-uso-l1">
                       {p.folio && <span className="badge eq-uso-folio">{p.folio}</span>}
+                      {/* Salió armado. Al recibirlo, un monopod sin su cabezal
+                          pesa casi lo mismo: si la fila no lo dice, la pieza
+                          que falta se descubre el mes que viene. */}
+                      {!!p.nPiezas && <span className="ens-marca" title="Salió armado: lleva piezas montadas dentro">🔩 {p.nPiezas} piezas</span>}
                       <Link href={`/entidad/equipamiento/${p.eqId}`} className="eq-uso-nom">{p.nombre}</Link>
                     </div>
                     {/* QUÉ ES. Categoría, subcategoría y cuánto vale: el
