@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { EntPicker, type CatalogoItem } from "@/components/Composer";
 import { prestarEquipos } from "@/app/actions";
 import { porQueNo, nombraPieza, type PiezaKit, type KitVista } from "@/lib/kits";
+import ChipPiezas, { type PiezaMontada } from "@/components/ChipPiezas";
 
 /* SALIDA A RODAJE — entregar muchos equipos a una persona de una vez.
  *
@@ -34,8 +35,8 @@ type Eq = { id: string; folio?: string | null; nombre: string; categoria?: strin
      foto sí. */
   cartel?: string | null;
   /** Piezas montadas dentro. Un ensamblado se entrega como UNA cosa, pero se
-   *  devuelve entero o no se devuelve: hay que decir cuántas van dentro. */
-  nPiezas?: number };
+   *  devuelve entero o no se devuelve: hay que decir cuáles van dentro. */
+  piezas?: PiezaMontada[] };
 
 /* Miniatura, la misma que en el armado de kits. Con relleno y no con un
    hueco: una fila más baja que las demás porque a ESE equipo le falta la
@@ -290,7 +291,7 @@ export default function EntregaLote({ equipos, personas, proyectos, kits = [], k
                 {e.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c", fontSize: 10.5 }}>{e.folio}</span>}
                 <span style={{ flex: 1, fontSize: 13.5 }}>{e.nombre}</span>
                 {deAlgunKit(e.id) && <span className="kit-marca">del kit</span>}
-                {!!e.nPiezas && <span className="ens-marca" title="Va armado: lleva piezas montadas dentro">🔩 {e.nPiezas} piezas</span>}
+                <ChipPiezas piezas={e.piezas || []} />
                 {e.categoria && <span style={{ color: "var(--dim)", fontSize: 11.5 }}>{e.categoria}</span>}
               </label>
             ))}
@@ -324,7 +325,7 @@ export default function EntregaLote({ equipos, personas, proyectos, kits = [], k
                   {e.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c", fontSize: 10.5 }}>{e.folio}</span>}
                   <span style={{ flex: 1, fontSize: 13.5 }}>{e.nombre}</span>
                   {deAlgunKit(e.id) && <span className="kit-marca">del kit</span>}
-                  {!!e.nPiezas && <span className="ens-marca" title="Va armado: lleva piezas montadas dentro">🔩 {e.nPiezas} piezas</span>}
+                  <ChipPiezas piezas={e.piezas || []} />
                   {/* Quitar desde aquí: si hay que quitar uno, es mirando ESTA
                       lista —«sobran las baterías»—, y volver a buscarlo en la
                       de la izquierda para desmarcarlo es el paso que sobra. */}

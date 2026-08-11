@@ -3,6 +3,7 @@ import { Fragment, useMemo, useState } from "react";
 import Link from "next/link";
 import BotonDevolver from "@/components/BotonDevolver";
 import DevolverLote from "@/components/DevolverLote";
+import ChipPiezas, { type PiezaMontada } from "@/components/ChipPiezas";
 
 /* EN USO AHORA — quién tiene qué, y cómo se devuelve rápido.
  *
@@ -48,7 +49,7 @@ export type UsoItem = {
      reconocerla. */
   categoria?: string | null; subcategoria?: string | null;
   /** Piezas montadas dentro: lo que hay que contar al recibirlo de vuelta. */
-  nPiezas?: number;
+  piezas?: PiezaMontada[];
   valor?: number | null;
   /** Código de su combo, para cuando el precio vive en la boleta y no aquí. */
   comboCodigo?: string | null;
@@ -211,7 +212,8 @@ export default function EnUsoAhora({ items }: { items: UsoItem[] }) {
                       {/* Salió armado. Al recibirlo, un monopod sin su cabezal
                           pesa casi lo mismo: si la fila no lo dice, la pieza
                           que falta se descubre el mes que viene. */}
-                      {!!p.nPiezas && <span className="ens-marca" title="Salió armado: lleva piezas montadas dentro">🔩 {p.nPiezas} piezas</span>}
+                      <ChipPiezas piezas={p.piezas || []}
+                        titulo="Salió armado: pulsa para ver qué piezas lleva dentro" />
                       <Link href={`/entidad/equipamiento/${p.eqId}`} className="eq-uso-nom">{p.nombre}</Link>
                     </div>
                     {/* QUÉ ES. Categoría, subcategoría y cuánto vale: el
