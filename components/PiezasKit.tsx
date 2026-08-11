@@ -41,8 +41,14 @@ type Eje = "kit" | "combo";
    otro es un TIPO nuevo en cada pintada, y React desmonta y vuelve a montar
    todo lo que cuelga de él. Aquí no hay estado que perder, pero es la misma
    trampa que vaciaba los editores del guion a media frase. */
-function Pieza({ p, yo }: { p: PiezaKit; yo?: string }) {
-  const libre = !p.quien && !NO_ENTREGABLE[p.estado || ""];
+function Pieza({ p, yo, enCasa }: { p: PiezaKit; yo?: string; enCasa?: boolean }) {
+  /* `enCasa`: esta lista es la del equipo que CONTIENE la pieza. Ahí estar
+     «ensamblado» no es un impedimento, es el estado normal —lo raro sería lo
+     contrario— y decir «está montado en otro equipo» en la ficha del equipo
+     que la monta es circular. En un kit sí es un veto: la pieza no puede
+     salir, y el kit tiene que decirlo. La misma fila, dos contextos. */
+  const veto = NO_ENTREGABLE[p.estado || ""] && !(enCasa && p.estado === "ensamblado");
+  const libre = !p.quien && !veto;
   const soyYo = !!yo && p.id === yo;
   /* Qué es y cuánto vale, debajo del nombre. Con la miniatura a 60 px cabe
      una línea más, y sin ella la pieza solo decía su nombre: «Placa de
@@ -81,6 +87,9 @@ function Pieza({ p, yo }: { p: PiezaKit; yo?: string }) {
               </span>
             : p.combo ? <span className="kit-pz-encombo">precio en {p.combo.codigo || p.combo.nombre}</span> : null}
           {!libre && <span className="kit-pz-por">{porQueNo(p)}</span>}
+          {/* Montada aquí y solo aquí: no es un aviso, es la confirmación de
+              que la pieza está donde dice el papel. En gris, no en rojo. */}
+          {enCasa && p.estado === "ensamblado" && <span className="kit-pz-aqui">montada</span>}
         </span>
       </span>
     </>
@@ -125,8 +134,11 @@ function Cabecera({ g, eje }: { g: Grupo<PiezaKit>; eje: Eje }) {
   );
 }
 
-export default function PiezasKit({ piezas, yo, kitActual }: {
+export default function PiezasKit({ piezas, yo, kitActual, enCasa }: {
   piezas: PiezaKit[];
+  /** Esta lista es la del equipo que contiene las piezas: aquí «ensamblado»
+   *  es el estado normal y no se pinta como impedimento. */
+  enCasa?: boolean;
   /** Id del equipo cuya ficha se está viendo: se marca y no se enlaza a sí mismo. */
   yo?: string;
   /** Id del kit que se está mirando: no se agrupa bajo su propio nombre. */
@@ -149,7 +161,7 @@ export default function PiezasKit({ piezas, yo, kitActual }: {
   if (!diceCombo && !diceKit) {
     return (
       <div className="kit-piezas">
-        {piezas.map(p => <Pieza key={p.id} p={p} yo={yo} />)}
+        {piezas.map(p => <Pieza key={p.id} p={p} yo={yo} enCasa={enCasa} />)}
       </div>
     );
   }
@@ -179,7 +191,7 @@ export default function PiezasKit({ piezas, yo, kitActual }: {
           <div key={g.clave} className="kit-grupo">
             <Cabecera g={g} eje={usado} />
             <div className="kit-piezas">
-              {g.items.map(p => <Pieza key={p.id} p={p} yo={yo} />)}
+              {g.items.map(p => <Pieza key={p.id} p={p} yo={yo} enCasa={enCasa} />)}
             </div>
           </div>
         ))}

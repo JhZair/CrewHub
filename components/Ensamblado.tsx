@@ -118,7 +118,7 @@ export default function Ensamblado({ equipoId, montadoEn, piezas, candidatos }: 
       {/* Las piezas con la MISMA fila que un kit: es la misma pregunta —qué hay
           dentro y en qué estado— y dos filas distintas para lo mismo divergen
           a la primera corrección. */}
-      {piezas.length > 0 && <PiezasKit piezas={piezas} />}
+      {piezas.length > 0 && <PiezasKit piezas={piezas} enCasa />}
 
       {err && <div className="err-inline" style={{ marginTop: 8 }}>⚠ {err}</div>}
 
