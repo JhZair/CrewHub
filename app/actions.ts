@@ -57,6 +57,33 @@ export async function guardarEntidad(tipo: string, id: string | null, datos: Rec
     // CAMPOS_TRIGGER (estado/responsable/…); aquí anotamos el resto. La regla y
     // la lista viven en lib/actividad (fuente única) para no duplicar bitácora.
     const { data: antes } = await supabase.from(conf.tabla).select("*").eq("id", id).maybeSingle();
+
+    /* ── «EN USO» LO GOBIERNA EL PRÉSTAMO, NO EL FORMULARIO ──
+       El estado dice QUÉ y el préstamo dice QUIÉN: son dos filas que tienen
+       que contar la misma historia. El desplegable no ofrece «en uso» —no
+       está en ESTADOS_ELEGIBLES— pero cuando el equipo YA está en uso, el
+       formulario enseña su valor actual para no perderlo… y nada impedía
+       elegir «disponible» encima.
+       Eso no fallaba: guardaba. Y dejaba el equipo diciendo «disponible»
+       mientras «En uso ahora» lo seguía enseñando en manos de alguien, con
+       su botón de devolver. Dos verdades a la vez, y la de la ficha es la
+       que se cree.
+       Se comprueba en el servidor y no solo en la pantalla: la pantalla es
+       una cortesía, el servidor es la regla. */
+    if (tipo === "equipamiento" && "estado" in limpio) {
+      const { data: abierto } = await supabase.from("equipo_prestamos")
+        .select("id,persona:personas(nombre,alias)")
+        .eq("equipamiento_id", id).is("hasta", null).limit(1).maybeSingle();
+      const q: any = abierto ? (Array.isArray((abierto as any).persona) ? (abierto as any).persona[0] : (abierto as any).persona) : null;
+      const quien = q?.alias || q?.nombre || "alguien";
+      if (abierto && limpio.estado !== "en_uso") {
+        return { error: `Está prestado —lo tiene ${quien}—, así que su estado lo manda el préstamo. Regístralo como devuelto y después cámbialo. Si se perdió o se rompió estando fuera, dilo en su bitácora: al devolverlo se le pone el estado que toque.` };
+      }
+      if (!abierto && limpio.estado === "en_uso") {
+        return { error: "«En uso» no se pone a mano: sale de un préstamo abierto, y este equipo no tiene ninguno. Entrégalo desde /equipamiento y el estado se pone solo." };
+      }
+    }
+
     /* El .select() no es decorativo: si una política de RLS impide el UPDATE,
        PostgREST no devuelve error — afecta cero filas y responde OK. Sin
        exigir que la fila vuelva, el sistema jura que guardó y no guardó. */

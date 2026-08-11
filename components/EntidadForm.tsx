@@ -250,9 +250,20 @@ export function EntidadForm({ tipo, id, valores, onDone }:
                 onSelect={v => setCampo(c.key, v)}
                 options={[
                   ["", c.sugerenciasPor && !selOpts.length ? "— elige primero el de arriba —" : "—"],
-                  // valor actual que no está entre las opciones (dato migrado): visible
+                  /* El valor actual, cuando no está entre las opciones. Se
+                     enseña siempre —si no, guardar lo borraría en silencio—
+                     pero el rótulo depende de POR QUÉ no está:
+                       · dato migrado → «(valor actual)», que es todo lo que
+                         se puede decir de él;
+                       · valor legítimo que no se pone a mano —«en uso», que
+                         lo gobierna el préstamo— → lo dice `explicaActual`.
+                     Con el rótulo genérico, «en uso (valor actual)» sonaba a
+                     resto de una migración vieja, o sea a algo que hay que
+                     limpiar. Es justo lo contrario: es el estado bueno, y el
+                     que no hay que tocar. */
                   ...(form[c.key] && !selOpts.includes(form[c.key])
-                    ? [[form[c.key], `${form[c.key].replace(/_/g, " ")} (valor actual)`]] : []),
+                    ? [[form[c.key], c.explicaActual?.[form[c.key]]
+                        || `${form[c.key].replace(/_/g, " ")} (valor actual)`]] : []),
                   ...selOpts.map(o => [o, o.replace(/_/g, " ")]),
                 ]} />
               );

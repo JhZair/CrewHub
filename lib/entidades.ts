@@ -11,6 +11,13 @@ export type CampoDef = {
   label: string;
   tipo?: "text" | "select" | "textarea" | "date" | "color" | "bool";
   opciones?: string[];
+  /** Cómo rotular el valor ACTUAL cuando no está entre las opciones. Por
+   *  defecto el formulario dice «(valor actual)», que es lo correcto para un
+   *  dato migrado —no se sabe más de él—. Pero un valor puede quedar fuera de
+   *  la lista por ser legítimo y no ponerse a mano: «en uso» lo decide el
+   *  préstamo. Ahí «(valor actual)» suena a resto de migración, o sea a algo
+   *  que hay que limpiar, cuando es justo lo que no hay que tocar. */
+  explicaActual?: Record<string, string>;
   requerido?: boolean;
   auto?: boolean;       // lo genera el sistema; solo lectura (folios inmutables)
   verif?: boolean;      // lo llena la verificación automática (RENIEC/SUNAT); solo lectura
@@ -199,7 +206,11 @@ export const SUBCATS_EQUIPO: Record<string, string[]> = {
        asistente con las claquetas y el gaffer. */
     "Mochila de cámara", "Case de cámara"],
   "drone": ["Drone", "Batería de drone", "Hélices", "Control remoto", "Hub de carga",
-    "Filtros de drone", "Estuche de baterías", "Case de drone", "Antena / Repetidor",
+    "Filtros de drone", "Estuche de baterías", "Case de drone",
+    /* Con la que se CARGA, al lado de la que lo guarda. El case protege en el
+       almacén; la mochila es para subir el cerro con el drone a la espalda, y
+       hoy esa la haces con una bolsa de gimnasio (A-242). */
+    "Mochila de drone", "Antena / Repetidor",
     /* Lo que se despliega EN EL SUELO para volar. No es «case» —no guarda
        nada— ni «producción»: sin pista, en tierra suelta de altura, el drone
        levanta polvo y se traga piedras en los motores. Es equipo de vuelo.
@@ -644,7 +655,14 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
       // "en_uso" no es elegible: lo gobiernan los préstamos (🤝 en el perfil).
       // La lista sale de lib/estadosEquipo: escrita aquí a mano, un estado
       // nuevo se quedaba sin poder elegirse y nadie sabía por qué.
-      { key: "estado", label: "Estado", tipo: "select", opciones: [...ESTADOS_ELEGIBLES] },
+      /* Sin «en uso» en las opciones: lo gobierna el préstamo. Cuando el
+         equipo YA lo está, el formulario enseña su valor actual para no
+         perderlo, y `explicaActual` es lo que evita que parezca chatarra de
+         una migración. El servidor además impide cambiarlo con el préstamo
+         abierto (ver guardarEntidad): la pantalla es una cortesía, la regla
+         está en el servidor. */
+      { key: "estado", label: "Estado", tipo: "select", opciones: [...ESTADOS_ELEGIBLES],
+        explicaActual: { en_uso: "en uso — lo tiene alguien; se quita al devolverlo" } },
       { key: "valor_compra", label: "Valor de compra (S/)" },
       { key: "comprado_en", label: "Comprado en" },
       { key: "link", label: "Link (referencia)", valida: "url" },
