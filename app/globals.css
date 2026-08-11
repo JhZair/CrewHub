@@ -2878,21 +2878,12 @@ button.repo-tit{text-align:left}
    linea fina, no una caja: separa sin competir con las piezas, que son lo
    que se viene a mirar. Solo aparece cuando hay mas de un combo —con uno
    solo repetiria lo que ya se sabe del conjunto entero. */
-/* El conmutador de eje. Dos botones y el rotulo de que hacen, en pequeno: no
-   compite con las piezas, que son lo que se viene a mirar. Solo sale cuando
-   los DOS ejes agrupan algo — un boton que lleva a una vista de un solo grupo
-   ensena a no pulsarlo. */
-.kit-eje{display:flex;gap:6px;align-items:center;flex-wrap:wrap;
-  font-size:10.5px;color:var(--dim);margin:6px 2px 0}
-.kit-eje button{font-size:10.5px;color:var(--muted);background:transparent;
-  border:1px solid var(--border);border-radius:20px;padding:1px 9px;cursor:pointer;
-  font-family:inherit;white-space:nowrap}
-.kit-eje button:hover{border-color:var(--border2);color:var(--text)}
-.kit-eje button[aria-pressed="true"]{color:var(--violet);border-color:rgba(167,139,250,.45);
-  background:rgba(167,139,250,.12);font-weight:700}
-/* Por kit, la suma de los grupos puede pasar del total: una pieza en dos kits
-   sale en los dos. Se avisa ahi, mientras se cuenta, no en un pie. */
-.kit-eje-n{font-style:italic;opacity:.75}
+/* (Aqui vivia el conmutador de eje combo/kit de la lista de piezas. Se fue
+   con el: los ensamblados absorben las piezas pequeñas, que eran las que
+   hacian la lista tan larga que habia que partirla. Los encabezados de grupo
+   —.kit-grupo*— se quedan, que los usa el escogedor del editor de kits, donde
+   agrupar por combo si ayuda: ahi se busca entre doscientos, no se lee una
+   lista de ocho.) */
 
 .ens-marca{color:var(--muted);background:rgba(255,255,255,.05);border-radius:20px;
   padding:1px 8px;font-size:10.5px;font-weight:600;white-space:nowrap;flex:none}
