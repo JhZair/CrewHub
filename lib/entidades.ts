@@ -199,7 +199,13 @@ export const SUBCATS_EQUIPO: Record<string, string[]> = {
        asistente con las claquetas y el gaffer. */
     "Mochila de cámara", "Case de cámara"],
   "drone": ["Drone", "Batería de drone", "Hélices", "Control remoto", "Hub de carga",
-    "Filtros de drone", "Estuche de baterías", "Case de drone", "Antena / Repetidor"],
+    "Filtros de drone", "Estuche de baterías", "Case de drone", "Antena / Repetidor",
+    /* Lo que se despliega EN EL SUELO para volar. No es «case» —no guarda
+       nada— ni «producción»: sin pista, en tierra suelta de altura, el drone
+       levanta polvo y se traga piedras en los motores. Es equipo de vuelo.
+       «Pista de aterrizaje» y no «helipuerto» ni «landing pad»: es como lo
+       tienes escrito en la ficha A-070, y manda la palabra que ya se usa. */
+    "Pista de aterrizaje"],
   "sonido": ["Micrófono corbatero", "Micrófono de cañón", "Micrófono inalámbrico",
     "Micrófono de mano", "Grabadora de audio", "Mezcladora", "Audífonos",
     "Caña / Boom pole", "Zeppelin / Paravientos", "Cable XLR", "Adaptador de audio",
