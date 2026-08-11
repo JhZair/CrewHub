@@ -281,7 +281,14 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
                   if (!ctx.valor && !ctx.cats.length && !ctx.quienes.length) return null;
                   return (
                     <div className="kit-ctx">
-                      {ctx.valor > 0 && <span className="kit-ctx-val">S/ {Math.round(ctx.valor).toLocaleString("es-PE")}</span>}
+                      {ctx.valor > 0 && (
+                        <span className={`kit-ctx-val${ctx.estimado ? " esti" : ""}`}
+                          title={ctx.estimado
+                            ? "Aproximado: alguna pieza vino en un combo y no tiene precio propio, así que se le reparte su parte de la boleta."
+                            : undefined}>
+                          {ctx.estimado ? "~" : ""}S/ {Math.round(ctx.valor).toLocaleString("es-PE")}
+                        </span>
+                      )}
                       {ctx.cats.length > 0 && <span>{ctx.cats.join(" · ")}</span>}
                       {ctx.quienes.length > 0 && (
                         <span className="kit-ctx-quien">lo tiene{ctx.quienes.length > 1 ? "n" : ""} {ctx.quienes.join(", ")}</span>

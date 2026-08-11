@@ -184,6 +184,22 @@ export default async function Equipamiento({ searchParams }: {
   /* De qué combo y de qué kits es cada equipo, para la lista. Se arma sobre
      lo que ya está en memoria —`combos` y `eqsDeKit`—: una consulta por fila
      serían doscientos viajes para dos etiquetas. */
+  /* CUÁNTO LE TOCA A CADA PIEZA de un combo. Se calcula una vez por combo,
+     aquí, donde se conocen TODAS sus unidades: el total de la boleta menos lo
+     que ya está valorado pieza a pieza, repartido entre las que no tienen
+     precio propio. Una pieza sola no puede calcularlo —no conoce a sus
+     hermanas— y por eso viaja ya resuelto. */
+  const porPiezaDeCombo = new Map<string, number>();
+  combos.forEach((c: any) => {
+    const us = porCombo.get(c.id) || [];
+    const total = Number(c.total) || 0;
+    if (!total || !us.length) return;
+    const yaValorado = us.reduce((a: number, u: any) => a + (Number(u.valor_compra) || 0), 0);
+    const sinPrecio = us.filter((u: any) => !(Number(u.valor_compra) > 0)).length;
+    if (!sinPrecio) return;
+    porPiezaDeCombo.set(c.id, Math.max(0, total - yaValorado) / sinPrecio);
+  });
+
   const comboPorEq = new Map<string, any>();
   (eqs || []).forEach((x: any) => {
     if (x.compra_id) {
@@ -205,7 +221,9 @@ export default async function Equipamiento({ searchParams }: {
       /* Solo lo justo para nombrarlo. El combo entero trae total, moneda,
          comprobante y proveedor; mandarlo repetido en doscientas filas sería
          mover el mismo objeto doscientas veces para pintar dos palabras. */
-      combo: cb ? { codigo: cb.codigo, nombre: cb.nombre, nUnidades: cb.nUnidades } : null,
+      combo: cb ? { codigo: cb.codigo, nombre: cb.nombre, nUnidades: cb.nUnidades,
+        total: cb.total != null ? Number(cb.total) : null,
+        porPieza: porPiezaDeCombo.get(cb.id) ?? null } : null,
       kits: kitsPorEq.get(e.id) || [],
     };
   });

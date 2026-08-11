@@ -30,7 +30,15 @@ export type KitBreve = { id: string; nombre: string };
  *  «2» y quien conocía el combo lo leía como un error —«pero si el combo
  *  tiene tres»—. Con los dos, dice lo que de verdad pasa: «2 de 3», o sea que
  *  el kit se lleva parte del combo y algo se queda. */
-export type ComboBreve = { codigo?: string | null; nombre: string; nUnidades?: number | null };
+export type ComboBreve = {
+  codigo?: string | null; nombre: string; nUnidades?: number | null;
+  /** Lo que dice la boleta, y cuánto le toca a cada pieza sin precio propio.
+   *  `porPieza` se calcula una vez donde se conoce el combo entero (la página)
+   *  y no aquí: hacerlo en cada pieza obligaría a que la pieza conociera a sus
+   *  hermanas, que es justo lo que no sabe. */
+  total?: number | null;
+  porPieza?: number | null;
+};
 
 export type EqBase = {
   id: string; folio?: string | null; nombre: string;
@@ -73,12 +81,38 @@ export type PiezaKit = {
   valor?: number | null;
 };
 
+/* CUÁNTO VALE UNA PIEZA.
+ *
+ * Si tiene precio propio, ese. Si no lo tiene pero vino en un combo, le toca
+ * su parte de la boleta: el total del combo menos lo que ya está valorado
+ * pieza a pieza, repartido entre las que no tienen precio.
+ *
+ * Es un REPARTO, no un precio. La Molus G60 y su mini difusor no costaron lo
+ * mismo, y el combo no lo dice. Por eso el número sale marcado con `~` en
+ * pantalla: sin esa marca, un estimado con dos decimales se copia a una
+ * rendición como si fuera el dato de la boleta.
+ *
+ * Sin esto, un kit armado con piezas de combo valía CERO —todas sus piezas
+ * aportaban 0 porque su precio vive en la compra—, y la cabecera decía «S/ 46»
+ * de un kit de tres mil. Un número que no falla y miente.
+ */
+export function valorPieza(p: PiezaKit): { valor: number; estimado: boolean } {
+  const propio = Number(p.valor) || 0;
+  if (propio > 0) return { valor: propio, estimado: false };
+  const parte = Number(p.combo?.porPieza) || 0;
+  return parte > 0 ? { valor: parte, estimado: true } : { valor: 0, estimado: false };
+}
+
 /** Lo que un kit ES, para poder decirlo con el kit plegado: cuánto suma, de
  *  qué categorías está hecho y —si algo falta— en manos de quién está.
  *  «Ninguno disponible» sin decir quién los tiene obliga a desplegarlo para
  *  saber a quién llamar, que es lo único que se quería saber. */
 export function contextoKit(piezas: PiezaKit[]) {
-  const valor = piezas.reduce((s, p) => s + (Number(p.valor) || 0), 0);
+  /* El valor incluye el reparto de los combos: si no, un kit hecho de piezas
+     de combo valdría cero. `estimado` se propaga para que la cabecera lo
+     diga: en cuanto UNA pieza va prorrateada, el total ya no es exacto. */
+  let valor = 0, estimado = false;
+  piezas.forEach(p => { const v = valorPieza(p); valor += v.valor; if (v.estimado) estimado = true; });
   const cats: string[] = [];
   piezas.forEach(p => {
     const c = (p.categoria || "").trim();
@@ -86,7 +120,7 @@ export function contextoKit(piezas: PiezaKit[]) {
   });
   const quienes: string[] = [];
   piezas.forEach(p => { if (p.quien && !quienes.includes(p.quien)) quienes.push(p.quien); });
-  return { valor, cats, quienes };
+  return { valor, estimado, cats, quienes };
 }
 
 /* ── AGRUPAR POR PROCEDENCIA ──

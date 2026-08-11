@@ -2925,6 +2925,10 @@ button.repo-tit{text-align:left}
 .kit-pz-l2{display:flex;gap:7px;align-items:center;min-width:0;flex-wrap:wrap;
   font-size:10px;color:var(--dim)}
 .kit-pz-precio{color:var(--teal);font-weight:700;white-space:nowrap}
+/* El precio REPARTIDO desde una boleta, no el de la pieza. Se apaga y lleva
+   `~` delante: un estimado que se ve igual que un dato exacto acaba copiado
+   en una rendicion como si lo fuera. */
+.kit-pz-precio.esti,.kit-ctx-val.esti{opacity:.75;font-weight:600}
 .kit-pz-encombo{font-style:italic;opacity:.8;white-space:nowrap}
 .kit-pz:hover{background:rgba(255,255,255,.045)}
 .kit-pz-img img{width:100%;height:100%;object-fit:cover}

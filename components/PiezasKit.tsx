@@ -2,7 +2,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { NO_ENTREGABLE, porQueNo, nombraPieza, agruparPorCombo, agruparPorKit,
-  valeAgrupar, type PiezaKit, type Grupo } from "@/lib/kits";
+  valeAgrupar, valorPieza, type PiezaKit, type Grupo } from "@/lib/kits";
 
 /* LAS PIEZAS DE UN KIT, CON SU FOTO.
  *
@@ -51,7 +51,7 @@ function Pieza({ p, yo }: { p: PiezaKit; yo?: string }) {
      también aquí: iba a la derecha del nombre, robándole el sitio a lo único
      que no se puede recortar. */
   const sub = (p.subcategoria || "").trim() || (p.categoria || "").trim();
-  const precio = Number(p.valor) || 0;
+  const val = valorPieza(p);
   const dentro = (
     <>
       <span className="kit-pz-img">
@@ -67,10 +67,18 @@ function Pieza({ p, yo }: { p: PiezaKit; yo?: string }) {
         </span>
         <span className="kit-pz-l2">
           {sub && <span>{sub}</span>}
-          {precio > 0
-            ? <span className="kit-pz-precio">S/ {Math.round(precio).toLocaleString("es-PE")}</span>
-            /* Sin precio propio pero con combo: el dato existe, está en la
-               boleta. Mismo criterio que el listado y que «En uso ahora». */
+          {/* El `~` no es decoración: dice que ese número salió de repartir
+              una boleta entre varias piezas, no de lo que costó ESTA. La
+              Molus G60 y su mini difusor no valen lo mismo, y el combo no lo
+              sabe. Sin la marca, un estimado se copia a una rendición como si
+              fuera el dato bueno. */}
+          {val.valor > 0
+            ? <span className={`kit-pz-precio${val.estimado ? " esti" : ""}`}
+                title={val.estimado
+                  ? `Parte que le toca del combo ${p.combo?.codigo || ""}, repartido entre las piezas sin precio propio. No es lo que costó esta pieza.`
+                  : undefined}>
+                {val.estimado ? "~" : ""}S/ {Math.round(val.valor).toLocaleString("es-PE")}
+              </span>
             : p.combo ? <span className="kit-pz-encombo">precio en {p.combo.codigo || p.combo.nombre}</span> : null}
           {!libre && <span className="kit-pz-por">{porQueNo(p)}</span>}
         </span>
