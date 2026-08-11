@@ -25,7 +25,26 @@ import { porQueNo, nombraPieza, type PiezaKit, type KitVista } from "@/lib/kits"
  * El préstamo guarda de qué kit salió, para que la vuelta sepa contar.
  */
 
-type Eq = { id: string; folio?: string | null; nombre: string; categoria?: string | null; estado?: string | null; quien?: string | null };
+type Eq = { id: string; folio?: string | null; nombre: string; categoria?: string | null;
+  estado?: string | null; quien?: string | null;
+  /* La foto. `/equipamiento` ya la mandaba dentro de `eqsConDueno`; el tipo
+     no la declaraba, así que llegaba y se tiraba. Entregar es el momento en
+     que se comparan filas contra cosas que están sobre la mesa, y ahí un
+     nombre como «Osmo Action 3 1.5m Extension Rod Kit» no se reconoce: la
+     foto sí. */
+  cartel?: string | null };
+
+/* Miniatura, la misma que en el armado de kits. Con relleno y no con un
+   hueco: una fila más baja que las demás porque a ESE equipo le falta la
+   foto descuadra la lista entera. */
+const mini = (url?: string | null) => (
+  <span className="kit-pz-img">
+    {url
+      // eslint-disable-next-line @next/next/no-img-element
+      ? <img src={url} alt="" referrerPolicy="no-referrer" />
+      : <span>🎥</span>}
+  </span>
+);
 
 const nrm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
@@ -243,11 +262,17 @@ export default function EntregaLote({ equipos, personas, proyectos, kits = [], k
           mientras se mira crecer la de la derecha, que es el gesto real. */}
       <div className="ent-dos">
         <div>
-          <input className="ent-lote-inp" placeholder="Buscar por folio, nombre o categoría…"
-            value={filtro} onChange={ev => setFiltro(ev.target.value)} style={{ width: "100%", marginBottom: 6 }} />
+          {/* El buscador va DEBAJO del rótulo, no encima. Encima empujaba la
+              columna izquierda un renglón entero y las dos listas arrancaban
+              a distinta altura: se leen en paralelo —«esto de aquí ya está
+              en la otra»— y para eso las filas tienen que coincidir. */}
           <div className="ent-col-h">
             <span>Disponibles</span>
             <span className="ent-col-n">{vistos.length}{filtro && vistos.length !== libres.length ? ` de ${libres.length}` : ""}</span>
+          </div>
+          <div className="ent-top">
+            <input className="ent-lote-inp" placeholder="Buscar por folio, nombre o categoría…"
+              value={filtro} onChange={ev => setFiltro(ev.target.value)} style={{ width: "100%" }} />
           </div>
           <div className="ent-caja">
             {vistos.length === 0 && (
@@ -258,6 +283,7 @@ export default function EntregaLote({ equipos, personas, proyectos, kits = [], k
             {vistos.map(e => (
               <label key={e.id} className="ent-lote-fila" data-marcada={sel.has(e.id) ? "1" : undefined}>
                 <input type="checkbox" checked={sel.has(e.id)} onChange={() => alterna(e.id)} />
+                {mini(e.cartel)}
                 {e.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c", fontSize: 10.5 }}>{e.folio}</span>}
                 <span style={{ flex: 1, fontSize: 13.5 }}>{e.nombre}</span>
                 {deAlgunKit(e.id) && <span className="kit-marca">del kit</span>}
@@ -271,13 +297,17 @@ export default function EntregaLote({ equipos, personas, proyectos, kits = [], k
           <div className="ent-col-h marcados">
             <span>🤝 Se entregan</span>
             <span className="ent-col-n">{marcados.length}</span>
-            <span style={{ flex: 1 }} />
-            {marcados.length > 0 && (
-              <button type="button" className="dato-btn" style={{ color: "var(--dim)" }}
-                onClick={() => { setSel(new Set()); setKitsSel(new Set()); }}>
-                Quitar todo
-              </button>
-            )}
+          </div>
+          {/* Este renglón existe para emparejar la altura del buscador de la
+              izquierda, así que se llena con lo que aquí hace falta —quitar
+              todo— en vez de dejarlo en blanco. */}
+          <div className="ent-top derecha">
+            {marcados.length > 0
+              ? <button type="button" className="dato-btn" style={{ color: "var(--dim)" }}
+                  onClick={() => { setSel(new Set()); setKitsSel(new Set()); }}>
+                  Quitar todo
+                </button>
+              : <span style={{ color: "var(--dim)", fontSize: 11.5 }}>lo que se marque aparece aquí</span>}
           </div>
           <div className="ent-caja">
             {marcados.length === 0
@@ -286,6 +316,7 @@ export default function EntregaLote({ equipos, personas, proyectos, kits = [], k
                 </div>
               : marcados.map(e => (
                 <div key={e.id} className="ent-lote-fila elegida">
+                  {mini(e.cartel)}
                   {e.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c", fontSize: 10.5 }}>{e.folio}</span>}
                   <span style={{ flex: 1, fontSize: 13.5 }}>{e.nombre}</span>
                   {deAlgunKit(e.id) && <span className="kit-marca">del kit</span>}

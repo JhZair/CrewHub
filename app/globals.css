@@ -2513,7 +2513,16 @@ button.repo-tit{text-align:left}
 .ent-col-n{background:#1c1c2c;border-radius:20px;padding:1px 7px;
   font-size:10.5px;font-weight:700;letter-spacing:0;text-transform:none;color:var(--muted)}
 .ent-col-h.marcados .ent-col-n{color:var(--yellow);background:rgba(244,180,0,.12)}
+/* El renglon de encima de cada caja. Misma altura fija en las dos columnas
+   —a la izquierda el buscador, a la derecha «quitar todo»— porque es lo que
+   hace que las dos listas arranquen a la misma linea. Se leen en paralelo, y
+   para eso las filas tienen que coincidir. */
+.ent-top{display:flex;align-items:center;min-height:33px;margin-bottom:6px}
+.ent-top.derecha{justify-content:flex-end}
 .ent-caja{max-height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:8px}
+/* Con foto, la fila crece: el nombre largo puede partirse en dos lineas sin
+   dejar la miniatura estirada ni el ✕ descolgado. */
+.ent-lote-fila .kit-pz-img{flex:none}
 /* La fila ya marcada, en la lista de la izquierda: se tacha visualmente para
    que al recorrer el catalogo se vea de un golpe lo que ya esta puesto. */
 .ent-lote-fila[data-marcada]{background:rgba(244,180,0,.06)}
