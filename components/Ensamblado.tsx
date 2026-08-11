@@ -118,7 +118,14 @@ export default function Ensamblado({ equipoId, montadoEn, piezas, candidatos }: 
       {/* Las piezas con la MISMA fila que un kit: es la misma pregunta —qué hay
           dentro y en qué estado— y dos filas distintas para lo mismo divergen
           a la primera corrección. */}
-      {piezas.length > 0 && <PiezasKit piezas={piezas} enCasa />}
+      {/* Con ✕ por pieza: sacar el cabezal para el trípode grande es lo que
+          pasa de verdad, y obligar a «desarmar entero» para eso haría que se
+          hiciera en el estante y no en el sistema. Desarmar entero se queda
+          para cuando de verdad se deshace todo. */}
+      {piezas.length > 0 && (
+        <PiezasKit piezas={piezas} enCasa
+          onQuitar={ocupado ? undefined : (id) => desmontar([id])} />
+      )}
 
       {err && <div className="err-inline" style={{ marginTop: 8 }}>⚠ {err}</div>}
 

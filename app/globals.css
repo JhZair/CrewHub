@@ -2961,6 +2961,17 @@ button.repo-tit{text-align:left}
 /* «montada», dentro del equipo que la monta. Gris y discreto: no avisa de
    nada, confirma que la pieza esta donde dice el papel. */
 .kit-pz-aqui{color:var(--dim);font-size:10px;opacity:.75}
+/* La ✕ para sacar una pieza del ensamblado. Va FUERA del enlace —un boton
+   dentro de un <a> lo reacomoda el navegador y rompe la hidratacion— y solo
+   se enciende al pasar por la fila: una fila con una ✕ roja permanente
+   parece un aviso. */
+.kit-pz-con-x{display:flex;align-items:center;gap:2px;min-width:0}
+.kit-pz-con-x > .kit-pz{flex:1;min-width:0}
+.kit-pz-con-x .ens-quita{background:none;border:none;color:var(--dim);cursor:pointer;
+  font-size:12px;padding:0 5px;line-height:1;flex:none;opacity:0}
+.kit-pz-con-x:hover .ens-quita{opacity:1}
+.kit-pz-con-x .ens-quita:hover{color:var(--red)}
+@media (hover:none){.kit-pz-con-x .ens-quita{opacity:.6}}
 /* El precio REPARTIDO desde una boleta, no el de la pieza. Se apaga y lleva
    `~` delante: un estimado que se ve igual que un dato exacto acaba copiado
    en una rendicion como si lo fuera. */

@@ -42,7 +42,12 @@ type Eje = "kit" | "combo";
    otro es un TIPO nuevo en cada pintada, y React desmonta y vuelve a montar
    todo lo que cuelga de él. Aquí no hay estado que perder, pero es la misma
    trampa que vaciaba los editores del guion a media frase. */
-function Pieza({ p, yo, enCasa }: { p: PiezaKit; yo?: string; enCasa?: boolean }) {
+function Pieza({ p, yo, enCasa, onQuitar }: {
+  p: PiezaKit; yo?: string; enCasa?: boolean;
+  /** Sacar ESTA pieza. Solo lo pasa quien puede deshacerlo —el ensamblado—;
+   *  en un kit o en un combo la lista es de lectura. */
+  onQuitar?: (id: string) => void;
+}) {
   /* `enCasa`: esta lista es la del equipo que CONTIENE la pieza. Ahí estar
      «ensamblado» no es un impedimento, es el estado normal —lo raro sería lo
      contrario— y decir «está montado en otro equipo» en la ficha del equipo
@@ -102,12 +107,23 @@ function Pieza({ p, yo, enCasa }: { p: PiezaKit; yo?: string; enCasa?: boolean }
     </>
   );
   const clase = `kit-pz${libre ? "" : " ocupada"}${soyYo ? " yo" : ""}`;
-  return soyYo
+  const fila = soyYo
     ? <span className={clase} title="este equipo">{dentro}</span>
     : <Link href={`/entidad/equipamiento/${p.id}`} className={clase}
         title={libre ? `${nombraPieza(p)} · disponible` : `${nombraPieza(p)} · ${porQueNo(p)}`}>
         {dentro}
       </Link>;
+  if (!onQuitar) return fila;
+  /* La ✕ va FUERA del enlace: dentro sería un botón dentro de un <a>, que el
+     navegador reacomoda al parsear y React falla la hidratación. Y así el
+     nombre sigue llevando a la ficha, que es lo que se espera de él. */
+  return (
+    <span className="kit-pz-con-x">
+      {fila}
+      <button type="button" className="ens-quita" title={`Sacar ${nombraPieza(p)} del ensamblado`}
+        onClick={() => onQuitar(p.id)}>✕</button>
+    </span>
+  );
 }
 
 function Cabecera({ g, eje }: { g: Grupo<PiezaKit>; eje: Eje }) {
@@ -141,8 +157,10 @@ function Cabecera({ g, eje }: { g: Grupo<PiezaKit>; eje: Eje }) {
   );
 }
 
-export default function PiezasKit({ piezas, yo, kitActual, enCasa }: {
+export default function PiezasKit({ piezas, yo, kitActual, enCasa, onQuitar }: {
   piezas: PiezaKit[];
+  /** Si se pasa, cada pieza lleva una ✕ para sacarla. */
+  onQuitar?: (id: string) => void;
   /** Esta lista es la del equipo que contiene las piezas: aquí «ensamblado»
    *  es el estado normal y no se pinta como impedimento. */
   enCasa?: boolean;
@@ -168,7 +186,7 @@ export default function PiezasKit({ piezas, yo, kitActual, enCasa }: {
   if (!diceCombo && !diceKit) {
     return (
       <div className="kit-piezas">
-        {piezas.map(p => <Pieza key={p.id} p={p} yo={yo} enCasa={enCasa} />)}
+        {piezas.map(p => <Pieza key={p.id} p={p} yo={yo} enCasa={enCasa} onQuitar={onQuitar} />)}
       </div>
     );
   }
@@ -198,7 +216,7 @@ export default function PiezasKit({ piezas, yo, kitActual, enCasa }: {
           <div key={g.clave} className="kit-grupo">
             <Cabecera g={g} eje={usado} />
             <div className="kit-piezas">
-              {g.items.map(p => <Pieza key={p.id} p={p} yo={yo} enCasa={enCasa} />)}
+              {g.items.map(p => <Pieza key={p.id} p={p} yo={yo} enCasa={enCasa} onQuitar={onQuitar} />)}
             </div>
           </div>
         ))}
