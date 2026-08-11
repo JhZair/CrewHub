@@ -90,6 +90,13 @@ export default function EntregaLote({ equipos, personas, proyectos, kits = [], k
   const alterna = (id: string) =>
     setSel(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
+  /* Los marcados, para la segunda lista. En orden de FOLIO y no en el orden en
+     que se fueron marcando: esta lista existe para repasarla contra los
+     equipos que están sobre la mesa, y las etiquetas físicas están ordenadas
+     por folio. El orden de clics es la historia de cómo se armó, que a nadie
+     le sirve al entregar. */
+  const marcados = useMemo(() => libres.filter(e => sel.has(e.id)), [libres, sel]);
+
   function eligeKit(id: string) {
     if (!id) { setKitId(""); setFuera([]); return; }
     const { k, van, fuera: f } = reparteKit(id);
@@ -180,24 +187,71 @@ export default function EntregaLote({ equipos, personas, proyectos, kits = [], k
         </div>
       )}
 
-      <input className="ent-lote-inp" placeholder="Buscar por folio, nombre o categoría…"
-        value={filtro} onChange={ev => setFiltro(ev.target.value)} style={{ width: "100%", marginBottom: 8 }} />
-
-      <div style={{ maxHeight: 320, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 8 }}>
-        {vistos.length === 0 && (
-          <div style={{ padding: 12, color: "var(--dim)", fontSize: 13 }}>
-            {libres.length ? "Nada coincide con esa búsqueda." : "No hay equipos disponibles."}
+      {/* ── DOS LISTAS: DE DÓNDE SE ELIGE Y QUÉ SE ELIGIÓ ──
+          Con una sola, saber qué llevas marcado era recorrer doscientas filas
+          buscando los cuadraditos azules —y con el buscador escrito, los
+          marcados que no coinciden con el filtro ni siquiera se ven: se
+          entregaban a ciegas—. La segunda lista es la que se repasa contra
+          los equipos que están sobre la mesa antes de firmar.
+          Lado a lado y no una debajo de otra: la de la izquierda se recorre
+          mientras se mira crecer la de la derecha, que es el gesto real. */}
+      <div className="ent-dos">
+        <div>
+          <input className="ent-lote-inp" placeholder="Buscar por folio, nombre o categoría…"
+            value={filtro} onChange={ev => setFiltro(ev.target.value)} style={{ width: "100%", marginBottom: 6 }} />
+          <div className="ent-col-h">
+            <span>Disponibles</span>
+            <span className="ent-col-n">{vistos.length}{filtro && vistos.length !== libres.length ? ` de ${libres.length}` : ""}</span>
           </div>
-        )}
-        {vistos.map(e => (
-          <label key={e.id} className="ent-lote-fila">
-            <input type="checkbox" checked={sel.has(e.id)} onChange={() => alterna(e.id)} />
-            {e.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c", fontSize: 10.5 }}>{e.folio}</span>}
-            <span style={{ flex: 1, fontSize: 13.5 }}>{e.nombre}</span>
-            {kitElegido?.equipoIds.includes(e.id) && <span className="kit-marca">del kit</span>}
-            {e.categoria && <span style={{ color: "var(--dim)", fontSize: 11.5 }}>{e.categoria}</span>}
-          </label>
-        ))}
+          <div className="ent-caja">
+            {vistos.length === 0 && (
+              <div style={{ padding: 12, color: "var(--dim)", fontSize: 13 }}>
+                {libres.length ? "Nada coincide con esa búsqueda." : "No hay equipos disponibles."}
+              </div>
+            )}
+            {vistos.map(e => (
+              <label key={e.id} className="ent-lote-fila" data-marcada={sel.has(e.id) ? "1" : undefined}>
+                <input type="checkbox" checked={sel.has(e.id)} onChange={() => alterna(e.id)} />
+                {e.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c", fontSize: 10.5 }}>{e.folio}</span>}
+                <span style={{ flex: 1, fontSize: 13.5 }}>{e.nombre}</span>
+                {kitElegido?.equipoIds.includes(e.id) && <span className="kit-marca">del kit</span>}
+                {e.categoria && <span style={{ color: "var(--dim)", fontSize: 11.5 }}>{e.categoria}</span>}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <div className="ent-col-h marcados">
+            <span>🤝 Se entregan</span>
+            <span className="ent-col-n">{marcados.length}</span>
+            <span style={{ flex: 1 }} />
+            {marcados.length > 0 && (
+              <button type="button" className="dato-btn" style={{ color: "var(--dim)" }}
+                onClick={() => { setSel(new Set()); setKitId(""); setFuera([]); }}>
+                Quitar todo
+              </button>
+            )}
+          </div>
+          <div className="ent-caja">
+            {marcados.length === 0
+              ? <div style={{ padding: 12, color: "var(--dim)", fontSize: 12.5, lineHeight: 1.5 }}>
+                  Nada marcado todavía. Búscalo a la izquierda, o elige un kit arriba y se marca entero.
+                </div>
+              : marcados.map(e => (
+                <div key={e.id} className="ent-lote-fila elegida">
+                  {e.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c", fontSize: 10.5 }}>{e.folio}</span>}
+                  <span style={{ flex: 1, fontSize: 13.5 }}>{e.nombre}</span>
+                  {kitElegido?.equipoIds.includes(e.id) && <span className="kit-marca">del kit</span>}
+                  {/* Quitar desde aquí: si hay que quitar uno, es mirando ESTA
+                      lista —«sobran las baterías»—, y volver a buscarlo en la
+                      de la izquierda para desmarcarlo es el paso que sobra. */}
+                  <button type="button" className="ent-quita" title={`Quitar ${nombraPieza(e as any)}`}
+                    onClick={() => alterna(e.id)}>✕</button>
+                </div>
+              ))}
+          </div>
+        </div>
       </div>
 
       <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>

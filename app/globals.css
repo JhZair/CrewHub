@@ -2498,6 +2498,32 @@ button.repo-tit{text-align:left}
 .ent-lote-inp{background:var(--card);border:1px solid var(--border);border-radius:8px;
   padding:7px 10px;font-size:12.5px;outline:none;color:var(--text);font-family:inherit}
 .ent-lote-inp:focus{border-color:var(--border2)}
+/* ── ENTREGA: DE DONDE SE ELIGE, Y QUE SE ELIGIO ──
+   Dos columnas de igual ancho. En pantalla estrecha se apilan y la de
+   marcados queda arriba: si no cabe todo, lo que hay que ver es lo que se
+   va a entregar, no el catalogo. */
+.ent-dos{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
+@media (max-width:860px){
+  .ent-dos{grid-template-columns:1fr}
+  .ent-dos > div:last-child{order:-1}
+}
+.ent-col-h{display:flex;gap:7px;align-items:center;padding:0 2px 5px;
+  font-size:10.5px;letter-spacing:.6px;text-transform:uppercase;color:var(--dim)}
+.ent-col-h.marcados{color:var(--yellow)}
+.ent-col-n{background:#1c1c2c;border-radius:20px;padding:1px 7px;
+  font-size:10.5px;font-weight:700;letter-spacing:0;text-transform:none;color:var(--muted)}
+.ent-col-h.marcados .ent-col-n{color:var(--yellow);background:rgba(244,180,0,.12)}
+.ent-caja{max-height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:8px}
+/* La fila ya marcada, en la lista de la izquierda: se tacha visualmente para
+   que al recorrer el catalogo se vea de un golpe lo que ya esta puesto. */
+.ent-lote-fila[data-marcada]{background:rgba(244,180,0,.06)}
+/* En la lista de la derecha no hay casilla —todo lo que esta ahi esta
+   marcado, una casilla siempre encendida no informa— sino una ✕ que quita. */
+.ent-lote-fila.elegida{cursor:default}
+.ent-quita{background:none;border:none;color:var(--dim);cursor:pointer;
+  font-size:12px;padding:0 4px;line-height:1;flex:none}
+.ent-quita:hover{color:var(--red)}
+
 .ent-lote-fila{display:flex;align-items:center;gap:8px;padding:5px 10px;cursor:pointer;
   border-bottom:1px solid rgba(255,255,255,.04)}
 .ent-lote-fila:last-child{border-bottom:none}
