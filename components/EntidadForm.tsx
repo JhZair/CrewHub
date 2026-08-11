@@ -154,7 +154,15 @@ export function EntidadForm({ tipo, id, valores, onDone }:
     /* Los campos `verif` (RENIEC/SUNAT) NO se mandan: los llena la verificación
        y son de solo lectura. Enviarlos arriesga pisar un valor que la
        verificación actualizó mientras el formulario estaba abierto. */
-    vivos.forEach(c => { if (!(c as any).verif && c.key in arreglado) aGuardar[c.key] = arreglado[c.key]; });
+    /* Y tampoco los bloqueados, por la MISMA razón que los `verif`: no los
+       gobierna este formulario. Mandarlos tal cual parecía inofensivo —van
+       sin cambiar— pero si alguien devuelve el equipo mientras la ficha está
+       abierta, mandar «en uso» chocaría contra la regla del servidor y
+       bloquearía un guardado que no tenía nada que ver, por cambiar la
+       descripción. Lo que no se edita, no se envía. */
+    vivos.forEach(c => {
+      if (!(c as any).verif && !bloqueado(c) && c.key in arreglado) aGuardar[c.key] = arreglado[c.key];
+    });
 
     setGuardando(true);
     const res = await guardarEntidad(tipo, id || null, aGuardar);
@@ -225,6 +233,21 @@ export function EntidadForm({ tipo, id, valores, onDone }:
      sin recargar. */
   const vivos = campos.filter(c => campoAplica(c as any, form));
   // Los campos con `grupo` salen al final, cada grupo en su propio recuadro
+  /* UN CAMPO QUE HOY NO SE EDITA PORQUE LO MANDA OTRA COSA.
+   *
+   * `explicaActual` marca los valores que no se ponen a mano porque los
+   * gobierna otro sitio: «en uso» sale de un préstamo abierto, no de este
+   * desplegable. Mientras el campo tenga uno de esos valores, se bloquea.
+   *
+   * No es cosmético. El servidor ya rechazaba el cambio, pero enterarse
+   * DESPUÉS de pulsar Guardar es la peor forma de aprender una regla: se
+   * elige «disponible», se guarda, salta un `alert` y hay que reconstruir qué
+   * más se había tocado. La pantalla tiene que decir que no se puede antes,
+   * no el servidor después. Los dos, y en ese orden.
+   */
+  const bloqueado = (c: any): string | null =>
+    (c.explicaActual && form[c.key] && c.explicaActual[form[c.key]]) || null;
+
   const sueltos = vivos.filter(c => !(c as any).grupo);
   const grupos = [...new Set(vivos.map(c => (c as any).grupo).filter(Boolean))] as string[];
 
@@ -239,6 +262,14 @@ export function EntidadForm({ tipo, id, valores, onDone }:
               <input disabled placeholder={c.auto ? "Se genera automáticamente" : "Lo llena la verificación automática"}
                 value={id ? ((form[c.key] || "").replace(/_/g, " ") || "—") : ""}
                 style={{ opacity: .55, cursor: "not-allowed" }} />
+            ) : bloqueado(c) ? (
+              /* Mismo gesto que `auto` y `verif` —gris, cursor de prohibido—
+                 porque es el mismo hecho: este campo no se teclea aquí. La
+                 diferencia es que aquí SÍ se puede decir por qué y qué hacer,
+                 y se dice. */
+              <input disabled value={bloqueado(c) as string}
+                title="Este estado lo gobierna el préstamo. Para cambiarlo, registra la devolución del equipo desde /equipamiento; si se perdió o se rompió estando fuera, dilo en su bitácora y al devolverlo se le pone el estado que toque."
+                style={{ opacity: .55, cursor: "not-allowed" }} />
             ) : c.tipo === "select" ? (() => {
               /* Opciones fijas (`opciones`) o DEPENDIENTES de otro campo
                  (`sugerenciasPor`, p. ej. provincia←departamento, distrito←
@@ -250,20 +281,17 @@ export function EntidadForm({ tipo, id, valores, onDone }:
                 onSelect={v => setCampo(c.key, v)}
                 options={[
                   ["", c.sugerenciasPor && !selOpts.length ? "— elige primero el de arriba —" : "—"],
-                  /* El valor actual, cuando no está entre las opciones. Se
-                     enseña siempre —si no, guardar lo borraría en silencio—
-                     pero el rótulo depende de POR QUÉ no está:
-                       · dato migrado → «(valor actual)», que es todo lo que
-                         se puede decir de él;
-                       · valor legítimo que no se pone a mano —«en uso», que
-                         lo gobierna el préstamo— → lo dice `explicaActual`.
-                     Con el rótulo genérico, «en uso (valor actual)» sonaba a
-                     resto de una migración vieja, o sea a algo que hay que
-                     limpiar. Es justo lo contrario: es el estado bueno, y el
-                     que no hay que tocar. */
+                  /* El valor actual cuando no está entre las opciones: se
+                     enseña, porque si no, guardar lo borraría en silencio.
+                     Aquí solo llegan los DATOS MIGRADOS, y «(valor actual)»
+                     es todo lo que se puede decir de ellos —no se sabe de
+                     dónde salieron—. Los que no están en la lista por ser
+                     legítimos y no ponerse a mano («en uso») ni llegan: los
+                     atrapa `bloqueado` más arriba y se pintan en gris con su
+                     explicación, que es lo que «(valor actual)» no podía
+                     dar. */
                   ...(form[c.key] && !selOpts.includes(form[c.key])
-                    ? [[form[c.key], c.explicaActual?.[form[c.key]]
-                        || `${form[c.key].replace(/_/g, " ")} (valor actual)`]] : []),
+                    ? [[form[c.key], `${form[c.key].replace(/_/g, " ")} (valor actual)`]] : []),
                   ...selOpts.map(o => [o, o.replace(/_/g, " ")]),
                 ]} />
               );
