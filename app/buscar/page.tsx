@@ -729,11 +729,20 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
         {docs && <div className="fila-docs">{docs}</div>}
       </>
     );
+    /* SIN `href` la fila no se enlaza. Un combo de compra no tiene página
+       —se abre con el ⚡, que es una vista al vuelo— y la fila se pintaba
+       igual: `<Link href={undefined}>`, que en desarrollo revienta la página
+       entera con «The prop `href` expects a string». Y no se veía, porque la
+       sección de combos leía la tabla equivocada y nunca pintaba una fila; al
+       arreglar aquello salió esto. Segundo fallo escondido detrás del mismo.
+       Sin enlace tampoco se finge que se puede pulsar: ni la capa que cubre
+       la fila, ni `link`, ni el cursor de mano. */
+    const clases = `card${href ? " link" : ""} fila-cap${tenue ? " fila-tenue" : ""}`;
     return (
-      <div className={`card link fila-cap${tenue ? " fila-tenue" : ""}`}
-        style={{ cursor: "pointer", padding: "8px 13px", marginBottom: 7,
+      <div className={clases}
+        style={{ cursor: href ? "pointer" : "default", padding: "8px 13px", marginBottom: 7,
           ...(resaltar && RES[resaltar] ? { borderLeft: `3px solid ${RES[resaltar][0]}`, background: RES[resaltar][1] } : {}) }}>
-        <Link href={href} className="fila-cubre" aria-label="Abrir" />
+        {href && <Link href={href} className="fila-cubre" aria-label="Abrir" />}
         {/* Con `avatar`, la foto va como columna izquierda que ocupa las dos
             líneas (nombre + papeles) — así se aprovecha el alto de la fila. */}
         {avatar ? (
