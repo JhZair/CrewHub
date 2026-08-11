@@ -98,15 +98,28 @@ export default function PrestamoEquipo({ equipoId, prestamos, personas, proyecto
     if (p.hasta) eventosUso.push({ t: "uso_fin", at: p.hasta + "T12:00:00", p });
   });
 
-  // Línea de tiempo: raíces de la bitácora + eventos de uso, por fecha ascendente.
-  // Con filtro activo solo comentarios de esa etiqueta (los eventos se ocultan).
+  /* Línea de tiempo: raíces de la bitácora + eventos de uso, LO MÁS RECIENTE
+     ARRIBA. Con filtro activo solo comentarios de esa etiqueta (los eventos se
+     ocultan).
+     Iba ascendente, que es el orden de un diario que se lee entero de una
+     vez. Pero a una bitácora de equipo no se viene a leerla entera: se viene
+     a saber qué le pasó A ESTE DRONE ÚLTIMAMENTE —«¿ya lo llevaron al
+     técnico?»—, y eso estaba al final, después de once entradas y de todo el
+     historial de préstamos. La pregunta más frecuente exigía el scroll más
+     largo. Además el cuadro para escribir está arriba: con ascendente, lo que
+     acabas de anotar aparecía a pantallas de distancia del sitio donde lo
+     escribiste.
+     Las RESPUESTAS de dentro de cada entrada siguen ascendentes: una
+     conversación se lee del principio, y darla vuelta haría que las
+     respuestas contestaran a algo que todavía no se ha leído. Es una lista de
+     novedades por fuera y una conversación por dentro. */
   const items = (filtro
     ? raicesBita.filter((c: any) => (c.etiquetas || []).includes(filtro)).map((c: any) => ({ t: "com", at: c.creado_en, c }))
     : [
         ...raicesBita.map((c: any) => ({ t: "com", at: c.creado_en, c })),
         ...eventosUso,
       ]
-  ).sort((a: any, b: any) => new Date(a.at).getTime() - new Date(b.at).getTime());
+  ).sort((a: any, b: any) => new Date(b.at).getTime() - new Date(a.at).getTime());
 
   const usadas = [...new Set(comentariosTodos.flatMap((c: any) => c.etiquetas || []))] as string[];
   const sugTags = [...new Set(["daño", "mantenimiento", "cargador faltante", "pendiente", "revisar", ...usadas])].filter(Boolean);
