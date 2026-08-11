@@ -2849,7 +2849,12 @@ button.repo-tit{text-align:left}
    nadie echa en falta hasta el rodaje. */
 .kit-pz.ocupada .kit-pz-n{color:var(--dim)}
 .kit-pz.ocupada .kit-pz-img{opacity:.5}
-.kit-pz-por{font-size:10px;font-style:italic;color:var(--dim);flex:none;
+/* Por que esta pieza no puede salir hoy — «lo tiene KatyP», «en reparacion».
+   En rojo tenue y no en gris: en gris se leia como un detalle apagado, del
+   mismo color que la subcategoria o el «sin combo», y es lo contrario —es la
+   razon por la que el kit no sale entero—. Tenue (--dano, no --red) porque
+   tampoco es una alarma: la camara no esta rota, esta prestada y vuelve. */
+.kit-pz-por{font-size:10px;font-style:italic;color:var(--dano);flex:none;
   max-width:44%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .kit-folio{color:var(--muted);background:#1c1c2c;font-size:10.5px}
 .kit-aviso{color:var(--yellow);font-size:10.5px;font-style:italic}
