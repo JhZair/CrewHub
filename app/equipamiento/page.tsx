@@ -232,7 +232,25 @@ export default async function Equipamiento({ searchParams }: {
     // Sin valor no suma al inventario: el total de arriba miente por omisión
     sin_valor: x => !FUERA_DE_INVENTARIO.includes(x.estado) && !x.valor_compra,
     sin_folio: x => !x.folio,
-    sin_categoria: x => !x.categoria,
+    /* Con `catDe` y no con `!x.categoria`: una categoría que es un espacio en
+       blanco NO es falsy pero sí es «sin categoría» para el chip de arriba,
+       que usa `catDe`. Contar de dos maneras es lo que hacía que el chip
+       dijera 9 y el listado 0 resultados. */
+    sin_categoria: x => catDe(x) === SIN_CAT,
+    /* SIN SUBCATEGORÍA, que es distinto de sin categoría y hasta ahora no se
+       podía pedir: la fila de subcategorías solo aparece con una categoría
+       elegida, así que para encontrar los sueltos había que entrar categoría
+       por categoría y mirar si asomaba el chip amarillo. Ocho vueltas para
+       una pregunta que se hace de una.
+       Solo los que TIENEN categoría —los otros ya están en el chip de al
+       lado, y contarlos dos veces haría que la suma no cuadre— y solo si su
+       categoría ofrece alguna: en «otro» la lista está vacía a propósito, así
+       que pedir subcategoría ahí sería marcar un deber que no se puede
+       cumplir. */
+    sin_subcategoria: x => {
+      const cat = catDe(x);
+      return cat !== SIN_CAT && (SUBCATS_EQUIPO[cat] || []).length > 0 && subDe(x) === SIN_SUB;
+    },
   };
 
   const filtradosTodos = todos.filter((x: any) =>
@@ -493,6 +511,10 @@ export default async function Equipamiento({ searchParams }: {
           <Chip href="/equipamiento?f=sin_categoria" on={f === "sin_categoria"} color="var(--dim)"
             title="Sin categoría no entra en el inventario por categoría">
             ⚠ sin categoría · {cntF("sin_categoria")}
+          </Chip>
+          <Chip href="/equipamiento?f=sin_subcategoria" on={f === "sin_subcategoria"} color="var(--yellow)"
+            title="Tienen categoría pero no subcategoría, y su categoría sí ofrece alguna. Sin ella un equipo solo se encuentra por su nombre: no sale al filtrar «Batería de drone» ni «Micrófono corbatero». No cuenta los que no tienen categoría —esos son el chip de al lado— ni los de «otro», que no tiene lista.">
+            ⚠ sin subcategoría · {cntF("sin_subcategoria")}
           </Chip>
         </FilaFiltro>
       </PanelFiltros>
