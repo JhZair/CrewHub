@@ -758,6 +758,16 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
       { key: "estado", label: "Estado", tipo: "select", opciones: [...ESTADOS_ELEGIBLES],
         explicaActual: { en_uso: "en uso — lo tiene alguien; se quita al devolverlo" } },
       { key: "valor_compra", label: "Valor de compra (S/)" },
+      /* La columna `fecha_compra` estaba en db/schema.sql desde el principio y
+         NINGÚN archivo la nombraba: ni el formulario, ni la ficha, ni ninguna
+         consulta. Un dato que la base guardaba y que no había forma de
+         escribir ni de leer.
+         Importa por dos cosas que se preguntan de verdad: la garantía —«esto
+         se compró hace ocho meses, ¿todavía la tiene?»— y la vida útil, que es
+         lo que hay que sustentar en una rendición del fondo.
+         Opcional: si el equipo vino en un combo, la fecha buena es la de la
+         boleta y vive ahí; esta es para lo que se compró suelto. */
+      { key: "fecha_compra", label: "Fecha de compra", tipo: "date", opcional: true },
       { key: "comprado_en", label: "Comprado en" },
       { key: "link", label: "Link (referencia)", valida: "url" },
       { key: "descripcion", label: "Descripción", tipo: "textarea" },

@@ -123,7 +123,12 @@ const CONF: Record<string, { tabla: string; icono: string; campos: [string, stri
     ["Verificado", "fecha_verificacion_sunat", SUNAT_PERSONA],
     ["Suspensión 4ta", "suspension_4ta_anio", SUNAT_PERSONA],
   ] },
-  equipamiento: { tabla: "equipamiento", icono: "🎥", campos: [["Folio", "folio"], ["Categoría", "categoria"], ["Subcategoría", "subcategoria"], ["Estado", "estado"], ["Valor (S/)", "valor_compra"], ["Comprado en", "comprado_en"]] },
+  /* ⚠ Esta lista y la de `FORM_CONF` (lib/entidades) son DOS: una dice qué se
+     escribe y la otra qué se lee. Añadir un campo solo al formulario lo deja
+     guardándose sin que nadie pueda verlo —que es lo que pasó con
+     `fecha_compra`, y antes con la propia columna en la base—. Al tocar una,
+     mirar la otra. */
+  equipamiento: { tabla: "equipamiento", icono: "🎥", campos: [["Folio", "folio"], ["Categoría", "categoria"], ["Subcategoría", "subcategoria"], ["Estado", "estado"], ["Valor (S/)", "valor_compra"], ["Fecha de compra", "fecha_compra"], ["Comprado en", "comprado_en"]] },
   /* El COMBO DE COMPRA. Hereda de la ficha genérica lo que necesita —carné,
      bitácora, historial y repositorio— y ahí es donde vive el comprobante:
      la boleta es UNA por compra, y pegarla en las seis fichas del combo DJI
