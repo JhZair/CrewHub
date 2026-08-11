@@ -210,9 +210,26 @@ export const SUBCATS_EQUIPO: Record<string, string[]> = {
     "Micrófono de mano", "Grabadora de audio", "Mezcladora", "Audífonos",
     "Caña / Boom pole", "Zeppelin / Paravientos", "Cable XLR", "Adaptador de audio",
     "Pilas / Batería de sonido"],
-  "iluminación": ["Panel LED", "Luz de mano / Tubo", "Aro de luz", "Softbox", "Fresnel",
-    "Reflector / Rebotador", "Bandera / Difusor", "Gelatinas", "Trípode de luz",
-    "Batería de luz", "Case de luces"],
+  /* Ordenada por lo que hace cada cosa: primero lo que EMITE, luego lo que
+     MODIFICA esa luz, y al final lo que la sostiene, la alimenta y la
+     guarda. Buscar una luz y buscar una bandera son dos momentos distintos
+     del mismo día. */
+  "iluminación": [
+    // Emiten
+    /* El COB es un punto de luz con montura Bowens, y eso NO es un panel: un
+       panel trae su difusión de fábrica y se usa tal cual; un COB no da luz
+       utilizable sin ponerle algo delante —reflector, softbox, domo—. Meter
+       la Molus G60 en «Panel LED» borraría justo lo que decide si sirve para
+       un plano: si acepta modificadores. */
+    "Luz COB / Foco LED", "Panel LED", "Luz de mano / Tubo", "Aro de luz",
+    // Modifican
+    "Softbox", "Fresnel", "Reflector / Rebotador", "Bandera / Difusor", "Gelatinas",
+    /* Lo que une el COB con el modificador. Es una pieza suelta que se pierde
+       y sin la cual la softbox de 300 soles no se puede montar: merece
+       nombre propio, no caer en «otro». */
+    "Montura / Adaptador Bowens",
+    // Sostienen, alimentan y guardan
+    "Trípode de luz", "Batería de luz", "Case de luces"],
   /* Absorbe «tripode», «monopod» y lo que ya estaba en «soporte». La placa
      Claw Mini, la gorra con soporte y la pértiga del Osmo son todas esto. */
   "soporte": ["Trípode", "Monopié", "Cabezal / Rótula", "Estabilizador / Gimbal",
