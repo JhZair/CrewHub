@@ -340,12 +340,16 @@ export default async function Equipamiento({ searchParams }: {
   }
 
   // Miniatura del equipo (cartel) y avatar de una persona, con placeholder.
-  const miniEquipo = (url: string | undefined, size = 46) => (
-    <span style={{ width: size, height: size, borderRadius: 8, flexShrink: 0, background: "var(--bg)", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+  /* La miniatura, con la clase compartida y sin tamaño propio: lo pone
+     `--mini` en globals.css. Aquí venía dibujada a mano con estilos en línea y
+     un `size` por llamada, que es como se llega a cuatro tamaños distintos
+     para la misma cosa sin que nadie lo decida. */
+  const miniEquipo = (url: string | undefined) => (
+    <span className="mini-eq">
       {url
         ? // eslint-disable-next-line @next/next/no-img-element
-          <img src={url} alt="" referrerPolicy="no-referrer" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-        : <span style={{ fontSize: size * 0.5 }}>🎥</span>}
+          <img src={url} alt="" referrerPolicy="no-referrer" />
+        : <span>🎥</span>}
     </span>
   );
   const avatarPersona = (url: string | undefined, size = 24) => (
@@ -377,7 +381,7 @@ export default async function Equipamiento({ searchParams }: {
       <Link key={x.id} href={`/entidad/equipamiento/${x.id}`}>
         <div className="card link eqx-card" style={res ? { borderLeft: `3px solid ${res[0]}`, background: res[1] } : undefined}>
           <div className="eqx-fila">
-            {miniEquipo(cartelPorEq.get(x.id), 60)}
+            {miniEquipo(cartelPorEq.get(x.id))}
 
             {/* DOS LÍNEAS. Arriba, QUÉ es —folio y nombre, que es lo que se
                 busca—. Abajo, todo lo que lo describe. En una sola línea, el
@@ -678,7 +682,7 @@ export default async function Equipamiento({ searchParams }: {
                 <div key={g.eq.id} style={{ padding: "10px 0 4px", borderTop: gi ? "1px solid var(--border)" : "none" }}>
                   {/* Nodo raíz: el equipo */}
                   <Link href={`/entidad/equipamiento/${g.eq.id}`} style={{ display: "flex", gap: 9, alignItems: "center" }}>
-                    {miniEquipo(cartelPorEq.get(g.eq.id), 42)}
+                    {miniEquipo(cartelPorEq.get(g.eq.id))}
                     <b style={{ fontSize: TXT.base, color: "var(--text)" }}>{g.eq.nombre}</b>
                     {g.eq.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c", fontSize: TXT.chip }}>{g.eq.folio}</span>}
                   </Link>
@@ -725,7 +729,7 @@ export default async function Equipamiento({ searchParams }: {
               <div className="panel-h" style={{ color: "var(--red)" }}>🔧 Requieren atención</div>
               {atencion.map((x: any) => (
                 <div className="info-row" key={x.id}>
-                  {miniEquipo(cartelPorEq.get(x.id), 38)}
+                  {miniEquipo(cartelPorEq.get(x.id))}
                   {x.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c", fontSize: TXT.chip }}>{x.folio}</span>}
                   <Link href={`/entidad/equipamiento/${x.id}`} style={{ fontWeight: 600, flex: 1, fontSize: TXT.base }}>{x.nombre}</Link>
                   {/* Ícono + rótulo + color del estado, de una sola fuente.

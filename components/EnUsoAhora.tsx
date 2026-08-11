@@ -64,12 +64,16 @@ function subgrupos(items: UsoItem[]): { kitId: string | null; kit?: string | nul
 const fechaCorta = (f: string) =>
   new Date(f + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short" });
 
-const mini = (url?: string | null, size = 40) => (
-  <span className="eq-uso-mini" style={{ width: size, height: size }}>
+/* Sin tamaño: lo pone `--mini` en globals.css, que es el mismo para todas las
+   miniaturas de equipo de la aplicación. Estaba a 40 aquí, a 30 en las piezas
+   de un kit y a 60 en el listado — la misma cámara en tres tamaños según la
+   pantalla, y las pequeñas no se reconocían. */
+const mini = (url?: string | null) => (
+  <span className="eq-uso-mini">
     {url
       ? // eslint-disable-next-line @next/next/no-img-element
         <img src={url} alt="" referrerPolicy="no-referrer" />
-      : <span style={{ fontSize: size * 0.5 }}>🎥</span>}
+      : <span>🎥</span>}
   </span>
 );
 

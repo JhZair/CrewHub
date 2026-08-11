@@ -4,6 +4,15 @@
   --accent:#7c5cff; --yellow:#f4b400; --red:#ff4d5e; --green:#2ecc71; --dano:#cf8b93;
   --blue:#3b82f6; --violet:#a78bfa; --teal:#2dd4bf; --orange:#f59e0b;
 
+  /* LA MINIATURA DE UN EQUIPO. Un solo numero para toda la aplicacion.
+     Estaba escrito cuatro veces y con cuatro valores —30 en las piezas de un
+     kit, 40 en «en uso ahora», 46 por defecto, 60 en el listado— asi que la
+     misma camara se veia de cuatro tamanos segun donde. Y las de 30 no se
+     reconocian, que es lo unico que una miniatura tiene que hacer: la lista
+     se recorre mirando fotos, no leyendo folios.
+     Cambiarlo aqui lo cambia en todas. */
+  --mini:52px;
+
   /* ⭐ La identidad de BUSCAR en CrewHub+ (decidida el 16 jul 2026).
      Vive aquí y no dentro de una clase porque hay dos buscadores —el de la
      barra y el grande de /buscar— y va a haber más. Escribí este degradado
@@ -2768,7 +2777,15 @@ button.repo-tit{text-align:left}
 .eq-uso-avatar,.eq-uso-mini{flex:none;background:var(--bg);display:inline-flex;
   align-items:center;justify-content:center;overflow:hidden}
 .eq-uso-avatar{border-radius:50%;border:1px solid var(--border2)}
-.eq-uso-mini{border-radius:8px;border:1px solid var(--border)}
+/* La miniatura de un equipo, en cualquier pantalla. `.kit-pz-img` y
+   `.eq-uso-mini` se quedan como nombres vivos —los usan tres componentes— pero
+   el tamano sale del mismo sitio. */
+.mini-eq,.kit-pz-img,.eq-uso-mini{
+  width:var(--mini);height:var(--mini);border-radius:8px;flex:none;overflow:hidden;
+  background:var(--bg);border:1px solid var(--border);
+  display:inline-flex;align-items:center;justify-content:center;
+  font-size:calc(var(--mini) * .45)}
+.mini-eq img,.eq-uso-mini img{width:100%;height:100%;object-fit:cover}
 .eq-uso-avatar img,.eq-uso-mini img{width:100%;height:100%;object-fit:cover}
 
 .eq-uso-fila{display:flex;gap:10px;align-items:center;padding:6px 8px;border-radius:8px;
@@ -2871,14 +2888,11 @@ button.repo-tit{text-align:left}
 /* Las piezas del kit, con su foto. En rejilla y no en línea: en la ficha del
    equipo (columna estrecha) cae a una columna sola, y en el panel de
    /equipamiento se reparte en dos o tres sin tocar nada. */
-.kit-piezas{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));
-  gap:2px 14px;margin:7px 0 2px}
+.kit-piezas{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));
+  gap:3px 14px;margin:7px 0 2px}
 .kit-pz{display:flex;gap:8px;align-items:center;padding:4px 6px 4px 4px;
   border-radius:8px;min-width:0;text-decoration:none}
 .kit-pz:hover{background:rgba(255,255,255,.045)}
-.kit-pz-img{width:30px;height:30px;border-radius:6px;flex:none;overflow:hidden;
-  background:var(--bg);border:1px solid var(--border);display:inline-flex;
-  align-items:center;justify-content:center;font-size:15px}
 .kit-pz-img img{width:100%;height:100%;object-fit:cover}
 .kit-pz-folio{color:var(--muted);background:#1c1c2c;border-radius:999px;
   padding:1px 7px;font-size:10px;flex:none}
