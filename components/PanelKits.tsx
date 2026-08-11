@@ -24,78 +24,123 @@ import PiezasKit from "@/components/PiezasKit";
 const nrm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 /* ── El escogedor de equipos, compartido por «nuevo kit» y «editar kit» ── */
-function Escoge({ equipos, sel, alterna }: {
+function Escoge({ equipos, sel, alterna, onVaciar }: {
   equipos: EqBase[]; sel: Set<string>; alterna: (id: string) => void;
+  onVaciar: () => void;
 }) {
   const [filtro, setFiltro] = useState("");
   const vistos = useMemo(() => {
     const ps = nrm(filtro).split(/\s+/).filter(Boolean);
     if (!ps.length) return equipos;
     return equipos.filter(e => {
-      const t = nrm(`${e.folio || ""} ${e.nombre} ${e.categoria || ""}`);
+      const t = nrm(`${e.folio || ""} ${e.nombre} ${e.categoria || ""} ${e.subcategoria || ""}`);
       return ps.every(p => t.includes(p));
     });
   }, [equipos, filtro]);
 
+  /* Lo elegido, en el orden del inventario y no en el de los clics: esta lista
+     se repasa contra lo que se va a meter en la bolsa, y las etiquetas físicas
+     están ordenadas por folio. */
+  const elegidos = useMemo(() => equipos.filter(e => sel.has(e.id)), [equipos, sel]);
+
+  /* Una fila, la misma a los dos lados. Definida FUERA del return para no
+     escribirla dos veces: dos copias de la misma fila divergen a la primera
+     corrección, y aquí ya pasó con la miniatura. */
+  const fila = (e: EqBase, modo: "elegir" | "quitar") => (
+    <label key={e.id} className={`ent-lote-fila${modo === "quitar" ? " elegida" : ""}`}
+      data-marcada={modo === "elegir" && sel.has(e.id) ? "1" : undefined}>
+      {modo === "elegir"
+        ? <input type="checkbox" checked={sel.has(e.id)} onChange={() => alterna(e.id)} />
+        : null}
+      {/* Con foto se arma el kit mirando los equipos; sin ella hay que
+          reconocerlos por el folio, que nadie se sabe de memoria. */}
+      <span className="kit-pz-img">
+        {e.cartel
+          // eslint-disable-next-line @next/next/no-img-element
+          ? <img src={e.cartel} alt="" referrerPolicy="no-referrer" />
+          : <span>🎥</span>}
+      </span>
+      {e.folio && <span className="badge kit-folio">{e.folio}</span>}
+      <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
+        <span style={{ fontSize: 13.5 }}>{e.nombre}</span>
+        {(e.subcategoria || e.categoria) && (
+          <span style={{ fontSize: 10, color: "var(--dim)" }}>{e.subcategoria || e.categoria}</span>
+        )}
+      </span>
+      {/* Un equipo en reparación SÍ puede formar parte del kit: el kit dice
+          qué lo compone, no qué está libre hoy. Lo que cambia es que al
+          entregar se avisará de que falta. */}
+      {NO_ENTREGABLE[e.estado || ""] && <span className="kit-aviso">{NO_ENTREGABLE[e.estado || ""]}</span>}
+      {modo === "quitar" && (
+        <button type="button" className="ent-quita" title={`Sacar ${e.nombre} del kit`}
+          onClick={() => alterna(e.id)}>✕</button>
+      )}
+    </label>
+  );
+
   return (
-    <>
-      <input className="ent-lote-inp" placeholder="Buscar por folio, nombre o categoría…"
-        value={filtro} onChange={ev => setFiltro(ev.target.value)}
-        style={{ width: "100%", margin: "8px 0" }} />
-      <div className="kit-escoge">
-        {vistos.length === 0 && <div style={{ padding: 10, color: "var(--dim)", fontSize: 13 }}>Nada coincide.</div>}
-        {/* Agrupado por combo también AQUÍ, y no solo en la lista pintada.
-            Armar un kit es justamente el momento en que importa: «de la
-            compra del dron entra todo menos el cargador» se marca de un
-            vistazo, y con doscientos equipos en fila plana no se ve.
-            Misma función que la otra lista —agruparPorCombo—: dos listas que
-            agruparan distinto serían peor que ninguna. */}
-        {agruparPorCombo(vistos).map((g, _i, gs) => (
-          <Fragment key={g.clave}>
-            {valeAgrupar(gs) && (
-              <div className="kit-grupo-h esc">
-                {g.nombre
-                  ? <>
-                      <span className="badge cmp-cod">🧾 {g.codigo || g.nombre}</span>
-                      {g.codigo && <span className="kit-grupo-n">{g.nombre}</span>}
-                    </>
-                  : <span className="kit-grupo-n suelto">sin combo — entraron por separado</span>}
-                <span className="kit-grupo-c">{g.items.length}</span>
-              </div>
-            )}
-            {g.items.map(e => (
-              <label key={e.id} className="ent-lote-fila">
-                <input type="checkbox" checked={sel.has(e.id)} onChange={() => alterna(e.id)} />
-                {/* Con foto se arma el kit mirando los equipos; sin ella hay que
-                    reconocerlos por el folio, que nadie se sabe de memoria. */}
-                <span className="kit-pz-img">
-                  {e.cartel
-                    // eslint-disable-next-line @next/next/no-img-element
-                    ? <img src={e.cartel} alt="" referrerPolicy="no-referrer" />
-                    : <span>🎥</span>}
-                </span>
-                {e.folio && <span className="badge kit-folio">{e.folio}</span>}
-                {/* Nombre y, debajo, qué es: al armar un kit se elige entre
-                    doscientos equipos y «Placa de Liberación Rápida» hay
-                    tres. La subcategoría es lo que distingue una de otra. */}
-                <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
-                  <span style={{ fontSize: 13.5 }}>{e.nombre}</span>
-                  {(e.subcategoria || e.categoria) && (
-                    <span style={{ fontSize: 10, color: "var(--dim)" }}>{e.subcategoria || e.categoria}</span>
-                  )}
-                </span>
-                {/* Un equipo en reparación SÍ puede formar parte del kit: el kit
-                    dice qué lo compone, no qué está libre hoy. Lo que cambia es
-                    que al entregar se avisará de que falta. */}
-                {NO_ENTREGABLE[e.estado || ""] && <span className="kit-aviso">{NO_ENTREGABLE[e.estado || ""]}</span>}
-                {e.categoria && <span style={{ color: "var(--dim)", fontSize: 11.5 }}>{e.categoria}</span>}
-              </label>
-            ))}
-          </Fragment>
-        ))}
+    /* DOS LISTAS: DE DÓNDE SE ELIGE Y QUÉ SE ELIGIÓ, como en la entrega en
+       lote. Con una sola, saber qué llevaba puesto el kit era recorrer
+       doscientas filas buscando cuadraditos azules — y con el buscador
+       escrito, las piezas ya elegidas que no coinciden con el filtro NI
+       SIQUIERA SE VEÍAN. Se editaba un kit de doce a ciegas, confiando en el
+       «12 seleccionado(s)» del pie.
+       La de la derecha no cambia con el buscador: es la lista de empaque. */
+    <div className="ent-dos" style={{ marginTop: 8 }}>
+      <div>
+        <div className="ent-col-h">
+          <span>Inventario</span>
+          <span className="ent-col-n">{vistos.length}{filtro && vistos.length !== equipos.length ? ` de ${equipos.length}` : ""}</span>
+        </div>
+        <div className="ent-top">
+          <input className="ent-lote-inp" placeholder="Buscar por folio, nombre o categoría…"
+            value={filtro} onChange={ev => setFiltro(ev.target.value)} style={{ width: "100%" }} />
+        </div>
+        <div className="ent-caja">
+          {vistos.length === 0 && <div style={{ padding: 10, color: "var(--dim)", fontSize: 13 }}>Nada coincide.</div>}
+          {/* Agrupado por combo: armar un kit es justamente el momento en que
+              importa —«de la compra del dron entra todo menos el cargador» se
+              marca de un vistazo— y con doscientos equipos en fila plana no se
+              ve. Misma función que la lista pintada: dos listas que agruparan
+              distinto serían peor que ninguna. */}
+          {agruparPorCombo(vistos).map((g, _i, gs) => (
+            <Fragment key={g.clave}>
+              {valeAgrupar(gs) && (
+                <div className="kit-grupo-h esc">
+                  {g.nombre
+                    ? <>
+                        <span className="badge cmp-cod">🧾 {g.codigo || g.nombre}</span>
+                        {g.codigo && <span className="kit-grupo-n">{g.nombre}</span>}
+                      </>
+                    : <span className="kit-grupo-n suelto">sin combo — entraron por separado</span>}
+                  <span className="kit-grupo-c">{g.items.length}</span>
+                </div>
+              )}
+              {g.items.map(e => fila(e, "elegir"))}
+            </Fragment>
+          ))}
+        </div>
       </div>
-      <div style={{ color: "var(--dim)", fontSize: 11.5, marginTop: 6 }}>{sel.size} seleccionado(s)</div>
-    </>
+
+      <div>
+        <div className="ent-col-h marcados" style={{ color: "var(--violet)" }}>
+          <span>📦 En el kit</span>
+          <span className="ent-col-n" style={{ color: "var(--violet)", background: "rgba(167,139,250,.12)" }}>{elegidos.length}</span>
+        </div>
+        <div className="ent-top derecha">
+          {elegidos.length > 0
+            ? <button type="button" className="dato-btn" style={{ color: "var(--dim)" }} onClick={onVaciar}>Vaciar</button>
+            : <span style={{ color: "var(--dim)", fontSize: 11.5 }}>lo que se marque aparece aquí</span>}
+        </div>
+        <div className="ent-caja">
+          {elegidos.length === 0
+            ? <div style={{ padding: 12, color: "var(--dim)", fontSize: 12.5, lineHeight: 1.5 }}>
+                El kit está vacío. Búscalo a la izquierda y márcalo: un kit es lo que sale junto porque junto hace un trabajo.
+              </div>
+            : elegidos.map(e => fila(e, "quitar"))}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -156,7 +201,7 @@ function Editor({ kit, equipos, onCerrar }: {
       <input className="ent-lote-inp" placeholder="Nota (opcional): «lleva el trípode chico, no el grande»"
         value={desc} onChange={e => setDesc(e.target.value)} style={{ width: "100%", marginTop: 8 }} />
 
-      <Escoge equipos={equipos} sel={sel} alterna={alterna} />
+      <Escoge equipos={equipos} sel={sel} alterna={alterna} onVaciar={() => setSel(new Set())} />
 
       <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
         <button className="btn" disabled={ocupado || !nombre.trim()} onClick={guardar}>

@@ -2951,7 +2951,9 @@ button.repo-tit{text-align:left}
 .kit-folio{color:var(--muted);background:#1c1c2c;font-size:10.5px}
 .kit-aviso{color:var(--yellow);font-size:10.5px;font-style:italic}
 .kit-editor{border-left:2px solid var(--accent);padding:8px 0 4px 10px;margin:9px 0 4px}
-.kit-escoge{max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:8px}
+/* `.kit-escoge` se fue: el escogedor de kits usa ahora las dos columnas de la
+   entrega en lote (.ent-dos / .ent-caja), que es la misma pantalla resolviendo
+   el mismo problema. Una clase menos que mantener en paralelo. */
 
 /* Elegir kit dentro de la entrega en lote */
 .kit-elige{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
@@ -2977,7 +2979,10 @@ button.repo-tit{text-align:left}
 .kit-pz.yo .kit-pz-n{color:var(--violet);font-weight:700}
 .kit-pz.yo .kit-pz-img{opacity:1}
 /* En el escogedor la miniatura va más chica: son cien filas, no cinco. */
-.kit-escoge .kit-pz-img{width:26px;height:26px;font-size:13px}
+/* La miniatura del escogedor NO se achica. Estaba a 26 px «porque son
+   muchas», y era justo al reves: se elige entre doscientos equipos mirando
+   fotos, y a 26 px un case negro y una mochila negra son la misma mancha.
+   Vale el mismo --mini que en todas partes. */
 
 /* ── PERSONAJES Y ELENCO · quién aparece en la película ── */
 .pj-nuevo{display:flex;flex-direction:column;gap:8px;margin-bottom:12px;
