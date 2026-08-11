@@ -25,7 +25,7 @@ import { ejecutando } from "@/lib/fondos";
 import BotonFichaSunat from "@/components/BotonFichaSunat";
 import Volver from "@/components/Volver";
 import BuscadorGlobal from "@/components/BuscadorGlobal";
-import VistaCompra from "@/components/VistaCompra";
+import OjoCompra from "@/components/OjoCompra";
 import { ESTADOS_EQUIPO } from "@/lib/estadosEquipo";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -1201,9 +1201,10 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
               </span>
             )}
             <span style={{ flex: 1 }} />
-            <VistaCompra compraId={x.id}>
-              {abrir => <button className="chip-ojo fila-encima" onClick={abrir} title="Ver el combo">⚡</button>}
-            </VistaCompra>
+            {/* El envoltorio y no `VistaCompra` directamente: esta página es
+                de SERVIDOR y los hijos de VistaCompra son una función, que no
+                cruza la frontera. Ver components/OjoCompra. */}
+            <OjoCompra id={x.id} />
           </Fila>
         ))}
       </Seccion>
