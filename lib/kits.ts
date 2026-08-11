@@ -20,9 +20,15 @@ import { NO_ENTREGABLE } from "@/lib/estadosEquipo";
 
 /** Un equipo tal como lo necesitan las pantallas de kits: qué es, cómo está,
  *  y quién lo tiene si está fuera. */
+/** El combo del que vino una pieza, en lo mínimo para nombrarlo. */
+export type ComboBreve = { codigo?: string | null; nombre: string };
+
 export type EqBase = {
   id: string; folio?: string | null; nombre: string;
   categoria?: string | null; estado?: string | null; quien?: string | null;
+  /** De qué compra vino. Un kit grande se arma con varias compras y la
+   *  procedencia es lo que explica por qué hay tres cosas casi iguales. */
+  combo?: ComboBreve | null;
   /** Cartel del equipo (entidad_media). Una lista de equipos sin foto obliga
    *  a leer folio por folio; con foto se reconoce de un vistazo cuál falta. */
   cartel?: string | null;
@@ -43,7 +49,45 @@ export type PiezaKit = {
   /** Quién lo tiene ahora, si está fuera. */
   quien?: string | null;
   cartel?: string | null;
+  combo?: ComboBreve | null;
 };
+
+/* ── AGRUPAR POR PROCEDENCIA ──
+ * Un kit de quince piezas es una pared de miniaturas. Partirlo por el combo
+ * del que vino cada una devuelve la pregunta que de verdad se hace mirándolo:
+ * «esto vino todo junto, ¿lo guardo junto?», «la batería de repuesto, ¿es de
+ * la compra de la cámara o de la otra?».
+ *
+ * Una sola definición porque la usan dos listas distintas —las piezas
+ * pintadas y el escogedor de equipos del editor— y agrupar de dos maneras
+ * sería peor que no agrupar.
+ *
+ * Genérica a propósito: lo único que pide es que la cosa tenga `combo`.
+ */
+export type GrupoCombo<T> = {
+  clave: string; codigo?: string | null; nombre: string | null; items: T[];
+};
+
+export const SIN_COMBO = "_sin";
+
+export function agruparPorCombo<T extends { combo?: ComboBreve | null }>(xs: T[]): GrupoCombo<T>[] {
+  const m = new Map<string, GrupoCombo<T>>();
+  xs.forEach(x => {
+    const c = x.combo || null;
+    const clave = c ? (c.codigo || c.nombre) : SIN_COMBO;
+    const g = m.get(clave) || { clave, codigo: c?.codigo ?? null, nombre: c?.nombre ?? null, items: [] };
+    g.items.push(x); m.set(clave, g);
+  });
+  /* «Sin combo» al final: no es un combo más, es lo que no tiene
+     procedencia. Los demás quedan en el orden en que aparecieron, que es el
+     orden en que se armó el kit —una lista de empaque. */
+  return [...m.values()].sort((a, b) =>
+    (a.clave === SIN_COMBO ? 1 : 0) - (b.clave === SIN_COMBO ? 1 : 0));
+}
+
+/** Agrupar solo cuando dice algo. Con un solo grupo, los encabezados son
+ *  ruido: repiten en cada bloque lo que ya se sabe de todo el conjunto. */
+export const valeAgrupar = (gs: GrupoCombo<any>[]) => gs.length > 1;
 
 export type EstadoKit = {
   total: number;

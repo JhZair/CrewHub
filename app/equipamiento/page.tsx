@@ -162,9 +162,16 @@ export default async function Equipamiento({ searchParams }: {
   kits.filter(k => !k.retirado).forEach(k =>
     k.equipoIds.forEach(id => kitsPorEq.set(id, [...(kitsPorEq.get(id) || []), k.nombre])));
 
-  const eqsConDueno = (eqs || []).map((e: any) => ({
-    ...e, quien: quienTiene.get(e.id) || null, cartel: cartelPorEq.get(e.id) || null,
-  }));
+  const eqsConDueno = (eqs || []).map((e: any) => {
+    const cb = comboPorEq.get(e.id);
+    return {
+      ...e, quien: quienTiene.get(e.id) || null, cartel: cartelPorEq.get(e.id) || null,
+      /* Solo lo justo para nombrarlo. El combo entero trae total, moneda,
+         comprobante y proveedor; mandarlo repetido en doscientas filas sería
+         mover el mismo objeto doscientas veces para pintar dos palabras. */
+      combo: cb ? { codigo: cb.codigo, nombre: cb.nombre } : null,
+    };
+  });
 
   /* Interacción en la bitácora de cada equipo: comentarios sueltos
      (equipamiento_id) + comentarios de sus usos (prestamo_id → equipo). */

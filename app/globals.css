@@ -2776,6 +2776,24 @@ button.repo-tit{text-align:left}
 .kit-uso{color:var(--violet);background:rgba(167,139,250,.12);font-size:10.5px;
   text-transform:uppercase;letter-spacing:.4px}
 .kit-desc{color:var(--dim);font-size:11.5px;margin:3px 0 0 2px}
+/* ── LAS PIEZAS, PARTIDAS POR PROCEDENCIA ──
+   Quince miniaturas seguidas son una pared. El encabezado de combo es una
+   linea fina, no una caja: separa sin competir con las piezas, que son lo
+   que se viene a mirar. Solo aparece cuando hay mas de un combo —con uno
+   solo repetiria lo que ya se sabe del conjunto entero. */
+.kit-grupos{display:flex;flex-direction:column;gap:9px;margin-top:4px}
+.kit-grupo-h{display:flex;gap:7px;align-items:center;flex-wrap:wrap;
+  padding:6px 2px 4px;border-top:1px solid var(--border);margin-top:2px}
+.kit-grupo:first-child .kit-grupo-h{border-top:none;margin-top:0}
+.kit-grupo-n{color:var(--dim);font-size:11.5px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.kit-grupo-n.suelto{font-style:italic;opacity:.8}
+.kit-grupo-c{color:var(--muted);background:#1c1c2c;border-radius:20px;
+  padding:1px 7px;font-size:10.5px;font-weight:700;margin-left:auto;flex:none}
+/* En el escogedor va pegado al borde de la caja, que ya tiene su propio
+   fondo: sin el padding lateral el rotulo se sale del bloque de filas. */
+.kit-grupo-h.esc{padding:7px 9px 5px;background:rgba(255,255,255,.02);
+  position:sticky;top:0;z-index:1;backdrop-filter:blur(3px)}
 /* Las piezas del kit, con su foto. En rejilla y no en línea: en la ficha del
    equipo (columna estrecha) cae a una columna sola, y en el panel de
    /equipamiento se reparte en dos o tres sin tocar nada. */

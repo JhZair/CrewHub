@@ -800,7 +800,10 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         ]);
         const idsEq = [...new Set((todas || []).map((x: any) => x.equipamiento_id))];
         const [{ data: eqsK }, { data: fuera }, { data: mmK }] = await Promise.all([
-          supabase.from("equipamiento").select("id,folio,nombre,estado").in("id", idsEq),
+          /* `compra_id` para poder partir la lista por procedencia: un kit de
+             quince piezas armado con tres compras se lee mucho mejor por
+             combo que como una pared de miniaturas. */
+          supabase.from("equipamiento").select("id,folio,nombre,estado,compra_id").in("id", idsEq),
           supabase.from("equipo_prestamos")
             .select("equipamiento_id,persona:personas(nombre,alias)")
             .in("equipamiento_id", idsEq).is("hasta", null),
@@ -816,6 +819,16 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
           tiene.set(f.equipamiento_id, pe?.alias || pe?.nombre || "alguien");
         });
         const eqPorId = new Map((eqsK || []).map((e: any) => [e.id, e]));
+        /* Los combos de esas piezas, en una consulta. `comprasCat` ya está en
+           memoria más abajo, pero se carga después y solo para el desplegable
+           de esta ficha: apoyarse en él ataría el orden de dos bloques que hoy
+           no se conocen. */
+        const idsCompraK = [...new Set((eqsK || []).map((e: any) => e.compra_id).filter(Boolean))] as string[];
+        const comboK = new Map<string, any>();
+        if (idsCompraK.length) {
+          const { data: cbs } = await supabase.from("compras").select("id,codigo,nombre").in("id", idsCompraK);
+          (cbs || []).forEach((c: any) => comboK.set(c.id, { codigo: c.codigo, nombre: c.nombre }));
+        }
         kitsDelEq = (ks || []).map((k: any) => ({
           id: k.id, nombre: k.nombre, uso: k.uso, retirado: !!k.retirado_en,
           piezas: (todas || []).filter((t: any) => t.kit_id === k.id)
@@ -824,6 +837,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             .map((e: any) => ({
               id: e.id, folio: e.folio, nombre: e.nombre, estado: e.estado,
               quien: tiene.get(e.id) || null, cartel: cartelK.get(e.id) || null,
+              combo: e.compra_id ? comboK.get(e.compra_id) || null : null,
             })),
         }));
       }

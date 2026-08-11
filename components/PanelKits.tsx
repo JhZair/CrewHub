@@ -1,9 +1,9 @@
 "use client";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { crearKit, guardarKit, setKitEquipos, borrarKit, revivirKit } from "@/app/actions";
-import { estadoKit, resumenKit, NO_ENTREGABLE,
+import { estadoKit, resumenKit, NO_ENTREGABLE, agruparPorCombo, valeAgrupar,
   type PiezaKit, type EqBase, type KitVista } from "@/lib/kits";
 import PiezasKit from "@/components/PiezasKit";
 
@@ -44,25 +44,46 @@ function Escoge({ equipos, sel, alterna }: {
         style={{ width: "100%", margin: "8px 0" }} />
       <div className="kit-escoge">
         {vistos.length === 0 && <div style={{ padding: 10, color: "var(--dim)", fontSize: 13 }}>Nada coincide.</div>}
-        {vistos.map(e => (
-          <label key={e.id} className="ent-lote-fila">
-            <input type="checkbox" checked={sel.has(e.id)} onChange={() => alterna(e.id)} />
-            {/* Con foto se arma el kit mirando los equipos; sin ella hay que
-                reconocerlos por el folio, que nadie se sabe de memoria. */}
-            <span className="kit-pz-img">
-              {e.cartel
-                // eslint-disable-next-line @next/next/no-img-element
-                ? <img src={e.cartel} alt="" referrerPolicy="no-referrer" />
-                : <span>🎥</span>}
-            </span>
-            {e.folio && <span className="badge kit-folio">{e.folio}</span>}
-            <span style={{ flex: 1, fontSize: 13.5 }}>{e.nombre}</span>
-            {/* Un equipo en reparación SÍ puede formar parte del kit: el kit
-                dice qué lo compone, no qué está libre hoy. Lo que cambia es
-                que al entregar se avisará de que falta. */}
-            {NO_ENTREGABLE[e.estado || ""] && <span className="kit-aviso">{NO_ENTREGABLE[e.estado || ""]}</span>}
-            {e.categoria && <span style={{ color: "var(--dim)", fontSize: 11.5 }}>{e.categoria}</span>}
-          </label>
+        {/* Agrupado por combo también AQUÍ, y no solo en la lista pintada.
+            Armar un kit es justamente el momento en que importa: «de la
+            compra del dron entra todo menos el cargador» se marca de un
+            vistazo, y con doscientos equipos en fila plana no se ve.
+            Misma función que la otra lista —agruparPorCombo—: dos listas que
+            agruparan distinto serían peor que ninguna. */}
+        {agruparPorCombo(vistos).map((g, _i, gs) => (
+          <Fragment key={g.clave}>
+            {valeAgrupar(gs) && (
+              <div className="kit-grupo-h esc">
+                {g.nombre
+                  ? <>
+                      <span className="badge cmp-cod">🧾 {g.codigo || g.nombre}</span>
+                      {g.codigo && <span className="kit-grupo-n">{g.nombre}</span>}
+                    </>
+                  : <span className="kit-grupo-n suelto">sin combo — entraron por separado</span>}
+                <span className="kit-grupo-c">{g.items.length}</span>
+              </div>
+            )}
+            {g.items.map(e => (
+              <label key={e.id} className="ent-lote-fila">
+                <input type="checkbox" checked={sel.has(e.id)} onChange={() => alterna(e.id)} />
+                {/* Con foto se arma el kit mirando los equipos; sin ella hay que
+                    reconocerlos por el folio, que nadie se sabe de memoria. */}
+                <span className="kit-pz-img">
+                  {e.cartel
+                    // eslint-disable-next-line @next/next/no-img-element
+                    ? <img src={e.cartel} alt="" referrerPolicy="no-referrer" />
+                    : <span>🎥</span>}
+                </span>
+                {e.folio && <span className="badge kit-folio">{e.folio}</span>}
+                <span style={{ flex: 1, fontSize: 13.5 }}>{e.nombre}</span>
+                {/* Un equipo en reparación SÍ puede formar parte del kit: el kit
+                    dice qué lo compone, no qué está libre hoy. Lo que cambia es
+                    que al entregar se avisará de que falta. */}
+                {NO_ENTREGABLE[e.estado || ""] && <span className="kit-aviso">{NO_ENTREGABLE[e.estado || ""]}</span>}
+                {e.categoria && <span style={{ color: "var(--dim)", fontSize: 11.5 }}>{e.categoria}</span>}
+              </label>
+            ))}
+          </Fragment>
         ))}
       </div>
       <div style={{ color: "var(--dim)", fontSize: 11.5, marginTop: 6 }}>{sel.size} seleccionado(s)</div>
@@ -184,7 +205,7 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
   const piezasDe = (k: KitVista): PiezaKit[] =>
     k.equipoIds.map(id => porEq.get(id)).filter(Boolean).map((e: any) => ({
       id: e.id, folio: e.folio, nombre: e.nombre, estado: e.estado, quien: e.quien,
-      cartel: e.cartel,
+      cartel: e.cartel, combo: e.combo || null,
     }));
 
   return (
