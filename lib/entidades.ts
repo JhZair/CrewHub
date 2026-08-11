@@ -242,7 +242,11 @@ export const SUBCATS_EQUIPO: Record<string, string[]> = {
        distintas que se llaman igual son tres búsquedas que se estorban. */
     "Audífonos", "Monitores de estudio",
     "Caña / Boom pole", "Zeppelin / Paravientos", "Cable XLR", "Adaptador de audio",
-    "Pilas / Batería de sonido"],
+    "Pilas / Batería de sonido",
+    /* Y el de sonido, que faltaba por el mismo hueco. La bolsa de sonido no es
+       un accesorio: es donde vive el kit entero —grabadora, transmisores,
+       cables— y es lo que se coge o se olvida de una pieza. */
+    "Case de sonido"],
   /* Ordenada por lo que hace cada cosa: primero lo que EMITE, luego lo que
      MODIFICA esa luz, y al final lo que la sostiene, la alimenta y la
      guarda. Buscar una luz y buscar una bandera son dos momentos distintos
@@ -315,7 +319,14 @@ export const SUBCATS_EQUIPO: Record<string, string[]> = {
        smartphone, montura de cuello—. Meterlos juntos hacía que buscar
        «celular» devolviera el teléfono y sus cinco accesorios revueltos. */
     "Soporte / pinza de celular", "Ventosa / Clamp",
-    "Pértiga / Extension rod", "Selfie stick", "Saco de arena / Contrapeso"],
+    "Pértiga / Extension rod", "Selfie stick", "Saco de arena / Contrapeso",
+    /* El estuche del gimbal, del trípode, del slider. Faltaba, y era la misma
+       asimetría que dejó a iluminación sin cargador: cámara, drone e
+       iluminación se quedan cada una con su case y soporte no tenía ninguno.
+       Va aquí y no en el «Mochila / Case» de producción por lo mismo que los
+       otros tres: al armar el soporte se piensa en soportes, y un estuche de
+       RS 3 escondido entre las mochilas genéricas no aparece cuando toca. */
+    "Case de soporte"],
   /* Tres entradas nuevas que salieron de mirar los «escritos a mano»: ocho
      equipos de energía repartidos entre «Eléctrica» y «Adaptador». «Eléctrica»
      es otro «Luz Continua» —abarca la categoría entera, así que no separa
