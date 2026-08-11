@@ -2902,8 +2902,13 @@ button.repo-tit{text-align:left}
    pierde el sitio donde ibas. */
 .ens-chip-wrap{position:relative;display:inline-flex;flex:none}
 .ens-tapa{position:fixed;inset:0;z-index:40}
-.ens-pop{position:absolute;top:100%;right:0;margin-top:5px;z-index:41;
-  display:flex;flex-direction:column;min-width:250px;max-width:340px;
+/* `fixed`, no `absolute`: las listas que lo contienen tienen overflow-y:auto
+   y un hijo absolute se recorta contra sus bordes — el pop-up salia cortado
+   enseñando el titulo y ninguna pieza. Fijo se posiciona contra la ventana y
+   ningun overflow lo corta; el sitio lo calcula el componente midiendo el
+   boton al abrir. */
+.ens-pop{position:fixed;z-index:41;
+  display:flex;flex-direction:column;
   background:var(--panel);border:1px solid var(--border2);border-radius:10px;
   padding:7px;box-shadow:0 10px 28px rgba(0,0,0,.55)}
 .ens-pop-h{display:flex;gap:8px;align-items:center;font-size:10.5px;
