@@ -2868,6 +2868,7 @@ button.repo-tit{text-align:left}
   color:var(--dim);font-size:11px;margin:3px 0 0 2px}
 .kit-ctx-val{color:var(--teal);font-weight:700}
 .kit-ctx-quien{color:var(--dano)}
+.kit-ctx-mont{color:var(--muted)}
 /* De que es lo que trajo un combo. Mismo gris que el resto de su linea: es un
    matiz del numero de unidades, no un dato aparte. */
 .cbo-cats{color:var(--dim)}

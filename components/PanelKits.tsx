@@ -264,6 +264,7 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
       id: e.id, folio: e.folio, nombre: e.nombre, estado: e.estado, quien: e.quien,
       cartel: e.cartel, combo: e.combo || null, kits: e.kits || [],
       categoria: e.categoria || null, subcategoria: e.subcategoria || null,
+      montadas: e.piezas || [],
       valor: e.valor_compra ? Number(e.valor_compra) : null,
     }));
 
@@ -401,6 +402,16 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
                         </span>
                       )}
                       {ctx.cats.length > 0 && <span>{ctx.cats.join(" · ")}</span>}
+                      {/* «+ 3 montadas» y no sumado al total: el kit lleva
+                          quince FICHAS, pero sobre la mesa hay dieciocho
+                          cosas. Sumarlo escondería que tres van atornilladas
+                          dentro de otra; decirlo aparte es lo que hace que a
+                          la vuelta se cuenten. */}
+                      {ctx.montadas > 0 && (
+                        <span className="kit-ctx-mont" title="Piezas atornilladas dentro de otras piezas del kit. No se entregan por separado, pero hay que contarlas al devolver.">
+                          + {ctx.montadas} montada{ctx.montadas === 1 ? "" : "s"}
+                        </span>
+                      )}
                       {ctx.quienes.length > 0 && (
                         <span className="kit-ctx-quien">lo tiene{ctx.quienes.length > 1 ? "n" : ""} {ctx.quienes.join(", ")}</span>
                       )}

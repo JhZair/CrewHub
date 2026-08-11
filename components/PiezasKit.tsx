@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
+import ChipPiezas from "@/components/ChipPiezas";
 import { NO_ENTREGABLE, porQueNo, nombraPieza, agruparPorCombo, agruparPorKit,
   valeAgrupar, valorPieza, type PiezaKit, type Grupo } from "@/lib/kits";
 
@@ -90,6 +91,12 @@ function Pieza({ p, yo, enCasa }: { p: PiezaKit; yo?: string; enCasa?: boolean }
           {/* Montada aquí y solo aquí: no es un aviso, es la confirmación de
               que la pieza está donde dice el papel. En gris, no en rojo. */}
           {enCasa && p.estado === "ensamblado" && <span className="kit-pz-aqui">montada</span>}
+          {/* Esta pieza es a su vez un ensamblado. Importa aquí más que en
+              ningún sitio: un kit de quince donde una son cuatro atornilladas
+              se devuelve contando diecinueve, no quince — y el monopod sin su
+              cabezal vuelve pareciendo entero. */}
+          <ChipPiezas piezas={p.montadas || []}
+            titulo="Este equipo va armado: pulsa para ver qué piezas lleva dentro" />
         </span>
       </span>
     </>

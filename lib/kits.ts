@@ -79,6 +79,11 @@ export type PiezaKit = {
   categoria?: string | null;
   subcategoria?: string | null;
   valor?: number | null;
+  /** Si esta pieza es a su vez un ENSAMBLADO, lo que lleva montado dentro.
+   *  Un kit de quince cosas donde una son cuatro atornilladas se lee mal si
+   *  no lo dice: al devolverlo hay que contar diecinueve, no quince. */
+  montadas?: { id: string; folio?: string | null; nombre: string;
+    cartel?: string | null; estado?: string | null }[];
 };
 
 /* CUÁNTO VALE UNA PIEZA.
@@ -120,7 +125,11 @@ export function contextoKit(piezas: PiezaKit[]) {
   });
   const quienes: string[] = [];
   piezas.forEach(p => { if (p.quien && !quienes.includes(p.quien)) quienes.push(p.quien); });
-  return { valor, estimado, cats, quienes };
+  /* Piezas atornilladas dentro de las piezas. No suman al «15 equipos» —el kit
+     lleva quince fichas— pero sí a lo que hay que contar sobre la mesa al
+     devolverlo, y por eso se dice aparte en vez de inflar el número. */
+  const montadas = piezas.reduce((s, p) => s + (p.montadas?.length || 0), 0);
+  return { valor, estimado, cats, quienes, montadas };
 }
 
 /* ── AGRUPAR POR PROCEDENCIA ──
