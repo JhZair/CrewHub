@@ -21,11 +21,15 @@ import type { EqLibre } from "@/components/AsignarACompra";
  * pregunta desde los equipos.
  */
 
+const nrm = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
 export type ComboVista = {
   id: string; codigo?: string | null; nombre: string;
   proveedor?: string | null; fecha?: string | null;
   total?: number | string | null; moneda?: string | null;
   comprobante_url?: string | null;
+  /** La cara del combo: la foto de la primera unidad que tenga una. */
+  cartel?: string | null;
   /* La ficha del producto y la nota. Se podían ESCRIBIR al dar de alta el
      combo (components/AltaLote) y se leían en la vista al vuelo y en la
      búsqueda global… pero no se podían CORREGIR en ningún sitio: campos de
@@ -60,6 +64,12 @@ export default function PanelCombos({ combos, categorias = [], inventario = [] }
   const [abierto, setAbierto] = useState(false);
   const [edita, setEdita] = useState<string | null>(null);
   const [err, setErr] = useState("");
+  /* Los dos filtros de la lista. Viven aquí y no dentro del bloque para que
+     sobrevivan a abrir y cerrar un editor. */
+  const [cat, setCat] = useState("");
+  const [txt, setTxt] = useState("");
+
+  const vivos = combos;
 
   const totalPEN = combos.filter(c => (c.moneda || "PEN") === "PEN")
     .reduce((a, c) => a + (Number(c.total) || 0), 0);
@@ -77,7 +87,27 @@ export default function PanelCombos({ combos, categorias = [], inventario = [] }
         {vacios > 0 && <span style={{ color: "var(--yellow)", fontWeight: 400 }}> · {vacios} sin unidades</span>}
       </button>
 
-      {abierto && (
+      {abierto && (() => {
+        /* CON DIECIOCHO COMBOS, LA LISTA YA NO SE LEE, SE BUSCA.
+           Dos filtros y no uno: por CATEGORÍA —«enséñame lo de sonido»— y por
+           texto, que es como se vuelve a una compra concreta meses después
+           («baofeng», «C-004», «aliexpress»).
+           Por categoría se FILTRA y no se agrupa a propósito: un combo puede
+           traer cámara Y soporte, así que agrupar obligaría a repetir la misma
+           fila en dos sitios —y entonces «18 combos» dejaría de cuadrar con lo
+           que se ve—. Filtrando, cada combo sale una vez y aparece en las dos
+           categorías cuando toca. */
+        const cats: string[] = [];
+        vivos.forEach(c => (c.categorias || []).forEach(k => { if (!cats.includes(k)) cats.push(k); }));
+        cats.sort();
+        const ps = nrm(txt).split(/\s+/).filter(Boolean);
+        const lista = vivos.filter(c => {
+          if (cat && !(c.categorias || []).includes(cat)) return false;
+          if (!ps.length) return true;
+          const pajar = nrm(`${c.codigo || ""} ${c.nombre} ${c.proveedor || ""} ${(c.categorias || []).join(" ")}`);
+          return ps.every(p => pajar.includes(p));
+        });
+        return (
         <div style={{ marginTop: 8 }}>
           <AltaLote categorias={categorias} />
 
@@ -91,13 +121,49 @@ export default function PanelCombos({ combos, categorias = [], inventario = [] }
 
           {err && <div className="err-inline" style={{ marginTop: 8 }}>⚠ {err}</div>}
 
-          {combos.map(c => {
+          {/* Buscar y filtrar. Con dieciocho combos la lista ya no se lee, se
+              busca — y lo que se recuerda de una compra vieja es la marca, el
+              proveedor o el código, no en qué puesto de la lista estaba. */}
+          {combos.length > 6 && (
+            <div className="cbo-filtros">
+              <input className="ent-lote-inp" placeholder="Buscar por código, nombre, proveedor…"
+                value={txt} onChange={e => setTxt(e.target.value)} style={{ flex: 1, minWidth: 190 }} />
+              {cats.map(k => (
+                <button key={k} type="button" className={`kit-chip${cat === k ? " on" : ""}`}
+                  onClick={() => setCat(cat === k ? "" : k)}>{k}</button>
+              ))}
+              {(cat || txt) && (
+                <button type="button" className="dato-btn" style={{ color: "var(--dim)" }}
+                  onClick={() => { setCat(""); setTxt(""); }}>
+                  {lista.length} de {combos.length} · limpiar
+                </button>
+              )}
+            </div>
+          )}
+
+          {!lista.length && combos.length > 0 && (
+            <div style={{ color: "var(--dim)", fontSize: 12.5, marginTop: 10 }}>
+              Ningún combo coincide{cat ? ` en «${cat}»` : ""}{txt ? ` con «${txt}»` : ""}.
+            </div>
+          )}
+
+          {lista.map(c => {
             const fecha = c.fecha
               ? new Date(String(c.fecha) + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" })
               : null;
             return (
               <div key={c.id} className="cbo-fila">
                 <div className="cbo-l1">
+                  {/* La cara del combo: la foto de la primera unidad que tenga
+                      una. Un combo no es una cosa —es una compra— pero se
+                      reconoce por el aparato que trajo mucho antes que por su
+                      código. */}
+                  <span className="cbo-img">
+                    {c.cartel
+                      // eslint-disable-next-line @next/next/no-img-element
+                      ? <img src={c.cartel} alt="" referrerPolicy="no-referrer" />
+                      : <span>🧾</span>}
+                  </span>
                   {c.codigo && <span className="badge cmp-cod">{c.codigo}</span>}
                   {/* El nombre abre la vista al vuelo. Un combo se ve entero de
                       un vistazo: no necesita página, necesita no hacerte perder
@@ -155,7 +221,8 @@ export default function PanelCombos({ combos, categorias = [], inventario = [] }
             </div>
           )}
         </div>
-      )}
+      );
+      })()}
     </div>
   );
 }

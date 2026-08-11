@@ -176,6 +176,11 @@ export default async function Equipamiento({ searchParams }: {
          ya está en memoria: una consulta por combo serían N viajes para tres
          palabras. */
       categorias: [...new Set(us.map((u: any) => (u.categoria || "").trim()).filter(Boolean))],
+      /* La foto de la primera unidad que tenga una. Un combo no tiene imagen
+         propia —no es una cosa, es una compra— pero SÍ tiene cara: la del
+         aparato que se compró. «C-004 DJI Air 3S Fly More» se reconoce por el
+         drone mucho antes que por el código. */
+      cartel: us.map((u: any) => cartelPorEq.get(u.id)).find(Boolean) || null,
       nVivas: us.filter((u: any) => !FUERA_DE_INVENTARIO.includes(u.estado)).length,
       nProblema: us.filter((u: any) => NECESITA_ATENCION.includes(u.estado) || u.estado === "de_baja").length,
     };
