@@ -207,6 +207,10 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
      La cabecera sigue diciendo el resumen cerrada, asi que desplegar es una
      eleccion, no un peaje para leer la lista. */
   const [desplegados, setDesplegados] = useState<Set<string>>(new Set());
+  /* Los dos filtros de la lista, como en los combos. Fuera del bloque para
+     que sobrevivan a abrir y cerrar un editor. */
+  const [cat, setCat] = useState("");
+  const [txt, setTxt] = useState("");
   const alternaKit = (id: string) =>
     setDesplegados(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
@@ -217,6 +221,19 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
       categoria: e.categoria || null, subcategoria: e.subcategoria || null,
       valor: e.valor_compra ? Number(e.valor_compra) : null,
     }));
+
+  /* Un kit se busca por lo que es —«entrevista», «drone»— pero también por lo
+     que LLEVA: «¿en qué kit está el Rode?» es la pregunta de verdad cuando
+     falta algo. Por eso el pajar incluye folios y nombres de sus piezas. */
+  const listaKits = vivos.filter(k => {
+    const piezas = piezasDe(k);
+    if (cat && !contextoKit(piezas).cats.includes(cat)) return false;
+    const ps = nrm(txt).split(/\s+/).filter(Boolean);
+    if (!ps.length) return true;
+    const pajar = nrm(`${k.nombre} ${k.uso || ""} ${k.descripcion || ""} `
+      + piezas.map(p => `${p.folio || ""} ${p.nombre}`).join(" "));
+    return ps.every(p => pajar.includes(p));
+  });
 
   return (
     <div className="card">
@@ -238,7 +255,42 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
             </div>
           )}
 
-          {vivos.map(k => {
+          {/* Buscar y filtrar, igual que en los combos: pasados seis kits la
+              lista ya no se lee, se busca. Por categoría se FILTRA y no se
+              agrupa —un kit lleva cámara Y sonido, y agrupar repetiría la
+              misma fila bajo dos encabezados—, y el contador dice «3 de 8»
+              mientras hay filtro para que nadie crea que se perdieron cinco. */}
+          {(() => {
+            if (vivos.length <= 6) return null;
+            const cats: string[] = [];
+            vivos.forEach(k => contextoKit(piezasDe(k)).cats
+              .forEach(c => { if (!cats.includes(c)) cats.push(c); }));
+            cats.sort();
+            return (
+              <div className="cbo-filtros">
+                <input className="ent-lote-inp" placeholder="Buscar por nombre, uso o equipo…"
+                  value={txt} onChange={e => setTxt(e.target.value)} style={{ flex: 1, minWidth: 190 }} />
+                {cats.map(c => (
+                  <button key={c} type="button" className={`kit-chip${cat === c ? " on" : ""}`}
+                    onClick={() => setCat(cat === c ? "" : c)}>{c}</button>
+                ))}
+                {(cat || txt) && (
+                  <button type="button" className="dato-btn" style={{ color: "var(--dim)" }}
+                    onClick={() => { setCat(""); setTxt(""); }}>
+                    {listaKits.length} de {vivos.length} · limpiar
+                  </button>
+                )}
+              </div>
+            );
+          })()}
+
+          {!listaKits.length && vivos.length > 0 && (
+            <div style={{ color: "var(--dim)", fontSize: 12.5, marginTop: 10 }}>
+              Ningún kit coincide{cat ? ` en «${cat}»` : ""}{txt ? ` con «${txt}»` : ""}.
+            </div>
+          )}
+
+          {listaKits.map(k => {
             const e = estadoKit(piezasDe(k));
             const res = resumenKit(e);
             /* `editandoEste` y no `abierto`: aqui dentro habia un `abierto` que
@@ -248,6 +300,10 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
             const editandoEste = editando === k.id;
             const desplegado = desplegados.has(k.id);
             const piezas = [...e.libres, ...e.prestadas, ...e.vetadas];
+            /* En orden de kit —libres primero—: la cara del kit acaba siendo
+               la de la pieza que sí se puede entregar, que es la que uno tiene
+               en la cabeza al buscarlo. */
+            const caraKit = piezas.find(p => p.cartel)?.cartel || null;
             return (
               <div key={k.id} className={`kit-caja${editandoEste ? " editando" : ""}`}>
                 <div className="kit-h">
@@ -255,7 +311,17 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
                     onClick={() => alternaKit(k.id)}
                     title={desplegado ? "Ocultar las piezas" : `Ver las ${piezas.length} piezas de «${k.nombre}»`}>
                     <span className="panel-flecha">{desplegado ? "▾" : "▸"}</span>
-                    <b style={{ fontSize: 13.5 }}>📦 {k.nombre}</b>
+                    {/* La cara del kit: la foto de su primera pieza con
+                        imagen. Un kit tampoco es una cosa —es una decisión de
+                        qué sale junto— pero se reconoce por su aparato
+                        principal antes que por su nombre. */}
+                    <span className="cbo-img">
+                      {caraKit
+                        // eslint-disable-next-line @next/next/no-img-element
+                        ? <img src={caraKit} alt="" referrerPolicy="no-referrer" />
+                        : <span>📦</span>}
+                    </span>
+                    <b style={{ fontSize: 13.5 }}>{k.nombre}</b>
                   </button>
                   {k.uso && <span className="badge kit-uso">{k.uso}</span>}
                   <span style={{ color: res.color, fontSize: 11.5, fontWeight: 600 }}>{res.txt}</span>
