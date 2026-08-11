@@ -41,7 +41,18 @@ export type UsoItem = {
    *  se guardaba una: es la mitad que falta el día que algo no aparece y
    *  quien lo tiene dice que no se lo llevó. */
   entrego?: string | null; entregoFoto?: string | null;
+  /* QUÉ ES la cosa, no solo por qué salió. Con la miniatura a 60 px sobra
+     alto para una línea más, y la fila pasa de decir «una mochila que salió
+     el 11» a decir «una mochila de cámara de 240 soles que salió el 11». Al
+     recibir de vuelta es la diferencia entre reconocerla y creer
+     reconocerla. */
+  categoria?: string | null; subcategoria?: string | null;
+  valor?: number | null;
+  /** Código de su combo, para cuando el precio vive en la boleta y no aquí. */
+  comboCodigo?: string | null;
 };
+
+const soles = (n: number) => `S/ ${Math.round(n).toLocaleString("es-PE")}`;
 
 /* Agrupa las piezas de un mismo kit dentro de una persona, respetando el orden
    en que llegaron. Lo que salió suelto no se inventa un kit: cae en un tramo
@@ -196,6 +207,22 @@ export default function EnUsoAhora({ items }: { items: UsoItem[] }) {
                     <div className="eq-uso-l1">
                       {p.folio && <span className="badge eq-uso-folio">{p.folio}</span>}
                       <Link href={`/entidad/equipamiento/${p.eqId}`} className="eq-uso-nom">{p.nombre}</Link>
+                    </div>
+                    {/* QUÉ ES. Categoría, subcategoría y cuánto vale: el
+                        contexto del equipo, separado del contexto del
+                        préstamo que va debajo. Juntos en una línea, «cámara»
+                        y «sin proyecto» se leían como si dijeran lo mismo. */}
+                    <div className="eq-uso-l2 eq-uso-que">
+                      {p.categoria && <span>{p.categoria}</span>}
+                      {p.subcategoria && <><span className="eq-uso-sep">·</span><span>{p.subcategoria}</span></>}
+                      {p.valor && p.valor > 0
+                        ? <><span className="eq-uso-sep">·</span><span className="eq-uso-precio">{soles(p.valor)}</span></>
+                        /* Sin precio propio pero con combo, el dato existe y
+                           está en la boleta. Se dice así y no se repite el
+                           código dos veces, igual que en el listado. */
+                        : p.comboCodigo
+                          ? <><span className="eq-uso-sep">·</span><span className="eq-uso-encombo">precio en {p.comboCodigo}</span></>
+                          : null}
                     </div>
                     <div className="eq-uso-l2">
                       {p.proy && p.proyId

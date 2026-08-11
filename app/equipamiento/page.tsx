@@ -91,7 +91,7 @@ export default async function Equipamiento({ searchParams }: {
     // `*`: para calcular la completitud de la ficha de cada equipo.
     supabase.from("equipamiento").select("*").order("folio"),
     supabase.from("equipo_prestamos")
-      .select("id,desde,kit_id,equipo:equipamiento(id,folio,nombre),persona:personas(id,nombre,alias,foto_url),proy:proyectos(id,nombre),entrego:perfiles!equipo_prestamos_entregado_por_fkey(id,nombre,avatar_url)")
+      .select("id,desde,kit_id,equipo:equipamiento(id,folio,nombre,categoria,subcategoria,valor_compra,compra_id),persona:personas(id,nombre,alias,foto_url),proy:proyectos(id,nombre),entrego:perfiles!equipo_prestamos_entregado_por_fkey(id,nombre,avatar_url)")
       .is("hasta", null).order("desde", { ascending: false }),
     supabase.from("publicacion_vinculos")
       .select("entidad_id,publicacion_id,pub:publicaciones(estado)").eq("entidad_tipo", "equipamiento"),
@@ -663,6 +663,12 @@ export default async function Equipamiento({ searchParams }: {
               return {
                 id: p.id, desde: p.desde,
                 entrego: ent?.nombre || null, entregoFoto: ent?.avatar_url || null,
+                categoria: eq?.categoria || null, subcategoria: eq?.subcategoria || null,
+                valor: eq?.valor_compra ? Number(eq.valor_compra) : null,
+                /* Solo el código, no el combo entero: la fila necesita dos
+                   palabras, no un objeto con total, moneda y comprobante
+                   repetido en cada préstamo. */
+                comboCodigo: eq?.compra_id ? (comboPorEq.get(eq.id)?.codigo || null) : null,
                 eqId: eq?.id, folio: eq?.folio, nombre: eq?.nombre || "sin nombre",
                 cartel: cartelPorEq.get(eq?.id) || null,
                 perId: per?.id || "_", per: per?.alias || per?.nombre || "sin registrar",

@@ -2799,8 +2799,14 @@ button.repo-tit{text-align:left}
 .eq-uso-fila input[type=checkbox],.eq-uso-h input[type=checkbox]{
   accent-color:var(--accent);cursor:pointer;flex:none;width:16px;height:16px;margin:0}
 
-.eq-uso-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
-.eq-uso-l1,.eq-uso-l2{display:flex;gap:8px;align-items:center;min-width:0}
+/* Tres lineas ahora —que es, por que salio, y el nombre arriba— asi que el
+   hueco entre ellas baja: con 3 px sueltos y tres renglones la fila se
+   estiraba mas alto que la miniatura de 60 y quedaba aire debajo. */
+.eq-uso-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.eq-uso-l1,.eq-uso-l2{display:flex;gap:8px;align-items:center;min-width:0;flex-wrap:wrap}
+/* La linea de «que es» va apretada: son tres datos cortos separados por
+   puntos, no tres etiquetas. Con el gap de 8 px se leian como una lista. */
+.eq-uso-que{gap:0}
 /* `min-width:0` arriba + esto: el nombre largo se corta con puntos suspensivos
    en vez de empujar la fecha y el botón fuera de la fila. */
 .eq-uso-nom{font-weight:600;font-size:13.5px;overflow:hidden;
@@ -2810,6 +2816,13 @@ button.repo-tit{text-align:left}
 .eq-uso-proy{color:var(--violet);background:rgba(167,139,250,.12);font-size:11px;
   max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .eq-uso-sinproy{color:var(--dim);font-style:italic;font-size:11px}
+/* QUE ES el equipo: categoria, subcategoria y precio. Linea propia, encima de
+   la del prestamo. Mezcladas, «camara» y «sin proyecto» se leian como si
+   dijeran lo mismo — una describe la cosa y la otra por que esta fuera. */
+.eq-uso-que{color:var(--dim);font-size:11px}
+.eq-uso-sep{opacity:.45;margin:0 2px}
+.eq-uso-precio{color:var(--teal);font-weight:700}
+.eq-uso-encombo{font-style:italic;opacity:.8}
 /* Quien entrego, en la segunda linea del prestamo. En gris y detras de la
    fecha: no es lo primero que se busca, pero es lo unico que sirve el dia que
    quien lo tiene dice que no se lo llevo. */
