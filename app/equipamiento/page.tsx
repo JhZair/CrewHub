@@ -169,7 +169,7 @@ export default async function Equipamiento({ searchParams }: {
       /* Solo lo justo para nombrarlo. El combo entero trae total, moneda,
          comprobante y proveedor; mandarlo repetido en doscientas filas sería
          mover el mismo objeto doscientas veces para pintar dos palabras. */
-      combo: cb ? { codigo: cb.codigo, nombre: cb.nombre } : null,
+      combo: cb ? { codigo: cb.codigo, nombre: cb.nombre, nUnidades: cb.nUnidades } : null,
     };
   });
 

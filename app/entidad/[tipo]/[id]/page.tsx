@@ -826,8 +826,18 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         const idsCompraK = [...new Set((eqsK || []).map((e: any) => e.compra_id).filter(Boolean))] as string[];
         const comboK = new Map<string, any>();
         if (idsCompraK.length) {
-          const { data: cbs } = await supabase.from("compras").select("id,codigo,nombre").in("id", idsCompraK);
-          (cbs || []).forEach((c: any) => comboK.set(c.id, { codigo: c.codigo, nombre: c.nombre }));
+          /* Y cuántas unidades tiene cada combo ENTERO, que no es lo mismo que
+             cuántas de ellas están en este kit. Sin las dos cifras, un grupo
+             de dos piezas de un combo de tres se lee como que la compra trajo
+             dos. */
+          const [{ data: cbs }, { data: uds }] = await Promise.all([
+            supabase.from("compras").select("id,codigo,nombre").in("id", idsCompraK),
+            supabase.from("equipamiento").select("id,compra_id").in("compra_id", idsCompraK),
+          ]);
+          const nPorCompra = new Map<string, number>();
+          (uds || []).forEach((u: any) => nPorCompra.set(u.compra_id, (nPorCompra.get(u.compra_id) || 0) + 1));
+          (cbs || []).forEach((c: any) => comboK.set(c.id,
+            { codigo: c.codigo, nombre: c.nombre, nUnidades: nPorCompra.get(c.id) ?? null }));
         }
         kitsDelEq = (ks || []).map((k: any) => ({
           id: k.id, nombre: k.nombre, uso: k.uso, retirado: !!k.retirado_en,

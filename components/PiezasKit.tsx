@@ -87,7 +87,16 @@ export default function PiezasKit({ piezas, yo }: {
                  que se registraran las compras. Decirlo evita que parezca un
                  dato que falta por cargar. */
               : <span className="kit-grupo-n suelto">sin combo — entraron por separado</span>}
-            <span className="kit-grupo-c">{g.items.length}</span>
+            {/* «2 de 3»: el kit se lleva parte del combo. Un «2» a secas se
+                lee como cuántas trajo la compra, y quien se sabe el combo lo
+                toma por un error —«pero si compré tres»—. Lo que falta no
+                falta por cargar: está en el inventario, fuera de este kit. */}
+            {g.total && g.total > g.items.length
+              ? <span className="kit-grupo-c parcial"
+                  title={`El combo tiene ${g.total} unidades. Este kit se lleva ${g.items.length}; las otras ${g.total - g.items.length} están en el inventario, fuera del kit.`}>
+                  {g.items.length} de {g.total}
+                </span>
+              : <span className="kit-grupo-c">{g.items.length}</span>}
           </div>
           <div className="kit-piezas">
             {g.items.map(p => <Pieza key={p.id} p={p} yo={yo} />)}

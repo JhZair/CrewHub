@@ -20,8 +20,14 @@ import { NO_ENTREGABLE } from "@/lib/estadosEquipo";
 
 /** Un equipo tal como lo necesitan las pantallas de kits: qué es, cómo está,
  *  y quién lo tiene si está fuera. */
-/** El combo del que vino una pieza, en lo mínimo para nombrarlo. */
-export type ComboBreve = { codigo?: string | null; nombre: string };
+/** El combo del que vino una pieza, en lo mínimo para nombrarlo.
+ *
+ *  `nUnidades` es CUÁNTAS TIENE EL COMBO, que no es cuántas de ellas están en
+ *  el kit que se está mirando. Sin ese número el encabezado solo podía decir
+ *  «2» y quien conocía el combo lo leía como un error —«pero si el combo
+ *  tiene tres»—. Con los dos, dice lo que de verdad pasa: «2 de 3», o sea que
+ *  el kit se lleva parte del combo y algo se queda. */
+export type ComboBreve = { codigo?: string | null; nombre: string; nUnidades?: number | null };
 
 export type EqBase = {
   id: string; folio?: string | null; nombre: string;
@@ -66,6 +72,9 @@ export type PiezaKit = {
  */
 export type GrupoCombo<T> = {
   clave: string; codigo?: string | null; nombre: string | null; items: T[];
+  /** Unidades que tiene el combo entero, si se sabe. `items.length` son las
+   *  que están AQUÍ; las dos cifras juntas son la información. */
+  total?: number | null;
 };
 
 export const SIN_COMBO = "_sin";
@@ -75,7 +84,8 @@ export function agruparPorCombo<T extends { combo?: ComboBreve | null }>(xs: T[]
   xs.forEach(x => {
     const c = x.combo || null;
     const clave = c ? (c.codigo || c.nombre) : SIN_COMBO;
-    const g = m.get(clave) || { clave, codigo: c?.codigo ?? null, nombre: c?.nombre ?? null, items: [] };
+    const g = m.get(clave) || { clave, codigo: c?.codigo ?? null, nombre: c?.nombre ?? null,
+      total: c?.nUnidades ?? null, items: [] };
     g.items.push(x); m.set(clave, g);
   });
   /* «Sin combo» al final: no es un combo más, es lo que no tiene

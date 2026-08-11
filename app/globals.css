@@ -2790,6 +2790,9 @@ button.repo-tit{text-align:left}
 .kit-grupo-n.suelto{font-style:italic;opacity:.8}
 .kit-grupo-c{color:var(--muted);background:#1c1c2c;border-radius:20px;
   padding:1px 7px;font-size:10.5px;font-weight:700;margin-left:auto;flex:none}
+/* El kit se lleva parte del combo. En ambar, el color del combo: no es un
+   aviso, es un dato —lo que falta esta en el inventario, no perdido. */
+.kit-grupo-c.parcial{color:#d99a3f;background:rgba(217,154,63,.14)}
 /* En el escogedor va pegado al borde de la caja, que ya tiene su propio
    fondo: sin el padding lateral el rotulo se sale del bloque de filas. */
 .kit-grupo-h.esc{padding:7px 9px 5px;background:rgba(255,255,255,.02);
