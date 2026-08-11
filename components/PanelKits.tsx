@@ -3,7 +3,7 @@ import { Fragment, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { crearKit, guardarKit, setKitEquipos, borrarKit, revivirKit } from "@/app/actions";
-import { estadoKit, resumenKit, NO_ENTREGABLE, agruparPorCombo, valeAgrupar,
+import { estadoKit, resumenKit, contextoKit, NO_ENTREGABLE, agruparPorCombo, valeAgrupar,
   type PiezaKit, type EqBase, type KitVista } from "@/lib/kits";
 import PiezasKit from "@/components/PiezasKit";
 
@@ -206,6 +206,8 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
     k.equipoIds.map(id => porEq.get(id)).filter(Boolean).map((e: any) => ({
       id: e.id, folio: e.folio, nombre: e.nombre, estado: e.estado, quien: e.quien,
       cartel: e.cartel, combo: e.combo || null, kits: e.kits || [],
+      categoria: e.categoria || null,
+      valor: e.valor_compra ? Number(e.valor_compra) : null,
     }));
 
   return (
@@ -260,6 +262,25 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
                   <button className="dato-btn" title="Editar el kit"
                     onClick={() => setEditando(editandoEste ? null : k.id)}>✎</button>
                 </div>
+
+                {/* QUÉ ES el kit, con el kit plegado. «12 equipos · completo»
+                    no dice si son doce baterías o una cámara con todo lo suyo,
+                    ni cuánto sale a la calle si se entrega. Y cuando falta
+                    algo, lo que hace falta saber es a quién llamar — eso
+                    obligaba a desplegarlo. */}
+                {(() => {
+                  const ctx = contextoKit(piezas);
+                  if (!ctx.valor && !ctx.cats.length && !ctx.quienes.length) return null;
+                  return (
+                    <div className="kit-ctx">
+                      {ctx.valor > 0 && <span className="kit-ctx-val">S/ {Math.round(ctx.valor).toLocaleString("es-PE")}</span>}
+                      {ctx.cats.length > 0 && <span>{ctx.cats.join(" · ")}</span>}
+                      {ctx.quienes.length > 0 && (
+                        <span className="kit-ctx-quien">lo tiene{ctx.quienes.length > 1 ? "n" : ""} {ctx.quienes.join(", ")}</span>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {k.descripcion && <div className="kit-desc">{k.descripcion}</div>}
 

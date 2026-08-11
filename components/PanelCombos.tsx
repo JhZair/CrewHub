@@ -34,6 +34,10 @@ export type ComboVista = {
   link?: string | null;
   nota?: string | null;
   nUnidades: number; nVivas: number; nProblema: number;
+  /** De qué categorías es lo que trajo. «3 unidad(es)» no dice si son tres
+   *  baterías o una cámara, un micro y un trípode — y esa es la pregunta que
+   *  se hace al volver a una compra meses después. */
+  categorias?: string[];
 };
 
 export default function PanelCombos({ combos, categorias = [], inventario = [] }: {
@@ -126,6 +130,12 @@ export default function PanelCombos({ combos, categorias = [], inventario = [] }
                       : "sin unidades cargadas"}
                   </span>
                   {c.nProblema > 0 && <span style={{ color: "var(--yellow)" }}>⚠ {c.nProblema} con problema</span>}
+                  {/* Qué trajo. Va después del número porque lo matiza: «3
+                      unidades» y «cámara · soporte» juntos ya cuentan la
+                      compra sin abrir nada. */}
+                  {!!c.categorias?.length && (
+                    <span className="cbo-cats">{c.categorias.join(" · ")}</span>
+                  )}
                   <span style={{ color: c.comprobante_url ? "var(--green)" : "var(--dim)" }}>
                     {c.comprobante_url ? "🧾 con comprobante" : "sin comprobante"}
                   </span>

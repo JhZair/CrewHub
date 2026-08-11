@@ -2860,6 +2860,17 @@ button.repo-tit{text-align:left}
 .kit-h{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .kit-uso{color:var(--violet);background:rgba(167,139,250,.12);font-size:10.5px;
   text-transform:uppercase;letter-spacing:.4px}
+/* QUE ES el kit, con el kit plegado: cuanto suma, de que esta hecho y —si
+   algo falta— en manos de quien esta. «12 equipos - completo» no distingue
+   doce baterias de una camara con todo lo suyo, y «ninguno disponible»
+   obligaba a desplegarlo para saber a quien llamar. */
+.kit-ctx{display:flex;gap:9px;align-items:center;flex-wrap:wrap;
+  color:var(--dim);font-size:11px;margin:3px 0 0 2px}
+.kit-ctx-val{color:var(--teal);font-weight:700}
+.kit-ctx-quien{color:var(--dano)}
+/* De que es lo que trajo un combo. Mismo gris que el resto de su linea: es un
+   matiz del numero de unidades, no un dato aparte. */
+.cbo-cats{color:var(--dim)}
 .kit-desc{color:var(--dim);font-size:11.5px;margin:3px 0 0 2px}
 /* ── LAS PIEZAS, PARTIDAS POR PROCEDENCIA ──
    Quince miniaturas seguidas son una pared. El encabezado de combo es una

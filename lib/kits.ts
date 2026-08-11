@@ -64,7 +64,28 @@ export type PiezaKit = {
   cartel?: string | null;
   combo?: ComboBreve | null;
   kits?: KitBreve[];
+  /* Para el resumen de la cabecera: cuánto vale el kit y de qué está hecho.
+     Plegado, «12 equipos · completo» no dice si son doce baterías o una
+     cámara con sus accesorios. */
+  categoria?: string | null;
+  valor?: number | null;
 };
+
+/** Lo que un kit ES, para poder decirlo con el kit plegado: cuánto suma, de
+ *  qué categorías está hecho y —si algo falta— en manos de quién está.
+ *  «Ninguno disponible» sin decir quién los tiene obliga a desplegarlo para
+ *  saber a quién llamar, que es lo único que se quería saber. */
+export function contextoKit(piezas: PiezaKit[]) {
+  const valor = piezas.reduce((s, p) => s + (Number(p.valor) || 0), 0);
+  const cats: string[] = [];
+  piezas.forEach(p => {
+    const c = (p.categoria || "").trim();
+    if (c && !cats.includes(c)) cats.push(c);
+  });
+  const quienes: string[] = [];
+  piezas.forEach(p => { if (p.quien && !quienes.includes(p.quien)) quienes.push(p.quien); });
+  return { valor, cats, quienes };
+}
 
 /* ── AGRUPAR POR PROCEDENCIA ──
  * Un kit de quince piezas es una pared de miniaturas. Partirlo por el combo

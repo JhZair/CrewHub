@@ -172,6 +172,10 @@ export default async function Equipamiento({ searchParams }: {
     return {
       ...c,
       nUnidades: us.length,
+      /* De qué es lo que trajo, sin repetir. Se calcula aquí sobre `eqs`, que
+         ya está en memoria: una consulta por combo serían N viajes para tres
+         palabras. */
+      categorias: [...new Set(us.map((u: any) => (u.categoria || "").trim()).filter(Boolean))],
       nVivas: us.filter((u: any) => !FUERA_DE_INVENTARIO.includes(u.estado)).length,
       nProblema: us.filter((u: any) => NECESITA_ATENCION.includes(u.estado) || u.estado === "de_baja").length,
     };
