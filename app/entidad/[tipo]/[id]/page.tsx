@@ -2717,7 +2717,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                       {k.retirado && <span className="badge" style={{ color: "var(--dim)", background: "rgba(255,255,255,.05)", fontSize: 10.5 }}>retirado</span>}
                       <span style={{ color: res.color, fontSize: TXT.chip, fontWeight: 600 }}>{res.txt}</span>
                     </div>
-                    <PiezasKit piezas={ordenadas} yo={params.id} kitActual={k.id} />
+                    <PiezasKit piezas={ordenadas} yo={params.id} />
                   </div>
                 );
               })}

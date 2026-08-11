@@ -111,6 +111,30 @@ export const ESTADOS_ELEGIBLES: EstadoEquipo[] =
 /** Qué NO se puede entregar, y por qué —con estas palabras—. Es la MISMA
  *  lista que veta el servidor: si se separan, la pantalla ofrece algo que el
  *  servidor rechaza, y el rechazo llega después del clic. */
+/* ¿SE PUEDE ENTREGAR? La pregunta completa, no solo «¿está vetado?».
+ *
+ * Un equipo SIN ESTADO —cadena vacía o nulo— no está en la lista de vetados,
+ * así que todo lo que preguntaba `NO_ENTREGABLE[estado]` lo daba por bueno: el
+ * kit lo contaba entre las libres y decía «completo», mientras la entrega
+ * —que pide `estado === "disponible"`— se negaba a sacarlo. Dos pantallas, dos
+ * verdades, y ningún error: el kit prometía algo que la entrega no cumplía.
+ *
+ * Sin estado no es disponible: es que NO SE SABE. Y lo que no se sabe no se
+ * promete. */
+export const entregableEq = (k?: string | null): boolean => {
+  const s = String(k ?? "").trim();
+  if (!s) return false;
+  const m = POR_K.get(s as EstadoEquipo);
+  return !!m && m.entregable;
+};
+
+/** Por qué no se puede entregar, incluido el caso de no tener estado. */
+export const porQueNoEq = (k?: string | null): string => {
+  const s = String(k ?? "").trim();
+  if (!s) return "sin estado";
+  return NO_ENTREGABLE[s] || metaEstado(s).txt.toLowerCase();
+};
+
 export const NO_ENTREGABLE: Record<string, string> = Object.fromEntries(
   ESTADOS_EQUIPO.filter(e => !e.entregable && e.k !== "en_uso").map(e => [e.k, e.porque || e.txt]));
 

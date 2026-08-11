@@ -421,7 +421,7 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
 
                 {k.descripcion && <div className="kit-desc">{k.descripcion}</div>}
 
-                {desplegado && <PiezasKit piezas={piezas} kitActual={k.id} />}
+                {desplegado && <PiezasKit piezas={piezas} />}
 
                 {editandoEste && <Editor kit={k} equipos={equipos} onCerrar={() => setEditando(null)} />}
               </div>

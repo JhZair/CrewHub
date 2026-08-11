@@ -16,7 +16,7 @@
    rótulo, si cuenta en el inventario, si pide atención—. Se re-exporta para
    no romper a quien ya la importaba de aquí. */
 export { NO_ENTREGABLE } from "@/lib/estadosEquipo";
-import { NO_ENTREGABLE } from "@/lib/estadosEquipo";
+import { NO_ENTREGABLE, entregableEq, porQueNoEq } from "@/lib/estadosEquipo";
 
 /** Un equipo tal como lo necesitan las pantallas de kits: qué es, cómo está,
  *  y quién lo tiene si está fuera. */
@@ -218,7 +218,11 @@ export type EstadoKit = {
 export function estadoKit(piezas: PiezaKit[]): EstadoKit {
   const libres: PiezaKit[] = [], prestadas: PiezaKit[] = [], vetadas: PiezaKit[] = [];
   piezas.forEach(p => {
-    if (NO_ENTREGABLE[p.estado || ""]) vetadas.push(p);
+    /* `entregableEq` y no `NO_ENTREGABLE[...]`: una pieza SIN ESTADO no está
+       en la lista de vetados, así que se colaba entre las libres y el kit
+       decía «completo» — mientras la entrega, que pide `disponible`, se
+       negaba a sacarla. */
+    if (!entregableEq(p.estado)) vetadas.push(p);
     else if (p.quien) prestadas.push(p);
     else libres.push(p);
   });
@@ -229,8 +233,8 @@ export function estadoKit(piezas: PiezaKit[]): EstadoKit {
  *  «no disponible» no sirve de nada: lo que se necesita saber es a quién
  *  llamar o qué hay que arreglar. */
 export const porQueNo = (p: PiezaKit): string =>
-  NO_ENTREGABLE[p.estado || ""] ? NO_ENTREGABLE[p.estado || ""]
-  : p.quien ? `lo tiene ${p.quien}`
+  p.quien ? `lo tiene ${p.quien}`
+  : !entregableEq(p.estado) ? porQueNoEq(p.estado)
   : "no disponible";
 
 export const nombraPieza = (p: PiezaKit) => `${p.folio ? p.folio + " " : ""}${p.nombre}`;
