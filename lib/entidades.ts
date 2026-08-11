@@ -218,6 +218,14 @@ export const SUBCATS_EQUIPO: Record<string, string[]> = {
        tienes escrito en la ficha A-070, y manda la palabra que ya se usa. */
     "Pista de aterrizaje"],
   "sonido": ["Micrófono corbatero", "Micrófono de cañón", "Micrófono inalámbrico",
+    /* El RECEPTOR no es un micrófono: no captura nada. Y en un sistema
+       inalámbrico se registra como unidad aparte —el transmisor DJI Mic 2 ya
+       es la A-262— porque se pierde, se descarga y se queda en otro bolso por
+       su cuenta. Sin subcategoría propia caía en «Micrófono inalámbrico», y
+       entonces el filtro decía cuatro micros cuando hay dos micros y dos
+       receptores: el número servía para todo menos para saber a cuántas
+       personas puedes sonorizar. */
+    "Receptor inalámbrico",
     "Micrófono de mano", "Grabadora de audio", "Mezcladora", "Audífonos",
     "Caña / Boom pole", "Zeppelin / Paravientos", "Cable XLR", "Adaptador de audio",
     "Pilas / Batería de sonido"],
