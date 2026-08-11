@@ -87,6 +87,7 @@ import { estadoKit, resumenKit, type PiezaKit } from "@/lib/kits";
 import { ordenarActores, rotuloActores, leerActor, personaDe } from "@/lib/actores";
 import { metaEstado, colorEstadoEq, txtEstadoEq } from "@/lib/estadosEquipo";
 import PiezasKit from "@/components/PiezasKit";
+import Ensamblado from "@/components/Ensamblado";
 import ComboDelEquipo from "@/components/ComboDelEquipo";
 
 /* PERFIL DE ENTIDAD VIVA — dos columnas:
@@ -710,6 +711,10 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   let comboDelEq: any = null;
   let comprasCat: any[] = [];
   let hermanasCombo: PiezaKit[] = [];
+  /* ENSAMBLADO — de qué está hecho este equipo, y dentro de qué está él. */
+  let piezasMontadas: PiezaKit[] = [];
+  let montadoEn: { id: string; folio?: string | null; nombre: string } | null = null;
+  let candidatosMontar: any[] = [];
   /* (Aquí se cargaban las unidades de un combo para su ficha. La ficha se
      fue: un combo se registra una vez y no se toca, así que no necesitaba
      página con repositorio, casos y portada. Lo reemplaza la vista al
@@ -755,6 +760,47 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         .order("fecha", { ascending: false, nullsFirst: false }).limit(300);
       comprasCat = data || [];
       comboDelEq = ent.compra_id ? (data || []).find((c: any) => c.id === ent.compra_id) || null : null;
+    }
+
+    /* ── ENSAMBLADO ──
+       Tres cosas: lo que lleva dentro, dentro de qué está él, y qué se le
+       puede montar. Los candidatos se filtran en el SERVIDOR y no en la
+       pantalla: traer los 260 equipos para descartar 30 sería mover el
+       inventario entero por una lista de veinte. */
+    if (params.tipo === "equipamiento") {
+      const [{ data: dentro }, { data: cont }, { data: libres }] = await Promise.all([
+        supabase.from("equipamiento")
+          .select("id,folio,nombre,estado,categoria,subcategoria,valor_compra")
+          .eq("ensamblado_en", params.id).order("folio"),
+        ent.ensamblado_en
+          ? supabase.from("equipamiento").select("id,folio,nombre").eq("id", ent.ensamblado_en).maybeSingle()
+          : Promise.resolve({ data: null }),
+        /* Solo lo que de verdad se puede atornillar hoy: ni prestado, ni ya
+           montado en otra cosa, ni de baja/perdido. Ofrecer lo que el
+           servidor va a rechazar es hacer que el rechazo llegue después del
+           clic. */
+        supabase.from("equipamiento")
+          .select("id,folio,nombre,categoria,subcategoria,estado")
+          .is("ensamblado_en", null)
+          .in("estado", ["disponible", "no_aparece", "en_reparacion"])
+          .neq("id", params.id).order("folio"),
+      ]);
+      const idsD = (dentro || []).map((d: any) => d.id);
+      const cartelD = new Map<string, string>();
+      if (idsD.length) {
+        const { data: mmD } = await supabase.from("entidad_media")
+          .select("entidad_id,cartel_url").eq("entidad_tipo", "equipamiento").in("entidad_id", idsD);
+        (mmD || []).forEach((m: any) => { if (m.cartel_url) cartelD.set(m.entidad_id, m.cartel_url); });
+      }
+      piezasMontadas = (dentro || []).map((d: any) => ({
+        id: d.id, folio: d.folio, nombre: d.nombre, estado: d.estado, quien: null,
+        cartel: cartelD.get(d.id) || null,
+        categoria: d.categoria, subcategoria: d.subcategoria,
+        valor: d.valor_compra ? Number(d.valor_compra) : null,
+      }));
+      const c1 = Array.isArray(cont) ? (cont as any)[0] : cont;
+      montadoEn = c1 ? { id: c1.id, folio: c1.folio, nombre: c1.nombre } : null;
+      candidatosMontar = libres || [];
     }
 
     /* Lo demás que vino en la misma compra, con su foto y quién lo tiene.
@@ -2622,6 +2668,15 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               texto suelto que no llevaba a ninguna parte.
               Se ve SIEMPRE, con combo o sin él: si el panel solo apareciera
               cuando el dato ya está, no habría forma de ponerlo. */}
+          {/* ── DE QUÉ ESTÁ HECHO ──
+              Va ANTES del combo y de los kits porque es lo más físico de los
+              tres: el combo dice con qué entró, el kit con qué sale, y esto
+              qué ES la cosa que tienes delante. */}
+          {params.tipo === "equipamiento" && (
+            <Ensamblado equipoId={params.id} montadoEn={montadoEn}
+              piezas={piezasMontadas} candidatos={candidatosMontar as any} />
+          )}
+
           {params.tipo === "equipamiento" && (
             <ComboDelEquipo equipoId={params.id} combo={comboDelEq} hermanas={hermanasCombo}
               compras={comprasCat.map((c: any) => ({ id: c.id, codigo: c.codigo, nombre: c.nombre }))} />

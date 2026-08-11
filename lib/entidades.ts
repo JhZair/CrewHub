@@ -756,7 +756,10 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
          abierto (ver guardarEntidad): la pantalla es una cortesía, la regla
          está en el servidor. */
       { key: "estado", label: "Estado", tipo: "select", opciones: [...ESTADOS_ELEGIBLES],
-        explicaActual: { en_uso: "en uso — lo tiene alguien; se quita al devolverlo" } },
+        explicaActual: {
+          en_uso: "en uso — lo tiene alguien; se quita al devolverlo",
+          ensamblado: "ensamblado — está montado dentro de otro equipo",
+        } },
       { key: "valor_compra", label: "Valor de compra (S/)" },
       /* La columna `fecha_compra` estaba en db/schema.sql desde el principio y
          NINGÚN archivo la nombraba: ni el formulario, ni la ficha, ni ninguna

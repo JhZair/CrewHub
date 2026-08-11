@@ -82,6 +82,17 @@ export async function guardarEntidad(tipo: string, id: string | null, datos: Rec
       if (!abierto && limpio.estado === "en_uso") {
         return { error: "«En uso» no se pone a mano: sale de un préstamo abierto, y este equipo no tiene ninguno. Entrégalo desde /equipamiento y el estado se pone solo." };
       }
+      /* Y lo mismo con «ensamblado», por la misma razón: lo gobierna el equipo
+         que contiene la pieza, no este formulario. Cambiarlo a mano dejaría la
+         pieza «disponible» y a la vez atornillada dentro de otra cosa — dos
+         verdades, y la lista de entrega se creería la primera. */
+      const montada = (antes as any)?.ensamblado_en || null;
+      if (montada && limpio.estado !== "ensamblado") {
+        return { error: "Está montada dentro de otro equipo, así que su estado lo manda ese equipo. Desmóntala desde su ficha y después cámbialo." };
+      }
+      if (!montada && limpio.estado === "ensamblado") {
+        return { error: "«Ensamblado» no se pone a mano: sale de estar montado dentro de otro equipo. Móntalo desde la ficha de ese equipo." };
+      }
     }
 
     /* El .select() no es decorativo: si una política de RLS impide el UPDATE,
@@ -4612,6 +4623,106 @@ export async function revivirKit(kitId: string) {
   if (error) return { error: error.message };
   revalidatePath("/equipamiento");
   return { ok: true };
+}
+
+/* ══════════ EQUIPOS ENSAMBLADOS ══════════
+ *
+ * Montar piezas dentro de un equipo. Ver db/ensamblado.sql para el porqué de
+ * que sea una columna y no una tabla.
+ */
+export async function ensamblar(padreId: string, piezaIds: string[]) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const ids = [...new Set((piezaIds || []).filter(Boolean))].filter(i => i !== padreId);
+  if (!padreId || !ids.length) return { error: "Falta qué montar." };
+
+  /* Ni la pieza puede contener a su contenedor, ni más arriba en la cadena:
+     un monopod dentro de un rig dentro del monopod se quedaría dando vueltas
+     al pintar la ficha. Se sube por `ensamblado_en` hasta la raíz. */
+  let cursor: string | null = padreId;
+  const vistos = new Set<string>();
+  while (cursor && !vistos.has(cursor)) {
+    vistos.add(cursor);
+    if (ids.includes(cursor)) {
+      return { error: "Eso lo dejaría montado dentro de sí mismo: una de las piezas ya contiene a este equipo." };
+    }
+    const { data: p }: any = await supabase.from("equipamiento")
+      .select("ensamblado_en").eq("id", cursor).maybeSingle();
+    cursor = p?.ensamblado_en || null;
+  }
+
+  /* Se relee el estado: una pieza prestada no se puede atornillar —está en
+     la mochila de alguien— y decirlo con nombre evita el «no se guardó» a
+     secas. */
+  const { data: eqs, error: e0 } = await supabase.from("equipamiento")
+    .select("id,folio,nombre,estado,ensamblado_en").in("id", ids);
+  if (e0) return { error: e0.message };
+  const malas = (eqs || []).filter((e: any) => e.estado === "en_uso")
+    .map((e: any) => `${e.folio || ""} ${e.nombre}`.trim());
+  if (malas.length) {
+    return { error: `Están prestadas, así que no se pueden montar todavía: ${malas.join(", ")}. Regístralas como devueltas primero.` };
+  }
+
+  const buenos = (eqs || []).map((e: any) => e.id);
+  const { data, error } = await supabase.from("equipamiento")
+    .update({ ensamblado_en: padreId, estado: "ensamblado" })
+    .in("id", buenos).select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "No se guardó: no tienes permiso, o esas piezas ya no están." };
+
+  const { data: padre } = await supabase.from("equipamiento").select("nombre").eq("id", padreId).maybeSingle();
+  /* En la bitácora del ENSAMBLADO y no en la de cada pieza: armar algo es un
+     suceso del conjunto. En la pieza queda su estado, que ya lo dice. */
+  await supabase.from("actividad").insert({
+    entidad_tipo: "equipamiento", entidad_id: padreId, actor_id: user.id, tipo: "edicion",
+    detalle: { mensaje: `montó ${data.length} pieza(s) en «${padre?.nombre || "el equipo"}»` },
+  });
+  revalidatePath(`/entidad/equipamiento/${padreId}`);
+  buenos.forEach(id => revalidatePath(`/entidad/equipamiento/${id}`));
+  revalidatePath("/equipamiento");
+  return { ok: true, montadas: data.length };
+}
+
+/** Desmontar: la pieza vuelve a estar disponible y suelta. */
+export async function desensamblar(piezaIds: string[]) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const ids = [...new Set((piezaIds || []).filter(Boolean))];
+  if (!ids.length) return { error: "Falta qué desmontar." };
+
+  const { data: antes } = await supabase.from("equipamiento")
+    .select("id,ensamblado_en,estado").in("id", ids);
+  const padres = [...new Set((antes || []).map((e: any) => e.ensamblado_en).filter(Boolean))] as string[];
+
+  /* Vuelve a «disponible» SOLO si estaba en «ensamblado». Si alguien la marcó
+     «en reparación» estando montada —se rompió dentro del rig— desmontarla no
+     la arregla, y pisar ese estado borraría el único sitio donde consta. */
+  const aLiberar = (antes || []).filter((e: any) => e.estado === "ensamblado").map((e: any) => e.id);
+  const soloSoltar = (antes || []).filter((e: any) => e.estado !== "ensamblado").map((e: any) => e.id);
+
+  if (aLiberar.length) {
+    const { error } = await supabase.from("equipamiento")
+      .update({ ensamblado_en: null, estado: "disponible" }).in("id", aLiberar);
+    if (error) return { error: error.message };
+  }
+  if (soloSoltar.length) {
+    const { error } = await supabase.from("equipamiento")
+      .update({ ensamblado_en: null }).in("id", soloSoltar);
+    if (error) return { error: error.message };
+  }
+
+  for (const p of padres) {
+    await supabase.from("actividad").insert({
+      entidad_tipo: "equipamiento", entidad_id: p, actor_id: user.id, tipo: "edicion",
+      detalle: { mensaje: `desmontó ${ids.length} pieza(s)` },
+    });
+    revalidatePath(`/entidad/equipamiento/${p}`);
+  }
+  ids.forEach(id => revalidatePath(`/entidad/equipamiento/${id}`));
+  revalidatePath("/equipamiento");
+  return { ok: true, sueltas: ids.length };
 }
 
 export async function prestarEquipos(

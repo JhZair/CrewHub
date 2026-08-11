@@ -22,7 +22,8 @@
  */
 
 export type EstadoEquipo =
-  | "disponible" | "en_uso" | "no_aparece" | "en_reparacion" | "perdido" | "de_baja";
+  | "disponible" | "en_uso" | "ensamblado" | "no_aparece" | "en_reparacion"
+  | "perdido" | "de_baja";
 
 export type MetaEstado = {
   k: EstadoEquipo;
@@ -49,6 +50,23 @@ export const ESTADOS_EQUIPO: MetaEstado[] = [
   { k: "en_uso", ico: "🤝", txt: "En uso", plural: "En uso",
     color: "var(--blue)", tinte: "rgba(59,130,246,.05)",
     entregable: false, inventario: true, atencion: false, porque: "lo tiene alguien" },
+  /* ── LA PIEZA QUE ESTÁ ATORNILLADA A OTRA ──
+     Un monopod de paneo son siete piezas unidas con tornillos: varilla,
+     cabezal, mango, adaptadores. Cada una es una unidad que se compró y que
+     tiene su boleta, pero mientras está montada NO se puede prestar sola —y
+     ofrecerla en la lista de entrega es ofrecer algo que habría que desarmar
+     con un destornillador.
+     No es «en uso» (nadie la tiene), ni «en reparación» (no está rota), ni
+     está fuera del inventario (es nuestra y costó lo que costó). Es un estado
+     físico: forma parte de otra cosa.
+     Cuenta en el patrimonio SU precio y no el del ensamblado —el ensamblado no
+     se compró, se armó— y así el total del inventario no cuenta nada dos
+     veces. En gris y sin tinte: no es un problema que atender, es cómo está
+     guardada. */
+  { k: "ensamblado", ico: "🔩", txt: "Ensamblado", plural: "Ensamblados",
+    color: "var(--muted)", tinte: "", entregable: false, inventario: true,
+    atencion: false, porque: "está montado en otro equipo",
+    ayuda: "Está atornillado dentro de otro equipo, así que no se presta solo. Para liberarlo hay que desarmarlo desde la ficha del equipo que lo contiene." },
   /* Entre «disponible» y «perdido», que es donde vive la realidad la mayor
      parte del tiempo. Naranja: ni el amarillo de reparación —eso se sabe
      dónde está— ni el rojo de perdido, que ya es un veredicto. */
@@ -84,8 +102,11 @@ export const tinteEstadoEq = (k?: string | null) => metaEstado(k).tinte;
 /** Las opciones que se le pueden PONER a mano. «en uso» no está: lo gobiernan
  *  los préstamos, y ponerlo a dedo dejaría un equipo «en uso» sin que nadie
  *  lo tenga. */
+/* Ni «en uso» ni «ensamblado» se ponen a mano: el primero lo gobierna el
+   préstamo y el segundo el equipo que contiene la pieza. Elegirlos a dedo
+   dejaría un equipo «ensamblado» sin nada dentro de lo cual lo esté. */
 export const ESTADOS_ELEGIBLES: EstadoEquipo[] =
-  ESTADOS_EQUIPO.filter(e => e.k !== "en_uso").map(e => e.k);
+  ESTADOS_EQUIPO.filter(e => e.k !== "en_uso" && e.k !== "ensamblado").map(e => e.k);
 
 /** Qué NO se puede entregar, y por qué —con estas palabras—. Es la MISMA
  *  lista que veta el servidor: si se separan, la pantalla ofrece algo que el
