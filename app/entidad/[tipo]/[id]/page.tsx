@@ -2598,6 +2598,19 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             </div>
             <div className="carne-acciones" style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
               <Mantenimiento tipo={params.tipo} id={params.id} valores={ent} />
+              {/* ＋ NUEVO, DESDE LA FICHA. Dar de alta varios seguidos es lo
+                  normal —llega una compra y son ocho equipos— y el único botón
+                  para crear estaba en el listado: había que volver, buscarlo y
+                  empezar. El sitio donde acabas después de crear uno es
+                  justamente donde hace falta poder crear el siguiente.
+                  Solo para los tipos que se dan de alta en tanda; una empresa
+                  o un proyecto se crean de uno en uno y ahí sería ruido. */}
+              {["equipamiento", "persona", "lugar"].includes(params.tipo) && (
+                <Link href={`/entidad/${params.tipo}/nuevo`} className="btn btn-ghost"
+                  title={`Registrar otro ${conf.tabla === "equipamiento" ? "equipo" : params.tipo}`}>
+                  ＋ Nuevo
+                </Link>
+              )}
               {/* Los de empresa (verificar / ficha SUNAT) van en el bloque 🏛 SUNAT */}
               {/* Verificar DNI vive ahora en el bloque 🪪 Identidad */}
             </div>

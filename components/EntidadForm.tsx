@@ -61,6 +61,16 @@ export function EntidadForm({ tipo, id, valores, onDone }:
   // Al CREAR se ocultan los campos marcados soloEditar (ej. presupuesto
   // vigente de un proyecto: solo existe cuando ya está en ejecución)
   const campos = conf.campos.filter(c => !(c as any).soloEditar || id);
+  /* Lo que se REPITE de un alta a la siguiente. Una compra de ocho cosas
+     comparte categoría, proveedor y fecha; lo que cambia es el nombre y el
+     precio. Vaciarlo todo obligaría a volver a teclear lo mismo ocho veces,
+     y eso es lo que hace que la gente deje de registrar. */
+  const REPETIBLES = ["categoria", "subcategoria", "comprado_en", "fecha_compra", "estado", "tipo"];
+  const nombreDeLoGuardado = (d: Record<string, string>) =>
+    (d.nombre || d.titulo || "El registro").slice(0, 40);
+  /* Aviso de «guardado, sigue» — se limpia al tocar cualquier campo, para que
+     no se quede felicitando por algo que ya no está en pantalla. */
+  const [hecho, setHecho] = useState("");
   const [form, setForm] = useState<Record<string, string>>(() => {
     const f: Record<string, string> = {};
     campos.forEach(c => {
@@ -100,7 +110,12 @@ export function EntidadForm({ tipo, id, valores, onDone }:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form["nombre"], id, tipo]);
 
-  const guardar = async () => {
+  /* `otro` por PARÁMETRO y no por estado. Con `useState` habría que hacer
+     `setSeguir(true)` y llamar a guardar después —en un `setTimeout`, o en un
+     efecto— y `guardar` seguiría viendo el valor VIEJO de su closure: React no
+     re-crea la función hasta el siguiente render. Guardaría bien y navegaría
+     mal, sin fallar. Un argumento no tiene ese problema. */
+  const guardar = async (otro = false) => {
     if (guardando) return;
     // Validación en el propio formulario: marca los campos faltantes
     /* Un link pegado de la barra del navegador viene sin esquema
@@ -168,6 +183,25 @@ export function EntidadForm({ tipo, id, valores, onDone }:
     const res = await guardarEntidad(tipo, id || null, aGuardar);
     setGuardando(false);
     if (res?.error) { alert(res.error); return; }
+
+    /* DAR DE ALTA VARIOS SEGUIDOS ES LO NORMAL, no la excepción: llega una
+       compra y son ocho equipos. Guardar llevaba SIEMPRE a la ficha del
+       recién creado, así que para el siguiente había que volver atrás,
+       encontrar el botón y empezar de cero. Ocho veces.
+       `seguir` guarda y deja el formulario vacío y abierto, con lo repetido
+       —la categoría, dónde se compró, la fecha— ya puesto: de una compra de
+       ocho cosas, seis campos son el mismo. */
+    if (!id && otro) {
+      setForm(f => {
+        const n: Record<string, string> = {};
+        campos.forEach(c => { n[c.key] = REPETIBLES.includes(c.key) ? (f[c.key] || "") : ""; });
+        return n;
+      });
+      setErrores({});
+      setHecho(`✔ ${nombreDeLoGuardado(aGuardar)} guardado. Sigue con el siguiente.`);
+      router.refresh();
+      return;
+    }
     if (!id && res?.id) { router.push(`/entidad/${tipo}/${res.id}`); return; }
     router.refresh();
     onDone?.();
@@ -176,6 +210,10 @@ export function EntidadForm({ tipo, id, valores, onDone }:
   const cancelar = () => { if (onDone) onDone(); else router.back(); };
 
   const setCampo = (key: string, valor: string) => {
+    /* En cuanto se teclea, fuera el «✔ guardado»: si no, se queda felicitando
+       por un equipo que ya no está en pantalla mientras se escribe el
+       siguiente. */
+    if (hecho) setHecho("");
     /* Updater FUNCIONAL, no `{ ...form }`: con `{ ...form }` la copia sale del
        render que creó este handler, y si dos cambios ocurren antes de
        re-renderizar (encadenar campos, un clic tras otro), el segundo pisa al
@@ -384,9 +422,25 @@ export function EntidadForm({ tipo, id, valores, onDone }:
           ⚠ No se guardó — revisa: <b>{aviso}</b>. Te llevé al primero.
         </div>
       )}
-      <div style={{ display: "flex", gap: 10, marginTop: 14, justifyContent: "flex-end" }}>
+      {hecho && (
+        <div style={{ marginTop: 12, padding: "8px 12px", background: "rgba(46,204,113,.08)",
+          border: "1px solid rgba(46,204,113,.35)", borderRadius: 10, fontSize: 12.5, color: "var(--green)" }}>
+          {hecho}
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 10, marginTop: 14, justifyContent: "flex-end", flexWrap: "wrap" }}>
         <button className="btn btn-ghost" onClick={cancelar}>Cancelar</button>
-        <button className="btn" disabled={guardando} onClick={guardar}>
+        {/* Solo al CREAR: editando no hay «otro» que crear. Guarda y deja el
+            formulario listo para el siguiente, conservando lo que se repite. */}
+        {!id && (
+          <button className="btn btn-ghost" disabled={guardando}
+            title="Guarda este y deja el formulario listo para el siguiente, con la categoría y la compra ya puestas"
+            onClick={() => guardar(true)}>
+            {guardando ? "Guardando…" : "Guardar y crear otro"}
+          </button>
+        )}
+        <button className="btn" disabled={guardando}
+          onClick={() => guardar(false)}>
           {guardando ? "Guardando..." : "Guardar"}
         </button>
       </div>
