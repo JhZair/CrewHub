@@ -767,12 +767,16 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
   /* Avatar de columna (proyecto/empresa) a 60px, como la foto de persona: su
      cartel/logo si lo tiene, o un ícono de relleno —siempre ocupa el alto de la
      fila, nunca un hueco. */
-  const avatarEntidad = (tipo: string, id: string, icono: string, size = 60) => {
+  /* Sin tamaño propio: lo pone `--mini` en globals.css, el mismo que usan las
+     miniaturas de /equipamiento. Estaba clavado en 60 aquí y en otros cuatro
+     números por allá, así que el mismo equipo salía de un tamaño en la
+     búsqueda y de otro en el listado. Un número, un sitio. */
+  const avatarEntidad = (tipo: string, id: string, icono: string) => {
     const u = carteles.get(`${tipo}:${id}`);
     return u
       // eslint-disable-next-line @next/next/no-img-element
-      ? <img src={u} alt="" className="tr-poster" referrerPolicy="no-referrer" style={{ width: size, height: size }} />
-      : <span className="tr-poster" style={{ width: size, height: size, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: size * 0.45, background: "var(--bg)" }}>{icono}</span>;
+      ? <img src={u} alt="" className="tr-poster mini-eq" referrerPolicy="no-referrer" />
+      : <span className="tr-poster mini-eq">{icono}</span>;
   };
   /* Miniatura de equipo: su cartel si lo tiene, o un 🎥 de relleno —el equipo
      SIEMPRE lleva imagen en la lista, aunque nadie haya subido una. */

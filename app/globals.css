@@ -11,7 +11,7 @@
      reconocian, que es lo unico que una miniatura tiene que hacer: la lista
      se recorre mirando fotos, no leyendo folios.
      Cambiarlo aqui lo cambia en todas. */
-  --mini:52px;
+  --mini:60px;
 
   /* ⭐ La identidad de BUSCAR en CrewHub+ (decidida el 16 jul 2026).
      Vive aquí y no dentro de una clase porque hay dos buscadores —el de la
