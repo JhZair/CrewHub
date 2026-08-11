@@ -158,9 +158,12 @@ export default async function Equipamiento({ searchParams }: {
       if (cb) comboPorEq.set(x.id, cb);
     }
   });
-  const kitsPorEq = new Map<string, string[]>();
+  /* Con el id, no solo el nombre: el nombre basta para pintar el chip, pero
+     para agrupar hace falta poder EXCLUIR el kit que se está mirando, y dos
+     kits pueden llamarse parecido. */
+  const kitsPorEq = new Map<string, { id: string; nombre: string }[]>();
   kits.filter(k => !k.retirado).forEach(k =>
-    k.equipoIds.forEach(id => kitsPorEq.set(id, [...(kitsPorEq.get(id) || []), k.nombre])));
+    k.equipoIds.forEach(id => kitsPorEq.set(id, [...(kitsPorEq.get(id) || []), { id: k.id, nombre: k.nombre }])));
 
   const eqsConDueno = (eqs || []).map((e: any) => {
     const cb = comboPorEq.get(e.id);
@@ -170,6 +173,7 @@ export default async function Equipamiento({ searchParams }: {
          comprobante y proveedor; mandarlo repetido en doscientas filas sería
          mover el mismo objeto doscientas veces para pintar dos palabras. */
       combo: cb ? { codigo: cb.codigo, nombre: cb.nombre, nUnidades: cb.nUnidades } : null,
+      kits: kitsPorEq.get(e.id) || [],
     };
   });
 
@@ -345,8 +349,8 @@ export default async function Equipamiento({ searchParams }: {
                     {totalCombo > 0 && <span style={{ opacity: .75, fontWeight: 400 }}> · {soles(totalCombo, cb.moneda)}</span>}
                   </span>
                 )}
-                {misKits.map((kn: string) => (
-                  <span key={kn} className="badge eq-kit-chip" title={`Sale en el kit «${kn}»`}>📦 {kn}</span>
+                {misKits.map((k: any) => (
+                  <span key={k.id} className="badge eq-kit-chip" title={`Sale en el kit «${k.nombre}»`}>📦 {k.nombre}</span>
                 ))}
 
                 {/* El precio propio. Si no lo tiene pero vino en un combo, no

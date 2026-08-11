@@ -819,6 +819,24 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
           tiene.set(f.equipamiento_id, pe?.alias || pe?.nombre || "alguien");
         });
         const eqPorId = new Map((eqsK || []).map((e: any) => [e.id, e]));
+        /* En qué OTROS kits está cada pieza. Se pregunta por equipamiento_id y
+           NO se filtra `todas`: `todas` solo conoce los kits de ESTE equipo, y
+           una pieza puede compartir bolsa con otra en un kit que este equipo
+           no pisa. Reutilizarlo habría salido corto sin fallar. */
+        const kitsPorPieza = new Map<string, { id: string; nombre: string }[]>();
+        {
+          const { data: memb } = await supabase.from("kit_equipos")
+            .select("equipamiento_id,kit:kits(id,nombre,retirado_en)").in("equipamiento_id", idsEq);
+          (memb || []).forEach((r: any) => {
+            /* Objeto o arreglo según cómo PostgREST resuelva la clave. Leer
+               solo una de las dos formas sale vacío y parece que la pieza no
+               está en ningún kit. */
+            const kk = Array.isArray(r.kit) ? r.kit[0] : r.kit;
+            if (!kk || kk.retirado_en) return;
+            kitsPorPieza.set(r.equipamiento_id,
+              [...(kitsPorPieza.get(r.equipamiento_id) || []), { id: kk.id, nombre: kk.nombre }]);
+          });
+        }
         /* Los combos de esas piezas, en una consulta. `comprasCat` ya está en
            memoria más abajo, pero se carga después y solo para el desplegable
            de esta ficha: apoyarse en él ataría el orden de dos bloques que hoy
@@ -848,6 +866,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               id: e.id, folio: e.folio, nombre: e.nombre, estado: e.estado,
               quien: tiene.get(e.id) || null, cartel: cartelK.get(e.id) || null,
               combo: e.compra_id ? comboK.get(e.compra_id) || null : null,
+              kits: kitsPorPieza.get(e.id) || [],
             })),
         }));
       }
@@ -2616,7 +2635,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                       {k.retirado && <span className="badge" style={{ color: "var(--dim)", background: "rgba(255,255,255,.05)", fontSize: 10.5 }}>retirado</span>}
                       <span style={{ color: res.color, fontSize: TXT.chip, fontWeight: 600 }}>{res.txt}</span>
                     </div>
-                    <PiezasKit piezas={ordenadas} yo={params.id} />
+                    <PiezasKit piezas={ordenadas} yo={params.id} kitActual={k.id} />
                   </div>
                 );
               })}

@@ -205,7 +205,7 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
   const piezasDe = (k: KitVista): PiezaKit[] =>
     k.equipoIds.map(id => porEq.get(id)).filter(Boolean).map((e: any) => ({
       id: e.id, folio: e.folio, nombre: e.nombre, estado: e.estado, quien: e.quien,
-      cartel: e.cartel, combo: e.combo || null,
+      cartel: e.cartel, combo: e.combo || null, kits: e.kits || [],
     }));
 
   return (
@@ -263,7 +263,7 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
 
                 {k.descripcion && <div className="kit-desc">{k.descripcion}</div>}
 
-                {desplegado && <PiezasKit piezas={piezas} />}
+                {desplegado && <PiezasKit piezas={piezas} kitActual={k.id} />}
 
                 {editandoEste && <Editor kit={k} equipos={equipos} onCerrar={() => setEditando(null)} />}
               </div>

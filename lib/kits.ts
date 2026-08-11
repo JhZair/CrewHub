@@ -20,6 +20,9 @@ import { NO_ENTREGABLE } from "@/lib/estadosEquipo";
 
 /** Un equipo tal como lo necesitan las pantallas de kits: qué es, cómo está,
  *  y quién lo tiene si está fuera. */
+/** Otro kit al que pertenece una pieza, en lo mínimo para nombrarlo. */
+export type KitBreve = { id: string; nombre: string };
+
 /** El combo del que vino una pieza, en lo mínimo para nombrarlo.
  *
  *  `nUnidades` es CUÁNTAS TIENE EL COMBO, que no es cuántas de ellas están en
@@ -35,6 +38,10 @@ export type EqBase = {
   /** De qué compra vino. Un kit grande se arma con varias compras y la
    *  procedencia es lo que explica por qué hay tres cosas casi iguales. */
   combo?: ComboBreve | null;
+  /** En qué OTROS kits está. «La gorra y el SmallRig son un kit»: salen
+   *  juntos siempre, estén en el kit que estén. Es un hecho de los equipos,
+   *  no de la lista que se esté mirando. */
+  kits?: KitBreve[];
   /** Cartel del equipo (entidad_media). Una lista de equipos sin foto obliga
    *  a leer folio por folio; con foto se reconoce de un vistazo cuál falta. */
   cartel?: string | null;
@@ -56,6 +63,7 @@ export type PiezaKit = {
   quien?: string | null;
   cartel?: string | null;
   combo?: ComboBreve | null;
+  kits?: KitBreve[];
 };
 
 /* ── AGRUPAR POR PROCEDENCIA ──
@@ -70,7 +78,7 @@ export type PiezaKit = {
  *
  * Genérica a propósito: lo único que pide es que la cosa tenga `combo`.
  */
-export type GrupoCombo<T> = {
+export type Grupo<T> = {
   clave: string; codigo?: string | null; nombre: string | null; items: T[];
   /** Unidades que tiene el combo entero, si se sabe. `items.length` son las
    *  que están AQUÍ; las dos cifras juntas son la información. */
@@ -79,8 +87,8 @@ export type GrupoCombo<T> = {
 
 export const SIN_COMBO = "_sin";
 
-export function agruparPorCombo<T extends { combo?: ComboBreve | null }>(xs: T[]): GrupoCombo<T>[] {
-  const m = new Map<string, GrupoCombo<T>>();
+export function agruparPorCombo<T extends { combo?: ComboBreve | null }>(xs: T[]): Grupo<T>[] {
+  const m = new Map<string, Grupo<T>>();
   xs.forEach(x => {
     const c = x.combo || null;
     const clave = c ? (c.codigo || c.nombre) : SIN_COMBO;
@@ -95,9 +103,40 @@ export function agruparPorCombo<T extends { combo?: ComboBreve | null }>(xs: T[]
     (a.clave === SIN_COMBO ? 1 : 0) - (b.clave === SIN_COMBO ? 1 : 0));
 }
 
+/* ── EL OTRO EJE: POR KIT ──
+ * Dentro de un kit grande hay kits pequeños. La gorra y el SmallRig salen
+ * juntos siempre, estén donde estén, y verlos pegados dice algo que la
+ * procedencia no puede decir: no vinieron de la misma compra, pero viajan en
+ * la misma bolsa.
+ *
+ * Ojo: esto NO es una partición. Una pieza puede estar en tres kits y sale en
+ * los tres grupos, a propósito —esconderla en dos dejaría esos kits
+ * incompletos, que es justo lo que un kit no puede estar—. Por eso la suma de
+ * los grupos puede pasar del total, y por eso el conmutador dice siempre qué
+ * eje se está mirando: sin decirlo, el número descuadrado parecería un error.
+ */
+export function agruparPorKit<T extends { kits?: KitBreve[] }>(xs: T[], excluir?: string): Grupo<T>[] {
+  const m = new Map<string, Grupo<T>>();
+  const sueltos: T[] = [];
+  xs.forEach(x => {
+    /* Fuera el kit que se está mirando: agrupar sus propias piezas bajo su
+       propio nombre sería un encabezado que repite el título. */
+    const otros = (x.kits || []).filter(k => k.id !== excluir);
+    if (!otros.length) { sueltos.push(x); return; }
+    otros.forEach(k => {
+      const g = m.get(k.id) || { clave: k.id, codigo: null, nombre: k.nombre, items: [] };
+      g.items.push(x); m.set(k.id, g);
+    });
+  });
+  const gs = [...m.values()];
+  // Lo que solo está aquí, al final. Mismo gesto que «sin combo».
+  if (sueltos.length) gs.push({ clave: SIN_COMBO, codigo: null, nombre: null, items: sueltos });
+  return gs;
+}
+
 /** Agrupar solo cuando dice algo. Con un solo grupo, los encabezados son
  *  ruido: repiten en cada bloque lo que ya se sabe de todo el conjunto. */
-export const valeAgrupar = (gs: GrupoCombo<any>[]) => gs.length > 1;
+export const valeAgrupar = (gs: Grupo<any>[]) => gs.length > 1;
 
 export type EstadoKit = {
   total: number;
