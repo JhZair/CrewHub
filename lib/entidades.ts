@@ -226,7 +226,21 @@ export const SUBCATS_EQUIPO: Record<string, string[]> = {
        receptores: el número servía para todo menos para saber a cuántas
        personas puedes sonorizar. */
     "Receptor inalámbrico",
-    "Micrófono de mano", "Grabadora de audio", "Mezcladora", "Audífonos",
+    "Micrófono de mano", "Grabadora de audio", "Mezcladora",
+    /* La caja entre el micro y la computadora. No es una mezcladora —no
+       mezcla, convierte— ni un «Adaptador de audio», que es el cablecito.
+       La Scarlett Solo es lo que hace que una grabación entre a la
+       computadora, y si se queda en la oficina no hay sesión de doblaje. */
+    "Interfaz de audio",
+    /* Escuchar. Los audífonos son para el campo —oír lo que entra mientras se
+       graba— y los monitores para la sala: son la decisión de mezcla. Que
+       sean dos nombres importa porque quien arma un rodaje se lleva los
+       audífonos y quien arma una sesión se lleva los monitores, y nadie
+       quiere las dos cosas el mismo día.
+       «Monitores de estudio» completo y no «Monitor» a secas: en cómputo ya
+       hay «Monitor» (la pantalla) y en cámara «Monitor externo». Tres cosas
+       distintas que se llaman igual son tres búsquedas que se estorban. */
+    "Audífonos", "Monitores de estudio",
     "Caña / Boom pole", "Zeppelin / Paravientos", "Cable XLR", "Adaptador de audio",
     "Pilas / Batería de sonido"],
   /* Ordenada por lo que hace cada cosa: primero lo que EMITE, luego lo que
