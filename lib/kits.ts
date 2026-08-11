@@ -34,7 +34,8 @@ export type ComboBreve = { codigo?: string | null; nombre: string; nUnidades?: n
 
 export type EqBase = {
   id: string; folio?: string | null; nombre: string;
-  categoria?: string | null; estado?: string | null; quien?: string | null;
+  categoria?: string | null; subcategoria?: string | null;
+  estado?: string | null; quien?: string | null;
   /** De qué compra vino. Un kit grande se arma con varias compras y la
    *  procedencia es lo que explica por qué hay tres cosas casi iguales. */
   combo?: ComboBreve | null;
@@ -68,6 +69,7 @@ export type PiezaKit = {
      Plegado, «12 equipos · completo» no dice si son doce baterías o una
      cámara con sus accesorios. */
   categoria?: string | null;
+  subcategoria?: string | null;
   valor?: number | null;
 };
 

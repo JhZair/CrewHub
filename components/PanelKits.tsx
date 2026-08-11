@@ -75,7 +75,15 @@ function Escoge({ equipos, sel, alterna }: {
                     : <span>🎥</span>}
                 </span>
                 {e.folio && <span className="badge kit-folio">{e.folio}</span>}
-                <span style={{ flex: 1, fontSize: 13.5 }}>{e.nombre}</span>
+                {/* Nombre y, debajo, qué es: al armar un kit se elige entre
+                    doscientos equipos y «Placa de Liberación Rápida» hay
+                    tres. La subcategoría es lo que distingue una de otra. */}
+                <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
+                  <span style={{ fontSize: 13.5 }}>{e.nombre}</span>
+                  {(e.subcategoria || e.categoria) && (
+                    <span style={{ fontSize: 10, color: "var(--dim)" }}>{e.subcategoria || e.categoria}</span>
+                  )}
+                </span>
                 {/* Un equipo en reparación SÍ puede formar parte del kit: el kit
                     dice qué lo compone, no qué está libre hoy. Lo que cambia es
                     que al entregar se avisará de que falta. */}
@@ -206,7 +214,7 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
     k.equipoIds.map(id => porEq.get(id)).filter(Boolean).map((e: any) => ({
       id: e.id, folio: e.folio, nombre: e.nombre, estado: e.estado, quien: e.quien,
       cartel: e.cartel, combo: e.combo || null, kits: e.kits || [],
-      categoria: e.categoria || null,
+      categoria: e.categoria || null, subcategoria: e.subcategoria || null,
       valor: e.valor_compra ? Number(e.valor_compra) : null,
     }));
 

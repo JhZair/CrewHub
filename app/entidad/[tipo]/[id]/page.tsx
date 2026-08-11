@@ -763,7 +763,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
        clic es dejarla sin contestar. */
     if (ent.compra_id) {
       const { data: herm } = await supabase.from("equipamiento")
-        .select("id,folio,nombre,estado").eq("compra_id", ent.compra_id).order("folio");
+        .select("id,folio,nombre,estado,categoria,subcategoria,valor_compra").eq("compra_id", ent.compra_id).order("folio");
       const idsH = (herm || []).map((h: any) => h.id);
       if (idsH.length) {
         const [{ data: mmH }, { data: prH }] = await Promise.all([
@@ -784,6 +784,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         hermanasCombo = (herm || []).map((h: any) => ({
           id: h.id, folio: h.folio, nombre: h.nombre, estado: h.estado,
           quien: tieneH.get(h.id) || null, cartel: cartelH.get(h.id) || null,
+          categoria: h.categoria || null, subcategoria: h.subcategoria || null,
+          valor: h.valor_compra ? Number(h.valor_compra) : null,
         }));
       }
     }
@@ -808,7 +810,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
           /* `compra_id` para poder partir la lista por procedencia: un kit de
              quince piezas armado con tres compras se lee mucho mejor por
              combo que como una pared de miniaturas. */
-          supabase.from("equipamiento").select("id,folio,nombre,estado,compra_id").in("id", idsEq),
+          supabase.from("equipamiento").select("id,folio,nombre,estado,compra_id,categoria,subcategoria,valor_compra").in("id", idsEq),
           supabase.from("equipo_prestamos")
             .select("equipamiento_id,persona:personas(nombre,alias)")
             .in("equipamiento_id", idsEq).is("hasta", null),
@@ -872,6 +874,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               quien: tiene.get(e.id) || null, cartel: cartelK.get(e.id) || null,
               combo: e.compra_id ? comboK.get(e.compra_id) || null : null,
               kits: kitsPorPieza.get(e.id) || [],
+              categoria: e.categoria || null, subcategoria: e.subcategoria || null,
+              valor: e.valor_compra ? Number(e.valor_compra) : null,
             })),
         }));
       }

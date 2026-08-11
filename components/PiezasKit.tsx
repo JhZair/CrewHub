@@ -44,6 +44,14 @@ type Eje = "kit" | "combo";
 function Pieza({ p, yo }: { p: PiezaKit; yo?: string }) {
   const libre = !p.quien && !NO_ENTREGABLE[p.estado || ""];
   const soyYo = !!yo && p.id === yo;
+  /* Qué es y cuánto vale, debajo del nombre. Con la miniatura a 60 px cabe
+     una línea más, y sin ella la pieza solo decía su nombre: «Placa de
+     Liberación Rápida - MINIFOCUS Arca» no dice si es la de veinte soles o la
+     de doscientos, ni a qué familia pertenece. El motivo de que no salga baja
+     también aquí: iba a la derecha del nombre, robándole el sitio a lo único
+     que no se puede recortar. */
+  const sub = (p.subcategoria || "").trim() || (p.categoria || "").trim();
+  const precio = Number(p.valor) || 0;
   const dentro = (
     <>
       <span className="kit-pz-img">
@@ -52,9 +60,21 @@ function Pieza({ p, yo }: { p: PiezaKit; yo?: string }) {
           ? <img src={p.cartel} alt="" referrerPolicy="no-referrer" />
           : <span>🎥</span>}
       </span>
-      {p.folio && <span className="kit-pz-folio">{p.folio}</span>}
-      <span className="kit-pz-n">{p.nombre}</span>
-      {!libre && <span className="kit-pz-por">{porQueNo(p)}</span>}
+      <span className="kit-pz-txt">
+        <span className="kit-pz-l1">
+          {p.folio && <span className="kit-pz-folio">{p.folio}</span>}
+          <span className="kit-pz-n">{p.nombre}</span>
+        </span>
+        <span className="kit-pz-l2">
+          {sub && <span>{sub}</span>}
+          {precio > 0
+            ? <span className="kit-pz-precio">S/ {Math.round(precio).toLocaleString("es-PE")}</span>
+            /* Sin precio propio pero con combo: el dato existe, está en la
+               boleta. Mismo criterio que el listado y que «En uso ahora». */
+            : p.combo ? <span className="kit-pz-encombo">precio en {p.combo.codigo || p.combo.nombre}</span> : null}
+          {!libre && <span className="kit-pz-por">{porQueNo(p)}</span>}
+        </span>
+      </span>
     </>
   );
   const clase = `kit-pz${libre ? "" : " ocupada"}${soyYo ? " yo" : ""}`;
