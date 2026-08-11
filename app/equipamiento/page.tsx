@@ -87,11 +87,11 @@ export default async function Equipamiento({ searchParams }: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: eqs }, { data: enManos }, { data: vincs }, { data: coms }, { data: media }, comsBita, comsUso, usosRec, { data: comBita }, { data: prestAll }, personasRaw, proyectosRaw, { data: kitsRaw }, { data: kitEqs }, { data: comprasRaw }] = await Promise.all([
+  const [{ data: eqs }, { data: enManos, error: eManos }, { data: vincs }, { data: coms }, { data: media }, comsBita, comsUso, usosRec, { data: comBita }, { data: prestAll }, personasRaw, proyectosRaw, { data: kitsRaw }, { data: kitEqs }, { data: comprasRaw }] = await Promise.all([
     // `*`: para calcular la completitud de la ficha de cada equipo.
     supabase.from("equipamiento").select("*").order("folio"),
     supabase.from("equipo_prestamos")
-      .select("id,desde,kit_id,equipo:equipamiento(id,folio,nombre),persona:personas(id,nombre,alias,foto_url),proy:proyectos(id,nombre)")
+      .select("id,desde,kit_id,equipo:equipamiento(id,folio,nombre),persona:personas(id,nombre,alias,foto_url),proy:proyectos(id,nombre),entrego:perfiles!equipo_prestamos_entregado_por_fkey(id,nombre,avatar_url)")
       .is("hasta", null).order("desde", { ascending: false }),
     supabase.from("publicacion_vinculos")
       .select("entidad_id,publicacion_id,pub:publicaciones(estado)").eq("entidad_tipo", "equipamiento"),
@@ -636,11 +636,29 @@ export default async function Equipamiento({ searchParams }: {
               El panel entero es cliente porque las casillas son estado, así
               que aquí solo se aplana lo que la consulta ya trajo: nada de
               funciones cruzando la frontera, que es donde esto se rompe. */}
+          {/* Si la consulta falla, se DICE. Sin esto, un error de PostgREST
+              —por ejemplo, que falte correr db/prestamo-entregado-por.sql—
+              devuelve `data: null`, el `|| []` lo convierte en «no hay nada»
+              y el panel entero desaparece: la aplicación juraría que no hay
+              ningún equipo prestado con doce en la calle. Es el mismo fallo
+              que dejó sin personajes a los proyectos. */}
+          {eManos && (
+            <div className="card" style={{ borderLeft: "3px solid var(--red)" }}>
+              <b style={{ color: "var(--red)", fontSize: 13 }}>⚠ No se pudo leer quién tiene qué</b>
+              <div style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 5, lineHeight: 1.55 }}>
+                {/(entregado_por|entrego)/.test(eManos.message)
+                  ? <>Falta correr <code>db/prestamo-entregado-por.sql</code> en Supabase. Hasta entonces este panel no puede pintarse — y hay equipos prestados, no es que no haya.</>
+                  : eManos.message}
+              </div>
+            </div>
+          )}
+
           {(enManos || []).length > 0 && (
             <EnUsoAhora items={(enManos || []).map((p: any): UsoItem => {
-              const eq = un1(p.equipo), per = un1(p.persona), pr = un1(p.proy);
+              const eq = un1(p.equipo), per = un1(p.persona), pr = un1(p.proy), ent = un1(p.entrego);
               return {
                 id: p.id, desde: p.desde,
+                entrego: ent?.nombre || null, entregoFoto: ent?.avatar_url || null,
                 eqId: eq?.id, folio: eq?.folio, nombre: eq?.nombre || "sin nombre",
                 cartel: cartelPorEq.get(eq?.id) || null,
                 perId: per?.id || "_", per: per?.alias || per?.nombre || "sin registrar",

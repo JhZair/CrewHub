@@ -37,6 +37,10 @@ export type UsoItem = {
   proyId?: string | null; proy?: string | null;
   /** De qué kit salió, si salió de uno, y de cuántas piezas es ese kit. */
   kitId?: string | null; kit?: string | null; kitTotal?: number;
+  /** Quién lo entregó. Una entrega la hacen DOS personas y hasta ahora solo
+   *  se guardaba una: es la mitad que falta el día que algo no aparece y
+   *  quien lo tiene dice que no se lo llevó. */
+  entrego?: string | null; entregoFoto?: string | null;
 };
 
 /* Agrupa las piezas de un mismo kit dentro de una persona, respetando el orden
@@ -196,6 +200,16 @@ export default function EnUsoAhora({ items }: { items: UsoItem[] }) {
                            para qué salió es justo el que nadie reclama. */
                         : <span className="eq-uso-sinproy">sin proyecto</span>}
                       <span className="eq-uso-desde">desde {fechaCorta(p.desde)}</span>
+                      {/* Quién lo dio. Los préstamos anteriores a que esto se
+                          guardara no llevan nombre, y se DICE —«entregó: no se
+                          registró»— en vez de callar: un hueco en blanco se
+                          lee como que nadie lo entregó, que es otra cosa. */}
+                      <span className="eq-uso-entrego"
+                        title={p.entrego ? `Se lo entregó ${p.entrego}` : "Este préstamo es anterior a que se guardara quién entrega"}>
+                        {p.entrego
+                          ? <>{avatar(p.entregoFoto, 15)} entregó {p.entrego}</>
+                          : <span className="sinreg">entregó: no se registró</span>}
+                      </span>
                     </div>
                   </div>
                   <BotonDevolver prestamoId={p.id} equipoId={p.eqId} />

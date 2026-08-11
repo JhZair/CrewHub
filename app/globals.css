@@ -2793,6 +2793,11 @@ button.repo-tit{text-align:left}
 .eq-uso-proy{color:var(--violet);background:rgba(167,139,250,.12);font-size:11px;
   max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .eq-uso-sinproy{color:var(--dim);font-style:italic;font-size:11px}
+/* Quien entrego, en la segunda linea del prestamo. En gris y detras de la
+   fecha: no es lo primero que se busca, pero es lo unico que sirve el dia que
+   quien lo tiene dice que no se lo llevo. */
+.eq-uso-entrego{color:var(--dim);font-size:11px;display:inline-flex;align-items:center;gap:4px}
+.eq-uso-entrego .sinreg{font-style:italic;opacity:.7}
 .eq-uso-desde{color:var(--dim);white-space:nowrap;flex:none}
 
 .eq-uso-barra{position:sticky;top:0;z-index:5;display:flex;gap:10px;align-items:center;

@@ -4315,6 +4315,10 @@ export async function prestarEquipo(equipoId: string, personaId: string, proyect
   const { error } = await supabase.from("equipo_prestamos").insert({
     equipamiento_id: equipoId, persona_id: personaId,
     proyecto_id: proyectoId || null, nota: nota.trim() || null,
+    /* Quién lo dio. Una entrega la hacen dos personas y hasta ahora solo se
+       guardaba una: cuando algo no aparece y quien lo tiene dice que no se lo
+       llevó, sin este dato no hay a quién más preguntar. */
+    entregado_por: user.id,
   });
   if (error) return { error: error.message };
 
@@ -4657,6 +4661,7 @@ export async function prestarEquipos(
       equipamiento_id: id, persona_id: personaId,
       proyecto_id: proyectoId || null, nota: (nota || "").trim() || null,
       kit_id: kitDe?.[id] || null,
+      entregado_por: user.id,
     })));
   if (error) return { error: error.message };
 
