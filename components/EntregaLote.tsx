@@ -72,8 +72,15 @@ export default function EntregaLote({ equipos, personas, proyectos, kits = [], k
   const [proy, setProy] = useState<{ id: string; nombre: string } | null>(null);
   const [nota, setNota] = useState("");
   const [sel, setSel] = useState<Set<string>>(new Set(arranque?.van || []));
-  const [kitId, setKitId] = useState<string>(arranque?.k ? kitInicial : "");
-  const [fuera, setFuera] = useState<PiezaKit[]>(arranque?.fuera || []);
+  /* VARIOS kits a la vez, y no uno. Los chips ya se comportaban como
+     multiselección —marcar un kit AÑADÍA a lo marcado, a propósito: un rodaje
+     sale con el kit de entrevista más el trípode grande— pero solo se
+     recordaba el último, y apagar un chip no quitaba nada.
+     Así que mirar cinco kits para decidir dejaba los cinco marcados: 54
+     equipos listos para entregar y ningún sitio donde se dijera de dónde
+     habían salido. No fallaba; sumaba en silencio. */
+  const [kitsSel, setKitsSel] = useState<Set<string>>(
+    new Set(arranque?.k ? [kitInicial] : []));
   const [filtro, setFiltro] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -90,6 +97,32 @@ export default function EntregaLote({ equipos, personas, proyectos, kits = [], k
   const alterna = (id: string) =>
     setSel(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
+  /* Lo que los kits elegidos NO pudieron marcar, con nombre y motivo, de
+     todos a la vez. Se calcula de la selección de kits y no se guarda: un
+     aviso guardado envejece —el equipo vuelve, el aviso sigue diciendo que
+     falta— y aquí lo que se enseña tiene que ser cierto ahora. */
+  const fuera = useMemo(
+    () => [...kitsSel].map(id => {
+      const { k, fuera: f } = reparteKit(id);
+      return k && f.length ? { k, piezas: f } : null;
+    }).filter(Boolean) as { k: KitVista; piezas: PiezaKit[] }[],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [kitsSel, equipos]);
+
+  /* De qué kit sale cada equipo marcado. Si está en dos kits elegidos manda
+     el primero: hay que escribir UNO en el préstamo, y el primero es el que
+     la persona eligió antes —el que tenía en la cabeza al armar la salida. */
+  const kitDe = useMemo(() => {
+    const m: Record<string, string> = {};
+    [...kitsSel].forEach(kid => {
+      const k = kitsVivos.find(x => x.id === kid);
+      k?.equipoIds.forEach(id => { if (sel.has(id) && !m[id]) m[id] = kid; });
+    });
+    return m;
+  }, [kitsSel, kitsVivos, sel]);
+
+  const deAlgunKit = (id: string) => !!kitDe[id];
+
   /* Los marcados, para la segunda lista. En orden de FOLIO y no en el orden en
      que se fueron marcando: esta lista existe para repasarla contra los
      equipos que están sobre la mesa, y las etiquetas físicas están ordenadas
@@ -97,38 +130,52 @@ export default function EntregaLote({ equipos, personas, proyectos, kits = [], k
      le sirve al entregar. */
   const marcados = useMemo(() => libres.filter(e => sel.has(e.id)), [libres, sel]);
 
-  function eligeKit(id: string) {
-    if (!id) { setKitId(""); setFuera([]); return; }
-    const { k, van, fuera: f } = reparteKit(id);
+  function alternaKit(id: string) {
+    const { k, van } = reparteKit(id);
     if (!k) return;
-    setKitId(id); setFuera(f);
+    setMsg(null);
+
+    if (kitsSel.has(id)) {
+      /* Apagar el chip QUITA sus piezas. Antes solo apagaba la luz y las
+         dejaba marcadas, que es como se llega a 54 equipos sin quererlo.
+         Menos las que también trae otro kit encendido: quitar «Drone» no
+         puede llevarse la batería que «Grabación Rápida» también necesita. */
+      const otros = [...kitsSel].filter(x => x !== id);
+      const salvadas = new Set(otros.flatMap(x => reparteKit(x).van));
+      setKitsSel(new Set(otros));
+      setSel(s => {
+        const n = new Set(s);
+        van.forEach(eq => { if (!salvadas.has(eq)) n.delete(eq); });
+        return n;
+      });
+      return;
+    }
+
     /* Se AÑADE a lo que ya hubiera marcado, no se reemplaza: un rodaje sale
        con el kit de entrevista MÁS el trípode grande, y borrarle la selección
        a alguien porque eligió un kit es perder trabajo hecho. */
+    setKitsSel(s => new Set([...s, id]));
     setSel(s => new Set([...s, ...van]));
-    setMsg(null);
   }
 
-  /* El kit se guarda solo si de verdad sale algo suyo. Si se eligió un kit y
-     después se desmarcó todo lo suyo, etiquetar el préstamo con ese kit sería
-     mentir en el historial. */
-  const kitEfectivo = useMemo(() => {
-    if (!kitId) return null;
-    const k = kitsVivos.find(x => x.id === kitId);
-    return k && k.equipoIds.some(id => sel.has(id)) ? kitId : null;
-  }, [kitId, kitsVivos, sel]);
+  /* Los kits que de verdad salen: solo si queda marcado algo suyo. Elegir un
+     kit y después desmarcarle todo y aun así etiquetar el préstamo con él
+     sería mentir en el historial. */
+  const kitsEfectivos = useMemo(
+    () => kitsVivos.filter(k => kitsSel.has(k.id) && k.equipoIds.some(id => sel.has(id))),
+    [kitsVivos, kitsSel, sel]);
 
   async function entregar() {
     if (!quien || !sel.size) return;
     setOcupado(true); setMsg(null);
-    const r: any = await prestarEquipos([...sel], quien.id, proy?.id || null, nota, kitEfectivo);
+    const r: any = await prestarEquipos([...sel], quien.id, proy?.id || null, nota, kitDe);
     setOcupado(false);
     if (r?.error) { setMsg(`⚠ ${r.error}`); return; }
     /* Lo omitido se dice, no se traga: quien entrega tiene que enterarse ahora,
        no cuando busque la cámara el sábado. */
     setMsg(`✔ ${r.entregados} equipo(s) a ${quien.nombre}` +
       (r.omitidos?.length ? ` · ⚠ fuera: ${r.omitidos.join(", ")}` : ""));
-    setSel(new Set()); setNota(""); setKitId(""); setFuera([]);
+    setSel(new Set()); setNota(""); setKitsSel(new Set());
     router.refresh();
   }
 
@@ -144,8 +191,6 @@ export default function EntregaLote({ equipos, personas, proyectos, kits = [], k
       </div>
     );
   }
-
-  const kitElegido = kitsVivos.find(k => k.id === kitId);
 
   return (
     <div className="card" id="entregar">
@@ -166,8 +211,9 @@ export default function EntregaLote({ equipos, personas, proyectos, kits = [], k
           <span style={{ fontSize: 12, color: "var(--muted)" }}>📦 Marcar un kit:</span>
           {kitsVivos.map(k => (
             <button key={k.id} type="button"
-              className={`kit-chip${kitId === k.id ? " on" : ""}`}
-              onClick={() => eligeKit(kitId === k.id ? "" : k.id)}>
+              className={`kit-chip${kitsSel.has(k.id) ? " on" : ""}`}
+              title={kitsSel.has(k.id) ? `Quitar «${k.nombre}» y sus piezas` : `Marcar las piezas libres de «${k.nombre}»`}
+              onClick={() => alternaKit(k.id)}>
               {k.nombre} <span style={{ opacity: .7 }}>· {k.equipoIds.length}</span>
             </button>
           ))}
@@ -176,16 +222,16 @@ export default function EntregaLote({ equipos, personas, proyectos, kits = [], k
 
       {/* Lo que el kit NO pudo marcar, con nombre y motivo. Un kit que sale
           cojo en silencio se descubre a dos horas de Cusco. */}
-      {kitElegido && fuera.length > 0 && (
-        <div className="kit-fuera">
-          ⚠ De «{kitElegido.nombre}» no {fuera.length === 1 ? "sale 1 pieza" : `salen ${fuera.length} piezas`}:{" "}
-          {fuera.map((p, i) => (
+      {fuera.map(({ k, piezas }) => (
+        <div key={k.id} className="kit-fuera">
+          ⚠ De «{k.nombre}» no {piezas.length === 1 ? "sale 1 pieza" : `salen ${piezas.length} piezas`}:{" "}
+          {piezas.map((p, i) => (
             <span key={p.id}>
               {i > 0 && " · "}<b>{nombraPieza(p)}</b> ({porQueNo(p)})
             </span>
           ))}
         </div>
-      )}
+      ))}
 
       {/* ── DOS LISTAS: DE DÓNDE SE ELIGE Y QUÉ SE ELIGIÓ ──
           Con una sola, saber qué llevas marcado era recorrer doscientas filas
@@ -214,7 +260,7 @@ export default function EntregaLote({ equipos, personas, proyectos, kits = [], k
                 <input type="checkbox" checked={sel.has(e.id)} onChange={() => alterna(e.id)} />
                 {e.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c", fontSize: 10.5 }}>{e.folio}</span>}
                 <span style={{ flex: 1, fontSize: 13.5 }}>{e.nombre}</span>
-                {kitElegido?.equipoIds.includes(e.id) && <span className="kit-marca">del kit</span>}
+                {deAlgunKit(e.id) && <span className="kit-marca">del kit</span>}
                 {e.categoria && <span style={{ color: "var(--dim)", fontSize: 11.5 }}>{e.categoria}</span>}
               </label>
             ))}
@@ -228,7 +274,7 @@ export default function EntregaLote({ equipos, personas, proyectos, kits = [], k
             <span style={{ flex: 1 }} />
             {marcados.length > 0 && (
               <button type="button" className="dato-btn" style={{ color: "var(--dim)" }}
-                onClick={() => { setSel(new Set()); setKitId(""); setFuera([]); }}>
+                onClick={() => { setSel(new Set()); setKitsSel(new Set()); }}>
                 Quitar todo
               </button>
             )}
@@ -242,7 +288,7 @@ export default function EntregaLote({ equipos, personas, proyectos, kits = [], k
                 <div key={e.id} className="ent-lote-fila elegida">
                   {e.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c", fontSize: 10.5 }}>{e.folio}</span>}
                   <span style={{ flex: 1, fontSize: 13.5 }}>{e.nombre}</span>
-                  {kitElegido?.equipoIds.includes(e.id) && <span className="kit-marca">del kit</span>}
+                  {deAlgunKit(e.id) && <span className="kit-marca">del kit</span>}
                   {/* Quitar desde aquí: si hay que quitar uno, es mirando ESTA
                       lista —«sobran las baterías»—, y volver a buscarlo en la
                       de la izquierda para desmarcarlo es el paso que sobra. */}
@@ -258,10 +304,14 @@ export default function EntregaLote({ equipos, personas, proyectos, kits = [], k
         <button className="btn" disabled={ocupado || !quien || !sel.size} onClick={entregar}>
           {ocupado ? "Entregando…" : `Entregar ${sel.size || ""} equipo${sel.size === 1 ? "" : "s"}`}
         </button>
-        <button className="btn btn-ghost" onClick={() => { setSel(new Set()); setMsg(null); setKitId(""); setFuera([]); setAbierto(false); }}>
+        <button className="btn btn-ghost" onClick={() => { setSel(new Set()); setMsg(null); setKitsSel(new Set()); setAbierto(false); }}>
           Cerrar
         </button>
-        {kitEfectivo && <span style={{ fontSize: 11.5, color: "var(--violet)" }}>📦 se registra como «{kitElegido?.nombre}»</span>}
+        {kitsEfectivos.length > 0 && (
+          <span style={{ fontSize: 11.5, color: "var(--violet)" }}>
+            📦 se registra como {kitsEfectivos.map(k => `«${k.nombre}»`).join(" + ")}
+          </span>
+        )}
         {!quien && sel.size > 0 && (
           <span style={{ color: "var(--yellow)", fontSize: 12 }}>Falta elegir a quién.</span>
         )}

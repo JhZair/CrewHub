@@ -4612,7 +4612,12 @@ export async function revivirKit(kitId: string) {
 
 export async function prestarEquipos(
   equipoIds: string[], personaId: string, proyectoId: string | null, nota: string,
-  kitId?: string | null
+  /* De qué kit sale CADA equipo, no uno para todo el lote. Una salida de
+     rodaje se arma con varios kits a la vez —el de entrevista y el de
+     drone— y con un solo `kitId` los doce equipos quedaban etiquetados con
+     el mismo, o sea que la mitad del historial era falso. A la vuelta, «¿el
+     kit volvió entero?» se contestaba contra el kit equivocado. */
+  kitDe?: Record<string, string> | null
 ) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -4651,7 +4656,7 @@ export async function prestarEquipos(
     buenos.map(id => ({
       equipamiento_id: id, persona_id: personaId,
       proyecto_id: proyectoId || null, nota: (nota || "").trim() || null,
-      kit_id: kitId || null,
+      kit_id: kitDe?.[id] || null,
     })));
   if (error) return { error: error.message };
 
