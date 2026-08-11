@@ -768,7 +768,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
        pantalla: traer los 260 equipos para descartar 30 sería mover el
        inventario entero por una lista de veinte. */
     if (params.tipo === "equipamiento") {
-      const [{ data: dentro }, { data: cont }, { data: libres }] = await Promise.all([
+      const [{ data: dentro }, { data: cont }, { data: libres }, { data: mmTodos }] = await Promise.all([
         supabase.from("equipamiento")
           .select("id,folio,nombre,estado,categoria,subcategoria,valor_compra")
           .eq("ensamblado_en", params.id).order("folio"),
@@ -784,14 +784,19 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
           .is("ensamblado_en", null)
           .in("estado", ["disponible", "no_aparece", "en_reparacion"])
           .neq("id", params.id).order("folio"),
+        /* Los carteles de TODO el equipamiento, en una consulta. Se elige
+           entre doscientos equipos mirando fotos —«la placa negra, no la
+           otra»— y el escogedor los pintaba todos con el 🎥 de relleno: el
+           `select` de candidatos traía folio y nombre y nada más, así que la
+           foto llegaba vacía sin que nada fallara. */
+        supabase.from("entidad_media").select("entidad_id,cartel_url")
+          .eq("entidad_tipo", "equipamiento"),
       ]);
-      const idsD = (dentro || []).map((d: any) => d.id);
-      const cartelD = new Map<string, string>();
-      if (idsD.length) {
-        const { data: mmD } = await supabase.from("entidad_media")
-          .select("entidad_id,cartel_url").eq("entidad_tipo", "equipamiento").in("entidad_id", idsD);
-        (mmD || []).forEach((m: any) => { if (m.cartel_url) cartelD.set(m.entidad_id, m.cartel_url); });
-      }
+      const cartelTodos = new Map<string, string>();
+      (mmTodos || []).forEach((m: any) => { if (m.cartel_url) cartelTodos.set(m.entidad_id, m.cartel_url); });
+      /* Las piezas montadas salen del mismo mapa: eran una segunda consulta
+         para un subconjunto de lo que la de arriba ya traía. */
+      const cartelD = cartelTodos;
       piezasMontadas = (dentro || []).map((d: any) => ({
         id: d.id, folio: d.folio, nombre: d.nombre, estado: d.estado, quien: null,
         cartel: cartelD.get(d.id) || null,
@@ -800,7 +805,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       }));
       const c1 = Array.isArray(cont) ? (cont as any)[0] : cont;
       montadoEn = c1 ? { id: c1.id, folio: c1.folio, nombre: c1.nombre } : null;
-      candidatosMontar = libres || [];
+      candidatosMontar = (libres || []).map((e: any) => ({ ...e, cartel: cartelTodos.get(e.id) || null }));
     }
 
     /* Lo demás que vino en la misma compra, con su foto y quién lo tiene.
