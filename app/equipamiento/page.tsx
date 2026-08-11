@@ -39,6 +39,35 @@ const SIN_SUB = "sin subcategoría";
 const catDe = (x: any) => (x?.categoria || "").trim() || SIN_CAT;
 const subDe = (x: any) => (x?.subcategoria || "").trim() || SIN_SUB;
 
+/* ESCRITO A MANO: un valor que el desplegable no ofrece.
+ *
+ * No es un error —hasta que alguien añade la palabra a lib/entidades, es la
+ * única forma de decir lo que una cosa es— pero es un valor con fecha de
+ * caducidad: en cuanto la lista gana el término bueno, el siguiente equipo
+ * igual se clasifica con el de la lista y el mismo tipo de cosa queda
+ * repartido en dos subcategorías. «Luz Continua» y «Panel LED», el mismo
+ * panel en dos sitios, sin que nada falle.
+ *
+ * Una sola definición porque la usan tres lectores —el chip del filtro, la
+ * fila del listado y el aviso de la fila de subcategorías— y tres criterios
+ * distintos de «esto está a mano» serían tres respuestas distintas.
+ */
+const catAMano = (x: any) => {
+  const cat = catDe(x);
+  return cat !== SIN_CAT && !CATEGORIAS_EQUIPO.includes(cat);
+};
+const subAMano = (x: any) => {
+  const sub = subDe(x);
+  if (sub === SIN_SUB) return false;
+  /* Sin categoría no hay lista contra la que comparar, así que la
+     subcategoría no se puede validar: cuenta como a mano. Y en «otro» la
+     lista está vacía a propósito, así que TODA subcategoría suya es a mano
+     —que es verdad, y además señala al equipo que necesita categoría de
+     verdad. */
+  return !(SUBCATS_EQUIPO[catDe(x)] || []).includes(sub);
+};
+const aMano = (x: any) => catAMano(x) || subAMano(x);
+
 const TOPE = 200;
 const ABIERTOS = ["abierta", "en_progreso", "seguimiento"];
 
@@ -247,6 +276,12 @@ export default async function Equipamiento({ searchParams }: {
        categoría ofrece alguna: en «otro» la lista está vacía a propósito, así
        que pedir subcategoría ahí sería marcar un deber que no se puede
        cumplir. */
+    /* Categorías y subcategorías que el desplegable no ofrece. Hasta ahora
+       solo se veían entrando categoría por categoría y mirando el final de
+       la fila de subcategorías: nueve vueltas para saber qué hay fuera de la
+       lista. Y es justo lo que hay que revisar de vez en cuando, porque cada
+       una acaba partiendo en dos un tipo de equipo. */
+    a_mano: aMano,
     sin_subcategoria: x => {
       const cat = catDe(x);
       return cat !== SIN_CAT && (SUBCATS_EQUIPO[cat] || []).length > 0 && subDe(x) === SIN_SUB;
@@ -357,7 +392,22 @@ export default async function Equipamiento({ searchParams }: {
               </div>
 
               <div className="eqx-l2">
-                {x.subcategoria && <span className="eqx-sub">{x.subcategoria}</span>}
+                {/* Con la marca ✍ cuando el valor no está en la lista. Sin
+                    ella, al filtrar «escritas a mano» sale un listado
+                    correcto en el que no se ve QUÉ tiene de raro cada fila,
+                    y hay que abrir ficha por ficha para averiguarlo. */}
+                {x.subcategoria && (
+                  subAMano(x)
+                    ? <span className="eqx-sub a-mano" title="Subcategoría escrita a mano: no está en la lista de esta categoría">
+                        ✍ {x.subcategoria}
+                      </span>
+                    : <span className="eqx-sub">{x.subcategoria}</span>
+                )}
+                {catAMano(x) && (
+                  <span className="eqx-sub a-mano" title="Categoría antigua o escrita a mano: ya no se ofrece al crear un equipo">
+                    ✍ {catDe(x)}
+                  </span>
+                )}
 
                 {/* Los dos ejes: lo que ENTRÓ junto y lo que SALE junto. No se
                     pueden deducir mirando la cámara. */}
@@ -488,7 +538,11 @@ export default async function Equipamiento({ searchParams }: {
                   title={sc === sub ? "Quitar este filtro"
                     : !canon.includes(sub) && sub !== SIN_SUB
                       ? "Escrita a mano: no está en la lista sugerida de esta categoría" : ""}>
-                  {sub} · {porSub.get(sub)}
+                  {/* La misma ✍ que en la fila del listado. El aviso estaba
+                      solo en el `title`, o sea escondido detrás del cursor:
+                      había que pasar por encima de cada chip para descubrir
+                      cuál era el raro. */}
+                  {!canon.includes(sub) && sub !== SIN_SUB ? "✍ " : ""}{sub} · {porSub.get(sub)}
                 </Chip>
               ))}
             </FilaFiltro>
@@ -511,6 +565,10 @@ export default async function Equipamiento({ searchParams }: {
           <Chip href="/equipamiento?f=sin_categoria" on={f === "sin_categoria"} color="var(--dim)"
             title="Sin categoría no entra en el inventario por categoría">
             ⚠ sin categoría · {cntF("sin_categoria")}
+          </Chip>
+          <Chip href="/equipamiento?f=a_mano" on={f === "a_mano"} color="var(--teal)"
+            title="Categoría o subcategoría escrita a mano: no está en la lista que ofrece el formulario. No es un error —a veces es la única forma de decir lo que algo es— pero en cuanto la lista gane esa palabra, el siguiente equipo igual se clasificará con la de la lista y el mismo tipo de cosa quedará en dos sitios. Revisarlas es cómo crece la lista.">
+            ✍ escritas a mano · {cntF("a_mano")}
           </Chip>
           <Chip href="/equipamiento?f=sin_subcategoria" on={f === "sin_subcategoria"} color="var(--yellow)"
             title="Tienen categoría pero no subcategoría, y su categoría sí ofrece alguna. Sin ella un equipo solo se encuentra por su nombre: no sale al filtrar «Batería de drone» ni «Micrófono corbatero». No cuenta los que no tienen categoría —esos son el chip de al lado— ni los de «otro», que no tiene lista.">

@@ -3179,6 +3179,10 @@ button.repo-tit{text-align:left}
 .eqx-nom{font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .eqx-l2{display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-width:0;font-size:11.5px}
 .eqx-sub{color:var(--dim)}
+/* El valor que el desplegable no ofrece. En verde agua y no en amarillo: no
+   es un aviso de que algo este mal —a veces es la unica forma de decir lo que
+   una cosa es— sino una marca de «esto todavia no esta en la lista». */
+.eqx-sub.a-mano{color:var(--teal);opacity:.85}
 .eqx-precio{color:var(--teal);font-weight:700;white-space:nowrap}
 /* Sin precio propio pero con combo: el dato existe, está en la boleta. En
    gris y sin repetir el código, que ya lo dice el chip de al lado. */
