@@ -282,8 +282,30 @@ export const SUBCATS_EQUIPO: Record<string, string[]> = {
        «celular» devolviera el teléfono y sus cinco accesorios revueltos. */
     "Soporte / pinza de celular", "Ventosa / Clamp",
     "Pértiga / Extension rod", "Selfie stick", "Saco de arena / Contrapeso"],
-  "energía": ["Batería V-Mount", "Power bank", "Cargador", "Pilas AA / AAA",
-    "Estuche de baterías", "Extensión eléctrica", "Regleta", "Generador",
+  /* Tres entradas nuevas que salieron de mirar los «escritos a mano»: ocho
+     equipos de energía repartidos entre «Eléctrica» y «Adaptador». «Eléctrica»
+     es otro «Luz Continua» —abarca la categoría entera, así que no separa
+     nada— y «Adaptador» existía en cómputo pero no aquí, que es donde estaban
+     las fuentes. */
+  "energía": ["Batería V-Mount", "Power bank",
+    /* «Cargador» queda para el de UN aparato: el de la cámara, el de la
+       radio. La estación multipuerto es otra cosa y otra decisión —es la que
+       se lleva al hotel para dejar cargando doce cosas de noche, y de esas
+       hay tres—. Con un solo nombre para las dos, «cargador · 9» no contesta
+       ni cuántas cámaras puedo cargar ni cuántas mesas de carga tengo. */
+    "Cargador", "Estación de carga USB",
+    /* La fuente que ALIMENTA un aparato mientras trabaja, no que carga una
+       batería: el AD-17 del Zoom, el Olead. Se confunde con «Cargador» y no
+       es lo mismo — si se queda en la oficina, la grabadora no funciona
+       aunque tenga pilas nuevas, y quien la busca la busca por su aparato. */
+    "Fuente / Adaptador de corriente",
+    "Pilas AA / AAA", "Estuche de baterías", "Extensión eléctrica", "Regleta",
+    /* Aparte de la regleta: una regleta multiplica enchufes, un supresor
+       PROTEGE. En un pueblo con la red inestable, enchufar el PC de edición a
+       una regleta cualquiera creyendo que está protegido es el error que
+       cuesta el equipo. Que sean dos nombres es lo que obliga a mirar cuál se
+       está llevando. */
+    "Supresor de picos", "Generador",
     "Panel solar", "Inversor", "Estabilizador de corriente"],
   /* Absorbe «pc_accesorios»: un lector de memorias y el disco donde va el
      material son la misma cadena, y partirlos obliga a buscar en dos sitios. */
