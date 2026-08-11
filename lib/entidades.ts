@@ -234,6 +234,15 @@ export const SUBCATS_EQUIPO: Record<string, string[]> = {
      Claw Mini, la gorra con soporte y la pértiga del Osmo son todas esto. */
   "soporte": ["Trípode", "Monopié", "Cabezal / Rótula", "Estabilizador / Gimbal",
     "Slider / Dolly", "Grúa / Jib", "Brazo mágico", "Placa de liberación rápida",
+    /* Al lado de la placa: las dos son la interfaz pequeña por la que una
+       cosa se engancha a otra, y quien busca una busca la otra.
+       Se llama «Zapata» a secas, sin «/ Cold shoe», por dos razones. La
+       regla de este archivo es que manda la palabra que el equipo ya usa, y
+       es la que está escrita en la A-244. Y como coincide EXACTA, los que ya
+       estaban clasificados dejan de contar como escritos a mano solos: sin
+       sql, sin migración y sin que el mismo tipo de pieza quede repartido
+       entre el nombre viejo y el nuevo. */
+    "Zapata",
     /* «cuello» en el nombre y no solo «cabeza / pecho»: el TELESIN es un
        soporte de CUELLO con correa al pecho, y quien lo busca escribe la
        palabra que tiene en la mano. Una subcategoría que existe pero no se
