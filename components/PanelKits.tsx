@@ -239,7 +239,7 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
             const desplegado = desplegados.has(k.id);
             const piezas = [...e.libres, ...e.prestadas, ...e.vetadas];
             return (
-              <div key={k.id} className="kit-caja">
+              <div key={k.id} className={`kit-caja${editandoEste ? " editando" : ""}`}>
                 <div className="kit-h">
                   <button className="kit-plegar" aria-expanded={desplegado}
                     onClick={() => alternaKit(k.id)}

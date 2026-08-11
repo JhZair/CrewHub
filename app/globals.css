@@ -2771,7 +2771,22 @@ button.repo-tit{text-align:left}
 }
 
 /* ── KITS · lo que sale junto (app/equipamiento) ── */
-.kit-caja{border-top:1px solid var(--border);padding:9px 0 4px;margin-top:8px}
+.kit-caja{border-top:1px solid var(--border);padding:9px 4px 6px;margin-top:8px;
+  border-radius:8px}
+/* Se enciende al pasar por encima, como la fila del combo. No es adorno: es
+   lo que dice que la fila entera responde —que ahi se puede plegar, entregar
+   y editar— antes de que nadie pruebe a hacer clic. Los combos lo tenian y
+   los kits no, asi que la misma pantalla ensenaba dos cosas distintas sobre
+   si se puede tocar. Violeta el kit, ambar el combo: cada uno con su color.
+   Rehusa el tinte mientras se edita: ahi el bloque ya esta abierto y hay
+   campos dentro, y un fondo que cambia al mover el raton distrae. Eso se
+   marca con una CLASE y no con :has(.kit-editor): si el navegador no
+   entiende :has(), no ignora esa condicion —descarta la regla entera— y el
+   kit se quedaria sin ningun realce, que es justo lo que se venia a
+   arreglar. Fallaria en silencio y hacia el lado malo. */
+.kit-caja:hover{background:rgba(167,139,250,.05)}
+.kit-caja.editando:hover{background:none}
+.kit-caja:hover .kit-plegar b{color:var(--violet)}
 .kit-h{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .kit-uso{color:var(--violet);background:rgba(167,139,250,.12);font-size:10.5px;
   text-transform:uppercase;letter-spacing:.4px}
