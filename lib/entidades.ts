@@ -252,7 +252,15 @@ export const SUBCATS_EQUIPO: Record<string, string[]> = {
   /* Absorbe «tripode», «monopod» y lo que ya estaba en «soporte». La placa
      Claw Mini, la gorra con soporte y la pértiga del Osmo son todas esto. */
   "soporte": ["Trípode", "Monopié", "Cabezal / Rótula", "Estabilizador / Gimbal",
-    "Slider / Dolly", "Grúa / Jib", "Brazo mágico", "Placa de liberación rápida",
+    "Slider / Dolly", "Grúa / Jib",
+    /* Lo que agarra una PERSONA. Va en soporte y no en «Jaula / Rig» (que es
+       de cámara) porque la jaula se vuelve parte del cuerpo de la cámara y el
+       mango es como se sostiene —que es de lo que trata esta categoría
+       entera, del trípode al arnés—. Además se compra y se pierde solo: un
+       mango NATO sirve en cualquier jaula, y por eso es una unidad, no un
+       detalle de otra. */
+    "Mango / Empuñadura", "Riel NATO",
+    "Brazo mágico", "Placa de liberación rápida",
     /* Al lado de la placa: las dos son la interfaz pequeña por la que una
        cosa se engancha a otra, y quien busca una busca la otra.
        Se llama «Zapata» a secas, sin «/ Cold shoe», por dos razones. La
