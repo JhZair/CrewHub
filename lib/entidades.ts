@@ -294,6 +294,16 @@ export const SUBCATS_EQUIPO: Record<string, string[]> = {
        sql, sin migración y sin que el mismo tipo de pieza quede repartido
        entre el nombre viejo y el nuevo. */
     "Zapata",
+    /* La ferretería que une roscas: prolongaciones 1/4-3/8, tornillos,
+       espárragos, adaptadores macho-hembra. Cuesta veinte soles y sin ella un
+       trípode de mil no acepta el cabezal — la definición misma de lo que hay
+       que contar por separado.
+       Aparte de «Pértiga / Extension rod», y es justo por lo que hacía falta:
+       ese nombre lleva «extension rod» dentro y se lo lleva todo lo que se
+       llame así, pero ahí van las varillas largas tipo Osmo de metro y medio.
+       Una varilla de 5 cm y una de 1,5 m no se buscan el mismo día ni para lo
+       mismo, y compartir nombre las hacía intercambiables en la lista. */
+    "Adaptador de rosca (1/4 · 3/8)",
     /* «cuello» en el nombre y no solo «cabeza / pecho»: el TELESIN es un
        soporte de CUELLO con correa al pecho, y quien lo busca escribe la
        palabra que tiene en la mano. Una subcategoría que existe pero no se
