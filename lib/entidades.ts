@@ -287,7 +287,18 @@ export const SUBCATS_EQUIPO: Record<string, string[]> = {
     "Panel solar", "Inversor", "Estabilizador de corriente"],
   /* Absorbe «pc_accesorios»: un lector de memorias y el disco donde va el
      material son la misma cadena, y partirlos obliga a buscar en dos sitios. */
-  "cómputo": ["Laptop", "PC de edición", "Tableta", "Monitor", "Disco duro externo",
+  "cómputo": ["Laptop", "PC de edición", "Tableta", "Monitor",
+    /* Donde se VE lo que se hizo. Va aquí, junto al monitor y el cable HDMI,
+       porque cierra la misma cadena que esta categoría ya cuenta: el material
+       sale de la memoria, pasa por el disco, se edita y se proyecta. En
+       producción no encaja —lo de producción es lo que solo sirve en rodaje—
+       y una proyección comunitaria no es un rodaje: es el día que la película
+       vuelve al sitio donde se filmó.
+       Con la pantalla al lado, que se guarda aparte, se presta aparte y se
+       olvida aparte: llegar a una comunidad con el proyector y sin ecrán es
+       la clase de error que solo evita contarlos por separado. */
+    "Proyector", "Pantalla / Ecrán",
+    "Disco duro externo",
     "SSD", "NAS / Servidor", "Lector de memorias", "Hub USB", "Teclado", "Mouse",
     "Cable HDMI", "Adaptador", "Tableta gráfica", "Router / Red"],
   /* Sin «mesa plegable», «silla», «toldo» ni «paraguas»: eso es camping, y
