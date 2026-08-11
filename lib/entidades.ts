@@ -192,7 +192,12 @@ export const SUBCATS_EQUIPO: Record<string, string[]> = {
     "Cámara 360", "Lente", "Filtro ND", "Jaula / Rig", "Monitor externo",
     "Memoria SD / CFexpress", "Batería de cámara", "Cargador de cámara",
     "Estuche de baterías / memorias", "Celular / Smartphone", "Visor / Loupe",
-    "Case de cámara"],
+    /* La mochila va aparte del case rígido y no dentro de «Mochila / Case» de
+       producción: cada categoría ya se queda con su propio transporte —hay
+       «Case de drone» y «Case de luces»—, porque lo que decide dónde buscas
+       es qué vas a meter dentro. La de producción es la genérica, la del
+       asistente con las claquetas y el gaffer. */
+    "Mochila de cámara", "Case de cámara"],
   "drone": ["Drone", "Batería de drone", "Hélices", "Control remoto", "Hub de carga",
     "Filtros de drone", "Estuche de baterías", "Case de drone", "Antena / Repetidor"],
   "sonido": ["Micrófono corbatero", "Micrófono de cañón", "Micrófono inalámbrico",
@@ -206,7 +211,17 @@ export const SUBCATS_EQUIPO: Record<string, string[]> = {
      Claw Mini, la gorra con soporte y la pértiga del Osmo son todas esto. */
   "soporte": ["Trípode", "Monopié", "Cabezal / Rótula", "Estabilizador / Gimbal",
     "Slider / Dolly", "Grúa / Jib", "Brazo mágico", "Placa de liberación rápida",
-    "Soporte de cabeza / pecho", "Arnés / Chest rig de cámara", "Ventosa / Clamp",
+    /* «cuello» en el nombre y no solo «cabeza / pecho»: el TELESIN es un
+       soporte de CUELLO con correa al pecho, y quien lo busca escribe la
+       palabra que tiene en la mano. Una subcategoría que existe pero no se
+       llama como la cosa es una que nadie encuentra. Los que ya estaban
+       clasificados se migran en db/subcats-soporte-cuello.sql. */
+    "Soporte de cabeza / cuello / pecho", "Arnés / Chest rig de cámara",
+    /* El soporte NO es el teléfono. «Celular / Smartphone» (en cámara) es el
+       aparato que graba; esto es el fierro que lo sujeta —pinza, jaula de
+       smartphone, montura de cuello—. Meterlos juntos hacía que buscar
+       «celular» devolviera el teléfono y sus cinco accesorios revueltos. */
+    "Soporte / pinza de celular", "Ventosa / Clamp",
     "Pértiga / Extension rod", "Selfie stick", "Saco de arena / Contrapeso"],
   "energía": ["Batería V-Mount", "Power bank", "Cargador", "Pilas AA / AAA",
     "Estuche de baterías", "Extensión eléctrica", "Regleta", "Generador",
