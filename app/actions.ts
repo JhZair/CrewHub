@@ -1160,6 +1160,9 @@ export type HechoDelDia = {
    *  registró, y encima los dejaba en medio de la mañana como si hubieran
    *  pasado ahí. Van al final, dichos como lo que son. */
   at: string | null; ico: string; txt: string; sub?: string | null; href?: string | null;
+  /** En qué cajón cae, para poder filtrar. Cinco y no diez: un filtro con
+   *  diez botones se recorre más despacio que la lista que filtra. */
+  clase: "pub" | "com" | "cambio" | "equipo" | "rhe";
 };
 export async function contextoDelDia(personaId: string, fecha: string) {
   const supabase = createClient();
@@ -1218,7 +1221,8 @@ export async function contextoDelDia(personaId: string, fecha: string) {
   const hechos: HechoDelDia[] = [];
 
   (pubs.data || []).forEach((x: any) => hechos.push({
-    at: x.creado_en, ico: icoTipo(x.tipo), txt: `Publicó «${(x.titulo || "").slice(0, 70)}»`,
+    at: x.creado_en, ico: icoTipo(x.tipo), clase: "pub",
+    txt: `Publicó «${(x.titulo || "").slice(0, 70)}»`,
     href: `/caso/${x.id}`,
   }));
 
@@ -1231,7 +1235,7 @@ export async function contextoDelDia(personaId: string, fecha: string) {
       : eqPre ? { t: `${eqPre.folio || ""} ${eqPre.nombre}`.trim(), h: `/entidad/equipamiento/${eqPre.id}` }
       : null;
     hechos.push({
-      at: c.creado_en, ico: "💬",
+      at: c.creado_en, ico: "💬", clase: "com",
       txt: donde ? `Comentó en «${String(donde.t || "").slice(0, 60)}»` : "Comentó",
       /* El texto del comentario es LO QUE HIZO: sin él la fila dice que hubo
          actividad y no cuál. Recortado, que esto es un resumen del día. */
@@ -1308,7 +1312,7 @@ export async function contextoDelDia(personaId: string, fecha: string) {
     const msg = (a.detalle?.mensaje || "").trim();
     const nombre = nombreEnt.get(`${t}:${a.entidad_id}`);
     hechos.push({
-      at: a.creado_en, ico: ICO_ENT[t] || "🛠",
+      at: a.creado_en, ico: ICO_ENT[t] || "🛠", clase: "cambio",
       /* QUÉ pasó y SOBRE QUÉ, en el mismo renglón: «Cambió el cartel — A-022
          Zhiyun Crane M3». Separados, la segunda línea se leía como una
          categoría y no como la cosa. */
@@ -1327,7 +1331,7 @@ export async function contextoDelDia(personaId: string, fecha: string) {
   (presDio.data || []).forEach((p: any) => {
     const eq = u1(p.equipo), a = u1(p.persona);
     hechos.push({
-      at: null, ico: p.tipo === "asignacion" ? "📌" : "🤝",
+      at: null, ico: p.tipo === "asignacion" ? "📌" : "🤝", clase: "equipo",
       txt: `${p.tipo === "asignacion" ? "Asignó" : "Entregó"} ${eq?.folio || ""} ${eq?.nombre || "un equipo"}`.trim(),
       sub: a ? `a ${a.alias || a.nombre}` : null,
       href: eq ? `/entidad/equipamiento/${eq.id}` : null,
@@ -1336,7 +1340,7 @@ export async function contextoDelDia(personaId: string, fecha: string) {
   (presRecibio.data || []).forEach((p: any) => {
     const eq = u1(p.equipo);
     hechos.push({
-      at: null, ico: p.tipo === "asignacion" ? "📌" : "📥",
+      at: null, ico: p.tipo === "asignacion" ? "📌" : "📥", clase: "equipo",
       txt: `${p.tipo === "asignacion" ? "Quedó a su cargo" : "Recibió"} ${eq?.folio || ""} ${eq?.nombre || "un equipo"}`.trim(),
       href: eq ? `/entidad/equipamiento/${eq.id}` : null,
     });
@@ -1344,13 +1348,13 @@ export async function contextoDelDia(personaId: string, fecha: string) {
   (presDevolvio.data || []).forEach((p: any) => {
     const eq = u1(p.equipo);
     hechos.push({
-      at: null, ico: "↩",
+      at: null, ico: "↩", clase: "equipo",
       txt: `Devolvió ${eq?.folio || ""} ${eq?.nombre || "un equipo"}`.trim(),
       href: eq ? `/entidad/equipamiento/${eq.id}` : null,
     });
   });
   (rhes.data || []).forEach((r: any) => hechos.push({
-    at: null, ico: "🧾",
+    at: null, ico: "🧾", clase: "rhe",
     txt: `RHE ${r.numero || ""} · S/ ${Math.round(Number(r.monto) || 0).toLocaleString("es-PE")}`.trim(),
     sub: r.concepto || null,
   }));

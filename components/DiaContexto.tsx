@@ -28,6 +28,12 @@ export default function DiaContexto({ personaId, fecha, quien }: {
   const [cargando, setCargando] = useState(false);
   const [hechos, setHechos] = useState<any[] | null>(null);
   const [error, setError] = useState("");
+  /* Dos filtros que se combinan: POR QUÉ ES y A QUÉ HORA. Ciento treinta
+     hechos en un día no se leen de corrido; casi siempre uno viene buscando
+     una cosa —«¿comentó algo?»— o un tramo —«¿qué hizo después de las
+     tres?»—. */
+  const [clase, setClase] = useState<string | null>(null);
+  const [horaSel, setHoraSel] = useState<number | null>(null);
 
   const abrir = async () => {
     setAbierto(true);
@@ -41,6 +47,32 @@ export default function DiaContexto({ personaId, fecha, quien }: {
 
   const hora = (at: string) =>
     new Date(at).toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit", timeZone: "America/Lima" });
+  /* La hora EN LIMA, no la del navegador de quien mira. Un admin revisando
+     desde otro huso vería el día corrido. */
+  const horaDe = (at: string) => Number(
+    new Date(at).toLocaleString("en-GB", { hour: "2-digit", hour12: false, timeZone: "America/Lima" }));
+
+  const CLASES: [string, string, string][] = [
+    ["com", "💬", "Comentarios"], ["cambio", "🛠", "Cambios"],
+    ["pub", "📌", "Publicó"], ["equipo", "🎥", "Equipos"], ["rhe", "🧾", "RHE"],
+  ];
+  const todos = hechos || [];
+  /* El conteo de cada chip se calcula sobre TODO, no sobre lo ya filtrado: un
+     filtro cuyo número cambia según lo que tienes puesto no dice cuánto hay,
+     dice cuánto queda — y entonces no sirve para decidir dónde ir. */
+  const cuenta = (c: string) => todos.filter((h: any) => h.clase === c).length;
+  const porHora = Array.from({ length: 24 }, (_, h) => ({
+    h, n: todos.filter((x: any) => x.at && horaDe(x.at) === h).length,
+  }));
+  const pico = Math.max(1, ...porHora.map(x => x.n));
+  const horaTop = porHora.reduce((a, b) => (b.n > a.n ? b : a), porHora[0]);
+  const sinHora = todos.filter((h: any) => !h.at).length;
+
+  const vistos = todos.filter((h: any) =>
+    (!clase || h.clase === clase) &&
+    /* Con una hora elegida, lo que no tiene hora NO cuela: decir que un
+       préstamo pasó a las tres es justo lo que no sabemos. */
+    (horaSel == null || (h.at && horaDe(h.at) === horaSel)));
 
   return (
     <>
@@ -75,9 +107,60 @@ export default function DiaContexto({ personaId, fecha, quien }: {
 
             {hechos && hechos.length > 0 && (
               <>
-                <div className="dia-n">{hechos.length} cosa{hechos.length === 1 ? "" : "s"} en el sistema</div>
+                {/* A QUÉ HORA. Ver el día como una barra contesta de un golpe
+                    lo que la lista solo contesta leyéndola entera: si el
+                    trabajo fue de mañana, si hubo un tirón de tres horas, o si
+                    son cuatro cosas sueltas repartidas. Y cada columna filtra:
+                    la gráfica no es un adorno al lado de la lista, es su
+                    índice. */}
+                <div className="dia-hg">
+                  {porHora.map(({ h, n }) => (
+                    <button key={h} type="button"
+                      className={`dia-hg-col${horaSel === h ? " on" : ""}${n ? "" : " vacia"}`}
+                      title={`${String(h).padStart(2, "0")}:00 — ${n} cosa${n === 1 ? "" : "s"}`}
+                      disabled={!n}
+                      onClick={() => setHoraSel(horaSel === h ? null : h)}>
+                      <span className="dia-hg-barra">
+                        <span className="dia-hg-lleno" style={{ height: `${(n / pico) * 100}%` }} />
+                      </span>
+                      <span className="dia-hg-h">{h % 3 === 0 ? String(h).padStart(2, "0") : ""}</span>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="dia-filtros">
+                  <button type="button" className={`muro-tag muro-tag-chip${!clase ? " on" : ""}`}
+                    onClick={() => setClase(null)}>Todo · {todos.length}</button>
+                  {CLASES.map(([k, ico, lbl]) => {
+                    const n = cuenta(k);
+                    if (!n) return null;   // un filtro que da cero no es una opción
+                    return (
+                      <button key={k} type="button" className={`muro-tag muro-tag-chip${clase === k ? " on" : ""}`}
+                        onClick={() => setClase(clase === k ? null : k)}>{ico} {lbl} · {n}</button>
+                    );
+                  })}
+                  {horaSel != null && (
+                    <button type="button" className="muro-tag muro-tag-chip on"
+                      title="Quitar el filtro de hora"
+                      onClick={() => setHoraSel(null)}>🕗 {String(horaSel).padStart(2, "0")}:00 ✕</button>
+                  )}
+                </div>
+
+                <div className="dia-n">
+                  {vistos.length === todos.length
+                    ? <>{todos.length} cosa{todos.length === 1 ? "" : "s"} en el sistema
+                        {horaTop.n > 0 && <> · más movimiento a las <b style={{ color: "var(--teal)" }}>{String(horaTop.h).padStart(2, "0")}:00</b></>}</>
+                    : <>{vistos.length} de {todos.length}</>}
+                  {/* Lo que queda fuera de la barra se dice, o parecería que
+                      la barra cuenta el día entero. */}
+                  {sinHora > 0 && horaSel == null && <> · {sinHora} sin hora</>}
+                </div>
+
+                {vistos.length === 0 && (
+                  <div className="empty" style={{ padding: "14px 0" }}>Nada con este filtro.</div>
+                )}
                 <div className="dia-lista">
-                  {hechos.map((h: any, i: number) => {
+                  {vistos.map((h: any, i: number) => {
                     const dentro = (
                       <>
                         {/* Sin hora ≠ a las doce. Un préstamo se guarda con
