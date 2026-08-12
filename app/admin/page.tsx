@@ -343,76 +343,56 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
      una fila de pestañas, y fingirlo con separadores habría sido copiar la
      forma sin la función.) */
 
-  /* ── A QUÉ HORA TRABAJA CADA UNO, EN EL MES QUE SE REVISA ──
+  /* ── A QUÉ HORA Y QUÉ DÍAS TRABAJA CADA UNO, EN EL MES QUE SE REVISA ──
      La lupa de un día contesta «¿qué hizo el martes?»; esto contesta la de
-     antes: «¿a qué hora trabaja esta persona?». Un mes de jornadas de oficina
-     todas iguales no lo dice, y el sistema sí lo sabe.
-     TRES consultas para todas las personas y todo el mes, no una por fila:
-     `actividad`, `comentarios` y `publicaciones` filtradas por rango. Ese
-     rango se escribe con el offset de Lima —igual que la ventana del día— o
-     las horas saldrían corridas cinco puestos, que es justo lo que se está
-     midiendo.
-     Las tres son las mismas que lista la ventana del día, y con el mismo
-     criterio: la barra tiene que medir lo que uno va a encontrar al abrirla,
-     o el pico de un martes no se puede comprobar.
-     Lo que NO entra son los préstamos y los recibos. No por peso: `creado_en`
-     se añadió a `equipo_prestamos` hace nada y los préstamos viejos lo tienen
-     en nulo, así que contarlos borraría de la silueta justo los meses
-     anteriores —callando, que es lo peor—. Los recibos son del mes, no del
-     día. Esto es una silueta, no un parte contable — y por eso no lleva
-     números. */
+     antes: «¿a qué hora trabaja esta persona, y fue un mes parejo?». Un mes de
+     jornadas de oficina todas iguales no lo dice, y el sistema sí lo sabe.
+
+     Lo cuenta la BASE, no esta página. Antes se traían las filas del mes y se
+     contaban aquí, con `.limit(20000)` y sin orden — y un LIMIT sin orden no
+     devuelve «las primeras», devuelve las que el plan encuentre. El plan
+     cambia cuando cambia un filtro, y así fue como la semana del 10 de julio,
+     que era el pico del mes, desapareció entera de la franja: seiscientas
+     cuarenta y tres cosas que la ventana del día sí lista. No falló nada.
+     `franjas_actividad` agrupa por persona, día y hora de una pasada y
+     devuelve conteos: unos cientos de filas en vez de decenas de miles, sin
+     límite que sortear y exacto por definición. La zona horaria vive DENTRO
+     de la función, así que la hora y el día no pueden discrepar entre sí.
+
+     Las tres fuentes que suma —`actividad` sin los de tipo comentario,
+     `comentarios` y `publicaciones`— son las mismas que lista la ventana del
+     día: la barra tiene que medir lo que uno va a encontrar al abrirla, o el
+     pico de un martes no se puede comprobar.
+     Fuera quedan los préstamos y los recibos. No por peso: `creado_en` se
+     añadió a `equipo_prestamos` hace nada y los préstamos viejos lo tienen en
+     nulo, así que contarlos borraría de la silueta justo los meses anteriores
+     —callando, que es lo peor—. Los recibos son del mes, no del día.
+     Es una silueta, no un parte contable: por eso no lleva números. */
   const horasPorPersona: Record<string, number[]> = {};
-  /* Y la otra silueta: A QUÉ DÍA. La de horas dice si trabaja de mañana; esta
-     dice si el mes fue parejo o si se concentró en una semana — y si hubo
-     domingos. Son la misma pregunta en dos escalas, así que salen de las
-     MISMAS dos consultas: pedir el mes otra vez para contarlo distinto sería
-     arriesgar que un día los dos números no cuadren. */
   const diasPorPersona: Record<string, number[]> = {};
   const diasDelMesJ = new Date(jAnio, jMes + 1, 0).getDate();
+  let faltaFranjas = false;
   {
-    const desdeL = `${jInicio}T00:00:00-05:00`;
-    const hastaL = `${jFin}T00:00:00-05:00`;
-    const [{ data: hAct }, { data: hCom }, { data: hPub }] = await Promise.all([
-      /* `neq("comentario")` NO es un detalle: comentar en un caso, en un
-         objeto o en una postulación escribe DOS filas —una en `comentarios` y
-         otra en `actividad` de tipo «comentario»— y comentar en un equipo
-         escribe UNA. Sin este filtro, un día de conversación en casos pesaba
-         el doble que el mismo día de conversación en la bitácora de un equipo.
-         No fallaba: pintaba un pico que nadie trabajó. La ventana del día ya
-         descarta ese tipo por esta misma razón; la franja se lo había
-         saltado. */
-      supabase.from("actividad").select("actor_id,creado_en").neq("tipo", "comentario")
-        .gte("creado_en", desdeL).lt("creado_en", hastaL).limit(20000),
-      supabase.from("comentarios").select("autor_id,creado_en")
-        .gte("creado_en", desdeL).lt("creado_en", hastaL).limit(20000),
-      /* Publicar un caso o un aviso no deja rastro en `actividad` —solo la
-         fila en `publicaciones`—, así que el día que alguien abrió cinco casos
-         salía en blanco. Es lo primero que lista la ventana del día. */
-      supabase.from("publicaciones").select("autor_id,creado_en")
-        .gte("creado_en", desdeL).lt("creado_en", hastaL).limit(20000),
-    ]);
+    const { data: fr, error: eFr } = await supabase.rpc("franjas_actividad", {
+      p_desde: `${jInicio}T00:00:00-05:00`,
+      p_hasta: `${jFin}T00:00:00-05:00`,
+    });
+    /* Sin la función no se dibuja NADA. La versión de antes seguiría pintando
+       —mal— y una silueta equivocada es peor que ninguna: se lee igual de
+       bien y se cree igual. Mejor el aviso de que falta correr el SQL. */
+    if (eFr) faltaFranjas = true;
     /* De cuenta (perfiles.id) a persona: la jornada es de una PERSONA y la
-       actividad la firma un USUARIO. Quien no tiene cuenta no aporta horas —y
-       no pasa nada: su fila simplemente no lleva barra. */
+       actividad la firma un USUARIO. Quien no tiene cuenta no aporta barras —y
+       no pasa nada: su fila simplemente no lleva franja. */
     const personaDeUsuario = new Map<string, string>();
     (personas || []).forEach((p: any) => { if (p.usuario_id) personaDeUsuario.set(p.usuario_id, p.id); });
-    const suma = (uid: string | null, at: string) => {
-      const pid = uid ? personaDeUsuario.get(uid) : null;
-      if (!pid || !at) return;
-      /* Hora Y día, del mismo instante y en la misma zona. Calcularlos por
-         separado invitaría a que uno llevara zona y el otro no —el error que
-         ya nos corrió las fechas un día entero—. */
-      const enLima = new Date(at).toLocaleString("en-GB", {
-        day: "2-digit", hour: "2-digit", hour12: false, timeZone: "America/Lima" });
-      const h = Number(enLima.slice(-2));
-      const d = Number(enLima.slice(0, 2));
-      if (Number.isNaN(h) || Number.isNaN(d)) return;
-      (horasPorPersona[pid] ||= Array(24).fill(0))[h]++;
-      (diasPorPersona[pid] ||= Array(diasDelMesJ).fill(0))[d - 1]++;
-    };
-    (hAct || []).forEach((x: any) => suma(x.actor_id, x.creado_en));
-    (hCom || []).forEach((x: any) => suma(x.autor_id, x.creado_en));
-    (hPub || []).forEach((x: any) => suma(x.autor_id, x.creado_en));
+    (fr || []).forEach((f: any) => {
+      const pid = personaDeUsuario.get(f.usuario_id);
+      if (!pid) return;
+      const h = Number(f.hora), d = Number(f.dia), n = Number(f.n) || 0;
+      if (h >= 0 && h < 24) (horasPorPersona[pid] ||= Array(24).fill(0))[h] += n;
+      if (d >= 1 && d <= diasDelMesJ) (diasPorPersona[pid] ||= Array(diasDelMesJ).fill(0))[d - 1] += n;
+    });
   }
 
   /* ── LOS PANELES, UNO POR SECCIÓN ──
@@ -704,6 +684,16 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
             Al aprobar, la jornada entra al monto «a pagar». Puedes editar o borrar cualquiera —también
             una ya aprobada— mientras el mes de esa persona no esté confirmado ni liquidado.
           </p>
+          {faltaFranjas && (
+            <div className="card" style={{ borderLeft: "3px solid var(--red)" }}>
+              <b style={{ color: "var(--red)", fontSize: 13 }}>⚠ Sin franjas de actividad</b>
+              <div style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 5, lineHeight: 1.55 }}>
+                Falta correr <code>db/franjas-actividad.sql</code> en Supabase. Las jornadas de abajo
+                están completas; lo que falta son las dos siluetas bajo cada nombre — y se prefiere no
+                dibujarlas a dibujarlas mal, que es lo que hacía la versión anterior.
+              </div>
+            </div>
+          )}
           {/* Sin plegable: la pestaña ya es la sección, el mes ya está en el
               título de arriba y el «por aprobar» al lado del navegador. Un
               rótulo que repite sus dos vecinos y que al cerrarse deja la

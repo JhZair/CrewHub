@@ -2870,7 +2870,7 @@ button.repo-tit{text-align:left}
    tres apuntes y uno de doce eran cuatro pixeles. */
 .jr-franja{display:flex;align-items:center;gap:7px;height:46px;opacity:.8}
 .jr-franja:hover{opacity:1}
-.jr-franja-ico{flex:none;font-size:10px;width:13px;text-align:center;opacity:.7}
+.jr-franja-ico{flex:none;font-size:14px;width:19px;text-align:center;opacity:.75}
 .jr-franja-barras{flex:1;min-width:0;display:flex;align-items:flex-end;gap:1px;height:100%}
 .jr-franja-c{flex:1;height:100%;display:flex;align-items:flex-end;background:#15151f;border-radius:1px}
 /* La barra del dia ABRE ese dia. Un palito de dos pixeles no se ve
