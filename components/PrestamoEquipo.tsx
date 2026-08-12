@@ -141,13 +141,23 @@ export default function PrestamoEquipo({ equipoId, prestamos, personas, proyecto
     if (v && !tags.includes(v)) setTags(prev => [...prev, v]);
     setTagInput("");
   };
-  // Al cambiar de modo, se SUMA la etiqueta que le da naturaleza («daño»,
-  // «mantenimiento») sin pisar lo que el usuario ya escribió; "nota"/"uso" no
-  // tocan las etiquetas. Quitar la etiqueta es manual (clic en su ✕).
+  /* LA ETIQUETA DE MODO ES DEL MODO, NO DEL TEXTO.
+     Antes solo se SUMABA: pasar de «Daño» a «Mantenimiento» dejaba las dos
+     puestas. Y no era un adorno pegado —«daño» es lo que decide `es_dano`, y
+     `es_dano` manda el equipo a reparación—, así que registrar un
+     mantenimiento con la etiqueta de daño colgando dejaba el equipo averiado
+     en el inventario. La pantalla incluso lo avisaba, «el equipo pasará a en
+     reparación», debajo de un formulario titulado «Registrar mantenimiento».
+     Ahora al cambiar de modo se va la etiqueta del modo anterior y entra la
+     del nuevo. Lo que el usuario escribió a mano se queda: eso sí es suyo. */
   const irAModo = (m: Modo) => {
     setModo(m); setError("");
-    if (m === "dano") setTags(prev => prev.some(tagEsDano) ? prev : [...prev, "daño"]);
-    else if (m === "mant") setTags(prev => prev.some(tagEsMant) ? prev : [...prev, "mantenimiento"]);
+    setTags(prev => {
+      const propias = prev.filter(t => !tagEsDano(t) && !tagEsMant(t));
+      return m === "dano" ? [...propias, "daño"]
+        : m === "mant" ? [...propias, "mantenimiento"]
+        : propias;
+    });
   };
 
   const enviarComentario = async () => {
@@ -300,11 +310,8 @@ export default function PrestamoEquipo({ equipoId, prestamos, personas, proyecto
        Aquí el contenedor solo separa de lo de arriba; lo que agrupa son las
        tarjetas de cada hilo, más abajo. */
     <div className="pe-bitacora">
-      <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>
-        <h4 style={{ margin: 0, fontSize: 11.5, letterSpacing: 1.2, textTransform: "uppercase", color: "var(--dim)" }}>
-          🗒 Bitácora del equipo
-        </h4>
-      </div>
+      {/* Sin título: la pestaña ya dice «Bitácora» dos centímetros más arriba.
+          Un rótulo que repite el de al lado no ubica, solo ocupa. */}
       {error && <div className="err-inline" style={{ marginBottom: 8 }}>⚠ {error}</div>}
 
       {/* Estado vivo: estado del equipo + ¿en manos de quién? */}
