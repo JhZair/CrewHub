@@ -2864,8 +2864,11 @@ button.repo-tit{text-align:left}
    Un icono delante de cada una en vez de dos colores: el color de la barra ya
    significa otra cosa (el violeta marca el fin de semana), y usarlo tambien
    para decir cual franja es seria dos mensajes en un canal. */
-.jr-franjas{display:flex;flex-direction:column;gap:3px;margin:3px 2px 8px}
-.jr-franja{display:flex;align-items:center;gap:7px;height:30px;opacity:.8}
+.jr-franjas{display:flex;flex-direction:column;gap:4px;margin:4px 2px 9px}
+/* 46px: con 31 palitos de dos pixeles de ancho, un mes de trabajo desigual solo
+   se lee si la barra tiene donde crecer. A 30px la diferencia entre un dia de
+   tres apuntes y uno de doce eran cuatro pixeles. */
+.jr-franja{display:flex;align-items:center;gap:7px;height:46px;opacity:.8}
 .jr-franja:hover{opacity:1}
 .jr-franja-ico{flex:none;font-size:10px;width:13px;text-align:center;opacity:.7}
 .jr-franja-barras{flex:1;min-width:0;display:flex;align-items:flex-end;gap:1px;height:100%}
