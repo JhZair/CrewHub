@@ -32,15 +32,35 @@ function parte(label: string) {
   return { nombre, n, nota };
 }
 
-export default function TabsPanel({ labels, paneles, inicial = 0, iconoSolo = [], extra, masUltima = false }: {
+export default function TabsPanel({ labels, paneles, inicial = 0, iconoSolo = [], extra, masUltima = false, perezoso = false }: {
   labels: string[]; paneles: ReactNode[]; inicial?: number; iconoSolo?: number[];
   /** Elemento(s) que NO son panel —típicamente un enlace externo, como la
    *  carpeta Drive— y se pintan en la fila de pestañas antes del «⋯ Más». */
   extra?: ReactNode;
   /** Manda la última pestaña (Historial) al menú «⋯ Más». */
   masUltima?: boolean;
+  /** NO montar los paneles que nunca se han abierto.
+   *
+   *  Por defecto se montan los siete y se ocultan con `display:none`, y eso es
+   *  deliberado: al volver a una pestaña sigue ahí el filtro que pusiste, el
+   *  scroll donde lo dejaste y el comentario a medio escribir. Un panel que se
+   *  desmonta al salir se lleva todo eso, y perder tres frases por tocar una
+   *  pestaña es peor que cualquier milisegundo que se ahorre.
+   *
+   *  Pero en administración son siete secciones con sus tablas y editores, y
+   *  todas arrancaban al abrir la portada. Con `perezoso` cada panel se monta
+   *  la PRIMERA vez que se abre —y a partir de ahí se queda—: el coste de
+   *  entrada desaparece y no se pierde nada al ir y volver. */
+  perezoso?: boolean;
 }) {
   const [i, setI] = useState(inicial);
+  /* Qué pestañas se han abierto ya. Solo crece; con `perezoso` en falso vale
+     cualquier cosa, porque no se consulta. */
+  const [vistos, setVistos] = useState<Set<number>>(() => new Set([inicial]));
+  const abrir = (k: number) => {
+    setI(k);
+    if (perezoso) setVistos(v => (v.has(k) ? v : new Set(v).add(k)));
+  };
   const [masOpen, setMasOpen] = useState(false);
   // Índices que viven en el menú «⋯ Más». Por ahora, solo la última (Historial).
   const enMas = masUltima && labels.length > 1 ? [labels.length - 1] : [];
@@ -54,7 +74,7 @@ export default function TabsPanel({ labels, paneles, inicial = 0, iconoSolo = []
     const emoji = nombre.split(" ")[0];
     return (
       <button key={k} className={`vtab ${i === k ? "on" : ""}`}
-        title={nota ? `${nombre} · ${nota}` : nombre} onClick={() => setI(k)}>
+        title={nota ? `${nombre} · ${nota}` : nombre} onClick={() => abrir(k)}>
         {solo ? emoji : nombre}
         {hay && <span className="vtab-n">{n}</span>}
         {!solo && nota && <span className="vtab-nota">{nota}</span>}
@@ -90,7 +110,7 @@ export default function TabsPanel({ labels, paneles, inicial = 0, iconoSolo = []
                     const hay = n != null && Number(n) > 0;
                     return (
                       <button key={k} role="menuitem" className={`vtab-mas-item ${i === k ? "on" : ""}`}
-                        onClick={() => { setI(k); setMasOpen(false); }}>
+                        onClick={() => { abrir(k); setMasOpen(false); }}>
                         <span>{nombre}</span>
                         {hay && <span className="vtab-n">{n}</span>}
                       </button>
@@ -103,7 +123,12 @@ export default function TabsPanel({ labels, paneles, inicial = 0, iconoSolo = []
         )}
       </div>
       {paneles.map((p, k) => (
-        <div key={k} style={{ display: i === k ? "block" : "none" }}>{p}</div>
+        /* Se pinta el panel si está activo o si ya se abrió alguna vez. El
+           `div` se queda siempre: quitarlo cambiaría las claves de React y
+           remontaría los vecinos. */
+        <div key={k} style={{ display: i === k ? "block" : "none" }}>
+          {perezoso && !vistos.has(k) ? null : p}
+        </div>
       ))}
     </div>
   );

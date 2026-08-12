@@ -703,7 +703,11 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
       </div>
       <h1 className="title-lg">⚙ Administración</h1>
 
-      <TabsPanel inicial={iSel} masUltima
+      {/* `perezoso`: siete secciones con sus tablas y editores no se montan
+          para enseñar una. Cada panel arranca la primera vez que se abre y a
+          partir de ahí se queda montado — así no se pierde el filtro ni el
+          scroll al ir y volver, que es lo que costaría desmontarlos al salir. */}
+      <TabsPanel inicial={iSel} masUltima perezoso
         labels={PESTANAS.map(([, l]) => l)}
         paneles={PESTANAS.map(([k, , nodo]) => <div key={k}>{nodo}</div>)} />
     </div>
