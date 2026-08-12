@@ -87,7 +87,7 @@ export default async function Equipamiento({ searchParams }: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: eqs }, { data: enManos, error: eManos }, { data: vincs }, { data: coms }, { data: media }, comsBita, comsUso, usosRec, { data: comBita }, { data: prestAll }, personasRaw, proyectosRaw, { data: kitsRaw }, { data: kitEqs }, { data: comprasRaw }] = await Promise.all([
+  const [{ data: eqs }, { data: enManos, error: eManos }, { data: vincs }, { data: coms }, { data: media }, comsBita, comsUso, usosRec, { data: comBita }, { data: prestAll }, personasRaw, proyectosRaw, { data: kitsRaw, error: eKits }, { data: kitEqs }, { data: comprasRaw }] = await Promise.all([
     // `*`: para calcular la completitud de la ficha de cada equipo.
     supabase.from("equipamiento").select("*").order("folio"),
     supabase.from("equipo_prestamos")
@@ -126,7 +126,9 @@ export default async function Equipamiento({ searchParams }: {
     supabase.from("proyectos").select("id,nombre").order("nombre"),
     /* Los kits: qué sale junto. Dos tablas que llevaban un año en el schema
        sin una sola línea que las nombrara (ver db/kits.sql). */
-    supabase.from("kits").select("id,nombre,uso,descripcion,retirado_en").order("nombre"),
+    supabase.from("kits")
+      .select("id,nombre,uso,descripcion,retirado_en,autor:perfiles(nombre,avatar_url,color)")
+      .order("nombre"),
     supabase.from("kit_equipos").select("kit_id,equipamiento_id"),
     /* Los combos de compra: donde vive el precio de lo que se compró junto.
        Es lo que hace que el valor del inventario deje de ir corto. */
@@ -150,6 +152,9 @@ export default async function Equipamiento({ searchParams }: {
   const kits: KitVista[] = (kitsRaw || []).map((k: any) => ({
     id: k.id, nombre: k.nombre, uso: k.uso, descripcion: k.descripcion,
     retirado: !!k.retirado_en, equipoIds: eqsDeKit.get(k.id) || [],
+    /* Objeto o arreglo según cómo PostgREST resuelva la relación. Leer solo
+       una de las dos formas deja el autor en blanco sin que nada falle. */
+    autor: un1(k.autor) || null,
   }));
   const kitPorId = new Map(kits.map(k => [k.id, k]));
 
@@ -679,6 +684,21 @@ export default async function Equipamiento({ searchParams }: {
 
           {/* Los kits van DESPUÉS de la entrega: primero se entrega —es lo del
               día— y armar el kit es mantenimiento, se hace de vez en cuando. */}
+          {/* Un `select` con un embed que el servidor no resuelve devuelve
+              data:null y error, y `|| []` lo convierte en «no hay kits»: el
+              panel entero desaparece y parece que nadie ha armado ninguno.
+              Es la misma forma de fallar que dejó el panel de préstamos en
+              blanco, así que se dice en voz alta. */}
+          {eKits && (
+            <div className="card" style={{ borderLeft: "3px solid var(--red)" }}>
+              <b style={{ color: "var(--red)", fontSize: 13 }}>⚠ No se pudieron leer los kits</b>
+              <div style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 5, lineHeight: 1.55 }}>
+                {/(perfiles|autor|creado_por)/.test(eKits.message)
+                  ? <>Falta correr <code>db/kits.sql</code> en Supabase: sin <code>kits.creado_por</code> no se puede leer quién armó cada kit. Los kits existen — lo que no se puede es pintarlos.</>
+                  : eKits.message}
+              </div>
+            </div>
+          )}
           <PanelKits kits={kits} equipos={eqsConDueno as any} />
 
           {/* Quién tiene qué —y la devolución a media vuelta de rodaje—.

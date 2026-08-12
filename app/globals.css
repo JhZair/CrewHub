@@ -2907,6 +2907,10 @@ button.repo-tit{text-align:left}
   color:var(--dim);font-size:11px;margin:3px 0 0 2px}
 .kit-ctx-val{color:var(--teal);font-weight:700}
 .kit-ctx-quien{color:var(--dano)}
+/* Quien armo el kit. Va al final y en gris: es contexto de quien mira, no un
+   dato de lo que se entrega, y compite con el precio si se enciende. */
+.kit-ctx-autor{display:inline-flex;align-items:center;gap:5px;color:var(--dim);
+  margin-left:auto;flex:none}
 /* «+ 10 montadas» en la cabecera es la suma de los «🔩 N piezas» de abajo:
    mismo hecho, mismo azul. Con dos colores distintos no se ve que el 10 sale
    de sumar los chips. */

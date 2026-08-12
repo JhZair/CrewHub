@@ -61,6 +61,11 @@ export type EqBase = {
 export type KitVista = {
   id: string; nombre: string; uso?: string | null; descripcion?: string | null;
   retirado?: boolean; equipoIds: string[];
+  /** Quién lo armó. Un kit es una DECISIÓN —«esto sale junto para una
+   *  entrevista»— y una decisión sin autor no se discute: ante una pieza
+   *  rara lo que hace falta saber es a quién preguntarle por qué está ahí.
+   *  El dato se guarda desde db/kits.sql y no lo leía nadie. */
+  autor?: { nombre?: string | null; avatar_url?: string | null; color?: string | null } | null;
 };
 
 export type PiezaKit = {

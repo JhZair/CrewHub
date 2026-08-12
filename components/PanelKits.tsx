@@ -7,6 +7,7 @@ import { estadoKit, resumenKit, contextoKit, porQueNo, agruparPorCombo, valeAgru
   type PiezaKit, type EqBase, type KitVista } from "@/lib/kits";
 import { entregableEq } from "@/lib/estadosEquipo";
 import PiezasKit from "@/components/PiezasKit";
+import Avatar from "@/components/Avatar";
 
 /* ARMAR KITS — «Entrevista PRO» es una cosa, no tres fichas que alguien
  * recuerda marcar de a una.
@@ -398,7 +399,7 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
                     obligaba a desplegarlo. */}
                 {(() => {
                   const ctx = contextoKit(piezas);
-                  if (!ctx.valor && !ctx.cats.length && !ctx.quienes.length) return null;
+                  if (!ctx.valor && !ctx.cats.length && !ctx.quienes.length && !k.autor) return null;
                   return (
                     <div className="kit-ctx">
                       {ctx.valor > 0 && (
@@ -422,6 +423,21 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
                       )}
                       {ctx.quienes.length > 0 && (
                         <span className="kit-ctx-quien">lo tiene{ctx.quienes.length > 1 ? "n" : ""} {ctx.quienes.join(", ")}</span>
+                      )}
+                      {/* QUIÉN LO ARMÓ, al final de la línea y en gris. Un kit
+                          es una decisión —«esto sale junto para una
+                          entrevista»—, y ante una pieza que no encaja lo que
+                          hace falta saber es a quién preguntarle por qué está
+                          ahí. El dato se guardaba desde el primer día
+                          (db/kits.sql) y no lo leía ninguna pantalla.
+                          Al final y no al lado del nombre: es de quien mira,
+                          no de lo que se entrega. */}
+                      {k.autor && (
+                        <span className="kit-ctx-autor" title={`Kit armado por ${k.autor.nombre || "alguien"}`}>
+                          <Avatar nombre={k.autor.nombre} color={k.autor.color}
+                            src={k.autor.avatar_url} size={15} />
+                          {k.autor.nombre || "alguien"}
+                        </span>
                       )}
                     </div>
                   );
