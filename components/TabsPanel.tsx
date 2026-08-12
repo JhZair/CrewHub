@@ -1,5 +1,5 @@
 "use client";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 /* Pestañas con contador en burbuja.
  *
@@ -32,8 +32,15 @@ function parte(label: string) {
   return { nombre, n, nota };
 }
 
-export default function TabsPanel({ labels, paneles, inicial = 0, iconoSolo = [], extra, masUltima = false, perezoso = false }: {
+export default function TabsPanel({ labels, paneles, inicial = 0, iconoSolo = [], extra, masUltima = false, perezoso = false, claves }: {
   labels: string[]; paneles: ReactNode[]; inicial?: number; iconoSolo?: number[];
+  /** Un nombre corto por pestaña («bitacora», «casos»…) para poder abrirla
+   *  desde el enlace: `…/entidad/equipamiento/xyz#bitacora`.
+   *  Sin esto, un aviso de un comentario dejaba al lector en la pestaña de
+   *  siempre, con lo que le habían escrito a dos clics — y si ya estaba en esa
+   *  ficha, el aviso no hacía absolutamente nada al pulsarlo: misma URL,
+   *  misma pestaña. */
+  claves?: string[];
   /** Elemento(s) que NO son panel —típicamente un enlace externo, como la
    *  carpeta Drive— y se pintan en la fila de pestañas antes del «⋯ Más». */
   extra?: ReactNode;
@@ -61,6 +68,32 @@ export default function TabsPanel({ labels, paneles, inicial = 0, iconoSolo = []
     setI(k);
     if (perezoso) setVistos(v => (v.has(k) ? v : new Set(v).add(k)));
   };
+  /* El hash manda, al entrar Y al cambiar. Lo segundo importa tanto como lo
+     primero: si ya estás en esta ficha, un enlace a la MISMA página con otro
+     hash no remonta nada —React no se entera—, así que sin escuchar
+     `hashchange` el aviso seguiría sin hacer nada. */
+  useEffect(() => {
+    if (!claves?.length) return;
+    const aplica = () => {
+      const h = decodeURIComponent(String(window.location.hash || "").replace(/^#/, "")).toLowerCase();
+      if (!h) return;
+      const k = claves.findIndex(c => c && c.toLowerCase() === h);
+      if (k < 0) return;
+      abrir(k);
+      /* Y se trae la pestaña a la vista. Si el lector YA estaba en esta ficha
+         —el caso de quien pulsa el aviso de algo que tiene abierto— cambiar de
+         pestaña sin moverse no se ve: la página se queda donde estaba y el
+         clic parece no haber hecho nada. */
+      raiz.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+    aplica();
+    window.addEventListener("hashchange", aplica);
+    return () => window.removeEventListener("hashchange", aplica);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [claves?.join("|")]);
+
+  const raiz = useRef<HTMLDivElement>(null);
+
   const [masOpen, setMasOpen] = useState(false);
   // Índices que viven en el menú «⋯ Más». Por ahora, solo la última (Historial).
   const enMas = masUltima && labels.length > 1 ? [labels.length - 1] : [];
@@ -84,7 +117,7 @@ export default function TabsPanel({ labels, paneles, inicial = 0, iconoSolo = []
 
   const actNom = parte(labels[i]);
   return (
-    <div>
+    <div ref={raiz}>
       <div className="vtabs vtabs-nav" style={{ marginBottom: 14 }}>
         {labels.map((_, k) => (enMas.includes(k) ? null : tabBtn(k)))}
         {/* El extra (Drive) va después de las pestañas, antes del «⋯ Más». */}

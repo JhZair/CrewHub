@@ -4345,6 +4345,9 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                     `🕐 Historial · ${totEventos}`,
                   ]}
                   paneles={[bitacoraNode, trabajoNode, repoEq, histEq]}
+                  /* Para que un aviso de la bitácora abra la bitácora: el
+                     enlace de la notificación termina en `#bitacora`. */
+                  claves={["bitacora", "casos", "repositorio", "historial"]}
                   iconoSolo={[3]}
                 />
               );

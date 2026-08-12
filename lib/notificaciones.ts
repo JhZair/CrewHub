@@ -81,8 +81,12 @@ export const rutaNotif = (n: {
   // lector en el mensaje exacto que sonó.
   : n.dafo_id ? `/casilla#c-${n.dafo_id}`
   : n.objeto_id ? `/objeto/${n.objeto_id}${anclaDe(n.tipo || "")}`
-  // Un aviso de préstamo lleva a la ficha del equipo (resuelto en conVinculos).
-  : n.equipamiento_id ? `/entidad/equipamiento/${n.equipamiento_id}`
+  /* Un aviso de préstamo lleva a la ficha del equipo (resuelto en
+     conVinculos), y `#bitacora` abre la pestaña donde está lo que le
+     escribieron. Sin el ancla, el aviso dejaba al lector en la pestaña de
+     siempre con el comentario a dos clics — y si ya estaba en esa ficha, no
+     hacía nada al pulsarlo: misma URL, misma pestaña, cero respuesta. */
+  : n.equipamiento_id ? `/entidad/equipamiento/${n.equipamiento_id}#bitacora`
   : null;
 
 /* Cuánto hace, dicho corto: la campanita es una lista, no un texto */
