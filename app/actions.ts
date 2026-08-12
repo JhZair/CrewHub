@@ -1154,7 +1154,12 @@ export async function editarJornada(
  * offset explícito y no con la fecha a secas.
  */
 export type HechoDelDia = {
-  at: string; ico: string; txt: string; sub?: string | null; href?: string | null;
+  /** Instante exacto, o `null` si el hecho NO tiene hora. Un préstamo guarda
+   *  `desde` como fecha suelta —sin hora— y un RHE igual: inventarles las
+   *  12:00 para poder ordenarlos ponía en pantalla un dato que nadie
+   *  registró, y encima los dejaba en medio de la mañana como si hubieran
+   *  pasado ahí. Van al final, dichos como lo que son. */
+  at: string | null; ico: string; txt: string; sub?: string | null; href?: string | null;
 };
 export async function contextoDelDia(personaId: string, fecha: string) {
   const supabase = createClient();
@@ -1211,7 +1216,6 @@ export async function contextoDelDia(personaId: string, fecha: string) {
   ]);
 
   const hechos: HechoDelDia[] = [];
-  const alFinal = `${fecha}T12:00:00-05:00`;   // lo que no tiene hora, al mediodía
 
   (pubs.data || []).forEach((x: any) => hechos.push({
     at: x.creado_en, ico: icoTipo(x.tipo), txt: `Publicó «${(x.titulo || "").slice(0, 70)}»`,
@@ -1236,23 +1240,43 @@ export async function contextoDelDia(personaId: string, fecha: string) {
     });
   });
 
+  /* CADA EVENTO YA TRAE ESCRITO LO QUE PASÓ. La mayoría de las acciones
+     guardan `detalle.mensaje` —«registró un RHE de S/ 450», «corrigió la
+     fecha límite»— y es la misma frase que usa el historial de una ficha
+     (ver textoEvento). Componerla aquí a partir de `tipo` + `entidad_tipo`
+     producía «dato equipamiento» y «creacion compra»: dos palabras que no
+     son una frase y que además ya estaban dichas mejor en la fila de al
+     lado. Se usa el mensaje; el tipo solo cuando no hay ninguno. */
   const ACT: Record<string, string> = {
-    creado: "Creó", estado: "Cambió el estado de", asignacion: "Asignó",
-    archivo: "Archivó", prioridad: "Cambió la prioridad de", tarea: "Marcó una tarea en",
-    vinculo: "Vinculó", relacion: "Relacionó", cierre: "Cerró", edicion: "Editó",
+    creado: "creó una ficha", estado: "cambió un estado", asignacion: "asignó un responsable",
+    archivo: "archivó algo", prioridad: "cambió una prioridad", tarea: "marcó una tarea",
+    vinculo: "vinculó algo", relacion: "relacionó algo", cierre: "cerró algo",
+    edicion: "editó una ficha", editado: "editó una ficha", dato: "cambió un dato",
   };
-  (acts.data || []).forEach((a: any) => hechos.push({
-    at: a.creado_en, ico: "🛠",
-    txt: `${ACT[a.tipo] || a.tipo} ${a.entidad_tipo === "publicacion" ? "un caso" : a.entidad_tipo}`,
-    href: a.entidad_tipo === "publicacion" ? `/caso/${a.entidad_id}`
-      : a.entidad_tipo === "objeto" ? `/objeto/${a.entidad_id}`
-      : `/entidad/${a.entidad_tipo}/${a.entidad_id}`,
-  }));
+  const ENT: Record<string, string> = {
+    publicacion: "un caso", equipamiento: "un equipo", persona: "una persona",
+    empresa: "una empresa", proyecto: "un proyecto", postulacion: "una postulación",
+    convocatoria: "una convocatoria", objeto: "el repositorio", compra: "una compra",
+  };
+  (acts.data || []).forEach((a: any) => {
+    const msg = (a.detalle?.mensaje || "").trim();
+    const donde = ENT[a.entidad_tipo] || a.entidad_tipo;
+    hechos.push({
+      at: a.creado_en, ico: "🛠",
+      txt: msg ? msg.charAt(0).toUpperCase() + msg.slice(1) : (ACT[a.tipo] || a.tipo),
+      /* Dónde pasó, siempre: «corrigió la fecha límite» sin decir de qué es
+         media frase. Va debajo para que el renglón de arriba se lea seguido. */
+      sub: `en ${donde}`,
+      href: a.entidad_tipo === "publicacion" ? `/caso/${a.entidad_id}`
+        : a.entidad_tipo === "objeto" ? `/objeto/${a.entidad_id}`
+        : ENT[a.entidad_tipo] ? `/entidad/${a.entidad_tipo}/${a.entidad_id}` : null,
+    });
+  });
 
   (presDio.data || []).forEach((p: any) => {
     const eq = u1(p.equipo), a = u1(p.persona);
     hechos.push({
-      at: alFinal, ico: p.tipo === "asignacion" ? "📌" : "🤝",
+      at: null, ico: p.tipo === "asignacion" ? "📌" : "🤝",
       txt: `${p.tipo === "asignacion" ? "Asignó" : "Entregó"} ${eq?.folio || ""} ${eq?.nombre || "un equipo"}`.trim(),
       sub: a ? `a ${a.alias || a.nombre}` : null,
       href: eq ? `/entidad/equipamiento/${eq.id}` : null,
@@ -1261,7 +1285,7 @@ export async function contextoDelDia(personaId: string, fecha: string) {
   (presRecibio.data || []).forEach((p: any) => {
     const eq = u1(p.equipo);
     hechos.push({
-      at: alFinal, ico: p.tipo === "asignacion" ? "📌" : "📥",
+      at: null, ico: p.tipo === "asignacion" ? "📌" : "📥",
       txt: `${p.tipo === "asignacion" ? "Quedó a su cargo" : "Recibió"} ${eq?.folio || ""} ${eq?.nombre || "un equipo"}`.trim(),
       href: eq ? `/entidad/equipamiento/${eq.id}` : null,
     });
@@ -1269,18 +1293,26 @@ export async function contextoDelDia(personaId: string, fecha: string) {
   (presDevolvio.data || []).forEach((p: any) => {
     const eq = u1(p.equipo);
     hechos.push({
-      at: alFinal, ico: "↩",
+      at: null, ico: "↩",
       txt: `Devolvió ${eq?.folio || ""} ${eq?.nombre || "un equipo"}`.trim(),
       href: eq ? `/entidad/equipamiento/${eq.id}` : null,
     });
   });
   (rhes.data || []).forEach((r: any) => hechos.push({
-    at: alFinal, ico: "🧾",
+    at: null, ico: "🧾",
     txt: `RHE ${r.numero || ""} · S/ ${Math.round(Number(r.monto) || 0).toLocaleString("es-PE")}`.trim(),
     sub: r.concepto || null,
   }));
 
-  hechos.sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  /* POR TIEMPO REAL, no por texto. Los instantes vienen de la base en UTC
+     («…T14:16:00Z») y los que se armaban aquí llevaban el offset de Lima
+     («…T12:00:00-05:00»): comparados como cadenas, «12» va antes que «14» y
+     los equipos aparecían al principio de la mañana. Dos formatos de la misma
+     cosa ordenados como texto dan un orden que parece bueno y no lo es.
+     Lo que no tiene hora va al final: no es que ocurriera al final del día, es
+     que no se sabe cuándo, y esa es la única posición que no lo afirma. */
+  hechos.sort((a, b) =>
+    (a.at ? new Date(a.at).getTime() : Infinity) - (b.at ? new Date(b.at).getTime() : Infinity));
   return { hechos, quien: per.alias || per.nombre };
 }
 

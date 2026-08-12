@@ -2884,6 +2884,8 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
    fueron ocho cosas en diez minutos o repartidas en la tarde. */
 .dia-hora{color:var(--dim);font-size:11px;min-width:42px;flex:none;padding-top:1px;
   font-variant-numeric:tabular-nums}
+/* Lo que se guardo con fecha y sin hora: un guion, no una hora inventada. */
+.dia-hora.sinhora{opacity:.45}
 .dia-ico{flex:none;font-size:13px;line-height:1.3}
 .dia-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
 .dia-l1{font-size:12.5px;color:var(--text);line-height:1.35}

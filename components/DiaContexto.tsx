@@ -80,7 +80,13 @@ export default function DiaContexto({ personaId, fecha, quien }: {
                   {hechos.map((h: any, i: number) => {
                     const dentro = (
                       <>
-                        <span className="dia-hora">{hora(h.at)}</span>
+                        {/* Sin hora ≠ a las doce. Un préstamo se guarda con
+                            fecha suelta, y poner «12:00 p. m.» ahí es escribir
+                            un dato que nadie registró. */}
+                        <span className={`dia-hora${h.at ? "" : " sinhora"}`}
+                          title={h.at ? undefined : "Se registró con fecha, sin hora"}>
+                          {h.at ? hora(h.at) : "—"}
+                        </span>
                         <span className="dia-ico">{h.ico}</span>
                         <span className="dia-txt">
                           <span className="dia-l1">{h.txt}</span>
