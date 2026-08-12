@@ -323,12 +323,37 @@ export default async function Equipamiento({ searchParams }: {
       items: g.items.sort((a: any, b: any) => new Date(b.at).getTime() - new Date(a.at).getTime()).slice(0, ACT_POR_EQ),
     }))
     .sort((a, b) => new Date(b.items[0].at).getTime() - new Date(a.items[0].at).getTime());
-  const gruposAct = gruposActTodos.slice(0, ACT_EQUIPOS);
+  /* CINCO LINTERNAS CON LA MISMA HISTORIA SON UNA LÍNEA, NO CINCO.
+     A-136…A-140 salieron el 6 con KatyP y volvieron el 12 con KatyP: leerlo
+     cinco veces no informa cinco veces, informa una y esconde lo demás bajo
+     ocho pantallazos de scroll.
+     Se pliegan SOLO si su historia es idéntica: mismo nombre y misma lista de
+     movimientos —tipo, día, persona, texto y fotos—. Si una de las cinco
+     volvió un día distinto, o alguien le dejó un comentario, esa se sale del
+     montón y se lee sola. Que es justo lo que hay que ver.
+     Agrupar solo por nombre habría sido más simple y habría escondido
+     exactamente lo contrario de lo que uno viene a buscar aquí. */
+  const firmaAct = (g: { eq: any; items: any[] }) =>
+    [g.eq.nombre || "", ...g.items.map((i: any) =>
+      [i.tipo, String(i.at).slice(0, 10), i.persona?.alias || i.persona?.nombre || "",
+       (i.cuerpo || "").trim(), (i.imagenes || []).join(","), i.es_dano ? "d" : ""].join("|"),
+    )].join("\u0000");
+  const plegadoAct = new Map<string, { eqs: any[]; items: any[]; total: number }>();
+  gruposActTodos.forEach(g => {
+    const k = firmaAct(g);
+    const ya = plegadoAct.get(k);
+    if (ya) { ya.eqs.push(g.eq); ya.total = Math.max(ya.total, g.total); }
+    else plegadoAct.set(k, { eqs: [g.eq], items: g.items, total: g.total });
+  });
+  /* El Map conserva el orden de inserción, y `gruposActTodos` ya venía
+     ordenado por lo más reciente: plegar no reordena nada. */
+  const filasAct = [...plegadoAct.values()];
+  const gruposAct = filasAct.slice(0, ACT_EQUIPOS);
   /* ¿Se está escondiendo algo? Dos formas: equipos que no entraron, o
      movimientos recortados dentro de los que sí. Cualquiera de las dos vale
      para ofrecer «ver más» — y si no hay ninguna, no se ofrece: un botón que
      no añade nada gasta la confianza del que lo pulsa. */
-  const hayMasAct = gruposActTodos.length > gruposAct.length
+  const hayMasAct = filasAct.length > gruposAct.length
     || gruposAct.some(g => g.total > g.items.length);
 
   // Su vida en CrewHub+, igual que en empresas, personas y proyectos
@@ -806,13 +831,31 @@ export default async function Equipamiento({ searchParams }: {
                 {actAmpl && <span style={{ color: "var(--dim)", fontWeight: 400, fontSize: 11.5 }}> · ventana ampliada</span>}
               </div>
               {gruposAct.map((g: any, gi: number) => (
-                <div key={g.eq.id} style={{ padding: "10px 0 4px", borderTop: gi ? "1px solid var(--border)" : "none" }}>
-                  {/* Nodo raíz: el equipo */}
-                  <Link href={`/entidad/equipamiento/${g.eq.id}`} style={{ display: "flex", gap: 9, alignItems: "center" }}>
-                    {miniEquipo(cartelPorEq.get(g.eq.id))}
-                    <b style={{ fontSize: TXT.base, color: "var(--text)" }}>{g.eq.nombre}</b>
-                    {g.eq.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c", fontSize: TXT.chip }}>{g.eq.folio}</span>}
-                  </Link>
+                <div key={g.eqs[0].id} style={{ padding: "10px 0 4px", borderTop: gi ? "1px solid var(--border)" : "none" }}>
+                  {/* Nodo raíz: el equipo —o los equipos que hicieron lo mismo.
+                      La foto y el nombre una sola vez; los folios, todos, y
+                      cada uno enlazando a SU ficha: son cinco cosas distintas
+                      con la misma historia, no una cosa. */}
+                  <div style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap" }}>
+                    <Link href={`/entidad/equipamiento/${g.eqs[0].id}`} style={{ display: "flex", gap: 9, alignItems: "center", minWidth: 0 }}>
+                      {miniEquipo(cartelPorEq.get(g.eqs[0].id))}
+                      <b style={{ fontSize: TXT.base, color: "var(--text)" }}>{g.eqs[0].nombre}</b>
+                    </Link>
+                    {g.eqs.length > 1 && (
+                      <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>{g.eqs.length} unidades</span>
+                    )}
+                    <span style={{ display: "flex", gap: 4, flexWrap: "wrap", minWidth: 0 }}>
+                      {g.eqs.filter((x: any) => x.folio).slice(0, 8).map((x: any) => (
+                        <Link key={x.id} href={`/entidad/equipamiento/${x.id}`} className="badge"
+                          style={{ color: "var(--muted)", background: "#1c1c2c", fontSize: TXT.chip }}>{x.folio}</Link>
+                      ))}
+                      {/* El tope se dice: «+3» es la diferencia entre ver ocho
+                          folios y creer que son ocho. */}
+                      {g.eqs.length > 8 && (
+                        <span style={{ color: "var(--dim)", fontSize: TXT.chip, alignSelf: "center" }}>+{g.eqs.length - 8}</span>
+                      )}
+                    </span>
+                  </div>
                   {/* Ramas: sus últimos movimientos */}
                   <div style={{ marginLeft: 16, borderLeft: "1px solid var(--border)", paddingLeft: 14, marginTop: 7, display: "flex", flexDirection: "column", gap: 7 }}>
                     {g.items.map((it: any, i: number) => {
@@ -897,9 +940,14 @@ export default async function Equipamiento({ searchParams }: {
                       {actAmpl ? "↑ Ver menos" : "↓ Ver más actividad"}
                     </Link>
                     <span style={{ color: "var(--dim)", fontSize: 11.5 }}>
-                      {actAmpl
-                        ? `${gruposAct.length} equipo${gruposAct.length === 1 ? "" : "s"} con movimiento · hasta ${ACT_POR_EQ} cada uno`
-                        : `Se muestran ${gruposAct.length} equipos y ${ACT_POR_EQ} movimientos de cada uno`}
+                      {/* Cuenta EQUIPOS, no filas: con las repetidas plegadas
+                          «8 filas» no dice cuántas cosas se están viendo. */}
+                      {(() => {
+                        const nEq = gruposAct.reduce((t: number, g: any) => t + g.eqs.length, 0);
+                        return actAmpl
+                          ? `${nEq} equipo${nEq === 1 ? "" : "s"} con movimiento · hasta ${ACT_POR_EQ} movimientos cada uno`
+                          : `Se muestran ${nEq} equipos y ${ACT_POR_EQ} movimientos de cada uno`;
+                      })()}
                     </span>
                   </div>
                 );
