@@ -808,6 +808,37 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       candidatosMontar = (libres || []).map((e: any) => ({ ...e, cartel: cartelTodos.get(e.id) || null }));
     }
 
+    /* QUÉ LLEVA MONTADO DENTRO CADA UNO DE ESTOS EQUIPOS.
+       El panel de /equipamiento ya lo decía —«🔩 3 piezas»— y la ficha no,
+       así que el mismo kit contaba trece cosas en una pantalla y veintitrés
+       en la otra. Es el número que se firma al entregar y el que se cuenta al
+       volver, y no puede depender de por dónde entraste a mirarlo.
+
+       UNA consulta para toda la lista, no una por pieza: son quince equipos y
+       serían quince viajes para pintar un contador. */
+    const montadasDe = async (ids: string[]) => {
+      const m = new Map<string, { id: string; folio?: string | null; nombre: string;
+        cartel?: string | null; estado?: string | null }[]>();
+      if (!ids.length) return m;
+      const { data: dd } = await supabase.from("equipamiento")
+        .select("id,folio,nombre,estado,ensamblado_en").in("ensamblado_en", ids);
+      if (!dd?.length) return m;
+      /* Con foto: el pop-up de las piezas se lee mirando, igual que la lista
+         del kit. Sin cartel salen cinco cámaras de emoji indistinguibles. */
+      const { data: mmD } = await supabase.from("entidad_media")
+        .select("entidad_id,cartel_url").eq("entidad_tipo", "equipamiento")
+        .in("entidad_id", dd.map((x: any) => x.id));
+      const cD = new Map<string, string>();
+      (mmD || []).forEach((x: any) => { if (x.cartel_url) cD.set(x.entidad_id, x.cartel_url); });
+      dd.forEach((d: any) => {
+        m.set(d.ensamblado_en, [...(m.get(d.ensamblado_en) || []), {
+          id: d.id, folio: d.folio, nombre: d.nombre, estado: d.estado,
+          cartel: cD.get(d.id) || null,
+        }]);
+      });
+      return m;
+    };
+
     /* Lo demás que vino en la misma compra, con su foto y quién lo tiene.
        Se lista en la ficha y no detrás de un enlace: «¿qué más vino con
        esto?» es LA pregunta que contesta la procedencia, y hacerla costar un
@@ -832,11 +863,13 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
           const pe = u1(f.persona);
           tieneH.set(f.equipamiento_id, pe?.alias || pe?.nombre || "alguien");
         });
+        const montH = await montadasDe(idsH);
         hermanasCombo = (herm || []).map((h: any) => ({
           id: h.id, folio: h.folio, nombre: h.nombre, estado: h.estado,
           quien: tieneH.get(h.id) || null, cartel: cartelH.get(h.id) || null,
           categoria: h.categoria || null, subcategoria: h.subcategoria || null,
           valor: h.valor_compra ? Number(h.valor_compra) : null,
+          montadas: montH.get(h.id) || [],
         }));
       }
     }
@@ -915,6 +948,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
           (cbs || []).forEach((c: any) => comboK.set(c.id,
             { codigo: c.codigo, nombre: c.nombre, nUnidades: nPorCompra.get(c.id) ?? null }));
         }
+        const montK = await montadasDe(idsEq);
         kitsDelEq = (ks || []).map((k: any) => ({
           id: k.id, nombre: k.nombre, uso: k.uso, retirado: !!k.retirado_en,
           piezas: (todas || []).filter((t: any) => t.kit_id === k.id)
@@ -927,6 +961,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               kits: kitsPorPieza.get(e.id) || [],
               categoria: e.categoria || null, subcategoria: e.subcategoria || null,
               valor: e.valor_compra ? Number(e.valor_compra) : null,
+              montadas: montK.get(e.id) || [],
             })),
         }));
       }
