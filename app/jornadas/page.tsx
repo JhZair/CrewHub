@@ -79,6 +79,31 @@ export default async function Jornadas({ searchParams }: { searchParams: { m?: s
   const mi = miData ? { nombre: (miData as any).alias || (miData as any).nombre, tarifa_dia: (miData as any).tarifa_dia, tarifa_rodaje: (miData as any).tarifa_rodaje, tarifa_noche: (miData as any).tarifa_noche } : null;
   const miPersonaId = miPersonaIdRaw;
   const esAdmin = !!(perfilData as any)?.es_admin;
+  /* ── MIS DOS SILUETAS: A QUÉ HORA Y QUÉ DÍAS ──
+     Las mismas que ve el admin bajo cada nombre, pero aquí solo la mía. No es
+     vigilancia mirada desde dentro: es el recordatorio de qué días toqué el
+     sistema, que es justo lo que uno necesita cuando llega a registrar la
+     semana y no se acuerda si el jueves trabajó.
+     La función devuelve el mes de TODOS, y aquí se queda con una sola persona
+     antes de pintar. El descarte ocurre en el servidor —esto es un componente
+     de servidor, al navegador solo llega lo dibujado—, así que las cuentas
+     ajenas no salen de la base de datos: la misma regla que ya obliga a
+     filtrar `jornadas` en la consulta y no al pintar. */
+  const horasPorPersona: Record<string, number[]> = {};
+  const diasPorPersona: Record<string, number[]> = {};
+  if (miPersonaId) {
+    const { data: fr } = await supabase.rpc("franjas_actividad", {
+      p_desde: `${inicio}T00:00:00-05:00`,
+      p_hasta: `${fin}T00:00:00-05:00`,
+    });
+    (fr || []).forEach((f: any) => {
+      if (f.usuario_id !== user.id) return;
+      const h = Number(f.hora), d = Number(f.dia), n = Number(f.n) || 0;
+      if (h >= 0 && h < 24) (horasPorPersona[miPersonaId] ||= Array(24).fill(0))[h] += n;
+      if (d >= 1 && d <= diasEnMes) (diasPorPersona[miPersonaId] ||= Array(diasEnMes).fill(0))[d - 1] += n;
+    });
+  }
+
   const mesNum = mes + 1; // 1-12 para liquidaciones
   const { data: miLiq } = miPersonaId
     ? await supabase.from("liquidaciones").select("*").eq("persona_id", miPersonaId).eq("anio", anio).eq("mes", mesNum).maybeSingle()
@@ -273,7 +298,8 @@ export default async function Jornadas({ searchParams }: { searchParams: { m?: s
           de esta persona, sin filtrar por aprobada. El hueco es el dato: sin él
           no se distingue «descansé» de «se me olvidó anotarlo», y una vez
           liquidado el mes corregirlo ya cuesta. */}
-      <BitacoraJornadas items={bitacora} esAdmin={false} miPersonaId={miPersonaId} proyectos={proyectos || []} titulo="🗒 Detalle diario del mes" bloqueado={!!miLiq} porMes diasVacios />
+      <BitacoraJornadas items={bitacora} esAdmin={false} miPersonaId={miPersonaId} proyectos={proyectos || []} titulo="🗒 Detalle diario del mes" bloqueado={!!miLiq} porMes diasVacios
+        horasPorPersona={horasPorPersona} diasPorPersona={diasPorPersona} mesFranja={inicio} />
 
       {/* ══ CONTEXTO (abajo, ordenado) ══ */}
       <div className="h4" style={{ marginTop: 22, color: "var(--dim)", letterSpacing: 1, textTransform: "uppercase", fontSize: 12 }}>Contexto adicional</div>
