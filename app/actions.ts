@@ -1,7 +1,7 @@
 "use server";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import { NO_ENTREGABLE as NO_ENTREGABLE_EQ } from "@/lib/estadosEquipo";
+import { entregableEq, porQueNoEq } from "@/lib/estadosEquipo";
 import { FORM_CONF, nombreCorto } from "@/lib/entidades";
 import { ETAPAS_PROY_VALIDAS } from "@/lib/etapasProyecto";
 import { nrmQ } from "@/lib/quechua";
@@ -4319,6 +4319,19 @@ export async function prestarEquipo(equipoId: string, personaId: string, proyect
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
 
+  /* NO SALE LO QUE NO PUEDE SALIR. La entrega en lote releía el estado en el
+     servidor antes de prestar; esta —la de la ficha, «🤝 Poner en uso»— no
+     comprobaba nada: se podía poner en uso una cámara perdida, una en
+     reparación o una sin estado, y el propio préstamo la dejaba «en uso»,
+     borrando el estado que avisaba del problema.
+     El estado se relee aquí y no se confía en el que vio el navegador: pudo
+     entrar a reparación mientras la pestaña estaba abierta. */
+  const { data: eqAhora } = await supabase.from("equipamiento")
+    .select("estado").eq("id", equipoId).single();
+  if (!entregableEq(eqAhora?.estado)) {
+    return { error: `No se puede poner en uso: ${porQueNoEq(eqAhora?.estado)}.` };
+  }
+
   // Si alguien más lo tenía, ese préstamo se cierra hoy
   await supabase.from("equipo_prestamos")
     .update({ hasta: hoyLima() })
@@ -4749,13 +4762,14 @@ export async function prestarEquipos(
     .select("id,folio,nombre,estado").in("id", ids);
   if (e0) return { error: e0.message };
 
-  /* La MISMA lista que usa la pantalla (lib/estadosEquipo). Estaba escrita
-     aquí a mano, así que añadir un estado nuevo dejaba al servidor
-     aceptando lo que la pantalla ya no ofrecía. */
-  const VETADOS = NO_ENTREGABLE_EQ;
-  const omitidos = (eqs || []).filter((e: any) => VETADOS[e.estado])
-    .map((e: any) => `${e.folio || ""} ${e.nombre} (${VETADOS[e.estado]})`.trim());
-  const buenos = (eqs || []).filter((e: any) => !VETADOS[e.estado]).map((e: any) => e.id);
+  /* `entregableEq` y no un mapa de estados vetados. El mapa se preguntaba
+     `VETADOS[e.estado]`, y un equipo SIN ESTADO no está en ningún mapa: el
+     `undefined` pasaba por bueno y salía a rodaje algo que la pantalla ya
+     marcaba como no disponible. Preguntar «¿es entregable?» no tiene ese
+     agujero — la lista blanca es explícita, la negra siempre olvida un caso. */
+  const omitidos = (eqs || []).filter((e: any) => !entregableEq(e.estado))
+    .map((e: any) => `${e.folio || ""} ${e.nombre} (${porQueNoEq(e.estado)})`.trim());
+  const buenos = (eqs || []).filter((e: any) => entregableEq(e.estado)).map((e: any) => e.id);
   if (!buenos.length) return { error: `Ninguno se puede entregar: ${omitidos.join(", ")}` };
 
   const hoy = hoyLima();

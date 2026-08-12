@@ -1,5 +1,5 @@
 "use client";
-import { ESTADOS_EQUIPO } from "@/lib/estadosEquipo";
+import { ESTADOS_EQUIPO, entregableEq, porQueNoEq } from "@/lib/estadosEquipo";
 import { prestarEquipo, devolverEquipo, comentarEquipo, comentarPrestamo, editarComentarioEquipo } from "@/app/actions";
 import { EntPicker, type CatalogoItem } from "@/components/Composer";
 import Avatar from "@/components/Avatar";
@@ -329,7 +329,15 @@ export default function PrestamoEquipo({ equipoId, prestamos, personas, proyecto
             {actual.proy && <Link href={`/entidad/proyecto/${actual.proy.id}`} className="badge" style={{ marginLeft: 8, color: "var(--violet)", background: "rgba(167,139,250,.12)", fontSize: 11.5 }}>📁 {actual.proy.nombre}</Link>}
           </span>
         ) : (
-          <span style={{ color: "var(--dim)", fontSize: 12.5 }}>📦 En el almacén — nadie lo tiene ahora.</span>
+          entregableEq(estado)
+            ? <span style={{ color: "var(--dim)", fontSize: 12.5 }}>📦 En el almacén — nadie lo tiene ahora.</span>
+            /* «En el almacén» al lado de un sello de PERDIDO era la propia
+               ficha contradiciéndose en la misma línea. Nadie lo tiene, sí;
+               que esté en el almacén, no lo sabemos —eso es justo lo que
+               falla—. */
+            : <span style={{ color: "var(--dano)", fontSize: 12.5 }}>
+                Nadie lo tiene — y no se puede prestar: {porQueNoEq(estado)}.
+              </span>
         )}
         <span style={{ flex: 1 }} />
         {actual && (devolviendo === actual.id ? (
@@ -349,7 +357,13 @@ export default function PrestamoEquipo({ equipoId, prestamos, personas, proyecto
       <div className="pe-compositor">
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: "var(--dim)", letterSpacing: .4, marginRight: 2 }}>✍ Registrar:</span>
-          {([["nota", "📝 Nota"], ["dano", "🔧 Daño"], ["mant", "🛠 Mantenimiento"], ...(!actual ? [["uso", "🤝 Poner en uso"]] : [])] as [Modo, string][]).map(([m, lbl]) => (
+          {/* «Poner en uso» solo cuando de verdad se puede: sin nadie que lo
+              tenga Y con un estado que lo permita. Ofrecer el botón para una
+              cámara perdida es ofrecer algo que el servidor va a rechazar —y
+              hasta hoy no lo rechazaba: la prestaba, y el «en uso» borraba el
+              estado que avisaba del problema. */}
+          {([["nota", "📝 Nota"], ["dano", "🔧 Daño"], ["mant", "🛠 Mantenimiento"],
+             ...(!actual && entregableEq(estado) ? [["uso", "🤝 Poner en uso"]] : [])] as [Modo, string][]).map(([m, lbl]) => (
             <button key={m} type="button" className={`muro-tag ${modo === m ? "on" : ""}`} onClick={() => irAModo(m)}>{lbl}</button>
           ))}
         </div>

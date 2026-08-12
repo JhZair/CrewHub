@@ -164,10 +164,16 @@ export const NECESITA_ATENCION: string[] =
  */
 export type SelloEq = { titulo: string; sub: string; ico: string; tono: string };
 const SELLO_EQ: Record<string, SelloEq> = {
+  /* SIN ESTADO no es un estado, es un dato que falta — y bloquea igual: nadie
+     puede prestar algo de lo que no se sabe cómo está. Se sella porque un
+     hueco no se ve: la ficha ponía «· —» en gris, del tamaño de cualquier
+     otro campo, y el equipo pasaba por disponible en media aplicación hasta
+     que la entrega lo rechazaba. El sello convierte el hueco en una tarea. */
+  "":            { titulo: "Sin estado", sub: "Falta decir cómo está", ico: "⚠", tono: "averiado" },
   en_reparacion: { titulo: "Reparación", sub: "No se presta", ico: "🛠", tono: "averiado" },
   no_aparece:    { titulo: "No aparece", sub: "Sin ubicar", ico: "🔎", tono: "averiado" },
   perdido:       { titulo: "Perdido", sub: "Fuera del inventario", ico: "🚫", tono: "perdido" },
   de_baja:       { titulo: "De baja", sub: "Fuera del inventario", ico: "⛔", tono: "baja" },
 };
 export const selloEquipo = (k?: string | null): SelloEq | null =>
-  SELLO_EQ[String(k ?? "").trim()] || null;
+  SELLO_EQ[String(k ?? "").trim()] ?? null;

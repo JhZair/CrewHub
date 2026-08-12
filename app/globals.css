@@ -334,6 +334,9 @@ a{color:inherit;text-decoration:none}
    reparacion, algo que no aparece— y rojo lo que ya no: perdido. Gris la baja,
    que no es una alarma sino el final de su vida util. */
 .post-resultado.tono-averiado{color:var(--yellow)}
+/* «Nadie lo tiene» cuando ADEMAS no se puede prestar: en rojo tenue, no en
+   gris. En gris se leia igual que «libre para prestar», que es lo contrario. */
+.ce-trabado{color:var(--dano)}
 .post-resultado.tono-perdido{color:var(--red)}
 .post-resultado.tono-baja{color:#9aa3b8}
 /* Lista de participantes de una convocatoria: agrupada por desenlace y con un

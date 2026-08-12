@@ -86,7 +86,7 @@ import type { Metadata } from "next";
 import { ICO_ENT, nombreDe, grafiasDe, TABLA_DE, tipoCanonico } from "@/lib/secciones";
 import { estadoKit, resumenKit, type PiezaKit } from "@/lib/kits";
 import { ordenarActores, rotuloActores, leerActor, personaDe } from "@/lib/actores";
-import { metaEstado, colorEstadoEq, txtEstadoEq, selloEquipo } from "@/lib/estadosEquipo";
+import { metaEstado, colorEstadoEq, txtEstadoEq, selloEquipo, entregableEq, porQueNoEq } from "@/lib/estadosEquipo";
 import PiezasKit from "@/components/PiezasKit";
 import Ensamblado from "@/components/Ensamblado";
 import ComboDelEquipo from "@/components/ComboDelEquipo";
@@ -2161,8 +2161,18 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                         <div className="ce-sub">desde {fmtD(actual.desde)}</div>
                       </div>
                     </div>
-                  ) : (
+                  ) : entregableEq(ent.estado) ? (
                     <div className="ce-libre">Nadie lo tiene ahora — libre para prestar.</div>
+                  ) : (
+                    /* «Libre para prestar» decía lo contrario de la verdad en
+                       cuatro fichas de cada diez: un equipo perdido, uno en
+                       reparación o uno sin estado también tiene a nadie
+                       teniéndolo, y de ahí no se sigue que se pueda prestar.
+                       Que nadie lo tenga y que se pueda prestar son dos cosas
+                       distintas y la frase las juntaba en una. */
+                    <div className="ce-libre ce-trabado">
+                      Nadie lo tiene — y no se puede prestar: {porQueNoEq(ent.estado)}.
+                    </div>
                   )}
                 </div>
               );
