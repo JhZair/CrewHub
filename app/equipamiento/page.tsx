@@ -668,7 +668,15 @@ export default async function Equipamiento({ searchParams }: {
               Va ANTES del panel de «en uso» porque el orden de la página sigue
               el orden del día: primero se entrega, después se mira quién tiene
               qué. */}
-          <EntregaLote equipos={eqsConDueno as any} personas={personasCat} proyectos={proyectosCat}
+          {/* `key` CON EL KIT DENTRO. «🤝 Entregar» de un kit navega a
+              ?kit=…#entregar, y el panel se abre solo si `kitInicial` llega
+              en el PRIMER pintado — es el valor inicial de un useState.
+              Sin la key, Next reusa el componente ya montado al cambiar de
+              parametro: llegaba el kit, el estado seguía cerrado, y el boton
+              del kit acababa en un segundo clic sobre «Entregar equipos a
+              alguien». No fallaba nada; simplemente no pasaba nada. */}
+          <EntregaLote key={kitPre || "_"} equipos={eqsConDueno as any}
+            personas={personasCat} proyectos={proyectosCat}
             kits={kits} kitInicial={kitPre} />
 
           {/* Los combos, junto a los kits, porque son las dos caras de la

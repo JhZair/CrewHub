@@ -341,7 +341,14 @@ export default function EntregaLote({ equipos, personas, proyectos, kits = [], k
         <button className="btn" disabled={ocupado || !quien || !sel.size} onClick={entregar}>
           {ocupado ? "Entregando…" : `Entregar ${sel.size || ""} equipo${sel.size === 1 ? "" : "s"}`}
         </button>
-        <button className="btn btn-ghost" onClick={() => { setSel(new Set()); setMsg(null); setKitsSel(new Set()); setAbierto(false); }}>
+        {/* Al cerrar se quita el ?kit= de la barra. Si se queda, volver a
+            pulsar «Entregar» en ESE mismo kit navega a la URL en la que ya
+            estas —misma direccion, ningun cambio, ningun remontaje— y el
+            panel no se vuelve a abrir. */}
+        <button className="btn btn-ghost" onClick={() => {
+          setSel(new Set()); setMsg(null); setKitsSel(new Set()); setAbierto(false);
+          if (kitInicial) router.replace("/equipamiento#entregar", { scroll: false });
+        }}>
           Cerrar
         </button>
         {kitsEfectivos.length > 0 && (
