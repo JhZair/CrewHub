@@ -347,13 +347,20 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
      La lupa de un día contesta «¿qué hizo el martes?»; esto contesta la de
      antes: «¿a qué hora trabaja esta persona?». Un mes de jornadas de oficina
      todas iguales no lo dice, y el sistema sí lo sabe.
-     DOS consultas para todas las personas y todo el mes, no una por fila:
-     `actividad` y `comentarios` filtrados por rango. Ese rango se escribe con
-     el offset de Lima —igual que la ventana del día— o las horas saldrían
-     corridas cinco puestos, que es justo lo que se está midiendo.
-     No entra `publicaciones` ni los préstamos: son pocos al lado de los otros
-     dos y duplicarían consultas para mover la barra un pelo. Esto es una
-     silueta, no un parte contable — y por eso no lleva números. */
+     TRES consultas para todas las personas y todo el mes, no una por fila:
+     `actividad`, `comentarios` y `publicaciones` filtradas por rango. Ese
+     rango se escribe con el offset de Lima —igual que la ventana del día— o
+     las horas saldrían corridas cinco puestos, que es justo lo que se está
+     midiendo.
+     Las tres son las mismas que lista la ventana del día, y con el mismo
+     criterio: la barra tiene que medir lo que uno va a encontrar al abrirla,
+     o el pico de un martes no se puede comprobar.
+     Lo que NO entra son los préstamos y los recibos. No por peso: `creado_en`
+     se añadió a `equipo_prestamos` hace nada y los préstamos viejos lo tienen
+     en nulo, así que contarlos borraría de la silueta justo los meses
+     anteriores —callando, que es lo peor—. Los recibos son del mes, no del
+     día. Esto es una silueta, no un parte contable — y por eso no lleva
+     números. */
   const horasPorPersona: Record<string, number[]> = {};
   /* Y la otra silueta: A QUÉ DÍA. La de horas dice si trabaja de mañana; esta
      dice si el mes fue parejo o si se concentró en una semana — y si hubo
@@ -365,10 +372,23 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
   {
     const desdeL = `${jInicio}T00:00:00-05:00`;
     const hastaL = `${jFin}T00:00:00-05:00`;
-    const [{ data: hAct }, { data: hCom }] = await Promise.all([
-      supabase.from("actividad").select("actor_id,creado_en")
+    const [{ data: hAct }, { data: hCom }, { data: hPub }] = await Promise.all([
+      /* `neq("comentario")` NO es un detalle: comentar en un caso, en un
+         objeto o en una postulación escribe DOS filas —una en `comentarios` y
+         otra en `actividad` de tipo «comentario»— y comentar en un equipo
+         escribe UNA. Sin este filtro, un día de conversación en casos pesaba
+         el doble que el mismo día de conversación en la bitácora de un equipo.
+         No fallaba: pintaba un pico que nadie trabajó. La ventana del día ya
+         descarta ese tipo por esta misma razón; la franja se lo había
+         saltado. */
+      supabase.from("actividad").select("actor_id,creado_en").neq("tipo", "comentario")
         .gte("creado_en", desdeL).lt("creado_en", hastaL).limit(20000),
       supabase.from("comentarios").select("autor_id,creado_en")
+        .gte("creado_en", desdeL).lt("creado_en", hastaL).limit(20000),
+      /* Publicar un caso o un aviso no deja rastro en `actividad` —solo la
+         fila en `publicaciones`—, así que el día que alguien abrió cinco casos
+         salía en blanco. Es lo primero que lista la ventana del día. */
+      supabase.from("publicaciones").select("autor_id,creado_en")
         .gte("creado_en", desdeL).lt("creado_en", hastaL).limit(20000),
     ]);
     /* De cuenta (perfiles.id) a persona: la jornada es de una PERSONA y la
@@ -392,6 +412,7 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
     };
     (hAct || []).forEach((x: any) => suma(x.actor_id, x.creado_en));
     (hCom || []).forEach((x: any) => suma(x.autor_id, x.creado_en));
+    (hPub || []).forEach((x: any) => suma(x.autor_id, x.creado_en));
   }
 
   /* ── LOS PANELES, UNO POR SECCIÓN ──
