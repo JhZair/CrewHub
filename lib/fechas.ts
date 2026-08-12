@@ -11,6 +11,35 @@
  * asume medianoche UTC y en Perú (UTC-5) la pinta como el día anterior.
  */
 
+/* ── HOY, EN LIMA ──
+ *
+ * `new Date().toISOString().slice(0,10)` da el día en UTC, y Perú va cinco
+ * horas por detrás: DE LAS SIETE DE LA TARDE EN ADELANTE, en UTC ya es
+ * mañana. Todo lo que se guardaba «hoy» —devolver un equipo, verificar un
+ * dato, cerrar un préstamo— quedaba fechado al día siguiente si se hacía de
+ * noche, que es cuando se devuelve el equipo después de un rodaje.
+ *
+ * Y no fallaba: guardaba una fecha válida, solo que la equivocada. Se veía
+ * mirando la pantalla a las nueve de la noche y leyendo «12 ago.» un día 11.
+ *
+ * `en-CA` porque su formato de fecha ES el ISO —2026-08-11—, que es lo que
+ * espera una columna `date`. No hay truco de zona horaria en el medio.
+ * Perú no tiene horario de verano, así que UTC-5 vale todo el año, pero se
+ * pide por nombre de zona igual: una constante -5 es una bomba de relojería
+ * el día que se decida cambiarlo.
+ */
+export const ZONA = "America/Lima";
+export const hoyLima = () => new Date().toLocaleDateString("en-CA", { timeZone: ZONA });
+
+/* La hora de un instante, en Lima. Un `timestamptz` formateado sin zona sale
+ * en la del servidor —UTC en producción—, así que un comentario de las nueve
+ * de la noche se leía con la fecha de mañana. */
+export const fechaHoraLima = (f: string | Date) =>
+  new Date(f).toLocaleString("es-PE", {
+    day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: ZONA });
+export const fechaDiaLima = (f: string | Date) =>
+  new Date(f).toLocaleDateString("es-PE", { day: "numeric", month: "short", timeZone: ZONA });
+
 const aFecha = (f: string | Date) =>
   f instanceof Date ? f
     : new Date(/^\d{4}-\d{2}-\d{2}$/.test(f) ? `${f}T12:00:00` : f);

@@ -6,6 +6,7 @@ import { textoEstado } from "@/lib/estados";
 import { plazoDe, diasHasta } from "@/lib/plazo";
 import { BOT, sinBot } from "@/lib/personas";
 import type { Metadata } from "next";
+import { hoyLima } from "@/lib/fechas";
 
 export const metadata: Metadata = { title: "📺 Pantalla" };
 
@@ -29,7 +30,7 @@ export default async function Pantalla() {
   if (!user) redirect("/login");
   const { data: { session } } = await supabase.auth.getSession();
 
-  const hoyS = new Date().toISOString().slice(0, 10);
+  const hoyS = hoyLima();
 
   const [pubsQ, actQ, postQ, perfQ] = await Promise.all([
     supabase.from("publicaciones")

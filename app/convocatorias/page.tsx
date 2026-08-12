@@ -11,6 +11,7 @@ import Avatar from "@/components/Avatar";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
+import { hoyLima } from "@/lib/fechas";
 
 export const metadata: Metadata = { title: "📜 Convocatorias" };
 
@@ -29,7 +30,7 @@ export default async function Convocatorias({ searchParams }: {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-  const hoyS = new Date().toISOString().slice(0, 10);
+  const hoyS = hoyLima();
 
   const [{ data: convs }, { data: postsAll }, { data: vincs }, { data: coms }, { data: hitosAll }] = await Promise.all([
     // `*`: para calcular la completitud de la ficha de cada convocatoria.

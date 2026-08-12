@@ -17,7 +17,7 @@ import { REL_EMPRESA, EST_EMPRESA, TIPO_COLOR, COLOR_ENTIDAD } from "@/lib/entid
 import { alertaSunat, empresaDeCasa, empresaViva, textoSunat } from "@/lib/sunat";
 import { esProminente } from "@/lib/personas";
 import { fmtVence, venceVigencia, vigenciaVencida } from "@/lib/vigencia";
-import { fechaLarga, haceOEn } from "@/lib/fechas";
+import { fechaLarga, haceOEn, hoyLima } from "@/lib/fechas";
 import { rucDePersona } from "@/lib/ruc";
 import { urlPlataforma, platPorNombre, PLAT } from "@/lib/plataformas";
 import { aplicarPlantilla } from "@/lib/puertas";
@@ -60,7 +60,7 @@ const proyVivo = (p: any) =>
   (p.estado_actividad || "activo") === "activo" && p.etapa !== "finalizado";
 
 const ANIO = new Date().getFullYear();
-const HOY_S = new Date().toISOString().slice(0, 10);
+const HOY_S = hoyLima();
 
 /* ¿Queda algo por rendir? Es lo único que mantiene viva a una ganadora vieja:
    mientras no se entregue, el fondo sigue encima aunque el concurso sea de

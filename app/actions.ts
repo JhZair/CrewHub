@@ -18,6 +18,7 @@ import { catalogoObjetos, catalogosEntidades } from "@/lib/catalogos";
 import { resolverNombres } from "@/lib/nombres";
 import { COL_DAFO, sinColumna, sinDafoId, TIPOS_DAFO } from "@/lib/notificaciones";
 import { DIAS_AVISO_DEF } from "@/lib/plazo";
+import { hoyLima } from "@/lib/fechas";
 
 /* Crear o actualizar una entidad núcleo (proyecto/empresa/persona).
    La config compartida actúa como whitelist de tabla y campos. */
@@ -865,7 +866,7 @@ export async function importarEntidades(entidad: string, filas: Record<string, s
       ["f_finalistas", "Publicación de finalistas"],
       ["f_ganadores", "Declaración de ganadores"],
     ];
-    const hoyS = new Date().toISOString().slice(0, 10);
+    const hoyS = hoyLima();
     const anioActual = new Date().getFullYear();
     let insertadas = 0, hitosCreados = 0;
 
@@ -1624,7 +1625,7 @@ export async function guardarCv(personaId: string, enfoque: string, url: string,
      repositorio generalizó `persona_cv`. La sección de CVs de la ficha sigue
      aparte porque el enfoque tiene lógica propia —se cruza con el cargo de
      cada postulación—, pero el dato es un objeto más. */
-  const hoy = new Date().toISOString().slice(0, 10);
+  const hoy = hoyLima();
   if (id) {
     /* Acotado a ESTA persona y a tipo='cv'. `objetos` es una tabla compartida
        por todas las entidades: un id equivocado —o forjado, esto es una server
@@ -1711,7 +1712,7 @@ export async function guardarObjeto(a: {
   const fila = {
     tipo: a.tipo, titulo, url: url || null,
     fecha: fecha || null, notas: notas || null,
-    actualizado: new Date().toISOString().slice(0, 10),
+    actualizado: hoyLima(),
   };
   const nuevo = !a.id;
   // El update se acota a la entidad dueña: la tabla es compartida y un id
@@ -2002,7 +2003,7 @@ export async function agregarMiembro(empresaId: string, personaId: string, cargo
     empresa_id: empresaId,
     persona_id: personaId,
     cargo: cargoOk,
-    fecha_inicio: fechaInicio || new Date().toISOString().slice(0, 10),
+    fecha_inicio: fechaInicio || hoyLima(),
     estado: "activo",
   });
   if (error) return { error: error.message };
@@ -2071,7 +2072,7 @@ export async function bajaMiembro(miembroId: string, empresaId: string) {
   const { data: prev } = await supabase.from("empresa_miembros")
     .select("cargo,per:personas(nombre,alias)").eq("id", miembroId).maybeSingle();
   const { error } = await supabase.from("empresa_miembros")
-    .update({ estado: "inactivo", fecha_fin: new Date().toISOString().slice(0, 10) })
+    .update({ estado: "inactivo", fecha_fin: hoyLima() })
     .eq("id", miembroId);
   if (error) return { error: error.message };
   const quien = (prev?.per as any)?.alias || (prev?.per as any)?.nombre || "un miembro";
@@ -2512,7 +2513,7 @@ export async function agregarCredencial(
     notas: notas.trim() || null,
     metodo_acceso: metodo.trim() || null,
     url: url.trim() || null,
-    actualizado_en: new Date().toISOString().slice(0, 10),
+    actualizado_en: hoyLima(),
   });
   if (error) return { error: error.message };
   await supabase.from("actividad").insert({
@@ -2544,7 +2545,7 @@ export async function editarCredencial(
     url: url.trim() || null,
   };
   const { error } = await supabase.from("credenciales").update({
-    ...nuevo, actualizado_en: new Date().toISOString().slice(0, 10),
+    ...nuevo, actualizado_en: hoyLima(),
   }).eq("id", id);
   if (error) return { error: error.message };
   // Mismo formato que la edición de la ficha: antes → después
@@ -2596,7 +2597,7 @@ export async function agregarDato(
     credencial_id: credencialId,
     etiqueta: etiqueta.trim(),
     valor: valor.trim() || null,
-    verificado_en: new Date().toISOString().slice(0, 10), // recién ingresado = verificado hoy
+    verificado_en: hoyLima(), // recién ingresado = verificado hoy
   });
   if (error) return { error: error.message };
   await supabase.from("actividad").insert({
@@ -2621,7 +2622,7 @@ export async function agregarDatoPostulacion(
     postulacion_id: postulacionId,
     etiqueta: etiqueta.trim(),
     valor: valor.trim() || null,
-    verificado_en: new Date().toISOString().slice(0, 10),
+    verificado_en: hoyLima(),
   });
   if (error) return { error: error.message };
   await supabase.from("actividad").insert({
@@ -2657,7 +2658,7 @@ export async function verificarDato(id: string, dueno: string, duenoId: string) 
   if (!user) return { error: "Sesión no encontrada." };
   const { data: prev } = await supabase.from("credencial_datos").select("etiqueta").eq("id", id).maybeSingle();
   const { error } = await supabase.from("credencial_datos")
-    .update({ verificado_en: new Date().toISOString().slice(0, 10) }).eq("id", id);
+    .update({ verificado_en: hoyLima() }).eq("id", id);
   if (error) return { error: error.message };
   await supabase.from("actividad").insert({
     entidad_tipo: dueno, entidad_id: duenoId, actor_id: user.id, tipo: "dato",
@@ -3260,7 +3261,7 @@ export async function guardarCvEquipo(filaId: string, postulacionId: string, url
      y un id forjado pisaría el CV de otra carpeta. Un UPDATE bloqueado por
      RLS no da error: devuelve cero filas — se verifica. */
   const { data: filas, error } = await supabase.from("postulacion_equipo")
-    .update({ cv_url: u || null, cv_actualizado: u ? new Date().toISOString().slice(0, 10) : null })
+    .update({ cv_url: u || null, cv_actualizado: u ? hoyLima() : null })
     .eq("id", filaId).eq("postulacion_id", postulacionId).select("id");
   if (error) return { error: error.message };
   if (!filas?.length) return { error: "No se guardó: no tienes permiso." };
@@ -4200,7 +4201,7 @@ export async function verificarRucPersona(personaId: string) {
   const r = await consultarRucApi(ruc);
   if (r.error) return { error: r.error };
 
-  const hoy = new Date().toISOString().slice(0, 10);
+  const hoy = hoyLima();
   const { error } = await supabase.from("personas").update({
     estado_sunat: r.estado || null,
     condicion_sunat: r.condicion || null,
@@ -4274,7 +4275,7 @@ export async function verificarDniReniec(personaId: string) {
        en el historial: para saber cuándo se verificó por última vez había
        que bucear en la bitácora, y el nombre oficial se perdía apenas se
        cerraba el aviso. */
-    const hoy = new Date().toISOString().slice(0, 10);
+    const hoy = hoyLima();
     await supabase.from("personas").update({
       fecha_verificacion_reniec: hoy,
       nombre_reniec: nombreReniec,
@@ -4297,7 +4298,7 @@ export async function comprobarEquipo(equipoId: string) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
-  const hoy = new Date().toISOString().slice(0, 10);
+  const hoy = hoyLima();
   const { error } = await supabase.from("equipamiento")
     .update({ ultima_comprobacion: hoy }).eq("id", equipoId);
   if (error) return { error: error.message };
@@ -4320,7 +4321,7 @@ export async function prestarEquipo(equipoId: string, personaId: string, proyect
 
   // Si alguien más lo tenía, ese préstamo se cierra hoy
   await supabase.from("equipo_prestamos")
-    .update({ hasta: new Date().toISOString().slice(0, 10) })
+    .update({ hasta: hoyLima() })
     .eq("equipamiento_id", equipoId).is("hasta", null);
 
   const { error } = await supabase.from("equipo_prestamos").insert({
@@ -4757,7 +4758,7 @@ export async function prestarEquipos(
   const buenos = (eqs || []).filter((e: any) => !VETADOS[e.estado]).map((e: any) => e.id);
   if (!buenos.length) return { error: `Ninguno se puede entregar: ${omitidos.join(", ")}` };
 
-  const hoy = new Date().toISOString().slice(0, 10);
+  const hoy = hoyLima();
   // Lo que alguien más tuviera abierto se cierra hoy, igual que en el préstamo
   // de a uno — pero para todo el lote de una vez.
   await supabase.from("equipo_prestamos").update({ hasta: hoy })
@@ -4814,7 +4815,7 @@ export async function devolverEquipos(prestamoIds: string[]) {
   if (e0) return { error: e0.message };
   if (!pres?.length) return { error: "Esos préstamos ya estaban cerrados." };
 
-  const hoy = new Date().toISOString().slice(0, 10);
+  const hoy = hoyLima();
   const { error } = await supabase.from("equipo_prestamos")
     .update({ hasta: hoy }).in("id", pres.map((p: any) => p.id));
   if (error) return { error: error.message };
@@ -4834,7 +4835,7 @@ export async function devolverEquipo(prestamoId: string, equipoId: string) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
   const { error } = await supabase.from("equipo_prestamos")
-    .update({ hasta: new Date().toISOString().slice(0, 10) })
+    .update({ hasta: hoyLima() })
     .eq("id", prestamoId);
   if (error) return { error: error.message };
   const { error: e2 } = await supabase.from("equipamiento")
@@ -5269,7 +5270,7 @@ export async function toggleEnterado(pubId: string) {
   const { data: pub } = await supabase.from("publicaciones")
     .select("tipo,estado,fecha_limite,archivado_en").eq("id", pubId).single();
   const conPlazoVivo = !!pub?.fecha_limite
-    && pub.fecha_limite >= new Date().toISOString().slice(0, 10);
+    && pub.fecha_limite >= hoyLima();
   /* Ahora archivar es ARCHIVAR, no cambiar de estado: el aviso se queda
      Vigente (abierta) y solo se le pone `archivado_en`. Antes lo mandaba a
      `estado:"archivada"` —el estado que ya no existe— y de paso lo sacaba de

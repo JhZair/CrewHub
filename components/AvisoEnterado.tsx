@@ -2,6 +2,7 @@
 import { toggleEnterado } from "@/app/actions";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { hoyLima } from "@/lib/fechas";
 
 /* Acuse de recibo de un aviso: "Enterados N/M". Un aviso no se "resuelve";
    importa hasta que el equipo relevante se dio por enterado. Reusa el 👀. */
@@ -24,7 +25,7 @@ export default function AvisoEnterado({ pubId, userId, enteradosIds, equipo, fec
      que el trabajo esté hecho. Hay que decirlo aquí, porque si no la gente
      marca "ya vi" esperando que desaparezca — y esa expectativa fue la que
      borró del radar la subsanación de Pampacucho. */
-  const conPlazo = !!fechaLimite && fechaLimite >= new Date().toISOString().slice(0, 10);
+  const conPlazo = !!fechaLimite && fechaLimite >= hoyLima();
 
   const tap = async () => {
     if (ocupado) return;

@@ -20,6 +20,7 @@ import Expediente from "@/components/Expediente";
 import { BotonVerificarRuc, BotonVerificarDni, BotonRucPersona } from "@/components/VerificarSunat";
 import Alerta from "@/components/Alerta";
 import { urlPlataforma, conPlataforma, PLAT } from "@/lib/plataformas";
+import { hoyLima } from "@/lib/fechas";
 import {
   rendicionVencida, plazoRendicion, compromisoDe, empresaLibre,
   trabasEmpresa, trabasMiembro, dudasMiembro, SIN_COMPROMISO,
@@ -1682,7 +1683,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         supabase.from("comentarios").select("id", { count: "exact", head: true })
           .eq("autor_id", ent.usuario_id),
       ]);
-      const hoyStr = new Date().toISOString().slice(0, 10);
+      const hoyStr = hoyLima();
       let cerr = 0, creo = 0, ultimo = "";
       (ev.data || []).forEach((e: any) => {
         const det: any = e.detalle || {};

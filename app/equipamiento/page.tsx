@@ -5,6 +5,7 @@ import EntregaLote from "@/components/EntregaLote";
 import PanelKits from "@/components/PanelKits";
 import PanelCombos from "@/components/PanelCombos";
 import FilasEquipo from "@/components/FilasEquipo";
+import { fechaDiaLima } from "@/lib/fechas";
 import { valorInventario, soles } from "@/lib/compras";
 import { ESTADOS_EQUIPO, NECESITA_ATENCION, FUERA_DE_INVENTARIO, metaEstado, txtEstadoEq } from "@/lib/estadosEquipo";
 import type { KitVista } from "@/lib/kits";
@@ -797,7 +798,10 @@ export default async function Equipamiento({ searchParams }: {
                   <div style={{ marginLeft: 16, borderLeft: "1px solid var(--border)", paddingLeft: 14, marginTop: 7, display: "flex", flexDirection: "column", gap: 7 }}>
                     {g.items.map((it: any, i: number) => {
                       const per = it.persona?.alias || it.persona?.nombre || "alguien";
-                      const fecha = <span style={{ color: "var(--dim)", fontSize: TXT.chip, whiteSpace: "nowrap", flexShrink: 0 }}>{new Date(it.at).toLocaleDateString("es-PE", { day: "numeric", month: "short" })}</span>;
+                      /* `fechaDiaLima` y no un toLocaleDateString suelto: sin
+                         zona, el servidor (UTC) pinta un comentario de las
+                         nueve de la noche con la fecha de mañana. */
+                      const fecha = <span style={{ color: "var(--dim)", fontSize: TXT.chip, whiteSpace: "nowrap", flexShrink: 0 }}>{fechaDiaLima(it.at)}</span>;
                       if (it.tipo === "uso_ini" || it.tipo === "uso_fin") {
                         const ini = it.tipo === "uso_ini";
                         return (

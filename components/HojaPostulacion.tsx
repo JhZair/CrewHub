@@ -2,6 +2,7 @@
 import { elegibilidadDe } from "@/lib/fondos";
 import { useEffect, useState } from "react";
 import Copiar from "@/components/Copiar";
+import { hoyLima } from "@/lib/fechas";
 
 /* La hoja de postular: todo lo que se pide en el formulario, junto y en un
  * clic — y arriba, el veredicto.
@@ -351,7 +352,7 @@ const fecha = (f?: string | null) => {
 };
 // Vencido de verdad. Sin fecha no se pinta rojo: no saber ≠ estar mal.
 const venceMal = (f?: string | null) =>
-  !!f && f < new Date().toISOString().slice(0, 10);
+  !!f && f < hoyLima();
 
 /* Una fila de la hoja, en tres estados y no en dos:
  *

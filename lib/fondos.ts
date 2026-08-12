@@ -1,3 +1,4 @@
+import { hoyLima } from "@/lib/fechas";
 /* ── Cuándo una empresa puede postular a un fondo ──
  *
  * La cadena real de papeles, en orden:
@@ -53,7 +54,7 @@ export const rendicionVencida = (p: {
 }) => {
   if (!ejecutando(p)) return false;
   const f = plazoRendicion(p);
-  return !!f && f < new Date().toISOString().slice(0, 10);
+  return !!f && f < hoyLima();
 };
 
 /* Ganadora sin plazo cargado: no se sabe para cuándo debe rendir. No es que
@@ -181,7 +182,7 @@ export const puedePedirRenca = (e: any, c: Compromiso = SIN_COMPROMISO) => {
 export const trabasMiembro = (p: any): string[] => {
   const t: string[] = [];
   if (!p?.ruc_dni) { t.push("sin DNI registrado"); return t; }
-  const hoy = new Date().toISOString().slice(0, 10);
+  const hoy = hoyLima();
   if (p.dni_vencimiento && p.dni_vencimiento < hoy) t.push("DNI vencido");
   if (p.estado_sunat && p.estado_sunat !== "activo")
     t.push(`SUNAT ${String(p.estado_sunat).replace(/_/g, " ")}`);

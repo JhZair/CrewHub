@@ -5,6 +5,7 @@ import { estado4ta, money } from "@/lib/cuarta";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
+import { hoyLima } from "@/lib/fechas";
 
 const fmt = (f: string) =>
   new Date(f + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short" });
@@ -19,7 +20,7 @@ export default function RheAdmin({ anio, personas, proyectos, rhes }: {
   proyectos: { id: string; nombre: string }[];
   rhes: Fila[];
 }) {
-  const vacio = { id: null as string | null, personaId: "", numero: "", fecha: new Date().toISOString().slice(0, 10), monto: "", retencion: "", concepto: "", proyectoId: "", url: "" };
+  const vacio = { id: null as string | null, personaId: "", numero: "", fecha: hoyLima(), monto: "", retencion: "", concepto: "", proyectoId: "", url: "" };
   const [f, setF] = useState(vacio);
   const [abierto, setAbierto] = useState(false);
   const [error, setError] = useState("");

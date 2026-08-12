@@ -13,6 +13,7 @@ import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
+import { hoyLima } from "@/lib/fechas";
 
 const fmtF = (f: string) => new Date(f + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" });
 const fmtH = (iso?: string | null) => {
@@ -382,7 +383,7 @@ export default function PrestamoEquipo({ equipoId, prestamos, personas, proyecto
             {hayFecha && (
               <div className="muro-tagsel" style={{ marginTop: 8 }}>
                 <span className="muro-tagsel-lbl">📅 ¿Cuándo ocurrió?</span>
-                <input type="date" value={fechaEvento} max={new Date().toISOString().slice(0, 10)}
+                <input type="date" value={fechaEvento} max={hoyLima()}
                   onChange={e => setFechaEvento(e.target.value)} className="muro-tag-input" style={{ width: "auto" }} />
                 <span style={{ fontSize: 11, color: "var(--dim)" }}>opcional — vacío si fue hoy</span>
               </div>
@@ -500,7 +501,7 @@ function EditorComentario({ c, perfiles, sugTags, onDone, onCancel }: {
       {mostrarFecha && (
         <div className="muro-tagsel" style={{ marginTop: 8 }}>
           <span className="muro-tagsel-lbl">📅 ¿Cuándo ocurrió?</span>
-          <input type="date" value={fechaEvento} max={new Date().toISOString().slice(0, 10)}
+          <input type="date" value={fechaEvento} max={hoyLima()}
             onChange={e => setFechaEvento(e.target.value)} className="muro-tag-input" style={{ width: "auto" }} />
           <span style={{ fontSize: 11, color: "var(--dim)" }}>opcional — vacío si fue hoy</span>
         </div>

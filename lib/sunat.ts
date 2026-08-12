@@ -1,3 +1,4 @@
+import { hoyLima } from "@/lib/fechas";
 /* Núcleo de la verificación SUNAT, reutilizable por las acciones
    (botón humano) y por el cron semanal. Recibe el cliente Supabase ya
    creado (de usuario o service-role) y quién firma los casos que genere. */
@@ -132,7 +133,7 @@ export async function procesarSunatEmpresa(
   const r = await consultarRucApi(emp.ruc);
   if (r.error) return { error: r.error };
 
-  const hoy = new Date().toISOString().slice(0, 10);
+  const hoy = hoyLima();
   const { error } = await db.from("empresas").update({
     estado_sunat: r.estado || null,
     condicion_sunat: r.condicion || null,

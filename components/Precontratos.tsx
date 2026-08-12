@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { guardarPrecontratos } from "@/app/actions";
 import { montoDeItems, rotuloItem, precontratoNuevo, normalizarPre, type Precontrato } from "@/lib/precontratos";
 import { nombreRubro, type ItemPre } from "@/lib/rubros";
+import { hoyLima } from "@/lib/fechas";
 
 /* Precontratos del equipo nombrado. Una fila por persona; el monto se HEREDA de
    los ítems del presupuesto que marques (puede ser la suma de varios). Se guarda
@@ -215,7 +216,7 @@ export default function Precontratos({ postulacionId, equipo, items, inicial }: 
                 <label style={{ fontSize: 11, color: "var(--dim)" }}>
                   Estado
                   <select value={f.estado}
-                    onChange={e => setF(f.id, { estado: e.target.value as Precontrato["estado"], firmado_en: e.target.value === "firmado" ? (f.firmado_en || new Date().toISOString().slice(0, 10)) : "" })}
+                    onChange={e => setF(f.id, { estado: e.target.value as Precontrato["estado"], firmado_en: e.target.value === "firmado" ? (f.firmado_en || hoyLima()) : "" })}
                     style={{ ...inp, marginTop: 3 }}>
                     <option value="pendiente">Pendiente</option>
                     <option value="firmado">Firmado</option>
