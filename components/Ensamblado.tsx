@@ -34,7 +34,7 @@ const nrm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCas
 export default function Ensamblado({ equipoId, montadoEn, piezas, candidatos }: {
   equipoId: string;
   /** Si ESTE equipo está montado dentro de otro, quién lo contiene. */
-  montadoEn?: { id: string; folio?: string | null; nombre: string } | null;
+  montadoEn?: { id: string; folio?: string | null; nombre: string; cartel?: string | null } | null;
   /** Lo que este equipo lleva montado dentro. */
   piezas: PiezaKit[];
   /** Equipos que se pueden montar: ni prestados, ni ya montados, ni él mismo. */
@@ -84,13 +84,29 @@ export default function Ensamblado({ equipoId, montadoEn, piezas, candidatos }: 
     return (
       <div className="card" style={{ marginTop: 12 }}>
         <h4 className="ens-h">🔩 Montado en otro equipo</h4>
-        <div style={{ fontSize: 12.5, color: "var(--muted)", lineHeight: 1.55 }}>
-          Esta pieza está atornillada dentro de{" "}
-          <a href={`/entidad/equipamiento/${montadoEn.id}`} style={{ color: "var(--violet)", fontWeight: 600 }}>
-            {montadoEn.folio ? `${montadoEn.folio} · ` : ""}{montadoEn.nombre}
-          </a>
-          , así que no se presta sola. Para liberarla, desmóntala desde la ficha de ese equipo.
-        </div>
+        {/* CON LA FOTO DEL QUE LA CONTIENE. Quien lee esto acaba de no
+            encontrar la pieza en el estante y va a ir a BUSCAR el equipo que
+            la lleva dentro: la foto es la instrucción, y «A-236 · IDOGEAR -
+            Cinturón MOLLE» son ocho palabras para algo que se reconoce de un
+            vistazo. El enlace envuelve foto y nombre, que es lo que uno
+            intenta pulsar. */}
+        <a href={`/entidad/equipamiento/${montadoEn.id}`} className="ens-padre">
+          <span className="mini-eq">
+            {montadoEn.cartel
+              // eslint-disable-next-line @next/next/no-img-element
+              ? <img src={montadoEn.cartel} alt="" referrerPolicy="no-referrer" />
+              : <span>🎥</span>}
+          </span>
+          <span className="ens-padre-txt">
+            <span className="ens-padre-n">
+              {montadoEn.folio ? `${montadoEn.folio} · ` : ""}{montadoEn.nombre}
+            </span>
+            <span className="ens-padre-d">
+              Esta pieza está atornillada dentro de este equipo, así que no se presta sola.
+              Para liberarla, desmóntala desde su ficha.
+            </span>
+          </span>
+        </a>
       </div>
     );
   }

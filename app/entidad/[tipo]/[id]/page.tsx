@@ -713,7 +713,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   let hermanasCombo: PiezaKit[] = [];
   /* ENSAMBLADO — de qué está hecho este equipo, y dentro de qué está él. */
   let piezasMontadas: PiezaKit[] = [];
-  let montadoEn: { id: string; folio?: string | null; nombre: string } | null = null;
+  let montadoEn: { id: string; folio?: string | null; nombre: string; cartel?: string | null } | null = null;
   let candidatosMontar: any[] = [];
   /* (Aquí se cargaban las unidades de un combo para su ficha. La ficha se
      fue: un combo se registra una vez y no se toca, así que no necesitaba
@@ -804,7 +804,12 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         valor: d.valor_compra ? Number(d.valor_compra) : null,
       }));
       const c1 = Array.isArray(cont) ? (cont as any)[0] : cont;
-      montadoEn = c1 ? { id: c1.id, folio: c1.folio, nombre: c1.nombre } : null;
+      /* Con su foto, del mapa que ya está cargado. «Está atornillada dentro
+         de A-236 · IDOGEAR - Cinturón MOLLE» son ocho palabras para algo que
+         se reconoce de un vistazo, y quien lee esto va a ir a BUSCARLO
+         físicamente: la foto es la instrucción. */
+      montadoEn = c1 ? { id: c1.id, folio: c1.folio, nombre: c1.nombre,
+        cartel: cartelTodos.get(c1.id) || null } : null;
       candidatosMontar = (libres || []).map((e: any) => ({ ...e, cartel: cartelTodos.get(e.id) || null }));
     }
 

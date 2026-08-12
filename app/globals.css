@@ -2944,6 +2944,15 @@ button.repo-tit{text-align:left}
 /* El pop-up de las piezas montadas. Se abre ENCIMA y no empuja la fila: la
    lista de entrega se lee comparando renglones, y que se muevan al abrir uno
    pierde el sitio donde ibas. */
+/* DENTRO DE QUE ESTA MONTADA ESTA PIEZA. Una tarjeta enlazada, no un parrafo
+   con un enlace en medio: el destino es UNO y se pulsa entero. */
+.ens-padre{display:flex;gap:11px;align-items:center;text-decoration:none;
+  padding:7px 9px;border-radius:10px;border:1px solid var(--border);
+  background:rgba(255,255,255,.015)}
+.ens-padre:hover{border-color:var(--border2);background:rgba(167,139,250,.06)}
+.ens-padre-txt{display:flex;flex-direction:column;gap:3px;min-width:0}
+.ens-padre-n{color:var(--violet);font-weight:700;font-size:13px}
+.ens-padre-d{color:var(--muted);font-size:12px;line-height:1.5}
 .ens-chip-wrap{position:relative;display:inline-flex;flex:none}
 .ens-tapa{position:fixed;inset:0;z-index:40}
 /* `fixed`, no `absolute`: las listas que lo contienen tienen overflow-y:auto
