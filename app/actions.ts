@@ -2,6 +2,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { entregableEq, porQueNoEq } from "@/lib/estadosEquipo";
+import { icoTipo } from "@/lib/tipos";
 import { FORM_CONF, nombreCorto } from "@/lib/entidades";
 import { ETAPAS_PROY_VALIDAS } from "@/lib/etapasProyecto";
 import { nrmQ } from "@/lib/quechua";
@@ -1130,6 +1131,157 @@ export async function editarJornada(
   if (error) return { error: error.message };
   revalidatePath("/jornadas");
   return {};
+}
+
+/* ══════ QUÉ HIZO ESA PERSONA ESE DÍA, EN TODO EL SISTEMA ══════
+ *
+ * Una jornada dice «1.5j · S/ 195 · oficina» y no dice NADA de en qué se fue
+ * el día. Al aprobar, esa es la pregunta que nadie puede contestar sin abrir
+ * seis pantallas — y la que más importa en los días raros: el que registró
+ * día y medio de oficina un domingo, o el que no registró nada un martes.
+ *
+ * Justamente ese último caso es el que paga esta ventana. Un día en blanco no
+ * distingue «descansó» de «se le olvidó registrar», y el sistema SÍ lo sabe:
+ * si esa tarde dejó ocho comentarios y entregó dos equipos, no descansó.
+ *
+ * Se lee al abrir la ventana y no con la página: son cinco consultas por día
+ * y hay treinta días por persona. Traerlo todo por adelantado sería mover mil
+ * quinientas consultas para enseñar, casi siempre, ninguna.
+ *
+ * EL DÍA ES EL DE LIMA, no el del servidor. `creado_en` es timestamptz y sin
+ * la zona un comentario de las nueve de la noche caería en el día siguiente —
+ * el mismo error que corrigió lib/fechas. Por eso el rango se escribe con el
+ * offset explícito y no con la fecha a secas.
+ */
+export type HechoDelDia = {
+  at: string; ico: string; txt: string; sub?: string | null; href?: string | null;
+};
+export async function contextoDelDia(personaId: string, fecha: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return { error: "Fecha inválida." };
+
+  const { data: per } = await supabase.from("personas")
+    .select("id,nombre,alias,usuario_id").eq("id", personaId).single();
+  if (!per) return { error: "Persona no encontrada." };
+
+  /* Solo tú, o un admin. Lo que alguien hizo un martes es suyo. */
+  const { data: perfil } = await supabase.from("perfiles").select("es_admin").eq("id", user.id).single();
+  if (per.usuario_id !== user.id && !perfil?.es_admin) {
+    return { error: "Solo puedes ver tu propia actividad." };
+  }
+
+  const desde = `${fecha}T00:00:00-05:00`;
+  const d = new Date(`${fecha}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + 1);
+  const hasta = `${d.toISOString().slice(0, 10)}T00:00:00-05:00`;
+  const uid = per.usuario_id;
+  const u1 = (x: any) => (Array.isArray(x) ? x[0] : x);
+
+  const [pubs, coms, acts, presDio, presRecibio, presDevolvio, rhes] = await Promise.all([
+    /* Lo que PUBLICÓ: casos, avisos, notas de muro. */
+    uid ? supabase.from("publicaciones").select("id,titulo,tipo,creado_en")
+      .eq("autor_id", uid).gte("creado_en", desde).lt("creado_en", hasta) : Promise.resolve({ data: [] }),
+    /* Lo que COMENTÓ, con dónde. Los cuatro dueños posibles de un comentario
+       —caso, objeto, equipo y uso— se piden de una vez: preguntar por el
+       nombre después sería una consulta por comentario. */
+    uid ? supabase.from("comentarios")
+      .select("id,cuerpo,creado_en,publicacion_id,objeto_id,equipamiento_id,prestamo_id,pub:publicaciones(id,titulo),obj:objetos(id,titulo),eq:equipamiento(id,folio,nombre),pre:equipo_prestamos(equipo:equipamiento(id,folio,nombre))")
+      .eq("autor_id", uid).gte("creado_en", desde).lt("creado_en", hasta) : Promise.resolve({ data: [] }),
+    /* El registro de cambios: estados, asignaciones, vínculos. Sin los de tipo
+       «comentario», que ya vienen enteros de la consulta de arriba y contarían
+       dos veces el mismo hecho. */
+    uid ? supabase.from("actividad").select("id,tipo,entidad_tipo,entidad_id,creado_en,detalle")
+      .eq("actor_id", uid).neq("tipo", "comentario")
+      .gte("creado_en", desde).lt("creado_en", hasta) : Promise.resolve({ data: [] }),
+    /* Equipos: los que ENTREGÓ (es un acto suyo aunque se los lleve otro), los
+       que recibió y los que devolvió. `desde`/`hasta` son fechas sueltas, sin
+       hora: se comparan con el día tal cual. */
+    uid ? supabase.from("equipo_prestamos")
+      .select("id,desde,tipo,equipo:equipamiento(id,folio,nombre),persona:personas(nombre,alias)")
+      .eq("entregado_por", uid).eq("desde", fecha) : Promise.resolve({ data: [] }),
+    supabase.from("equipo_prestamos")
+      .select("id,desde,tipo,equipo:equipamiento(id,folio,nombre)")
+      .eq("persona_id", personaId).eq("desde", fecha),
+    supabase.from("equipo_prestamos")
+      .select("id,hasta,tipo,equipo:equipamiento(id,folio,nombre)")
+      .eq("persona_id", personaId).eq("hasta", fecha),
+    supabase.from("rhe").select("id,numero,monto,concepto,fecha")
+      .eq("persona_id", personaId).eq("fecha", fecha),
+  ]);
+
+  const hechos: HechoDelDia[] = [];
+  const alFinal = `${fecha}T12:00:00-05:00`;   // lo que no tiene hora, al mediodía
+
+  (pubs.data || []).forEach((x: any) => hechos.push({
+    at: x.creado_en, ico: icoTipo(x.tipo), txt: `Publicó «${(x.titulo || "").slice(0, 70)}»`,
+    href: `/caso/${x.id}`,
+  }));
+
+  (coms.data || []).forEach((c: any) => {
+    const pub = u1(c.pub), obj = u1(c.obj), eq = u1(c.eq), pre = u1(c.pre);
+    const eqPre = pre ? u1(pre.equipo) : null;
+    const donde = pub ? { t: pub.titulo, h: `/caso/${pub.id}` }
+      : obj ? { t: obj.titulo, h: `/objeto/${obj.id}` }
+      : eq ? { t: `${eq.folio || ""} ${eq.nombre}`.trim(), h: `/entidad/equipamiento/${eq.id}` }
+      : eqPre ? { t: `${eqPre.folio || ""} ${eqPre.nombre}`.trim(), h: `/entidad/equipamiento/${eqPre.id}` }
+      : null;
+    hechos.push({
+      at: c.creado_en, ico: "💬",
+      txt: donde ? `Comentó en «${String(donde.t || "").slice(0, 60)}»` : "Comentó",
+      /* El texto del comentario es LO QUE HIZO: sin él la fila dice que hubo
+         actividad y no cuál. Recortado, que esto es un resumen del día. */
+      sub: (c.cuerpo || "") === "📷" ? "(una foto)" : String(c.cuerpo || "").replace(/\s+/g, " ").slice(0, 90),
+      href: donde?.h || null,
+    });
+  });
+
+  const ACT: Record<string, string> = {
+    creado: "Creó", estado: "Cambió el estado de", asignacion: "Asignó",
+    archivo: "Archivó", prioridad: "Cambió la prioridad de", tarea: "Marcó una tarea en",
+    vinculo: "Vinculó", relacion: "Relacionó", cierre: "Cerró", edicion: "Editó",
+  };
+  (acts.data || []).forEach((a: any) => hechos.push({
+    at: a.creado_en, ico: "🛠",
+    txt: `${ACT[a.tipo] || a.tipo} ${a.entidad_tipo === "publicacion" ? "un caso" : a.entidad_tipo}`,
+    href: a.entidad_tipo === "publicacion" ? `/caso/${a.entidad_id}`
+      : a.entidad_tipo === "objeto" ? `/objeto/${a.entidad_id}`
+      : `/entidad/${a.entidad_tipo}/${a.entidad_id}`,
+  }));
+
+  (presDio.data || []).forEach((p: any) => {
+    const eq = u1(p.equipo), a = u1(p.persona);
+    hechos.push({
+      at: alFinal, ico: p.tipo === "asignacion" ? "📌" : "🤝",
+      txt: `${p.tipo === "asignacion" ? "Asignó" : "Entregó"} ${eq?.folio || ""} ${eq?.nombre || "un equipo"}`.trim(),
+      sub: a ? `a ${a.alias || a.nombre}` : null,
+      href: eq ? `/entidad/equipamiento/${eq.id}` : null,
+    });
+  });
+  (presRecibio.data || []).forEach((p: any) => {
+    const eq = u1(p.equipo);
+    hechos.push({
+      at: alFinal, ico: p.tipo === "asignacion" ? "📌" : "📥",
+      txt: `${p.tipo === "asignacion" ? "Quedó a su cargo" : "Recibió"} ${eq?.folio || ""} ${eq?.nombre || "un equipo"}`.trim(),
+      href: eq ? `/entidad/equipamiento/${eq.id}` : null,
+    });
+  });
+  (presDevolvio.data || []).forEach((p: any) => {
+    const eq = u1(p.equipo);
+    hechos.push({
+      at: alFinal, ico: "↩",
+      txt: `Devolvió ${eq?.folio || ""} ${eq?.nombre || "un equipo"}`.trim(),
+      href: eq ? `/entidad/equipamiento/${eq.id}` : null,
+    });
+  });
+  (rhes.data || []).forEach((r: any) => hechos.push({
+    at: alFinal, ico: "🧾",
+    txt: `RHE ${r.numero || ""} · S/ ${Math.round(Number(r.monto) || 0).toLocaleString("es-PE")}`.trim(),
+    sub: r.concepto || null,
+  }));
+
+  hechos.sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  return { hechos, quien: per.alias || per.nombre };
 }
 
 /* ── Ciclo de pago: confirmación (persona) y liquidación (admin) → recibo ── */

@@ -1,5 +1,6 @@
 "use client";
 import { aprobarJornada, editarJornada, borrarJornada } from "@/app/actions";
+import DiaContexto from "@/components/DiaContexto";
 import MiniSelect from "@/components/MiniSelect";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -90,6 +91,9 @@ function FilaJornada({ j, esAdmin, puedeEditar, proyectos, onChange }: {
       {esAdmin && (j.aprobada
         ? <button className="dato-btn" disabled={ocupado} onClick={() => aprobar(false)}>↩ quitar</button>
         : <button className="dato-btn" disabled={ocupado} onClick={() => aprobar(true)}>✅ aprobar</button>)}
+      {/* Qué más hizo ese día. Al lado de editar porque se usa JUNTO: se mira
+          el contexto y se decide si la jornada cuadra. */}
+      {j.persona_id && <DiaContexto personaId={j.persona_id} fecha={j.fecha} quien={j.persona} />}
       {puedeEditar && <button className="dato-btn" title="Editar" onClick={() => setEdit(true)}>✎</button>}
       {puedeEditar && (borrando
         ? <span style={{ fontSize: 11.5, whiteSpace: "nowrap" }}>¿borrar? <button style={{ color: "var(--red)", fontWeight: 700 }} onClick={borrar}>sí</button>{" / "}<button style={{ color: "var(--dim)" }} onClick={() => setBorrando(false)}>no</button></span>
@@ -256,6 +260,10 @@ export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId =
                               <span className={`jr-fecha${esFinde(d) ? " finde" : ""}`}>{fechaHum(d)}</span>
                               <span className="jr-proy">—</span>
                               <span style={{ fontWeight: 700, whiteSpace: "nowrap" }}>0j</span>
+                              {/* AQUÍ es donde esto de verdad sirve: un día en
+                                  blanco no distingue «descansó» de «se le
+                                  olvidó registrar», y el sistema sí lo sabe. */}
+                              <DiaContexto personaId={g.id} fecha={d} quien={g.nombre} />
                             </div>
                           );
                         })

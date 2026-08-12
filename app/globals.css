@@ -2865,6 +2865,30 @@ button.repo-tit{text-align:left}
 .jr-fila .jr-est{flex:none;white-space:nowrap}
 .jr-fila .dato-btn{flex:none}
 .jr-plegar{min-width:24px;padding:1px 6px;flex:none}
+/* ── QUE HIZO ESE DIA, EN TODO EL SISTEMA ──
+   La lupa vive apagada en cada fila y se enciende al pasar por encima: son
+   treinta filas por persona y treinta lupas encendidas serian una columna de
+   ruido. En pantalla tactil no hay «pasar por encima», asi que ahi se queda
+   visible a media tinta. */
+.dia-lupa{flex:none;opacity:.35;transition:opacity .12s}
+.jr-fila:hover .dia-lupa,.dia-lupa:hover{opacity:1}
+@media (hover:none){.dia-lupa{opacity:.6}}
+.dia-n{font-size:10.5px;letter-spacing:.7px;text-transform:uppercase;color:var(--dim);
+  font-weight:700;margin-bottom:6px}
+.dia-lista{display:flex;flex-direction:column;max-height:60vh;overflow-y:auto}
+.dia-fila{display:flex;gap:10px;align-items:flex-start;padding:6px 6px;border-radius:9px;
+  text-decoration:none;min-width:0}
+a.dia-fila:hover{background:rgba(167,139,250,.08)}
+/* La hora primero y en columna fija: el dia se lee de arriba abajo como una
+   linea de tiempo, y con la hora suelta entre el texto no se ve el ritmo —si
+   fueron ocho cosas en diez minutos o repartidas en la tarde. */
+.dia-hora{color:var(--dim);font-size:11px;min-width:42px;flex:none;padding-top:1px;
+  font-variant-numeric:tabular-nums}
+.dia-ico{flex:none;font-size:13px;line-height:1.3}
+.dia-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.dia-l1{font-size:12.5px;color:var(--text);line-height:1.35}
+.dia-l2{font-size:11px;color:var(--dim);line-height:1.4;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .jr-grupo-h{cursor:default}
 
 /* ── EN USO AHORA · quién tiene qué (app/equipamiento) ──
