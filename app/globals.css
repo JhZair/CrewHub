@@ -2850,12 +2850,20 @@ button.repo-tit{text-align:left}
    que ademas se durmio fuera, y por eso se paga aparte. Dentro de la misma
    etiqueta, «1j 🏕» se leia como una jornada normal con un adorno, cuando
    cuesta el doble. */
+/* AZUL Y NO AMBAR. En ambar era el mismo color que «⏳ pendiente», dos
+   pastillas casi identicas a cuatro centimetros en la misma fila: se leian
+   como lo mismo. Y son de ejes distintos —una dice que se durmio fuera, la
+   otra que falta aprobarla—, asi que compartir color era juntar lo que no va
+   junto. Azul ademas es de noche. */
 .jr-pernocte{font-size:10.5px;font-weight:700;white-space:nowrap;flex:none;
-  color:var(--yellow);background:rgba(244,180,0,.13);border-radius:6px;padding:1px 7px}
+  color:#7ba8f5;background:rgba(59,130,246,.14);border-radius:6px;padding:1px 7px}
 /* LA FRANJA HORARIA DE UNA PERSONA, bajo su nombre. Silueta y no grafica: sin
    numeros ni ejes, solo la forma —de mañana, de tarde, repartido—. Al lado del
    total del mes, esa forma es contexto para lo que se esta aprobando. */
-.jr-horas{display:flex;align-items:flex-end;gap:1px;height:16px;margin:0 2px 6px;opacity:.75}
+/* A 16 px la silueta era una linea con bultos: se veia que habia algo, no que
+   forma tenia. El doble de alto es lo que separa «hay actividad» de «trabaja
+   de mañana». */
+.jr-horas{display:flex;align-items:flex-end;gap:1px;height:32px;margin:2px 2px 8px;opacity:.8}
 .jr-horas:hover{opacity:1}
 .jr-horas-c{flex:1;height:100%;display:flex;align-items:flex-end;background:#15151f;border-radius:1px}
 .jr-horas-b{width:100%;background:var(--teal);border-radius:1px;min-height:1px}
