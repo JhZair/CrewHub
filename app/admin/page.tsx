@@ -66,7 +66,7 @@ function Leyenda({ col, n, txt, total }: { col: string; n: number; txt: string; 
   );
 }
 
-export default async function Admin({ searchParams }: { searchParams: { lm?: string; s?: string; fd?: string; qd?: string } }) {
+export default async function Admin({ searchParams }: { searchParams: { lm?: string; s?: string; fd?: string; qd?: string; jm?: string } }) {
   /* Sección activa. Antes entraba directo a «aprobar jornadas» porque era lo
      más frecuente; ahora abre la portada, que dice si hay jornadas por
      aprobar y además todo lo demás que espera. Entrar a una tarea concreta
@@ -159,31 +159,51 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
   const tarifaLista = (personas || []).map((p: any) => ({
     id: p.id, nombre: p.alias || p.nombre, tarifa_dia: p.tarifa_dia, tarifa_rodaje: p.tarifa_rodaje, tarifa_noche: p.tarifa_noche,
   }));
-  /* Para poder pintar los días NO trabajados hace falta el mes completo, no
-     solo lo pendiente: con la lista de pendientes a secas, un día ya aprobado
-     se dibujaría como «no trabajado» — una mentira, y justo sobre lo que ya se
-     revisó. Se pide desde el inicio del mes más viejo con algo pendiente.
+  /* ── QUÉ MES SE REVISA ──
+     Antes se traía «desde el mes más viejo con algo pendiente», y eso dejaba
+     un agujero: un mes SIN pendientes no se cargaba nunca, así que una
+     jornada ya aprobada de julio era inalcanzable para el admin. El servidor
+     sí la deja borrar —`borrarJornada` solo se planta si el mes está
+     liquidado o confirmado— pero no había forma de llegar a ella desde la
+     pantalla. Un permiso que existe y no tiene puerta es un permiso que no
+     existe.
+     Ahora el mes se navega, como en «Liquidar mes». Arranca en el más viejo
+     con algo pendiente —que es a lo que uno viene— y desde ahí se mueve.
      Va en secuencia y no en el Promise.all porque el rango depende de lo que
-     devuelva la primera consulta; sin pendientes, ni se pregunta. */
+     devuelva la primera consulta. */
   const fechasPend = (jornsPend || []).map((j: any) => String(j.fecha)).sort();
-  const desdePend = fechasPend.length ? `${fechasPend[0].slice(0, 7)}-01` : null;
-  const { data: jornsCtx } = desdePend
-    ? await supabase.from("jornadas")
-        .select("id,persona_id,fecha,proyecto_id,tipo,fraccion,noche,monto,aprobada,per:personas(nombre,alias),proy:proyectos(nombre)")
-        .gte("fecha", desdePend).order("fecha", { ascending: false }).limit(3000)
-    : { data: [] };
+  const ymPend = fechasPend.length ? fechasPend[0].slice(0, 7) : null;
+  /* Sin `jm` en la URL se abre el mes de lo pendiente; con `jm` manda la URL.
+     El offset se cuenta desde HOY para que «‹ mes anterior» sea siempre lo
+     mismo, se venga de donde se venga. */
+  const jmOff = searchParams?.jm != null ? (parseInt(searchParams.jm, 10) || 0)
+    : ymPend ? (Number(ymPend.slice(0, 4)) - hoy.getFullYear()) * 12 + (Number(ymPend.slice(5, 7)) - 1 - hoy.getMonth())
+    : 0;
+  const bj = new Date(hoy.getFullYear(), hoy.getMonth() + jmOff, 1);
+  const jAnio = bj.getFullYear(), jMes = bj.getMonth();
+  const jInicio = `${jAnio}-${pad(jMes + 1)}-01`;
+  const jFin = `${jMes === 11 ? jAnio + 1 : jAnio}-${pad(jMes === 11 ? 1 : jMes + 2)}-01`;
+  const { data: jornsCtx } = await supabase.from("jornadas")
+    .select("id,persona_id,fecha,proyecto_id,tipo,fraccion,noche,monto,aprobada,per:personas(nombre,alias),proy:proyectos(nombre)")
+    .gte("fecha", jInicio).lt("fecha", jFin)
+    .order("fecha", { ascending: false }).limit(3000);
 
-  /* `filasJornadas` es lo que se PINTA (el mes entero, para ver los huecos);
-     `porAprobar` es lo que se CUENTA. Separarlos no es cosmético: si los
-     contadores de la portada leyeran la lista completa, «20 jornadas
-     esperando aprobación» pasaría a decir 47 sin que nada fallara. */
+  /* `filasJornadas` es lo que se PINTA: el mes elegido ENTERO, aprobadas
+     incluidas, porque para ver los huecos hace falta el mes completo —con
+     solo lo pendiente, un día ya aprobado se dibujaría como «no trabajado»,
+     una mentira justo sobre lo que ya se revisó. */
   const filasJornadas = (jornsCtx || []).map((j: any) => ({
     id: j.id, persona_id: j.persona_id, proyecto_id: j.proyecto_id, aprobada: j.aprobada,
     fecha: j.fecha, persona: j.per?.alias || j.per?.nombre || "—",
     proyecto: j.proy?.nombre || null, tipo: j.tipo, fraccion: j.fraccion, noche: j.noche, monto: j.monto,
   }));
 
-  const porAprobar = filasJornadas.filter((j: any) => !j.aprobada);
+  /* De `jornsPend` —TODO lo pendiente— y no de `filasJornadas`, que ahora es
+     un mes solo. Si el contador leyera lo pintado, navegar a un mes sin
+     pendientes pondría «0 jornadas esperando aprobación» en la portada con
+     siete esperando en otro mes. El aviso mentiría, y hacia el lado que hace
+     que no se revise. */
+  const porAprobar = (jornsPend || []);
 
   const estadoDe = new Map((liqs || []).map((l: any) => [l.persona_id, l.estado]));
   const agg = new Map<string, { nombre: string; dias: number; pend: number; monto: number }>();
@@ -633,12 +653,32 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
 
       {s === "jornadas" && (
         <>
-          <div className="h4" style={{ marginTop: 0 }}>✅ Aprobar jornadas</div>
+          <div className="h4" style={{ marginTop: 0 }}>
+            ✅ Jornadas · <span style={{ textTransform: "capitalize" }}>{MESES[jMes]} {jAnio}</span>
+          </div>
+          {/* NAVEGADOR DE MES. Sin él solo se veían los meses que TENÍAN algo
+              pendiente, así que una jornada ya aprobada de un mes cerrado no
+              se podía corregir desde ninguna parte —aunque el servidor sí lo
+              permite—. Igual que en «Liquidar mes», para que las dos pantallas
+              de administración se manejen igual. */}
+          <div className="vtabs" style={{ alignItems: "center", marginBottom: 8 }}>
+            <Link href={`/admin?s=jornadas&jm=${jmOff - 1}`} className="vtab">‹ mes anterior</Link>
+            {jmOff !== 0 && <Link href="/admin?s=jornadas&jm=0" className="vtab">actual</Link>}
+            {jmOff < 0 && <Link href={`/admin?s=jornadas&jm=${jmOff + 1}`} className="vtab">siguiente ›</Link>}
+            {/* Adónde está lo que espera. Con el mes navegable, entrar a uno
+                tranquilo y no ver nada no debe leerse como «no hay nada». */}
+            {porAprobar.length > 0 && (
+              <span style={{ marginLeft: "auto", color: "var(--yellow)", fontSize: 12 }}>
+                ⏳ {porAprobar.length} por aprobar en total
+              </span>
+            )}
+          </div>
           <p style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 0 }}>
-            Jornadas pendientes de aprobación. Al aprobar, entran al monto "a pagar". Puedes editar o borrar si hay un error.
+            Al aprobar, la jornada entra al monto «a pagar». Puedes editar o borrar cualquiera —también
+            una ya aprobada— mientras el mes de esa persona no esté confirmado ni liquidado.
           </p>
           <BitacoraJornadas items={filasJornadas} esAdmin miPersonaId="" proyectos={proyectos || []}
-            titulo="⏳ Por aprobar" porMes diasVacios />
+            titulo={`🗒 ${MESES[jMes]} ${jAnio}`} porMes diasVacios />
         </>
       )}
 
