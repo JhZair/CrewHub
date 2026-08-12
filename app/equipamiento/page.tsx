@@ -72,7 +72,7 @@ const TOPE = 200;
 const ABIERTOS = ["abierta", "en_progreso", "seguimiento"];
 
 export default async function Equipamiento({ searchParams }: {
-  searchParams: { q?: string; e?: string; c?: string; sc?: string; f?: string; ronda?: string; kit?: string };
+  searchParams: { q?: string; e?: string; c?: string; sc?: string; f?: string; ronda?: string; kit?: string; act?: string };
 }) {
   const q = (searchParams?.q || "").trim();
   const e = searchParams?.e || "";
@@ -82,6 +82,17 @@ export default async function Equipamiento({ searchParams }: {
   const ronda = searchParams?.ronda === "1";
   const kitPre = searchParams?.kit || "";   // llegó desde «🤝 Entregar» de un kit
   const listar = !!(q || e || c || sc || f || ronda);
+
+  /* CUÁNTA ACTIVIDAD SE TRAE. Por defecto lo de ahora —ocho equipos, cinco
+     movimientos cada uno— porque es un panel de vistazo en una página que ya
+     carga el inventario entero. `?act=1` abre la ventana para cuando la
+     pregunta es «¿qué pasó la semana pasada?».
+     Los topes se aplican también EN LA CONSULTA y no solo al pintar: traer
+     mil comentarios para enseñar cuarenta es pagar el precio de los mil. */
+  const actAmpl = searchParams?.act === "1";
+  const ACT_TRAE = actAmpl ? 80 : 12;   // por fuente
+  const ACT_POR_EQ = actAmpl ? 20 : 5;  // movimientos bajo cada equipo
+  const ACT_EQUIPOS = actAmpl ? 40 : 8; // equipos con movimiento
 
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -110,13 +121,13 @@ export default async function Equipamiento({ searchParams }: {
        escribir «📷 (foto)», que es la palabra «foto» en lugar de la foto. */
     supabase.from("comentarios")
       .select("id,cuerpo,imagenes,es_dano,creado_en,autor:perfiles(nombre,avatar_url,color),equipo:equipamiento(id,folio,nombre)")
-      .not("equipamiento_id", "is", null).order("creado_en", { ascending: false }).limit(12),
+      .not("equipamiento_id", "is", null).order("creado_en", { ascending: false }).limit(ACT_TRAE),
     supabase.from("comentarios")
       .select("id,cuerpo,imagenes,es_dano,creado_en,autor:perfiles(nombre,avatar_url,color),prestamo:equipo_prestamos(id,equipo:equipamiento(id,folio,nombre))")
-      .not("prestamo_id", "is", null).order("creado_en", { ascending: false }).limit(12),
+      .not("prestamo_id", "is", null).order("creado_en", { ascending: false }).limit(ACT_TRAE),
     supabase.from("equipo_prestamos")
       .select("id,desde,hasta,equipo:equipamiento(id,folio,nombre),persona:personas(id,nombre,alias)")
-      .order("desde", { ascending: false }).limit(12),
+      .order("desde", { ascending: false }).limit(ACT_TRAE),
     // Para el contador de interacción en la bitácora de cada equipo: solo los FK
     // (livianos), sean de la bitácora suelta (equipamiento_id) o de un uso
     // (prestamo_id, que se resuelve al equipo con la tabla de préstamos).
@@ -285,10 +296,20 @@ export default async function Equipamiento({ searchParams }: {
     const g = grupoAct.get(x.eq.id) || { eq: x.eq, items: [] };
     g.items.push(x); grupoAct.set(x.eq.id, g);
   });
-  const gruposAct = [...grupoAct.values()]
-    .map(g => ({ eq: g.eq, items: g.items.sort((a: any, b: any) => new Date(b.at).getTime() - new Date(a.at).getTime()).slice(0, 5) }))
-    .sort((a, b) => new Date(b.items[0].at).getTime() - new Date(a.items[0].at).getTime())
-    .slice(0, 8);
+  const gruposActTodos = [...grupoAct.values()]
+    .map(g => ({
+      eq: g.eq,
+      total: g.items.length,
+      items: g.items.sort((a: any, b: any) => new Date(b.at).getTime() - new Date(a.at).getTime()).slice(0, ACT_POR_EQ),
+    }))
+    .sort((a, b) => new Date(b.items[0].at).getTime() - new Date(a.items[0].at).getTime());
+  const gruposAct = gruposActTodos.slice(0, ACT_EQUIPOS);
+  /* ¿Se está escondiendo algo? Dos formas: equipos que no entraron, o
+     movimientos recortados dentro de los que sí. Cualquiera de las dos vale
+     para ofrecer «ver más» — y si no hay ninguna, no se ofrece: un botón que
+     no añade nada gasta la confianza del que lo pulsa. */
+  const hayMasAct = gruposActTodos.length > gruposAct.length
+    || gruposAct.some(g => g.total > g.items.length);
 
   // Su vida en CrewHub+, igual que en empresas, personas y proyectos
   const comentPorPub = new Map<string, number>();
@@ -759,8 +780,11 @@ export default async function Equipamiento({ searchParams }: {
           )}
 
           {gruposAct.length > 0 && (
-            <div className="card">
-              <div className="panel-h">🗒 Última actividad de los equipos</div>
+            <div className="card" id="actividad">
+              <div className="panel-h">
+                🗒 Última actividad de los equipos
+                {actAmpl && <span style={{ color: "var(--dim)", fontWeight: 400, fontSize: 11.5 }}> · ventana ampliada</span>}
+              </div>
               {gruposAct.map((g: any, gi: number) => (
                 <div key={g.eq.id} style={{ padding: "10px 0 4px", borderTop: gi ? "1px solid var(--border)" : "none" }}>
                   {/* Nodo raíz: el equipo */}
@@ -829,6 +853,34 @@ export default async function Equipamiento({ searchParams }: {
                   </div>
                 </div>
               ))}
+              {/* VER MÁS. El panel es de vistazo —lo último, ocho equipos— y esa
+                  es la respuesta correcta casi siempre; la otra pregunta, «¿qué
+                  pasó la semana pasada?», necesita otra ventana, no otro panel.
+                  Enlace y no botón: recarga con ?act=1 y el servidor trae más,
+                  en vez de traer de más siempre por si acaso.
+                  Conserva los filtros de la URL: perderlos al pulsar «ver más»
+                  devolvería al inventario completo sin avisar. */}
+              {(hayMasAct || actAmpl) && (() => {
+                const qs = new URLSearchParams();
+                Object.entries(searchParams || {}).forEach(([k, v]) => {
+                  if (k !== "act" && typeof v === "string" && v) qs.set(k, v);
+                });
+                if (!actAmpl) qs.set("act", "1");
+                const href = `/equipamiento${qs.toString() ? `?${qs.toString()}` : ""}#actividad`;
+                return (
+                  <div style={{ borderTop: "1px solid var(--border)", marginTop: 8, paddingTop: 9,
+                    display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                    <Link href={href} className="btn btn-ghost" style={{ padding: "4px 12px", fontSize: 12 }}>
+                      {actAmpl ? "↑ Ver menos" : "↓ Ver más actividad"}
+                    </Link>
+                    <span style={{ color: "var(--dim)", fontSize: 11.5 }}>
+                      {actAmpl
+                        ? `${gruposAct.length} equipo${gruposAct.length === 1 ? "" : "s"} con movimiento · hasta ${ACT_POR_EQ} cada uno`
+                        : `Se muestran ${gruposAct.length} equipos y ${ACT_POR_EQ} movimientos de cada uno`}
+                    </span>
+                  </div>
+                );
+              })()}
             </div>
           )}
 
