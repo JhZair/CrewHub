@@ -2529,6 +2529,21 @@ button.repo-tit{text-align:left}
 .ent-top{display:flex;align-items:center;min-height:33px;margin-bottom:6px}
 .ent-top.derecha{justify-content:flex-end}
 .ent-caja{max-height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:8px}
+/* DENTRO DE LA VENTANA, LA CAJA CRECE CON LA PANTALLA.
+   320 px fijos son cuatro filas y media. En la pagina de entrega eso esta
+   bien —hay mas cosas debajo—, pero en el editor de kits el modal ocupaba
+   600 px de una pantalla de 870 y dejaba el resto en negro mientras se
+   buscaba entre 320 equipos por una mirilla. Se arma un kit comparando lo de
+   la izquierda con lo de la derecha, y para comparar hay que VER las dos.
+   `clamp` y no una altura fija: en un portatil bajo no desborda, y en un
+   monitor alto tampoco se estira hasta la fila cien —pasada cierta altura
+   la lista deja de leerse y se recorre con el buscador—. */
+.modal-caja.modal-form .ent-caja{max-height:clamp(320px,calc(100vh - 330px),620px)}
+/* Apiladas —una debajo de la otra— dos cajas altas obligan a bajar hasta el
+   final para ver lo elegido, que es justo lo que las dos columnas evitan. */
+@media (max-width:860px){
+  .modal-caja.modal-form .ent-caja{max-height:300px}
+}
 /* Con foto, la fila crece: el nombre largo puede partirse en dos lineas sin
    dejar la miniatura estirada ni el ✕ descolgado. */
 .ent-lote-fila .kit-pz-img{flex:none}
