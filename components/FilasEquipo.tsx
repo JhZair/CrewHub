@@ -48,6 +48,17 @@ export default function FilasEquipo({ unidades, filas }: {
           <div key={gr.k} className="ug-caja">
             <button className="ug-h" onClick={() => alternar(gr.k)}>
               <span className="ug-flecha">{abierto ? "▾" : "▸"}</span>
+              {/* Con foto, como cualquier otra fila de la lista. Plegadas, las
+                  tres Aputure eran la unica linea sin imagen entre veinte que
+                  si la tienen, y en una lista que se recorre MIRANDO —asi se
+                  reconoce un equipo, no por el folio— el grupo desaparecia.
+                  Da igual cual de las tres: son el mismo producto. */}
+              <span className="mini-eq ug-img">
+                {gr.cartel
+                  // eslint-disable-next-line @next/next/no-img-element
+                  ? <img src={gr.cartel} alt="" referrerPolicy="no-referrer" />
+                  : <span>🎥</span>}
+              </span>
               <b className="ug-nom">{gr.nombre}</b>
               <span className="ug-n">{gr.unidades.length} unidades</span>
               <span style={{ flex: 1 }} />

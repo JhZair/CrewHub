@@ -854,7 +854,11 @@ export default async function Equipamiento({ searchParams }: {
                       queda con las claves viejas —los grupos nuevos con algo
                       en reparación arrancarían cerrados, que es justo lo que
                       el inicializador quiere evitar—. */}
-                  <FilasEquipo key={`${cat}|${e}|${c}|${f}|${q}`} unidades={filas as any}
+                  {/* El cartel viaja CON la unidad: el agrupador vive en
+                      lib/compras y no conoce `cartelPorEq`, que solo existe
+                      en esta pagina. */}
+                  <FilasEquipo key={`${cat}|${e}|${c}|${f}|${q}`}
+                    unidades={filas.map((x: any) => ({ ...x, cartel: cartelPorEq.get(x.id) || null })) as any}
                     filas={Object.fromEntries(filas.map((x: any) => [x.id, Fila(x)]))} />
                 </div>
               );

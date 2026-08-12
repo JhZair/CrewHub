@@ -3280,6 +3280,9 @@ button.repo-tit{text-align:left}
   color:var(--text);text-align:left;flex-wrap:wrap}
 .ug-h:hover{background:rgba(255,255,255,.05)}
 .ug-flecha{color:var(--dim);font-size:11px;flex:none}
+/* La miniatura del grupo. Sin `flex:none` la aplasta el desglose de estados
+   cuando el nombre es largo, y sale un rectangulo de 60x38. */
+.ug-img{flex:none}
 .ug-nom{font-size:13.5px}
 .ug-n{font-size:11px;color:var(--dim)}
 .ug-est{font-size:11px;font-weight:600;white-space:nowrap}

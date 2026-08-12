@@ -26,6 +26,9 @@ export type Unidad = {
   estado?: string | null; categoria?: string | null;
   valor_compra?: number | string | null;
   compra_id?: string | null;
+  /** Su cartel. Lo llevan las unidades y no el grupo porque el grupo se
+   *  arma aquí: la lista solo sabe de equipos. */
+  cartel?: string | null;
 };
 
 /* ══════════ EL FOLIO ══════════
@@ -127,6 +130,11 @@ export type GrupoUnidades = {
   k: string; nombre: string; categoria?: string | null;
   unidades: Unidad[];
   porEstado: [string, number][];
+  /** La foto de la PRIMERA unidad que tenga una. Son el mismo producto, así
+   *  que cualquiera de ellas retrata al grupo; la primera A SECAS no vale
+   *  —si justo esa no tiene cartel, el grupo entero sale con el emoji
+   *  aunque las otras dos tengan foto—. */
+  cartel?: string | null;
 };
 
 export function agruparUnidades(unidades: Unidad[]): (Unidad | GrupoUnidades)[] {
@@ -147,6 +155,7 @@ export function agruparUnidades(unidades: Unidad[]): (Unidad | GrupoUnidades)[] 
     return {
       k, nombre: us[0].nombre, categoria: us[0].categoria, unidades: us,
       porEstado: [...cnt.entries()].sort((a, b) => b[1] - a[1]),
+      cartel: us.find(u => u.cartel)?.cartel || null,
     };
   });
 }
