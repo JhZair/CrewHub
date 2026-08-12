@@ -38,14 +38,18 @@ const dias = (f: string) => Math.ceil((new Date(f + "T12:00:00").getTime() - Dat
 const ABIERTOS = ["abierta", "en_progreso", "seguimiento"];
 
 export default async function Postulaciones({ searchParams }: {
-  searchParams: { q?: string; e?: string; a?: string; t?: string; f?: string; y?: string };
+  searchParams: { q?: string; e?: string; a?: string; t?: string; f?: string; y?: string; c?: string };
 }) {
   const q = (searchParams?.q || "").trim();
   const e = searchParams?.e || "";
   const a = searchParams?.a || "";
   const t = searchParams?.t || "";
   const f = searchParams?.f || "";
-  const listar = !!(q || e || a || t || f);
+  /* La CONVOCATORIA concreta. Se podía filtrar por año y por estado, pero no
+     por «este concurso»: para ver cómo nos fue en el Documental Producción
+     2026 había que leer 21 filas y quedarse con las cinco del código C-072. */
+  const c = searchParams?.c || "";
+  const listar = !!(q || e || a || t || f || c);
 
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -162,6 +166,7 @@ export default async function Postulaciones({ searchParams }: {
     // Año de verdad, del concurso. Antes esto se hacía buscando "2026" como
     // texto: una postulación con «CDO-P-2026-14» salía en cualquier año.
     (!a || String(p.conv?.anio || "") === a) &&
+    (!c || p.conv?.id === c) &&
     (!t || p.proy?.tipo === t) &&
     (!f || PRUEBA_F[f]?.(p)) &&
     // El código del acta y el de la plataforma DAFO también: son los números
@@ -180,6 +185,30 @@ export default async function Postulaciones({ searchParams }: {
   const montoHist = ganas.reduce((s: number, g: any) => s + (parseFloat(g.monto_adjudicado) || 0), 0);
   const anios = posts.map((p: any) => p.conv?.anio).filter(Boolean);
   const porAnio = [...new Set(anios)].sort((a: any, b: any) => b - a);
+
+  /* ── LOS CONCURSOS A LOS QUE FUIMOS ──
+     Solo los que tienen postulación: el catálogo entero de DAFO no es un
+     filtro de esta pantalla —aquí no hay nada que enseñar de un concurso al
+     que no nos presentamos—.
+     Acotados al AÑO que esté elegido, y por eso el chip conserva `a` en su
+     enlace: veinte concursos de siete años en una fila no se eligen, se
+     sufren, y el año es el corte que ya está a la vista justo encima. Sin año
+     elegido salen todos, que es lo coherente con el resto del panel. */
+  const convsFiltro = (() => {
+    const m = new Map<string, { id: string; codigo: string; nombre: string; anio: any; n: number }>();
+    posts.forEach((p: any) => {
+      const cv = p.conv;
+      if (!cv?.id) return;
+      if (a && String(cv.anio || "") !== a) return;
+      const x = m.get(cv.id) || { id: cv.id, codigo: cv.codigo || "—", nombre: cv.nombre || "", anio: cv.anio, n: 0 };
+      x.n++; m.set(cv.id, x);
+    });
+    return [...m.values()].sort((x, y) =>
+      /* Por año descendente y luego por código: sin año elegido, lo reciente
+         primero es lo que se busca; dentro de un año, el orden del código es
+         el que la gente ya tiene en la cabeza. */
+      (Number(y.anio) || 0) - (Number(x.anio) || 0) || x.codigo.localeCompare(y.codigo));
+  })();
 
   /* ── El embudo del año ──
    *
@@ -437,6 +466,20 @@ export default async function Postulaciones({ searchParams }: {
             </Chip>
           ))}
         </FilaFiltro>
+        {convsFiltro.length > 1 && (
+          <FilaFiltro titulo="Convocatoria">
+            {convsFiltro.map(cv => (
+              <Chip key={cv.id} href={`/postulaciones?${a ? `a=${a}&` : ""}c=${cv.id}`}
+                on={c === cv.id} color="var(--blue)"
+                /* El nombre entero en el tooltip: en el chip solo cabe el
+                   código, y «C-072» no dice de qué concurso es hasta que uno
+                   ya se los sabe. */
+                title={`${cv.nombre}${cv.anio ? ` · ${cv.anio}` : ""}`}>
+                {cv.codigo}{!a && cv.anio ? ` ${cv.anio}` : ""} · {cv.n}
+              </Chip>
+            ))}
+          </FilaFiltro>
+        )}
         <FilaFiltro titulo="Tipo de proyecto">
           {tipos.map((tt: any) => (
             <Chip key={tt} href={`/postulaciones?t=${tt}`} on={t === tt} color={TIPO_COLOR[tt]}>
@@ -590,7 +633,12 @@ export default async function Postulaciones({ searchParams }: {
           <div style={{ color: "var(--muted)", fontSize: 13, margin: "2px 4px 10px" }}>
             {filtradas.length} resultado{filtradas.length === 1 ? "" : "s"}
             {e && ` · ${(EST_META[e]?.[0] || e).toLowerCase()}`}
-            {a && ` · ${a}`}{t && ` · ${t.replace(/_/g, " ")}`}
+            {a && ` · ${a}`}
+            {/* Con la convocatoria elegida, el resumen la dice POR SU NOMBRE y
+                no por «C-072»: quien acaba de pulsar el chip ya vio el código,
+                lo que quiere confirmar es que es el concurso que pensaba. */}
+            {c && ` · ${convsFiltro.find(x => x.id === c)?.nombre || "convocatoria"}`}
+            {t && ` · ${t.replace(/_/g, " ")}`}
             {f && ` · ${f.replace(/_/g, " ")}`}{q && ` · «${q}»`}
           </div>
           {/* Agrupadas por año del concurso: una postulación se entiende
