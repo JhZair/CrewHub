@@ -4882,7 +4882,7 @@ export async function comentarPrestamo(
   if (esDano) {
     await supabase.from("equipamiento").update({ estado: "en_reparacion" }).eq("id", equipoId);
   }
-  await avisarMencionesEquipo(supabase, user.id, equipoId, cuerpo, esDano, { prestamo_id: prestamoId });
+  await avisarBitacoraEquipo(supabase, user.id, equipoId, cuerpo, esDano, { prestamo_id: prestamoId }, respondeA);
 
   revalidatePath(`/entidad/equipamiento/${equipoId}`);
   return {};
@@ -4893,37 +4893,101 @@ function esTagDano(t: string) {
   return (t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().includes("dano");
 }
 
-/* 🪄 Menciones @nombre en un comentario de equipo → aviso al invocado, que lo
-   lleva a la ficha del equipo. `destino` decide de qué cuelga el aviso: de un
-   uso (prestamo_id) o directo del equipo (equipamiento_id). Compartido por
-   comentarPrestamo y comentarEquipo para no divergir. */
-async function avisarMencionesEquipo(
+/* AVISOS DE LA BITÁCORA DE UN EQUIPO.
+ *
+ * Se llamaba «avisarMenciones…» y el nombre decía la verdad: avisaba SOLO a
+ * quien fuera nombrado con @. Todo lo demás pasaba en silencio.
+ *
+ *   · Carlos respondió a una pregunta de John sobre qué batería fallaba, sin
+ *     poner @john porque le estaba respondiendo A ÉL — y John encontró la
+ *     respuesta días después, de casualidad. Responder es la forma más
+ *     explícita que hay de dirigirse a alguien; pedir además un @ es pedir
+ *     que se diga dos veces.
+ *   · Un parte de DAÑO manda el equipo a reparación —cambia su estado, lo
+ *     saca del inventario disponible— y no se avisaba a nadie salvo que a
+ *     alguien se le ocurriera nombrar a alguien.
+ *
+ * Ahora avisa a tres, sin repetir a nadie y nunca a uno mismo:
+ *   1. los @mencionados,
+ *   2. a quien se le responde,
+ *   3. los que ya venían hablando de este equipo — la conversación es de
+ *      ellos, y enterarse de una respuesta no debería depender de volver a
+ *      abrir la ficha por casualidad.
+ *
+ * `destino` decide de qué cuelga el aviso: de un uso (prestamo_id) o directo
+ * del equipo (equipamiento_id). Compartido por comentarPrestamo y
+ * comentarEquipo para no divergir. */
+async function avisarBitacoraEquipo(
   supabase: any, userId: string, equipoId: string, cuerpo: string, esDano: boolean,
   destino: { prestamo_id?: string; equipamiento_id?: string },
+  respondeA: string | null = null,
 ) {
-  const tokens = [...new Set((cuerpo.match(/@[^\s@,;:!?*_`]+/g) || []).map(m => m.slice(1)))];
-  if (!tokens.length) return;
   const nrmM = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-  const [{ data: miP }, { data: eq }, { data: perfs }] = await Promise.all([
+  const tokens = [...new Set((cuerpo.match(/@[^\s@,;:!?*_`]+/g) || []).map(m => m.slice(1)))];
+
+  /* Los préstamos del equipo: sus comentarios cuelgan del USO, no del equipo,
+     así que sin esto «los que ya venían hablando» se quedaría corto en la
+     mitad de las conversaciones — justo las de un rodaje. */
+  const { data: pres } = await supabase.from("equipo_prestamos")
+    .select("id").eq("equipamiento_id", equipoId);
+  const idsPres = (pres || []).map((x: any) => x.id);
+  const filtroCharla = idsPres.length
+    ? `equipamiento_id.eq.${equipoId},prestamo_id.in.(${idsPres.join(",")})`
+    : `equipamiento_id.eq.${equipoId}`;
+
+  const [{ data: miP }, { data: eq }, { data: perfs }, { data: padre }, { data: charla }] = await Promise.all([
     supabase.from("perfiles").select("nombre").eq("id", userId).single(),
     supabase.from("equipamiento").select("nombre").eq("id", equipoId).single(),
     supabase.from("perfiles").select("id,nombre").eq("activo", true),
+    respondeA
+      ? supabase.from("comentarios").select("autor_id").eq("id", respondeA).maybeSingle()
+      : Promise.resolve({ data: null }),
+    supabase.from("comentarios").select("autor_id").or(filtroCharla),
   ]);
   const actorNombre = miP?.nombre || "Alguien";
+  const corto = actorNombre.split(" ")[0];
   const nomEquipo = (eq?.nombre || "un equipo").slice(0, 50);
   const enUso = !!destino.prestamo_id;
-  for (const p of perfs || []) {
-    const sinEsp = nrmM(p.nombre).replace(/\s+/g, "");
-    const palabras = nrmM(p.nombre).split(/\s+/);
-    const invocado = tokens.some((t: string) => { const tk = nrmM(t); return sinEsp.startsWith(tk) || palabras.some((w: string) => w.startsWith(tk)); });
-    if (invocado && p.id !== userId) {
-      await supabase.from("notificaciones").insert({
-        usuario_id: p.id, ...destino, tipo: "mencion", actor_nombre: actorNombre,
-        mensaje: esDano
-          ? `🔧 ${actorNombre.split(" ")[0]} reportó un daño en «${nomEquipo}»`
-          : `🪄 ${actorNombre.split(" ")[0]} te mencionó en ${enUso ? "el uso de" : "la bitácora de"} «${nomEquipo}»`,
-      });
+  const donde = enUso ? "el uso de" : "la bitácora de";
+
+  /* Quién ya está avisado. Uno mismo entra de salida: nadie necesita que le
+     cuenten lo que acaba de escribir. */
+  const avisados = new Set<string>([userId]);
+  const avisar = async (uid: string, tipo: string, mensaje: string) => {
+    if (!uid || avisados.has(uid)) return;
+    avisados.add(uid);
+    await supabase.from("notificaciones").insert({
+      usuario_id: uid, ...destino, tipo, actor_nombre: actorNombre, mensaje });
+  };
+
+  // 1. Los @mencionados — el aviso más explícito, va primero.
+  if (tokens.length) {
+    for (const p of perfs || []) {
+      const sinEsp = nrmM(p.nombre).replace(/\s+/g, "");
+      const palabras = nrmM(p.nombre).split(/\s+/);
+      const invocado = tokens.some((t: string) => { const tk = nrmM(t); return sinEsp.startsWith(tk) || palabras.some((w: string) => w.startsWith(tk)); });
+      if (invocado) {
+        await avisar(p.id, "mencion", esDano
+          ? `🔧 ${corto} reportó un daño en «${nomEquipo}»`
+          : `🪄 ${corto} te mencionó en ${donde} «${nomEquipo}»`);
+      }
     }
+  }
+
+  // 2. A quien se le responde. Responder ES dirigirse a alguien.
+  if (padre?.autor_id) {
+    await avisar(padre.autor_id, "comentario",
+      `↩ ${corto} respondió a tu comentario en «${nomEquipo}»`);
+  }
+
+  /* 3. Los que ya venían hablando de este equipo. Solo cuentas activas: el
+        `autor_id` de alguien que dejó el equipo no debe recibir nada. */
+  const activos = new Set<string>((perfs || []).map((p: any) => p.id));
+  for (const c of charla || []) {
+    if (!activos.has(c.autor_id)) continue;
+    await avisar(c.autor_id, "comentario", esDano
+      ? `🔧 ${corto} reportó un daño en «${nomEquipo}»`
+      : `💬 ${corto} comentó en ${donde} «${nomEquipo}»`);
   }
 }
 
@@ -4955,7 +5019,7 @@ export async function comentarEquipo(
   if (esDano) {
     await supabase.from("equipamiento").update({ estado: "en_reparacion" }).eq("id", equipoId);
   }
-  await avisarMencionesEquipo(supabase, user.id, equipoId, cuerpo, esDano, { equipamiento_id: equipoId });
+  await avisarBitacoraEquipo(supabase, user.id, equipoId, cuerpo, esDano, { equipamiento_id: equipoId }, respondeA);
 
   revalidatePath(`/entidad/equipamiento/${equipoId}`);
   return {};
