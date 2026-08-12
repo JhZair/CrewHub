@@ -483,6 +483,11 @@ a{color:inherit;text-decoration:none}
 .tl-resp-cab b{color:var(--violet)}
 .tl-resp-txt{display:block;font-size:12px;color:var(--muted);font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tl-com:target .bubble{animation:flashCom 1.9s ease-out}
+/* El mismo destello, pero para quien llega desde una notificacion a un
+   comentario que vive DENTRO de una pestana. Ahi `:target` no sirve: la
+   pestana la abre JS leyendo el hash, y el navegador ya decidio que no hay
+   target que resaltar. La clase la pone TabsPanel y se quita sola. */
+.ancla-hit{animation:flashCom 2.4s ease-out;border-radius:10px}
 @keyframes flashCom{0%,32%{box-shadow:0 0 0 2px var(--violet)}100%{box-shadow:0 0 0 2px transparent}}
 .tl-com::before{content:'';position:absolute;left:-28.5px;top:14px;width:11px;height:11px;border-radius:50%;background:var(--accent);border:2px solid var(--bg)}
 .bubble{flex:1;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 14px}

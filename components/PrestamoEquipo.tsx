@@ -9,6 +9,7 @@ import { menciones, MencionesMenu, type Perfil } from "@/components/Menciones";
 import EditorImagenes from "@/components/EditorImagenes";
 import Foto from "@/components/Foto";
 import RespuestaBox from "@/components/RespuestaBox";
+import { ANCLA_COM } from "@/lib/notificaciones";
 import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -204,7 +205,10 @@ export default function PrestamoEquipo({ equipoId, prestamos, personas, proyecto
          como una sola, y ahí es donde alguien responde en el hilo equivocado.
          Las respuestas van dentro, sangradas: pertenecen a este hilo, no a la
          bitácora. */
-      <div key={c.id} className={depth ? "pe-rama" : "pe-tarjeta"}>
+      /* `id` para que un aviso pueda aterrizar EN el comentario y no en la
+         pestaña. Mismo `com-<id>` que la página de un caso: una sola
+         convención, la que arma `ANCLA_COM`. */
+      <div key={c.id} id={ANCLA_COM(c.id)} className={depth ? "pe-rama" : "pe-tarjeta"}>
         <div className="pe-coment"
           style={acento ? { borderLeft: `2px solid ${acento}`, background: c.es_dano ? "rgba(207,139,147,.05)" : "rgba(74,157,157,.05)", borderRadius: 8, padding: "3px 8px" } : undefined}>
           <Avatar nombre={c.autor?.nombre} color={c.autor?.color} size={26} src={c.autor?.avatar_url} />

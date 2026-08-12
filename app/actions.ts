@@ -17,7 +17,7 @@ import { fraccionValida } from "@/lib/jornadas";
 import { TIPOS_OBJETO } from "@/lib/objetos";
 import { catalogoObjetos, catalogosEntidades } from "@/lib/catalogos";
 import { resolverNombres } from "@/lib/nombres";
-import { COL_DAFO, sinColumna, sinDafoId, TIPOS_DAFO } from "@/lib/notificaciones";
+import { COL_DAFO, sinColumna, faltaAlguna, sinOpcionales, TIPOS_DAFO } from "@/lib/notificaciones";
 import { DIAS_AVISO_DEF } from "@/lib/plazo";
 import { hoyLima } from "@/lib/fechas";
 
@@ -170,6 +170,29 @@ export type Vinculo = { tipo: string; id: string };
    notificar a personas CON cuenta (personas.usuario_id); un colaborador externo
    sin usuario no recibe (no tiene dónde). Se excluye al propio actor y a quien
    ya se notificó por otra vía (p. ej. el responsable). */
+/* ── INSERTAR UN AVISO SIN QUE LO TUMBE UNA COLUMNA NUEVA ──
+ *
+ * `comentario_id` llega con db/notif-comentario.sql. Hasta que ese SQL se
+ * corra, PostgREST no ignora la columna que no conoce: RECHAZA el insert
+ * entero. Y como el error de una notificación no se comprueba en ningún sitio
+ * —avisar es un efecto, no el trabajo—, el resultado sería el peor de todos:
+ * comentar seguiría funcionando y nadie recibiría aviso, sin una sola línea
+ * roja en ninguna parte. Ya nos pasó al revés con `dafo_id` y una bandeja
+ * vacía con el badge marcando dos.
+ *
+ * Así que se intenta con la columna y, si la base dice que no la conoce, se
+ * repite sin ella: el aviso llega igual y lo único que pierde es el ancla al
+ * párrafo, que es exactamente como funcionaba ayer.
+ */
+async function notificar(supabase: any, filas: any | any[]) {
+  const lista = Array.isArray(filas) ? filas : [filas];
+  if (!lista.length) return;
+  const { error } = await supabase.from("notificaciones").insert(lista);
+  if (!error || !sinColumna(error, "comentario_id")) return;
+  await supabase.from("notificaciones").insert(
+    lista.map(({ comentario_id, ...resto }: any) => resto));
+}
+
 async function notificarPersonasVinculadas(
   supabase: any, pubId: string, personaIds: string[],
   actorUserId: string, actorNombre: string, titulo: string, tipo: string,
@@ -428,8 +451,9 @@ export async function comentar(pubId: string, texto: string, imagenes: string[] 
       });
       if (invocado && p.id !== user.id) {
         mencionados.add(p.id);
-        await supabase.from("notificaciones").insert({
-          usuario_id: p.id, publicacion_id: pubId, tipo: "mencion", actor_nombre: actorNombre,
+        await notificar(supabase, {
+          usuario_id: p.id, publicacion_id: pubId, comentario_id: com.id,
+          tipo: "mencion", actor_nombre: actorNombre,
           mensaje: `🪄 ${actorNombre.split(" ")[0]} te mencionó en «${(pubT?.titulo || "").slice(0, 60)}»`,
         });
       }
@@ -452,9 +476,10 @@ export async function comentar(pubId: string, texto: string, imagenes: string[] 
       // comentario: es el mismo mensaje y salían dos notificaciones.
       .filter(d => d && d !== user.id && !mencionados.has(d as string));
     if (destinatarios.length) {
-      await supabase.from("notificaciones").insert(destinatarios.map(d => ({
+      await notificar(supabase, destinatarios.map(d => ({
         usuario_id: d,
         publicacion_id: pubId,
+        comentario_id: com.id,
         tipo: "comentario",
         actor_nombre: actorNombre,
         mensaje: `Nuevo comentario en «${pub.titulo}»`,
@@ -505,8 +530,9 @@ export async function comentarObjeto(objetoId: string, texto: string, imagenes: 
       });
       if (invocado && !avisados.has(p.id)) {
         avisados.add(p.id);
-        await supabase.from("notificaciones").insert({
-          usuario_id: p.id, objeto_id: objetoId, tipo: "mencion", actor_nombre: actorNombre,
+        await notificar(supabase, {
+          usuario_id: p.id, objeto_id: objetoId, comentario_id: com.id,
+          tipo: "mencion", actor_nombre: actorNombre,
           mensaje: `🪄 ${actorNombre.split(" ")[0]} te mencionó en «${titulo}»`,
         });
       }
@@ -515,8 +541,9 @@ export async function comentarObjeto(objetoId: string, texto: string, imagenes: 
 
   // 🔔 A quien trajo el objeto (si no es quien comenta)
   if (obj?.creado_por && !avisados.has(obj.creado_por)) {
-    await supabase.from("notificaciones").insert({
-      usuario_id: obj.creado_por, objeto_id: objetoId, tipo: "comentario", actor_nombre: actorNombre,
+    await notificar(supabase, {
+      usuario_id: obj.creado_por, objeto_id: objetoId, comentario_id: com.id,
+      tipo: "comentario", actor_nombre: actorNombre,
       mensaje: `Nuevo comentario en «${titulo}»`,
     });
   }
@@ -5189,8 +5216,11 @@ export async function comentarPrestamo(
   // columna es NOT NULL —igual que comentarObjeto—.
   if (!cuerpo && !imgs.length) return { error: "Escribe algo o adjunta una foto." };
   const esDano = tags.some(esTagDano);
-  const { error } = await supabase.from("comentarios")
-    .insert({ prestamo_id: prestamoId, autor_id: user.id, cuerpo: cuerpo || "📷", imagenes: imgs, etiquetas: tags, es_dano: esDano, responde_a: respondeA || null, fecha_evento: fechaEvento || null });
+  /* Se pide el id de vuelta: el aviso tiene que decir a QUÉ comentario lleva,
+     no solo a qué ficha. */
+  const { data: com, error } = await supabase.from("comentarios")
+    .insert({ prestamo_id: prestamoId, autor_id: user.id, cuerpo: cuerpo || "📷", imagenes: imgs, etiquetas: tags, es_dano: esDano, responde_a: respondeA || null, fecha_evento: fechaEvento || null })
+    .select("id").single();
   if (error) {
     if (/etiquetas|es_dano|fecha_evento/.test(error.message)) return { error: "Falta correr db/comentario-dano.sql y db/bitacora-equipo.sql en Supabase." };
     return { error: /prestamo_id/.test(error.message)
@@ -5204,7 +5234,8 @@ export async function comentarPrestamo(
   if (esDano) {
     await supabase.from("equipamiento").update({ estado: "en_reparacion" }).eq("id", equipoId);
   }
-  await avisarBitacoraEquipo(supabase, user.id, equipoId, cuerpo, esDano, { prestamo_id: prestamoId }, respondeA);
+  await avisarBitacoraEquipo(supabase, user.id, equipoId, cuerpo, esDano,
+    { prestamo_id: prestamoId, comentario_id: (com as any)?.id }, respondeA);
 
   revalidatePath(`/entidad/equipamiento/${equipoId}`);
   return {};
@@ -5241,7 +5272,10 @@ function esTagDano(t: string) {
  * comentarEquipo para no divergir. */
 async function avisarBitacoraEquipo(
   supabase: any, userId: string, equipoId: string, cuerpo: string, esDano: boolean,
-  destino: { prestamo_id?: string; equipamiento_id?: string },
+  /* `destino` viaja entero al insert (`...destino`), así que el comentario
+     entra por aquí: el aviso tiene que saber a QUÉ párrafo lleva, no solo a
+     qué ficha. */
+  destino: { prestamo_id?: string; equipamiento_id?: string; comentario_id?: string },
   respondeA: string | null = null,
 ) {
   const nrmM = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
@@ -5278,7 +5312,7 @@ async function avisarBitacoraEquipo(
   const avisar = async (uid: string, tipo: string, mensaje: string) => {
     if (!uid || avisados.has(uid)) return;
     avisados.add(uid);
-    await supabase.from("notificaciones").insert({
+    await notificar(supabase, {
       usuario_id: uid, ...destino, tipo, actor_nombre: actorNombre, mensaje });
   };
 
@@ -5331,8 +5365,9 @@ export async function comentarEquipo(
   const tags = [...new Set((etiquetas || []).map(t => (t || "").trim()).filter(Boolean))].slice(0, 8);
   if (!cuerpo && !imgs.length) return { error: "Escribe algo o adjunta una foto." };
   const esDano = tags.some(esTagDano);
-  const { error } = await supabase.from("comentarios")
-    .insert({ equipamiento_id: equipoId, autor_id: user.id, cuerpo: cuerpo || "📷", imagenes: imgs, etiquetas: tags, es_dano: esDano, responde_a: respondeA || null, fecha_evento: fechaEvento || null });
+  const { data: com, error } = await supabase.from("comentarios")
+    .insert({ equipamiento_id: equipoId, autor_id: user.id, cuerpo: cuerpo || "📷", imagenes: imgs, etiquetas: tags, es_dano: esDano, responde_a: respondeA || null, fecha_evento: fechaEvento || null })
+    .select("id").single();
   if (error) {
     if (/equipamiento_id|fecha_evento/.test(error.message)) return { error: "Falta correr db/bitacora-equipo.sql en Supabase." };
     if (/etiquetas|es_dano/.test(error.message)) return { error: "Falta correr db/comentario-dano.sql en Supabase." };
@@ -5341,7 +5376,8 @@ export async function comentarEquipo(
   if (esDano) {
     await supabase.from("equipamiento").update({ estado: "en_reparacion" }).eq("id", equipoId);
   }
-  await avisarBitacoraEquipo(supabase, user.id, equipoId, cuerpo, esDano, { equipamiento_id: equipoId }, respondeA);
+  await avisarBitacoraEquipo(supabase, user.id, equipoId, cuerpo, esDano,
+    { equipamiento_id: equipoId, comentario_id: (com as any)?.id }, respondeA);
 
   revalidatePath(`/entidad/equipamiento/${equipoId}`);
   return {};
@@ -5836,7 +5872,7 @@ export async function misNotificaciones() {
   if (!user) return { items: [], sinLeer: 0, sinLeerBot: 0 };
   // `objeto_id`: una notificación puede colgar de un caso O de un objeto del
   // repositorio. Sin traerla, el aviso llega pero no lleva a ninguna parte.
-  const cols = "id,tipo,mensaje,actor_nombre,publicacion_id,objeto_id,prestamo_id,equipamiento_id,dafo_id,leida,creado_en";
+  const cols = "id,tipo,mensaje,actor_nombre,publicacion_id,objeto_id,prestamo_id,equipamiento_id,dafo_id,comentario_id,leida,creado_en";
   /* La consulta en una función para poder repetirla sin `dafo_id` si esa
      columna aún no existe (ver lib/notificaciones.ts → COL_DAFO). */
   const tanda = (c: string, esBot: boolean) => {
@@ -5856,8 +5892,8 @@ export async function misNotificaciones() {
   ]);
   let pers: any = r[0].data, bot: any = r[1].data;
   const sinLeer = r[2].count, sinLeerBot = r[3].count;
-  if (sinColumna(r[0].error, COL_DAFO) || sinColumna(r[1].error, COL_DAFO)) {
-    const r2 = await Promise.all([tanda(sinDafoId(cols), false), tanda(sinDafoId(cols), true)]);
+  if (faltaAlguna(r[0].error) || faltaAlguna(r[1].error)) {
+    const r2 = await Promise.all([tanda(sinOpcionales(cols), false), tanda(sinOpcionales(cols), true)]);
     pers = r2[0].data; bot = r2[1].data;
   }
   const items = await conVinculos(supabase, [...(pers || []), ...(bot || [])]);
@@ -6049,7 +6085,7 @@ export async function notificacionesTodas(desde = 0, filtro?: "personal" | "bot"
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { items: [], hayMas: false, total: 0, totalBot: 0, sinLeer: 0, sinLeerBot: 0 };
-  const COLS = "id,tipo,mensaje,actor_nombre,publicacion_id,objeto_id,prestamo_id,equipamiento_id,dafo_id,leida,creado_en";
+  const COLS = "id,tipo,mensaje,actor_nombre,publicacion_id,objeto_id,prestamo_id,equipamiento_id,dafo_id,comentario_id,leida,creado_en";
   /* Armada en una función: si `dafo_id` no existe todavía hay que preguntar
      otra vez sin ella, y un builder ya filtrado no se puede reusar. */
   const consulta = (cols: string) => {
@@ -6084,8 +6120,8 @@ export async function notificacionesTodas(desde = 0, filtro?: "personal" | "bot"
      ella: la bandeja de notificaciones NO puede quedarse vacía por un SQL
      pendiente de otro módulo. */
   let notifs: any = notifsRaw;
-  if (sinColumna(eNotifs, COL_DAFO)) {
-    const { data } = await consulta(sinDafoId(COLS))
+  if (faltaAlguna(eNotifs)) {
+    const { data } = await consulta(sinOpcionales(COLS))
       .order("creado_en", { ascending: false }).order("id", { ascending: false })
       .range(desde, desde + NOTIF_PAGINA - 1);
     notifs = data;
@@ -6357,8 +6393,9 @@ export async function comentarPostulacion(postulacionId: string, texto: string, 
       const invocado = tokens.some(t => { const tk = nrmM(t); return sinEspacios.startsWith(tk) || palabras.some(w => w.startsWith(tk)); });
       if (invocado && !avisados.has(pf.id)) {
         avisados.add(pf.id);
-        await supabase.from("notificaciones").insert({
-          usuario_id: pf.id, postulacion_id: postulacionId, tipo: "mencion", actor_nombre: actorNombre,
+        await notificar(supabase, {
+          usuario_id: pf.id, postulacion_id: postulacionId, comentario_id: com.id,
+          tipo: "mencion", actor_nombre: actorNombre,
           mensaje: `🪄 ${actorNombre.split(" ")[0]} te mencionó en «${titulo}»`,
         });
       }

@@ -75,16 +75,34 @@ export default function TabsPanel({ labels, paneles, inicial = 0, iconoSolo = []
   useEffect(() => {
     if (!claves?.length) return;
     const aplica = () => {
-      const h = decodeURIComponent(String(window.location.hash || "").replace(/^#/, "")).toLowerCase();
-      if (!h) return;
-      const k = claves.findIndex(c => c && c.toLowerCase() === h);
+      const bruto = decodeURIComponent(String(window.location.hash || "").replace(/^#/, ""));
+      if (!bruto) return;
+      /* El hash lleva DOS cosas: `#bitacora/c-<id>` = qué pestaña abrir y a qué
+         elemento ir dentro de ella. Van juntas porque van juntas: un ancla a
+         un comentario que vive en otra pestaña apunta a algo que el navegador
+         encuentra —está montado— pero que nadie ve. */
+      const [clave, ...resto] = bruto.split("/");
+      const ancla = resto.join("/");
+      const k = claves.findIndex(c => c && c.toLowerCase() === clave.toLowerCase());
       if (k < 0) return;
       abrir(k);
-      /* Y se trae la pestaña a la vista. Si el lector YA estaba en esta ficha
-         —el caso de quien pulsa el aviso de algo que tiene abierto— cambiar de
-         pestaña sin moverse no se ve: la página se queda donde estaba y el
-         clic parece no haber hecho nada. */
-      raiz.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      /* Y se trae a la vista. Si el lector YA estaba en esta ficha —el caso de
+         quien pulsa el aviso de algo que tiene abierto— cambiar de pestaña sin
+         moverse no se ve: la página se queda donde estaba y el clic parece no
+         haber hecho nada.
+         El elemento manda sobre la pestaña cuando lo hay; y se busca en el
+         fotograma siguiente porque con `perezoso` el panel se acaba de montar
+         en este mismo render y todavía no está en el documento. */
+      requestAnimationFrame(() => {
+        const el = ancla ? document.getElementById(ancla) : null;
+        (el || raiz.current)?.scrollIntoView({ behavior: "smooth", block: el ? "center" : "start" });
+        /* Un resalte que se apaga solo. Sin él, llegar al comentario correcto
+           en un hilo de treinta iguales no se distingue de llegar a otro. */
+        if (el) {
+          el.classList.add("ancla-hit");
+          window.setTimeout(() => el.classList.remove("ancla-hit"), 2600);
+        }
+      });
     };
     aplica();
     window.addEventListener("hashchange", aplica);

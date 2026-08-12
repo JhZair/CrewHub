@@ -22,8 +22,19 @@
 export const COL_DAFO = "dafo_id";
 export const sinColumna = (e: any, col: string): boolean =>
   !!e && new RegExp(col).test(`${e?.message || ""} ${e?.details || ""} ${e?.hint || ""}`);
-/* Quita la columna de una lista de campos ya escrita, para el segundo intento. */
-export const sinDafoId = (cols: string) => cols.replace(`,${COL_DAFO}`, "");
+
+/* Las columnas que puede que la base todavía no tenga. Cada una llega con su
+   SQL, y cada una tumbaría la consulta entera si se pide antes de tiempo. */
+export const COLS_NUEVAS = [COL_DAFO, "comentario_id"];
+export const faltaAlguna = (e: any): boolean => COLS_NUEVAS.some(c => sinColumna(e, c));
+/* Quita TODAS las opcionales para el segundo intento, no solo la que se quejó.
+   Pedirlas de una en una serían tantos reintentos como columnas nuevas haya, y
+   este camino es el degradado: lo que importa es que la bandeja se pinte. En
+   cuanto los SQL están corridos no se pasa por aquí nunca. */
+export const sinOpcionales = (cols: string) =>
+  COLS_NUEVAS.reduce((c, x) => c.replace(`,${x}`, ""), cols);
+/** @deprecated Usa `sinOpcionales`. Se mantiene por si queda alguna llamada. */
+export const sinDafoId = sinOpcionales;
 
 export const ICONO: Record<string, string> = {
   asignacion: "👤", comentario: "💬", vencimiento: "⏰",
@@ -60,9 +71,27 @@ export const anclaDe = (tipo: string) =>
    `if (n.publicacion_id)`, así que un aviso de un comentario sobre un objeto
    del repositorio llegaba a la bandeja pero no era clicable: sonaba y no
    llevaba a ninguna parte. Ahora el destino se decide aquí. */
+/* ── EL ANCLA DEL COMENTARIO ──
+ * Un aviso de comentario sabía en qué ficha ocurrió y ahí acababa su memoria:
+ * te dejaba en el caso o en la bitácora, con lo que te habían escrito en algún
+ * punto de un hilo de treinta. Justo en las conversaciones que importan —las
+ * que ya llevan un mes— el aviso te dejaba a buscar lo que venía a enseñarte.
+ * Con `comentario_id` el enlace termina en el párrafo. Es lo mismo que ya se
+ * hizo con las notas del muro (`#pub-<id>`), un nivel más adentro.
+ * Sin id —los avisos de antes de la migración, o uno cuyo comentario se
+ * borró— se cae al ancla de siempre: la ficha. Nunca a ningún sitio.
+ *
+ * `com-<id>` y no un prefijo nuevo: la página de un caso ya pinta ese id desde
+ * antes y ya lo usa para las citas de «↳ en respuesta a», con su destello en
+ * `:target`. Inventar `c-<id>` habría dejado dos anclas para lo mismo y una
+ * sola de las dos con destello. */
+export const ANCLA_COM = (id: string) => `com-${id}`;
+export const anclaCom = (n: { comentario_id?: string | null }, deFondo: string) =>
+  n.comentario_id ? `#${ANCLA_COM(n.comentario_id)}` : deFondo;
+
 export const rutaNotif = (n: {
   publicacion_id?: string | null; objeto_id?: string | null; equipamiento_id?: string | null;
-  dafo_id?: string | null; tipo?: string;
+  dafo_id?: string | null; comentario_id?: string | null; tipo?: string;
   /** Si la publicación es una NOTA DE MURO, de qué muro es. */
   muro?: { tipo: string; id: string } | null;
 }) =>
@@ -76,17 +105,22 @@ export const rutaNotif = (n: {
      `.neq("tipo","bitacora")`; lo que faltaba era el DESTINO. Va a su muro,
      y el ancla deja al lector en la nota exacta que sonó. */
   n.muro ? `/entidad/${n.muro.tipo}/${n.muro.id}#pub-${n.publicacion_id}`
-  : n.publicacion_id ? `/caso/${n.publicacion_id}${anclaDe(n.tipo || "")}`
+  : n.publicacion_id ? `/caso/${n.publicacion_id}${anclaCom(n, anclaDe(n.tipo || ""))}`
   // Un correo de DAFO no es un caso: vive en la casilla, y el ancla deja al
   // lector en el mensaje exacto que sonó.
   : n.dafo_id ? `/casilla#c-${n.dafo_id}`
-  : n.objeto_id ? `/objeto/${n.objeto_id}${anclaDe(n.tipo || "")}`
+  : n.objeto_id ? `/objeto/${n.objeto_id}${anclaCom(n, anclaDe(n.tipo || ""))}`
   /* Un aviso de préstamo lleva a la ficha del equipo (resuelto en
      conVinculos), y `#bitacora` abre la pestaña donde está lo que le
      escribieron. Sin el ancla, el aviso dejaba al lector en la pestaña de
      siempre con el comentario a dos clics — y si ya estaba en esa ficha, no
      hacía nada al pulsarlo: misma URL, misma pestaña, cero respuesta. */
-  : n.equipamiento_id ? `/entidad/equipamiento/${n.equipamiento_id}#bitacora`
+  /* Aquí el hash lleva DOS cosas separadas por «/»: qué pestaña abrir y a qué
+     comentario ir. La ficha de un equipo tiene cuatro pestañas y el comentario
+     vive dentro de una; sin la primera mitad, el ancla apuntaría a un elemento
+     que está en pantalla pero en otra pestaña. */
+  : n.equipamiento_id
+    ? `/entidad/equipamiento/${n.equipamiento_id}#bitacora${n.comentario_id ? `/${ANCLA_COM(n.comentario_id)}` : ""}`
   : null;
 
 /* Cuánto hace, dicho corto: la campanita es una lista, no un texto */

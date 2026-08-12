@@ -16,6 +16,7 @@ import { progresoDe, esMovimientoReal } from "@/lib/progreso";
 import { tipoCanonico, grafiasDe } from "@/lib/secciones";
 import { agruparEventos } from "@/lib/agrupar";
 import ComentarioTexto from "@/components/ComentarioTexto";
+import { ANCLA_COM } from "@/lib/notificaciones";
 import RespuestaBox from "@/components/RespuestaBox";
 import Realtime from "@/components/Realtime";
 import Link from "next/link";
@@ -515,7 +516,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
             const c = e.comentario;
             const padreC = c.responde_a ? (comMap.get(c.responde_a) as any) : null;
             return (
-              <div className="tl-com" id={`com-${c.id}`} key={i}>
+              <div className="tl-com" id={ANCLA_COM(c.id)} key={i}>
                 <Avatar nombre={c.autor?.nombre} color={c.autor?.color} size={32} src={c.autor?.avatar_url} />
                 <div className="bubble">
                   <div className="who">{c.autor?.nombre}<span className="t">{fecha(c.creado_en)}</span></div>
