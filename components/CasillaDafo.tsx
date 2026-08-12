@@ -5,6 +5,10 @@ import Link from "next/link";
 import { hace } from "@/lib/notificaciones";
 import { linkGmail, soloNombre, diasDesde, ORIGEN_VINCULO, esAcuse } from "@/lib/casilla";
 import { marcarComunicacion, vincularComunicacion, casoDeComunicacion } from "@/app/casilla/acciones";
+/* El alta vive en app/actions.ts y no aquí al lado: no es la mecánica de esta
+   pantalla, es escribir una credencial de empresa —lo mismo que hace la ficha
+   de la empresa—. Solo que se puede disparar desde donde se nota que falta. */
+import { registrarCuentaDafo } from "@/app/actions";
 
 /* La lista de la casilla. Cliente porque cada fila hace tres cosas —marcar,
    vincular, abrir caso— y ninguna merece recargar la página entera.
@@ -31,18 +35,31 @@ type Com = {
   emp?: { id: string; nombre: string | null } | null;
 };
 type Opcion = { id: string; etiqueta: string; enJuego: boolean };
-type Fila = { id: string; codigo: string; nombre: string; ultimo: string | null; sinLeer: number };
+type Fila = {
+  id: string; codigo: string; nombre: string; ultimo: string | null; sinLeer: number;
+  empresa: string | null; cuentas: string[]; rindiendo: boolean;
+};
+type Cuenta = {
+  correo: string; empresa: string | null; empresaId: string;
+  vivas: number; ultimo: string | null; total: number; esBuzon: boolean;
+};
+type Empresa = { id: string; nombre: string; vivas: number };
 
 /* Cuántos correos ya leídos se muestran por postulación antes de recortar. */
 const POR_GRUPO = 3;
 
-export default function CasillaDafo({ items, opciones, resumen, tope }: {
-  items: Com[]; opciones: Opcion[]; resumen: Fila[]; tope: number;
+export default function CasillaDafo({
+  items, opciones, resumen, inventario, empresas, cuentasError, tope,
+}: {
+  items: Com[]; opciones: Opcion[]; resumen: Fila[]; inventario: Cuenta[];
+  empresas: Empresa[]; cuentasError: string | null; tope: number;
 }) {
   const router = useRouter();
   const [pend, arrancar] = useTransition();
   const [aviso, setAviso] = useState<string | null>(null);
   const [verTodo, setVerTodo] = useState(false);
+  const [verCuentas, setVerCuentas] = useState(false);
+  const [nueva, setNueva] = useState({ correo: "", empresaId: "" });
 
   /* Sin leer arriba y, dentro, lo que parece pedir algo primero: entre dos
      correos del mismo día, uno que dice «subsanación» no vale lo mismo que un
@@ -89,6 +106,71 @@ export default function CasillaDafo({ items, opciones, resumen, tope }: {
     if (r?.error) setAviso(r.error);
     router.refresh();
   });
+
+  /* Dar de alta una cuenta suelta. No reusa `correr` por una razón: cuando el
+     alta falla —el correo ya estaba en otra empresa, o está mal escrito— los
+     campos NO se limpian. Vaciar el formulario junto con el mensaje de error
+     obliga a teclear otra vez lo que acabas de teclear, justo en el momento en
+     que ya te equivocaste una vez. */
+  const darDeAlta = () => arrancar(async () => {
+    setAviso(null);
+    const r: any = await registrarCuentaDafo(nueva.correo, nueva.empresaId);
+    if (r?.error) { setAviso(r.error); return; }
+    setNueva({ correo: "", empresaId: "" });
+    router.refresh();
+  });
+
+  /* Compitiendo y ganadoras van en dos tiras, no en una de treinta tarjetas. */
+  const compitiendo = useMemo(() => resumen.filter(r => !r.rindiendo), [resumen]);
+  const rindiendo = useMemo(() => resumen.filter(r => r.rindiendo), [resumen]);
+  /* Las cuentas por las que nunca entró un correo. El maestro no cuenta: por
+     él no entra nada por definición, y verlo aquí como problema mandaría a
+     revisar un reenvío que no existe. */
+  const mudas = useMemo(() => inventario.filter(c => c.total === 0 && !c.esBuzon), [inventario]);
+
+  /* Una tarjeta del resumen. Tres datos y en este orden: quién es, por dónde
+     le hablan, y cuánto hace que no le hablan. El del medio es el que faltaba. */
+  const tarjeta = (r: Fila) => {
+    const d = diasDesde(r.ultimo);
+    const col = d === null ? "var(--dim)" : d > 30 ? "var(--yellow)" : "var(--teal)";
+    return (
+      <Link key={r.id} href={`/entidad/postulacion/${r.id}`} className="card"
+        style={{ flex: "1 1 220px", minWidth: 200, textDecoration: "none",
+          /* El borde solo para el problema accionable: sin cuenta registrada,
+             esta postulación no puede vincular nada por la vía de la cuenta y
+             ninguna espera lo va a arreglar. */
+          borderLeft: r.cuentas.length === 0 ? "3px solid var(--red)" : undefined }}>
+        <div style={{ fontWeight: 700, fontSize: 12.5 }}>🎯 {r.codigo}</div>
+        {r.nombre && <div style={{ color: "var(--dim)", fontSize: 11 }}>{r.nombre}</div>}
+
+        {r.cuentas.length === 0 ? (
+          /* Si la lista de cuentas no se pudo leer, TODAS saldrían sin cuenta:
+             treinta alarmas rojas por un fallo de lectura. Una alarma que se
+             enciende cuando el sistema no sabe la respuesta enseña a ignorarla,
+             así que aquí se calla y el motivo se dice una sola vez arriba. */
+          cuentasError ? null : (
+            <div style={{ color: "var(--red)", fontSize: 11, marginTop: 3 }}
+              title={r.empresa
+                ? `Ninguna cuenta de correo está registrada en ${r.empresa}. Regístrala en su ficha (Credenciales → Gmail).`
+                : "Esta postulación no tiene empresa, así que no hay dónde colgar su cuenta de correo."}>
+              ✖ sin cuenta registrada
+            </div>
+          )
+        ) : (
+          <div style={{ color: "var(--dim)", fontSize: 10.5, marginTop: 3, wordBreak: "break-all" }}
+            title={r.cuentas.join("\n")}>
+            📧 {r.cuentas[0]}
+            {r.cuentas.length > 1 && ` +${r.cuentas.length - 1}`}
+          </div>
+        )}
+
+        <div style={{ color: col, fontSize: 11.5, marginTop: 3 }}>
+          {d === null ? "nunca llegó nada" : d === 0 ? "hoy" : `hace ${d} d`}
+          {r.sinLeer > 0 && <span style={{ color: "var(--red)" }}> · {r.sinLeer} sin leer</span>}
+        </div>
+      </Link>
+    );
+  };
 
   const chipVinculo = (c: Com) => {
     const o = c.vinculo_por ? ORIGEN_VINCULO[c.vinculo_por] : null;
@@ -175,32 +257,140 @@ export default function CasillaDafo({ items, opciones, resumen, tope }: {
         <div className="empty" style={{ color: "var(--red)", marginBottom: 10 }}>{aviso}</div>
       )}
 
+      {/* Sin la lista de cuentas, media pantalla dice menos de lo que parece.
+          Decirlo aquí es lo que evita leer «nunca llegó nada» como un hecho
+          sobre DAFO cuando en realidad es un hueco nuestro. */}
+      {cuentasError && (
+        <div className="empty" style={{ color: "var(--yellow)", marginBottom: 10 }}>
+          No se pudieron leer las cuentas de correo, así que esta pantalla no puede decir
+          por dónde le llega a cada postulación: {cuentasError}
+        </div>
+      )}
+
       {/* ── El silencio, medido ──
           Un correo que no llegó no aparece en ninguna bandeja. Esta tira es lo
-          único del panel que habla de lo que NO pasó. */}
-      {resumen.length > 0 && (
+          único del panel que habla de lo que NO pasó.
+
+          Cada tarjeta dice ADEMÁS por qué cuenta tendría que llegarle. Sin eso,
+          «nunca llegó nada» se leía como una noticia sobre DAFO cuando muchas
+          veces era una noticia sobre nosotros: nadie registró la cuenta. */}
+      {compitiendo.length > 0 && (
         <>
           <h2 style={{ fontSize: 13, color: "var(--dim)", margin: "4px 0 8px", letterSpacing: .5 }}>
-            ⏱ Última señal por postulación en juego
+            ⏱ Última señal · compitiendo · {compitiendo.length}
           </h2>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20 }}>
-            {resumen.map(r => {
-              const d = diasDesde(r.ultimo);
-              const col = d === null ? "var(--dim)" : d > 30 ? "var(--yellow)" : "var(--teal)";
-              return (
-                <Link key={r.id} href={`/entidad/postulacion/${r.id}`} className="card"
-                  style={{ flex: "1 1 220px", minWidth: 200, textDecoration: "none" }}>
-                  <div style={{ fontWeight: 700, fontSize: 12.5 }}>🎯 {r.codigo}</div>
-                  {r.nombre && <div style={{ color: "var(--dim)", fontSize: 11 }}>{r.nombre}</div>}
-                  <div style={{ color: col, fontSize: 11.5, marginTop: 3 }}>
-                    {d === null ? "nunca llegó nada" : d === 0 ? "hoy" : `hace ${d} d`}
-                    {r.sinLeer > 0 && <span style={{ color: "var(--red)" }}> · {r.sinLeer} sin leer</span>}
-                  </div>
-                </Link>
-              );
-            })}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 18 }}>
+            {compitiendo.map(tarjeta)}
           </div>
         </>
+      )}
+
+      {/* Las ganadoras aparte: reciben MÁS correo que ninguna —todo el hilo de
+          la rendición— y con otro significado. Mezcladas en una sola tira de
+          treinta, las dos listas dejaban de leerse. */}
+      {rindiendo.length > 0 && (
+        <>
+          <h2 style={{ fontSize: 13, color: "var(--dim)", margin: "4px 0 8px", letterSpacing: .5 }}>
+            🏆 Última señal · ganadoras rindiendo · {rindiendo.length}
+          </h2>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 18 }}>
+            {rindiendo.map(tarjeta)}
+          </div>
+        </>
+      )}
+
+      {/* ── EL INVENTARIO DE CUENTAS ──
+          La única vista que puede detectar el fallo más caro de todo esto: una
+          cuenta a la que se le olvidó activar el reenvío. Ese fallo no produce
+          ningún error en ninguna parte — la cuenta simplemente nunca aparece, y
+          sus postulaciones se ven exactamente igual que si DAFO no hubiera
+          escrito. Se abre plegada porque no es trabajo diario; el titular con
+          las mudas está siempre a la vista, que es lo que hay que mirar. */}
+      {/* La condición mira las EMPRESAS y no las cuentas: si no hay ninguna
+          cuenta registrada todavía, es justo cuando más falta hace el
+          formulario, y esconderlo por «no hay nada que mostrar» dejaba la
+          pantalla sin salida el único día que importa. */}
+      {empresas.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <button type="button" className="btn btn-ghost" style={{ fontSize: 12 }}
+            onClick={() => setVerCuentas(v => !v)}>
+            📧 {inventario.length} cuentas registradas
+            {mudas.length > 0 && (
+              <span style={{ color: "var(--yellow)" }}> · {mudas.length} nunca trajeron nada</span>
+            )}
+            <span style={{ color: "var(--dim)" }}> {verCuentas ? "▾" : "▸"}</span>
+          </button>
+
+          {verCuentas && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 8 }}>
+              {/* El alta, aquí y no en la ficha de la empresa: este es el sitio
+                  donde se NOTA que una cuenta falta —la lista de al lado dice
+                  cuáles hay y las tarjetas de arriba cuáles se echan de menos—,
+                  y mandar a buscar la ficha desde aquí perdía el hallazgo por
+                  el camino. Lo que escribe es exactamente una credencial de
+                  Gmail de esa empresa: lo mismo que la ficha, sin el viaje. */}
+              <div className="card" style={{ display: "flex", gap: 8, flexWrap: "wrap",
+                alignItems: "center", background: "var(--bg)" }}>
+                <input type="email" placeholder="cuenta@gmail.com" value={nueva.correo}
+                  onChange={e => setNueva({ ...nueva, correo: e.target.value })}
+                  style={{ background: "var(--card)", border: "1px solid var(--border)",
+                    borderRadius: 8, padding: "6px 10px", fontSize: 12, outline: "none", minWidth: 220 }} />
+                <select value={nueva.empresaId}
+                  onChange={e => setNueva({ ...nueva, empresaId: e.target.value })}
+                  className="btn btn-ghost" style={{ fontSize: 12, maxWidth: 260 }}>
+                  <option value="">— ¿de qué empresa es? —</option>
+                  {empresas.map(e => (
+                    <option key={e.id} value={e.id}>{e.vivas > 0 ? "● " : "○ "}{e.nombre}</option>
+                  ))}
+                </select>
+                <button type="button" className="btn" style={{ fontSize: 12, padding: "6px 12px" }}
+                  disabled={pend || !nueva.correo.trim() || !nueva.empresaId}
+                  onClick={darDeAlta}>
+                  ＋ dar de alta
+                </button>
+                <span style={{ color: "var(--dim)", fontSize: 11 }}>
+                  Queda como credencial de Gmail de esa empresa — la misma que se ve en su ficha.
+                </span>
+              </div>
+
+              {inventario.map(c => {
+                const d = diasDesde(c.ultimo);
+                return (
+                  <div key={c.correo} className="card"
+                    style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap", fontSize: 12 }}>
+                    <span style={{ fontWeight: 600, minWidth: 230 }}>{c.correo}</span>
+                    <Link href={`/entidad/empresa/${c.empresaId}`} style={{ color: "var(--dim)", fontSize: 11.5 }}>
+                      🏢 {c.empresa || "empresa sin nombre"}
+                    </Link>
+                    <span style={{ color: "var(--dim)", fontSize: 11 }}>
+                      {c.vivas === 0 ? "sin postulaciones vivas"
+                        : `${c.vivas} postulación${c.vivas === 1 ? "" : "es"} viva${c.vivas === 1 ? "" : "s"}`}
+                    </span>
+                    <span className="spacer" style={{ flex: 1 }} />
+                    {c.esBuzon ? (
+                      /* «Registrada» no es «funcionando»: el maestro se descarta
+                         al deducir de quién era un correo. Sin este aviso, verlo
+                         en la lista invita a la conclusión contraria. */
+                      <span style={{ color: "var(--dim)", fontSize: 11 }}
+                        title="Es el buzón maestro. La ingesta lo descarta al deducir de quién era el correo, porque el reenvío lo agrega a todos los destinatarios.">
+                        📮 buzón maestro · no deduce empresa
+                      </span>
+                    ) : c.total === 0 ? (
+                      <span style={{ color: "var(--yellow)", fontSize: 11.5 }}
+                        title="Ningún correo ha entrado por esta cuenta. Si ya postuló, lo más probable es que le falte activar el reenvío al buzón maestro.">
+                        ⚠ nunca trajo nada — ¿reenvío sin activar?
+                      </span>
+                    ) : (
+                      <span style={{ color: "var(--teal)", fontSize: 11.5 }}>
+                        {c.total} correo{c.total === 1 ? "" : "s"} · último {d === 0 ? "hoy" : `hace ${d} d`}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       )}
 
       <h2 style={{ fontSize: 13, color: "var(--dim)", margin: "0 0 8px", letterSpacing: .5 }}>

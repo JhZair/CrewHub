@@ -2849,6 +2849,59 @@ export async function agregarCredencial(
   return {};
 }
 
+/* ── UNA CUENTA DE CORREO PARA LA CASILLA DAFO ──
+ *
+ * La casilla vincula un correo a su postulación por dos vías: el código en el
+ * asunto, y —cuando no viene— la CUENTA que lo recibió. Esa segunda vía
+ * necesita saber de qué empresa es cada Gmail, y ese dato ya vive en
+ * `credenciales`: cada cuenta colgada de su empresa. Una tabla nueva sería el
+ * mismo dato en dos sitios, y el día que se contradigan nadie sabrá cuál vale.
+ *
+ * Así que esto no inventa nada: escribe una credencial de Gmail, igual que si
+ * se hubiera registrado desde la ficha de la empresa. Lo único que añade es la
+ * puerta —poder darlas de alta desde donde se nota que faltan— y el rechazo de
+ * duplicados: dos filas con el mismo correo y empresas distintas harían que la
+ * vía de la cuenta apunte a una u otra según el orden en que vuelvan.
+ */
+export async function registrarCuentaDafo(email: string, empresaId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  const correo = String(email || "").trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) return { error: "Eso no parece un correo." };
+  if (!empresaId) return { error: "Falta decir de qué empresa es la cuenta." };
+
+  /* Ya registrada: se dice CON QUIÉN está, no un «ya existe» a secas. Quien
+     intenta darla de alta dos veces normalmente cree que está en otra
+     empresa, y esa es la información que resuelve la duda. */
+  const { data: yaRaw } = await supabase.from("credenciales")
+    .select("id,empresa_id,emp:empresas(nombre)").ilike("identificador", correo);
+  const ya = (yaRaw || []).find((r: any) => r.empresa_id);
+  if (ya) {
+    const e = Array.isArray((ya as any).emp) ? (ya as any).emp[0] : (ya as any).emp;
+    return ya.empresa_id === empresaId
+      ? { error: `«${correo}» ya estaba registrada en ${e?.nombre || "esa empresa"}.` }
+      : { error: `«${correo}» ya está registrada en ${e?.nombre || "otra empresa"}. Cámbiala desde la ficha de esa empresa antes de moverla.` };
+  }
+
+  const { error } = await supabase.from("credenciales").insert({
+    empresa_id: empresaId,
+    plataforma: "Gmail",
+    identificador: correo,
+    actualizado_en: hoyLima(),
+  });
+  if (error) return { error: error.message };
+
+  await supabase.from("actividad").insert({
+    entidad_tipo: "empresa", entidad_id: empresaId, actor_id: user.id, tipo: "dato",
+    detalle: { mensaje: `conectó la cuenta «${correo}» a la casilla DAFO` },
+  });
+  revalidatePath("/casilla");
+  revalidatePath(`/entidad/empresa/${empresaId}`);
+  return {};
+}
+
 export async function editarCredencial(
   id: string, dueno: string, duenoId: string,
   plataforma: string, identificador: string, ubicacion: string, notas: string,
