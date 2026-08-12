@@ -37,7 +37,10 @@ export default function MuroAvisos({ avisos, id, titulo = "📢 Avisos", abierto
 
   if (!avisos.length) return null;
   return (
-    <section className={`muro ${abierto ? "on" : ""}`}>
+    /* `muro-avisos` y no `muro`: esa clase la usaba TAMBIEN el muro de notas
+       de una ficha (components/MuroProyecto), y como esta regla va despues en
+       la hoja, su marco violeta se pintaba alrededor de aquel muro entero. */
+    <section className={`muro-avisos ${abierto ? "on" : ""}`}>
       <button className="muro-h" onClick={alternar} aria-expanded={abierto}
         title={abierto ? "Plegar avisos" : "Ver avisos"}>
         <span className="plg-flecha">{abierto ? "▾" : "▸"}</span>

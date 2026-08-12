@@ -206,6 +206,16 @@ export default function MuroProyecto({ proyectoId, userId, perfiles, sugerencias
         </div>
       )}
 
+      {/* LA RAYA ENTRE «ESCRIBIR» Y «LO ESCRITO». Sin ella la pestaña es una
+          columna continua de tarjetas: se baja, se ve una caja de escribir al
+          pie del último post —la de comentar— y ahí acaba una nota nueva
+          convertida en comentario de algo de hace una semana. */}
+      {feed.length > 0 && (
+        <div className="muro-hilo-h">
+          {feed.length} publicación{feed.length === 1 ? "" : "es"}
+        </div>
+      )}
+
       {/* Línea de tiempo: notas + material del repositorio, por orden de llegada */}
       {feed.length === 0 && (
         <div className="empty" style={{ padding: "22px 0" }}>
@@ -273,8 +283,14 @@ export default function MuroProyecto({ proyectoId, userId, perfiles, sugerencias
             <Reacciones pubId={p.id} reacciones={p.reacciones} userId={userId} />
           </div>
 
-          {/* Comentarios */}
+          {/* Comentarios — sangrados y rotulados: lo que se escriba aquí
+              cuelga de ESTA nota, no del muro. */}
           <div className="muro-coments">
+            <div className="muro-coments-h">
+              {p.comentarios.length
+                ? `${p.comentarios.length} comentario${p.comentarios.length === 1 ? "" : "s"} en esta nota`
+                : "Comentar esta nota"}
+            </div>
             {p.comentarios.map(c => (
               <div key={c.id} className="muro-coment">
                 <Avatar nombre={c.autor?.nombre} color={c.autor?.color} size={26} src={c.autor?.avatar_url} />
@@ -288,7 +304,8 @@ export default function MuroProyecto({ proyectoId, userId, perfiles, sugerencias
                 </div>
               </div>
             ))}
-            <CajaComentario pubId={p.id} perfiles={perfiles} onSent={() => router.refresh()} />
+            <CajaComentario pubId={p.id} perfiles={perfiles} deQuien={p.autor?.nombre}
+              onSent={() => router.refresh()} />
           </div>
         </div>
       ); })())}
@@ -425,7 +442,12 @@ function EditorNota({ post, proyectoId, entidadTipo = "proyecto", perfiles, suge
 
 /* Caja para comentar una nota del muro. Mismo motor (`comentar`) y mismas
    menciones que en un caso — solo más compacta. */
-function CajaComentario({ pubId, perfiles, onSent }: { pubId: string; perfiles: Perfil[]; onSent: () => void }) {
+function CajaComentario({ pubId, perfiles, deQuien, onSent }: {
+  pubId: string; perfiles: Perfil[];
+  /** Autor de la nota que se comenta: va en el marcador de posición. */
+  deQuien?: string | null;
+  onSent: () => void;
+}) {
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
   const { candidatos, aplicar } = menciones(texto, perfiles);
@@ -440,7 +462,12 @@ function CajaComentario({ pubId, perfiles, onSent }: { pubId: string; perfiles: 
   return (
     <div className="muro-caja" style={{ position: "relative" }}>
       <MencionesMenu candidatos={candidatos} onElegir={n => setTexto(aplicar(n))} />
-      <input value={texto} placeholder="Comentar… (@nombre para invocar)"
+      {/* El marcador de posición DICE a quién se le responde. «Comentar…» a
+          secas se lee igual que «Comparte una nota…» de arriba; con el nombre
+          del autor delante, escribir aquí una publicación nueva ya no es un
+          descuido posible. */}
+      <input value={texto}
+        placeholder={deQuien ? `Responder a ${deQuien}… (@nombre para invocar)` : "Comentar esta nota…"}
         onChange={e => setTexto(e.target.value)}
         onKeyDown={e => {
           if (e.key === "Enter") {

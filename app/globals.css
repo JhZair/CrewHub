@@ -101,7 +101,19 @@ a{color:inherit;text-decoration:none}
 
 /* ===== MURO DEL PROYECTO (bitácora) ===== */
 .muro{display:flex;flex-direction:column;gap:14px}
-.muro-composer{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px}
+/* AQUI SE PUBLICA. Con el mismo borde gris que una nota, el compositor era
+   una tarjeta mas de la columna: la gente bajaba, veia una caja de escribir
+   al pie del ultimo post —la de comentar— y escribia ahi su nota nueva.
+   Ahora lleva el acento violeta de todo lo que CREA algo en esta aplicacion
+   (ver `.composer`), y las notas se quedan en gris. Dos cosas distintas se
+   ven distintas. */
+.muro-composer{background:linear-gradient(180deg,rgba(124,92,255,.06),transparent 120px),var(--card);
+  border:1px solid rgba(124,92,255,.42);border-radius:14px;padding:12px}
+/* La raya que separa «escribir» de «lo escrito». Sin ella las dos zonas son
+   una columna continua de tarjetas y no hay donde acabe una y empiece otra. */
+.muro-hilo-h{display:flex;align-items:center;gap:9px;margin:2px 2px -4px;
+  font-size:10.5px;letter-spacing:.9px;text-transform:uppercase;color:var(--dim);font-weight:700}
+.muro-hilo-h::after{content:"";flex:1;height:1px;background:var(--border)}
 .muro-textarea{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:10px 14px;font-size:14.5px;color:var(--text);outline:none;resize:vertical;line-height:1.6;font-family:inherit}
 .muro-textarea:focus{border-color:var(--accent)}
 .muro-tagsel{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:9px}
@@ -221,10 +233,17 @@ a{color:inherit;text-decoration:none}
 .muro-cuerpo{margin-top:10px;white-space:pre-wrap;word-break:break-word;font-size:14.5px;line-height:1.6;color:var(--text)}
 .muro-post-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .muro-post-pie{margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
-.muro-coments{margin-top:10px;display:flex;flex-direction:column;gap:10px}
+/* LOS COMENTARIOS VAN DENTRO DE LA NOTA, Y SE VE. Sangrados y con una barra
+   a la izquierda: al pie de un post, una caja de escribir a todo el ancho es
+   indistinguible del compositor de arriba, y ahi es donde acababan las notas
+   nuevas convertidas en comentario de un post de hace una semana. */
+.muro-coments{margin-top:10px;display:flex;flex-direction:column;gap:10px;
+  padding:9px 0 2px 12px;border-left:2px solid var(--border2)}
+.muro-coments-h{font-size:10px;letter-spacing:.7px;text-transform:uppercase;
+  color:var(--dim);font-weight:700}
 .muro-coment{display:flex;gap:9px;align-items:flex-start}
 .muro-caja{display:flex;gap:8px;align-items:center;margin-top:2px}
-.muro-caja-input{flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);border-radius:999px;padding:8px 14px;font-size:13.5px;color:var(--text);outline:none}
+.muro-caja-input{flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);border-radius:999px;padding:6px 13px;font-size:12.5px;color:var(--text);outline:none}
 .muro-caja-input:focus{border-color:var(--accent)}
 /* Banner del PROYECTO al tope del carné de una postulación: se ve de un vistazo
    quién compite. Portada como fondo, cartel encima, nombre + tipo sobre un velo
@@ -2400,10 +2419,17 @@ img.av{border:1px solid var(--border2)}
 /* Encabezado de coincidencias en cerradas (al buscar). */
 .cf-cerr-h{color:var(--muted);font-size:12.5px;font-weight:700;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border)}
 
-/* ── Muro de avisos ── (los avisos rigen, no se resuelven: pared propia) */
-.muro{border:1px solid rgba(124,92,255,.32);background:rgba(124,92,255,.06);border-radius:14px;padding:12px 14px;margin-bottom:18px}
+/* ── Muro de avisos ── (los avisos rigen, no se resuelven: pared propia)
+   SE LLAMABA `.muro`, Y ESE NOMBRE YA ERA DE OTRO. El muro de notas de una
+   ficha (components/MuroProyecto) usa `.muro` para su raiz —composer arriba,
+   linea de tiempo debajo— y esta regla, por ir despues en la hoja, le pintaba
+   ENCIMA su marco violeta: una caja que envolvia el compositor y las notas
+   juntos, como si fueran una sola cosa. De ahi salia media confusion de
+   escribir una nota nueva dentro de un post viejo. Nadie decidio ese marco;
+   lo puso una colision de nombres. */
+.muro-avisos{border:1px solid rgba(124,92,255,.32);background:rgba(124,92,255,.06);border-radius:14px;padding:12px 14px;margin-bottom:18px}
 .muro-h{display:flex;align-items:center;gap:8px;margin-bottom:0;flex-wrap:wrap;width:100%;background:none;border:none;cursor:pointer;text-align:left;padding:0}
-.muro.on .muro-h{margin-bottom:10px}
+.muro-avisos.on .muro-h{margin-bottom:10px}
 .muro-h .plg-flecha{flex:none;width:11px;font-size:10px;color:var(--violet)}
 .muro-tit{font-size:13.5px;font-weight:800;color:var(--violet);letter-spacing:.3px}
 .muro-n{background:rgba(124,92,255,.22);color:var(--violet);border-radius:999px;padding:1px 9px;font-size:11.5px;font-weight:700}
