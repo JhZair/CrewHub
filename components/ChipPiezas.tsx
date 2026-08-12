@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { txtEstadoEq, colorEstadoEq } from "@/lib/estadosEquipo";
 
@@ -38,24 +38,44 @@ export type PiezaMontada = {
  * que el pop-up se quedaba clavado en pantalla mientras la lista se movía
  * debajo — apuntando a una fila que ya no estaba ahí.
  *
- * ── Y NUNCA MÁS ALTO QUE LA VENTANA ──
- * Nueve baterías no caben en un portátil. Se elige el lado con más sitio, se
- * limita el alto a lo que hay y la lista se desplaza por dentro. Antes se
- * estimaban 40 px por fila cuando cada una mide 68 —la miniatura sola son
- * 60—, así que «cabe debajo» daba que sí para algo que sobresalía media
- * pantalla: salía cortado por el borde inferior y las últimas piezas no
- * existían para quien miraba. El alto se CALCULA mal por definición (depende
- * de la fuente y del zoom); por eso el tope no depende de que la cuenta salga
- * bien: aunque sobre o falte, la lista se desplaza y todas las piezas se
- * alcanzan.
+ * ── EL ALTO NO SE ESTIMA: SE MIDE ──
+ * Nueve baterías no caben en un portátil, así que hace falta un tope. Pero la
+ * altura de una fila NO se puede calcular: depende de la fuente, del zoom y
+ * de si un nombre parte en dos líneas. Se intentó dos veces —40 px por fila,
+ * luego 68— y las dos salieron mal, cada una hacia un lado: con 40 el pop-up
+ * sobresalía media pantalla y se cortaba por abajo; con 68 se abría a la
+ * altura entera disponible y aparecía una barra de desplazamiento para las
+ * dos filas que faltaban, en un hueco donde sí habrían cabido.
+ *
+ * Así que se pinta primero con el máximo que hay, se MIDE lo que ocupó de
+ * verdad y se encoge a eso. En `useLayoutEffect`, antes de que el navegador
+ * pinte: no hay parpadeo. El resultado es que la barra aparece SOLO cuando
+ * de verdad no cabe, que es lo único que la justifica.
  */
 export default function ChipPiezas({ piezas, titulo = "Va armado: lleva piezas montadas dentro" }: {
   piezas: PiezaMontada[];
   titulo?: string;
 }) {
-  const [pos, setPos] = useState<{ top: number; left: number; alto: number } | null>(null);
+  /* `hueco` es lo que se decidió al abrir: de qué lado y cuánto sitio hay.
+     `alto` es lo que ocupa de verdad, medido después de pintar. */
+  const [hueco, setHueco] = useState<
+    { left: number; dispo: number; arriba: boolean; aTop: number; aBottom: number } | null>(null);
+  const [alto, setAlto] = useState<number | null>(null);
   const btn = useRef<HTMLButtonElement>(null);
-  const abierto = !!pos;
+  const pop = useRef<HTMLSpanElement>(null);
+  const lista = useRef<HTMLSpanElement>(null);
+  const abierto = !!hueco;
+  const cerrar = () => { setHueco(null); setAlto(null); };
+
+  /* MEDIR Y ENCOGER. `scrollHeight` de la lista es lo que el contenido ocupa
+     entero, aunque esté recortado; el resto de la caja —cabecera y relleno—
+     es la diferencia entre lo que mide el pop-up y lo que se ve de la lista.
+     Sumados dan el alto real, y de ahí se coge el menor con lo disponible. */
+  useLayoutEffect(() => {
+    if (!hueco || !pop.current || !lista.current) return;
+    const marco = pop.current.offsetHeight - lista.current.clientHeight;
+    setAlto(Math.min(lista.current.scrollHeight + marco, hueco.dispo));
+  }, [hueco]);
 
   /* Cerrar al mover la página o cambiar su tamaño: el pop-up está anclado a
      una coordenada de PANTALLA, y en cuanto algo se mueve esa coordenada deja
@@ -63,8 +83,8 @@ export default function ChipPiezas({ piezas, titulo = "Va armado: lleva piezas m
      no burbujea hasta window. Y Escape, que es lo que uno pulsa. */
   useEffect(() => {
     if (!abierto) return;
-    const fuera = () => setPos(null);
-    const tecla = (ev: KeyboardEvent) => { if (ev.key === "Escape") setPos(null); };
+    const fuera = () => cerrar();
+    const tecla = (ev: KeyboardEvent) => { if (ev.key === "Escape") cerrar(); };
     window.addEventListener("scroll", fuera, true);
     window.addEventListener("resize", fuera);
     window.addEventListener("keydown", tecla);
@@ -79,10 +99,6 @@ export default function ChipPiezas({ piezas, titulo = "Va armado: lleva piezas m
 
   const ANCHO = 300;
   const MARGEN = 12;
-  /* 68 px por fila —la miniatura son 60 más su relleno— y 34 de cabecera.
-     Es una ESTIMACIÓN para decidir de qué lado abrir; el que la lista quepa
-     no depende de que acierte. */
-  const necesita = 34 + piezas.length * 68;
 
   function abrir() {
     const r = btn.current?.getBoundingClientRect();
@@ -92,20 +108,24 @@ export default function ChipPiezas({ piezas, titulo = "Va armado: lleva piezas m
     const left = Math.max(8, Math.min(r.right - ANCHO, window.innerWidth - ANCHO - 8));
     const debajo = window.innerHeight - r.bottom - MARGEN;
     const encima = r.top - MARGEN;
-    if (necesita <= debajo) return setPos({ top: r.bottom + 5, left, alto: necesita });
-    if (necesita <= encima) return setPos({ top: r.top - necesita - 5, left, alto: necesita });
-    /* No cabe entero por ningún lado: se usa el lado más grande y la lista se
-       desplaza por dentro. Recortar en silencio sería peor —las piezas que
-       faltan no se echan en falta hasta el rodaje. */
-    if (debajo >= encima) return setPos({ top: r.bottom + 5, left, alto: debajo });
-    setPos({ top: MARGEN, left, alto: encima });
+    /* Solo se elige el LADO —el que tenga más sitio—. Cuánto ocupa de verdad
+       se sabe una línea más tarde, midiéndolo. */
+    const arriba = encima > debajo;
+    setHueco({ left, arriba, dispo: arriba ? encima : debajo, aTop: r.top, aBottom: r.bottom });
   }
+
+  /* Mientras no se ha medido se pinta con todo el hueco: así el navegador
+     puede decir cuánto ocuparía. Ese primer pintado no llega a verse. */
+  const altoAhora = alto ?? hueco?.dispo ?? 0;
+  const topAhora = hueco
+    ? (hueco.arriba ? Math.max(MARGEN, hueco.aTop - altoAhora - 5) : hueco.aBottom + 5)
+    : 0;
 
   return (
     <span className="ens-chip-wrap">
       <button type="button" ref={btn} className="ens-marca ens-marca-btn" title={titulo}
         aria-expanded={abierto}
-        onClick={e => { e.preventDefault(); e.stopPropagation(); abierto ? setPos(null) : abrir(); }}>
+        onClick={e => { e.preventDefault(); e.stopPropagation(); abierto ? cerrar() : abrir(); }}>
         🔩 {piezas.length} pieza{piezas.length === 1 ? "" : "s"}
       </button>
 
@@ -115,18 +135,18 @@ export default function ChipPiezas({ piezas, titulo = "Va armado: lleva piezas m
               pop-up está anclado a una posición de pantalla que deja de ser la
               del botón en cuanto la lista se mueve. */}
           <span className="ens-tapa"
-            onClick={e => { e.preventDefault(); e.stopPropagation(); setPos(null); }} />
-          <span className="ens-pop"
-            style={{ top: pos!.top, left: pos!.left, width: ANCHO, maxHeight: pos!.alto }}
+            onClick={e => { e.preventDefault(); e.stopPropagation(); cerrar(); }} />
+          <span className="ens-pop" ref={pop}
+            style={{ top: topAhora, left: hueco!.left, width: ANCHO, maxHeight: altoAhora }}
             onClick={e => { e.preventDefault(); e.stopPropagation(); }}>
             {/* La cabecera NO se desplaza: es donde está la ✕, y con nueve
                 piezas desplazadas hacia abajo el botón de cerrar se iba de la
                 vista justo cuando hace falta. */}
             <span className="ens-pop-h">
               🔩 Va con {piezas.length} pieza{piezas.length === 1 ? "" : "s"} montada{piezas.length === 1 ? "" : "s"}
-              <button type="button" className="ens-pop-x" onClick={() => setPos(null)} title="Cerrar">✕</button>
+              <button type="button" className="ens-pop-x" onClick={cerrar} title="Cerrar">✕</button>
             </span>
-            <span className="ens-pop-lista">
+            <span className="ens-pop-lista" ref={lista}>
             {piezas.map(p => (
               <Link key={p.id} href={`/entidad/equipamiento/${p.id}`} className="ens-pop-fila">
                 <span className="kit-pz-img">
