@@ -1843,11 +1843,13 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(.65);cursor:
    decoracion de cada pantalla.
    Se prende al pasar el cursor por la tarjeta del concurso, que es donde vive:
    apagado no es escondido, y el equipo de una no apta sigue siendo consultable. */
-/* El nombre del concurso, en mayusculas como su codigo: los dos juntos son
-   UN identificador, y con una mitad en versalitas y la otra en texto
-   corriente se leia como dos cosas pegadas. Un pelo de letter-spacing
-   porque en mayusculas las letras se rozan. */
-.conv-nombre{color:var(--text);font-size:13px;text-transform:uppercase;letter-spacing:.4px}
+/* El nombre del concurso, en mayusculas Y en negrita como su codigo: los dos
+   juntos son UN identificador, y con una mitad en versalitas gruesas y la otra
+   en texto corriente se leia como dos cosas pegadas. El codigo sigue un punto
+   y medio mas grande, que es lo que mantiene el orden de lectura: primero
+   cual, luego cual de ellos. Un pelo de letter-spacing porque en mayusculas
+   las letras se rozan. */
+.conv-nombre{color:var(--text);font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}
 .conv-post-off{opacity:.5;filter:saturate(.55);transition:opacity .15s ease,filter .15s ease}
 .card.link:hover .conv-post-off{opacity:1;filter:none}
 /* Equipo que postula: fila de solo-avatares (nombre al hover vía title). */
