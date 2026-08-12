@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { txtEstadoEq, colorEstadoEq } from "@/lib/estadosEquipo";
 
@@ -32,30 +32,73 @@ export type PiezaMontada = {
  * se mide el botón al abrir y se coloca debajo, corrigiendo si se saldría por
  * el borde derecho o por abajo.
  * Se cierra al hacer scroll en vez de perseguir al botón: un pop-up que sigue
- * a su fila mientras la lista se mueve es peor que uno que se va.
+ * a su fila mientras la lista se mueve es peor que uno que se va. Y el cierre
+ * escucha el scroll de TODA la página en captura, no la rueda sobre una capa:
+ * con el puntero encima del propio pop-up la rueda no llegaba a esa capa, así
+ * que el pop-up se quedaba clavado en pantalla mientras la lista se movía
+ * debajo — apuntando a una fila que ya no estaba ahí.
+ *
+ * ── Y NUNCA MÁS ALTO QUE LA VENTANA ──
+ * Nueve baterías no caben en un portátil. Se elige el lado con más sitio, se
+ * limita el alto a lo que hay y la lista se desplaza por dentro. Antes se
+ * estimaban 40 px por fila cuando cada una mide 68 —la miniatura sola son
+ * 60—, así que «cabe debajo» daba que sí para algo que sobresalía media
+ * pantalla: salía cortado por el borde inferior y las últimas piezas no
+ * existían para quien miraba. El alto se CALCULA mal por definición (depende
+ * de la fuente y del zoom); por eso el tope no depende de que la cuenta salga
+ * bien: aunque sobre o falte, la lista se desplaza y todas las piezas se
+ * alcanzan.
  */
 export default function ChipPiezas({ piezas, titulo = "Va armado: lleva piezas montadas dentro" }: {
   piezas: PiezaMontada[];
   titulo?: string;
 }) {
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const [pos, setPos] = useState<{ top: number; left: number; alto: number } | null>(null);
   const btn = useRef<HTMLButtonElement>(null);
   const abierto = !!pos;
+
+  /* Cerrar al mover la página o cambiar su tamaño: el pop-up está anclado a
+     una coordenada de PANTALLA, y en cuanto algo se mueve esa coordenada deja
+     de ser la del botón. `capture` porque el scroll de un contenedor interno
+     no burbujea hasta window. Y Escape, que es lo que uno pulsa. */
+  useEffect(() => {
+    if (!abierto) return;
+    const fuera = () => setPos(null);
+    const tecla = (ev: KeyboardEvent) => { if (ev.key === "Escape") setPos(null); };
+    window.addEventListener("scroll", fuera, true);
+    window.addEventListener("resize", fuera);
+    window.addEventListener("keydown", tecla);
+    return () => {
+      window.removeEventListener("scroll", fuera, true);
+      window.removeEventListener("resize", fuera);
+      window.removeEventListener("keydown", tecla);
+    };
+  }, [abierto]);
+
   if (!piezas.length) return null;
 
   const ANCHO = 300;
-  const alto = 44 + piezas.length * 40;
+  const MARGEN = 12;
+  /* 68 px por fila —la miniatura son 60 más su relleno— y 34 de cabecera.
+     Es una ESTIMACIÓN para decidir de qué lado abrir; el que la lista quepa
+     no depende de que acierte. */
+  const necesita = 34 + piezas.length * 68;
 
   function abrir() {
     const r = btn.current?.getBoundingClientRect();
     if (!r) return;
     /* Alineado por la DERECHA del botón, que es donde suele estar el borde de
-       la lista; y si aun así se saldría, se empuja hacia dentro. Igual por
-       abajo: si no cabe, se abre hacia arriba. */
+       la lista; y si aun así se saldría, se empuja hacia dentro. */
     const left = Math.max(8, Math.min(r.right - ANCHO, window.innerWidth - ANCHO - 8));
-    const cabeDebajo = r.bottom + alto + 8 < window.innerHeight;
-    const top = cabeDebajo ? r.bottom + 5 : Math.max(8, r.top - alto - 5);
-    setPos({ top, left });
+    const debajo = window.innerHeight - r.bottom - MARGEN;
+    const encima = r.top - MARGEN;
+    if (necesita <= debajo) return setPos({ top: r.bottom + 5, left, alto: necesita });
+    if (necesita <= encima) return setPos({ top: r.top - necesita - 5, left, alto: necesita });
+    /* No cabe entero por ningún lado: se usa el lado más grande y la lista se
+       desplaza por dentro. Recortar en silencio sería peor —las piezas que
+       faltan no se echan en falta hasta el rodaje. */
+    if (debajo >= encima) return setPos({ top: r.bottom + 5, left, alto: debajo });
+    setPos({ top: MARGEN, left, alto: encima });
   }
 
   return (
@@ -72,14 +115,18 @@ export default function ChipPiezas({ piezas, titulo = "Va armado: lleva piezas m
               pop-up está anclado a una posición de pantalla que deja de ser la
               del botón en cuanto la lista se mueve. */}
           <span className="ens-tapa"
-            onClick={e => { e.preventDefault(); e.stopPropagation(); setPos(null); }}
-            onWheel={() => setPos(null)} />
-          <span className="ens-pop" style={{ top: pos!.top, left: pos!.left, width: ANCHO }}
+            onClick={e => { e.preventDefault(); e.stopPropagation(); setPos(null); }} />
+          <span className="ens-pop"
+            style={{ top: pos!.top, left: pos!.left, width: ANCHO, maxHeight: pos!.alto }}
             onClick={e => { e.preventDefault(); e.stopPropagation(); }}>
+            {/* La cabecera NO se desplaza: es donde está la ✕, y con nueve
+                piezas desplazadas hacia abajo el botón de cerrar se iba de la
+                vista justo cuando hace falta. */}
             <span className="ens-pop-h">
               🔩 Va con {piezas.length} pieza{piezas.length === 1 ? "" : "s"} montada{piezas.length === 1 ? "" : "s"}
               <button type="button" className="ens-pop-x" onClick={() => setPos(null)} title="Cerrar">✕</button>
             </span>
+            <span className="ens-pop-lista">
             {piezas.map(p => (
               <Link key={p.id} href={`/entidad/equipamiento/${p.id}`} className="ens-pop-fila">
                 <span className="kit-pz-img">
@@ -101,6 +148,7 @@ export default function ChipPiezas({ piezas, titulo = "Va armado: lleva piezas m
                 )}
               </Link>
             ))}
+            </span>
           </span>
         </>
       )}
