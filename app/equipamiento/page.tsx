@@ -573,8 +573,15 @@ export default async function Equipamiento({ searchParams }: {
             </div>
 
             <BotonComprobar equipoId={x.id} ultima={x.ultima_comprobacion} compacto={!ronda} />
+            {/* CON NOMBRE. «Asignado» a secas obliga a abrir la ficha para
+                saber a quién —y en una lista de cuatro monitores, tres
+                asignados, esa es LA pregunta—. Lo mismo con «En uso»: el
+                estado dice que no está, el nombre dice a quién llamar.
+                El nombre sale de `quienTiene`, que ya se calculaba para los
+                kits: el dato estaba, no lo leía esta fila. */}
             <span className="badge eqx-estado" style={{ color: metaEstado(x.estado).color }}>
               {metaEstado(x.estado).txt}
+              {quienTiene.get(x.id) && <span className="eqx-estado-quien"> · {quienTiene.get(x.id)}</span>}
             </span>
           </div>
 

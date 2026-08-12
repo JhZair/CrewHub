@@ -3524,6 +3524,11 @@ button.repo-tit{text-align:left}
 .eqx-precio-combo{color:var(--dim);font-style:italic;white-space:nowrap}
 .eqx-sin-precio{color:var(--yellow);white-space:nowrap}
 .eqx-estado{background:#1c1c2c;font-size:10.5px;flex:none;white-space:nowrap}
+/* Quien lo tiene, dentro de la misma pastilla del estado y en su mismo color:
+   son un solo hecho —«asignado, y a Michel»— y separarlos en dos etiquetas
+   los haria competir. Un punto menos de peso para que el estado siga
+   leyendose primero. */
+.eqx-estado-quien{font-weight:600;opacity:.82}
 @media (max-width:620px){
   .eqx-nom{white-space:normal}
 }
