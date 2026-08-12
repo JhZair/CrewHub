@@ -2907,7 +2907,10 @@ button.repo-tit{text-align:left}
   color:var(--dim);font-size:11px;margin:3px 0 0 2px}
 .kit-ctx-val{color:var(--teal);font-weight:700}
 .kit-ctx-quien{color:var(--dano)}
-.kit-ctx-mont{color:var(--muted)}
+/* «+ 10 montadas» en la cabecera es la suma de los «🔩 N piezas» de abajo:
+   mismo hecho, mismo azul. Con dos colores distintos no se ve que el 10 sale
+   de sumar los chips. */
+.kit-ctx-mont{color:#7ba8f5}
 /* De que es lo que trajo un combo. Mismo gris que el resto de su linea: es un
    matiz del numero de unidades, no un dato aparte. */
 .cbo-cats{color:var(--dim)}
@@ -2924,10 +2927,20 @@ button.repo-tit{text-align:left}
    agrupar por combo si ayuda: ahi se busca entre doscientos, no se lee una
    lista de ocho.) */
 
-.ens-marca{color:var(--muted);background:rgba(255,255,255,.05);border-radius:20px;
+/* «🔩 3 piezas» — EL EQUIPO NO ES UNO, SON TRES ATORNILLADAS.
+   En gris sobre gris se leia como un detalle mas de la fila, del mismo peso
+   que la subcategoria, y es lo contrario: es lo que cambia cuanto se firma al
+   entregar y cuanto se cuenta al volver. Un kit de trece con cuatro
+   ensamblados son veintitres cosas fisicas, y eso hay que verlo sin buscarlo.
+   Azul y no violeta ni verde azulado: el violeta ya dice «kit» y el verde
+   azulado ya dice «precio» en esa misma segunda linea. Tres colores para tres
+   preguntas distintas, cada uno con un solo significado.
+   Tenue —fondo al 12 %— porque resalta, no alarma: que un equipo vaya armado
+   es un dato suyo, no un problema. */
+.ens-marca{color:#7ba8f5;background:rgba(59,130,246,.12);border-radius:20px;
   padding:1px 8px;font-size:10.5px;font-weight:600;white-space:nowrap;flex:none}
-.ens-marca-btn{border:1px solid transparent;cursor:pointer;font-family:inherit}
-.ens-marca-btn:hover{border-color:var(--border2);color:var(--text)}
+.ens-marca-btn{border:1px solid rgba(59,130,246,.22);cursor:pointer;font-family:inherit}
+.ens-marca-btn:hover{border-color:var(--blue);color:#a9c6f9;background:rgba(59,130,246,.2)}
 /* El pop-up de las piezas montadas. Se abre ENCIMA y no empuja la fila: la
    lista de entrega se lee comparando renglones, y que se muevan al abrir uno
    pierde el sitio donde ibas. */
