@@ -355,6 +355,13 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
      dos y duplicarían consultas para mover la barra un pelo. Esto es una
      silueta, no un parte contable — y por eso no lleva números. */
   const horasPorPersona: Record<string, number[]> = {};
+  /* Y la otra silueta: A QUÉ DÍA. La de horas dice si trabaja de mañana; esta
+     dice si el mes fue parejo o si se concentró en una semana — y si hubo
+     domingos. Son la misma pregunta en dos escalas, así que salen de las
+     MISMAS dos consultas: pedir el mes otra vez para contarlo distinto sería
+     arriesgar que un día los dos números no cuadren. */
+  const diasPorPersona: Record<string, number[]> = {};
+  const diasDelMesJ = new Date(jAnio, jMes + 1, 0).getDate();
   {
     const desdeL = `${jInicio}T00:00:00-05:00`;
     const hastaL = `${jFin}T00:00:00-05:00`;
@@ -372,9 +379,16 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
     const suma = (uid: string | null, at: string) => {
       const pid = uid ? personaDeUsuario.get(uid) : null;
       if (!pid || !at) return;
-      const h = Number(new Date(at).toLocaleString("en-GB", { hour: "2-digit", hour12: false, timeZone: "America/Lima" }));
-      if (Number.isNaN(h)) return;
+      /* Hora Y día, del mismo instante y en la misma zona. Calcularlos por
+         separado invitaría a que uno llevara zona y el otro no —el error que
+         ya nos corrió las fechas un día entero—. */
+      const enLima = new Date(at).toLocaleString("en-GB", {
+        day: "2-digit", hour: "2-digit", hour12: false, timeZone: "America/Lima" });
+      const h = Number(enLima.slice(-2));
+      const d = Number(enLima.slice(0, 2));
+      if (Number.isNaN(h) || Number.isNaN(d)) return;
       (horasPorPersona[pid] ||= Array(24).fill(0))[h]++;
+      (diasPorPersona[pid] ||= Array(diasDelMesJ).fill(0))[d - 1]++;
     };
     (hAct || []).forEach((x: any) => suma(x.actor_id, x.creado_en));
     (hCom || []).forEach((x: any) => suma(x.autor_id, x.creado_en));
@@ -674,7 +688,9 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
               rótulo que repite sus dos vecinos y que al cerrarse deja la
               pantalla vacía no es un control, es un estorbo. */}
           <BitacoraJornadas items={filasJornadas} esAdmin miPersonaId="" proyectos={proyectos || []}
-            porMes diasVacios plegable={false} horasPorPersona={horasPorPersona} />
+            porMes diasVacios plegable={false}
+            horasPorPersona={horasPorPersona} diasPorPersona={diasPorPersona}
+            mesFranja={jInicio} />
         </>
       );
 

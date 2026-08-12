@@ -132,7 +132,7 @@ const diasDelMes = (ym: string) => {
     `${a}-${String(m).padStart(2, "0")}-${String(i + 1).padStart(2, "0")}`);
 };
 
-export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId = "", proyectos = [], titulo = "🗒 Jornadas del mes", bloqueado = false, porMes = false, diasVacios = false, plegable = true, horasPorPersona }: {
+export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId = "", proyectos = [], titulo = "🗒 Jornadas del mes", bloqueado = false, porMes = false, diasVacios = false, plegable = true, horasPorPersona, diasPorPersona, mesFranja }: {
   items: any[]; esAdmin?: boolean; miPersonaId?: string; proyectos?: { id: string; nombre: string }[]; titulo?: string; bloqueado?: boolean;
   /** Subdivide cada persona por mes. Para listas que cruzan varios. */
   porMes?: boolean;
@@ -159,6 +159,13 @@ export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId =
    *  Llega calculada de fuera —dos consultas para todas las personas del mes—
    *  porque hacerla aquí serían tantas consultas como filas. */
   horasPorPersona?: Record<string, number[]>;
+  /** Y la otra escala: cuánto hizo cada día del mes. La de horas dice si
+   *  trabaja de mañana; ésta, si el mes fue parejo o se concentró en una
+   *  semana — y si hubo domingos, que al aprobar es lo que se mira. */
+  diasPorPersona?: Record<string, number[]>;
+  /** Primer día del mes de las franjas («2026-08-01»), para saber qué día de
+   *  la semana cae cada barra. */
+  mesFranja?: string;
 }) {
   const router = useRouter();
   const onChange = () => router.refresh();
@@ -242,18 +249,51 @@ export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId =
                 que esa persona no deja rastro en el sistema. */}
             {(() => {
               const hs = horasPorPersona?.[g.id];
-              if (!hs || !hs.some(n => n > 0)) return null;
-              const pico = Math.max(...hs);
-              const total = hs.reduce((a, b) => a + b, 0);
-              const top = hs.indexOf(pico);
-              return (
-                <div className="jr-horas" title={`${total} acciones en el sistema · más movimiento a las ${String(top).padStart(2, "0")}:00`}>
-                  {hs.map((n, h) => (
-                    <span key={h} className="jr-horas-c">
-                      <span className="jr-horas-b" style={{ height: `${(n / pico) * 100}%` }} />
+              const ds = diasPorPersona?.[g.id];
+              const hay = (a?: number[]) => !!a && a.some(n => n > 0);
+              if (!hay(hs) && !hay(ds)) return null;
+              const total = (hs || ds || []).reduce((a, b) => a + b, 0);
+              /* Las dos franjas se escalan CADA UNA a su propio pico. Con una
+                 escala común, la de días quedaría aplastada contra la de horas
+                 sin que eso signifique nada: no son la misma magnitud. */
+              const franja = (
+                datos: number[], ico: string, pie: string, rot: (i: number) => string,
+                esFin?: (i: number) => boolean,
+              ) => {
+                const pico = Math.max(...datos);
+                return (
+                  <div className="jr-franja">
+                    <span className="jr-franja-ico" aria-hidden>{ico}</span>
+                    <span className="jr-franja-barras">
+                      {datos.map((n, i) => (
+                        <span key={i} className="jr-franja-c" title={`${rot(i)} — ${n}`}>
+                          <span className={`jr-franja-b${esFin?.(i) ? " finde" : ""}`}
+                            style={{ height: `${(n / pico) * 100}%` }} />
+                        </span>
+                      ))}
                     </span>
-                  ))}
-                  <span className="jr-horas-pie">pico {String(top).padStart(2, "0")}:00</span>
+                    <span className="jr-franja-pie">{pie}</span>
+                  </div>
+                );
+              };
+              const dow = (dia: number) => {
+                const base = mesFranja || "";
+                const d = new Date(`${base.slice(0, 8)}${String(dia).padStart(2, "0")}T12:00:00`);
+                return d.getDay();
+              };
+              return (
+                <div className="jr-franjas" title={`${total} acciones en el sistema durante el mes`}>
+                  {hay(hs) && franja(hs!, "🕗",
+                    `pico ${String(hs!.indexOf(Math.max(...hs!))).padStart(2, "0")}:00`,
+                    i => `${String(i).padStart(2, "0")}:00`)}
+                  {/* Los fines de semana en violeta, como ya se pintan las
+                      fechas de fin de semana en las filas de abajo. Un pico en
+                      domingo es exactamente lo que se busca al aprobar, y en
+                      un solo color habría que contar barras para verlo. */}
+                  {hay(ds) && franja(ds!, "📅",
+                    `pico día ${ds!.indexOf(Math.max(...ds!)) + 1}`,
+                    i => `día ${i + 1}`,
+                    i => [0, 6].includes(dow(i + 1)))}
                 </div>
               );
             })()}
