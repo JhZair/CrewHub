@@ -175,14 +175,22 @@ export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId =
   const alternar = (id: string) =>
     setCerrados(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
+  /* CADA PERSONA, SU TARJETA. Antes había UNA tarjeta con todo dentro —el mes
+     entero, las cuatro personas, sus cuarenta filas— y aprobar es una decisión
+     por persona: «¿le corresponden a MichelM estas ocho jornadas?». Con las
+     cuatro en la misma caja, el marco de fuera agrupaba lo que no va junto y
+     no había nada separando lo que sí.
+     El plegable de arriba se queda —sin caja— porque en /jornadas es el fold
+     de «Detalle diario del mes», y ahí sirve: esconde treinta filas de un
+     tirón. Lo que se va es su borde, que era el que sobraba. */
   return (
-    <details className="card" style={{ marginTop: 14 }} open>
-      <summary style={{ cursor: "pointer", fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>
+    <details className="jr-todo" open>
+      <summary className="jr-todo-h">
         {titulo} · {items.length}{pend ? ` · ⏳ ${pend} por aprobar` : " · todas aprobadas ✅"}
       </summary>
       <div style={{ marginTop: 8 }}>
         {lista.map(g => (
-          <div key={g.id} className="jr-grupo">
+          <div key={g.id} className="jr-grupo card">
             <div className="jr-grupo-h">
               <button className="dato-btn jr-plegar"
                 title={cerrados.has(g.id) ? `Ver las jornadas de ${g.nombre}` : "Plegar"}
