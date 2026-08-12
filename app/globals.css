@@ -2878,10 +2878,21 @@ button.repo-tit{text-align:left}
    cuestan poco y contestan solo la pregunta «¿esto de que kit es?». */
 .kit-caja{border:1px solid var(--border);background:rgba(255,255,255,.012);
   padding:9px 11px 8px;margin-top:9px;border-radius:12px}
-/* El desplegado se destaca: es el que se esta mirando, y con once cajas
-   iguales hay que poder volver a el de un vistazo tras hacer scroll. */
-.kit-caja:has(.kit-piezas),.kit-caja:has(.kit-grupos){
-  border-color:var(--border2);background:rgba(167,139,250,.035)}
+/* EL KIT ABIERTO SE VE ABIERTO. Con once cajas iguales hay que poder volver
+   a la que estabas mirando de un vistazo tras hacer scroll.
+   Estaba al 3,5 % de violeta —invisible— y el :hover al 5 %, o sea que
+   pasar el raton por una caja CERRADA la dejaba mas encendida que la
+   abierta: el unico realce de la pantalla señalaba lo que no era.
+   Ahora: barra violeta a la izquierda, fondo al 9 % y borde violeta. La
+   barra es lo que de verdad se ve al hacer scroll —un fondo tenue se
+   confunde con el de al lado, una linea vertical no—.
+   Con CLASE y no con :has(): un navegador que no lo entienda descarta la
+   regla entera y el kit abierto se queda sin realce, fallando en silencio y
+   hacia el lado malo. */
+.kit-caja.abierto{border-color:var(--violet);background:rgba(167,139,250,.09);
+  box-shadow:inset 3px 0 0 var(--violet)}
+.kit-caja.abierto:hover{background:rgba(167,139,250,.13)}
+.kit-caja.abierto .kit-plegar b,.kit-caja.abierto .panel-flecha{color:var(--violet)}
 /* Se enciende al pasar por encima, como la fila del combo. No es adorno: es
    lo que dice que la fila entera responde —que ahi se puede plegar, entregar
    y editar— antes de que nadie pruebe a hacer clic. Los combos lo tenian y

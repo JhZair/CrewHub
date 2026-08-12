@@ -360,7 +360,10 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
                en la cabeza al buscarlo. */
             const caraKit = piezas.find(p => p.cartel)?.cartel || null;
             return (
-              <div key={k.id} className={`kit-caja${editandoEste ? " editando" : ""}`}>
+              /* `abierto` como CLASE y no `:has(.kit-piezas)`: el estado ya se
+                 sabe aqui, y un navegador sin :has() descarta la regla entera
+                 —el kit abierto se quedaria sin realce sin que nada falle—. */
+              <div key={k.id} className={`kit-caja${desplegado ? " abierto" : ""}${editandoEste ? " editando" : ""}`}>
                 <div className="kit-h">
                   <button className="kit-plegar" aria-expanded={desplegado}
                     onClick={() => alternaKit(k.id)}
