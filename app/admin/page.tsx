@@ -632,8 +632,12 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
             Al aprobar, la jornada entra al monto «a pagar». Puedes editar o borrar cualquiera —también
             una ya aprobada— mientras el mes de esa persona no esté confirmado ni liquidado.
           </p>
+          {/* Sin plegable: la pestaña ya es la sección, el mes ya está en el
+              título de arriba y el «por aprobar» al lado del navegador. Un
+              rótulo que repite sus dos vecinos y que al cerrarse deja la
+              pantalla vacía no es un control, es un estorbo. */}
           <BitacoraJornadas items={filasJornadas} esAdmin miPersonaId="" proyectos={proyectos || []}
-            titulo={`🗒 ${MESES[jMes]} ${jAnio}`} porMes diasVacios />
+            porMes diasVacios plegable={false} />
         </>
       );
 

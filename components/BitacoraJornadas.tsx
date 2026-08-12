@@ -118,7 +118,7 @@ const diasDelMes = (ym: string) => {
     `${a}-${String(m).padStart(2, "0")}-${String(i + 1).padStart(2, "0")}`);
 };
 
-export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId = "", proyectos = [], titulo = "🗒 Jornadas del mes", bloqueado = false, porMes = false, diasVacios = false }: {
+export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId = "", proyectos = [], titulo = "🗒 Jornadas del mes", bloqueado = false, porMes = false, diasVacios = false, plegable = true }: {
   items: any[]; esAdmin?: boolean; miPersonaId?: string; proyectos?: { id: string; nombre: string }[]; titulo?: string; bloqueado?: boolean;
   /** Subdivide cada persona por mes. Para listas que cruzan varios. */
   porMes?: boolean;
@@ -127,6 +127,16 @@ export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId =
    *  filtrada (p. ej. solo pendientes), un día ya aprobado se dibujaría como
    *  «no trabajado», que es mentira sobre lo que ya se revisó. */
   diasVacios?: boolean;
+  /** Envolver todo en un plegable con su rótulo.
+   *
+   *  En /jornadas sí: el detalle diario son treinta filas al final de una
+   *  página con más cosas, y poder cerrarlo de un clic es la diferencia entre
+   *  ver tu resumen y hacer scroll hasta encontrarlo.
+   *  En administración no: la pestaña YA es la sección. Ahí el rótulo repetía
+   *  el mes y el «por aprobar» que están dos líneas más arriba, y cerrarlo
+   *  dejaba la pantalla en negro — un control cuyo único efecto es esconder
+   *  todo lo que hay. */
+  plegable?: boolean;
 }) {
   const router = useRouter();
   const onChange = () => router.refresh();
@@ -183,11 +193,7 @@ export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId =
      El plegable de arriba se queda —sin caja— porque en /jornadas es el fold
      de «Detalle diario del mes», y ahí sirve: esconde treinta filas de un
      tirón. Lo que se va es su borde, que era el que sobraba. */
-  return (
-    <details className="jr-todo" open>
-      <summary className="jr-todo-h">
-        {titulo} · {items.length}{pend ? ` · ⏳ ${pend} por aprobar` : " · todas aprobadas ✅"}
-      </summary>
+  const cuerpo = (
       <div style={{ marginTop: 8 }}>
         {lista.map(g => (
           <div key={g.id} className="jr-grupo card">
@@ -262,6 +268,15 @@ export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId =
         ))}
         {!items.length && <div className="empty">Sin jornadas este mes.</div>}
       </div>
+  );
+
+  if (!plegable) return cuerpo;
+  return (
+    <details className="jr-todo" open>
+      <summary className="jr-todo-h">
+        {titulo} · {items.length}{pend ? ` · ⏳ ${pend} por aprobar` : " · todas aprobadas ✅"}
+      </summary>
+      {cuerpo}
     </details>
   );
 }
