@@ -12,7 +12,7 @@ import { TOKEN } from "@/lib/puertas";
 import { BOT, sinBot } from "@/lib/personas";
 import { CAMPOS_TABLA } from "@/lib/tablas-expediente";
 import { esCampoDelTrigger } from "@/lib/actividad";
-import { SECCIONES, grafiasDe } from "@/lib/secciones";
+import { SECCIONES, grafiasDe, tipoCanonico, ICO_ENT } from "@/lib/secciones";
 import { fraccionValida } from "@/lib/jornadas";
 import { TIPOS_OBJETO } from "@/lib/objetos";
 import { catalogoObjetos, catalogosEntidades } from "@/lib/catalogos";
@@ -1240,6 +1240,51 @@ export async function contextoDelDia(personaId: string, fecha: string) {
     });
   });
 
+  /* ── DE QUÉ COSA HABLA CADA EVENTO ──
+     «Cambió el cartel · en un equipo» once veces seguidas no dice nada: son
+     once equipos distintos y la fila no nombraba ninguno. El tipo de entidad
+     no es el detalle; el detalle es CUÁL.
+     `actividad` guarda entidad_tipo + entidad_id, así que el nombre hay que
+     ir a buscarlo. Una consulta por TABLA —no por evento—: ciento treinta
+     eventos de un día caen en tres o cuatro tablas.
+     `tipoCanonico` porque el trigger de la base escribe el nombre físico en
+     plural («equipamiento», «publicaciones») y las acciones a mano el
+     singular: sin reconciliar, la mitad de las filas se quedaría sin nombre
+     según quién las escribió. */
+  const TABLA_ENT: Record<string, [string, string]> = {
+    equipamiento: ["equipamiento", "id,folio,nombre"],
+    publicacion: ["publicaciones", "id,titulo"],
+    persona: ["personas", "id,nombre,alias"],
+    empresa: ["empresas", "id,nombre"],
+    proyecto: ["proyectos", "id,nombre"],
+    postulacion: ["postulaciones", "id,codigo"],
+    convocatoria: ["convocatorias", "id,codigo,nombre"],
+    objeto: ["objetos", "id,titulo"],
+    compra: ["compras", "id,codigo,nombre"],
+    lugar: ["lugares", "id,nombre"],
+  };
+  const nombraFila = (t: string, r: any) =>
+    t === "equipamiento" ? `${r.folio ? r.folio + " " : ""}${r.nombre}`
+    : t === "persona" ? (r.alias || r.nombre)
+    : t === "convocatoria" ? `${r.codigo || ""} ${r.nombre || ""}`.trim()
+    : t === "compra" ? `${r.codigo || ""} ${r.nombre || ""}`.trim()
+    : (r.titulo || r.nombre || r.codigo || "");
+  const nombreEnt = new Map<string, string>();
+  {
+    const porTipo = new Map<string, Set<string>>();
+    (acts.data || []).forEach((a: any) => {
+      const t = tipoCanonico(String(a.entidad_tipo || ""));
+      if (!TABLA_ENT[t]) return;
+      if (!porTipo.has(t)) porTipo.set(t, new Set());
+      porTipo.get(t)!.add(a.entidad_id);
+    });
+    await Promise.all([...porTipo.entries()].map(async ([t, ids]) => {
+      const [tabla, cols] = TABLA_ENT[t];
+      const { data } = await supabase.from(tabla).select(cols).in("id", [...ids]);
+      (data || []).forEach((r: any) => nombreEnt.set(`${t}:${r.id}`, nombraFila(t, r)));
+    }));
+  }
+
   /* CADA EVENTO YA TRAE ESCRITO LO QUE PASÓ. La mayoría de las acciones
      guardan `detalle.mensaje` —«registró un RHE de S/ 450», «corrigió la
      fecha límite»— y es la misma frase que usa el historial de una ficha
@@ -1259,17 +1304,23 @@ export async function contextoDelDia(personaId: string, fecha: string) {
     convocatoria: "una convocatoria", objeto: "el repositorio", compra: "una compra",
   };
   (acts.data || []).forEach((a: any) => {
+    const t = tipoCanonico(String(a.entidad_tipo || ""));
     const msg = (a.detalle?.mensaje || "").trim();
-    const donde = ENT[a.entidad_tipo] || a.entidad_tipo;
+    const nombre = nombreEnt.get(`${t}:${a.entidad_id}`);
     hechos.push({
-      at: a.creado_en, ico: "🛠",
-      txt: msg ? msg.charAt(0).toUpperCase() + msg.slice(1) : (ACT[a.tipo] || a.tipo),
-      /* Dónde pasó, siempre: «corrigió la fecha límite» sin decir de qué es
-         media frase. Va debajo para que el renglón de arriba se lea seguido. */
-      sub: `en ${donde}`,
-      href: a.entidad_tipo === "publicacion" ? `/caso/${a.entidad_id}`
-        : a.entidad_tipo === "objeto" ? `/objeto/${a.entidad_id}`
-        : ENT[a.entidad_tipo] ? `/entidad/${a.entidad_tipo}/${a.entidad_id}` : null,
+      at: a.creado_en, ico: ICO_ENT[t] || "🛠",
+      /* QUÉ pasó y SOBRE QUÉ, en el mismo renglón: «Cambió el cartel — A-022
+         Zhiyun Crane M3». Separados, la segunda línea se leía como una
+         categoría y no como la cosa. */
+      txt: `${msg ? msg.charAt(0).toUpperCase() + msg.slice(1) : (ACT[a.tipo] || a.tipo)}${nombre ? ` — ${nombre}` : ""}`,
+      /* Y si NO se pudo resolver el nombre se dice el tipo, que es lo único
+         que se sabe. Callarlo dejaría la fila afirmando menos de lo que
+         consta. */
+      sub: nombre ? null : `en ${ENT[t] || t}`,
+      href: t === "publicacion" ? `/caso/${a.entidad_id}`
+        : t === "objeto" ? `/objeto/${a.entidad_id}`
+        : t === "compra" ? `/compras`
+        : TABLA_ENT[t] ? `/entidad/${t}/${a.entidad_id}` : null,
     });
   });
 
