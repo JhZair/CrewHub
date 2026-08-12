@@ -102,7 +102,7 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
          { data: proyectos }, { data: jornsMes }, { data: liqs }, { data: vivos },
          { data: plats }, { data: credsPlat }, { data: ganadoras }, { data: activid }] = await Promise.all([
     // `usuario_id`: llave para poner el alias del actor en la actividad reciente
-    supabase.from("personas").select("id,nombre,alias,usuario_id,tarifa_dia,tarifa_rodaje,tarifa_noche")
+    supabase.from("personas").select("id,nombre,alias,usuario_id,estado,tarifa_dia,tarifa_rodaje,tarifa_noche")
       .eq("tipo", "personal").order("nombre"),
     // A quién se le puede girar un RHE, y los del año en curso
     supabase.from("personas").select("id,nombre,alias,suspension_4ta_anio")
@@ -394,6 +394,23 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
       if (d >= 1 && d <= diasDelMesJ) (diasPorPersona[pid] ||= Array(diasDelMesJ).fill(0))[d - 1] += n;
     });
   }
+
+  /* ── QUIÉN NO REGISTRÓ NADA ESTE MES ──
+     La lista de abajo se arma de las jornadas que hay, así que quien no anotó
+     ninguna no sale: no aparece vacío, desaparece. Y desde fuera «no trabajó»
+     y «no lo anotó» son la misma ausencia — solo que a uno de los dos hay que
+     ir a preguntarle antes de cerrar el mes.
+     El sistema sabe distinguirlos: si esa persona dejó rastro —comentó, movió
+     equipos, abrió casos— es que trabajó. Por eso la condición no es «está en
+     la planilla» sino «tiene franja»: a quien no tocó el sistema no hay nada
+     que reclamarle, y una lista con todo el personal cada mes se deja de leer
+     a la tercera vez. */
+  const conJornada = new Set((filasJornadas || []).map((f: any) => f.persona_id));
+  const ausentesJ = (personas || [])
+    .filter((p: any) => p.estado !== "inactivo" && p.estado !== "vetado")
+    .filter((p: any) => !conJornada.has(p.id))
+    .filter((p: any) => (horasPorPersona[p.id] || diasPorPersona[p.id]))
+    .map((p: any) => ({ id: p.id, nombre: p.alias || p.nombre }));
 
   /* ── LOS PANELES, UNO POR SECCIÓN ──
      Antes cada bloque se pintaba con `{s === "x" && (…)}` dentro del return.
@@ -701,7 +718,7 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
           <BitacoraJornadas items={filasJornadas} esAdmin miPersonaId="" proyectos={proyectos || []}
             porMes diasVacios plegable={false}
             horasPorPersona={horasPorPersona} diasPorPersona={diasPorPersona}
-            mesFranja={jInicio} />
+            mesFranja={jInicio} ausentes={ausentesJ} />
         </>
       );
 

@@ -2836,6 +2836,13 @@ button.repo-tit{text-align:left}
   border-bottom:1px solid var(--border2);margin-bottom:3px;font-size:13px;flex-wrap:wrap}
 .jr-grupo-n{color:var(--dim);font-size:11.5px}
 .jr-grupo-t{color:var(--teal);font-size:12.5px;font-weight:700;white-space:nowrap}
+/* Quien no registro nada. Borde ambar y no rojo: no es un error, es algo
+   que hay que preguntar antes de cerrar el mes. Van al final de la lista
+   porque son la excepcion, y al final es donde uno mira cuando ya reviso
+   lo que si esta. */
+.jr-grupo-aus{border-left:3px solid var(--yellow)}
+.jr-grupo-aus .jr-plegar{opacity:.3;text-align:center;width:22px;font-size:12px}
+.jr-aus-pie{color:var(--dim);font-size:11.5px;line-height:1.5;padding:2px 2px 2px;margin-top:-2px}
 /* CUANTO DURO, CON SU TONO. Los cuatro tiempos escritos todos igual obligan a
    leer el numero para ver que una fila no es como la de arriba. Medio dia se
    apaga —es menos—, el completo es lo normal y los dos que pasan de un dia

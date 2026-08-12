@@ -132,7 +132,7 @@ const diasDelMes = (ym: string) => {
     `${a}-${String(m).padStart(2, "0")}-${String(i + 1).padStart(2, "0")}`);
 };
 
-export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId = "", proyectos = [], titulo = "🗒 Jornadas del mes", bloqueado = false, porMes = false, diasVacios = false, plegable = true, horasPorPersona, diasPorPersona, mesFranja }: {
+export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId = "", proyectos = [], titulo = "🗒 Jornadas del mes", bloqueado = false, porMes = false, diasVacios = false, plegable = true, horasPorPersona, diasPorPersona, mesFranja, ausentes = [] }: {
   items: any[]; esAdmin?: boolean; miPersonaId?: string; proyectos?: { id: string; nombre: string }[]; titulo?: string; bloqueado?: boolean;
   /** Subdivide cada persona por mes. Para listas que cruzan varios. */
   porMes?: boolean;
@@ -166,6 +166,9 @@ export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId =
   /** Primer día del mes de las franjas («2026-08-01»), para saber qué día de
    *  la semana cae cada barra. */
   mesFranja?: string;
+  /** Quienes NO registraron ni una jornada este mes pero sí tocaron el sistema.
+   *  Van al final, con su silueta y sin filas. */
+  ausentes?: { id: string; nombre: string }[];
 }) {
   const router = useRouter();
   const onChange = () => router.refresh();
@@ -301,7 +304,37 @@ export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId =
             })()}
           </div>
         ))}
-        {!items.length && <div className="empty">Sin jornadas este mes.</div>}
+        {/* ── LOS QUE NO REGISTRARON NADA ──
+            Una persona sin jornadas en el mes simplemente no salía: la lista
+            se arma de las filas que hay, y donde no hay filas no hay nombre.
+            Pero «no trabajó» y «no lo anotó» se ven igual desde fuera —son las
+            dos una ausencia— y solo a uno de los dos hay que ir a preguntarle.
+            Es el mismo hueco que ya se pinta día a día dentro de cada persona,
+            una escala más arriba.
+            Solo aparecen los que SÍ dejaron rastro en el sistema ese mes: a
+            quien no trabajó no hay nada que reclamarle, y una lista con todo
+            el personal cada mes se deja de leer a la tercera vez. La silueta
+            de al lado es la prueba de que hay algo que preguntar. */}
+        {ausentes.map(a => (
+          <div key={a.id} className="jr-grupo card jr-grupo-aus">
+            <div className="jr-grupo-h">
+              <span className="jr-plegar" aria-hidden>·</span>
+              <b>{a.nombre}</b>
+              <span className="jr-grupo-n">sin jornadas registradas</span>
+              <span style={{ flex: 1 }} />
+              <span className="badge" style={{ color: "var(--yellow)", background: "rgba(244,180,0,.12)" }}>
+                ⚠ hubo actividad
+              </span>
+            </div>
+            <FranjasPersona personaId={a.id} quien={a.nombre}
+              hs={horasPorPersona?.[a.id]} ds={diasPorPersona?.[a.id]} mesFranja={mesFranja} />
+            <div className="jr-aus-pie">
+              No anotó ni una jornada este mes, pero trabajó en el sistema los días de la franja.
+              Abre un día para ver qué hizo.
+            </div>
+          </div>
+        ))}
+        {!items.length && !ausentes.length && <div className="empty">Sin jornadas este mes.</div>}
       </div>
   );
 
