@@ -716,30 +716,69 @@ export default async function Postulaciones({ searchParams }: {
               .filter(g => g.filas.length > 0);
             const sinAnio = filtradas.filter((p: any) => !p.conv?.anio);
             if (sinAnio.length) grupos.push({ y: null, filas: sinAnio });
-            /* El separador SEPARA, y con un solo grupo no hay nada que
-               separar: la línea «2026 · 21» debajo de «21 resultados · 2026»
-               decía dos veces lo mismo, y una etiqueta que siempre está deja
-               de leerse justo el día que sí importa. Aparece cuando la lista
-               cruza varios años —«todos los años», o una búsqueda— y ahí se
-               pinta en violeta, el color con que el año se identifica en el
-               resto de la pantalla. */
-            const varios = grupos.length > 1;
-            return grupos.map(({ y, filas }) => (
-              <div key={y || "sin"} style={{ marginTop: 6 }}>
-                {varios && (
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "16px 4px 6px" }}>
-                    <span style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1.4,
-                      color: "var(--violet)", fontWeight: 700 }}>
-                      {y || "sin año"}
-                    </span>
-                    <span style={{ fontSize: 11, color: "var(--dim)" }}>· {filas.length}</span>
-                    <span style={{ flex: 1, height: 1,
-                      background: "linear-gradient(90deg, color-mix(in srgb, var(--violet) 45%, transparent), transparent)" }} />
-                  </div>
+
+            /* ── DOS SEPARADORES, LA MISMA LÍNEA VIOLETA ──
+               Un separador SEPARA, y donde no hay nada que separar estorba: la
+               línea «2026 · 21» debajo de «21 resultados · 2026» decía dos
+               veces lo mismo, y una etiqueta que siempre está deja de leerse
+               justo el día que sí importa. Por eso cada nivel aparece solo
+               cuando hay más de un grupo en él.
+               Y el nivel que hacía falta era el de ABAJO: dentro de un año, las
+               21 postulaciones son de nueve concursos distintos y salían
+               mezcladas, así que ubicar «las del C-072» era leer las 21. El año
+               es el corte de arriba y la convocatoria el de dentro — el mismo
+               orden en que uno pregunta.
+               Se distinguen por peso y no por color: el año en versalitas
+               grandes, la convocatoria en una línea más fina y con el código
+               delante. Dos violetas distintos habrían inventado un significado
+               que no existe. */
+            const cab = (txt: string, n: number, sub?: string | null, nivel: 1 | 2 = 1) => (
+              <div style={{ display: "flex", alignItems: "center", gap: 8,
+                margin: nivel === 1 ? "18px 4px 6px" : "14px 4px 6px" }}>
+                <span style={{ fontSize: nivel === 1 ? 11 : 10.5, textTransform: "uppercase",
+                  letterSpacing: nivel === 1 ? 1.4 : 1, color: "var(--violet)",
+                  fontWeight: 700, opacity: nivel === 1 ? 1 : .85 }}>
+                  {txt}
+                </span>
+                {sub && (
+                  /* El nombre del concurso en texto normal: en versalitas, seis
+                     palabras se vuelven un muro y el código deja de resaltar. */
+                  <span style={{ fontSize: 11.5, color: "var(--muted)" }}>{sub}</span>
                 )}
-                {filas.map(Fila)}
+                <span style={{ fontSize: 11, color: "var(--dim)" }}>· {n}</span>
+                <span style={{ flex: 1, height: 1,
+                  background: `linear-gradient(90deg, color-mix(in srgb, var(--violet) ${nivel === 1 ? 45 : 26}%, transparent), transparent)` }} />
               </div>
-            ));
+            );
+
+            const variosAnios = grupos.length > 1;
+            return grupos.map(({ y, filas }) => {
+              /* Por CÓDIGO y no por cantidad ni por fecha: es el orden que la
+                 gente ya tiene en la cabeza y el mismo del combo de arriba, así
+                 que buscar en la lista es seguir la misma secuencia que se
+                 acaba de leer en el filtro. Las sueltas, al final. */
+              const porConv = new Map<string, { codigo: string; nombre: string; filas: any[] }>();
+              filas.forEach((p: any) => {
+                const k = p.conv?.id || "";
+                const g = porConv.get(k)
+                  || { codigo: p.conv?.codigo || "Sin convocatoria", nombre: p.conv?.nombre || "", filas: [] };
+                g.filas.push(p); porConv.set(k, g);
+              });
+              const bloques = [...porConv.entries()].sort((x, z) =>
+                (x[0] ? 0 : 1) - (z[0] ? 0 : 1) || x[1].codigo.localeCompare(z[1].codigo));
+              const variasConvs = bloques.length > 1;
+              return (
+                <div key={y || "sin"} style={{ marginTop: 6 }}>
+                  {variosAnios && cab(String(y || "sin año"), filas.length)}
+                  {bloques.map(([k, g]) => (
+                    <div key={k || "sin-conv"}>
+                      {variasConvs && cab(g.codigo, g.filas.length, g.nombre || null, 2)}
+                      {g.filas.map(Fila)}
+                    </div>
+                  ))}
+                </div>
+              );
+            });
           })()}
           {!filtradas.length && <div className="empty">Sin resultados.</div>}
         </>
