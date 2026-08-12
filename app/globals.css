@@ -330,6 +330,12 @@ a{color:inherit;text-decoration:none}
 .post-resultado.tono-finalista{color:var(--yellow)}
 .post-resultado.tono-noapta{color:var(--red)}
 .post-resultado.tono-cerrada{color:#9aa3b8}
+/* Tonos del sello de un EQUIPO fuera de juego. Ambar lo que vuelve —una
+   reparacion, algo que no aparece— y rojo lo que ya no: perdido. Gris la baja,
+   que no es una alarma sino el final de su vida util. */
+.post-resultado.tono-averiado{color:var(--yellow)}
+.post-resultado.tono-perdido{color:var(--red)}
+.post-resultado.tono-baja{color:#9aa3b8}
 /* Lista de participantes de una convocatoria: agrupada por desenlace y con un
    «sello» de estado por fila. */
 .pl-seccion{margin-bottom:14px}

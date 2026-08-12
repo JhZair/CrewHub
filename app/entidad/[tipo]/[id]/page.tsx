@@ -86,7 +86,7 @@ import type { Metadata } from "next";
 import { ICO_ENT, nombreDe, grafiasDe, TABLA_DE, tipoCanonico } from "@/lib/secciones";
 import { estadoKit, resumenKit, type PiezaKit } from "@/lib/kits";
 import { ordenarActores, rotuloActores, leerActor, personaDe } from "@/lib/actores";
-import { metaEstado, colorEstadoEq, txtEstadoEq } from "@/lib/estadosEquipo";
+import { metaEstado, colorEstadoEq, txtEstadoEq, selloEquipo } from "@/lib/estadosEquipo";
 import PiezasKit from "@/components/PiezasKit";
 import Ensamblado from "@/components/Ensamblado";
 import ComboDelEquipo from "@/components/ComboDelEquipo";
@@ -1991,6 +1991,10 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
      de identidad. Postulación → su resultado; convocatoria → si ya cerró. */
   const resCarne = params.tipo === "postulacion" ? resultadoPostulacion(ent.estado)
     : params.tipo === "convocatoria" ? resultadoConvocatoria(ent.estado)
+    /* Y un equipo fuera de juego —en reparación, no aparece, perdido, de
+       baja—. El sello ya existía y el carné ya sabía estamparlo: lo único que
+       faltaba era decir cuándo. Una línea, no un componente nuevo. */
+    : params.tipo === "equipamiento" ? selloEquipo(ent.estado)
     : null;
 
   return (

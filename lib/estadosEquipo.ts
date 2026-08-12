@@ -145,3 +145,29 @@ export const FUERA_DE_INVENTARIO: string[] =
 /** Lo que hay que mirar hoy. */
 export const NECESITA_ATENCION: string[] =
   ESTADOS_EQUIPO.filter(e => e.atencion).map(e => e.k);
+
+/* ── EL SELLO DE UN EQUIPO FUERA DE JUEGO ──
+ *
+ * Mismo sello que ya usan las postulaciones —«NO APTA» estampado sobre el
+ * carné— porque es la misma pregunta: ¿esto sigue en juego o no? En una
+ * postulación se lee de un vistazo y en un equipo había que leer la línea
+ * «ESTADO: en reparacion» entre otras cinco, en gris y del mismo tamaño que
+ * la categoría. Quien abre la ficha de una cámara antes de un rodaje está
+ * preguntando exactamente eso, y merece la respuesta antes que el dato.
+ *
+ * Solo los estados que dejan el equipo FUERA. Ni «disponible» —lo normal no
+ * se estampa— ni «en uso» ni «ensamblado»: esos dos no son un problema, son
+ * el equipo haciendo su trabajo, y sellarlos convertiría el sello en ruido.
+ *
+ * Los títulos van cortos a propósito: es un sello, no una frase. «Reparación»
+ * a 30 px cabe en la columna del carné; «En reparación» ya no.
+ */
+export type SelloEq = { titulo: string; sub: string; ico: string; tono: string };
+const SELLO_EQ: Record<string, SelloEq> = {
+  en_reparacion: { titulo: "Reparación", sub: "No se presta", ico: "🛠", tono: "averiado" },
+  no_aparece:    { titulo: "No aparece", sub: "Sin ubicar", ico: "🔎", tono: "averiado" },
+  perdido:       { titulo: "Perdido", sub: "Fuera del inventario", ico: "🚫", tono: "perdido" },
+  de_baja:       { titulo: "De baja", sub: "Fuera del inventario", ico: "⛔", tono: "baja" },
+};
+export const selloEquipo = (k?: string | null): SelloEq | null =>
+  SELLO_EQ[String(k ?? "").trim()] || null;
