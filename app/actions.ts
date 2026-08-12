@@ -1153,6 +1153,24 @@ export async function editarJornada(
  * el mismo error que corrigió lib/fechas. Por eso el rango se escribe con el
  * offset explícito y no con la fecha a secas.
  */
+/* Los préstamos de una consulta, pidiendo `creado_en` SI EXISTE.
+ *
+ * La columna la añade db/prestamo-creado-en.sql y guarda a qué hora se
+ * REGISTRÓ el préstamo —que no es `desde`, el día en que el equipo sale—.
+ * Mientras esa migración no se corra, PostgREST devuelve un error por columna
+ * desconocida y `data` viene en null: la ventana del día se quedaría sin los
+ * equipos y sin decir por qué. Así que se pide, y si la base no la conoce se
+ * repite la consulta sin ella. Un dato de más que aún no está no puede
+ * llevarse por delante los que sí.
+ */
+async function prestamosCon(supabase: any, cols: string, filtro: (q: any) => any) {
+  const conProy = cols.replace("PROY", "proy:proyectos(id,nombre)");
+  const r = await filtro(supabase.from("equipo_prestamos").select(`${conProy},creado_en`));
+  if (!r.error) return r;
+  if (!/creado_en/.test(r.error.message || "")) return r;
+  return await filtro(supabase.from("equipo_prestamos").select(conProy));
+}
+
 export type HechoDelDia = {
   /** Instante exacto, o `null` si el hecho NO tiene hora. Un préstamo guarda
    *  `desde` como fecha suelta —sin hora— y un RHE igual: inventarles las
@@ -1163,6 +1181,10 @@ export type HechoDelDia = {
   /** En qué cajón cae, para poder filtrar. Cinco y no diez: un filtro con
    *  diez botones se recorre más despacio que la lista que filtra. */
   clase: "pub" | "com" | "cambio" | "equipo" | "rhe";
+  /** Si es una TANDA —veintidós equipos entregados de una sentada—, qué
+   *  contiene. Veintidós filas idénticas ocupan la ventana entera y dicen una
+   *  sola cosa; plegadas dicen la misma y dejan ver el resto del día. */
+  lista?: string[];
 };
 export async function contextoDelDia(personaId: string, fecha: string) {
   const supabase = createClient();
@@ -1205,15 +1227,12 @@ export async function contextoDelDia(personaId: string, fecha: string) {
     /* Equipos: los que ENTREGÓ (es un acto suyo aunque se los lleve otro), los
        que recibió y los que devolvió. `desde`/`hasta` son fechas sueltas, sin
        hora: se comparan con el día tal cual. */
-    uid ? supabase.from("equipo_prestamos")
-      .select("id,desde,tipo,equipo:equipamiento(id,folio,nombre),persona:personas(nombre,alias)")
-      .eq("entregado_por", uid).eq("desde", fecha) : Promise.resolve({ data: [] }),
-    supabase.from("equipo_prestamos")
-      .select("id,desde,tipo,equipo:equipamiento(id,folio,nombre)")
-      .eq("persona_id", personaId).eq("desde", fecha),
-    supabase.from("equipo_prestamos")
-      .select("id,hasta,tipo,equipo:equipamiento(id,folio,nombre)")
-      .eq("persona_id", personaId).eq("hasta", fecha),
+    uid ? prestamosCon(supabase, "id,desde,tipo,PROY,equipo:equipamiento(id,folio,nombre),persona:personas(nombre,alias)",
+      q => q.eq("entregado_por", uid).eq("desde", fecha)) : Promise.resolve({ data: [] }),
+    prestamosCon(supabase, "id,desde,tipo,PROY,equipo:equipamiento(id,folio,nombre)",
+      q => q.eq("persona_id", personaId).eq("desde", fecha)),
+    prestamosCon(supabase, "id,hasta,tipo,PROY,equipo:equipamiento(id,folio,nombre)",
+      q => q.eq("persona_id", personaId).eq("hasta", fecha)),
     supabase.from("rhe").select("id,numero,monto,concepto,fecha")
       .eq("persona_id", personaId).eq("fecha", fecha),
   ]);
@@ -1328,31 +1347,71 @@ export async function contextoDelDia(personaId: string, fecha: string) {
     });
   });
 
-  (presDio.data || []).forEach((p: any) => {
-    const eq = u1(p.equipo), a = u1(p.persona);
-    hechos.push({
-      at: null, ico: p.tipo === "asignacion" ? "📌" : "🤝", clase: "equipo",
-      txt: `${p.tipo === "asignacion" ? "Asignó" : "Entregó"} ${eq?.folio || ""} ${eq?.nombre || "un equipo"}`.trim(),
-      sub: a ? `a ${a.alias || a.nombre}` : null,
-      href: eq ? `/entidad/equipamiento/${eq.id}` : null,
+  /* -- LOS EQUIPOS, EN TANDAS --
+     Veintidos equipos entregados de una sentada son VEINTIDOS filas que dicen
+     la misma cosa y llenan la ventana entera; el resto del dia queda debajo
+     del scroll. Y son UNA sola accion: se hizo en la pantalla de entrega en
+     lote, de un clic.
+     Se agrupan por lo que las hace una tanda -el mismo acto, el mismo instante
+     en que se registro, la misma persona y el mismo proyecto- y no por «son
+     del mismo dia»: dos entregas distintas del martes no son una.
+     A partir de TRES. Con dos, plegar esconde tanto como enseña. */
+  const enTandas = (
+    filas: any[],
+    ico: (p: any) => string,
+    verbo: (p: any) => string,
+    coleta: (p: any) => string | null,
+  ) => {
+    const grupos = new Map<string, { p: any; eqs: any[] }>();
+    filas.forEach((p: any) => {
+      const eq = u1(p.equipo);
+      const k = [verbo(p), coleta(p) || "", p.creado_en || ""].join("|");
+      const g = grupos.get(k) || { p, eqs: [] };
+      g.eqs.push(eq); grupos.set(k, g);
     });
-  });
-  (presRecibio.data || []).forEach((p: any) => {
-    const eq = u1(p.equipo);
-    hechos.push({
-      at: null, ico: p.tipo === "asignacion" ? "📌" : "📥", clase: "equipo",
-      txt: `${p.tipo === "asignacion" ? "Quedó a su cargo" : "Recibió"} ${eq?.folio || ""} ${eq?.nombre || "un equipo"}`.trim(),
-      href: eq ? `/entidad/equipamiento/${eq.id}` : null,
+    grupos.forEach(({ p, eqs }) => {
+      /* `creado_en` es CUANDO SE ANOTO; `desde` es el dia en que el equipo
+         sale, sin hora. Con la migracion corrida, la tanda entra en la barra
+         del dia a su hora real en vez de caer en «sin hora». */
+      const at = p.creado_en || null;
+      if (eqs.length < 3) {
+        eqs.forEach((eq: any) => hechos.push({
+          at, ico: ico(p), clase: "equipo",
+          txt: `${verbo(p)} ${eq?.folio || ""} ${eq?.nombre || "un equipo"}`.trim(),
+          sub: coleta(p),
+          href: eq ? `/entidad/equipamiento/${eq.id}` : null,
+        }));
+        return;
+      }
+      hechos.push({
+        at, ico: ico(p), clase: "equipo",
+        txt: `${verbo(p)} ${eqs.length} equipos`,
+        sub: coleta(p),
+        /* La lista completa viaja plegada: quien abre la tanda quiere ver QUE
+           veintidos, no que se lo resuman otra vez. */
+        lista: eqs.map((eq: any) => `${eq?.folio || ""} ${eq?.nombre || ""}`.trim()).filter(Boolean),
+        href: null,
+      });
     });
-  });
-  (presDevolvio.data || []).forEach((p: any) => {
-    const eq = u1(p.equipo);
-    hechos.push({
-      at: null, ico: "↩", clase: "equipo",
-      txt: `Devolvió ${eq?.folio || ""} ${eq?.nombre || "un equipo"}`.trim(),
-      href: eq ? `/entidad/equipamiento/${eq.id}` : null,
+  };
+
+  const nombreProy = (p: any) => u1(p.proy)?.nombre || null;
+  enTandas(presDio.data || [],
+    (p) => (p.tipo === "asignacion" ? "📌" : "🤝"),
+    (p) => (p.tipo === "asignacion" ? "Asignó" : "Entregó"),
+    (p) => {
+      const a = u1(p.persona), pr = nombreProy(p);
+      return [a ? `a ${a.alias || a.nombre}` : null, pr].filter(Boolean).join(" · ") || null;
     });
-  });
+  enTandas(presRecibio.data || [],
+    (p) => (p.tipo === "asignacion" ? "📌" : "📥"),
+    (p) => (p.tipo === "asignacion" ? "Quedó a su cargo" : "Recibió"),
+    /* PARA QUE salieron. El prestamo lo sabe y la ventana no lo decia, y es
+       justo el contexto de trabajo que se viene a buscar aqui. */
+    (p) => (nombreProy(p) ? `para ${nombreProy(p)}` : null));
+  enTandas(presDevolvio.data || [],
+    () => "↩", () => "Devolvió",
+    (p) => (nombreProy(p) ? `de ${nombreProy(p)}` : null));
   (rhes.data || []).forEach((r: any) => hechos.push({
     at: null, ico: "🧾", clase: "rhe",
     txt: `RHE ${r.numero || ""} · S/ ${Math.round(Number(r.monto) || 0).toLocaleString("es-PE")}`.trim(),

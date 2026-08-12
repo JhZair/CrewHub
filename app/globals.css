@@ -2917,6 +2917,19 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
 .dia-l1{font-size:12.5px;color:var(--text);line-height:1.35}
 .dia-l2{font-size:11px;color:var(--dim);line-height:1.4;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Una TANDA: veintidos equipos entregados de un clic. Plegada dice cuantos y
+   para que; abierta, cuales. */
+.dia-fila-btn{background:none;border:none;text-align:left;font-family:inherit;
+  width:100%;cursor:pointer;padding:6px}
+.dia-fila-btn:hover{background:rgba(167,139,250,.08)}
+.dia-mas{color:var(--violet);font-size:10.5px;margin-left:8px;white-space:nowrap}
+/* En columnas: veintidos folios en fila son un parrafo; en rejilla se barren
+   con el ojo, que es lo que uno hace contra una caja de equipos. */
+.dia-tanda{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));
+  gap:1px 12px;margin-top:5px;padding-left:2px;border-left:2px solid var(--border2);
+  padding-inline-start:9px}
+.dia-tanda span{font-size:11px;color:var(--muted);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
 .jr-grupo-h{cursor:default}
 
 /* ── EN USO AHORA · quién tiene qué (app/equipamiento) ──

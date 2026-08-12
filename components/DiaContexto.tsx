@@ -50,6 +50,9 @@ export default function DiaContexto({ personaId, fecha, quien }: {
      tres?»—. */
   const [clase, setClase] = useState<string | null>(null);
   const [horaSel, setHoraSel] = useState<number | null>(null);
+  /* Qué tandas están desplegadas. Cerradas de entrada: la fila plegada ya dice
+     cuántos y para qué, que es lo que se pregunta primero. */
+  const [abiertas, setAbiertas] = useState<Set<number>>(new Set());
 
   const abrir = async () => {
     setAbierto(true);
@@ -188,11 +191,33 @@ export default function DiaContexto({ personaId, fecha, quien }: {
                         </span>
                         <span className="dia-ico">{h.ico}</span>
                         <span className="dia-txt">
-                          <span className="dia-l1">{h.txt}</span>
+                          <span className="dia-l1">
+                            {h.txt}
+                            {/* Una tanda dice cuántos son y se abre para ver
+                                cuáles. El contador está en el texto; esto es
+                                la puerta. */}
+                            {h.lista && <span className="dia-mas">{abiertas.has(i) ? "▾ ocultar" : "▸ ver cuáles"}</span>}
+                          </span>
                           {h.sub && <span className="dia-l2">{h.sub}</span>}
+                          {h.lista && abiertas.has(i) && (
+                            <span className="dia-tanda">
+                              {h.lista.map((t: string, k: number) => <span key={k}>{t}</span>)}
+                            </span>
+                          )}
                         </span>
                       </>
                     );
+                    if (h.lista) {
+                      /* Botón y no enlace: una tanda no lleva a ninguna ficha
+                         —son veintidós— así que lo que hace el clic es
+                         abrirla. */
+                      return (
+                        <button key={i} type="button" className="dia-fila dia-fila-btn"
+                          onClick={() => setAbiertas(s2 => {
+                            const n2 = new Set(s2); n2.has(i) ? n2.delete(i) : n2.add(i); return n2;
+                          })}>{dentro}</button>
+                      );
+                    }
                     return h.href
                       ? <Link key={i} href={h.href} className="dia-fila">{dentro}</Link>
                       : <span key={i} className="dia-fila">{dentro}</span>;
