@@ -557,10 +557,33 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       const { data } = await supabase.from(tabla).select("id,nombre").in("id", [...ids]);
       (data || []).forEach((r: any) => nombreFuente.set(`${tipo}:${r.id}`, r.nombre));
     }));
+    /* REACCIONES DE LOS COMENTARIOS. Las de la NOTA ya venían (reaccDe), pero
+       esa consulta lleva `.is("comentario_id", null)` a propósito —una
+       reacción a un comentario no es una reacción a la nota— y nadie pedía
+       las otras. Así que el muro pintaba comentarios sin reaccionar mientras
+       la ficha de un caso sí las tiene: la misma acción existía o no según
+       por dónde entraras.
+       Y con `👀` significando «lo leí y lo tengo presente», poder ponerlo en
+       la respuesta de alguien no es un adorno: es el acuse. */
+    const idsComs = (bitComs.data || []).map((c: any) => c.id);
+    const rxComs = new Map<string, Reaccion[]>();
+    if (idsComs.length) {
+      const [{ data: rcc }, { data: pfc }] = await Promise.all([
+        supabase.from("reacciones").select("comentario_id,emoji,usuario_id").in("comentario_id", idsComs),
+        supabase.from("perfiles").select("id,nombre"),
+      ]);
+      const nom = new Map(((pfc as any[]) || []).map((x: any) => [x.id, x.nombre]));
+      (rcc || []).forEach((r: any) => {
+        const l = rxComs.get(r.comentario_id) || [];
+        l.push({ emoji: r.emoji, usuario_id: r.usuario_id, nombre: nom.get(r.usuario_id) });
+        rxComs.set(r.comentario_id, l);
+      });
+    }
     const comsDe = new Map<string, any[]>();
     (bitComs.data || []).forEach((c: any) => {
       const l = comsDe.get(c.publicacion_id) || [];
-      l.push({ ...c, autor: un1(c.autor) }); comsDe.set(c.publicacion_id, l);
+      l.push({ ...c, autor: un1(c.autor), reacciones: rxComs.get(c.id) || [] });
+      comsDe.set(c.publicacion_id, l);
     });
     const posts = (bitFull.data || [])
       .map((p: any) => ({

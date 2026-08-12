@@ -26,6 +26,9 @@ export type MuroComentario = {
   id: string; cuerpo: string; imagenes?: string[] | null; creado_en: string;
   autor_id: string; editado_en?: string | null;
   autor?: { nombre?: string | null; color?: string | null; avatar_url?: string | null } | null;
+  /** Se reacciona a un comentario igual que a una nota: el 👀 es el acuse de
+   *  «lo leí», y hace la misma falta en la respuesta de alguien. */
+  reacciones?: Reaccion[];
 };
 export type MuroPost = {
   id: string; cuerpo: string | null; imagenes?: string[] | null; creado_en: string;
@@ -304,6 +307,13 @@ export default function MuroProyecto({ proyectoId, userId, perfiles, sugerencias
                   </div>
                   <ComentarioTexto comentarioId={c.id} pubId={p.id} cuerpo={c.cuerpo}
                     imagenes={c.imagenes || []} esMio={c.autor_id === userId} editadoEn={c.editado_en} />
+                  {/* `pubId` va igualmente: el servidor lo usa para revalidar y
+                      para avisar al autor. Lo que decide que la reacción es
+                      DEL COMENTARIO es `comentarioId`. */}
+                  <div className="muro-coment-rx">
+                    <Reacciones pubId={p.id} comentarioId={c.id}
+                      reacciones={c.reacciones || []} userId={userId} />
+                  </div>
                 </div>
               </div>
             ))}
