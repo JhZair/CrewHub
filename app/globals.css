@@ -2547,6 +2547,22 @@ button.repo-tit{text-align:left}
 .ent-lote-fila:last-child{border-bottom:none}
 .ent-lote-fila:hover{background:rgba(167,139,250,.09)}
 .ent-lote-fila input[type=checkbox]{accent-color:var(--accent);cursor:pointer;flex:none}
+/* LO TRABADO SE APAGA TAMBIEN AQUI DENTRO.
+   El escogedor pintaba las doscientas filas iguales y colgaba un rotulo
+   amarillo a la derecha del puñado que no puede salir. Amarillo a la derecha
+   es un aviso que se lee al final, cuando la casilla ya esta marcada; apagada,
+   la fila se descarta antes de llegar a ella. Es la misma respuesta que da la
+   lista del kit, y por eso se ve igual.
+   Apagada, NO deshabilitada: un equipo en reparacion si puede formar parte de
+   un kit —el kit dice de que se compone, no que esta libre hoy—. */
+.ent-lote-fila.ocupada .kit-pz-img{opacity:.34;filter:grayscale(1)}
+.ent-lote-fila.ocupada .kit-folio{opacity:.45}
+.ent-lote-fila.ocupada .ent-fila-n{color:var(--dim)}
+.ent-lote-fila.ocupada .ent-fila-sub{opacity:.5}
+.ent-lote-fila.ocupada:hover .kit-pz-img{opacity:.8;filter:grayscale(.25)}
+.ent-lote-fila.ocupada:hover .ent-fila-n{color:var(--text)}
+.ent-fila-n{font-size:13.5px}
+.ent-fila-sub{font-size:10px;color:var(--dim)}
 
 /* ── Combos de filtro del historial de una ficha ── */
 .hf-sel{background:var(--card);border:1px solid var(--border);border-radius:8px;
@@ -2985,8 +3001,24 @@ button.repo-tit{text-align:left}
 /* Lo que hoy no puede salir se apaga pero NO se esconde: el kit es la lista de
    empaque completa, y una pieza que desaparece de la lista es una pieza que
    nadie echa en falta hasta el rodaje. */
-.kit-pz.ocupada .kit-pz-n{color:var(--dim)}
-.kit-pz.ocupada .kit-pz-img{opacity:.5}
+.kit-pz.ocupada .kit-pz-n{color:var(--dim);opacity:.72}
+/* En gris Y sin color. A media opacidad la foto seguia siendo la mancha mas
+   viva de la fila, y una lista de doce donde seis estan trabadas se leia como
+   doce disponibles: el ojo va a la imagen antes que al texto. Gris del todo,
+   la fila trabada se distingue de la libre sin leer una palabra. */
+.kit-pz.ocupada .kit-pz-img{opacity:.34;filter:grayscale(1)}
+.kit-pz.ocupada .kit-pz-folio{opacity:.45}
+/* Todo lo de la segunda linea baja MENOS el motivo: la subcategoria y el
+   precio son contexto —se apagan con la pieza— y el «lo tiene KatyP» es lo
+   unico accionable de la fila, asi que se queda como esta. */
+.kit-pz.ocupada .kit-pz-l2 > *:not(.kit-pz-por){opacity:.5}
+/* El precio deja de gritar en verde azulado. Un numero encendido al lado de
+   una pieza que hoy no puede salir se lee como «esto esta bien». */
+.kit-pz.ocupada .kit-pz-precio{color:var(--dim);font-weight:600}
+/* Al pasar por encima vuelve casi entera: apagada no es escondida, y el que
+   pasa el cursor esta justamente mirando ESA. */
+.kit-pz.ocupada:hover .kit-pz-img{opacity:.8;filter:grayscale(.25)}
+.kit-pz.ocupada:hover .kit-pz-n{opacity:1}
 /* Por que esta pieza no puede salir hoy — «lo tiene KatyP», «en reparacion».
    En rojo tenue y no en gris: en gris se leia como un detalle apagado, del
    mismo color que la subcategoria o el «sin combo», y es lo contrario —es la
@@ -3023,7 +3055,7 @@ button.repo-tit{text-align:left}
    buscar el folio propio entre cinco para saber cuál es. */
 .kit-pz.yo{background:rgba(167,139,250,.14);box-shadow:inset 2px 0 0 var(--violet)}
 .kit-pz.yo .kit-pz-n{color:var(--violet);font-weight:700}
-.kit-pz.yo .kit-pz-img{opacity:1}
+.kit-pz.yo .kit-pz-img{opacity:1;filter:none}
 /* En el escogedor la miniatura va más chica: son cien filas, no cinco. */
 /* La miniatura del escogedor NO se achica. Estaba a 26 px «porque son
    muchas», y era justo al reves: se elige entre doscientos equipos mirando

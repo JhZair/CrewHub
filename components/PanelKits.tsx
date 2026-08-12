@@ -3,8 +3,9 @@ import { Fragment, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { crearKit, guardarKit, setKitEquipos, borrarKit, revivirKit } from "@/app/actions";
-import { estadoKit, resumenKit, contextoKit, NO_ENTREGABLE, agruparPorCombo, valeAgrupar,
+import { estadoKit, resumenKit, contextoKit, porQueNo, agruparPorCombo, valeAgrupar,
   type PiezaKit, type EqBase, type KitVista } from "@/lib/kits";
+import { entregableEq } from "@/lib/estadosEquipo";
 import PiezasKit from "@/components/PiezasKit";
 
 /* ARMAR KITS — «Entrevista PRO» es una cosa, no tres fichas que alguien
@@ -46,8 +47,15 @@ function Escoge({ equipos, sel, alterna, onVaciar }: {
   /* Una fila, la misma a los dos lados. Definida FUERA del return para no
      escribirla dos veces: dos copias de la misma fila divergen a la primera
      corrección, y aquí ya pasó con la miniatura. */
-  const fila = (e: EqBase, modo: "elegir" | "quitar") => (
-    <label key={e.id} className={`ent-lote-fila${modo === "quitar" ? " elegida" : ""}`}
+  /* Trabada = no se puede entregar hoy. `entregableEq` y no
+     `NO_ENTREGABLE[e.estado]`: un equipo SIN ESTADO no estaba en ese mapa, asi
+     que salia igual de encendido que uno disponible — y era justo el caso del
+     A-312. Y cuenta tambien a quien lo tiene prestado, que el rotulo amarillo
+     no miraba. */
+  const fila = (e: EqBase, modo: "elegir" | "quitar") => {
+    const trabada = !!e.quien || !entregableEq(e.estado);
+    return (
+    <label key={e.id} className={`ent-lote-fila${modo === "quitar" ? " elegida" : ""}${trabada ? " ocupada" : ""}`}
       data-marcada={modo === "elegir" && sel.has(e.id) ? "1" : undefined}>
       {modo === "elegir"
         ? <input type="checkbox" checked={sel.has(e.id)} onChange={() => alterna(e.id)} />
@@ -62,21 +70,23 @@ function Escoge({ equipos, sel, alterna, onVaciar }: {
       </span>
       {e.folio && <span className="badge kit-folio">{e.folio}</span>}
       <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
-        <span style={{ fontSize: 13.5 }}>{e.nombre}</span>
+        <span className="ent-fila-n">{e.nombre}</span>
         {(e.subcategoria || e.categoria) && (
-          <span style={{ fontSize: 10, color: "var(--dim)" }}>{e.subcategoria || e.categoria}</span>
+          <span className="ent-fila-sub">{e.subcategoria || e.categoria}</span>
         )}
       </span>
       {/* Un equipo en reparación SÍ puede formar parte del kit: el kit dice
           qué lo compone, no qué está libre hoy. Lo que cambia es que al
-          entregar se avisará de que falta. */}
-      {NO_ENTREGABLE[e.estado || ""] && <span className="kit-aviso">{NO_ENTREGABLE[e.estado || ""]}</span>}
+          entregar se avisará de que falta — y por eso el motivo va con
+          nombre, «lo tiene KatyP», igual que en la lista del kit. */}
+      {trabada && <span className="kit-aviso">{porQueNo(e)}</span>}
       {modo === "quitar" && (
         <button type="button" className="ent-quita" title={`Sacar ${e.nombre} del kit`}
           onClick={() => alterna(e.id)}>✕</button>
       )}
     </label>
-  );
+    );
+  };
 
   return (
     /* DOS LISTAS: DE DÓNDE SE ELIGE Y QUÉ SE ELIGIÓ, como en la entrega en
