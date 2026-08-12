@@ -181,7 +181,12 @@ export default function PrestamoEquipo({ equipoId, prestamos, personas, proyecto
     const esMant = (c.etiquetas || []).some(tagEsMant);
     const acento = c.es_dano ? "var(--dano)" : esMant ? MANT : null;
     return (
-      <div key={c.id} style={depth ? { marginLeft: 18, borderLeft: "2px solid var(--border)", paddingLeft: 10 } : undefined}>
+      /* CADA HILO, SU TARJETA. Un comentario de primer nivel y sus respuestas
+         son UNA conversación; catorce seguidas sin nada que las separe se leen
+         como una sola, y ahí es donde alguien responde en el hilo equivocado.
+         Las respuestas van dentro, sangradas: pertenecen a este hilo, no a la
+         bitácora. */
+      <div key={c.id} className={depth ? "pe-rama" : "pe-tarjeta"}>
         <div className="pe-coment"
           style={acento ? { borderLeft: `2px solid ${acento}`, background: c.es_dano ? "rgba(207,139,147,.05)" : "rgba(74,157,157,.05)", borderRadius: 8, padding: "3px 8px" } : undefined}>
           <Avatar nombre={c.autor?.nombre} color={c.autor?.color} size={26} src={c.autor?.avatar_url} />
@@ -287,7 +292,14 @@ export default function PrestamoEquipo({ equipoId, prestamos, personas, proyecto
   const enviarLabel = enviando ? "…" : modo === "dano" ? "Reportar daño" : modo === "mant" ? "Registrar mantenimiento" : "Comentar";
 
   return (
-    <div className="linked" style={{ marginTop: 14, padding: "16px 18px" }}>
+    /* SIN MARCO. `.linked` es una tarjeta —borde y fondo— y metía el estado, el
+       compositor y toda la conversación dentro de una sola caja: catorce
+       comentarios, sus respuestas y los eventos de uso leídos como un unico
+       hilo continuo. Igual que pasaba en el muro de una empresa, y por la
+       misma razón: la caja que agrupa dice «esto es una cosa».
+       Aquí el contenedor solo separa de lo de arriba; lo que agrupa son las
+       tarjetas de cada hilo, más abajo. */
+    <div className="pe-bitacora">
       <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>
         <h4 style={{ margin: 0, fontSize: 11.5, letterSpacing: 1.2, textTransform: "uppercase", color: "var(--dim)" }}>
           🗒 Bitácora del equipo
@@ -323,8 +335,11 @@ export default function PrestamoEquipo({ equipoId, prestamos, personas, proyecto
         ))}
       </div>
 
-      {/* Compositor con modos — en su propia tarjeta, separado del estado. */}
-      <div style={{ marginTop: 14, padding: "12px 14px", border: "1px solid var(--border)", borderRadius: 12 }}>
+      {/* Compositor con modos — en su propia tarjeta, separado del estado, y
+          con el acento violeta de todo lo que CREA algo en la aplicación. En
+          gris era una tarjeta más de la columna: bajando la página, la primera
+          caja de escribir que aparece es la de responder a un comentario. */}
+      <div className="pe-compositor">
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: "var(--dim)", letterSpacing: .4, marginRight: 2 }}>✍ Registrar:</span>
           {([["nota", "📝 Nota"], ["dano", "🔧 Daño"], ["mant", "🛠 Mantenimiento"], ...(!actual ? [["uso", "🤝 Poner en uso"]] : [])] as [Modo, string][]).map(([m, lbl]) => (
@@ -417,8 +432,16 @@ export default function PrestamoEquipo({ equipoId, prestamos, personas, proyecto
         </div>
       )}
 
+      {/* La raya entre «escribir» y «lo escrito», igual que en el muro. */}
+      {hay > 0 && (
+        <div className="muro-hilo-h" style={{ marginTop: 14 }}>
+          {comentariosTodos.length} comentario{comentariosTodos.length === 1 ? "" : "s"}
+          {eventosUso.length > 0 && ` · ${eventosUso.length} movimiento${eventosUso.length === 1 ? "" : "s"}`}
+        </div>
+      )}
+
       {/* Línea de tiempo */}
-      <div className="pe-hilo" style={{ marginTop: 12 }}>
+      <div className="pe-hilo" style={{ marginTop: 10 }}>
         {hay === 0 && <div style={{ color: "var(--dim)", fontSize: 12.5, padding: "6px 0" }}>Sin actividad todavía — deja la primera nota o pon el equipo en uso.</div>}
         {items.map((it: any) => it.t === "com" ? nodo(it.c, 0) : eventoUso(it))}
       </div>
