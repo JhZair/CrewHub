@@ -60,8 +60,23 @@ export const anclaDe = (tipo: string) =>
    `if (n.publicacion_id)`, así que un aviso de un comentario sobre un objeto
    del repositorio llegaba a la bandeja pero no era clicable: sonaba y no
    llevaba a ninguna parte. Ahora el destino se decide aquí. */
-export const rutaNotif = (n: { publicacion_id?: string | null; objeto_id?: string | null; equipamiento_id?: string | null; dafo_id?: string | null; tipo?: string }) =>
-  n.publicacion_id ? `/caso/${n.publicacion_id}${anclaDe(n.tipo || "")}`
+export const rutaNotif = (n: {
+  publicacion_id?: string | null; objeto_id?: string | null; equipamiento_id?: string | null;
+  dafo_id?: string | null; tipo?: string;
+  /** Si la publicación es una NOTA DE MURO, de qué muro es. */
+  muro?: { tipo: string; id: string } | null;
+}) =>
+  /* UNA NOTA DEL MURO NO ES UN CASO. Comparte tabla con los casos —misma
+     `publicaciones`, mismos comentarios y reacciones, que es lo que la hizo
+     barata de construir— pero no tiene estado, ni responsable, ni plazo, ni
+     sub-casos. Llevarla a /caso abría una ficha de caso alrededor de un
+     apunte: con su «Sin asignar», su «5 días sin movimiento real» y su
+     «Publicado», tres avisos sobre algo que nadie prometió resolver.
+     Toda la aplicación ya la excluye de los listados de casos con
+     `.neq("tipo","bitacora")`; lo que faltaba era el DESTINO. Va a su muro,
+     y el ancla deja al lector en la nota exacta que sonó. */
+  n.muro ? `/entidad/${n.muro.tipo}/${n.muro.id}#pub-${n.publicacion_id}`
+  : n.publicacion_id ? `/caso/${n.publicacion_id}${anclaDe(n.tipo || "")}`
   // Un correo de DAFO no es un caso: vive en la casilla, y el ancla deja al
   // lector en el mensaje exacto que sonó.
   : n.dafo_id ? `/casilla#c-${n.dafo_id}`

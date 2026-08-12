@@ -79,6 +79,25 @@ export default async function Caso({ params }: { params: { id: string } }) {
 
   if (!p) notFound();
 
+  /* UNA NOTA DEL MURO NO ES UN CASO, Y ESTA PÁGINA NO ES SU SITIO.
+     Comparten la tabla `publicaciones` —lo que hizo que el muro naciera con
+     comentarios, reacciones y menciones gratis— pero una nota no tiene estado
+     que resolver, ni responsable, ni plazo, ni sub-casos. Abierta aquí sale
+     con «Sin asignar», «Publicado» y «5 días sin movimiento real»: tres
+     reproches sobre algo que nadie prometió resolver.
+     El arreglo va AQUÍ y no solo en el enlace de la notificación: los enlaces
+     viejos ya están repartidos por avisos, historiales y pestañas abiertas, y
+     corregir el que se genera hoy no arregla ninguno de esos. Esta puerta los
+     cubre todos.
+     Sin vínculo no hay muro al que ir —una nota cuyo insert de vínculo falló—:
+     ahí es mejor esta ficha imperfecta que un callejón sin salida. */
+  if (p.tipo === "bitacora") {
+    const v0 = (p.vinculos || [])[0];
+    if (v0?.entidad_tipo && v0?.entidad_id) {
+      redirect(`/entidad/${v0.entidad_tipo}/${v0.entidad_id}#pub-${p.id}`);
+    }
+  }
+
   const [{ data: eventos }, { data: comentarios }, { data: perfiles }, { data: miPerfil },
          ents, proy, emp, pers, conv, equi, luga, etiq, postu] = await Promise.all([
     supabase.from("actividad")

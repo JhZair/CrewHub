@@ -5557,6 +5557,19 @@ export async function actividadDeCaso(pubId: string) {
 async function conVinculos(supabase: any, notifs: any[]) {
   const ids = [...new Set(notifs.map((n: any) => n.publicacion_id).filter(Boolean))];
   const vincDe = new Map<string, { tipo: string; nombre: string }[]>();
+  /* Cuáles de esas publicaciones son NOTAS DE MURO. Comparten tabla con los
+     casos, así que desde la notificación son indistinguibles — y por eso
+     acababan abriendo una ficha de caso alrededor de un apunte. Con el tipo
+     en la mano, `rutaNotif` las manda a su muro. */
+  const esMuro = new Set<string>();
+  if (ids.length) {
+    const { data: tipos } = await supabase.from("publicaciones")
+      .select("id,tipo").in("id", ids);
+    (tipos || []).forEach((t: any) => { if (t.tipo === "bitacora") esMuro.add(t.id); });
+  }
+  /* De qué entidad es cada nota: su PRIMER vínculo, que es el que creó
+     `publicarBitacora` (una nota nace en un muro y solo en uno). */
+  const muroDe = new Map<string, { tipo: string; id: string }>();
   if (ids.length) {
     const { data: vincs } = await supabase.from("publicacion_vinculos")
       .select("publicacion_id,entidad_tipo,entidad_id").in("publicacion_id", ids);
@@ -5570,6 +5583,9 @@ async function conVinculos(supabase: any, notifs: any[]) {
     (vincs || []).forEach((v: any) => {
       if (!porTipo.has(v.entidad_tipo)) porTipo.set(v.entidad_tipo, new Set());
       porTipo.get(v.entidad_tipo)!.add(v.entidad_id);
+      if (esMuro.has(v.publicacion_id) && !muroDe.has(v.publicacion_id)) {
+        muroDe.set(v.publicacion_id, { tipo: v.entidad_tipo, id: v.entidad_id });
+      }
     });
     const nombres = new Map<string, string>();
     await Promise.all([...porTipo.entries()].map(async ([tipo, idset]) => {
@@ -5618,6 +5634,10 @@ async function conVinculos(supabase: any, notifs: any[]) {
       ...n,
       // El id del equipo para que `rutaNotif` sepa a dónde llevar el aviso.
       equipamiento_id: eq?.id || null,
+      /* Y el muro, si la publicación es una nota y no un caso. `null` cuando
+         la nota se quedó sin vínculo (el insert del vínculo falló): entonces
+         no hay muro al que llevarla y sigue el camino de siempre. */
+      muro: n.publicacion_id ? muroDe.get(n.publicacion_id) || null : null,
       vinculos: n.publicacion_id
         ? (vincDe.get(n.publicacion_id) || [])
         : eq ? [{ tipo: "equipamiento", nombre: eq.nombre }] : [],

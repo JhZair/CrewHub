@@ -225,7 +225,10 @@ export default function MuroProyecto({ proyectoId, userId, perfiles, sugerencias
       {feed.map(it => it.kind === "mat"
         ? <MaterialCard key={`mat-${it.mat.id}`} m={it.mat} entidadTipo={entidadTipo} entidadId={proyectoId} onCambio={() => router.refresh()} />
         : (() => { const p = it.post; return (
-        <div key={p.id} className="muro-post">
+        /* `id` para que un enlace pueda dejar al lector EN esta nota. Lo usan
+           las notificaciones y el desvío de /caso: sin ancla, «katy comentó»
+           abría la ficha entera y había que buscar la nota a ojo. */
+        <div key={p.id} id={`pub-${p.id}`} className="muro-post">
           <div className="muro-post-cab">
             <Avatar nombre={p.autor?.nombre} color={p.autor?.color} size={34} src={p.autor?.avatar_url} />
             <div style={{ flex: 1, minWidth: 0 }}>
