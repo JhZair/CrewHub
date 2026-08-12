@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
+import TabsPanel from "@/components/TabsPanel";
 import TarifasEditor from "@/components/TarifasEditor";
 import BitacoraJornadas from "@/components/BitacoraJornadas";
 import LiquidacionAdmin from "@/components/LiquidacionAdmin";
@@ -335,66 +336,20 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
     platSinLink > 0 && { txt: `${platSinLink} plataforma(s) sin link cargado`, col: "var(--yellow)", href: "/admin?s=plataformas" },
   ].filter(Boolean) as any[];
 
-  const SECCIONES: [string, string, number | null][] = [
-    ["destacados", "📌 Destacados", nDestacados || null],
-    ["plataformas", "🔗 Plataformas", platSinLink || null],
-    ["jornadas", "✅ Aprobar jornadas", porAprobar.length || null],
-    ["liquidar", "🧾 Liquidar mes", sinLiquidar || null],
-    ["rhe", "🧾 RHE y tope 4ta", nCerca || null],
-    ["tarifas", "💰 Tarifas", null],
-  ];
-  /* La barra en grupos, como la referencia. No es decoración: separa lo que
-     se hace cada semana de lo que se toca una vez al año, y eso ya dice por
-     dónde empezar. */
-  const GRUPOS: [string, string[]][] = [
-    ["Hoy", ["portada", "jornadas", "destacados"]],
-    ["Dinero", ["liquidar", "rhe", "tarifas"]],
-    ["Configuración", ["plataformas"]],
-  ];
-  const META: Record<string, [string, number | null]> = Object.fromEntries(
-    SECCIONES.map(([k, l, n]) => [k, [l, n]])
-  );
-  META["portada"] = ["🏠 Portada", null];
+  /* (Aquí vivían SECCIONES, GRUPOS y META: el menú lateral con sus tres
+     grupos —Hoy / Dinero / Configuración—. Se fue con la barra. Lo que
+     agrupaba se conserva en el ORDEN de las pestañas, que va de lo de cada
+     semana a lo que se toca una vez al año. Un rótulo de grupo no cabe en
+     una fila de pestañas, y fingirlo con separadores habría sido copiar la
+     forma sin la función.) */
 
-  return (
-    <div className="shell">
-      <div className="topbar">
-        <Volver />
-        <span className="spacer" />
-        <span style={{ color: "var(--dim)", fontSize: 12, textTransform: "uppercase", letterSpacing: 1 }}>solo administración</span>
-      </div>
-      <h1 className="title-lg">⚙ Administración</h1>
-
-      <div className="adm-grid">
-        <aside>
-          <div className="card" style={{ padding: 6 }}>
-            {GRUPOS.map(([titulo, claves]) => (
-              <div key={titulo}>
-                {/* El título del grupo separa lo que se hace cada semana de lo
-                    que se toca una vez al año. No es adorno: ya dice por dónde
-                    empezar. */}
-                <div className="adm-grupo">{titulo}</div>
-                {claves.map(k => {
-                  const [label, n] = META[k] || ["", null];
-                  return (
-                    <Link key={k} href={`/admin?s=${k}`} className={`adm-nav${s === k ? " on" : ""}`}>
-                      <span style={{ flex: 1 }}>{label}</span>
-                      {n ? (
-                        <span className="badge" style={{
-                          color: k === "jornadas" ? "var(--yellow)" : "var(--muted)",
-                          background: "#1c1c2c", fontSize: 10,
-                        }}>{n}</span>
-                      ) : null}
-                    </Link>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-        </aside>
-
-        <main>
-      {s === "portada" && (
+  /* ── LOS PANELES, UNO POR SECCIÓN ──
+     Antes cada bloque se pintaba con `{s === "x" && (…)}` dentro del return.
+     Ahora son variables y las reparte `TabsPanel`, el mismo de la ficha de un
+     fondo y de cada entidad: la administración era la única pantalla del
+     sistema con un menú lateral propio, y aprender dos formas de moverse por
+     lo mismo es aprender de más. */
+      const panelPortada = (
         <>
           {/* ── Tarjetas: lo que espera acción ──
               Cada número es algo que alguien tiene que hacer, y por eso cada
@@ -521,9 +476,9 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
             </div>
           </div>
         </>
-      )}
+      );
 
-      {s === "destacados" && (() => {
+      const panelDestacados = (() => {
         const ahora = Date.now();
         /* `dias()` vivía aquí con `T23:59:59` y umbrales propios —rojo a los
            3 días, amarillo a los 15— mientras el feed pone el rojo a los 2 y
@@ -631,9 +586,9 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
             </div>
           </>
         );
-      })()}
+      })();
 
-      {s === "plataformas" && (
+      const panelPlataformas = (
         <>
           <div className="h4" style={{ marginTop: 0 }}>🔗 Plataformas</div>
           <p style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 0 }}>
@@ -649,9 +604,9 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
           </p>
           <PlataformasAdmin plataformas={plataformas} />
         </>
-      )}
+      );
 
-      {s === "jornadas" && (
+      const panelJornadas = (
         <>
           <div className="h4" style={{ marginTop: 0 }}>
             ✅ Jornadas · <span style={{ textTransform: "capitalize" }}>{MESES[jMes]} {jAnio}</span>
@@ -680,9 +635,9 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
           <BitacoraJornadas items={filasJornadas} esAdmin miPersonaId="" proyectos={proyectos || []}
             titulo={`🗒 ${MESES[jMes]} ${jAnio}`} porMes diasVacios />
         </>
-      )}
+      );
 
-      {s === "liquidar" && (
+      const panelLiquidar = (
         <>
           <div className="h4" style={{ marginTop: 0 }}>🧾 Liquidar mes · <span style={{ textTransform: "capitalize" }}>{MESES[lMes]} {lAnio}</span></div>
           <div className="vtabs" style={{ alignItems: "center", marginBottom: 8 }}>
@@ -695,9 +650,9 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
           </p>
           <LiquidacionAdmin anio={lAnio} mes={lMes + 1} filas={filasLiq} />
         </>
-      )}
+      );
 
-      {s === "rhe" && (
+      const panelRhe = (
         <>
           <div className="h4" style={{ marginTop: 0 }}>🧾 RHE y tope de 4ta · {anioHoy}</div>
           <p style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 0 }}>
@@ -710,9 +665,9 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
             personas={(cobrables || []).map((p: any) => ({ id: p.id, nombre: p.alias || p.nombre, suspension_4ta_anio: p.suspension_4ta_anio }))}
             proyectos={proyectos || []} rhes={(rhes || []) as any} />
         </>
-      )}
+      );
 
-      {s === "tarifas" && (
+      const panelTarifas = (
         <>
           <div className="h4" style={{ marginTop: 0 }}>💰 Tarifas del personal</div>
           <p style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 0 }}>
@@ -720,9 +675,37 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
           </p>
           <TarifasEditor personas={tarifaLista} abierto />
         </>
-      )}
-        </main>
+      );
+  /* El orden es el de la frecuencia: la portada, lo de cada semana, el dinero
+     del mes y al final lo que se toca una vez al año. `masUltima` manda
+     Plataformas al menú «⋯», que es donde vive lo que casi nunca se abre. */
+  const PESTANAS: [string, string, React.ReactNode][] = [
+    ["portada", "🏠 Portada", panelPortada],
+    ["jornadas", `✅ Jornadas${porAprobar.length ? ` · ${porAprobar.length}` : ""}`, panelJornadas],
+    ["destacados", `📌 Destacados${nDestacados ? ` · ${nDestacados}` : ""}`, panelDestacados],
+    ["liquidar", `🧾 Liquidar${sinLiquidar ? ` · ${sinLiquidar}` : ""}`, panelLiquidar],
+    ["rhe", `🧾 RHE y 4ta${nCerca ? ` · ${nCerca}` : ""}`, panelRhe],
+    ["tarifas", "💰 Tarifas", panelTarifas],
+    ["plataformas", `🔗 Plataformas${platSinLink ? ` · ${platSinLink}` : ""}`, panelPlataformas],
+  ];
+  /* `?s=` sigue mandando cuál abre. No es nostalgia: las alertas de la portada,
+     los navegadores de mes y los enlaces que ya circulan apuntan a
+     `/admin?s=jornadas&jm=-1`, y una pestaña que no sabe leer su propia URL
+     los rompe todos en silencio. */
+  const iSel = Math.max(0, PESTANAS.findIndex(([k]) => k === s));
+
+  return (
+    <div className="shell">
+      <div className="topbar">
+        <Volver />
+        <span className="spacer" />
+        <span style={{ color: "var(--dim)", fontSize: 12, textTransform: "uppercase", letterSpacing: 1 }}>solo administración</span>
       </div>
+      <h1 className="title-lg">⚙ Administración</h1>
+
+      <TabsPanel inicial={iSel} masUltima
+        labels={PESTANAS.map(([, l]) => l)}
+        paneles={PESTANAS.map(([k, , nodo]) => <div key={k}>{nodo}</div>)} />
     </div>
   );
 }
