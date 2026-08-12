@@ -337,6 +337,27 @@ a{color:inherit;text-decoration:none}
 /* «Nadie lo tiene» cuando ADEMAS no se puede prestar: en rojo tenue, no en
    gris. En gris se leia igual que «libre para prestar», que es lo contrario. */
 .ce-trabado{color:var(--dano)}
+/* ── LO QUE TIENE UNA PERSONA (carne de la ficha) ──
+   Dos listas y no una: lo prestado —que vuelve— y lo asignado —que es suyo
+   mientras trabaje aqui—. Con foto, folio y valor, porque el dia que alguien
+   deja el equipo esta lista se recorre delante de el contando cosas. */
+.pm-h{display:flex;align-items:baseline;gap:8px;margin:10px 0 2px;
+  font-size:10.5px;letter-spacing:.7px;text-transform:uppercase;color:var(--muted);font-weight:700}
+.pm-h-sub{text-transform:none;letter-spacing:0;font-weight:400;color:var(--dim);font-size:10.5px}
+.pm-fila{display:flex;gap:9px;align-items:center;padding:5px 4px;border-radius:9px;
+  text-decoration:none;min-width:0}
+.pm-fila:hover{background:rgba(255,255,255,.04)}
+.pm-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.pm-l1{display:flex;gap:7px;align-items:center;min-width:0}
+.pm-nom{font-size:12.5px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pm-l2{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:10.5px;color:var(--dim)}
+.pm-val{color:var(--teal);font-weight:700}
+/* Mas de una semana fuera: ambar. No es una alarma —hay rodajes largos— pero
+   si la unica pista de que conviene preguntar. */
+.pm-tarde{color:var(--yellow);font-weight:700}
+.pm-nota{font-style:italic;opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.pm-pie{font-size:10.5px;color:var(--dim);font-style:italic;margin-top:7px;padding-top:6px;
+  border-top:1px solid var(--border)}
 .post-resultado.tono-perdido{color:var(--red)}
 .post-resultado.tono-baja{color:#9aa3b8}
 /* Lista de participantes de una convocatoria: agrupada por desenlace y con un

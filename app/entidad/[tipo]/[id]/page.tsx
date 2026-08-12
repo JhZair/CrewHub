@@ -20,7 +20,7 @@ import Expediente from "@/components/Expediente";
 import { BotonVerificarRuc, BotonVerificarDni, BotonRucPersona } from "@/components/VerificarSunat";
 import Alerta from "@/components/Alerta";
 import { urlPlataforma, conPlataforma, PLAT } from "@/lib/plataformas";
-import { hoyLima } from "@/lib/fechas";
+import { hoyLima, fechaDia } from "@/lib/fechas";
 import {
   rendicionVencida, plazoRendicion, compromisoDe, empresaLibre,
   trabasEmpresa, trabasMiembro, dudasMiembro, SIN_COMPROMISO,
@@ -1575,8 +1575,12 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       supabase.from("postulacion_equipo")
         .select("id,cargo,cv_url,post:postulaciones(id,codigo,estado,monto_adjudicado,proy:proyectos(id,nombre),conv:convocatorias(id,nombre,anio),emp:empresas(id,nombre),equipo:postulacion_equipo(cargo,persona:personas(id,nombre,alias,foto_url)))")
         .eq("persona_id", params.id),
+      /* Lo que tiene AHORA, prestado o a su cargo. `tipo` distingue las dos
+         cosas (db/asignacion.sql) y el valor es lo que hace que la lista sirva
+         para lo que de verdad se usa: cuando alguien deja el equipo, esto es
+         el acta de devolución. */
       supabase.from("equipo_prestamos")
-        .select("id,desde,equipo:equipamiento(id,folio,nombre)")
+        .select("id,desde,nota,tipo,equipo:equipamiento(id,folio,nombre,categoria,subcategoria,valor_compra)")
         .eq("persona_id", params.id).is("hasta", null).order("desde", { ascending: false }),
       supabase.from("proyectos")
         .select("id,nombre,tipo")
@@ -1630,6 +1634,21 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         });
     }
     equiposEnMano = pr.data || [];
+    /* Con foto: una lista de equipos sin imagen obliga a leer folio por folio,
+       y esta se recorre delante de la persona contando cosas sobre la mesa. */
+    {
+      const idsEq = equiposEnMano.map((r: any) => (Array.isArray(r.equipo) ? r.equipo[0] : r.equipo)?.id).filter(Boolean);
+      if (idsEq.length) {
+        const { data: mmE } = await supabase.from("entidad_media")
+          .select("entidad_id,cartel_url").eq("entidad_tipo", "equipamiento").in("entidad_id", idsEq);
+        const cEq = new Map<string, string>();
+        (mmE || []).forEach((m: any) => { if (m.cartel_url) cEq.set(m.entidad_id, m.cartel_url); });
+        equiposEnMano = equiposEnMano.map((r: any) => {
+          const e = Array.isArray(r.equipo) ? r.equipo[0] : r.equipo;
+          return { ...r, equipo: e, cartel: e?.id ? cEq.get(e.id) || null : null };
+        });
+      }
+    }
     clienteEnProy = cl.data || [];
 
     /* Carteles de las obras y empresas de su trayectoria: para adornar las
@@ -2922,24 +2941,90 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               🏆 Trayectoria (columna derecha): son recorrido profesional —dónde
               milita, su hoja de vida— no papeles de identidad del carné. */}
 
-          {params.tipo === "persona" && equiposEnMano.length > 0 && (
-            <div className="linked" style={{ marginTop: 14, borderLeft: "3px solid var(--yellow)" }}>
-              <h4>🎥 Equipos en su poder · {equiposEnMano.length}</h4>
-              {equiposEnMano.map((r: any) => (
-                <div key={r.id} className="eq-row" style={{ alignItems: "center" }}>
-                  {r.equipo?.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{r.equipo.folio}</span>}
-                  <span style={{ flex: 1, textAlign: "right" }}>
-                    <Link href={`/entidad/equipamiento/${r.equipo?.id}`} style={{ color: "var(--text)" }}>
-                      {r.equipo?.nombre} →
-                    </Link>
-                    <span style={{ color: "var(--dim)", fontSize: TXT.chip, marginLeft: 8 }}>
-                      desde {new Date(r.desde + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short" })}
-                    </span>
+          {/* ═══ LO QUE TIENE, Y EN QUÉ CONDICIÓN ═══
+              Era una lista sola, «Equipos en su poder», que mezclaba dos cosas
+              con consecuencias opuestas: la cámara que salió el martes y tiene
+              que volver, y la laptop que ES suya mientras trabaje aquí. Con
+              las dos revueltas, ni se puede reclamar la primera ni se entiende
+              la segunda.
+              Y el día que alguien deja el equipo, esta lista ES el acta de
+              devolución: por eso lleva foto, folio y valor. Se recorre delante
+              de la persona, contando cosas sobre una mesa. */}
+          {params.tipo === "persona" && equiposEnMano.length > 0 && (() => {
+            const prestados = equiposEnMano.filter((r: any) => r.tipo !== "asignacion");
+            const asignados = equiposEnMano.filter((r: any) => r.tipo === "asignacion");
+            const valorDe = (rs: any[]) => rs.reduce((t, r) => t + (Number(r.equipo?.valor_compra) || 0), 0);
+            const total = valorDe(equiposEnMano);
+            /* Días fuera, contados en Lima. Sirve para el préstamo —lo que hay
+               que reclamar— y no para la asignación, donde 200 días no
+               significan nada malo. */
+            const dias = (d: string) =>
+              Math.round((new Date(hoyLima() + "T12:00:00").getTime() - new Date(d + "T12:00:00").getTime()) / 86400000);
+
+            const fila = (r: any, esAsig: boolean) => (
+              <Link key={r.id} href={`/entidad/equipamiento/${r.equipo?.id}`} className="pm-fila">
+                <span className="mini-eq">
+                  {r.cartel
+                    // eslint-disable-next-line @next/next/no-img-element
+                    ? <img src={r.cartel} alt="" referrerPolicy="no-referrer" />
+                    : <span>🎥</span>}
+                </span>
+                <span className="pm-txt">
+                  <span className="pm-l1">
+                    {r.equipo?.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c", fontSize: TXT.chip }}>{r.equipo.folio}</span>}
+                    <span className="pm-nom">{r.equipo?.nombre}</span>
                   </span>
-                </div>
-              ))}
-            </div>
-          )}
+                  <span className="pm-l2">
+                    {(r.equipo?.subcategoria || r.equipo?.categoria) && <span>{r.equipo.subcategoria || r.equipo.categoria}</span>}
+                    {Number(r.equipo?.valor_compra) > 0 && (
+                      <span className="pm-val">S/ {Math.round(Number(r.equipo.valor_compra)).toLocaleString("es-PE")}</span>
+                    )}
+                    {esAsig
+                      ? <span>desde {fechaDia(r.desde)}</span>
+                      /* En un préstamo lo que importa no es la fecha, es
+                         cuánto lleva fuera: «hace 12 días» se lee sin restar. */
+                      : <span className={dias(r.desde) > 7 ? "pm-tarde" : undefined}>
+                          {dias(r.desde) <= 0 ? "hoy" : dias(r.desde) === 1 ? "hace 1 día" : `hace ${dias(r.desde)} días`}
+                        </span>}
+                    {r.nota && <span className="pm-nota">{r.nota}</span>}
+                  </span>
+                </span>
+              </Link>
+            );
+
+            return (
+              <div className="linked" style={{ marginTop: 14, borderLeft: "3px solid var(--yellow)" }}>
+                <h4 style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  🎥 Equipos en su poder · {equiposEnMano.length}
+                  {total > 0 && (
+                    <span style={{ color: "var(--teal)", fontWeight: 800, textTransform: "none", letterSpacing: 0, fontSize: 12 }}>
+                      S/ {Math.round(total).toLocaleString("es-PE")}
+                    </span>
+                  )}
+                </h4>
+
+                {prestados.length > 0 && (
+                  <>
+                    <div className="pm-h">🤝 Prestado · {prestados.length}<span className="pm-h-sub">tiene que volver</span></div>
+                    {prestados.map((r: any) => fila(r, false))}
+                  </>
+                )}
+
+                {asignados.length > 0 && (
+                  <>
+                    <div className="pm-h">📌 A su cargo · {asignados.length}<span className="pm-h-sub">su equipo de trabajo</span></div>
+                    {asignados.map((r: any) => fila(r, true))}
+                    {/* Lo que hay que recuperar el día que deje el equipo. Se
+                        dice aquí porque es el único sitio donde la lista está
+                        completa, y porque nadie se acuerda de buscarla. */}
+                    <div className="pm-pie">
+                      Si deja el equipo, esto es lo que hay que recuperar o dar de baja.
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })()}
 
           {/* «Cliente de proyectos» y los CVs por enfoque viven ahora en la
               pestaña 🏆 Trayectoria (columna derecha). */}
