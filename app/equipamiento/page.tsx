@@ -99,7 +99,7 @@ export default async function Equipamiento({ searchParams }: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: eqs }, { data: enManos, error: eManos }, { data: vincs }, { data: coms }, { data: media }, comsBita, comsUso, usosRec, { data: comBita }, { data: prestAll }, personasRaw, proyectosRaw, { data: kitsRaw, error: eKits }, { data: kitEqs }, { data: comprasRaw }] = await Promise.all([
+  const [{ data: eqs }, { data: enManos, error: eManos }, { data: vincs }, { data: coms }, { data: media }, comsBita, comsUso, usosRec, { data: comBita }, { data: prestAll }, personasRaw, proyectosRaw, { data: kitsRaw, error: eKits }, { data: kitEqs }, { data: comprasRaw }, usosFin] = await Promise.all([
     // `*`: para calcular la completitud de la ficha de cada equipo.
     supabase.from("equipamiento").select("*").order("folio"),
     supabase.from("equipo_prestamos")
@@ -149,6 +149,18 @@ export default async function Equipamiento({ searchParams }: {
        Es lo que hace que el valor del inventario deje de ir corto. */
     supabase.from("compras").select("id,codigo,nombre,proveedor,total,moneda,fecha,comprobante_url,link,nota")
       .order("fecha", { ascending: false, nullsFirst: false }),
+    /* LO ÚLTIMO QUE VOLVIÓ. Va en una consulta aparte de `usosRec` porque un
+       préstamo tiene DOS fechas y una consulta solo puede ordenarse por una:
+       ordenando por `desde` se traen las salidas más recientes, y una cámara
+       que salió en junio y volvió ayer no entra en esa lista. El panel decía
+       «última actividad» y se saltaba justo lo último. Se veía al pulsar «ver
+       más»: con la ventana ancha entraban más préstamos por `desde`, y con
+       ellos aparecían de golpe devoluciones más nuevas que todo lo de arriba.
+       AL FINAL del arreglo y no en medio: esto se destructura POR POSICIÓN, y
+       meter una consulta entre otras dos ya desalineó seis tablas una vez. */
+    supabase.from("equipo_prestamos")
+      .select("id,desde,hasta,equipo:equipamiento(id,folio,nombre),persona:personas(id,nombre,alias)")
+      .not("hasta", "is", null).order("hasta", { ascending: false }).limit(ACT_TRAE),
   ]);
   const personasCat = ((personasRaw as any)?.data || []).map((x: any) =>
     ({ ...x, nombre: x.alias ? `${x.nombre} · ${x.alias}` : x.nombre }));
@@ -285,7 +297,14 @@ export default async function Equipamiento({ searchParams }: {
   const actItems: any[] = [];
   (comsBita?.data || []).forEach((c: any) => actItems.push({ at: c.creado_en, tipo: "com", eq: un1(c.equipo), autor: un1(c.autor), cuerpo: c.cuerpo, imagenes: c.imagenes || [], es_dano: c.es_dano }));
   (comsUso?.data || []).forEach((c: any) => actItems.push({ at: c.creado_en, tipo: "com", eq: un1(un1(c.prestamo)?.equipo), autor: un1(c.autor), cuerpo: c.cuerpo, imagenes: c.imagenes || [], es_dano: c.es_dano, uso: true }));
-  (usosRec?.data || []).forEach((p: any) => {
+  /* Las dos listas de préstamos —los que SALIERON hace poco y los que
+     VOLVIERON hace poco— se solapan: un préstamo de esta semana que ya se
+     devolvió está en las dos. Se recorren juntas y con un visto, que si no
+     cada evento se pinta dos veces. */
+  const prestVistos = new Set<string>();
+  [...(usosRec?.data || []), ...(usosFin?.data || [])].forEach((p: any) => {
+    if (prestVistos.has(p.id)) return;
+    prestVistos.add(p.id);
     const eq = un1(p.equipo), per = un1(p.persona);
     actItems.push({ at: p.desde + "T12:00:00", tipo: "uso_ini", eq, persona: per });
     if (p.hasta) actItems.push({ at: p.hasta + "T12:00:00", tipo: "uso_fin", eq, persona: per });
