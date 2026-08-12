@@ -343,6 +343,43 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
      una fila de pestañas, y fingirlo con separadores habría sido copiar la
      forma sin la función.) */
 
+  /* ── A QUÉ HORA TRABAJA CADA UNO, EN EL MES QUE SE REVISA ──
+     La lupa de un día contesta «¿qué hizo el martes?»; esto contesta la de
+     antes: «¿a qué hora trabaja esta persona?». Un mes de jornadas de oficina
+     todas iguales no lo dice, y el sistema sí lo sabe.
+     DOS consultas para todas las personas y todo el mes, no una por fila:
+     `actividad` y `comentarios` filtrados por rango. Ese rango se escribe con
+     el offset de Lima —igual que la ventana del día— o las horas saldrían
+     corridas cinco puestos, que es justo lo que se está midiendo.
+     No entra `publicaciones` ni los préstamos: son pocos al lado de los otros
+     dos y duplicarían consultas para mover la barra un pelo. Esto es una
+     silueta, no un parte contable — y por eso no lleva números. */
+  const horasPorPersona: Record<string, number[]> = {};
+  {
+    const desdeL = `${jInicio}T00:00:00-05:00`;
+    const hastaL = `${jFin}T00:00:00-05:00`;
+    const [{ data: hAct }, { data: hCom }] = await Promise.all([
+      supabase.from("actividad").select("actor_id,creado_en")
+        .gte("creado_en", desdeL).lt("creado_en", hastaL).limit(20000),
+      supabase.from("comentarios").select("autor_id,creado_en")
+        .gte("creado_en", desdeL).lt("creado_en", hastaL).limit(20000),
+    ]);
+    /* De cuenta (perfiles.id) a persona: la jornada es de una PERSONA y la
+       actividad la firma un USUARIO. Quien no tiene cuenta no aporta horas —y
+       no pasa nada: su fila simplemente no lleva barra. */
+    const personaDeUsuario = new Map<string, string>();
+    (personas || []).forEach((p: any) => { if (p.usuario_id) personaDeUsuario.set(p.usuario_id, p.id); });
+    const suma = (uid: string | null, at: string) => {
+      const pid = uid ? personaDeUsuario.get(uid) : null;
+      if (!pid || !at) return;
+      const h = Number(new Date(at).toLocaleString("en-GB", { hour: "2-digit", hour12: false, timeZone: "America/Lima" }));
+      if (Number.isNaN(h)) return;
+      (horasPorPersona[pid] ||= Array(24).fill(0))[h]++;
+    };
+    (hAct || []).forEach((x: any) => suma(x.actor_id, x.creado_en));
+    (hCom || []).forEach((x: any) => suma(x.autor_id, x.creado_en));
+  }
+
   /* ── LOS PANELES, UNO POR SECCIÓN ──
      Antes cada bloque se pintaba con `{s === "x" && (…)}` dentro del return.
      Ahora son variables y las reparte `TabsPanel`, el mismo de la ficha de un
@@ -637,7 +674,7 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
               rótulo que repite sus dos vecinos y que al cerrarse deja la
               pantalla vacía no es un control, es un estorbo. */}
           <BitacoraJornadas items={filasJornadas} esAdmin miPersonaId="" proyectos={proyectos || []}
-            porMes diasVacios plegable={false} />
+            porMes diasVacios plegable={false} horasPorPersona={horasPorPersona} />
         </>
       );
 

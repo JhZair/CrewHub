@@ -4,7 +4,7 @@ import DiaContexto from "@/components/DiaContexto";
 import MiniSelect from "@/components/MiniSelect";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { FRACCIONES, fechaHum, esFinde, ICO_TIPO } from "@/lib/jornadas";
+import { FRACCIONES, metaFraccion, fechaHum, esFinde, ICO_TIPO } from "@/lib/jornadas";
 
 const TIPOS: [string, string][] = [["rodaje", "🎬"], ["oficina", "🏢"], ["scouting", "🚙"]];
 
@@ -81,7 +81,17 @@ function FilaJornada({ j, esAdmin, puedeEditar, proyectos, onChange }: {
       </span>
       <span className="jr-quien">{ICO_TIPO[j.tipo] || ""} {j.persona}</span>
       <span className="jr-proy" title={j.proyecto || "sin proyecto"}>{j.proyecto || "sin proyecto"}</span>
-      <span style={{ fontSize: 12, whiteSpace: "nowrap" }}>{j.fraccion}j{j.noche ? " 🏕" : ""}</span>
+      {/* CUÁNTO Y DE QUÉ CLASE. «1j» y «1.5j» en el mismo gris obligan a leer
+          el número para ver que una fila no es como la de arriba; en treinta
+          filas eso no se hace. Cada uno de los cuatro tiempos con su tono, y
+          el pernocte SEPARADO: no es más tiempo —el rodaje sigue siendo un
+          día— es que además se durmió fuera, y por eso paga aparte. Metidos en
+          la misma etiqueta, «1j 🏕» se leía como una jornada normal con un
+          adorno, cuando cuesta el doble. */}
+      <span className={`jr-dur t-${metaFraccion(j.fraccion).tono}`} title={metaFraccion(j.fraccion).largo}>
+        {metaFraccion(j.fraccion).corto} {metaFraccion(j.fraccion).v === 1 ? "día" : "j"}
+      </span>
+      {j.noche && <span className="jr-pernocte" title="Con pernocte: se durmió fuera. Se paga aparte del día.">🏕 pernocte</span>}
       <span style={{ color: "var(--teal)", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>{money(j.monto)}</span>
       <span className="badge jr-est" style={{
         fontSize: 10.5,
@@ -122,7 +132,7 @@ const diasDelMes = (ym: string) => {
     `${a}-${String(m).padStart(2, "0")}-${String(i + 1).padStart(2, "0")}`);
 };
 
-export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId = "", proyectos = [], titulo = "🗒 Jornadas del mes", bloqueado = false, porMes = false, diasVacios = false, plegable = true }: {
+export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId = "", proyectos = [], titulo = "🗒 Jornadas del mes", bloqueado = false, porMes = false, diasVacios = false, plegable = true, horasPorPersona }: {
   items: any[]; esAdmin?: boolean; miPersonaId?: string; proyectos?: { id: string; nombre: string }[]; titulo?: string; bloqueado?: boolean;
   /** Subdivide cada persona por mes. Para listas que cruzan varios. */
   porMes?: boolean;
@@ -141,6 +151,14 @@ export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId =
    *  dejaba la pantalla en negro — un control cuyo único efecto es esconder
    *  todo lo que hay. */
   plegable?: boolean;
+  /** A qué hora trabajó cada persona en el periodo, en 24 cubos.
+   *
+   *  La lupa de un día contesta «¿qué hizo el martes?»; esta barra contesta la
+   *  pregunta de antes: «¿a qué hora trabaja esta persona?». Un mes de
+   *  jornadas de oficina todas iguales no lo dice, y el sistema sí lo sabe.
+   *  Llega calculada de fuera —dos consultas para todas las personas del mes—
+   *  porque hacerla aquí serían tantas consultas como filas. */
+  horasPorPersona?: Record<string, number[]>;
 }) {
   const router = useRouter();
   const onChange = () => router.refresh();
@@ -215,6 +233,30 @@ export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId =
                 : <span className="badge" style={{ color: "var(--green)", background: "rgba(46,204,113,.12)" }}>✅ al día</span>}
               <span className="jr-grupo-t">{soles(g.monto)}</span>
             </div>
+            {/* SU FRANJA HORARIA, bajo su nombre. Es una silueta, no un parte:
+                sin números y sin ejes, solo la forma —de mañana, de tarde, o
+                repartido—. Puesta al lado del total del mes, esa forma es
+                contexto para lo que se está aprobando.
+                Solo si hay algo que dibujar: una barra plana de veinticuatro
+                ceros afirma «no trabajó a ninguna hora» cuando lo cierto es
+                que esa persona no deja rastro en el sistema. */}
+            {(() => {
+              const hs = horasPorPersona?.[g.id];
+              if (!hs || !hs.some(n => n > 0)) return null;
+              const pico = Math.max(...hs);
+              const total = hs.reduce((a, b) => a + b, 0);
+              const top = hs.indexOf(pico);
+              return (
+                <div className="jr-horas" title={`${total} acciones en el sistema · más movimiento a las ${String(top).padStart(2, "0")}:00`}>
+                  {hs.map((n, h) => (
+                    <span key={h} className="jr-horas-c">
+                      <span className="jr-horas-b" style={{ height: `${(n / pico) * 100}%` }} />
+                    </span>
+                  ))}
+                  <span className="jr-horas-pie">pico {String(top).padStart(2, "0")}:00</span>
+                </div>
+              );
+            })()}
             {!cerrados.has(g.id) && (() => {
               const pinta = (j: any) => (
                 <FilaJornada key={j.id} j={j} esAdmin={esAdmin}

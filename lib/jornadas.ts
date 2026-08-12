@@ -13,12 +13,20 @@
  * Las fracciones solo aplican a OFICINA. Rodaje y scouting son día completo:
  * `registrarJornada` fuerza 1 y esa regla vive en el servidor, no aquí.
  */
-export const FRACCIONES: { v: number; corto: string; largo: string }[] = [
-  { v: 0.5, corto: "½", largo: "½ Medio" },
-  { v: 1, corto: "1", largo: "1 Completo" },
-  { v: 1.5, corto: "1½", largo: "1½ Día y medio" },
-  { v: 2, corto: "2", largo: "2 Doble" },
+/* Los CUATRO tiempos. `tono` es el color con que se distinguen en un listado:
+   escritos todos igual —«1j», «1.5j»— hay que leer el número para ver que una
+   fila no es como la de arriba, y en treinta filas eso no se hace. Medio día
+   se apaga, el completo es lo normal, y los dos que pasan de un día suben de
+   temperatura: son los que hay que mirar al aprobar. */
+export const FRACCIONES: { v: number; corto: string; largo: string; tono: string }[] = [
+  { v: 0.5, corto: "½", largo: "½ Medio", tono: "medio" },
+  { v: 1, corto: "1", largo: "1 Completo", tono: "uno" },
+  { v: 1.5, corto: "1½", largo: "1½ Día y medio", tono: "medio-mas" },
+  { v: 2, corto: "2", largo: "2 Doble", tono: "doble" },
 ];
+/** La fracción tal como se lee en una fila: «1½ día y medio». */
+export const metaFraccion = (n?: number | null) =>
+  FRACCIONES.find(f => f.v === Number(n)) || { v: Number(n) || 0, corto: String(n ?? "?"), largo: `${n}`, tono: "uno" };
 
 /** ¿Es una fracción que ofrecemos? Para no guardar valores que nadie eligió. */
 export const fraccionValida = (n: number) => FRACCIONES.some(f => f.v === Number(n));
