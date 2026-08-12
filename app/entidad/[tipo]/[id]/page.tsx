@@ -747,7 +747,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   if (params.tipo === "equipamiento") {
     const [pr, pc, py] = await Promise.all([
       supabase.from("equipo_prestamos")
-        .select("id,desde,hasta,nota,persona:personas(id,nombre,alias,foto_url),proy:proyectos(id,nombre)")
+        /* `tipo`: prestada (vuelve) o asignada (se queda). Ver db/asignacion.sql. */
+        .select("id,desde,hasta,nota,tipo,persona:personas(id,nombre,alias,foto_url),proy:proyectos(id,nombre)")
         .eq("equipamiento_id", params.id).order("desde", { ascending: false }),
       supabase.from("personas").select("id,nombre,alias,tipo").order("nombre"),
       supabase.from("proyectos").select("id,nombre").order("nombre"),
@@ -2156,9 +2157,19 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                           : <span style={{ width: 40, height: 40, borderRadius: "50%", background: "var(--bg)", border: "1px solid var(--border2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>👤</span>}
                       </Link>
                       <div style={{ minWidth: 0 }}>
-                        <div>🤝 <Link href={`/entidad/persona/${actual.persona?.id}`} style={{ color: "var(--text)", fontWeight: 700 }}>{actual.persona?.alias || actual.persona?.nombre}</Link> lo tiene</div>
+                        {/* «lo tiene» vale para un préstamo; para una
+                            asignación la frase es otra —está a su cargo— y
+                            leerlas iguales borraría justamente la diferencia
+                            que acabamos de introducir. */}
+                        <div>
+                          {actual.tipo === "asignacion" ? "📌 " : "🤝 "}
+                          <Link href={`/entidad/persona/${actual.persona?.id}`} style={{ color: "var(--text)", fontWeight: 700 }}>{actual.persona?.alias || actual.persona?.nombre}</Link>
+                          {actual.tipo === "asignacion" ? " lo tiene a su cargo" : " lo tiene"}
+                        </div>
                         {actual.proy && <div className="ce-sub">para <Link href={`/entidad/proyecto/${actual.proy.id}`} style={{ color: "var(--violet)" }}>{actual.proy.nombre}</Link></div>}
-                        <div className="ce-sub">desde {fmtD(actual.desde)}</div>
+                        <div className="ce-sub">
+                          {actual.tipo === "asignacion" ? "asignado desde " : "desde "}{fmtD(actual.desde)}
+                        </div>
                       </div>
                     </div>
                   ) : entregableEq(ent.estado) ? (

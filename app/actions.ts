@@ -4314,7 +4314,13 @@ export async function comprobarEquipo(equipoId: string) {
 /* ===== PRÉSTAMOS DE EQUIPOS: los recursos pasan de mano en mano =====
    El estado dice QUÉ (en_uso); el préstamo dice QUIÉN, DESDE CUÁNDO y
    PARA QUÉ proyecto. Cerrar el préstamo devuelve el equipo a disponible. */
-export async function prestarEquipo(equipoId: string, personaId: string, proyectoId: string | null, nota: string) {
+export async function prestarEquipo(
+  equipoId: string, personaId: string, proyectoId: string | null, nota: string,
+  /* PRESTAR o ASIGNAR. Es la misma custodia —quién lo tiene, desde cuándo,
+     quién se lo dio— y por eso la misma tabla y la misma función; lo que
+     cambia es si se espera que vuelva. Ver db/asignacion.sql. */
+  tipo: "prestamo" | "asignacion" = "prestamo",
+) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
@@ -4340,16 +4346,20 @@ export async function prestarEquipo(equipoId: string, personaId: string, proyect
   const { error } = await supabase.from("equipo_prestamos").insert({
     equipamiento_id: equipoId, persona_id: personaId,
     proyecto_id: proyectoId || null, nota: nota.trim() || null,
+    tipo,
     /* Quién lo dio. Una entrega la hacen dos personas y hasta ahora solo se
        guardaba una: cuando algo no aparece y quien lo tiene dice que no se lo
        llevó, sin este dato no hay a quién más preguntar. */
     entregado_por: user.id,
   });
-  if (error) return { error: error.message };
+  if (error) {
+    if (/tipo/.test(error.message)) return { error: "Falta correr db/asignacion.sql en Supabase." };
+    return { error: error.message };
+  }
 
   const { error: e2 } = await supabase.from("equipamiento")
-    .update({ estado: "en_uso" }).eq("id", equipoId);
-  if (e2) return { error: "Préstamo registrado, pero el estado no se actualizó: " + e2.message };
+    .update({ estado: tipo === "asignacion" ? "asignado" : "en_uso" }).eq("id", equipoId);
+  if (e2) return { error: "Registrado, pero el estado no se actualizó: " + e2.message };
   revalidatePath(`/entidad/equipamiento/${equipoId}`);
   revalidatePath("/equipamiento");
   return {};

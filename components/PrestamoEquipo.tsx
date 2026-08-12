@@ -31,7 +31,10 @@ const MANT = "#4a9d9d"; // color tenue del mantenimiento (verde azulado)
 const EST: Record<string, [string, string]> = Object.fromEntries(
   ESTADOS_EQUIPO.map(e => [e.k, [`${e.ico} ${e.txt}`, e.color] as [string, string]]));
 
-type Modo = "nota" | "dano" | "mant" | "uso";
+/* «uso» presta —vuelve— y «asig» asigna —se queda—. Dos modos y no una
+   casilla dentro de uno: la diferencia no es un detalle del formulario, es
+   qué clase de cosa se está registrando. */
+type Modo = "nota" | "dano" | "mant" | "uso" | "asig";
 
 /* LÍNEA DE TIEMPO DEL EQUIPO — un solo lugar donde vive todo el ciclo de vida del
    equipo: notas, daños, mantenimientos y usos (préstamos), intercalados por
@@ -173,7 +176,12 @@ export default function PrestamoEquipo({ equipoId, prestamos, personas, proyecto
   const prestar = async () => {
     if (!quien || ocupado) return;
     setOcupado(true); setError("");
-    const res: any = await prestarEquipo(equipoId, quien.id, proy?.id || null, notaUso);
+    /* El modo se lee AQUÍ y se pasa como argumento, no se deduce dentro: es
+       el mismo formulario para dos cosas distintas y quien lo envía tiene que
+       decir cuál. */
+    const res: any = await prestarEquipo(equipoId, quien.id,
+      modo === "asig" ? null : (proy?.id || null), notaUso,
+      modo === "asig" ? "asignacion" : "prestamo");
     setOcupado(false);
     if (res?.error) { setError(res.error); return; }
     setQuien(null); setProy(null); setNotaUso(""); setModo("nota");
@@ -323,8 +331,10 @@ export default function PrestamoEquipo({ equipoId, prestamos, personas, proyecto
         )}
         {actual ? (
           <span style={{ fontSize: 13 }}>
-            👤 <Link href={`/entidad/persona/${actual.persona?.id}`} style={{ fontWeight: 700, color: "var(--text)" }}>
-              {actual.persona?.alias || actual.persona?.nombre}</Link> lo tiene
+            {actual.tipo === "asignacion" ? "📌 " : "👤 "}
+            <Link href={`/entidad/persona/${actual.persona?.id}`} style={{ fontWeight: 700, color: "var(--text)" }}>
+              {actual.persona?.alias || actual.persona?.nombre}</Link>
+            {actual.tipo === "asignacion" ? " lo tiene a su cargo" : " lo tiene"}
             <span style={{ color: "var(--dim)", marginLeft: 6 }}>desde {fmtF(actual.desde)}</span>
             {actual.proy && <Link href={`/entidad/proyecto/${actual.proy.id}`} className="badge" style={{ marginLeft: 8, color: "var(--violet)", background: "rgba(167,139,250,.12)", fontSize: 11.5 }}>📁 {actual.proy.nombre}</Link>}
           </span>
@@ -346,7 +356,9 @@ export default function PrestamoEquipo({ equipoId, prestamos, personas, proyecto
             {" / "}<button style={{ color: "var(--dim)" }} onClick={() => setDevolviendo(null)}>no</button>
           </span>
         ) : (
-          <button className="btn btn-ghost" style={{ padding: "4px 12px", fontSize: 12.5 }} onClick={() => setDevolviendo(actual.id)}>↩ Liberar</button>
+          <button className="btn btn-ghost" style={{ padding: "4px 12px", fontSize: 12.5 }} onClick={() => setDevolviendo(actual.id)}>
+            {actual.tipo === "asignacion" ? "↩ Quitar asignación" : "↩ Liberar"}
+          </button>
         ))}
       </div>
 
@@ -363,22 +375,35 @@ export default function PrestamoEquipo({ equipoId, prestamos, personas, proyecto
               hasta hoy no lo rechazaba: la prestaba, y el «en uso» borraba el
               estado que avisaba del problema. */}
           {([["nota", "📝 Nota"], ["dano", "🔧 Daño"], ["mant", "🛠 Mantenimiento"],
-             ...(!actual && entregableEq(estado) ? [["uso", "🤝 Poner en uso"]] : [])] as [Modo, string][]).map(([m, lbl]) => (
+             ...(!actual && entregableEq(estado)
+                 ? [["uso", "🤝 Poner en uso"], ["asig", "📌 Asignar"]] : [])] as [Modo, string][]).map(([m, lbl]) => (
             <button key={m} type="button" className={`muro-tag ${modo === m ? "on" : ""}`} onClick={() => irAModo(m)}>{lbl}</button>
           ))}
         </div>
 
-        {modo === "uso" ? (
+        {modo === "uso" || modo === "asig" ? (
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 10, padding: 10, background: "var(--bg)", borderRadius: 10 }}>
             <EntPicker etiqueta={quien ? `👤 ${quien.nombre}` : "👤 ¿A quién?"} items={personas}
               onPick={id => { const p = personas.find(x => x.id === id); if (p) setQuien({ id: p.id, nombre: p.nombre }); }} />
-            <EntPicker etiqueta={proy ? `📁 ${proy.nombre}` : "📁 ¿Para qué proyecto? (opcional)"} items={proyectos}
-              onPick={id => { const p = proyectos.find(x => x.id === id); if (p) setProy({ id: p.id, nombre: p.nombre }); }} />
-            <input value={notaUso} placeholder="Nota (opcional)" onChange={e => setNotaUso(e.target.value)}
+            {/* Una asignación no es «para un proyecto»: es de la persona. El
+                selector solo aparece prestando, que es cuando la salida tiene
+                un rodaje detrás. */}
+            {modo === "uso" && (
+              <EntPicker etiqueta={proy ? `📁 ${proy.nombre}` : "📁 ¿Para qué proyecto? (opcional)"} items={proyectos}
+                onPick={id => { const p = proyectos.find(x => x.id === id); if (p) setProy({ id: p.id, nombre: p.nombre }); }} />
+            )}
+            <input value={notaUso}
+              placeholder={modo === "asig" ? "Nota (opcional): «puesto de post», «dotación 2026»" : "Nota (opcional)"}
+              onChange={e => setNotaUso(e.target.value)}
               style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, outline: "none", flex: 1, minWidth: 140, color: "var(--text)" }} />
             <button className="btn" style={{ padding: "7px 14px", fontSize: 12 }} disabled={!quien || ocupado} onClick={prestar}>
-              {ocupado ? "..." : "Poner en uso"}
+              {ocupado ? "..." : modo === "asig" ? "Asignar" : "Poner en uso"}
             </button>
+            {modo === "asig" && (
+              <span style={{ fontSize: 11, color: "var(--dim)", flexBasis: "100%" }}>
+                Queda a su cargo hasta que alguien lo libere — no se ofrece al entregar ni cuenta como salida pendiente.
+              </span>
+            )}
             <button className="btn btn-ghost" style={{ padding: "7px 10px", fontSize: 12 }}
               onClick={() => { setModo("nota"); setQuien(null); setProy(null); setNotaUso(""); }}>Cancelar</button>
           </div>

@@ -22,7 +22,7 @@
  */
 
 export type EstadoEquipo =
-  | "disponible" | "en_uso" | "ensamblado" | "no_aparece" | "en_reparacion"
+  | "disponible" | "en_uso" | "asignado" | "ensamblado" | "no_aparece" | "en_reparacion"
   | "perdido" | "de_baja";
 
 export type MetaEstado = {
@@ -67,6 +67,22 @@ export const ESTADOS_EQUIPO: MetaEstado[] = [
     color: "var(--muted)", tinte: "", entregable: false, inventario: true,
     atencion: false, porque: "está montado en otro equipo",
     ayuda: "Está atornillado dentro de otro equipo, así que no se presta solo. Para liberarlo hay que desarmarlo desde la ficha del equipo que lo contiene." },
+  /* ASIGNADO — la laptop de Michel, la interfaz del puesto de post, la ropa
+     táctica de Katy. Está con alguien y no va a volver el viernes: no es una
+     salida, es dónde vive.
+     La diferencia con «en uso» no es de matiz. «En uso» es una deuda: el
+     sistema cuenta los días, el kit reclama la pieza y la ficha regaña con
+     «5 días sin movimiento». Un equipo asignado seis meses no debe nada, y
+     tratarlo como préstamo convierte todos esos avisos en ruido — que es la
+     forma de que dejen de leerse también cuando sí hay una deuda.
+     `atencion: false` por eso mismo. `entregable: false` porque para llevarse
+     la laptop de Michel hay que hablar con Michel, no marcar una casilla.
+     Azul y no amarillo: el amarillo es del préstamo, y lo que hay que
+     distinguir de un vistazo es precisamente eso. */
+  { k: "asignado", ico: "📌", txt: "Asignado", plural: "Asignados",
+    color: "var(--blue)", tinte: "", entregable: false, inventario: true,
+    atencion: false, porque: "asignado a alguien",
+    ayuda: "Está a cargo de una persona de forma indefinida —su equipo de trabajo—, no prestado para una salida. No se ofrece al entregar: para usarlo hay que hablar con quien lo tiene." },
   /* Entre «disponible» y «perdido», que es donde vive la realidad la mayor
      parte del tiempo. Naranja: ni el amarillo de reparación —eso se sabe
      dónde está— ni el rojo de perdido, que ya es un veredicto. */
@@ -102,11 +118,14 @@ export const tinteEstadoEq = (k?: string | null) => metaEstado(k).tinte;
 /** Las opciones que se le pueden PONER a mano. «en uso» no está: lo gobiernan
  *  los préstamos, y ponerlo a dedo dejaría un equipo «en uso» sin que nadie
  *  lo tenga. */
-/* Ni «en uso» ni «ensamblado» se ponen a mano: el primero lo gobierna el
-   préstamo y el segundo el equipo que contiene la pieza. Elegirlos a dedo
-   dejaría un equipo «ensamblado» sin nada dentro de lo cual lo esté. */
+/* Ni «en uso», ni «asignado», ni «ensamblado» se ponen a mano: los dos
+   primeros los gobierna la custodia (equipo_prestamos) y el tercero el equipo
+   que contiene la pieza. Elegirlos a dedo dejaría un «asignado» sin nadie a
+   quien esté asignado, o un «ensamblado» sin nada dentro de lo cual lo esté —
+   un estado que afirma algo que en ningún otro sitio consta. */
+const A_MANO_NO: string[] = ["en_uso", "asignado", "ensamblado"];
 export const ESTADOS_ELEGIBLES: EstadoEquipo[] =
-  ESTADOS_EQUIPO.filter(e => e.k !== "en_uso" && e.k !== "ensamblado").map(e => e.k);
+  ESTADOS_EQUIPO.filter(e => !A_MANO_NO.includes(e.k)).map(e => e.k);
 
 /** Qué NO se puede entregar, y por qué —con estas palabras—. Es la MISMA
  *  lista que veta el servidor: si se separan, la pantalla ofrece algo que el

@@ -103,7 +103,7 @@ export default async function Equipamiento({ searchParams }: {
     // `*`: para calcular la completitud de la ficha de cada equipo.
     supabase.from("equipamiento").select("*").order("folio"),
     supabase.from("equipo_prestamos")
-      .select("id,desde,kit_id,equipo:equipamiento(id,folio,nombre,categoria,subcategoria,valor_compra,compra_id),persona:personas(id,nombre,alias,foto_url),proy:proyectos(id,nombre),entrego:perfiles!equipo_prestamos_entregado_por_fkey(id,nombre,avatar_url)")
+      .select("id,desde,kit_id,tipo,equipo:equipamiento(id,folio,nombre,categoria,subcategoria,valor_compra,compra_id),persona:personas(id,nombre,alias,foto_url),proy:proyectos(id,nombre),entrego:perfiles!equipo_prestamos_entregado_por_fkey(id,nombre,avatar_url)")
       .is("hasta", null).order("desde", { ascending: false }),
     supabase.from("publicacion_vinculos")
       .select("entidad_id,publicacion_id,pub:publicaciones(estado)").eq("entidad_tipo", "equipamiento"),
@@ -799,8 +799,14 @@ export default async function Equipamiento({ searchParams }: {
             </div>
           )}
 
-          {(enManos || []).length > 0 && (
-            <EnUsoAhora items={(enManos || []).map((p: any): UsoItem => {
+          {/* «EN USO AHORA» ES LA LISTA DE LO QUE TIENE QUE VOLVER.
+              Una asignación no vuelve —la laptop es de Michel— y meterla aquí
+              haría crecer para siempre una lista que se mira para reclamar:
+              con veinte asignaciones dentro, las tres salidas de rodaje que sí
+              hay que perseguir quedan enterradas. Las asignaciones se ven en
+              la ficha de su equipo y filtrando por «📌 Asignados». */}
+          {(enManos || []).filter((p: any) => p.tipo !== "asignacion").length > 0 && (
+            <EnUsoAhora items={(enManos || []).filter((p: any) => p.tipo !== "asignacion").map((p: any): UsoItem => {
               const eq = un1(p.equipo), per = un1(p.persona), pr = un1(p.proy), ent = un1(p.entrego);
               return {
                 id: p.id, desde: p.desde,

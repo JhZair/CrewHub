@@ -238,7 +238,10 @@ export function estadoKit(piezas: PiezaKit[]): EstadoKit {
  *  «no disponible» no sirve de nada: lo que se necesita saber es a quién
  *  llamar o qué hay que arreglar. */
 export const porQueNo = (p: PiezaKit): string =>
-  p.quien ? `lo tiene ${p.quien}`
+  /* «Lo tiene KatyP» y «asignado a KatyP» dicen cosas distintas: en el primero
+     se le pide que lo devuelva, en el segundo el equipo es suyo y hay que
+     buscar otro. Una sola frase para los dos casos borraba justo eso. */
+  p.quien ? (p.estado === "asignado" ? `asignado a ${p.quien}` : `lo tiene ${p.quien}`)
   : !entregableEq(p.estado) ? porQueNoEq(p.estado)
   : "no disponible";
 
