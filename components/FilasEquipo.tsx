@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { agruparUnidades, esGrupo, type Unidad, type GrupoUnidades } from "@/lib/compras";
-import { colorEstadoEq } from "@/lib/estadosEquipo";
+import { colorEstadoEq, NECESITA_ATENCION } from "@/lib/estadosEquipo";
 
 /* CINCO FILAS QUE DICEN LO MISMO NO INFORMAN CINCO VECES.
  *
@@ -16,7 +16,7 @@ import { colorEstadoEq } from "@/lib/estadosEquipo";
  *
  * Y la cabecera del grupo dice el DESGLOSE por estado, no solo el total:
  * «5 unidades» esconde justo el dato que importa, que una está en
- * reparación. El grupo con algo que no está disponible arranca ABIERTO.
+ * reparación. Ese grupo arranca ABIERTO.
  */
 
 export default function FilasEquipo({ unidades, filas }: {
@@ -28,12 +28,22 @@ export default function FilasEquipo({ unidades, filas }: {
 }) {
   const grupos = agruparUnidades(unidades);
 
-  /* Arrancan ABIERTOS los grupos donde algo no está disponible: lo que hay
-     que mirar no puede quedar detrás de un clic. Inicializador perezoso y
-     no un efecto —con un efecto, el panel se abriría solo otra vez en cada
-     refresco, deshaciendo lo que el usuario acabara de plegar—. */
+  /* Arrancan ABIERTOS los que HAY QUE MIRAR HOY —no aparece, en reparación,
+     perdido—, y no los que simplemente no están disponibles.
+     La regla era `estado !== "disponible"`, que se leía igual pero decía otra
+     cosa: prestado y ENSAMBLADO tampoco son «disponible», y ninguno de los
+     dos es un problema. Con veinte piezas montadas desde que existen los
+     ensamblados, media lista arrancaba desplegada avisando de que todo está
+     en su sitio — y una alerta que salta siempre deja de leerse.
+     `NECESITA_ATENCION` sale de lib/estadosEquipo, donde ya está decidido
+     cuál de los siete estados pide algo: si mañana entra uno nuevo, esta
+     pantalla se entera sola.
+     Inicializador perezoso y no un efecto —con un efecto, el panel se abriría
+     solo otra vez en cada refresco, deshaciendo lo que acabaras de plegar—. */
   const [abiertos, setAbiertos] = useState<Set<string>>(() => new Set(
-    grupos.filter(esGrupo).filter(g => g.unidades.some(u => u.estado !== "disponible")).map(g => g.k)));
+    grupos.filter(esGrupo)
+      .filter(g => g.unidades.some(u => NECESITA_ATENCION.includes(String(u.estado || ""))))
+      .map(g => g.k)));
 
   const alternar = (k: string) =>
     setAbiertos(s => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; });
