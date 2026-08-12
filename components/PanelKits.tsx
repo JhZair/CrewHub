@@ -378,7 +378,12 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
                     </span>
                     <b style={{ fontSize: 13.5 }}>{k.nombre}</b>
                   </button>
-                  {k.uso && <span className="badge kit-uso">{k.uso}</span>}
+                  {/* El «uso» BAJA a la segunda linea (ver abajo). Aqui, entre
+                      el nombre y el estado, una frase de siete palabras
+                      —«PARA COBERTURAS AMPLIAS, CON MAYOR MOVILIDAD»— partia
+                      la cabecera en dos y empujaba el «15 equipos · completo»
+                      a una distancia distinta en cada kit: la columna que se
+                      lee en vertical dejaba de estar en vertical. */}
                   <span style={{ color: res.color, fontSize: 11.5, fontWeight: 600 }}>{res.txt}</span>
                   <span style={{ flex: 1 }} />
                   {/* La entrega no se duplica aquí: vive en la entrega en lote,
@@ -399,9 +404,13 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
                     obligaba a desplegarlo. */}
                 {(() => {
                   const ctx = contextoKit(piezas);
-                  if (!ctx.valor && !ctx.cats.length && !ctx.quienes.length && !k.autor) return null;
+                  if (!ctx.valor && !ctx.cats.length && !ctx.quienes.length && !k.autor && !k.uso) return null;
                   return (
                     <div className="kit-ctx">
+                      {/* PARA QUE es el kit, en la segunda linea y el primero
+                          de la fila: es lo que decide si este es el kit que
+                          buscas, antes que cuanto vale o de que esta hecho. */}
+                      {k.uso && <span className="badge kit-uso">{k.uso}</span>}
                       {ctx.valor > 0 && (
                         <span className={`kit-ctx-val${ctx.estimado ? " esti" : ""}`}
                           title={ctx.estimado
