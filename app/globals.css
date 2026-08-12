@@ -2873,6 +2873,14 @@ button.repo-tit{text-align:left}
 .jr-franja-ico{flex:none;font-size:10px;width:13px;text-align:center;opacity:.7}
 .jr-franja-barras{flex:1;min-width:0;display:flex;align-items:flex-end;gap:1px;height:100%}
 .jr-franja-c{flex:1;height:100%;display:flex;align-items:flex-end;background:#15151f;border-radius:1px}
+/* La barra del dia ABRE ese dia. Un palito de dos pixeles no se ve
+   clicable, asi que lo dice el cursor y lo confirma el realce al pasar
+   por encima; el pico raro del martes se comprueba en un clic en vez de
+   creerselo. Las horas no: no hay pantalla de «las tres de la tarde». */
+.jr-franja-c-btn{border:0;padding:0;cursor:pointer;appearance:none}
+.jr-franja-c-btn:hover{background:#23233a}
+.jr-franja-c-btn:hover .jr-franja-b{filter:brightness(1.35)}
+.jr-franja-c-btn:focus-visible{outline:1px solid var(--teal);outline-offset:1px}
 .jr-franja-b{width:100%;background:var(--teal);border-radius:1px;min-height:1px}
 /* Fin de semana en violeta, como las fechas de las filas de abajo. Un pico en
    domingo es justo lo que se busca al aprobar, y en un solo color habria que

@@ -240,63 +240,8 @@ export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId =
                 : <span className="badge" style={{ color: "var(--green)", background: "rgba(46,204,113,.12)" }}>✅ al día</span>}
               <span className="jr-grupo-t">{soles(g.monto)}</span>
             </div>
-            {/* SU FRANJA HORARIA, bajo su nombre. Es una silueta, no un parte:
-                sin números y sin ejes, solo la forma —de mañana, de tarde, o
-                repartido—. Puesta al lado del total del mes, esa forma es
-                contexto para lo que se está aprobando.
-                Solo si hay algo que dibujar: una barra plana de veinticuatro
-                ceros afirma «no trabajó a ninguna hora» cuando lo cierto es
-                que esa persona no deja rastro en el sistema. */}
-            {(() => {
-              const hs = horasPorPersona?.[g.id];
-              const ds = diasPorPersona?.[g.id];
-              const hay = (a?: number[]) => !!a && a.some(n => n > 0);
-              if (!hay(hs) && !hay(ds)) return null;
-              const total = (hs || ds || []).reduce((a, b) => a + b, 0);
-              /* Las dos franjas se escalan CADA UNA a su propio pico. Con una
-                 escala común, la de días quedaría aplastada contra la de horas
-                 sin que eso signifique nada: no son la misma magnitud. */
-              const franja = (
-                datos: number[], ico: string, pie: string, rot: (i: number) => string,
-                esFin?: (i: number) => boolean,
-              ) => {
-                const pico = Math.max(...datos);
-                return (
-                  <div className="jr-franja">
-                    <span className="jr-franja-ico" aria-hidden>{ico}</span>
-                    <span className="jr-franja-barras">
-                      {datos.map((n, i) => (
-                        <span key={i} className="jr-franja-c" title={`${rot(i)} — ${n}`}>
-                          <span className={`jr-franja-b${esFin?.(i) ? " finde" : ""}`}
-                            style={{ height: `${(n / pico) * 100}%` }} />
-                        </span>
-                      ))}
-                    </span>
-                    <span className="jr-franja-pie">{pie}</span>
-                  </div>
-                );
-              };
-              const dow = (dia: number) => {
-                const base = mesFranja || "";
-                const d = new Date(`${base.slice(0, 8)}${String(dia).padStart(2, "0")}T12:00:00`);
-                return d.getDay();
-              };
-              return (
-                <div className="jr-franjas" title={`${total} acciones en el sistema durante el mes`}>
-                  {hay(hs) && franja(hs!, "🕗",
-                    `pico ${String(hs!.indexOf(Math.max(...hs!))).padStart(2, "0")}:00`,
-                    i => `${String(i).padStart(2, "0")}:00`)}
-                  {/* Los fines de semana en violeta, como ya se pintan las
-                      fechas de fin de semana en las filas de abajo. Un pico en
-                      domingo es exactamente lo que se busca al aprobar, y en
-                      un solo color habría que contar barras para verlo. */}
-                  {hay(ds) && franja(ds!, "📅",
-                    `pico día ${ds!.indexOf(Math.max(...ds!)) + 1}`,
-                    i => `día ${i + 1}`,
-                    i => [0, 6].includes(dow(i + 1)))}
-                </div>
-              );
-            })()}
+            <FranjasPersona personaId={g.id} quien={g.nombre}
+              hs={horasPorPersona?.[g.id]} ds={diasPorPersona?.[g.id]} mesFranja={mesFranja} />
             {!cerrados.has(g.id) && (() => {
               const pinta = (j: any) => (
                 <FilaJornada key={j.id} j={j} esAdmin={esAdmin}
@@ -368,5 +313,88 @@ export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId =
       </summary>
       {cuerpo}
     </details>
+  );
+}
+
+/* ── LAS DOS SILUETAS DE UNA PERSONA ──
+ * Es una silueta, no un parte: sin números y sin ejes, solo la forma —de
+ * mañana, de tarde, o repartido—. Puesta al lado del total del mes, esa forma
+ * es contexto para lo que se está aprobando.
+ *
+ * Componente aparte y no un trozo del `map` de arriba por una razón sola:
+ * necesita estado —qué día tiene la ventana abierta— y el estado no se puede
+ * pedir dentro de un bucle. Uno por persona, y cada uno recuerda lo suyo.
+ */
+function FranjasPersona({ personaId, quien, hs, ds, mesFranja }: {
+  personaId: string; quien?: string;
+  hs?: number[]; ds?: number[]; mesFranja?: string;
+}) {
+  /* El día que se está mirando, o nada. Al elegir otro, `key` fuerza una
+     ventana nueva: la vieja se quedaría con los hechos del día anterior en
+     memoria y los enseñaría bajo el título del nuevo. */
+  const [dia, setDia] = useState<string | null>(null);
+
+  const hay = (a?: number[]) => !!a && a.some(n => n > 0);
+  /* Una barra plana de veinticuatro ceros afirma «no trabajó a ninguna hora»
+     cuando lo cierto es que esa persona no deja rastro en el sistema. */
+  if (!hay(hs) && !hay(ds)) return null;
+  const total = (hs || ds || []).reduce((a, b) => a + b, 0);
+
+  /* Las dos franjas se escalan CADA UNA a su propio pico. Con una escala
+     común, la de días quedaría aplastada contra la de horas sin que eso
+     signifique nada: no son la misma magnitud. */
+  const franja = (
+    datos: number[], ico: string, pie: string, rot: (i: number) => string,
+    esFin?: (i: number) => boolean,
+    verDia?: (i: number) => string,
+  ) => {
+    const pico = Math.max(...datos);
+    return (
+      <div className="jr-franja">
+        <span className="jr-franja-ico" aria-hidden>{ico}</span>
+        <span className="jr-franja-barras">
+          {datos.map((n, i) => {
+            const barra = (
+              <span className={`jr-franja-b${esFin?.(i) ? " finde" : ""}`}
+                style={{ height: `${(n / pico) * 100}%` }} />
+            );
+            /* Los días SÍ se abren; las horas no. Un día es una pregunta que
+               el sistema sabe contestar entera —la ventana ya existe—, y una
+               hora suelta no: no hay pantalla de «las tres de la tarde». */
+            return verDia
+              ? (
+                <button key={i} type="button" className="jr-franja-c jr-franja-c-btn"
+                  title={`${rot(i)} — ${n} · ver el día`}
+                  onClick={() => setDia(verDia(i))}>{barra}</button>
+              )
+              : <span key={i} className="jr-franja-c" title={`${rot(i)} — ${n}`}>{barra}</span>;
+          })}
+        </span>
+        <span className="jr-franja-pie">{pie}</span>
+      </div>
+    );
+  };
+
+  const base = mesFranja || "";
+  const iso = (dia: number) => `${base.slice(0, 8)}${String(dia).padStart(2, "0")}`;
+  const dow = (dia: number) => new Date(`${iso(dia)}T12:00:00`).getDay();
+
+  return (
+    <div className="jr-franjas" title={`${total} acciones en el sistema durante el mes`}>
+      {hay(hs) && franja(hs!, "🕗",
+        `pico ${String(hs!.indexOf(Math.max(...hs!))).padStart(2, "0")}:00`,
+        i => `${String(i).padStart(2, "0")}:00`)}
+      {/* Los fines de semana en violeta, como ya se pintan las fechas de fin
+          de semana en las filas de abajo. Un pico en domingo es exactamente
+          lo que se busca al aprobar, y en un solo color habría que contar
+          barras para verlo. */}
+      {hay(ds) && base && franja(ds!, "📅",
+        `pico día ${ds!.indexOf(Math.max(...ds!)) + 1}`,
+        i => `día ${i + 1}`,
+        i => [0, 6].includes(dow(i + 1)),
+        i => iso(i + 1))}
+      {dia && <DiaContexto key={dia} personaId={personaId} fecha={dia} quien={quien}
+        auto alCerrar={() => setDia(null)} />}
+    </div>
   );
 }

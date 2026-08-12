@@ -32,8 +32,16 @@ import { fechaConDia } from "@/lib/fechas";
  * los `overflow:auto` y de los contextos de apilamiento de quien la use
  * mañana — los otros dos accidentes que ya nos costaron un pop-up.
  */
-export default function DiaContexto({ personaId, fecha, quien }: {
+export default function DiaContexto({ personaId, fecha, quien, auto = false, alCerrar }: {
   personaId: string; fecha: string; quien?: string;
+  /** Sin lupa y abierta de entrada. La usa quien ya tiene su propio disparador
+   *  —la barra del día en la franja del mes— y solo quiere la ventana: dos
+   *  botones para lo mismo, uno encima del otro, es peor que ninguno. */
+  auto?: boolean;
+  /** Solo con `auto`: quien nos montó decide cuándo desmontarnos. Sin esto la
+   *  ventana se cierra y el componente sigue vivo con el día de ayer dentro,
+   *  y el siguiente clic en OTRA barra no vuelve a abrir nada. */
+  alCerrar?: () => void;
 }) {
   const [abierto, setAbierto] = useState(false);
   /* El portal necesita `document`, que en el render del servidor no existe.
@@ -41,6 +49,10 @@ export default function DiaContexto({ personaId, fecha, quien }: {
      botón, que es lo único que hay que ver. */
   const [montado, setMontado] = useState(false);
   useEffect(() => setMontado(true), []);
+  /* Montado en modo `auto` = ya lo pidieron. Se dispara una sola vez: el
+     efecto no lleva `abrir` en las dependencias a propósito, porque `abrir`
+     se redefine en cada render y volvería a pedir el día en bucle. */
+  useEffect(() => { if (auto) abrir(); /* eslint-disable-next-line */ }, [auto]);
   const [cargando, setCargando] = useState(false);
   const [hechos, setHechos] = useState<any[] | null>(null);
   const [error, setError] = useState("");
@@ -63,6 +75,10 @@ export default function DiaContexto({ personaId, fecha, quien }: {
     if (r?.error) { setError(r.error); return; }
     setHechos(r.hechos || []);
   };
+
+  /* Cerrar es UNA cosa, la pidan la ✕, el fondo o la tecla. Con `auto` no
+     basta con bajar la bandera: hay que avisar arriba para que nos quite. */
+  const cerrar = () => { setAbierto(false); alCerrar?.(); };
 
   const hora = (at: string) =>
     new Date(at).toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit", timeZone: "America/Lima" });
@@ -95,17 +111,19 @@ export default function DiaContexto({ personaId, fecha, quien }: {
 
   return (
     <>
-      <button type="button" className="dato-btn dia-lupa" title={`Ver todo lo que hizo el ${fecha} en el sistema`}
-        onClick={abrir}>🔍</button>
+      {!auto && (
+        <button type="button" className="dato-btn dia-lupa" title={`Ver todo lo que hizo el ${fecha} en el sistema`}
+          onClick={abrir}>🔍</button>
+      )}
 
       {abierto && montado && createPortal((
-        <div className="modal-fondo" onClick={e => { if (e.target === e.currentTarget) setAbierto(false); }}>
+        <div className="modal-fondo" onClick={e => { if (e.target === e.currentTarget) cerrar(); }}>
           <div className="modal-caja" style={{ maxWidth: 640 }}>
             <div className="modal-cab">
               <b style={{ textTransform: "capitalize" }}>
                 🔍 {fechaConDia(fecha)}{quien ? ` · ${quien}` : ""}
               </b>
-              <button className="dato-btn" onClick={() => setAbierto(false)}>✕</button>
+              <button className="dato-btn" onClick={cerrar}>✕</button>
             </div>
 
             {cargando && <div className="empty" style={{ padding: "20px 0" }}>Buscando…</div>}
