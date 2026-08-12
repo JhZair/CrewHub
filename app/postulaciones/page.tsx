@@ -716,14 +716,27 @@ export default async function Postulaciones({ searchParams }: {
               .filter(g => g.filas.length > 0);
             const sinAnio = filtradas.filter((p: any) => !p.conv?.anio);
             if (sinAnio.length) grupos.push({ y: null, filas: sinAnio });
+            /* El separador SEPARA, y con un solo grupo no hay nada que
+               separar: la línea «2026 · 21» debajo de «21 resultados · 2026»
+               decía dos veces lo mismo, y una etiqueta que siempre está deja
+               de leerse justo el día que sí importa. Aparece cuando la lista
+               cruza varios años —«todos los años», o una búsqueda— y ahí se
+               pinta en violeta, el color con que el año se identifica en el
+               resto de la pantalla. */
+            const varios = grupos.length > 1;
             return grupos.map(({ y, filas }) => (
               <div key={y || "sin"} style={{ marginTop: 6 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "12px 4px 6px" }}>
-                  <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 1.2, color: "var(--dim)", fontWeight: 700 }}>
-                    {y || "sin año"} · {filas.length}
-                  </span>
-                  <span style={{ flex: 1, height: 1, background: "var(--border)" }} />
-                </div>
+                {varios && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "16px 4px 6px" }}>
+                    <span style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1.4,
+                      color: "var(--violet)", fontWeight: 700 }}>
+                      {y || "sin año"}
+                    </span>
+                    <span style={{ fontSize: 11, color: "var(--dim)" }}>· {filas.length}</span>
+                    <span style={{ flex: 1, height: 1,
+                      background: "linear-gradient(90deg, color-mix(in srgb, var(--violet) 45%, transparent), transparent)" }} />
+                  </div>
+                )}
                 {filas.map(Fila)}
               </div>
             ));
