@@ -1,0 +1,16 @@
+# Un solo final de linea para todas las maquinas (Windows, Mac, Linux).
+# Sin esto, al cambiar de PC git marca todos los archivos como modificados.
+* text=auto eol=lf
+
+# Binarios: que git no los toque nunca
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.webp binary
+*.pdf  binary
+*.docx binary
+*.xlsx binary
+*.woff  binary
+*.woff2 binary
