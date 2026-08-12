@@ -291,9 +291,7 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
 
       {abierto && (
         <div style={{ marginTop: 8 }}>
-          {editando === "_nuevo"
-            ? <Editor kit={null} equipos={equipos} onCerrar={() => setEditando(null)} />
-            : <button className="btn btn-ghost" onClick={() => setEditando("_nuevo")}>＋ Nuevo kit</button>}
+          <button className="btn btn-ghost" onClick={() => setEditando("_nuevo")}>＋ Nuevo kit</button>
 
           {!vivos.length && editando !== "_nuevo" && (
             <div style={{ color: "var(--dim)", fontSize: 12.5, marginTop: 8 }}>
@@ -423,10 +421,36 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
 
                 {desplegado && <PiezasKit piezas={piezas} />}
 
-                {editandoEste && <Editor kit={k} equipos={equipos} onCerrar={() => setEditando(null)} />}
+
               </div>
             );
           })}
+
+          {/* EL EDITOR, EN VENTANA. Estaba EN LÍNEA, dentro de la caja del kit:
+              abrirlo empujaba media página hacia abajo y dejaba el formulario
+              pegado a las piezas de OTROS kits, con lo que ya no se sabía qué
+              se estaba editando. Un formulario con dos listas de doscientas
+              filas no cabe dentro de una fila de una lista.
+              En ventana se aísla —fondo oscurecido, nada más en pantalla— y al
+              cerrar la página está donde se dejó, sin haber saltado.
+              Se pinta UNA vez y fuera del `map`: dentro habría un modal por
+              kit, y once elementos con `position:fixed` esperando su turno. */}
+          {editando && (
+            <div className="modal-fondo"
+              onClick={e => { if (e.target === e.currentTarget) setEditando(null); }}>
+              <div className="modal-caja modal-form">
+                <div className="modal-cab">
+                  <b style={{ fontSize: 14 }}>
+                    {editando === "_nuevo" ? "＋ Nuevo kit" : `✎ ${vivos.find(k => k.id === editando)?.nombre || "Editar kit"}`}
+                  </b>
+                  <button className="dato-btn" onClick={() => setEditando(null)} title="Cerrar">✕</button>
+                </div>
+                <Editor
+                  kit={editando === "_nuevo" ? null : (vivos.find(k => k.id === editando) || null)}
+                  equipos={equipos} onCerrar={() => setEditando(null)} />
+              </div>
+            </div>
+          )}
 
           {retirados.length > 0 && (
             <details style={{ marginTop: 10 }}>

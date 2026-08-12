@@ -2841,8 +2841,16 @@ button.repo-tit{text-align:left}
 }
 
 /* ── KITS · lo que sale junto (app/equipamiento) ── */
-.kit-caja{border-top:1px solid var(--border);padding:9px 4px 6px;margin-top:8px;
-  border-radius:8px}
+/* CADA KIT, UNA TARJETA. Eran bloques separados solo por una linea fina, asi
+   que con el kit desplegado sus veinte piezas quedaban pegadas al nombre del
+   siguiente y no se veia donde acababa uno. Un borde entero y su propio fondo
+   cuestan poco y contestan solo la pregunta «¿esto de que kit es?». */
+.kit-caja{border:1px solid var(--border);background:rgba(255,255,255,.012);
+  padding:9px 11px 8px;margin-top:9px;border-radius:12px}
+/* El desplegado se destaca: es el que se esta mirando, y con once cajas
+   iguales hay que poder volver a el de un vistazo tras hacer scroll. */
+.kit-caja:has(.kit-piezas),.kit-caja:has(.kit-grupos){
+  border-color:var(--border2);background:rgba(167,139,250,.035)}
 /* Se enciende al pasar por encima, como la fila del combo. No es adorno: es
    lo que dice que la fila entera responde —que ahi se puede plegar, entregar
    y editar— antes de que nadie pruebe a hacer clic. Los combos lo tenian y
@@ -2854,7 +2862,7 @@ button.repo-tit{text-align:left}
    entiende :has(), no ignora esa condicion —descarta la regla entera— y el
    kit se quedaria sin ningun realce, que es justo lo que se venia a
    arreglar. Fallaria en silencio y hacia el lado malo. */
-.kit-caja:hover{background:rgba(167,139,250,.05)}
+.kit-caja:hover{background:rgba(167,139,250,.05);border-color:var(--border2)}
 .kit-caja.editando:hover{background:none}
 .kit-caja:hover .kit-plegar b{color:var(--violet)}
 .kit-h{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
