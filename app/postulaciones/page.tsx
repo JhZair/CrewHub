@@ -9,6 +9,8 @@ import { avisoVencido } from "@/lib/estados";
 import { buscadorDe, pal } from "@/lib/buscar";
 import { esDirectorObra } from "@/lib/personas";
 import { postApagada } from "@/lib/resultados";
+import { hoyLima } from "@/lib/fechas";
+import FiltroCombo from "@/components/FiltroCombo";
 import { ordenarEquipo } from "@/lib/rolesEquipo";
 import Avatar from "@/components/Avatar";
 import RielHitos from "@/components/RielHitos";
@@ -50,6 +52,18 @@ export default async function Postulaciones({ searchParams }: {
      2026 había que leer 21 filas y quedarse con las cinco del código C-072. */
   const c = searchParams?.c || "";
   const listar = !!(q || e || a || t || f || c);
+
+  /* ── EL AÑO EN CURSO MANDA MIENTRAS NADIE DIGA OTRA COSA ──
+     Las convocatorias del año que viene se cargan con meses de antelación, así
+     que al entrar sin filtros el panel hablaba del año MÁS ALTO —2027— cuando
+     el trabajo de esta semana es del 2026. Nadie lo pidió: era el efecto de un
+     `Math.max` puesto para «el más reciente».
+     `aAlcance` es el año que acota TODO el panel: los conteos de los chips, la
+     lista de convocatorias y el enlace de cada filtro. Sin `?a=` es el año en
+     curso; con `a=todos` no acota nada y se ven los siete años de golpe. */
+  const anioActual = hoyLima().slice(0, 4);
+  const todosAnios = a === "todos";
+  const aAlcance = todosAnios ? "" : (a || anioActual);
 
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -165,7 +179,7 @@ export default async function Postulaciones({ searchParams }: {
     (!e || p.estado === e) &&
     // Año de verdad, del concurso. Antes esto se hacía buscando "2026" como
     // texto: una postulación con «CDO-P-2026-14» salía en cualquier año.
-    (!a || String(p.conv?.anio || "") === a) &&
+    (!aAlcance || String(p.conv?.anio || "") === aAlcance) &&
     (!c || p.conv?.id === c) &&
     (!t || p.proy?.tipo === t) &&
     (!f || PRUEBA_F[f]?.(p)) &&
@@ -175,9 +189,17 @@ export default async function Postulaciones({ searchParams }: {
       p.codigo, p.codigo_plataforma, p.codigo_acta, p.proy?.nombre,
       p.emp?.nombre, p.conv?.codigo, p.conv?.nombre, p.conv?.anio, p.estado))));
 
-  const cnt = (est: string) => posts.filter((p: any) => p.estado === est).length;
-  const cntF = (k: string) => posts.filter(PRUEBA_F[k]).length;
-  const tipos = [...new Set(posts.map((p: any) => p.proy?.tipo).filter(Boolean))];
+  /* Los conteos del panel se cuentan DENTRO del año elegido. Si el chip dijera
+     «Ganadoras · 9» y al pulsarlo salieran tres, el número habría dejado de
+     ser una promesa para ser un adorno — y un contador en el que no se confía
+     no se vuelve a mirar. El marcador de la portada sigue siendo histórico,
+     que es justo lo que ahí se viene a ver. */
+  const enAlcance = aAlcance
+    ? posts.filter((p: any) => String(p.conv?.anio || "") === aAlcance)
+    : posts;
+  const cnt = (est: string) => enAlcance.filter((p: any) => p.estado === est).length;
+  const cntF = (k: string) => enAlcance.filter(PRUEBA_F[k]).length;
+  const tipos = [...new Set(enAlcance.map((p: any) => p.proy?.tipo).filter(Boolean))];
   const ganas = posts.filter((p: any) => p.estado === "ganadora");
   const enJuego = posts.filter((p: any) => EN_JUEGO.includes(p.estado));
   const decididas = posts.length - enJuego.length;
@@ -199,7 +221,7 @@ export default async function Postulaciones({ searchParams }: {
     posts.forEach((p: any) => {
       const cv = p.conv;
       if (!cv?.id) return;
-      if (a && String(cv.anio || "") !== a) return;
+      if (aAlcance && String(cv.anio || "") !== aAlcance) return;
       const x = m.get(cv.id) || { id: cv.id, codigo: cv.codigo || "—", nombre: cv.nombre || "", anio: cv.anio, n: 0 };
       x.n++; m.set(cv.id, x);
     });
@@ -224,7 +246,42 @@ export default async function Postulaciones({ searchParams }: {
    * preparó. El número de cada banda cuenta a las que LLEGARON hasta ahí,
    * incluidas las que siguieron. Así el ancho significa algo.
    */
-  const anioEmbudo = Number(searchParams?.y) || Math.max(...(anios.length ? anios : [new Date().getFullYear()]));
+  /* El embudo arranca en el año EN CURSO, no en el más alto. Las convocatorias
+     del año siguiente se cargan con meses de antelación, así que `Math.max`
+     abría la portada con el embudo del 2027 —tres postulaciones sin enviar—
+     como si fuera el resumen del trabajo. Si el año en curso todavía no tiene
+     ninguna, sí manda el más alto: un embudo vacío no dice nada. */
+  /* ── LOS DOS COMBOS ──
+     Chips para lo que tiene tope (seis estados, seis tipos); combo para lo que
+     crece sin techo (los años, y las convocatorias, que ya pasan de treinta).
+     La regla es «¿esta lista tiene final?» — no el gusto de cada fila. */
+  const conAnio = todosAnios ? "a=todos&" : `a=${aAlcance}&`;
+  const nAnio = (y: any) => anios.filter((x: any) => x === y).length;
+  const opcAnio: string[][] = [
+    ...porAnio.map((y: any) => [String(y), `${y} · ${nAnio(y)}`]),
+    /* La escapatoria: sin ella, un año elegido no se puede desmarcar —el
+       desplegable no tiene «ninguno»— y la pantalla se quedaría sin forma de
+       mirar los siete años juntos. */
+    ["todos", `Todos los años · ${anios.length}`],
+  ];
+  const hrefAnio: Record<string, string> = Object.fromEntries(
+    opcAnio.map(([v]) => [v, `/postulaciones?a=${v}`]));
+
+  const opcConv: string[][] = [
+    ["", `Todas las convocatorias · ${convsFiltro.length}`],
+    /* Código Y nombre: «C-072» solo sirve a quien ya se los sabe de memoria, y
+       el nombre solo no distingue el de Producción del de Desarrollo del mismo
+       año. Los dos juntos son el identificador completo, igual que en el
+       listado de convocatorias. */
+    ...convsFiltro.map(cv => [cv.id,
+      `${cv.codigo} · ${cv.nombre}${todosAnios && cv.anio ? ` (${cv.anio})` : ""} · ${cv.n}`]),
+  ];
+  const hrefConv: Record<string, string> = Object.fromEntries(
+    opcConv.map(([v]) => [v, v ? `/postulaciones?${conAnio}c=${v}` : `/postulaciones?${conAnio.slice(0, -1)}`]));
+
+  const anioEmbudo = Number(searchParams?.y)
+    || (anios.includes(Number(anioActual)) ? Number(anioActual) : 0)
+    || Math.max(...(anios.length ? anios : [Number(anioActual)]));
   const delAnio = posts.filter((p: any) => p.conv?.anio === anioEmbudo);
 
   /* Hasta dónde llegó cada una. Hay DOS jueces y no uno, y por eso son cinco
@@ -437,7 +494,14 @@ export default async function Postulaciones({ searchParams }: {
 
       <form className="card" style={{ display: "flex", gap: 10, padding: 12 }}>
         {e && <input type="hidden" name="e" value={e} />}
-        {a && <input type="hidden" name="a" value={a} />}
+        {/* BUSCAR ES GLOBAL mientras nadie haya elegido un año a mano. El panel
+            arranca acotado al año en curso, y si esa acotación se colara aquí,
+            buscar «Solischa» —del 2023— no devolvería nada y la pantalla diría
+            «sin resultados» sobre algo que existe. El año viaja explícito en la
+            URL y el combo lo dice, así que el alcance de la búsqueda siempre
+            está a la vista. */}
+        <input type="hidden" name="a" value={a || "todos"} />
+        {c && <input type="hidden" name="c" value={c} />}
         {t && <input type="hidden" name="t" value={t} />}
         {f && <input type="hidden" name="f" value={f} />}
         <span className="buscador-lista">
@@ -449,58 +513,61 @@ export default async function Postulaciones({ searchParams }: {
       </form>
 
       <PanelFiltros limpiar="/postulaciones" mostrarLimpiar={listar}>
+        {/* Todo filtro conserva el AÑO. Antes cada chip escribía un único
+            parámetro y borraba lo demás, así que elegir «Aptas» dentro del
+            2026 devolvía las aptas de siete años: el panel deshacía el corte
+            que uno acababa de hacer. */}
         <FilaFiltro titulo="Estado">
           {Object.entries(EST_META).map(([k, [lbl, col]]) => {
             const n = cnt(k);
             return n === 0 ? null : (
-              <Chip key={k} href={`/postulaciones?e=${k}`} on={e === k} color={col}>
+              <Chip key={k} href={`/postulaciones?${conAnio}e=${k}`} on={e === k} color={col}>
                 {lbl} · {n}
               </Chip>
             );
           })}
         </FilaFiltro>
         <FilaFiltro titulo="Año del concurso">
-          {porAnio.map((y: any) => (
-            <Chip key={y} href={`/postulaciones?a=${y}`} on={a === String(y)} color="var(--violet)">
-              {y} · {anios.filter((x: any) => x === y).length}
-            </Chip>
-          ))}
+          {/* `value` es lo ELEGIDO (vacío al entrar) y `etiqueta` es lo que
+              MANDA (el año en curso). No son lo mismo y por eso van separados:
+              si el combo se marcara a sí mismo en 2026 sin que nadie lo
+              hubiera elegido, volver a pulsar 2026 no haría nada —el menú no
+              reacciona al valor que ya tiene— y no habría forma de llegar a la
+              lista del año desde aquí. */}
+          <FiltroCombo value={todosAnios ? "todos" : a} options={opcAnio} hrefs={hrefAnio}
+            etiqueta={opcAnio.find(o => o[0] === (todosAnios ? "todos" : aAlcance))?.[1]} />
         </FilaFiltro>
-        {convsFiltro.length > 1 && (
+        {convsFiltro.length > 0 && (
           <FilaFiltro titulo="Convocatoria">
-            {convsFiltro.map(cv => (
-              <Chip key={cv.id} href={`/postulaciones?${a ? `a=${a}&` : ""}c=${cv.id}`}
-                on={c === cv.id} color="var(--blue)"
-                /* El nombre entero en el tooltip: en el chip solo cabe el
-                   código, y «C-072» no dice de qué concurso es hasta que uno
-                   ya se los sabe. */
-                title={`${cv.nombre}${cv.anio ? ` · ${cv.anio}` : ""}`}>
-                {cv.codigo}{!a && cv.anio ? ` ${cv.anio}` : ""} · {cv.n}
-              </Chip>
-            ))}
+            <FiltroCombo value={c} options={opcConv} hrefs={hrefConv} ancho={420}
+              /* El botón dice solo el CÓDIGO cuando hay una elegida: el nombre
+                 completo mide media pantalla y ya está en el resumen de
+                 resultados, justo debajo. El menú sí los lleva enteros, que es
+                 donde hacen falta para elegir. */
+              etiqueta={c ? (convsFiltro.find(x => x.id === c)?.codigo || "Convocatoria") : undefined} />
           </FilaFiltro>
         )}
         <FilaFiltro titulo="Tipo de proyecto">
           {tipos.map((tt: any) => (
-            <Chip key={tt} href={`/postulaciones?t=${tt}`} on={t === tt} color={TIPO_COLOR[tt]}>
-              {tt.replace(/_/g, " ")} · {posts.filter((p: any) => p.proy?.tipo === tt).length}
+            <Chip key={tt} href={`/postulaciones?${conAnio}t=${tt}`} on={t === tt} color={TIPO_COLOR[tt]}>
+              {tt.replace(/_/g, " ")} · {enAlcance.filter((p: any) => p.proy?.tipo === tt).length}
             </Chip>
           ))}
         </FilaFiltro>
         <FilaFiltro titulo="Atención">
-          <Chip href="/postulaciones?f=debiendo" on={f === "debiendo"} color="var(--red)"
+          <Chip href={`/postulaciones?${conAnio}f=debiendo`} on={f === "debiendo"} color="var(--red)"
             title="El plazo de rendición pasó y no hay entrega registrada. Mientras siga así, la empresa no puede postular a nada.">
             🔴 rendición vencida · {cntF("debiendo")}
           </Chip>
-          <Chip href="/postulaciones?f=sin_empresa" on={f === "sin_empresa"} color="var(--red)"
+          <Chip href={`/postulaciones?${conAnio}f=sin_empresa`} on={f === "sin_empresa"} color="var(--red)"
             title="Sin empresa postulante: no puede firmar el acta ni cobrar">
             ⚠ sin empresa · {cntF("sin_empresa")}
           </Chip>
-          <Chip href="/postulaciones?f=gan_incompleta" on={f === "gan_incompleta"} color="var(--yellow)"
+          <Chip href={`/postulaciones?${conAnio}f=gan_incompleta`} on={f === "gan_incompleta"} color="var(--yellow)"
             title="Ganadoras a las que les falta acta, monto o fecha de rendición">
             🏆 ganadoras incompletas · {cntF("gan_incompleta")}
           </Chip>
-          <Chip href="/postulaciones?f=sin_rendicion" on={f === "sin_rendicion"} color="var(--yellow)"
+          <Chip href={`/postulaciones?${conAnio}f=sin_rendicion`} on={f === "sin_rendicion"} color="var(--yellow)"
             title="Ganó, pero nadie registró hasta cuándo hay que rendir">
             🧾 sin fecha de rendición · {cntF("sin_rendicion")}
           </Chip>
@@ -633,7 +700,7 @@ export default async function Postulaciones({ searchParams }: {
           <div style={{ color: "var(--muted)", fontSize: 13, margin: "2px 4px 10px" }}>
             {filtradas.length} resultado{filtradas.length === 1 ? "" : "s"}
             {e && ` · ${(EST_META[e]?.[0] || e).toLowerCase()}`}
-            {a && ` · ${a}`}
+            {aAlcance ? ` · ${aAlcance}` : " · todos los años"}
             {/* Con la convocatoria elegida, el resumen la dice POR SU NOMBRE y
                 no por «C-072»: quien acaba de pulsar el chip ya vio el código,
                 lo que quiere confirmar es que es el concurso que pensaba. */}
