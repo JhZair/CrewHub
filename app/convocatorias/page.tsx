@@ -304,7 +304,14 @@ export default async function Convocatorias({ searchParams }: {
                 <div>
                   <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
                     <b style={{ fontSize: 14.5 }}>{c.codigo}</b>
-                    <span style={{ color: "var(--text)", fontSize: 13 }}>{c.nombre}</span>
+                    {/* En mayúsculas, como el código: el par código+nombre es UN
+                        identificador («C-072 Documental Producción
+                        largometrajes»), y con una mitad en versalitas y la otra
+                        en texto corriente se leía como dos cosas pegadas.
+                        Se hace en CSS y no cambiando el texto: así lo que se
+                        copia, se busca y se lee en voz alta sigue siendo el
+                        nombre tal como está escrito en la base. */}
+                    <span className="conv-nombre">{c.nombre}</span>
                     {c.anio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{c.anio}</span>}
                     {ganamosEn.has(c.id) && (
                       <span className="badge" style={{ color: "var(--green)", background: "rgba(46,204,113,.12)" }}>
@@ -412,7 +419,7 @@ export default async function Convocatorias({ searchParams }: {
                     <div className="card link fila-tenue" style={{ cursor: "pointer", padding: "8px 16px", marginBottom: 8 }}>
                       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 12.5 }}>
                         <b>{c.codigo}</b>
-                        <span style={{ color: "var(--muted)" }}>{c.nombre}</span>
+                        <span className="conv-nombre" style={{ color: "var(--muted)" }}>{c.nombre}</span>
                         {c.anio && <span style={{ color: "var(--dim)", fontSize: 11.5 }}>{c.anio}</span>}
                         <span style={{ flex: 1 }} />
                         {c.monto_adjudicado && (
