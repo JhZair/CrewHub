@@ -397,20 +397,31 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
                     onClick={() => setEditando(editandoEste ? null : k.id)}>✎</button>
                 </div>
 
-                {/* QUÉ ES el kit, con el kit plegado. «12 equipos · completo»
+                {/* SEGUNDA LÍNEA: LAS DOS FRASES, SOLAS.
+                    El «uso» y la descripción son texto libre —una puede tener
+                    siete palabras y la otra doce— y mezclarlas con las cifras
+                    empujaba el precio a una columna distinta en cada kit.
+                    Juntas y en su propio renglón, las cifras de abajo quedan
+                    alineadas entre kits, que es lo que permite compararlas de
+                    un vistazo sin leerlas. */}
+                {(k.uso || k.descripcion) && (
+                  <div className="kit-para">
+                    {k.uso && <span className="badge kit-uso">{k.uso}</span>}
+                    {k.descripcion && <span className="kit-desc">{k.descripcion}</span>}
+                  </div>
+                )}
+
+                {/* TERCERA LÍNEA: LAS CIFRAS. Con el kit plegado, «12 equipos ·
+                    completo»
                     no dice si son doce baterías o una cámara con todo lo suyo,
                     ni cuánto sale a la calle si se entrega. Y cuando falta
                     algo, lo que hace falta saber es a quién llamar — eso
                     obligaba a desplegarlo. */}
                 {(() => {
                   const ctx = contextoKit(piezas);
-                  if (!ctx.valor && !ctx.cats.length && !ctx.quienes.length && !k.autor && !k.uso) return null;
+                  if (!ctx.valor && !ctx.cats.length && !ctx.quienes.length && !k.autor) return null;
                   return (
                     <div className="kit-ctx">
-                      {/* PARA QUE es el kit, en la segunda linea y el primero
-                          de la fila: es lo que decide si este es el kit que
-                          buscas, antes que cuanto vale o de que esta hecho. */}
-                      {k.uso && <span className="badge kit-uso">{k.uso}</span>}
                       {ctx.valor > 0 && (
                         <span className={`kit-ctx-val${ctx.estimado ? " esti" : ""}`}
                           title={ctx.estimado
@@ -452,7 +463,6 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
                   );
                 })()}
 
-                {k.descripcion && <div className="kit-desc">{k.descripcion}</div>}
 
                 {desplegado && <PiezasKit piezas={piezas} />}
 

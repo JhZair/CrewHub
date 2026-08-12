@@ -2918,7 +2918,13 @@ button.repo-tit{text-align:left}
 /* De que es lo que trajo un combo. Mismo gris que el resto de su linea: es un
    matiz del numero de unidades, no un dato aparte. */
 .cbo-cats{color:var(--dim)}
-.kit-desc{color:var(--dim);font-size:11.5px;margin:3px 0 0 2px}
+/* LAS DOS FRASES DEL KIT, EN SU PROPIO RENGLON. Texto libre —una de siete
+   palabras, otra de doce— mezclado con las cifras dejaba el precio en una
+   columna distinta en cada kit. Aparte, la linea de cifras queda alineada
+   entre kits y se compara sin leerla. */
+.kit-para{display:flex;gap:9px;align-items:baseline;flex-wrap:wrap;
+  margin:4px 0 0 2px;min-width:0}
+.kit-desc{color:var(--dim);font-size:11.5px}
 /* ── LAS PIEZAS, PARTIDAS POR PROCEDENCIA ──
    Quince miniaturas seguidas son una pared. El encabezado de combo es una
    linea fina, no una caja: separa sin competir con las piezas, que son lo
