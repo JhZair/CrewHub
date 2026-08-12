@@ -8,7 +8,7 @@ import { EN_JUEGO, ejecutando, rendicionVencida, plazoRendicion } from "@/lib/fo
 import { avisoVencido } from "@/lib/estados";
 import { buscadorDe, pal } from "@/lib/buscar";
 import { esDirectorObra } from "@/lib/personas";
-import { resultadoPostulacion } from "@/lib/resultados";
+import { postApagada } from "@/lib/resultados";
 import { ordenarEquipo } from "@/lib/rolesEquipo";
 import Avatar from "@/components/Avatar";
 import RielHitos from "@/components/RielHitos";
@@ -250,16 +250,10 @@ export default async function Postulaciones({ searchParams }: {
        a alguien a resolver algo que ya está hecho. */
     const dRend = ejecutando(p) && rend ? dias(rend) : null;
     /* Las que ya cerraron SIN ganar salen apagadas: son historia, no compiten.
-       Dos casos: (1) el estado ya lo dice (no apta, retirada, no seleccionada,
-       finalista que no ganó); (2) quedó como «finalista» pero su concurso YA
-       cerró (con resultados / finalizada) sin que ganara —también perdió, aunque
-       nadie actualizara el estado—. La ganadora NUNCA se apaga: es el logro. */
-    const convCerrada = ["con_resultados", "finalizada"].includes(p.conv?.estado || "");
-    /* Externa = ni el proyecto ni la empresa son nuestros: la seguimos por
-       contexto pero no es trabajo de la casa, así que también va apagada. */
-    const externa = p.proy?.relacion === "externa" || p.emp?.relacion === "externa";
-    const apagada = externa || (p.estado !== "ganadora"
-      && (!!resultadoPostulacion(p.estado) || (p.estado === "finalista" && convCerrada)));
+       La regla entera vive en lib/resultados.ts → `postApagada`, porque el
+       listado de convocatorias tiene que apagar exactamente lo mismo — y hasta
+       ahora copiaba solo la mitad. */
+    const apagada = postApagada(p, p.conv?.estado);
     /* El RESULTADO no debe pasar desapercibido: se refuerza tiñendo toda la
        tarjeta muy tenue con el color del estado (borde izquierdo + degradado
        que se apaga hacia la derecha), la misma técnica que los casos del feed.

@@ -7,6 +7,7 @@ import CanchaTemporada, { type Frente } from "@/components/CanchaTemporada";
 import { buscadorDe, pal } from "@/lib/buscar";
 import { EN_JUEGO } from "@/lib/fondos";
 import { ordenarEquipo } from "@/lib/rolesEquipo";
+import { postApagada } from "@/lib/resultados";
 import Avatar from "@/components/Avatar";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -349,11 +350,17 @@ export default async function Convocatorias({ searchParams }: {
                   {(postsPorConv.get(c.id) || []).length > 0 && (
                     <div className="conv-posts">
                       {(postsPorConv.get(c.id) || []).map((p: any) => {
-                        // Externa = el proyecto o la empresa no son nuestros: se
-                        // sigue por contexto, pero va apagada.
-                        const externa = p.proy?.relacion === "externa" || p.emp?.relacion === "externa";
+                        /* La MISMA regla que /postulaciones, no una versión de
+                           aquí: aquí solo se apagaban las externas, así que una
+                           «no apta» salía apagada en un listado y a pleno color
+                           en el otro. Dos pantallas contestando distinto a «¿esto
+                           sigue en carrera?» es peor que ninguna, porque las dos
+                           parecen seguras. El estado del concurso es el de ESTA
+                           fila —`c.estado`—, que es el mismo dato que allá viaja
+                           embebido como `p.conv.estado`. */
+                        const apagada = postApagada(p, c.estado);
                         return (
-                        <div key={p.id} className={`conv-post-fila${externa ? " conv-post-ext" : ""}`}>
+                        <div key={p.id} className={`conv-post-fila${apagada ? " conv-post-off" : ""}`}>
                           <Link href={`/entidad/postulacion/${p.id}`} className="badge fila-encima"
                             title={`${p.codigo || ""} · ${(p.estado || "").replace(/_/g, " ")}`}
                             style={{ color: colPost(p.estado), background: "#1c1c2c", textTransform: "none", letterSpacing: 0, textDecoration: "none", fontSize: 11.5 }}>

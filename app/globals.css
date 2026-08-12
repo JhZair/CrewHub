@@ -1836,8 +1836,15 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(.65);cursor:
 /* Postulación externa (proyecto o empresa ajenos): se sigue por contexto, apagada.
    Se aclara al pasar el cursor por la TARJETA (la capa-enlace que la cubre tapa
    el :hover de la fila interna, por eso el hover va en la tarjeta). */
-.conv-post-ext{opacity:.5;filter:grayscale(.5);transition:opacity .15s ease,filter .15s ease}
-.card.link:hover .conv-post-ext{opacity:1;filter:none}
+/* Fila de postulacion que ya no compite: el MISMO apagado que la tarjeta de
+   /postulaciones (.post-apagada), no un parecido. Antes esta llevaba
+   `grayscale(.5)` y aquella `saturate(.55)`: la misma postulacion se veia
+   distinta en cada listado, y "apagado" dejaba de ser una senal para ser una
+   decoracion de cada pantalla.
+   Se prende al pasar el cursor por la tarjeta del concurso, que es donde vive:
+   apagado no es escondido, y el equipo de una no apta sigue siendo consultable. */
+.conv-post-off{opacity:.5;filter:saturate(.55);transition:opacity .15s ease,filter .15s ease}
+.card.link:hover .conv-post-off{opacity:1;filter:none}
 /* Equipo que postula: fila de solo-avatares (nombre al hover vía title). */
 .post-equipo{display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-top:9px}
 .post-eq-av{display:inline-flex;border-radius:50%;cursor:help;
