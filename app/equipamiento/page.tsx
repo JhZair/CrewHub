@@ -105,11 +105,14 @@ export default async function Equipamiento({ searchParams }: {
     //  (a) comentarios de la bitácora general (equipamiento_id),
     //  (b) comentarios de un uso concreto (prestamo_id),
     //  (c) eventos de uso (puesto en uso / liberado), de equipo_prestamos.
+    /* `imagenes` también: media bitácora de un equipo son FOTOS —el golpe en
+       la maleta, la pieza que falta— y sin la columna la fila solo podía
+       escribir «📷 (foto)», que es la palabra «foto» en lugar de la foto. */
     supabase.from("comentarios")
-      .select("id,cuerpo,es_dano,creado_en,autor:perfiles(nombre,avatar_url,color),equipo:equipamiento(id,folio,nombre)")
+      .select("id,cuerpo,imagenes,es_dano,creado_en,autor:perfiles(nombre,avatar_url,color),equipo:equipamiento(id,folio,nombre)")
       .not("equipamiento_id", "is", null).order("creado_en", { ascending: false }).limit(12),
     supabase.from("comentarios")
-      .select("id,cuerpo,es_dano,creado_en,autor:perfiles(nombre,avatar_url,color),prestamo:equipo_prestamos(id,equipo:equipamiento(id,folio,nombre))")
+      .select("id,cuerpo,imagenes,es_dano,creado_en,autor:perfiles(nombre,avatar_url,color),prestamo:equipo_prestamos(id,equipo:equipamiento(id,folio,nombre))")
       .not("prestamo_id", "is", null).order("creado_en", { ascending: false }).limit(12),
     supabase.from("equipo_prestamos")
       .select("id,desde,hasta,equipo:equipamiento(id,folio,nombre),persona:personas(id,nombre,alias)")
@@ -268,8 +271,8 @@ export default async function Equipamiento({ searchParams }: {
 
   // Fusiona las tres fuentes en una sola línea de actividad (descendente).
   const actItems: any[] = [];
-  (comsBita?.data || []).forEach((c: any) => actItems.push({ at: c.creado_en, tipo: "com", eq: un1(c.equipo), autor: un1(c.autor), cuerpo: c.cuerpo, es_dano: c.es_dano }));
-  (comsUso?.data || []).forEach((c: any) => actItems.push({ at: c.creado_en, tipo: "com", eq: un1(un1(c.prestamo)?.equipo), autor: un1(c.autor), cuerpo: c.cuerpo, es_dano: c.es_dano, uso: true }));
+  (comsBita?.data || []).forEach((c: any) => actItems.push({ at: c.creado_en, tipo: "com", eq: un1(c.equipo), autor: un1(c.autor), cuerpo: c.cuerpo, imagenes: c.imagenes || [], es_dano: c.es_dano }));
+  (comsUso?.data || []).forEach((c: any) => actItems.push({ at: c.creado_en, tipo: "com", eq: un1(un1(c.prestamo)?.equipo), autor: un1(c.autor), cuerpo: c.cuerpo, imagenes: c.imagenes || [], es_dano: c.es_dano, uso: true }));
   (usosRec?.data || []).forEach((p: any) => {
     const eq = un1(p.equipo), per = un1(p.persona);
     actItems.push({ at: p.desde + "T12:00:00", tipo: "uso_ini", eq, persona: per });
@@ -783,7 +786,14 @@ export default async function Equipamiento({ searchParams }: {
                           </div>
                         );
                       }
-                      const cuerpo = (it.cuerpo === "📷" ? "📷 (foto)" : (it.cuerpo || "")).replace(/\s+/g, " ").slice(0, 110);
+                      /* `📷` es el cuerpo que deja un comentario que es SOLO
+                         una foto. Se pintaba como el texto «📷 (foto)» —la
+                         palabra «foto» en el sitio donde iba la foto—; ahora
+                         se enseña la miniatura y el texto desaparece, que no
+                         añadía nada que la imagen no diga. */
+                      const fotos: string[] = (it.imagenes || []).filter(Boolean);
+                      const soloFoto = !it.cuerpo || it.cuerpo === "📷";
+                      const cuerpo = (soloFoto ? "" : it.cuerpo).replace(/\s+/g, " ").slice(0, 110);
                       return (
                         <div key={i} style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
                           <span style={{ flex: 1, minWidth: 0 }}>
@@ -792,7 +802,25 @@ export default async function Equipamiento({ searchParams }: {
                               {it.uso && <span style={{ color: "var(--dim)" }}> · sobre un uso</span>}
                               {it.es_dano && <span style={{ marginLeft: 6, color: "var(--dano)", fontWeight: 700, fontSize: TXT.chip }}>🔧 daño</span>}
                             </span>
-                            <span style={{ display: "block", color: "var(--muted)", fontSize: TXT.chip, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{cuerpo}</span>
+                            {cuerpo && (
+                              <span style={{ display: "block", color: "var(--muted)", fontSize: TXT.chip, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{cuerpo}</span>
+                            )}
+                            {fotos.length > 0 && (
+                              <span className="act-fotos">
+                                {fotos.slice(0, 4).map((u, k) => (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img key={k} src={u} alt="" referrerPolicy="no-referrer" className="act-foto" />
+                                ))}
+                                {/* Lo que no cabe se DICE. «+2» es la diferencia
+                                    entre ver dos fotos y saber que hay seis. */}
+                                {fotos.length > 4 && <span className="act-foto-mas">+{fotos.length - 4}</span>}
+                              </span>
+                            )}
+                            {/* Un comentario sin texto y sin imagen legible: no
+                                se deja la fila muda. */}
+                            {!cuerpo && !fotos.length && (
+                              <span style={{ display: "block", color: "var(--dim)", fontSize: TXT.chip, fontStyle: "italic" }}>sin texto</span>
+                            )}
                           </span>
                           {fecha}
                         </div>
