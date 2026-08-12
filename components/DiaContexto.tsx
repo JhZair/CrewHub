@@ -1,5 +1,6 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { contextoDelDia } from "@/app/actions";
 import { fechaConDia } from "@/lib/fechas";
@@ -20,11 +21,26 @@ import { fechaConDia } from "@/lib/fechas";
  * traerlo con la página serían mil quinientas consultas para enseñar, casi
  * siempre, ninguna. La espera de medio segundo la paga quien de verdad
  * preguntó.
+ *
+ * ── Y SE PINTA EN EL <body>, NO DONDE VIVE EL BOTÓN ──
+ * La fila de un día sin jornada lleva `opacity:.4` para verse apagada, y la
+ * opacidad de un ancestro tiñe TODO lo que cuelga de él —también un hijo
+ * `position:fixed`—. La ventana salía translúcida, con las filas de detrás
+ * leyéndose a través del texto: no fallaba nada, simplemente era ilegible
+ * justo en el caso para el que se hizo.
+ * Un portal al `body` la saca de ahí de una vez, y de paso la deja a salvo de
+ * los `overflow:auto` y de los contextos de apilamiento de quien la use
+ * mañana — los otros dos accidentes que ya nos costaron un pop-up.
  */
 export default function DiaContexto({ personaId, fecha, quien }: {
   personaId: string; fecha: string; quien?: string;
 }) {
   const [abierto, setAbierto] = useState(false);
+  /* El portal necesita `document`, que en el render del servidor no existe.
+     Se monta después de la hidratación; hasta entonces solo se pinta el
+     botón, que es lo único que hay que ver. */
+  const [montado, setMontado] = useState(false);
+  useEffect(() => setMontado(true), []);
   const [cargando, setCargando] = useState(false);
   const [hechos, setHechos] = useState<any[] | null>(null);
   const [error, setError] = useState("");
@@ -79,7 +95,7 @@ export default function DiaContexto({ personaId, fecha, quien }: {
       <button type="button" className="dato-btn dia-lupa" title={`Ver todo lo que hizo el ${fecha} en el sistema`}
         onClick={abrir}>🔍</button>
 
-      {abierto && (
+      {abierto && montado && createPortal((
         <div className="modal-fondo" onClick={e => { if (e.target === e.currentTarget) setAbierto(false); }}>
           <div className="modal-caja" style={{ maxWidth: 640 }}>
             <div className="modal-cab">
@@ -186,7 +202,7 @@ export default function DiaContexto({ personaId, fecha, quien }: {
             )}
           </div>
         </div>
-      )}
+      ), document.body)}
     </>
   );
 }

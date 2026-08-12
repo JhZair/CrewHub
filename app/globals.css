@@ -2856,7 +2856,13 @@ button.repo-tit{text-align:left}
   letter-spacing:.8px;color:var(--dim);font-weight:700;padding:5px 2px 3px;
   border-bottom:1px solid rgba(255,255,255,.06);margin-bottom:2px}
 .jr-mes-h .jr-grupo-n{text-transform:none;letter-spacing:0;font-weight:600}
-.jr-dia-vacio{font-size:12px;color:var(--dim);opacity:.4}
+/* UN DIA SIN JORNADA, APAGADO — CON COLOR, NO CON OPACIDAD.
+   `opacity` tiñe todo lo que cuelga del elemento, y de ahi salio que la lupa
+   de estos dias fuera casi invisible: 0.4 de la fila por 0.35 suyo. Un color
+   apagado consigue lo mismo sin arrastrar a los hijos, y asi el unico control
+   de la fila —el que ademas es MAS util aqui que en las demas— se ve. */
+.jr-dia-vacio{font-size:12px;color:#3d3d52}
+.jr-dia-vacio .jr-fecha,.jr-dia-vacio .jr-proy{color:#3d3d52}
 /* Fila de jornada: una sola línea. El proyecto es lo que cede. */
 .jr-fila{display:flex;align-items:center;gap:9px;flex-wrap:nowrap}
 .jr-quien{font-weight:600;font-size:12.5px;white-space:nowrap;flex:none}
