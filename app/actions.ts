@@ -1936,6 +1936,106 @@ export async function fijarTopeDj(postulacionId: string, pct: string) {
   return {};
 }
 
+/* ── FACTURAS Y BOLETAS DE PROVEEDOR ──
+ *
+ * La tercera forma de rendir. A diferencia de las DJ, NO tiene tope: cuanto
+ * más gasto se respalde con comprobante formal, mejor — y de hecho es lo que
+ * libera saldo de declaraciones juradas para lo que de verdad no puede tener
+ * papel. Ver db/facturas.sql.
+ */
+export async function guardarComprobante(f: {
+  id?: string | null; postulacionId: string;
+  tipo: string; proveedor: string; ruc?: string;
+  serie?: string; numero?: string;
+  fecha: string; importe: string; igv?: string;
+  concepto?: string; etapa?: string; rubroItem?: string; url?: string;
+}) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: perfil } = await supabase.from("perfiles").select("es_admin,es_finanzas").eq("id", user.id).maybeSingle();
+  if (!perfil?.es_admin && !perfil?.es_finanzas) {
+    return { error: "Solo administración registra los comprobantes." };
+  }
+
+  const prov = String(f.proveedor || "").trim();
+  if (!prov) return { error: "Di quién emitió el comprobante." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(f.fecha)) return { error: "Pon la fecha del comprobante." };
+  const importe = montoDe(f.importe);
+  if (importe <= 0) return { error: "El importe debe ser mayor que cero." };
+  const igv = montoDe(f.igv);
+  /* El IGV no puede ser mayor que el total. No es pedantería: el desglose va
+     al informe de DAFO, y un IGV imposible se descubre allá y no aquí. */
+  if (igv > importe) return { error: "El IGV no puede ser mayor que el importe total." };
+
+  const ruc = String(f.ruc || "").replace(/\D/g, "");
+  /* Un RUC peruano tiene 11 dígitos. Se admite vacío —una boleta pequeña puede
+     no traerlo— pero si viene, que venga entero: un RUC de diez dígitos no
+     falla en ningún sitio, se rinde así y lo rebota DAFO. */
+  if (ruc && ruc.length !== 11) return { error: "El RUC tiene 11 dígitos. Déjalo vacío si el comprobante no lo trae." };
+
+  const fila = {
+    postulacion_id: f.postulacionId,
+    tipo: f.tipo || "factura",
+    proveedor: prov,
+    ruc: ruc || null,
+    serie: String(f.serie || "").trim().toUpperCase() || null,
+    numero: String(f.numero || "").trim() || null,
+    fecha: f.fecha,
+    importe, igv,
+    concepto: String(f.concepto || "").trim() || null,
+    etapa: f.etapa || null,
+    rubro_item: f.rubroItem || null,
+    url: String(f.url || "").trim() || null,
+  };
+
+  const { postulacion_id, ...sinFondo } = fila;
+  const { data: guardado, error } = f.id
+    ? await supabase.from("comprobante").update(sinFondo)
+        .eq("id", f.id).eq("postulacion_id", f.postulacionId).select("id")
+    : await supabase.from("comprobante").insert({ ...fila, creado_por: user.id }).select("id");
+
+  if (error) {
+    const c = (error as any).code;
+    return {
+      error: c === "42P01" ? "Falta correr db/facturas.sql en Supabase."
+        /* El duplicado se explica, no se suelta en crudo. «23505» a secas
+           manda a buscar un error de programa cuando lo que pasa es que esa
+           factura ya se cargó — y saberlo evita cargarla «con otro número». */
+        : c === "23505" ? `Ese comprobante ya está cargado en este fondo (${fila.serie || "sin serie"}-${fila.numero || "sin número"}).`
+        : error.message,
+    };
+  }
+  if (!guardado?.length) return { error: "No se guardó nada. Revisa tus permisos." };
+
+  await supabase.from("actividad").insert({
+    entidad_tipo: "postulacion", entidad_id: f.postulacionId, actor_id: user.id, tipo: "dato",
+    detalle: { mensaje: `${f.id ? "corrigió" : "registró"} ${fila.tipo} de ${prov} por S/ ${importe.toLocaleString("es-PE")}` },
+  });
+  revalidatePath(`/fondo/${f.postulacionId}`);
+  return {};
+}
+
+export async function borrarComprobante(id: string, postulacionId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: perfil } = await supabase.from("perfiles").select("es_admin,es_finanzas").eq("id", user.id).maybeSingle();
+  if (!perfil?.es_admin && !perfil?.es_finanzas) return { error: "Solo administración puede borrarlo." };
+
+  const { data: prev } = await supabase.from("comprobante").select("proveedor,importe").eq("id", id).maybeSingle();
+  const { data: borrados, error } = await supabase.from("comprobante").delete().eq("id", id).select("id");
+  if (error) return { error: error.message };
+  if (!borrados?.length) return { error: "No se borró nada. Revisa tus permisos." };
+
+  await supabase.from("actividad").insert({
+    entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "dato",
+    detalle: { mensaje: `borró un comprobante de ${prev?.proveedor || "—"} por S/ ${Number(prev?.importe || 0).toLocaleString("es-PE")}` },
+  });
+  revalidatePath(`/fondo/${postulacionId}`);
+  return {};
+}
+
 /* ── ¿PUEDE ESTA PERSONA ESCRIBIR ESTE RHE? ──
  *
  * Tres puertas, las mismas que la RLS (db/rhe-permisos.sql): admin, finanzas, o

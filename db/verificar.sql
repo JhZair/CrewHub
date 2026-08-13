@@ -53,6 +53,9 @@ with esperado(clase, obj, para, archivo) as (values
   ('tab', 'gasto_dj',                    'Gastos declarados sin comprobante', 'declaraciones-juradas.sql'),
   ('col', 'convocatorias.tope_dj_pct',   'Tope de DJ del concurso',   'declaraciones-juradas.sql'),
   ('col', 'postulaciones.tope_dj_pct',   'Tope de DJ del acta',       'declaraciones-juradas.sql'),
+  -- La tercera forma de rendir. Sin ella, una factura acaba cargada como DJ y
+  -- consume un tope que no le toca.
+  ('tab', 'comprobante',                 'Facturas y boletas de proveedor', 'facturas.sql'),
   -- Funciones
   ('fun', 'nrm_nombre',        'Comparar nombres sin tildes',       'personas-duplicadas.sql'),
   ('fun', 'persona_refs',      'Qué cuelga de una persona',         'personas-duplicadas.sql'),

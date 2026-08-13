@@ -18,6 +18,7 @@ import { rubrosDe, nombreRubro } from "@/lib/rubros";
 import { plazoRendicion, rendicionVencida } from "@/lib/fondos";
 import { saldoDJ as calcSaldoDJ } from "@/lib/dj";
 import SaldoDj from "@/components/SaldoDj";
+import Comprobantes from "@/components/Comprobantes";
 
 /* ── LA EJECUCIÓN DEL FONDO — la segunda vida de un proyecto ──
  *
@@ -97,7 +98,7 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
 
   const categoria = ent.conv?.categoria || null;
 
-  const [cp, pl, pf, plPre, pc, ec, rf, mb, gdj, au, vf, eqp] = await Promise.all([
+  const [cp, pl, pf, plPre, pc, ec, rf, mb, gdj, cmp, au, vf, eqp] = await Promise.all([
     supabase.from("cronograma_actividades").select("*, resp:perfiles!responsable(nombre)")
       .eq("postulacion_id", params.id)
       .order("etapa").order("orden").order("fecha_inicio").order("creado_en"),
@@ -122,6 +123,13 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
     supabase.from("gasto_dj")
       .select("id,descripcion,importe,fecha,fecha_hasta,lugar_origen,lugar_destino," +
               "etapa,rubro_item,dj_numero,dj_url,firmada_por")
+      .eq("postulacion_id", params.id).order("fecha"),
+    /* Las facturas y boletas de proveedor: la tercera forma de rendir. Su
+       ausencia hacía que una factura no tuviera dónde ir, y la salida a mano
+       era meterla como declaración jurada — gastando un tope que no le tocaba
+       (ver db/facturas.sql). */
+    supabase.from("comprobante")
+      .select("id,tipo,proveedor,ruc,serie,numero,fecha,importe,igv,concepto,etapa,rubro_item,url")
       .eq("postulacion_id", params.id).order("fecha"),
     /* La bitácora inmutable de este fondo. Filtra por el postulacion_id que
        vive dentro del JSON (antes/después), así también captura los borrados. */
@@ -170,6 +178,9 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
      leería como «no has gastado nada» — la lectura más peligrosa posible en el
      único número que obliga a devolver plata si se pasa. */
   const gastosDj = gdj.data || [];
+  const comprobantes = (cmp.data || []) as any[];
+  const cmpError = ((cmp as any).error?.message || null) as string | null;
+  const totCmp = comprobantes.reduce((s: number, c: any) => s + Number(c.importe || 0), 0);
   const usadoDj = gastosDj.reduce((s: number, g: any) => s + Number(g.importe || 0), 0);
 
   /* Los dos topes, en una consulta aparte de la que decide si la ficha existe.
@@ -244,7 +255,7 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
 
   return (
     <div className="shell" style={{ maxWidth: "min(1200px, 96vw)" }}>
-      <Realtime tablas={["cronograma_actividades", "rhe", "estado_cuenta", "movimiento_banco", "gasto_dj", "auditoria_financiera", "version_fondo", "postulaciones"]}
+      <Realtime tablas={["cronograma_actividades", "rhe", "estado_cuenta", "movimiento_banco", "gasto_dj", "comprobante", "auditoria_financiera", "version_fondo", "postulaciones"]}
         token={session?.access_token} />
       <div className="topbar">
         <Volver />
@@ -347,6 +358,15 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
                           : `quedan ${fmt(saldoDj.resta ?? 0)} de ${fmt(saldoDj.tope)}`)}>
                 <SaldoDj postulacionId={params.id} saldo={saldoDj} gastos={gastosDj as any}
                   etapas={etapasFondo} rubros={fondoRubros} esAdmin={esAdmin} error={djError} />
+              </Plegable>
+            </div>
+            <div style={{ scrollMarginTop: 12 }}>
+              <Plegable id={`fondo:${params.id}:comprobantes`} titulo="🧾 Facturas y boletas" abiertoPorDefecto={false}
+                resumen={dim(cmpError ? "⚠ no se pudo leer"
+                  : comprobantes.length ? `${comprobantes.length} · ${fmt(totCmp)}`
+                  : "sin comprobantes")}>
+                <Comprobantes postulacionId={params.id} comprobantes={comprobantes as any}
+                  etapas={etapasFondo} rubros={fondoRubros} esAdmin={esAdmin} error={cmpError} />
               </Plegable>
             </div>
             <div style={{ scrollMarginTop: 12 }}>
