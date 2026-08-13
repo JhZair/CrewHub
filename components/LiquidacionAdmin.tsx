@@ -9,6 +9,7 @@ import { fechaHum, esFinde, ICO_TIPO, FRACCIONES } from "@/lib/jornadas";
 import {
   ETAPA, QUE_FALTA, PAGO_SIN_PAPEL, MEDIOS, rotuloMedio, type ClaveEtapa, type Pago,
 } from "@/lib/pagos";
+import VerAdjunto from "@/components/VerAdjunto";
 
 const money = (n: number) => `S/ ${Math.round(n || 0).toLocaleString("es-PE")}`;
 
@@ -251,8 +252,7 @@ export default function LiquidacionAdmin({ anio, mes, filas }: {
                       <span style={{ fontWeight: 600 }}>🧾 {r.numero || "sin número"}</span>
                       <span style={{ color: "var(--teal)", fontWeight: 700 }}>{money(r.monto)}</span>
                       {r.url ? (
-                        <a href={r.url} target="_blank" rel="noopener noreferrer" className="dato-btn"
-                          title="Ver el comprobante en Drive">📎 comprobante</a>
+                        <VerAdjunto url={r.url} titulo="Ver el recibo">📎 recibo</VerAdjunto>
                       ) : (
                         <span style={{ color: "var(--yellow)" }}>📎 sin comprobante</span>
                       )}
@@ -266,8 +266,7 @@ export default function LiquidacionAdmin({ anio, mes, filas }: {
                               rendir. Y cuando falta se dice: dentro de un año
                               ese pago no lo va a poder comprobar nadie. */}
                           {r.pagadoUrl ? (
-                            <a href={r.pagadoUrl} target="_blank" rel="noopener noreferrer"
-                              className="dato-btn" title="Ver el comprobante del pago">🧾 voucher</a>
+                            <VerAdjunto url={r.pagadoUrl} titulo="Ver el comprobante del pago">🧾 voucher</VerAdjunto>
                           ) : r.pago === "sin_papel" ? (
                             <i style={{ fontStyle: "normal", color: "var(--yellow)" }}>{PAGO_SIN_PAPEL}</i>
                           ) : null}

@@ -21,13 +21,21 @@ export type Reaccion = { emoji: string; usuario_id: string; nombre?: string | nu
 
 /* Chips de reacción con toggle: clic en un chip = sumar/quitar la mía.
    El ＋ abre la paleta. Funciona en publicaciones y comentarios. */
-export default function Reacciones({ pubId, comentarioId = null, reacciones, userId, objetoId = null }: {
+export default function Reacciones({
+  pubId, comentarioId = null, reacciones, userId, objetoId = null,
+  movCajaId = null, compacto = false,
+}: {
   pubId: string | null;
   comentarioId?: string | null;
   reacciones: Reaccion[];
   userId: string;
   /** Cuando el comentario es de un objeto del repositorio, no de un caso. */
   objetoId?: string | null;
+  /** Cuando se reacciona al MOVIMIENTO DE CAJA en sí, no a un comentario suyo. */
+  movCajaId?: string | null;
+  /** En una lista apretada: la paleta solo aparece al pasar el ratón, y sin
+      reacciones el ＋ no ocupa sitio. Una fila de caja tiene ya nueve cosas. */
+  compacto?: boolean;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [ocupado, setOcupado] = useState(false);
@@ -64,14 +72,14 @@ export default function Reacciones({ pubId, comentarioId = null, reacciones, use
   const tap = async (emoji: string) => {
     if (ocupado) return;
     setOcupado(true); setAbierto(false); setError("");
-    const res = await toggleReaccion(pubId, comentarioId, emoji, objetoId);
+    const res = await toggleReaccion(pubId, comentarioId, emoji, objetoId, null, movCajaId);
     setOcupado(false);
     if (res?.error) { setError(res.error); return; }
     router.refresh();
   };
 
   return (
-    <span className="rx" onClick={e => e.stopPropagation()}>
+    <span className={`rx${compacto ? " rx-compacto" : ""}`} onClick={e => e.stopPropagation()}>
       {error && <span style={{ color: "var(--red)", fontSize: 11 }}>⚠ {error}</span>}
       {grupos.map(g => (
         <button key={g.emoji} className={`rx-chip ${g.mia ? "mia" : ""}`}

@@ -556,6 +556,158 @@ export async function comentarObjeto(objetoId: string, texto: string, imagenes: 
   return {};
 }
 
+/* ── HABLAR DE UN APUNTE DE CAJA ──
+ *
+ * Calcado de `comentarObjeto` (objeto_id → movimiento_caja_id). No es pereza:
+ * es la regla de db/objeto-comentarios.sql —«una sola bodega, N puertas»—, y
+ * apartarse de ella habría significado otra bandeja y otro camino de avisos.
+ *
+ * Comentar lo puede hacer CUALQUIERA del equipo aunque escribir en la caja sea
+ * de finanzas. Escribir un movimiento es mover plata; preguntar por él no — y
+ * la pregunta que esto quiere capturar, «¿esto qué fue?», viene justo de quien
+ * no lleva la caja. Restringirlo la habría dejado en WhatsApp.
+ */
+export async function comentarMovCaja(
+  movId: string, texto: string, imagenes: string[] = [], respondeA: string | null = null,
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const cuerpo = (texto || "").trim();
+  const imgs = (imagenes || []).filter(Boolean).slice(0, 6);
+  if (!cuerpo && !imgs.length) return { error: "El comentario no puede ir vacío." };
+
+  const { data: com, error } = await supabase.from("comentarios")
+    .insert({ movimiento_caja_id: movId, autor_id: user.id, cuerpo: cuerpo || "📷",
+      imagenes: imgs, responde_a: respondeA || null })
+    .select("id").single();
+  if (error) {
+    return {
+      error: /movimiento_caja_id/.test(error.message)
+        ? "Falta correr db/movcaja-comentarios.sql en Supabase."
+        : error.message,
+    };
+  }
+
+  const [{ data: miP }, { data: mov }] = await Promise.all([
+    supabase.from("perfiles").select("nombre").eq("id", user.id).single(),
+    supabase.from("movimiento_caja").select("descripcion,monto,creado_por").eq("id", movId).maybeSingle(),
+  ]);
+  const actorNombre = miP?.nombre || "Alguien";
+  /* El rótulo del aviso lleva el MONTO además de la descripción: en una bandeja
+     con veinte avisos, «Nuevo comentario en Taxi» no distingue el taxi de
+     S/ 15 del de S/ 180, y la descripción muchas veces está vacía. */
+  const soles = `S/ ${Math.round(Number(mov?.monto || 0)).toLocaleString("es-PE")}`;
+  const titulo = [soles, (mov?.descripcion || "").slice(0, 50)].filter(Boolean).join(" · ");
+
+  // 🪄 Menciones @nombre — mismo reconocimiento que en casos y objetos
+  const tokens = [...new Set((cuerpo.match(/@[^\s@,;:!?*_`]+/g) || []).map(m => m.slice(1)))];
+  const avisados = new Set<string>([user.id]);
+  if (tokens.length) {
+    const nrmM = (x: string) => x.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    const { data: perfs } = await supabase.from("perfiles").select("id,nombre").eq("activo", true);
+    for (const p of perfs || []) {
+      const sinEspacios = nrmM(p.nombre).replace(/\s+/g, "");
+      const palabras = nrmM(p.nombre).split(/\s+/);
+      const invocado = tokens.some(t => {
+        const tk = nrmM(t);
+        return sinEspacios.startsWith(tk) || palabras.some(w => w.startsWith(tk));
+      });
+      if (invocado && !avisados.has(p.id)) {
+        avisados.add(p.id);
+        await notificar(supabase, {
+          usuario_id: p.id, movimiento_caja_id: movId, comentario_id: com.id,
+          tipo: "mencion", actor_nombre: actorNombre,
+          mensaje: `🪄 ${actorNombre.split(" ")[0]} te mencionó en un movimiento de caja (${titulo})`,
+        });
+      }
+    }
+  }
+
+  /* A quien apuntó el movimiento. Es el destinatario natural: la pregunta
+     «¿esto qué fue?» es para él, y sin este aviso tendría que enterarse
+     volviendo a abrir la caja por casualidad. */
+  if (mov?.creado_por && !avisados.has(mov.creado_por)) {
+    avisados.add(mov.creado_por);
+    await notificar(supabase, {
+      usuario_id: mov.creado_por, movimiento_caja_id: movId, comentario_id: com.id,
+      tipo: "comentario", actor_nombre: actorNombre,
+      mensaje: `Nuevo comentario en un movimiento de caja (${titulo})`,
+    });
+  }
+
+  /* A quien se le responde. Responder es la forma más explícita que hay de
+     dirigirse a alguien; pedir además un @ es pedir que se diga dos veces.
+     (La lección es de la bitácora de equipo, y vale igual aquí.) */
+  if (respondeA) {
+    const { data: padre } = await supabase.from("comentarios")
+      .select("autor_id").eq("id", respondeA).maybeSingle();
+    if (padre?.autor_id && !avisados.has(padre.autor_id)) {
+      avisados.add(padre.autor_id);
+      await notificar(supabase, {
+        usuario_id: padre.autor_id, movimiento_caja_id: movId, comentario_id: com.id,
+        tipo: "comentario", actor_nombre: actorNombre,
+        mensaje: `${actorNombre.split(" ")[0]} respondió a tu comentario (${titulo})`,
+      });
+    }
+  }
+
+  await supabase.from("actividad").insert({
+    entidad_tipo: "movimiento_caja", entidad_id: movId, actor_id: user.id, tipo: "comentario",
+    detalle: { comentario_id: com.id },
+  });
+  revalidatePath("/caja");
+  return {};
+}
+
+/* La lectura que alimenta el pop-up. Misma forma que `cargarObjetoRapido`, para
+   que VistaHilo no tenga que aprender un contrato nuevo por cada dueño. */
+export async function cargarMovCajaRapido(movId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  const [{ data: movimiento }, { data: comentarios }, { data: perfiles }] = await Promise.all([
+    supabase.from("movimiento_caja")
+      .select("id,fecha,monto,descripcion,url,caja_id,cuenta_id,caja_destino," +
+              "caja:caja!movimiento_caja_caja_id_fkey(nombre,tipo)," +
+              "cuenta:cuenta_caja(nombre,flujo),proy:proyectos(nombre),quien:perfiles!creado_por(nombre)")
+      .eq("id", movId).maybeSingle(),
+    supabase.from("comentarios")
+      .select("id,cuerpo,imagenes,creado_en,editado_en,autor_id,responde_a," +
+              "autor:perfiles(nombre,color,avatar_url)")
+      .eq("movimiento_caja_id", movId).order("creado_en"),
+    supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
+  ]);
+
+  const ids = (comentarios || []).map((c: any) => c.id);
+  const { data: rx } = ids.length
+    ? await supabase.from("reacciones")
+        .select("emoji,usuario_id,comentario_id,perfil:perfiles!usuario_id(nombre)")
+        .in("comentario_id", ids)
+    : { data: [] as any[] };
+  const reaccionesPorComentario: Record<string, any[]> = {};
+  (rx || []).forEach((r: any) => {
+    (reaccionesPorComentario[r.comentario_id] ||= []).push({
+      emoji: r.emoji, usuario_id: r.usuario_id, nombre: r.perfil?.nombre || null,
+    });
+  });
+
+  /* Las reacciones al movimiento en sí (sin comentario): el 👀 de «lo vi, está
+     bien», que en una caja que revisa otra persona es media conversación. */
+  const { data: rxHilo } = await supabase.from("reacciones")
+    .select("emoji,usuario_id,perfil:perfiles!usuario_id(nombre)")
+    .eq("movimiento_caja_id", movId).is("comentario_id", null);
+
+  return {
+    movimiento, comentarios: comentarios || [], reaccionesPorComentario,
+    reaccionesHilo: (rxHilo || []).map((r: any) => ({
+      emoji: r.emoji, usuario_id: r.usuario_id, nombre: r.perfil?.nombre || null,
+    })),
+    perfiles: perfiles || [], userId: user.id,
+  };
+}
+
 export async function asignarResponsable(pubId: string, perfilId: string | null) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -1933,6 +2085,239 @@ export async function fijarTopeDj(postulacionId: string, pct: string) {
     detalle: { mensaje: n ? `fijó el tope de DJ de este fondo en ${n}% (lo que dice su acta)` : "quitó el tope de DJ propio: vuelve a mandar el de las bases" },
   });
   revalidatePath(`/fondo/${postulacionId}`);
+  return {};
+}
+
+/* ══ CAJA — ingresos y egresos del día a día (control interno) ══
+ *
+ * Nada de esto se rinde a DAFO. Ver db/caja.sql y lib/caja.ts.
+ *
+ * La regla que gobierna estas funciones: apuntar un gasto tiene que costar
+ * diez segundos. Cada validación que se añade es una razón más para no
+ * apuntarlo, y un cuaderno que no se llena da la sensación de que hay control
+ * sin haberlo. Solo se valida lo que hace el dato inservible.
+ */
+async function puedeCaja(supabase: any, userId: string) {
+  const { data: p } = await supabase.from("perfiles")
+    .select("es_admin,es_finanzas").eq("id", userId).maybeSingle();
+  return !!(p?.es_admin || p?.es_finanzas);
+}
+
+export async function guardarMovCaja(f: {
+  id?: string | null;
+  cajaId: string; fecha: string; monto: string;
+  /* O cuenta (ingreso/egreso) o caja destino (traspaso). Nunca las dos: lo
+     exige también un check de la base, porque una fila con las dos no se
+     sabría ni sumar ni ignorar. */
+  cuentaId?: string; cajaDestino?: string; traspaso?: boolean;
+  descripcion?: string; proyectoId?: string; url?: string;
+}) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!(await puedeCaja(supabase, user.id))) {
+    return { error: "Solo administración registra movimientos de caja." };
+  }
+
+  if (!f.cajaId) return { error: "Elige de qué caja sale o entra." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(f.fecha)) return { error: "Pon la fecha." };
+  const monto = montoDe(f.monto);
+  if (monto <= 0) return { error: "El monto debe ser mayor que cero." };
+
+  /* La INTENCIÓN viaja; antes se deducía del destino, y con el modo traspaso
+     puesto pero la caja destino sin elegir el servidor creía que era un
+     movimiento normal y pedía «elige la cuenta» — un campo que en ese modo no
+     está en pantalla. Un error que nombra algo que no se ve no se puede
+     obedecer. */
+  const esTraspaso = f.traspaso ?? !!f.cajaDestino;
+  if (esTraspaso) {
+    if (!f.cajaDestino) return { error: "Elige a qué caja va el traspaso." };
+    if (f.cajaDestino === f.cajaId) return { error: "Un traspaso tiene que ir a otra caja." };
+  } else if (!f.cuentaId) {
+    return { error: "Elige la cuenta: dice si entra o sale." };
+  }
+
+  const fila = {
+    caja_id: f.cajaId,
+    fecha: f.fecha,
+    monto,
+    cuenta_id: esTraspaso ? null : (f.cuentaId || null),
+    caja_destino: esTraspaso ? f.cajaDestino : null,
+    descripcion: String(f.descripcion || "").trim() || null,
+    /* Un traspaso no pertenece a ninguna cobertura: es la misma plata cambiando
+       de sitio. La pantalla esconde el selector en ese modo, pero si quedó algo
+       elegido de antes llegaría hasta aquí y el traspaso saldría colgado de un
+       proyecto sin que nadie lo hubiera visto. */
+    proyecto_id: esTraspaso ? null : (f.proyectoId || null),
+    url: String(f.url || "").trim() || null,
+  };
+
+  const { data: guardado, error } = f.id
+    ? await supabase.from("movimiento_caja").update(fila).eq("id", f.id).select("id")
+    : await supabase.from("movimiento_caja").insert({ ...fila, creado_por: user.id }).select("id");
+  if (error) {
+    const c = (error as any).code;
+    return {
+      error: c === "42P01" ? "Falta correr db/caja.sql en Supabase."
+        /* Los códigos de Postgres, traducidos. Un «violates check constraint
+           mov_caja_clase» es inglés de base de datos delante de alguien que
+           está apuntando un gasto de S/ 20. */
+        : c === "23514" ? "El movimiento tiene que ser o de una cuenta o un traspaso, no las dos cosas."
+        : c === "42501" ? "No tienes permiso para escribir en la caja."
+        : error.message,
+    };
+  }
+  if (!guardado?.length) return { error: "No se guardó nada. Revisa tus permisos." };
+  revalidatePath("/caja");
+  return {};
+}
+
+export async function borrarMovCaja(id: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!(await puedeCaja(supabase, user.id))) return { error: "Solo administración puede borrarlo." };
+  const { data: borrados, error } = await supabase.from("movimiento_caja").delete().eq("id", id).select("id");
+  if (error) return { error: error.message };
+  if (!borrados?.length) return { error: "No se borró nada. Revisa tus permisos." };
+  revalidatePath("/caja");
+  return {};
+}
+
+/* Las cuentas se crean desde la pantalla porque se van a partir y renombrar, y
+ * cada cambio no puede ser un despliegue. Y NO se borran: se apagan. Una
+ * cuenta con historia detrás, borrada, obligaría a reasignar sus movimientos —
+ * que es falsear el pasado para limpiar una lista. */
+export async function guardarCuentaCaja(f: { id?: string | null; nombre: string; flujo: string }) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!(await puedeCaja(supabase, user.id))) return { error: "Solo administración edita las cuentas." };
+
+  const nombre = String(f.nombre || "").trim();
+  if (!nombre) return { error: "Ponle nombre a la cuenta." };
+  if (f.flujo !== "ingreso" && f.flujo !== "egreso") return { error: "Di si es de ingreso o de egreso." };
+
+  /* El `flujo` también se actualiza. Antes solo se guardaba el nombre y el
+     cambio de sentido se descartaba en silencio: la cuenta seguía sumando al
+     lado contrario y el error no se veía hasta cuadrar el mes. */
+  const { data: tocadas, error } = f.id
+    ? await supabase.from("cuenta_caja").update({ nombre, flujo: f.flujo }).eq("id", f.id).select("id")
+    : await supabase.from("cuenta_caja").insert({ nombre, flujo: f.flujo }).select("id");
+  if (error) {
+    return {
+      error: (error as any).code === "23505"
+        ? `Ya existe una cuenta de ${f.flujo} llamada «${nombre}».`
+        : error.message,
+    };
+  }
+  if (!tocadas?.length) return { error: "No se guardó nada. Revisa tus permisos." };
+  revalidatePath("/caja");
+  return {};
+}
+
+export async function activarCuentaCaja(id: string, activa: boolean) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!(await puedeCaja(supabase, user.id))) return { error: "Solo administración edita las cuentas." };
+  const { data: tocadas, error } = await supabase.from("cuenta_caja")
+    .update({ activa }).eq("id", id).select("id");
+  if (error) return { error: error.message };
+  if (!tocadas?.length) return { error: "No se pudo cambiar. Revisa tus permisos." };
+  revalidatePath("/caja");
+  return {};
+}
+
+/* ── CREAR, RENOMBRAR Y ARCHIVAR CAJAS ──
+ *
+ * El propio db/caja.sql argumentaba que añadir un Yape o una segunda cuenta «no
+ * puede ser un despliegue», y luego dejó la única forma de hacerlo en un INSERT
+ * a mano. Esto cierra ese hueco.
+ *
+ * Renombrar importa más de lo que parece: «Banco» se convierte en «Banco BCP
+ * Oficina» en cuanto aparece la segunda cuenta, y un saldo que no dice de qué
+ * cuenta es no se puede contrastar con nada.
+ */
+export async function guardarCaja(f: {
+  id?: string | null; nombre: string; tipo?: string;
+}) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!(await puedeCaja(supabase, user.id))) return { error: "Solo administración edita las cajas." };
+
+  const nombre = String(f.nombre || "").trim();
+  if (!nombre) return { error: "Ponle nombre a la caja." };
+  const tipo = ["efectivo", "banco", "otro"].includes(f.tipo || "") ? f.tipo : "efectivo";
+
+  /* Al renombrar NO se toca el tipo si no viene: el tipo solo decide el ícono, y
+     pisarlo con un valor por defecto cambiaría 🏦 por 💵 en una cuenta bancaria
+     por el simple hecho de haberle corregido el nombre. */
+  const fila: any = f.id && f.tipo === undefined ? { nombre } : { nombre, tipo };
+
+  const { data: tocadas, error } = f.id
+    ? await supabase.from("caja").update(fila).eq("id", f.id).select("id")
+    : await supabase.from("caja").insert(fila).select("id");
+  if (error) {
+    return {
+      error: (error as any).code === "42P01"
+        ? "Falta correr db/caja.sql en Supabase."
+        : error.message,
+    };
+  }
+  if (!tocadas?.length) return { error: "No se guardó nada. Revisa tus permisos." };
+  revalidatePath("/caja");
+  return {};
+}
+
+/* Archivar en vez de borrar, por la misma razón que las cuentas: una caja con
+ * movimientos detrás tiene historia, y la base además lo impide (`on delete
+ * restrict`). Archivada deja de ofrecerse al apuntar y su tarjeta desaparece,
+ * pero sus movimientos siguen contando donde ya contaban.
+ *
+ * Con saldo distinto de cero se AVISA y no se bloquea: una caja que se cierra
+ * con plata dentro casi siempre es un traspaso que falta hacer, y quien la
+ * archiva merece enterarse antes de que el dinero desaparezca de la vista. */
+export async function archivarCaja(id: string, activa: boolean) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!(await puedeCaja(supabase, user.id))) return { error: "Solo administración edita las cajas." };
+
+  if (!activa) {
+    const { count } = await supabase.from("caja")
+      .select("id", { count: "exact", head: true }).eq("activa", true);
+    /* Sin cajas activas no se puede apuntar nada: el formulario se queda sin
+       origen y la pantalla, muda. */
+    if ((count || 0) <= 1) return { error: "Es la única caja activa. Crea otra antes de archivar esta." };
+  }
+
+  const { data: tocadas, error } = await supabase.from("caja")
+    .update({ activa }).eq("id", id).select("id");
+  if (error) return { error: error.message };
+  if (!tocadas?.length) return { error: "No se pudo cambiar. Revisa tus permisos." };
+  revalidatePath("/caja");
+  return {};
+}
+
+/* El saldo inicial: lo único que el sistema no puede deducir. Se pone una vez,
+ * al empezar, y sin él el saldo de la pantalla no es el dinero que hay. */
+export async function fijarSaldoInicial(cajaId: string, saldo: string, desde: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!(await puedeCaja(supabase, user.id))) return { error: "Solo administración puede fijarlo." };
+  const v = montoDe(saldo);
+  /* Se admite negativo: una cuenta en rojo o un adelanto que dejó la caja chica
+     en descubierto son estados reales, y prohibirlos obligaría a poner un
+     número falso para poder seguir. */
+  const { data: tocadas, error } = await supabase.from("caja")
+    .update({ saldo_inicial: v, fecha_inicio: /^\d{4}-\d{2}-\d{2}$/.test(desde) ? desde : null })
+    .eq("id", cajaId).select("id");
+  if (error) return { error: error.message };
+  if (!tocadas?.length) return { error: "No se guardó. Revisa tus permisos." };
+  revalidatePath("/caja");
   return {};
 }
 
@@ -6246,7 +6631,7 @@ export async function crearSubCaso(padreId: string, titulo: string, tipo: string
 /* ===== REACCIONES: los famosos "me gusta" =====
    Toggle por usuario: mismo emoji dos veces = quitar. */
 const EMOJIS_REACCION = ["👀", "👍", "✔️", "❤️", "🔥", "👏", "😂", "😮", "🤔", "😕", "😢"];
-export async function toggleReaccion(pubId: string | null, comentarioId: string | null, emoji: string, objetoId?: string | null, postulacionId?: string | null) {
+export async function toggleReaccion(pubId: string | null, comentarioId: string | null, emoji: string, objetoId?: string | null, postulacionId?: string | null, movCajaId?: string | null) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
@@ -6261,6 +6646,7 @@ export async function toggleReaccion(pubId: string | null, comentarioId: string 
      lo hay; si no, por postulación; si no, por publicación. */
   q = comentarioId ? q.eq("comentario_id", comentarioId)
     : postulacionId ? q.eq("postulacion_id", postulacionId).is("comentario_id", null)
+    : movCajaId ? q.eq("movimiento_caja_id", movCajaId).is("comentario_id", null)
     : q.eq("publicacion_id", pubId).is("comentario_id", null);
   const { data: ya } = await q.maybeSingle();
 
@@ -6272,14 +6658,22 @@ export async function toggleReaccion(pubId: string | null, comentarioId: string 
       publicacion_id: pubId, comentario_id: comentarioId,
       // La reacción a la postulación misma solo cuando NO es a un comentario.
       postulacion_id: comentarioId ? null : (postulacionId ?? null),
+      movimiento_caja_id: comentarioId ? null : (movCajaId ?? null),
       usuario_id: user.id, emoji,
     });
-    if (error) return { error: error.message };
+    if (error) {
+      return {
+        error: /movimiento_caja_id/.test(error.message)
+          ? "Falta correr db/movcaja-comentarios.sql en Supabase."
+          : error.message,
+      };
+    }
   }
   revalidatePath("/");
   // La reacción vive donde vive el comentario: caso, objeto o postulación.
   if (objetoId) revalidatePath(`/objeto/${objetoId}`);
   else if (postulacionId) revalidatePath(`/entidad/postulacion/${postulacionId}`);
+  else if (movCajaId) revalidatePath("/caja");
   else if (pubId) revalidatePath(`/caso/${pubId}`);
   return {};
 }

@@ -56,6 +56,14 @@ with esperado(clase, obj, para, archivo) as (values
   -- La tercera forma de rendir. Sin ella, una factura acaba cargada como DJ y
   -- consume un tope que no le toca.
   ('tab', 'comprobante',                 'Facturas y boletas de proveedor', 'facturas.sql'),
+  -- Caja interna: no se rinde a DAFO, es el cuaderno del día a día.
+  ('tab', 'caja',                        'Efectivo y banco',          'caja.sql'),
+  ('tab', 'cuenta_caja',                 'Categorías de la caja',     'caja.sql'),
+  ('tab', 'movimiento_caja',             'Ingresos y egresos',        'caja.sql'),
+  -- La sexta puerta del motor de comentarios: hablar de un apunte de caja.
+  ('col', 'comentarios.movimiento_caja_id',   'Hilo de un movimiento',  'movcaja-comentarios.sql'),
+  ('col', 'reacciones.movimiento_caja_id',    'Reaccionar a un movimiento', 'movcaja-comentarios.sql'),
+  ('col', 'notificaciones.movimiento_caja_id','Que el aviso lleve a la caja', 'movcaja-comentarios.sql'),
   -- Funciones
   ('fun', 'nrm_nombre',        'Comparar nombres sin tildes',       'personas-duplicadas.sql'),
   ('fun', 'persona_refs',      'Qué cuelga de una persona',         'personas-duplicadas.sql'),

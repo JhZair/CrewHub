@@ -3778,3 +3778,23 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
    buscando cuál de todos era. */
 @keyframes cas-destello{from{background:rgba(167,139,250,.22)}to{background:transparent}}
 .cas-destello{animation:cas-destello 2s ease-out}
+
+/* ── Reacciones en una fila de lista (💰 Caja) ──
+   El primer intento escondía el ＋ y lo sacaba al pasar el ratón. Dos fallos en
+   uno: un botón que hay que descubrir no existe para quien no sabe que está —la
+   misma lección que ya está escrita en components/Copiar.tsx—, y al aparecer
+   ensanchaba la fila, así que las filas con reacción y sin ella no alineaban.
+   En una tabla, lo que se mueve al pasar el ratón se lee como un fallo.
+
+   La solución es un HUECO FIJO. El ＋ está siempre, atenuado hasta que se le
+   acerca uno; el sitio está reservado tenga o no tenga reacciones, así que nada
+   se mueve nunca y todas las filas cortan por el mismo punto. */
+.rx-compacto{
+  display:inline-flex;align-items:center;justify-content:flex-end;gap:4px;
+  min-width:66px;flex:none;
+}
+.rx-compacto .rx-mas{opacity:.35;transition:opacity .12s}
+.rx-compacto:hover .rx-mas,
+.rx-compacto:focus-within .rx-mas{opacity:1}
+/* Los chips, más apretados que en un caso: aquí conviven con ocho datos más. */
+.rx-compacto .rx-chip{padding:1px 6px;font-size:11px}

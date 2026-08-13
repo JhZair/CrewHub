@@ -25,7 +25,7 @@ export const sinColumna = (e: any, col: string): boolean =>
 
 /* Las columnas que puede que la base todavía no tenga. Cada una llega con su
    SQL, y cada una tumbaría la consulta entera si se pide antes de tiempo. */
-export const COLS_NUEVAS = [COL_DAFO, "comentario_id"];
+export const COLS_NUEVAS = [COL_DAFO, "comentario_id", "movimiento_caja_id"];
 export const faltaAlguna = (e: any): boolean => COLS_NUEVAS.some(c => sinColumna(e, c));
 /* Quita TODAS las opcionales para el segundo intento, no solo la que se quejó.
    Pedirlas de una en una serían tantos reintentos como columnas nuevas haya, y
@@ -92,6 +92,7 @@ export const anclaCom = (n: { comentario_id?: string | null }, deFondo: string) 
 export const rutaNotif = (n: {
   publicacion_id?: string | null; objeto_id?: string | null; equipamiento_id?: string | null;
   dafo_id?: string | null; comentario_id?: string | null; tipo?: string;
+  postulacion_id?: string | null; movimiento_caja_id?: string | null;
   /** Si la publicación es una NOTA DE MURO, de qué muro es. */
   muro?: { tipo: string; id: string } | null;
 }) =>
@@ -121,6 +122,16 @@ export const rutaNotif = (n: {
      que está en pantalla pero en otra pestaña. */
   : n.equipamiento_id
     ? `/entidad/equipamiento/${n.equipamiento_id}#bitacora${n.comentario_id ? `/${ANCLA_COM(n.comentario_id)}` : ""}`
+  /* Un comentario en un apunte de caja lleva a la caja, y el ancla al propio
+     movimiento. El hilo vive en un pop-up, así que no se puede anclar al
+     comentario: se ancla a la fila, que es desde donde se abre. */
+  : n.movimiento_caja_id ? `/caja#mov-${n.movimiento_caja_id}`
+  /* Y la postulación, que llevaba desde su migración devolviendo `null` — el
+     aviso llegaba a la bandeja y no era clicable. Es exactamente el fallo que
+     el comentario de más arriba dice haber arreglado para los objetos,
+     reintroducido al abrir esa puerta y nunca cerrado. */
+  : n.postulacion_id
+    ? `/entidad/postulacion/${n.postulacion_id}${anclaCom(n, anclaDe(n.tipo || ""))}`
   : null;
 
 /* Cuánto hace, dicho corto: la campanita es una lista, no un texto */

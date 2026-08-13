@@ -5,6 +5,8 @@ import { guardarGastoDj, borrarGastoDj, fijarTopeDj } from "@/app/actions";
 import { useConfirmar, useAviso } from "@/components/useConfirmar";
 import { money, rangoFechas, trayecto, type SaldoDJ } from "@/lib/dj";
 import { hoyLima } from "@/lib/fechas";
+import CampoAdjunto from "@/components/CampoAdjunto";
+import VerAdjunto from "@/components/VerAdjunto";
 
 /* ── EL SALDO DE DECLARACIONES JURADAS ──
  *
@@ -228,8 +230,11 @@ export default function SaldoDj({
                 </select>
                 <input value={f.djNumero} onChange={e => set("djNumero", e.target.value)}
                   placeholder="Nº de DJ" title="La DJ donde va esta fila (admite 9)" style={{ ...inp, width: 100 }} />
-                <input value={f.djUrl} onChange={e => set("djUrl", e.target.value)}
-                  placeholder="Link de la DJ firmada" style={{ ...inp, flex: 1, minWidth: 150 }} />
+                {/* La DJ firmada se escanea o se fotografía. Mismo campo que en
+                    la caja: pegar, arrastrar o escribir el enlace si ya vive en
+                    Drive. */}
+                <CampoAdjunto valor={f.djUrl} onCambio={v => set("djUrl", v)}
+                  placeholder="DJ firmada: pega la foto o el enlace" />
               </div>
               <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
                 <button className="btn" disabled={ocupado} style={{ fontSize: 12, padding: "6px 14px" }}
@@ -255,7 +260,7 @@ export default function SaldoDj({
               </span>
               {g.dj_numero && (
                 g.dj_url
-                  ? <a href={g.dj_url} target="_blank" rel="noopener noreferrer" className="dato-btn">📄 DJ {g.dj_numero}</a>
+                  ? <VerAdjunto url={g.dj_url} titulo="Ver la DJ firmada">📄 DJ {g.dj_numero}</VerAdjunto>
                   : <span style={{ color: "var(--yellow)", fontSize: 11.5 }}>DJ {g.dj_numero} · sin firmar</span>
               )}
               {!g.dj_numero && (

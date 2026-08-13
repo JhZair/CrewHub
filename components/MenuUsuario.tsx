@@ -40,8 +40,17 @@ export default function MenuUsuario({ nombre, rol, color, src, esAdmin, personaI
             <Link href="/llaves" onClick={() => setAbierto(false)} className="btn btn-ghost"
               style={{ marginTop: 6, fontSize: 12.5, textAlign: "center" }}>🔑 Llaves</Link>
             {esAdmin && (
-              <Link href="/admin" onClick={() => setAbierto(false)} className="btn btn-ghost"
-                style={{ marginTop: 6, fontSize: 12.5, textAlign: "center" }}>⚙ Administración</Link>
+              /* `esAdmin` aquí quiere decir «administración o finanzas»: quien
+                 lleva la plata entra a las dos, aunque en /admin solo vea el
+                 panel de recibos. La lección de ayer es que el permiso sin la
+                 puerta no existe — se dio la llave y no había por dónde
+                 entrar, y el síntoma fue «no lo veo», sin ningún error. */
+              <>
+                <Link href="/caja" onClick={() => setAbierto(false)} className="btn btn-ghost"
+                  style={{ marginTop: 6, fontSize: 12.5, textAlign: "center" }}>💰 Caja</Link>
+                <Link href="/admin" onClick={() => setAbierto(false)} className="btn btn-ghost"
+                  style={{ marginTop: 6, fontSize: 12.5, textAlign: "center" }}>⚙ Administración</Link>
+              </>
             )}
             <ActivarPush />
             <a href="/auth/signout" className="btn btn-ghost"

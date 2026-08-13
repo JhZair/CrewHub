@@ -5,6 +5,8 @@ import { guardarComprobante, borrarComprobante } from "@/app/actions";
 import { useConfirmar, useAviso } from "@/components/useConfirmar";
 import { money } from "@/lib/dj";
 import { hoyLima } from "@/lib/fechas";
+import CampoAdjunto from "@/components/CampoAdjunto";
+import VerAdjunto from "@/components/VerAdjunto";
 
 /* ── FACTURAS Y BOLETAS DEL FONDO ──
  *
@@ -174,9 +176,11 @@ export default function Comprobantes({
               placeholder="Concepto — qué se compró" style={{ ...inp, flex: 1, minWidth: 160 }} />
           </div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 6 }}>
-            <input value={f.url} onChange={e => set("url", e.target.value)}
-              placeholder="Link del PDF o la foto del comprobante"
-              style={{ ...inp, flex: 1, minWidth: 200 }} />
+            {/* Igual que en la caja: la factura se fotografía con el celular y
+                se pega aquí. Mandarla antes a Drive es el paso que hace que se
+                registre «y luego subo el PDF» — y ese luego no llega. */}
+            <CampoAdjunto valor={f.url} onCambio={v => set("url", v)}
+              placeholder="Comprobante: pega la foto, arrástrala o escribe un enlace" />
             <button className="btn" disabled={ocupado} style={{ fontSize: 12, padding: "6px 14px" }}
               onClick={guardar}>{ocupado ? "…" : f.id ? "Actualizar" : "Guardar"}</button>
             <button className="btn btn-ghost" style={{ fontSize: 12, padding: "6px 12px" }}
@@ -220,8 +224,7 @@ export default function Comprobantes({
               <span style={{ flex: 1 }} />
               <span style={{ color: "var(--teal)", fontWeight: 700 }}>{money(c.importe)}</span>
               {c.url
-                ? <a href={c.url} target="_blank" rel="noopener noreferrer" className="dato-btn"
-                    title="Ver el comprobante">📎</a>
+                ? <VerAdjunto url={c.url} />
                 : <span style={{ color: "var(--yellow)", fontSize: 11 }}>sin PDF</span>}
               {esAdmin && (
                 <>
