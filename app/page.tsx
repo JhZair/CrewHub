@@ -60,7 +60,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
   const { data: { session } } = await supabase.auth.getSession();
 
   const { data: perfil } = await supabase
-    .from("perfiles").select("nombre,color,rol,avatar_url,es_admin").eq("id", user.id).single();
+    .from("perfiles").select("nombre,color,rol,avatar_url,es_admin,es_finanzas").eq("id", user.id).single();
 
   // "Mis asuntos" incluye también publicaciones vinculadas a MI PERSONA
   // (gracias al enlace personas.usuario_id ↔ perfil)
@@ -404,7 +404,13 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
         <BuscadorGlobal />
         <Campanita items={notifsEnriq} sinLeer={sinLeer || 0} sinLeerBot={sinLeerBot || 0} />
         <MenuUsuario nombre={perfil?.nombre} rol={perfil?.rol}
-          color={perfil?.color} src={perfil?.avatar_url} esAdmin={perfil?.es_admin}
+          color={perfil?.color} src={perfil?.avatar_url}
+          /* También finanzas: /admin le enseña SOLO el panel de recibos (ver
+             app/admin/page.tsx → soloFinanzas), pero sin este enlace no tiene
+             por dónde llegar. Se le dio el permiso y se le dejó la pantalla sin
+             puerta: el permiso existía, la puerta no, y el síntoma era «no lo
+             veo» sin ningún error que lo explicara. */
+          esAdmin={!!(perfil?.es_admin || (perfil as any)?.es_finanzas)}
           personaId={miPersonaId} />
       </div>
 
