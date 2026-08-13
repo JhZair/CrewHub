@@ -10,7 +10,7 @@ import PlataformasAdmin from "@/components/PlataformasAdmin";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import { buscadorDe, pal } from "@/lib/buscar";
 import { estado4ta } from "@/lib/cuarta";
-import { etapaLiquidacion, diasParado, atascada, pagoDe } from "@/lib/pagos";
+import { etapaLiquidacion, diasParado, atascada, pagoDe, DIAS_ATASCO } from "@/lib/pagos";
 import { ejecutando, rendicionVencida, SEL_FONDO } from "@/lib/fondos";
 import { haceOEn } from "@/lib/fechas";
 import { ICO_ENT, rutaEntidad, tipoCanonico } from "@/lib/secciones";
@@ -90,8 +90,18 @@ export default async function Admin({ searchParams }: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: perfil } = await supabase.from("perfiles").select("es_admin").eq("id", user.id).single();
-  if (!perfil?.es_admin) {
+  /* ── QUIÉN ENTRA, Y A QUÉ ──
+     `es_admin` da esta pantalla entera: aprobar jornadas, liquidar meses,
+     tarifas, plataformas. `es_finanzas` da SOLO el panel de RHE, que es el
+     trabajo del asistente de administración — registrar recibos de terceros y
+     atarlos a su mes.
+     No se le da `es_admin` «porque es de confianza»: un permiso que se amplía
+     para conceder otro distinto es como se acaban repartiendo llaves maestras,
+     y aquí las otras pestañas deciden pagos y congelan meses. */
+  const { data: perfil } = await supabase.from("perfiles")
+    .select("es_admin,es_finanzas").eq("id", user.id).single();
+  const soloFinanzas = !perfil?.es_admin && !!perfil?.es_finanzas;
+  if (!perfil?.es_admin && !perfil?.es_finanzas) {
     return (
       <div className="shell">
         <div className="topbar"><Volver /></div>
@@ -264,6 +274,21 @@ export default async function Admin({ searchParams }: {
         ? "Falta correr db/pagos-expediente.sql en Supabase: hasta entonces el estado de las liquidaciones no se puede leer."
         : `No se pudo leer el estado de las liquidaciones: ${eLiqs.message}`)
     : null;
+
+  /* ── DÓNDE ESTÁ EL TRABAJO, MIRE EL MES QUE MIRE ──
+     Lo que la pestaña de Jornadas hace bien y a las otras dos les faltaba: con
+     el mes navegable, entrar a uno tranquilo y no ver nada se lee como «no hay
+     nada pendiente» — y puede haber cinco expedientes parados en marzo. El
+     contador va en el navegador, al lado de las flechas, y cuenta TODO, no el
+     mes en pantalla.
+     Se piden solo las fechas y sin tope alto: son unas decenas de filas al año
+     y lo único que hay que hacer con ellas es contarlas. */
+  const { data: expAbiertos } = await supabase.from("liquidaciones")
+    .select("liquidado_en").eq("estado", "liquidado").is("cerrado_en", null).limit(600);
+  const nExpAbiertos = (expAbiertos || []).length;
+  const nExpParados = (expAbiertos || []).filter((l: any) =>
+    l.liquidado_en && diasParado({ liquidado_en: l.liquidado_en, estado: "liquidado" }) !== null
+      && (diasParado({ liquidado_en: l.liquidado_en, estado: "liquidado" }) as number) >= DIAS_ATASCO).length;
 
   const liqIds = (liqs || []).map((l: any) => l.id).filter(Boolean);
   let rhesDelMes: any[] = [];
@@ -839,6 +864,18 @@ export default async function Admin({ searchParams }: {
             <Link href={`/admin?s=liquidar&lm=${lmOff - 1}`} className="vtab">‹ mes anterior</Link>
             {lmOff !== 0 && <Link href="/admin?s=liquidar" className="vtab">actual</Link>}
             {lmOff < 0 && <Link href={`/admin?s=liquidar&lm=${lmOff + 1}`} className="vtab">siguiente ›</Link>}
+            {/* Lo mismo que hace Jornadas con «⏳ N por aprobar en total»: con
+                el mes navegable, un mes tranquilo no puede parecer que no queda
+                trabajo. Aquí lo pendiente son los expedientes liquidados y sin
+                cerrar, estén en el mes que estén. */}
+            {nExpAbiertos > 0 && (
+              <span style={{ marginLeft: "auto", fontSize: 12,
+                color: nExpParados > 0 ? "var(--yellow)" : "var(--dim)" }}>
+                {nExpParados > 0
+                  ? `⏳ ${nExpParados} expediente(s) parados · ${nExpAbiertos} sin cerrar en total`
+                  : `${nExpAbiertos} expediente(s) sin cerrar en total`}
+              </span>
+            )}
           </div>
           {avisoLiq && (
             <div className="empty" style={{ color: "var(--yellow)", marginBottom: 10 }}>{avisoLiq}</div>
@@ -862,6 +899,15 @@ export default async function Admin({ searchParams }: {
             <Link href={`/admin?s=rhe&ra=${raOff - 1}`} className="vtab">‹ {rAnio - 1}</Link>
             {raOff !== 0 && <Link href="/admin?s=rhe" className="vtab">actual</Link>}
             {raOff < 0 && <Link href={`/admin?s=rhe&ra=${raOff + 1}`} className="vtab">{rAnio + 1} ›</Link>}
+            {/* Y aquí lo urgente es el tope de 4ta, que es del año EN CURSO
+                aunque estés mirando 2024. Al lado de las flechas por el mismo
+                motivo que en las otras dos: es lo que no puede perderse de
+                vista al navegar. */}
+            {nCerca > 0 && (
+              <span style={{ marginLeft: "auto", color: "var(--red)", fontSize: 12 }}>
+                ⚠ {nCerca} persona(s) cerca o sobre el tope de 4ta {anioHoy}
+              </span>
+            )}
           </div>
           {raOff !== 0 && (
             /* El tope es del año en curso y esta lista no lo es. Decirlo evita
@@ -900,15 +946,24 @@ export default async function Admin({ searchParams }: {
   /* El orden es el de la frecuencia: la portada, lo de cada semana, el dinero
      del mes y al final lo que se toca una vez al año. `masUltima` manda
      Plataformas al menú «⋯», que es donde vive lo que casi nunca se abre. */
-  const PESTANAS: [string, string, React.ReactNode][] = [
+  const TODAS: [string, string, React.ReactNode][] = [
     ["portada", "🏠 Portada", panelPortada],
     ["jornadas", `✅ Jornadas${porAprobar.length ? ` · ${porAprobar.length}` : ""}`, panelJornadas],
-    ["destacados", `📌 Destacados${nDestacados ? ` · ${nDestacados}` : ""}`, panelDestacados],
     ["liquidar", `🧾 Liquidar${sinLiquidar ? ` · ${sinLiquidar}` : ""}`, panelLiquidar],
     ["rhe", `🧾 RHE y 4ta${nCerca ? ` · ${nCerca}` : ""}`, panelRhe],
     ["tarifas", "💰 Tarifas", panelTarifas],
     ["plataformas", `🔗 Plataformas${platSinLink ? ` · ${platSinLink}` : ""}`, panelPlataformas],
+    /* Destacados baja al final. El orden de estas pestañas es el de la
+       FRECUENCIA —lo de cada semana primero, lo del mes después, lo del año al
+       final— y destacar un caso es de las cosas que menos se tocan; estaba
+       tercera empujando el dinero hacia la derecha. */
+    ["destacados", `📌 Destacados${nDestacados ? ` · ${nDestacados}` : ""}`, panelDestacados],
   ];
+  /* Con el rol de finanzas, una sola pestaña. Enseñar las demás apagadas sería
+     peor que esconderlas: invita a pulsarlas y a preguntar por qué no funcionan.
+     Y el permiso lo exige además el motor de la base (db/rhe-permisos.sql), así
+     que esto es la puerta, no la cerradura. */
+  const PESTANAS = soloFinanzas ? TODAS.filter(([k]) => k === "rhe") : TODAS;
   /* `?s=` sigue mandando cuál abre. No es nostalgia: las alertas de la portada,
      los navegadores de mes y los enlaces que ya circulan apuntan a
      `/admin?s=jornadas&jm=-1`, y una pestaña que no sabe leer su propia URL
@@ -920,9 +975,19 @@ export default async function Admin({ searchParams }: {
       <div className="topbar">
         <Volver />
         <span className="spacer" />
-        <span style={{ color: "var(--dim)", fontSize: 12, textTransform: "uppercase", letterSpacing: 1 }}>solo administración</span>
+        <span style={{ color: "var(--dim)", fontSize: 12, textTransform: "uppercase", letterSpacing: 1 }}>
+          {soloFinanzas ? "registro de recibos" : "solo administración"}
+        </span>
       </div>
       <h1 className="title-lg">⚙ Administración</h1>
+      {soloFinanzas && (
+        /* Se DICE por qué solo hay una pestaña. Sin esto, quien recuerde la
+           pantalla con siete y la vea con una piensa que algo se rompió. */
+        <p style={{ color: "var(--dim)", fontSize: 12, margin: "0 0 10px" }}>
+          Tienes acceso al registro de recibos. Las jornadas, las liquidaciones y las tarifas
+          las lleva administración.
+        </p>
+      )}
 
       {/* `perezoso`: siete secciones con sus tablas y editores no se montan
           para enseñar una. Cada panel arranca la primera vez que se abre y a

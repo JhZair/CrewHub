@@ -68,10 +68,18 @@ export default function LiquidacionAdmin({ anio, mes, filas }: {
     if (r?.error) alert(r.error); else router.refresh();
   };
   return (
-    <div className="card">
+    /* ── UNA TARJETA POR PERSONA, NO UNA PARA LAS TRES ──
+       Cada fila de aquí es un expediente de pago independiente: su mes, su
+       recibo, su comprobante, su cierre. Metidas en un solo contenedor se leían
+       como partes de una misma cosa, y al desplegar el detalle de una no se
+       veía dónde acababa la suya y empezaba la siguiente.
+       Es además cómo se ve Jornadas, y estas dos pestañas hablan del mismo
+       trabajo: quien salta de una a otra no debería tener que reaprender la
+       forma de la pantalla. */
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {filas.map(f => (
-        <div key={f.personaId}>
-        <div className="info-row" style={{ gap: 10, flexWrap: "wrap" }}>
+        <div className="card" key={f.personaId} style={{ padding: "9px 12px" }}>
+        <div className="info-row" style={{ gap: 10, flexWrap: "wrap", borderBottom: "none", padding: 0 }}>
           <button className="dato-btn" style={{ minWidth: 26 }}
             title={abierto === f.personaId ? "Ocultar el detalle" : "Ver los días que componen este monto"}
             onClick={() => {

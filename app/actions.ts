@@ -1723,8 +1723,13 @@ export async function enlazarRheALiquidacion(rheId: string, liquidacionId: strin
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
-  const { data: perfil } = await supabase.from("perfiles").select("es_admin").eq("id", user.id).single();
-  if (!perfil?.es_admin) return { error: "Solo un administrador puede enlazar un recibo a un mes." };
+  /* También finanzas: atar el recibo a su mes es parte de registrarlo, y
+     dejarlo fuera obligaría a que administración repasara uno por uno lo que
+     el asistente acaba de cargar — el cuello de botella que se quitó. */
+  const { data: perfil } = await supabase.from("perfiles").select("es_admin,es_finanzas").eq("id", user.id).single();
+  if (!perfil?.es_admin && !perfil?.es_finanzas) {
+    return { error: "Solo administración puede enlazar un recibo a un mes." };
+  }
 
   /* Desenlazar de un expediente cerrado lo vaciaría de pruebas dejándole el
      sello puesto: 🔒 «revisado y terminado» encima de cero recibos. Se mira el
