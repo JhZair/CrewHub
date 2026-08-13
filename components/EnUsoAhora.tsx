@@ -4,6 +4,7 @@ import Link from "next/link";
 import BotonDevolver from "@/components/BotonDevolver";
 import DevolverLote from "@/components/DevolverLote";
 import ChipPiezas, { type PiezaMontada } from "@/components/ChipPiezas";
+import HojaEquipos from "@/components/HojaEquipos";
 
 /* EN USO AHORA — quién tiene qué, y cómo se devuelve rápido.
  *
@@ -60,7 +61,7 @@ const soles = (n: number) => `S/ ${Math.round(n).toLocaleString("es-PE")}`;
 /* Agrupa las piezas de un mismo kit dentro de una persona, respetando el orden
    en que llegaron. Lo que salió suelto no se inventa un kit: cae en un tramo
    final sin `kitId`, que se pinta plano. */
-function subgrupos(items: UsoItem[]): { kitId: string | null; kit?: string | null; items: UsoItem[] }[] {
+export function subgrupos(items: UsoItem[]): { kitId: string | null; kit?: string | null; items: UsoItem[] }[] {
   const orden: string[] = [];
   const porKit = new Map<string, UsoItem[]>();
   const sueltos: UsoItem[] = [];
@@ -73,6 +74,37 @@ function subgrupos(items: UsoItem[]): { kitId: string | null; kit?: string | nul
     orden.map(k => ({ kitId: k, kit: porKit.get(k)![0].kit, items: porKit.get(k)! }));
   if (sueltos.length) out.push({ kitId: null, kit: null, items: sueltos });
   return out;
+}
+
+/* ── LOS IGUALES, JUNTOS ──
+ *
+ * Tres «Lámpara lineal tipo barra WiZ» entraron sueltas y quedaron repartidas
+ * entre los treinta y seis: una arriba, dos catorce filas más abajo. Leyéndolas
+ * así no hay forma de saber que son tres de lo mismo — y eso es justo el dato
+ * que hace falta al contar, porque lo que se cuenta son unidades de una cosa,
+ * no cosas distintas que se llaman parecido.
+ *
+ * La clave incluye categoría y subcategoría además del nombre: dos equipos con
+ * el mismo nombre y distinta categoría no son el mismo modelo, y juntarlos
+ * mentiría sobre lo que hay.
+ *
+ * El orden es el de la PRIMERA aparición: los repetidos suben hasta su primer
+ * hermano y el resto de la lista se queda donde estaba. Reordenar del todo
+ * —por nombre, por ejemplo— movería de sitio cosas que la persona ya tenía
+ * ubicadas de haber mirado la lista antes.
+ */
+const claveModelo = (i: UsoItem) =>
+  [i.nombre.trim().toLowerCase(), i.categoria || "", i.subcategoria || ""].join("|");
+
+export function iguales(items: UsoItem[]): { clave: string; nombre: string; items: UsoItem[] }[] {
+  const orden: string[] = [];
+  const m = new Map<string, UsoItem[]>();
+  items.forEach(it => {
+    const k = claveModelo(it);
+    if (!m.has(k)) { m.set(k, []); orden.push(k); }
+    m.get(k)!.push(it);
+  });
+  return orden.map(k => ({ clave: k, nombre: m.get(k)![0].nombre, items: m.get(k)! }));
 }
 
 const fechaCorta = (f: string) =>
@@ -112,6 +144,11 @@ export default function EnUsoAhora({ items }: { items: UsoItem[] }) {
   const [abiertos, setAbiertos] = useState<Set<string>>(new Set());
   const alternarGrupo = (id: string) =>
     setAbiertos(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  /* Quién está imprimiendo. La hoja se monta solo mientras dura la impresión y
+     desaparece al terminar: dejarla en el documento la haría salir en cualquier
+     Ctrl+P posterior, encima de lo que se quisiera imprimir de verdad. */
+  const [imprimiendo, setImprimiendo] = useState<string | null>(null);
 
   /* Agrupado por PERSONA y no plano: la pregunta que se hace de verdad no es
      «dónde está la A-090», es «qué se llevó Michel» —y a la vuelta, qué tiene
@@ -198,7 +235,22 @@ export default function EnUsoAhora({ items }: { items: UsoItem[] }) {
                   {proys.length > 2 && ` · +${proys.length - 2}`}
                 </span>
               )}
+              <span style={{ flex: 1 }} />
+              {/* ── EL PAPEL ──
+                  Quien se lleva treinta y seis equipos a una zona sin señal no
+                  puede contar contra la aplicación: allá no existe. El botón
+                  está en la cabecera de la persona y funciona con el grupo
+                  PLEGADO —imprime `g.items`, no lo que se vea—, porque si
+                  obligara a desplegar primero sería un paso que se olvida el
+                  día que hay prisa, que es justo el día que se sale a rodar. */}
+              <button className="dato-btn eq-uso-print" title={`Imprimir la lista de los ${ids.length} de ${g.per}`}
+                onClick={() => setImprimiendo(g.perId)}>🖨</button>
             </div>
+
+            {imprimiendo === g.perId && (
+              <HojaEquipos per={g.per} items={g.items} grupos={subgrupos(g.items)}
+                onCerrar={() => setImprimiendo(null)} />
+            )}
 
             {abierto && (() => {
               const fila = (p: UsoItem) => (
@@ -255,6 +307,37 @@ export default function EnUsoAhora({ items }: { items: UsoItem[] }) {
                 </div>
               );
 
+              /* Un tramo —lo que hay dentro de un kit, o lo suelto— con los
+                 iguales recogidos. Uno solo no lleva cabecera: un «1 igual»
+                 sobre cada fila sería ruido en treinta y seis renglones. */
+              const tramo = (its: UsoItem[]) => iguales(its).map(gi => {
+                if (gi.items.length === 1) return <Fragment key={gi.clave}>{fila(gi.items[0])}</Fragment>;
+                const idsI = gi.items.map(i => i.id);
+                const nI = idsI.filter(id => marcados.has(id)).length;
+                const todosI = nI === idsI.length;
+                return (
+                  <div key={gi.clave} className="eq-uso-igual">
+                    <div className="eq-uso-igual-h">
+                      {/* Marcar los tres de una: se devuelven juntos porque
+                          salieron juntos, y hacerlo de uno en uno es donde se
+                          queda el tercero sin cerrar. */}
+                      <input type="checkbox" checked={todosI} onChange={() => alternaGrupo(idsI, todosI)}
+                        title={todosI ? "Desmarcar los iguales" : `Marcar las ${idsI.length} unidades`}
+                        ref={el => { if (el) el.indeterminate = nI > 0 && !todosI; }} />
+                      <span className="eq-uso-igual-n">×{gi.items.length}</span>
+                      <span className="eq-uso-igual-t">{gi.nombre}</span>
+                      {/* Los folios en la cabecera: es lo que se va a buscar
+                          escrito en los equipos, y verlos de un vistazo evita
+                          recorrer las tres filas para reunirlos. */}
+                      <span className="eq-uso-igual-f">
+                        {gi.items.map(i => i.folio).filter(Boolean).join(" · ")}
+                      </span>
+                    </div>
+                    {gi.items.map(fila)}
+                  </div>
+                );
+              });
+
               /* Dentro de la persona, por KIT. Roxana tenía tres equipos fuera
                  y los tres eran el mismo kit; la lista los daba como tres cosas
                  sin relación, así que a la vuelta había que acordarse de que
@@ -262,7 +345,7 @@ export default function EnUsoAhora({ items }: { items: UsoItem[] }) {
               return subgrupos(g.items).map(sg => {
                 /* Fragment con clave: sin ella React trata este array anidado
                    como un hijo sin `key` y llena la consola de avisos. */
-                if (!sg.kitId) return <Fragment key="_sueltos">{sg.items.map(fila)}</Fragment>;
+                if (!sg.kitId) return <Fragment key="_sueltos">{tramo(sg.items)}</Fragment>;
                 const idsK = sg.items.map(i => i.id);
                 const nK = idsK.filter(id => marcados.has(id)).length;
                 const todosK = nK === idsK.length;
@@ -285,7 +368,7 @@ export default function EnUsoAhora({ items }: { items: UsoItem[] }) {
                         {cojo ? `${sg.items.length} de ${total} piezas` : `completo · ${total} piezas`}
                       </span>
                     </div>
-                    {sg.items.map(fila)}
+                    {tramo(sg.items)}
                   </div>
                 );
               });

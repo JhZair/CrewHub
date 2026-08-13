@@ -463,57 +463,77 @@ export default function CajaPanel({
                   {traspasoM ? "⇄ " : flujo === "ingreso" ? "+ " : flujo === "egreso" ? "− " : "? "}
                   {money(m.monto)}
                 </span>
-                {/* ── LA ZONA DE ACCIONES, CON ANCHO FIJO ──
-                    Todo lo que va de aquí a la derecha tiene su sitio reservado,
-                    tenga contenido o no. Un icono que aparece solo cuando hay
-                    comprobante —o cuando hay reacciones— desplaza los botones de
-                    esa fila y ninguna corta por el mismo punto: en una tabla, lo
-                    que no alinea se lee como un fallo antes de leerse como un
-                    dato. */}
-                <span style={{ width: 26, flex: "none", textAlign: "center" }}>
+                {/* ── LA ZONA DE ACCIONES, EN UNA REJILLA ──
+                    Antes eran anchos adivinados a ojo, y el 26 px del
+                    comprobante se quedó corto: el botón de dentro mide más y se
+                    metía en el hueco de las reacciones. Adivinar un ancho es
+                    apostar a que el contenido no crezca, y el contenido siempre
+                    crece.
+                    Con `grid` las columnas las declara el contenedor y NADA
+                    puede desbordarse a la de al lado: cada icono se centra en su
+                    celda, esté vacía o llena, y todas las filas cortan por los
+                    mismos cinco puntos.
+                    `minmax(0,…)` en cada columna: sin él, un contenido ancho
+                    ensancharía su celda —el defecto de grid es `auto`— y
+                    volveríamos justo al problema de partida.
+                    Y la rejilla sola no bastaba: la celda de reacciones acotaba
+                    el ancho, pero dentro `.rx` envuelve, así que el ＋ se caía a
+                    un segundo renglón y estiraba la fila HACIA ABAJO. Se
+                    arregló donde estaba el fallo —sin envolver y con el
+                    contenido acotado a dos chips, en Reacciones.tsx—, y aquí el
+                    hueco se dio del tamaño que eso necesita en vez de adivinarlo
+                    otra vez. */}
+                <span style={{
+                  display: "grid", flex: "none", alignItems: "center", justifyItems: "center",
+                  gridTemplateColumns: esAdmin
+                    ? "minmax(0,34px) minmax(0,104px) minmax(0,46px) minmax(0,28px) minmax(0,24px)"
+                    : "minmax(0,34px) minmax(0,104px) minmax(0,46px)",
+                  gap: 4,
+                }}>
                   {/* Encima, no en otra pestaña: comprobar que la captura es la
                       correcta es una mirada de dos segundos, y salir de la lista
                       para eso obliga a volver y buscar dónde se estaba. */}
                   {m.url
                     ? <VerAdjunto url={m.url} titulo="Ver el recibo" />
-                    : <span style={{ color: "var(--dim)", opacity: .35, fontSize: 11 }}
+                    : <span style={{ color: "var(--dim)", opacity: .3, fontSize: 11 }}
                         title="Sin comprobante">·</span>}
-                </span>
-                {/* Reaccionar SIN abrir nada. Un 👀 es «lo vi, está bien», y
-                    es lo que más se hace al revisar la caja: si cuesta tres
-                    clics no se hace, y el acuse de revisión —que es el dato—
-                    se pierde. En modo compacto el ＋ solo asoma al acercarse:
-                    la fila ya tiene nueve cosas compitiendo. */}
-                <Reacciones pubId={null} movCajaId={m.id} compacto
-                  reacciones={m.reacciones || []} userId={userId} />
-                {/* ── HABLAR DE ESTE APUNTE ──
-                    Se abre encima, sin salir de la lista: la pregunta «¿esto
-                    qué fue?» hoy se hace por WhatsApp y la respuesta no vuelve
-                    nunca al movimiento, que es donde hará falta dentro de tres
-                    meses. El contador se ve siempre —sin él, una conversación
-                    de cuatro mensajes es invisible— y el botón está para TODOS,
-                    no solo para administración: quien pregunta es justamente
-                    quien no lleva la caja. */}
-                <span style={{ width: 40, flex: "none", textAlign: "center" }}>
+
+                  {/* Reaccionar SIN abrir nada. Un 👀 es «lo vi, está bien», y
+                      es lo que más se hace al revisar la caja: si cuesta tres
+                      clics no se hace, y el acuse de revisión —que es el dato—
+                      se pierde. */}
+                  <Reacciones pubId={null} movCajaId={m.id} compacto
+                    reacciones={m.reacciones || []} userId={userId} />
+
+                  {/* ── HABLAR DE ESTE APUNTE ──
+                      Se abre encima, sin salir de la lista: la pregunta «¿esto
+                      qué fue?» hoy se hace por WhatsApp y la respuesta no vuelve
+                      nunca al movimiento, que es donde hará falta dentro de tres
+                      meses. El contador se ve siempre —sin él, una conversación
+                      de cuatro mensajes es invisible— y el botón está para
+                      TODOS, no solo para administración: quien pregunta es
+                      justamente quien no lleva la caja. */}
                   <VistaMovCaja movId={m.id}>
                     {(abrir) => (
                       <button className="dato-btn" onClick={abrir}
                         title={m.nComentarios ? `${m.nComentarios} comentario(s)` : "Preguntar sobre este movimiento"}
                         style={{ color: m.nComentarios ? "var(--accent)" : undefined,
-                          opacity: m.nComentarios ? 1 : .5 }}>
+                          opacity: m.nComentarios ? 1 : .5, whiteSpace: "nowrap" }}>
                         💬{m.nComentarios ? ` ${m.nComentarios}` : ""}
                       </button>
                     )}
                   </VistaMovCaja>
-                </span>
-                {esAdmin && (
-                  <>
+
+                  {esAdmin && (
                     <button className="dato-btn" onClick={() => editar(m)} disabled={ocupado}
                       title="Corregir este movimiento">✎</button>
+                  )}
+                  {esAdmin && (
                     <button onClick={() => quitar(m)} disabled={ocupado} title="Borrar"
-                      style={{ background: "none", border: "none", color: "var(--red)", cursor: "pointer", fontSize: 12 }}>✕</button>
-                  </>
-                )}
+                      style={{ background: "none", border: "none", color: "var(--red)",
+                        cursor: "pointer", fontSize: 12 }}>✕</button>
+                  )}
+                </span>
               </div>
             );
           })}

@@ -3789,12 +3789,180 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
    La solución es un HUECO FIJO. El ＋ está siempre, atenuado hasta que se le
    acerca uno; el sitio está reservado tenga o no tenga reacciones, así que nada
    se mueve nunca y todas las filas cortan por el mismo punto. */
+/* Dentro de la rejilla de acciones: la celda ya fija el ancho, así que aquí
+   solo hace falta centrar y no desbordar. `min-width:0` es obligatorio — sin
+   él, un elemento flex se niega a encogerse por debajo de su contenido y
+   rompería la columna.
+
+   `flex-wrap:nowrap` NO es un detalle: `.rx` envuelve por defecto, que es lo
+   correcto bajo una publicación —ahí las reacciones ocupan el ancho que haga
+   falta—, pero dentro de una fila de lista el ＋ se caía a un segundo renglón
+   en cuanto había un chip, y ESA es la razón de que la fila creciera de alto y
+   los iconos dejaran de alinearse con los de arriba. Aquí no se envuelve: se
+   acota el contenido (ver Reacciones.tsx) para que quepa.
+
+   Y NADA de `overflow:hidden`. Se puso aquí para que nada se saliera de la
+   celda, y se llevó por delante la paleta de emojis: `.rx-paleta` es
+   `position:absolute` y sale por arriba del ＋, así que un ancestro recortado
+   la corta entera. El botón respondía, la paleta se abría, y no se veía —
+   reaccionar dejó de funcionar sin que nada avisara.
+   La lección: recortar es tapar el síntoma. Lo que impide el desborde es que
+   el contenido esté acotado; si hace falta el tijeretazo, es que la cuenta de
+   anchos está mal. */
 .rx-compacto{
-  display:inline-flex;align-items:center;justify-content:flex-end;gap:4px;
-  min-width:66px;flex:none;
+  display:inline-flex;align-items:center;justify-content:center;gap:3px;
+  flex-wrap:nowrap;min-width:0;max-width:100%;
 }
-.rx-compacto .rx-mas{opacity:.35;transition:opacity .12s}
+.rx-compacto .rx-mas{opacity:.35;transition:opacity .12s;
+  padding:1px 6px;font-size:11px;flex:none}
+/* La paleta se abre hacia la IZQUIERDA. En la caja, el ＋ está pegado al borde
+   derecho de la fila: con el anclaje de siempre (`left:0`) los once emojis se
+   iban fuera de la pantalla y solo se alcanzaban los dos primeros. */
+.rx-compacto .rx-paleta{left:auto;right:0}
 .rx-compacto:hover .rx-mas,
 .rx-compacto:focus-within .rx-mas{opacity:1}
 /* Los chips, más apretados que en un caso: aquí conviven con ocho datos más. */
-.rx-compacto .rx-chip{padding:1px 6px;font-size:11px}
+.rx-compacto .rx-chip{padding:1px 6px;font-size:11px;flex:none;white-space:nowrap}
+/* «Y dos más». No es un botón: no promete nada que no vaya a hacer. Dice que
+   hay más reacciones de las que caben y en su título las enumera; la lista
+   entera está a un clic, en el 💬 de al lado.
+   Borde continuo —como los demás chips, porque es un HECHO— y no discontinuo
+   como el ＋, que es una ACCIÓN. Con los dos punteados y ambos junto a un
+   signo parecido, no se distinguiría cuál de los dos hace algo al tocarlo. */
+.rx-resto{color:var(--dim);cursor:default}
+
+/* ── EL BOTÓN DE IMPRIMIR, en la cabecera de cada persona ── */
+.eq-uso-print{flex:none;padding:1px 8px;font-size:12px}
+
+/* ── LOS IGUALES, RECOGIDOS ──
+   Tres lámparas idénticas repartidas entre treinta y seis filas no se leen
+   como tres unidades de una cosa: se leen como tres cosas distintas que se
+   llaman parecido. La cabecera es DELIBERADAMENTE más tenue que la de un kit:
+   un kit es un hecho —salió montado y vuelve montado—, esto es solo una ayuda
+   para contar, y si pesara lo mismo competiría con la agrupación que sí manda. */
+.eq-uso-igual{border-left:2px solid color-mix(in srgb,var(--blue) 26%,transparent);
+  padding-left:6px;margin:3px 0}
+.eq-uso-igual-h{display:flex;gap:7px;align-items:center;padding:2px 2px 3px;font-size:11px}
+.eq-uso-igual-n{color:var(--blue);font-weight:800;font-size:11px;flex:none}
+.eq-uso-igual-t{color:var(--muted);overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;min-width:0}
+/* Los folios, monoespaciados: son números que se cotejan con lo escrito en el
+   equipo, y en proporcional un 1 y un 7 no ocupan lo mismo. */
+.eq-uso-igual-f{margin-left:auto;flex:none;font-family:ui-monospace,Menlo,Consolas,monospace;
+  font-size:10px;color:var(--dim)}
+
+/* ══════════════════════════════════════════════════════════════════════
+   LA HOJA — lo que sale por la impresora
+   ══════════════════════════════════════════════════════════════════════
+   No se ve NUNCA en pantalla. Existe solo para el papel, y por eso no hereda
+   nada del tema oscuro: una hoja con fondo #0e0e16 se lleva el cartucho entero
+   y sale gris sobre gris. Aquí es negro sobre blanco y punto.
+
+   El truco de la impresión es apagar todo lo demás. Se hace con
+   `body > *` porque la hoja se monta con un portal a `document.body`: es hija
+   directa, así que la excepción se puede escribir en una línea sin saber nada
+   de cómo está construida la aplicación por dentro. Con `visibility:hidden`
+   —que es lo primero que se intenta— los elementos ocultos SIGUEN ocupando su
+   sitio, y salen tres páginas en blanco antes de la lista. `display:none` no
+   deja rastro.
+
+   Pero la hoja MISMA no puede ocultarse con `display:none`: lo que no se pinta
+   no siempre se descarga, y sus fotos podrían no empezar a cargar hasta que
+   fuera tarde. Se saca fuera de la pantalla, que la deja invisible y viva. Solo
+   está en el documento mientras dura la impresión, así que no estorba a nada. */
+.hoja{position:fixed;left:-10000px;top:0;width:190mm;opacity:0;pointer-events:none;
+  z-index:-1;background:#fff;color:#000}
+
+/* El aviso de los segundos que tardan las fotos. Sin él, pulsar 🖨 y que no
+   pase nada se lee como que el botón está roto — y se vuelve a pulsar. */
+.hoja-aviso{position:fixed;right:16px;bottom:16px;z-index:9000;
+  background:var(--panel);border:1px solid var(--border2);border-radius:12px;
+  padding:9px 14px;font-size:12.5px;color:var(--text);
+  box-shadow:0 10px 30px rgba(0,0,0,.55)}
+
+@media print{
+  @page{size:A4;margin:14mm}
+  body > *{display:none !important}
+  body > .hoja{display:block !important}
+  html,body{background:#fff !important}
+  .hoja{
+    /* Se deshace el escondite de pantalla: aquí sí tiene que ocupar la página. */
+    position:static !important;left:auto !important;width:auto !important;
+    opacity:1 !important;z-index:auto !important;
+    color:#000;background:#fff;
+    font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+    font-size:10.5pt;line-height:1.35;
+    /* Que las fotos salgan como se ven y no las «optimice» el navegador. */
+    -webkit-print-color-adjust:exact;print-color-adjust:exact;
+  }
+  .hoja-cab{display:flex;align-items:flex-end;gap:12px;
+    border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:10px}
+  .hoja h1{font-size:16pt;margin:0;letter-spacing:.3px}
+  .hoja-sub{font-size:11pt;margin-top:2px}
+  .hoja-fecha{margin-left:auto;font-size:9pt;color:#444;white-space:nowrap}
+
+  /* Un kit no se parte entre dos páginas si cabe entero: contar seis piezas
+     con tres en una hoja y tres en la siguiente es como no tenerlas juntas. */
+  .hoja-kit{margin-bottom:9px;break-inside:avoid;page-break-inside:avoid}
+  .hoja-kit-h{font-size:10.5pt;font-weight:700;border-bottom:1px solid #999;
+    padding:3px 0 2px;margin-bottom:3px;break-after:avoid;page-break-after:avoid}
+  .hoja-kit-n{font-weight:400;color:#555;font-size:9pt;margin-left:6px}
+
+  .hoja-fila{display:flex;gap:7px;align-items:flex-start;padding:3.5px 0;
+    border-bottom:1px dotted #bbb;break-inside:avoid;page-break-inside:avoid}
+  /* El cuadrito. Es lo que convierte la hoja en algo con lo que se cuenta y no
+     algo que se lee: sin dónde marcar, la cuenta vuelve a la cabeza. */
+  .hoja-box{flex:none;width:11px;height:11px;border:1.2px solid #000;
+    border-radius:2px;margin-top:5px}
+  /* La foto. 14 mm es el tamaño en que un trípode sigue pareciendo un trípode
+     en una láser de oficina; más grande, la hoja pasa de dos páginas a cinco y
+     deja de ser algo que se dobla y se mete al bolsillo.
+     `contain` y no `cover`: recortar un equipo alargado deja en el papel un
+     trozo de tubo que no se reconoce, que es lo contrario de para lo que está.
+     Y el hueco se reserva aunque no haya foto, para que la columna de folios
+     no se desalinee justo en las filas sin imagen. */
+  .hoja-foto{flex:none;width:14mm;height:14mm;border:1px solid #ccc;border-radius:2px;
+    background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .hoja-foto img{max-width:100%;max-height:100%;object-fit:contain}
+  .hoja-sinfoto{font-size:6pt;color:#aaa;text-align:center}
+  /* El folio, monoespaciado y en ancho fijo: es el número escrito en el equipo,
+     y en columna se recorre con el dedo. Con la fuente normal, A-136 y A-34
+     empiezan en el mismo sitio pero no acaban igual, y la columna se deshace. */
+  .hoja-folio{flex:none;width:46px;font-family:ui-monospace,Menlo,Consolas,monospace;
+    font-size:9.5pt;font-weight:700;margin-top:3px}
+  .hoja-txt{flex:1;min-width:0}
+  .hoja-nom{font-weight:600;display:block}
+  .hoja-det{display:block;font-size:8.5pt;color:#555}
+  /* Sangrado y con filete: lo de dentro tiene que leerse como PARTE del equipo
+     de arriba, no como otro equipo. */
+  .hoja-piezas{display:block;font-size:8.5pt;color:#333;margin-top:1px;
+    padding-left:7px;border-left:2px solid #ccc}
+  .hoja-val{flex:none;width:64px;text-align:right;font-size:9pt;white-space:nowrap}
+  .hoja-encombo{color:#666;font-size:8pt}
+
+  /* ── EL BLOQUE DE IGUALES ──
+     Una foto y un nombre para las tres, y los tres cuadritos EN FILA con su
+     folio al lado. Contar tres cosas idénticas es marcar tres casillas juntas;
+     repetir el bloque entero tres veces gasta media página en decir lo mismo y
+     encima obliga a comparar los nombres para asegurarse de que sí, son iguales. */
+  .hoja-multi{padding:5px 0}
+  .hoja-x{font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:800}
+  .hoja-unidades{display:flex;flex-wrap:wrap;gap:5px 14px;margin-top:3px}
+  .hoja-unidad{display:inline-flex;align-items:center;gap:5px;
+    font-family:ui-monospace,Menlo,Consolas,monospace;font-size:9.5pt;font-weight:700}
+  /* Dentro del bloque el cuadrito no lleva el margen de una fila: aquí va en
+     línea con su folio, no arriba a la izquierda de un párrafo. */
+  .hoja-unidad .hoja-box{margin-top:0}
+  .hoja-cu{font-size:7.5pt;color:#666}
+
+  .hoja-total{display:flex;gap:14px;justify-content:space-between;
+    border-top:2px solid #000;margin-top:8px;padding-top:5px;font-size:10pt}
+
+  .hoja-firmas{display:flex;gap:40px;margin-top:34px;font-size:9pt;
+    break-inside:avoid;page-break-inside:avoid}
+  .hoja-firmas > div{flex:1}
+  .hoja-linea{display:block;border-top:1px solid #000;margin-bottom:3px}
+
+  .hoja-pie{margin-top:14px;font-size:7.5pt;color:#777;border-top:1px solid #ddd;
+    padding-top:4px}
+}

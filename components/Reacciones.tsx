@@ -63,6 +63,22 @@ export default function Reacciones({
     })
     .filter(g => g.n > 0);
 
+  /* ── EN UNA FILA DE LISTA, EL ANCHO ESTÁ ACOTADO ──
+     Una fila de caja tiene fecha, caja, cuenta, descripción, proyecto, quién,
+     monto y cuatro botones: el hueco de las reacciones no puede crecer con el
+     número de emojis distintos, porque entonces cada fila corta por un punto
+     distinto y la columna deja de leerse como columna.
+     Antes esto se resolvía solo, mal: `.rx` envuelve, así que lo que sobraba
+     caía a un segundo renglón y ensanchaba la fila hacia abajo.
+     Se muestran dos chips como mucho. Si hay más, el segundo cede su sitio a un
+     «＋N» que dice cuántas faltan y las nombra en su título — nada se esconde
+     en silencio, y la lista completa está a un clic en el pop-up del apunte. */
+  const TOPE = 2;
+  const hayResto = compacto && grupos.length > TOPE;
+  const visibles = hayResto ? grupos.slice(0, TOPE - 1) : grupos;
+  const resto = hayResto ? grupos.slice(TOPE - 1) : [];
+  const nResto = resto.reduce((a, g) => a + g.n, 0);
+
   const tituloDe = (g: { mia: boolean; quien: string[] }) => {
     const txt = g.quien.join(", ");
     if (!txt) return g.mia ? "Quitar mi reacción" : "Reaccionar igual";
@@ -81,14 +97,21 @@ export default function Reacciones({
   return (
     <span className={`rx${compacto ? " rx-compacto" : ""}`} onClick={e => e.stopPropagation()}>
       {error && <span style={{ color: "var(--red)", fontSize: 11 }}>⚠ {error}</span>}
-      {grupos.map(g => (
+      {visibles.map(g => (
         <button key={g.emoji} className={`rx-chip ${g.mia ? "mia" : ""}`}
           title={tituloDe(g)}
           onClick={() => tap(g.emoji)}>
           {g.emoji} {g.n}
         </button>
       ))}
-      <span style={{ position: "relative", display: "inline-flex" }}>
+      {resto.length > 0 && (
+        <span className="rx-chip rx-resto"
+          title={`También: ${resto.map(g => `${g.emoji} ${g.n}`).join(", ")}`
+            + " · ábrelo para verlas todas"}>
+          ⋯{nResto}
+        </span>
+      )}
+      <span style={{ position: "relative", display: "inline-flex", flex: "none" }}>
         <button className="rx-mas" title="Reaccionar" onClick={() => setAbierto(!abierto)}>
           {grupos.length ? "＋" : "☺＋"}
         </button>
