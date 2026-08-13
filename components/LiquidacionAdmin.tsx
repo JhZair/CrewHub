@@ -1,8 +1,14 @@
 "use client";
-import { liquidarMes, reabrirLiquidacion } from "@/app/actions";
+import {
+  liquidarMes, reabrirLiquidacion, cerrarExpediente, reabrirExpediente,
+  registrarPagoRhe, deshacerPagoRhe,
+} from "@/app/actions";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { fechaHum, esFinde, ICO_TIPO, FRACCIONES } from "@/lib/jornadas";
+import {
+  ETAPA, QUE_FALTA, PAGO_SIN_PAPEL, MEDIOS, rotuloMedio, type ClaveEtapa, type Pago,
+} from "@/lib/pagos";
 
 const money = (n: number) => `S/ ${Math.round(n || 0).toLocaleString("es-PE")}`;
 
@@ -13,9 +19,22 @@ type Item = {
   fraccion: number; monto: number; aprobada: boolean; proyecto: string | null;
 };
 
+/* Un recibo, visto desde el expediente. `pago` no es un booleano: distingue el
+   respaldado por el estado de cuenta del declarado a mano, y esa diferencia se
+   pinta — un verde que no dice de dónde viene su certeza los iguala. */
+type Recibo = {
+  id: string; numero: string | null; url: string | null; monto: number;
+  pago: Pago; nota: string | null; pagadoUrl: string | null; medio: string | null;
+};
+type FilaLiq = {
+  personaId: string; nombre: string; dias: number; pend: number; monto: number;
+  estado: string | null; items?: Item[];
+  etapa: ClaveEtapa; dias_parado: number | null; atascada: boolean; recibos: Recibo[];
+  liquidacionId: string | null;
+};
+
 export default function LiquidacionAdmin({ anio, mes, filas }: {
-  anio: number; mes: number;
-  filas: { personaId: string; nombre: string; dias: number; pend: number; monto: number; estado: string | null; items?: Item[] }[];
+  anio: number; mes: number; filas: FilaLiq[];
 }) {
   const router = useRouter();
   const [ocupado, setOcupado] = useState<string | null>(null);
@@ -23,6 +42,11 @@ export default function LiquidacionAdmin({ anio, mes, filas }: {
      se toma AQUÍ, y mandar a revisar a otro sitio hace perder el hilo de en
      cuál ibas —con seis personas, volver es acordarse. */
   const [abierto, setAbierto] = useState<string | null>(null);
+  /* Qué recibo se está declarando y con qué nota. La nota es obligatoria en el
+     servidor: lo que distingue una declaración legítima de un tilde para
+     quitar el aviso de en medio es que diga por dónde salió el dinero. */
+  const [declarando, setDeclarando] =
+    useState<{ id: string; medio: string; url: string; nota: string } | null>(null);
 
   /* TODOS los días del mes, no solo los registrados.
    *
@@ -50,7 +74,14 @@ export default function LiquidacionAdmin({ anio, mes, filas }: {
         <div className="info-row" style={{ gap: 10, flexWrap: "wrap" }}>
           <button className="dato-btn" style={{ minWidth: 26 }}
             title={abierto === f.personaId ? "Ocultar el detalle" : "Ver los días que componen este monto"}
-            onClick={() => setAbierto(a => a === f.personaId ? null : f.personaId)}>
+            onClick={() => {
+              /* Al plegar se descarta la nota a medio escribir. Si sobreviviera,
+                 reaparecería más tarde sobre datos ya refrescados y se
+                 guardaría una explicación que no corresponde a lo que hay
+                 delante. */
+              setDeclarando(null);
+              setAbierto(a => a === f.personaId ? null : f.personaId);
+            }}>
             {abierto === f.personaId ? "▾" : "▸"}
           </button>
           <span style={{ fontWeight: 600, fontSize: 12.5, minWidth: 120 }}>{f.nombre}</span>
@@ -63,9 +94,58 @@ export default function LiquidacionAdmin({ anio, mes, filas }: {
           }}>
             {f.estado === "liquidado" ? "🧾 liquidado" : f.estado === "confirmado" ? "✓ confirmó" : "— abierto"}
           </span>
+          {/* ── DÓNDE ESTÁ ESTE PAGO ──
+              El sello no se avanza a mano: lo calcula lib/pagos.ts de los
+              hechos —hay recibo, tiene PDF, salió el dinero—, así que no puede
+              decir verde con el dinero dentro. El `title` dice qué falta como
+              instrucción y no como diagnóstico: a las nueve de un viernes,
+              «sin comprobante» describe y «sube el PDF y pega el link» sirve. */}
+          {f.estado === "liquidado" && (
+            <span className="badge" style={{
+              fontSize: 10.5, background: "#1c1c2c", color: ETAPA[f.etapa].col,
+              cursor: "help",
+            }} title={QUE_FALTA[f.etapa]}>
+              {ETAPA[f.etapa].ico} {ETAPA[f.etapa].txt}
+            </span>
+          )}
+          {/* El tiempo parado, y solo cuando ya es raro. Es el sustituto del
+              «🟡 emitido» que no se puede saber: si el recibo se giró en SUNAT
+              y nadie lo registró aquí, no hay fila que consultar — pero sí hay
+              un mes liquidado que lleva doce días sin recibo, y eso se puede
+              contar solo. Un aviso que se mantiene solo vale más que una
+              bandera que hay que acordarse de mover. */}
+          {f.atascada && (
+            <span style={{ color: "var(--yellow)", fontSize: 11 }}
+              title="Liquidado hace tiempo y todavía sin terminar.">
+              ⏳ {f.dias_parado} d parado
+            </span>
+          )}
           <span style={{ flex: 1 }} />
-          {f.estado === "liquidado" ? (
+          {f.etapa === "cerrado" ? (
             <button className="dato-btn" disabled={ocupado === f.personaId}
+              title="Quitar el sello para volver a tocarlo"
+              onClick={() => act(f.personaId, () => reabrirExpediente(f.personaId, anio, mes))}>🔓 reabrir</button>
+          ) : f.etapa === "completo" ? (
+            /* Cerrar solo aparece cuando está completo, pero no se pulsa solo
+               al estarlo: «completo» dice que no falta nada, «cerrado» dice que
+               además alguien revisó que estuviera bien. Un expediente puede
+               estar completo con el monto equivocado. */
+            <button className="btn" style={{ padding: "4px 11px", fontSize: 11.5 }}
+              disabled={ocupado === f.personaId}
+              title="Revisado y terminado: no hay que volver"
+              onClick={() => act(f.personaId, () => cerrarExpediente(f.personaId, anio, mes))}>🔒 Cerrar</button>
+          ) : f.estado === "liquidado" ? (
+            /* Reabrir el MES (borra la liquidación) solo si no hay recibos
+               colgando: con recibos, el servidor lo rechaza siempre, y un botón
+               que garantiza un error es peor que no tenerlo — enseña que los
+               botones de esta pantalla no son de fiar. Se deja visible y
+               apagado, no escondido: que falte sin explicación haría buscar la
+               forma de reabrir en otro sitio. */
+            <button className="dato-btn"
+              disabled={ocupado === f.personaId || f.recibos.length > 0}
+              title={f.recibos.length > 0
+                ? `Hay ${f.recibos.length} recibo(s) enlazados a este mes. Desenlázalos desde 🧾 RHE antes de reabrirlo.`
+                : "Borra la liquidación y devuelve el mes a edición"}
               onClick={() => act(f.personaId, () => reabrirLiquidacion(f.personaId, anio, mes))}>↩ reabrir</button>
           ) : (
             <button className="btn" style={{ padding: "4px 11px", fontSize: 11.5, opacity: f.pend > 0 ? 0.5 : 1 }}
@@ -130,6 +210,113 @@ export default function LiquidacionAdmin({ anio, mes, filas }: {
                   </div>
                 ));
               })}
+              {/* ── LOS RECIBOS DE ESTE MES ──
+                  Aquí y no en otra pestaña: el sello de arriba dice que falta
+                  algo y esto dice EN CUÁL de los recibos. Con dos recibos por
+                  un mes —un adelanto y un saldo— «sin comprobante» sin decir de
+                  cuál obliga a abrir el panel de RHE y compararlos a ojo. */}
+              {f.estado === "liquidado" && (() => {
+                /* Cerrado = ya no se toca. Se calcula una vez para toda la
+                   lista de recibos en vez de preguntarlo en cada botón. */
+                const sellado = f.etapa === "cerrado";
+                return (
+                <div className="liq-pie" style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                  {f.recibos.length === 0 ? (
+                    <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
+                      <span style={{ color: "var(--muted)", flex: 1, minWidth: 240 }}>{QUE_FALTA[f.etapa]}</span>
+                      {/* La puerta, y no solo la instrucción. Decir «regístralo
+                          enlazado a este mes» sin dar por dónde obliga a cambiar
+                          de pestaña, encontrar a la persona, escribir el monto
+                          de memoria y acordarse de elegir el mes en un
+                          desplegable — cuatro ocasiones de equivocarse para un
+                          dato que esta pantalla ya tiene entero.
+                          El enlace lleva los tres: quién, cuánto y qué mes. */}
+                      {!sellado && f.liquidacionId && (
+                        <a className="btn" style={{ padding: "4px 11px", fontSize: 11.5, textDecoration: "none" }}
+                          href={`/admin?s=rhe&rhe_de=${f.personaId}&rhe_liq=${f.liquidacionId}&rhe_monto=${Math.round(f.monto)}`}>
+                          ＋ registrar el recibo
+                        </a>
+                      )}
+                    </div>
+                  ) : f.recibos.map(r => (
+                    <div key={r.id} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                      <span style={{ fontWeight: 600 }}>🧾 {r.numero || "sin número"}</span>
+                      <span style={{ color: "var(--teal)", fontWeight: 700 }}>{money(r.monto)}</span>
+                      {r.url ? (
+                        <a href={r.url} target="_blank" rel="noopener noreferrer" className="dato-btn"
+                          title="Ver el comprobante en Drive">📎 comprobante</a>
+                      ) : (
+                        <span style={{ color: "var(--yellow)" }}>📎 sin comprobante</span>
+                      )}
+                      {r.pago ? (
+                        <>
+                          <span style={{ color: "var(--green)" }} title={r.nota || undefined}>
+                            🟢 {rotuloMedio(r.medio)}
+                          </span>
+                          {/* El comprobante ES la prueba, así que se enlaza —
+                              un «pagado» que no se puede abrir no sirve para
+                              rendir. Y cuando falta se dice: dentro de un año
+                              ese pago no lo va a poder comprobar nadie. */}
+                          {r.pagadoUrl ? (
+                            <a href={r.pagadoUrl} target="_blank" rel="noopener noreferrer"
+                              className="dato-btn" title="Ver el comprobante del pago">🧾 voucher</a>
+                          ) : r.pago === "sin_papel" ? (
+                            <i style={{ fontStyle: "normal", color: "var(--yellow)" }}>{PAGO_SIN_PAPEL}</i>
+                          ) : null}
+                          {/* Cerrado significa cerrado también aquí. Si se le
+                              pudiera deshacer el pago sin quitar el sello, el
+                              🔒 no afirmaría nada: describiría un momento que
+                              ya pasó. El servidor lo rechaza igual; esto evita
+                              ofrecerlo. */}
+                          {!sellado && (
+                            <button className="dato-btn" disabled={ocupado === f.personaId}
+                              title="Deshacer el registro del pago"
+                              onClick={() => act(f.personaId, () => deshacerPagoRhe(r.id))}>✕</button>
+                          )}
+                        </>
+                      ) : declarando?.id === r.id ? (
+                        <>
+                          <select value={declarando.medio} className="dato-btn" style={{ fontSize: 11.5 }}
+                            onChange={e => setDeclarando({ ...declarando, medio: e.target.value })}>
+                            {MEDIOS.map(([k, t]) => <option key={k} value={k}>{t}</option>)}
+                          </select>
+                          <input autoFocus value={declarando.url}
+                            onChange={e => setDeclarando({ ...declarando, url: e.target.value })}
+                            placeholder="link del voucher / captura"
+                            style={{ background: "var(--card)", border: "1px solid var(--border)",
+                              borderRadius: 6, padding: "3px 8px", fontSize: 11.5, outline: "none", width: 210 }} />
+                          <input value={declarando.nota}
+                            onChange={e => setDeclarando({ ...declarando, nota: e.target.value })}
+                            placeholder={declarando.url ? "nota (opcional)" : "sin voucher: di por dónde salió"}
+                            style={{ background: "var(--card)", border: "1px solid var(--border)",
+                              borderRadius: 6, padding: "3px 8px", fontSize: 11.5, outline: "none", width: 190 }} />
+                          <button className="dato-btn" disabled={ocupado === f.personaId}
+                            onClick={() => act(f.personaId, async () => {
+                              const r2: any = await registrarPagoRhe(
+                                r.id, declarando.medio, declarando.url, declarando.nota);
+                              if (!r2?.error) setDeclarando(null);
+                              return r2;
+                            })}>guardar</button>
+                          <button className="dato-btn" onClick={() => setDeclarando(null)}>cancelar</button>
+                        </>
+                      ) : (
+                        <>
+                          <span style={{ color: "var(--muted)" }}>→ falta registrar el pago</span>
+                          {!sellado && (
+                            <button className="dato-btn" disabled={ocupado === f.personaId}
+                              title="Cómo salió el dinero y su comprobante"
+                              onClick={() => setDeclarando({ id: r.id, medio: "transferencia", url: "", nota: "" })}>
+                              registrar pago
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                );
+              })()}
+
               <div className="liq-pie">
                 {conteo.length > 0 && (
                   <div className="liq-frac">

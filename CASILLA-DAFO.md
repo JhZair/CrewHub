@@ -60,13 +60,44 @@ En **cada** cuenta de postulación:
 
 ### 4. Filtro y etiqueta en el buzón maestro (una vez)
 
-Gmail del maestro → ⚙ → **Filtros y direcciones bloqueadas** → *Crear un filtro*:
+La etiqueta `DAFO` es la puerta: el Apps Script solo mira los hilos que la
+llevan. Hacen falta **dos filtros**, y el importante es el segundo.
+
+Gmail del maestro → ⚙ → **Filtros y direcciones bloqueadas** → *Crear un filtro*.
+
+**Filtro A — por destinatario (el que sostiene el sistema)**
+
+- **Para:** las cuentas de postulación separadas por ` OR `
+  (la lista viva está en `/casilla` → 📧 *N cuentas registradas*)
+- Acción: **Aplicar la etiqueta** `DAFO`
+
+**Filtro B — por remitente (la red de seguridad)**
 
 - **De:** `cultura.gob.pe OR dafo OR mincul OR plataformamincu.cultura.gob.pe`
 - Acción: **Aplicar la etiqueta** `DAFO`
 
-Ese filtro es el que decide qué entra al sistema. Si un día DAFO escribe desde
-otro dominio, se agrega aquí — sin tocar código, sin desplegar.
+#### Por qué dos, y por qué el de destinatario manda
+
+El filtro de remitente parecía suficiente y no lo es, por dos motivos que solo
+se descubren con correo real:
+
+1. **DAFO no siempre escribe desde DAFO.** Las evaluadoras contestan desde
+   Gmails personales (`jperez.concursosmincul@gmail.com`). Ningún dominio los
+   agrupa, y son justo los correos que traen las observaciones concretas.
+2. **Gmail no busca subcadenas.** Parte la dirección en piezas por los puntos y
+   la arroba, así que `mincul` NO casa con `concursosmincul@gmail.com`: la pieza
+   es «concursosmincul» entera. Un filtro que parece cubrir un caso y no lo
+   cubre es peor que no tenerlo, porque nadie va a revisarlo.
+
+El de destinatario no tiene ese problema porque no depende de quién escriba.
+Todo lo que llega al maestro por reenvío venía dirigido a una cuenta de
+postulación, y esa lista sí la controlamos nosotros. Se cae solo en un caso —que
+te escriban a la cuenta del maestro directamente— y para eso está el filtro B.
+
+> **Al dar de alta una cuenta nueva hay que añadirla al filtro A.** Es el único
+> paso de todo el montaje que vive fuera de CrewHub+ y que nada te va a
+> recordar. La señal de que se olvidó: en `/casilla`, esa cuenta aparece como
+> «⚠ nunca trajo nada».
 
 > **Sobre "aplicar también a las conversaciones que coinciden":** puedes marcarlo
 > sin miedo. El correo viejo se guarda y aparece en el panel, pero **no suena**:

@@ -5,6 +5,7 @@ import Volver from "@/components/Volver";
 import CasillaDafo from "@/components/CasillaDafo";
 import Realtime from "@/components/Realtime";
 import { enJuego, ejecutando } from "@/lib/fondos";
+import { hoyLima } from "@/lib/fechas";
 
 /* Viva = recibe correo de DAFO. No es lo mismo que «en juego»: una GANADORA sin
    rendir es la que más recibe —todo el hilo de la rendición— y quedaba fuera. */
@@ -54,7 +55,7 @@ export default async function CasillaPage() {
               "emp:empresas(id,nombre)")
       .order("recibido_en", { ascending: false }).limit(TOPE),
     supabase.from("postulaciones")
-      .select("id,codigo,estado,empresa_id,fecha_rendicion_real,proy:proyectos(nombre),conv:convocatorias(anio),emp:empresas(nombre)")
+      .select("id,codigo,estado,empresa_id,fecha_rendicion_real,proy:proyectos(nombre),conv:convocatorias(id,codigo,nombre,anio),emp:empresas(nombre)")
       .order("creado_en", { ascending: false }).limit(300),
     /* Las cuentas de correo. El filtro es EXACTAMENTE el de la ingesta
        (route.ts → empresaDeCorreo): toda credencial con empresa y con un @ en
@@ -62,7 +63,7 @@ export default async function CasillaPage() {
        `plataforma = 'Gmail'` el panel mostraría menos cuentas de las que el
        vinculador usa de verdad, y una pantalla de diagnóstico que miente sobre
        lo que hace el sistema es peor que no tenerla. */
-    supabase.from("credenciales").select("identificador,empresa_id,emp:empresas(nombre)")
+    supabase.from("credenciales").select("id,identificador,empresa_id,emp:empresas(nombre)")
       .not("empresa_id", "is", null).not("identificador", "is", null),
     /* Para el selector del alta. Van TODAS, no solo las que ya postularon: una
        cuenta se suele registrar antes de que su primera postulación exista, y
@@ -104,11 +105,18 @@ export default async function CasillaPage() {
   /* Última señal por postulación. Se calcula de los correos ya traídos: la
      lista viene ordenada por fecha desc, así que el PRIMERO de cada
      postulación es su último contacto. */
-  const ultimo = new Map<string, string>();
+  /* Se guarda el CORREO entero y no solo su fecha: la tabla enseña el asunto
+     ahí mismo. «Hace 12 d» obligaba a bajar a buscar de qué iba, que era
+     justamente el viaje que este panel venía a ahorrar. */
+  const ultimo = new Map<string, { id: string; asunto: string; recibido_en: string }>();
   const sinLeerPorPost = new Map<string, number>();
   coms.forEach(c => {
     if (!c.postulacion_id) return;
-    if (!ultimo.has(c.postulacion_id)) ultimo.set(c.postulacion_id, c.recibido_en);
+    if (!ultimo.has(c.postulacion_id)) {
+      ultimo.set(c.postulacion_id, {
+        id: c.id, asunto: c.asunto || "(sin asunto)", recibido_en: c.recibido_en,
+      });
+    }
     if (!c.leido_en) sinLeerPorPost.set(c.postulacion_id, (sinLeerPorPost.get(c.postulacion_id) || 0) + 1);
   });
 
@@ -123,26 +131,61 @@ export default async function CasillaPage() {
      postulaciones de una misma empresa comparten cuentas. Se dicen todas: cuál
      de ellas recibió cada correo se ve en la fila del correo, no aquí. */
   const cuentasDeEmpresa = new Map<string, string[]>();
-  const correoEmpresa = new Map<string, { empresaId: string; empresa: string | null }>();
-  ((credsRaw || []) as any[]).forEach(c => {
-    const correo = String(c.identificador || "").trim().toLowerCase();
-    if (!correo.includes("@") || !c.empresa_id) return;
-    if (correoEmpresa.has(correo)) return;   // el duplicado ya se rechaza al dar de alta
-    correoEmpresa.set(correo, { empresaId: c.empresa_id, empresa: nombreEmp(c.emp) });
-    const lista = cuentasDeEmpresa.get(c.empresa_id) || [];
-    lista.push(correo);
-    cuentasDeEmpresa.set(c.empresa_id, lista);
-  });
+  const correoEmpresa = new Map<string, { id: string; empresaId: string; empresa: string | null }>();
+  /* Ordenado por correo ANTES de agrupar. La consulta no lleva `order`, así que
+     Postgres devuelve las filas en el orden que le conviene: con dos cuentas en
+     la misma empresa, cuál salía como «la principal» en la tabla podía cambiar
+     entre dos recargas sin que nadie tocara nada. Un dato que baila solo hace
+     dudar del resto de la pantalla. */
+  [...((credsRaw || []) as any[])]
+    .sort((a, b) => String(a.identificador || "").localeCompare(String(b.identificador || "")))
+    .forEach(c => {
+      const correo = String(c.identificador || "").trim().toLowerCase();
+      if (!correo.includes("@") || !c.empresa_id) return;
+      if (correoEmpresa.has(correo)) return;   // el duplicado ya se rechaza al dar de alta
+      correoEmpresa.set(correo, { id: c.id, empresaId: c.empresa_id, empresa: nombreEmp(c.emp) });
+      const lista = cuentasDeEmpresa.get(c.empresa_id) || [];
+      lista.push(correo);
+      cuentasDeEmpresa.set(c.empresa_id, lista);
+    });
+
+  /* ── LOS AÑOS QUE TODAVÍA NO EMPIEZAN ──
+     Una convocatoria de 2027 tiene postulaciones «en juego» porque se están
+     preparando, pero DAFO no le ha escrito a nadie ni va a hacerlo por meses.
+     En una tira que mide SILENCIO, esas filas dicen «nunca llegó nada» con la
+     misma cara que una de 2026 que sí debería haber recibido algo — y una
+     alarma que suena cuando no pasa nada enseña a no mirar la tira.
+
+     Se ocultan solo las MUDAS. Si a una futura le llega un correo, aparece: el
+     criterio no es «este año no interesa» sino «todavía no hay nada que
+     contar», y en cuanto lo hay deja de aplicar. Ocultar algo que trae noticias
+     sería exactamente el fallo silencioso que este panel existe para evitar. */
+  const anioActual = Number(hoyLima().slice(0, 4));
+  const futuraMuda = (p: any) =>
+    (p.conv?.anio || 0) > anioActual && !ultimo.has(p.id);
+  const ocultasFuturas = posts.filter(p => viva(p) && futuraMuda(p));
+  const aniosOcultos = [...new Set(ocultasFuturas.map((p: any) => p.conv?.anio))]
+    .sort((a, b) => a - b);
 
   const resumen = posts
-    .filter(viva)
+    .filter(p => viva(p) && !futuraMuda(p))
     .map(p => ({
       id: p.id as string,
       codigo: (p.codigo || "sin código") as string,
       nombre: (p.proy?.nombre || "") as string,
-      ultimo: ultimo.get(p.id) || null,
+      ultimo: ultimo.get(p.id)?.recibido_en || null,
+      ultimoId: ultimo.get(p.id)?.id || null,
+      ultimoAsunto: ultimo.get(p.id)?.asunto || null,
       sinLeer: sinLeerPorPost.get(p.id) || 0,
       empresa: (nombreEmp(p.emp) || null) as string | null,
+      /* La convocatoria, para agrupar. Con veintiuna tarjetas de nueve
+         concursos distintos revueltas, ubicar «las del C-072» era leerlas
+         todas — el mismo problema que ya se resolvió en /postulaciones, y se
+         resuelve igual para que las dos pantallas se lean con el mismo ojo. */
+      convId: (p.conv?.id || "") as string,
+      convCodigo: (p.conv?.codigo || "") as string,
+      convNombre: (p.conv?.nombre || "") as string,
+      anio: (p.conv?.anio ?? null) as number | null,
       cuentas: (p.empresa_id ? cuentasDeEmpresa.get(p.empresa_id) : null) || [],
       /* Una ganadora rindiendo y una que todavía compite esperan correos
          distintos —requerimientos de rendición vs. resultados— y mezclarlas en
@@ -153,6 +196,7 @@ export default async function CasillaPage() {
        es exactamente la que hay que mirar. */
     .sort((a, b) => (a.ultimo ? new Date(a.ultimo).getTime() : 0) - (b.ultimo ? new Date(b.ultimo).getTime() : 0));
 
+
   /* ── EL INVENTARIO DE CUENTAS ──
      Al revés que el resumen: no mira postulaciones sino BUZONES. Sirve para el
      fallo que ninguna otra pantalla puede ver — una cuenta a la que se le
@@ -160,12 +204,12 @@ export default async function CasillaPage() {
      parte: simplemente nunca aparece, y todas las postulaciones que dependen de
      ella se ven como «nunca llegó nada», que es el mismo aspecto que tiene DAFO
      cuando de verdad no ha escrito. Aquí se distinguen. */
-  const ultimoDeCuenta = new Map<string, string>();
+  const ultimoDeCuenta = new Map<string, { id: string; recibido_en: string }>();
   const totalDeCuenta = new Map<string, number>();
   coms.forEach(c => {
     const k = String(c.cuenta || "").trim().toLowerCase();
     if (!k) return;
-    if (!ultimoDeCuenta.has(k)) ultimoDeCuenta.set(k, c.recibido_en);
+    if (!ultimoDeCuenta.has(k)) ultimoDeCuenta.set(k, { id: c.id, recibido_en: c.recibido_en });
     totalDeCuenta.set(k, (totalDeCuenta.get(k) || 0) + 1);
   });
   /* El buzón maestro, deducido de los correos que ya llegaron en vez de
@@ -181,10 +225,12 @@ export default async function CasillaPage() {
   const inventario = [...correoEmpresa.entries()]
     .map(([correo, e]) => ({
       correo,
+      credId: e.id,
       empresa: e.empresa,
       empresaId: e.empresaId,
       vivas: vivasDeEmpresa.get(e.empresaId) || 0,
-      ultimo: ultimoDeCuenta.get(correo) || null,
+      ultimo: ultimoDeCuenta.get(correo)?.recibido_en || null,
+      ultimoId: ultimoDeCuenta.get(correo)?.id || null,
       total: totalDeCuenta.get(correo) || 0,
       /* El maestro no deduce nada: la ingesta lo descarta al buscar de quién
          era el correo (el reenvío lo agrega a todos los destinatarios). Decirlo
@@ -229,6 +275,7 @@ export default async function CasillaPage() {
 
       <CasillaDafo items={coms} opciones={opciones} resumen={resumen}
         inventario={inventario} empresas={empresas}
+        ocultas={ocultasFuturas.length} aniosOcultos={aniosOcultos as number[]}
         cuentasError={eCreds?.message || null} tope={TOPE} />
     </div>
   );

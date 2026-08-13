@@ -7,6 +7,7 @@ import {
 import ImagenesEstado from "@/components/ImagenesEstado";
 import Plegable from "@/components/Plegable";
 import { useConfirmar, useAviso } from "@/components/useConfirmar";
+import { VIAS_GIRO } from "@/lib/pagos";
 
 /* ── La cara financiera de un fondo ganado ──
  *
@@ -464,6 +465,16 @@ function FormRhe({ postulacionId, etapas, rubros, personas }: {
   const [etapa, setEtapa] = useState("");
   const [rubroItem, setRubroItem] = useState("");
   const [url, setUrl] = useState("");
+  /* Iban hardcodeados a "" y "0" al llamar a guardarRhe, y las dos ausencias
+     dolían donde más:
+       · el concepto es lo que esta misma lista pinta como dato principal, así
+         que todo recibo dado de alta desde aquí nacía con «sin concepto» en
+         cursiva — y lo que dice qué se pagó no se reconstruye a los dos años;
+       · la retención en cero impedía registrar el 8% de quien rompió el tope de
+         4ta, que es justo el caso que el sistema existe para vigilar. */
+  const [concepto, setConcepto] = useState("");
+  const [retencion, setRetencion] = useState("");
+  const [giradoPor, setGiradoPor] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState("");
 
@@ -473,12 +484,13 @@ function FormRhe({ postulacionId, etapas, rubros, personas }: {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) { setError("Pon la fecha del recibo."); return; }
     setOcupado(true); setError("");
     const r: any = await guardarRhe({
-      personaId, fecha, monto, numero, url, concepto: "", proyectoId: "", retencion: "0",
-      postulacionId, etapa, rubroItem,
+      personaId, fecha, monto, numero, url, concepto, retencion, giradoPor,
+      proyectoId: "", postulacionId, etapa, rubroItem,
     });
     setOcupado(false);
     if (r?.error) { setError(r.error); return; }
     setPersonaId(""); setFecha(""); setMonto(""); setNumero(""); setEtapa(""); setRubroItem(""); setUrl("");
+    setConcepto(""); setRetencion(""); setGiradoPor("");
     setAbrir(false); router.refresh();
   };
 
@@ -515,6 +527,21 @@ function FormRhe({ postulacionId, etapas, rubros, personas }: {
         </select>
         <input value={url} onChange={e => setUrl(e.target.value)}
           placeholder="Link del PDF del recibo" style={{ ...inp(160), flex: 1, minWidth: 140 }} />
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 6 }}>
+        <input value={concepto} onChange={e => setConcepto(e.target.value)}
+          placeholder="Concepto — qué se le pagó"
+          title="Lo que esta lista muestra como dato principal. Sin él, el recibo sale como «sin concepto»."
+          style={{ ...inp(200), flex: 1, minWidth: 160 }} />
+        <input value={retencion} onChange={e => setRetencion(e.target.value)}
+          placeholder="Retención S/" inputMode="decimal"
+          title="El 8% cuando la persona ya rompió el tope de 4ta. En blanco si tiene suspensión vigente."
+          style={inp(110)} />
+        <select value={giradoPor} onChange={e => setGiradoPor(e.target.value)}
+          title="Quién giró el recibo en SUNAT" style={inp(170)}>
+          <option value="">¿Quién lo giró?</option>
+          {VIAS_GIRO.map(([k, t]) => <option key={k} value={k}>{t}</option>)}
+        </select>
       </div>
       <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
         <button className="btn" disabled={ocupado} onClick={enviar}

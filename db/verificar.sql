@@ -38,6 +38,21 @@ with esperado(clase, obj, para, archivo) as (values
   ('tab', 'credencial_datos',  'Datos sueltos de cada credencial',  'credencial-datos.sql'),
   ('tab', 'jornadas',          'Jornadas del equipo',               'jornadas.sql'),
   ('tab', 'liquidaciones',     'Cierre mensual',                    'liquidaciones.sql'),
+  -- Expediente de pago: sin estas columnas, /admin pinta como «abierto» un mes
+  -- ya liquidado y ofrece volver a liquidarlo. Por eso están aquí.
+  ('col', 'rhe.liquidacion_id',          'Qué mes paga el recibo',    'pagos-expediente.sql'),
+  ('col', 'rhe.pagado_en',               'Cuándo se pagó',            'pagos-expediente.sql'),
+  ('col', 'rhe.pagado_url',              'El voucher del pago',       'pagos-expediente.sql'),
+  ('col', 'rhe.pagado_medio',            'Transferencia/efectivo/…',  'pagos-expediente.sql'),
+  ('col', 'rhe.girado_por',              'Oficina/delegado/propio',   'pagos-expediente.sql'),
+  ('col', 'perfiles.es_finanzas',        'Registra RHE de terceros',  'rhe-permisos.sql'),
+  ('fun', 'rhe_es_mio',                  '¿El RHE es de quien entra?','rhe-permisos.sql'),
+  ('fun', 'es_finanzas',                 'Rol de administración',     'rhe-permisos.sql'),
+  ('col', 'liquidaciones.cerrado_en',    'Expediente cerrado',        'pagos-expediente.sql'),
+  -- Declaraciones juradas: el tope que evita devolver plata (acta, cl. 6.9).
+  ('tab', 'gasto_dj',                    'Gastos declarados sin comprobante', 'declaraciones-juradas.sql'),
+  ('col', 'convocatorias.tope_dj_pct',   'Tope de DJ del concurso',   'declaraciones-juradas.sql'),
+  ('col', 'postulaciones.tope_dj_pct',   'Tope de DJ del acta',       'declaraciones-juradas.sql'),
   -- Funciones
   ('fun', 'nrm_nombre',        'Comparar nombres sin tildes',       'personas-duplicadas.sql'),
   ('fun', 'persona_refs',      'Qué cuelga de una persona',         'personas-duplicadas.sql'),

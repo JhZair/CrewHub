@@ -3693,3 +3693,88 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
   min-width:0}
 .kit-plegar:hover{opacity:.85}
 .kit-plegar b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+
+/* ===== 📬 Casilla DAFO — las dos tablas de diagnóstico =====
+   Eran tarjetas y ocupaban una pantalla entera para veintiún renglones de dos
+   datos cada uno. Una tarjeta se justifica cuando hay algo que MIRAR; aquí no
+   hay más que texto corto en columnas fijas, y en columnas fijas el ojo baja
+   en línea recta en vez de rebotar por una cuadrícula. */
+/* `table-layout:fixed` es la clave de todo esto: en modo automático cada tabla
+   calcula sus anchos según SU contenido, así que dos bloques seguidos —una
+   convocatoria y la siguiente— quedaban con las columnas descuadradas y la
+   vista parecía un montón de tablitas en vez de una lista. Fijo, mandan los
+   anchos del <colgroup> y todas las filas caen en la misma reja. */
+.cas-tabla{border-collapse:collapse;width:100%;font-size:12.5px;table-layout:fixed}
+.cas-tabla th{text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:.6px;
+  color:var(--dim);font-weight:700;padding:4px 10px;border-bottom:1px solid var(--border2);
+  white-space:nowrap}
+/* Todas las celdas recortan. Con columnas rígidas, lo que no cabe TIENE que
+   cortarse: si una sola celda desborda, arrastra su columna y descuadra la
+   reja entera —que es justo lo que se venía a arreglar—. El texto completo
+   sigue disponible en el `title` de cada celda que puede quedarse corta. */
+/* El filete entre filas sube de .04 a .07: con dieciocho renglones y cuatro
+   columnas, a .04 el ojo perdía el renglón a mitad de camino y leía la cuenta
+   de una postulación con la fecha de la siguiente. */
+.cas-tabla td{padding:7px 10px;border-bottom:1px solid rgba(255,255,255,.07);
+  color:var(--muted);vertical-align:baseline;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Lo llegado en los últimos tres días, teñido entero. El dato ya estaba —la
+   fecha en verde al final de la fila— pero obligaba a barrer la columna de la
+   derecha para saber si había algo nuevo; con la fila entera pintada, lo
+   reciente se ve sin leer nada.
+   Tres días y no siete: DAFO da plazos de cinco días hábiles, así que lo de
+   esta semana no es «lo nuevo», es casi todo. Un resaltado que cubre media
+   tabla deja de resaltar.
+   Muy tenue a propósito: convive con el filete rojo de «sin cuenta» en la
+   misma fila y no puede taparlo. Marca dónde mirar, no grita.
+   Va ANTES del hover y con menos peso, para que pasar el ratón siga
+   respondiendo también sobre una fila fresca. */
+.cas-tabla tr.cas-fresco td{background:color-mix(in srgb,var(--teal) 9%,transparent)}
+.cas-tabla tbody tr:hover td{background:rgba(167,139,250,.07)}
+.cas-tabla a{text-decoration:none}
+.cas-num{text-align:right}
+/* La celda del ✕. Con el relleno normal de la tabla —10 px a cada lado— de una
+   columna de 34 quedaban 14 px de zona pulsable: un blanco que se falla. El
+   relleno se recorta aquí y el botón ocupa la celda entera. */
+.cas-tabla td.cas-x{padding:2px 4px;text-align:center;overflow:visible}
+.cas-tabla td.cas-x .pre-x{width:100%;padding:5px 0;font-size:12px;line-height:1}
+/* La cabecera de convocatoria, ahora dentro de la tabla: es una fila que ocupa
+   las cuatro columnas en vez de un <h2> entre tablas. Así el corte por
+   concurso no rompe la reja —era la otra mitad del desorden—. */
+/* La línea que separa un concurso del siguiente, y va ARRIBA de la cabecera:
+   una convocatoria empieza en su título, así que el corte tiene que estar
+   delante de él y no detrás de la última fila del anterior —donde se leería
+   como el pie de ese grupo—. Es un filete de verdad y no el degradado de al
+   lado del título: aquel decora, este separa, y con nueve concursos seguidos
+   hacía falta que se notara.
+
+   2px, y ese número es la razón de que se vea. Con `border-collapse:collapse`
+   los bordes contiguos no se suman: se elige uno, y ante un empate de grosor y
+   estilo gana el de la celda de más arriba. A 1px, el filete tenue de la última
+   fila del grupo anterior ganaba y esta línea desaparecía sin dejar rastro —
+   estaba escrita y no se pintaba—. El grosor mayor la hace ganar el desempate,
+   además de hacerla más visible, que era el encargo. */
+.cas-grupo td{padding:16px 4px 5px;border-bottom:none;overflow:visible;
+  border-top:2px solid color-mix(in srgb,var(--violet) 55%,transparent)}
+/* El primero no separa nada: encima solo tiene la cabecera de columnas, y una
+   línea ahí parecería un doble borde. */
+.cas-tabla tbody:first-of-type .cas-grupo td{border-top:none;padding-top:8px}
+.cas-grupo tr:hover td,.cas-tabla tbody tr.cas-grupo:hover td{background:none}
+.cas-grupo-l{display:flex;align-items:center;gap:8px}
+.cas-grupo-cod{font-size:10.5px;text-transform:uppercase;letter-spacing:1px;
+  color:var(--violet);font-weight:700;opacity:.85;flex:none}
+.cas-grupo-nom{font-size:11.5px;color:var(--muted);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.cas-grupo-n{font-size:11px;color:var(--dim);flex:none}
+.cas-grupo-r{flex:1;height:1;min-width:20px;
+  background:linear-gradient(90deg,color-mix(in srgb,var(--violet) 26%,transparent),transparent)}
+/* La marca roja de «esta fila tiene un problema» va en el borde izquierdo y no
+   en el fondo: un fondo rojo en una tabla de veintiún renglones convierte el
+   aviso en decoración. */
+.cas-tabla tr.cas-falta td:first-child{box-shadow:inset 3px 0 0 var(--red)}
+
+/* El correo al que saltó el clic desde la tabla. Dura dos segundos: sin la
+   marca, saltar a un correo en medio de una lista de trescientos deja al ojo
+   buscando cuál de todos era. */
+@keyframes cas-destello{from{background:rgba(167,139,250,.22)}to{background:transparent}}
+.cas-destello{animation:cas-destello 2s ease-out}

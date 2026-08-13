@@ -16,6 +16,8 @@ import VersionesFondo from "@/components/VersionesFondo";
 import { etapasDe, nombreEtapa } from "@/lib/etapas";
 import { rubrosDe, nombreRubro } from "@/lib/rubros";
 import { plazoRendicion, rendicionVencida } from "@/lib/fondos";
+import { saldoDJ as calcSaldoDJ } from "@/lib/dj";
+import SaldoDj from "@/components/SaldoDj";
 
 /* ── LA EJECUCIÓN DEL FONDO — la segunda vida de un proyecto ──
  *
@@ -39,6 +41,12 @@ import { plazoRendicion, rendicionVencida } from "@/lib/fondos";
 async function cargarFondo(id: string) {
   const supabase = createClient();
   const { data } = await supabase.from("postulaciones")
+    /* Los topes de DJ NO se piden aquí, y es a propósito. Esta consulta decide
+       si la ficha existe: si falla, la página hace `notFound()`. Nombrar una
+       columna que puede no estar todavía —db/declaraciones-juradas.sql sin
+       correr— convertía «falta una migración» en «este fondo no existe», y se
+       llevaba por delante todo el cuidado de degradar con elegancia del bloque
+       de DJ. Van en su propia consulta, que puede fallar sola. */
     .select("*, proy:proyectos(id,nombre,tipo), emp:empresas(id,nombre), " +
       "conv:convocatorias(id,nombre,anio,categoria,monto_adjudicado)")
     .eq("id", id).maybeSingle();
@@ -79,12 +87,17 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
   }
 
   const { data: perfilActual } = await supabase.from("perfiles")
-    .select("es_admin").eq("id", user.id).maybeSingle();
-  const esAdmin = !!perfilActual?.es_admin;
+    .select("es_admin,es_finanzas").eq("id", user.id).maybeSingle();
+  /* «Admin» aquí significa «puede tocar los datos de plata de esta ficha», que
+     no es lo mismo que tener /admin entero. El asistente de administración
+     registra recibos de terceros y no debería necesitar la llave maestra para
+     eso — ampliar `es_admin` para conceder esto habría sido justo la forma en
+     que se acaban repartiendo llaves de más (ver db/rhe-permisos.sql). */
+  const esAdmin = !!(perfilActual?.es_admin || perfilActual?.es_finanzas);
 
   const categoria = ent.conv?.categoria || null;
 
-  const [cp, pl, pf, plPre, pc, ec, rf, mb, au, vf, eqp] = await Promise.all([
+  const [cp, pl, pf, plPre, pc, ec, rf, mb, gdj, au, vf, eqp] = await Promise.all([
     supabase.from("cronograma_actividades").select("*, resp:perfiles!responsable(nombre)")
       .eq("postulacion_id", params.id)
       .order("etapa").order("orden").order("fecha_inicio").order("creado_en"),
@@ -103,6 +116,13 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
     supabase.from("movimiento_banco")
       .select("id,fecha,glosa,medio,tipo,monto,saldo,categoria,nota")
       .eq("postulacion_id", params.id).order("fecha").order("creado_en"),
+    /* Los gastos declarados. Van por fecha ascendente porque se leen contra el
+       cuaderno de campo, que va en ese orden — al revés obliga a ir saltando
+       para cotejar. */
+    supabase.from("gasto_dj")
+      .select("id,descripcion,importe,fecha,fecha_hasta,lugar_origen,lugar_destino," +
+              "etapa,rubro_item,dj_numero,dj_url,firmada_por")
+      .eq("postulacion_id", params.id).order("fecha"),
     /* La bitácora inmutable de este fondo. Filtra por el postulacion_id que
        vive dentro del JSON (antes/después), así también captura los borrados. */
     supabase.from("auditoria_financiera")
@@ -145,6 +165,26 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
   const personasCat = (pc.data || []).map((p: any) => ({ id: p.id, nombre: p.alias || p.nombre }));
   const estadosFondo: any[] = (ec.data as any) || [];
   const movBanco = mb.data || [];
+  /* Los gastos con DJ y su saldo. Si falta correr el SQL, la consulta falla y
+     esto queda vacío: el bloque lo dice en vez de enseñar «S/ 0 usado», que se
+     leería como «no has gastado nada» — la lectura más peligrosa posible en el
+     único número que obliga a devolver plata si se pasa. */
+  const gastosDj = gdj.data || [];
+  const usadoDj = gastosDj.reduce((s: number, g: any) => s + Number(g.importe || 0), 0);
+
+  /* Los dos topes, en una consulta aparte de la que decide si la ficha existe.
+     Si falla, es que falta la migración — y entonces el saldo NO se enseña:
+     con `gastosDj` vacío saldría «te queda el tope entero», que es la lectura
+     más peligrosa posible del único número que obliga a devolver plata. */
+  const { data: topes, error: eTopes } = await supabase.from("postulaciones")
+    .select("tope_dj_pct,conv:convocatorias(tope_dj_pct)").eq("id", params.id).maybeSingle();
+  const djError = ((gdj as any).error?.message || eTopes?.message || null) as string | null;
+  const convTope = Array.isArray((topes as any)?.conv) ? (topes as any).conv[0] : (topes as any)?.conv;
+  const saldoDj = calcSaldoDJ(
+    ent.monto_adjudicado, usadoDj,
+    { tope_dj_pct: (topes as any)?.tope_dj_pct },
+    { tope_dj_pct: convTope?.tope_dj_pct },
+  );
   const rheFondo = (rf.data || []).map((r: any) => ({
     ...r, persona: r.persona?.alias || r.persona?.nombre || "—",
   }));
@@ -204,7 +244,7 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
 
   return (
     <div className="shell" style={{ maxWidth: "min(1200px, 96vw)" }}>
-      <Realtime tablas={["cronograma_actividades", "rhe", "estado_cuenta", "movimiento_banco", "auditoria_financiera", "version_fondo", "postulaciones"]}
+      <Realtime tablas={["cronograma_actividades", "rhe", "estado_cuenta", "movimiento_banco", "gasto_dj", "auditoria_financiera", "version_fondo", "postulaciones"]}
         token={session?.access_token} />
       <div className="topbar">
         <Volver />
@@ -282,6 +322,31 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
                   estados={estadosFondo} rhe={rheFondo}
                   empresa={ent.emp?.nombre || null}
                   etapas={etapasFondo} rubros={fondoRubros} personas={personasCat} />
+              </Plegable>
+            </div>
+            {/* Va ANTES de la conciliación y abierto por defecto. No es
+                jerarquía visual: el resumen del plegado —«te quedan S/ X»— es
+                el dato que hay que ver sin abrir nada, porque se consulta antes
+                de subir a rodar y no cuando se rinde. */}
+            <div style={{ scrollMarginTop: 12 }}>
+              <Plegable id={`fondo:${params.id}:dj`} titulo="📝 Declaraciones juradas" abiertoPorDefecto={true}
+                /* El resumen se pinta esté el panel abierto o cerrado, así que
+                   tiene que mirar el error igual que el interior. Sin eso, una
+                   consulta caída enseñaba «quedan S/ 40,000 de S/ 40,000» en la
+                   cabecera —el tope entero libre— mientras el aviso de dentro
+                   decía lo contrario. */
+                resumen={dim(
+                  djError
+                    ? "⚠ no se pudo leer"
+                    : saldoDj.falta === "estimulo"
+                      ? "falta el monto adjudicado"
+                      : saldoDj.tope === null
+                        ? "falta cargar el tope"
+                        : saldoDj.supero
+                          ? `⚠ exceso ${fmt(saldoDj.exceso)} — a devolver`
+                          : `quedan ${fmt(saldoDj.resta ?? 0)} de ${fmt(saldoDj.tope)}`)}>
+                <SaldoDj postulacionId={params.id} saldo={saldoDj} gastos={gastosDj as any}
+                  etapas={etapasFondo} rubros={fondoRubros} esAdmin={esAdmin} error={djError} />
               </Plegable>
             </div>
             <div style={{ scrollMarginTop: 12 }}>

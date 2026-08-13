@@ -109,6 +109,15 @@ export default async function Jornadas({ searchParams }: { searchParams: { m?: s
     ? await supabase.from("liquidaciones").select("*").eq("persona_id", miPersonaId).eq("anio", anio).eq("mes", mesNum).maybeSingle()
     : { data: null };
 
+  /* Mis recibos de ESTE mes. Se piden solo cuando el mes ya está liquidado:
+     antes de eso no hay importe que girar, así que no hay recibo posible y
+     preguntar sería una consulta por nada en cada carga de la página. */
+  const { data: misRhes } = (miLiq as any)?.id && (miLiq as any)?.estado === "liquidado"
+    ? await supabase.from("rhe")
+        .select("id,numero,fecha,monto,url,pagado_en,pagado_url,pagado_medio")
+        .eq("liquidacion_id", (miLiq as any).id).order("fecha")
+    : { data: null };
+
   // ── Agregación persona × semana + panel personal ──
   const nombreP = new Map<string, string>();
   const semPer = new Map<string, number[]>();
@@ -213,7 +222,10 @@ export default async function Jornadas({ searchParams }: { searchParams: { m?: s
 
       <MiJornada proyectos={proyectos || []} mi={mi} />
 
-      {mi && <CicloMes anio={anio} mes={mesNum} mesNombre={MESES[mes]} liq={miLiq} />}
+      {mi && (
+        <CicloMes anio={anio} mes={mesNum} mesNombre={MESES[mes]} liq={miLiq}
+          personaId={miPersonaId} rhes={(misRhes || []) as any} />
+      )}
 
       {/* ══ PAGO (foco) ══ */}
       {mi && (

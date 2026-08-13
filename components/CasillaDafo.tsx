@@ -8,7 +8,9 @@ import { marcarComunicacion, vincularComunicacion, casoDeComunicacion } from "@/
 /* El alta vive en app/actions.ts y no aquí al lado: no es la mecánica de esta
    pantalla, es escribir una credencial de empresa —lo mismo que hace la ficha
    de la empresa—. Solo que se puede disparar desde donde se nota que falta. */
-import { registrarCuentaDafo } from "@/app/actions";
+import { registrarCuentaDafo, quitarCuentaDafo } from "@/app/actions";
+import { useConfirmar } from "@/components/useConfirmar";
+import Copiar from "@/components/Copiar";
 
 /* La lista de la casilla. Cliente porque cada fila hace tres cosas —marcar,
    vincular, abrir caso— y ninguna merece recargar la página entera.
@@ -36,12 +38,15 @@ type Com = {
 };
 type Opcion = { id: string; etiqueta: string; enJuego: boolean };
 type Fila = {
-  id: string; codigo: string; nombre: string; ultimo: string | null; sinLeer: number;
+  id: string; codigo: string; nombre: string; sinLeer: number;
+  ultimo: string | null; ultimoId: string | null; ultimoAsunto: string | null;
   empresa: string | null; cuentas: string[]; rindiendo: boolean;
+  convId: string; convCodigo: string; convNombre: string; anio: number | null;
 };
 type Cuenta = {
-  correo: string; empresa: string | null; empresaId: string;
-  vivas: number; ultimo: string | null; total: number; esBuzon: boolean;
+  correo: string; credId: string; empresa: string | null; empresaId: string;
+  vivas: number; ultimo: string | null; ultimoId: string | null;
+  total: number; esBuzon: boolean;
 };
 type Empresa = { id: string; nombre: string; vivas: number };
 
@@ -49,10 +54,11 @@ type Empresa = { id: string; nombre: string; vivas: number };
 const POR_GRUPO = 3;
 
 export default function CasillaDafo({
-  items, opciones, resumen, inventario, empresas, cuentasError, tope,
+  items, opciones, resumen, inventario, empresas, ocultas, aniosOcultos, cuentasError, tope,
 }: {
   items: Com[]; opciones: Opcion[]; resumen: Fila[]; inventario: Cuenta[];
-  empresas: Empresa[]; cuentasError: string | null; tope: number;
+  empresas: Empresa[]; ocultas: number; aniosOcultos: number[];
+  cuentasError: string | null; tope: number;
 }) {
   const router = useRouter();
   const [pend, arrancar] = useTransition();
@@ -60,6 +66,8 @@ export default function CasillaDafo({
   const [verTodo, setVerTodo] = useState(false);
   const [verCuentas, setVerCuentas] = useState(false);
   const [nueva, setNueva] = useState({ correo: "", empresaId: "" });
+  const [destello, setDestello] = useState<string | null>(null);
+  const { pedir, dialogo } = useConfirmar();
 
   /* Sin leer arriba y, dentro, lo que parece pedir algo primero: entre dos
      correos del mismo día, uno que dice «subsanación» no vale lo mismo que un
@@ -128,47 +136,213 @@ export default function CasillaDafo({
      revisar un reenvío que no existe. */
   const mudas = useMemo(() => inventario.filter(c => c.total === 0 && !c.esBuzon), [inventario]);
 
-  /* Una tarjeta del resumen. Tres datos y en este orden: quién es, por dónde
-     le hablan, y cuánto hace que no le hablan. El del medio es el que faltaba. */
-  const tarjeta = (r: Fila) => {
+  /* La cadena que Gmail espera en «Para:». Sin el buzón maestro: él no es una
+     cuenta de postulación, y meterlo etiquetaría como DAFO todo lo que llegue a
+     esa dirección. */
+  const paraFiltro = useMemo(
+    () => inventario.filter(c => !c.esBuzon).map(c => c.correo).join(" OR "), [inventario]);
+
+  /* Quitar una cuenta mal colgada. Se confirma, y la pregunta NOMBRA el correo
+     y la empresa: en una tabla de veintitrés renglones iguales, un «¿seguro?» a
+     secas no deja comprobar que el ✕ pulsado era el de la fila que se miraba.
+
+     Y dice qué se pierde. Borrar la cuenta no borra los correos que ya entraron
+     por ella —esos quedan, con su vínculo— pero sí deja a esa empresa sin la
+     vía «cuenta» de ahí en adelante. Son dos consecuencias distintas y quien
+     pulsa merece saber cuál es cuál. */
+  /* La confirmación va FUERA de la transición. `arrancar` espera una función
+     síncrona: al meterle una `async` que se queda esperando el clic del diálogo,
+     React da la transición por terminada en el primer `await` y la respuesta del
+     usuario cae en el vacío — el ✕ no hacía nada. La transición envuelve solo la
+     llamada al servidor, que es lo único que dura. */
+  const quitar = async (c: Cuenta) => {
+    const ok = await pedir(
+      <>Se quitará <b>{c.correo}</b> de <b>{c.empresa || "su empresa"}</b>.
+        Los {c.total} correo{c.total === 1 ? "" : "s"} que ya entraron por ella se quedan;
+        lo que se pierde es que los próximos se vinculen solos por la cuenta.</>,
+      { titulo: "Desconectar cuenta", aceptar: "Quitar", peligro: true },
+    );
+    if (!ok) return;
+    correr(() => quitarCuentaDafo(c.credId, c.empresaId, c.correo));
+  };
+
+  /* ── DEL RESUMEN AL CORREO ──
+     Ver «hace 12 d» y tener que bajar a buscar de qué iba era el viaje que este
+     panel venía a ahorrar. Ahora el asunto se lee en la misma fila, y el clic
+     lleva al correo entero —donde están el remitente, el extracto, «ver en
+     Gmail», «marcar leído» y «abrir caso»—, no a Gmail directo: saltar fuera
+     del panel dejaría el correo sin marcar y el caso sin abrir.
+
+     Abre el historial completo ANTES de saltar: si ese correo ya estaba leído y
+     su grupo venía recortado a tres, el ancla no existe en el DOM y el clic no
+     lleva a ninguna parte. El mismo fallo silencioso que ya tenía el enlace de
+     las notificaciones. */
+  const irAlCorreo = (id: string) => {
+    setVerTodo(true);
+    setDestello(id);
+    requestAnimationFrame(() =>
+      document.getElementById(`c-${id}`)?.scrollIntoView({ block: "center", behavior: "smooth" }));
+    /* Se apaga sola: si el resaltado se quedara, la próxima vez que se abra la
+       página habría una fila marcada sin que nadie sepa por qué. */
+    window.setTimeout(() => setDestello(v => (v === id ? null : v)), 2200);
+  };
+
+  /* ── LA TIRA, CORTADA POR CONVOCATORIA ──
+     Veintiuna tarjetas de nueve concursos distintos revueltas: ubicar «las del
+     C-072» era leerlas todas. Es el mismo corte que ya hace /postulaciones y se
+     pinta igual —línea violeta, código en versalitas, nombre en texto normal—
+     para que las dos pantallas se lean con el mismo ojo.
+
+     El orden DENTRO de cada bloque no cambia: lo más silencioso primero. El
+     agrupado responde «¿dónde está el C-072?»; el orden sigue respondiendo
+     «¿de quién no sabemos nada?», que es para lo que existe esta tira.
+
+     El año va pegado al código y no en un nivel propio: aquí solo salen las
+     postulaciones vivas y casi todas son del año en curso, así que un segundo
+     separador estaría siempre vacío. */
+  const variosAnios = useMemo(
+    () => new Set(resumen.map(r => r.anio).filter(a => a != null)).size > 1, [resumen]);
+
+  const bloques = (filas: Fila[]) => {
+    const m = new Map<string, { codigo: string; nombre: string; anio: number | null; filas: Fila[] }>();
+    filas.forEach(r => {
+      const g = m.get(r.convId) || {
+        codigo: r.convCodigo || "Sin convocatoria", nombre: r.convNombre, anio: r.anio, filas: [],
+      };
+      g.filas.push(r); m.set(r.convId, g);
+    });
+    /* Por código, el mismo orden que el combo de /postulaciones; las sueltas al
+       final, que es donde va una pregunta pendiente. */
+    return [...m.entries()].sort((x, z) =>
+      (x[0] ? 0 : 1) - (z[0] ? 0 : 1) || x[1].codigo.localeCompare(z[1].codigo));
+  };
+
+  /* UNA sola tabla por sección, con la convocatoria como fila de cabecera. La
+     versión anterior abría una tabla por concurso y cada una se medía sola: las
+     columnas no coincidían entre bloques y la vista parecía un montón de
+     tablitas apiladas. Con un `<colgroup>` y un `<tbody>` por grupo, el corte
+     por concurso sigue estando y todas las filas caen en la misma reja. */
+  const tira = (filas: Fila[]) => {
+    const gs = bloques(filas);
+    /* Un separador SEPARA: con un solo concurso en la tira no hay nada que
+       separar y la cabecera solo repetiría el título de arriba. */
+    const varias = gs.length > 1;
+    return (
+      <table className="cas-tabla">
+        {/* Los anchos, decididos aquí y no por el contenido. La cuenta y el
+            «cuándo» son de largo conocido, así que van fijos; lo que sobra se
+            reparte entre la postulación y el asunto, que son los dos que de
+            verdad pueden ser largos. */}
+        <colgroup>
+          <col /><col style={{ width: 200 }} /><col /><col style={{ width: 150 }} />
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Postulación</th>
+            <th>Cuenta</th>
+            <th>Último correo</th>
+            <th className="cas-num">Cuándo</th>
+          </tr>
+        </thead>
+        {gs.map(([k, g]) => (
+          <tbody key={k || "sin-conv"}>
+            {varias && (
+              <tr className="cas-grupo">
+                <td colSpan={4}>
+                  <div className="cas-grupo-l">
+                    <span className="cas-grupo-cod">
+                      {g.codigo}{variosAnios && g.anio ? ` · ${g.anio}` : ""}
+                    </span>
+                    {/* El nombre en texto normal: en versalitas, seis palabras
+                        son un muro y el código deja de resaltar. */}
+                    {g.nombre && <span className="cas-grupo-nom">{g.nombre}</span>}
+                    <span className="cas-grupo-n">· {g.filas.length}</span>
+                    <span className="cas-grupo-r" />
+                  </div>
+                </td>
+              </tr>
+            )}
+            {g.filas.map(filaResumen)}
+          </tbody>
+        ))}
+      </table>
+    );
+  };
+
+  /* Una fila del resumen. Cuatro columnas y en este orden: quién es, por dónde
+     le hablan, QUÉ le dijeron, y cuánto hace. La tercera es la que faltaba: sin
+     el asunto, cada «hace 12 d» costaba un viaje al historial. */
+  const filaResumen = (r: Fila) => {
     const d = diasDesde(r.ultimo);
     const col = d === null ? "var(--dim)" : d > 30 ? "var(--yellow)" : "var(--teal)";
+    /* Si la lista de cuentas no se pudo leer, TODAS saldrían sin cuenta: veinte
+       alarmas rojas por un fallo de lectura. Una alarma que se enciende cuando
+       el sistema no sabe la respuesta enseña a ignorarla, así que aquí se calla
+       y el motivo se dice una sola vez arriba. */
+    const falta = r.cuentas.length === 0 && !cuentasError;
+    /* Fresco = llegó en los últimos tres días. Las dos marcas conviven en la
+       misma fila: el tinte dice «aquí pasó algo hace poco» y el filete rojo del
+       borde dice «a esta no le puede pasar nada». No se estorban porque hablan
+       de cosas distintas — y una fila puede ser las dos a la vez. */
+    const fresco = d !== null && d <= 3;
     return (
-      <Link key={r.id} href={`/entidad/postulacion/${r.id}`} className="card"
-        style={{ flex: "1 1 220px", minWidth: 200, textDecoration: "none",
-          /* El borde solo para el problema accionable: sin cuenta registrada,
-             esta postulación no puede vincular nada por la vía de la cuenta y
-             ninguna espera lo va a arreglar. */
-          borderLeft: r.cuentas.length === 0 ? "3px solid var(--red)" : undefined }}>
-        <div style={{ fontWeight: 700, fontSize: 12.5 }}>🎯 {r.codigo}</div>
-        {r.nombre && <div style={{ color: "var(--dim)", fontSize: 11 }}>{r.nombre}</div>}
-
-        {r.cuentas.length === 0 ? (
-          /* Si la lista de cuentas no se pudo leer, TODAS saldrían sin cuenta:
-             treinta alarmas rojas por un fallo de lectura. Una alarma que se
-             enciende cuando el sistema no sabe la respuesta enseña a ignorarla,
-             así que aquí se calla y el motivo se dice una sola vez arriba. */
-          cuentasError ? null : (
-            <div style={{ color: "var(--red)", fontSize: 11, marginTop: 3 }}
+      <tr key={r.id}
+        className={[falta ? "cas-falta" : "", fresco ? "cas-fresco" : ""].filter(Boolean).join(" ") || undefined}>
+        {/* El `title` en la celda y no solo en el enlace: con columnas rígidas
+            un nombre largo se corta, y el texto completo tiene que seguir a un
+            reposo del ratón de distancia. */}
+        <td title={`${r.codigo}${r.nombre ? ` · ${r.nombre}` : ""}`}>
+          <Link href={`/entidad/postulacion/${r.id}`}
+            style={{ color: "var(--text)", fontWeight: 600 }}>🎯 {r.codigo}</Link>
+          {/* El nombre pesa lo mismo que el código: son las dos formas de
+              nombrar lo mismo y quien busca «Pampacucho» tiene tanto derecho a
+              encontrarlo de un vistazo como quien busca «PO-022». En gris tenue
+              obligaba a leer la columna dos veces, una por cada criterio.
+              El tono se queda un punto por debajo (`muted`, no `text`): el
+              código es el identificador y sigue entrando primero. */}
+          {r.nombre && (
+            <span style={{ color: "var(--muted)", fontWeight: 600 }}> · {r.nombre}</span>
+          )}
+        </td>
+        <td style={{ fontSize: 11.5 }} title={r.cuentas.join("\n") || undefined}>
+          {falta ? (
+            <span style={{ color: "var(--red)" }}
               title={r.empresa
-                ? `Ninguna cuenta de correo está registrada en ${r.empresa}. Regístrala en su ficha (Credenciales → Gmail).`
+                ? `Ninguna cuenta de correo está registrada en ${r.empresa}. Regístrala abajo o en su ficha.`
                 : "Esta postulación no tiene empresa, así que no hay dónde colgar su cuenta de correo."}>
-              ✖ sin cuenta registrada
-            </div>
-          )
-        ) : (
-          <div style={{ color: "var(--dim)", fontSize: 10.5, marginTop: 3, wordBreak: "break-all" }}
-            title={r.cuentas.join("\n")}>
-            📧 {r.cuentas[0]}
-            {r.cuentas.length > 1 && ` +${r.cuentas.length - 1}`}
-          </div>
-        )}
-
-        <div style={{ color: col, fontSize: 11.5, marginTop: 3 }}>
+              ✖ sin cuenta
+            </span>
+          ) : r.cuentas.length === 0 ? (
+            <span style={{ color: "var(--dim)" }}>—</span>
+          ) : (
+            <span title={r.cuentas.join("\n")}>
+              {r.cuentas[0]}
+              {r.cuentas.length > 1 && (
+                <span style={{ color: "var(--dim)" }}> +{r.cuentas.length - 1}</span>
+              )}
+            </span>
+          )}
+        </td>
+        <td title={r.ultimoAsunto || undefined}>
+          {r.ultimoId ? (
+            /* El recorte lo hace la celda (la columna tiene ancho fijo), así que
+               el botón solo tiene que ocuparla entera y dejarse cortar. */
+            <button type="button" onClick={() => irAlCorreo(r.ultimoId!)}
+              style={{ background: "none", border: "none", padding: 0, cursor: "pointer",
+                font: "inherit", color: "var(--text)", textAlign: "left",
+                display: "block", width: "100%",
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {r.ultimoAsunto}
+            </button>
+          ) : (
+            <span style={{ color: "var(--dim)" }}>—</span>
+          )}
+        </td>
+        <td className="cas-num" style={{ color: col, fontSize: 11.5 }}>
           {d === null ? "nunca llegó nada" : d === 0 ? "hoy" : `hace ${d} d`}
           {r.sinLeer > 0 && <span style={{ color: "var(--red)" }}> · {r.sinLeer} sin leer</span>}
-        </div>
-      </Link>
+        </td>
+      </tr>
     );
   };
 
@@ -194,7 +368,7 @@ export default function CasillaDafo({
   const fila = (c: Com) => {
     const url = linkGmail(c.gmail_thread_id, c.buzon);
     return (
-      <div key={c.id} id={`c-${c.id}`} className="card"
+      <div key={c.id} id={`c-${c.id}`} className={`card${destello === c.id ? " cas-destello" : ""}`}
         style={{ display: "flex", flexDirection: "column", gap: 4,
           borderLeft: c.pide_accion && !c.leido_en ? "3px solid var(--red)" : undefined }}>
         <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
@@ -253,6 +427,7 @@ export default function CasillaDafo({
 
   return (
     <>
+      {dialogo}
       {aviso && (
         <div className="empty" style={{ color: "var(--red)", marginBottom: 10 }}>{aviso}</div>
       )}
@@ -279,9 +454,7 @@ export default function CasillaDafo({
           <h2 style={{ fontSize: 13, color: "var(--dim)", margin: "4px 0 8px", letterSpacing: .5 }}>
             ⏱ Última señal · compitiendo · {compitiendo.length}
           </h2>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 18 }}>
-            {compitiendo.map(tarjeta)}
-          </div>
+          <div style={{ marginBottom: 18 }}>{tira(compitiendo)}</div>
         </>
       )}
 
@@ -293,10 +466,18 @@ export default function CasillaDafo({
           <h2 style={{ fontSize: 13, color: "var(--dim)", margin: "4px 0 8px", letterSpacing: .5 }}>
             🏆 Última señal · ganadoras rindiendo · {rindiendo.length}
           </h2>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 18 }}>
-            {rindiendo.map(tarjeta)}
-          </div>
+          <div style={{ marginBottom: 18 }}>{tira(rindiendo)}</div>
         </>
+      )}
+
+      {/* Lo escondido se DICE. Un filtro callado convierte «no aparece» en «no
+          existe», y el día que alguien busque su postulación de 2027 aquí y no
+          la encuentre, el panel habría mentido sin que nadie pudiera notarlo. */}
+      {ocultas > 0 && (
+        <div style={{ color: "var(--dim)", fontSize: 11, margin: "0 4px 16px" }}>
+          {ocultas} postulación{ocultas === 1 ? "" : "es"} de {aniosOcultos.join(" y ")} fuera de la
+          lista: todavía no reciben correo. Aparecerán en cuanto les llegue el primero.
+        </div>
       )}
 
       {/* ── EL INVENTARIO DE CUENTAS ──
@@ -322,72 +503,121 @@ export default function CasillaDafo({
           </button>
 
           {verCuentas && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 8 }}>
+            <div style={{ marginTop: 8 }}>
               {/* El alta, aquí y no en la ficha de la empresa: este es el sitio
-                  donde se NOTA que una cuenta falta —la lista de al lado dice
-                  cuáles hay y las tarjetas de arriba cuáles se echan de menos—,
-                  y mandar a buscar la ficha desde aquí perdía el hallazgo por
-                  el camino. Lo que escribe es exactamente una credencial de
-                  Gmail de esa empresa: lo mismo que la ficha, sin el viaje. */}
-              <div className="card" style={{ display: "flex", gap: 8, flexWrap: "wrap",
-                alignItems: "center", background: "var(--bg)" }}>
+                  donde se NOTA que una cuenta falta —la tabla de abajo dice
+                  cuáles hay y la de arriba cuáles se echan de menos—, y mandar
+                  a buscar la ficha desde aquí perdía el hallazgo por el camino.
+                  Lo que escribe es exactamente una credencial de Gmail de esa
+                  empresa: lo mismo que la ficha, sin el viaje. */}
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap",
+                alignItems: "center", margin: "0 0 10px" }}>
                 <input type="email" placeholder="cuenta@gmail.com" value={nueva.correo}
                   onChange={e => setNueva({ ...nueva, correo: e.target.value })}
                   style={{ background: "var(--card)", border: "1px solid var(--border)",
-                    borderRadius: 8, padding: "6px 10px", fontSize: 12, outline: "none", minWidth: 220 }} />
+                    borderRadius: 8, padding: "5px 9px", fontSize: 12, outline: "none", width: 210 }} />
                 <select value={nueva.empresaId}
                   onChange={e => setNueva({ ...nueva, empresaId: e.target.value })}
-                  className="btn btn-ghost" style={{ fontSize: 12, maxWidth: 260 }}>
-                  <option value="">— ¿de qué empresa es? —</option>
+                  className="btn btn-ghost" style={{ fontSize: 12, maxWidth: 230 }}>
+                  <option value="">— ¿de qué empresa? —</option>
                   {empresas.map(e => (
                     <option key={e.id} value={e.id}>{e.vivas > 0 ? "● " : "○ "}{e.nombre}</option>
                   ))}
                 </select>
-                <button type="button" className="btn" style={{ fontSize: 12, padding: "6px 12px" }}
+                <button type="button" className="btn" style={{ fontSize: 12, padding: "5px 11px" }}
                   disabled={pend || !nueva.correo.trim() || !nueva.empresaId}
-                  onClick={darDeAlta}>
+                  onClick={darDeAlta}
+                  title="Queda como credencial de Gmail de esa empresa — la misma que se ve en su ficha.">
                   ＋ dar de alta
                 </button>
-                <span style={{ color: "var(--dim)", fontSize: 11 }}>
-                  Queda como credencial de Gmail de esa empresa — la misma que se ve en su ficha.
-                </span>
               </div>
 
-              {inventario.map(c => {
-                const d = diasDesde(c.ultimo);
-                return (
-                  <div key={c.correo} className="card"
-                    style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap", fontSize: 12 }}>
-                    <span style={{ fontWeight: 600, minWidth: 230 }}>{c.correo}</span>
-                    <Link href={`/entidad/empresa/${c.empresaId}`} style={{ color: "var(--dim)", fontSize: 11.5 }}>
-                      🏢 {c.empresa || "empresa sin nombre"}
-                    </Link>
-                    <span style={{ color: "var(--dim)", fontSize: 11 }}>
-                      {c.vivas === 0 ? "sin postulaciones vivas"
-                        : `${c.vivas} postulación${c.vivas === 1 ? "" : "es"} viva${c.vivas === 1 ? "" : "s"}`}
-                    </span>
-                    <span className="spacer" style={{ flex: 1 }} />
-                    {c.esBuzon ? (
-                      /* «Registrada» no es «funcionando»: el maestro se descarta
-                         al deducir de quién era un correo. Sin este aviso, verlo
-                         en la lista invita a la conclusión contraria. */
-                      <span style={{ color: "var(--dim)", fontSize: 11 }}
-                        title="Es el buzón maestro. La ingesta lo descarta al deducir de quién era el correo, porque el reenvío lo agrega a todos los destinatarios.">
-                        📮 buzón maestro · no deduce empresa
-                      </span>
-                    ) : c.total === 0 ? (
-                      <span style={{ color: "var(--yellow)", fontSize: 11.5 }}
-                        title="Ningún correo ha entrado por esta cuenta. Si ya postuló, lo más probable es que le falte activar el reenvío al buzón maestro.">
-                        ⚠ nunca trajo nada — ¿reenvío sin activar?
-                      </span>
-                    ) : (
-                      <span style={{ color: "var(--teal)", fontSize: 11.5 }}>
-                        {c.total} correo{c.total === 1 ? "" : "s"} · último {d === 0 ? "hoy" : `hace ${d} d`}
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
+              {/* ── LA LISTA PARA EL FILTRO DE GMAIL ──
+                  El único paso del montaje que vive fuera de CrewHub+: el filtro
+                  del buzón maestro etiqueta por destinatario, y esa lista hay que
+                  mantenerla a mano en Gmail. Transcribir veinte correos es
+                  exactamente la tarea donde se pierde uno — y perder uno no
+                  produce ningún error: esa cuenta simplemente deja de traer
+                  correo para siempre.
+                  Así que la lista la escribe la base, ya con los « OR » puestos,
+                  y siempre está al día. El maestro se excluye: filtrar por él
+                  metería en la casilla todo lo que llega a esa cuenta. */}
+              {paraFiltro && (
+                <div style={{ color: "var(--dim)", fontSize: 11, margin: "0 0 10px",
+                  display: "flex", gap: 6, alignItems: "baseline", flexWrap: "wrap" }}>
+                  <Copiar valor={paraFiltro} etiqueta="la lista de cuentas">
+                    ⧉ copiar para el filtro de Gmail
+                  </Copiar>
+                  <span>
+                    → maestro → ⚙ Filtros → Crear un filtro → pegar en <b>Para:</b> → etiqueta «DAFO».
+                    Al alta de una cuenta nueva hay que rehacer ese filtro.
+                  </span>
+                </div>
+              )}
+
+              <table className="cas-tabla">
+                <colgroup>
+                  <col style={{ width: 250 }} /><col />
+                  <col style={{ width: 60 }} /><col style={{ width: 290 }} />
+                  <col style={{ width: 34 }} />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>Cuenta</th>
+                    <th>Empresa</th>
+                    <th className="cas-num">Vivas</th>
+                    <th>Estado</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {inventario.map(c => {
+                    const d = diasDesde(c.ultimo);
+                    return (
+                      <tr key={c.correo} className={c.total === 0 && !c.esBuzon ? "cas-falta" : undefined}>
+                        <td style={{ color: "var(--text)", fontWeight: 600 }} title={c.correo}>{c.correo}</td>
+                        <td title={c.empresa || undefined}>
+                          <Link href={`/entidad/empresa/${c.empresaId}`} style={{ color: "var(--muted)" }}>
+                            🏢 {c.empresa || "sin nombre"}
+                          </Link>
+                        </td>
+                        <td className="cas-num" style={{ color: c.vivas ? "var(--muted)" : "var(--dim)" }}>
+                          {c.vivas || "—"}
+                        </td>
+                        <td style={{ fontSize: 11.5 }}>
+                          {c.esBuzon ? (
+                            /* «Registrada» no es «funcionando»: el maestro se
+                               descarta al deducir de quién era un correo. Sin
+                               este aviso, verlo en la lista invita a la
+                               conclusión contraria. */
+                            <span style={{ color: "var(--dim)" }}
+                              title="Es el buzón maestro. La ingesta lo descarta al deducir de quién era el correo, porque el reenvío lo agrega a todos los destinatarios.">
+                              📮 buzón maestro · no deduce empresa
+                            </span>
+                          ) : c.total === 0 ? (
+                            <span style={{ color: "var(--yellow)" }}
+                              title="Ningún correo ha entrado por esta cuenta. Si ya postuló, lo más probable es que le falte activar el reenvío al buzón maestro.">
+                              ⚠ nunca trajo nada — ¿reenvío sin activar?
+                            </span>
+                          ) : (
+                            <button type="button" onClick={() => irAlCorreo(c.ultimoId!)}
+                              title="Ir al último correo que entró por esta cuenta"
+                              style={{ background: "none", border: "none", padding: 0, cursor: "pointer",
+                                font: "inherit", fontSize: 11.5, color: "var(--teal)" }}>
+                              {c.total} correo{c.total === 1 ? "" : "s"} · último {d === 0 ? "hoy" : `hace ${d} d`}
+                            </button>
+                          )}
+                        </td>
+                        <td className="cas-x">
+                          <button type="button" className="pre-x" disabled={pend}
+                            title={`Quitar ${c.correo} de ${c.empresa || "su empresa"}`}
+                            onClick={() => quitar(c)}>✕</button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </div>

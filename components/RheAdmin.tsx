@@ -1,28 +1,42 @@
 "use client";
-import { guardarRhe, borrarRhe } from "@/app/actions";
+import { guardarRhe, borrarRhe, enlazarRheALiquidacion } from "@/app/actions";
 import MiniSelect from "@/components/MiniSelect";
 import { estado4ta, money } from "@/lib/cuarta";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
 import { hoyLima } from "@/lib/fechas";
+import { VIAS_GIRO, rotuloGiro } from "@/lib/pagos";
 
 const fmt = (f: string) =>
   new Date(f + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short" });
 
+const MES_CORTO = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "set", "oct", "nov", "dic"];
+
 type Persona = { id: string; nombre: string; suspension_4ta_anio: number | null };
-type Fila = { id: string; persona_id: string; numero: string | null; fecha: string; monto: number; retencion: number; concepto: string | null; proyecto_id: string | null; url: string | null };
+type Fila = { id: string; persona_id: string; numero: string | null; fecha: string; monto: number; retencion: number; concepto: string | null; proyecto_id: string | null; url: string | null; liquidacion_id: string | null; girado_por: string | null };
+type Liq = { id: string; persona_id: string; anio: number; mes: number; estado: string | null; cerrado_en: string | null };
 
 /* Registro de RHE del año + vigilancia del tope de 4ta por persona. */
-export default function RheAdmin({ anio, personas, proyectos, rhes }: {
+export default function RheAdmin({ anio, personas, proyectos, rhes, liquidaciones, pre }: {
   anio: number;
   personas: Persona[];
   proyectos: { id: string; nombre: string }[];
   rhes: Fila[];
+  liquidaciones: Liq[];
+  /* Lo que trae quien llega desde «＋ registrar el recibo» del panel de
+     liquidación: persona, mes que se paga e importe. */
+  pre?: { personaId: string; liquidacionId: string; monto: string } | null;
 }) {
-  const vacio = { id: null as string | null, personaId: "", numero: "", fecha: hoyLima(), monto: "", retencion: "", concepto: "", proyectoId: "", url: "" };
-  const [f, setF] = useState(vacio);
-  const [abierto, setAbierto] = useState(false);
+  const vacio = { id: null as string | null, personaId: "", numero: "", fecha: hoyLima(), monto: "", retencion: "", concepto: "", proyectoId: "", url: "", liquidacionId: "", giradoPor: "" };
+  /* Si venimos con datos, el formulario arranca abierto y relleno. En el
+     `useState` inicial y no en un efecto: montarlo vacío y llenarlo después
+     hace parpadear el formulario y, peor, pisaría lo que el usuario ya
+     empezara a escribir en ese primer instante. */
+  const [f, setF] = useState(pre
+    ? { ...vacio, personaId: pre.personaId, monto: pre.monto, liquidacionId: pre.liquidacionId }
+    : vacio);
+  const [abierto, setAbierto] = useState(!!pre);
   const [error, setError] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const [borrando, setBorrando] = useState<string | null>(null);
@@ -31,6 +45,22 @@ export default function RheAdmin({ anio, personas, proyectos, rhes }: {
   const set = (k: string, v: string) => setF({ ...f, [k]: v });
   const nombreDe = new Map(personas.map(p => [p.id, p.nombre]));
   const proyDe = new Map(proyectos.map(p => [p.id, p.nombre]));
+
+  /* Los meses liquidados de cada persona, para el selector. Solo los
+     LIQUIDADOS: un mes que todavía se está viviendo no tiene nada que pagar, y
+     ofrecerlo invita a atar el recibo a un total que aún va a cambiar. */
+  const liqPorPersona = new Map<string, Liq[]>();
+  liquidaciones.filter(l => l.estado === "liquidado").forEach(l => {
+    const xs = liqPorPersona.get(l.persona_id) || [];
+    xs.push(l); liqPorPersona.set(l.persona_id, xs);
+  });
+
+  const enlazar = async (r: Fila, liqId: string) => {
+    setOcupado(true);
+    const res: any = await enlazarRheALiquidacion(r.id, liqId || null);
+    setOcupado(false);
+    if (res?.error) setError(res.error); else router.refresh();
+  };
 
   // Acumulado del año por persona: la cuenta que nadie estaba llevando
   const acum = new Map<string, number>();
@@ -58,6 +88,8 @@ export default function RheAdmin({ anio, personas, proyectos, rhes }: {
       id: r.id, personaId: r.persona_id, numero: r.numero || "", fecha: r.fecha,
       monto: String(r.monto), retencion: String(r.retencion || ""), concepto: r.concepto || "",
       proyectoId: r.proyecto_id || "", url: r.url || "",
+      liquidacionId: r.liquidacion_id || "",
+      giradoPor: r.girado_por || "",
     });
     setAbierto(true);
   };
@@ -142,6 +174,32 @@ export default function RheAdmin({ anio, personas, proyectos, rhes }: {
               <span>Retención (S/)</span>
               <input value={f.retencion} onChange={e => set("retencion", e.target.value)} placeholder="0 si tiene suspensión" style={inp} />
             </div>
+            {/* El mes que este recibo paga, en el formulario y no solo en la
+                lista: se elige mientras se está registrando, que es cuando se
+                sabe. Atarlo después obliga a acordarse, y lo que hay que
+                acordarse no se hace — el expediente de ese mes se queda «sin
+                recibo» con su recibo delante. */}
+            {/* Quién lo giró materialmente. No es una etiqueta descriptiva:
+                decide a quién se le reclama cuando el recibo falta, y de quién
+                es la responsabilidad del tope de 4ta. En los «delegado» somos
+                los únicos que podemos ver venir la ruptura de la suspensión
+                —la clave SOL la tenemos nosotros—; en los «propio» lo único
+                que se puede hacer es avisar. */}
+            <div className="f-campo">
+              <span>Quién lo giró</span>
+              <MiniSelect block value={f.giradoPor} onSelect={v => set("giradoPor", v)}
+                options={[["", "— sin decir —"], ...VIAS_GIRO]} />
+            </div>
+            <div className="f-campo">
+              <span>Paga el mes de</span>
+              <MiniSelect block value={f.liquidacionId} onSelect={v => set("liquidacionId", v)}
+                options={[
+                  ["", "— ninguno (servicio externo) —"],
+                  ...(liqPorPersona.get(f.personaId) || [])
+                    .filter(l => !l.cerrado_en || l.id === f.liquidacionId)
+                    .map(l => [l.id, `${MES_CORTO[l.mes - 1]} ${l.anio}`] as [string, string]),
+                ]} />
+            </div>
             <div className="f-campo">
               <span>Proyecto</span>
               <MiniSelect block value={f.proyectoId} onSelect={v => set("proyectoId", v)}
@@ -174,6 +232,34 @@ export default function RheAdmin({ anio, personas, proyectos, rhes }: {
               {nombreDe.get(r.persona_id) || "—"}
             </Link>
             {r.numero && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{r.numero}</span>}
+            {/* ── QUÉ MES PAGA ESTE RECIBO ──
+                El eslabón que faltaba entre las dos mitades del pago. Se elige
+                AQUÍ, mientras se registra el recibo y se sabe de cuál era; a los
+                tres meses ya nadie lo recuerda y el expediente de aquel mes se
+                queda «sin recibo» para siempre con el recibo delante.
+                El selector lista TODO el año de esa persona, no el mes en curso:
+                un recibo de octubre puede estar pagando agosto, y limitarlo al
+                mes de la pantalla haría imposible registrarlo bien justo en el
+                caso donde el vínculo más importa. */}
+            <select value={r.liquidacion_id || ""} disabled={ocupado}
+              className="dato-btn" style={{ fontSize: 11, maxWidth: 150 }}
+              title="El mes de jornadas que este recibo paga. Vacío si no viene de jornadas — un servicio externo se gira igual."
+              onChange={e => enlazar(r, e.target.value)}>
+              <option value="">— sin mes —</option>
+              {(liqPorPersona.get(r.persona_id) || []).map(l => (
+                <option key={l.id} value={l.id} disabled={!!l.cerrado_en}>
+                  {MES_CORTO[l.mes - 1]} {l.anio}{l.cerrado_en ? " 🔒" : ""}
+                </option>
+              ))}
+            </select>
+            {/* Quién lo giró. Se ve en la lista y no solo en el formulario
+                porque la pregunta que trae aquí suele ser «¿a quién le pido el
+                recibo que falta?», y esa se contesta mirando la columna, no
+                abriendo cada ficha. */}
+            <span style={{ color: r.girado_por ? "var(--dim)" : "var(--yellow)", fontSize: 11 }}
+              title="Quién giró el recibo en SUNAT">
+              {r.girado_por ? rotuloGiro(r.girado_por) : "¿quién lo giró?"}
+            </span>
             {r.proyecto_id && (
               <span style={{ color: "var(--dim)", fontSize: 11 }}>📁 {proyDe.get(r.proyecto_id)}</span>
             )}

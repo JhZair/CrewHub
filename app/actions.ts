@@ -1531,8 +1531,227 @@ export async function reabrirLiquidacion(personaId: string, anio: number, mes: n
   if (!user) return { error: "Sesión no encontrada." };
   const { data: perfil } = await supabase.from("perfiles").select("es_admin").eq("id", user.id).single();
   if (!perfil?.es_admin) return { error: "Solo un administrador puede reabrir." };
-  await supabase.from("liquidaciones").delete().eq("persona_id", personaId).eq("anio", anio).eq("mes", mes);
+
+  /* Reabrir BORRA la fila, y desde que los recibos cuelgan de ella
+     (db/pagos-expediente.sql) eso arrastra sus vínculos: `on delete set null`
+     deja los RHE en pie —hicieron falta, existen ante SUNAT— pero huérfanos, y
+     nada avisaría de que ese mes perdió su rastro de pago. Se para antes.
+
+     No se resuelve reenlazando solo: quien reabre casi siempre quiere corregir
+     una jornada, no deshacer el pago, y merece enterarse de que lo segundo
+     venía incluido. */
+  const { data: liq } = await supabase.from("liquidaciones")
+    .select("id,cerrado_en").eq("persona_id", personaId).eq("anio", anio).eq("mes", mes).maybeSingle();
+  if (!liq) { revalidatePath("/admin"); revalidatePath("/jornadas"); return {}; }
+  if (liq.cerrado_en) {
+    /* Se nombra el OTRO botón. «Reábrelo primero» como respuesta a pulsar
+       «reabrir» es un círculo: son dos reabrir distintos —el del expediente y
+       el del mes— y quien lee el error está mirando el segundo. */
+    return { error: "Este expediente está cerrado. Quítale el sello con 🔓 antes de corregir el mes." };
+  }
+  const { count } = await supabase.from("rhe")
+    .select("id", { count: "exact", head: true }).eq("liquidacion_id", liq.id);
+  if (count) {
+    return {
+      error: `Hay ${count} recibo${count === 1 ? "" : "s"} enlazado${count === 1 ? "" : "s"} a este mes; al reabrirlo perdería${count === 1 ? "" : "n"} el vínculo con su pago. Desenlázalo${count === 1 ? "" : "s"} primero desde 🧾 RHE.`,
+    };
+  }
+
+  await supabase.from("liquidaciones").delete().eq("id", liq.id);
   revalidatePath("/admin"); revalidatePath("/jornadas");
+  return {};
+}
+
+/* ── EL CIERRE DE UN EXPEDIENTE DE PAGO ──
+ *
+ * «Completo» lo calcula el sistema (lib/pagos.ts): están el recibo, su
+ * comprobante y la salida del dinero. «Cerrado» lo dice una persona: lo miré y
+ * está bien. Son cosas distintas —un expediente puede estar completo y tener
+ * el monto equivocado— y por eso el botón no aparece hasta que está completo,
+ * pero tampoco se pulsa solo cuando lo está.
+ */
+export async function cerrarExpediente(personaId: string, anio: number, mes: number) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: perfil } = await supabase.from("perfiles").select("es_admin").eq("id", user.id).single();
+  if (!perfil?.es_admin) return { error: "Solo un administrador puede cerrar un expediente." };
+
+  /* Se comprueba aquí y no solo en el botón. El botón puede venir de una
+     pantalla que se cargó hace media hora, cuando el expediente sí estaba
+     completo y alguien ha borrado el RHE desde entonces. */
+  const { data: liq } = await supabase.from("liquidaciones")
+    .select("id,estado").eq("persona_id", personaId).eq("anio", anio).eq("mes", mes).maybeSingle();
+  if (!liq) return { error: "Ese mes no está liquidado." };
+  if (liq.estado !== "liquidado") return { error: "Primero hay que liquidar el mes." };
+
+  const { data: rhes } = await supabase.from("rhe")
+    .select("id,url,pagado_en").eq("liquidacion_id", liq.id);
+  if (!rhes?.length) return { error: "No se puede cerrar sin ningún RHE enlazado a este mes." };
+  const sinPdf = rhes.filter((r: any) => !String(r.url || "").trim());
+  if (sinPdf.length) return { error: `Falta el comprobante de ${sinPdf.length} recibo${sinPdf.length === 1 ? "" : "s"}.` };
+
+  const { data: movs } = await supabase.from("movimiento_banco")
+    .select("rhe_id").in("rhe_id", rhes.map((r: any) => r.id));
+  const conBanco = new Set((movs || []).map((m: any) => m.rhe_id));
+  const sinPago = rhes.filter((r: any) => !conBanco.has(r.id) && !r.pagado_en);
+  if (sinPago.length) return { error: `No consta el pago de ${sinPago.length} recibo${sinPago.length === 1 ? "" : "s"}.` };
+
+  const { error } = await supabase.from("liquidaciones")
+    .update({ cerrado_en: new Date().toISOString(), cerrado_por: user.id }).eq("id", liq.id);
+  if (error) return { error: error.message };
+  await supabase.from("actividad").insert({
+    entidad_tipo: "persona", entidad_id: personaId, actor_id: user.id, tipo: "dato",
+    detalle: { mensaje: `cerró el expediente de pago de ${String(mes).padStart(2, "0")}/${anio}` },
+  });
+  revalidatePath("/admin");
+  return {};
+}
+
+/* Reabrir. Existe porque un cierre equivocado no se puede quedar cerrado: es
+   una afirmación de una persona y las personas se equivocan. No borra nada,
+   solo quita el sello. */
+export async function reabrirExpediente(personaId: string, anio: number, mes: number) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: perfil } = await supabase.from("perfiles").select("es_admin").eq("id", user.id).single();
+  if (!perfil?.es_admin) return { error: "Solo un administrador puede reabrir un expediente." };
+
+  /* `.select()` para saber si de verdad se tocó algo. Sin él, un update que no
+     encuentra fila —o que RLS esconde— devolvía éxito y encima dejaba escrito
+     en Actividad «reabrió el expediente» de algo que sigue cerrado. */
+  const { data: tocadas, error } = await supabase.from("liquidaciones")
+    .update({ cerrado_en: null, cerrado_por: null })
+    .eq("persona_id", personaId).eq("anio", anio).eq("mes", mes).select("id");
+  if (error) return { error: error.message };
+  if (!tocadas?.length) return { error: "No se encontró ese expediente para reabrir." };
+  await supabase.from("actividad").insert({
+    entidad_tipo: "persona", entidad_id: personaId, actor_id: user.id, tipo: "dato",
+    detalle: { mensaje: `reabrió el expediente de pago de ${String(mes).padStart(2, "0")}/${anio}` },
+  });
+  revalidatePath("/admin");
+  return {};
+}
+
+/* ── REGISTRAR EL PAGO, CON SU COMPROBANTE ──
+ *
+ * La prueba de que el dinero salió es el documento que Katy ya guarda: la
+ * captura de la transferencia, el voucher del depósito. No la línea del estado
+ * de cuenta — un cheque de gerencia paga a doce personas de golpe y no dice
+ * nada de ninguna en particular (ver db/pagos-expediente.sql, sección 2).
+ *
+ * El comprobante NO es obligatorio, y esa es una decisión: en efectivo puede no
+ * haberlo, y bloquear el registro por un papel que no existe deja el expediente
+ * congelado por ser honesto. Se registra igual y se marca «sin comprobante»,
+ * que dice la verdad en vez de esconderla.
+ */
+export async function registrarPagoRhe(
+  rheId: string, medio: string, url: string, nota: string,
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: perfil } = await supabase.from("perfiles").select("es_admin").eq("id", user.id).single();
+  if (!perfil?.es_admin) return { error: "Solo un administrador registra los pagos." };
+
+  const m = String(medio || "").trim();
+  if (!m) return { error: "Di cómo salió el dinero." };
+  const link = String(url || "").trim();
+  if (link && !/^https?:\/\/\S+$/.test(link)) return { error: "El comprobante debe ser un link completo." };
+  /* Sin comprobante hay que decir algo. Un «pagado» pelado y sin papel no lo
+     puede comprobar nadie dentro de un año, y quien lo puso ya no se acuerda.
+     Con comprobante la nota sobra: el documento habla. */
+  if (!link && String(nota || "").trim().length < 4) {
+    return { error: "Sin comprobante adjunto, di al menos por dónde salió el dinero." };
+  }
+
+  const cerrado = await expedienteCerrado(supabase, rheId);
+  if (cerrado) return cerrado;
+
+  const { data: tocados, error } = await supabase.from("rhe").update({
+    pagado_en: new Date().toISOString(), pagado_por: user.id,
+    pagado_medio: m, pagado_url: link || null, pagado_nota: String(nota || "").trim() || null,
+  }).eq("id", rheId).select("id");
+  if (error) return { error: error.message };
+  if (!tocados?.length) return { error: "No se encontró ese recibo." };
+  revalidatePath("/admin");
+  return {};
+}
+
+/* ── EL SELLO TIENE QUE SELLAR ──
+ * Cerrar un expediente afirma «lo revisé y está bien». Si después se le puede
+ * quitar el comprobante, deshacer el pago o desenlazar el recibo sin reabrirlo,
+ * el sello no afirma nada: describe un momento que ya pasó.
+ *
+ * Vive en una función y no copiado en cada acción porque son cuatro sitios, y
+ * la regla que se escribe cuatro veces se corrige en tres.
+ */
+async function expedienteCerrado(supabase: any, rheId: string): Promise<{ error: string } | null> {
+  const { data: r } = await supabase.from("rhe")
+    .select("liq:liquidaciones(anio,mes,cerrado_en)").eq("id", rheId).maybeSingle();
+  const l = Array.isArray(r?.liq) ? r.liq[0] : r?.liq;
+  if (!l?.cerrado_en) return null;
+  return {
+    error: `Este recibo pertenece al expediente cerrado de ${String(l.mes).padStart(2, "0")}/${l.anio}. Ábrelo con 🔓 antes de tocarlo.`,
+  };
+}
+
+export async function deshacerPagoRhe(rheId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: perfil } = await supabase.from("perfiles").select("es_admin").eq("id", user.id).single();
+  if (!perfil?.es_admin) return { error: "Solo un administrador puede deshacerlo." };
+  const cerrado = await expedienteCerrado(supabase, rheId);
+  if (cerrado) return cerrado;
+  const { data: tocados, error } = await supabase.from("rhe")
+    .update({
+      pagado_en: null, pagado_por: null, pagado_nota: null,
+      pagado_url: null, pagado_medio: null,
+    }).eq("id", rheId).select("id");
+  if (error) return { error: error.message };
+  if (!tocados?.length) return { error: "No se encontró ese recibo." };
+  revalidatePath("/admin");
+  return {};
+}
+
+/* Atar un recibo a la persona-mes que paga. Es el eslabón que faltaba, y se
+   hace desde el panel de RHE porque es ahí donde se registra el recibo — con
+   el mes delante, mientras se sabe de cuál era. */
+export async function enlazarRheALiquidacion(rheId: string, liquidacionId: string | null) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: perfil } = await supabase.from("perfiles").select("es_admin").eq("id", user.id).single();
+  if (!perfil?.es_admin) return { error: "Solo un administrador puede enlazar un recibo a un mes." };
+
+  /* Desenlazar de un expediente cerrado lo vaciaría de pruebas dejándole el
+     sello puesto: 🔒 «revisado y terminado» encima de cero recibos. Se mira el
+     estado ACTUAL del recibo, no el destino. */
+  const cerrado = await expedienteCerrado(supabase, rheId);
+  if (cerrado) return cerrado;
+
+  if (liquidacionId) {
+    /* Que el recibo y el mes sean de la MISMA persona. La pantalla solo ofrece
+       los meses de esa persona, así que esto no se puede tocar desde la UI —
+       pero una acción de servidor es una puerta abierta a la base, y el día que
+       otra pantalla la llame con otros argumentos, un recibo de Ana pagando el
+       mes de Luis no daría ningún error: cuadraría mal en silencio. */
+    const [{ data: r }, { data: l }] = await Promise.all([
+      supabase.from("rhe").select("persona_id").eq("id", rheId).maybeSingle(),
+      supabase.from("liquidaciones").select("persona_id,cerrado_en").eq("id", liquidacionId).maybeSingle(),
+    ]);
+    if (!r || !l) return { error: "No se encontró el recibo o el mes." };
+    if (r.persona_id !== l.persona_id) return { error: "Ese mes es de otra persona." };
+    if (l.cerrado_en) return { error: "Ese expediente está cerrado. Ábrelo con 🔓 antes de enlazarle un recibo." };
+  }
+
+  const { data: tocados, error } = await supabase.from("rhe")
+    .update({ liquidacion_id: liquidacionId || null }).eq("id", rheId).select("id");
+  if (error) return { error: error.message };
+  if (!tocados?.length) return { error: "No se encontró ese recibo." };
+  revalidatePath("/admin");
   return {};
 }
 
@@ -1550,6 +1769,194 @@ export async function editarTarifa(
   return {};
 }
 
+/* Un importe escrito por una persona. En es-PE el separador decimal es la
+ * COMA y el de miles el punto, justo al revés que en el número que espera
+ * `parseFloat`. Se normaliza en un solo sitio para que no vuelva a haber dos
+ * criterios en el mismo archivo. */
+function montoDe(v: string | number | null | undefined): number {
+  const s = String(v ?? "").trim();
+  if (!s) return 0;
+  /* Si hay coma, ELLA es el decimal y los puntos son miles: «1.234,50».
+     Si no la hay, el punto es el decimal: «1234.50». */
+  const limpio = s.includes(",")
+    ? s.replace(/\./g, "").replace(",", ".")
+    : s;
+  const n = parseFloat(limpio.replace(/[^\d.-]/g, ""));
+  return Number.isFinite(n) ? n : 0;
+}
+
+/* ── GASTOS CON DECLARACIÓN JURADA ──
+ *
+ * Lo que se paga en la puna sin comprobante y se declara al volver. DAFO lo
+ * acepta topeado a un % del estímulo, y pasarse obliga a devolver el exceso
+ * (acta, cláusula 6.9) — así que estas tres funciones sostienen el número más
+ * caro de equivocar del sistema. Ver db/declaraciones-juradas.sql y lib/dj.ts.
+ */
+export async function guardarGastoDj(f: {
+  id?: string | null; postulacionId: string;
+  descripcion: string; importe: string;
+  fecha: string; fechaHasta?: string;
+  lugarOrigen?: string; lugarDestino?: string;
+  etapa?: string; rubroItem?: string;
+  djNumero?: string; djUrl?: string; firmadaPor?: string;
+}) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: perfil } = await supabase.from("perfiles").select("es_admin,es_finanzas").eq("id", user.id).maybeSingle();
+  if (!perfil?.es_admin && !perfil?.es_finanzas) {
+    return { error: "Solo administración registra los gastos con declaración jurada." };
+  }
+
+  const desc = String(f.descripcion || "").trim();
+  if (!desc) return { error: "Di qué se pagó: es la descripción que va en la DJ." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(f.fecha)) return { error: "Pon la fecha del gasto." };
+  const hasta = String(f.fechaHasta || "").trim();
+  if (hasta && !/^\d{4}-\d{2}-\d{2}$/.test(hasta)) return { error: "La fecha final no es válida." };
+  /* Un rango al revés no da error en ningún sitio y sale impreso en la DJ como
+     «del 9 al 3 de agosto». Lo ve DAFO, no nosotros. */
+  if (hasta && hasta < f.fecha) return { error: "La fecha final es anterior a la inicial." };
+
+  /* La coma decimal, y no es un detalle de formato: con `replace(/[^\d.]/g,"")`
+     un «1234,50» perdía la coma y se guardaba como 123450 — cien veces más, en
+     el único número del sistema cuyo exceso obliga a devolver plata. El teclado
+     es-PE ofrece coma, así que el caso no es raro: es el normal. */
+  const importe = montoDe(f.importe);
+  if (importe <= 0) return { error: "El importe debe ser mayor que cero." };
+
+  const fila = {
+    postulacion_id: f.postulacionId,
+    descripcion: desc,
+    importe,
+    fecha: f.fecha,
+    fecha_hasta: hasta || null,
+    lugar_origen: String(f.lugarOrigen || "").trim() || null,
+    lugar_destino: String(f.lugarDestino || "").trim() || null,
+    etapa: f.etapa || null,
+    rubro_item: f.rubroItem || null,
+    dj_numero: String(f.djNumero || "").trim() || null,
+    dj_url: String(f.djUrl || "").trim() || null,
+    firmada_por: f.firmadaPor || null,
+  };
+
+  /* Al editar NO se reescribe `postulacion_id`, y además se acota por él. Sin
+     las dos cosas, un id ajeno movería el gasto de un fondo a otro y
+     descuadraría dos saldos de una vez — el de origen sube y el de destino
+     baja, y ninguno de los dos avisa. */
+  const { postulacion_id, ...sinFondo } = fila;
+  const { data: guardado, error } = f.id
+    ? await supabase.from("gasto_dj").update(sinFondo)
+        .eq("id", f.id).eq("postulacion_id", f.postulacionId).select("id")
+    : await supabase.from("gasto_dj").insert({ ...fila, creado_por: user.id }).select("id");
+  if (error) {
+    /* Por CÓDIGO y no por el texto: `42P01` es «la tabla no existe» y nada
+       más. Buscar «gasto_dj» en el mensaje capturaba también el check del
+       importe y el rechazo de RLS, y a los tres se les contestaba «falta correr
+       el SQL» — mandando a arreglar algo que ya estaba bien. */
+    return {
+      error: (error as any).code === "42P01"
+        ? "Falta correr db/declaraciones-juradas.sql en Supabase."
+        : error.message,
+    };
+  }
+  if (!guardado?.length) return { error: "No se guardó nada. Revisa tus permisos." };
+
+  await supabase.from("actividad").insert({
+    entidad_tipo: "postulacion", entidad_id: f.postulacionId, actor_id: user.id, tipo: "dato",
+    detalle: { mensaje: `${f.id ? "corrigió" : "registró"} un gasto con DJ de S/ ${importe.toLocaleString("es-PE")} — ${desc.slice(0, 80)}` },
+  });
+  revalidatePath(`/fondo/${f.postulacionId}`);
+  return {};
+}
+
+export async function borrarGastoDj(id: string, postulacionId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: perfil } = await supabase.from("perfiles").select("es_admin,es_finanzas").eq("id", user.id).maybeSingle();
+  if (!perfil?.es_admin && !perfil?.es_finanzas) return { error: "Solo administración puede borrarlo." };
+
+  const { data: prev } = await supabase.from("gasto_dj").select("importe,descripcion").eq("id", id).maybeSingle();
+  const { data: borrados, error } = await supabase.from("gasto_dj").delete().eq("id", id).select("id");
+  if (error) return { error: error.message };
+  if (!borrados?.length) return { error: "No se borró nada. Revisa tus permisos." };
+
+  await supabase.from("actividad").insert({
+    entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "dato",
+    detalle: { mensaje: `borró un gasto con DJ de S/ ${Number(prev?.importe || 0).toLocaleString("es-PE")} — ${String(prev?.descripcion || "").slice(0, 80)}` },
+  });
+  revalidatePath(`/fondo/${postulacionId}`);
+  return {};
+}
+
+/* El tope que dice el acta de ESTA postulación, cuando difiere del de las
+ * bases. Se guarda aparte del de la convocatoria porque lo que obliga es lo
+ * firmado, y porque un fondo con acta distinta no debería obligar a cambiar la
+ * regla del concurso entero para el resto. */
+export async function fijarTopeDj(postulacionId: string, pct: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: perfil } = await supabase.from("perfiles").select("es_admin,es_finanzas").eq("id", user.id).maybeSingle();
+  if (!perfil?.es_admin && !perfil?.es_finanzas) return { error: "Solo administración puede fijar el tope." };
+
+  const limpio = String(pct || "").trim();
+  const n = limpio ? montoDe(limpio) : null;
+  /* Se admite el CERO. Un concurso que no acepta declaraciones juradas es un
+     caso real, y sin poder decirlo el sistema caería al tope de las bases y
+     mostraría un margen que no existe — el error que acaba en devolver plata.
+     Vacío sigue queriendo decir «usa el de las bases»; cero dice «ninguna». */
+  if (limpio && (!Number.isFinite(n as number) || (n as number) < 0 || (n as number) > 100)) {
+    return { error: "El tope es un porcentaje entre 0 y 100." };
+  }
+
+  const { data: tocadas, error } = await supabase.from("postulaciones")
+    .update({ tope_dj_pct: n }).eq("id", postulacionId).select("id");
+  if (error) {
+    return {
+      error: (error as any).code === "42703"   // columna inexistente
+        ? "Falta correr db/declaraciones-juradas.sql en Supabase."
+        : error.message,
+    };
+  }
+  /* Sin esto, un id que no existe o un rechazo de RLS devolvían éxito y encima
+     dejaban escrito en Actividad «fijó el tope en 10%» de un tope que sigue
+     vacío. Es el mismo cinturón que llevan las otras acciones de esta tanda. */
+  if (!tocadas?.length) return { error: "No se encontró esa postulación." };
+  await supabase.from("actividad").insert({
+    entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "dato",
+    detalle: { mensaje: n ? `fijó el tope de DJ de este fondo en ${n}% (lo que dice su acta)` : "quitó el tope de DJ propio: vuelve a mandar el de las bases" },
+  });
+  revalidatePath(`/fondo/${postulacionId}`);
+  return {};
+}
+
+/* ── ¿PUEDE ESTA PERSONA ESCRIBIR ESTE RHE? ──
+ *
+ * Tres puertas, las mismas que la RLS (db/rhe-permisos.sql): admin, finanzas, o
+ * que el recibo sea SUYO. Las reglas viven en la base —ahí es donde no se
+ * pueden saltar— y esto las repite arriba por una sola razón: cuando RLS
+ * rechaza una escritura no da un error explicativo, devuelve cero filas. El
+ * mensaje útil («esto no es tuyo») solo se puede dar desde aquí.
+ *
+ * Devuelve el error cuando NO puede, y null cuando sí. Al revés se leería mejor
+ * en la firma y peor en el sitio de uso, donde lo que se quiere escribir es
+ * `if (no puede) return el error`.
+ */
+async function puedeEscribirRhe(
+  supabase: any, userId: string, personaId: string,
+): Promise<{ error: string } | null> {
+  const [{ data: perfil }, { data: mia }] = await Promise.all([
+    supabase.from("perfiles").select("es_admin,es_finanzas").eq("id", userId).maybeSingle(),
+    supabase.from("personas").select("id").eq("id", personaId).eq("usuario_id", userId).maybeSingle(),
+  ]);
+  if (perfil?.es_admin || perfil?.es_finanzas) return null;
+  if (mia) return null;
+  return {
+    error: "Solo puedes registrar los recibos girados a tu nombre. Para los de otra persona, pídeselo a administración.",
+  };
+}
+
 /* --- Recibos por honorarios girados ---
    Los registra administración. Sirven para vigilar el tope de 4ta: si la
    persona lo supera, su suspensión se rompe y hay que retenerle el 8%
@@ -1562,14 +1969,22 @@ export async function guardarRhe(f: {
      se cargan al momento, el control de presupuesto y el informe económico
      salen los dos, gratis; si no, se reconstruyen de memoria dos años después. */
   postulacionId?: string; actividadId?: string; rubroItem?: string; etapa?: string;
+  /* El mes de jornadas que este recibo paga. Se manda al CREARLO, que es el
+     único momento en que alguien lo tiene claro sin pensar: viene de pulsar
+     «registrar el recibo» desde ese mes. Atarlo después, de memoria, es lo que
+     dejaba expedientes «sin recibo» con su recibo delante. */
+  liquidacionId?: string;
+  /* Quién lo giró: oficina | delegado | propio. Ver db/pagos-expediente.sql. */
+  giradoPor?: string;
 }) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
-  const { data: perfil } = await supabase.from("perfiles").select("es_admin").eq("id", user.id).single();
-  if (!perfil?.es_admin) return { error: "Solo administración registra los RHE." };
 
   if (!f.personaId) return { error: "Elige a quién se le giró." };
+
+  const puede = await puedeEscribirRhe(supabase, user.id, f.personaId);
+  if (puede) return puede;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(f.fecha)) return { error: "Fecha inválida." };
   const num = (s: string) => parseFloat(String(s).replace(/[^\d.]/g, "")) || 0;
   const monto = num(f.monto);
@@ -1590,6 +2005,8 @@ export async function guardarRhe(f: {
     ...(f.actividadId !== undefined ? { actividad_id: f.actividadId || null } : {}),
     ...(f.rubroItem !== undefined ? { rubro_item: f.rubroItem || null } : {}),
     ...(f.etapa !== undefined ? { etapa: f.etapa || null } : {}),
+    ...(f.liquidacionId !== undefined ? { liquidacion_id: f.liquidacionId || null } : {}),
+    ...(f.giradoPor !== undefined ? { girado_por: f.giradoPor || null } : {}),
   };
   const { error } = f.id
     ? await supabase.from("rhe").update(fila).eq("id", f.id)
@@ -1784,11 +2201,19 @@ export async function borrarRhe(id: string, personaId: string, postulacionId?: s
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
-  const { data: perfil } = await supabase.from("perfiles").select("es_admin").eq("id", user.id).single();
-  if (!perfil?.es_admin) return { error: "Solo administración puede borrar RHE." };
+  const puede = await puedeEscribirRhe(supabase, user.id, personaId);
+  if (puede) return { error: puede.error.replace("registrar", "borrar") };
+
   const { data: prev } = await supabase.from("rhe").select("monto,numero").eq("id", id).maybeSingle();
-  const { error } = await supabase.from("rhe").delete().eq("id", id);
+  /* `.select()` para distinguir «borrado» de «RLS no dejó y devolvió cero
+     filas». Ahora que escriben más manos, el caso frecuente es el de alguien
+     borrando un recibo suyo que ya está pagado —la política no lo permite— y
+     sin esto se iría con la sensación de haberlo borrado. */
+  const { data: borrados, error } = await supabase.from("rhe").delete().eq("id", id).select("id");
   if (error) return { error: error.message };
+  if (!borrados?.length) {
+    return { error: "No se borró. Un recibo ya pagado o dentro de un expediente cerrado solo lo puede quitar administración." };
+  }
   await supabase.from("actividad").insert({
     entidad_tipo: "persona", entidad_id: personaId, actor_id: user.id, tipo: "dato",
     detalle: { mensaje: `borró el RHE${prev?.numero ? ` ${prev.numero}` : ""} de S/ ${Number(prev?.monto || 0).toLocaleString("es-PE")}` },
@@ -2902,6 +3327,42 @@ export async function registrarCuentaDafo(email: string, empresaId: string) {
   return {};
 }
 
+/* La baja, gemela del alta y por el mismo motivo: la cuenta equivocada se
+ * descubre MIRANDO la casilla —«a esta postulación no le llega por ahí»— y
+ * mandar a buscar la ficha de la empresa desde ahí perdía el hallazgo por el
+ * camino. Borra la credencial, igual que el ✕ de la ficha.
+ *
+ * Se pide el correo además del id, y no por comodidad: es lo que se escribe en
+ * Actividad. «Borró la credencial Gmail» no dice CUÁL, y el día que alguien
+ * quite la buena por error, el rastro tiene que servir para reponerla.
+ */
+export async function quitarCuentaDafo(id: string, empresaId: string, correo: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  /* `.select()` detrás del delete, y no por gusto: cuando RLS no deja borrar
+     una fila NO la rechaza, la esconde. El delete corre contra cero filas
+     visibles, borra cero y la base responde «todo bien». Sin pedir de vuelta lo
+     borrado, esto devolvía éxito y el botón se pintaba como si hubiera
+     funcionado — con la cuenta intacta al recargar. Un fallo que se disfraza de
+     acierto es el peor de todos: nadie lo va a reportar como error. */
+  const { data: borradas, error } = await supabase.from("credenciales")
+    .delete().eq("id", id).select("id");
+  if (error) return { error: error.message };
+  if (!borradas?.length) {
+    return { error: "No se borró nada. Suele faltar la política de borrado: corre db/credenciales-borrar.sql en Supabase." };
+  }
+
+  await supabase.from("actividad").insert({
+    entidad_tipo: "empresa", entidad_id: empresaId, actor_id: user.id, tipo: "dato",
+    detalle: { mensaje: `desconectó la cuenta «${correo}» de la casilla DAFO` },
+  });
+  revalidatePath("/casilla");
+  revalidatePath(`/entidad/empresa/${empresaId}`);
+  return {};
+}
+
 export async function editarCredencial(
   id: string, dueno: string, duenoId: string,
   plataforma: string, identificador: string, ubicacion: string, notas: string,
@@ -2953,8 +3414,14 @@ export async function borrarCredencial(id: string, dueno: string, duenoId: strin
   if (!user) return { error: "Sesión no encontrada." };
   const { data: prev } = await supabase.from("credenciales")
     .select("plataforma").eq("id", id).maybeSingle();
-  const { error } = await supabase.from("credenciales").delete().eq("id", id);
+  /* Mismo cinturón que en quitarCuentaDafo: sin `.select()`, un borrado que RLS
+     no permite se lee como un borrado hecho. Este ✕ tenía el mismo agujero. */
+  const { data: borradas, error } = await supabase.from("credenciales")
+    .delete().eq("id", id).select("id");
   if (error) return { error: error.message };
+  if (!borradas?.length) {
+    return { error: "No se borró nada. Suele faltar la política de borrado: corre db/credenciales-borrar.sql en Supabase." };
+  }
   await supabase.from("actividad").insert({
     entidad_tipo: dueno, entidad_id: duenoId, actor_id: user.id, tipo: "dato",
     detalle: { mensaje: `borró la credencial «${prev?.plataforma || "—"}»` },

@@ -10,6 +10,7 @@ import PlataformasAdmin from "@/components/PlataformasAdmin";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import { buscadorDe, pal } from "@/lib/buscar";
 import { estado4ta } from "@/lib/cuarta";
+import { etapaLiquidacion, diasParado, atascada, pagoDe } from "@/lib/pagos";
 import { ejecutando, rendicionVencida, SEL_FONDO } from "@/lib/fondos";
 import { haceOEn } from "@/lib/fechas";
 import { ICO_ENT, rutaEntidad, tipoCanonico } from "@/lib/secciones";
@@ -67,7 +68,17 @@ function Leyenda({ col, n, txt, total }: { col: string; n: number; txt: string; 
   );
 }
 
-export default async function Admin({ searchParams }: { searchParams: { lm?: string; s?: string; fd?: string; qd?: string; jm?: string } }) {
+export default async function Admin({ searchParams }: {
+  searchParams: {
+    lm?: string; s?: string; fd?: string; qd?: string; jm?: string;
+    /* De dónde viene el «＋ registrar el recibo» de la liquidación: quién,
+       qué mes paga y por cuánto. Van en la URL y no en un estado compartido
+       porque cruzan una pestaña, y una URL además se puede pegar en un
+       mensaje: «regístrale el recibo a Michel». */
+    rhe_de?: string; rhe_liq?: string; rhe_monto?: string;
+    ra?: string;   // año que se está mirando en 🧾 RHE (0 = el actual)
+  };
+}) {
   /* Sección activa. Antes entraba directo a «aprobar jornadas» porque era lo
      más frecuente; ahora abre la portada, que dice si hay jornadas por
      aprobar y además todo lo demás que espera. Entrar a una tarea concreta
@@ -98,8 +109,18 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
   const lInicio = `${lAnio}-${pad(lMes + 1)}-01`;
   const lFin = `${lMes === 11 ? lAnio + 1 : lAnio}-${pad(lMes === 11 ? 1 : lMes + 2)}-01`;
 
+  const anioActual = hoy.getFullYear();
+  /* El año que se está mirando en el panel de RHE. Antes era siempre el actual
+     y eso escondía un fallo callado: el formulario acepta cualquier fecha, así
+     que un recibo de un año pasado se guardaba bien y desaparecía de la lista
+     al instante. El único indicio era su ausencia, que se lee como «no se
+     guardó» — y el segundo intento crea el duplicado. */
+  const raOff = parseInt(searchParams?.ra || "0", 10) || 0;
+  const rAnio = anioActual + raOff;
+
   const [{ data: personas }, { data: cobrables }, { data: rhes }, { data: jornsPend },
-         { data: proyectos }, { data: jornsMes }, { data: liqs }, { data: vivos },
+         { data: proyectos }, { data: jornsMes }, { data: liqs, error: eLiqs }, { data: liqsAnio },
+         { data: vivos },
          { data: plats }, { data: credsPlat }, { data: ganadoras }, { data: activid }] = await Promise.all([
     // `usuario_id`: llave para poner el alias del actor en la actividad reciente
     supabase.from("personas").select("id,nombre,alias,usuario_id,estado,tarifa_dia,tarifa_rodaje,tarifa_noche")
@@ -109,7 +130,7 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
       .in("tipo", ["personal", "colaborador", "colaborador eventual", "independiente"])
       .eq("estado", "activo").order("nombre"),
     supabase.from("rhe").select("*")
-      .gte("fecha", `${new Date().getFullYear()}-01-01`)
+      .gte("fecha", `${rAnio}-01-01`).lt("fecha", `${rAnio + 1}-01-01`)
       .order("fecha", { ascending: false }).limit(400),
     supabase.from("jornadas")
       .select("id,persona_id,fecha,proyecto_id,tipo,fraccion,noche,monto,aprobada,per:personas(nombre,alias),proy:proyectos(nombre)")
@@ -123,7 +144,24 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
        es pedirle a alguien que confíe en un total. */
     supabase.from("jornadas").select("id,persona_id,fecha,tipo,noche,fraccion,monto,aprobada,per:personas(nombre,alias),proy:proyectos(nombre)")
       .gte("fecha", lInicio).lt("fecha", lFin).order("fecha", { ascending: false }).limit(3000),
-    supabase.from("liquidaciones").select("persona_id,estado").eq("anio", lAnio).eq("mes", lMes + 1),
+    /* `id` y las dos fechas, no solo el estado: desde que el expediente de
+       pago se deduce (lib/pagos.ts), el `id` es por donde cuelgan sus recibos
+       y las fechas son las que dicen si está atascado o cerrado. */
+    supabase.from("liquidaciones").select("id,persona_id,estado,liquidado_en,cerrado_en")
+      .eq("anio", lAnio).eq("mes", lMes + 1),
+    /* Todas las liquidaciones del año, para el selector «¿qué mes paga este
+       recibo?» del panel de RHE. Van aparte de las de arriba porque aquello es
+       un mes y esto es el año entero: un recibo de octubre puede estar pagando
+       agosto, y forzarlo al mes en pantalla habría hecho imposible registrarlo
+       bien justo en el caso en que el vínculo más importa. */
+    /* Este año y el pasado. Con solo el actual había un callejón de calendario:
+       el mes se liquida a principios del siguiente, así que el recibo que paga
+       DICIEMBRE lleva fecha de enero — y en enero, diciembre ya no estaba en la
+       lista. Ese mes no se podía enlazar nunca, y sin recibo enlazado tampoco
+       se podía cerrar: quedaba «sin recibo» para siempre, con su recibo
+       delante. */
+    supabase.from("liquidaciones").select("id,persona_id,anio,mes,estado,cerrado_en")
+      .gte("anio", rAnio - 1).lte("anio", rAnio).order("anio").order("mes"),
     // Las puertas del sistema + qué credenciales entran por cada una.
     // `puertas` son las entradas adicionales: Clave SOL es una cuenta con
     // tres sitios distintos, y con un solo `url` entraba uno.
@@ -206,6 +244,48 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
      que no se revise. */
   const porAprobar = (jornsPend || []);
 
+  /* ── EL EXPEDIENTE DE PAGO, DEDUCIDO ──
+     Va en dos pasos y no en el Promise.all de arriba porque depende de él: sin
+     los ids de las liquidaciones del mes no se sabe qué recibos pedir. Son dos
+     idas más a la base y solo cuando hay algo liquidado.
+
+     Ninguna de estas consultas guarda un estado: traen los HECHOS —qué recibos
+     cuelgan de cada mes, cuáles tienen respaldo en el estado de cuenta— y la
+     etapa la calcula lib/pagos.ts a partir de ellos. Por eso no puede quedarse
+     vieja: no hay nada que actualizar. */
+  /* Si esa consulta falla, `liqs` viene null y TODO mes liquidado se pinta como
+     «— abierto» con su botón de liquidar: el panel invitaría a rehacer lo ya
+     hecho. La causa casi siempre es la misma —falta correr
+     db/pagos-expediente.sql, y PostgREST rechaza la consulta entera por una
+     columna que no existe—, así que se dice, en vez de dejar que el silencio
+     se lea como «no hay nada liquidado». */
+  const avisoLiq = eLiqs
+    ? (/cerrado_en|liquidado_en/.test(eLiqs.message)
+        ? "Falta correr db/pagos-expediente.sql en Supabase: hasta entonces el estado de las liquidaciones no se puede leer."
+        : `No se pudo leer el estado de las liquidaciones: ${eLiqs.message}`)
+    : null;
+
+  const liqIds = (liqs || []).map((l: any) => l.id).filter(Boolean);
+  let rhesDelMes: any[] = [];
+  let conMovimiento = new Set<string>();
+  if (liqIds.length) {
+    const { data: rl } = await supabase.from("rhe")
+      .select("id,liquidacion_id,numero,url,monto,pagado_en,pagado_nota,pagado_url,pagado_medio")
+      .in("liquidacion_id", liqIds);
+    rhesDelMes = rl || [];
+    if (rhesDelMes.length) {
+      const { data: mv } = await supabase.from("movimiento_banco")
+        .select("rhe_id").in("rhe_id", rhesDelMes.map(r => r.id));
+      conMovimiento = new Set((mv || []).map((m: any) => m.rhe_id).filter(Boolean));
+    }
+  }
+  const rhesDeLiq = new Map<string, any[]>();
+  rhesDelMes.forEach(r => {
+    const l = rhesDeLiq.get(r.liquidacion_id) || [];
+    l.push(r); rhesDeLiq.set(r.liquidacion_id, l);
+  });
+
+  const liqDe = new Map((liqs || []).map((l: any) => [l.persona_id, l]));
   const estadoDe = new Map((liqs || []).map((l: any) => [l.persona_id, l.estado]));
   const agg = new Map<string, { nombre: string; dias: number; pend: number; monto: number }>();
   (jornsMes || []).forEach((j: any) => {
@@ -230,17 +310,47 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
     detalleLiq.set(j.persona_id, l);
   });
   const filasLiq = [...agg.entries()]
-    .map(([personaId, a]) => ({
-      personaId, nombre: a.nombre, dias: a.dias, pend: a.pend, monto: a.monto,
-      estado: estadoDe.get(personaId) || null,
-      items: detalleLiq.get(personaId) || [],
-    }))
+    .map(([personaId, a]) => {
+      const liq = liqDe.get(personaId) || null;
+      const rs = (liq ? rhesDeLiq.get(liq.id) : null) || [];
+      const etapa = etapaLiquidacion(liq, rs, conMovimiento);
+      return {
+        personaId, nombre: a.nombre, dias: a.dias, pend: a.pend, monto: a.monto,
+        estado: estadoDe.get(personaId) || null,
+        items: detalleLiq.get(personaId) || [],
+        liquidacionId: (liq?.id as string) || null,
+        etapa,
+        /* Los días se cuentan desde que se liquidó, no desde el fin del mes:
+           lo que se mide es cuánto lleva parado el expediente en nuestras
+           manos, no cuánto hace del trabajo. */
+        dias_parado: diasParado(liq),
+        atascada: atascada(liq, etapa),
+        recibos: rs.map((r: any) => ({
+          id: r.id, numero: r.numero, url: r.url, monto: Number(r.monto || 0),
+          pago: pagoDe(r, conMovimiento), nota: r.pagado_nota as string | null,
+          pagadoUrl: (r.pagado_url as string) || null,
+          medio: (r.pagado_medio as string) || null,
+        })),
+      };
+    })
     .sort((x, y) => x.nombre.localeCompare(y.nombre));
 
-  // Cuántos rozan o pasaron el tope de 4ta: eso es lo que pide atención
-  const anioHoy = new Date().getFullYear();
+  /* Cuántos rozan o pasaron el tope de 4ta: eso es lo que pide atención.
+     SIEMPRE del año en curso, aunque el panel esté mirando 2024. El tope es
+     anual y el que puede romperse hoy es el de este año; un contador que
+     cambiara al navegar hacia atrás diría «0 personas cerca del tope» con dos
+     a punto de pasarlo — la alarma se apagaría por mirar otra cosa.
+     Cuando ya estamos en el año actual se reusa lo cargado; solo se pide otra
+     vez cuando el panel se fue a otro año. */
+  const anioHoy = anioActual;
+  let rhesDelAnioHoy: any[] = rhes || [];
+  if (rAnio !== anioHoy) {
+    const { data } = await supabase.from("rhe").select("persona_id,monto")
+      .gte("fecha", `${anioHoy}-01-01`).lt("fecha", `${anioHoy + 1}-01-01`).limit(2000);
+    rhesDelAnioHoy = data || [];
+  }
   const acum4ta = new Map<string, number>();
-  (rhes || []).forEach((r: any) => acum4ta.set(r.persona_id, (acum4ta.get(r.persona_id) || 0) + Number(r.monto || 0)));
+  rhesDelAnioHoy.forEach((r: any) => acum4ta.set(r.persona_id, (acum4ta.get(r.persona_id) || 0) + Number(r.monto || 0)));
   const nCerca = [...acum4ta.values()].filter(v => {
     const e = estado4ta(v, anioHoy);
     return e.cerca || e.supero;
@@ -730,8 +840,12 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
             {lmOff !== 0 && <Link href="/admin?s=liquidar" className="vtab">actual</Link>}
             {lmOff < 0 && <Link href={`/admin?s=liquidar&lm=${lmOff + 1}`} className="vtab">siguiente ›</Link>}
           </div>
+          {avisoLiq && (
+            <div className="empty" style={{ color: "var(--yellow)", marginBottom: 10 }}>{avisoLiq}</div>
+          )}
           <p style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 0 }}>
             Liquidar genera el recibo interno (congela lo aprobado) y bloquea el mes de esa persona. Solo se puede si no quedan jornadas por aprobar.
+            Después, el expediente avanza solo: se da por pagado cuando el recibo tiene su comprobante y consta la salida del dinero.
           </p>
           <LiquidacionAdmin anio={lAnio} mes={lMes + 1} filas={filasLiq} />
         </>
@@ -739,16 +853,38 @@ export default async function Admin({ searchParams }: { searchParams: { lm?: str
 
       const panelRhe = (
         <>
-          <div className="h4" style={{ marginTop: 0 }}>🧾 RHE y tope de 4ta · {anioHoy}</div>
+          <div className="h4" style={{ marginTop: 0 }}>🧾 RHE y tope de 4ta · {rAnio}</div>
+          {/* Navegador de año. Sin él, un recibo con fecha de un año pasado se
+              guardaba y desaparecía: el formulario acepta cualquier fecha pero
+              la lista solo enseñaba el año en curso, y una fila que se esfuma
+              se lee como «no se guardó». */}
+          <div className="vtabs" style={{ alignItems: "center", marginBottom: 8 }}>
+            <Link href={`/admin?s=rhe&ra=${raOff - 1}`} className="vtab">‹ {rAnio - 1}</Link>
+            {raOff !== 0 && <Link href="/admin?s=rhe" className="vtab">actual</Link>}
+            {raOff < 0 && <Link href={`/admin?s=rhe&ra=${raOff + 1}`} className="vtab">{rAnio + 1} ›</Link>}
+          </div>
+          {raOff !== 0 && (
+            /* El tope es del año en curso y esta lista no lo es. Decirlo evita
+               leer «va por S/ 12,000» como si fuera lo que cuenta hoy. */
+            <div className="empty" style={{ color: "var(--yellow)", marginBottom: 10, fontSize: 12 }}>
+              Estás viendo {rAnio}. El tope de 4ta que corre es el de {anioHoy}.
+            </div>
+          )}
           <p style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 0 }}>
             Los recibos que giramos por cuenta de quienes nos delegan su clave SOL.
             Importan por dos razones: la rendición del fondo, y sobre todo el <b>tope de 4ta</b> —
             si alguien lo supera, su suspensión se rompe y corresponde retenerle el 8%
             por el resto del año. Nadie más se va a dar cuenta.
           </p>
-          <RheAdmin anio={anioHoy}
+          <RheAdmin anio={rAnio}
             personas={(cobrables || []).map((p: any) => ({ id: p.id, nombre: p.alias || p.nombre, suspension_4ta_anio: p.suspension_4ta_anio }))}
-            proyectos={proyectos || []} rhes={(rhes || []) as any} />
+            proyectos={proyectos || []} rhes={(rhes || []) as any}
+            liquidaciones={(liqsAnio || []) as any}
+            pre={searchParams?.rhe_de ? {
+              personaId: searchParams.rhe_de,
+              liquidacionId: searchParams.rhe_liq || "",
+              monto: searchParams.rhe_monto || "",
+            } : null} />
         </>
       );
 
