@@ -61,6 +61,15 @@ export type EqBase = {
 export type KitVista = {
   id: string; nombre: string; uso?: string | null; descripcion?: string | null;
   retirado?: boolean; equipoIds: string[];
+  /* ── LA CARA DEL KIT, ELEGIDA ──
+   * Era «la primera pieza con foto», y las piezas van por folio: el «Kit
+   * Zhiyun Molus G60» salía con la foto de un trípode porque el trípode es la
+   * A-028 y la Molus la A-031.
+   * El orden y la portada son dos preguntas distintas: el orden sirve para
+   * CONTAR contra la bolsa —y por eso manda el folio, que es lo escrito en las
+   * etiquetas— y la portada sirve para RECONOCER el kit entre veinte. Nulo =
+   * la regla automática de siempre, que para la mayoría acierta. */
+  portadaId?: string | null;
   /** Quién lo armó. Un kit es una DECISIÓN —«esto sale junto para una
    *  entrevista»— y una decisión sin autor no se discute: ante una pieza
    *  rara lo que hace falta saber es a quién preguntarle por qué está ahí.
@@ -87,8 +96,13 @@ export type PiezaKit = {
   /** Si esta pieza es a su vez un ENSAMBLADO, lo que lleva montado dentro.
    *  Un kit de quince cosas donde una son cuatro atornilladas se lee mal si
    *  no lo dice: al devolverlo hay que contar diecinueve, no quince. */
+  /* Con su valor y su combo, no solo su nombre: una pieza montada se compró
+     igual que las demás y cuesta lo que cuesta. El DJI Air 3 lleva dentro seis
+     baterías, dos centros de carga y el control remoto — casi tres mil soles
+     que el kit se lleva a la calle y que el total no decía. */
   montadas?: { id: string; folio?: string | null; nombre: string;
-    cartel?: string | null; estado?: string | null }[];
+    cartel?: string | null; estado?: string | null;
+    valor?: number | null; combo?: ComboBreve | null }[];
 };
 
 /* CUÁNTO VALE UNA PIEZA.
@@ -121,8 +135,25 @@ export function contextoKit(piezas: PiezaKit[]) {
   /* El valor incluye el reparto de los combos: si no, un kit hecho de piezas
      de combo valdría cero. `estimado` se propaga para que la cabecera lo
      diga: en cuanto UNA pieza va prorrateada, el total ya no es exacto. */
-  let valor = 0, estimado = false;
-  piezas.forEach(p => { const v = valorPieza(p); valor += v.valor; if (v.estimado) estimado = true; });
+  let valor = 0, estimado = false, valorMontadas = 0;
+  piezas.forEach(p => {
+    const v = valorPieza(p); valor += v.valor; if (v.estimado) estimado = true;
+    /* ── LO QUE VA ATORNILLADO TAMBIÉN CUESTA ──
+       El total sumaba solo las fichas sueltas del kit, y por eso el «Drone DJI
+       AIR3» valía 7.614: el Air 3 y su maleta, sin las seis baterías, los dos
+       centros de carga ni el control remoto que van dentro. Casi tres mil
+       soles de material que sale a la calle y que la cifra no nombraba — o
+       sea, justo lo que uno quiere saber antes de entregar un kit.
+       No hay doble conteo: cada pieza montada tiene SU boleta y su precio, y
+       el precio del ensamblado es solo el suyo (la regla está escrita en
+       lib/estadosEquipo, en «ensamblado»). El ensamblado no se compró: se
+       armó. */
+    (p.montadas || []).forEach(m => {
+      const vm = valorPieza(m as PiezaKit);
+      valor += vm.valor; valorMontadas += vm.valor;
+      if (vm.estimado) estimado = true;
+    });
+  });
   const cats: string[] = [];
   piezas.forEach(p => {
     const c = (p.categoria || "").trim();
@@ -134,7 +165,7 @@ export function contextoKit(piezas: PiezaKit[]) {
      lleva quince fichas— pero sí a lo que hay que contar sobre la mesa al
      devolverlo, y por eso se dice aparte en vez de inflar el número. */
   const montadas = piezas.reduce((s, p) => s + (p.montadas?.length || 0), 0);
-  return { valor, estimado, cats, quienes, montadas };
+  return { valor, estimado, cats, quienes, montadas, valorMontadas };
 }
 
 /* ── AGRUPAR POR PROCEDENCIA ──

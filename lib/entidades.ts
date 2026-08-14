@@ -204,7 +204,14 @@ export const SUBCATS_EQUIPO: Record<string, string[]> = {
        «Case de drone» y «Case de luces»—, porque lo que decide dónde buscas
        es qué vas a meter dentro. La de producción es la genérica, la del
        asistente con las claquetas y el gaffer. */
-    "Mochila de cámara", "Case de cámara"],
+    "Mochila de cámara", "Case de cámara",
+    /* Todo el ecosistema del Osmo Nano se engancha con imán: el clip para la
+       gorra, la correa al cuello, el adaptador de rótula. No son «soporte»
+       —esa categoría es la del trípode y el gimbal, cosas que se compran
+       aparte y sirven con cualquier cámara— sino las piezas que solo existen
+       para ESTA cámara y que se guardan en su misma bolsa. Sin nombre propio
+       caían las tres en el vacío, que es donde estaban. */
+    "Montura magnética"],
   "drone": ["Drone", "Batería de drone", "Hélices", "Control remoto", "Hub de carga",
     "Filtros de drone", "Estuche de baterías", "Case de drone",
     /* Con la que se CARGA, al lado de la que lo guarda. El case protege en el
@@ -246,7 +253,26 @@ export const SUBCATS_EQUIPO: Record<string, string[]> = {
     /* Y el de sonido, que faltaba por el mismo hueco. La bolsa de sonido no es
        un accesorio: es donde vive el kit entero —grabadora, transmisores,
        cables— y es lo que se coge o se olvida de una pieza. */
-    "Case de sonido"],
+    "Case de sonido",
+    /* El JBL EON715 no es un «monitor de estudio»: no sirve para decidir una
+       mezcla, sirve para que doscientas personas oigan la película en una
+       plaza. Confundirlos hace que quien prepara una proyección comunitaria
+       busque entre los monitores de la sala de edición. */
+    "Altavoz / Parlante",
+    /* La araña del RØDE SM7-R. No es «caña» ni «case»: es lo que aísla el
+       micro de los golpes de la mesa, se pierde por su cuenta y sin ella el
+       micro de mil soles graba cada vez que alguien apoya un codo. */
+    "Soporte / Araña de micrófono",
+    /* Sí, «Memoria SD / CFexpress» ya existe en cámara, y este archivo avisa
+       en otro sitio de que tres cosas llamadas igual son tres búsquedas que
+       se estorban. Aquí se acepta la repetición a propósito y por la misma
+       regla que dio a cada categoría su propio case y su propio cargador: la
+       microSD del Zoom H1 vive con la grabadora, y al armar el sonido hay que
+       verla ahí. Escondida entre las tarjetas de cámara, no aparece la noche
+       que se prepara una entrevista.
+       Si algún día molesta, la otra salida es cambiarle la categoría a la
+       A-329 — pero eso la sacaría de la bolsa de sonido, que es donde está. */
+    "Memoria SD"],
   /* Ordenada por lo que hace cada cosa: primero lo que EMITE, luego lo que
      MODIFICA esa luz, y al final lo que la sostiene, la alimenta y la
      guarda. Buscar una luz y buscar una bandera son dos momentos distintos
@@ -276,7 +302,20 @@ export const SUBCATS_EQUIPO: Record<string, string[]> = {
        genéricos no aparece cuando hace falta.
        «Cargador de batería» a secas —no «de luz»— porque es como está escrito
        en la A-103, y aquí dentro no hace falta repetir la categoría. */
-    "Cargador de batería", "Case de luces"],
+    "Cargador de batería", "Case de luces",
+    /* ── LO QUE FALTABA, Y ERA LO MÁS NUMEROSO ──
+       Hay más de una docena de tiras LED —neón, cinta RGB, guía luma, 5 m con
+       control— y ninguna tenía dónde caer: no son panel, no son COB, no son
+       tubo de mano. Se pegan a una pared, a un techo o dentro de un plano
+       para dar color de fondo, y quien busca una busca exactamente eso.
+       El mando va aparte de la tira que enciende: se compran juntos y se
+       pierden por separado, y una tira sin su control es una tira que no se
+       puede usar. Es la misma razón por la que el receptor inalámbrico está
+       separado de su micrófono.
+       Y la linterna: existe en `camping` («Linterna / Frontal») porque allá es
+       equipo de expedición, pero la de la caja de luces es otra cosa y otro
+       día — la que se usa para alumbrar mientras se desmonta en la oscuridad. */
+    "Tira LED", "Control remoto de luz", "Linterna"],
   /* Absorbe «tripode», «monopod» y lo que ya estaba en «soporte». La placa
      Claw Mini, la gorra con soporte y la pértiga del Osmo son todas esto. */
   "soporte": ["Trípode", "Monopié", "Cabezal / Rótula", "Estabilizador / Gimbal",
@@ -367,7 +406,13 @@ export const SUBCATS_EQUIPO: Record<string, string[]> = {
     "Proyector", "Pantalla / Ecrán",
     "Disco duro externo",
     "SSD", "NAS / Servidor", "Lector de memorias", "Hub USB", "Teclado", "Mouse",
-    "Cable HDMI", "Adaptador", "Tableta gráfica", "Router / Red"],
+    "Cable HDMI", "Adaptador", "Tableta gráfica", "Router / Red",
+    /* La placa base, la RAM, la fuente, la tarjeta gráfica. Se compran sueltas
+       —con su boleta cada una— y viven dentro del «PC de edición», que es un
+       equipo distinto y ya registrado. Sin este nombre, una Asus ROG Maximus
+       de 2.700 soles se queda sin clasificar o se cuenta como si fuera otra
+       computadora entera. */
+    "Componente de PC"],
   /* Sin «mesa plegable», «silla», «toldo» ni «paraguas»: eso es camping, y
      tenerlo en los dos sitios es volver a crear el solapamiento que esta
      lista viene a quitar. Aquí queda lo que solo tiene sentido en un rodaje.

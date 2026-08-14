@@ -64,6 +64,9 @@ with esperado(clase, obj, para, archivo) as (values
   ('col', 'comentarios.movimiento_caja_id',   'Hilo de un movimiento',  'movcaja-comentarios.sql'),
   ('col', 'reacciones.movimiento_caja_id',    'Reaccionar a un movimiento', 'movcaja-comentarios.sql'),
   ('col', 'notificaciones.movimiento_caja_id','Que el aviso lleve a la caja', 'movcaja-comentarios.sql'),
+  -- La cara del kit: sin esto, un «Kit Zhiyun Molus G60» se ilustra con un
+  -- trípode porque la portada se deducía del orden de folios.
+  ('col', 'kits.portada_equipo_id',      'Qué pieza representa al kit', 'kit-portada.sql'),
   -- Funciones
   ('fun', 'nrm_nombre',        'Comparar nombres sin tildes',       'personas-duplicadas.sql'),
   ('fun', 'persona_refs',      'Qué cuelga de una persona',         'personas-duplicadas.sql'),

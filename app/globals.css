@@ -3207,8 +3207,29 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
    `min-height:0` porque un hijo flex no baja de su tamaño de contenido sin
    el, y sin el la lista no se desplaza: crece y desborda la caja. */
 .ens-pop-lista{display:flex;flex-direction:column;overflow-y:auto;min-height:0}
+/* El total de lo montado, junto al título y antes de la ✕. `margin-left:auto`
+   lo empuja a la derecha y deja la ✕ pegada a él en el borde — que es donde
+   el dedo la busca. Sin `text-transform` heredado: «S/ 2,895» en versalitas
+   con el interletrado de un título no se lee como una cifra. */
+.ens-pop-tot{margin-left:auto;color:var(--teal);font-weight:700;font-size:11px;
+  letter-spacing:0;text-transform:none;white-space:nowrap}
+.ens-pop-tot.esti{color:var(--muted)}
 .ens-pop-x{margin-left:auto;background:none;border:none;color:var(--dim);
   cursor:pointer;font-size:11px;padding:0 2px}
+/* Con el total puesto, la ✕ ya no necesita empujar: si las dos llevaran
+   `auto`, el reparto del hueco las separaría a lo ancho del pop-up. */
+.ens-pop-tot ~ .ens-pop-x{margin-left:4px}
+
+/* El precio de cada pieza montada, al final de su fila y en columna: así se
+   suma con la vista. Verde el de factura propia, gris el repartido de un
+   combo — la misma pareja de colores que ya usa el resto del inventario para
+   distinguir un dato probado de uno estimado. */
+.ens-pop-val{flex:none;font-size:11px;font-weight:700;color:var(--teal);
+  white-space:nowrap}
+.ens-pop-val.esti{color:var(--muted);font-weight:400}
+/* Y el hueco, dicho. Una pieza sin valorar es la que hace que el total del
+   kit vaya corto, y eso solo se arregla si se ve. */
+.ens-pop-sinval{flex:none;font-size:11px;color:var(--yellow);cursor:help}
 .ens-pop-x:hover{color:var(--text)}
 .ens-pop-fila{display:flex;gap:8px;align-items:center;padding:4px;border-radius:8px;
   text-decoration:none;min-width:0}
@@ -3830,6 +3851,73 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
    como el ＋, que es una ACCIÓN. Con los dos punteados y ambos junto a un
    signo parecido, no se distinguiría cuál de los dos hace algo al tocarlo. */
 .rx-resto{color:var(--dim);cursor:default}
+
+/* ── LA ESTRELLA DE LA PORTADA DEL KIT ──
+   Apagada es un contorno tenue, encendida es ámbar sólido. Siempre visible
+   —un control que hay que descubrir no existe— pero discreta: elegir la cara
+   del kit es una preferencia, no una tarea pendiente, y una fila de piezas no
+   necesita otro elemento reclamando atención junto a la ✕ de quitar. */
+.kit-estrella{background:transparent;border:none;padding:0 4px;cursor:pointer;
+  font-size:14px;line-height:1;color:var(--dim);opacity:.55;flex:none;
+  transition:opacity .12s,color .12s}
+.kit-estrella:hover{opacity:1;color:var(--yellow)}
+.kit-estrella.es{color:var(--yellow);opacity:1}
+
+/* ── LO BUSCADO, SUBRAYADO EN EL FRAGMENTO ──
+   `<mark>` trae de fábrica fondo amarillo y texto negro, que sobre un tema
+   oscuro es un parche de papel pegado en la pantalla. Aquí es al revés: el
+   texto se enciende y el fondo apenas se insinúa. Lo que tiene que destacar
+   es LA PALABRA, no el rectángulo que la rodea — en un fragmento con tres
+   coincidencias, tres bloques sólidos tapan la frase que se venía a leer.
+   Sin `border-radius` grande ni relleno vertical: la línea de texto no puede
+   crecer, o las filas de resultados dejarían de alinearse entre sí. */
+mark.bq-marca{
+  background:color-mix(in srgb,var(--accent) 42%,transparent);
+  color:#fff;font-weight:700;border-radius:3px;padding:0 2px;
+  /* El filete de abajo, con `box-shadow` y no con `border-bottom`: un borde en
+     un elemento en línea suma altura, y con eso la línea del fragmento crece y
+     las filas de resultados dejan de cortar por el mismo sitio. La sombra
+     pinta sin ocupar. */
+  box-shadow:inset 0 -1.5px 0 var(--accent);
+}
+
+/* ── «＋ SUBCATEGORÍA» — el hueco que se rellena desde la lista ──
+   Punteado y en ámbar tenue: es la gramática de lo que FALTA, la misma del
+   «⚠ sin precio» de dos etiquetas más allá. No compite con las insignias
+   llenas de al lado —una fila con seis chips no necesita un séptimo gritando—
+   pero está siempre visible: un control que hay que descubrir no existe. */
+.eqx-ponsub{background:transparent;border:1px dashed color-mix(in srgb,var(--yellow) 40%,transparent);
+  border-radius:20px;padding:1px 9px;font-size:11px;color:var(--yellow);opacity:.75;
+  cursor:pointer;white-space:nowrap;transition:opacity .12s,border-color .12s}
+.eqx-ponsub:hover{opacity:1;border-color:var(--yellow)}
+.eqx-ponsub:disabled{cursor:default;opacity:.5}
+.eqx-ponsub-err{color:var(--red);font-size:11px;margin-left:4px;cursor:help}
+
+/* La lista de opciones. Se abre HACIA ABAJO y anclada a la izquierda del
+   botón: en una fila de lista el sitio libre está debajo, y anclarla a la
+   derecha la sacaba de la tarjeta en las filas cortas. */
+.eqx-ponsub-pop{position:absolute;top:calc(100% + 5px);left:0;z-index:41;
+  display:flex;flex-direction:column;gap:1px;min-width:210px;max-height:280px;
+  overflow-y:auto;background:var(--panel);border:1px solid var(--border2);
+  border-radius:12px;padding:6px;box-shadow:0 12px 32px rgba(0,0,0,.6)}
+.eqx-ponsub-h{font-size:9.5px;text-transform:uppercase;letter-spacing:1px;
+  color:var(--dim);padding:2px 8px 5px;position:sticky;top:-6px;background:var(--panel)}
+.eqx-ponsub-pop button{text-align:left;background:transparent;border:none;
+  border-radius:7px;padding:5px 8px;font-size:12px;color:var(--text);cursor:pointer}
+.eqx-ponsub-pop button:hover{background:var(--card);color:var(--accent)}
+/* Que el catálogo no parezca el mundo entero: si la que hace falta no está,
+   se dice dónde escribirla en vez de dejar a alguien buscándola. */
+.eqx-ponsub-pie{font-size:10px;color:var(--dim);padding:6px 8px 2px;
+  border-top:1px solid var(--border);margin-top:4px}
+
+/* ── EL FOLIO EN LA CABECERA DE LA FICHA ──
+   El código que está pegado al equipo, al lado del nombre. Monoespaciado
+   porque son caracteres que se cotejan uno a uno contra una etiqueta, y con el
+   ámbar del equipamiento para que se lea como identidad y no como un estado. */
+.ent-folio{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;
+  font-weight:700;letter-spacing:.5px;color:var(--yellow);
+  background:color-mix(in srgb,var(--yellow) 12%,transparent);
+  border:1px solid color-mix(in srgb,var(--yellow) 28%,transparent)}
 
 /* ── EL BOTÓN DE IMPRIMIR, en la cabecera de cada persona ── */
 .eq-uso-print{flex:none;padding:1px 8px;font-size:12px}

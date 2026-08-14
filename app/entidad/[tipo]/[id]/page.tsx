@@ -2068,6 +2068,20 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             <Copiar valor={nombre} etiqueta="el nombre">{nombre}</Copiar>
           </h1>
         )}
+        {/* ── EL FOLIO, JUNTO AL NOMBRE ──
+            Es el número escrito en la etiqueta pegada al equipo: en el almacén
+            y en el campo NO se busca «JBL EON715», se busca A-365. Estaba solo
+            en la ficha de datos, cuatro campos más abajo, así que llegar desde
+            un enlace obligaba a bajar la vista para confirmar que era el equipo
+            que se tenía en la mano.
+            Monoespaciado y copiable, como en las listas: son números que se
+            cotejan carácter a carácter, y en proporcional un 1 y un 7 no ocupan
+            lo mismo. */}
+        {params.tipo === "equipamiento" && ent.folio && (
+          <span className="badge ent-folio" title="Folio — el código pegado al equipo">
+            <Copiar valor={String(ent.folio)} etiqueta="el folio">{ent.folio}</Copiar>
+          </span>
+        )}
         {/* De quién es (empresa o proyecto): nuestro, de un aliado o externo —
             se lee sin bajar a la ficha. En empresa, solo las propias generan
             alertas. */}

@@ -1,9 +1,9 @@
 "use server";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import { entregableEq, porQueNoEq } from "@/lib/estadosEquipo";
+import { entregableEq, porQueNoEq, enRonda, txtEstadoEq } from "@/lib/estadosEquipo";
 import { icoTipo } from "@/lib/tipos";
-import { FORM_CONF, nombreCorto } from "@/lib/entidades";
+import { FORM_CONF, nombreCorto, SUBCATS_EQUIPO } from "@/lib/entidades";
 import { ETAPAS_PROY_VALIDAS } from "@/lib/etapasProyecto";
 import { nrmQ } from "@/lib/quechua";
 import { procesarSunatEmpresa, correrRondaSunat, consultarRucApi } from "@/lib/sunat";
@@ -5628,11 +5628,90 @@ export async function verificarDniReniec(personaId: string) {
   }
 }
 
+/* ── PONER LA SUBCATEGORÍA SIN ABRIR LA FICHA ──
+ *
+ * Hay cincuenta y ocho equipos sin subcategoría. Arreglarlos uno a uno es
+ * entrar a la ficha, pulsar Editar, buscar el campo entre doce, elegir,
+ * guardar y volver a la lista — que ya no está donde estaba. Seis pasos por
+ * equipo, trescientos cuarenta y ocho en total, y por eso llevan meses así.
+ *
+ * No es `guardarEntidad`: aquella exige el formulario entero —«nombre» es
+ * obligatorio— y llamarla con un solo campo devolvería «El campo Nombre es
+ * obligatorio» sobre un equipo que sí tiene nombre.
+ *
+ * La subcategoría se valida contra el catálogo de SU categoría. Eso no es
+ * burocracia: la lista se llena de «Panel LED», «panel led» y «Panel de luz
+ * LED» en cuanto se puede escribir libre, y entonces filtrar por subcategoría
+ * deja de servir — que es lo único para lo que existe el campo. Escribir una
+ * fuera del catálogo sigue siendo posible desde la ficha, que es donde uno se
+ * toma el tiempo de decidirlo.
+ */
+export async function fijarSubcategoria(equipoId: string, sub: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  const s = String(sub || "").trim();
+  if (!s) return { error: "Elige una subcategoría." };
+
+  const { data: eq, error: eErr } = await supabase.from("equipamiento")
+    .select("categoria,subcategoria,nombre").eq("id", equipoId).maybeSingle();
+  if (eErr) return { error: eErr.message };
+  if (!eq) return { error: "Ese equipo ya no está." };
+
+  const cat = String(eq.categoria || "").trim().toLowerCase();
+  const catalogo = SUBCATS_EQUIPO[cat] || [];
+  if (!catalogo.length) {
+    return { error: `«${eq.categoria || "sin categoría"}» no tiene lista de subcategorías. Ponla desde la ficha.` };
+  }
+  if (!catalogo.includes(s)) {
+    return { error: `«${s}» no está en la lista de ${cat}. Si de verdad hace falta, escríbela desde la ficha.` };
+  }
+
+  /* El `.select()` es el cinturón de siempre: si una política de RLS tapara la
+     fila, PostgREST devolvería éxito con cero filas actualizadas y la pantalla
+     diría «guardado» sobre algo que no se guardó. */
+  const { data: hechas, error } = await supabase.from("equipamiento")
+    .update({ subcategoria: s }).eq("id", equipoId).select("id");
+  if (error) return { error: error.message };
+  if (!hechas?.length) return { error: "No se guardó: no tienes permiso sobre este equipo." };
+
+  await supabase.from("actividad").insert({
+    entidad_tipo: "equipamiento", entidad_id: equipoId, tipo: "edicion", actor_id: user.id,
+    detalle: {
+      mensaje: eq.subcategoria
+        ? `cambió la subcategoría: «${eq.subcategoria}» → «${s}»`
+        : `puso la subcategoría: «${s}»`,
+    },
+  });
+  revalidatePath("/equipamiento");
+  revalidatePath(`/entidad/equipamiento/${equipoId}`);
+  return {};
+}
+
 /* Ronda de comprobación: "vi este equipo hoy, existe y está bien" */
 export async function comprobarEquipo(equipoId: string) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
+
+  /* ── EL SELLO NO SE PONE SOBRE CUALQUIER ESTADO ──
+     «Visto» afirma que el equipo existe y está conforme, y sobre un perdido o
+     un «no aparece» eso es falso por definición. La pantalla ya no ofrece el
+     botón, pero esconderlo no es impedirlo: una pestaña abierta desde antes del
+     cambio de estado, o una llamada directa, seguirían escribiendo «visto hoy»
+     junto a «Perdido» — una contradicción que nadie escribió a propósito y que
+     habría que deshacer a mano el día de la auditoría.
+     Y se DICE qué hacer en su lugar, que es la buena noticia: si apareció,
+     cámbiale el estado. */
+  const { data: eq, error: eErr } = await supabase.from("equipamiento")
+    .select("estado").eq("id", equipoId).maybeSingle();
+  if (eErr) return { error: eErr.message };
+  if (!eq) return { error: "Ese equipo ya no está." };
+  if (!enRonda(eq.estado)) {
+    return { error: `No se puede marcar como visto: está «${txtEstadoEq(eq.estado)}». Si apareció, cámbiale el estado.` };
+  }
+
   const hoy = hoyLima();
   const { error } = await supabase.from("equipamiento")
     .update({ ultima_comprobacion: hoy }).eq("id", equipoId);
@@ -5877,7 +5956,10 @@ export async function cargarEmpresaRapida(empresaId: string) {
 
 const KIT_MAX = 60;   // un «kit» de 200 piezas es el inventario, no un kit
 
-export async function crearKit(nombre: string, uso: string, descripcion: string, equipoIds: string[]) {
+export async function crearKit(nombre: string, uso: string, descripcion: string, equipoIds: string[],
+  /** Qué pieza representa al kit. Se elige al armarlo porque es cuando se
+   *  tienen las piezas delante; si no se elige, manda la regla automática. */
+  portadaId?: string | null) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
@@ -5894,8 +5976,63 @@ export async function crearKit(nombre: string, uso: string, descripcion: string,
   const r = await setKitEquipos(kit.id, equipoIds || []);
   if (r?.error) return { error: `El kit se creó, pero sus equipos no: ${r.error}`, id: kit.id };
 
+  /* La cara del kit, si se eligió al armarlo. Va DESPUÉS de meter las piezas
+     porque `fijarPortadaKit` comprueba que la pieza esté dentro: al revés, la
+     comprobación fallaría sobre un kit todavía vacío.
+     Y si falla no se deshace nada: el kit existe y sus piezas están, que es lo
+     que costaba trabajo. Se dice, y se elige la cara desde la lista. */
+  if (portadaId) {
+    const rp = await fijarPortadaKit(kit.id, portadaId);
+    if (rp?.error) return { id: kit.id, n: (equipoIds || []).length, aviso: `El kit se creó, pero la portada no: ${rp.error}` };
+  }
+
   revalidatePath("/equipamiento");
   return { id: kit.id, n: (equipoIds || []).length };
+}
+
+/* ── QUÉ PIEZA ES LA CARA DEL KIT ──
+ *
+ * El «Kit Zhiyun Molus G60» salía con la foto de un trípode: la cara era «la
+ * primera pieza que tenga foto» y las piezas van por folio —A-028 antes que
+ * A-031—. Deducir la portada del orden mezcla dos cosas que no son la misma:
+ * el orden sirve para CONTAR contra la bolsa (y por eso manda el folio), la
+ * portada sirve para RECONOCER el kit en una lista de veinte.
+ *
+ * `equipoId` nulo devuelve el kit a la regla automática, que es una decisión
+ * válida y tiene que poder deshacerse.
+ */
+export async function fijarPortadaKit(kitId: string, equipoId: string | null) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!kitId) return { error: "Falta el kit." };
+
+  /* Una portada que no está en el kit sería una foto de algo que no sale con
+     él: se comprueba aquí y no solo en la pantalla, porque la pieza puede
+     haberse quitado del kit en otra pestaña entre que se abrió la lista y se
+     pulsó la estrella. */
+  if (equipoId) {
+    const { data: dentro, error: e0 } = await supabase.from("kit_equipos")
+      .select("id").eq("kit_id", kitId).eq("equipamiento_id", equipoId).maybeSingle();
+    if (e0) return { error: e0.message };
+    if (!dentro) return { error: "Esa pieza ya no está en el kit." };
+  }
+
+  /* `.select()`: sin él, una política de RLS que tape la fila devolvería éxito
+     con cero filas cambiadas y la estrella se pintaría sobre nada. */
+  const { data: hechas, error } = await supabase.from("kits")
+    .update({ portada_equipo_id: equipoId }).eq("id", kitId).select("id");
+  if (error) {
+    /* El caso más probable la primera vez: falta correr db/kit-portada.sql. Un
+       «column does not exist» no le dice nada a quien pulsa una estrella. */
+    return { error: /portada_equipo_id/.test(error.message)
+      ? "Falta correr db/kit-portada.sql en la base de datos."
+      : error.message };
+  }
+  if (!hechas?.length) return { error: "No se guardó: no tienes permiso sobre este kit." };
+
+  revalidatePath("/equipamiento");
+  return { ok: true };
 }
 
 export async function guardarKit(kitId: string, nombre: string, uso: string, descripcion: string) {

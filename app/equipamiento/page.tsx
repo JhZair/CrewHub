@@ -5,9 +5,10 @@ import EntregaLote from "@/components/EntregaLote";
 import PanelKits from "@/components/PanelKits";
 import PanelCombos from "@/components/PanelCombos";
 import FilasEquipo from "@/components/FilasEquipo";
+import PonerSubcategoria from "@/components/PonerSubcategoria";
 import { fechaDiaLima } from "@/lib/fechas";
 import { valorInventario, soles } from "@/lib/compras";
-import { ESTADOS_EQUIPO, NECESITA_ATENCION, FUERA_DE_INVENTARIO, metaEstado, txtEstadoEq } from "@/lib/estadosEquipo";
+import { ESTADOS_EQUIPO, NECESITA_ATENCION, FUERA_DE_INVENTARIO, metaEstado, txtEstadoEq, tocaRonda, enRonda, DIAS_RONDA } from "@/lib/estadosEquipo";
 import type { KitVista } from "@/lib/kits";
 import EnUsoAhora, { type UsoItem } from "@/components/EnUsoAhora";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
@@ -20,8 +21,6 @@ import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "🎥 Equipos" };
-
-const diasDesde = (f: string) => Math.floor((Date.now() - new Date(f + "T12:00:00").getTime()) / 86400000);
 
 /* Los rótulos y colores salen de lib/estadosEquipo. Esta copia decía que
    «en uso» era amarillo y todas las demás pantallas lo pintaban azul. */
@@ -142,7 +141,7 @@ export default async function Equipamiento({ searchParams }: {
     /* Los kits: qué sale junto. Dos tablas que llevaban un año en el schema
        sin una sola línea que las nombrara (ver db/kits.sql). */
     supabase.from("kits")
-      .select("id,nombre,uso,descripcion,retirado_en,autor:perfiles(nombre,avatar_url,color)")
+      .select("id,nombre,uso,descripcion,retirado_en,portada_equipo_id,autor:perfiles(nombre,avatar_url,color)")
       .order("nombre"),
     supabase.from("kit_equipos").select("kit_id,equipamiento_id"),
     /* Los combos de compra: donde vive el precio de lo que se compró junto.
@@ -179,6 +178,7 @@ export default async function Equipamiento({ searchParams }: {
   const kits: KitVista[] = (kitsRaw || []).map((k: any) => ({
     id: k.id, nombre: k.nombre, uso: k.uso, descripcion: k.descripcion,
     retirado: !!k.retirado_en, equipoIds: eqsDeKit.get(k.id) || [],
+    portadaId: k.portada_equipo_id || null,
     /* Objeto o arreglo según cómo PostgREST resuelva la relación. Leer solo
        una de las dos formas deja el autor en blanco sin que nada falle. */
     autor: un1(k.autor) || null,
@@ -259,9 +259,18 @@ export default async function Equipamiento({ searchParams }: {
     if (!e.ensamblado_en) return;
     /* Solo lo justo para la lista del pop-up. Mandar el equipo entero sería
        repetir sus veinte columnas dentro de cada fila que lo menciona. */
+    /* Con su precio —propio o el que le toca de su combo—: el total de un kit
+       tiene que incluir lo que va atornillado dentro de sus piezas, y sin este
+       dato no había forma de sumarlo. Es el mismo par de campos que ya viaja
+       en las piezas sueltas, para que `valorPieza` sirva igual con las dos. */
+    const cbm = comboPorEq.get(e.id);
     piezasDe.set(e.ensamblado_en, [...(piezasDe.get(e.ensamblado_en) || []), {
       id: e.id, folio: e.folio, nombre: e.nombre, estado: e.estado,
       cartel: cartelPorEq.get(e.id) || null,
+      valor: e.valor_compra ? Number(e.valor_compra) : null,
+      combo: cbm ? { codigo: cbm.codigo, nombre: cbm.nombre,
+        total: cbm.total != null ? Number(cbm.total) : null,
+        porPieza: porPiezaDeCombo.get(cbm.id) ?? null } : null,
     }]);
   });
 
@@ -372,9 +381,15 @@ export default async function Equipamiento({ searchParams }: {
 
   const todos = eqs || [];
   const coincide = buscadorDe(q);   // el mismo motor que el buscador global
+  /* Los 90 días ya no se escriben aquí: los decide `tocaRonda`, y el botón de
+     cada fila usa esa misma función. Escritos dos veces, este chip podía decir
+     «3 pendientes» mientras la lista encendía veintiséis botones. */
+  /* Y el estado manda: un perdido o un «no aparece» no entran en la ronda —no
+     se puede afirmar que se vieron—, así que tampoco engordan el contador de
+     pendientes. Antes solo se excluía «de_baja», y el chip mandaba a hacer una
+     ronda sobre cosas que por definición no se iban a encontrar. */
   const porComprobar = (x: any) =>
-    x.estado !== "de_baja" &&
-    (!x.ultima_comprobacion || diasDesde(x.ultima_comprobacion) > 90);
+    enRonda(x.estado) && tocaRonda(x.ultima_comprobacion);
 
   const PRUEBA_F: Record<string, (x: any) => boolean> = {
     // Sin valor no suma al inventario: el total de arriba miente por omisión
@@ -519,12 +534,23 @@ export default async function Equipamiento({ searchParams }: {
                     ella, al filtrar «escritas a mano» sale un listado
                     correcto en el que no se ve QUÉ tiene de raro cada fila,
                     y hay que abrir ficha por ficha para averiguarlo. */}
-                {x.subcategoria && (
+                {x.subcategoria ? (
                   subAMano(x)
                     ? <span className="eqx-sub a-mano" title="Subcategoría escrita a mano: no está en la lista de esta categoría">
                         ✍ {x.subcategoria}
                       </span>
                     : <span className="eqx-sub">{x.subcategoria}</span>
+                ) : (
+                  /* ── EL HUECO SE RELLENA DONDE SE VE ──
+                     Cincuenta y ocho equipos sin subcategoría no están así
+                     porque a nadie le importe: están así porque arreglar uno
+                     costaba entrar a la ficha, editar, guardar y volver a una
+                     lista que ya no estaba donde se dejó. Seis pasos por
+                     equipo. Aquí son dos clics y la fila no se mueve.
+                     Va en el sitio del dato que falta, no en la columna de
+                     botones: es un hueco que se puede rellenar, no una acción
+                     que se ofrece. */
+                  <PonerSubcategoria equipoId={x.id} categoria={catDe(x)} />
                 )}
                 {catAMano(x) && (
                   <span className="eqx-sub a-mano" title="Categoría antigua o escrita a mano: ya no se ofrece al crear un equipo">
@@ -572,7 +598,8 @@ export default async function Equipamiento({ searchParams }: {
               </div>
             </div>
 
-            <BotonComprobar equipoId={x.id} ultima={x.ultima_comprobacion} compacto={!ronda} />
+            <BotonComprobar equipoId={x.id} ultima={x.ultima_comprobacion}
+              estado={x.estado} compacto={!ronda} />
             {/* CON NOMBRE. «Asignado» a secas obliga a abrir la ficha para
                 saber a quién —y en una lista de cuatro monitores, tres
                 asignados, esa es LA pregunta—. Lo mismo con «En uso»: el
@@ -681,8 +708,8 @@ export default async function Equipamiento({ searchParams }: {
 
         <FilaFiltro titulo="Atención">
           <Chip href="/equipamiento?ronda=1" on={ronda} color="var(--yellow)"
-            title="Nadie los ha visto físicamente en 90+ días">
-            🔍 por comprobar · {pendientesRonda}
+            title={`Nadie los ha visto físicamente en ${DIAS_RONDA}+ días — o nunca`}>
+            👁 sin ver · {pendientesRonda}
           </Chip>
           <Chip href="/equipamiento?f=sin_valor" on={f === "sin_valor"} color="var(--yellow)"
             title="Sin precio propio. Los que vinieron en un combo con total SÍ suman al inventario, por el combo — por eso este número es mayor que el aviso de arriba.">

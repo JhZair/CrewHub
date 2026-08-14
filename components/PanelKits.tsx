@@ -2,7 +2,7 @@
 import { Fragment, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { crearKit, guardarKit, setKitEquipos, borrarKit, revivirKit } from "@/app/actions";
+import { crearKit, guardarKit, setKitEquipos, borrarKit, revivirKit, fijarPortadaKit } from "@/app/actions";
 import { estadoKit, resumenKit, contextoKit, porQueNo, agruparPorCombo, valeAgrupar,
   type PiezaKit, type EqBase, type KitVista } from "@/lib/kits";
 import { entregableEq } from "@/lib/estadosEquipo";
@@ -26,9 +26,13 @@ import Avatar from "@/components/Avatar";
 const nrm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 /* ── El escogedor de equipos, compartido por «nuevo kit» y «editar kit» ── */
-function Escoge({ equipos, sel, alterna, onVaciar }: {
+function Escoge({ equipos, sel, alterna, onVaciar, portada, setPortada }: {
   equipos: EqBase[]; sel: Set<string>; alterna: (id: string) => void;
   onVaciar: () => void;
+  /** Qué pieza es la cara del kit, y cómo cambiarla. Vive en el editor —es
+   *  parte de lo que se guarda— y aquí solo se pinta y se pulsa. */
+  portada: string | null;
+  setPortada: (id: string | null) => void;
 }) {
   const [filtro, setFiltro] = useState("");
   const vistos = useMemo(() => {
@@ -81,6 +85,23 @@ function Escoge({ equipos, sel, alterna, onVaciar }: {
           entregar se avisará de que falta — y por eso el motivo va con
           nombre, «lo tiene KatyP», igual que en la lista del kit. */}
       {trabada && <span className="kit-aviso">{porQueNo(e)}</span>}
+      {/* ── LA CARA DEL KIT ──
+          Solo en la columna de lo elegido: elegir portada entre doscientas
+          piezas del inventario no significa nada, porque la portada es de las
+          piezas de ESTE kit.
+          Siempre visible y no al pasar el ratón —un control que hay que
+          descubrir no existe— pero apagada hasta que se pulsa: es una
+          preferencia, no una tarea pendiente. */}
+      {modo === "quitar" && (
+        <button type="button"
+          className={`kit-estrella${portada === e.id ? " es" : ""}`}
+          title={portada === e.id
+            ? "Es la cara del kit — pulsa para volver a la automática"
+            : `Usar la foto de ${e.nombre} como cara del kit`}
+          onClick={ev => { ev.preventDefault(); setPortada(portada === e.id ? null : e.id); }}>
+          {portada === e.id ? "★" : "☆"}
+        </button>
+      )}
       {modo === "quitar" && (
         <button type="button" className="ent-quita" title={`Sacar ${e.nombre} del kit`}
           onClick={() => alterna(e.id)}>✕</button>
@@ -164,21 +185,40 @@ function Editor({ kit, equipos, onCerrar }: {
   const [uso, setUso] = useState(kit?.uso || "");
   const [desc, setDesc] = useState(kit?.descripcion || "");
   const [sel, setSel] = useState<Set<string>>(new Set(kit?.equipoIds || []));
+  /* Cuál de las piezas es la cara del kit. Se elige aquí, con las piezas
+     delante, que es el único momento en que uno sabe cuál es «el aparato» y
+     cuáles son sus accesorios. */
+  const [portada, setPortada] = useState<string | null>(kit?.portadaId || null);
   const [ocupado, setOcupado] = useState(false);
   const [err, setErr] = useState("");
   const [pideBorrar, setPideBorrar] = useState(false);
   const [aviso, setAviso] = useState("");
 
   const alterna = (id: string) =>
-    setSel(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    setSel(s => {
+      const n = new Set(s);
+      if (n.has(id)) {
+        n.delete(id);
+        /* Si la pieza que se quita era la cara, el kit vuelve a la regla
+           automática. Guardar una portada que ya no está dentro dejaría el kit
+           ilustrado con algo que no sale con él. */
+        if (portada === id) setPortada(null);
+      } else n.add(id);
+      return n;
+    });
 
   async function guardar() {
     if (!nombre.trim()) { setErr("El kit necesita un nombre."); return; }
     setOcupado(true); setErr("");
+    /* Al EDITAR, la portada se fija después de que las piezas estén puestas:
+       el servidor comprueba que la elegida siga dentro del kit, y si se acaba
+       de añadir todavía no lo estaba cuando empezó el guardado. */
     const r: any = kit
       ? await guardarKit(kit.id, nombre, uso, desc).then(async (x: any) =>
           x?.error ? x : await setKitEquipos(kit.id, [...sel]))
-      : await crearKit(nombre, uso, desc, [...sel]);
+          .then(async (x: any) =>
+            x?.error ? x : await fijarPortadaKit(kit.id, portada))
+      : await crearKit(nombre, uso, desc, [...sel], portada);
     setOcupado(false);
     if (r?.error) { setErr(r.error); return; }
     onCerrar(); router.refresh();
@@ -212,7 +252,8 @@ function Editor({ kit, equipos, onCerrar }: {
       <input className="ent-lote-inp" placeholder="Nota (opcional): «lleva el trípode chico, no el grande»"
         value={desc} onChange={e => setDesc(e.target.value)} style={{ width: "100%", marginTop: 8 }} />
 
-      <Escoge equipos={equipos} sel={sel} alterna={alterna} onVaciar={() => setSel(new Set())} />
+      <Escoge equipos={equipos} sel={sel} alterna={alterna} onVaciar={() => setSel(new Set())}
+        portada={portada} setPortada={setPortada} />
 
       <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
         <button className="btn" disabled={ocupado || !nombre.trim()} onClick={guardar}>
@@ -355,10 +396,19 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
             const editandoEste = editando === k.id;
             const desplegado = desplegados.has(k.id);
             const piezas = [...e.libres, ...e.prestadas, ...e.vetadas];
-            /* En orden de kit —libres primero—: la cara del kit acaba siendo
-               la de la pieza que sí se puede entregar, que es la que uno tiene
-               en la cabeza al buscarlo. */
-            const caraKit = piezas.find(p => p.cartel)?.cartel || null;
+            /* ── LA CARA DEL KIT ──
+               Primero la ELEGIDA, si sigue dentro del kit y tiene foto. Y solo
+               si no hay elección, la regla automática de siempre: la primera
+               pieza entregable con foto —libres antes que prestadas—, que es
+               la que uno tiene en la cabeza al buscar el kit.
+               La automática acierta casi siempre y por eso se queda; lo que no
+               podía ser es que fuera la única opción. Un kit llamado «Zhiyun
+               Molus G60» ilustrado con un trípode no es un matiz estético: es
+               que en una lista de veinte kits se busca por la foto. */
+            const elegida = k.portadaId
+              ? piezas.find(p => p.id === k.portadaId)?.cartel || null
+              : null;
+            const caraKit = elegida || piezas.find(p => p.cartel)?.cartel || null;
             return (
               /* `abierto` como CLASE y no `:has(.kit-piezas)`: el estado ya se
                  sabe aqui, y un navegador sin :has() descarta la regla entera
@@ -426,22 +476,43 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
                   return (
                     <div className="kit-ctx">
                       {ctx.valor > 0 && (
+                        /* El título dice CÓMO se llegó a la cifra, y en
+                           particular cuánto ponen las piezas montadas: el
+                           total subió al empezar a contarlas, y un número que
+                           cambia sin explicarse se lee como un error. */
                         <span className={`kit-ctx-val${ctx.estimado ? " esti" : ""}`}
-                          title={ctx.estimado
-                            ? "Aproximado: alguna pieza vino en un combo y no tiene precio propio, así que se le reparte su parte de la boleta."
-                            : undefined}>
+                          title={[
+                            "Lo que sale a la calle si se entrega este kit.",
+                            ctx.valorMontadas > 0
+                              ? `Incluye S/ ${Math.round(ctx.valorMontadas).toLocaleString("es-PE")} de las ${ctx.montadas} piezas montadas dentro: se compraron por separado y salen con el kit.`
+                              : "",
+                            ctx.estimado
+                              ? "Aproximado: alguna pieza vino en un combo y no tiene precio propio, así que se le reparte su parte de la boleta."
+                              : "",
+                          ].filter(Boolean).join(" ")}>
                           {ctx.estimado ? "~" : ""}S/ {Math.round(ctx.valor).toLocaleString("es-PE")}
                         </span>
                       )}
                       {ctx.cats.length > 0 && <span>{ctx.cats.join(" · ")}</span>}
-                      {/* «+ 3 montadas» y no sumado al total: el kit lleva
-                          quince FICHAS, pero sobre la mesa hay dieciocho
-                          cosas. Sumarlo escondería que tres van atornilladas
-                          dentro de otra; decirlo aparte es lo que hace que a
-                          la vuelta se cuenten. */}
+                      {/* «+ 3 montadas» sigue aparte del CONTEO de equipos: el
+                          kit lleva quince FICHAS, pero sobre la mesa hay
+                          dieciocho cosas, y meterlas en el «15 equipos»
+                          escondería que tres van atornilladas dentro de otra.
+                          Del VALOR sí forman parte —cuestan lo que cuestan y
+                          salen a la calle—, que son dos preguntas distintas:
+                          cuántos bultos cuento, y cuánto dinero se lleva. */}
                       {ctx.montadas > 0 && (
-                        <span className="kit-ctx-mont" title="Piezas atornilladas dentro de otras piezas del kit. No se entregan por separado, pero hay que contarlas al devolver.">
-                          + {ctx.montadas} montada{ctx.montadas === 1 ? "" : "s"}
+                        /* «4 piezas + 9 montadas» y no «+ 9 montadas» a secas.
+                           Un «+9» suelto no dice sobre qué suma, y el número
+                           de la cabecera («4 equipos») está tres centímetros
+                           más arriba y en otra frase: para hacer la cuenta
+                           había que ir a buscarlo. Con los dos sumandos
+                           juntos, las trece cosas que van a estar sobre la
+                           mesa se leen sin pensar. */
+                        <span className="kit-ctx-mont"
+                          title={`${piezas.length} fichas de equipo y ${ctx.montadas} piezas atornilladas dentro de ellas: ${piezas.length + ctx.montadas} cosas sobre la mesa. Las montadas no se entregan por separado —por eso no suman al conteo de equipos— pero hay que contarlas al devolver${ctx.valorMontadas > 0 ? `, y sí suman al valor: S/ ${Math.round(ctx.valorMontadas).toLocaleString("es-PE")}` : ""}.`}>
+                          {piezas.length} pieza{piezas.length === 1 ? "" : "s"}
+                          {" + "}{ctx.montadas} montada{ctx.montadas === 1 ? "" : "s"}
                         </span>
                       )}
                       {ctx.quienes.length > 0 && (

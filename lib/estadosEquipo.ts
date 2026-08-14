@@ -39,6 +39,15 @@ export type MetaEstado = {
   inventario: boolean;
   /** ¿Sale en «requieren atención»? */
   atencion: boolean;
+  /* ── ¿ENTRA EN LA RONDA DE «VISTO»? ──
+     El sello de la ronda afirma una cosa concreta: «lo miré, existe y está
+     conforme». Sobre un equipo dado por perdido, o sobre uno que no aparece,
+     esa frase es falsa por definición — y guardarla dejaría en la ficha un
+     «visto hoy» pegado a un «Perdido», que es una contradicción que nadie
+     escribió a propósito y que el día que se audite habrá que deshacer a mano.
+     Si uno de esos aparece, lo que corresponde no es sellarlo: es cambiarle el
+     estado, que es la buena noticia que hay que registrar. */
+  ronda: boolean;
   /** Por qué NO se puede entregar, dicho para quien lo lee. */
   porque?: string;
   ayuda?: string;
@@ -46,10 +55,10 @@ export type MetaEstado = {
 
 export const ESTADOS_EQUIPO: MetaEstado[] = [
   { k: "disponible", ico: "🟢", txt: "Disponible", plural: "Disponibles",
-    color: "var(--green)", tinte: "", entregable: true, inventario: true, atencion: false },
+    color: "var(--green)", tinte: "", entregable: true, inventario: true, atencion: false, ronda: true },
   { k: "en_uso", ico: "🤝", txt: "En uso", plural: "En uso",
     color: "var(--blue)", tinte: "rgba(59,130,246,.05)",
-    entregable: false, inventario: true, atencion: false, porque: "lo tiene alguien" },
+    entregable: false, inventario: true, atencion: false, ronda: true, porque: "lo tiene alguien" },
   /* ── LA PIEZA QUE ESTÁ ATORNILLADA A OTRA ──
      Un monopod de paneo son siete piezas unidas con tornillos: varilla,
      cabezal, mango, adaptadores. Cada una es una unidad que se compró y que
@@ -65,7 +74,7 @@ export const ESTADOS_EQUIPO: MetaEstado[] = [
      guardada. */
   { k: "ensamblado", ico: "🔩", txt: "Ensamblado", plural: "Ensamblados",
     color: "var(--muted)", tinte: "", entregable: false, inventario: true,
-    atencion: false, porque: "está montado en otro equipo",
+    atencion: false, ronda: true, porque: "está montado en otro equipo",
     ayuda: "Está atornillado dentro de otro equipo, así que no se presta solo. Para liberarlo hay que desarmarlo desde la ficha del equipo que lo contiene." },
   /* ASIGNADO — la laptop de Michel, la interfaz del puesto de post, la ropa
      táctica de Katy. Está con alguien y no va a volver el viernes: no es una
@@ -81,32 +90,36 @@ export const ESTADOS_EQUIPO: MetaEstado[] = [
      distinguir de un vistazo es precisamente eso. */
   { k: "asignado", ico: "📌", txt: "Asignado", plural: "Asignados",
     color: "var(--blue)", tinte: "", entregable: false, inventario: true,
-    atencion: false, porque: "asignado a alguien",
+    atencion: false, ronda: true, porque: "asignado a alguien",
     ayuda: "Está a cargo de una persona de forma indefinida —su equipo de trabajo—, no prestado para una salida. No se ofrece al entregar: para usarlo hay que hablar con quien lo tiene." },
   /* Entre «disponible» y «perdido», que es donde vive la realidad la mayor
      parte del tiempo. Naranja: ni el amarillo de reparación —eso se sabe
      dónde está— ni el rojo de perdido, que ya es un veredicto. */
   { k: "no_aparece", ico: "🔍", txt: "No aparece", plural: "No aparecen",
     color: "#fb923c", tinte: "rgba(251,146,60,.07)",
-    entregable: false, inventario: true, atencion: true,
+    entregable: false, inventario: true, atencion: true, ronda: false,
     porque: "no aparece",
     ayuda: "No está donde debería y todavía no se da por perdido. Sigue contando en el inventario: lo que hay que hacer con él es buscarlo." },
   { k: "en_reparacion", ico: "🛠", txt: "En reparación", plural: "En reparación",
     color: "var(--yellow)", tinte: "rgba(244,180,0,.05)",
-    entregable: false, inventario: true, atencion: true, porque: "en reparación" },
+    entregable: false, inventario: true, atencion: true, ronda: true, porque: "en reparación" },
   { k: "perdido", ico: "❌", txt: "Perdido", plural: "Perdidos",
     color: "var(--red)", tinte: "rgba(255,77,94,.06)",
-    entregable: false, inventario: false, atencion: true, porque: "perdido",
+    entregable: false, inventario: false, atencion: true, ronda: false, porque: "perdido",
     ayuda: "Se da por perdido: ya no cuenta en el inventario. Si solo no aparece, usa «No aparece»." },
   { k: "de_baja", ico: "⬛", txt: "De baja", plural: "De baja",
-    color: "var(--dim)", tinte: "", entregable: false, inventario: false, atencion: false,
+    color: "var(--dim)", tinte: "", entregable: false, inventario: false, atencion: false, ronda: false,
     porque: "de baja" },
 ];
 
 const POR_K = new Map(ESTADOS_EQUIPO.map(e => [e.k, e]));
 const NINGUNO: MetaEstado = {
   k: "disponible", ico: "·", txt: "—", plural: "—", color: "var(--dim)", tinte: "",
-  entregable: false, inventario: true, atencion: false,
+  /* Sin estado —o con uno que no reconocemos— SÍ entra en la ronda. Es un dato
+     que falta, no una afirmación de que la cosa no está: sellarlo «visto» no
+     contradice nada, y esconder el botón por un hueco sería castigar al equipo
+     por lo que no sabemos de él. */
+  entregable: false, inventario: true, atencion: false, ronda: true,
 };
 
 export const metaEstado = (k?: string | null): MetaEstado => POR_K.get(String(k ?? "") as EstadoEquipo) || NINGUNO;
@@ -164,6 +177,39 @@ export const FUERA_DE_INVENTARIO: string[] =
 /** Lo que hay que mirar hoy. */
 export const NECESITA_ATENCION: string[] =
   ESTADOS_EQUIPO.filter(e => e.atencion).map(e => e.k);
+
+/* ── LA RONDA: CADA CUÁNTO HAY QUE VER UN EQUIPO ──
+ *
+ * Noventa días. El número vivía suelto en /equipamiento (el chip de «por ver»)
+ * y otra vez dentro del botón, así que cambiarlo en un sitio dejaba la lista y
+ * el botón contando cosas distintas: el chip decía «3 pendientes» y en la lista
+ * había veintiséis botones encendidos.
+ *
+ * Es la misma pregunta —«¿alguien ha puesto los ojos encima de esto
+ * últimamente?»— y por eso ahora es la misma línea de código.
+ */
+export const DIAS_RONDA = 90;
+
+export const diasSinVer = (ultima?: string | null): number | null =>
+  ultima ? Math.floor((Date.now() - new Date(ultima + "T12:00:00").getTime()) / 86400000) : null;
+
+/** ¿Le toca ronda por FECHA? Nunca visto, o visto hace más de `DIAS_RONDA`. */
+export const tocaRonda = (ultima?: string | null): boolean => {
+  const d = diasSinVer(ultima);
+  return d === null || d > DIAS_RONDA;
+};
+
+/** ¿Este estado admite el sello de la ronda? Ver el comentario de `ronda`. */
+export const enRonda = (estado?: string | null): boolean => metaEstado(estado).ronda;
+
+/** Por qué este equipo está fuera de la ronda, dicho para quien lo lee. */
+export const fueraDeRonda = (estado?: string | null): string => {
+  const k = String(estado ?? "").trim();
+  if (k === "no_aparece") return "no se sella: si aparece, cámbiale el estado";
+  if (k === "perdido") return "dado por perdido — si aparece, cámbiale el estado";
+  if (k === "de_baja") return "de baja: ya no se ronda";
+  return "no entra en la ronda";
+};
 
 /* ── EL SELLO DE UN EQUIPO FUERA DE JUEGO ──
  *

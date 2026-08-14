@@ -6,6 +6,28 @@ import { txtEstadoEq, colorEstadoEq } from "@/lib/estadosEquipo";
 export type PiezaMontada = {
   id: string; folio?: string | null; nombre: string;
   cartel?: string | null; estado?: string | null;
+  /* ── LO QUE CUESTA CADA PIEZA ──
+   * Seis baterías de vuelo y dos centros de carga dentro de un drone son casi
+   * tres mil soles. Al firmar la salida de un kit, o al devolverlo con una
+   * pieza menos, la pregunta que sigue es siempre cuánto valía esa pieza — y
+   * hasta ahora había que salir a buscarla al inventario, una por una.
+   * `combo` para las que no tienen precio propio: vinieron dentro de una
+   * boleta y les toca su parte, que se calcula donde se conoce el combo
+   * entero y viaja ya resuelta. */
+  valor?: number | null;
+  combo?: { codigo?: string | null; porPieza?: number | null } | null;
+};
+
+const soles = (n: number) => `S/ ${Math.round(n).toLocaleString("es-PE")}`;
+
+/* Lo que vale una pieza montada: el suyo, o la parte que le toca de su
+   boleta. `estimado` se propaga para que la cifra lleve su «~»: un número
+   repartido y uno de una factura no valen lo mismo como prueba. */
+const valeM = (p: PiezaMontada): { v: number; esti: boolean } => {
+  const propio = Number(p.valor) || 0;
+  if (propio > 0) return { v: propio, esti: false };
+  const parte = Number(p.combo?.porPieza) || 0;
+  return parte > 0 ? { v: parte, esti: true } : { v: 0, esti: false };
 };
 
 /* «🔩 3 piezas», y al pulsarlo QUÉ tres.
@@ -97,7 +119,11 @@ export default function ChipPiezas({ piezas, titulo = "Va armado: lleva piezas m
 
   if (!piezas.length) return null;
 
-  const ANCHO = 300;
+  const sumas = piezas.map(valeM);
+  const total = sumas.reduce((a, x) => a + x.v, 0);
+  const estimado = sumas.some(x => x.esti);
+
+  const ANCHO = 340;
   const MARGEN = 12;
 
   function abrir() {
@@ -144,6 +170,15 @@ export default function ChipPiezas({ piezas, titulo = "Va armado: lleva piezas m
                 vista justo cuando hace falta. */}
             <span className="ens-pop-h">
               🔩 Va con {piezas.length} pieza{piezas.length === 1 ? "" : "s"} montada{piezas.length === 1 ? "" : "s"}
+              {/* El total de lo que va dentro. Con nueve filas de precios, la
+                  suma a mano es justo lo que nadie hace: se dice aquí. */}
+              {total > 0 && (
+                <span className="ens-pop-tot" title={estimado
+                  ? "Aproximado: alguna pieza vino en un combo sin precio propio y se le reparte su parte de la boleta."
+                  : "Suma de lo que cuesta cada pieza montada."}>
+                  {estimado ? "~" : ""}{soles(total)}
+                </span>
+              )}
               <button type="button" className="ens-pop-x" onClick={cerrar} title="Cerrar">✕</button>
             </span>
             <span className="ens-pop-lista" ref={lista}>
@@ -166,6 +201,22 @@ export default function ChipPiezas({ piezas, titulo = "Va armado: lleva piezas m
                     {txtEstadoEq(p.estado)}
                   </span>
                 )}
+                {/* El precio al final de la fila, no pegado al nombre: la
+                    columna de cifras se suma con la vista, y con el precio
+                    entremedio del texto hay que buscarlo nueve veces. */}
+                {(() => {
+                  const { v, esti } = valeM(p);
+                  if (v > 0) return (
+                    <span className={`ens-pop-val${esti ? " esti" : ""}`}
+                      title={esti ? `Sin precio propio: le toca esta parte de ${p.combo?.codigo || "su boleta"}.` : undefined}>
+                      {esti ? "~" : ""}{soles(v)}
+                    </span>
+                  );
+                  /* Sin precio NO se calla: una pieza sin valorar es la que
+                     hace que el total del kit vaya corto, y el hueco solo se
+                     arregla si se ve. */
+                  return <span className="ens-pop-sinval" title="Sin precio propio ni combo: no suma al valor del kit.">⚠</span>;
+                })()}
               </Link>
             ))}
             </span>

@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import { buscadorDe, nrmB, pal, partir } from "@/lib/buscar";
 import { contarHijos, colorFamilia, type Familia } from "@/lib/familia";
 import { icoTipo } from "@/lib/tipos";
@@ -93,24 +94,111 @@ const EST_ACT: Record<string, [string, string]> = {
 };
 
 
-/* Corta sin partir un emoji. Un emoji ocupa dos unidades UTF-16 (par
-   «surrogate»); si el corte cae en medio, queda medio carácter. Ese medio
-   carácter se vuelve � (U+FFFD) al serializar el HTML del servidor, mientras el
-   cliente conserva la mitad cruda — y React ve dos textos distintos y grita
-   «hydration error». Se quitan las mitades sueltas de los extremos: surrogate
-   BAJA al inicio, surrogate ALTA al final. */
-const sinMedioEmoji = (s: string) =>
-  s.replace(/^[\uDC00-\uDFFF]/, "").replace(/[\uD800-\uDBFF]$/, "");
+/* ── NORMALIZAR SIN PERDER EL SITIO ──
+ *
+ * `nrmB` quita las tildes con NFD, y eso CAMBIA LA LONGITUD del texto: «é» se
+ * descompone en dos caracteres y se queda en uno. Así que el índice que
+ * devuelve `nrmB(texto).indexOf(w)` no apunta al mismo sitio en `texto`, y el
+ * desfase crece con cada tilde anterior a la coincidencia.
+ *
+ * Eso ya estaba mal antes de resaltar nada —el recorte se descuadraba unos
+ * caracteres en cualquier comentario con acentos, que en castellano son casi
+ * todos— pero se notaba poco: un fragmento cortado un poco a la izquierda
+ * sigue leyéndose. Con el subrayado deja de perdonarse: marcaría media
+ * palabra y la letra siguiente.
+ *
+ * Se normaliza CARÁCTER A CARÁCTER guardando, para cada posición del texto
+ * normalizado, de qué posición del original vino. Es la única forma de buscar
+ * sin tildes y señalar con tildes.
+ */
+function nrmIdx(s: string): { norm: string; de: number[] } {
+  let norm = "";
+  const de: number[] = [];
+  for (let i = 0; i < s.length; i++) {
+    const c = nrmB(s[i]);            // puede quedar en "" (una tilde suelta)
+    for (let k = 0; k < c.length; k++) de.push(i);
+    norm += c;
+  }
+  return { norm, de };
+}
 
-/* recorte con contexto alrededor de la primera palabra coincidente */
-function snippet(texto: string | null, palabras: string[]): string {
+/* Todos los tramos del original que coinciden con alguna palabra buscada,
+   ordenados y sin solaparse —«drone» y «dron» marcarían dos veces la misma
+   zona, y anidar dos <mark> pinta un rectángulo más oscuro que parece otra
+   cosa—. */
+function tramos(norm: string, de: number[], palabras: string[], largo: number) {
+  const rs: [number, number][] = [];
+  for (const w of palabras) {
+    if (!w) continue;
+    for (let k = norm.indexOf(w); k >= 0; k = norm.indexOf(w, k + w.length)) {
+      const a = de[k];
+      const b = (de[k + w.length - 1] ?? largo - 1) + 1;
+      if (a != null) rs.push([a, b]);
+    }
+  }
+  rs.sort((x, y) => x[0] - y[0]);
+  const out: [number, number][] = [];
+  for (const r of rs) {
+    const u = out[out.length - 1];
+    if (u && r[0] <= u[1]) u[1] = Math.max(u[1], r[1]);
+    else out.push([...r] as [number, number]);
+  }
+  return out;
+}
+
+/* ── EL FRAGMENTO, CON LO BUSCADO SUBRAYADO ──
+ *
+ * Doce comentarios que dicen «drone» y el ojo tiene que releer los doce para
+ * encontrar por qué salieron. El resaltado no es adorno: convierte una lista
+ * de resultados en una lista de RESPUESTAS —se ve de un vistazo en qué
+ * contexto aparece la palabra, y con eso se decide cuál abrir.
+ *
+ * Se recorta alrededor de la coincidencia MÁS TEMPRANA y no de la primera
+ * palabra de la consulta que aparezca: buscando «rodaje drone», si «drone»
+ * está en la línea 1 y «rodaje» en la 8, la ventana debe abrir donde empieza
+ * lo encontrado, no ochenta caracteres más allá.
+ */
+function snippet(texto: string | null, palabras: string[]): ReactNode {
   if (!texto) return "";
+  const { norm, de } = nrmIdx(texto);
+
   let i = -1;
-  for (const w of palabras) { i = nrmB(texto).indexOf(w); if (i >= 0) break; }
-  if (i < 0) return sinMedioEmoji(texto.slice(0, 100)) + (texto.length > 100 ? "…" : "");
-  const ini = Math.max(0, i - 50);
-  const fin = Math.min(texto.length, i + 80);
-  return (ini > 0 ? "…" : "") + sinMedioEmoji(texto.slice(ini, fin)) + (fin < texto.length ? "…" : "");
+  for (const w of palabras) {
+    const k = norm.indexOf(w);
+    if (k >= 0 && (i < 0 || k < i)) i = k;
+  }
+
+  let ini: number, fin: number;
+  if (i < 0) { ini = 0; fin = Math.min(texto.length, 100); }
+  else {
+    const p = de[i] ?? 0;
+    ini = Math.max(0, p - 50);
+    fin = Math.min(texto.length, p + 80);
+  }
+
+  /* El corte se mueve ANTES de rebanar, no se limpia después: si la ventana
+     parte un emoji por la mitad, cualquier índice calculado sobre el texto
+     limpio ya no apunta a donde apuntaba. Un emoji ocupa dos unidades UTF-16;
+     media unidad suelta se vuelve � al serializar en el servidor y el cliente
+     conserva la mitad cruda — React ve dos textos distintos y grita
+     «hydration error». */
+  if (ini > 0 && /[\uDC00-\uDFFF]/.test(texto[ini])) ini++;
+  if (fin < texto.length && /[\uD800-\uDBFF]/.test(texto[fin - 1])) fin--;
+
+  const marcas = tramos(norm, de, palabras, texto.length)
+    .filter(([a, b]) => b > ini && a < fin);
+
+  const partes: ReactNode[] = [];
+  let cur = ini;
+  marcas.forEach(([a, b], n) => {
+    const a2 = Math.max(a, ini), b2 = Math.min(b, fin);
+    if (a2 > cur) partes.push(texto.slice(cur, a2));
+    partes.push(<mark key={n} className="bq-marca">{texto.slice(a2, b2)}</mark>);
+    cur = b2;
+  });
+  if (cur < fin) partes.push(texto.slice(cur, fin));
+
+  return <>{ini > 0 ? "…" : ""}{partes}{fin < texto.length ? "…" : ""}</>;
 }
 
 /* La pestaña dice QUÉ buscaste: «🔍 pampacucho». Sin esto, tres buscadores
