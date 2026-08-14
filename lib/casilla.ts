@@ -155,6 +155,90 @@ export function pideAccion(asunto?: string | null, extracto?: string | null): bo
   return AGUJAS_ACCION.some(a => t.includes(a));
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   ¿ESTE CORREO ES DE DAFO, O SOLO CAYÓ EN LA CUENTA?
+   ══════════════════════════════════════════════════════════════════
+
+   El filtro de Gmail reenvía TODO lo que llega a las veintiuna cuentas de
+   postulación, y tiene que ser así: DAFO escribe desde direcciones que no se
+   pueden listar de antemano —los evaluadores usan su Gmail personal— así que
+   filtrar por remitente en Gmail dejaría fuera lo importante.
+
+   La consecuencia es que en la casilla aparecen «Estás usando Gemini en la
+   web» y «Security alert» como si fueran la última señal de una postulación.
+   Y eso no es un adorno feo: la columna se llama «último correo» y es lo que
+   se mira para saber si un expediente está callado. Un aviso de Google
+   ocupando ese sitio dice que hubo movimiento donde no lo hubo — que es la
+   forma más cara de mentir en este panel, porque la respuesta parece buena.
+
+   ── POR QUÉ NO SE BORRA NADA ──
+   Se CLASIFICA, no se descarta. Un «Security alert» en la cuenta de una
+   postulación es justamente algo que hay que mirar —alguien intentando entrar
+   al correo por donde llegan las notificaciones del Estado— y tirarlo sería
+   cambiar un ruido por un punto ciego. Lo que cambia es dónde vive: fuera de
+   la columna que responde «¿DAFO dijo algo?».
+
+   ── LA REGLA ES POSITIVA, NO UNA LISTA NEGRA ──
+   Enumerar remitentes indeseables es una carrera que se pierde: mañana llega
+   otro boletín. Se declara qué SÍ es de DAFO y el resto cae en «otro», que es
+   un cajón visible y no un agujero. Si algo de DAFO cae ahí, se ve y se
+   corrige la regla; al revés —un ruido colado como DAFO— no se ve nunca.
+*/
+export type ClaseCorreo = "dafo" | "cuenta" | "otro";
+
+/* El Estado escribe desde sus dominios; eso es lo único que no admite duda. */
+const DOM_ESTADO = /(^|[@.])(cultura\.gob\.pe|gob\.pe)$/i;
+
+/* Google hablando de la cuenta misma: seguridad, códigos, novedades del
+   producto. No es DAFO ni es un tercero — es el buzón hablando de sí mismo, y
+   merece su propio cajón porque alguna de estas sí importa. */
+const DOM_GOOGLE = /(^|[@.])(google\.com|accounts\.google\.com|gemini\.google\.com|youtube\.com)$/i;
+
+const dominioDe = (de?: string | null): string => {
+  const m = /<([^>]+)>/.exec(String(de || ""));
+  const dir = (m ? m[1] : String(de || "")).trim();
+  const at = dir.lastIndexOf("@");
+  return at < 0 ? "" : dir.slice(at + 1).trim().toLowerCase();
+};
+
+/* Vocabulario del trámite. Va DESPUÉS del dominio y del vínculo: es la red de
+   seguridad para el correo que manda una evaluadora desde su Gmail personal,
+   no el criterio principal. Palabras largas y propias del oficio — nada de
+   «cultura» o «proyecto», que salen en cualquier boletín de cine. */
+const PALABRAS_DAFO = [
+  "dafo", "estimulos economicos", "ministerio de cultura",
+  "expediente", "postulacion", "convocatoria", "bases integradas",
+  "subsan", "requerimient", "apercib", "constancia de envio",
+  "resolucion directoral", "acta de compromiso", "rendicion de cuentas",
+];
+
+export function claseCorreo(
+  remitente?: string | null, asunto?: string | null, extracto?: string | null,
+  /** Si la ingesta ya lo ató a una postulación POR EL CÓDIGO, no hay más que
+   *  discutir: un correo que cita el número de expediente es del expediente,
+   *  lo mande quien lo mande. El vínculo «cuenta» no vale para esto — ese se
+   *  dedujo de en qué buzón cayó, que es exactamente lo que aquí se pone en
+   *  duda. */
+  vinculoPor?: string | null,
+): ClaseCorreo {
+  const dom = dominioDe(remitente);
+  if (DOM_ESTADO.test(dom)) return "dafo";
+  if (vinculoPor === "codigo" || vinculoPor === "manual") return "dafo";
+  if (DOM_GOOGLE.test(dom)) return "cuenta";
+  const t = sinTildes(`${asunto || ""} ${extracto || ""}`);
+  if (PALABRAS_DAFO.some(w => t.includes(w))) return "dafo";
+  return "otro";
+}
+
+export const META_CLASE: Record<ClaseCorreo, { ico: string; txt: string; col: string; ayuda: string }> = {
+  dafo:   { ico: "🏛", txt: "DAFO", col: "var(--teal)",
+    ayuda: "Del Ministerio, o cita el código del expediente." },
+  cuenta: { ico: "🔐", txt: "la cuenta", col: "var(--yellow)",
+    ayuda: "Google hablando del buzón: seguridad, códigos, novedades. No es DAFO, pero un aviso de seguridad en la cuenta por donde llegan las notificaciones sí hay que mirarlo." },
+  otro:   { ico: "📨", txt: "otro", col: "var(--dim)",
+    ayuda: "Ni del Ministerio ni de Google, y sin vocabulario de trámite: boletines, publicidad, correo suelto. Si ves algo de DAFO aquí, dilo — la regla se corrige." },
+};
+
 /* El link al hilo en Gmail, armado con el buzón donde de verdad está.
  * Sin `authuser` el enlace abre la cuenta que el navegador tenga cargada, y
  * con varias sesiones de Google eso deja al lector mirando otra bandeja

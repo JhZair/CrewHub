@@ -6,6 +6,7 @@ import CasillaDafo from "@/components/CasillaDafo";
 import Realtime from "@/components/Realtime";
 import { enJuego, ejecutando } from "@/lib/fondos";
 import { hoyLima } from "@/lib/fechas";
+import { claseCorreo } from "@/lib/casilla";
 
 /* Viva = recibe correo de DAFO. No es lo mismo que «en juego»: una GANADORA sin
    rendir es la que más recibe —todo el hilo de la rendición— y quedaba fuera. */
@@ -108,15 +109,31 @@ export default async function CasillaPage() {
   /* Se guarda el CORREO entero y no solo su fecha: la tabla enseña el asunto
      ahí mismo. «Hace 12 d» obligaba a bajar a buscar de qué iba, que era
      justamente el viaje que este panel venía a ahorrar. */
+  /* ── SOLO CUENTA COMO «ÚLTIMA SEÑAL» LO QUE ES DE DAFO ──
+     El filtro de Gmail reenvía todo lo que cae en las cuentas de postulación
+     —y tiene que hacerlo: DAFO escribe desde direcciones que no se pueden
+     listar de antemano—. El resultado era que «Estás usando Gemini en la web»
+     y «Security alert» aparecían como la última señal de un expediente.
+     Esta columna existe para contestar «¿DAFO dijo algo?», y un aviso de
+     Google ocupando ese sitio contesta que sí cuando la respuesta es no. Es
+     la forma más cara de fallar aquí, porque parece una buena noticia.
+     Lo demás no se tira: se cuenta aparte y se enseña (`otrosPorPost`). */
   const ultimo = new Map<string, { id: string; asunto: string; recibido_en: string }>();
   const sinLeerPorPost = new Map<string, number>();
+  const otrosPorPost = new Map<string, number>();
   coms.forEach(c => {
     if (!c.postulacion_id) return;
-    if (!ultimo.has(c.postulacion_id)) {
+    const cl = claseCorreo(c.remitente, c.asunto, c.extracto, c.vinculo_por);
+    if (cl !== "dafo") {
+      otrosPorPost.set(c.postulacion_id, (otrosPorPost.get(c.postulacion_id) || 0) + 1);
+    } else if (!ultimo.has(c.postulacion_id)) {
       ultimo.set(c.postulacion_id, {
         id: c.id, asunto: c.asunto || "(sin asunto)", recibido_en: c.recibido_en,
       });
     }
+    /* Lo SIN LEER sigue contando todo: que un correo no sea de DAFO no
+       significa que nadie tenga que abrirlo, y un aviso de seguridad sin leer
+       es justamente de los que no conviene esconder. */
     if (!c.leido_en) sinLeerPorPost.set(c.postulacion_id, (sinLeerPorPost.get(c.postulacion_id) || 0) + 1);
   });
 
@@ -176,6 +193,10 @@ export default async function CasillaPage() {
       ultimo: ultimo.get(p.id)?.recibido_en || null,
       ultimoId: ultimo.get(p.id)?.id || null,
       ultimoAsunto: ultimo.get(p.id)?.asunto || null,
+      /* Cuántos llegaron a esa cuenta que NO son de DAFO. Se dice para que
+         «nunca llegó nada de DAFO» no se lea como «esta cuenta está muerta»:
+         son dos diagnósticos distintos y llevan a arreglos distintos. */
+      otros: otrosPorPost.get(p.id) || 0,
       sinLeer: sinLeerPorPost.get(p.id) || 0,
       empresa: (nombreEmp(p.emp) || null) as string | null,
       /* La convocatoria, para agrupar. Con veintiuna tarjetas de nueve

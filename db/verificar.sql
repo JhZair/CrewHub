@@ -67,6 +67,17 @@ with esperado(clase, obj, para, archivo) as (values
   -- La cara del kit: sin esto, un «Kit Zhiyun Molus G60» se ilustra con un
   -- trípode porque la portada se deducía del orden de folios.
   ('col', 'kits.portada_equipo_id',      'Qué pieza representa al kit', 'kit-portada.sql'),
+  /* ── LAS COLUMNAS DE DESTINO DE UN AVISO ──
+     Estas ocho son las que hacen que una notificación LLEVE a alguna parte, y
+     por eso están juntas: si falta una, la consulta de la bandeja se cae y se
+     reintenta sin ella. Faltó `comentario_id` durante semanas y el daño no fue
+     el suyo —perder el ancla al párrafo— sino que arrastraba a las demás: los
+     avisos de la casilla DAFO se veían y no se podían pulsar.
+     Aquí ya no puede pasar desapercibido. */
+  ('col', 'notificaciones.comentario_id',     'Llevar al comentario exacto',  'notif-comentario.sql'),
+  ('col', 'notificaciones.postulacion_id',    'Llevar a la postulación',      'postulacion-interaccion.sql'),
+  ('col', 'notificaciones.prestamo_id',       'Llevar al equipo prestado',    'prestamos.sql'),
+  ('col', 'notificaciones.equipamiento_id',   'Llevar a la bitácora del equipo', 'equipo-bitacora.sql'),
   -- Funciones
   ('fun', 'nrm_nombre',        'Comparar nombres sin tildes',       'personas-duplicadas.sql'),
   ('fun', 'persona_refs',      'Qué cuelga de una persona',         'personas-duplicadas.sql'),

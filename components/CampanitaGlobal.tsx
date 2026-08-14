@@ -9,7 +9,7 @@ import { createClient } from "@/lib/supabase/client";
    que ya tiene la suya, ni dentro de los paneles del Monitor). Trae las
    notificaciones bajo demanda y se actualiza en tiempo real. */
 
-import { rutaNotif, esAutomatica, agruparNotifs } from "@/lib/notificaciones";
+import { rutaNotif, esAutomatica, agruparNotifs, SQL_DE_COLUMNA } from "@/lib/notificaciones";
 import NotifFila from "./NotifFila";
 /* La fila salió a NotifFila: la pintaban idéntica esta campanita, la del feed
    y la página /notificaciones. */
@@ -28,11 +28,17 @@ export default function CampanitaGlobal() {
 
   useEffect(() => { setEsTop(window.self === window.top); }, []);
 
+  /* Columnas que la base todavía no tiene. Mientras falten, los avisos que
+     dependen de ellas llegan sin destino: se ven, se leen, y al pulsarlos no
+     pasa nada. Eso hay que decirlo aquí y no dejarlo en un comentario. */
+  const [faltan, setFaltan] = useState<string[]>([]);
+
   useEffect(() => {
     if (oculto || !esTop) return;
     const cargar = async () => {
       const r: any = await misNotificaciones();
       setItems(r.items || []); setSinLeer(r.sinLeer || 0); setSinLeerBot(r.sinLeerBot || 0);
+      setFaltan(r.faltan || []);
     };
     cargar();
     const supabase = createClient();
@@ -105,6 +111,22 @@ export default function CampanitaGlobal() {
               </button>
               {nPestana > 0 && <button className="camp-marcar" onClick={marcarTodas}>✓ marcar</button>}
             </div>
+            {/* ── EL MODO DEGRADADO, DICHO ──
+                La bandeja sigue funcionando aunque falte un SQL —eso es lo
+                correcto: una pantalla que ya servía no puede caerse porque
+                otro módulo tenga una migración pendiente—. Lo que no puede
+                es CALLARLO: sin esas columnas los avisos pierden su destino,
+                y el síntoma que le llega a la persona es «no funciona el
+                clic», sin un error en ninguna parte que lo explique. */}
+            {faltan.length > 0 && (
+              <div className="camp-degradado">
+                ⚠ Estos avisos no pueden llevar a su destino: falta{faltan.length === 1 ? "" : "n"}{" "}
+                {faltan.map(c => (
+                  <b key={c}>{SQL_DE_COLUMNA[c] || c}</b>
+                )).reduce((a: any, b: any) => a === null ? b : <>{a}, {b}</>, null)}
+                {" "}en la base de datos.
+              </div>
+            )}
             {lista.length === 0 && (
               <div style={{ color: "var(--dim)", fontSize: 12.5, textAlign: "center", padding: "16px 0" }}>
                 {pestana === "bot" ? "Sin avisos del Bot por ahora. 🤖" : "Nada que requiera tu acción. ✨"}
@@ -118,7 +140,11 @@ export default function CampanitaGlobal() {
                   <NotifFila n={g.n} cuenta={g.cuenta} actores={g.actores} />
                 </Link>
               ) : (
+                /* Sin ruta no hay enlace, y eso se NOTA: el cursor no cambia y
+                   el título explica por qué. Una fila que parece pulsable y no
+                   lo es enseña a desconfiar de todas las demás. */
                 <div key={g.n.id} className={`camp-item ${g.idsSinLeer.length ? "nueva" : "leida"}`}
+                  title="Este aviso no guarda a dónde llevar. Suele ser una migración pendiente en la base de datos."
                   onClick={() => marcarGrupo(g)} style={{ cursor: g.idsSinLeer.length ? "pointer" : "default" }}>
                   <NotifFila n={g.n} cuenta={g.cuenta} actores={g.actores} />
                 </div>

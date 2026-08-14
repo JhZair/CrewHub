@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { BOT } from "@/lib/personas";
 import { enJuego, ejecutando } from "@/lib/fondos";
-import { vincularPorAsuntoOCuerpo, pideAccion, esRuido, type PostMin } from "@/lib/casilla";
+import { vincularPorAsuntoOCuerpo, pideAccion, esRuido, claseCorreo, type PostMin } from "@/lib/casilla";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -151,7 +151,16 @@ export async function POST(req: Request) {
           extracto: extracto || null,
           recibido_en: (isNaN(fecha.getTime()) ? new Date() : fecha).toISOString(),
           postulacion_id, empresa_id, vinculo_por,
-          pide_accion: pideAccion(asunto, extracto),
+          /* ── LA ALARMA SOLO SUENA POR CORREO DE DAFO ──
+             `pideAccion` busca palabras —«subsanación», «requerimiento»— y esas
+             palabras salen también en boletines del gremio y en avisos de
+             Google. El filtro de Gmail reenvía todo lo que cae en las cuentas,
+             así que sin esta condición el 🚨 y la notificación al celular
+             podían dispararlos un correo que no es del Ministerio.
+             Un aviso que a veces es falso deja de creerse entero, y entonces
+             tampoco se atiende el requerimiento de cinco días que sí lo era. */
+          pide_accion: claseCorreo(String(m.de || ""), asunto, extracto, vinculo_por) === "dafo"
+            && pideAccion(asunto, extracto),
         };
       });
 

@@ -3,7 +3,8 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { hace } from "@/lib/notificaciones";
-import { linkGmail, soloNombre, diasDesde, ORIGEN_VINCULO, esAcuse } from "@/lib/casilla";
+import { linkGmail, soloNombre, diasDesde, ORIGEN_VINCULO, esAcuse,
+  claseCorreo, META_CLASE } from "@/lib/casilla";
 import { marcarComunicacion, vincularComunicacion, casoDeComunicacion } from "@/app/casilla/acciones";
 /* El alta vive en app/actions.ts y no aquí al lado: no es la mecánica de esta
    pantalla, es escribir una credencial de empresa —lo mismo que hace la ficha
@@ -40,6 +41,8 @@ type Opcion = { id: string; etiqueta: string; enJuego: boolean };
 type Fila = {
   id: string; codigo: string; nombre: string; sinLeer: number;
   ultimo: string | null; ultimoId: string | null; ultimoAsunto: string | null;
+  /** Correos que llegaron a esa cuenta y NO son de DAFO. */
+  otros?: number;
   empresa: string | null; cuentas: string[]; rindiendo: boolean;
   convId: string; convCodigo: string; convNombre: string; anio: number | null;
 };
@@ -91,19 +94,71 @@ export default function CasillaDafo({
     return [...m.entries()].sort((a, b) => (a[0] === "_" ? 1 : b[0] === "_" ? -1 : 0));
   }, [leidos]);
 
-  /* Si llegamos desde una notificación (/casilla#c-<id>), abrir TODO antes de
-     que el navegador busque el ancla: si ese correo ya estaba leído y su grupo
-     venía recortado, el ancla no existe en el DOM y el clic no lleva a ninguna
-     parte — el fallo silencioso de siempre, un aviso que suena y no entrega. */
+  /* ── LLEGAR DESDE UNA NOTIFICACIÓN (/casilla#c-<id>) ──
+   *
+   * El ancla de un correo solo existe si ese correo está pintado, y por
+   * defecto no lo está: los grupos vienen recortados a tres. Por eso hay que
+   * abrir TODO antes de buscarlo.
+   *
+   * La primera versión hacía eso y aun así el clic no llevaba a ninguna parte.
+   * Dos motivos, y los dos son el mismo error de fondo —dar por hecho que algo
+   * ya ocurrió en vez de comprobarlo—:
+   *
+   * 1. UN SOLO `requestAnimationFrame` NO BASTA. `setVerTodo(true)` no repinta
+   *    al instante: React programa el repintado y el rAF puede llegar antes.
+   *    Se buscaba un elemento que todavía no existía, no se encontraba, y no
+   *    pasaba nada. Ahora se INSISTE hasta que aparece.
+   *
+   * 2. ESTANDO YA EN /casilla NO PASABA NADA EN ABSOLUTO. Next navega sin
+   *    remontar el componente, así que un efecto con dependencias vacías no
+   *    se vuelve a ejecutar: el segundo aviso que se pulsaba —y el primero, si
+   *    ya estabas en la casilla— cambiaba la URL y nada más. Se escucha
+   *    `hashchange`, que es el evento que sí ocurre.
+   *
+   * Y si el correo de verdad no está en esta pantalla (es más viejo que los
+   * últimos `tope`), se DICE. Dejar a alguien arriba del todo preguntándose si
+   * pulsó bien es el fallo silencioso que este panel entero viene a evitar. */
   useEffect(() => {
-    if (typeof window !== "undefined" && window.location.hash.startsWith("#c-")) {
+    if (typeof window === "undefined") return;
+    let vivo = true;
+
+    const irAlHash = () => {
+      const h = window.location.hash;
+      if (!h.startsWith("#c-")) return;
+      const id = h.slice(3);
       setVerTodo(true);
-      const id = window.location.hash;
-      // Tras pintar todo, ir al correo. El navegador ya no lo hace solo: el
-      // ancla no estaba cuando cargó la página.
-      requestAnimationFrame(() => document.querySelector(id)?.scrollIntoView({ block: "center" }));
-    }
-  }, []);
+      setDestello(id);
+
+      /* Se insiste ~40 cuadros (poco menos de un segundo). Es tiempo de sobra
+         para un repintado y poco para que nadie note la espera. */
+      let intentos = 0;
+      const buscar = () => {
+        if (!vivo) return;
+        const el = document.getElementById(`c-${id}`);
+        if (el) { el.scrollIntoView({ block: "center", behavior: "smooth" }); return; }
+        if (++intentos > 40) {
+          setAviso(`Ese correo no está en esta pantalla: solo se cargan los últimos ${tope}. `
+            + "Búscalo en Gmail o pide subir el tope.");
+          setDestello(null);
+          return;
+        }
+        requestAnimationFrame(buscar);
+      };
+      requestAnimationFrame(buscar);
+    };
+
+    irAlHash();
+    window.addEventListener("hashchange", irAlHash);
+    return () => { vivo = false; window.removeEventListener("hashchange", irAlHash); };
+  }, [tope]);
+
+  /* El resaltado se apaga solo, venga de donde venga el salto. Si se quedara,
+     la próxima visita mostraría una fila marcada sin que nadie sepa por qué. */
+  useEffect(() => {
+    if (!destello) return;
+    const t = setTimeout(() => setDestello(null), 2000);
+    return () => clearTimeout(t);
+  }, [destello]);
 
   /* ¿Algún grupo está recortado? Decide si el «ver todos» tiene sentido. */
   const hayRecorte = useMemo(() => grupos.some(([, g]) => g.coms.length > POR_GRUPO), [grupos]);
@@ -177,14 +232,20 @@ export default function CasillaDafo({
      su grupo venía recortado a tres, el ancla no existe en el DOM y el clic no
      lleva a ninguna parte. El mismo fallo silencioso que ya tenía el enlace de
      las notificaciones. */
+  /* Va por el hash y no directamente al DOM: así el salto de dentro del panel
+     y el que llega desde una notificación recorren EXACTAMENTE el mismo camino
+     —insistir hasta que el ancla exista, avisar si nunca aparece— en vez de
+     tener dos versiones que se corrigen por separado. Que la URL quede
+     apuntando al correo es además lo que permite compartir el enlace.
+     El apagado del resaltado tampoco se repite aquí: lo lleva su propio efecto. */
   const irAlCorreo = (id: string) => {
-    setVerTodo(true);
-    setDestello(id);
-    requestAnimationFrame(() =>
-      document.getElementById(`c-${id}`)?.scrollIntoView({ block: "center", behavior: "smooth" }));
-    /* Se apaga sola: si el resaltado se quedara, la próxima vez que se abra la
-       página habría una fila marcada sin que nadie sepa por qué. */
-    window.setTimeout(() => setDestello(v => (v === id ? null : v)), 2200);
+    if (window.location.hash === `#c-${id}`) {
+      /* Mismo hash: `hashchange` no se dispara y el salto se perdería. Es el
+         caso de pulsar dos veces la misma fila del resumen. */
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+      return;
+    }
+    window.location.hash = `c-${id}`;
   };
 
   /* ── LA TIRA, CORTADA POR CONVOCATORIA ──
@@ -334,12 +395,23 @@ export default function CasillaDafo({
                 overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {r.ultimoAsunto}
             </button>
+          ) : r.otros ? (
+            /* Llegó correo, pero nada de DAFO. Decirlo cambia el diagnóstico
+               entero: la cuenta funciona y el reenvío también, así que el
+               silencio es del Ministerio y no de la instalación. Un «—» a
+               secas mandaba a revisar filtros que están bien. */
+            <span style={{ color: "var(--dim)", fontStyle: "italic" }}
+              title="La cuenta recibe correo —así que el reenvío funciona— pero nada de DAFO todavía. Los otros correos están en la lista de abajo.">
+              {r.otros} correo{r.otros === 1 ? "" : "s"}, ninguno de DAFO
+            </span>
           ) : (
             <span style={{ color: "var(--dim)" }}>—</span>
           )}
         </td>
         <td className="cas-num" style={{ color: col, fontSize: 11.5 }}>
-          {d === null ? "nunca llegó nada" : d === 0 ? "hoy" : `hace ${d} d`}
+          {d === null
+            ? (r.otros ? <span style={{ color: "var(--dim)" }}>sin señal de DAFO</span> : "nunca llegó nada")
+            : d === 0 ? "hoy" : `hace ${d} d`}
           {r.sinLeer > 0 && <span style={{ color: "var(--red)" }}> · {r.sinLeer} sin leer</span>}
         </td>
       </tr>
@@ -367,20 +439,43 @@ export default function CasillaDafo({
 
   const fila = (c: Com) => {
     const url = linkGmail(c.gmail_thread_id, c.buzon);
+    const clase = claseCorreo(c.remitente, c.asunto, c.extracto, c.vinculo_por);
+    /* La 🚨 se recalcula aquí y no se cree la columna a ciegas. La ingesta ya
+       no la enciende para correo ajeno, pero los mensajes guardados ANTES de
+       esa corrección siguen con `pide_accion` puesto: sin esto, la casilla
+       seguiría alarmando por un boletín hasta que alguien limpiara la tabla.
+       Una regla nueva tiene que aplicarse también a lo que ya estaba. */
+    const alarma = c.pide_accion && clase === "dafo";
     return (
       <div key={c.id} id={`c-${c.id}`} className={`card${destello === c.id ? " cas-destello" : ""}`}
         style={{ display: "flex", flexDirection: "column", gap: 4,
-          borderLeft: c.pide_accion && !c.leido_en ? "3px solid var(--red)" : undefined }}>
+          borderLeft: alarma && !c.leido_en ? "3px solid var(--red)" : undefined }}>
         <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
           <span style={{ fontWeight: 700, fontSize: 13.5, flex: 1, minWidth: 220 }}>
-            {c.pide_accion ? "🚨 " : esAcuse(c.asunto) ? "🧾 " : ""}{c.asunto || "(sin asunto)"}
+            {alarma ? "🚨 " : esAcuse(c.asunto) ? "🧾 " : ""}{c.asunto || "(sin asunto)"}
           </span>
           {chipVinculo(c)}
           <span style={{ color: "var(--dim)", fontSize: 11 }}>{hace(c.recibido_en)}</span>
         </div>
 
-        <div style={{ color: "var(--dim)", fontSize: 11.5 }}>
-          {soloNombre(c.remitente)}{c.cuenta ? ` → ${c.cuenta}` : ""}
+        <div style={{ color: "var(--dim)", fontSize: 11.5, display: "flex", gap: 7,
+          alignItems: "center", flexWrap: "wrap" }}>
+          {/* De qué es este correo. En la lista SÍ salen todos —un aviso de
+              seguridad en la cuenta por donde llegan las notificaciones del
+              Estado es de los que hay que ver— pero cada uno dice lo que es,
+              así que el ojo separa sin leer los asuntos uno por uno. */}
+          {(() => {
+            if (clase === "dafo") return null;   // lo normal aquí no se etiqueta
+            const m = META_CLASE[clase];
+            return (
+              <span className="badge" title={m.ayuda}
+                style={{ color: m.col, background: `color-mix(in srgb, ${m.col} 12%, transparent)`,
+                  fontSize: 10 }}>
+                {m.ico} {m.txt}
+              </span>
+            );
+          })()}
+          <span>{soloNombre(c.remitente)}{c.cuenta ? ` → ${c.cuenta}` : ""}</span>
         </div>
 
         {c.extracto && (

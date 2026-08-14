@@ -17,7 +17,7 @@ import { fraccionValida } from "@/lib/jornadas";
 import { TIPOS_OBJETO } from "@/lib/objetos";
 import { catalogoObjetos, catalogosEntidades } from "@/lib/catalogos";
 import { resolverNombres } from "@/lib/nombres";
-import { COL_DAFO, sinColumna, faltaAlguna, sinOpcionales, TIPOS_DAFO } from "@/lib/notificaciones";
+import { COL_DAFO, sinColumna, faltaAlguna, columnasQueFaltan, sinEstas, COLS_NUEVAS, TIPOS_DAFO } from "@/lib/notificaciones";
 import { DIAS_AVISO_DEF } from "@/lib/plazo";
 import { hoyLima } from "@/lib/fechas";
 
@@ -7048,12 +7048,32 @@ export async function misNotificaciones() {
   ]);
   let pers: any = r[0].data, bot: any = r[1].data;
   const sinLeer = r[2].count, sinLeerBot = r[3].count;
-  if (faltaAlguna(r[0].error) || faltaAlguna(r[1].error)) {
-    const r2 = await Promise.all([tanda(sinOpcionales(cols), false), tanda(sinOpcionales(cols), true)]);
+  /* Qué columnas opcionales faltan. Se DEVUELVE, no solo se sortea: sin
+     `dafo_id` los avisos de la casilla llegan sin destino y al pulsarlos no
+     pasa nada — un fallo que no deja rastro en ningún log y que nadie va a
+     arreglar porque nadie sabe que existe. */
+  /* Se reintenta quitando SOLO lo que la base dijo que no tiene, y se vuelve a
+     intentar por si falta más de una. Antes se quitaban las tres de golpe: con
+     `comentario_id` sin migrar se renunciaba también a `dafo_id` —que sí
+     estaba— y los avisos de la casilla llegaban sin destino. Una migración
+     pendiente puede costar su función; no las de al lado. */
+  let faltan: string[] = [];
+  let quitadas: string[] = [];
+  for (let i = 0; i < COLS_NUEVAS.length; i++) {
+    const nuevas = [...new Set([
+      ...columnasQueFaltan(r[0].error), ...columnasQueFaltan(r[1].error),
+    ])].filter(c => !quitadas.includes(c));
+    if (!nuevas.length) break;
+    quitadas = [...quitadas, ...nuevas];
+    faltan = quitadas;
+    const c2 = sinEstas(cols, quitadas);
+    const r2 = await Promise.all([tanda(c2, false), tanda(c2, true)]);
     pers = r2[0].data; bot = r2[1].data;
+    if (!faltaAlguna(r2[0].error) && !faltaAlguna(r2[1].error)) break;
+    r[0] = r2[0] as any; r[1] = r2[1] as any;
   }
   const items = await conVinculos(supabase, [...(pers || []), ...(bot || [])]);
-  return { items, sinLeer: sinLeer || 0, sinLeerBot: sinLeerBot || 0 };
+  return { items, sinLeer: sinLeer || 0, sinLeerBot: sinLeerBot || 0, faltan };
 }
 
 /* ===== MURO — mensajes efímeros de oficina (reemplaza el chat del almuerzo) =====
@@ -7276,11 +7296,22 @@ export async function notificacionesTodas(desde = 0, filtro?: "personal" | "bot"
      ella: la bandeja de notificaciones NO puede quedarse vacía por un SQL
      pendiente de otro módulo. */
   let notifs: any = notifsRaw;
-  if (faltaAlguna(eNotifs)) {
-    const { data } = await consulta(sinOpcionales(COLS))
-      .order("creado_en", { ascending: false }).order("id", { ascending: false })
-      .range(desde, desde + NOTIF_PAGINA - 1);
-    notifs = data;
+  let faltan: string[] = [];
+  {
+    /* Igual que en la campanita: se quita solo lo que la base nombró, no todo
+       lo opcional. Ver el comentario de `sinEstas` en lib/notificaciones.ts. */
+    let err: any = eNotifs;
+    let quitadas: string[] = [];
+    for (let i = 0; i < COLS_NUEVAS.length && faltaAlguna(err); i++) {
+      const nuevas = columnasQueFaltan(err).filter(c => !quitadas.includes(c));
+      if (!nuevas.length) break;
+      quitadas = [...quitadas, ...nuevas];
+      faltan = quitadas;
+      const { data, error } = await consulta(sinEstas(COLS, quitadas))
+        .order("creado_en", { ascending: false }).order("id", { ascending: false })
+        .range(desde, desde + NOTIF_PAGINA - 1);
+      notifs = data; err = error;
+    }
   }
   const items = await conVinculos(supabase, notifs || []);
   /* hayMas heurístico: si vino una página completa, probablemente hay más. Con
@@ -7291,6 +7322,7 @@ export async function notificacionesTodas(desde = 0, filtro?: "personal" | "bot"
     items, hayMas: (notifs?.length || 0) === NOTIF_PAGINA,
     total: total || 0, totalBot: totalBot || 0,
     sinLeer: sinLeer || 0, sinLeerBot: sinLeerBot || 0,
+    faltan,
   };
 }
 

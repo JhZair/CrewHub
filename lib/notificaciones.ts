@@ -27,12 +27,52 @@ export const sinColumna = (e: any, col: string): boolean =>
    SQL, y cada una tumbaría la consulta entera si se pide antes de tiempo. */
 export const COLS_NUEVAS = [COL_DAFO, "comentario_id", "movimiento_caja_id"];
 export const faltaAlguna = (e: any): boolean => COLS_NUEVAS.some(c => sinColumna(e, c));
-/* Quita TODAS las opcionales para el segundo intento, no solo la que se quejó.
-   Pedirlas de una en una serían tantos reintentos como columnas nuevas haya, y
-   este camino es el degradado: lo que importa es que la bandeja se pinte. En
-   cuanto los SQL están corridos no se pasa por aquí nunca. */
-export const sinOpcionales = (cols: string) =>
-  COLS_NUEVAS.reduce((c, x) => c.replace(`,${x}`, ""), cols);
+
+/* ── QUÉ COLUMNA FALTÓ, CON NOMBRE ──
+ *
+ * El camino degradado existe para que la bandeja no se caiga por un SQL sin
+ * correr, y eso está bien. Lo que estaba mal es que fuera INVISIBLE: al pedir
+ * la consulta sin las columnas opcionales, los avisos llegan sin `dafo_id`, y
+ * sin `dafo_id` la campanita no sabe a dónde llevarlos. El resultado es un
+ * aviso que se ve, se lee, y al pulsarlo no hace nada — sin un solo error en
+ * ninguna parte.
+ *
+ * Un modo degradado que no se anuncia es una avería disfrazada de
+ * funcionamiento normal: nadie va a correr el SQL que lo arregla porque nadie
+ * sabe que falta. Así que se devuelve la lista de lo que faltó y la pantalla
+ * la enseña.
+ */
+export const columnasQueFaltan = (e: any): string[] =>
+  COLS_NUEVAS.filter(c => sinColumna(e, c));
+
+/* Qué archivo trae cada una, para poder decir qué hacer y no solo qué pasa. */
+export const SQL_DE_COLUMNA: Record<string, string> = {
+  dafo_id: "db/casilla-dafo.sql",
+  comentario_id: "db/notif-comentario.sql",
+  movimiento_caja_id: "db/movcaja-comentarios.sql",
+};
+/* ── QUITAR SOLO LO QUE FALTA, NO TODO LO OPCIONAL ──
+ *
+ * Esto quitaba las TRES columnas opcionales en cuanto una fallaba, con el
+ * argumento de que reintentar de una en una serían varios viajes y lo que
+ * importa es que la bandeja se pinte. El argumento era malo y costó caro:
+ *
+ * Si a la base le falta `comentario_id`, se renunciaba TAMBIÉN a `dafo_id`
+ * —que sí existía—, y con eso todos los avisos de la casilla DAFO llegaban sin
+ * destino. El síntoma que ve la persona es «pulso el aviso y no pasa nada», y
+ * la causa es una columna de otro módulo que no tiene nada que ver.
+ *
+ * Una migración pendiente puede costar SU función. No las demás.
+ *
+ * Los reintentos son como mucho tres y solo ocurren mientras haya SQL sin
+ * correr; con todo al día no se pasa por aquí nunca, que era el argumento
+ * original y sigue siendo cierto.
+ */
+export const sinEstas = (cols: string, quitar: string[]) =>
+  quitar.reduce((c, x) => c.replace(`,${x}`, ""), cols);
+
+/** @deprecated Quita de más. Usa `sinEstas` con `columnasQueFaltan(error)`. */
+export const sinOpcionales = (cols: string) => sinEstas(cols, COLS_NUEVAS);
 /** @deprecated Usa `sinOpcionales`. Se mantiene por si queda alguna llamada. */
 export const sinDafoId = sinOpcionales;
 
