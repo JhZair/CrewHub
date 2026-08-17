@@ -193,6 +193,63 @@ async function notificar(supabase: any, filas: any | any[]) {
     lista.map(({ comentario_id, ...resto }: any) => resto));
 }
 
+/* ── QUIEN YA ESCRIBIÓ EN UN HILO, OYE EL HILO ──
+ *
+ * El caso que lo destapó: en un movimiento de caja apuntado por Katy, John
+ * preguntó algo y Katy contestó tres horas después. John no se enteró nunca.
+ * Y no fue un error de código — las reglas que había se cumplieron todas:
+ *
+ *   · menciones      → no había @
+ *   · quien lo apuntó → era Katy misma, que es quien escribía
+ *   · a quien responde → no usó el botón de responder, escribió abajo
+ *
+ * Tres reglas, tres aciertos, cero avisos. Las tres miran ROLES —autor,
+ * responsable, mencionado— y ninguna mira lo único que de verdad predice
+ * quién quiere enterarse: haber hablado ahí. Alguien que escribió en una
+ * conversación ya declaró su interés mejor de lo que puede hacerlo cualquier
+ * campo de la ficha.
+ *
+ * Por eso esta función es una regla y no un parche en la caja: el mismo hueco
+ * estaba en las seis pantallas que tienen comentarios. Un hilo en el que
+ * respondes y nadie se entera no es un hilo, es un cuaderno.
+ *
+ * Se apoya en el mismo `avisados` que ya llevan las acciones, así que a nadie
+ * le llegan dos avisos por el mismo comentario.
+ */
+async function avisarAlHilo(supabase: any, opts: {
+  /** La columna dueña del hilo: publicacion_id, objeto_id, movimiento_caja_id… */
+  columna: string;
+  dueno: string;
+  comentarioId: string;
+  actorId: string;
+  actorNombre: string;
+  /** Cómo nombrar la conversación en el aviso. */
+  titulo: string;
+  /** A quién ya se le avisó por otra vía (se muta: se añaden los nuevos). */
+  avisados: Set<string>;
+}) {
+  const { columna, dueno, comentarioId, actorId, actorNombre, titulo, avisados } = opts;
+  const [{ data: previos }, { data: activos }] = await Promise.all([
+    supabase.from("comentarios").select("autor_id").eq(columna, dueno),
+    supabase.from("perfiles").select("id").eq("activo", true),
+  ]);
+  /* Solo cuentas ACTIVAS. Quien dejó el equipo escribió en su día y su
+     `autor_id` sigue en el hilo, pero mandarle avisos es llenar una bandeja
+     que ya nadie abre. Es la misma condición que aplica la bitácora de
+     equipos, de donde viene esta regla. */
+  const vivos = new Set<string>((activos || []).map((p: any) => p.id));
+  const destinatarios = [...new Set((previos || []).map((c: any) => c.autor_id))]
+    .filter((id: any): id is string =>
+      !!id && id !== actorId && !avisados.has(id) && vivos.has(id));
+  if (!destinatarios.length) return;
+  destinatarios.forEach(id => avisados.add(id));
+  await notificar(supabase, destinatarios.map(id => ({
+    usuario_id: id, [columna]: dueno, comentario_id: comentarioId,
+    tipo: "comentario", actor_nombre: actorNombre,
+    mensaje: `${(actorNombre || "Alguien").split(" ")[0]} escribió en ${titulo}`,
+  })));
+}
+
 async function notificarPersonasVinculadas(
   supabase: any, pubId: string, personaIds: string[],
   actorUserId: string, actorNombre: string, titulo: string, tipo: string,
@@ -485,7 +542,19 @@ export async function comentar(pubId: string, texto: string, imagenes: string[] 
         mensaje: `Nuevo comentario en «${pub.titulo}»`,
       })));
     }
+    destinatarios.forEach(d => { if (d) mencionados.add(d as string); });
   }
+
+  /* Y los que ya venían hablando. Autor y responsable son ROLES: en un caso
+     largo, la mitad de la conversación la llevan personas que no son ninguno
+     de los dos, y hasta ahora respondían al vacío. */
+  await avisarAlHilo(supabase, {
+    columna: "publicacion_id", dueno: pubId, comentarioId: com.id,
+    actorId: user.id, actorNombre,
+    titulo: `«${(pub?.titulo || "un caso").slice(0, 60)}»`,
+    avisados: mencionados,
+  });
+
   revalidatePath(`/caso/${pubId}`);
   return {};
 }
@@ -547,6 +616,12 @@ export async function comentarObjeto(objetoId: string, texto: string, imagenes: 
       mensaje: `Nuevo comentario en «${titulo}»`,
     });
   }
+
+  /* Y a quien ya escribió aquí — ver `avisarAlHilo`. */
+  await avisarAlHilo(supabase, {
+    columna: "objeto_id", dueno: objetoId, comentarioId: com.id,
+    actorId: user.id, actorNombre, titulo: `«${titulo}»`, avisados,
+  });
 
   await supabase.from("actividad").insert({
     entidad_tipo: "objeto", entidad_id: objetoId, actor_id: user.id, tipo: "comentario",
@@ -651,6 +726,16 @@ export async function comentarMovCaja(
       });
     }
   }
+
+  /* Y a todos los que ya habían escrito aquí. Va AL FINAL, después de las tres
+     reglas de rol, porque `avisados` ya trae a los que recibieron un aviso más
+     preciso —una mención o una respuesta directa— y a esos no hay que
+     mandarles además el genérico. */
+  await avisarAlHilo(supabase, {
+    columna: "movimiento_caja_id", dueno: movId, comentarioId: com.id,
+    actorId: user.id, actorNombre, titulo: `un movimiento de caja (${titulo})`,
+    avisados,
+  });
 
   await supabase.from("actividad").insert({
     entidad_tipo: "movimiento_caja", entidad_id: movId, actor_id: user.id, tipo: "comentario",
@@ -7589,6 +7674,12 @@ export async function comentarPostulacion(postulacionId: string, texto: string, 
       }
     }
   }
+
+  /* Y a quien ya escribió aquí — ver `avisarAlHilo`. */
+  await avisarAlHilo(supabase, {
+    columna: "postulacion_id", dueno: postulacionId, comentarioId: com.id,
+    actorId: user.id, actorNombre, titulo: `«${titulo}»`, avisados,
+  });
 
   await supabase.from("actividad").insert({
     entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "comentario",
