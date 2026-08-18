@@ -4025,6 +4025,11 @@ export async function agregarDato(
     detalle: { mensaje: `agregó el dato «${etiqueta.trim()}»` },
   });
   revalidatePath(`/entidad/${dueno}/${duenoId}`);
+  /* Y /llaves, que lee estos mismos datos al revés («este número, qué abre»).
+     Sin esto, registrar la llave desde allí dejaba la cuenta en «sin llave»
+     hasta la siguiente recarga completa — o sea, el trabajo hecho y la
+     pantalla diciendo que falta. */
+  revalidatePath("/llaves");
   return {};
 }
 
@@ -4630,6 +4635,54 @@ export async function agregarEquipoPostulacion(postulacionId: string, personaId:
   await supabase.from("actividad").insert({
     entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "miembro",
     detalle: { mensaje: `sumó a ${per?.alias || per?.nombre || "alguien"} al equipo como ${cargoOk}` },
+  });
+  revalidatePath(`/entidad/postulacion/${postulacionId}`);
+  return {};
+}
+
+/* ── CAMBIAR EL ROL SIN DESHACER LA FILA ──
+ *
+ * Hasta ahora corregir un cargo era quitar a la persona y volver a sumarla, y
+ * eso NO es lo mismo: la fila lleva colgado el `cv_url` —el CV preparado para
+ * ESTA postulación y ESTE cargo— y el precontrato apunta a ella. Al borrarla
+ * se iban los dos, y la única señal era que un chip verde volvía a decir «sin
+ * CV». Nadie relaciona eso con haber corregido una errata en el cargo.
+ *
+ * Y en la bitácora quedaba «quitó a Narda» + «sumó a Narda», que se lee como
+ * una baja y una alta —dos hechos que no ocurrieron— en vez de lo que pasó:
+ * una corrección. Ante DAFO, un equipo que entra y sale el mismo día es una
+ * pregunta; un cargo corregido no lo es.
+ *
+ * El CV NO se toca al cambiar el cargo, y es una decisión, no un olvido: un CV
+ * se prepara para un concurso, no para un puesto, y casi siempre sigue
+ * sirviendo. Si de verdad ya no vale, quitarlo es un clic y lo decide quien
+ * sabe qué dice ese documento.
+ */
+export async function cambiarRolPostulacion(id: string, postulacionId: string, rol: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const cargoOk = (rol || "").trim();
+  if (!cargoOk) return { error: "El cargo no puede quedar vacío." };
+
+  const { data: prev } = await supabase.from("postulacion_equipo")
+    .select("cargo,per:personas(nombre,alias)").eq("id", id).maybeSingle();
+  if (!prev) return { error: "Esa persona ya no está en el equipo." };
+  if ((prev.cargo || "") === cargoOk) return {};   // nada que cambiar, nada que anotar
+
+  /* `.select()` como en el resto: una política de RLS que tape la fila
+     devolvería éxito con cero filas cambiadas y la pantalla diría «guardado». */
+  const { data: hechas, error } = await supabase.from("postulacion_equipo")
+    .update({ cargo: cargoOk }).eq("id", id).select("id");
+  if (error) return { error: error.message };
+  if (!hechas?.length) return { error: "No se guardó: no tienes permiso sobre esta postulación." };
+
+  const quien = (prev.per as any)?.alias || (prev.per as any)?.nombre || "alguien";
+  await supabase.from("actividad").insert({
+    entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "miembro",
+    /* Los DOS cargos, el viejo y el nuevo. Un «cambió el cargo de Narda» sin el
+       de antes obliga a reconstruir a mano qué era para entender qué cambió. */
+    detalle: { mensaje: `cambió el cargo de ${quien}: «${prev.cargo || "—"}» → «${cargoOk}»` },
   });
   revalidatePath(`/entidad/postulacion/${postulacionId}`);
   return {};

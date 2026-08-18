@@ -24,7 +24,7 @@ import { hoyLima, fechaDia } from "@/lib/fechas";
 import {
   rendicionVencida, plazoRendicion, compromisoDe, empresaLibre,
   trabasEmpresa, trabasMiembro, dudasMiembro, SIN_COMPROMISO,
-  reservaEmpresa, reservaMiembro, reservaCompleta, EN_JUEGO,
+  reservaEmpresa, reservaMiembro, reservaCompleta, EN_JUEGO, enJuego,
 } from "@/lib/fondos";
 import HojaPostulacion from "@/components/HojaPostulacion";
 import { sinBot, mapaAlias, conAlias, esDirectorObra } from "@/lib/personas";
@@ -1549,6 +1549,13 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     reserva = reservaCompleta(partesReserva, miembrosHoja);
   }
   let postDe: any[] = [], equiposEnMano: any[] = [], clienteEnProy: any[] = [], cvsDe: any[] = [];
+  /* Las filas del equipo SIN deduplicar por postulación. `postDe` se queda con
+     una por concurso para que la lista de tarjetas no se repita, y eso está
+     bien para pintar — pero no para comprobar CVs: el CV presentado cuelga de
+     la FILA, y una misma persona puede ir como Director/a y como Autor/a en la
+     misma postulación, con dos filas y dos CVs distintos. Mirando solo la
+     superviviente, un cargo sin CV se quedaba sin avisar. */
+  let postFilas: any[] = [];
   let proyectosPropios: any[] = [];   // proyectos donde es del equipo (proyecto_equipo)
   let proyectosActor: any[] = [];     // obras donde figura como actor social (proyecto_actores)
   // Cartel (póster) de las entidades que aparecen en la trayectoria — clave `${tipo}:${id}`.
@@ -1623,6 +1630,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     /* Una persona puede tener VARIAS filas en la misma postulación (Director +
        Autor): dedup por postulación para que su tarjeta no se duplique (sus
        roles se juntan luego, dentro de la fila, desde el equipo de la postu). */
+    postFilas = pe.data || [];
     {
       const vistas = new Set<string>();
       postDe = (pe.data || [])
@@ -2359,10 +2367,23 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             {params.tipo === "persona" && ent.estado === "activo"
               && ["personal", "colaborador", "colaborador eventual"].includes(ent.tipo || "")
               && (() => {
-                if (!cvsDe.length) return (
-                  <Alerta tono="ambar" titulo="📋 Sin ningún CV cargado"
-                    detalle="El fondo exige el CV de cada miembro del equipo, con el enfoque del rol al que postula." />
-                );
+                /* ── AQUÍ HABÍA UN «SIN NINGÚN CV CARGADO» ──
+                   Saltaba en cuanto la persona no tenía CV general, y eso dejó
+                   de ser cierto cuando el CV pasó a presentarse POR
+                   POSTULACIÓN (db/cv-postulacion.sql): Narda tiene su CV
+                   entregado en la carpeta de C-068 y su ficha seguía diciendo
+                   que no tiene ninguno.
+                   El fondo no exige un CV en el archivo de la persona: exige
+                   el CV que va DENTRO de cada carpeta, hecho para ese concurso
+                   y ese cargo. El general es materia prima —el documento del
+                   que partir— y echar de menos materia prima no es un
+                   pendiente, es una manía.
+                   Y no basta con que fuera falso: además TAPABA el aviso de
+                   abajo, que sí importa. Al devolver aquí, quien no tenía CV
+                   general nunca llegaba a la comprobación de «postula como
+                   Sonidista y esa fila va sin CV» — o sea, el aviso inútil se
+                   comía al útil. Se borra, y el de abajo hace su trabajo. */
+
                 /* ¿Postula con cargos que ningún CV cubre? Un CV BASE cubre sus
                    variantes: «Productor/a» vale para «Productor/a Ejecutivo/a».
                    La regla es por raíz —el enfoque del CV es prefijo del cargo—,
@@ -2382,17 +2403,62 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                    Y si la fila del equipo ya tiene su CV PRESENTADO (cv_url,
                    db/cv-postulacion.sql), ese cargo está cumplido: el CV
                    general pasa a ser materia prima, no requisito. */
-                const anioActual = new Date().getFullYear();
-                const cargosVigentes = postDe
-                  .filter((r: any) => (r.post?.conv?.anio ?? anioActual) >= anioActual)
+                /* ── SOLO LAS QUE SIGUEN EN JUEGO ──
+                   Antes el corte era por AÑO —«de este año en adelante»—, y eso
+                   avisaba de carpetas que ya no se pueden tocar: una no
+                   seleccionada en marzo seguía reclamando un CV en diciembre.
+                   Un pendiente que no se puede resolver no es un pendiente: es
+                   ruido que enseña a ignorar los avisos que sí importan.
+                   `enJuego` es la misma regla que usan /fondo y la casilla:
+                   en preparación, enviada, en subsanación, apta o finalista.
+                   Manda el estado y no el calendario — una de 2025 todavía en
+                   subsanación sí hay que atenderla, y el filtro por año la
+                   dejaba fuera justo cuando corría prisa. */
+                const pendientes = postFilas
+                  .filter((r: any) => r.post?.id && enJuego({ estado: r.post?.estado }))
                   .filter((r: any) => !r.cv_url)
-                  .map((r: any) => r.cargo).filter(Boolean);
-                const sinCv = [...new Set(cargosVigentes)].filter((c: any) => !cubierto(c));
-                if (sinCv.length) return (
-                  <Alerta tono="ambar"
-                    titulo={`📋 Postula como ${sinCv.join(", ")} pero no tiene CV con ese enfoque`}
-                    detalle="Cada rol necesita su propio CV: el del director no sirve para presentarla como investigadora." />
-                );
+                  .filter((r: any) => r.cargo && !cubierto(r.cargo));
+
+                if (pendientes.length) {
+                  /* Agrupado POR POSTULACIÓN y no por cargo: el trabajo se hace
+                     abriendo una carpeta y subiendo lo que falte en ella. Con
+                     los cargos sueltos —«Falta el CV para Director/a de
+                     Fotografía»— había que adivinar en cuál de las cinco
+                     postulaciones abiertas era. */
+                  const porPost = new Map<string, { post: any; cargos: string[] }>();
+                  pendientes.forEach((r: any) => {
+                    const k = r.post.id;
+                    const g = porPost.get(k) || { post: r.post, cargos: [] };
+                    if (!g.cargos.includes(r.cargo)) g.cargos.push(r.cargo);
+                    porPost.set(k, g);
+                  });
+                  const grupos = [...porPost.values()];
+                  return (
+                    <Alerta tono="ambar"
+                      titulo={`📋 Falta el CV en ${grupos.length} postulación${grupos.length === 1 ? "" : "es"} abierta${grupos.length === 1 ? "" : "s"}`}
+                      detalle="El CV se entrega dentro de cada postulación, hecho para ese cargo: ábrela y súbelo en su fila del equipo. El CV general de aquí sirve de base, no cuenta como entregado.">
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 7 }}>
+                        {grupos.map(g => (
+                          /* El enlace cae en la pestaña del equipo, que es
+                             donde está la fila con el ＋ CV. Dejarlo en la
+                             portada de la postulación obliga a buscar la
+                             pestaña y bajar — el aviso diría dónde está el
+                             trabajo pero no llevaría a él. */
+                          <Link key={g.post.id} href={`/entidad/postulacion/${g.post.id}#equipo`}
+                            style={{ fontSize: 12.5, color: "var(--yellow)", display: "flex",
+                              gap: 7, alignItems: "baseline", flexWrap: "wrap" }}>
+                            <b>{g.post.codigo || "sin código"}</b>
+                            <span style={{ color: "var(--muted)" }}>
+                              {g.post.proy?.nombre || g.post.conv?.nombre || ""}
+                              {g.post.conv?.anio ? ` · ${g.post.conv.anio}` : ""}
+                            </span>
+                            <span style={{ color: "var(--dim)" }}>— {g.cargos.join(", ")} →</span>
+                          </Link>
+                        ))}
+                      </div>
+                    </Alerta>
+                  );
+                }
                 const viejos = cvsDe.filter((c: any) =>
                   c.actualizado && (Date.now() - new Date(c.actualizado + "T12:00:00").getTime()) / 86400000 > DIAS_CV);
                 return viejos.length > 0 && (
@@ -3622,6 +3688,13 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                     repoNode,
                     historialNode,
                   ]}
+                  /* Un nombre por pestaña para poder abrirla desde un enlace:
+                     `…#expediente/sec-precontratos`. Sin esto, cualquier salto
+                     a algo que vive en OTRA pestaña apunta a un elemento que el
+                     navegador encuentra —los paneles se montan todos— pero que
+                     nadie ve, porque su pestaña está en display:none. El clic
+                     no da error: simplemente no pasa nada. */
+                  claves={["muro", "expediente", "equipo", "casos", "repositorio", "historial"]}
                   iconoSolo={[4, 5]}
                 />
               );

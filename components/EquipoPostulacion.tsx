@@ -1,5 +1,6 @@
 "use client";
-import { agregarEquipoPostulacion, quitarEquipoPostulacion, guardarCvEquipo } from "@/app/actions";
+import { agregarEquipoPostulacion, quitarEquipoPostulacion, guardarCvEquipo,
+  cambiarRolPostulacion } from "@/app/actions";
 import { EntPicker, type CatalogoItem } from "@/components/Composer";
 import Avatar from "@/components/Avatar";
 import { ROLES_EQUIPO as ROLES, ordenarEquipo } from "@/lib/rolesEquipo";
@@ -22,7 +23,52 @@ export default function EquipoPostulacion({ postulacionId, equipo, personas }: {
   const [cvEditando, setCvEditando] = useState<string | null>(null);
   const [cvUrl, setCvUrl] = useState("");
   const [cvGuardando, setCvGuardando] = useState(false);
+  /* Qué fila está corrigiendo su cargo y qué se está escribiendo. Igual que el
+     CV: se edita SOBRE la tarjeta, no en un formulario aparte. El cargo que hay
+     que corregir es el que se está mirando. */
+  const [rolEditando, setRolEditando] = useState<string | null>(null);
+  const [rolNuevo, setRolNuevo] = useState("");
+  const [rolGuardando, setRolGuardando] = useState(false);
   const router = useRouter();
+
+  const guardarRol = async (filaId: string) => {
+    if (rolGuardando || !rolNuevo.trim()) return;
+    setRolGuardando(true); setError("");
+    const res: any = await cambiarRolPostulacion(filaId, postulacionId, rolNuevo);
+    setRolGuardando(false);
+    if (res?.error) { setError(res.error); return; }
+    setRolEditando(null); setRolNuevo("");
+    router.refresh();
+  };
+
+  /* ── DEL CHIP A DONDE SE EDITA ──
+   *
+   * «sin precontrato» nombraba una cosa y no llevaba a ella. Y llevar no era
+   * tan simple como parecía: el precontrato se rellena en la pestaña
+   * «🗂 Expediente», mientras el equipo vive en «👥 Equipo». Dos pestañas.
+   *
+   * El primer intento solo desplegaba la sección y hacía scroll, y no pasaba
+   * NADA: los paneles de las pestañas se montan todos y se ocultan con
+   * `display:none`, así que el elemento existe —`getElementById` lo
+   * encuentra— pero no tiene posición en la página. Un `scrollIntoView` sobre
+   * algo oculto no falla: no hace nada, que es peor.
+   *
+   * La ruta correcta es el hash de dos partes que TabsPanel ya entiende:
+   * `#<pestaña>/<ancla>`. Abre la pestaña, despliega la sección y baja hasta
+   * ella. Y como queda en la URL, el enlace se puede pasar por WhatsApp: «ve a
+   * llenar el precontrato de Roxana».
+   */
+  const DESTINO_PRE = "expediente/sec-precontratos";
+  const irAPrecontratos = () => {
+    if (window.location.hash === `#${DESTINO_PRE}`) {
+      /* Mismo hash: el navegador no dispara `hashchange` y el salto se
+         perdería. Pasa al pulsar dos chips seguidos, que es lo normal cuando
+         se están llenando los seis precontratos de un equipo. */
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+      return;
+    }
+    window.location.hash = DESTINO_PRE;
+  };
 
   const guardarCv = async (filaId: string, url: string) => {
     if (cvGuardando) return;
@@ -65,6 +111,13 @@ export default function EquipoPostulacion({ postulacionId, equipo, personas }: {
           onClick={() => setAgregando(true)}>＋ Agregar</button>}
       </div>
 
+      {/* La lista de cargos vive FUERA del formulario de alta. Estaba dentro, y
+          por eso al corregir el cargo de alguien —que no abre ese formulario—
+          el campo se quedaba sin sugerencias: se escribía a mano y cada quien
+          tecleaba «Director de fotografía», «Director/a de Fotografía» o
+          «DF», que es exactamente lo que un catálogo existe para evitar. */}
+      <datalist id="roles-postulacion">{ROLES.map(r => <option key={r} value={r} />)}</datalist>
+
       {error && <div className="err-inline">⚠ {error}</div>}
       {agregando && (
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12, padding: 10, background: "var(--bg)", borderRadius: 10 }}>
@@ -73,7 +126,6 @@ export default function EquipoPostulacion({ postulacionId, equipo, personas }: {
           <input list="roles-postulacion" value={rol} onChange={e => setRol(e.target.value)}
             placeholder="Rol / cargo…"
             style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, outline: "none", width: 180 }} />
-          <datalist id="roles-postulacion">{ROLES.map(r => <option key={r} value={r} />)}</datalist>
           <button className="btn" style={{ padding: "7px 14px", fontSize: 12 }}
             title={!sel ? "Elige la persona" : !rol.trim() ? "Elige el cargo" : "Guardar"}
             disabled={!sel || !rol.trim() || guardando} onClick={guardar}>
@@ -95,7 +147,19 @@ export default function EquipoPostulacion({ postulacionId, equipo, personas }: {
             <div className="eq-card-main">
               <div className="eq-card-top">
                 <Link href={`/entidad/persona/${p.id}`} className="eq-card-nom" title={p.nombre}>{p.alias || p.nombre} →</Link>
-                <span className="eq-card-cargo">{m.cargo || "—"}</span>
+                {/* ── EL CARGO SE CORRIGE AQUÍ ──
+                    Antes había que quitar a la persona y volver a sumarla, y
+                    eso se llevaba por delante el CV presentado —que cuelga de
+                    esta fila— y dejaba en la bitácora una baja y un alta que
+                    nunca ocurrieron. El cargo es un dato, no una identidad:
+                    se edita como cualquier otro.
+                    Es el propio badge el que se pulsa, no un ✎ al lado: el
+                    cargo ya está ahí y es lo que se quiere cambiar. */}
+                <button type="button" className="eq-card-cargo eq-cargo-btn"
+                  title="Cambiar el cargo — el CV presentado no se toca"
+                  onClick={() => { setRolEditando(m.id); setRolNuevo(m.cargo || ""); }}>
+                  {m.cargo || "— sin cargo"}
+                </button>
               </div>
               {ctx && <div className="eq-card-ctx">{ctx}</div>}
               {/* Los datos que el fondo revisa por persona: CV y precontrato.
@@ -125,13 +189,55 @@ export default function EquipoPostulacion({ postulacionId, equipo, personas }: {
                 )}
                 {m._pre ? (
                   m._pre.id ? (
-                    <a href={`/api/precontrato?post=${postulacionId}&pre=${m._pre.id}`} target="_blank" rel="noopener noreferrer"
-                      className={`eq-chip eq-chip-link ${m._pre.estado === "firmado" ? "ok" : "warn"}`}>
-                      📝 {m._pre.estado} ↗
-                    </a>
-                  ) : <span className={`eq-chip ${m._pre.estado === "firmado" ? "ok" : "warn"}`}>📝 {m._pre.estado}</span>
-                ) : <span className="eq-chip dim">📝 sin precontrato</span>}
+                    <>
+                      {/* Con documento: el chip DESCARGA el .docx, que es lo
+                          que se hace con un precontrato ya hecho. Editarlo es
+                          otra cosa y lleva su propio botón al lado. */}
+                      <a href={`/api/precontrato?post=${postulacionId}&pre=${m._pre.id}`} target="_blank" rel="noopener noreferrer"
+                        className={`eq-chip eq-chip-link ${m._pre.estado === "firmado" ? "ok" : "warn"}`}
+                        title="Descargar el precontrato en Word">
+                        📝 {m._pre.estado} ↗
+                      </a>
+                      <button className="eq-chip dim" title="Editar el precontrato (monto, forma de pago, firma)"
+                        onClick={irAPrecontratos}>✎</button>
+                    </>
+                  ) : (
+                    <button className={`eq-chip ${m._pre.estado === "firmado" ? "ok" : "warn"}`}
+                      title="Abrir la sección de precontratos para completarlo"
+                      onClick={irAPrecontratos}>📝 {m._pre.estado}</button>
+                  )
+                ) : (
+                  /* Sin precontrato: el chip ES la puerta. Un hueco que se
+                     puede rellenar tiene que decir dónde, o es un reproche. */
+                  <button className="eq-chip dim" title="Ir a Precontratos y crear el suyo"
+                    onClick={irAPrecontratos}>📝 ＋ precontrato</button>
+                )}
               </div>
+              {rolEditando === m.id && (
+                <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 6, flexWrap: "wrap" }}>
+                  <input list="roles-postulacion" value={rolNuevo} autoFocus
+                    onChange={e => setRolNuevo(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === "Enter") guardarRol(m.id);
+                      if (e.key === "Escape") { setRolEditando(null); setRolNuevo(""); }
+                    }}
+                    placeholder="Rol / cargo en esta postulación…"
+                    style={{ background: "var(--card)", border: "1px solid var(--border)",
+                      borderRadius: 8, padding: "6px 10px", fontSize: 12, outline: "none",
+                      flex: 1, minWidth: 200 }} />
+                  <button className="btn" style={{ padding: "6px 12px", fontSize: 12 }}
+                    disabled={rolGuardando || !rolNuevo.trim()} onClick={() => guardarRol(m.id)}>
+                    {rolGuardando ? "..." : "Guardar"}
+                  </button>
+                  <button className="btn btn-ghost" style={{ padding: "6px 10px", fontSize: 12 }}
+                    onClick={() => { setRolEditando(null); setRolNuevo(""); }}>Cancelar</button>
+                  {/* Se dice lo que NO pasa. Quien corrige un cargo teme perder
+                      el CV justo porque antes lo perdía. */}
+                  <span style={{ color: "var(--dim)", fontSize: 11, width: "100%" }}>
+                    El CV presentado y el precontrato se quedan como están.
+                  </span>
+                </div>
+              )}
               {cvEditando === m.id && (
                 <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 6, flexWrap: "wrap" }}>
                   <input value={cvUrl} onChange={e => setCvUrl(e.target.value)} autoFocus

@@ -93,6 +93,13 @@ export default function TabsPanel({ labels, paneles, inicial = 0, iconoSolo = []
          El elemento manda sobre la pestaña cuando lo hay; y se busca en el
          fotograma siguiente porque con `perezoso` el panel se acaba de montar
          en este mismo render y todavía no está en el documento. */
+      /* Si el destino es una sección PLEGADA, se le avisa para que se abra.
+         Sin esto, el salto aterrizaba en una cabecera cerrada —«📝
+         Precontratos ▸»— que se lee como «aquí no hay nada», que es lo
+         contrario de para lo que sirve el enlace. El contrato ya existía
+         (Plegable escucha `plg:abrir` con su ancla); faltaba usarlo también
+         desde aquí y no solo desde el expediente. */
+      if (ancla) window.dispatchEvent(new CustomEvent("plg:abrir", { detail: ancla }));
       requestAnimationFrame(() => {
         const el = ancla ? document.getElementById(ancla) : null;
         (el || raiz.current)?.scrollIntoView({ behavior: "smooth", block: el ? "center" : "start" });

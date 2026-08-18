@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import Link from "next/link";
+import RegistrarLlave from "@/components/RegistrarLlave";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import Avatar from "@/components/Avatar";
@@ -173,6 +174,16 @@ export default async function Llaves() {
                 <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c" }}>{c.plataforma}</span>
                 <b style={{ fontSize: 13 }}>{c.identificador || "—"}</b>
                 <span style={{ flex: 1 }} />
+                {/* ── SE TAPA AQUÍ MISMO ──
+                    Esta lista llevaba meses en sesenta porque solo sabía
+                    señalar: para arreglar una había que ir a la ficha,
+                    encontrar la credencial y acordarse del nombre del campo.
+                    El enlace al dueño se queda —a veces hace falta ver la
+                    ficha entera— pero ya no es el único camino. */}
+                {d && d.tipo !== "postulacion" && (
+                  <RegistrarLlave credencialId={c.id} dueno={d.tipo} duenoId={d.id}
+                    cuenta={c.identificador || c.plataforma} />
+                )}
                 {d && (
                   <Link href={`/entidad/${d.tipo}/${d.id}`} style={{ color: "var(--blue)", fontSize: 12 }}>
                     {d.nombre} →

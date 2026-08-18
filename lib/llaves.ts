@@ -55,6 +55,15 @@ export const esLlave = (c: ClaseLlave) => c === "tel_recuperacion" || c === "cor
  * pantalla existe para evitar. */
 export const esLlaveProbable = (c: ClaseLlave) => c === "tel_contacto" || c === "correo_contacto";
 
+/* ── LAS ETIQUETAS QUE CREAN UNA LLAVE ──
+ * Escritas aquí y no en cada pantalla: el formulario de la credencial las
+ * ofrece, /llaves las registra de un clic, y `claseDeDato` tiene que
+ * reconocerlas después. Si las tres no dicen exactamente lo mismo, se guarda
+ * un dato que la pantalla que lo pidió no vuelve a reconocer como llave — y el
+ * aviso de «sin llave» seguiría encendido con la llave ya puesta. */
+export const ETIQ_TEL_REC = "teléfono de recuperación";
+export const ETIQ_MAIL_REC = "correo de recuperación";
+
 export const ROTULO_CLASE: Record<ClaseLlave, string> = {
   tel_recuperacion: "📱 teléfono de recuperación",
   correo_recuperacion: "📧 correo de recuperación",

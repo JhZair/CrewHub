@@ -4,6 +4,7 @@ import {
   agregarDato, editarDato, verificarDato, desverificarDato, borrarDato,
 } from "@/app/actions";
 import Copiar from "@/components/Copiar";
+import { claseDeDato, esLlave, esLlaveProbable, ETIQ_TEL_REC, ETIQ_MAIL_REC } from "@/lib/llaves";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -40,11 +41,29 @@ const DATO_SOL = "usuario SOL";
    llega el código —y eso es lo que hoy frena sumar cuentas a la casilla—.
    Va separado de «teléfono de contacto» a propósito: uno sirve para llamar,
    el otro para entrar, y confundirlos hace creer que la cuenta está cubierta. */
-const DATOS_SUG = ["teléfono de recuperación", "correo de recuperación", "correo de contacto", "teléfono de contacto", "pregunta de seguridad", "quién administra", "PIN / token"];
+/* Las dos primeras salen de lib/llaves y no escritas a mano: son las etiquetas
+   que /llaves reconoce como llave, y una copia con otra tilde crearía un dato
+   que la pantalla que lo pidió ya no reconocería. */
+const DATOS_SUG = [ETIQ_TEL_REC, ETIQ_MAIL_REC, "correo de contacto", "teléfono de contacto", "pregunta de seguridad", "quién administra", "PIN / token"];
 /* Con Clave SOL el usuario SOL encabeza las sugerencias: es el dato que
    falta, no uno más de la lista. */
 const sugDe = (metodo?: string | null) => metodo === METODO_SOL ? [DATO_SOL, ...DATOS_SUG] : DATOS_SUG;
 const tieneSol = (c: any) => (c.datos || []).some((d: any) => /usuario\s*sol/i.test(d.etiqueta || ""));
+/* ── ¿SABEMOS CON QUÉ SE RECUPERA? ──
+   La MISMA función que usa /llaves para decidir si una cuenta entra en «sin
+   llave registrada», no una copia: si las dos pantallas juzgan distinto, una
+   dirá que falta mientras la otra la da por cubierta, y la persona no sabrá a
+   cuál creerle. Cuenta también la llave PROBABLE —un teléfono de contacto sin
+   más— porque Google manda el código al número que tenga, se llame como se
+   llame en nuestra ficha. */
+const tieneLlave = (c: any) => (c.datos || []).some((d: any) => {
+  const k = claseDeDato(d.etiqueta, d.valor);
+  return esLlave(k) || esLlaveProbable(k);
+});
+/* Solo se reclama donde tiene sentido. Una clave SOL no se recupera con un
+   celular —eso es una gestión presencial en SUNAT— y encender ahí un ⛔ sería
+   pedir algo imposible, que es la forma más rápida de que se ignoren todos. */
+const PIDE_LLAVE = (c: any) => c.metodo_acceso !== METODO_SOL;
 const STALE_DIAS = 180; // a partir de aquí, un dato pide reverificación
 
 const inp = { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, outline: "none" } as const;
@@ -356,6 +375,23 @@ export default function Credenciales({ dueno, duenoId, credenciales }: {
                 están el RUC y la clave, y falta el tercero. Se reclama con un
                 botón que ya deja el dato escrito, para que arreglarlo cueste
                 un clic y no haya que saber cómo se llama el campo. */}
+            {/* ── EL HUECO QUE MÁS CARO SALE ──
+                Sin llave, el día que alguien pierda el acceso a esta cuenta no
+                hay a qué agarrarse: se pierde entera, con el correo de DAFO
+                dentro. Y hasta ahora ese hueco no se veía — era un dato
+                opcional más entre siete, así que no faltaba: simplemente no
+                estaba. Se reclama como el usuario SOL, con la etiqueta ya
+                escrita para que taparlo cueste un clic y no haya que saber
+                cómo se llama el campo. */}
+            {PIDE_LLAVE(c) && !tieneLlave(c) && addDato !== c.id && (
+              <div className="dato-row" style={{ color: "var(--yellow)", fontSize: 11.5 }}>
+                <span>⚠ sin <b>llave de recuperación</b> — si se pierde el acceso, no hay con qué recuperarla</span>
+                <button className="dato-btn" style={{ color: "var(--yellow)", fontWeight: 700 }}
+                  onClick={() => { setAddDato(c.id); setNd({ etiqueta: ETIQ_TEL_REC, valor: "" }); }}>
+                  ＋ agregarla
+                </button>
+              </div>
+            )}
             {c.metodo_acceso === METODO_SOL && !tieneSol(c) && addDato !== c.id && (
               <div className="dato-row" style={{ color: "var(--red)", fontSize: 11.5 }}>
                 <span>⛔ falta el <b>usuario SOL</b> — con el RUC y la clave solos no se entra</span>
