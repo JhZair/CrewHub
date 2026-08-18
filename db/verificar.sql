@@ -21,6 +21,11 @@ with esperado(clase, obj, para, archivo) as (values
   ('col', 'personas.fecha_verificacion_reniec', 'RENIEC: cuándo se verificó', 'persona-reniec.sql'),
   ('col', 'personas.nombre_reniec',             'RENIEC: nombre oficial',     'persona-reniec.sql'),
   ('col', 'personas.suspension_4ta_anio',       'Suspensión 4ta por año',     'suspension-4ta-anio.sql'),
+  /* El historial de suspensiones: UNA POR AÑO, que es como funciona el
+     Formulario 1609. Sin esta tabla las dos columnas de arriba siguen ahí y la
+     pantalla degrada avisando; con ella, la pregunta «¿estaba suspendida el año
+     de este recibo?» por fin tiene respuesta. */
+  ('tab', 'suspension_4ta',              'Constancias de 4ta por año', 'suspension-4ta-anios.sql'),
   ('col', 'personas.suspension_4ta_url',        'Constancia de la 4ta',       'suspension-4ta-url.sql'),
   ('col', 'personas.suspension_4ta_acumulado',  'Acumulado declarado',        'rhe.sql'),
   ('col', 'personas.suspension_4ta_proyectado', 'Proyectado declarado',       'rhe.sql'),
@@ -64,6 +69,11 @@ with esperado(clase, obj, para, archivo) as (values
   ('col', 'comentarios.movimiento_caja_id',   'Hilo de un movimiento',  'movcaja-comentarios.sql'),
   ('col', 'reacciones.movimiento_caja_id',    'Reaccionar a un movimiento', 'movcaja-comentarios.sql'),
   ('col', 'notificaciones.movimiento_caja_id','Que el aviso lleve a la caja', 'movcaja-comentarios.sql'),
+  -- El personal previsto de un fondo en ejecución. Lo que ya cobró NO está
+  -- aquí: se deriva de `rhe` (lib/equipoFondo.ts).
+  ('tab', 'equipo_fondo',                'Personal previsto del fondo', 'equipo-fondo.sql'),
+  -- El extracto del acta: entregables, obligaciones y plazos con su cláusula.
+  ('tab', 'compromiso_acta',             'Lo que el acta obliga',       'compromiso-acta.sql'),
   -- La cara del kit: sin esto, un «Kit Zhiyun Molus G60» se ilustra con un
   -- trípode porque la portada se deducía del orden de folios.
   ('col', 'kits.portada_equipo_id',      'Qué pieza representa al kit', 'kit-portada.sql'),
@@ -78,6 +88,30 @@ with esperado(clase, obj, para, archivo) as (values
   ('col', 'notificaciones.postulacion_id',    'Llevar a la postulación',      'postulacion-interaccion.sql'),
   ('col', 'notificaciones.prestamo_id',       'Llevar al equipo prestado',    'prestamos.sql'),
   ('col', 'notificaciones.equipamiento_id',   'Llevar a la bitácora del equipo', 'equipo-bitacora.sql'),
+  /* ── LAS CINCO PUERTAS DE LA RENDICIÓN ──
+     Comentar y reaccionar en facturas, estados de cuenta, RHE, declaraciones
+     juradas y movimientos del banco. Se comprueban las TRES tablas y no solo
+     `comentarios`, porque cada una falla distinto y ninguna avisa:
+       · sin la de `comentarios`  → no se puede escribir (esa sí da error);
+       · sin la de `reacciones`   → el 👀 no se guarda;
+       · sin la de `notificaciones` → se comenta bien, se menciona a alguien, le
+         llega el aviso… y al pulsarlo no pasa nada.
+     La tercera es la peor justamente porque todo lo demás funciona. */
+  ('col', 'comentarios.comprobante_id',       'Hilo de una factura',          'rendicion-interaccion.sql'),
+  ('col', 'comentarios.estado_cuenta_id',     'Hilo de un estado de cuenta',  'rendicion-interaccion.sql'),
+  ('col', 'comentarios.rhe_id',               'Hilo de un recibo',            'rendicion-interaccion.sql'),
+  ('col', 'comentarios.gasto_dj_id',          'Hilo de una declaración jurada', 'rendicion-interaccion.sql'),
+  ('col', 'comentarios.movimiento_banco_id',  'Hilo de un movimiento del banco', 'rendicion-interaccion.sql'),
+  ('col', 'reacciones.comprobante_id',        'Reaccionar a una factura',     'rendicion-interaccion.sql'),
+  ('col', 'reacciones.estado_cuenta_id',      'Reaccionar a un estado',       'rendicion-interaccion.sql'),
+  ('col', 'reacciones.rhe_id',                'Reaccionar a un recibo',       'rendicion-interaccion.sql'),
+  ('col', 'reacciones.gasto_dj_id',           'Reaccionar a una DJ',          'rendicion-interaccion.sql'),
+  ('col', 'reacciones.movimiento_banco_id',   'Reaccionar a un movimiento',   'rendicion-interaccion.sql'),
+  ('col', 'notificaciones.comprobante_id',    'Llevar a la factura',          'rendicion-interaccion.sql'),
+  ('col', 'notificaciones.estado_cuenta_id',  'Llevar al estado de cuenta',   'rendicion-interaccion.sql'),
+  ('col', 'notificaciones.rhe_id',            'Llevar al recibo',             'rendicion-interaccion.sql'),
+  ('col', 'notificaciones.gasto_dj_id',       'Llevar a la declaración jurada', 'rendicion-interaccion.sql'),
+  ('col', 'notificaciones.movimiento_banco_id', 'Llevar al movimiento del banco', 'rendicion-interaccion.sql'),
   -- Funciones
   ('fun', 'nrm_nombre',        'Comparar nombres sin tildes',       'personas-duplicadas.sql'),
   ('fun', 'persona_refs',      'Qué cuelga de una persona',         'personas-duplicadas.sql'),

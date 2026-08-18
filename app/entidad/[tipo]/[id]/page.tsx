@@ -74,6 +74,7 @@ import { TABLAS_EXP, materialTablaDe, plantillaConExtras, esVideojuego } from "@
 import TabsPanel from "@/components/TabsPanel";
 import Avatar from "@/components/Avatar";
 import Plegable from "@/components/Plegable";
+import Suspensiones4ta from "@/components/Suspensiones4ta";
 import CasosLista, { type CasoMeta } from "@/components/CasosLista";
 import MuroAvisos from "@/components/MuroAvisos";
 import VistaRapida from "@/components/VistaRapida";
@@ -1562,6 +1563,11 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   let carteles = new Map<string, string>();
   let rheGirados: any[] = [];   // todos los RHE que giró, con su proyecto (pestaña Economía)
   let acum4ta = 0;   // lo girado este año en RHE
+  /* El historial de suspensiones de 4ta, una fila por año. Va en su propia
+     consulta y tolera que falte la tabla: sin db/suspension-4ta-anios.sql, el
+     bloque lo dice y la ficha entera sigue funcionando. */
+  let susp4ta: any[] = [];
+  let susp4taError: string | null = null;
   let cuentaDe: { id: string; nombre: string; avatar_url?: string | null } | null = null;
   let cuentasLibres: { id: string; nombre: string }[] = [];
   let pulso: { cerr: number; creo: number; coments: number; ab: number; venc: number; ultimo: string } | null = null;
@@ -1627,6 +1633,14 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     // `titulo` → `enfoque`: la sección de CVs y sus alertas siguen igual.
     cvsDe = (cv.data || []).map((c: any) => ({ ...c, enfoque: c.titulo }));
     acum4ta = (rh.data || []).reduce((s: number, r: any) => s + Number(r.monto || 0), 0);
+    const s4 = await supabase.from("suspension_4ta")
+      /* Quién la subió y cuándo. Es plata: una constancia sin autor es una
+         constancia que nadie puede explicar el día que la observan, y la
+         bitácora que sí lo guarda está en otra pestaña y en otro idioma. */
+      .select("id,anio,url,operacion,presentado,nota,creado_en,creado:perfiles!creado_por(nombre)")
+      .eq("persona_id", params.id).order("anio", { ascending: false });
+    susp4ta = s4.data || [];
+    susp4taError = (s4 as any).error?.message || null;
     /* Una persona puede tener VARIAS filas en la misma postulación (Director +
        Autor): dedup por postulación para que su tarjeta no se duplique (sus
        roles se juntan luego, dentro de la fila, desde el equipo de la postu). */
@@ -2640,9 +2654,35 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                     RUC calculado: <b style={{ color: "var(--text)" }}>{rucPer}</b>
                   </span>
                   <BotonFichaSunat numero={ent.ruc_dni} tipo="DNI" url={urlSunat} />
-                  {ent.suspension_4ta_url && (
-                    <LinkVerificable tipo={params.tipo} id={params.id} campo="suspension_4ta_url" url={ent.suspension_4ta_url} etiqueta="Constancia 4ta" icono="🧾" verif={verifDe.suspension_4ta_url} />
-                  )}
+                  {/* El «Constancia 4ta» con miniatura y veredicto que había
+                      aquí se movió DENTRO de cada fila del historial. Colgaba
+                      de `suspension_4ta_url`, que es la columna derivada: en
+                      pantalla enseñaba el PDF del año más reciente y el ✓ no
+                      decía de qué año era, así que al cargar la constancia del
+                      año siguiente el veredicto quedaba sobre un documento
+                      distinto sin que nada avisara. Ahora se revisa año por
+                      año, que es como se emiten. */}
+                  {/* ── DONDE SE CARGAN LAS CONSTANCIAS DE 4ta ──
+                      Una por año, porque la suspensión caduca cada 31 de
+                      diciembre. Los dos campos de arriba —«año vigente» y
+                      «constancia»— salen en gris porque son el reflejo del año
+                      más alto de esta lista: los recalcula un disparador.
+                      Va aquí, dentro del grupo SUNAT, y no en una pestaña
+                      aparte: la pregunta «¿está suspendida?» se hace mirando
+                      el RUC y el tope de 4ta, que es justo lo que hay al lado. */}
+                  <span style={{ width: "100%", marginTop: 8 }}>
+                    <span style={{ display: "block", color: "var(--dim)", fontSize: 10,
+                      letterSpacing: ".5px", textTransform: "uppercase", marginBottom: 5 }}>
+                      Suspensión de 4ta por año
+                    </span>
+                    {/* Sin puerta propia, igual que el resto de esta ficha: el
+                        modelo de la página es «todo miembro autenticado edita»
+                        (ver db/schema.sql). Inventar aquí un permiso que los
+                        campos de al lado no tienen dejaría a alguien viendo un
+                        formulario que no puede usar sin saber por qué. */}
+                    <Suspensiones4ta personaId={params.id} filas={susp4ta as any}
+                      puedeEditar error={susp4taError} verifDe={verifDe} />
+                  </span>
                   {/* Cuánto lleva del tope de 4ta con nosotros este año */}
                   {acum4ta > 0 && (() => {
                     const e = estado4ta(acum4ta, new Date().getFullYear());

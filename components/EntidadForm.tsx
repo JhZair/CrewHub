@@ -283,8 +283,15 @@ export function EntidadForm({ tipo, id, valores, onDone }:
    * más se había tocado. La pantalla tiene que decir que no se puede antes,
    * no el servidor después. Los dos, y en ese orden.
    */
+  /* Un campo puede estar bloqueado por dos motivos distintos y los dos se
+     pintan igual, porque para quien mira son el mismo hecho: aquí no se
+     teclea. `explicaActual` depende del VALOR (el estado que gobierna un
+     préstamo); `derivado` es permanente — el campo lo calcula la base a partir
+     de otra tabla, y escribirlo aquí duraría hasta el siguiente recálculo.
+     En ambos casos se dice POR QUÉ y DÓNDE se hace de verdad: un campo gris
+     sin explicación se lee como una avería. */
   const bloqueado = (c: any): string | null =>
-    (c.explicaActual && form[c.key] && c.explicaActual[form[c.key]]) || null;
+    (c.explicaActual && form[c.key] && c.explicaActual[form[c.key]]) || (c as any).derivado || null;
 
   const sueltos = vivos.filter(c => !(c as any).grupo);
   const grupos = [...new Set(vivos.map(c => (c as any).grupo).filter(Boolean))] as string[];
@@ -305,8 +312,11 @@ export function EntidadForm({ tipo, id, valores, onDone }:
                  porque es el mismo hecho: este campo no se teclea aquí. La
                  diferencia es que aquí SÍ se puede decir por qué y qué hacer,
                  y se dice. */
-              <input disabled value={bloqueado(c) as string}
-                title="Este estado lo gobierna el préstamo. Para cambiarlo, registra la devolución del equipo desde /equipamiento; si se perdió o se rompió estando fuera, dilo en su bitácora y al devolverlo se le pone el estado que toque."
+              <input disabled
+                value={(c as any).derivado ? (form[c.key] || "—") : (bloqueado(c) as string)}
+                title={(c as any).derivado
+                  ? (c as any).derivado
+                  : "Este estado lo gobierna el préstamo. Para cambiarlo, registra la devolución del equipo desde /equipamiento; si se perdió o se rompió estando fuera, dilo en su bitácora y al devolverlo se le pone el estado que toque."}
                 style={{ opacity: .55, cursor: "not-allowed" }} />
             ) : c.tipo === "select" ? (() => {
               /* Opciones fijas (`opciones`) o DEPENDIENTES de otro campo

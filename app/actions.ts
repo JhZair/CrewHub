@@ -2,6 +2,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { entregableEq, porQueNoEq, enRonda, txtEstadoEq } from "@/lib/estadosEquipo";
+import { ESTADOS_COMP } from "@/lib/compromisos";
+import { META_RENDICION, esTablaRendicion, type TablaRendicion } from "@/lib/rendicionHilo";
 import { icoTipo } from "@/lib/tipos";
 import { FORM_CONF, nombreCorto, SUBCATS_EQUIPO } from "@/lib/entidades";
 import { ETAPAS_PROY_VALIDAS } from "@/lib/etapasProyecto";
@@ -17,7 +19,7 @@ import { fraccionValida } from "@/lib/jornadas";
 import { TIPOS_OBJETO } from "@/lib/objetos";
 import { catalogoObjetos, catalogosEntidades } from "@/lib/catalogos";
 import { resolverNombres } from "@/lib/nombres";
-import { COL_DAFO, sinColumna, faltaAlguna, columnasQueFaltan, sinEstas, COLS_NUEVAS, TIPOS_DAFO } from "@/lib/notificaciones";
+import { COL_DAFO, sinColumna, faltaAlguna, columnasQueFaltan, sinEstas, COLS_NUEVAS, COLS_NOTIF, TIPOS_DAFO } from "@/lib/notificaciones";
 import { DIAS_AVISO_DEF } from "@/lib/plazo";
 import { hoyLima } from "@/lib/fechas";
 
@@ -227,8 +229,14 @@ async function avisarAlHilo(supabase: any, opts: {
   titulo: string;
   /** A quién ya se le avisó por otra vía (se muta: se añaden los nuevos). */
   avisados: Set<string>;
+  /** Columnas extra para la notificación. Existe por las filas de la
+   *  rendición: la fila sola no dice a qué FONDO pertenece, y sin el fondo el
+   *  aviso no puede construir su URL — sonaría y no llevaría a ninguna parte,
+   *  que es el fallo que este archivo lleva tres comentarios prometiendo no
+   *  repetir. */
+  extra?: Record<string, any>;
 }) {
-  const { columna, dueno, comentarioId, actorId, actorNombre, titulo, avisados } = opts;
+  const { columna, dueno, comentarioId, actorId, actorNombre, titulo, avisados, extra } = opts;
   const [{ data: previos }, { data: activos }] = await Promise.all([
     supabase.from("comentarios").select("autor_id").eq(columna, dueno),
     supabase.from("perfiles").select("id").eq("activo", true),
@@ -245,6 +253,7 @@ async function avisarAlHilo(supabase: any, opts: {
   destinatarios.forEach(id => avisados.add(id));
   await notificar(supabase, destinatarios.map(id => ({
     usuario_id: id, [columna]: dueno, comentario_id: comentarioId,
+    ...(extra || {}),
     tipo: "comentario", actor_nombre: actorNombre,
     mensaje: `${(actorNombre || "Alguien").split(" ")[0]} escribió en ${titulo}`,
   })));
@@ -743,6 +752,194 @@ export async function comentarMovCaja(
   });
   revalidatePath("/caja");
   return {};
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   HABLAR DE LA PLATA — una acción para las cinco tablas de la rendición
+
+   Facturas, estados de cuenta, RHE, declaraciones juradas y movimientos del
+   banco. Podían ser cinco funciones gemelas copiadas de `comentarMovCaja`;
+   son una, porque cinco copias no son cinco veces más código sino cinco
+   sitios donde arreglar el mismo fallo — y el que se olvide no dará error,
+   seguirá funcionando mal en silencio.
+
+   Lo que cambia entre las cinco (la columna, cómo se rotula el aviso, qué
+   traer para rotularlo) está descrito una vez en lib/rendicionHilo.ts. Aquí
+   solo se aplica.
+   ══════════════════════════════════════════════════════════════════════════ */
+export async function comentarRendicion(
+  tabla: string, filaId: string, texto: string,
+  imagenes: string[] = [], respondeA: string | null = null,
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  /* La tabla llega del cliente, así que se valida contra la lista antes de
+     tocar la base. Sin esto, un valor inventado llegaría hasta el `insert` y
+     Postgres contestaría «column ... does not exist» — un mensaje que no
+     significa nada para quien solo quería preguntar por una factura. */
+  if (!esTablaRendicion(tabla)) return { error: "No sé de qué se está hablando." };
+  const meta = META_RENDICION[tabla];
+
+  const cuerpo = (texto || "").trim();
+  const imgs = (imagenes || []).filter(Boolean).slice(0, 6);
+  if (!cuerpo && !imgs.length) return { error: "El comentario no puede ir vacío." };
+
+  const { data: com, error } = await supabase.from("comentarios")
+    .insert({ [meta.col]: filaId, autor_id: user.id, cuerpo: cuerpo || "📷",
+      imagenes: imgs, responde_a: respondeA || null })
+    .select("id").single();
+  if (error) {
+    /* La migración que falta se dice POR SU NOMBRE. «column does not exist» es
+       verdad y es inútil: quien lo lee no sabe qué correr. */
+    return {
+      error: new RegExp(meta.col).test(error.message)
+        ? `Falta correr ${meta.migracion} en Supabase.`
+        : error.message,
+    };
+  }
+
+  const [{ data: miP }, { data: fila }] = await Promise.all([
+    supabase.from("perfiles").select("nombre").eq("id", user.id).single(),
+    supabase.from(tabla).select(meta.sel).eq("id", filaId).maybeSingle(),
+  ]);
+  const actorNombre = miP?.nombre || "Alguien";
+  const titulo = meta.titulo(fila);
+  /* El FONDO al que pertenece la fila viaja en cada aviso. Sin él, la
+     campanita tiene el id de la factura y ninguna forma de saber en qué
+     pantalla vive: el aviso llegaría, se leería, y al pulsarlo no pasaría
+     nada. Ese fallo exacto ya costó dos rondas de depuración con
+     `comentario_id` y otra con `postulacion_id`; aquí se paga por
+     adelantado. */
+  const post = (fila as any)?.postulacion_id || null;
+  const dondeVive = post ? { postulacion_id: post } : {};
+  const queEs = `${meta.etiqueta}${titulo ? ` (${titulo})` : ""}`;
+
+  // 🪄 Menciones @nombre — mismo reconocimiento que en casos, objetos y caja.
+  const tokens = [...new Set((cuerpo.match(/@[^\s@,;:!?*_`]+/g) || []).map(m => m.slice(1)))];
+  const avisados = new Set<string>([user.id]);
+  if (tokens.length) {
+    const nrmM = (x: string) => x.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+    const { data: perfs } = await supabase.from("perfiles").select("id,nombre").eq("activo", true);
+    for (const p of perfs || []) {
+      const sinEspacios = nrmM(p.nombre).replace(/\s+/g, "");
+      const palabras = nrmM(p.nombre).split(/\s+/);
+      const invocado = tokens.some(t => {
+        const tk = nrmM(t);
+        return sinEspacios.startsWith(tk) || palabras.some(w => w.startsWith(tk));
+      });
+      if (invocado && !avisados.has(p.id)) {
+        avisados.add(p.id);
+        await notificar(supabase, {
+          usuario_id: p.id, [meta.col]: filaId, comentario_id: com.id, ...dondeVive,
+          tipo: "mencion", actor_nombre: actorNombre,
+          mensaje: `🪄 ${actorNombre.split(" ")[0]} te mencionó en ${queEs}`,
+        });
+      }
+    }
+  }
+
+  /* A quien registró la fila. Es el destinatario natural: la pregunta «¿esta
+     factura de qué es?» es para él.
+     Puede no haber nadie —las cargas por SQL entran sin `creado_por`— y eso
+     no es un error: simplemente no hay a quién avisar, y el hilo de abajo se
+     encarga de los demás. */
+  const dueno = (fila as any)?.creado_por;
+  if (dueno && !avisados.has(dueno)) {
+    avisados.add(dueno);
+    await notificar(supabase, {
+      usuario_id: dueno, [meta.col]: filaId, comentario_id: com.id, ...dondeVive,
+      tipo: "comentario", actor_nombre: actorNombre,
+      mensaje: `Nuevo comentario en ${queEs}`,
+    });
+  }
+
+  // A quien se le responde: responder ya es dirigirse a alguien, no hace falta @.
+  if (respondeA) {
+    const { data: padre } = await supabase.from("comentarios")
+      .select("autor_id").eq("id", respondeA).maybeSingle();
+    if (padre?.autor_id && !avisados.has(padre.autor_id)) {
+      avisados.add(padre.autor_id);
+      await notificar(supabase, {
+        usuario_id: padre.autor_id, [meta.col]: filaId, comentario_id: com.id, ...dondeVive,
+        tipo: "comentario", actor_nombre: actorNombre,
+        mensaje: `${actorNombre.split(" ")[0]} respondió a tu comentario (${titulo})`,
+      });
+    }
+  }
+
+  // Y a todos los que ya habían escrito aquí. Al final: `avisados` ya trae a
+  // quienes recibieron un aviso más preciso.
+  await avisarAlHilo(supabase, {
+    columna: meta.col, dueno: filaId, comentarioId: com.id,
+    actorId: user.id, actorNombre, titulo: queEs, avisados, extra: dondeVive,
+  });
+
+  await supabase.from("actividad").insert({
+    entidad_tipo: tabla, entidad_id: filaId, actor_id: user.id, tipo: "comentario",
+    detalle: { comentario_id: com.id },
+  });
+  /* La fila vive en la pantalla del fondo. Se revalida por el `postulacion_id`
+     que trae la propia fila, no por uno que nos pasen: si el que llama se
+     equivoca de fondo, la pantalla correcta se queda sin refrescar y el
+     comentario «no aparece» hasta recargar a mano. */
+  if (post) revalidatePath(`/fondo/${post}`);
+  return {};
+}
+
+/* La lectura que alimenta el pop-up de las cinco. Misma forma que
+   `cargarMovCajaRapido`, para que la vista no aprenda un contrato por dueño. */
+export async function cargarRendicionRapido(tabla: string, filaId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!esTablaRendicion(tabla)) return { error: "No sé de qué se está hablando." };
+  const meta = META_RENDICION[tabla];
+
+  const [{ data: fila }, { data: comentarios, error: eCom }, { data: perfiles }] = await Promise.all([
+    supabase.from(tabla).select(meta.sel).eq("id", filaId).maybeSingle(),
+    supabase.from("comentarios")
+      .select("id,cuerpo,imagenes,creado_en,editado_en,autor_id,responde_a," +
+              "autor:perfiles(nombre,color,avatar_url)")
+      .eq(meta.col, filaId).order("creado_en"),
+    supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
+  ]);
+  /* Si la columna no existe, la lista viene vacía y sin error visible: el hilo
+     parecería no tener comentarios cuando lo que pasa es que no hay dónde
+     guardarlos. Se dice. */
+  if (eCom) {
+    return {
+      error: new RegExp(meta.col).test(eCom.message)
+        ? `Falta correr ${meta.migracion} en Supabase.`
+        : eCom.message,
+    };
+  }
+
+  const ids = (comentarios || []).map((c: any) => c.id);
+  const { data: rx } = ids.length
+    ? await supabase.from("reacciones")
+        .select("emoji,usuario_id,comentario_id,perfil:perfiles!usuario_id(nombre)")
+        .in("comentario_id", ids)
+    : { data: [] as any[] };
+  const reaccionesPorComentario: Record<string, any[]> = {};
+  (rx || []).forEach((r: any) => {
+    (reaccionesPorComentario[r.comentario_id] ||= []).push({
+      emoji: r.emoji, usuario_id: r.usuario_id, nombre: r.perfil?.nombre || null,
+    });
+  });
+
+  const { data: rxHilo } = await supabase.from("reacciones")
+    .select("emoji,usuario_id,perfil:perfiles!usuario_id(nombre)")
+    .eq(meta.col, filaId).is("comentario_id", null);
+
+  return {
+    fila, titulo: meta.titulo(fila), etiqueta: meta.etiqueta,
+    comentarios: comentarios || [], reaccionesPorComentario,
+    reaccionesHilo: (rxHilo || []).map((r: any) => ({
+      emoji: r.emoji, usuario_id: r.usuario_id, nombre: r.perfil?.nombre || null,
+    })),
+    perfiles: perfiles || [], userId: user.id,
+  };
 }
 
 /* La lectura que alimenta el pop-up. Misma forma que `cargarObjetoRapido`, para
@@ -2621,6 +2818,113 @@ export async function fijarEjesRhe(id: string, ejes: {
     revalidatePath(`/entidad/postulacion/${ejes.postulacionId}`);
     revalidatePath(`/fondo/${ejes.postulacionId}`);
   }
+  return {};
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LAS CONSTANCIAS DE SUSPENSIÓN DE 4ta, UNA POR AÑO
+
+   La suspensión caduca cada 31 de diciembre, así que una persona tiene una
+   constancia por año y no «una constancia». Hasta ahora se tecleaban en dos
+   campos de la ficha; con db/suspension-4ta-anios.sql esos campos pasaron a
+   estar DERIVADOS del historial, y este es el sitio donde se escribe.
+   ══════════════════════════════════════════════════════════════════════════ */
+export async function guardarSuspension4ta(f: {
+  id?: string | null; personaId: string; anio: string | number;
+  url?: string; operacion?: string; presentado?: string; nota?: string;
+}) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  const anio = parseInt(String(f.anio), 10);
+  /* El rango no es paranoia de programador: el campo se teclea y un dedo de
+     más convierte 2025 en 20255, que la tabla aceptaría como int y luego
+     ordenaría por encima de todo — dejando a esa persona «cubierta» para
+     siempre. El check de la base también lo impide; aquí se dice por qué. */
+  if (!anio || anio < 2000 || anio > 2100) return { error: "El año no parece un año." };
+
+  const fila: any = {
+    persona_id: f.personaId, anio,
+    url: (f.url || "").trim() || null,
+    operacion: (f.operacion || "").trim() || null,
+    presentado: (f.presentado || "").trim() || null,
+    nota: (f.nota || "").trim() || null,
+  };
+  if (!f.id) fila.creado_por = user.id;
+
+  const { data, error } = f.id
+    ? await supabase.from("suspension_4ta").update(fila).eq("id", f.id).select("id")
+    : await supabase.from("suspension_4ta").insert(fila).select("id");
+  if (error) {
+    return {
+      error: /does not exist|42P01/.test(error.message)
+        ? "Falta correr db/suspension-4ta-anios.sql en Supabase."
+        /* El duplicado aquí SÍ tiene un significado útil y se traduce: ya hay
+           una constancia de ese año. Decir «unique violation» obligaría a
+           adivinarlo. */
+        : /duplicate|unique/i.test(error.message)
+        ? `Ya hay una constancia de ${anio} para esta persona. Edita esa en vez de añadir otra.`
+        : error.message,
+    };
+  }
+  /* Cinturón: un insert bloqueado por RLS devuelve cero filas sin error, y el
+     historial «se guardaría» y desaparecería al recargar. */
+  if (!data?.length) return { error: "No se pudo guardar: el permiso de la base lo rechazó." };
+
+  revalidatePath(`/entidad/persona/${f.personaId}`);
+  revalidatePath("/personas");
+  return {};
+}
+
+export async function quitarSuspension4ta(id: string, personaId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data, error } = await supabase.from("suspension_4ta")
+    .delete().eq("id", id).select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "No se pudo borrar: el permiso de la base lo rechazó." };
+  revalidatePath(`/entidad/persona/${personaId}`);
+  revalidatePath("/personas");
+  return {};
+}
+
+/* ── EL COMPROBANTE DE UN RHE, DESPUÉS DE HABERLO REGISTRADO ──
+ *
+ * El PDF del recibo solo se podía adjuntar en el formulario de alta, y de ahí
+ * salía este agujero: los 26 recibos de PO-003 entraron por carga SQL, así que
+ * los 26 se quedaron sin comprobante y no había forma de ponérselo. La fila
+ * enseñaba «📄 ↗» cuando había PDF y nada cuando no — sin nada que pulsar,
+ * o sea sin decir que faltaba algo ni cómo arreglarlo.
+ *
+ * Y no es un dato menor: el recibo escaneado ES la rendición. Un RHE en la
+ * base sin su PDF es una cifra que no se puede presentar.
+ *
+ * ── QUIÉN PUEDE ──
+ * `es_admin` O `es_finanzas`, igual que la pantalla que lo ofrece. `fijarEjesRhe`
+ * pide solo `es_admin` y por eso a quien lleva finanzas le rebota un botón que
+ * la interfaz le dejaba pulsar; no se toca aquí —cambiar permisos de paso es
+ * como se acaban repartiendo llaves de más— pero queda dicho.
+ */
+export async function fijarComprobanteRhe(id: string, postulacionId: string, url: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: perfil } = await supabase.from("perfiles")
+    .select("es_admin,es_finanzas").eq("id", user.id).maybeSingle();
+  if (!(perfil?.es_admin || perfil?.es_finanzas)) {
+    return { error: "Solo administración o finanzas adjunta comprobantes." };
+  }
+  /* `.select()` de cinturón: un update bloqueado por RLS devuelve cero filas y
+     NINGÚN error, así que sin esto el adjunto «se guardaría» y desaparecería
+     al recargar. Es la misma trampa de siempre. */
+  const { data, error } = await supabase.from("rhe")
+    .update({ url: (url || "").trim() || null }).eq("id", id).select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "No se pudo guardar: el permiso de la base lo rechazó." };
+  revalidatePath(`/fondo/${postulacionId}`);
+  revalidatePath(`/entidad/postulacion/${postulacionId}`);
   return {};
 }
 
@@ -5766,6 +6070,253 @@ export async function verificarDniReniec(personaId: string) {
   }
 }
 
+/* ── LOS COMPROMISOS DEL ACTA ──
+   Marcar un entregable, guardar su prueba y anotar. El TEXTO del extracto
+   también se puede corregir: se leyó de un escaneo por OCR y una tilde mal
+   puesta no debería obligar a volver al SQL. Lo que no se toca desde aquí es la
+   cláusula — si el número cambia, ya no es la misma cita.
+   Requiere db/compromiso-acta.sql. */
+
+export async function marcarCompromiso(
+  id: string, postulacionId: string, estado: string, url: string, nota: string,
+  entregadoEn: string | null,
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!ESTADOS_COMP.includes(estado as any)) return { error: "Ese estado no existe." };
+
+  const { data: prev } = await supabase.from("compromiso_acta")
+    .select("clausula,titulo,estado").eq("id", id).maybeSingle();
+  if (!prev) return { error: "Ese compromiso ya no está." };
+
+  const { data: hechas, error } = await supabase.from("compromiso_acta").update({
+    estado,
+    url: (url || "").trim() || null,
+    nota: (nota || "").trim() || null,
+    /* La fecha de entrega se pone sola al marcar «entregado» si no se dio una:
+       obligar a teclearla es el paso que hace que quede en blanco, y una
+       entrega sin fecha no sirve para defender un plazo. Al desmarcar se
+       limpia: guardar una fecha de entrega en algo que no está entregado es
+       dejar una contradicción a la vista de quien audite. */
+    entregado_en: estado === "entregado" ? (entregadoEn || hoyLima()) : null,
+  }).eq("id", id).select("id");
+  if (error) {
+    return { error: /compromiso_acta/.test(error.message)
+      ? "Falta correr db/compromiso-acta.sql en Supabase." : error.message };
+  }
+  if (!hechas?.length) return { error: "No se guardó: no tienes permiso sobre este fondo." };
+
+  if (prev.estado !== estado) {
+    await supabase.from("actividad").insert({
+      entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "dato",
+      detalle: { mensaje: `acta ${prev.clausula || ""} «${prev.titulo}»: ${prev.estado} → ${estado}`.trim() },
+    });
+  }
+  revalidatePath(`/fondo/${postulacionId}`);
+  return {};
+}
+
+/* ── DE UNA CLÁUSULA A UN CASO ──
+ *
+ * Un entregable NO es una tarea. Es una obligación del acta: existe y sigue
+ * pendiente aunque nadie se ocupe de ella. Una tarea es la decisión de que
+ * alguien se ocupe AHORA, con responsable y plazo — y eso lo decide una
+ * persona, no el sistema al importar el acta. Por eso el caso no se crea solo:
+ * hay treinta compromisos, y abrir treinta casos el primer día llenaría el
+ * tablero de trabajo que nadie prometió hacer esta semana.
+ *
+ * Lo que sí hace falta es que abrirlo cueste un clic y llegue con contexto: el
+ * caso nace con la cláusula en el título, el extracto en el cuerpo y vinculado
+ * a la postulación, así que aparece en su ficha y en el tablero sin teclear
+ * nada. Es el mismo camino que la Casilla DAFO (`casoDeComunicacion`).
+ */
+export async function casoDeCompromiso(id: string, postulacionId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  const { data: c, error: eC } = await supabase.from("compromiso_acta")
+    .select("clase,clausula,titulo,detalle,fecha_limite,caso_id," +
+            "post:postulaciones(codigo,codigo_acta,proy:proyectos(nombre))")
+    .eq("id", id).maybeSingle();
+  if (eC) {
+    return { error: /compromiso_acta|caso_id/.test(eC.message)
+      ? "Falta correr db/compromiso-acta.sql en Supabase (columna caso_id)." : eC.message };
+  }
+  if (!c) return { error: "Ese compromiso ya no está." };
+
+  /* ¿Ya hay caso, y sigue VIVO? Uno archivado o descartado no cuenta: el
+     compromiso quedaría atado para siempre a algo que no aparece en ningún
+     tablero, y el botón no ofrecería abrir otro. Misma regla que la casilla. */
+  const ya = (c as any).caso_id as string | null;
+  if (ya) {
+    const { data: vive } = await supabase.from("publicaciones")
+      .select("id").eq("id", ya)
+      .is("archivado_en", null).neq("estado", "descartada").maybeSingle();
+    if (vive) return { id: ya, ya: true };
+  }
+
+  const post: any = Array.isArray((c as any).post) ? (c as any).post[0] : (c as any).post;
+  const quien = post
+    ? `${post.codigo || "🎯"}${post.proy?.nombre ? ` · ${post.proy.nombre}` : ""}`
+    : "fondo";
+  const cl = (c as any).clausula ? `${(c as any).clausula} ` : "";
+
+  const { data: pub, error } = await supabase.from("publicaciones").insert({
+    tipo: "tarea", estado: "abierta", autor_id: user.id,
+    /* La cláusula va en el TÍTULO y no solo en el cuerpo: en un tablero de
+       cuarenta casos, «Ficha técnica de la obra» no dice de qué fondo ni de
+       qué obligación sale, y el número es lo que permite volver al acta desde
+       el propio caso. */
+    titulo: `📦 ${cl}${(c as any).titulo} — ${quien}`.slice(0, 200),
+    /* La fecha del acta se hereda como plazo del caso. Es la única fecha con
+       consecuencias: un caso sin plazo sobre un entregable con plazo pierde
+       justo el dato por el que se abrió. */
+    ...((c as any).fecha_limite ? { fecha_limite: (c as any).fecha_limite } : {}),
+    cuerpo: [
+      `Compromiso del acta ${post?.codigo_acta || ""}`.trim() +
+        ((c as any).clausula ? `, cláusula ${(c as any).clausula}.` : "."),
+      "",
+      String((c as any).detalle || "").slice(0, 1200),
+      "",
+      "— Abierto desde 📦 Entregables del fondo. El texto de arriba es el extracto del acta: si hay duda, manda el PDF.",
+    ].filter(Boolean).join("\n"),
+  }).select("id").single();
+  if (error || !pub) return { error: error?.message || "No se pudo crear el caso." };
+
+  await supabase.from("publicacion_vinculos").insert({
+    publicacion_id: pub.id, entidad_tipo: "postulacion", entidad_id: postulacionId,
+  });
+  await supabase.from("actividad").insert({
+    entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "tarea",
+    detalle: { mensaje: `abrió un caso desde el acta ${cl}«${(c as any).titulo}»`.trim() },
+  });
+
+  /* Se anota en el compromiso. Si esto falla el caso YA existe, así que se
+     devuelve su id igual y se dice qué pasó: callarlo dejaría al botón
+     ofreciendo abrir otro caso sobre lo mismo. */
+  const { error: eLink } = await supabase.from("compromiso_acta")
+    .update({ caso_id: pub.id }).eq("id", id);
+
+  revalidatePath(`/fondo/${postulacionId}`);
+  revalidatePath("/");
+  revalidatePath(`/entidad/postulacion/${postulacionId}`);
+  if (eLink) return { id: pub.id as string, error: "Caso creado, pero no quedó anotado en el compromiso: " + eLink.message };
+  return { id: pub.id as string };
+}
+
+export async function editarDetalleCompromiso(
+  id: string, postulacionId: string, titulo: string, detalle: string, fechaLimite: string | null,
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const t = (titulo || "").trim();
+  if (!t) return { error: "El título no puede quedar vacío." };
+
+  const { data: hechas, error } = await supabase.from("compromiso_acta").update({
+    titulo: t,
+    detalle: (detalle || "").trim() || null,
+    fecha_limite: (fechaLimite || "").trim() || null,
+  }).eq("id", id).select("id");
+  if (error) return { error: error.message };
+  if (!hechas?.length) return { error: "No se guardó: no tienes permiso, o la fila ya no está." };
+  revalidatePath(`/fondo/${postulacionId}`);
+  return {};
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   EL PERSONAL DE UN FONDO EN EJECUCIÓN
+   ═══════════════════════════════════════════════════════════════════
+   Solo se guarda lo que NO se puede deducir: a quién se piensa convocar.
+   Quien ya tiene recibo girado sale solo de `rhe` (ver lib/equipoFondo.ts),
+   y por eso estas acciones no lo tocan — copiar un hecho a una segunda lista
+   es fabricar la primera contradicción.
+   Requiere db/equipo-fondo.sql. */
+
+export async function sumarPersonalFondo(
+  postulacionId: string, personaId: string, cargo: string, nota: string,
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!postulacionId || !personaId) return { error: "Falta el fondo o la persona." };
+
+  const { error } = await supabase.from("equipo_fondo").insert({
+    postulacion_id: postulacionId, persona_id: personaId,
+    cargo: (cargo || "").trim() || null,
+    nota: (nota || "").trim() || null,
+    creado_por: user.id,
+  });
+  if (error) {
+    /* El unique de (fondo, persona) no es un fallo del usuario: es que esa
+       persona ya está en la lista, y decirlo así ahorra ir a buscarla. */
+    if (/duplicate key|unique/i.test(error.message)) {
+      return { error: "Esa persona ya está en el equipo de este fondo." };
+    }
+    if (/equipo_fondo/.test(error.message)) {
+      return { error: "Falta correr db/equipo-fondo.sql en Supabase." };
+    }
+    return { error: error.message };
+  }
+
+  const { data: per } = await supabase.from("personas")
+    .select("nombre,alias").eq("id", personaId).maybeSingle();
+  await supabase.from("actividad").insert({
+    entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "miembro",
+    detalle: { mensaje: `sumó a ${per?.alias || per?.nombre || "alguien"} al personal del fondo${cargo?.trim() ? ` como ${cargo.trim()}` : ""}` },
+  });
+  revalidatePath(`/fondo/${postulacionId}`);
+  return {};
+}
+
+export async function editarPersonalFondo(
+  id: string, postulacionId: string, cargo: string, nota: string,
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!id) return { error: "Falta la fila." };
+
+  /* `.select()` como en el resto: con una política de RLS que tape la fila,
+     PostgREST devuelve éxito con cero filas y la pantalla diría «guardado». */
+  const { data: hechas, error } = await supabase.from("equipo_fondo")
+    .update({ cargo: (cargo || "").trim() || null, nota: (nota || "").trim() || null })
+    .eq("id", id).select("id");
+  if (error) return { error: error.message };
+  if (!hechas?.length) return { error: "No se guardó: no tienes permiso, o la fila ya no está." };
+  revalidatePath(`/fondo/${postulacionId}`);
+  return {};
+}
+
+export async function quitarPersonalFondo(id: string, postulacionId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  /* Se lee ANTES de borrar: después ya no hay a quién nombrar en la bitácora,
+     y «quitó a alguien» no sirve de nada dentro de un año. */
+  const { data: prev } = await supabase.from("equipo_fondo")
+    .select("cargo,per:personas(nombre,alias)").eq("id", id).maybeSingle();
+
+  const { data: fuera, error } = await supabase.from("equipo_fondo")
+    .delete().eq("id", id).select("id");
+  if (error) return { error: error.message };
+  if (!fuera?.length) return { error: "No se quitó: no tienes permiso, o ya no estaba." };
+
+  const quien = (prev?.per as any)?.alias || (prev?.per as any)?.nombre || "alguien";
+  await supabase.from("actividad").insert({
+    entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "miembro",
+    /* Se dice que los recibos NO se van con ella: quitar de una lista de
+       previsión no deshace un pago, y confundir las dos cosas en la bitácora
+       sería sembrar una duda que costaría media auditoría aclarar. */
+    detalle: { mensaje: `quitó a ${quien} del personal previsto del fondo${prev?.cargo ? ` (${prev.cargo})` : ""} — sus recibos, si los tiene, siguen` },
+  });
+  revalidatePath(`/fondo/${postulacionId}`);
+  return {};
+}
+
 /* ── PONER LA SUBCATEGORÍA SIN ABRIR LA FICHA ──
  *
  * Hay cincuenta y ocho equipos sin subcategoría. Arreglarlos uno a uno es
@@ -6906,11 +7457,23 @@ export async function crearSubCaso(padreId: string, titulo: string, tipo: string
 /* ===== REACCIONES: los famosos "me gusta" =====
    Toggle por usuario: mismo emoji dos veces = quitar. */
 const EMOJIS_REACCION = ["👀", "👍", "✔️", "❤️", "🔥", "👏", "😂", "😮", "🤔", "😕", "😢"];
-export async function toggleReaccion(pubId: string | null, comentarioId: string | null, emoji: string, objetoId?: string | null, postulacionId?: string | null, movCajaId?: string | null) {
+export async function toggleReaccion(
+  pubId: string | null, comentarioId: string | null, emoji: string,
+  objetoId?: string | null, postulacionId?: string | null, movCajaId?: string | null,
+  /* ── LAS CINCO DE LA RENDICIÓN VIAJAN JUNTAS ──
+     Podrían ser cinco parámetros más y esta firma tendría once posiciones.
+     Once posiciones opcionales es una firma que nadie lee: se llama mal y el
+     error aparece en otra pantalla, semanas después. Van como un solo objeto
+     porque son un solo concepto — «una fila de la rendición». */
+  rendicion?: { tabla: string; id: string } | null,
+) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
   if (!EMOJIS_REACCION.includes(emoji)) return { error: "Reacción no permitida." };
+  if (rendicion && !esTablaRendicion(rendicion.tabla))
+    return { error: "No sé a qué se está reaccionando." };
+  const metaR = rendicion ? META_RENDICION[rendicion.tabla as TablaRendicion] : null;
 
   let q = supabase.from("reacciones").select("id")
     .eq("usuario_id", user.id).eq("emoji", emoji);
@@ -6922,6 +7485,7 @@ export async function toggleReaccion(pubId: string | null, comentarioId: string 
   q = comentarioId ? q.eq("comentario_id", comentarioId)
     : postulacionId ? q.eq("postulacion_id", postulacionId).is("comentario_id", null)
     : movCajaId ? q.eq("movimiento_caja_id", movCajaId).is("comentario_id", null)
+    : metaR ? q.eq(metaR.col, rendicion!.id).is("comentario_id", null)
     : q.eq("publicacion_id", pubId).is("comentario_id", null);
   const { data: ya } = await q.maybeSingle();
 
@@ -6934,12 +7498,21 @@ export async function toggleReaccion(pubId: string | null, comentarioId: string 
       // La reacción a la postulación misma solo cuando NO es a un comentario.
       postulacion_id: comentarioId ? null : (postulacionId ?? null),
       movimiento_caja_id: comentarioId ? null : (movCajaId ?? null),
+      ...(metaR && !comentarioId ? { [metaR.col]: rendicion!.id } : {}),
       usuario_id: user.id, emoji,
     });
     if (error) {
       return {
         error: /movimiento_caja_id/.test(error.message)
           ? "Falta correr db/movcaja-comentarios.sql en Supabase."
+          : metaR && new RegExp(metaR.col).test(error.message)
+          ? `Falta correr ${metaR.migracion} en Supabase.`
+          /* El duplicado aquí NO es que ya reaccionaras: eso lo resuelve el
+             toggle de arriba. Es el índice único sin rehacer, que trata dos
+             facturas distintas como la misma. El error de Postgres no lo
+             dice; este sí. */
+          : metaR && /duplicate key|uq_reacciones_dueno/i.test(error.message)
+          ? `El índice único de reacciones está sin rehacer: corre ${metaR.migracion}.`
           : error.message,
       };
     }
@@ -6949,6 +7522,14 @@ export async function toggleReaccion(pubId: string | null, comentarioId: string 
   if (objetoId) revalidatePath(`/objeto/${objetoId}`);
   else if (postulacionId) revalidatePath(`/entidad/postulacion/${postulacionId}`);
   else if (movCajaId) revalidatePath("/caja");
+  else if (metaR) {
+    /* El fondo al que pertenece la fila. Se pregunta a la propia fila en vez
+       de pedírselo a quien llama: un id equivocado deja la pantalla sin
+       refrescar y la reacción «no aparece» hasta recargar a mano. */
+    const { data: fila } = await supabase.from(rendicion!.tabla)
+      .select("postulacion_id").eq("id", rendicion!.id).maybeSingle();
+    if ((fila as any)?.postulacion_id) revalidatePath(`/fondo/${(fila as any).postulacion_id}`);
+  }
   else if (pubId) revalidatePath(`/caso/${pubId}`);
   return {};
 }
@@ -7166,7 +7747,7 @@ export async function misNotificaciones() {
   if (!user) return { items: [], sinLeer: 0, sinLeerBot: 0 };
   // `objeto_id`: una notificación puede colgar de un caso O de un objeto del
   // repositorio. Sin traerla, el aviso llega pero no lleva a ninguna parte.
-  const cols = "id,tipo,mensaje,actor_nombre,publicacion_id,objeto_id,prestamo_id,equipamiento_id,dafo_id,comentario_id,leida,creado_en";
+  const cols = COLS_NOTIF;
   /* La consulta en una función para poder repetirla sin `dafo_id` si esa
      columna aún no existe (ver lib/notificaciones.ts → COL_DAFO). */
   const tanda = (c: string, esBot: boolean) => {
@@ -7399,7 +7980,7 @@ export async function notificacionesTodas(desde = 0, filtro?: "personal" | "bot"
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { items: [], hayMas: false, total: 0, totalBot: 0, sinLeer: 0, sinLeerBot: 0 };
-  const COLS = "id,tipo,mensaje,actor_nombre,publicacion_id,objeto_id,prestamo_id,equipamiento_id,dafo_id,comentario_id,leida,creado_en";
+  const COLS = COLS_NOTIF;
   /* Armada en una función: si `dafo_id` no existe todavía hay que preguntar
      otra vez sin ella, y un builder ya filtrado no se puede reusar. */
   const consulta = (cols: string) => {

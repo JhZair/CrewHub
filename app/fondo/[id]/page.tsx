@@ -16,9 +16,15 @@ import VersionesFondo from "@/components/VersionesFondo";
 import { etapasDe, nombreEtapa } from "@/lib/etapas";
 import { rubrosDe, nombreRubro } from "@/lib/rubros";
 import { plazoRendicion, rendicionVencida } from "@/lib/fondos";
+import { plazoFondo, ETIQ_FUENTE, PLAZO_MESES } from "@/lib/plazoFondo";
 import { saldoDJ as calcSaldoDJ } from "@/lib/dj";
 import SaldoDj from "@/components/SaldoDj";
 import Comprobantes from "@/components/Comprobantes";
+import EquipoFondo from "@/components/EquipoFondo";
+import CompromisosActa from "@/components/CompromisosActa";
+import { integrantesDeFondo } from "@/lib/equipoFondo";
+import { urlPlataforma, PLAT } from "@/lib/plataformas";
+import { hilosDeFilas } from "@/lib/rendicionHilo";
 
 /* ── LA EJECUCIÓN DEL FONDO — la segunda vida de un proyecto ──
  *
@@ -66,10 +72,7 @@ const dmy = (f?: string | null) => {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(f ?? ""));
   return m ? `${m[3]}/${m[2]}/${m[1]}` : "—";
 };
-const masDosAnios = (f?: string | null) => {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(f ?? ""));
-  return m ? `${+m[1] + 2}-${m[2]}-${m[3]}` : null;
-};
+
 
 export default async function FondoPage({ params }: { params: { id: string } }) {
   const supabase = createClient();
@@ -98,7 +101,7 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
 
   const categoria = ent.conv?.categoria || null;
 
-  const [cp, pl, pf, plPre, pc, ec, rf, mb, gdj, cmp, au, vf, eqp] = await Promise.all([
+  const [cp, pl, pf, plPre, pc, ec, rf, mb, gdj, cmp, au, vf, eqp, eqf, cac, urlSunat, s4] = await Promise.all([
     supabase.from("cronograma_actividades").select("*, resp:perfiles!responsable(nombre)")
       .eq("postulacion_id", params.id)
       .order("etapa").order("orden").order("fecha_inicio").order("creado_en"),
@@ -106,7 +109,16 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
       .select("id,nombre,tipo_proyecto,acts:plantilla_actividades(count)").order("nombre"),
     supabase.from("perfiles").select("id,nombre,avatar_url,color").eq("activo", true).order("nombre"),
     supabase.from("plantillas_presupuesto").select("id,nombre,categoria,items").order("nombre"),
-    supabase.from("personas").select("id,nombre,alias").order("nombre"),
+    /* Con foto: esta lista se lee poniéndole cara a los nombres que salen de
+       los recibos, y un catálogo sin imagen obliga a abrir ficha por ficha. */
+    supabase.from("personas")
+      /* Nombre completo, tipo y domicilio: lo que el informe económico y los
+         recibos piden, y que antes obligaba a abrir la ficha de cada una de
+         las veintitrés personas del fondo. Van aquí porque aquí es donde está
+         la lista entera. */
+      .select("id,nombre,alias,foto_url,tipo,ruc_dni,direccion,distrito,provincia,region," +
+              "suspension_4ta_anio,suspension_4ta_url")
+      .order("nombre"),
     supabase.from("estado_cuenta")
       .select("id,periodo,url,saldo,intereses,nota,imagenes,creado_en,comprobante_en," +
         "creado:perfiles!creado_por(nombre),quien:perfiles!comprobante_por(nombre)")
@@ -129,7 +141,13 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
        era meterla como declaración jurada — gastando un tope que no le tocaba
        (ver db/facturas.sql). */
     supabase.from("comprobante")
-      .select("id,tipo,proveedor,ruc,serie,numero,fecha,importe,igv,concepto,etapa,rubro_item,url")
+      /* Quién lo registró y cuándo. Es plata que se rinde ante el Ministerio:
+         una cifra sin autor es una cifra que nadie puede explicar el día que
+         la observan, y la bitácora de auditoría —que sí lo guarda— está tres
+         plegables más abajo y en otro idioma. El dato tiene que estar donde
+         está la duda. Mismo patrón que estado_cuenta, arriba. */
+      .select("id,tipo,proveedor,ruc,serie,numero,fecha,importe,igv,concepto,etapa,rubro_item,url," +
+        "creado_en,creado:perfiles!creado_por(nombre)")
       .eq("postulacion_id", params.id).order("fecha"),
     /* La bitácora inmutable de este fondo. Filtra por el postulacion_id que
        vive dentro del JSON (antes/después), así también captura los borrados. */
@@ -144,8 +162,37 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
        postulación, aquí igual que en la ficha. Sin esto, la misma actividad
        ofrecería responsables distintos según por qué pantalla se entre. */
     supabase.from("postulacion_equipo")
-      .select("cargo,persona:personas(id,nombre,alias,foto_url)")
+      .select("cargo,persona:personas(id,nombre,alias,foto_url,tipo,ruc_dni,direccion,distrito,provincia,region," +
+              "suspension_4ta_anio,suspension_4ta_url)")
       .eq("postulacion_id", params.id),
+    /* El personal PREVISTO del fondo: lo único de esta pestaña que se escribe
+       a mano. Quien ya cobró sale de `rhe` y no se guarda dos veces (ver
+       lib/equipoFondo.ts). Va en su propia consulta y tolera que falte la
+       tabla: sin db/equipo-fondo.sql corrido, la pestaña tiene que seguir
+       enseñando el equipo declarado y los recibos —que es la mitad más
+       importante— en vez de tumbar la página entera. */
+    supabase.from("equipo_fondo")
+      .select("id,persona_id,cargo,nota")
+      .eq("postulacion_id", params.id),
+    /* El extracto del acta. En su propia consulta y tolerante: sin
+       db/compromiso-acta.sql corrido, la pestaña lo dice y el resto del fondo
+       sigue funcionando. */
+    supabase.from("compromiso_acta")
+      /* El estado del CASO viaja con el compromiso. Son dos preguntas distintas
+         —«¿se entregó?» y «¿estamos trabajando en ello?»— y si solo se enseña
+         una de las dos, la que se ve se lee como si contestara las dos. */
+      .select("id,clase,clausula,titulo,detalle,fecha_limite,estado,entregado_en,url,nota,orden," +
+              "caso_id,caso:publicaciones(estado,tipo)")
+      .eq("postulacion_id", params.id).order("orden"),
+    /* La URL del buscador de SUNAT, administrada en /admin?s=plataformas.
+       Devuelve `undefined` si nadie la cargó y el botón usa su respaldo: un
+       fondo no puede caerse porque falte un enlace. */
+    urlPlataforma(PLAT.sunatConsultaRuc),
+    /* El historial de suspensiones de 4ta, una fila por persona y año. En su
+       propia consulta y tolerante: sin db/suspension-4ta-anios.sql corrida,
+       `error` viene con la queja, la pestaña Equipo cae a la columna vieja y
+       el resto del fondo ni se entera. */
+    supabase.from("suspension_4ta").select("persona_id,anio,url"),
   ]);
 
   /* Responsable de actividad de postulación = persona del equipo
@@ -171,6 +218,42 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
   }));
   const plantillasPre = plPre.data || [];
   const personasCat = (pc.data || []).map((p: any) => ({ id: p.id, nombre: p.alias || p.nombre }));
+  /* El catálogo entero, con foto: la pestaña de equipo tiene que poner cara a
+     quien aparezca por un recibo, y esa persona puede no estar en ninguna de
+     las otras listas. */
+  /* Las constancias por año, agrupadas por persona. Si la tabla no existe
+     todavía, el mapa queda vacío y `coberturaSuspension` cae a la columna
+     vieja — enseña menos, no rompe nada. */
+  const susPorPersona = new Map<string, { anio: number; url: string | null }[]>();
+  ((s4 as any)?.data || []).forEach((r: any) => {
+    const l = susPorPersona.get(r.persona_id) || [];
+    l.push({ anio: r.anio, url: r.url || null });
+    susPorPersona.set(r.persona_id, l);
+  });
+
+  /* ── EL RECORTE TAMBIÉN HAY QUE ACTUALIZARLO ──
+     Este `map` copia campo por campo, así que pedir columnas nuevas en la
+     consulta no basta: si no se nombran aquí, llegan a la base, viajan hasta
+     esta línea y se tiran. La pantalla no daría error — enseñaría «sin
+     domicilio» en las veintitrés personas, incluidas las que sí lo tienen, que
+     es la peor forma de fallar: convincente. */
+  const personasMin = (pc.data || []).map((p: any) => ({
+    id: p.id, nombre: p.nombre, alias: p.alias, foto_url: p.foto_url || null,
+    tipo: p.tipo || null, ruc_dni: p.ruc_dni || null,
+    direccion: p.direccion || null, distrito: p.distrito || null,
+    provincia: p.provincia || null, region: p.region || null,
+    suspension_4ta_anio: p.suspension_4ta_anio ?? null,
+    suspension_4ta_url: p.suspension_4ta_url || null,
+    suspensiones: susPorPersona.get(p.id) || [],
+  }));
+  /* Si falta db/equipo-fondo.sql, `eqf.error` viene con la queja y `data` en
+     nulo. No se cae nada: la pestaña enseña el equipo declarado y los recibos,
+     y el bloque de «sumar» avisará al intentar guardar. Media pantalla útil es
+     mejor que una pantalla que no abre. */
+  const previstosFondo = (eqf.data || []) as any[];
+  const eqfError = (eqf as any)?.error?.message || null;
+  const compromisos = (cac.data || []) as any[];
+  const cacError = (cac as any)?.error?.message || null;
   const estadosFondo: any[] = (ec.data as any) || [];
   const movBanco = mb.data || [];
   /* Los gastos con DJ y su saldo. Si falta correr el SQL, la consulta falla y
@@ -201,6 +284,27 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
   }));
   const totComision = movBanco.filter((m: any) => m.categoria === "comision").reduce((s: number, m: any) => s + Number(m.monto || 0), 0);
 
+  /* ── EL HILO DE CADA FILA DE LA RENDICIÓN ──
+     Las cinco listas donde vive el dinero pueden conversarse, igual que la
+     caja. Aquí solo se traen el CONTADOR y los 👀 de cada fila: el hilo
+     completo se carga al abrir el pop-up, pero el número tiene que verse desde
+     la lista o una conversación de cuatro mensajes es invisible.
+     Las cinco se piden a la vez y ninguna puede tumbar la página: si falta
+     db/rendicion-interaccion.sql, vuelven vacías con su aviso y la rendición
+     sigue leyéndose entera. */
+  const [hCmp, hEct, hRhe, hDj, hMb] = await Promise.all([
+    hilosDeFilas(supabase, "comprobante", comprobantes.map((c: any) => c.id)),
+    hilosDeFilas(supabase, "estado_cuenta", estadosFondo.map((e: any) => e.id)),
+    hilosDeFilas(supabase, "rhe", rheFondo.map((r: any) => r.id)),
+    hilosDeFilas(supabase, "gasto_dj", gastosDj.map((g: any) => g.id)),
+    hilosDeFilas(supabase, "movimiento_banco", movBanco.map((m: any) => m.id)),
+  ]);
+  /* Se dice UNA vez, no cinco: las cinco fallan por lo mismo —un solo archivo
+     SQL sin correr— y repetir el aviso en cada bloque enseña a ignorarlo. */
+  const hiloError = [hCmp, hEct, hRhe, hDj, hMb].map(h => h.error).find(Boolean) || null;
+  const conHilo = (xs: any[], h: { conteo: Map<string, number>; reacciones: Map<string, any[]> }) =>
+    xs.map(x => ({ ...x, nComentarios: h.conteo.get(x.id) || 0, reacciones: h.reacciones.get(x.id) || [] }));
+
   // Bitácora del fondo con el actor ya resuelto a nombre (perfilesCat).
   const nombrePerfil = (id: string | null) =>
     !id ? "sistema" : (perfilesCat.find((p: any) => p.id === id)?.nombre || "—");
@@ -217,9 +321,24 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
   // DISTINTAS del cronograma del fondo (Pre / Prod / Post), en el orden del
   // preset de la categoría.
   const ordenEtapa = etapasDe(categoria).map((e: any) => e.clave);
-  const etapasFondo = Array.from(new Set(cronoPost.filter((a: any) => a.estado !== "cancelada").map((a: any) => a.etapa).filter(Boolean)))
+  const etapasCrono = Array.from(new Set(cronoPost.filter((a: any) => a.estado !== "cancelada").map((a: any) => a.etapa).filter(Boolean)))
     .sort((a: any, b: any) => ordenEtapa.indexOf(a) - ordenEtapa.indexOf(b))
     .map((clave: any) => ({ id: clave, nombre: nombreEtapa(clave) }));
+  /* ── SI NO HAY CRONOGRAMA, MANDA EL PRESET ──
+     Derivar las etapas del cronograma es lo correcto cuando hay cronograma:
+     son las etapas que este fondo de verdad usa, no las que el catálogo
+     imagina. Pero un fondo cargado desde papeles —PO-003 -042-2024— puede
+     tener facturas, recibos y banco antes de que nadie escriba una sola
+     actividad, y entonces esta lista salía VACÍA: el desplegable «Etapa…» se
+     abría con una única opción que era el propio placeholder.
+     Eso no es un campo opcional, es un campo roto. Y peor que roto: mudo,
+     porque no dice por qué no hay nada que elegir, así que se lee como que el
+     fondo no tiene etapas — cuando lo que no tiene es cronograma.
+     El respaldo es el mismo que ya usaban los rubros tres líneas más abajo:
+     lo real si existe, el catálogo de la categoría si no. Que dos ejes
+     hermanos resolvieran el vacío de forma distinta era la verdadera anomalía. */
+  const etapasFondo = etapasCrono.length ? etapasCrono
+    : etapasDe(categoria).map((e: any) => ({ id: e.clave, nombre: e.nombre }));
   /* Los rubros del fondo: si el presupuesto ya tiene ítems, se usan SUS rubros
      (los reales, resueltos a nombre), y si no, el catálogo de la categoría. Así
      no dependemos de que el nombre de la categoría calce exactamente con el
@@ -233,6 +352,10 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
 
   // Estado de la ejecución, en una línea.
   const plazo = plazoRendicion(ent);
+  /* El plazo real, decidido en lib/plazoFondo: la prórroga manda sobre el acta,
+     el acta sobre el cálculo, y si el acta y el cálculo no concuerdan se dice
+     en vez de elegir por nadie. */
+  const pz = plazoFondo(ent);
   const vencida = rendicionVencida(ent);
   const estadoEjec = ent.fecha_rendicion_real
     ? { ico: "✅", txt: "Rendido", col: "var(--green)" }
@@ -244,6 +367,11 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
   const dim = (t: string) => <span style={{ color: "var(--dim)", fontWeight: 400 }}>{t}</span>;
 
   const totRhe = rheFondo.reduce((s: number, r: any) => s + Number(r.monto || 0), 0);
+  /* Cuánta gente hay en el fondo, para el contador de la pestaña. Se calcula
+     con la MISMA función que pinta la lista: un número de cabecera que no sale
+     de lo que hay debajo es el que acaba discrepando. */
+  const equipoDelFondo = integrantesDeFondo(
+    (eqp.data || []) as any[], rheFondo as any[], previstosFondo, personasMin as any).length;
   const totInt = estadosFondo.reduce((s: number, e: any) => s + Number(e.intereses || 0), 0);
   const preItems = ((ent.presupuesto as any)?.items || []) as any[];
   const preCosto = preItems.reduce((s, i) => s + (i.cantidad || 0) * (i.costo_unit || 0), 0);
@@ -283,12 +411,37 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
           <Celda k="Acta firmada" v={dmy(ent.fecha_firma_acta)} />
           <Celda k="Desembolso" v={ent.fecha_desembolso ? dmy(ent.fecha_desembolso) : "⚠ falta"}
             alerta={!ent.fecha_desembolso} />
-          <Celda k="Plazo (2 años)" v={ent.fecha_desembolso ? dmy(masDosAnios(ent.fecha_desembolso)) : "—"} />
+          {/* ── EL PLAZO, UN AÑO Y NO DOS ──
+              Aquí decía «Plazo (2 años)» y calculaba desembolso + 2, citando en
+              el comentario la cláusula 7.2 del acta… que dice UN año. Los dos
+              salían de sumarle la prórroga de la 8.1, que no es automática: hay
+              que pedirla antes de vencer, con sustento y documento bancario.
+              Para este fondo eso significaba anunciar 11/09/2026 cuando el
+              plazo vencía el 11/09/2025 — un año de tranquilidad falsa. */}
+          <Celda k={`Plazo (${PLAZO_MESES / 12} año)`}
+            v={pz.limite ? dmy(pz.limite) : "—"}
+            alerta={pz.discrepa} />
           <Celda k="Rinde" v={dmy(plazo)} />
         </div>
+        <div style={{ color: "var(--dim)", fontSize: 11, marginTop: 6 }}>
+          {pz.fuente ? ETIQ_FUENTE[pz.fuente] : "sin plazo: falta la fecha de desembolso o la del acta"}
+          {pz.techoConProrroga && !pz.conProrroga && (
+            <> · con prórroga concedida podría llegar al {dmy(pz.techoConProrroga)} (acta 8.1, hay que solicitarla ANTES de vencer)</>
+          )}
+        </div>
+        {/* Las dos fechas no concuerdan y las dos vienen del mismo acta: una de
+            las dos está mal cargada, y de eso depende si el fondo está en plazo
+            o en incumplimiento. No se elige por él: se dice. */}
+        {pz.discrepa && (
+          <p style={{ color: "var(--yellow)", fontSize: 11.5, margin: "8px 0 0", lineHeight: 1.5 }}>
+            ⚠ El límite cargado ({dmy(ent.fecha_limite_rendicion)}) no coincide con el año del
+            desembolso ({dmy(pz.calculado)}). Los dos deberían salir del acta: revisa cuál está mal
+            antes de fiarte de cualquiera de los dos.
+          </p>
+        )}
         {!ent.fecha_desembolso && (
           <p style={{ color: "var(--yellow)", fontSize: 11.5, margin: "8px 0 0", lineHeight: 1.5 }}>
-            ⚠ Falta la fecha de desembolso — el plazo de 2 años se cuenta desde que el dinero llega a la
+            ⚠ Falta la fecha de desembolso — el plazo de un año se cuenta desde que el dinero llega a la
             cuenta, no desde la firma del acta. Se edita en el expediente de postulación.
           </p>
         )}
@@ -298,7 +451,12 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
           su propia información, y apiladas se volverían un scroll interminable.
           Arranca en Financiera —el dinero es lo que tiene reloj—. */}
       <TabsPanel
-        labels={["💰 Financiera", "🎥 Audiovisual", "📦 Entregables"]}
+        labels={["💰 Financiera", "🎥 Audiovisual", `📦 Entregables${compromisos.length ? ` · ${compromisos.length}` : ""}`, `👥 Equipo · ${equipoDelFondo}`]}
+        /* Nombres de pestaña para poder enlazarlas: `…/fondo/<id>#equipo`.
+           Sin esto, un enlace a la pestaña de equipo apunta a un panel que
+           está montado pero oculto, y el clic no hace nada — el mismo fallo
+           que costó dos rondas en la ficha de postulación. */
+        claves={["financiera", "audiovisual", "entregables", "equipo"]}
         paneles={[
           <div key="fin">
             <p className="fondo-nat-sub">La plata que hay que rendir a DAFO: presupuesto real, banco, pagos y rendiciones.</p>
@@ -321,7 +479,8 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
             <div style={{ scrollMarginTop: 12 }}>
               <Plegable id={`fondo:${params.id}:movbanco`} titulo="🏦 Movimientos del banco" abiertoPorDefecto={false}
                 resumen={dim(movBanco.length ? `${movBanco.length} movimientos · comisiones ${fmt(totComision)}` : "sin movimientos")}>
-                <MovimientosBanco postulacionId={params.id} esAdmin={esAdmin} movimientos={movBanco} />
+                <MovimientosBanco postulacionId={params.id} esAdmin={esAdmin}
+                  movimientos={conHilo(movBanco, hMb) as any} userId={user.id} hiloError={hiloError} />
               </Plegable>
             </div>
             <div style={{ scrollMarginTop: 12 }}>
@@ -330,7 +489,8 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
                 <RendicionFondo postulacionId={params.id} esAdmin={esAdmin}
                   fechaDesembolso={ent.fecha_desembolso || null}
                   montoAdjudicado={ent.monto_adjudicado ? parseFloat(ent.monto_adjudicado) : null}
-                  estados={estadosFondo} rhe={rheFondo}
+                  estados={conHilo(estadosFondo, hEct)} rhe={conHilo(rheFondo, hRhe)}
+                  userId={user.id} hiloError={hiloError}
                   empresa={ent.emp?.nombre || null}
                   etapas={etapasFondo} rubros={fondoRubros} personas={personasCat} />
               </Plegable>
@@ -356,8 +516,9 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
                         : saldoDj.supero
                           ? `⚠ exceso ${fmt(saldoDj.exceso)} — a devolver`
                           : `quedan ${fmt(saldoDj.resta ?? 0)} de ${fmt(saldoDj.tope)}`)}>
-                <SaldoDj postulacionId={params.id} saldo={saldoDj} gastos={gastosDj as any}
-                  etapas={etapasFondo} rubros={fondoRubros} esAdmin={esAdmin} error={djError} />
+                <SaldoDj postulacionId={params.id} saldo={saldoDj} gastos={conHilo(gastosDj, hDj) as any}
+                  etapas={etapasFondo} rubros={fondoRubros} esAdmin={esAdmin} error={djError}
+                  userId={user.id} hiloError={hiloError} />
               </Plegable>
             </div>
             <div style={{ scrollMarginTop: 12 }}>
@@ -365,8 +526,9 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
                 resumen={dim(cmpError ? "⚠ no se pudo leer"
                   : comprobantes.length ? `${comprobantes.length} · ${fmt(totCmp)}`
                   : "sin comprobantes")}>
-                <Comprobantes postulacionId={params.id} comprobantes={comprobantes as any}
-                  etapas={etapasFondo} rubros={fondoRubros} esAdmin={esAdmin} error={cmpError} />
+                <Comprobantes postulacionId={params.id} comprobantes={conHilo(comprobantes, hCmp) as any}
+                  etapas={etapasFondo} rubros={fondoRubros} esAdmin={esAdmin} error={cmpError}
+                  urlSunat={urlSunat} userId={user.id} hiloError={hiloError} />
               </Plegable>
             </div>
             <div style={{ scrollMarginTop: 12 }}>
@@ -389,7 +551,7 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
           <div key="av">
             <p className="fondo-nat-sub">La obra que hay que entregar: el rodaje de dos años y su registro.</p>
             <div style={{ scrollMarginTop: 12 }}>
-              <Plegable id={`fondo:${params.id}:crono`} titulo="📅 Cronograma (2 años)" abiertoPorDefecto={true}
+              <Plegable id={`fondo:${params.id}:crono`} titulo="📅 Cronograma de ejecución" abiertoPorDefecto={true}
                 resumen={dim(cronoPost.filter((a: any) => a.estado !== "cancelada").length
                   ? `${cronoPost.filter((a: any) => a.estado !== "cancelada").length} actividades` : "sin actividades")}>
                 <CronogramaPostulacion key={`crono-${params.id}`} postulacionId={params.id}
@@ -416,9 +578,41 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
           </div>,
 
           <div key="ent">
-            <p className="fondo-nat-sub">Lo que el acta obliga a entregar (5.3.1–5.3.8): catálogo + extras.</p>
-            <div className="card" style={{ color: "var(--dim)", fontSize: 12.5 }}>
-              Próximamente — el catálogo de entregables por categoría, con su estado y fecha, según el acta.
+            <p className="fondo-nat-sub">
+              Lo que el acta de compromiso obliga: entregables, obligaciones y plazos, cada uno
+              con su cláusula para poder comprobarlo en el PDF.
+            </p>
+            <div className="card">
+              <CompromisosActa postulacionId={params.id} compromisos={compromisos as any}
+                actaUrl={ent.acta_url || null} codigoActa={ent.codigo_acta || null}
+                puedeEditar error={cacError} />
+            </div>
+          </div>,
+
+          /* ── LA CUARTA NATURALEZA: QUIÉN ──
+             Financiera dice cuánto, Audiovisual qué, Entregables a qué se
+             obligó. Faltaba quién, y no es un directorio: es lo que hay que
+             poder poner al lado de los recibos cuando pregunten de quién es
+             cada uno. */
+          <div key="eq">
+            <p className="fondo-nat-sub">
+              Quién trabaja en este fondo: el equipo que ganó el concurso y el personal que se
+              le fue sumando. Es contra esta lista que se leen los recibos girados.
+            </p>
+            {eqfError && (
+              <div className="empty" style={{ color: "var(--yellow)", marginBottom: 10 }}>
+                No se pudo leer el personal apuntado a mano ({eqfError}). El equipo declarado y
+                los recibos sí están: lo que falta es correr <b>db/equipo-fondo.sql</b>.
+              </div>
+            )}
+            <div className="card">
+              <EquipoFondo postulacionId={params.id}
+                equipoPost={(eqp.data || []) as any[]}
+                rhes={rheFondo as any[]}
+                previstos={previstosFondo}
+                personas={personasMin as any}
+                catalogo={personasCat}
+                puedeEditar />
             </div>
           </div>,
         ]}

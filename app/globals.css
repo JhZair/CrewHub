@@ -2363,8 +2363,14 @@ img.av{border:1px solid var(--border2)}
 .mov-tot-k{font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:var(--dim)}
 .mov-tot-v{font-size:13.5px;font-weight:700}
 .mov-tabla{border:1px solid var(--border);border-radius:10px;overflow:hidden}
-.mov-cab,.mov-fila{display:grid;grid-template-columns:52px 1fr 110px 100px;gap:8px;align-items:center;padding:6px 10px}
-.mov-cab.has-del,.mov-fila.has-del{grid-template-columns:52px 1fr 110px 100px 20px}
+/* La última columna es la zona del hilo (👀 + 💬) y existe SIEMPRE, con o sin
+   permiso de edición: preguntar por un movimiento es de todo el equipo, no
+   solo de finanzas. `has-del` solo la ensancha para meter la ✕ dentro.
+   Ancho fijo y no `auto`: con `auto`, las filas que tienen reacciones estiran
+   su celda y las que no, no — y la columna de saldo deja de estar alineada,
+   que es justo lo que una tabla de banco no puede permitirse. */
+.mov-cab,.mov-fila{display:grid;grid-template-columns:52px 1fr 110px 100px 158px;gap:8px;align-items:center;padding:6px 10px}
+.mov-cab.has-del,.mov-fila.has-del{grid-template-columns:52px 1fr 110px 100px 190px}
 .mov-cab{background:var(--bg);border-bottom:1px solid var(--border);font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:var(--dim)}
 .mov-fila{border-top:1px solid var(--border)}
 .mov-fila:first-child{border-top:none}
@@ -3875,6 +3881,131 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
   font-size:11.5px;color:var(--yellow);line-height:1.45}
 .camp-degradado b{font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:700}
 
+/* ══════════════════════════════════════════════════════════════════
+   📦 LOS COMPROMISOS DEL ACTA
+   ══════════════════════════════════════════════════════════════════ */
+.cmp-cab{display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:12px;
+  color:var(--muted);padding-bottom:8px;border-bottom:1px solid var(--border)}
+.cmp-cab b{color:var(--text)}
+.cmp-barra{flex:1;min-width:80px;height:4px;border-radius:3px;background:var(--bg);
+  overflow:hidden}
+.cmp-barra i{display:block;height:100%;background:var(--green);transition:width .3s}
+.cmp-acta{color:var(--blue);font-size:11.5px;white-space:nowrap;text-decoration:none}
+.cmp-acta:hover{text-decoration:underline}
+
+.cmp-h{display:flex;gap:9px;align-items:baseline;flex-wrap:wrap;font-size:11px;
+  letter-spacing:1.1px;text-transform:uppercase;color:var(--dim);
+  border-bottom:1px solid var(--border);padding-bottom:5px;margin-bottom:4px}
+.cmp-h-sub{text-transform:none;letter-spacing:0;font-size:10.5px;opacity:.75}
+
+.cmp-fila{padding:8px 4px;border-bottom:1px solid var(--border)}
+.cmp-fila:last-child{border-bottom:none}
+/* Tachado SOLO en los entregables. Una obligación cumplida no se tacha: sigue
+   rigiendo, y tacharla invitaría a dejar de mirarla. */
+.cmp-fila.hecho .cmp-tit{text-decoration:line-through;opacity:.6}
+.cmp-l1{display:flex;gap:9px;align-items:baseline;flex-wrap:wrap}
+/* La cláusula, monoespaciada y en ancho fijo: es la llave para volver al PDF y
+   en columna se recorre con el dedo. */
+.cmp-cl{flex:none;width:52px;font-family:ui-monospace,Menlo,Consolas,monospace;
+  font-size:10.5px;font-weight:700;color:var(--violet)}
+.cmp-tit{font-size:13px;font-weight:600;min-width:0}
+.cmp-fecha{font-size:10.5px;color:var(--yellow);white-space:nowrap}
+.cmp-est{font-size:10.5px;font-weight:700;white-space:nowrap}
+.cmp-prueba{font-size:10.5px;color:var(--teal);text-decoration:none;white-space:nowrap}
+/* El caso abierto desde la cláusula. Violeta —el color de los casos en el
+   resto del sistema— para que se reconozca sin leerlo: en esta fila conviven
+   ya un estado, una prueba y dos botones. */
+.cmp-caso{font-size:10.5px;color:var(--violet);text-decoration:none;white-space:nowrap;
+  font-weight:700}
+.cmp-caso:hover{text-decoration:underline}
+.cmp-caso-btn{color:var(--violet)}
+.cmp-caso-btn:hover{border-color:var(--violet)}
+/* El extracto, sangrado bajo su cláusula: se lee como lo que es, la letra del
+   acta y no un comentario nuestro. */
+.cmp-det{font-size:11.5px;color:var(--muted);line-height:1.5;margin:3px 0 0 61px}
+.cmp-ent{font-size:10.5px;color:var(--green);margin:2px 0 0 61px}
+.cmp-nota{font-size:11px;color:var(--dim);margin:2px 0 0 61px;font-style:italic}
+
+.cmp-ed{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin:7px 0 2px 61px;
+  padding:9px;background:var(--bg);border-radius:10px}
+.cmp-ed input,.cmp-ed textarea{background:var(--card);border:1px solid var(--border);
+  border-radius:8px;padding:6px 10px;font-size:12px;color:var(--text);outline:none;
+  flex:1;min-width:170px;font-family:inherit}
+.cmp-estados{display:flex;gap:4px;flex-wrap:wrap;width:100%}
+.cmp-est-btn{background:var(--card);border:1px solid var(--border);border-radius:20px;
+  padding:3px 10px;font-size:11px;color:var(--dim);cursor:pointer;font-family:inherit}
+.cmp-est-btn:hover{border-color:var(--border2)}
+.cmp-est-btn.on{border-color:currentColor;font-weight:700}
+
+/* ══════════════════════════════════════════════════════════════════
+   👥 EQUIPO DE UN FONDO EN EJECUCIÓN
+   ══════════════════════════════════════════════════════════════════ */
+/* El resumen de arriba: los tres números que contestan «¿cuadra?». Se lee
+   antes que la lista y por eso va primero y en una sola línea — si hubiera que
+   recorrerlo, ya sería la lista. */
+.eqf-res{display:flex;gap:14px;flex-wrap:wrap;align-items:baseline;
+  font-size:12px;color:var(--muted);padding:2px 2px 10px}
+.eqf-res-n b{color:var(--text)}
+
+.eqf-h{display:flex;gap:9px;align-items:baseline;flex-wrap:wrap;
+  font-size:11px;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim);
+  border-bottom:1px solid var(--border);padding-bottom:5px;margin-bottom:6px}
+/* La aclaración de dónde manda cada lista, junto al título y no en un tooltip:
+   que el equipo declarado se corrija en el expediente es la clase de regla que
+   se pregunta justo al intentar editarlo. */
+.eqf-h-sub{text-transform:none;letter-spacing:0;font-size:10.5px;opacity:.75}
+
+.eqf-fila{display:flex;gap:11px;align-items:flex-start;padding:8px 4px;
+  border-bottom:1px solid var(--border)}
+.eqf-fila:last-child{border-bottom:none}
+.eqf-nom{color:var(--blue);font-weight:700;font-size:13px}
+.eqf-cargo{color:var(--violet);background:rgba(167,139,250,.14);font-size:10.5px}
+.eqf-sit{font-size:10.5px;font-weight:700;cursor:help;white-space:nowrap}
+.eqf-nota{color:var(--dim);font-size:11.5px;margin-top:2px}
+/* El alias, en segundo plano: el nombre completo pasó a ser el titular porque
+   es el que va al informe, pero «GabyM» sigue siendo como se llaman entre
+   ellos y quitarlo obligaría a traducir mentalmente en cada fila. */
+.eqf-alias{color:var(--dim);font-size:11px}
+/* El tipo de vínculo. En minúsculas y tenue a propósito: es una clasificación
+   nuestra, no un cargo del proyecto — si compitiera visualmente con el cargo,
+   la fila tendría dos etiquetas que parecen decir lo mismo. */
+.eqf-tipo{color:var(--muted);background:rgba(255,255,255,.05);border:1px solid var(--border);
+  border-radius:999px;padding:1px 7px;font-size:10px;letter-spacing:.2px;white-space:nowrap}
+/* Documento y domicilio: la línea que el informe económico necesita de cada
+   persona con recibo. `wrap` porque una dirección rural peruana completa no
+   cabe en un renglón y truncarla la haría inútil justo para lo que sirve. */
+.eqf-datos{display:flex;gap:10px;flex-wrap:wrap;align-items:baseline;margin-top:2px;
+  color:var(--muted);font-size:11.5px}
+.eqf-doc{font-variant-numeric:tabular-nums;letter-spacing:.3px}
+.eqf-dom{min-width:0}
+/* Lo que falta se ve. Solo aparece en quien ya cobró: es ahí donde el hueco
+   deja de ser un dato pendiente y pasa a ser un recibo observable. */
+.eqf-falta{color:var(--yellow);font-size:11px}
+/* El separador entre códigos de recibo. Va en su propio span y no dentro del
+   enlace: metido dentro, el punto quedaba clicable y abría el PDF del vecino. */
+.eqf-sep{color:var(--dim);opacity:.6}
+/* El recibo SIN PDF: ámbar y sin subrayado, para que no se lea como enlace.
+   Un código que parece clicable y no hace nada enseña a desconfiar de los que
+   sí lo son — y aquí al lado hay tres que sí funcionan. */
+.eqf-rhe-sin{color:var(--yellow);opacity:.85;cursor:help;text-decoration:none}
+
+/* Los recibos, con sus NÚMEROS. Un total suelto obliga a abrir el módulo de
+   RHE para saber cuáles son, y esta pantalla existe justamente para cotejar
+   contra la carpeta física de la rendición. */
+.eqf-rhes{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;margin-top:3px;
+  font-size:11.5px;color:var(--teal)}
+.eqf-rhes-n{color:var(--dim)}
+.eqf-rhes-l{color:var(--muted);font-family:ui-monospace,Menlo,Consolas,monospace;
+  font-size:10.5px}
+
+.eqf-vacio{color:var(--dim);font-size:12.5px;padding:8px 4px;line-height:1.5}
+.eqf-add,.eqf-ed{display:flex;gap:7px;align-items:center;flex-wrap:wrap;
+  margin:8px 0;padding:9px;background:var(--bg);border-radius:10px}
+.eqf-ed{margin-top:6px}
+.eqf-add input,.eqf-ed input{background:var(--card);border:1px solid var(--border);
+  border-radius:8px;padding:6px 10px;font-size:12.5px;color:var(--text);outline:none;
+  flex:1;min-width:170px}
+
 /* ── LA ESTRELLA DE LA PORTADA DEL KIT ──
    Apagada es un contorno tenue, encendida es ámbar sólido. Siempre visible
    —un control que hay que descubrir no existe— pero discreta: elegir la cara
@@ -4077,3 +4208,52 @@ mark.bq-marca{
   .hoja-pie{margin-top:14px;font-size:7.5pt;color:#777;border-top:1px solid #ddd;
     padding-top:4px}
 }
+
+/* El código de recibo como disparador del visor: es un DATO que se puede
+   abrir, no un botón. Sin borde ni relleno para no romper la hilera
+   monoespaciada —que es lo que permite comparar E001-87/88/89 de un vistazo—
+   y con subrayado punteado, que dice «esto hace algo» sin gritar. */
+.eqf-rhe-link{font:inherit;color:var(--teal);background:transparent;border:none;padding:0;
+  cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px}
+.eqf-rhe-link:hover{color:var(--accent);text-decoration-style:solid}
+
+/* La suspensión de 4ta en la fila del equipo. Tenue y con el año delante: es
+   un dato de respaldo, no una alerta — la alerta es cuando FALTA, y esa ya
+   tiene su propio ámbar al lado. */
+.eqf-susp{font:inherit;font-size:11.5px;color:var(--green);background:transparent;border:none;
+  padding:0;cursor:pointer;white-space:nowrap;text-decoration:underline;
+  text-decoration-style:dotted;text-underline-offset:2px;opacity:.9}
+.eqf-susp:hover{opacity:1;text-decoration-style:solid}
+
+/* Un matiz, no una alerta. Gris: dice que la ficha no puede probar algo, no
+   que ese algo falte. Si compitiera con el ámbar de `.eqf-falta` —que sí marca
+   hechos duros— los dos acabarían leyéndose como ruido. */
+.eqf-matiz{color:var(--dim);font-size:10.5px;cursor:help;opacity:.75}
+
+/* Los años de suspensión, agrupados bajo una sola etiqueta. Se agrupan porque
+   «🧾 4ta 2024 2025» se lee como una cosa con dos años, mientras que dos chips
+   con su propio icono se leerían como dos cosas distintas. */
+.eqf-susp-grupo{display:inline-flex;align-items:baseline;gap:5px;cursor:help}
+.eqf-susp-et{color:var(--muted);font-size:11px}
+.eqf-susp-sinpdf{color:var(--muted);cursor:help;text-decoration:none;opacity:.7}
+
+/* ── HISTORIAL DE SUSPENSIÓN DE 4ta ──
+   La fila es una COLUMNA de dos partes: cabecera y banda de revisión. No es
+   un `flex-wrap` que se parte solo — con eso, en cuanto la cabecera se
+   llenaba, la ✕ caía a un renglón suelto lejos de su fila. */
+.s4-fila{display:flex;flex-direction:column;gap:6px;padding:9px 2px;
+  border-bottom:1px solid var(--border);font-size:12.5px}
+.s4-fila:last-child{border-bottom:none}
+/* La cabecera NO envuelve: lo que sobra lo cede la nota. */
+.s4-cab{display:flex;gap:10px;align-items:baseline;flex-wrap:nowrap;min-width:0}
+.s4-op{color:var(--dim);font-size:11.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.s4-dim{color:var(--dim);font-size:11.5px;white-space:nowrap}
+.s4-nota{color:var(--dim);font-size:11px;min-width:0;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.s4-falta{color:var(--yellow);font-size:11px;white-space:nowrap}
+/* `flex:none` para que la ✕ no se encoja ni se mueva: un botón de borrar que
+   cambia de sitio según lo que quepa al lado es un botón que se pulsa por
+   error. */
+.s4-quitar{flex:none;background:none;border:none;color:var(--red);cursor:pointer;
+  font-size:12px;line-height:1;padding:0 2px}
+.s4-quitar:disabled{opacity:.4;cursor:not-allowed}

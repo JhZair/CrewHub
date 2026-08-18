@@ -7,3 +7,12 @@ next-env.d.ts
 
 # Respaldos locales, no versionar
 _to_delete/
+
+# El puente para traer archivos del Drive al sandbox: recibos, estados de
+# cuenta, constancias. Son documentos con DNI, domicilios y saldos bancarios
+# reales, y su sitio es Drive con sus permisos — no un repositorio de código
+# que se clona entero.
+# Va aquí porque la carpeta se vacía y se vuelve a llenar cada vez que hay que
+# cargar algo, y confiar en acordarse de borrarla antes de cada `git add -A`
+# es confiar en no equivocarse nunca.
+_temp/

@@ -7,6 +7,8 @@ import { money } from "@/lib/dj";
 import { hoyLima } from "@/lib/fechas";
 import CampoAdjunto from "@/components/CampoAdjunto";
 import VerAdjunto from "@/components/VerAdjunto";
+import BotonFichaSunat from "@/components/BotonFichaSunat";
+import { AccionesFila, AvisoHilo, idFila } from "@/components/HiloRendicion";
 
 /* ── FACTURAS Y BOLETAS DEL FONDO ──
  *
@@ -34,18 +36,50 @@ type Cmp = {
   serie: string | null; numero: string | null;
   fecha: string; importe: number; igv: number | null;
   concepto: string | null; etapa: string | null; rubro_item: string | null; url: string | null;
+  nComentarios?: number; reacciones?: any[];
+  creado_en?: string | null;
+  creado?: { nombre: string | null } | { nombre: string | null }[] | null;
 };
 type Opcion = { id: string; nombre: string };
 
 const dmy = (f: string) =>
   new Date(f + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short" });
 
+/* PostgREST devuelve la relación como objeto o como arreglo según cómo la
+   resuelva. Leer solo una de las dos formas deja la firma en blanco sin que
+   nada falle — y un hueco se lee como «nadie lo registró». */
+const autor = (c: Cmp) => {
+  const p: any = c.creado;
+  return (Array.isArray(p) ? p[0] : p)?.nombre || null;
+};
+/* Solo el primer nombre: la fila ya va llena y «Narda» identifica igual que
+   «Narda Huamán Quispe» entre siete personas que se conocen. */
+const pila = (n: string) => n.trim().split(/\s+/)[0];
+const cuando = (t?: string | null) => {
+  if (!t) return "";
+  const d = new Date(t);
+  return isNaN(+d) ? "" : d.toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "2-digit" });
+};
+const cuandoLargo = (t?: string | null) => {
+  if (!t) return "";
+  const d = new Date(t);
+  return isNaN(+d) ? "" : d.toLocaleString("es-PE", { dateStyle: "long", timeStyle: "short" });
+};
+
 export default function Comprobantes({
-  postulacionId, comprobantes, etapas, rubros, esAdmin, error,
+  postulacionId, comprobantes, etapas, rubros, esAdmin, error, urlSunat, userId, hiloError,
 }: {
   postulacionId: string; comprobantes: Cmp[];
   etapas: Opcion[]; rubros: { id: string; etiqueta: string }[];
   esAdmin: boolean; error?: string | null;
+  /** El buscador de SUNAT, administrado en /admin?s=plataformas. Si falta,
+   *  BotonFichaSunat usa su propio respaldo. */
+  urlSunat?: string;
+  /** Para saber cuáles reacciones son mías. */
+  userId: string;
+  /** Si falta db/rendicion-interaccion.sql. Se dice una vez arriba y la lista
+   *  sigue leyéndose: el hilo es un añadido, no el motivo del bloque. */
+  hiloError?: string | null;
 }) {
   const router = useRouter();
   const { pedir, dialogo } = useConfirmar();
@@ -59,7 +93,36 @@ export default function Comprobantes({
     concepto: "", etapa: "", rubroItem: "", url: "",
   };
   const [f, setF] = useState(vacio);
-  const set = (k: string, v: string) => setF({ ...f, [k]: v });
+
+  /* ── EL IGV SE PROPONE, NO SE IMPONE ──
+   *
+   * Aquí decía «el IGV se guarda, no se calcula», y el motivo era bueno: el
+   * informe lo pide desglosado y deducirlo de un total redondeado da céntimos
+   * que no cuadran con el papel. Pero de esa premisa correcta salía la
+   * conclusión equivocada — dejar el campo vacío y que lo haga a mano quien
+   * registra. Contrastado contra las seis facturas de PO-003, la fórmula
+   * acierta el céntimo impreso en las SEIS. Lo que fallaba no era calcularlo:
+   * era calcularlo SIN DEJAR CORREGIRLO.
+   *
+   * Así que se propone y se puede pisar. En cuanto alguien escribe en el
+   * campo, deja de proponerse para siempre en ese comprobante: si el papel
+   * dice otra cosa —operación exonerada, boleta de RUS, mixta— manda el papel,
+   * y una sugerencia que vuelve sola sobre lo corregido es peor que ninguna.
+   *
+   * El 18 % va incluido en el total, que es como lo imprime SUNAT: sobre
+   * S/ 2,800 el IGV es 2800 × 18/118 = 427.12, no 2800 × 0.18.
+   */
+  const [igvTocado, setIgvTocado] = useState(false);
+  const igvDe = (totalStr: string) => {
+    const t = parseFloat(String(totalStr).replace(",", "."));
+    if (!isFinite(t) || t <= 0) return "";
+    return (Math.round(t * 18 / 118 * 100) / 100).toFixed(2);
+  };
+  const set = (k: string, v: string) => setF(a => {
+    if (k === "igv") { setIgvTocado(true); return { ...a, igv: v }; }
+    if (k === "importe" && !igvTocado) return { ...a, importe: v, igv: igvDe(v) };
+    return { ...a, [k]: v };
+  });
 
   const total = comprobantes.reduce((s, c) => s + Number(c.importe || 0), 0);
   const sinPdf = comprobantes.filter(c => !c.url).length;
@@ -70,7 +133,7 @@ export default function Comprobantes({
     const r: any = await guardarComprobante({ ...f, postulacionId });
     setOcupado(false);
     if (r?.error) { avisar(r.error); return; }
-    setF(vacio); setAbierto(false); router.refresh();
+    setF(vacio); setIgvTocado(false); setAbierto(false); router.refresh();
   };
 
   const editar = (c: Cmp) => {
@@ -81,6 +144,10 @@ export default function Comprobantes({
       concepto: c.concepto || "", etapa: c.etapa || "", rubroItem: c.rubro_item || "",
       url: c.url || "",
     });
+    /* Lo que ya está guardado salió del papel. Recalcularlo al abrir para
+       editar cambiaría un dato ya verificado por una estimación, en silencio
+       y sin que nadie lo pidiera. */
+    setIgvTocado(true);
     setAbierto(true);
   };
 
@@ -112,6 +179,7 @@ export default function Comprobantes({
   return (
     <>
       {dialogo}{aviso}
+      <AvisoHilo error={hiloError} />
 
       <div style={{ display: "flex", gap: 14, alignItems: "baseline", flexWrap: "wrap", marginBottom: 9 }}>
         <span style={{ color: "var(--teal)", fontWeight: 800, fontSize: 20 }}>{money(total)}</span>
@@ -124,10 +192,11 @@ export default function Comprobantes({
         {sinPdf > 0 && (
           <span style={{ color: "var(--yellow)", fontSize: 12 }}>⚠ {sinPdf} sin PDF adjunto</span>
         )}
+
         <span style={{ flex: 1 }} />
         {esAdmin && !abierto && (
           <button className="btn btn-ghost" style={{ fontSize: 12 }}
-            onClick={() => { setF(vacio); setAbierto(true); }}>＋ Registrar comprobante</button>
+            onClick={() => { setF(vacio); setIgvTocado(false); setAbierto(true); }}>＋ Registrar comprobante</button>
         )}
       </div>
 
@@ -145,6 +214,13 @@ export default function Comprobantes({
                 valida como otro, o como ninguno, y lo rebotan al rendir. */}
             <input value={f.ruc} onChange={e => set("ruc", e.target.value)}
               placeholder="RUC (11 dígitos)" inputMode="numeric" style={{ ...inp, width: 140 }} />
+            {/* Comprobar mientras se registra, no después. Con la factura
+                todavía en la mano corregir un dígito cuesta un segundo; una vez
+                archivada, hay que ir a buscarla. Aparece con 11 dígitos porque
+                antes no hay nada que consultar. */}
+            {/^\d{11}$/.test(f.ruc.trim()) && (
+              <BotonFichaSunat numero={f.ruc.trim()} tipo="RUC" compacto url={urlSunat} />
+            )}
           </div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 6 }}>
             <input value={f.serie} onChange={e => set("serie", e.target.value)}
@@ -155,13 +231,23 @@ export default function Comprobantes({
               style={{ ...inp, width: 145 }} />
             <input value={f.importe} onChange={e => set("importe", e.target.value)}
               placeholder="Total S/" inputMode="decimal" style={{ ...inp, width: 110 }} />
-            {/* El IGV se guarda, no se calcula: el informe lo pide desglosado y
-                deducirlo de un total redondeado da céntimos que no cuadran con
-                el papel que se adjunta. */}
+            {/* Propuesto desde el total (18 % incluido) y editable. El aviso de
+                al lado existe porque un número que aparece solo en una casilla
+                se lee como dato del papel: hay que decir que es cuenta nuestra
+                mientras nadie lo confirme. */}
             <input value={f.igv} onChange={e => set("igv", e.target.value)}
               placeholder="IGV S/" inputMode="decimal"
-              title="Tal como lo dice el comprobante. Vacío si no lo desglosa."
-              style={{ ...inp, width: 100 }} />
+              title="Se propone el 18 % incluido en el total. Si el comprobante dice otra cosa —exonerada, RUS, mixta—, escríbelo y manda lo que escribas."
+              style={{
+                ...inp, width: 100,
+                borderColor: f.igv && !igvTocado ? "var(--yellow)" : "var(--border)",
+              }} />
+            {f.igv && !igvTocado && (
+              <span style={{ color: "var(--yellow)", fontSize: 11 }}
+                title="Calculado como total × 18/118. Compáralo con el papel.">
+                18 % calculado
+              </span>
+            )}
           </div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 6 }}>
             <select value={f.etapa} onChange={e => set("etapa", e.target.value)} style={{ ...inp, width: 175 }}>
@@ -184,7 +270,7 @@ export default function Comprobantes({
             <button className="btn" disabled={ocupado} style={{ fontSize: 12, padding: "6px 14px" }}
               onClick={guardar}>{ocupado ? "…" : f.id ? "Actualizar" : "Guardar"}</button>
             <button className="btn btn-ghost" style={{ fontSize: 12, padding: "6px 12px" }}
-              onClick={() => { setAbierto(false); setF(vacio); }}>Cancelar</button>
+              onClick={() => { setAbierto(false); setF(vacio); setIgvTocado(false); }}>Cancelar</button>
           </div>
         </div>
       )}
@@ -197,7 +283,10 @@ export default function Comprobantes({
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           {comprobantes.map(c => (
-            <div key={c.id} className="info-row" style={{ gap: 9, flexWrap: "wrap", fontSize: 12.5 }}>
+            <div key={c.id} id={idFila("comprobante", c.id)} className="info-row"
+              /* `scroll-margin-top` para que el ancla del aviso no deje la fila
+                 pegada al borde superior, medio tapada por la cabecera. */
+              style={{ gap: 9, flexWrap: "wrap", fontSize: 12.5, scrollMarginTop: 70 }}>
               <span style={{ color: "var(--dim)", fontSize: 11.5, minWidth: 52 }}>{dmy(c.fecha)}</span>
               <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c", fontSize: 10.5 }}>
                 {rotuloTipo(c.tipo)}
@@ -208,9 +297,19 @@ export default function Comprobantes({
                   {[c.serie, c.numero].filter(Boolean).join("-")}
                 </span>
               )}
-              {/* El RUC que falta se marca: es columna obligatoria del informe y
-                  conseguirlo después, con la factura ya archivada, cuesta. */}
-              {!c.ruc && (
+              {/* ── EL RUC, Y LA FORMA DE COMPROBARLO ──
+                  Estaba guardado y no se veía: solo se avisaba cuando faltaba.
+                  Pero el error caro no es el RUC ausente —ese salta al rendir—,
+                  es el RUC presente y mal: un dígito cambiado no falla, valida
+                  como otro contribuyente o como ninguno, y aparece el día de la
+                  observación. Enseñarlo con el mismo chip que /empresas hace
+                  dos cosas de una: lo pone a la vista y deja la comprobación a
+                  un clic. El buscador de SUNAT exige POST y captcha, así que no
+                  se puede enlazar el número directo — el chip lo copia y abre
+                  la página para que solo quede pegar. */}
+              {c.ruc ? (
+                <BotonFichaSunat numero={c.ruc} tipo="RUC" compacto url={urlSunat} />
+              ) : (
                 <span style={{ color: "var(--yellow)", fontSize: 11 }} title="El informe de DAFO lo pide">
                   sin RUC
                 </span>
@@ -222,17 +321,45 @@ export default function Comprobantes({
                 </span>
               )}
               <span style={{ flex: 1 }} />
+              {/* ── QUIÉN LO REGISTRÓ Y CUÁNDO ──
+                  Es plata que se rinde ante el Ministerio, y una cifra sin
+                  autor es una cifra que nadie puede explicar el día que la
+                  observan. La bitácora de auditoría ya lo guardaba, pero está
+                  tres plegables más abajo: el dato tiene que estar donde está
+                  la duda.
+                  Sin autor NO se deja en blanco. Un hueco se lee como «no se
+                  sabe», y aquí sí se sabe: entró por carga directa a la base,
+                  no por el formulario. Son dos cosas distintas y la segunda es
+                  la que explica por qué no hay nombre. */}
+              {c.creado_en && (
+                <span style={{ color: "var(--dim)", fontSize: 10.5, whiteSpace: "nowrap" }}
+                  title={autor(c)
+                    ? `Registrado por ${autor(c)} el ${cuandoLargo(c.creado_en)}`
+                    : `Cargado directamente en la base el ${cuandoLargo(c.creado_en)}, no desde el formulario. Por eso no hay una persona a la que atribuirlo.`}>
+                  {autor(c) ? pila(autor(c)!) : "carga directa"} · {cuando(c.creado_en)}
+                </span>
+              )}
               <span style={{ color: "var(--teal)", fontWeight: 700 }}>{money(c.importe)}</span>
               {c.url
                 ? <VerAdjunto url={c.url} />
                 : <span style={{ color: "var(--yellow)", fontSize: 11 }}>sin PDF</span>}
-              {esAdmin && (
-                <>
-                  <button className="dato-btn" onClick={() => editar(c)} disabled={ocupado}>✎</button>
-                  <button onClick={() => quitar(c)} disabled={ocupado} title="Borrar"
-                    style={{ background: "none", border: "none", color: "var(--red)", cursor: "pointer", fontSize: 12 }}>✕</button>
-                </>
-              )}
+              {/* ── HABLAR DE ESTA FACTURA ──
+                  El 👀 y el 💬 al final de la fila, en una rejilla de anchos
+                  fijos: con `flex`, las filas que tienen reacciones empujan y
+                  las que no, no, y la columna de la derecha deja de estar
+                  alineada. Lección de CajaPanel, y no barata.
+                  El botón es para TODO el equipo aunque editar sea solo de
+                  finanzas: quien pregunta «¿esta factura de qué es?» es
+                  justamente quien no lleva las finanzas. */}
+              <AccionesFila tabla="comprobante" filaId={c.id} userId={userId}
+                reacciones={c.reacciones} nComentarios={c.nComentarios}
+                extra={esAdmin ? (
+                  <span style={{ display: "inline-flex", gap: 4 }}>
+                    <button className="dato-btn" onClick={() => editar(c)} disabled={ocupado}>✎</button>
+                    <button onClick={() => quitar(c)} disabled={ocupado} title="Borrar"
+                      style={{ background: "none", border: "none", color: "var(--red)", cursor: "pointer", fontSize: 12 }}>✕</button>
+                  </span>
+                ) : undefined} />
             </div>
           ))}
         </div>

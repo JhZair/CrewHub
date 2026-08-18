@@ -18,6 +18,11 @@ export type CampoDef = {
    *  préstamo. Ahí «(valor actual)» suena a resto de migración, o sea a algo
    *  que hay que limpiar, cuando es justo lo que no hay que tocar. */
   explicaActual?: Record<string, string>;
+  /** El campo lo CALCULA la base a partir de otra tabla, así que aquí no se
+   *  teclea. El texto dice dónde se carga de verdad: un campo gris sin
+   *  explicación se lee como una avería, y escribirlo igualmente duraría hasta
+   *  el siguiente recálculo —sin error y sin aviso—, que es peor. */
+  derivado?: string;
   requerido?: boolean;
   auto?: boolean;       // lo genera el sistema; solo lectura (folios inmutables)
   verif?: boolean;      // lo llena la verificación automática (RENIEC/SUNAT); solo lectura
@@ -736,9 +741,13 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
       // — Lo que solo existe si se ganó —
       { key: "codigo_acta", label: "Código del acta de compromiso (ej. 139-2025-DAFO)", corto: "Código acta", grupo: FONDO_POST },
       { key: "fecha_firma_acta", label: "Firma del acta de compromiso", corto: "Firma acta", tipo: "date", grupo: FONDO_POST },
-      /* El plazo de ejecución (2 años, acta 7.2) se cuenta desde que el dinero
-         llega a la cuenta, no desde la firma. Sin esta fecha, la rendición no
-         tiene reloj — y era el único hueco de dato del modelo financiero. */
+      /* El plazo de ejecución (UN año, acta 7.2 — ver lib/plazoFondo.ts) se
+         cuenta desde que el dinero llega a la cuenta, no desde la firma. Sin
+         esta fecha, la rendición no tiene reloj.
+         Decía «2 años» y era falso: los dos años son el año del 7.2 más la
+         prórroga del 8.1, que no es automática. Hay que pedirla antes de que
+         venza el primero, con sustento, informe, cronograma y documento
+         bancario — si nadie la pidió, el plazo se acabó al año. */
       { key: "fecha_desembolso", label: "Desembolso del estímulo (a la cuenta)", corto: "Desembolso", tipo: "date", grupo: FONDO_POST },
       { key: "monto_adjudicado", label: "Monto adjudicado (S/)", corto: "Monto", valida: "monto", grupo: FONDO_POST },
       { key: "acta_url", label: "Acta de compromiso (link)", corto: "Acta", valida: "url", grupo: FONDO_POST },
@@ -877,10 +886,19 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
       { key: "estado_sunat", label: "Estado SUNAT", tipo: "select", opciones: ["activo", "suspension_temporal", "baja_provisional", "baja_definitiva"], grupo: SUNAT_PERSONA, verif: true },
       { key: "condicion_sunat", label: "Condición SUNAT", tipo: "select", opciones: ["habido", "no_habido"], grupo: SUNAT_PERSONA, verif: true },
       { key: "fecha_verificacion_sunat", label: "Última verificación SUNAT", corto: "Verificado SUNAT", tipo: "date", grupo: SUNAT_PERSONA, verif: true },
-      // Año, no Sí/No: la suspensión caduca cada 31 de diciembre.
-      // La constancia va al lado: el año dice que vale, el PDF lo prueba.
-      { key: "suspension_4ta_anio", label: "Suspensión 4ta — año vigente", corto: "Suspensión 4ta", valida: "anio", grupo: SUNAT_PERSONA },
-      { key: "suspension_4ta_url", label: "Suspensión 4ta — constancia SUNAT", corto: "Constancia 4ta", valida: "url", grupo: SUNAT_PERSONA },
+      /* ── AÑO Y CONSTANCIA: AHORA SE DEDUCEN, NO SE TECLEAN ──
+         La suspensión caduca cada 31 de diciembre, así que una persona tiene
+         UNA POR AÑO. Estos dos campos guardan solo la más reciente y quedaron
+         DERIVADOS de la tabla `suspension_4ta` (db/suspension-4ta-anios.sql),
+         que las guarda todas con su número de operación.
+         Se bloquean porque si no, editarlos aquí duraría hasta el siguiente
+         cambio en el historial y entonces el disparador los devolvería a su
+         sitio —sin error y sin avisar—, que es la peor clase de fallo. El
+         mensaje dice dónde se cargan de verdad. */
+      { key: "suspension_4ta_anio", label: "Suspensión 4ta — año vigente", corto: "Suspensión 4ta", valida: "anio", grupo: SUNAT_PERSONA,
+        derivado: "Se deduce del historial: es el año más reciente con constancia. Se carga abajo, en «Suspensión de 4ta por año»." },
+      { key: "suspension_4ta_url", label: "Suspensión 4ta — constancia SUNAT", corto: "Constancia 4ta", valida: "url", grupo: SUNAT_PERSONA,
+        derivado: "Se deduce del historial: es la constancia del año más reciente. Se carga abajo, en «Suspensión de 4ta por año»." },
       // Los CV viven en su propia biblioteca (uno por enfoque), no aquí:
       // un solo cv_url no alcanza cuando se postula con distintos roles.
       { key: "carpeta_drive_url", label: "Carpeta en Drive", corto: "Carpeta Drive", valida: "url", grupo: DOCS_PERSONA },

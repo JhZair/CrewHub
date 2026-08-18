@@ -1,12 +1,17 @@
 "use client";
 import { useState } from "react";
+import { masMeses, PLAZO_MESES } from "@/lib/plazoFondo";
 import { useRouter } from "next/navigation";
 import {
   guardarEstadoCuenta, borrarEstadoCuenta, guardarRhe, fijarEjesRhe, fijarEjesRheLote, borrarRhe,
+  fijarComprobanteRhe,
 } from "@/app/actions";
 import ImagenesEstado from "@/components/ImagenesEstado";
+import CampoAdjunto from "@/components/CampoAdjunto";
+import VerAdjunto from "@/components/VerAdjunto";
 import Plegable from "@/components/Plegable";
 import { useConfirmar, useAviso } from "@/components/useConfirmar";
+import { AccionesFila, AvisoHilo, idFila } from "@/components/HiloRendicion";
 import { VIAS_GIRO } from "@/lib/pagos";
 
 /* ── La cara financiera de un fondo ganado ──
@@ -24,6 +29,7 @@ import { VIAS_GIRO } from "@/lib/pagos";
  */
 
 type EstadoCuenta = {
+  nComentarios?: number; reacciones?: any[];
   id: string; periodo: string; url: string | null;
   saldo: number | null; intereses: number | null; nota: string | null;
   imagenes?: string[] | null;
@@ -31,6 +37,7 @@ type EstadoCuenta = {
   creado?: { nombre: string } | null; quien?: { nombre: string } | null;
 };
 type RheFila = {
+  nComentarios?: number; reacciones?: any[];
   id: string; persona_id: string; persona?: string;
   fecha: string; monto: number; numero: string | null; url: string | null;
   etapa: string | null; rubro_item: string | null; concepto?: string | null;
@@ -67,16 +74,11 @@ const fechaSubido = (iso?: string | null) => {
   const d = new Date(iso);
   return isNaN(+d) ? "" : d.toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" });
 };
-// Desembolso + 2 años (acta 7.2): el plazo de ejecución.
-const masDosAnios = (f?: string | null) => {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(f ?? ""));
-  if (!m) return "";
-  return `${+m[1] + 2}-${m[2]}-${m[3]}`;
-};
+
 
 export default function RendicionFondo({
   postulacionId, esAdmin, fechaDesembolso, montoAdjudicado,
-  estados, rhe, empresa, etapas, rubros, personas,
+  estados, rhe, empresa, etapas, rubros, personas, userId, hiloError,
 }: {
   postulacionId: string;
   esAdmin: boolean;
@@ -88,6 +90,10 @@ export default function RendicionFondo({
   etapas: Opcion[];        // etapas del cronograma (eje del informe económico)
   rubros: { id: string; etiqueta: string }[];  // catálogo de rubros DAFO (eje rubro)
   personas: Opcion[];      // a quién se le puede girar
+  /** Para saber cuáles reacciones son mías. */
+  userId: string;
+  /** Si falta db/rendicion-interaccion.sql: se dice y las listas siguen. */
+  hiloError?: string | null;
 }) {
   const router = useRouter();
   const { pedir, dialogo } = useConfirmar();
@@ -101,12 +107,18 @@ export default function RendicionFondo({
   // Cuántos RHE ya tienen sus dos ejes puestos (lo que hace que la rendición cuadre sola)
   const rheSinEje = rhe.filter(r => !r.etapa || !r.rubro_item).length;
   const conEjes = rhe.length - rheSinEje;
+  // Los que todavía no tienen su PDF adjunto. Ver el comentario de la cabecera.
+  const rheSinPdf = rhe.filter(r => !r.url).length;
   const rubrosOpc = rubros.map(x => ({ id: x.id, nombre: x.etiqueta }));
   // ── Los mismos RHE, mirados de tres maneras ──
   // Por persona (a quién se le pagó), por etapa (en qué fase del cronograma) o
   // por rubro (en qué partida del presupuesto). Es la MISMA plata reagrupada:
   // sirve para leer la rendición desde el eje que toque en cada momento.
   const [modo, setModo] = useState<"persona" | "etapa" | "rubro">("persona");
+  /* Qué fila tiene abierto el campo del comprobante. Uno a la vez: dos cajas
+     de adjuntar abiertas en una lista de veintiséis recibos es pedir que se
+     pegue la foto en la fila equivocada. */
+  const [adj, setAdj] = useState<string | null>(null);
   const totGrupo = (g: { items: RheFila[] }) => g.items.reduce((s, r) => s + Number(r.monto || 0), 0);
   const nombreDe = (opc: Opcion[], id: string) => opc.find(o => o.id === id)?.nombre;
   const SIN = "∅";  // clave del grupo «sin asignar»
@@ -154,6 +166,7 @@ export default function RendicionFondo({
   return (
     <div>
       {dialogo}
+      <AvisoHilo error={hiloError} />
       {aviso}
       {/* ── 1) Desembolso y plazo ── */}
       <div className="linked" style={{ marginBottom: 14 }}>
@@ -174,9 +187,11 @@ export default function RendicionFondo({
           </span>
         </div>
         <div className="eq-row">
-          <span className="cargo">Plazo (2 años)</span>
+          {/* Un año (acta 7.2), no dos. Los dos años eran el primer año más la
+              prórroga de la 8.1, que hay que solicitar y que te concedan. */}
+          <span className="cargo">Plazo ({PLAZO_MESES / 12} año)</span>
           <span style={{ flex: 1, textAlign: "right", color: "var(--dim)" }}>
-            {fechaDesembolso ? dmy(masDosAnios(fechaDesembolso)) : "—"}
+            {fechaDesembolso ? dmy(masMeses(fechaDesembolso, PLAZO_MESES) || "") : "—"}
           </span>
         </div>
         {!fechaDesembolso && (
@@ -206,7 +221,8 @@ export default function RendicionFondo({
       {estados.length > 0 && (
         <div className="linked" style={{ marginBottom: 8, padding: "4px 10px" }}>
           {estados.map(e => (
-            <div key={e.id} style={{ borderTop: "1px solid var(--border)", padding: "7px 0" }}>
+            <div key={e.id} id={idFila("estado_cuenta", e.id)}
+              style={{ borderTop: "1px solid var(--border)", padding: "7px 0", scrollMarginTop: 70 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ minWidth: 82, fontWeight: 600, fontSize: 13.5 }}>{mesLargo(e.periodo)}</span>
                 <span style={{ flex: 1, fontSize: 13 }}>
@@ -224,14 +240,19 @@ export default function RendicionFondo({
                   <a href={e.url} target="_blank" rel="noopener noreferrer"
                     style={{ color: "var(--violet)", fontSize: 12.5 }}>📄 PDF ↗</a>
                 )}
-                {esAdmin && (
-                  <button onClick={async () => {
-                    if (!(await pedir(`¿Borrar el estado de cuenta de ${mesLargo(e.periodo)}?`, { peligro: true, aceptar: "Borrar" }))) return;
-                    const r: any = await borrarEstadoCuenta(e.id, postulacionId);
-                    if (r?.error) avisar(r.error); else router.refresh();
-                  }} title="Borrar"
-                    style={{ background: "none", border: "none", color: "var(--red)", cursor: "pointer", fontSize: 12 }}>✕</button>
-                )}
+                {/* Un estado de cuenta es lo que DAFO compara contra todo lo
+                    demás. «Este mes no cuadra» es la observación más común que
+                    llega, y la explicación tiene que quedarse aquí. */}
+                <AccionesFila tabla="estado_cuenta" filaId={e.id} userId={userId}
+                  reacciones={e.reacciones} nComentarios={e.nComentarios}
+                  extra={esAdmin ? (
+                    <button onClick={async () => {
+                      if (!(await pedir(`¿Borrar el estado de cuenta de ${mesLargo(e.periodo)}?`, { peligro: true, aceptar: "Borrar" }))) return;
+                      const r: any = await borrarEstadoCuenta(e.id, postulacionId);
+                      if (r?.error) avisar(r.error); else router.refresh();
+                    }} title="Borrar"
+                      style={{ background: "none", border: "none", color: "var(--red)", cursor: "pointer", fontSize: 12 }}>✕</button>
+                  ) : undefined} />
               </div>
               {/* El comprobante físico del mes: escaneos/fotos del estado impreso. */}
               <ImagenesEstado estadoId={e.id} postulacionId={postulacionId} esAdmin={esAdmin}
@@ -262,9 +283,22 @@ export default function RendicionFondo({
             <>
               <span style={{ fontWeight: 700, color: "var(--muted)" }}>{rhe.length} RHE</span>
               <span style={{ marginLeft: 8, color: "var(--teal)", fontWeight: 700 }}>{soles(totalRhe)}</span>
-              <span style={{ marginLeft: 8, fontWeight: 600, color: rheSinEje ? "var(--yellow)" : "var(--green)" }}>
+              <span style={{ marginLeft: 8, fontWeight: 600, color: rheSinEje ? "var(--yellow)" : "var(--green)" }}
+                title={`${conEjes} de ${rhe.length} recibos tienen etapa y rubro asignados`}>
                 {rheSinEje ? "⚠" : "✓"} {conEjes}/{rhe.length}
               </span>
+              {/* ── LOS QUE NO TIENEN PDF, CONTADOS EN LA CABECERA ──
+                  El bloque se lee plegado la mayor parte del tiempo, así que un
+                  agujero que solo se ve abriendo y recorriendo veintiséis filas
+                  es un agujero que nadie encuentra hasta el día de la entrega.
+                  Y este pesa: el recibo escaneado ES la rendición — la cifra
+                  sin su papel no se puede presentar. */}
+              {rheSinPdf > 0 && (
+                <span style={{ marginLeft: 8, fontWeight: 600, color: "var(--yellow)" }}
+                  title="Recibos sin el PDF adjunto. Sin el escaneo no se pueden presentar.">
+                  📎 {rheSinPdf} sin comprobante
+                </span>
+              )}
             </>
           ) : <span style={{ color: "var(--dim)" }}>sin pagos</span>
         }>
@@ -319,7 +353,8 @@ export default function RendicionFondo({
               </div>
             )}
                 {g.items.map(r => (
-                  <div key={r.id} className="rhe-fila" style={{ display: "flex", gap: 14, alignItems: "flex-start", padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,.045)" }}>
+                  <div key={r.id} id={idFila("rhe", r.id)} className="rhe-fila"
+                    style={{ display: "flex", gap: 14, alignItems: "flex-start", padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,.045)", scrollMarginTop: 70 }}>
                     {/* Izquierda: monto, fecha·número, y el CONCEPTO (por qué se pagó) */}
                     <div style={{ flex: 1, minWidth: 200 }}>
                       <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
@@ -328,15 +363,55 @@ export default function RendicionFondo({
                           <span style={{ color: "var(--text)", fontWeight: 600, fontSize: 12.5 }}>{r.persona || "—"}</span>
                         )}
                         <span style={{ color: "var(--dim)", fontSize: 12 }}>{dmy(r.fecha)}{r.numero ? ` · ${r.numero}` : ""}</span>
-                        {r.url && (
-                          <a href={r.url} target="_blank" rel="noopener noreferrer"
-                            title="Ver el recibo (PDF)"
-                            style={{ color: "var(--violet)", fontSize: 12.5, textDecoration: "none" }}>📄 ↗</a>
+                        {/* ── EL COMPROBANTE, ADJUNTABLE DESDE AQUÍ ──
+                            Antes esto solo se podía poner al dar de alta el
+                            recibo: si entraba por carga —los 26 de PO-003— se
+                            quedaba sin PDF para siempre, y la fila no decía ni
+                            que faltaba ni cómo arreglarlo. El recibo escaneado
+                            ES la rendición: un RHE sin su PDF es una cifra que
+                            no se puede presentar.
+                            Con PDF, se abre en el visor sin salir de la lista.
+                            Sin PDF, un 📎 en ámbar que dice que falta y abre el
+                            campo — el aviso y el arreglo en el mismo sitio. */}
+                        {r.url ? (
+                          <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+                            <VerAdjunto url={r.url} titulo="Ver el recibo">📄</VerAdjunto>
+                            {esAdmin && (
+                              <button className="dato-btn" title="Cambiar o quitar el comprobante"
+                                onClick={() => setAdj(adj === r.id ? null : r.id)}
+                                style={{ fontSize: 10.5, opacity: .6 }}>✎</button>
+                            )}
+                          </span>
+                        ) : esAdmin ? (
+                          <button className="dato-btn" onClick={() => setAdj(adj === r.id ? null : r.id)}
+                            title="Falta el PDF del recibo. Pega la foto, arrástrala o escribe el enlace."
+                            style={{ color: "var(--yellow)", fontSize: 11.5 }}>
+                            📎 sin comprobante
+                          </button>
+                        ) : (
+                          <span style={{ color: "var(--yellow)", fontSize: 11 }}
+                            title="Este recibo no tiene su PDF adjunto">📎 sin comprobante</span>
                         )}
                       </div>
                       {r.concepto
                         ? <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 3, lineHeight: 1.45 }}>{capitaliza(r.concepto)}</div>
                         : <div style={{ color: "var(--dim)", fontSize: 12, marginTop: 3, fontStyle: "italic" }}>sin concepto</div>}
+
+                      {/* El campo se abre DEBAJO y a lo ancho: pegar una foto
+                          necesita sitio, y meterlo en la fila apretaría los dos
+                          selectores de eje hasta hacerlos inservibles. */}
+                      {adj === r.id && esAdmin && (
+                        <div style={{ marginTop: 6, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                          <CampoAdjunto valor={r.url || ""}
+                            placeholder="Recibo: pega la foto, arrástrala o escribe el enlace"
+                            onCambio={async v => {
+                              const res: any = await fijarComprobanteRhe(r.id, postulacionId, v);
+                              if (res?.error) avisar(res.error); else { setAdj(null); router.refresh(); }
+                            }} />
+                          <button className="btn btn-ghost" style={{ fontSize: 11, padding: "5px 10px" }}
+                            onClick={() => setAdj(null)}>Cerrar</button>
+                        </div>
+                      )}
                     </div>
                     {/* Derecha: los dos ejes + borrar, ocupando el espacio que antes quedaba vacío */}
                     <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0, paddingTop: 1 }}>
@@ -346,14 +421,19 @@ export default function RendicionFondo({
                       <EjeSelect valor={r.rubro_item || ""} vacio="⚠ rubro…" opciones={rubrosOpc}
                         editable={esAdmin}
                         onCambio={v => fijarEjesRhe(r.id, { postulacionId, rubroItem: v || null }).then(() => router.refresh())} />
-                      {esAdmin && (
-                        <button onClick={async () => {
-                          if (!(await pedir("¿Borrar este RHE?", { peligro: true, aceptar: "Borrar" }))) return;
-                          const res: any = await borrarRhe(r.id, r.persona_id, postulacionId);
-                          if (res?.error) avisar(res.error); else router.refresh();
-                        }} title="Borrar"
-                          style={{ background: "none", border: "none", color: "var(--red)", cursor: "pointer", fontSize: 12 }}>✕</button>
-                      )}
+                      {/* Veinte de los veintiséis recibos de PO-003 se giraron
+                          DESPUÉS del plazo. Cada uno de esos va a necesitar una
+                          explicación escrita, y este es su sitio. */}
+                      <AccionesFila tabla="rhe" filaId={r.id} userId={userId}
+                        reacciones={r.reacciones} nComentarios={r.nComentarios}
+                        extra={esAdmin ? (
+                          <button onClick={async () => {
+                            if (!(await pedir("¿Borrar este RHE?", { peligro: true, aceptar: "Borrar" }))) return;
+                            const res: any = await borrarRhe(r.id, r.persona_id, postulacionId);
+                            if (res?.error) avisar(res.error); else router.refresh();
+                          }} title="Borrar"
+                            style={{ background: "none", border: "none", color: "var(--red)", cursor: "pointer", fontSize: 12 }}>✕</button>
+                        ) : undefined} />
                     </div>
                   </div>
                 ))}

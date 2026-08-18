@@ -23,7 +23,7 @@ export type Reaccion = { emoji: string; usuario_id: string; nombre?: string | nu
    El ＋ abre la paleta. Funciona en publicaciones y comentarios. */
 export default function Reacciones({
   pubId, comentarioId = null, reacciones, userId, objetoId = null,
-  movCajaId = null, compacto = false,
+  movCajaId = null, compacto = false, rendicion = null,
 }: {
   pubId: string | null;
   comentarioId?: string | null;
@@ -36,6 +36,11 @@ export default function Reacciones({
   /** En una lista apretada: la paleta solo aparece al pasar el ratón, y sin
       reacciones el ＋ no ocupa sitio. Una fila de caja tiene ya nueve cosas. */
   compacto?: boolean;
+  /** Cuando se reacciona a una FILA DE LA RENDICIÓN —factura, estado de
+   *  cuenta, RHE, declaración jurada, movimiento del banco—. Va como objeto y
+   *  no como cinco props: son un solo concepto, y cinco props opcionales más
+   *  en una firma que ya tiene seis es una firma que se llama mal. */
+  rendicion?: { tabla: string; id: string } | null;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [ocupado, setOcupado] = useState(false);
@@ -88,7 +93,7 @@ export default function Reacciones({
   const tap = async (emoji: string) => {
     if (ocupado) return;
     setOcupado(true); setAbierto(false); setError("");
-    const res = await toggleReaccion(pubId, comentarioId, emoji, objetoId, null, movCajaId);
+    const res = await toggleReaccion(pubId, comentarioId, emoji, objetoId, null, movCajaId, rendicion);
     setOcupado(false);
     if (res?.error) { setError(res.error); return; }
     router.refresh();

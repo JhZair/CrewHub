@@ -4,6 +4,9 @@
    comentarios iban a quedar cuatro cosas duplicadas en dos archivos que
    nadie mira juntos. Ese es el nacimiento exacto de los bichos de este
    sistema, así que se corta aquí. */
+import {
+  META_RENDICION, TABLAS_RENDICION, anclaRendicion, tablaDeNotif,
+} from "@/lib/rendicionHilo";
 
 /* ── LA COLUMNA QUE PUEDE NO ESTAR TODAVÍA ──
  *
@@ -24,8 +27,12 @@ export const sinColumna = (e: any, col: string): boolean =>
   !!e && new RegExp(col).test(`${e?.message || ""} ${e?.details || ""} ${e?.hint || ""}`);
 
 /* Las columnas que puede que la base todavía no tenga. Cada una llega con su
-   SQL, y cada una tumbaría la consulta entera si se pide antes de tiempo. */
-export const COLS_NUEVAS = [COL_DAFO, "comentario_id", "movimiento_caja_id"];
+   SQL, y cada una tumbaría la consulta entera si se pide antes de tiempo.
+   Las cinco de la rendición se enumeran desde META_RENDICION en vez de
+   copiarlas: una lista escrita a mano se olvida de la sexta el día que la
+   haya, y el síntoma sería la bandeja entera en blanco. */
+export const COLS_NUEVAS = [COL_DAFO, "comentario_id", "movimiento_caja_id",
+  ...TABLAS_RENDICION.map(t => META_RENDICION[t].col)];
 export const faltaAlguna = (e: any): boolean => COLS_NUEVAS.some(c => sinColumna(e, c));
 
 /* ── QUÉ COLUMNA FALTÓ, CON NOMBRE ──
@@ -45,11 +52,39 @@ export const faltaAlguna = (e: any): boolean => COLS_NUEVAS.some(c => sinColumna
 export const columnasQueFaltan = (e: any): string[] =>
   COLS_NUEVAS.filter(c => sinColumna(e, c));
 
+/* ── LAS COLUMNAS QUE HAY QUE PEDIR — UNA SOLA LISTA ──
+ *
+ * Estaban escritas a mano en TRES sitios (las dos campanitas y la lista larga
+ * de /notificaciones) y las tres se habían quedado atrás. Ninguna pedía
+ * `movimiento_caja_id` ni `postulacion_id`, así que `rutaNotif` recibía esas
+ * columnas siempre en `undefined` y devolvía `null`: los avisos de caja y de
+ * postulación llegaban a la bandeja, se veían, se leían — y al pulsarlos no
+ * pasaba nada. Sin un solo error en ninguna parte.
+ *
+ * Es EXACTAMENTE el fallo que este archivo lleva cuatro comentarios
+ * prometiendo no repetir, y se repitió por el único motivo por el que se
+ * repiten estas cosas: la lista de puertas vivía en dos sitios —`rutaNotif` y
+ * los `select`— y solo uno se actualizaba al abrir una puerta nueva.
+ *
+ * Ahora es una. Abrir la puerta doce será añadir su columna aquí y su rama en
+ * `rutaNotif`, en el mismo archivo, a treinta líneas de distancia. Y las
+ * cinco de la rendición se enumeran desde META_RENDICION en vez de teclearse,
+ * para que no haya ni siquiera esa oportunidad de olvido.
+ */
+export const COLS_NOTIF = [
+  "id", "tipo", "mensaje", "actor_nombre", "leida", "creado_en",
+  "publicacion_id", "objeto_id", "prestamo_id", "equipamiento_id",
+  "dafo_id", "comentario_id", "postulacion_id", "movimiento_caja_id",
+  ...TABLAS_RENDICION.map(t => META_RENDICION[t].col),
+].join(",");
+
 /* Qué archivo trae cada una, para poder decir qué hacer y no solo qué pasa. */
 export const SQL_DE_COLUMNA: Record<string, string> = {
   dafo_id: "db/casilla-dafo.sql",
   comentario_id: "db/notif-comentario.sql",
   movimiento_caja_id: "db/movcaja-comentarios.sql",
+  ...Object.fromEntries(TABLAS_RENDICION.map(t =>
+    [META_RENDICION[t].col, META_RENDICION[t].migracion])),
 };
 /* ── QUITAR SOLO LO QUE FALTA, NO TODO LO OPCIONAL ──
  *
@@ -133,9 +168,11 @@ export const rutaNotif = (n: {
   publicacion_id?: string | null; objeto_id?: string | null; equipamiento_id?: string | null;
   dafo_id?: string | null; comentario_id?: string | null; tipo?: string;
   postulacion_id?: string | null; movimiento_caja_id?: string | null;
+  comprobante_id?: string | null; estado_cuenta_id?: string | null;
+  rhe_id?: string | null; gasto_dj_id?: string | null; movimiento_banco_id?: string | null;
   /** Si la publicación es una NOTA DE MURO, de qué muro es. */
   muro?: { tipo: string; id: string } | null;
-}) =>
+} & Record<string, any>) =>
   /* UNA NOTA DEL MURO NO ES UN CASO. Comparte tabla con los casos —misma
      `publicaciones`, mismos comentarios y reacciones, que es lo que la hizo
      barata de construir— pero no tiene estado, ni responsable, ni plazo, ni
@@ -166,6 +203,20 @@ export const rutaNotif = (n: {
      movimiento. El hilo vive en un pop-up, así que no se puede anclar al
      comentario: se ancla a la fila, que es desde donde se abre. */
   : n.movimiento_caja_id ? `/caja#mov-${n.movimiento_caja_id}`
+  /* ── LAS CINCO FILAS DE LA RENDICIÓN ──
+     Van ANTES de `postulacion_id` a propósito, y el orden es la regla entera:
+     estos avisos llevan las DOS columnas —la fila y el fondo— porque la fila
+     sola no dice en qué pantalla vive. Si esta rama fuera después, la de
+     postulación se los quedaría todos y un comentario sobre una factura
+     acabaría en la ficha del expediente, que es el sitio correcto para otra
+     cosa. Lo más específico primero.
+     Y si por lo que sea no viene el fondo, NO se cae a la postulación: se
+     devuelve null y el aviso queda sin clic. Un enlace que lleva al sitio
+     equivocado es peor que uno que no lleva: el segundo se nota. */
+  : tablaDeNotif(n)
+    ? (n.postulacion_id
+        ? `/fondo/${n.postulacion_id}#${anclaRendicion(tablaDeNotif(n)!, n[META_RENDICION[tablaDeNotif(n)!].col])}`
+        : null)
   /* Y la postulación, que llevaba desde su migración devolviendo `null` — el
      aviso llegaba a la bandeja y no era clicable. Es exactamente el fallo que
      el comentario de más arriba dice haber arreglado para los objetos,

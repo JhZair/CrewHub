@@ -7,6 +7,7 @@ import { money, rangoFechas, trayecto, type SaldoDJ } from "@/lib/dj";
 import { hoyLima } from "@/lib/fechas";
 import CampoAdjunto from "@/components/CampoAdjunto";
 import VerAdjunto from "@/components/VerAdjunto";
+import { AccionesFila, AvisoHilo, idFila } from "@/components/HiloRendicion";
 
 /* ── EL SALDO DE DECLARACIONES JURADAS ──
  *
@@ -27,14 +28,19 @@ type Gasto = {
   lugar_origen: string | null; lugar_destino: string | null;
   etapa: string | null; rubro_item: string | null;
   dj_numero: string | null; dj_url: string | null;
+  nComentarios?: number; reacciones?: any[];
 };
 type Opcion = { id: string; nombre: string };
 
 export default function SaldoDj({
-  postulacionId, saldo, gastos, etapas, rubros, esAdmin, error,
+  postulacionId, saldo, gastos, etapas, rubros, esAdmin, error, userId, hiloError,
 }: {
   postulacionId: string; saldo: SaldoDJ; gastos: Gasto[];
   etapas: Opcion[]; rubros: { id: string; etiqueta: string }[];
+  /** Para saber cuáles reacciones son mías. */
+  userId: string;
+  /** Si falta db/rendicion-interaccion.sql: se dice y la lista sigue. */
+  hiloError?: string | null;
   esAdmin: boolean; error?: string | null;
 }) {
   const router = useRouter();
@@ -94,6 +100,7 @@ export default function SaldoDj({
   return (
     <>
       {dialogo}{aviso}
+      <AvisoHilo error={hiloError} />
 
       {error ? (
         /* Con la lectura caída NO se enseña ningún saldo. Con la lista vacía el
@@ -250,7 +257,8 @@ export default function SaldoDj({
       {gastos.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 10 }}>
           {gastos.map(g => (
-            <div key={g.id} className="info-row" style={{ gap: 9, flexWrap: "wrap", fontSize: 12.5 }}>
+            <div key={g.id} id={idFila("gasto_dj", g.id)} className="info-row"
+              style={{ gap: 9, flexWrap: "wrap", fontSize: 12.5, scrollMarginTop: 70 }}>
               <span style={{ color: "var(--dim)", fontSize: 11.5, minWidth: 96 }}>
                 {rangoFechas(g.fecha, g.fecha_hasta)}
               </span>
@@ -269,10 +277,16 @@ export default function SaldoDj({
                 <span style={{ color: "var(--muted)", fontSize: 11.5 }}>→ sin DJ asignada</span>
               )}
               <span style={{ color: "var(--teal)", fontWeight: 700 }}>{money(g.importe)}</span>
-              {esAdmin && (
-                <button onClick={() => quitar(g)} disabled={ocupado} title="Borrar"
-                  style={{ background: "none", border: "none", color: "var(--red)", cursor: "pointer", fontSize: 12 }}>✕</button>
-              )}
+              {/* Una DJ es la forma de rendir MÁS discutible que hay —no tiene
+                  comprobante detrás, solo la palabra de quien firma— y además
+                  consume tope. Es justo la fila donde alguien va a querer
+                  preguntar antes de aprobarla. */}
+              <AccionesFila tabla="gasto_dj" filaId={g.id} userId={userId}
+                reacciones={g.reacciones} nComentarios={g.nComentarios}
+                extra={esAdmin ? (
+                  <button onClick={() => quitar(g)} disabled={ocupado} title="Borrar"
+                    style={{ background: "none", border: "none", color: "var(--red)", cursor: "pointer", fontSize: 12 }}>✕</button>
+                ) : undefined} />
             </div>
           ))}
         </div>

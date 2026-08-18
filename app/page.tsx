@@ -14,7 +14,9 @@ import { progresoDe } from "@/lib/progreso";
 import { rotuloTipo, colorTipo } from "@/lib/tipos";
 import { avisoVencido } from "@/lib/estados";
 import { sinBot } from "@/lib/personas";
-import { COL_DAFO, sinColumna, sinDafoId } from "@/lib/notificaciones";
+import {
+  COLS_NOTIF, COLS_NUEVAS, faltaAlguna, columnasQueFaltan, sinEstas,
+} from "@/lib/notificaciones";
 import FiltroMas from "@/components/FiltroMas";
 import ListaFeed, { type CardFeed } from "@/components/ListaFeed";
 import Link from "next/link";
@@ -198,7 +200,6 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
   // pestaña "Del Bot" del desplegable tiene contenido aunque lo último sea
   // personal. Desempate por id (varias del mismo lote comparten creado_en).
   const NCAMP = 12;
-  const COLS_NOTIF = "id,tipo,mensaje,actor_nombre,publicacion_id,objeto_id,dafo_id,leida,creado_en";
   /* En función para poder repetirla sin `dafo_id` cuando esa columna todavía no
      existe: PostgREST rechaza la consulta entera, no la columna (ver
      lib/notificaciones.ts → COL_DAFO). */
@@ -219,15 +220,30 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
     supabase.from("actividad").select("id", { count: "exact", head: true })
       .eq("tipo", "bot").gte("creado_en", hoy.toISOString()),
   ]);
-  /* Segundo intento sin `dafo_id` si la columna aún no existe: la campanita del
-     feed no puede quedarse vacía con el timbre marcando avisos. */
+  /* ── SEGUNDO INTENTO, QUITANDO SOLO LO QUE FALTE ──
+     Antes esto miraba una sola columna (`dafo_id`) y reintentaba una vez. Con
+     once puertas eso ya no vale: si a la base le falta `comprobante_id` porque
+     nadie corrió db/rendicion-interaccion.sql, PostgREST rechaza la consulta
+     ENTERA y la campanita del feed se queda vacía con el timbre marcando tres.
+     Una pantalla que ya funcionaba no puede caerse porque alguien no corrió un
+     SQL de otro módulo — es la regla que lib/notificaciones.ts explica en
+     `sinEstas`, y que aquí no se había aplicado.
+     Se quita lo que la base nombró, no todo lo opcional: renunciar a `dafo_id`
+     porque falta otra cosa deja los correos de la casilla sin destino, que fue
+     el fallo original. */
   let notifPers: any = notifPersRaw, notifBot: any = notifBotRaw;
-  if (sinColumna(ePers, COL_DAFO) || sinColumna(eBot, COL_DAFO)) {
-    const [a, b] = await Promise.all([
-      tandaNotif(sinDafoId(COLS_NOTIF), false),
-      tandaNotif(sinDafoId(COLS_NOTIF), true),
-    ]);
-    notifPers = a.data; notifBot = b.data;
+  {
+    let err: any = ePers || eBot;
+    let quitadas: string[] = [];
+    for (let i = 0; i < COLS_NUEVAS.length && faltaAlguna(err); i++) {
+      const nuevas = columnasQueFaltan(err).filter(c => !quitadas.includes(c));
+      if (!nuevas.length) break;
+      quitadas = [...quitadas, ...nuevas];
+      const cols = sinEstas(COLS_NOTIF, quitadas);
+      const [a, b] = await Promise.all([tandaNotif(cols, false), tandaNotif(cols, true)]);
+      notifPers = a.data; notifBot = b.data;
+      err = a.error || b.error;
+    }
   }
   const notifs = [...(notifPers || []), ...(notifBot || [])];
 

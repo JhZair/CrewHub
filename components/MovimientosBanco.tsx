@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { guardarMovimiento, borrarMovimiento } from "@/app/actions";
 import { useConfirmar, useAviso } from "@/components/useConfirmar";
+import { AccionesFila, AvisoHilo, idFila } from "@/components/HiloRendicion";
 
 /* ── El libro del banco, línea a línea ──
  *
@@ -16,6 +17,7 @@ type Mov = {
   id: string; fecha: string; glosa: string; medio: string | null;
   tipo: "abono" | "cargo"; monto: number; saldo: number | null;
   categoria: string; nota: string | null;
+  nComentarios?: number; reacciones?: any[];
 };
 
 const soles = (n: number | null | undefined) =>
@@ -39,8 +41,14 @@ const CAT: Record<string, { ico: string; txt: string; col: string }> = {
   otro:       { ico: "•",  txt: "otro",       col: "var(--dim)" },
 };
 
-export default function MovimientosBanco({ postulacionId, esAdmin, movimientos }: {
+export default function MovimientosBanco({
+  postulacionId, esAdmin, movimientos, userId, hiloError,
+}: {
   postulacionId: string; esAdmin: boolean; movimientos: Mov[];
+  /** Para saber cuáles reacciones son mías. */
+  userId: string;
+  /** Si falta db/rendicion-interaccion.sql: se dice, y la tabla sigue. */
+  hiloError?: string | null;
 }) {
   const router = useRouter();
   const { pedir, dialogo } = useConfirmar();
@@ -73,7 +81,8 @@ export default function MovimientosBanco({ postulacionId, esAdmin, movimientos }
     const c = CAT[m.categoria] || CAT.otro;
     const abono = m.tipo === "abono";
     return (
-      <div className={`mov-fila${esAdmin ? " has-del" : ""}`} key={m.id}>
+      <div className={`mov-fila${esAdmin ? " has-del" : ""}`} key={m.id}
+        id={idFila("movimiento_banco", m.id)} style={{ scrollMarginTop: 70 }}>
         <span style={{ color: "var(--dim)", fontSize: 11.5 }}>{dmy(m.fecha)}</span>
         <span style={{ minWidth: 0 }}>
           <span style={{ fontSize: 12.5 }}>{m.glosa}</span>
@@ -85,14 +94,21 @@ export default function MovimientosBanco({ postulacionId, esAdmin, movimientos }
         <span style={{ textAlign: "right", fontSize: 12, color: Number(m.saldo) < 0 ? "var(--red)" : "var(--dim)" }}>
           {m.saldo == null ? "" : soles(m.saldo).replace("S/ ", "")}
         </span>
-        {esAdmin && (
-          <button onClick={async () => {
-            if (!(await pedir(`¿Borrar «${m.glosa}» del ${dmy(m.fecha)}?`, { peligro: true, aceptar: "Borrar" }))) return;
-            const r: any = await borrarMovimiento(m.id, postulacionId);
-            if (r?.error) avisar(r.error); else router.refresh();
-          }} title="Borrar"
-            style={{ background: "none", border: "none", color: "var(--red)", cursor: "pointer", fontSize: 11 }}>✕</button>
-        )}
+        {/* ── «¿ESTE RETIRO QUÉ FUE?» ──
+            La pregunta que esta tabla existe para provocar. Con 46 líneas y
+            siete retiros que suman S/ 199,439, la respuesta no puede vivir en
+            WhatsApp: tiene que quedar pegada al movimiento, que es donde la
+            buscará quien rinda dentro de un año. */}
+        <AccionesFila tabla="movimiento_banco" filaId={m.id} userId={userId}
+          reacciones={m.reacciones} nComentarios={m.nComentarios}
+          extra={esAdmin ? (
+            <button onClick={async () => {
+              if (!(await pedir(`¿Borrar «${m.glosa}» del ${dmy(m.fecha)}?`, { peligro: true, aceptar: "Borrar" }))) return;
+              const r: any = await borrarMovimiento(m.id, postulacionId);
+              if (r?.error) avisar(r.error); else router.refresh();
+            }} title="Borrar"
+              style={{ background: "none", border: "none", color: "var(--red)", cursor: "pointer", fontSize: 11 }}>✕</button>
+          ) : undefined} />
       </div>
     );
   };
@@ -101,6 +117,7 @@ export default function MovimientosBanco({ postulacionId, esAdmin, movimientos }
     <div>
       {dialogo}
       {aviso}
+      <AvisoHilo error={hiloError} />
       {/* Resumen: la respuesta de un vistazo a «¿en qué se fue la plata?» */}
       <div className="mov-resumen">
         <Tot k="Desembolso" v={soles(desembolso)} col="var(--green)" />
@@ -134,7 +151,7 @@ export default function MovimientosBanco({ postulacionId, esAdmin, movimientos }
       ) : (
         <div className="mov-tabla">
           <div className={`mov-cab${esAdmin ? " has-del" : ""}`}>
-            <span>Fecha</span><span>Movimiento</span><span style={{ textAlign: "right" }}>Monto</span><span style={{ textAlign: "right" }}>Saldo</span>{esAdmin && <span />}
+            <span>Fecha</span><span>Movimiento</span><span style={{ textAlign: "right" }}>Monto</span><span style={{ textAlign: "right" }}>Saldo</span><span />
           </div>
           {grupos.map(g => {
             const ret = suma("retiro", g.items);
