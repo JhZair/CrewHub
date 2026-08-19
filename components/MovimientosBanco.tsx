@@ -17,7 +17,7 @@ type Mov = {
   id: string; fecha: string; glosa: string; medio: string | null;
   tipo: "abono" | "cargo"; monto: number; saldo: number | null;
   categoria: string; nota: string | null;
-  nComentarios?: number; reacciones?: any[];
+  nComentarios?: number; reacciones?: any[]; caso?: any;
 };
 
 const soles = (n: number | null | undefined) =>
@@ -101,6 +101,7 @@ export default function MovimientosBanco({
             buscará quien rinda dentro de un año. */}
         <AccionesFila tabla="movimiento_banco" filaId={m.id} userId={userId}
           reacciones={m.reacciones} nComentarios={m.nComentarios}
+                caso={m.caso}
           extra={esAdmin ? (
             <button onClick={async () => {
               if (!(await pedir(`¿Borrar «${m.glosa}» del ${dmy(m.fecha)}?`, { peligro: true, aceptar: "Borrar" }))) return;

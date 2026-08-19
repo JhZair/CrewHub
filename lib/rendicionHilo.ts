@@ -47,6 +47,10 @@ export type MetaRendicion = {
   titulo: (r: any) => string;
   /** El archivo SQL que hay que correr si la columna no existe. */
   migracion: string;
+  /** El emoji con el que se titula el caso que se abra desde esta fila. En un
+   *  tablero de cuarenta casos, el icono es lo que dice de un vistazo si esto
+   *  salió de una factura o de un movimiento del banco. */
+  ico: string;
 };
 
 /* ── EL RÓTULO LLEVA SIEMPRE EL MONTO ──
@@ -63,7 +67,7 @@ export const META_RENDICION: Record<TablaRendicion, MetaRendicion> = {
     titulo: r => [soles(r?.importe),
       [r?.serie, r?.numero].filter(Boolean).join("-"),
       (r?.proveedor || r?.concepto || "").slice(0, 40)].filter(Boolean).join(" · "),
-    migracion: "db/rendicion-interaccion.sql",
+    migracion: "db/rendicion-interaccion.sql", ico: "📄",
   },
   estado_cuenta: {
     col: "estado_cuenta_id",
@@ -78,7 +82,7 @@ export const META_RENDICION: Record<TablaRendicion, MetaRendicion> = {
       const mes = m ? `${MESES[+m[2] - 1]} ${m[1]}` : "";
       return [mes, r?.saldo != null ? `saldo ${soles(r.saldo)}` : ""].filter(Boolean).join(" · ");
     },
-    migracion: "db/rendicion-interaccion.sql",
+    migracion: "db/rendicion-interaccion.sql", ico: "🏦",
   },
   rhe: {
     col: "rhe_id",
@@ -86,7 +90,7 @@ export const META_RENDICION: Record<TablaRendicion, MetaRendicion> = {
     sel: "postulacion_id,creado_por,monto,numero,fecha,concepto",
     titulo: r => [soles(r?.monto), r?.numero, dmy(r?.fecha),
       (r?.concepto || "").slice(0, 35)].filter(Boolean).join(" · "),
-    migracion: "db/rendicion-interaccion.sql",
+    migracion: "db/rendicion-interaccion.sql", ico: "🧾",
   },
   gasto_dj: {
     col: "gasto_dj_id",
@@ -94,7 +98,7 @@ export const META_RENDICION: Record<TablaRendicion, MetaRendicion> = {
     sel: "postulacion_id,creado_por,importe,descripcion,fecha",
     titulo: r => [soles(r?.importe), (r?.descripcion || "").slice(0, 45),
       dmy(r?.fecha)].filter(Boolean).join(" · "),
-    migracion: "db/rendicion-interaccion.sql",
+    migracion: "db/rendicion-interaccion.sql", ico: "📝",
   },
   movimiento_banco: {
     col: "movimiento_banco_id",
@@ -102,7 +106,7 @@ export const META_RENDICION: Record<TablaRendicion, MetaRendicion> = {
     sel: "postulacion_id,creado_por,monto,glosa,fecha,categoria",
     titulo: r => [soles(r?.monto), (r?.glosa || "").slice(0, 40),
       dmy(r?.fecha)].filter(Boolean).join(" · "),
-    migracion: "db/rendicion-interaccion.sql",
+    migracion: "db/rendicion-interaccion.sql", ico: "💵",
   },
 };
 
@@ -149,11 +153,16 @@ export const tablaDeNotif = (n: Record<string, any>): TablaRendicion | null =>
  */
 export async function hilosDeFilas(
   supabase: any, tabla: TablaRendicion, ids: string[],
-): Promise<{ conteo: Map<string, number>; reacciones: Map<string, any[]>; error: string | null }> {
+): Promise<{
+  conteo: Map<string, number>; reacciones: Map<string, any[]>;
+  casos: Map<string, { id: string; estado?: string | null; tipo?: string | null }>;
+  error: string | null;
+}> {
   const col = META_RENDICION[tabla].col;
   const conteo = new Map<string, number>();
   const reacciones = new Map<string, any[]>();
-  if (!ids.length) return { conteo, reacciones, error: null };
+  const casos = new Map<string, { id: string; estado?: string | null; tipo?: string | null }>();
+  if (!ids.length) return { conteo, reacciones, casos, error: null };
 
   const [{ data: coms, error: eC }, { data: rx, error: eR }] = await Promise.all([
     supabase.from("comentarios").select(col).in(col, ids),
@@ -172,9 +181,23 @@ export async function hilosDeFilas(
     arr.push({ emoji: r.emoji, usuario_id: r.usuario_id, nombre: r.perfil?.nombre || null });
     reacciones.set(k, arr);
   });
+  /* ── EL CASO DE CADA FILA, EN SU PROPIA CONSULTA ──
+     Y no dentro del `select` de la lista, que es donde cabría mejor. Si
+     `caso_id` no existe todavía —db/rendicion-caso.sql sin correr—, PostgREST
+     rechaza la consulta ENTERA: la lista de 26 recibos volvería vacía y el
+     fondo diría «sin pagos» con S/ 98,270 cargados. Un dato de adorno no puede
+     tumbar el dato principal. */
+  const { data: cs } = await supabase.from(tabla)
+    .select(`id,caso_id,caso:publicaciones(estado,tipo)`)
+    .in("id", ids).not("caso_id", "is", null);
+  (cs || []).forEach((r: any) => {
+    const c = Array.isArray(r.caso) ? r.caso[0] : r.caso;
+    if (r.caso_id) casos.set(r.id, { id: r.caso_id, estado: c?.estado, tipo: c?.tipo });
+  });
+
   const err = eC || eR;
   return {
-    conteo, reacciones,
+    conteo, reacciones, casos,
     error: err
       ? (new RegExp(col).test(err.message || "")
           ? `Falta correr ${META_RENDICION[tabla].migracion} en Supabase.`

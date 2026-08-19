@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { guardarComprobante, borrarComprobante } from "@/app/actions";
+import { guardarComprobante, borrarComprobante, fijarEjesRendicion } from "@/app/actions";
 import { useConfirmar, useAviso } from "@/components/useConfirmar";
 import { money } from "@/lib/dj";
 import { hoyLima } from "@/lib/fechas";
@@ -9,6 +9,7 @@ import CampoAdjunto from "@/components/CampoAdjunto";
 import VerAdjunto from "@/components/VerAdjunto";
 import BotonFichaSunat from "@/components/BotonFichaSunat";
 import { AccionesFila, AvisoHilo, idFila } from "@/components/HiloRendicion";
+import EjeSelect from "@/components/EjeSelect";
 
 /* ── FACTURAS Y BOLETAS DEL FONDO ──
  *
@@ -36,14 +37,23 @@ type Cmp = {
   serie: string | null; numero: string | null;
   fecha: string; importe: number; igv: number | null;
   concepto: string | null; etapa: string | null; rubro_item: string | null; url: string | null;
-  nComentarios?: number; reacciones?: any[];
+  nComentarios?: number; reacciones?: any[]; caso?: any;
   creado_en?: string | null;
   creado?: { nombre: string | null } | { nombre: string | null }[] | null;
 };
 type Opcion = { id: string; nombre: string };
 
+/* ── CON AÑO, SIEMPRE ──
+   Iba sin él —«5 dic.», «12 abr.»— y en una lista ordenada por fecha eso se
+   lee como si fueran del mismo año. Estas ocho facturas van de diciembre de
+   2024 a agosto de 2026: sin el año, «5 dic.» y «12 abr.» parecen cuatro meses
+   de distancia cuando son dieciséis, y la primera cae ANTES del desembolso del
+   fondo mientras la última cae después del plazo. Esa diferencia es justo la
+   que decide si un gasto es rendible.
+   Dos dígitos porque la columna es estrecha y «24» no se confunde con nada en
+   un fondo que dura tres años. */
 const dmy = (f: string) =>
-  new Date(f + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short" });
+  new Date(f + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "2-digit" });
 
 /* PostgREST devuelve la relación como objeto o como arreglo según cómo la
    resuelva. Leer solo una de las dos formas deja la firma en blanco sin que
@@ -70,7 +80,7 @@ export default function Comprobantes({
   postulacionId, comprobantes, etapas, rubros, esAdmin, error, urlSunat, userId, hiloError,
 }: {
   postulacionId: string; comprobantes: Cmp[];
-  etapas: Opcion[]; rubros: { id: string; etiqueta: string }[];
+  etapas: Opcion[]; rubros: { id: string; etiqueta: string; ayuda?: string }[];
   esAdmin: boolean; error?: string | null;
   /** El buscador de SUNAT, administrado en /admin?s=plataformas. Si falta,
    *  BotonFichaSunat usa su propio respaldo. */
@@ -256,7 +266,7 @@ export default function Comprobantes({
             </select>
             <select value={f.rubroItem} onChange={e => set("rubroItem", e.target.value)} style={{ ...inp, width: 175 }}>
               <option value="">Rubro…</option>
-              {rubros.map(r => <option key={r.id} value={r.id}>{r.etiqueta}</option>)}
+              {rubros.map(r => <option key={r.id} value={r.id} title={r.ayuda}>{r.etiqueta}</option>)}
             </select>
             <input value={f.concepto} onChange={e => set("concepto", e.target.value)}
               placeholder="Concepto — qué se compró" style={{ ...inp, flex: 1, minWidth: 160 }} />
@@ -283,76 +293,108 @@ export default function Comprobantes({
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           {comprobantes.map(c => (
-            <div key={c.id} id={idFila("comprobante", c.id)} className="info-row"
+            /* ── DOS RENGLONES, NO UNO QUE SE PARTE SOLO ──
+               Era una sola fila con `flex-wrap`, y funcionaba mientras cupiera.
+               Al entrar los dos desplegables dejó de caber: los selectores se
+               quedaban a la derecha del primer renglón y las acciones —👀 💬
+               ＋caso ✎ ✕— caían sueltas abajo a la izquierda, lejos de la
+               factura a la que pertenecen. Lo que se rompe primero al envolver
+               es siempre lo último que se escribió, no lo que menos importa.
+               Ahora el corte está decidido: arriba QUÉ es la factura, abajo qué
+               se HACE con ella. */
+            <div key={c.id} id={idFila("comprobante", c.id)} className="fac-fila"
               /* `scroll-margin-top` para que el ancla del aviso no deje la fila
                  pegada al borde superior, medio tapada por la cabecera. */
-              style={{ gap: 9, flexWrap: "wrap", fontSize: 12.5, scrollMarginTop: 70 }}>
-              <span style={{ color: "var(--dim)", fontSize: 11.5, minWidth: 52 }}>{dmy(c.fecha)}</span>
-              <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c", fontSize: 10.5 }}>
-                {rotuloTipo(c.tipo)}
-              </span>
-              <span style={{ fontWeight: 600, minWidth: 130 }}>{c.proveedor}</span>
-              {(c.serie || c.numero) && (
+              style={{ scrollMarginTop: 70 }}>
+              <div className="fac-l1">
+                {/* ── NUEVE CELDAS, SIEMPRE LAS NUEVE ──
+                    En una rejilla, un campo que no se pinta no deja hueco: corre
+                    a todos los de su derecha una posición y la columna deja de
+                    ser columna. Media docena de estas facturas no tienen
+                    concepto o no tienen PDF, así que los opcionales emiten una
+                    celda vacía en vez de desaparecer. Es la diferencia entre
+                    una lista que se lee en vertical y diez filas sueltas. */}
+                <span style={{ color: "var(--dim)", fontSize: 11.5 }}>{dmy(c.fecha)}</span>
+
+                <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c", fontSize: 10.5 }}>
+                  {rotuloTipo(c.tipo)}
+                </span>
+
+                <span style={{ fontWeight: 600 }} title={c.proveedor}>{c.proveedor}</span>
+
                 <span style={{ color: "var(--dim)", fontSize: 11.5 }}>
                   {[c.serie, c.numero].filter(Boolean).join("-")}
                 </span>
-              )}
-              {/* ── EL RUC, Y LA FORMA DE COMPROBARLO ──
-                  Estaba guardado y no se veía: solo se avisaba cuando faltaba.
-                  Pero el error caro no es el RUC ausente —ese salta al rendir—,
-                  es el RUC presente y mal: un dígito cambiado no falla, valida
-                  como otro contribuyente o como ninguno, y aparece el día de la
-                  observación. Enseñarlo con el mismo chip que /empresas hace
-                  dos cosas de una: lo pone a la vista y deja la comprobación a
-                  un clic. El buscador de SUNAT exige POST y captcha, así que no
-                  se puede enlazar el número directo — el chip lo copia y abre
-                  la página para que solo quede pegar. */}
-              {c.ruc ? (
-                <BotonFichaSunat numero={c.ruc} tipo="RUC" compacto url={urlSunat} />
-              ) : (
-                <span style={{ color: "var(--yellow)", fontSize: 11 }} title="El informe de DAFO lo pide">
-                  sin RUC
+
+                {/* ── EL RUC, Y LA FORMA DE COMPROBARLO ──
+                    El error caro no es el RUC ausente —ese salta al rendir—, es
+                    el presente y mal: un dígito cambiado no falla, valida como
+                    otro contribuyente o como ninguno, y aparece el día de la
+                    observación. El chip lo pone a la vista y deja la
+                    comprobación a un clic: el buscador de SUNAT exige POST y
+                    captcha, así que copia el número y abre la página. */}
+                <span style={{ minWidth: 0 }}>
+                  {c.ruc ? (
+                    <BotonFichaSunat numero={c.ruc} tipo="RUC" compacto url={urlSunat} />
+                  ) : (
+                    <span style={{ color: "var(--yellow)", fontSize: 11 }} title="El informe de DAFO lo pide">
+                      sin RUC
+                    </span>
+                  )}
                 </span>
-              )}
-              {c.concepto && (
-                <span style={{ color: "var(--muted)", fontSize: 11.5, flex: 1, minWidth: 0,
-                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {c.concepto}
+
+                <span style={{ color: "var(--muted)", fontSize: 11.5 }} title={c.concepto || ""}>
+                  {c.concepto || ""}
                 </span>
-              )}
-              <span style={{ flex: 1 }} />
-              {/* ── QUIÉN LO REGISTRÓ Y CUÁNDO ──
-                  Es plata que se rinde ante el Ministerio, y una cifra sin
-                  autor es una cifra que nadie puede explicar el día que la
-                  observan. La bitácora de auditoría ya lo guardaba, pero está
-                  tres plegables más abajo: el dato tiene que estar donde está
-                  la duda.
-                  Sin autor NO se deja en blanco. Un hueco se lee como «no se
-                  sabe», y aquí sí se sabe: entró por carga directa a la base,
-                  no por el formulario. Son dos cosas distintas y la segunda es
-                  la que explica por qué no hay nombre. */}
-              {c.creado_en && (
-                <span style={{ color: "var(--dim)", fontSize: 10.5, whiteSpace: "nowrap" }}
-                  title={autor(c)
+
+                {/* ── QUIÉN LO REGISTRÓ Y CUÁNDO ──
+                    Es plata que se rinde ante el Ministerio: una cifra sin autor
+                    es una cifra que nadie puede explicar el día que la observan.
+                    Sin autor NO se deja en blanco —un hueco se lee como «no se
+                    sabe»— y aquí sí se sabe: entró por carga directa a la base,
+                    no por el formulario. */}
+                <span style={{ color: "var(--dim)", fontSize: 10.5 }}
+                  title={!c.creado_en ? undefined : autor(c)
                     ? `Registrado por ${autor(c)} el ${cuandoLargo(c.creado_en)}`
                     : `Cargado directamente en la base el ${cuandoLargo(c.creado_en)}, no desde el formulario. Por eso no hay una persona a la que atribuirlo.`}>
-                  {autor(c) ? pila(autor(c)!) : "carga directa"} · {cuando(c.creado_en)}
+                  {c.creado_en ? `${autor(c) ? pila(autor(c)!) : "carga directa"} · ${cuando(c.creado_en)}` : ""}
                 </span>
-              )}
-              <span style={{ color: "var(--teal)", fontWeight: 700 }}>{money(c.importe)}</span>
-              {c.url
-                ? <VerAdjunto url={c.url} />
-                : <span style={{ color: "var(--yellow)", fontSize: 11 }}>sin PDF</span>}
-              {/* ── HABLAR DE ESTA FACTURA ──
-                  El 👀 y el 💬 al final de la fila, en una rejilla de anchos
-                  fijos: con `flex`, las filas que tienen reacciones empujan y
-                  las que no, no, y la columna de la derecha deja de estar
-                  alineada. Lección de CajaPanel, y no barata.
-                  El botón es para TODO el equipo aunque editar sea solo de
-                  finanzas: quien pregunta «¿esta factura de qué es?» es
-                  justamente quien no lleva las finanzas. */}
+
+                <span style={{ color: "var(--teal)", fontWeight: 700, textAlign: "right" }}>
+                  {money(c.importe)}
+                </span>
+
+                <span style={{ textAlign: "right" }}>
+                  {c.url
+                    ? <VerAdjunto url={c.url} />
+                    : <span style={{ color: "var(--yellow)", fontSize: 11 }} title="Sin PDF adjunto">·</span>}
+                </span>
+              </div>
+
+              <div className="fac-l2">
+              {/* ── CLASIFICAR EN LA FILA, NO EN UN FORMULARIO ──
+                  El rubro solo existía dentro del ✎: para poner «Recursos
+                  técnicos» a diez facturas había que abrir, cambiar, guardar y
+                  repetir. A ese precio la clasificación se pospone — y sin
+                  rubro la conciliación no reparte nada, que es exactamente lo
+                  que pasaba con estas diez.
+                  Mismo control que en los recibos: la misma tarea no puede
+                  hacerse de dos maneras según la lista. */}
+              <EjeSelect valor={c.etapa || ""} vacio="⚠ etapa…" opciones={etapas} ancho={150}
+                editable={esAdmin}
+                onCambio={v => fijarEjesRendicion("comprobante", c.id, { postulacionId, etapa: v || null })
+                  .then(() => router.refresh())} />
+              <EjeSelect valor={c.rubro_item || ""} vacio="⚠ rubro…" ancho={165}
+                opciones={rubros.map(r => ({ id: r.id, nombre: r.etiqueta, ayuda: r.ayuda }))}
+                editable={esAdmin}
+                onCambio={v => fijarEjesRendicion("comprobante", c.id, { postulacionId, rubroItem: v || null })
+                  .then(() => router.refresh())} />
+
+              <span style={{ flex: 1, minWidth: 0 }} />
+
               <AccionesFila tabla="comprobante" filaId={c.id} userId={userId}
                 reacciones={c.reacciones} nComentarios={c.nComentarios}
+                caso={c.caso}
                 extra={esAdmin ? (
                   <span style={{ display: "inline-flex", gap: 4 }}>
                     <button className="dato-btn" onClick={() => editar(c)} disabled={ocupado}>✎</button>
@@ -360,6 +402,7 @@ export default function Comprobantes({
                       style={{ background: "none", border: "none", color: "var(--red)", cursor: "pointer", fontSize: 12 }}>✕</button>
                   </span>
                 ) : undefined} />
+              </div>
             </div>
           ))}
         </div>

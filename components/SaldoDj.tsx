@@ -1,12 +1,13 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { guardarGastoDj, borrarGastoDj, fijarTopeDj } from "@/app/actions";
+import { guardarGastoDj, borrarGastoDj, fijarTopeDj , fijarEjesRendicion } from "@/app/actions";
 import { useConfirmar, useAviso } from "@/components/useConfirmar";
 import { money, rangoFechas, trayecto, type SaldoDJ } from "@/lib/dj";
 import { hoyLima } from "@/lib/fechas";
 import CampoAdjunto from "@/components/CampoAdjunto";
 import VerAdjunto from "@/components/VerAdjunto";
+import EjeSelect from "@/components/EjeSelect";
 import { AccionesFila, AvisoHilo, idFila } from "@/components/HiloRendicion";
 
 /* ── EL SALDO DE DECLARACIONES JURADAS ──
@@ -28,7 +29,7 @@ type Gasto = {
   lugar_origen: string | null; lugar_destino: string | null;
   etapa: string | null; rubro_item: string | null;
   dj_numero: string | null; dj_url: string | null;
-  nComentarios?: number; reacciones?: any[];
+  nComentarios?: number; reacciones?: any[]; caso?: any;
 };
 type Opcion = { id: string; nombre: string };
 
@@ -36,7 +37,7 @@ export default function SaldoDj({
   postulacionId, saldo, gastos, etapas, rubros, esAdmin, error, userId, hiloError,
 }: {
   postulacionId: string; saldo: SaldoDJ; gastos: Gasto[];
-  etapas: Opcion[]; rubros: { id: string; etiqueta: string }[];
+  etapas: Opcion[]; rubros: { id: string; etiqueta: string; ayuda?: string }[];
   /** Para saber cuáles reacciones son mías. */
   userId: string;
   /** Si falta db/rendicion-interaccion.sql: se dice y la lista sigue. */
@@ -233,7 +234,7 @@ export default function SaldoDj({
                 </select>
                 <select value={f.rubroItem} onChange={e => set("rubroItem", e.target.value)} style={{ ...inp, width: 175 }}>
                   <option value="">Rubro…</option>
-                  {rubros.map(r => <option key={r.id} value={r.id}>{r.etiqueta}</option>)}
+                  {rubros.map(r => <option key={r.id} value={r.id} title={r.ayuda}>{r.etiqueta}</option>)}
                 </select>
                 <input value={f.djNumero} onChange={e => set("djNumero", e.target.value)}
                   placeholder="Nº de DJ" title="La DJ donde va esta fila (admite 9)" style={{ ...inp, width: 100 }} />
@@ -281,8 +282,21 @@ export default function SaldoDj({
                   comprobante detrás, solo la palabra de quien firma— y además
                   consume tope. Es justo la fila donde alguien va a querer
                   preguntar antes de aprobarla. */}
+              {/* Mismo control que en recibos y facturas: una DJ sin rubro
+                  tampoco reparte en la conciliación. */}
+              <EjeSelect valor={g.etapa || ""} vacio="⚠ etapa…" opciones={etapas} ancho={150}
+                editable={esAdmin}
+                onCambio={v => fijarEjesRendicion("gasto_dj", g.id, { postulacionId, etapa: v || null })
+                  .then(() => router.refresh())} />
+              <EjeSelect valor={g.rubro_item || ""} vacio="⚠ rubro…" ancho={165}
+                opciones={rubros.map(r => ({ id: r.id, nombre: r.etiqueta, ayuda: r.ayuda }))}
+                editable={esAdmin}
+                onCambio={v => fijarEjesRendicion("gasto_dj", g.id, { postulacionId, rubroItem: v || null })
+                  .then(() => router.refresh())} />
+
               <AccionesFila tabla="gasto_dj" filaId={g.id} userId={userId}
                 reacciones={g.reacciones} nComentarios={g.nComentarios}
+                caso={g.caso}
                 extra={esAdmin ? (
                   <button onClick={() => quitar(g)} disabled={ocupado} title="Borrar"
                     style={{ background: "none", border: "none", color: "var(--red)", cursor: "pointer", fontSize: 12 }}>✕</button>

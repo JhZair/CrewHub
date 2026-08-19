@@ -112,6 +112,14 @@ with esperado(clase, obj, para, archivo) as (values
   ('col', 'notificaciones.rhe_id',            'Llevar al recibo',             'rendicion-interaccion.sql'),
   ('col', 'notificaciones.gasto_dj_id',       'Llevar a la declaración jurada', 'rendicion-interaccion.sql'),
   ('col', 'notificaciones.movimiento_banco_id', 'Llevar al movimiento del banco', 'rendicion-interaccion.sql'),
+  /* Abrir un caso desde una fila del dinero. Sin estas columnas la lista sigue
+     funcionando —la consulta del caso va aparte, a propósito— pero el botón
+     «＋ caso» devuelve el nombre de este archivo en vez de crear nada. */
+  ('col', 'comprobante.caso_id',              'Caso desde una factura',       'rendicion-caso.sql'),
+  ('col', 'estado_cuenta.caso_id',            'Caso desde un estado',         'rendicion-caso.sql'),
+  ('col', 'rhe.caso_id',                      'Caso desde un recibo',         'rendicion-caso.sql'),
+  ('col', 'gasto_dj.caso_id',                 'Caso desde una DJ',            'rendicion-caso.sql'),
+  ('col', 'movimiento_banco.caso_id',         'Caso desde un movimiento',     'rendicion-caso.sql'),
   -- Funciones
   ('fun', 'nrm_nombre',        'Comparar nombres sin tildes',       'personas-duplicadas.sql'),
   ('fun', 'persona_refs',      'Qué cuelga de una persona',         'personas-duplicadas.sql'),

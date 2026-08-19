@@ -12,6 +12,7 @@ import VerAdjunto from "@/components/VerAdjunto";
 import Plegable from "@/components/Plegable";
 import { useConfirmar, useAviso } from "@/components/useConfirmar";
 import { AccionesFila, AvisoHilo, idFila } from "@/components/HiloRendicion";
+import EjeSelect from "@/components/EjeSelect";
 import { VIAS_GIRO } from "@/lib/pagos";
 
 /* ── La cara financiera de un fondo ganado ──
@@ -29,7 +30,7 @@ import { VIAS_GIRO } from "@/lib/pagos";
  */
 
 type EstadoCuenta = {
-  nComentarios?: number; reacciones?: any[];
+  nComentarios?: number; reacciones?: any[]; caso?: any;
   id: string; periodo: string; url: string | null;
   saldo: number | null; intereses: number | null; nota: string | null;
   imagenes?: string[] | null;
@@ -37,12 +38,18 @@ type EstadoCuenta = {
   creado?: { nombre: string } | null; quien?: { nombre: string } | null;
 };
 type RheFila = {
-  nComentarios?: number; reacciones?: any[];
+  nComentarios?: number; reacciones?: any[]; caso?: any;
   id: string; persona_id: string; persona?: string;
   fecha: string; monto: number; numero: string | null; url: string | null;
   etapa: string | null; rubro_item: string | null; concepto?: string | null;
 };
-type Opcion = { id: string; nombre: string };
+type Opcion = {
+  id: string; nombre: string;
+  /** Qué contiene el rubro y cuánto le queda. Va en el `title` de la opción:
+   *  el nombre solo —«Equipo del proyecto»— no dice si ahí van los honorarios
+   *  o los equipos, y averiguarlo obligaba a abrir el presupuesto aparte. */
+  ayuda?: string;
+};
 
 const soles = (n: number | null | undefined) =>
   "S/ " + Number(n || 0).toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -88,7 +95,7 @@ export default function RendicionFondo({
   rhe: RheFila[];
   empresa?: string | null;   // quien gira los recibos (la asociación titular del fondo)
   etapas: Opcion[];        // etapas del cronograma (eje del informe económico)
-  rubros: { id: string; etiqueta: string }[];  // catálogo de rubros DAFO (eje rubro)
+  rubros: { id: string; etiqueta: string; ayuda?: string }[];  // catálogo de rubros DAFO (eje rubro)
   personas: Opcion[];      // a quién se le puede girar
   /** Para saber cuáles reacciones son mías. */
   userId: string;
@@ -109,7 +116,7 @@ export default function RendicionFondo({
   const conEjes = rhe.length - rheSinEje;
   // Los que todavía no tienen su PDF adjunto. Ver el comentario de la cabecera.
   const rheSinPdf = rhe.filter(r => !r.url).length;
-  const rubrosOpc = rubros.map(x => ({ id: x.id, nombre: x.etiqueta }));
+  const rubrosOpc = rubros.map(x => ({ id: x.id, nombre: x.etiqueta, ayuda: x.ayuda }));
   // ── Los mismos RHE, mirados de tres maneras ──
   // Por persona (a quién se le pagó), por etapa (en qué fase del cronograma) o
   // por rubro (en qué partida del presupuesto). Es la MISMA plata reagrupada:
@@ -168,39 +175,14 @@ export default function RendicionFondo({
       {dialogo}
       <AvisoHilo error={hiloError} />
       {aviso}
-      {/* ── 1) Desembolso y plazo ── */}
-      <div className="linked" style={{ marginBottom: 14 }}>
-        <div className="eq-row">
-          <span className="cargo">Estímulo</span>
-          <span style={{ flex: 1, textAlign: "right", color: "var(--teal)", fontWeight: 700 }}>
-            {montoAdjudicado ? soles(montoAdjudicado) : "—"}
-          </span>
-        </div>
-        <div className="eq-row">
-          <span className="cargo">Desembolso</span>
-          <span style={{ flex: 1, textAlign: "right" }}>
-            {fechaDesembolso
-              ? dmy(fechaDesembolso)
-              : <i style={{ color: "var(--yellow)", fontStyle: "normal", fontSize: 12 }}>
-                  ⚠ falta — edítalo arriba en la ficha
-                </i>}
-          </span>
-        </div>
-        <div className="eq-row">
-          {/* Un año (acta 7.2), no dos. Los dos años eran el primer año más la
-              prórroga de la 8.1, que hay que solicitar y que te concedan. */}
-          <span className="cargo">Plazo ({PLAZO_MESES / 12} año)</span>
-          <span style={{ flex: 1, textAlign: "right", color: "var(--dim)" }}>
-            {fechaDesembolso ? dmy(masMeses(fechaDesembolso, PLAZO_MESES) || "") : "—"}
-          </span>
-        </div>
-        {!fechaDesembolso && (
-          <p style={{ color: "var(--dim)", fontSize: 11, margin: "6px 0 0", lineHeight: 1.5 }}>
-            El plazo de ejecución se cuenta desde que el dinero llega a la cuenta, no desde la
-            firma del acta. Sin esta fecha, la rendición no tiene reloj.
-          </p>
-        )}
-      </div>
+      {/* ── EL ESTÍMULO, EL DESEMBOLSO Y EL PLAZO SE FUERON DE AQUÍ ──
+          Estaban repetidos: las mismas tres cifras encabezan la página entera,
+          en las tarjetas de arriba, donde además se leen sin abrir nada.
+          Repetirlas dentro no era redundancia inofensiva — obliga a comprobar
+          si dicen lo mismo cada vez que se mira, y el día que una se calcule
+          distinto de la otra nadie sabrá cuál creerse.
+          Si hace falta el aviso de «falta el desembolso», su sitio es la
+          cabecera, que es donde vive la fecha. */}
 
       {/* ── 2) Estados de cuenta (sub-sección plegable, nivel 2) ── */}
       <Plegable nivel={2} id={`ren:${postulacionId}:estados`} titulo="🏦 Estados de cuenta"
@@ -244,7 +226,7 @@ export default function RendicionFondo({
                     demás. «Este mes no cuadra» es la observación más común que
                     llega, y la explicación tiene que quedarse aquí. */}
                 <AccionesFila tabla="estado_cuenta" filaId={e.id} userId={userId}
-                  reacciones={e.reacciones} nComentarios={e.nComentarios}
+                  reacciones={e.reacciones} nComentarios={e.nComentarios} caso={e.caso}
                   extra={esAdmin ? (
                     <button onClick={async () => {
                       if (!(await pedir(`¿Borrar el estado de cuenta de ${mesLargo(e.periodo)}?`, { peligro: true, aceptar: "Borrar" }))) return;
@@ -425,7 +407,7 @@ export default function RendicionFondo({
                           DESPUÉS del plazo. Cada uno de esos va a necesitar una
                           explicación escrita, y este es su sitio. */}
                       <AccionesFila tabla="rhe" filaId={r.id} userId={userId}
-                        reacciones={r.reacciones} nComentarios={r.nComentarios}
+                        reacciones={r.reacciones} nComentarios={r.nComentarios} caso={r.caso}
                         extra={esAdmin ? (
                           <button onClick={async () => {
                             if (!(await pedir("¿Borrar este RHE?", { peligro: true, aceptar: "Borrar" }))) return;
@@ -456,30 +438,6 @@ export default function RendicionFondo({
 
 /* Un eje: combo si eres admin, texto si no. Vacío se pinta en ámbar porque un
    gasto sin su eje es justo lo que rompe la rendición dos años después. */
-function EjeSelect({ valor, vacio, opciones, editable, onCambio }: {
-  valor: string; vacio: string; opciones: Opcion[]; editable: boolean;
-  onCambio: (v: string) => void;
-}) {
-  const actual = opciones.find(o => o.id === valor);
-  if (!editable) {
-    return (
-      <span style={{ fontSize: 12.5, color: actual ? "var(--muted)" : "var(--yellow)" }}>
-        {actual ? actual.nombre : vacio}
-      </span>
-    );
-  }
-  return (
-    <select value={valor} onChange={e => onCambio(e.target.value)}
-      style={{
-        fontSize: 12.5, padding: "4px 8px", borderRadius: 6,
-        background: "var(--bg)", color: valor ? "var(--text)" : "var(--yellow)",
-        border: `1px solid ${valor ? "var(--border)" : "rgba(244,180,0,.4)"}`, maxWidth: 210,
-      }}>
-      <option value="">{vacio}</option>
-      {opciones.map(o => <option key={o.id} value={o.id}>{o.nombre}</option>)}
-    </select>
-  );
-}
 
 /* Alta de un estado de cuenta mensual. */
 function FormEstado({ postulacionId }: { postulacionId: string }) {
@@ -534,7 +492,7 @@ function FormEstado({ postulacionId }: { postulacionId: string }) {
    el inicio, no dos años después. */
 function FormRhe({ postulacionId, etapas, rubros, personas }: {
   postulacionId: string; etapas: Opcion[];
-  rubros: { id: string; etiqueta: string }[]; personas: Opcion[];
+  rubros: { id: string; etiqueta: string; ayuda?: string }[]; personas: Opcion[];
 }) {
   const router = useRouter();
   const [abrir, setAbrir] = useState(false);
@@ -603,7 +561,7 @@ function FormRhe({ postulacionId, etapas, rubros, personas }: {
         <select value={rubroItem} onChange={e => setRubroItem(e.target.value)}
           title="Rubro del gasto (catálogo DAFO)" style={inp(180)}>
           <option value="">Rubro…</option>
-          {rubros.map(i => <option key={i.id} value={i.id}>{i.etiqueta}</option>)}
+          {rubros.map(i => <option key={i.id} value={i.id} title={i.ayuda}>{i.etiqueta}</option>)}
         </select>
         <input value={url} onChange={e => setUrl(e.target.value)}
           placeholder="Link del PDF del recibo" style={{ ...inp(160), flex: 1, minWidth: 140 }} />

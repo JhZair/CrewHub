@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { entregableEq, porQueNoEq, enRonda, txtEstadoEq } from "@/lib/estadosEquipo";
 import { ESTADOS_COMP } from "@/lib/compromisos";
-import { META_RENDICION, esTablaRendicion, type TablaRendicion } from "@/lib/rendicionHilo";
+import { META_RENDICION, esTablaRendicion, anclaRendicion, type TablaRendicion } from "@/lib/rendicionHilo";
 import { icoTipo } from "@/lib/tipos";
 import { FORM_CONF, nombreCorto, SUBCATS_EQUIPO } from "@/lib/entidades";
 import { ETAPAS_PROY_VALIDAS } from "@/lib/etapasProyecto";
@@ -885,6 +885,92 @@ export async function comentarRendicion(
      comentario «no aparece» hasta recargar a mano. */
   if (post) revalidatePath(`/fondo/${post}`);
   return {};
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ABRIR UN CASO DESDE UNA FILA DE LA RENDICIÓN
+
+   Comentar deja constancia; el caso reparte el trabajo. No son lo mismo y por
+   eso son dos botones: en el hilo del recibo E001-5 alguien escribió que la
+   persona no giró su RHE y que se prestó de otra. Eso, como comentario, se
+   queda ahí — sin responsable, sin plazo y sin salir en ningún tablero.
+
+   La decisión de ocuparse la toma una persona, no el sistema. Por eso es un
+   botón y no algo que pase solo al comentar.
+   ══════════════════════════════════════════════════════════════════════════ */
+export async function casoDeRendicion(tabla: string, filaId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!esTablaRendicion(tabla)) return { error: "No sé de qué se está hablando." };
+  const meta = META_RENDICION[tabla as TablaRendicion];
+
+  const { data: fila, error: eF } = await supabase.from(tabla)
+    .select(`${meta.sel},caso_id,post:postulaciones(codigo,proy:proyectos(nombre))`)
+    .eq("id", filaId).maybeSingle();
+  if (eF) {
+    return { error: /caso_id/.test(eF.message)
+      ? "Falta correr db/rendicion-caso.sql en Supabase." : eF.message };
+  }
+  if (!fila) return { error: "Esa fila ya no está." };
+
+  /* ¿Ya hay caso, y sigue VIVO? Uno archivado o descartado no cuenta: la fila
+     quedaría atada para siempre a algo que no aparece en ningún tablero, y el
+     botón no ofrecería abrir otro. Misma regla que los compromisos del acta. */
+  const ya = (fila as any).caso_id as string | null;
+  if (ya) {
+    const { data: vive } = await supabase.from("publicaciones")
+      .select("id").eq("id", ya)
+      .is("archivado_en", null).neq("estado", "descartada").maybeSingle();
+    if (vive) return { id: ya, ya: true };
+  }
+
+  const post: any = Array.isArray((fila as any).post) ? (fila as any).post[0] : (fila as any).post;
+  const quien = post
+    ? `${post.codigo || "🎯"}${post.proy?.nombre ? ` · ${post.proy.nombre}` : ""}`
+    : "fondo";
+  const rotulo = meta.titulo(fila);
+
+  const { data: pub, error } = await supabase.from("publicaciones").insert({
+    tipo: "tarea", estado: "abierta", autor_id: user.id,
+    /* El rótulo de la fila va en el TÍTULO: en un tablero de cuarenta casos,
+       «Revisar factura» no dice cuál ni de qué fondo, y el monto y el número
+       son lo que permite volver a la fila desde el propio caso. */
+    titulo: `${meta.ico} ${rotulo} — ${quien}`.slice(0, 200),
+    cuerpo: [
+      `Abierto desde ${meta.etiqueta} de la rendición del fondo.`,
+      "",
+      /* El enlace de vuelta usa el mismo ancla que los avisos: una sola forma
+         de nombrar la fila, y no dos que puedan desincronizarse. */
+      (fila as any).postulacion_id
+        ? `Vuelve a la fila: /fondo/${(fila as any).postulacion_id}#${anclaRendicion(tabla as TablaRendicion, filaId)}`
+        : "",
+      "",
+      "— La fila sigue existiendo aunque este caso se cierre: el caso es la decisión de ocuparse, no el dato.",
+    ].filter(Boolean).join("\n"),
+  }).select("id").single();
+  if (error || !pub) return { error: error?.message || "No se pudo crear el caso." };
+
+  const postId = (fila as any).postulacion_id;
+  if (postId) {
+    await supabase.from("publicacion_vinculos").insert({
+      publicacion_id: pub.id, entidad_tipo: "postulacion", entidad_id: postId,
+    });
+    await supabase.from("actividad").insert({
+      entidad_tipo: "postulacion", entidad_id: postId, actor_id: user.id, tipo: "tarea",
+      detalle: { mensaje: `abrió un caso desde ${meta.etiqueta} (${rotulo})` },
+    });
+  }
+
+  /* Se anota en la fila. Si esto falla el caso YA existe, así que se devuelve
+     su id igual y se dice qué pasó: callarlo dejaría al botón ofreciendo abrir
+     otro caso sobre lo mismo. */
+  const { error: eLink } = await supabase.from(tabla).update({ caso_id: pub.id }).eq("id", filaId);
+
+  revalidatePath("/");
+  if (postId) revalidatePath(`/fondo/${postId}`);
+  if (eLink) return { id: pub.id as string, error: "Caso creado, pero no quedó anotado en la fila: " + eLink.message };
+  return { id: pub.id as string };
 }
 
 /* La lectura que alimenta el pop-up de las cinco. Misma forma que
@@ -2928,6 +3014,50 @@ export async function fijarComprobanteRhe(id: string, postulacionId: string, url
   return {};
 }
 
+/* ── LOS DOS EJES DE UNA FACTURA O DE UNA DJ, DESDE LA FILA ──
+ *
+ * Los RHE se clasifican en la propia lista con dos desplegables; las facturas
+ * y las declaraciones juradas obligaban a abrir el formulario de edición,
+ * cambiar y guardar. Tres clics extra por fila, y en PO-003 hay diez facturas
+ * seguidas del mismo rubro: a ese precio la clasificación se pospone, y sin
+ * rubro la conciliación no reparte nada.
+ *
+ * `fijarEjesRhe` ya hace esto para los recibos y se queda como está: su tabla
+ * tiene reglas propias (permiso, liquidación) que no aplican aquí.
+ */
+export async function fijarEjesRendicion(tabla: string, id: string, ejes: {
+  postulacionId: string; etapa?: string | null; rubroItem?: string | null;
+}) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  /* Solo estas dos: `movimiento_banco` y `estado_cuenta` no tienen ejes —un
+     retiro del banco no se clasifica, se justifica con el gasto que lo
+     respalda— y `rhe` tiene su propia acción. */
+  if (!["comprobante", "gasto_dj"].includes(tabla)) {
+    return { error: "Esa tabla no se clasifica por etapa y rubro." };
+  }
+  const { data: perfil } = await supabase.from("perfiles")
+    .select("es_admin,es_finanzas").eq("id", user.id).maybeSingle();
+  if (!(perfil?.es_admin || perfil?.es_finanzas)) {
+    return { error: "Solo administración o finanzas clasifica los gastos." };
+  }
+
+  const patch: any = {};
+  if (ejes.etapa !== undefined) patch.etapa = ejes.etapa || null;
+  if (ejes.rubroItem !== undefined) patch.rubro_item = ejes.rubroItem || null;
+  if (!Object.keys(patch).length) return {};
+
+  /* `.select()` de cinturón: un update bloqueado por RLS devuelve cero filas y
+     ningún error, y el desplegable se quedaría enseñando el valor nuevo hasta
+     recargar. */
+  const { data, error } = await supabase.from(tabla).update(patch).eq("id", id).select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "No se pudo guardar: el permiso de la base lo rechazó." };
+  revalidatePath(`/fondo/${ejes.postulacionId}`);
+  return {};
+}
+
 /* Fijar los ejes a VARIOS RHE de golpe (los de una persona, por lo general).
    La mayoría de los RHE de una misma persona van a la misma actividad y rubro,
    así que asignarlos en lote ahorra decenas de clics. */
@@ -3961,17 +4091,50 @@ export async function editarComentario(comentarioId: string, pubId: string, cuer
   const imgs = imagenes ? imagenes.filter(Boolean).slice(0, 6) : null;
   // Válido si tiene texto O al menos una imagen (un comentario puede ser solo foto).
   if (!texto && !(imgs && imgs.length)) return { error: "El comentario no puede quedar vacío." };
-  const { data: com } = await supabase.from("comentarios")
-    .select("autor_id,publicacion_id,objeto_id").eq("id", comentarioId).single();
+  /* ── LAS ONCE PUERTAS, TAMBIÉN AL EDITAR ──
+     Esto leía tres columnas —autor, publicación, objeto— y revalidaba una de
+     dos rutas. Con once dueños posibles, editar un comentario de una factura
+     refrescaba `/caso/undefined`: el texto cambiaba en la base y la pantalla
+     de al lado seguía enseñando el viejo hasta que alguien recargara a mano.
+     Se piden todas y se refresca la que toque. Las opcionales van en su propio
+     `select` de reintento: si la migración de la rendición no está corrida,
+     PostgREST rechaza la consulta ENTERA y editar dejaría de funcionar hasta
+     en los casos, que no tienen nada que ver. */
+  const BASE = "autor_id,publicacion_id,objeto_id,equipamiento_id,prestamo_id,postulacion_id";
+  const EXTRA = ",movimiento_caja_id,comprobante_id,estado_cuenta_id,rhe_id,gasto_dj_id,movimiento_banco_id";
+  let { data: com, error: eSel } = await supabase.from("comentarios")
+    .select(BASE + EXTRA).eq("id", comentarioId).maybeSingle();
+  if (eSel) {
+    ({ data: com } = await supabase.from("comentarios")
+      .select(BASE).eq("id", comentarioId).maybeSingle());
+  }
   if (!com) return { error: "Comentario no encontrado." };
-  if (com.autor_id !== user.id) return { error: "Solo el autor puede editar su comentario." };
+  if ((com as any).autor_id !== user.id) return { error: "Solo el autor puede editar su comentario." };
   const upd: any = { cuerpo: texto || "📷", editado_en: new Date().toISOString() };
   if (imgs) upd.imagenes = imgs;
-  const { error } = await supabase.from("comentarios").update(upd).eq("id", comentarioId);
+  /* `.select()` de cinturón: un update bloqueado por RLS devuelve cero filas y
+     ningún error, y la edición «se guardaría» hasta recargar. */
+  const { data: tocadas, error } = await supabase.from("comentarios")
+    .update(upd).eq("id", comentarioId).select("id");
   if (error) return { error: error.message };
-  /* La ruta se deduce del propio comentario: desde que también cuelgan de un
-     objeto, el `pubId` que manda el cliente puede no ser una publicación. */
-  revalidatePath(com.objeto_id ? `/objeto/${com.objeto_id}` : `/caso/${com.publicacion_id || pubId}`);
+  if (!tocadas?.length) return { error: "No se pudo guardar: el permiso de la base lo rechazó." };
+
+  const c: any = com;
+  if (c.objeto_id) revalidatePath(`/objeto/${c.objeto_id}`);
+  else if (c.equipamiento_id) revalidatePath(`/entidad/equipamiento/${c.equipamiento_id}`);
+  else if (c.postulacion_id) revalidatePath(`/entidad/postulacion/${c.postulacion_id}`);
+  else if (c.movimiento_caja_id) revalidatePath("/caja");
+  else if (c.publicacion_id || pubId) revalidatePath(`/caso/${c.publicacion_id || pubId}`);
+  /* Las cinco de la rendición viven en la pantalla de SU fondo, y el
+     comentario no sabe cuál es: hay que preguntárselo a la fila. Una consulta
+     de más al editar, a cambio de que el resto del equipo vea el cambio sin
+     recargar. */
+  for (const [col, tabla] of [["comprobante_id","comprobante"],["estado_cuenta_id","estado_cuenta"],
+       ["rhe_id","rhe"],["gasto_dj_id","gasto_dj"],["movimiento_banco_id","movimiento_banco"]] as const) {
+    if (!c[col]) continue;
+    const { data: fila } = await supabase.from(tabla).select("postulacion_id").eq("id", c[col]).maybeSingle();
+    if ((fila as any)?.postulacion_id) revalidatePath(`/fondo/${(fila as any).postulacion_id}`);
+  }
   return {};
 }
 

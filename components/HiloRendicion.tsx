@@ -1,6 +1,10 @@
 "use client";
-import { type ReactNode } from "react";
-import { cargarRendicionRapido, comentarRendicion, toggleReaccion } from "@/app/actions";
+import { useState, type ReactNode } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { rotuloEstado, claseEstado } from "@/lib/estados";
+import { cargarRendicionRapido, comentarRendicion, toggleReaccion, editarComentario,
+  casoDeRendicion } from "@/app/actions";
 import { anclaRendicion, type TablaRendicion } from "@/lib/rendicionHilo";
 import VistaHilo from "@/components/VistaHilo";
 import Reacciones, { type Reaccion } from "@/components/Reacciones";
@@ -50,6 +54,10 @@ export default function HiloRendicion({ tabla, filaId, cabecera, children }: {
          suelto en la lista. */
       permitirResponder
       onComentar={(texto, respondeA) => comentarRendicion(tabla, filaId, texto, [], respondeA)}
+      /* Corregir lo escrito, sin tener que enmendar con un segundo comentario
+         que deja el error arriba y la aclaración abajo. La acción comprueba
+         que sea el autor; aquí el ✎ solo se le enseña a él. */
+      onEditar={(comentarioId, txt) => editarComentario(comentarioId, "", txt)}
       onReaccionarComentario={(comentarioId, emoji) =>
         toggleReaccion(null, comentarioId, emoji, null, null, null, { tabla, id: filaId })}
       reaccionesHilo={(d) => d?.reaccionesHilo || []}
@@ -85,7 +93,7 @@ export default function HiloRendicion({ tabla, filaId, cabecera, children }: {
  * Y NUNCA `overflow: hidden` aquí — recorta la paleta de emojis, que es
  * absoluta y sale fuera. Eso ya rompió las reacciones una vez.
  */
-export function AccionesFila({ tabla, filaId, reacciones, userId, nComentarios, extra }: {
+export function AccionesFila({ tabla, filaId, reacciones, userId, nComentarios, extra, caso }: {
   tabla: TablaRendicion;
   filaId: string;
   reacciones?: Reaccion[];
@@ -95,13 +103,35 @@ export function AccionesFila({ tabla, filaId, reacciones, userId, nComentarios, 
   nComentarios?: number;
   /** Lo que la lista quiera añadir a la derecha (editar, borrar…). */
   extra?: ReactNode;
+  /** El caso abierto desde esta fila, si lo hay, con su estado para el pill. */
+  caso?: { id: string; estado?: string | null; tipo?: string | null } | null;
 }) {
+  const router = useRouter();
+  const [ocupado, setOcupado] = useState(false);
+  const [err, setErr] = useState("");
+
+  /* No navega al crearlo: se queda en la lista y la fila pasa a enseñar
+     «📋 caso». Saltar al caso recién creado saca de la revisión a quien va por
+     la sexta de veintiséis filas, y volver es empezar otra vez. El enlace
+     queda ahí para cuando quiera ir. */
+  const abrirCaso = async () => {
+    if (ocupado) return;
+    setOcupado(true); setErr("");
+    const r: any = await casoDeRendicion(tabla, filaId);
+    setOcupado(false);
+    /* «Ya existía» no es un error: es la respuesta correcta al segundo clic.
+       Se dice, y el enlace aparece igual. */
+    if (r?.error) { setErr(r.error); if (!r?.id) return; }
+    router.refresh();
+  };
+
   return (
     <span style={{
       display: "grid", flex: "none", alignItems: "center", justifyItems: "center",
-      gridTemplateColumns: `minmax(0,104px) minmax(0,46px)${extra ? " minmax(0,52px)" : ""}`,
+      gridTemplateColumns: `minmax(0,104px) minmax(0,46px) minmax(0,58px)${extra ? " minmax(0,52px)" : ""}`,
       gap: 4,
-    }}>
+    }}
+      title={err || undefined}>
       {/* Reaccionar SIN abrir nada. Un 👀 es «lo vi, está bien», y es lo que
           más se hace al revisar una rendición: si cuesta tres clics no se
           hace, y el acuse de revisión —que es el dato— se pierde. */}
@@ -122,6 +152,46 @@ export function AccionesFila({ tabla, filaId, reacciones, userId, nComentarios, 
           </button>
         )}
       </HiloRendicion>
+
+      {/* ── DE LA FILA AL TRABAJO ──
+          Comentar deja constancia; el caso reparte el trabajo. Son dos cosas y
+          por eso son dos botones: una observación escrita en el hilo no tiene
+          responsable ni plazo ni sale en ningún tablero, y a los tres meses
+          nadie recuerda que estaba pendiente.
+          Con caso abierto es un ENLACE; sin él, el botón que lo abre — nunca
+          los dos, para que no haya que adivinar cuál hace qué. */}
+      {caso?.id ? (
+        /* ── EL ESTADO ES UN PUNTO, NO UNA PALABRA ──
+           Llevaba el rótulo completo dentro de un pill, y «Sin Resolver» no
+           cabe en la celda: se desbordaba encima del 💬 de al lado. Es el mismo
+           fallo de siempre —contenido `nowrap` en una rejilla de ancho fijo—
+           y ensanchar la columna lo habría trasladado a las cinco listas.
+           El punto lleva EL MISMO color que el pill del tablero, así que se
+           aprende una vez y sirve en las dos pantallas; el rótulo exacto está
+           en el título, a un segundo de distancia. Un punto de color dice
+           «¿avanza esto?» igual de rápido que la palabra, en una décima del
+           ancho. */
+        <Link href={`/caso/${caso.id}`} className="dato-btn"
+          style={{ color: "var(--accent)", whiteSpace: "nowrap", textDecoration: "none",
+            display: "inline-flex", alignItems: "center", gap: 4, maxWidth: "100%" }}
+          title={caso.estado
+            ? `Caso ${rotuloEstado(caso.estado, caso.tipo || "tarea").toLowerCase()} sobre esta fila. El estado dice si alguien está trabajando en ello.`
+            : "Hay un caso abierto sobre esta fila."}>
+          📋
+          {caso.estado && (
+            <span className={`st-${claseEstado(caso.estado, caso.tipo || "tarea")}`}
+              style={{ width: 7, height: 7, borderRadius: "50%", flex: "none",
+                /* El `st-*` trae el color del texto; el punto se pinta con él
+                   para no depender de un segundo mapa de colores que se pueda
+                   desincronizar del tablero. */
+                background: "currentColor" }} />
+          )}
+        </Link>
+      ) : (
+        <button className="dato-btn" disabled={ocupado} onClick={abrirCaso}
+          title="Abrir un caso para atender esta fila, con responsable y plazo"
+          style={{ opacity: ocupado ? .5 : .5, whiteSpace: "nowrap" }}>＋ caso</button>
+      )}
 
       {extra}
     </span>

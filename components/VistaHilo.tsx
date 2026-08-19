@@ -58,7 +58,7 @@ export default function VistaHilo({
   cargar, listo, selComentarios, selReaccionesPorComentario, selPerfiles, selUserId,
   cabecera, onComentar, onReaccionarComentario,
   conHilo = true, claseCaja = "",
-  permitirResponder = false, reaccionesHilo, onReaccionarHilo,
+  permitirResponder = false, reaccionesHilo, onReaccionarHilo, onEditar,
   textoVacio = "Aún no hay comentarios.", placeholder = "Comentar al vuelo…  (@ para mencionar)",
 }: {
   /** Disparador: recibe `abrir` y devuelve el elemento clicable de la superficie. */
@@ -93,6 +93,10 @@ export default function VistaHilo({
   onComentar?: (texto: string, respondeA: string | null) => Promise<any>;
   onReaccionarComentario?: (comentarioId: string, emoji: string) => Promise<any>;
   permitirResponder?: boolean;
+  /** Editar un comentario ya escrito. Si falta, el ✎ no aparece —una pantalla
+   *  que no sabe editar no debe ofrecerlo—. La acción decide quién puede: aquí
+   *  solo se enseña al autor, que es la misma regla, dicha antes de pulsar. */
+  onEditar?: (comentarioId: string, texto: string) => Promise<any>;
   /** Si se pasa, muestra una fila de reacciones al HILO (p. ej. la postulación). */
   reaccionesHilo?: (d: any) => RxItem[];
   onReaccionarHilo?: (emoji: string) => Promise<any>;
@@ -103,6 +107,10 @@ export default function VistaHilo({
   const [data, setData] = useState<any>(null);
   const [texto, setTexto] = useState("");
   const [respondeA, setRespondeA] = useState<string | null>(null);
+  /* Qué comentario está en edición y con qué texto. Uno a la vez: dos cajas
+     abiertas en un hilo largo es pedir que se guarde en la equivocada. */
+  const [editando, setEditando] = useState<string | null>(null);
+  const [txtEd, setTxtEd] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
@@ -222,11 +230,50 @@ export default function VistaHilo({
                               <button className="vo-com-resp-btn" title="Responder"
                                 onClick={() => { setRespondeA(c.id); setTimeout(() => finRef.current?.scrollIntoView({ behavior: "smooth" }), 40); }}>↳</button>
                             )}
+                            {/* ── CORREGIR LO ESCRITO ──
+                                El hilo faltaba entero: se podía escribir y no
+                                enmendar. En una conversación de trabajo eso
+                                obliga a la corrección por segundo comentario
+                                («*quise decir…»), que deja el error arriba y la
+                                enmienda abajo — y quien lea dentro de un año
+                                encontrará primero lo equivocado.
+                                Solo al autor y solo si la pantalla sabe editar. */}
+                            {onEditar && c.autor_id === userId && (
+                              <button className="vo-com-resp-btn" title="Editar mi comentario"
+                                onClick={() => { setEditando(c.id); setTxtEd(c.cuerpo || ""); }}>✎</button>
+                            )}
+                            {/* Que fue editado se DICE. Un texto que cambia sin
+                                dejar rastro convierte el hilo en algo que no se
+                                puede citar. */}
+                            {c.editado_en && (
+                              <span className="vo-com-t" title={`Editado ${fechaHilo(c.editado_en)}`}>· editado</span>
+                            )}
                           </div>
                           {padre && (
                             <div className="vo-com-resp">↳ a <b>{(padre as any).autor?.nombre?.split(" ")[0] || "un comentario"}</b></div>
                           )}
-                          {c.cuerpo && <div className="vo-com-txt">{c.cuerpo}</div>}
+                          {editando === c.id ? (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 6, margin: "4px 0" }}>
+                              <textarea value={txtEd} onChange={e => setTxtEd(e.target.value)} rows={3} autoFocus
+                                /* Esc cancela: es lo que hace todo lo demás que se
+                                   abre encima en esta pantalla. */
+                                onKeyDown={e => { if (e.key === "Escape") { e.stopPropagation(); setEditando(null); } }}
+                                style={{ width: "100%", background: "var(--bg)", color: "var(--text)",
+                                  border: "1px solid var(--accent)", borderRadius: 8, padding: "6px 9px",
+                                  fontSize: 13, fontFamily: "inherit", resize: "vertical" }} />
+                              <div style={{ display: "flex", gap: 6 }}>
+                                <button className="btn" disabled={ocupado || !txtEd.trim()}
+                                  style={{ fontSize: 11.5, padding: "4px 12px" }}
+                                  onClick={async () => {
+                                    const r: any = await onEditar!(c.id, txtEd);
+                                    if (r?.error) { alert(r.error); return; }
+                                    setEditando(null); recargar();
+                                  }}>Guardar</button>
+                                <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: "4px 10px" }}
+                                  onClick={() => setEditando(null)}>Cancelar</button>
+                              </div>
+                            </div>
+                          ) : c.cuerpo ? <div className="vo-com-txt">{c.cuerpo}</div> : null}
                           <LinkPreviews texto={c.cuerpo} />
                           {(c.imagenes || []).length > 0 && (
                             <div className="vo-com-imgs">

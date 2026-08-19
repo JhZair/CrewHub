@@ -1094,6 +1094,25 @@ a{color:inherit;text-decoration:none}
 .plg-cab:hover{background:rgba(255,255,255,.02)}
 .plg-flecha{flex:none;width:11px;font-size:10px;color:var(--dim)}
 .plg-tit{font-size:13px;font-weight:800;color:var(--text);letter-spacing:.2px}
+/* ── EL PRIMER NIVEL EN VERSALITAS ──
+ *
+ * Con las declaraciones juradas y las facturas metidas dentro de «Rendición del
+ * fondo», la pantalla pasó a tener dos niveles de plegable con exactamente el
+ * mismo aspecto: «Conciliación» y «Facturas y boletas» se leían como hermanos
+ * cuando uno contiene al otro. La jerarquía estaba en la sangría y en poco más,
+ * y la sangría se pierde en cuanto hay que recorrer la lista con la vista.
+ *
+ * Mayúsculas y espaciado de letra solo en el nivel 1. No es decoración: es la
+ * señal más barata que distingue «sección» de «apartado» sin añadir una línea,
+ * un color ni un icono más — la cabecera ya lleva emoji, título y resumen.
+ * El `letter-spacing` no es opcional con versalitas: sin él las mayúsculas se
+ * apelmazan y se leen peor que las minúsculas que vinieron a sustituir.
+ *
+ * `text-transform` y no textos en mayúscula en el código: el título sigue
+ * escrito «Rendición del fondo» en su sitio, así que se puede buscar, y el día
+ * que esto no guste se revierte con una línea.
+ */
+.plg.n1>.plg-cab>.plg-tit{text-transform:uppercase;letter-spacing:.8px;font-size:12px}
 .plg-res{margin-left:auto;font-size:11.5px;color:var(--muted);text-align:right}
 .plg.on .plg-cab{border-bottom:1px solid var(--border)}
 .plg-cuerpo{padding:12px 14px 14px}
@@ -4257,3 +4276,46 @@ mark.bq-marca{
 .s4-quitar{flex:none;background:none;border:none;color:var(--red);cursor:pointer;
   font-size:12px;line-height:1;padding:0 2px}
 .s4-quitar:disabled{opacity:.4;cursor:not-allowed}
+
+/* ── FILA DE FACTURA: DOS RENGLONES ALINEADOS ──
+ *
+ * ⚠ PREFIJO `fac-`, NO `cmp-`. Esto empezó como `.cmp-fila` y salió centrado:
+ * `.cmp-fila` YA EXISTE desde CompromisosActa (línea ~3548) con
+ * `align-items:center`, y la cascada no lo pisaba porque mi regla no nombraba
+ * esa propiedad. Resultado: cada renglón se centraba y la lista quedaba con el
+ * margen izquierdo en zigzag, sin un solo error en ninguna parte.
+ * `cmp-` ya lo comparten dos componentes distintos —`.cmp-cab` está definida
+ * dos veces en este archivo— así que el tercero no se suma: se lleva el suyo.
+ *
+ * ── EL RENGLÓN DE ARRIBA ES UNA REJILLA, NO UN FLEX ──
+ * Con flex, cada campo empieza donde acaba el anterior, así que un proveedor
+ * largo empuja la fecha de la fila siguiente y las columnas dejan de leerse
+ * como columnas. Con `grid` de anchos fijos, la fecha de las diez facturas cae
+ * en la misma vertical aunque a una le falte el RUC o el concepto: la celda
+ * vacía guarda el sitio. Es la misma lección de CajaPanel, tercera vez.
+ */
+.fac-fila{display:flex;flex-direction:column;gap:5px;padding:8px 2px;
+  align-items:stretch;border-bottom:1px solid var(--border);font-size:12.5px}
+.fac-fila:last-child{border-bottom:none}
+.fac-fila:hover{background:rgba(124,92,255,.05)}
+
+.fac-l1{display:grid;align-items:center;gap:9px;min-width:0;
+  /* fecha · tipo · proveedor · serie · RUC · concepto · quién · importe · pdf */
+  grid-template-columns:64px 62px minmax(0,1.5fr) 96px 148px minmax(0,2fr) 104px 86px 30px}
+/* Sin envolver y recortando: en una rejilla, un texto largo que no cabe debe
+   cortarse en SU celda. Si envuelve, estira la fila entera hacia abajo y
+   deshace la alineación que la rejilla venía a dar. */
+.fac-l1 > *{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* El de acciones NO envuelve: los controles se quedan donde el ojo los dejó en
+   la fila anterior. Que cambien de sitio según lo que quepa es cómo se pulsa
+   el ✕ creyendo que era el ✎.
+   Sangrado a la altura del proveedor: así se lee como «lo que se hace con
+   ESTA factura» y no como una fila suelta. */
+.fac-l2{display:flex;gap:8px;align-items:center;flex-wrap:nowrap;min-width:0;
+  padding-left:135px}
+@media (max-width:900px){
+  .fac-l1{grid-template-columns:64px minmax(0,1fr) 86px}
+  .fac-l1 > :nth-child(n+4):nth-child(-n+7){display:none}
+  .fac-l2{padding-left:0}
+}

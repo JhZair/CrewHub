@@ -1,6 +1,8 @@
 "use client";
 import { useState } from "react";
 import { metaRubro, nombreRubro } from "@/lib/rubros";
+import { gastosDelFondo, porOrigen, detalleOrigen, META_ORIGEN, ORIGENES,
+  type Gasto, type OrigenGasto } from "@/lib/ejecutado";
 
 /* CONCILIACIÓN — lo ejecutado contra lo presupuestado (versión vigente).
  *
@@ -15,9 +17,21 @@ import { metaRubro, nombreRubro } from "@/lib/rubros";
  * presupuesta por rubro, no por fase, así que la vista por etapa no lleva
  * columna «presupuestado»: es la distribución del ejecutado.
  *
- * Alcance honesto: el ejecutado suma los RHE (pagos con recibo por honorarios).
- * Los gastos pagados directo del banco sin RHE no entran aquí. Los RHE sin
- * rubro/etapa asignado tampoco reparten —se avisan aparte—.
+ * ── EL EJECUTADO SON LAS TRES FORMAS DE RENDIR, NO UNA ──
+ * Antes sumaba solo los RHE, y no era descuido: cuando se escribió, las
+ * facturas y las declaraciones juradas no existían como tabla. Pero el
+ * resultado era un número llamado «ejecutado» que en PO-003 decía S/ 98,270
+ * sobre un gasto sustentado de S/ 115,811 — y dejaba fuera la PC de edición de
+ * S/ 7,588, el gasto individual más grande del fondo, sin rubro que la
+ * recibiera. Un total que omite un tercio no es incompleto: es incorrecto,
+ * porque nadie que lo lea va a sospechar que le falta algo.
+ * Ahora suma las tres (lib/ejecutado.ts) y cada fila dice de dónde sale: un
+ * rubro cubierto con facturas y otro cubierto con DJ no se leen igual ante
+ * DAFO, porque las DJ tienen tope y las facturas no.
+ *
+ * Sigue fuera lo pagado directo del banco sin ningún comprobante: eso no es
+ * gasto sustentado, es plata que salió — y vive en Movimientos del banco.
+ * Los gastos sin rubro/etapa asignado tampoco reparten: se avisan aparte.
  */
 
 type ItemP = { rubro?: string | null; cantidad?: number; costo_unit?: number };
@@ -28,13 +42,17 @@ const money = (n: number) => "S/ " + Math.round(n || 0).toLocaleString("es-PE");
 const pct = (a: number, b: number) => (b > 0 ? a / b : 0);
 
 export default function ConciliacionFondo({
-  items, esVigente, postuladoEn, rhe, etapas, estimulo,
+  items, esVigente, postuladoEn, rhe, comprobantes = [], dj = [], etapas, estimulo,
 }: {
   items: ItemP[];
   /** true si `items` viene de la versión vigente; false si es el presupuesto vivo (aún sin versión). */
   esVigente: boolean;
   postuladoEn: string | null;
   rhe: RheR[];
+  /** Las otras dos formas de rendir. Opcionales para que una pantalla que
+   *  todavía no las pase siga funcionando —enseñando de menos, no mal—. */
+  comprobantes?: { rubro_item?: string | null; etapa?: string | null; importe?: number }[];
+  dj?: { rubro_item?: string | null; etapa?: string | null; importe?: number }[];
   /** Etapas del cronograma del fondo (Pre/Prod/Post), en orden, para la vista por etapa. */
   etapas: Opcion[];
   estimulo: number | null;
@@ -46,12 +64,16 @@ export default function ConciliacionFondo({
     if (!i.rubro) continue;
     presPorRubro.set(i.rubro, (presPorRubro.get(i.rubro) || 0) + (i.cantidad || 0) * (i.costo_unit || 0));
   }
+  /* Las tres tablas, en una sola lista y sin perder de dónde vino cada gasto. */
+  const gastos: Gasto[] = gastosDelFondo(rhe as any[], comprobantes as any[], dj as any[]);
   const ejecPorRubro = new Map<string, number>();
+  const gastosPorRubro = new Map<string, Gasto[]>();
   let ejecSinRubro = 0, nSinRubro = 0;
-  for (const r of rhe) {
-    const m = Number(r.monto || 0);
-    if (!r.rubro_item) { ejecSinRubro += m; nSinRubro++; continue; }
-    ejecPorRubro.set(r.rubro_item, (ejecPorRubro.get(r.rubro_item) || 0) + m);
+  const sinRubro: Gasto[] = [];
+  for (const g of gastos) {
+    if (!g.rubro_item) { ejecSinRubro += g.monto; nSinRubro++; sinRubro.push(g); continue; }
+    ejecPorRubro.set(g.rubro_item, (ejecPorRubro.get(g.rubro_item) || 0) + g.monto);
+    gastosPorRubro.set(g.rubro_item, [...(gastosPorRubro.get(g.rubro_item) || []), g]);
   }
 
   type Fila = { clave: string; nombre: string; rubroCod?: string; pres: number; ejec: number };
@@ -77,18 +99,17 @@ export default function ConciliacionFondo({
 
   const totPres = filas.reduce((s, f) => s + f.pres, 0);
   const totEjecRub = filas.reduce((s, f) => s + f.ejec, 0);   // ejecutado con rubro
-  const totEjec = totEjecRub + ejecSinRubro;                  // todos los RHE
+  const totEjec = totEjecRub + ejecSinRubro;                  // las tres formas de rendir
   const avanceGlobal = pct(totEjec, totPres);
 
   // ── Ejecutado por ETAPA (Pre/Prod/Post) — solo el gasto, no hay presupuesto por fase ──
   const ejecPorEtapa = new Map<string, number>();
   const nPorEtapa = new Map<string, number>();
   let ejecSinEtapa = 0, nSinEtapa = 0;
-  for (const r of rhe) {
-    const m = Number(r.monto || 0);
-    if (!r.etapa) { ejecSinEtapa += m; nSinEtapa++; continue; }
-    ejecPorEtapa.set(r.etapa, (ejecPorEtapa.get(r.etapa) || 0) + m);
-    nPorEtapa.set(r.etapa, (nPorEtapa.get(r.etapa) || 0) + 1);
+  for (const g of gastos) {
+    if (!g.etapa) { ejecSinEtapa += g.monto; nSinEtapa++; continue; }
+    ejecPorEtapa.set(g.etapa, (ejecPorEtapa.get(g.etapa) || 0) + g.monto);
+    nPorEtapa.set(g.etapa, (nPorEtapa.get(g.etapa) || 0) + 1);
   }
   type FilaEt = { clave: string; nombre: string; ejec: number; n: number; sin?: boolean };
   const filasEt: FilaEt[] = etapas
@@ -124,7 +145,33 @@ export default function ConciliacionFondo({
           {sinPres && <span style={{ color: "var(--yellow)", fontSize: 10.5, fontWeight: 700 }}>sin presup.</span>}
         </span>
         <span className="con-num">{money(f.pres)}</span>
-        <span className="con-num" style={{ color: "var(--muted)" }}>{money(f.ejec)}</span>
+        {/* ── EL EJECUTADO, CON SU PROCEDENCIA ──
+            Debajo del monto, los puntos de color dicen con qué está cubierto
+            ese rubro. No es adorno: un rubro cubierto con facturas y otro con
+            declaraciones juradas se leen distinto ante DAFO, porque las DJ
+            tienen tope y pasarse obliga a devolver plata. Con un solo número
+            los dos casos son indistinguibles.
+            Solo aparece si hay más de un origen — enseñar «100 % recibos» en
+            todas las filas sería ruido. */}
+        <span className="con-num" style={{ color: "var(--muted)", display: "block" }}>
+          {money(f.ejec)}
+          {(() => {
+            const gs = gastosPorRubro.get(f.clave) || [];
+            const p = porOrigen(gs);
+            const usados = ORIGENES.filter(o => p[o] > 0);
+            if (usados.length < 2) return null;
+            return (
+              <span style={{ display: "block", marginTop: 2, fontSize: 9.5, whiteSpace: "nowrap" }}
+                title={detalleOrigen(gs, money)}>
+                {usados.map(o => (
+                  <span key={o} style={{ color: META_ORIGEN[o].col, marginLeft: 3 }}>
+                    {META_ORIGEN[o].ico}{Math.round(p[o] / f.ejec * 100)}%
+                  </span>
+                ))}
+              </span>
+            );
+          })()}
+        </span>
         <span className="con-num" style={{ color: sobregiro ? "var(--red)" : saldo === 0 ? "var(--dim)" : "var(--teal)" }}>
           {sobregiro ? "−" : ""}{money(Math.abs(saldo))}
         </span>
@@ -146,7 +193,15 @@ export default function ConciliacionFondo({
       {/* Cabecera: el panorama en una línea */}
       <div className="linked" style={{ marginBottom: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, padding: "10px 12px" }}>
         <Stat k="Presupuesto vigente" v={money(totPres)} />
-        <Stat k="Ejecutado (RHE)" v={money(totEjec)} col="var(--muted)" />
+        {/* ── EL RÓTULO TAMBIÉN ERA PARTE DEL CÁLCULO ──
+            Decía «Ejecutado (RHE)» y el número pasó a incluir las tres formas
+            de rendir. Un rótulo que se queda atrás miente peor que una cifra
+            mal sumada: la cifra se puede comprobar, el rótulo se cree. Quien
+            leyera «(RHE) S/ 115,812» habría ido a buscar el descuadre a la
+            lista de recibos, donde no está.
+            Sin paréntesis: el desglose por origen está en la nota al pie y en
+            cada fila, que es donde cabe sin mentir. */}
+        <Stat k="Ejecutado" v={money(totEjec)} col="var(--muted)" />
         <Stat k="Avance" v={`${Math.round(avanceGlobal * 100)}%`} col={avanceGlobal > 1 ? "var(--red)" : "var(--green)"} />
         <Stat k="Saldo por ejecutar" v={money(totPres - totEjec)} col={totPres - totEjec < 0 ? "var(--red)" : "var(--teal)"} />
       </div>
@@ -206,7 +261,17 @@ export default function ConciliacionFondo({
 
       {nSinRubro > 0 && (
         <div style={{ color: "var(--yellow)", fontSize: 11, marginTop: 10, lineHeight: 1.55 }}>
-          ⚠ {nSinRubro} RHE por {money(ejecSinRubro)} aún <b>sin rubro</b> — no están repartidos arriba. Asígnalos en 🧾 Rendición para que la conciliación cuadre.
+          {/* Antes decía «N RHE». Ahora el ejecutado son tres tablas, y decir
+              «RHE» mandaría a buscar en el sitio equivocado a quien tenga una
+              factura sin rubro. Se enumera de dónde sale cada uno. */}
+          ⚠ {nSinRubro} {nSinRubro === 1 ? "gasto" : "gastos"} por {money(ejecSinRubro)} aún <b>sin rubro</b> — no están repartidos arriba
+          {(() => {
+            const p = porOrigen(sinRubro);
+            const partes = ORIGENES.filter(o => p[o] > 0)
+              .map(o => `${money(p[o])} en ${META_ORIGEN[o].txt}`);
+            return partes.length > 1 ? ` (${partes.join(" · ")})` : "";
+          })()}
+          . Asígnalos en 🧾 Rendición para que la conciliación cuadre.
         </div>
       )}
       </>)}
@@ -218,7 +283,7 @@ export default function ConciliacionFondo({
       </div>
       <div className="con-grid">
         <div className="con-et-lbls">
-          <span>Etapa</span><span>Ejecutado</span><span>RHE</span><span>% del ejecutado</span>
+          <span>Etapa</span><span>Ejecutado</span><span>Gastos</span><span>% del ejecutado</span>
         </div>
         {filasEt.map(f => {
           const share = pct(f.ejec, totEjecEt);
@@ -236,7 +301,7 @@ export default function ConciliacionFondo({
         })}
         {filasEt.length === 0 && (
           <div style={{ color: "var(--dim)", fontSize: 12.5, padding: "8px 0" }}>
-            Ningún RHE tiene etapa asignada todavía. Asígnalas en 🧾 Rendición (vista «por etapa»).
+            Ningún gasto tiene etapa asignada todavía —ni recibos, ni facturas, ni declaraciones—. Asígnalas en 🧾 Rendición (vista «por etapa»).
           </div>
         )}
         {filasEt.length > 0 && (
@@ -252,7 +317,19 @@ export default function ConciliacionFondo({
 
       {/* Nota general del alcance (ambas vistas) */}
       <div style={{ color: "var(--dim)", fontSize: 11, marginTop: 10, lineHeight: 1.55 }}>
-        El ejecutado suma solo los <b>RHE</b> (pagos con recibo por honorarios). Otros gastos pagados directo de la cuenta se ven en 🏦 Movimientos del banco.
+        {/* La nota al pie es donde se declara el alcance. Antes decía «solo los
+            RHE» y era verdad; ahora sería falsa, y una nota de alcance
+            desactualizada es peor que no tenerla — se lee como garantía. */}
+        El ejecutado suma las <b>tres formas de rendir</b>:{" "}
+        {ORIGENES.map((o, i) => (
+          <span key={o}>
+            {i > 0 ? " · " : ""}
+            <b style={{ color: META_ORIGEN[o].col }} title={META_ORIGEN[o].ayuda}>
+              {META_ORIGEN[o].ico} {money(porOrigen(gastos)[o])} en {META_ORIGEN[o].txt}
+            </b>
+          </span>
+        ))}
+        . Lo que salió de la cuenta <b>sin ningún comprobante</b> no cuenta como ejecutado —no está sustentado— y se ve en 🏦 Movimientos del banco.
         {estimulo ? <> El estímulo desembolsado fue <b style={{ color: "var(--muted)" }}>{money(estimulo)}</b>.</> : null}
       </div>
     </div>

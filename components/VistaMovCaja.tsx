@@ -1,6 +1,6 @@
 "use client";
 import { type ReactNode } from "react";
-import { cargarMovCajaRapido, comentarMovCaja, toggleReaccion } from "@/app/actions";
+import { cargarMovCajaRapido, comentarMovCaja, toggleReaccion, editarComentario } from "@/app/actions";
 import { money, ICO_CAJA } from "@/lib/caja";
 import VistaHilo from "@/components/VistaHilo";
 import VerAdjunto from "@/components/VerAdjunto";
@@ -38,6 +38,10 @@ export default function VistaMovCaja({ movId, children }: {
       selUserId={(d) => d?.userId || ""}
       permitirResponder
       onComentar={(texto, respondeA) => comentarMovCaja(movId, texto, [], respondeA)}
+      /* Corregir lo escrito, sin tener que enmendar con un segundo comentario
+         que deja el error arriba y la aclaración abajo. La acción comprueba
+         que sea el autor; aquí el ✎ solo se le enseña a él. */
+      onEditar={(comentarioId, txt) => editarComentario(comentarioId, "", txt)}
       onReaccionarComentario={(comentarioId, emoji) =>
         toggleReaccion(null, comentarioId, emoji, null, null, movId)}
       /* Reaccionar al movimiento en sí, no solo a sus comentarios: un 👀 es

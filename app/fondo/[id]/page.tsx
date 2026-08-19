@@ -25,6 +25,7 @@ import CompromisosActa from "@/components/CompromisosActa";
 import { integrantesDeFondo } from "@/lib/equipoFondo";
 import { urlPlataforma, PLAT } from "@/lib/plataformas";
 import { hilosDeFilas } from "@/lib/rendicionHilo";
+import { gastosDelFondo, ayudaRubro } from "@/lib/ejecutado";
 
 /* ── LA EJECUCIÓN DEL FONDO — la segunda vida de un proyecto ──
  *
@@ -302,8 +303,15 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
   /* Se dice UNA vez, no cinco: las cinco fallan por lo mismo —un solo archivo
      SQL sin correr— y repetir el aviso en cada bloque enseña a ignorarlo. */
   const hiloError = [hCmp, hEct, hRhe, hDj, hMb].map(h => h.error).find(Boolean) || null;
-  const conHilo = (xs: any[], h: { conteo: Map<string, number>; reacciones: Map<string, any[]> }) =>
-    xs.map(x => ({ ...x, nComentarios: h.conteo.get(x.id) || 0, reacciones: h.reacciones.get(x.id) || [] }));
+  const conHilo = (xs: any[], h: {
+    conteo: Map<string, number>; reacciones: Map<string, any[]>;
+    casos: Map<string, { id: string; estado?: string | null; tipo?: string | null }>;
+  }) => xs.map(x => ({
+    ...x,
+    nComentarios: h.conteo.get(x.id) || 0,
+    reacciones: h.reacciones.get(x.id) || [],
+    caso: h.casos.get(x.id) || null,
+  }));
 
   // Bitácora del fondo con el actor ya resuelto a nombre (perfilesCat).
   const nombrePerfil = (id: string | null) =>
@@ -348,7 +356,26 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
   const rubrosFondo = rubrosDeItems.length
     ? rubrosDeItems.map((clave: any) => ({ clave, nombre: nombreRubro(clave) }))
     : rubrosDe(categoria);
-  const fondoRubros = rubrosFondo.map((r: any) => ({ id: r.clave, etiqueta: r.nombre }));
+  /* ── CADA RUBRO, CON LO QUE CONTIENE Y LO QUE LE QUEDA ──
+     El desplegable decía «Equipo del proyecto» y ya. Quien clasifica un recibo
+     no sabía si ahí van los honorarios o los equipos, ni cuánto queda de esa
+     partida — y averiguarlo obligaba a abrir el presupuesto en otra pestaña.
+     A los veintiséis recibos eso no se hace: se elige por el nombre.
+     El `ayuda` se calcula UNA vez aquí, con el presupuesto y las tres formas de
+     rendir ya en la mano, y viaja a los tres desplegables que lo ofrecen. */
+  const fondoRubros = rubrosFondo.map((r: any) => {
+    const items = preItemsRaw.filter((i: any) => i.rubro === r.clave);
+    const pres = items.reduce((s: number, i: any) => s + (Number(i.cantidad) || 0) * (Number(i.costo_unit) || 0), 0);
+    const ejec = gastosDelFondo(rheFondo as any[], comprobantes as any[], gastosDj as any[])
+      .filter(g => g.rubro_item === r.clave).reduce((s, g) => s + g.monto, 0);
+    return {
+      id: r.clave, etiqueta: r.nombre,
+      ayuda: ayudaRubro({
+        pres, ejec, money: fmt,
+        lineas: items.map((i: any) => String(i.concepto || "").trim()).filter(Boolean),
+      }),
+    };
+  });
 
   // Estado de la ejecución, en una línea.
   const plazo = plazoRendicion(ent);
@@ -484,8 +511,37 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
               </Plegable>
             </div>
             <div style={{ scrollMarginTop: 12 }}>
+              {/* ── EL RESUMEN CUENTA LO QUE HAY DENTRO, Y AHORA HAY CUATRO ──
+                  Decía «26 RHE · S/ 98,270 · 15 estados». Con las DJ y las
+                  facturas dentro, ese resumen se quedaba corto justo en la
+                  cifra que importa: cuánto del estímulo está sustentado.
+                  Se enseña la SUMA de las tres formas de rendir —recibos,
+                  declaraciones y comprobantes— y lo que falta para los
+                  S/ 200,000. Es la única línea de toda la página que contesta
+                  «¿cómo vamos?» sin abrir nada. */}
               <Plegable id={`fondo:${params.id}:rendicion`} titulo="🧾 Rendición del fondo" abiertoPorDefecto={true}
-                resumen={dim(`${rheFondo.length} RHE · ${fmt(totRhe)} · ${estadosFondo.length} estado(s)${totInt ? ` · interés ${fmt(totInt)}` : ""}`)}>
+                resumen={(() => {
+                  const estimulo = ent.monto_adjudicado ? parseFloat(ent.monto_adjudicado) : 0;
+                  const sustentado = totRhe + usadoDj + totCmp;
+                  const falta = estimulo - sustentado;
+                  return (
+                    <>
+                      <span style={{ color: "var(--muted)" }}>
+                        {rheFondo.length} RHE · {gastosDj.length} DJ · {comprobantes.length} facturas
+                      </span>
+                      <span style={{ marginLeft: 8, color: "var(--teal)", fontWeight: 700 }}>
+                        {fmt(sustentado)}
+                      </span>
+                      {estimulo > 0 && (
+                        <span style={{ marginLeft: 8, fontWeight: 600,
+                          color: falta > 0 ? "var(--yellow)" : "var(--green)" }}
+                          title={`De los ${fmt(estimulo)} del estímulo, ${fmt(sustentado)} están sustentados entre recibos, declaraciones juradas y comprobantes.`}>
+                          {falta > 0 ? `faltan ${fmt(falta)}` : "✓ sustentado"}
+                        </span>
+                      )}
+                    </>
+                  );
+                })()}>
                 <RendicionFondo postulacionId={params.id} esAdmin={esAdmin}
                   fechaDesembolso={ent.fecha_desembolso || null}
                   montoAdjudicado={ent.monto_adjudicado ? parseFloat(ent.monto_adjudicado) : null}
@@ -493,50 +549,98 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
                   userId={user.id} hiloError={hiloError}
                   empresa={ent.emp?.nombre || null}
                   etapas={etapasFondo} rubros={fondoRubros} personas={personasCat} />
-              </Plegable>
-            </div>
-            {/* Va ANTES de la conciliación y abierto por defecto. No es
-                jerarquía visual: el resumen del plegado —«te quedan S/ X»— es
-                el dato que hay que ver sin abrir nada, porque se consulta antes
-                de subir a rodar y no cuando se rinde. */}
-            <div style={{ scrollMarginTop: 12 }}>
-              <Plegable id={`fondo:${params.id}:dj`} titulo="📝 Declaraciones juradas" abiertoPorDefecto={true}
-                /* El resumen se pinta esté el panel abierto o cerrado, así que
-                   tiene que mirar el error igual que el interior. Sin eso, una
-                   consulta caída enseñaba «quedan S/ 40,000 de S/ 40,000» en la
-                   cabecera —el tope entero libre— mientras el aviso de dentro
-                   decía lo contrario. */
-                resumen={dim(
-                  djError
-                    ? "⚠ no se pudo leer"
-                    : saldoDj.falta === "estimulo"
-                      ? "falta el monto adjudicado"
-                      : saldoDj.tope === null
-                        ? "falta cargar el tope"
-                        : saldoDj.supero
-                          ? `⚠ exceso ${fmt(saldoDj.exceso)} — a devolver`
-                          : `quedan ${fmt(saldoDj.resta ?? 0)} de ${fmt(saldoDj.tope)}`)}>
-                <SaldoDj postulacionId={params.id} saldo={saldoDj} gastos={conHilo(gastosDj, hDj) as any}
-                  etapas={etapasFondo} rubros={fondoRubros} esAdmin={esAdmin} error={djError}
-                  userId={user.id} hiloError={hiloError} />
-              </Plegable>
-            </div>
-            <div style={{ scrollMarginTop: 12 }}>
-              <Plegable id={`fondo:${params.id}:comprobantes`} titulo="🧾 Facturas y boletas" abiertoPorDefecto={false}
-                resumen={dim(cmpError ? "⚠ no se pudo leer"
-                  : comprobantes.length ? `${comprobantes.length} · ${fmt(totCmp)}`
-                  : "sin comprobantes")}>
-                <Comprobantes postulacionId={params.id} comprobantes={conHilo(comprobantes, hCmp) as any}
-                  etapas={etapasFondo} rubros={fondoRubros} esAdmin={esAdmin} error={cmpError}
-                  urlSunat={urlSunat} userId={user.id} hiloError={hiloError} />
+
+                {/* ── LAS CUATRO FORMAS DE RENDIR, JUNTAS ──
+                    Las declaraciones juradas y las facturas colgaban del panel
+                    de al lado, como si fueran otra cosa. No lo son: rendir este
+                    fondo es exactamente estas cuatro —estados de cuenta, RHE,
+                    DJ y comprobantes—, y son alternativas entre sí. Sueltas,
+                    para saber cuánto está sustentado había que sumar de tres
+                    plegables que no se leen juntos, y la pregunta «¿me conviene
+                    una DJ o busco factura?» se hacía sin ver el tope al lado.
+                    Ahora son sub-secciones de nivel 2, como los estados y los
+                    recibos, y el resumen de arriba cuenta las cuatro. */}
+              {/* Va ANTES de la conciliación y abierto por defecto. No es
+                  jerarquía visual: el resumen del plegado —«te quedan S/ X»— es
+                  el dato que hay que ver sin abrir nada, porque se consulta antes
+                  de subir a rodar y no cuando se rinde. */}
+                <Plegable nivel={2} id={`fondo:${params.id}:dj`} titulo="📝 Declaraciones juradas" abiertoPorDefecto={true}
+                  /* El resumen se pinta esté el panel abierto o cerrado, así que
+                     tiene que mirar el error igual que el interior. Sin eso, una
+                     consulta caída enseñaba «quedan S/ 40,000 de S/ 40,000» en la
+                     cabecera —el tope entero libre— mientras el aviso de dentro
+                     decía lo contrario. */
+                  resumen={dim(
+                    djError
+                      ? "⚠ no se pudo leer"
+                      : saldoDj.falta === "estimulo"
+                        ? "falta el monto adjudicado"
+                        : saldoDj.tope === null
+                          ? "falta cargar el tope"
+                          : saldoDj.supero
+                            ? `⚠ exceso ${fmt(saldoDj.exceso)} — a devolver`
+                            : `quedan ${fmt(saldoDj.resta ?? 0)} de ${fmt(saldoDj.tope)}`)}>
+                  <SaldoDj postulacionId={params.id} saldo={saldoDj} gastos={conHilo(gastosDj, hDj) as any}
+                    etapas={etapasFondo} rubros={fondoRubros} esAdmin={esAdmin} error={djError}
+                    userId={user.id} hiloError={hiloError} />
+                  </Plegable>
+                {/* ── EL MONTO EN TEAL, COMO EN LOS RECIBOS ──
+                    Iba entero en gris, y justo debajo de «Pagos al personal ·
+                    S/ 98,270» en teal parecía de otra naturaleza: un detalle,
+                    no plata. Son lo mismo — gasto sustentado que suma al total
+                    de la cabecera. El color es lo que le dice a un ojo que
+                    recorre la columna cuáles son las cifras que se suman entre
+                    sí, y tenerlas de dos colores obligaba a leer para saberlo. */}
+                <Plegable nivel={2} id={`fondo:${params.id}:comprobantes`} titulo="🧾 Facturas y boletas" abiertoPorDefecto={false}
+                  resumen={cmpError ? dim("⚠ no se pudo leer")
+                    : comprobantes.length ? (
+                      <>
+                        <span style={{ color: "var(--muted)" }}>
+                          {comprobantes.length} comprobante{comprobantes.length === 1 ? "" : "s"}
+                        </span>
+                        <span style={{ marginLeft: 8, color: "var(--teal)", fontWeight: 700 }}>
+                          {fmt(totCmp)}
+                        </span>
+                        {/* El PDF que falta se cuenta aquí también, con el mismo
+                            ⚠ que los estados y los recibos: es lo que separa
+                            «cargado» de «presentable», y plegado era invisible. */}
+                        {comprobantes.filter((c: any) => !c.url).length > 0 && (
+                          <span style={{ marginLeft: 8, color: "var(--yellow)", fontWeight: 600 }}
+                            title="Comprobantes sin el PDF adjunto: cuentan en el ejecutado pero no se pueden presentar.">
+                            ⚠ {comprobantes.filter((c: any) => !c.url).length} sin PDF
+                          </span>
+                        )}
+                      </>
+                    ) : dim("sin comprobantes")}>
+                  <Comprobantes postulacionId={params.id} comprobantes={conHilo(comprobantes, hCmp) as any}
+                    etapas={etapasFondo} rubros={fondoRubros} esAdmin={esAdmin} error={cmpError}
+                    urlSunat={urlSunat} userId={user.id} hiloError={hiloError} />
+                  </Plegable>
+
               </Plegable>
             </div>
             <div style={{ scrollMarginTop: 12 }}>
               <Plegable id={`fondo:${params.id}:concilia`} titulo="⚖️ Conciliación (ejecutado vs. presupuesto)" abiertoPorDefecto={false}
-                resumen={dim(vigItems.length ? `${fmt(totRhe)} de ${fmt(vigCosto)} · ${conPct}%${vigPresu ? "" : " · sin versión vigente"}` : "sin presupuesto")}>
+                /* El resumen contaba `totRhe`, igual que el interior antes de
+                   incluir facturas y DJ. Dejarlo así habría dado dos cifras
+                   distintas para lo mismo —una plegada y otra abierta—, que es
+                   peor que la que estaba mal: obliga a decidir a cuál creerle. */
+                resumen={(() => {
+                  const ejec = totRhe + totCmp + usadoDj;
+                  const p = vigCosto > 0 ? Math.round(ejec / vigCosto * 100) : 0;
+                  return dim(vigItems.length
+                    ? `${fmt(ejec)} de ${fmt(vigCosto)} · ${p}%${vigPresu ? "" : " · sin versión vigente"}`
+                    : "sin presupuesto");
+                })()}>
+                {/* Las tres formas de rendir, no solo los recibos. Ver
+                    lib/ejecutado.ts: con solo `rhe`, este bloque decía
+                    «ejecutado S/ 98,270» sobre un gasto sustentado de
+                    S/ 115,811 — y la PC de edición de S/ 7,588 no aparecía
+                    contra ningún rubro. */}
                 <ConciliacionFondo items={vigItems} esVigente={!!vigPresu}
                   postuladoEn={vigPresu?.creado_en || null}
-                  rhe={rheFondo} etapas={etapasFondo}
+                  rhe={rheFondo} comprobantes={comprobantes as any} dj={gastosDj as any}
+                  etapas={etapasFondo}
                   estimulo={ent.monto_adjudicado ? parseFloat(ent.monto_adjudicado) : null} />
               </Plegable>
             </div>
