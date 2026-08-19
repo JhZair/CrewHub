@@ -102,7 +102,7 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
 
   const categoria = ent.conv?.categoria || null;
 
-  const [cp, pl, pf, plPre, pc, ec, rf, mb, gdj, cmp, au, vf, eqp, eqf, cac, urlSunat, s4] = await Promise.all([
+  const [cp, pl, pf, plPre, pc, vtp, ec, rf, mb, gdj, cmp, au, vf, eqp, eqf, cac, urlSunat, s4] = await Promise.all([
     supabase.from("cronograma_actividades").select("*, resp:perfiles!responsable(nombre)")
       .eq("postulacion_id", params.id)
       .order("etapa").order("orden").order("fecha_inicio").order("creado_en"),
@@ -112,14 +112,21 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
     supabase.from("plantillas_presupuesto").select("id,nombre,categoria,items").order("nombre"),
     /* Con foto: esta lista se lee poniéndole cara a los nombres que salen de
        los recibos, y un catálogo sin imagen obliga a abrir ficha por ficha. */
-    supabase.from("personas")
-      /* Nombre completo, tipo y domicilio: lo que el informe económico y los
-         recibos piden, y que antes obligaba a abrir la ficha de cada una de
-         las veintitrés personas del fondo. Van aquí porque aquí es donde está
-         la lista entera. */
-      .select("id,nombre,alias,foto_url,tipo,ruc_dni,direccion,distrito,provincia,region," +
-              "suspension_4ta_anio,suspension_4ta_url")
-      .order("nombre"),
+    /* ── `*` Y NO UNA LISTA DE COLUMNAS ──
+       Aquí había una lista enumerada —nombre, tipo, domicilio, 4ta— que servía
+       para la pestaña Equipo. Desde que el «＋ Sumar» abre el directorio
+       ENTERO con sus filtros, esa lista se convertiría en una trampa: filtrar
+       por región, especialidad o estado SUNAT sobre columnas que no se
+       pidieron no da error, simplemente no encuentra a nadie. Y «no hay
+       sonidistas en Cusco» se lee como un hecho, no como un fallo.
+       Es la misma tabla que /personas trae con `*` por la misma razón: son
+       ciento cuarenta filas. */
+    supabase.from("personas").select("*").order("nombre"),
+    /* Las vistas guardadas de personas. Son las MISMAS que las de /personas
+       —misma tabla, misma entidad— para que una vista que el equipo armó allí
+       («técnicos de Cusco») sirva también al sumar personal a un fondo. */
+    supabase.from("vistas_guardadas").select("id,nombre,icono,usuario_id,config")
+      .eq("entidad", "persona").order("orden").order("nombre"),
     supabase.from("estado_cuenta")
       .select("id,periodo,url,saldo,intereses,nota,imagenes,creado_en,comprobante_en," +
         "creado:perfiles!creado_por(nombre),quien:perfiles!comprobante_por(nombre)")
@@ -715,7 +722,13 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
                 rhes={rheFondo as any[]}
                 previstos={previstosFondo}
                 personas={personasMin as any}
-                catalogo={personasCat}
+                personasTabla={(pc.data || []) as any[]}
+                vistasPersona={(vtp.data as any[]) || []}
+                /* Los mismos catálogos que usan los desplegables de la
+                   rendición: si la pestaña de Equipo armara los suyos, una
+                   etapa renombrada saldría con dos nombres según dónde mires. */
+                etapas={etapasFondo}
+                rubros={fondoRubros}
                 puedeEditar />
             </div>
           </div>,

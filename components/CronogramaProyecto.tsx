@@ -438,7 +438,14 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
   const GT_NOMBRE = 240;
 
   const cuerpo = (
-    <div className="card" style={{ marginBottom: ancho ? 0 : 16 }}>
+    /* `cr-caja` además de `card`: la tarjeta es correcta cuando el cronograma
+       va suelto (ficha de proyecto, /proyectos), y sobra cuando ya vive dentro
+       de un plegable que le pone marco y título. La regla que quita el marco
+       está en globals.css y solo aplica dentro de `.plg-cuerpo`; aquí no se
+       decide nada, solo se deja el gancho. `.plg-cuerpo>.card` no bastaba: esa
+       solo alcanza a los hijos DIRECTOS, y este va dentro de
+       CronogramaPostulacion. */
+    <div className="card cr-caja" style={{ marginBottom: ancho ? 0 : 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <b style={{ fontSize: 13.5 }}>📅 Cronograma · {visibles.length}</b>
         <div className="vtabs" style={{ margin: 0 }}>
@@ -538,8 +545,22 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
         const grupo = ordenadas.filter((a: any) => (a.etapa || "") === et);
         if (!grupo.length) return null;
         return (
-          <div key={et || "_sin"}>
-            <div className="cr-etapa-h">{et ? nomEtapa(et) : "Sin etapa"}</div>
+          /* ── CADA ETAPA, UNA SECCIÓN ──
+             El color no se inventa aquí: es el MISMO que ya lleva el filo
+             izquierdo de cada actividad de esta etapa (`ETAPA_COLOR`). Poner
+             uno genérico —violeta, como las secciones del resto del sistema—
+             habría añadido un color que no significa nada al lado de otro que
+             sí; usar el de la etapa hace que la cabecera y sus filas se lean
+             como un bloque sin tener que emparejarlos con la vista. */
+          <div key={et || "_sin"} className="cr-grupo"
+            style={{ ["--cr-et" as any]: ETAPA_COLOR[et] || "var(--border2)" }}>
+            <div className="cr-etapa-h">
+              {et ? nomEtapa(et) : "Sin etapa"}
+              {/* Cuántas hay aquí. El total («18 actividades») ya está arriba y
+                  no dice si la postproducción son dos o nueve, que es lo que se
+                  mira al repartir el trabajo. */}
+              <span className="cr-etapa-n">{grupo.length}</span>
+            </div>
             {grupo.map(a => {
               const [txt, col] = CHIP[a.estado] || CHIP.planificada;
               /* Se reordena dentro de toda la ETAPA (a cualquier fecha), no ya

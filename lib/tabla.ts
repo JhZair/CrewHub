@@ -10,6 +10,8 @@
  * para lo otro: comparar muchas filas por pocos campos.
  */
 
+import { FORM_CONF, type CampoDef } from "@/lib/entidades";
+
 export type TipoCol = "texto" | "numero" | "fecha" | "opcion" | "booleano";
 
 export type Columna = {
@@ -57,7 +59,27 @@ export type Filtro = { col: string; op: string; val?: string };
 export type Orden = { col: string; asc: boolean } | null;
 export type ConfigVista = { cols?: string[]; orden?: Orden; filtros?: Filtro[] };
 
-const txt = (v: any) => String(v ?? "").trim();
+/* ── UN VALOR CUALQUIERA, COMO TEXTO ──
+ * Existe porque la tabla dejó de enseñar una selección de columnas escogidas a
+ * mano y ahora enseña TODAS las de la tabla, incluidas las que no son cadenas:
+ * `relaciones` es `text[]` y `credenciales` es `jsonb`. `String(["a","b"])` da
+ * «a,b» —pasable— pero `String({...})` da «[object Object]», que además de no
+ * decir nada se puede FILTRAR: buscar «object» habría devuelto todas las filas
+ * con ese campo lleno. Un dato ilegible es un problema de presentación; un
+ * dato ilegible que además responde a los filtros es una trampa. */
+export const comoTexto = (v: any): string => {
+  if (v === null || v === undefined) return "";
+  if (Array.isArray(v)) return v.filter(x => x !== null && x !== undefined).join(", ");
+  if (typeof v === "object") {
+    /* Las claves, no el JSON entero: de `credenciales` lo que se quiere saber
+       es QUÉ tiene («clave_sol, email»), no su volcado con llaves y comillas. */
+    const ks = Object.keys(v).filter(k => v[k] !== null && v[k] !== false && v[k] !== "");
+    return ks.join(", ");
+  }
+  return String(v);
+};
+
+const txt = (v: any) => comoTexto(v).trim();
 const nrm = (v: any) => txt(v).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 const num = (v: any) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
 
@@ -251,6 +273,80 @@ export const COLS_EMPRESA: Columna[] = [
 export const COLUMNAS_DE: Record<string, Columna[]> = {
   persona: COLS_PERSONA,
   empresa: COLS_EMPRESA,
+};
+
+/* ── Y TODO LO DEMÁS QUE LA FICHA GUARDA ──
+ *
+ * Las listas de arriba eran una SELECCIÓN editorial, y el comentario que las
+ * introduce lo defendía: «el formulario tiene cuarenta campos y una tabla con
+ * cuarenta columnas no se usa». Era cierto mientras la tabla solo servía para
+ * mirar. Dejó de serlo cuando se usa para BUSCAR a quién sumar a un fondo: ahí
+ * la pregunta puede ser por distrito, por lengua materna o por si tiene la
+ * firma escaneada, y esos campos no estaban — no porque no existan, sino
+ * porque hace meses alguien decidió que no eran los importantes. El resultado
+ * era peor que una tabla incompleta: era una tabla que parece completa.
+ *
+ * Así que la selección se conserva —manda el orden en que se ven y las
+ * columnas por defecto son las siete primeras— y detrás va TODO lo demás,
+ * sacado de `FORM_CONF`, que es donde ya está declarado una vez qué campos
+ * tiene una persona, cómo se llama cada uno y qué valores admite. Copiarlos
+ * aquí a mano habría sido el mismo error otra vez, con fecha de caducidad.
+ */
+const TIPO_DE_CAMPO = (c: CampoDef): TipoCol =>
+  c.tipo === "bool" ? "booleano"
+  : c.tipo === "date" ? "fecha"
+  : c.tipo === "select" ? "opcion"
+  : (c.valida === "anio" || c.valida === "monto" || c.valida === "puntaje") ? "numero"
+  : "texto";
+
+/* Las columnas de una entidad: la selección de arriba, y detrás todo lo que la
+ * ficha guarda y aún no estaba.
+ *
+ * `filas` es la red de seguridad: si la base tiene una columna que ni la
+ * selección ni el formulario conocen —una añadida por SQL y todavía sin
+ * formulario—, aparece igual, con su nombre crudo. Es preferible una etiqueta
+ * fea a un campo que existe, viaja hasta el navegador y no se puede ni ver ni
+ * filtrar sin que nada lo diga. */
+export function columnasDe(entidad: string, filas?: any[]): Columna[] {
+  const base = COLUMNAS_DE[entidad] || [];
+  const vistas = new Set(base.map(c => c.key));
+  const out = [...base];
+
+  for (const c of FORM_CONF[entidad]?.campos || []) {
+    if (vistas.has(c.key)) continue;
+    vistas.add(c.key);
+    out.push({
+      key: c.key,
+      /* El nombre CORTO manda en una cabecera de columna: «Suspensión 4ta —
+         año vigente» ocupa media tabla y `corto` existe justamente para eso. */
+      lbl: c.corto || c.label,
+      tipo: TIPO_DE_CAMPO(c),
+      ...(c.tipo === "select" && c.opciones?.length ? { opciones: c.opciones } : {}),
+      ancho: c.tipo === "textarea" ? 220 : 130,
+    });
+  }
+
+  /* Lo que llegó en los datos y nadie declaró. Se mira la PRIMERA fila que
+     tenga algo: la fila 0 puede ser una persona a medio llenar y sus nulos no
+     dirían nada de las columnas que existen. */
+  const muestra = (filas || []).slice(0, 40);
+  for (const f of muestra) {
+    for (const k of Object.keys(f || {})) {
+      if (vistas.has(k) || OCULTAS.has(k)) continue;
+      vistas.add(k);
+      out.push({ key: k, lbl: rotuloCrudo(k), tipo: "texto", ancho: 130 });
+    }
+  }
+  return out;
+}
+
+/* Lo único que NO se lista: la llave primaria, que ni se compara ni se lee.
+   Las columnas calculadas (`_elegible`, `_ganadas`…) no hacen falta aquí — ya
+   vienen declaradas arriba con su etiqueta, así que `vistas` las cubre. */
+const OCULTAS = new Set(["id"]);
+const rotuloCrudo = (k: string) => {
+  const s = k.replace(/_/g, " ").trim();
+  return s.charAt(0).toUpperCase() + s.slice(1);
 };
 
 /** A dónde lleva cada fila. También aquí, por lo mismo. */

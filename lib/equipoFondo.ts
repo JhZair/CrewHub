@@ -148,6 +148,10 @@ export type FilaRhe = {
   id: string; persona_id?: string | null;
   fecha?: string | null; monto?: number | string | null;
   numero?: string | null; url?: string | null;
+  /* Los dos ejes de clasificación de un gasto. Estaban en la tabla y en la
+     pantalla de rendición desde siempre, y este módulo no los conocía: la
+     pestaña de Equipo solo sabía sumar por persona. */
+  etapa?: string | null; rubro_item?: string | null;
 };
 export type FilaPrevista = {
   id: string; persona_id: string; cargo?: string | null; nota?: string | null;
@@ -249,6 +253,99 @@ export function integrantesDeFondo(
   });
 
   return [...salida.values()];
+}
+
+/* ── EL MISMO EQUIPO, VISTO POR ETAPA O POR RUBRO ──
+ *
+ * La lista general responde «¿a quién se le giró y cuánto?». Estas dos
+ * responden otra cosa: «¿en qué se fue la plata de postproducción?», «¿quién
+ * cobró contra Recursos Técnicos?». Es la pregunta que hace DAFO al leer la
+ * rendición, y hasta ahora se contestaba exportando los recibos a mano.
+ *
+ * ── SE AGRUPAN RECIBOS, NO PERSONAS ──
+ * Y por eso la misma persona puede salir en dos etapas: no es una repetición,
+ * es que cobró en las dos, con montos distintos. Cada aparición lleva SOLO los
+ * recibos de ese grupo y SU subtotal — si arrastrara el total de la persona,
+ * las columnas sumarían más que el fondo y nadie sabría por qué.
+ *
+ * ── LO QUE NO ESTÁ CLASIFICADO SE DICE ──
+ * Un recibo sin etapa (o sin rubro) va a su propio grupo, al final y con
+ * nombre propio. Repartirlo «por si acaso» o esconderlo daría una vista que
+ * cuadra y miente; así el hueco se ve y se puede cerrar, que es justo el
+ * trabajo que queda pendiente en este fondo.
+ */
+export type AparicionEnGrupo = {
+  /** La persona con SUS recibos de este grupo y el subtotal de ellos. Tiene la
+   *  forma de un `Integrante` para poder pintarse con la misma fila. */
+  integrante: Integrante;
+};
+export type GrupoEquipo = {
+  clave: string;
+  nombre: string;
+  gente: AparicionEnGrupo[];
+  total: number;
+  recibos: number;
+};
+
+export type EjeEquipo = "etapa" | "rubro_item";
+
+export function agruparEquipo(
+  integrantes: Integrante[],
+  eje: EjeEquipo,
+  /** El catálogo del fondo, para nombrar y ORDENAR: las etapas se leen en su
+   *  orden de producción, no alfabético, y los rubros en el del presupuesto. */
+  catalogo: { id: string; nombre: string }[],
+): { grupos: GrupoEquipo[]; sinRecibos: Integrante[] } {
+  const sinRecibos = integrantes.filter(x => x.rhes.length === 0);
+  const porClave = new Map<string, GrupoEquipo>();
+
+  const grupo = (clave: string) => {
+    let g = porClave.get(clave);
+    if (!g) {
+      g = {
+        clave,
+        nombre: clave
+          ? (catalogo.find(c => c.id === clave)?.nombre || clave)
+          : (eje === "etapa" ? "Sin etapa asignada" : "Sin rubro asignado"),
+        gente: [], total: 0, recibos: 0,
+      };
+      porClave.set(clave, g);
+    }
+    return g;
+  };
+
+  for (const x of integrantes) {
+    if (!x.rhes.length) continue;
+    /* Los recibos de esta persona, repartidos por el eje. Se agrupan primero y
+       se crea UNA aparición por grupo: hacerlo al revés —una por recibo—
+       enseñaría tres veces a la misma persona dentro de la misma etapa. */
+    const porGrupo = new Map<string, FilaRhe[]>();
+    for (const r of x.rhes) {
+      const k = String((r as any)[eje] || "").trim();
+      porGrupo.set(k, [...(porGrupo.get(k) || []), r]);
+    }
+    porGrupo.forEach((rs, k) => {
+      const g = grupo(k);
+      const total = rs.reduce((s, r) => s + n(r.monto), 0);
+      g.gente.push({ integrante: { ...x, rhes: rs, total } });
+      g.total += total;
+      g.recibos += rs.length;
+    });
+  }
+
+  /* Orden: el del catálogo; lo que no esté en él, detrás y por monto; y el
+     grupo sin clasificar SIEMPRE el último — es un pendiente, no una etapa. */
+  const pos = new Map(catalogo.map((c, i) => [c.id, i]));
+  const grupos = [...porClave.values()].sort((a, b) => {
+    if (!a.clave) return 1;
+    if (!b.clave) return -1;
+    const pa = pos.has(a.clave) ? pos.get(a.clave)! : 9999;
+    const pb = pos.has(b.clave) ? pos.get(b.clave)! : 9999;
+    return pa - pb || b.total - a.total;
+  });
+  // Dentro de cada grupo, quien más cobró primero: es como se lee una nómina.
+  grupos.forEach(g => g.gente.sort((a, b) => b.integrante.total - a.integrante.total));
+  return { grupos, sinRecibos };
 }
 
 export const META_SITUACION: Record<Situacion, {

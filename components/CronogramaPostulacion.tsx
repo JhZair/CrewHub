@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import CronogramaProyecto from "./CronogramaProyecto";
 import { fijarCronogramaPostulado } from "@/app/actions";
-import { type Etapa, ETAPAS_CINE, nombreEtapa } from "@/lib/etapas";
+import { type Etapa, ETAPAS_CINE, nombreEtapa, colorEtapa } from "@/lib/etapas";
 
 /* CRONOGRAMA DE LA POSTULACIÓN — dos versiones en una.
    Arriba, el cronograma VIVO (editable, con todo lo del cronograma normal:
@@ -172,8 +172,15 @@ export default function CronogramaPostulacion({
             Lo que se presentó — para copiar a la tabla de cronograma del formulario DAFO:
           </div>
           {fotoPorEtapa.map(g => (
-            <div key={g.et} style={{ marginBottom: 8 }}>
-              <div className="cr-etapa-h">{nombreEtapa(g.et)}</div>
+            /* Mismo color de etapa que en el cronograma vivo: es la misma
+               lista leída dos veces (aquí para copiarla al formulario DAFO) y
+               dos aspectos distintos harían dudar de si son lo mismo. */
+            <div key={g.et} className="cr-grupo"
+              style={{ ["--cr-et" as any]: colorEtapa(g.et) }}>
+              <div className="cr-etapa-h">
+                {nombreEtapa(g.et)}
+                <span className="cr-etapa-n">{g.items.length}</span>
+              </div>
               {g.items.map((f, i) => (
                 <div key={i} style={{ display: "flex", gap: 10, fontSize: 12, padding: "3px 0", borderBottom: "1px solid rgba(255,255,255,.04)" }}>
                   <span style={{ flex: 1 }}>{f.nombre}</span>

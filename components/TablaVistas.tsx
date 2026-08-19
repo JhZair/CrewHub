@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Avatar from "@/components/Avatar";
 import Copiar from "@/components/Copiar";
 import { guardarVista, borrarVista } from "@/app/actions";
-import { OPS, aplicar, COLUMNAS_DE, RUTA_DE, type Columna, type Filtro, type Orden, type ConfigVista } from "@/lib/tabla";
+import { OPS, aplicar, columnasDe, comoTexto, RUTA_DE, type Columna, type Filtro, type Orden, type ConfigVista } from "@/lib/tabla";
 
 /* TABLA CON VISTAS — filtrar, ordenar, ocultar columnas, y guardarlo con un
  * nombre. Lo que SeaTable daba y se perdió al migrar.
@@ -22,7 +22,35 @@ import { OPS, aplicar, COLUMNAS_DE, RUTA_DE, type Columna, type Filtro, type Ord
 
 type Vista = { id: string; nombre: string; icono?: string | null; usuario_id: string | null; config: ConfigVista };
 
-export default function TablaVistas({ entidad, filas, vistas }: {
+/* ── LA MISMA TABLA, TAMBIÉN PARA ELEGIR ──
+ *
+ * Sumar a alguien al personal de un fondo se hacía con un buscador por nombre:
+ * perfecto cuando ya sabes a quién quieres, inútil cuando la pregunta es «¿a
+ * qué sonidistas de Cusco podríamos llamar?». Eso —filtrar por tipo, equipo,
+ * región, especialidad— ya estaba resuelto aquí y solo en /personas.
+ *
+ * La opción cómoda era copiar la tabla al pop-up con dos columnas y un botón.
+ * Sería una segunda tabla con sus propios filtros, su propio orden y sus
+ * propias vistas, divergiendo de la primera desde el día siguiente. Así que se
+ * le añade un MODO a esta: las mismas columnas, los mismos operadores y las
+ * mismas vistas guardadas, con una columna de acción delante.
+ *
+ * `seleccion` ausente = la tabla de siempre, sin un solo cambio de aspecto.
+ */
+export type ModoSeleccion = {
+  /** Ids que ya están en la lista de destino: se marcan y no se pueden sumar
+   *  dos veces. Es la mitad de lo que se viene a mirar — sin esto hay que
+   *  memorizar a quién ya añadiste mientras cambias de filtro. */
+  yaEstan: string[];
+  onElegir: (fila: any) => void;
+  ocupado?: boolean;
+  /** Qué se dice de quien ya está («ya está en el fondo»). */
+  yaTxt?: string;
+  /** Qué dice el botón de sumar. */
+  addTxt?: string;
+};
+
+export default function TablaVistas({ entidad, filas, vistas, seleccion }: {
   /* Solo cadenas y datos cruzan desde el servidor. Las columnas llevan
      funciones (`valor`) y se resuelven AQUÍ, ya en el cliente: pasarlas como
      prop es el error «Functions cannot be passed directly to Client
@@ -31,8 +59,13 @@ export default function TablaVistas({ entidad, filas, vistas }: {
   entidad: string;
   filas: any[];
   vistas: Vista[];
+  seleccion?: ModoSeleccion;
 }) {
-  const columnas = COLUMNAS_DE[entidad] || [];
+  /* Las columnas se calculan CON LAS FILAS delante: la lista curada, más todo
+     lo que la ficha guarda, más lo que llegó en los datos y nadie declaró.
+     `useMemo` porque `columnasDe` recorre una muestra de filas y esto se
+     renderiza en cada tecla del filtro. */
+  const columnas = useMemo(() => columnasDe(entidad, filas), [entidad, filas]);
   const hrefDe = (f: any) => (RUTA_DE[entidad] || ((id: string) => "#"))(f.id);
   const router = useRouter();
   const DEF = columnas.slice(0, 7).map(c => c.key);
@@ -59,6 +92,10 @@ export default function TablaVistas({ entidad, filas, vistas }: {
   const datos = useMemo(
     () => aplicar(filas, filtros, orden, columnas),
     [filas, filtros, orden, columnas]);
+  /* Un Set y no un `includes` sobre el array: esto se pregunta una vez por
+     fila pintada y la lista de destino puede tener decenas. */
+  const yaSet = useMemo(() => new Set(seleccion?.yaEstan || []), [seleccion?.yaEstan]);
+  const yaAqui = seleccion ? datos.filter((f: any) => yaSet.has(f.id)).length : 0;
 
   const cargar = (v: Vista) => {
     setVistaId(v.id); setNombre(v.nombre);
@@ -96,14 +133,23 @@ export default function TablaVistas({ entidad, filas, vistas }: {
 
   const pinta = (c: Columna, f: any) => {
     const v = c.valor ? c.valor(f) : f[c.key];
-    if (v === null || v === undefined || String(v) === "") return <span className="tv-vacio">—</span>;
-    if (c.tipo === "booleano") return v ? "sí" : "no";
+    if (c.tipo === "booleano" && (v === true || v === false)) return v ? "sí" : "no";
+    /* `comoTexto` y no `String`: ahora se listan TODAS las columnas de la
+       tabla, y entre ellas hay `text[]` y `jsonb`. `String` los pintaba como
+       «[object Object]». */
+    const s = comoTexto(v);
+    if (s === "") return <span className="tv-vacio">—</span>;
+    /* Un enlace es un enlace, no una cadena de 140 caracteres que rompe la
+       columna. Se pinta corto y se abre en otra pestaña. */
+    if (/^https?:\/\//i.test(s)) {
+      return <a href={s} target="_blank" rel="noopener noreferrer" className="tv-url" title={s}>abrir ↗</a>;
+    }
     /* Los datos que se transcriben a formularios salen copiables aquí también:
        la tabla es justo donde uno viene a sacar un DNI o un correo. */
     if (/dni|ruc|telefono|teléfono|email|correo/i.test(c.key + c.lbl)) {
-      return <Copiar valor={String(v)} etiqueta={c.lbl} />;
+      return <Copiar valor={s} etiqueta={c.lbl} />;
     }
-    return String(v);
+    return s;
   };
 
   return (
@@ -268,12 +314,22 @@ export default function TablaVistas({ entidad, filas, vistas }: {
       <div style={{ color: "var(--muted)", fontSize: 12.5, margin: "8px 0 4px" }}>
         {datos.length} de {filas.length} filas
         {orden && <> · ordenado por <b>{columnas.find(c => c.key === orden.col)?.lbl}</b> {orden.asc ? "↑" : "↓"}</>}
+        {/* Cuántos de los que estás viendo AHORA ya están dentro. El total sin
+            filtrar no dice nada; lo que se quiere saber es si el filtro que
+            acabas de escribir trae gente nueva o los mismos de siempre. */}
+        {seleccion && yaAqui > 0 && (
+          <> · <b style={{ color: "var(--green)" }}>{yaAqui}</b> ya {yaAqui === 1 ? "está" : "están"}</>
+        )}
       </div>
 
       <div className="tv-scroll">
         <table className="tv-tabla">
           <thead>
             <tr>
+              {/* La acción va DELANTE del nombre. Detrás obligaría a recorrer
+                  la fila entera —y con scroll horizontal, a buscarla fuera de
+                  pantalla— justo en el gesto que se repite veinte veces. */}
+              {seleccion && <th className="tv-sel-th" />}
               {visibles.map(c => (
                 <th key={c.key} onClick={() => cambiarOrden(c.key)} title="Clic para ordenar"
                   className={orden?.col === c.key ? "orden-on" : ""}
@@ -286,8 +342,22 @@ export default function TablaVistas({ entidad, filas, vistas }: {
             </tr>
           </thead>
           <tbody>
-            {datos.map((f, i) => (
-              <tr key={f.id || i}>
+            {datos.map((f, i) => {
+              const ya = seleccion ? yaSet.has(f.id) : false;
+              return (
+              <tr key={f.id || i} className={ya ? "tv-ya" : ""}>
+                {seleccion && (
+                  <td className="tv-sel-td">
+                    {ya
+                      /* Marcado, no oculto y no apagado. Quien ya está sigue
+                         siendo parte de la respuesta a «¿a quién tengo?» —y si
+                         desapareciera al añadirlo, el clic parecería un error. */
+                      ? <span className="tv-ya-chk" title={seleccion.yaTxt || "Ya está en la lista"}>✔</span>
+                      : <button className="tv-add" disabled={seleccion.ocupado}
+                          title={seleccion.addTxt || "Sumar"}
+                          onClick={() => seleccion.onElegir(f)}>＋</button>}
+                  </td>
+                )}
                 {visibles.map((c, j) => (
                   <td key={c.key}>
                     {j === 0
@@ -297,16 +367,26 @@ export default function TablaVistas({ entidad, filas, vistas }: {
                               logo vive en `entidad_media` y traerlo aquí sería
                               una consulta más por una miniatura de 22px. */}
                           <Avatar nombre={f.nombre} src={f.foto_url} size={22} />
-                          <Link href={hrefDe(f)}>{c.valor ? c.valor(f) : f[c.key]}</Link>
+                          {/* Eligiendo, la tabla vive dentro de un pop-up sobre
+                              otra pantalla: seguir el enlace en la misma
+                              pestaña tiraría el trabajo a medias —los filtros
+                              escritos y los que ya llevabas sumados—. */}
+                          <Link href={hrefDe(f)} {...(seleccion ? { target: "_blank" } : {})}>
+                            {c.valor ? c.valor(f) : f[c.key]}
+                          </Link>
                         </span>
                       : pinta(c, f)}
                   </td>
                 ))}
-                <td><Link href={hrefDe(f)} className="tv-ir" title="Abrir la ficha">→</Link></td>
+                <td>
+                  <Link href={hrefDe(f)} className="tv-ir" title="Abrir la ficha"
+                    {...(seleccion ? { target: "_blank" } : {})}>→</Link>
+                </td>
               </tr>
-            ))}
+              );
+            })}
             {datos.length === 0 && (
-              <tr><td colSpan={visibles.length + 1} className="tv-vacio" style={{ padding: 18 }}>
+              <tr><td colSpan={visibles.length + (seleccion ? 2 : 1)} className="tv-vacio" style={{ padding: 18 }}>
                 Ninguna fila pasa estos filtros.
               </td></tr>
             )}
