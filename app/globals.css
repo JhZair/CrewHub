@@ -1111,14 +1111,44 @@ a{color:inherit;text-decoration:none}
  * `text-transform` y no textos en mayúscula en el código: el título sigue
  * escrito «Rendición del fondo» en su sitio, así que se puede buscar, y el día
  * que esto no guste se revierte con una línea.
+ *
+ * ── Y CON COLOR, PORQUE LAS VERSALITAS SOLAS NO BASTARON ──
+ * La idea era que mayúsculas y espaciado distinguieran «sección» de
+ * «apartado» sin gastar un color. No llegó: en una pantalla con seis
+ * plegables seguidos, todos con el mismo marco gris y el mismo emoji, la
+ * diferencia entre 12px en versalitas y 13.5px en minúsculas se nota si los
+ * comparas — y leyendo de arriba abajo no se comparan.
+ * La banda de color sí se ve antes de leerla. Es la misma señal que la pestaña
+ * de Equipo: fondo violeta muy tenue, filo de 3px a la izquierda y el título
+ * en el morado del sistema. Dos sitios distintos con el mismo significado
+ * —«aquí empieza una sección»— tienen que verse igual o son dos idiomas.
+ *
+ * Solo el nivel 1. Los n2/n3 tienen su propio `plg--tinte`, que colorea por
+ * ENTIDAD (azul persona, ámbar empresa…): si el n1 usara ese mecanismo, un
+ * color que significa «de qué habla esto» y otro que significa «qué rango
+ * tiene esto» compartirían vocabulario y ninguno se entendería.
  */
-.plg.n1>.plg-cab>.plg-tit{text-transform:uppercase;letter-spacing:.8px;font-size:12px}
+.plg.n1>.plg-cab>.plg-tit{text-transform:uppercase;letter-spacing:.8px;font-size:12px;
+  color:var(--accent)}
+.plg.n1{border:1px solid rgba(124,92,255,.26);border-left:3px solid var(--accent)}
+/* El fondo va en la CABECERA, no en la caja: si tiñera el bloque entero, el
+   contenido —que es lo que se viene a leer— quedaría dentro de un rectángulo
+   de color y las tablas de dentro perderían su propio fondo. */
+.plg.n1>.plg-cab{background:rgba(124,92,255,.08)}
+.plg.n1>.plg-cab:hover{background:rgba(124,92,255,.14)}
+.plg.n1.on>.plg-cab{border-bottom-color:rgba(124,92,255,.26)}
+.plg.n1>.plg-cab>.plg-flecha{color:var(--accent)}
 .plg-res{margin-left:auto;font-size:11.5px;color:var(--muted);text-align:right}
 .plg.on .plg-cab{border-bottom:1px solid var(--border)}
 .plg-cuerpo{padding:12px 14px 14px}
 /* Los componentes de dentro ya traen su propia tarjeta: sin esto se ve un
    marco dentro de otro. */
 .plg-cuerpo>.card,.plg-cuerpo>.linked{border:0;background:none;padding:0;margin:0}
+/* Y el cronograma, que va un nivel más adentro (lo envuelve
+   CronogramaPostulacion) y por eso se libraba de la regla de arriba. Dentro de
+   un plegable eran tres marcos concéntricos para una sola lista: el del
+   plegable, el de la tarjeta y el de cada banda de etapa. */
+.plg-cuerpo .cr-caja{border:0;background:none;padding:0;margin:0}
 
 /* ══ EXPEDIENTE EN PESTAÑAS ══════════════════════════════════════════════
    La plataforma real de DAFO parte el formulario en cuatro secciones y las
@@ -1441,7 +1471,12 @@ input[type=file]{color:var(--muted);font-size:12.5px}
 .tv-stat span{font-size:17px;color:var(--muted)}
 .tv-stat.s-red b{color:var(--red)}
 .tv-stat.s-yel b{color:var(--yellow)}
-.tv-cols{display:grid;grid-template-columns:1.2fr 1fr;gap:40px;flex:1}
+/* Aquí vivía un `.tv-cols` de la pantalla de sala (dos columnas, gap 40px).
+   No lo usaba nadie —/pantalla usa `.tv-cols3`— pero chocaba de nombre con el
+   `.tv-cols` del módulo de vistas de tabla, mil líneas más abajo. Hoy ganaba
+   el segundo por orden de archivo, o sea por casualidad: mover un bloque de
+   CSS habría convertido el panel de columnas en una rejilla de dos, sin error
+   en ninguna parte. Se borra el muerto. */
 .tv-h{font-size:14px;letter-spacing:2px;text-transform:uppercase;color:var(--dim);margin-bottom:14px;font-weight:700}
 .tv-row{display:flex;align-items:center;gap:14px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:15px 20px;margin-bottom:9px;font-size:18px}
 .tv-tit{flex:1;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -2199,7 +2234,29 @@ a.stat-card:hover{border-color:var(--border2)}
 img.av{border:1px solid var(--border2)}
 
 /* ===== Cronograma: lista ordenada y Gantt ===== */
-.cr-etapa-h{font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim);padding:12px 2px 6px}
+/* ── LA ETAPA ES UNA SECCIÓN, NO UN RÓTULO ──
+ * Era texto gris de 10px sin fondo ni borde, a la misma distancia de la
+ * actividad de arriba que de la de abajo: con dieciocho actividades en cuatro
+ * etapas, «RODAJE / PRODUCCIÓN» se leía como una nota al margen y no como el
+ * comienzo de un bloque.
+ * El color sale de `--cr-et`, que cada grupo pone con el color de SU etapa —el
+ * mismo del filo izquierdo de sus actividades—. Así la cabecera y sus filas se
+ * emparejan solas; un violeta genérico habría sido un color más que no
+ * significa nada junto a otro que sí. */
+.cr-grupo{margin-bottom:16px;--cr-et:#8b8ba3}
+.cr-etapa-h{display:flex;align-items:center;gap:8px;
+  font-size:10.5px;letter-spacing:1.4px;text-transform:uppercase;font-weight:700;
+  color:var(--cr-et);
+  background:color-mix(in srgb, var(--cr-et) 9%, transparent);
+  border:1px solid color-mix(in srgb, var(--cr-et) 26%, transparent);
+  border-left:3px solid var(--cr-et);
+  border-radius:9px;padding:7px 11px;margin:0 0 8px}
+/* El recuento, en la misma tinta pero sin peso: es un dato de apoyo, no el
+   título. En una píldora para que no se lea como parte del nombre de la etapa
+   («POSTPRODUCCIÓN 6» se leería como una versión). */
+.cr-etapa-n{margin-left:auto;letter-spacing:0;font-size:11px;font-weight:700;
+  color:var(--cr-et);background:color-mix(in srgb, var(--cr-et) 16%, transparent);
+  border-radius:20px;padding:1px 9px}
 .cr-item{display:flex;gap:10px;align-items:center;padding:9px 12px;border:1px solid var(--border);border-radius:10px;margin-bottom:6px;background:var(--bg)}
 .gt-axis{display:flex;justify-content:space-between;font-size:10.5px;color:var(--dim);padding-left:240px;margin-bottom:6px}
 /* La fila se prende al pasar el cursor. En veinte filas y un año de ancho, el
@@ -2422,12 +2479,34 @@ img.av{border:1px solid var(--border2)}
 .rhe-vistas button.on{background:rgba(255,255,255,.08);color:var(--text)}
 
 /* ── Plegables anidados ── */
-/* Nivel 2: sub-sección dentro de una tarjeta. Sin caja propia: solo cabecera
-   con una línea al abrir, para no encajonar tarjetas dentro de tarjetas. */
-.plg.n2{border:0;border-radius:0;background:none;margin:0 0 4px;overflow:visible}
+/* ── NIVEL 2: SUB-SECCIÓN, CON CAJA PROPIA ──
+ *
+ * Iba sin caja —«solo cabecera con una línea al abrir, para no encajonar
+ * tarjetas dentro de tarjetas»— y ese miedo costaba más de lo que ahorraba.
+ * La línea solo aparece cuando el plegable está ABIERTO, así que cuatro
+ * sub-secciones cerradas seguidas (Estados de cuenta, Pagos al personal,
+ * Declaraciones juradas, Facturas y boletas) eran cuatro renglones flotando
+ * a la misma distancia, sin nada que dijera dónde acaba uno y empieza otro.
+ * Y en cuanto uno se abre, su contenido queda pegado al título del siguiente:
+ * las once facturas parecían colgar de «Facturas y boletas» tanto como de
+ * «Declaraciones juradas».
+ *
+ * Caja tenue, entonces: borde gris, fondo casi imperceptible y esquinas
+ * redondeadas. Deliberadamente SIN color y SIN versalitas — esas dos señales
+ * son del nivel 1, y repetirlas aquí igualaría en rango a quien contiene y a
+ * quien es contenido, que es justo el problema que el nivel 1 vino a resolver.
+ * La jerarquía la da la intensidad: violeta con filo arriba, gris tenue
+ * dentro. */
+/* `overflow:visible` y no `hidden`, aunque haya esquinas redondeadas. Dentro
+   de estas cajas viven las filas de la rendición, y sus reacciones abren una
+   paleta flotante: un `overflow:hidden` en cualquier antecesor la recorta —el
+   fallo ya nos costó una tarde—. Las esquinas se ven igual porque lo de dentro
+   no lleva fondo propio hasta el borde. */
+.plg.n2{border:1px solid var(--border);border-radius:11px;
+  background:rgba(255,255,255,.018);margin:0 0 8px;padding:0 12px;overflow:visible}
 .plg.n2>.plg-cab{padding:9px 2px}
 .plg.n2.on>.plg-cab{border-bottom:1px solid var(--border)}
-.plg.n2>.plg-cuerpo{padding:11px 0 4px}
+.plg.n2>.plg-cuerpo{padding:11px 0 10px}
 .plg.n2>.plg-cab .plg-tit{font-size:13.5px}
 /* Tinte de identidad: cada bloque de entidad del buscador con su color, muy
    tenue de fondo y un filo de acento a la izquierda. Reviste el n2 (que va al
@@ -2833,7 +2912,11 @@ button.repo-tit{text-align:left}
 .tv-panel{padding:10px 14px}
 .tv-panel-h{font-size:9.5px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);
   font-weight:700;margin-bottom:7px}
-.tv-cols{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:3px}
+/* Con todas las columnas de la ficha son cuarenta y tantas casillas: sin tope
+   de alto, el panel empuja la tabla fuera de la pantalla justo cuando lo
+   abriste para decidir qué mirar en ella. */
+.tv-cols{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:3px;
+  max-height:38vh;overflow-y:auto}
 .tv-chk{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);cursor:pointer}
 .tv-chk input{accent-color:var(--accent);cursor:pointer}
 .tv-filtro{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:3px 0}
@@ -2852,6 +2935,34 @@ button.repo-tit{text-align:left}
 .tv-primera{display:inline-flex;align-items:center;gap:7px;font-weight:600}
 .tv-vacio{color:var(--dim)}
 .tv-ir{color:var(--accent);font-weight:700}
+/* Un enlace en una celda: corto y a otra pestaña. Pintar la URL entera rompía
+   la columna y no se leía igual. */
+.tv-url{color:var(--blue);font-size:11.5px;white-space:nowrap}
+
+/* ── LA TABLA EN MODO SELECCIÓN (pop-up de «＋ Sumar») ──
+   Columna estrecha y fija delante del nombre. El ＋ se ve SIEMPRE, no al pasar
+   el cursor: un botón que hay que descubrir no existe para quien no sabe que
+   está, y este es el único gesto de la pantalla. */
+.tv-sel-th{width:34px;min-width:34px}
+.tv-sel-td{width:34px;min-width:34px;text-align:center}
+.tv-add{background:rgba(124,92,255,.16);border:1px solid rgba(124,92,255,.5);
+  color:var(--accent);border-radius:7px;width:24px;height:24px;line-height:1;
+  font-size:13px;cursor:pointer;padding:0}
+.tv-add:hover{background:var(--accent);color:#fff}
+.tv-add:disabled{opacity:.4;cursor:default}
+/* Quien ya está: marcado en verde y con un filo a la izquierda, no apagado.
+   Apagarlo diría «esto ya no te interesa», y es justo al revés — media
+   pregunta al explorar es «¿a quién tengo ya?». */
+.tv-ya>td{background:rgba(46,204,113,.07)}
+.tv-ya>td:first-child{box-shadow:inset 2px 0 0 var(--green)}
+.tv-ya-chk{color:var(--green);font-weight:700;cursor:help}
+
+/* Cabecera del pop-up: el cargo y la nota que se aplican a lo que sumes. */
+.spf-cab{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  padding:9px 11px;margin-bottom:10px;border:1px solid var(--border);
+  border-radius:11px;background:var(--bg)}
+.spf-lbl{color:var(--muted);font-size:11.5px;font-weight:700;white-space:nowrap}
+.spf-ayuda{color:var(--dim);font-size:11px;width:100%}
 .tv-conector{font-size:10.5px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);
   font-weight:700;width:18px;flex:none;text-align:right}
 .tv-filtro.tv-inerte{opacity:.5}
@@ -3912,11 +4023,6 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
 .cmp-acta{color:var(--blue);font-size:11.5px;white-space:nowrap;text-decoration:none}
 .cmp-acta:hover{text-decoration:underline}
 
-.cmp-h{display:flex;gap:9px;align-items:baseline;flex-wrap:wrap;font-size:11px;
-  letter-spacing:1.1px;text-transform:uppercase;color:var(--dim);
-  border-bottom:1px solid var(--border);padding-bottom:5px;margin-bottom:4px}
-.cmp-h-sub{text-transform:none;letter-spacing:0;font-size:10.5px;opacity:.75}
-
 .cmp-fila{padding:8px 4px;border-bottom:1px solid var(--border)}
 .cmp-fila:last-child{border-bottom:none}
 /* Tachado SOLO en los entregables. Una obligación cumplida no se tacha: sigue
@@ -3966,13 +4072,61 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
   font-size:12px;color:var(--muted);padding:2px 2px 10px}
 .eqf-res-n b{color:var(--text)}
 
-.eqf-h{display:flex;gap:9px;align-items:baseline;flex-wrap:wrap;
-  font-size:11px;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim);
-  border-bottom:1px solid var(--border);padding-bottom:5px;margin-bottom:6px}
+/* ══════════════════════════════════════════════════════════════════
+   🔖 CABECERA DE SECCIÓN — COMPARTIDA (equipo, compromisos, y lo que venga)
+   Vive aquí, entre las reglas del equipo, porque aquí nació. No es del
+   equipo: si algún día se reordena este archivo, va con las utilidades.
+   ══════════════════════════════════════════════════════════════════ */
+/* ── LA CABECERA DE SECCIÓN ES UNA BANDA, NO UN SUBRAYADO ──
+ *
+ * Era texto gris con una línea fina debajo. Con seis filas se distinguía; con
+ * veintiséis repartidas en cuatro rubros, el título quedaba a la misma altura
+ * visual que los datos y había que buscar dónde acababa una sección y empezaba
+ * la otra. Una banda con color propio y filo a la izquierda hace la división
+ * sin leerla: el ojo la encuentra antes de que el cerebro lea la palabra.
+ *
+ * ── Y SE LLAMA `sec-h`, NO `eqf-h` NI `cmp-h` ──
+ * Nació en la pestaña de Equipo. Cuando los compromisos del acta pidieron lo
+ * mismo, sus tres secciones tenían su propia `.cmp-h` con exactamente el mismo
+ * CSS de antes: dos declaraciones idénticas, dos sitios donde arreglar cada
+ * cambio y —lo de siempre— una que se queda atrás sin dar error. La tercera
+ * habría llegado sola.
+ * Un nombre neutro porque el elemento no es «del equipo» ni «de los
+ * compromisos»: es «aquí empieza una sección de una lista», que es lo mismo en
+ * las dos pantallas y en la próxima. */
+.sec-h{display:flex;gap:9px;align-items:baseline;flex-wrap:wrap;
+  font-size:11px;letter-spacing:1.1px;text-transform:uppercase;font-weight:700;
+  color:var(--accent);
+  background:rgba(124,92,255,.10);
+  border:1px solid rgba(124,92,255,.26);
+  border-left:3px solid var(--accent);
+  border-radius:9px;padding:7px 11px;margin:0 0 8px}
 /* La aclaración de dónde manda cada lista, junto al título y no en un tooltip:
    que el equipo declarado se corrija en el expediente es la clase de regla que
    se pregunta justo al intentar editarlo. */
-.eqf-h-sub{text-transform:none;letter-spacing:0;font-size:10.5px;opacity:.75}
+/* La aclaración va en gris DENTRO de la banda: si heredara el color del
+   título competiría con él y la banda pasaría a ser un párrafo de color. */
+.sec-h-sub{text-transform:none;letter-spacing:0;font-size:10.5px;
+  color:var(--muted);font-weight:400}
+/* El dato duro de la sección —el monto de un rubro, y mañana lo que haga
+   falta—: es la respuesta a «cuánto hay aquí», así que pesa más que el título
+   y se lee antes que el recuento. */
+.sec-h-dato{color:var(--text);font-size:14px;font-weight:800;letter-spacing:0}
+/* Sección de trabajo PENDIENTE (lo que falta clasificar). La banda entera
+   cambia de color —no solo la letra— porque es lo que se busca de un vistazo
+   al bajar por la lista. */
+.sec-h-pend{color:var(--yellow);
+  background:rgba(244,180,0,.09);
+  border-color:rgba(244,180,0,.3);border-left-color:var(--yellow)}
+.sec-h-pend .sec-h-dato{color:var(--yellow)}
+/* Sección de servicio: existe para que no falte nadie, pero no es una partida
+   de la lista. Apagada, porque compitiendo en violeta con las demás desordena
+   la lectura de arriba abajo. */
+.sec-h-off{color:var(--dim);background:rgba(255,255,255,.03);
+  border-color:var(--border);border-left-color:var(--border2)}
+
+/* ── Las tres formas de leer el equipo ── */
+.eqf-vistas{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:2px 0 12px}
 
 .eqf-fila{display:flex;gap:11px;align-items:flex-start;padding:8px 4px;
   border-bottom:1px solid var(--border)}

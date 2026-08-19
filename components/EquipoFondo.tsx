@@ -2,14 +2,15 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { sumarPersonalFondo, editarPersonalFondo, quitarPersonalFondo } from "@/app/actions";
-import { EntPicker, type CatalogoItem } from "@/components/Composer";
+import { editarPersonalFondo, quitarPersonalFondo } from "@/app/actions";
 import Avatar from "@/components/Avatar";
+import SumarPersonalFondo from "@/components/SumarPersonalFondo";
 import VerAdjunto from "@/components/VerAdjunto";
 import { ROLES_EQUIPO as ROLES } from "@/lib/rolesEquipo";
 import {
   integrantesDeFondo, ordenarIntegrantes, resumenEquipo, domicilioDe, coberturaSuspension,
-  META_SITUACION, type Integrante, type PersonaMin,
+  agruparEquipo, META_SITUACION,
+  type Integrante, type PersonaMin, type EjeEquipo,
 } from "@/lib/equipoFondo";
 
 /* ── 👥 EL EQUIPO DE UN FONDO EN EJECUCIÓN ──
@@ -34,7 +35,8 @@ import {
 const soles = (n: number) => `S/ ${Math.round(n).toLocaleString("es-PE")}`;
 
 export default function EquipoFondo({
-  postulacionId, equipoPost, rhes, previstos, personas, catalogo, puedeEditar,
+  postulacionId, equipoPost, rhes, previstos, personas,
+  personasTabla, vistasPersona, etapas, rubros, puedeEditar,
 }: {
   postulacionId: string;
   equipoPost: any[];
@@ -42,16 +44,25 @@ export default function EquipoFondo({
   previstos: any[];
   /** Catálogo mínimo para poner cara y nombre a quien salga de un recibo. */
   personas: PersonaMin[];
-  /** El mismo catálogo con la forma que espera el selector. */
-  catalogo: CatalogoItem[];
+  /** El directorio ENTERO, con todas sus columnas: es lo que explora el
+   *  pop-up de «＋ Sumar» y hay que poder filtrarlo por cualquiera de ellas.
+   *  Un recorte aquí no daría error: los filtros por región o especialidad
+   *  simplemente no encontrarían a nadie, que es la peor forma de fallar. */
+  personasTabla: any[];
+  /** Las vistas de tabla guardadas para personas — las mismas de /personas. */
+  vistasPersona: any[];
+  /** Los dos catálogos del fondo. Sirven para NOMBRAR y para ORDENAR: una
+   *  etapa se lee en orden de producción y un rubro en el del presupuesto,
+   *  nunca alfabéticamente. */
+  etapas: { id: string; nombre: string }[];
+  rubros: { id: string; etiqueta: string }[];
   puedeEditar: boolean;
 }) {
   const router = useRouter();
-  const [agregando, setAgregando] = useState(false);
-  const [sel, setSel] = useState<{ id: string; nombre: string } | null>(null);
-  const [cargo, setCargo] = useState("");
-  const [nota, setNota] = useState("");
   const [ocupado, setOcupado] = useState(false);
+  /* Qué vista se está mirando. En estado y no en la URL: es una forma de leer
+     la misma lista, no otro sitio al que llevar a alguien con un enlace. */
+  const [vista, setVista] = useState<"general" | EjeEquipo>("general");
   const [error, setError] = useState("");
   const [editando, setEditando] = useState<string | null>(null);
   const [ed, setEd] = useState({ cargo: "", nota: "" });
@@ -67,15 +78,14 @@ export default function EquipoFondo({
   const declarados = todos.filter(x => x.situacion.startsWith("declarado"));
   const personal = todos.filter(x => !x.situacion.startsWith("declarado"));
 
-  const sumar = async () => {
-    if (!sel || ocupado) return;
-    setOcupado(true); setError("");
-    const r: any = await sumarPersonalFondo(postulacionId, sel.id, cargo, nota);
-    setOcupado(false);
-    if (r?.error) { setError(r.error); return; }
-    setSel(null); setCargo(""); setNota(""); setAgregando(false);
-    router.refresh();
-  };
+  /* Las dos vistas agrupadas. Se calculan siempre —son 26 filas, no cuesta
+     nada— para que el número que llevan las pestañas sea real desde el
+     principio: «Por rubro · 1» avisa de que están todos sin clasificar ANTES
+     de entrar, que es cuando sirve. */
+  const catRubros = useMemo(() => rubros.map(r => ({ id: r.id, nombre: r.etiqueta })), [rubros]);
+  const porEtapa = useMemo(() => agruparEquipo(todos, "etapa", etapas), [todos, etapas]);
+  const porRubro = useMemo(() => agruparEquipo(todos, "rubro_item", catRubros), [todos, catRubros]);
+  const agrupado = vista === "etapa" ? porEtapa : vista === "rubro_item" ? porRubro : null;
 
   const guardarEd = async (id: string) => {
     if (ocupado) return;
@@ -96,8 +106,28 @@ export default function EquipoFondo({
 
   const fila = (x: Integrante) => {
     const m = META_SITUACION[x.situacion];
+    /* ── QUIEN NO COBRÓ SE APAGA ──
+     * Esta lista se lee para UNA cosa: comprobar contra qué recibos se giró la
+     * plata. Quien no tiene ninguno no aporta nada a esa lectura, y sin
+     * embargo ocupa la misma altura, el mismo peso y los mismos avisos que
+     * quien cobró S/ 15,100 — en 26 filas eso es un tercio del ruido.
+     *
+     * Se apaga por el HECHO —cero recibos—, no por la etiqueta de situación.
+     * Son dos etiquetas distintas («declarado, sin recibos» y «previsto») que
+     * comparten exactamente la condición que importa aquí; atarlo a la lista
+     * de etiquetas habría dejado la tercera fuera el día que se añada.
+     *
+     * Apagar no es esconder: `.fila-tenue` se enciende entera al pasar el
+     * cursor, el contador de arriba los sigue contando («3 declarados sin
+     * recibos», «1 previsto») y siguen en su sección. Un declarado que nunca
+     * cobró es algo que hay que poder explicar al cerrar la rendición, así que
+     * desaparecer no era una opción. */
+    /* Sin `title` en la fila: el motivo ya está escrito dentro de ella
+       —«declarado, sin recibos», «previsto»— y un tooltip sobre un bloque de
+       este tamaño salta cada vez que el cursor lo cruza de paso. */
+    const apagada = x.rhes.length === 0;
     return (
-      <div key={x.persona.id} className="eqf-fila">
+      <div key={x.persona.id} className={`eqf-fila${apagada ? " fila-tenue" : ""}`}>
         <Avatar nombre={x.persona.nombre} src={x.persona.foto_url} size={38} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
@@ -283,6 +313,58 @@ export default function EquipoFondo({
     );
   };
 
+  /* ── EL CUERPO DE LAS DOS VISTAS AGRUPADAS ──
+     Reutiliza `fila` sin tocarla. Lo que cambia no es cómo se pinta una
+     persona, sino QUÉ persona: en cada grupo va con los recibos de ESE grupo y
+     su subtotal, nunca con su total del fondo. Si arrastrara el total, las
+     etapas sumarían más que el fondo y nadie sabría por qué. */
+  const bloqueAgrupado = () => {
+    if (!agrupado) return null;
+    const { grupos, sinRecibos } = agrupado;
+    const eje = vista === "etapa" ? "etapa" : "rubro";
+    return (
+      <>
+        {grupos.length === 0 && (
+          <div className="eqf-vacio">
+            Todavía no hay ningún recibo girado en este fondo, así que no hay nada
+            que repartir por {eje}.
+          </div>
+        )}
+        {grupos.map(g => (
+          <div key={g.clave || "__sin"} style={{ marginTop: 14 }}>
+            <div className={`sec-h${g.clave ? "" : " sec-h-pend"}`}>
+              {g.clave ? (vista === "etapa" ? "🎬" : "📊") : "◻"} {g.nombre}
+              {/* El monto del grupo es el dato, no el número de personas: la
+                  pregunta es «cuánto se fue aquí». Va primero por eso. */}
+              <span className="sec-h-dato">{soles(g.total)}</span>
+              <span className="sec-h-sub">
+                {g.gente.length} {g.gente.length === 1 ? "persona" : "personas"} ·{" "}
+                {g.recibos} {g.recibos === 1 ? "recibo" : "recibos"}
+                {!g.clave && ` — falta clasificarlos, y hasta que se haga no cuadran contra el presupuesto`}
+              </span>
+            </div>
+            {g.gente.map(a => fila(a.integrante))}
+          </div>
+        ))}
+
+        {/* ── LOS QUE NO TIENEN RECIBO ──
+            No tienen etapa ni rubro porque no hay nada que clasificar. Se
+            listan igual, al final y apagados: sacarlos de esta vista los
+            volvería invisibles justo donde se revisa si falta alguien por
+            pagar. Aquí `fila` ya los apaga sola —cero recibos—. */}
+        {sinRecibos.length > 0 && (
+          <div style={{ marginTop: 18 }}>
+            <div className="sec-h sec-h-off">
+              ○ Sin recibos girados · {sinRecibos.length}
+              <span className="sec-h-sub">no tienen {eje} porque no hay nada que clasificar</span>
+            </div>
+            {sinRecibos.map(fila)}
+          </div>
+        )}
+      </>
+    );
+  };
+
   return (
     <div>
       <datalist id="roles-fondo">{ROLES.map(r => <option key={r} value={r} />)}</datalist>
@@ -322,44 +404,71 @@ export default function EquipoFondo({
 
       {error && <div className="err-inline">⚠ {error}</div>}
 
-      <div className="eqf-h">
+      {/* ── TRES FORMAS DE LEER LA MISMA LISTA ──
+          No son tres pantallas: son la misma gente y los mismos recibos
+          contestando tres preguntas distintas. «¿A quién se le giró?» la
+          contesta la general; «¿en qué se fue la plata de postproducción?» y
+          «¿quién cobró contra Recursos Técnicos?» son las que hace DAFO al
+          leer la rendición, y hasta ahora había que exportar a mano.
+          El número va en la pestaña a propósito: «Por rubro · 1» avisa de que
+          está todo sin clasificar ANTES de entrar, que es cuando sirve. */}
+      <div className="eqf-vistas">
+        <button className={`vtab${vista === "general" ? " on" : ""}`}
+          onClick={() => setVista("general")}
+          title="Todo el equipo, con lo que cobró cada quien">👥 General</button>
+        <button className={`vtab${vista === "etapa" ? " on" : ""}`}
+          onClick={() => setVista("etapa")}
+          title="Los recibos repartidos por etapa de producción. Quien cobró en dos etapas sale en las dos, con el monto de cada una.">
+          🎬 Por etapa · {porEtapa.grupos.length}
+        </button>
+        <button className={`vtab${vista === "rubro_item" ? " on" : ""}`}
+          onClick={() => setVista("rubro_item")}
+          title="Los recibos repartidos por partida del presupuesto — es como DAFO lee la rendición.">
+          📊 Por rubro · {porRubro.grupos.length}
+        </button>
+        <span style={{ flex: 1 }} />
+        {/* ── UNA SOLA PUERTA PARA SUMAR, Y EN LAS TRES VISTAS ──
+            Estaba dentro de la cabecera de «Personal del fondo», que solo
+            existe en la general: al añadir las otras dos, sumar a alguien
+            habría exigido volver a una vista concreta para encontrar el botón.
+            Aquí arriba está siempre, y sigue siendo el único sitio — antes
+            había además un formulario en línea con buscador por nombre, y de
+            las dos formas la que estaba a la vista era justo la que no deja
+            filtrar por región ni especialidad. */}
+        {puedeEditar && (
+          <SumarPersonalFondo postulacionId={postulacionId}
+            personas={personasTabla} vistas={vistasPersona}
+            /* Todos los que ya figuran, vengan de donde vengan: del equipo
+               declarado, de un recibo girado o de una alta a mano. Marcar solo
+               los apuntados a mano habría invitado a volver a sumar a quien ya
+               cobró — y `sumarPersonalFondo` lo aceptaría, dejando a la misma
+               persona dos veces en la lista. */
+            yaEstan={todos.map(x => x.persona.id)} />
+        )}
+      </div>
+
+      {agrupado ? bloqueAgrupado() : (
+      <>
+      <div className="sec-h">
         🏆 Equipo declarado en la postulación · {declarados.length}
-        <span className="eqf-h-sub">firmado en el expediente — se corrige allí</span>
+        <span className="sec-h-sub">firmado en el expediente — se corrige allí</span>
       </div>
       {declarados.length ? declarados.map(fila) : (
         <div className="eqf-vacio">La postulación no registró equipo.</div>
       )}
 
-      <div className="eqf-h" style={{ marginTop: 16 }}>
+      <div className="sec-h" style={{ marginTop: 16 }}>
         👷 Personal del fondo · {personal.length}
-        <span className="eqf-h-sub">sale solo de los recibos girados; a mano se apunta lo previsto</span>
-        <span style={{ flex: 1 }} />
-        {puedeEditar && !agregando && (
-          <button className="btn btn-ghost" style={{ padding: "4px 11px", fontSize: 12 }}
-            onClick={() => setAgregando(true)}>＋ Sumar</button>
-        )}
+        <span className="sec-h-sub">sale solo de los recibos girados; a mano se apunta lo previsto</span>
       </div>
-
-      {agregando && (
-        <div className="eqf-add">
-          <EntPicker etiqueta={sel ? `👤 ${sel.nombre}` : "👤 Elegir persona"} items={catalogo}
-            onPick={id => { const p = catalogo.find(x => x.id === id); if (p) setSel({ id: p.id, nombre: p.nombre }); }} />
-          <input list="roles-fondo" value={cargo} onChange={e => setCargo(e.target.value)}
-            placeholder="Cargo en este fondo…" />
-          <input value={nota} onChange={e => setNota(e.target.value)}
-            placeholder="Por qué (opcional): «traductora de las entrevistas»" />
-          <button className="btn" disabled={!sel || ocupado} onClick={sumar}>
-            {ocupado ? "…" : "Sumar"}
-          </button>
-          <button className="btn btn-ghost" onClick={() => { setAgregando(false); setSel(null); }}>Cancelar</button>
-        </div>
-      )}
 
       {personal.length ? personal.map(fila) : (
         <div className="eqf-vacio">
           Nadie más todavía. En cuanto se gire el primer recibo a alguien de fuera del
           equipo declarado, aparecerá aquí solo.
         </div>
+      )}
+      </>
       )}
     </div>
   );

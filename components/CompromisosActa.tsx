@@ -273,9 +273,9 @@ export default function CompromisosActa({
         const m = META_CLASE_COMP[c];
         return (
           <div key={c} style={{ marginTop: 14 }}>
-            <div className="cmp-h">
+            <div className="sec-h">
               {m.ico} {m.titulo} · {lista.length}
-              <span className="cmp-h-sub">{m.sub}</span>
+              <span className="sec-h-sub">{m.sub}</span>
             </div>
             {lista.map(x => fila(x, m.seTacha))}
           </div>
