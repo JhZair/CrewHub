@@ -15,6 +15,7 @@ import { BOT, sinBot } from "@/lib/personas";
 import { CAMPOS_TABLA } from "@/lib/tablas-expediente";
 import { esCampoDelTrigger } from "@/lib/actividad";
 import { SECCIONES, grafiasDe, tipoCanonico, ICO_ENT } from "@/lib/secciones";
+import { vinculosDePublicaciones, conNombre } from "@/lib/vinculosPub";
 import { fraccionValida } from "@/lib/jornadas";
 import { TIPOS_OBJETO } from "@/lib/objetos";
 import { catalogoObjetos, catalogosEntidades } from "@/lib/catalogos";
@@ -256,6 +257,62 @@ async function avisarAlHilo(supabase: any, opts: {
     ...(extra || {}),
     tipo: "comentario", actor_nombre: actorNombre,
     mensaje: `${(actorNombre || "Alguien").split(" ")[0]} escribió en ${titulo}`,
+  })));
+}
+
+/* ── VINCULADO = ENTERADO ──
+ *
+ * Estar vinculado a un caso ya avisaba de UNA cosa: del momento en que te
+ * vincularon. De lo que pasara después, nada. Autor, responsable, mencionados
+ * y —desde `avisarAlHilo`— quien ya había escrito allí; el vinculado que
+ * nunca abrió la boca se quedaba fuera de su propio caso.
+ *
+ * Y el hueco no se notaba desde dentro: quien escribe ve el hilo entero y da
+ * por hecho que los vinculados lo están leyendo. El silencio parece
+ * conformidad. Es el mismo fallo que destapó `avisarAlHilo` en la caja —tres
+ * reglas, tres aciertos, cero avisos— un escalón más arriba.
+ *
+ * Va DESPUÉS de las otras vías y comparte el mismo `avisados`, así que a nadie
+ * le llegan dos por el mismo hecho: el responsable que además está vinculado
+ * recibe uno.
+ *
+ * Solo personas con cuenta y activa. Vincular a alguien es también una forma
+ * de archivar —«este rodaje fue con Fulano»— y media plantilla de `personas`
+ * no tiene usuario; a esos no hay bandeja a la que escribir.
+ */
+async function avisarVinculados(supabase: any, opts: {
+  /** De qué publicación se leen los vínculos. */
+  pubId: string;
+  /** A dónde lleva el aviso. Casi siempre la misma; en un sub-caso es el
+   *  PADRE, que es donde están listados los hermanos. */
+  destino?: string;
+  comentarioId?: string | null;
+  actorId: string;
+  actorNombre: string;
+  tipo: string;
+  mensaje: string;
+  /** A quién ya se le avisó por otra vía (se muta). */
+  avisados: Set<string>;
+}) {
+  const { pubId, destino, comentarioId, actorId, actorNombre, tipo, mensaje, avisados } = opts;
+  const { data: vincs } = await supabase.from("publicacion_vinculos")
+    .select("entidad_id").eq("publicacion_id", pubId).eq("entidad_tipo", "persona");
+  const ids = [...new Set((vincs || []).map((v: any) => v.entidad_id).filter(Boolean))];
+  if (!ids.length) return;
+  const [{ data: pers }, { data: activos }] = await Promise.all([
+    supabase.from("personas").select("usuario_id").in("id", ids).not("usuario_id", "is", null),
+    supabase.from("perfiles").select("id").eq("activo", true),
+  ]);
+  const vivos = new Set<string>((activos || []).map((p: any) => p.id));
+  const destinatarios = [...new Set((pers || []).map((p: any) => p.usuario_id))]
+    .filter((uid: any): uid is string =>
+      !!uid && uid !== actorId && !avisados.has(uid) && vivos.has(uid));
+  if (!destinatarios.length) return;
+  destinatarios.forEach(id => avisados.add(id));
+  await notificar(supabase, destinatarios.map(uid => ({
+    usuario_id: uid, publicacion_id: destino || pubId,
+    ...(comentarioId ? { comentario_id: comentarioId } : {}),
+    tipo, actor_nombre: actorNombre, mensaje,
   })));
 }
 
@@ -561,6 +618,18 @@ export async function comentar(pubId: string, texto: string, imagenes: string[] 
     columna: "publicacion_id", dueno: pubId, comentarioId: com.id,
     actorId: user.id, actorNombre,
     titulo: `«${(pub?.titulo || "un caso").slice(0, 60)}»`,
+    avisados: mencionados,
+  });
+
+  /* Y los vinculados que aún no han hablado. Último de la cadena a propósito:
+     las otras cuatro vías son más específicas —te mencionaron, respondes por
+     esto, ya estabas conversando— y `avisados` hace que gane la primera.
+     Mismo `tipo` y mismo destino que los demás avisos del hilo, así que el
+     agrupador los junta: veinte mensajes siguen siendo una fila. */
+  await avisarVinculados(supabase, {
+    pubId, comentarioId: com.id, actorId: user.id, actorNombre,
+    tipo: "comentario",
+    mensaje: `Nuevo comentario en «${pub?.titulo || "un caso"}»`,
     avisados: mencionados,
   });
 
@@ -7612,6 +7681,54 @@ export async function crearSubCaso(padreId: string, titulo: string, tipo: string
     entidad_tipo: "publicacion", entidad_id: padreId, tipo: "vinculo", actor_id: user.id,
     detalle: { mensaje: `Sub-caso creado: «${titulo.trim()}»` },
   });
+
+  /* ── PARTIR UN CASO ES UN HECHO, Y NO SONABA ──
+   * Esto dejaba rastro en `actividad` —que hay que ir a mirar— y ni un aviso.
+   * Si eres responsable de un caso y alguien lo divide en doce tareas, tu
+   * campanita no suena una sola vez: te enteras entrando, o no te enteras.
+   *
+   * Se avisa al autor y al responsable del PADRE, y también a las personas
+   * vinculadas. Lo segundo se dejó fuera al principio con el argumento de que
+   * heredar un vínculo no es un hecho nuevo —ya estabas vinculado al padre—, y
+   * es verdad: el hecho nuevo no es el vínculo, es que el trabajo se partió.
+   * Eso sí le importa a quien figura en él. La regla es la misma que en los
+   * comentarios: vinculado = enterado.
+   *
+   * ── EL AVISO CUELGA DEL PADRE, NO DEL HIJO ──
+   * Los sub-casos se crean en tandas: partir un caso son ocho o doce de un
+   * tirón. Colgado del hijo, cada uno sería su propio destino y su propio
+   * grupo — doce filas en la campanita por un solo gesto. Colgado del padre,
+   * los doce comparten clave y se leen como uno: «Carlos · 12». Y el clic
+   * lleva al sitio donde están los doce listados, que es lo que se quiere
+   * mirar. */
+  const { data: padre } = await supabase.from("publicaciones")
+    .select("titulo,autor_id,responsable").eq("id", padreId).maybeSingle();
+  if (padre) {
+    const { data: miP } = await supabase.from("perfiles").select("nombre").eq("id", user.id).maybeSingle();
+    const actorNombre = miP?.nombre || "Alguien";
+    /* El título entre « » es el del PADRE, y a propósito: `tituloDe` se queda
+       con el primer par de comillas y es lo único que la campanita pinta.
+       Agrupados doce avisos, enseñar el título del último hijo junto a un
+       «· 12» no diría de qué caso se está hablando. El del hijo va detrás,
+       para el aviso suelto. */
+    const mensaje = `${actorNombre.split(" ")[0]} dividió «${padre.titulo}» — nuevo sub-caso: ${titulo.trim()}`;
+    const avisados = new Set<string>();
+    const dest = [...new Set([padre.autor_id, padre.responsable])]
+      .filter((d: any): d is string => !!d && d !== user.id);
+    dest.forEach(d => avisados.add(d));
+    if (dest.length) await notificar(supabase, dest.map(d => ({
+      usuario_id: d, publicacion_id: padreId, tipo: "subcaso",
+      actor_nombre: actorNombre, mensaje,
+    })));
+    /* Los vínculos se leen del PADRE y no del hijo: son los mismos —el hijo
+       acaba de heredarlos— pero el padre los tiene desde siempre, así que el
+       aviso no depende de que el `insert` de la herencia haya ido bien. Si
+       falla, se pierde el vínculo del hijo, no el aviso. */
+    await avisarVinculados(supabase, {
+      pubId: padreId, actorId: user.id, actorNombre,
+      tipo: "subcaso", mensaje, avisados,
+    });
+  }
   revalidatePath(`/caso/${padreId}`);
   revalidatePath("/");
   return { id: hijo.id };
@@ -8052,37 +8169,20 @@ async function conVinculos(supabase: any, notifs: any[]) {
      `publicarBitacora` (una nota nace en un muro y solo en uno). */
   const muroDe = new Map<string, { tipo: string; id: string }>();
   if (ids.length) {
-    const { data: vincs } = await supabase.from("publicacion_vinculos")
-      .select("publicacion_id,entidad_tipo,entidad_id").in("publicacion_id", ids);
-    const TABLA: Record<string, [string, string]> = {
-      proyecto: ["proyectos", "nombre"], empresa: ["empresas", "nombre"],
-      persona: ["personas", "nombre"], convocatoria: ["convocatorias", "codigo"],
-      postulacion: ["postulaciones", "codigo"], equipamiento: ["equipamiento", "nombre"],
-      lugar: ["lugares", "nombre"], etiqueta: ["etiquetas", "nombre"],
-    };
-    const porTipo = new Map<string, Set<string>>();
-    (vincs || []).forEach((v: any) => {
-      if (!porTipo.has(v.entidad_tipo)) porTipo.set(v.entidad_tipo, new Set());
-      porTipo.get(v.entidad_tipo)!.add(v.entidad_id);
-      if (esMuro.has(v.publicacion_id) && !muroDe.has(v.publicacion_id)) {
-        muroDe.set(v.publicacion_id, { tipo: v.entidad_tipo, id: v.entidad_id });
-      }
-    });
-    const nombres = new Map<string, string>();
-    await Promise.all([...porTipo.entries()].map(async ([tipo, idset]) => {
-      const t = TABLA[tipo]; if (!t) return;
-      // Personas: prefiere el alias (nombre corto) para el chip; cae al nombre.
-      const cols = tipo === "persona" ? "id,nombre,alias" : `id,${t[1]}`;
-      const { data } = await supabase.from(t[0]).select(cols).in("id", [...idset]);
-      (data || []).forEach((r: any) =>
-        nombres.set(`${tipo}:${r.id}`, tipo === "persona" ? (r.alias || r.nombre) : r[t[1]]));
-    }));
-    (vincs || []).forEach((v: any) => {
-      const nombre = nombres.get(`${v.entidad_tipo}:${v.entidad_id}`);
-      if (!nombre) return;
-      const l = vincDe.get(v.publicacion_id) || [];
-      l.push({ tipo: v.entidad_tipo, nombre });
-      vincDe.set(v.publicacion_id, l);
+    /* El mapa de tipo→tabla→campo vivía aquí, escrito a mano, y era el tercer
+       lugar donde se declaraba lo mismo que ya dice `SECCIONES`. Ahora sale de
+       `lib/vinculosPub`, que es también lo que usa la búsqueda global: si
+       mañana se vincula una entidad nueva, la aprenden las dos a la vez o
+       ninguna. Antes la habría aprendido una y la otra habría seguido pintando
+       chips vacíos sin avisar. */
+    const vincDeLib = await vinculosDePublicaciones(supabase, ids);
+    vincDeLib.forEach((l, pubId) =>
+      vincDe.set(pubId, conNombre(l).map(v => ({ tipo: v.tipo, nombre: v.nombre }))));
+    /* El muro de una nota es su PRIMER vínculo — una nota nace en un muro y
+       solo en uno. Se lee del mismo resultado, sin volver a preguntar. */
+    esMuro.forEach(pubId => {
+      const primero = vincDeLib.get(pubId)?.[0];
+      if (primero) muroDe.set(pubId, { tipo: primero.tipo, id: primero.id });
     });
   }
   /* Un aviso de préstamo cuelga de `prestamo_id`; su destino es la ficha del

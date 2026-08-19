@@ -115,6 +115,9 @@ export const ICONO: Record<string, string> = {
   asignacion: "👤", comentario: "💬", vencimiento: "⏰",
   cambio_estado: "🔄", mencion: "🔗", reaccion: "👍", bot: "🤖",
   vinculo: "📢",
+  /* Mismo 🧩 con el que la búsqueda y el tablero pintan un sub-caso. Que el
+     aviso lleve otro ícono obligaría a aprender dos símbolos para una cosa. */
+  subcaso: "🧩",
   /* Dos tipos para el mismo correo de DAFO: la campanita pinta el ícono a
      partir del TIPO y se queda solo con lo que va entre « » del mensaje
      (tituloDe), así que un emoji delante del texto no se ve. El «esto pide
@@ -129,6 +132,7 @@ export const ETIQ: Record<string, string> = {
   dafo_accion: "te escribió",
   cambio_estado: "cambió el estado", mencion: "te mencionó", reaccion: "reaccionó",
   vinculo: "te vinculó",
+  subcaso: "añadió un sub-caso",
 };
 
 /* A dónde lleva el aviso.
@@ -276,7 +280,28 @@ export type GrupoNotif = {
   actores: string[];   // nombres cortos, de la más reciente a la más vieja
 };
 
-const claveGrupo = (n: any) => `${rutaNotif(n) || `id:${n.id}`}|${n.tipo || ""}`;
+/* ── EL AGRUPADOR Y EL ANCLA SE PISABAN ──
+ *
+ * La clave era la ruta ENTERA. Y el día que los avisos de comentario
+ * aprendieron a terminar en el párrafo —`#com-<id>`, para no dejar al lector
+ * buscando en un hilo de treinta— cada mensaje pasó a tener una ruta distinta
+ * y, con ella, su propio grupo. Veinte comentarios en un caso volvieron a ser
+ * veinte filas. Las dos reglas son correctas por separado; juntas se anulan, y
+ * ninguna de las dos podía enterarse.
+ *
+ * Se agrupa por el DESTINO IGNORANDO DE QUÉ COMENTARIO SE TRATA, que es la
+ * frase que describe lo que queríamos desde el principio. Y se consigue
+ * preguntándole a `rutaNotif` sin `comentario_id` en vez de recortar el `#` a
+ * mano: hay anclas que SÍ son identidad —`#pub-<id>` de una nota del muro,
+ * `#mov-<id>` de un apunte de caja, la fila de la rendición— y cortar por el
+ * almohadilla las habría fundido todas en una. La regla la sigue decidiendo el
+ * enrutador, en un solo sitio.
+ *
+ * Lo que se pinta sigue siendo la notificación más reciente, con SU ancla: el
+ * grupo dice «Carlos y 2 más · 20» y el clic lleva al último mensaje.
+ */
+const claveGrupo = (n: any) =>
+  `${rutaNotif({ ...n, comentario_id: null }) || `id:${n.id}`}|${n.tipo || ""}`;
 
 /* Espera `items` ya ordenado de más nuevo a más viejo (así llega de la
    consulta). Conserva ese orden por la posición del PRIMERO de cada grupo. */

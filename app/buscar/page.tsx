@@ -18,7 +18,9 @@ import { REL_EMPRESA, EST_EMPRESA, TIPO_COLOR, COLOR_ENTIDAD } from "@/lib/entid
 import { alertaSunat, empresaDeCasa, empresaViva, textoSunat } from "@/lib/sunat";
 import { esProminente } from "@/lib/personas";
 import { fmtVence, venceVigencia, vigenciaVencida } from "@/lib/vigencia";
-import { fechaLarga, haceOEn, hoyLima } from "@/lib/fechas";
+import { fechaCorta, fechaLarga, haceOEn, hoyLima } from "@/lib/fechas";
+import { vinculosDeComentarios, COLS_DUENO_COM, COLS_DUENO_COM_EXTRA, type VinculoCom } from "@/lib/vinculoComentario";
+import { vinculosDePublicaciones, conNombre, type VincPub } from "@/lib/vinculosPub";
 import { rucDePersona } from "@/lib/ruc";
 import { urlPlataforma, platPorNombre, PLAT } from "@/lib/plataformas";
 import { aplicarPlantilla } from "@/lib/puertas";
@@ -218,6 +220,11 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
       emps: any[] = [], equis: any[] = [], lugs: any[] = [], convs: any[] = [], postus: any[] = [],
       comps: any[] = [],
       creds: any[] = [], objs: any[] = [];
+  /* De qué cuelga cada comentario mostrado. Vacío mientras no haya búsqueda:
+     resolver vínculos de una lista vacía no cuesta ninguna consulta. */
+  let vincCom = new Map<string, VinculoCom>();
+  /* Y de qué habla cada caso mostrado: sus entidades vinculadas. */
+  let vincCaso = new Map<string, VincPub[]>();
   let statProy = new Map<string, any>(), statEmp = new Map<string, any>(),
       statConv = new Map<string, any>(), statPers = new Map<string, any>();
   let equisMas = 0, persMas = 0, objsMas = 0;
@@ -284,12 +291,33 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
         // Las notas del muro solo viven en su proyecto: no salen en la búsqueda global.
         .neq("tipo", "bitacora")
         .order("creado_en", { ascending: false }).limit(1500),
-      /* `objeto_id` + el título del objeto: un comentario ya no cuelga solo de
-         un caso. Sin esto, un comentario sobre un libro del repositorio salía
-         en los resultados enlazando a /caso/null —404— y firmado «en «»». */
-      supabase.from("comentarios")
-        .select("id,cuerpo,creado_en,publicacion_id,objeto_id,autor:perfiles(nombre,avatar_url),pub:publicaciones(titulo),obj:objetos(titulo)")
-        .order("creado_en", { ascending: false }).limit(1500),
+      /* ── LAS ONCE PUERTAS DE UN COMENTARIO ──
+         Esto pedía DOS —`publicacion_id` y `objeto_id`— y el arreglo de
+         entonces («sin esto enlazaba a /caso/null, 404, firmado en «»») se
+         quedó a medias: desde aquel día se abrieron nueve puertas más y
+         ninguna llegó a esta consulta. Así que un comentario sobre una
+         factura, un recibo, un movimiento del banco o un apunte de caja salía
+         en los resultados con el mismo 404 y la misma firma vacía que el
+         comentario decía haber corregido.
+         Ahora se piden todas y `vinculosDeComentarios` las resuelve. Las
+         cinco de la rendición van en un `select` de reintento: si esa
+         migración no está corrida, PostgREST rechaza la consulta ENTERA y la
+         sección de comentarios se quedaría en blanco —sin error— también para
+         los casos, que no tienen nada que ver. */
+      (async () => {
+        /* `pub` y `obj` siguen viniendo embebidos aunque el vínculo ya se
+           resuelva aparte: son los dos únicos títulos que entran en el PAJAR
+           —se puede encontrar un comentario por el título de su caso— y eso
+           hay que decidirlo sobre los 1500, antes de filtrar, mientras que el
+           vínculo se resuelve sobre los 12 que se pintan. Las otras nueve
+           puertas no entran en el pajar: resolverlas mil quinientas veces para
+           que una de cada cien aporte una palabra no vale ese precio. */
+        const BASE = `id,cuerpo,creado_en,editado_en,autor:perfiles(nombre,avatar_url),pub:publicaciones(titulo),obj:objetos(titulo),${COLS_DUENO_COM}`;
+        const pedir = (cols: string) => supabase.from("comentarios")
+          .select(cols).order("creado_en", { ascending: false }).limit(1500);
+        const r = await pedir(BASE + COLS_DUENO_COM_EXTRA);
+        return r.error ? await pedir(BASE) : r;
+      })(),
       /* Los CVs viajan con la persona: se guardan por enfoque justo para
          poder pedir "el CV de Yajaida como Investigadora", y hasta hoy no
          había forma de encontrarlos. */
@@ -458,9 +486,19 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
     marcados.sort((a: any, b: any) =>
       peso(b) - peso(a) || (b.p.creado_en || "").localeCompare(a.p.creado_en || ""));
     casos = marcados.slice(0, 12).map((x: any) => x.p);
+    /* De qué habla cada uno. Va después del corte: los vínculos son para
+       LEER el resultado, no para encontrarlo, así que se resuelven doce veces
+       y no mil quinientas. */
+    vincCaso = await vinculosDePublicaciones(supabase, casos.map((p: any) => p.id));
 
+    /* El título del objeto también entra en el pajar. Venía embebido desde que
+       se abrió esa puerta y nunca se usó para buscar: se podía encontrar un
+       comentario por el título de su caso, pero no por el del libro del
+       repositorio del que hablaba. */
     coms = (c2.data || []).filter((c: any) =>
-      coincide(pal(c.cuerpo, (c.pub as any)?.titulo))).slice(0, 12);
+      coincide(pal(c.cuerpo, (c.pub as any)?.titulo, (c.obj as any)?.titulo))).slice(0, 12);
+    // De qué cuelga cada uno de los doce: ícono, rótulo y destino real.
+    vincCom = await vinculosDeComentarios(supabase, coms);
 
     /* El título del padre para pintarlo. Casi siempre ya vino en c1; si el
        padre es más viejo que los 1500 se pide aparte — son 12 filas. */
@@ -1376,6 +1414,42 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
             })()}
             <span className={`pill st-${claseEstado(p.estado, p.tipo)}`} style={{ fontSize: 10 }}>{rotuloEstado(p.estado, p.tipo)}</span>
             <VistaRapida pubId={p.id} />
+            {/* ── CUÁNDO SE ABRIÓ ──
+                Un caso «Sin Resolver» de anteayer y uno de hace año y medio
+                se leían idénticos, y son cosas distintas: el segundo no es un
+                pendiente, es un olvido. La fecha es la que lo dice. */}
+            <span title={`Abierto el ${fechaLarga(p.creado_en)} · ${haceOEn(p.creado_en)}`}
+              style={{ color: "var(--dim)", fontSize: TXT.meta, marginLeft: "auto", whiteSpace: "nowrap" }}>
+              {fechaCorta(p.creado_en)}
+            </span>
+            {/* ── DE QUÉ HABLA ──
+                Mismo problema que el padre de un sub-caso, un nivel más
+                afuera: «Lista de nombres en los créditos» no dice de qué
+                película, y «entra en proceso de disolución» no dice si es la
+                empresa de casa. El vínculo no es adorno; es lo que hace
+                distinguible un título corto entre doce resultados.
+                Tres y el resto contado: cuatro chips ya empujan la fila a otra
+                línea y a partir del tercero dejan de leerse. */}
+            {(() => {
+              const vs = conNombre(vincCaso.get(p.id));
+              if (!vs.length) return null;
+              return (
+                <span style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", width: "100%" }}>
+                  {vs.slice(0, 3).map(v => (
+                    <span key={`${v.tipo}:${v.id}`} className="badge" title={v.tipo}
+                      style={{ color: "var(--muted)", background: "var(--bg)", fontSize: TXT.micro }}>
+                      {v.ico} {v.nombre}
+                    </span>
+                  ))}
+                  {vs.length > 3 && (
+                    <span style={{ color: "var(--dim)", fontSize: TXT.micro }}
+                      title={vs.slice(3).map(v => v.nombre).join(", ")}>
+                      +{vs.length - 3}
+                    </span>
+                  )}
+                </span>
+              );
+            })()}
             {/* Un sub-caso sin su padre es un título huérfano: «Cámara A
                 lista» no dice de qué rodaje habla. El padre no es adorno, es
                 la mitad del dato. */}
@@ -1390,18 +1464,41 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
       </Seccion>
 
       <Seccion titulo="💬 En comentarios" k="comentarios" n={coms.length} tinte={COLOR_SECCION.comentarios}>
-        {coms.map((c: any) => (
-          <Fila key={c.id} href={c.objeto_id ? `/objeto/${c.objeto_id}#comentarios` : `/caso/${c.publicacion_id}`}>
+        {coms.map((c: any) => {
+          const v = vincCom.get(c.id);
+          return (
+          <Fila key={c.id} href={v?.href || undefined}>
             <span style={{ color: "var(--text)", fontSize: TXT.cuerpo, fontStyle: "italic", width: "100%", lineHeight: 1.45 }}>
               "{snippet(c.cuerpo, palabras)}"
             </span>
             {/* La cara de quien comentó: su avatar de cuenta, o iniciales. */}
             <Avatar nombre={(c.autor as any)?.nombre} src={(c.autor as any)?.avatar_url} size={22} />
             <span style={{ color: "var(--muted)", fontSize: TXT.meta }}>
-              — {(c.autor as any)?.nombre?.split(" ")[0]} en «{(c.pub as any)?.titulo || (c.obj as any)?.titulo || "—"}»
+              — {(c.autor as any)?.nombre?.split(" ")[0]} en
+            </span>
+            {/* ── DE QUÉ CUELGA ──
+                El ícono no es adorno: cuatro de estos resultados pueden decir
+                «PO-003» y solo el ícono distingue la factura del recibo, del
+                movimiento del banco y del caso donde se discutió. El rótulo va
+                elástico —se corta con puntos— para que la fecha, que es de
+                ancho fijo, no se caiga a una segunda línea. */}
+            <span title={v?.que} style={{ color: "var(--text)", fontSize: TXT.meta,
+              maxWidth: "60%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {v?.ico} {v?.titulo || "—"}
+            </span>
+            {/* ── CUÁNDO ──
+                Una búsqueda cruza años: sin fecha, un comentario de 2024 y uno
+                de anteayer se leen igual, y en una rendición eso es justo lo
+                que hay que distinguir. Va la fecha exacta con año, no «hace 8
+                meses»: lo relativo sirve en la campanita, donde todo es de
+                hoy; aquí el dato es de qué año se estaba hablando. */}
+            <span title={`${fechaLarga(c.creado_en)}${c.editado_en ? ` · editado el ${fechaLarga(c.editado_en)}` : ""}`}
+              style={{ color: "var(--dim)", fontSize: TXT.meta, marginLeft: "auto", whiteSpace: "nowrap" }}>
+              {fechaCorta(c.creado_en)}{c.editado_en ? " · editado" : ""}
             </span>
           </Fila>
-        ))}
+          );
+        })}
       </Seccion>
 
       {!q && (
