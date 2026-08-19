@@ -152,6 +152,10 @@ export type FilaRhe = {
      pantalla de rendición desde siempre, y este módulo no los conocía: la
      pestaña de Equipo solo sabía sumar por persona. */
   etapa?: string | null; rubro_item?: string | null;
+  /* Cuántos comentarios tiene su hilo. Lo añade `conHilo` en la página; si el
+     recibo llega sin pasar por ahí vale `undefined` y el chip 💬 sale vacío,
+     que es lo correcto: no se sabe, no se inventa un cero. */
+  nComentarios?: number;
 };
 export type FilaPrevista = {
   id: string; persona_id: string; cargo?: string | null; nota?: string | null;

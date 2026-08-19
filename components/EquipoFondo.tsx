@@ -5,8 +5,11 @@ import Link from "next/link";
 import { editarPersonalFondo, quitarPersonalFondo } from "@/app/actions";
 import Avatar from "@/components/Avatar";
 import SumarPersonalFondo from "@/components/SumarPersonalFondo";
+import HiloRendicion from "@/components/HiloRendicion";
+import VistaRapida from "@/components/VistaRapida";
 import VerAdjunto from "@/components/VerAdjunto";
 import { ROLES_EQUIPO as ROLES } from "@/lib/rolesEquipo";
+import { claseEstado, rotuloEstado } from "@/lib/estados";
 import {
   integrantesDeFondo, ordenarIntegrantes, resumenEquipo, domicilioDe, coberturaSuspension,
   agruparEquipo, META_SITUACION,
@@ -36,7 +39,7 @@ const soles = (n: number) => `S/ ${Math.round(n).toLocaleString("es-PE")}`;
 
 export default function EquipoFondo({
   postulacionId, equipoPost, rhes, previstos, personas,
-  personasTabla, vistasPersona, etapas, rubros, puedeEditar,
+  personasTabla, vistasPersona, etapas, rubros, casosPorPersona, puedeEditar,
 }: {
   postulacionId: string;
   equipoPost: any[];
@@ -56,6 +59,9 @@ export default function EquipoFondo({
    *  nunca alfabéticamente. */
   etapas: { id: string; nombre: string }[];
   rubros: { id: string; etiqueta: string }[];
+  /** Los casos VIVOS donde figura cada persona, por id de persona. Ya vienen
+   *  filtrados en el servidor: aquí no se decide qué es un pendiente. */
+  casosPorPersona?: Record<string, { id: string; titulo: string; estado?: string | null; tipo?: string | null }[]>;
   puedeEditar: boolean;
 }) {
   const router = useRouter();
@@ -262,9 +268,16 @@ export default function EquipoFondo({
                   sin subrayado. Un código que parece clicable y no hace nada
                   enseña a no fiarse de los que sí lo son. */}
               <span className="eqf-rhes-l">
-                {x.rhes.slice(0, 6).map((r, i) => (
-                  <span key={r.id}>
-                    {i > 0 && <span className="eqf-sep"> · </span>}
+                {/* ── CADA RECIBO, UNA PASTILLA ──
+                    Iban separados por « · », y eso bastaba mientras un recibo
+                    era solo su código. Con el 💬 al lado dejó de bastar:
+                    «E001-59 💬 · E001-58 💬» obliga a decidir a cuál de los dos
+                    códigos pertenece cada globo, y el punto medio no lo dice.
+                    Encerrarlos resuelve la pregunta en vez de separarla — el
+                    borde agrupa código y comentario como lo que son, un recibo
+                    y su conversación, y de paso separa de los vecinos. */}
+                {x.rhes.slice(0, 6).map((r) => (
+                  <span key={r.id} className="eqf-rhe">
                     {r.url
                       ? <VerAdjunto url={r.url} clase="eqf-rhe-link"
                           titulo={`Ver el recibo ${r.numero || ""}`.trim()}>
@@ -273,12 +286,82 @@ export default function EquipoFondo({
                       : <span className="eqf-rhe-sin" title="Este recibo no tiene su PDF adjunto">
                           {r.numero || "s/n"}
                         </span>}
+                    {/* ── EL HILO DEL RECIBO, AQUÍ TAMBIÉN ──
+                        Es el MISMO hilo que ya se abre desde «Pagos al
+                        personal»: misma tabla, misma fila, mismo pop-up. No es
+                        una copia — `HiloRendicion` se enchufa con `("rhe",
+                        r.id)` y lo que se escriba aquí aparece allá y al revés.
+                        Hacía falta porque las preguntas nacen leyendo ESTA
+                        lista: «este de S/ 900 ¿de quién es?», «¿por qué se giró
+                        después del plazo?». Obligar a ir a la otra pestaña para
+                        preguntarlo es lo que manda la conversación a WhatsApp,
+                        que es de donde no vuelve el día de la observación.
+                        El contador se ve siempre que haya algo: sin número, un
+                        hilo de cuatro mensajes es invisible desde la lista. */}
+                    <HiloRendicion tabla="rhe" filaId={r.id}>
+                      {abrir => (
+                        <button className={`eqf-rhe-hilo${r.nComentarios ? " tiene" : ""}`}
+                          onClick={abrir}
+                          title={r.nComentarios
+                            ? `${r.nComentarios} comentario(s) sobre este recibo`
+                            : "Comentar este recibo"}>
+                          💬{r.nComentarios ? ` ${r.nComentarios}` : ""}
+                        </button>
+                      )}
+                    </HiloRendicion>
                   </span>
                 ))}
-                {x.rhes.length > 6 && <span className="eqf-sep"> · +{x.rhes.length - 6}</span>}
+                {/* Sin el « · » de antes: ya no separa nada, ahora las
+                    pastillas lo hacen solas. */}
+                {x.rhes.length > 6 && <span className="eqf-sep">+{x.rhes.length - 6}</span>}
               </span>
             </div>
           )}
+
+          {/* ── LOS CASOS ABIERTOS SOBRE ESTA PERSONA ──
+              «Falta la constancia de Frank», «Arthur no ha firmado»: se abren
+              desde el tablero o desde su ficha, y esta pestaña —que es donde
+              de verdad se revisa a esta gente— no sabía nada de ellos. Se
+              cerraban o no según se acordara alguien de mirar dos pantallas.
+              Va FUERA del bloque de recibos, y a propósito: Arthur está como
+              «previsto» y no tiene ninguno; colgarlo de ahí habría dejado sin
+              casos justo a quien más los tiene.
+              Dos y el resto contado: son un aviso de que hay algo pendiente,
+              no la lista de tareas — esa vive en el tablero, a un clic. */}
+          {(() => {
+            const cs = casosPorPersona?.[x.persona.id] || [];
+            if (!cs.length) return null;
+            return (
+              <div className="eqf-casos">
+                {cs.slice(0, 2).map(c => (
+                  /* El ⚡ va DENTRO de la píldora, no al lado: con dos casos en
+                     la misma línea, dos rayos sueltos obligan a adivinar cuál
+                     abre cuál — el mismo problema que tenían los recibos con su
+                     globo, y la misma solución. */
+                  <span key={c.id} className="eqf-caso-w">
+                    <Link href={`/caso/${c.id}`} className="eqf-caso"
+                      title={`${rotuloEstado(c.estado || "", c.tipo)} · ${c.titulo}`}>
+                      {/* El punto toma el color del estado por `currentColor`:
+                          el rótulo entero («Sin Resolver») no cabe al lado de un
+                          título y ya está en el tooltip. */}
+                      <i className={`eqf-caso-pt st-${claseEstado(c.estado || "", c.tipo)}`} />
+                      {c.titulo}
+                    </Link>
+                    {/* El mismo ⚡ de los casos en el tablero y en la búsqueda:
+                        leer, comentar, cambiar estado o responsable sin salir de
+                        la revisión. Ir al caso y volver es empezar la lista otra
+                        vez cuando vas por la fila catorce de veintiséis. */}
+                    <VistaRapida pubId={c.id} />
+                  </span>
+                ))}
+                {cs.length > 2 && (
+                  <span className="eqf-sep" title={cs.slice(2).map(c => c.titulo).join(" · ")}>
+                    +{cs.length - 2}
+                  </span>
+                )}
+              </div>
+            );
+          })()}
 
           {editando === x.filaId && x.filaId && (
             <div className="eqf-ed">

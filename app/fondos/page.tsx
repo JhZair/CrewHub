@@ -4,6 +4,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { ejecutando, plazoRendicion, rendicionVencida, rendicionSinPlazo } from "@/lib/fondos";
+import { CATEGORIAS_OPC } from "@/lib/etapas";
 
 export const metadata: Metadata = { title: "🎬 Fondos en ejecución" };
 
@@ -26,14 +27,86 @@ export default async function FondosPage() {
 
   const { data } = await supabase.from("postulaciones")
     .select("id,codigo,estado,monto_adjudicado,fecha_desembolso,fecha_limite_rendicion," +
-      "fecha_prorroga,fecha_rendicion_real,proy:proyectos(nombre),conv:convocatorias(nombre,anio),emp:empresas(nombre)")
+      "fecha_prorroga,fecha_rendicion_real,proy:proyectos(id,nombre)," +
+      /* `categoria` faltaba, y es lo que agrupa: la línea gris de cada tarjeta
+         enseña el NOMBRE de la convocatoria («Cine Indígena», «DOCU-Producción»)
+         y eso es el concurso concreto, no la clase de fondo. Nueve tarjetas con
+         nueve nombres distintos no se pueden leer por familia. */
+      "conv:convocatorias(nombre,anio,categoria),emp:empresas(id,nombre)")
     .eq("estado", "ganadora");
 
   const fondos = (data || []) as any[];
+
+  /* ── LOS CARTELES, EN UNA CONSULTA ──
+   * El póster del proyecto y el logo de la empresa viven en `entidad_media`,
+   * no en sus tablas: se piden aparte y por lote, nunca uno por fila.
+   * Ojo con `entidad_id`: es único entre tablas (uuid), pero la clave del mapa
+   * lleva el TIPO igual. Sin él, un proyecto y una empresa con el mismo id
+   * —imposible hoy, barato de asegurar— se pisarían. */
+  const carteles = new Map<string, string>();
+  {
+    const ids = [...new Set(fondos.flatMap((f: any) =>
+      [f.proy?.id, f.emp?.id]).filter(Boolean))] as string[];
+    if (ids.length) {
+      const { data: mm } = await supabase.from("entidad_media")
+        .select("entidad_tipo,entidad_id,cartel_url").in("entidad_id", ids);
+      (mm || []).forEach((m: any) => {
+        if (m.cartel_url) carteles.set(`${m.entidad_tipo}:${m.entidad_id}`, m.cartel_url);
+      });
+    }
+  }
+  /* Con imagen, su cartel; sin ella, un icono de relleno del mismo tamaño.
+     NUNCA un hueco: una fila con póster y otra sin él dejan de estar alineadas
+     y la lista se lee en zig-zag. */
+  const mini = (tipo: string, id?: string | null, relleno = "🎞") => {
+    const u = id ? carteles.get(`${tipo}:${id}`) : null;
+    return u
+      // eslint-disable-next-line @next/next/no-img-element
+      ? <img src={u} alt="" className="fondo-mini" referrerPolicy="no-referrer" />
+      : <span className="fondo-mini fondo-mini-rell">{relleno}</span>;
+  };
   // En ejecución primero (los que aún deben algo), luego los rendidos.
   const vivos = fondos.filter(f => ejecutando(f));
   const rendidos = fondos.filter(f => !ejecutando(f));
   vivos.sort((a, b) => (plazoRendicion(a) || "9999") < (plazoRendicion(b) || "9999") ? -1 : 1);
+
+  /* ── LOS NUEVE, POR FAMILIA ──
+   *
+   * Nueve fondos en una columna se leen de arriba abajo y ya: no hay forma de
+   * ver que tres son de cine indígena y dos de videojuego sin recorrerlos uno
+   * por uno. Y la familia decide cosas —qué etapas tiene, qué pide DAFO, quién
+   * lo lleva—, así que es el corte que de verdad separa.
+   *
+   * El orden NO es alfabético ni por tamaño: es el de `CATEGORIAS`, el mismo
+   * catálogo que define las etapas de cada tipo. Un orden distinto aquí y allá
+   * obliga a reaprender la lista en cada pantalla.
+   *
+   * Dentro de cada grupo se conserva el orden por plazo que ya traía `vivos`:
+   * lo que vence antes, arriba. Agrupar no puede costar la urgencia.
+   */
+  const ORDEN_CAT = CATEGORIAS_OPC;
+  const gruposVivos = (() => {
+    const m = new Map<string, any[]>();
+    vivos.forEach(f => {
+      const k = (f.conv?.categoria || "").trim();
+      m.set(k, [...(m.get(k) || []), f]);
+    });
+    return [...m.entries()]
+      .map(([cat, fs]) => ({
+        cat,
+        // Sin categoría cargada no se inventa una: se dice, y en ámbar, porque
+        // es un dato que falta en la convocatoria y se arregla allí.
+        nombre: cat || "Sin categoría en la convocatoria",
+        fs,
+        total: fs.reduce((s, f) => s + Number(f.monto_adjudicado || 0), 0),
+      }))
+      .sort((a, b) => {
+        if (!a.cat) return 1;
+        if (!b.cat) return -1;
+        const ia = ORDEN_CAT.indexOf(a.cat), ib = ORDEN_CAT.indexOf(b.cat);
+        return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib) || b.total - a.total;
+      });
+  })();
 
   const ficha = (f: any) => {
     const vencida = rendicionVencida(f);
@@ -46,15 +119,35 @@ export default async function FondosPage() {
         : sinPlazo
           ? { ico: "⚠", txt: "Sin plazo cargado", col: "var(--yellow)" }
           : { ico: "🎬", txt: `Rinde ${dmy(plazoRendicion(f))}`, col: "var(--teal)" };
+    /* ── SIN DESEMBOLSO = APAGADO ──
+       Un fondo ganado al que no le ha entrado la plata no se ejecuta: no hay
+       nada que rendir, ni recibos que revisar, ni plazo que corra de verdad.
+       Cuatro de los nueve están así, y ocupaban el mismo peso que los que sí
+       tienen dinero moviéndose — que son los que traen a esta pantalla.
+       Se apaga, no se esconde: sigue en su categoría, cuenta en el total y se
+       enciende entero al pasar el cursor. Y el aviso «sin desembolso» se queda
+       dentro, porque es lo único que hay que hacer con él. */
+    const apagada = !f.fecha_desembolso && !rendido;
     return (
-      <Link key={f.id} href={`/fondo/${f.id}`} className="card fondo-fila">
+      <Link key={f.id} href={`/fondo/${f.id}`}
+        className={`card fondo-fila${apagada ? " fila-tenue" : ""}`}>
+        {/* ── EL CARTEL DE LA PELÍCULA Y EL LOGO DE LA EMPRESA ──
+            Nueve códigos «PO-0xx» son nueve códigos: la obra se reconoce por su
+            cartel mucho antes que por su número, y quién la produce por su
+            logo. Los dos juntos, el póster grande y el logo pequeño encima de
+            su esquina, dicen de un vistazo lo que las dos líneas de texto
+            dicen leyendo. */}
+        <span className="fondo-minis">
+          {mini("proyecto", f.proy?.id, "🎞")}
+          <span className="fondo-mini-emp">{mini("empresa", f.emp?.id, "🏢")}</span>
+        </span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: 14 }}>
-            🎬 {f.codigo}{f.proy?.nombre ? ` · ${f.proy.nombre}` : ""}
+            {f.codigo}{f.proy?.nombre ? ` · ${f.proy.nombre}` : ""}
             {f.conv?.anio ? <span style={{ color: "var(--dim)", fontWeight: 400 }}> · {f.conv.anio}</span> : null}
           </div>
           <div style={{ color: "var(--dim)", fontSize: 11.5, marginTop: 2 }}>
-            {f.emp?.nombre ? `🏢 ${f.emp.nombre}` : ""}{f.conv?.nombre ? ` · ${f.conv.nombre}` : ""}
+            {f.emp?.nombre || ""}{f.conv?.nombre ? ` · ${f.conv.nombre}` : ""}
           </div>
         </div>
         <div style={{ textAlign: "right", flexShrink: 0 }}>
@@ -82,15 +175,34 @@ export default async function FondosPage() {
       {vivos.length === 0 && rendidos.length === 0 && (
         <div className="empty">Aún no hay fondos ganados registrados.</div>
       )}
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {vivos.map(ficha)}
-      </div>
+      {gruposVivos.map(g => (
+        <div key={g.cat || "__sin"} style={{ marginBottom: 16 }}>
+          <div className={`sec-h${g.cat ? "" : " sec-h-pend"}`}>
+            🎬 {g.nombre}
+            {/* El total de la familia. Es la cifra que contesta «¿dónde está
+                metido el dinero?», y sin ella el grupo solo dice cuántos son —
+                que es lo de menos cuando uno vale S/ 510,000 y otro S/ 50,000. */}
+            <span className="sec-h-dato">{fmt(g.total)}</span>
+            <span className="sec-h-sub">
+              {g.fs.length} {g.fs.length === 1 ? "fondo" : "fondos"}
+              {!g.cat && " — cárgale la categoría a su convocatoria"}
+            </span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {g.fs.map(ficha)}
+          </div>
+        </div>
+      ))}
 
       {rendidos.length > 0 && (
         <>
-          <h2 style={{ fontSize: 13, color: "var(--dim)", margin: "22px 0 8px", letterSpacing: .5 }}>
+          {/* Los rendidos NO se agrupan por categoría: ya no hay nada que
+              decidir sobre ellos, y partirlos en cinco bloques de uno haría
+              parecer trabajo lo que es archivo. */}
+          <div className="sec-h sec-h-off" style={{ marginTop: 22 }}>
             ✅ Rendidos · {rendidos.length}
-          </h2>
+            <span className="sec-h-sub">cerrados — se guardan por si los preguntan</span>
+          </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {rendidos.map(ficha)}
           </div>

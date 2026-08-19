@@ -103,6 +103,38 @@ export const CATEGORIAS: { nombre: string; etapas: Etapa[] }[] = [
     e("difusion", "Difusión", C.rosa),
     e("entrega", "Entrega / Fin del proyecto", C.verde),
   ] },
+  /* ── ANIMACIÓN ──
+   * Etapas y nombres sacados de las Bases del Concurso de Proyectos de
+   * Animación 2026 (numeral 6.1 «Definición del proyecto» y el glosario), no
+   * del pipeline genérico de animación que uno esperaría. Dos cosas de ahí que
+   * no se habrían adivinado:
+   *
+   *  · «En el caso de proyectos de animación, se considerará la ETAPA DE
+   *    ANIMACIÓN como el equivalente al proceso de rodaje» (glosario, RODAJE y
+   *    PLAN DE RODAJE). Por eso `animacion` va en el ámbar del rodaje: es la
+   *    misma casilla del formulario, con otro nombre.
+   *  · Preproducción en animación NO es «buscar locaciones»: es el ANIMATIC del
+   *    total de la obra, el libro de arte completo y el teaser/tráiler.
+   *
+   * UNA categoría para las CINCO modalidades del concurso (Cortometrajes,
+   * Desarrollo, Desarrollo de series, Preproducción, Producción). Cada proyecto
+   * usa las etapas de la suya y deja el resto vacías, igual que hace un fondo
+   * de «Producción audiovisual» que no llega a postproducción. Cinco categorías
+   * con dos etapas cada una habrían multiplicado el catálogo para no decir nada
+   * que el proyecto no diga ya.
+   *
+   * `desarrollo_ini` y no `desarrollo`: esa clave ya es «Desarrollo (arte,
+   * layout)» en Desarrollo de proyecto, y el mapa global es por clave y gana el
+   * último. `animacion` es clave NUEVA por lo mismo — reusar `produccion`
+   * habría obligado a llamarla «Rodaje / Producción», que es justo la palabra
+   * que las bases sustituyen. */
+  { nombre: "Animación", etapas: [
+    e("desarrollo_ini", "Desarrollo", C.rosa),
+    e("preproduccion", "Preproducción", C.gris),
+    e("animacion", "Animación", C.ambar),
+    e("postproduccion", "Postproducción", C.teal),
+    e("entrega", "Entrega / Fin del proyecto", C.verde),
+  ] },
   { nombre: "Cine en construcción", etapas: [
     e("montaje", "Montaje", C.ambar),
     e("color", "Corrección de color", C.teal),

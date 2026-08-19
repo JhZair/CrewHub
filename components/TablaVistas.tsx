@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Avatar from "@/components/Avatar";
@@ -78,6 +78,7 @@ export default function TablaVistas({ entidad, filas, vistas, seleccion }: {
   const [compartida, setCompartida] = useState(true);
   const [ocupado, setOcupado] = useState(false);
   const [msg, setMsg] = useState("");
+  const [cargando, startTransition] = useTransition();
 
   const visibles = useMemo(
     () => cols.map(k => columnas.find(c => c.key === k)).filter(Boolean) as Columna[],
@@ -169,6 +170,24 @@ export default function TablaVistas({ entidad, filas, vistas, seleccion }: {
           )}
         </div>
         <span style={{ flex: 1 }} />
+        {/* ── TRAER LO QUE CAMBIÓ EN OTRA PESTAÑA ──
+            Estas filas llegan del servidor cuando se pinta la página, y ahí se
+            quedan. Completar la ficha de alguien en otra ventana —el nombre
+            RENIEC, el distrito, el DNI— no movía nada aquí: la tabla seguía
+            enseñando el hueco, y la única salida era recargar la página, que
+            en el pop-up además lo cierra y tira los filtros escritos.
+            `router.refresh()` vuelve a pedir los datos al servidor SIN tocar
+            el estado del cliente: el pop-up sigue abierto, los filtros puestos
+            y las columnas elegidas. Es la diferencia entre actualizar y
+            empezar de nuevo.
+            En `startTransition` porque `refresh()` no devuelve promesa —no hay
+            a qué esperar—: `isPending` es lo único que sabe cuándo terminó, y
+            sin eso el botón no daría señal de vida en el segundo que tarda. */}
+        <button className="vtab" onClick={() => startTransition(() => router.refresh())}
+          disabled={cargando}
+          title="Volver a pedir los datos al servidor. Los filtros y las columnas se conservan.">
+          {cargando ? "⏳ actualizando…" : "⟳ Actualizar"}
+        </button>
         <button className={`vtab${panel === "cols" ? " on" : ""}`}
           onClick={() => setPanel(p => p === "cols" ? "" : "cols")}>
           👁 {columnas.length - cols.length} ocultas

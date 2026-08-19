@@ -2,6 +2,7 @@ import { redirect, notFound } from "next/navigation";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { ESTADOS_VIVOS } from "@/lib/estados";
 import Volver from "@/components/Volver";
 import Realtime from "@/components/Realtime";
 import Plegable from "@/components/Plegable";
@@ -319,6 +320,69 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
     reacciones: h.reacciones.get(x.id) || [],
     caso: h.casos.get(x.id) || null,
   }));
+
+  /* ── LOS CASOS ABIERTOS DE CADA PERSONA DEL EQUIPO ──
+   *
+   * Un caso sobre alguien del fondo —«falta la constancia de 4ta de Frank»,
+   * «Arthur no ha firmado»— vive en el tablero y en la ficha de la persona, y
+   * la pestaña donde de verdad se revisa a esa gente no sabía nada de él. Se
+   * cerraba o no según se acordara alguien de mirar dos pantallas.
+   *
+   * ── DOS VÍNCULOS, NO UNO ──
+   * La persona Y esta obra. Al principio bastaba con la persona, y se vio
+   * enseguida por qué no: a alguien del equipo se le abren casos de todo —de
+   * otro rodaje, de un equipo prestado, de su DNI— y aquí salían todos. Una
+   * lista de pendientes que mezcla proyectos no se usa para decidir nada.
+   * «Esta obra» son DOS entidades: la postulación (el fondo) y su proyecto. Un
+   * caso sobre la rendición se vincula a la primera y uno sobre la película a
+   * la segunda; exigir solo una de las dos habría escondido la mitad.
+   *
+   * El precio, dicho: un caso sobre alguien de este equipo que nadie vinculó a
+   * la obra no aparece. Es deliberado — el vínculo es lo que lo hace «de este
+   * fondo», y sin él no hay forma de saberlo.
+   *
+   * Solo los VIVOS: uno resuelto ya no pide nada y con veintiséis filas la
+   * lista se llenaría de historia.
+   *
+   * `bitacora` fuera: comparte tabla con los casos pero es una nota de muro —no
+   * tiene responsable ni plazo, y enseñarla aquí como pendiente sería inventar
+   * trabajo. Misma exclusión que hace el resto del sistema. */
+  const idsEquipo = [...new Set([
+    ...(eqp.data || []).map((f: any) => (Array.isArray(f.persona) ? f.persona[0] : f.persona)?.id),
+    ...rheFondo.map((r: any) => r.persona_id),
+    ...previstosFondo.map((f: any) => f.persona_id),
+  ].filter(Boolean))] as string[];
+  const casosPorPersona: Record<string, any[]> = {};
+  if (idsEquipo.length) {
+    const { data: vp } = await supabase.from("publicacion_vinculos")
+      .select("entidad_id,pub:publicaciones(id,titulo,estado,tipo)")
+      .eq("entidad_tipo", "persona").in("entidad_id", idsEquipo);
+    const candidatos = (vp || []).filter((v: any) => {
+      const p = Array.isArray(v.pub) ? v.pub[0] : v.pub;
+      return p?.id && p.tipo !== "bitacora" && ESTADOS_VIVOS.includes(p.estado);
+    });
+    /* Cuáles de esos casos hablan además de ESTA obra. Se pregunta en una sola
+       consulta sobre los candidatos ya filtrados —nunca sobre la tabla
+       entera—, y el resultado es un Set: pertenece o no pertenece. */
+    const deLaObra = new Set<string>();
+    const idsObra = [params.id, ent.proy?.id].filter(Boolean) as string[];
+    const idsPub = [...new Set(candidatos.map((v: any) =>
+      (Array.isArray(v.pub) ? v.pub[0] : v.pub).id))] as string[];
+    if (idsPub.length && idsObra.length) {
+      const { data: vo } = await supabase.from("publicacion_vinculos")
+        .select("publicacion_id")
+        .in("publicacion_id", idsPub)
+        .in("entidad_tipo", ["postulacion", "proyecto"])
+        .in("entidad_id", idsObra);
+      (vo || []).forEach((v: any) => deLaObra.add(v.publicacion_id));
+    }
+    candidatos.forEach((v: any) => {
+      const p = Array.isArray(v.pub) ? v.pub[0] : v.pub;
+      if (!deLaObra.has(p.id)) return;
+      (casosPorPersona[v.entidad_id] ||= []).push(
+        { id: p.id, titulo: p.titulo, estado: p.estado, tipo: p.tipo });
+    });
+  }
 
   // Bitácora del fondo con el actor ya resuelto a nombre (perfilesCat).
   const nombrePerfil = (id: string | null) =>
@@ -719,7 +783,12 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
             <div className="card">
               <EquipoFondo postulacionId={params.id}
                 equipoPost={(eqp.data || []) as any[]}
-                rhes={rheFondo as any[]}
+                /* Con su hilo, igual que en «Pagos al personal»: los códigos
+                   de recibo de esta lista abren la MISMA conversación, y sin
+                   `conHilo` el contador de comentarios saldría siempre en cero
+                   —que se lee como «nadie ha dicho nada», no como «no lo he
+                   preguntado»—. */
+                rhes={conHilo(rheFondo, hRhe) as any[]}
                 previstos={previstosFondo}
                 personas={personasMin as any}
                 personasTabla={(pc.data || []) as any[]}
@@ -729,6 +798,7 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
                    etapa renombrada saldría con dos nombres según dónde mires. */
                 etapas={etapasFondo}
                 rubros={fondoRubros}
+                casosPorPersona={casosPorPersona}
                 puedeEditar />
             </div>
           </div>,
