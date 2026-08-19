@@ -39,6 +39,14 @@ export const TIPOS: TipoPub[] = [
   { tipo: "consulta", ico: "❓", label: "Consulta", color: "#06b6d4" },
   { tipo: "pago", ico: "💰", label: "Pago", color: "#ca8a04" },
   { tipo: "idea", ico: "💡", label: "Idea", color: "#84cc16" },
+  /* ── RETIRADO, NO BORRADO ──
+     «Archivo» dejó de ofrecerse al crear: para guardar un documento está el
+     repositorio, que sabe de versiones, dueño y tipo de objeto — un caso solo
+     sabía de un enlace y un estado que nadie cerraba nunca.
+     La entrada se queda en la lista porque puede haber publicaciones guardadas
+     con este tipo: quitarla las mandaría al cajón de «💬 Conversación»,
+     perdiendo su ícono y su nombre en todas las pantallas a la vez. Un tipo
+     retirado se deja de ofrecer; no se borra debajo de lo que ya existe. */
   { tipo: "archivo", ico: "📎", label: "Archivo", color: "#6366f1" },
   { tipo: "aviso", ico: "📢", label: "Aviso", color: "#d946ef" },
   // Bitácora: una nota del muro del proyecto (texto + imágenes). Informativa,
@@ -46,6 +54,23 @@ export const TIPOS: TipoPub[] = [
   { tipo: "bitacora", ico: "📝", label: "Bitácora", color: "#c084fc" },
   { tipo: "conversacion", ico: "💬", label: "Conversación", color: "#8b8ba3" },
 ];
+
+/* ── LOS QUE SE PUEDEN CREAR ──
+ *
+ * `TIPOS` es el catálogo de lo que EXISTE —incluye lo retirado y lo que crea
+ * el sistema solo—; esto es lo que se OFRECE. Son dos preguntas distintas y
+ * tenerlas juntas era el motivo de que el compositor llevara su propia lista
+ * copiada a mano: nadie quería que «Bitácora» o «Conversación» salieran en el
+ * selector, así que se escribió otra vez al lado. Dos listas, y la copia se
+ * quedó sin enterarse de nada de lo que pasó en la original.
+ *
+ * Fuera quedan: `bitacora` (nace en el muro de un proyecto, no aquí),
+ * `conversacion` (es el cajón de lo que no se clasificó) y `archivo`
+ * (retirado — para eso está el repositorio).
+ */
+const CREABLES = new Set(["tarea", "problema", "consulta", "pago", "idea", "aviso"]);
+export const TIPOS_CASO = TIPOS.filter(t => CREABLES.has(t.tipo));
+export const esTipoCreable = (t?: string | null) => CREABLES.has(String(t ?? ""));
 
 const POR_TIPO = new Map(TIPOS.map(t => [t.tipo, t]));
 

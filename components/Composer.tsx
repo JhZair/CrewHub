@@ -5,12 +5,13 @@ import { coincideQ } from "@/lib/quechua";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import MiniSelect from "@/components/MiniSelect";
+import { TIPOS_CASO, rotuloTipo } from "@/lib/tipos";
 
-const TIPOS = [
-  ["tarea", "✅ Tarea"], ["problema", "❗ Problema"], ["consulta", "❓ Consulta"],
-  ["pago", "💰 Pago"], ["idea", "💡 Idea"], ["archivo", "📎 Archivo"],
-  ["aviso", "📢 Aviso"],
-];
+/* La lista salía de aquí, copiada a mano de lib/tipos. Ahora se deriva: quitar
+   «Archivo» del selector era editar dos archivos y acordarse de los dos, y esa
+   es la clase de tarea que se hace a medias. `rotuloTipo` pone el ícono, así
+   que tampoco hay que repetir los emojis. */
+const TIPOS: [string, string][] = TIPOS_CASO.map(t => [t.tipo, rotuloTipo(t.tipo)]);
 
 /* `sub`: la coletilla que ayuda a distinguir pero no es el nombre — el alias de
    una persona, el año de una postulación. Va apagada al lado del nombre y se

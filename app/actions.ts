@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { entregableEq, porQueNoEq, enRonda, txtEstadoEq } from "@/lib/estadosEquipo";
 import { ESTADOS_COMP } from "@/lib/compromisos";
 import { META_RENDICION, esTablaRendicion, anclaRendicion, type TablaRendicion } from "@/lib/rendicionHilo";
-import { icoTipo } from "@/lib/tipos";
+import { icoTipo, esTipoCreable } from "@/lib/tipos";
 import { FORM_CONF, nombreCorto, SUBCATS_EQUIPO } from "@/lib/entidades";
 import { ETAPAS_PROY_VALIDAS } from "@/lib/etapasProyecto";
 import { nrmQ } from "@/lib/quechua";
@@ -14,6 +14,7 @@ import { TOKEN } from "@/lib/puertas";
 import { BOT, sinBot } from "@/lib/personas";
 import { CAMPOS_TABLA } from "@/lib/tablas-expediente";
 import { esCampoDelTrigger } from "@/lib/actividad";
+import { rotuloEstado } from "@/lib/estados";
 import { SECCIONES, grafiasDe, tipoCanonico, ICO_ENT } from "@/lib/secciones";
 import { vinculosDePublicaciones, conNombre } from "@/lib/vinculosPub";
 import { fraccionValida } from "@/lib/jornadas";
@@ -314,6 +315,74 @@ async function avisarVinculados(supabase: any, opts: {
     ...(comentarioId ? { comentario_id: comentarioId } : {}),
     tipo, actor_nombre: actorNombre, mensaje,
   })));
+}
+
+/* ── A QUIEN LE TOCA UN CASO, SE LE DICE QUE SE LO MOVIERON ──
+ *
+ * Un caso tiene dos personas que responden por él: quien lo abrió y quien lo
+ * lleva. Los tres cambios que de verdad lo alteran —el ESTADO, el RESPONSABLE
+ * y la FECHA LÍMITE— no avisaban a ninguna de las dos.
+ *
+ *   · `cambiarEstado`      → cero notificaciones. Alguien podía dar por
+ *                            resuelto tu caso y no te enterabas nunca.
+ *   · `asignarResponsable` → solo al nuevo. Ni al autor, ni a quien lo dejaba
+ *                            de llevar, que se quedaba creyendo que era suyo.
+ *   · `cambiarFechaLimite` → cero. El plazo se movía y quien tiene que
+ *                            cumplirlo seguía con la fecha vieja en la cabeza.
+ *
+ * Los tres dejaban rastro en `actividad` —que hay que ir a mirar— y ahí
+ * acababa. Es el mismo fallo que ya destapó `avisarAlHilo` con los
+ * comentarios: la regla se cumplía, el aviso no existía, y el silencio parecía
+ * conformidad.
+ *
+ * Una función y no tres copias: las tres contestan «¿a quién le importa este
+ * caso?» y esa lista tiene que ser la misma en las tres o la próxima puerta se
+ * abrirá a medias.
+ */
+async function avisarCambioCaso(supabase: any, opts: {
+  pubId: string;
+  actorId: string;
+  actorNombre: string;
+  /** El tipo de la notificación: decide ícono y verbo en la campanita. */
+  tipo: string;
+  /** Lleva el título entre « »: `tituloDe` se queda con el primer par y es lo
+   *  único que la campanita pinta. */
+  mensaje: string;
+  /** Autor y responsable del caso, y quien lo dejó de llevar si hubo relevo. */
+  interesados: (string | null | undefined)[];
+  /** A quién ya se avisó por otra vía (p. ej. el «te asignaron» del nuevo
+   *  responsable). Sin esto, el autor que se auto-asigna recibiría dos avisos
+   *  por un solo clic. */
+  avisados?: Set<string>;
+}) {
+  const { pubId, actorId, actorNombre, tipo, mensaje, interesados, avisados } = opts;
+  const ids = [...new Set(interesados.filter(Boolean))] as string[];
+  const destinatarios = ids.filter(id => id !== actorId && !avisados?.has(id));
+  if (!destinatarios.length) return;
+  /* Solo cuentas ACTIVAS, como en el resto de avisos: quien dejó el equipo
+     sigue figurando como autor de sus casos viejos y mandarle correo es llenar
+     una bandeja que ya nadie abre. */
+  const { data: activos } = await supabase.from("perfiles").select("id").eq("activo", true);
+  const vivos = new Set<string>((activos || []).map((p: any) => p.id));
+  const finales = destinatarios.filter(id => vivos.has(id));
+  if (!finales.length) return;
+  finales.forEach(id => avisados?.add(id));
+  await notificar(supabase, finales.map(id => ({
+    usuario_id: id, publicacion_id: pubId, tipo, actor_nombre: actorNombre, mensaje,
+  })));
+}
+
+/* Quién responde por un caso, y cómo se llama quien lo tocó. Una consulta para
+   las dos cosas porque las tres acciones necesitan siempre ambas. */
+async function casoYActor(supabase: any, pubId: string, userId: string) {
+  const [{ data: pub }, { data: miP }] = await Promise.all([
+    /* `tipo` va en el select porque `rotuloEstado` lo necesita: un AVISO no se
+       «resuelve», rige o deja de regir, y sin el tipo el mensaje habría dicho
+       «Resuelta» sobre algo que nunca lo estuvo. */
+    supabase.from("publicaciones").select("titulo,tipo,autor_id,responsable").eq("id", pubId).maybeSingle(),
+    supabase.from("perfiles").select("nombre").eq("id", userId).maybeSingle(),
+  ]);
+  return { pub, actorNombre: miP?.nombre || "Alguien" };
 }
 
 async function notificarPersonasVinculadas(
@@ -1151,6 +1220,11 @@ export async function asignarResponsable(pubId: string, perfilId: string | null)
   if (!user) return { error: "Sesión no encontrada." };
   // Filas afectadas: si RLS bloquea el cambio vuelve 0 filas sin error — se avisa
   // en vez de dejar el no-op silencioso (el select rebotaba al valor viejo).
+  /* Quién lo llevaba ANTES, leído antes del update: es el otro interesado del
+     cambio y después ya no hay forma de saberlo. A quien le quitan un caso se
+     le avisa igual que a quien se lo dan — si no, sigue creyendo que es suyo. */
+  const { data: previo } = await supabase.from("publicaciones")
+    .select("responsable").eq("id", pubId).maybeSingle();
   const { data: filas, error } = await supabase.from("publicaciones")
     .update({ responsable: perfilId }).eq("id", pubId).select("id");
   if (error) return { error: error.message };
@@ -1161,18 +1235,33 @@ export async function asignarResponsable(pubId: string, perfilId: string | null)
      (auth.uid()) al hacer el UPDATE. Insertarlo aquí también lo dejaba
      DUPLICADO —igual que el cambio de estado, que confía solo en el trigger—. */
 
-  // 🔔 Notificar al nuevo responsable
+  const { pub, actorNombre } = await casoYActor(supabase, pubId, user.id);
+  /* El aviso del NUEVO responsable va primero y con su propio tipo: «te
+     asignaron» es otra cosa que «cambió el responsable» —una pide trabajo, la
+     otra informa— y quien recibe la primera no debe recibir además la segunda.
+     Por eso comparten `avisados`. */
+  const avisados = new Set<string>();
   if (perfilId && perfilId !== user.id) {
-    const [{ data: pub }, { data: miP }] = await Promise.all([
-      supabase.from("publicaciones").select("titulo").eq("id", pubId).single(),
-      supabase.from("perfiles").select("nombre").eq("id", user.id).single(),
-    ]);
-    await supabase.from("notificaciones").insert({
-      usuario_id: perfilId,
-      publicacion_id: pubId,
-      tipo: "asignacion",
-      actor_nombre: miP?.nombre || "Alguien",
+    avisados.add(perfilId);
+    await notificar(supabase, {
+      usuario_id: perfilId, publicacion_id: pubId, tipo: "asignacion",
+      actor_nombre: actorNombre,
       mensaje: `Te asignaron: «${pub?.titulo || "un caso"}»`,
+    });
+  }
+  // 🔔 Y al autor y a quien lo llevaba: el caso cambió de manos.
+  if (pub) {
+    const quien = perfilId
+      ? ((await supabase.from("perfiles").select("nombre").eq("id", perfilId).maybeSingle())
+          .data?.nombre || "otra persona")
+      : null;
+    await avisarCambioCaso(supabase, {
+      pubId, actorId: user.id, actorNombre, tipo: "cambio_responsable",
+      mensaje: quien
+        ? `${actorNombre.split(" ")[0]} pasó «${pub.titulo}» a ${quien}`
+        : `${actorNombre.split(" ")[0]} dejó «${pub.titulo}» sin responsable`,
+      interesados: [pub.autor_id, previo?.responsable],
+      avisados,
     });
   }
   revalidatePath(`/caso/${pubId}`);
@@ -7926,6 +8015,18 @@ export async function cambiarEstado(pubId: string, estado: string) {
     // Si deja de estar resuelto, reaparece en el feed de quien lo había ocultado
     await supabase.from("feed_ocultos").delete().eq("publicacion_id", pubId);
   }
+
+  /* 🔔 Al autor y al responsable. Dar por resuelto el caso de otro sin que se
+     entere es la forma más barata de que algo quede sin hacer creyendo que se
+     hizo — y era exactamente lo que pasaba. */
+  {
+    const { pub, actorNombre } = await casoYActor(supabase, pubId, user.id);
+    if (pub) await avisarCambioCaso(supabase, {
+      pubId, actorId: user.id, actorNombre, tipo: "cambio_estado",
+      mensaje: `${actorNombre.split(" ")[0]} puso «${pub.titulo}» en ${rotuloEstado(estado, (pub as any).tipo)}`,
+      interesados: [pub.autor_id, pub.responsable],
+    });
+  }
   revalidatePath(`/caso/${pubId}`);
   revalidatePath("/");
   return {};
@@ -8009,6 +8110,17 @@ export async function cambiarFechaLimite(pubId: string, fecha: string) {
     await supabase.from("actividad").insert({
       entidad_tipo: "publicacion", entidad_id: pubId, actor_id: user.id, tipo: "edicion",
       detalle: { mensaje: val ? `puso la fecha límite en ${fmt(val)}` : "quitó la fecha límite" },
+    });
+    /* 🔔 Solo si CAMBIÓ —está dentro del mismo `if`—: guardar la misma fecha
+       otra vez no es un hecho y no debe sonar. Mover el plazo sin decírselo a
+       quien tiene que cumplirlo es la mitad de un plazo. */
+    const { pub, actorNombre } = await casoYActor(supabase, pubId, user.id);
+    if (pub) await avisarCambioCaso(supabase, {
+      pubId, actorId: user.id, actorNombre, tipo: "cambio_plazo",
+      mensaje: val
+        ? `${actorNombre.split(" ")[0]} puso «${pub.titulo}» para el ${fmt(val)}`
+        : `${actorNombre.split(" ")[0]} quitó la fecha límite de «${pub.titulo}»`,
+      interesados: [pub.autor_id, pub.responsable],
     });
   }
   revalidatePath(`/caso/${pubId}`);
@@ -8331,8 +8443,10 @@ export async function cambiarTipo(pubId: string, tipo: string) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
-  const VALIDOS = ["aviso", "tarea", "problema", "consulta", "pago", "idea", "archivo"];
-  if (!VALIDOS.includes(tipo)) return { error: "Tipo no válido." };
+  /* La lista de válidos era la tercera copia de lo mismo. Sale de lib/tipos, y
+     de paso «archivo» deja de ser un destino posible: un caso ya guardado con
+     ese tipo se puede cambiar A otra cosa, pero ninguno vuelve a serlo. */
+  if (!esTipoCreable(tipo)) return { error: "Tipo no válido." };
   const { error } = await supabase.from("publicaciones").update({ tipo }).eq("id", pubId);
   if (error) return { error: error.message };
   revalidatePath(`/caso/${pubId}`);

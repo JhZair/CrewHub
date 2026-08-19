@@ -49,8 +49,12 @@ const VISTAS: [string, string][] = [
   ["consulta", "❓ Consultas"], ["aviso", "📢 Avisos"], ["todo", "🌐 Todo"],
 ];
 // Filtros menos usados → van al desplegable "⋯ Más"
+/* Sin «📎 Archivos»: el tipo se retiró del compositor, así que ese filtro solo
+   podía enseñar historia — y un filtro que siempre da cero enseña a no fiarse
+   de los de al lado. Los archivos viejos que haya siguen saliendo en «🌐 Todo»
+   y en «🙋 Mis asuntos», con su 📎 intacto. */
 const VISTAS_MAS: [string, string][] = [
-  ["pago", "💰 Pagos"], ["idea", "💡 Ideas"], ["archivo", "📎 Archivos"],
+  ["pago", "💰 Pagos"], ["idea", "💡 Ideas"],
 ];
 
 export default async function Feed({ searchParams }: { searchParams: { v?: string; link?: string } }) {
@@ -406,7 +410,6 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
     consulta: U.filter((p: any) => p.tipo === "consulta").length,
     pago: U.filter((p: any) => p.tipo === "pago").length,
     idea: U.filter((p: any) => p.tipo === "idea").length,
-    archivo: U.filter((p: any) => p.tipo === "archivo").length,
     aviso: U.filter((p: any) => p.tipo === "aviso").length,
   };
 

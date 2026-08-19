@@ -118,6 +118,12 @@ export const ICONO: Record<string, string> = {
   /* Mismo 🧩 con el que la búsqueda y el tablero pintan un sub-caso. Que el
      aviso lleve otro ícono obligaría a aprender dos símbolos para una cosa. */
   subcaso: "🧩",
+  /* Los dos cambios que alteran un caso sin ser el estado. Tipos propios y no
+     `cambio_estado` reciclado: el ícono y el verbo se sacan del TIPO, así que
+     compartirlo diría «cambió el estado» sobre un cambio de fecha.
+     `cambio_plazo` NO es ⏰ — ese ya es `vencimiento`, «esto vence», que es una
+     alarma. Mover una fecha es un hecho, no una alarma. */
+  cambio_responsable: "🔀", cambio_plazo: "📅",
   /* Dos tipos para el mismo correo de DAFO: la campanita pinta el ícono a
      partir del TIPO y se queda solo con lo que va entre « » del mensaje
      (tituloDe), así que un emoji delante del texto no se ve. El «esto pide
@@ -133,6 +139,7 @@ export const ETIQ: Record<string, string> = {
   cambio_estado: "cambió el estado", mencion: "te mencionó", reaccion: "reaccionó",
   vinculo: "te vinculó",
   subcaso: "añadió un sub-caso",
+  cambio_responsable: "cambió el responsable", cambio_plazo: "movió la fecha",
 };
 
 /* A dónde lleva el aviso.
