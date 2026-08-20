@@ -10,6 +10,7 @@ import VerAdjunto from "@/components/VerAdjunto";
 import BotonFichaSunat from "@/components/BotonFichaSunat";
 import { AccionesFila, AvisoHilo, idFila } from "@/components/HiloRendicion";
 import EjeSelect from "@/components/EjeSelect";
+import Avatar from "@/components/Avatar";
 
 /* ── FACTURAS Y BOLETAS DEL FONDO ──
  *
@@ -33,6 +34,8 @@ const TIPOS: [string, string][] = [
 const rotuloTipo = (t?: string | null) => TIPOS.find(([k]) => k === t)?.[1] || "Comprobante";
 
 type Cmp = {
+  sentido?: string | null;
+  postulacion_id?: string | null;
   id: string; tipo: string; proveedor: string; ruc: string | null;
   serie: string | null; numero: string | null;
   fecha: string; importe: number; igv: number | null;
@@ -58,13 +61,19 @@ const dmy = (f: string) =>
 /* PostgREST devuelve la relación como objeto o como arreglo según cómo la
    resuelva. Leer solo una de las dos formas deja la firma en blanco sin que
    nada falle — y un hueco se lee como «nadie lo registró». */
-const autor = (c: Cmp) => {
+/* El perfil ENTERO de quien lo registró, no solo su nombre: abajo se pinta con
+   avatar. PostgREST devuelve la relación como objeto o como array de uno según
+   cómo la deduzca, así que se normaliza aquí en vez de en cada uso.
+   Si la consulta no pidió el perfil —`select("*")` a secas— esto devuelve null
+   igual que si no hubiera autor, y la fila diría «carga directa» sobre algo
+   cargado desde el formulario. Por eso las DOS pantallas que usan este bloque
+   piden el `creado:perfiles!creado_por(...)`; una mentira tranquila es peor
+   que un hueco. */
+const autorDe = (c: Cmp): { nombre: string; avatar_url?: string | null; color?: string | null } | null => {
   const p: any = c.creado;
-  return (Array.isArray(p) ? p[0] : p)?.nombre || null;
+  const u = Array.isArray(p) ? p[0] : p;
+  return u?.nombre ? u : null;
 };
-/* Solo el primer nombre: la fila ya va llena y «Narda» identifica igual que
-   «Narda Huamán Quispe» entre siete personas que se conocen. */
-const pila = (n: string) => n.trim().split(/\s+/)[0];
 const cuando = (t?: string | null) => {
   if (!t) return "";
   const d = new Date(t);
@@ -77,9 +86,26 @@ const cuandoLargo = (t?: string | null) => {
 };
 
 export default function Comprobantes({
-  postulacionId, comprobantes, etapas, rubros, esAdmin, error, urlSunat, userId, hiloError,
+  postulacionId, empresaId, comprobantes, etapas, rubros, esAdmin, error, urlSunat, userId, hiloError,
+  fondos,
 }: {
-  postulacionId: string; comprobantes: Cmp[];
+  /* ── EL MISMO BLOQUE EN DOS SITIOS ──
+   * Nació dentro de la rendición de un fondo, con `postulacionId` fijo. Desde
+   * que una factura es de la EMPRESA —y el fondo es a lo que se imputa, no su
+   * dueño— este bloque también es la pantalla de comprobantes de la empresa.
+   * Las dos formas se distinguen por qué prop llega:
+   *   · `postulacionId`  → dentro de un fondo. El fondo es fijo y no se elige.
+   *   · `empresaId`      → la pantalla de la empresa. El fondo se elige (o no)
+   *                        de la lista `fondos`.
+   * Un segundo componente habría duplicado el IGV automático, el enlace a
+   * SUNAT, el hilo y la validación del RUC — y la copia se habría quedado
+   * atrás a la primera corrección. */
+  postulacionId?: string | null;
+  empresaId?: string | null;
+  /** Los fondos de esta empresa, para poder imputar. Solo en la pantalla de
+   *  empresa; dentro de un fondo no hay nada que elegir. */
+  fondos?: { id: string; nombre: string }[];
+  comprobantes: Cmp[];
   etapas: Opcion[]; rubros: { id: string; etiqueta: string; ayuda?: string }[];
   esAdmin: boolean; error?: string | null;
   /** El buscador de SUNAT, administrado en /admin?s=plataformas. Si falta,
@@ -101,6 +127,14 @@ export default function Comprobantes({
     id: null as string | null, tipo: "factura", proveedor: "", ruc: "",
     serie: "", numero: "", fecha: hoyLima(), importe: "", igv: "",
     concepto: "", etapa: "", rubroItem: "", url: "",
+    /* `compra` por defecto: es lo que se registra casi siempre —el IGV
+       crédito—. La venta es el caso raro, pero es la que da el débito y sin
+       ella el resultado del mes siempre saldría a favor, así que el selector
+       tiene que verse, no esconderse tras un «avanzado». */
+    sentido: "compra",
+    /* A qué fondo se imputa. En la pantalla del fondo no se toca —lo fija la
+       prop— y aquí vale como «ninguno», que es lo normal fuera de DAFO. */
+    postulacionId: postulacionId || "",
   };
   const [f, setF] = useState(vacio);
 
@@ -131,6 +165,12 @@ export default function Comprobantes({
   const set = (k: string, v: string) => setF(a => {
     if (k === "igv") { setIgvTocado(true); return { ...a, igv: v }; }
     if (k === "importe" && !igvTocado) return { ...a, importe: v, igv: igvDe(v) };
+    /* Quitar el fondo se lleva su clasificación. Etapa y rubro solo existen
+       dentro de un fondo; si se eligen y luego se vuelve a «ninguno», los
+       campos desaparecen de la pantalla pero SEGUÍAN en el formulario y se
+       guardaban — una factura propia de la empresa quedaba etiquetada como si
+       se rindiera, y esa etiqueta luego reparte presupuesto que nadie pidió. */
+    if (k === "postulacionId" && !v) return { ...a, postulacionId: "", etapa: "", rubroItem: "" };
     return { ...a, [k]: v };
   });
 
@@ -140,7 +180,12 @@ export default function Comprobantes({
   const guardar = async () => {
     if (ocupado) return;
     avisar(""); setOcupado(true);
-    const r: any = await guardarComprobante({ ...f, postulacionId });
+    /* El fondo del formulario solo manda cuando NO estamos dentro de uno: en
+       la pantalla de un fondo, la prop es la verdad y el campo ni se enseña. */
+    const r: any = await guardarComprobante({
+      ...f, empresaId: empresaId || null,
+      postulacionId: postulacionId || f.postulacionId || null,
+    });
     setOcupado(false);
     if (r?.error) { avisar(r.error); return; }
     setF(vacio); setIgvTocado(false); setAbierto(false); router.refresh();
@@ -153,6 +198,11 @@ export default function Comprobantes({
       importe: String(c.importe), igv: c.igv ? String(c.igv) : "",
       concepto: c.concepto || "", etapa: c.etapa || "", rubroItem: c.rubro_item || "",
       url: c.url || "",
+      sentido: (c as any).sentido || "compra",
+      /* Al editar se conserva a qué fondo estaba imputado. Antes ni existía
+         el campo porque el fondo era inmutable; ahora cambiarlo —o quitarlo—
+         es una corrección legítima y no se puede perder al abrir el formulario. */
+      postulacionId: postulacionId || (c as any).postulacion_id || "",
     });
     /* Lo que ya está guardado salió del papel. Recalcularlo al abrir para
        editar cambiaría un dato ya verificado por una estimación, en silencio
@@ -213,11 +263,32 @@ export default function Comprobantes({
       {abierto && esAdmin && (
         <div className="card" style={{ marginBottom: 10, borderColor: "var(--accent)" }}>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            {/* ── COMPRA O VENTA ──
+                Va primero porque cambia el significado de todo lo demás: en una
+                compra el IGV es CRÉDITO y quien emite es el proveedor; en una
+                venta es DÉBITO y quien emite somos nosotros. Sumarlos juntos
+                daría un número sin significado, y el resultado del mes se
+                calcula justo de esa resta.
+                «Compra» viene puesto porque es lo que se registra casi siempre;
+                pero el selector se VE, no se esconde tras un desplegable de
+                opciones avanzadas: sin ninguna venta cargada, el IGV del mes
+                sale siempre a favor y eso se lee como un hecho. */}
+            <select value={f.sentido} onChange={e => set("sentido", e.target.value)}
+              style={{ ...inp, width: 120,
+                color: f.sentido === "venta" ? "var(--green)" : "var(--text)" }}
+              title="Compra: el IGV suma como crédito. Venta: suma como débito.">
+              <option value="compra">↙ Compra</option>
+              <option value="venta">↗ Venta</option>
+            </select>
             <select value={f.tipo} onChange={e => set("tipo", e.target.value)} style={{ ...inp, width: 150 }}>
               {TIPOS.map(([k, t]) => <option key={k} value={k}>{t}</option>)}
             </select>
+            {/* El rótulo cambia con el sentido: en una venta el «proveedor» es
+                el cliente, y pedir «proveedor» en una factura que emitimos
+                nosotros es la clase de etiqueta que se rellena mal sin dudar. */}
             <input value={f.proveedor} onChange={e => set("proveedor", e.target.value)}
-              placeholder="Proveedor — quién emitió" style={{ ...inp, flex: 1, minWidth: 180 }} />
+              placeholder={f.sentido === "venta" ? "Cliente — a quién se le emitió" : "Proveedor — quién emitió"}
+              style={{ ...inp, flex: 1, minWidth: 180 }} />
             {/* El RUC va aparte del nombre porque es columna obligatoria del
                 informe de DAFO. Sacarlo después de un texto libre es donde se
                 pierde un dígito — y un RUC con un dígito de menos no falla:
@@ -260,17 +331,54 @@ export default function Comprobantes({
             )}
           </div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 6 }}>
-            <select value={f.etapa} onChange={e => set("etapa", e.target.value)} style={{ ...inp, width: 175 }}>
-              <option value="">Etapa…</option>
-              {etapas.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
-            </select>
-            <select value={f.rubroItem} onChange={e => set("rubroItem", e.target.value)} style={{ ...inp, width: 175 }}>
-              <option value="">Rubro…</option>
-              {rubros.map(r => <option key={r.id} value={r.id} title={r.ayuda}>{r.etiqueta}</option>)}
-            </select>
+            {/* Etapa y rubro se han ido de aquí a debajo del fondo: sin fondo
+                no significan nada, y preguntarlos antes de saber si lo hay
+                era pedir una clasificación para un cajón que no existe. */}
             <input value={f.concepto} onChange={e => set("concepto", e.target.value)}
-              placeholder="Concepto — qué se compró" style={{ ...inp, flex: 1, minWidth: 160 }} />
+              placeholder={f.sentido === "venta" ? "Concepto — qué se vendió" : "Concepto — qué se compró"}
+              style={{ ...inp, flex: 1, minWidth: 160 }} />
           </div>
+          {/* ── A QUÉ FONDO SE IMPUTA ──
+              Solo fuera de un fondo: dentro, la prop lo fija y ofrecer un
+              desplegable con la respuesta ya escrita solo invita a cambiarla
+              por error.
+              «Ninguno» es la opción normal y va primera: la mayoría de las
+              compras de la asociación no son de DAFO, y ese era justo el caso
+              que el sistema no sabía guardar. */}
+          {!postulacionId && (fondos || []).length > 0 && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 6 }}>
+              <span style={{ color: "var(--dim)", fontSize: 11.5 }}>Imputar a un fondo</span>
+              <select value={f.postulacionId} onChange={e => set("postulacionId", e.target.value)}
+                style={{ ...inp, minWidth: 240 }}
+                title="Si esta compra se rinde en un fondo DAFO, elígelo aquí y aparecerá en su rendición. Si no, déjalo en «ninguno».">
+                <option value="">— ninguno (gasto propio de la empresa) —</option>
+                {(fondos || []).map(x => <option key={x.id} value={x.id}>{x.nombre}</option>)}
+              </select>
+              {f.postulacionId && (
+                <span style={{ color: "var(--teal)", fontSize: 11 }}>
+                  aparecerá también en la rendición de ese fondo
+                </span>
+              )}
+            </div>
+          )}
+          {/* ── DÓNDE CAE DENTRO DEL FONDO ──
+              Aparece solo cuando hay fondo: dentro de /fondo lo fija la prop,
+              y fuera aparece en cuanto se elige uno arriba. Así la pregunta
+              llega justo después de la que le da sentido, en vez de esperar
+              arriba en amarillo a que alguien adivine para qué es. */}
+          {(postulacionId || f.postulacionId) && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 6 }}>
+              <span style={{ color: "var(--dim)", fontSize: 11.5 }}>Dónde se rinde</span>
+              <select value={f.etapa} onChange={e => set("etapa", e.target.value)} style={{ ...inp, width: 175 }}>
+                <option value="">Etapa…</option>
+                {etapas.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+              </select>
+              <select value={f.rubroItem} onChange={e => set("rubroItem", e.target.value)} style={{ ...inp, width: 175 }}>
+                <option value="">Rubro…</option>
+                {rubros.map(r => <option key={r.id} value={r.id} title={r.ayuda}>{r.etiqueta}</option>)}
+              </select>
+            </div>
+          )}
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 6 }}>
             {/* Igual que en la caja: la factura se fotografía con el celular y
                 se pega aquí. Mandarla antes a Drive es el paso que hace que se
@@ -347,19 +455,6 @@ export default function Comprobantes({
                   {c.concepto || ""}
                 </span>
 
-                {/* ── QUIÉN LO REGISTRÓ Y CUÁNDO ──
-                    Es plata que se rinde ante el Ministerio: una cifra sin autor
-                    es una cifra que nadie puede explicar el día que la observan.
-                    Sin autor NO se deja en blanco —un hueco se lee como «no se
-                    sabe»— y aquí sí se sabe: entró por carga directa a la base,
-                    no por el formulario. */}
-                <span style={{ color: "var(--dim)", fontSize: 10.5 }}
-                  title={!c.creado_en ? undefined : autor(c)
-                    ? `Registrado por ${autor(c)} el ${cuandoLargo(c.creado_en)}`
-                    : `Cargado directamente en la base el ${cuandoLargo(c.creado_en)}, no desde el formulario. Por eso no hay una persona a la que atribuirlo.`}>
-                  {c.creado_en ? `${autor(c) ? pila(autor(c)!) : "carga directa"} · ${cuando(c.creado_en)}` : ""}
-                </span>
-
                 <span style={{ color: "var(--teal)", fontWeight: 700, textAlign: "right" }}>
                   {money(c.importe)}
                 </span>
@@ -380,15 +475,62 @@ export default function Comprobantes({
                   que pasaba con estas diez.
                   Mismo control que en los recibos: la misma tarea no puede
                   hacerse de dos maneras según la lista. */}
-              <EjeSelect valor={c.etapa || ""} vacio="⚠ etapa…" opciones={etapas} ancho={150}
-                editable={esAdmin}
-                onCambio={v => fijarEjesRendicion("comprobante", c.id, { postulacionId, etapa: v || null })
-                  .then(() => router.refresh())} />
-              <EjeSelect valor={c.rubro_item || ""} vacio="⚠ rubro…" ancho={165}
-                opciones={rubros.map(r => ({ id: r.id, nombre: r.etiqueta, ayuda: r.ayuda }))}
-                editable={esAdmin}
-                onCambio={v => fijarEjesRendicion("comprobante", c.id, { postulacionId, rubroItem: v || null })
-                  .then(() => router.refresh())} />
+              {/* ── PERO SOLO SI LA FACTURA VA A UN FONDO ──
+                  Etapa y rubro son las casillas de la RENDICIÓN: sirven para
+                  repartir el gasto en el presupuesto aprobado de un fondo. Una
+                  factura de la empresa que no se rinde a ningún sitio no tiene
+                  etapa ni rubro que poner, y esta pantalla las pintaba igual —
+                  con su «⚠ etapa…» en amarillo, reclamando que se rellene algo
+                  que no existe. Una advertencia que no se puede atender enseña
+                  a ignorar las advertencias.
+                  El que manda es el HECHO —esta factura pertenece a un fondo—,
+                  no en qué pantalla estemos: dentro de /fondo viene por
+                  `postulacionId`, y en /comprobantes puede venir en la fila,
+                  porque una misma factura de la empresa sí puede estar rendida
+                  a un fondo. En ese caso se clasifica también desde aquí. */}
+              {(() => {
+                const fondoDeLaFila = postulacionId || (c as any).postulacion_id || null;
+                if (!fondoDeLaFila) return null;
+                return (
+                  <>
+                    <EjeSelect valor={c.etapa || ""} vacio="⚠ etapa…" opciones={etapas} ancho={150}
+                      editable={esAdmin}
+                      onCambio={v => fijarEjesRendicion("comprobante", c.id, { postulacionId: fondoDeLaFila, etapa: v || null })
+                        .then(() => router.refresh())} />
+                    <EjeSelect valor={c.rubro_item || ""} vacio="⚠ rubro…" ancho={165}
+                      opciones={rubros.map(r => ({ id: r.id, nombre: r.etiqueta, ayuda: r.ayuda }))}
+                      editable={esAdmin}
+                      onCambio={v => fijarEjesRendicion("comprobante", c.id, { postulacionId: fondoDeLaFila, rubroItem: v || null })
+                        .then(() => router.refresh())} />
+                  </>
+                );
+              })()}
+
+              {/* ── QUIÉN LO REGISTRÓ Y CUÁNDO ──
+                  Es plata que se rinde ante el Ministerio: una cifra sin autor
+                  es una cifra que nadie puede explicar el día que la observan.
+                  Vivía arriba, en una celda de 104 px que la cortaba a
+                  «carga directa · 20 ag…» — ni nombre ni fecha completos.
+                  Aquí abajo cabe la cara, que es como se reconoce a alguien
+                  entre siete, y el nombre entero.
+                  Sin autor NO se deja en blanco: un hueco se lee como «no se
+                  sabe», y aquí sí se sabe — entró por carga directa a la base,
+                  no por el formulario. */}
+              {c.creado_en && (
+                <span className="fac-autor"
+                  title={autorDe(c)
+                    ? `Registrado por ${autorDe(c)!.nombre} el ${cuandoLargo(c.creado_en)}`
+                    : `Cargado directamente en la base el ${cuandoLargo(c.creado_en)}, no desde el formulario. Por eso no hay una persona a la que atribuirlo.`}>
+                  {autorDe(c)
+                    ? <>
+                        <Avatar nombre={autorDe(c)!.nombre} src={autorDe(c)!.avatar_url}
+                          color={autorDe(c)!.color} size={18} />
+                        <b>{autorDe(c)!.nombre}</b>
+                      </>
+                    : <i style={{ color: "var(--dim)" }}>carga directa</i>}
+                  <span style={{ color: "var(--dim)" }}>· {cuando(c.creado_en)}</span>
+                </span>
+              )}
 
               <span style={{ flex: 1, minWidth: 0 }} />
 

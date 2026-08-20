@@ -49,6 +49,8 @@ export default function NavIconos() {
      fijado aparte para no ensuciar SECCIONES con un tipo falso. */
   const enFondos = pathname === "/fondos" || pathname.startsWith("/fondo/");
   const enEtiquetas = pathname === "/etiquetas";
+  const enObligaciones = pathname === "/obligaciones";
+  const enComprobantes = pathname === "/comprobantes";
   const enCasilla = pathname === "/casilla";
 
   // Cerrar con Escape: un menú que solo se cierra con el ratón estorba.
@@ -105,6 +107,22 @@ export default function NavIconos() {
             {/* Las etiquetas no son una entidad, pero son un lugar al que se va
                 a administrarlas — como fondos. Antes vivían en el menú de la
                 cuenta; aquí, junto a las demás secciones, se encuentran mejor. */}
+            {/* Lo que vence solo: las declaraciones de cada empresa ante
+                SUNAT. Va junto a fondos porque es de la misma clase de sitio
+                —un lugar al que se entra a mirar si algo está al día— y no una
+                entidad más del catálogo. */}
+            <Link href="/obligaciones" className={`nav-item${enObligaciones ? " on" : ""}`}
+              onClick={() => setAbierto(false)}>
+              <span className="nav-item-ico">📅</span>
+              <span>obligaciones</span>
+            </Link>
+            {/* Las facturas de cada empresa, de fondo y de fuera. Va pegado a
+                obligaciones porque es de donde salen sus números. */}
+            <Link href="/comprobantes" className={`nav-item${enComprobantes ? " on" : ""}`}
+              onClick={() => setAbierto(false)}>
+              <span className="nav-item-ico">🧾</span>
+              <span>comprobantes</span>
+            </Link>
             <Link href="/etiquetas" className={`nav-item${enEtiquetas ? " on" : ""}`}
               onClick={() => setAbierto(false)}>
               <span className="nav-item-ico">🏷️</span>

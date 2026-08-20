@@ -224,10 +224,14 @@ export const rutaNotif = (n: {
      Y si por lo que sea no viene el fondo, NO se cae a la postulación: se
      devuelve null y el aviso queda sin clic. Un enlace que lleva al sitio
      equivocado es peor que uno que no lleva: el segundo se nota. */
+  /* La ruta ya no se arma aquí: la dice cada tabla en META_RENDICION. Estaba
+     escrita como `/fondo/${postulacion_id}` porque las cinco primeras eran del
+     fondo; la sexta —un periodo declarable— vive en /obligaciones y no tiene
+     postulación, y con la ruta aquí dentro habría exigido un `if` más en este
+     encadenado. El comportamiento no cambia para las cinco: `rutaFondo`
+     devuelve null si el fondo no viene, igual que antes. */
   : tablaDeNotif(n)
-    ? (n.postulacion_id
-        ? `/fondo/${n.postulacion_id}#${anclaRendicion(tablaDeNotif(n)!, n[META_RENDICION[tablaDeNotif(n)!].col])}`
-        : null)
+    ? META_RENDICION[tablaDeNotif(n)!].ruta(n, n[META_RENDICION[tablaDeNotif(n)!].col])
   /* Y la postulación, que llevaba desde su migración devolviendo `null` — el
      aviso llegaba a la bandeja y no era clicable. Es exactamente el fallo que
      el comentario de más arriba dice haber arreglado para los objetos,

@@ -155,8 +155,12 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
          la observan, y la bitácora de auditoría —que sí lo guarda— está tres
          plegables más abajo y en otro idioma. El dato tiene que estar donde
          está la duda. Mismo patrón que estado_cuenta, arriba. */
+      /* Con foto y color: desde que el autor se pinta en la segunda fila con
+         su avatar, pedir solo el nombre dejaría aquí unas iniciales grises
+         mientras en /comprobantes se ve la cara. El mismo bloque no puede
+         enseñar dos cosas distintas según la pantalla. */
       .select("id,tipo,proveedor,ruc,serie,numero,fecha,importe,igv,concepto,etapa,rubro_item,url," +
-        "creado_en,creado:perfiles!creado_por(nombre)")
+        "postulacion_id,creado_en,creado:perfiles!creado_por(nombre,avatar_url,color)")
       .eq("postulacion_id", params.id).order("fecha"),
     /* La bitácora inmutable de este fondo. Filtra por el postulacion_id que
        vive dentro del JSON (antes/después), así también captura los borrados. */

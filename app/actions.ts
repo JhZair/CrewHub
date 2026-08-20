@@ -3,8 +3,11 @@ import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { entregableEq, porQueNoEq, enRonda, txtEstadoEq } from "@/lib/estadosEquipo";
 import { ESTADOS_COMP } from "@/lib/compromisos";
-import { META_RENDICION, esTablaRendicion, anclaRendicion, type TablaRendicion } from "@/lib/rendicionHilo";
+import { META_RENDICION, esTablaRendicion, anclaRendicion, duenoDe, type TablaRendicion } from "@/lib/rendicionHilo";
+import { COLS_DUENO_COM, COLS_DUENO_COM_EXTRA } from "@/lib/vinculoComentario";
 import { icoTipo, esTipoCreable } from "@/lib/tipos";
+import { claseDe as claseDeObligacion, RESULTADOS as RESULTADOS_OBL, DIAS_AVISO } from "@/lib/obligaciones";
+import { leerReporteSol, periodosDeSol, leerCasillasSol, casillasVigentes, pareceCopiaPorColumnas } from "@/lib/importarSol";
 import { FORM_CONF, nombreCorto, SUBCATS_EQUIPO } from "@/lib/entidades";
 import { ETAPAS_PROY_VALIDAS } from "@/lib/etapasProyecto";
 import { nrmQ } from "@/lib/quechua";
@@ -942,7 +945,12 @@ export async function comentarRendicion(
     supabase.from(tabla).select(meta.sel).eq("id", filaId).maybeSingle(),
   ]);
   const actorNombre = miP?.nombre || "Alguien";
-  const titulo = meta.titulo(fila);
+  /* El dueño va en el rótulo del aviso cuando no viaja en la fila. «noviembre
+     2024» en una bandeja no dice de cuál de las diecisiete asociaciones se
+     habla; «noviembre 2024 · Asoc Apu Wilkakalle» sí. Para las cinco del fondo
+     esto devuelve "" y el rótulo queda como estaba. */
+  const titulo = [meta.titulo(fila), await duenoDe(supabase, meta, fila)]
+    .filter(Boolean).join(" · ");
   /* El FONDO al que pertenece la fila viaja en cada aviso. Sin él, la
      campanita tiene el id de la factura y ninguna forma de saber en qué
      pantalla vive: el aviso llegaría, se leería, y al pulsarlo no pasaría
@@ -1043,8 +1051,14 @@ export async function casoDeRendicion(tabla: string, filaId: string) {
   if (!esTablaRendicion(tabla)) return { error: "No sé de qué se está hablando." };
   const meta = META_RENDICION[tabla as TablaRendicion];
 
+  /* El embed de la postulación solo se pide a las tablas que la tienen. Un
+     periodo declarable no tiene `postulacion_id`, y PostgREST rechaza la
+     consulta ENTERA cuando una relación no existe — no devuelve la fila sin
+     ese trozo, devuelve error. La lección ya está aprendida con las columnas
+     opcionales; aquí vale igual para las relaciones. */
+  const conFondo = meta.sel.includes("postulacion_id");
   const { data: fila, error: eF } = await supabase.from(tabla)
-    .select(`${meta.sel},caso_id,post:postulaciones(codigo,proy:proyectos(nombre))`)
+    .select(`${meta.sel},caso_id${conFondo ? ",post:postulaciones(codigo,proy:proyectos(nombre))" : ""}`)
     .eq("id", filaId).maybeSingle();
   if (eF) {
     return { error: /caso_id/.test(eF.message)
@@ -1064,25 +1078,33 @@ export async function casoDeRendicion(tabla: string, filaId: string) {
   }
 
   const post: any = Array.isArray((fila as any).post) ? (fila as any).post[0] : (fila as any).post;
+  const rotulo = meta.titulo(fila);
+  /* Fuera del fondo no hay «PO-003 · Chaccu» que poner, y el rótulo del periodo
+     ya trae la empresa. Repetirla, o escribir «fondo» sobre algo que no lo es,
+     sería un título que miente en el tablero — que es donde más se lee. */
   const quien = post
     ? `${post.codigo || "🎯"}${post.proy?.nombre ? ` · ${post.proy.nombre}` : ""}`
-    : "fondo";
-  const rotulo = meta.titulo(fila);
+    : (conFondo ? "fondo" : await duenoDe(supabase, meta, fila));
 
   const { data: pub, error } = await supabase.from("publicaciones").insert({
     tipo: "tarea", estado: "abierta", autor_id: user.id,
     /* El rótulo de la fila va en el TÍTULO: en un tablero de cuarenta casos,
        «Revisar factura» no dice cuál ni de qué fondo, y el monto y el número
        son lo que permite volver a la fila desde el propio caso. */
-    titulo: `${meta.ico} ${rotulo} — ${quien}`.slice(0, 200),
+    titulo: `${meta.ico} ${rotulo}${quien ? ` — ${quien}` : ""}`.slice(0, 200),
     cuerpo: [
-      `Abierto desde ${meta.etiqueta} de la rendición del fondo.`,
+      conFondo
+        ? `Abierto desde ${meta.etiqueta} de la rendición del fondo.`
+        : `Abierto desde ${meta.etiqueta}.`,
       "",
-      /* El enlace de vuelta usa el mismo ancla que los avisos: una sola forma
-         de nombrar la fila, y no dos que puedan desincronizarse. */
-      (fila as any).postulacion_id
-        ? `Vuelve a la fila: /fondo/${(fila as any).postulacion_id}#${anclaRendicion(tabla as TablaRendicion, filaId)}`
-        : "",
+      /* El enlace de vuelta usa el mismo ancla que los avisos, y ahora también
+         la misma FUNCIÓN: la ruta la dice META_RENDICION. Aquí estaba escrita a
+         mano una segunda vez, y dos formas de nombrar el mismo destino son dos
+         formas que un día dejan de coincidir sin que nada avise. */
+      (() => {
+        const r = meta.ruta(fila, filaId);
+        return r ? `Vuelve a la fila: ${r}` : "";
+      })(),
       "",
       "— La fila sigue existiendo aunque este caso se cierre: el caso es la decisión de ocuparse, no el dato.",
     ].filter(Boolean).join("\n"),
@@ -1120,7 +1142,15 @@ export async function cargarRendicionRapido(tabla: string, filaId: string) {
   if (!esTablaRendicion(tabla)) return { error: "No sé de qué se está hablando." };
   const meta = META_RENDICION[tabla];
 
-  const [{ data: fila }, { data: comentarios, error: eCom }, { data: perfiles }] = await Promise.all([
+  /* ── EL ERROR DE LA FILA NO SE TIRA ──
+     Aquí se pedía `{ data: fila }` a secas. Cuando esa consulta fallaba —una
+     columna que no existe, una relación que PostgREST no sabe resolver— `fila`
+     volvía en null SIN error, la función devolvía un objeto aparentemente
+     bueno, y el pop-up se quedaba en «Cargando…» PARA SIEMPRE, porque su
+     condición de listo es `!!fila`. Ni un mensaje, ni una traza: la peor forma
+     de fallo que puede tener esta pantalla, y estaba a un `error:` de
+     distancia. */
+  const [{ data: fila, error: eFila }, { data: comentarios, error: eCom }, { data: perfiles }] = await Promise.all([
     supabase.from(tabla).select(meta.sel).eq("id", filaId).maybeSingle(),
     supabase.from("comentarios")
       .select("id,cuerpo,imagenes,creado_en,editado_en,autor_id,responde_a," +
@@ -1131,6 +1161,7 @@ export async function cargarRendicionRapido(tabla: string, filaId: string) {
   /* Si la columna no existe, la lista viene vacía y sin error visible: el hilo
      parecería no tener comentarios cuando lo que pasa es que no hay dónde
      guardarlos. Se dice. */
+  if (eFila) return { error: `No pude leer la fila: ${eFila.message}` };
   if (eCom) {
     return {
       error: new RegExp(meta.col).test(eCom.message)
@@ -1138,6 +1169,10 @@ export async function cargarRendicionRapido(tabla: string, filaId: string) {
         : eCom.message,
     };
   }
+  /* Y si no hay error pero tampoco fila, se dice: la fila se borró mientras
+     alguien tenía la lista abierta. Sin esto vuelve al mismo «Cargando…»
+     eterno por otro camino. */
+  if (!fila) return { error: "Esa fila ya no está. Recarga la lista." };
 
   const ids = (comentarios || []).map((c: any) => c.id);
   const { data: rx } = ids.length
@@ -2855,7 +2890,17 @@ export async function fijarSaldoInicial(cajaId: string, saldo: string, desde: st
  * papel. Ver db/facturas.sql.
  */
 export async function guardarComprobante(f: {
-  id?: string | null; postulacionId: string;
+  id?: string | null;
+  /** De quién es la factura. Obligatoria desde db/comprobante-empresa.sql: una
+   *  factura pertenece a una EMPRESA, y el fondo es a lo que se imputa. */
+  empresaId?: string | null;
+  /** A qué fondo se imputa, si es que a alguno. OPCIONAL: la compra de la
+   *  asociación con plata propia no tiene postulación, y exigirla era lo que
+   *  la dejaba fuera del sistema. */
+  postulacionId?: string | null;
+  /** `compra` (IGV crédito) o `venta` (IGV débito). Sin esto el IGV del mes no
+   *  se puede calcular: sumar los dos daría un número sin significado. */
+  sentido?: string;
   tipo: string; proveedor: string; ruc?: string;
   serie?: string; numero?: string;
   fecha: string; importe: string; igv?: string;
@@ -2871,6 +2916,18 @@ export async function guardarComprobante(f: {
 
   const prov = String(f.proveedor || "").trim();
   if (!prov) return { error: "Di quién emitió el comprobante." };
+  const sentido = f.sentido === "venta" ? "venta" : "compra";
+
+  /* La empresa se puede deducir del fondo cuando viene por ahí —es lo que hace
+     la pantalla del fondo, que no la pide—, pero alguna tiene que haber: sin
+     empresa el comprobante no entra en ningún IGV y no se echa de menos. */
+  let empresaId = f.empresaId || null;
+  if (!empresaId && f.postulacionId) {
+    const { data: post } = await supabase.from("postulaciones")
+      .select("empresa_id").eq("id", f.postulacionId).maybeSingle();
+    empresaId = (post as any)?.empresa_id || null;
+  }
+  if (!empresaId) return { error: "Falta la empresa a la que pertenece el comprobante." };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(f.fecha)) return { error: "Pon la fecha del comprobante." };
   const importe = montoDe(f.importe);
   if (importe <= 0) return { error: "El importe debe ser mayor que cero." };
@@ -2886,7 +2943,9 @@ export async function guardarComprobante(f: {
   if (ruc && ruc.length !== 11) return { error: "El RUC tiene 11 dígitos. Déjalo vacío si el comprobante no lo trae." };
 
   const fila = {
-    postulacion_id: f.postulacionId,
+    empresa_id: empresaId,
+    postulacion_id: f.postulacionId || null,
+    sentido,
     tipo: f.tipo || "factura",
     proveedor: prov,
     ruc: ruc || null,
@@ -2900,10 +2959,15 @@ export async function guardarComprobante(f: {
     url: String(f.url || "").trim() || null,
   };
 
-  const { postulacion_id, ...sinFondo } = fila;
+  /* Al EDITAR sí viaja `postulacion_id`: imputar una factura a un fondo —o
+     dejar de hacerlo— es justo una de las correcciones que hay que poder
+     hacer, y antes la actualización lo excluía a propósito porque el fondo era
+     inmutable. Ya no lo es.
+     El `eq("empresa_id")` sustituye al viejo `eq("postulacion_id")` como
+     cinturón: impide que un id de otra empresa se cuele en el update. */
   const { data: guardado, error } = f.id
-    ? await supabase.from("comprobante").update(sinFondo)
-        .eq("id", f.id).eq("postulacion_id", f.postulacionId).select("id")
+    ? await supabase.from("comprobante").update(fila)
+        .eq("id", f.id).eq("empresa_id", empresaId).select("id")
     : await supabase.from("comprobante").insert({ ...fila, creado_por: user.id }).select("id");
 
   if (error) {
@@ -2913,37 +2977,53 @@ export async function guardarComprobante(f: {
         /* El duplicado se explica, no se suelta en crudo. «23505» a secas
            manda a buscar un error de programa cuando lo que pasa es que esa
            factura ya se cargó — y saberlo evita cargarla «con otro número». */
-        : c === "23505" ? `Ese comprobante ya está cargado en este fondo (${fila.serie || "sin serie"}-${fila.numero || "sin número"}).`
+        /* El duplicado ya no es «en este fondo»: la unicidad pasó a ser la de
+           SUNAT —emisor, serie y número dentro de la empresa—, así que la
+           factura puede estar cargada en otro fondo o sin fondo ninguno. Decir
+           «en este fondo» mandaría a buscarla donde no está. */
+        : c === "23505" ? `Esa factura ya está cargada para esta empresa (${fila.serie || "sin serie"}-${fila.numero || "sin número"}${ruc ? ` de ${ruc}` : ""}). Búscala en /comprobantes.`
         : error.message,
     };
   }
   if (!guardado?.length) return { error: "No se guardó nada. Revisa tus permisos." };
 
+  /* La bitácora va a la EMPRESA, que es la dueña, y al fondo solo si lo hay.
+     Antes iba siempre a la postulación: una compra sin fondo habría escrito su
+     rastro en `entidad_id: null` — una fila de historial que no se puede
+     encontrar desde ninguna ficha. */
+  const rastro = `${f.id ? "corrigió" : "registró"} ${sentido === "venta" ? "una venta" : "una compra"}: ${fila.tipo} de ${prov} por S/ ${importe.toLocaleString("es-PE")}`;
   await supabase.from("actividad").insert({
-    entidad_tipo: "postulacion", entidad_id: f.postulacionId, actor_id: user.id, tipo: "dato",
-    detalle: { mensaje: `${f.id ? "corrigió" : "registró"} ${fila.tipo} de ${prov} por S/ ${importe.toLocaleString("es-PE")}` },
+    entidad_tipo: "empresa", entidad_id: empresaId, actor_id: user.id, tipo: "dato",
+    detalle: { mensaje: rastro },
   });
-  revalidatePath(`/fondo/${f.postulacionId}`);
+  revalidatePath("/comprobantes");
+  revalidatePath("/obligaciones");
+  if (f.postulacionId) revalidatePath(`/fondo/${f.postulacionId}`);
   return {};
 }
 
-export async function borrarComprobante(id: string, postulacionId: string) {
+export async function borrarComprobante(id: string, postulacionId?: string | null) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
   const { data: perfil } = await supabase.from("perfiles").select("es_admin,es_finanzas").eq("id", user.id).maybeSingle();
   if (!perfil?.es_admin && !perfil?.es_finanzas) return { error: "Solo administración puede borrarlo." };
 
-  const { data: prev } = await supabase.from("comprobante").select("proveedor,importe").eq("id", id).maybeSingle();
+  const { data: prev } = await supabase.from("comprobante")
+    .select("proveedor,importe,empresa_id,postulacion_id").eq("id", id).maybeSingle();
   const { data: borrados, error } = await supabase.from("comprobante").delete().eq("id", id).select("id");
   if (error) return { error: error.message };
   if (!borrados?.length) return { error: "No se borró nada. Revisa tus permisos." };
 
-  await supabase.from("actividad").insert({
-    entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "dato",
+  const emp = (prev as any)?.empresa_id || null;
+  if (emp) await supabase.from("actividad").insert({
+    entidad_tipo: "empresa", entidad_id: emp, actor_id: user.id, tipo: "dato",
     detalle: { mensaje: `borró un comprobante de ${prev?.proveedor || "—"} por S/ ${Number(prev?.importe || 0).toLocaleString("es-PE")}` },
   });
-  revalidatePath(`/fondo/${postulacionId}`);
+  revalidatePath("/comprobantes");
+  revalidatePath("/obligaciones");
+  const fondo = postulacionId || (prev as any)?.postulacion_id;
+  if (fondo) revalidatePath(`/fondo/${fondo}`);
   return {};
 }
 
@@ -4258,8 +4338,19 @@ export async function editarComentario(comentarioId: string, pubId: string, cuer
      `select` de reintento: si la migración de la rendición no está corrida,
      PostgREST rechaza la consulta ENTERA y editar dejaría de funcionar hasta
      en los casos, que no tienen nada que ver. */
-  const BASE = "autor_id,publicacion_id,objeto_id,equipamiento_id,prestamo_id,postulacion_id";
-  const EXTRA = ",movimiento_caja_id,comprobante_id,estado_cuenta_id,rhe_id,gasto_dj_id,movimiento_banco_id";
+  /* ── Y LA LISTA NO SE TECLEA ──
+     Aquí estaban las once columnas escritas a mano, copia de las que
+     `lib/vinculoComentario.ts` ya deriva de TABLAS_RENDICION. Al abrir la
+     puerta doce esta copia se quedó corta —y no habría dado error: editar un
+     comentario de un periodo simplemente no habría refrescado su pantalla, y
+     el texto viejo seguiría ahí hasta recargar a mano—.
+     Es el fallo que este repo se toma en serio: dos listas de lo mismo, la
+     segunda envejeciendo en silencio. Ahora sale de un sitio.
+     Se mantiene el reintento sin las opcionales: si una migración no está
+     corrida, PostgREST rechaza la consulta ENTERA y editar dejaría de
+     funcionar hasta en los casos, que no tienen nada que ver. */
+  const BASE = "autor_id," + COLS_DUENO_COM;
+  const EXTRA = COLS_DUENO_COM_EXTRA;
   let { data: com, error: eSel } = await supabase.from("comentarios")
     .select(BASE + EXTRA).eq("id", comentarioId).maybeSingle();
   if (eSel) {
@@ -8761,4 +8852,382 @@ export async function unfurlEnlace(url: string): Promise<{ title?: string; descr
   } catch {
     return {};
   }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   📅 OBLIGACIONES PERIÓDICAS — las tareas que vuelven solas
+   Ver db/obligaciones.sql (por qué tres tablas) y lib/obligaciones.ts (el
+   catálogo y el semáforo). Aquí solo están las escrituras.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* Un mensaje útil cuando la migración no está corrida. Sin esto, el error de
+   PostgREST dice «relation "obligacion" does not exist», que en pantalla no
+   significa nada para quien solo quería marcar una casilla. */
+const faltaObl = (msg: string) =>
+  /obligacion|vencimiento_oficial/.test(msg)
+    ? "Falta correr db/obligaciones.sql en Supabase."
+    : msg;
+
+/** Dar de alta una obligación y generar sus periodos de una vez. Las dos cosas
+ *  juntas a propósito: una obligación sin periodos no se ve en ninguna parte,
+ *  así que dejar la generación para «luego» equivale a no haberla creado. */
+export async function crearObligacion(datos: {
+  entidadTipo?: string; entidadId: string; clase: string;
+  responsable?: string | null; diasAviso?: number; desde?: string | null;
+}) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!datos.entidadId || !datos.clase) return { error: "Falta la empresa o la obligación." };
+  const meta = claseDeObligacion(datos.clase);
+  if (!meta) return { error: "Esa obligación no está en el catálogo." };
+
+  const { data, error } = await supabase.from("obligacion").insert({
+    entidad_tipo: datos.entidadTipo || "empresa",
+    entidad_id: datos.entidadId,
+    clase: datos.clase,
+    periodicidad: meta.periodicidad,
+    responsable: datos.responsable || null,
+    dias_aviso: datos.diasAviso ?? DIAS_AVISO,
+    desde: datos.desde || null,
+    creado_por: user.id,
+  }).select("id").maybeSingle();
+  if (error) {
+    if (/duplicate key|unique/i.test(error.message)) {
+      return { error: "Esa empresa ya tiene esta obligación." };
+    }
+    return { error: faltaObl(error.message) };
+  }
+  const gen = await generarPeriodos(data?.id || null);
+  revalidatePath("/obligaciones");
+  return { id: data?.id, creados: (gen as any)?.creados ?? 0 };
+}
+
+/** Generar los periodos que falten. Sin `obligacionId`, todas. Es idempotente
+ *  —el `unique (obligacion, año, mes)` lo garantiza—, así que se puede pulsar
+ *  el botón las veces que haga falta. */
+export async function generarPeriodos(obligacionId: string | null = null) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data, error } = obligacionId
+    ? await supabase.rpc("obligacion_generar", { p_obligacion: obligacionId })
+    : await supabase.rpc("obligaciones_generar_todas");
+  if (error) return { error: faltaObl(error.message) };
+  revalidatePath("/obligaciones");
+  return { creados: Number(data ?? 0) };
+}
+
+/** Marcar (o desmarcar) un periodo como declarado.
+ *  La fecha es el dato, no un `true`: sin ella no hay forma de saber si se
+ *  presentó a tiempo, que es justo lo que se revisa al cerrar el año. */
+export async function marcarDeclarado(periodoId: string, fecha: string | null) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const val = /^\d{4}-\d{2}-\d{2}$/.test(String(fecha || "")) ? fecha : null;
+  /* `.select()` de cinturón: un update bloqueado por RLS devuelve cero filas y
+     ningún error, y la casilla «se marcaría» hasta recargar. */
+  /* `registrado_en` es CUÁNDO SE APUNTÓ AQUÍ, no cuándo lo recibió SUNAT. Sin
+     él la pantalla solo podía enseñar `declarado_en`, que es la fecha de la
+     constancia: un periodo de 2024 regularizado en 2026 se leería como marcado
+     a tiempo. Al desmarcar se limpia junto con el resto — dejar el rastro de
+     una marca que ya no existe es peor que no tenerlo. */
+  const base = { declarado_en: val, declarado_por: val ? user.id : null };
+  const marcar = (extra: Record<string, any>) => supabase.from("obligacion_periodo")
+    /* `.select()` de cinturón: un update bloqueado por RLS devuelve cero filas
+       y ningún error, y la casilla «se marcaría» hasta recargar. */
+    .update({ ...base, ...extra }).eq("id", periodoId).select("id");
+
+  let { data, error } = await marcar({ registrado_en: val ? new Date().toISOString() : null });
+  /* ── SI FALTA LA COLUMNA, SE MARCA IGUAL ──
+     Postgres rechaza el UPDATE ENTERO cuando una columna no existe, así que
+     sin este reintento nadie podría marcar un periodo hasta correr
+     db/obligacion-hilo.sql — una migración pendiente dejaría inservible lo que
+     ya funcionaba. Se pierde el «cuándo se apuntó», que es lo nuevo, y no la
+     marca, que es lo que hacía falta. */
+  if (error && /registrado_en/.test(error.message)) ({ data, error } = await marcar({}));
+  if (error) return { error: faltaObl(error.message) };
+  if (!data?.length) return { error: "No se pudo guardar: el permiso de la base lo rechazó." };
+  revalidatePath("/obligaciones");
+  return {};
+}
+
+/* Aquí vivía `guardarPapelObligacion`, que pegaba enlaces de Drive con las
+   cuatro constancias de cada mes. Se retiró a los dos días de escribirla y el
+   motivo lo dio quien la iba a usar: guardar esas copias no sirvió nunca en
+   SeaTable. Si una declaración está presentada lo dice SUNAT, no un archivo
+   nuestro; y una copia que hay que mantener a mano se queda vieja y encima da
+   confianza. Lo que hacía falta era llegar rápido a SUNAT a comprobarlo, y eso
+   es un enlace en la pantalla, no cuatro columnas y una acción. */
+
+/** Qué salió el mes: en cero, saldo a favor o a pagar, con su monto. */
+export async function fijarResultadoPeriodo(
+  periodoId: string, resultado: string | null, monto: string | number | null,
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const r = RESULTADOS_OBL.find(x => x.id === resultado) || null;
+  /* Sin resultado no hay monto, y «en cero» tampoco lo lleva: dejar un importe
+     colgando de un mes en cero es la clase de dato que luego nadie sabe leer. */
+  const n = r?.conMonto ? Number(monto) : NaN;
+  const { data, error } = await supabase.from("obligacion_periodo")
+    .update({ resultado: r?.id || null, monto: Number.isFinite(n) ? n : null })
+    .eq("id", periodoId).select("id");
+  if (error) return { error: faltaObl(error.message) };
+  if (!data?.length) return { error: "No se pudo guardar: el permiso de la base lo rechazó." };
+  revalidatePath("/obligaciones");
+  return {};
+}
+
+/** Desde cuándo se le sigue la pista a una obligación, y regenerar.
+ *
+ *  Es el control que faltaba: sin él, ver 2024 obligaba a tocar SQL. Vacío
+ *  significa «desde que la empresa existe» —`obligacion_generar` cae en
+ *  `fecha_constitucion`—, que es la respuesta correcta cuando nadie decide.
+ *
+ *  No BORRA periodos al acortar el rango: los meses ya generados se quedan.
+ *  Es deliberado. Alguien pudo marcar uno como declarado, y una fecha de
+ *  inicio no es motivo para tirar el trabajo de otro; para quitar meses de
+ *  más está el filtro por constitución, que sí sabe que son imposibles. */
+export async function fijarDesdeObligacion(obligacionId: string, desde: string | null) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const val = /^\d{4}-\d{2}-\d{2}$/.test(String(desde || "")) ? desde : null;
+  const { data, error } = await supabase.from("obligacion")
+    .update({ desde: val }).eq("id", obligacionId).select("id");
+  if (error) return { error: faltaObl(error.message) };
+  if (!data?.length) return { error: "No se pudo guardar: el permiso de la base lo rechazó." };
+  const gen = await generarPeriodos(obligacionId);
+  revalidatePath("/obligaciones");
+  return { creados: (gen as any)?.creados ?? 0 };
+}
+
+/* ── IMPORTAR LO QUE SUNAT DICE QUE SE PRESENTÓ ──
+ *
+ * Se le pega el texto del reporte «Relación de constancia de pagos» de SOL y
+ * marca los periodos, con su fecha real y su número de orden. No habla con
+ * SUNAT ni guarda credenciales: lee un texto. Ver lib/importarSol.
+ *
+ * ── LO QUE NO HACE, Y ES LO IMPORTANTE ──
+ * No crea periodos. Solo marca los que YA existen para esa empresa y esa
+ * clase. Si el reporte trae un mes que el sistema no tiene —porque la
+ * obligación arranca después, o no está creada— se cuenta aparte y se dice.
+ * Crearlos al vuelo sería dejar que un pegado defina desde cuándo declara una
+ * empresa, que es justo la decisión que `obligacion.desde` existe para que
+ * tome una persona.
+ *
+ * Tampoco pisa una fecha ya puesta a mano salvo que se pida: quien la escribió
+ * pudo saber algo que el reporte no dice.
+ */
+export async function importarDeclaracionesSol(
+  empresaId: string, texto: string, pisarManual = false,
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  /* ── UN SOLO SITIO PARA LOS DOS REPORTES ──
+     SOL da dos cosas distintas: la «relación de constancia de pagos» (si se
+     presentó y cuándo) y el «detalle de casillas» (qué cifras se pusieron).
+     Se reconocen los dos aquí en vez de poner dos botones: quien pega no tiene
+     por qué saber cuál de los dos tiene en el portapapeles, y dos botones
+     garantizan que alguien pegue en el equivocado y vea «no encontré nada»
+     sobre un reporte perfectamente válido. */
+  const lectura = leerReporteSol(texto || "");
+  const casillas = leerCasillasSol(texto || "");
+  if (!lectura.filas.length && !casillas.length) {
+    /* ── DECIR QUÉ PASÓ, NO SOLO QUE NO PASÓ ──
+       «No encontré nada» ante un pegado que SÍ trae las cifras manda a la
+       persona a comprobar el reporte, que está bien, en vez de la forma de
+       copiarlo, que es lo que falla. Un error que apunta al sitio equivocado
+       cuesta más que no dar error. */
+    if (pareceCopiaPorColumnas(texto || "")) {
+      /* No se sugiere «pruébalo en otro visor»: el desorden viene DENTRO del
+         PDF —el PDT escribe etiquetas e importes en pasadas distintas—, así que
+         ningún visor lo copia bien y ese consejo solo haría repetir el intento.
+         La salida es soltar el archivo, que se lee por coordenadas. */
+      return { error: "Ese texto viene con los códigos de casilla separados de sus importes («185 342» por un lado y «0.00» por otro), y así no hay forma de saber qué importe es de cuál. No es tu manera de copiar: estos PDF del PDT no se pueden copiar bien desde ningún visor. Suelta el archivo PDF en el recuadro de arriba y se lee entero." };
+    }
+    return { error: "No encontré ninguna declaración en ese texto. Pega el reporte completo de SOL —el de constancias de pagos o el detalle de casillas—, con su cabecera." };
+  }
+
+  /* ── EL RUC DE LA CABECERA SE COMPRUEBA ──
+     Pegar el reporte de una empresa en la ficha de otra es el error fácil de
+     esta pantalla: no daría ningún síntoma y dejaría a las dos mintiendo a la
+     vez —una con meses declarados que no son suyos, la otra sin ellos—. */
+  const { data: emp } = await supabase.from("empresas")
+    .select("ruc,nombre").eq("id", empresaId).maybeSingle();
+  const rucEmp = String((emp as any)?.ruc || "").replace(/\D/g, "");
+  if (lectura.ruc && rucEmp && lectura.ruc !== rucEmp) {
+    return { error: `Ese reporte es del RUC ${lectura.ruc} (${lectura.razon || "—"}), y esta empresa es ${rucEmp}. No se importó nada.` };
+  }
+
+  const periodos = periodosDeSol(lectura.filas);
+  if (!periodos.length && !casillas.length) {
+    return { error: "El reporte se leyó, pero no trae ningún formulario que este sistema siga (0621 mensual o renta anual)." };
+  }
+
+  /* Los periodos que YA existen, de las obligaciones de esta empresa. Una sola
+     consulta: el reporte trae dieciocho meses y preguntar uno por uno serían
+     dieciocho viajes. */
+  const { data: obls, error: eo } = await supabase.from("obligacion")
+    .select("id,clase").eq("entidad_tipo", "empresa").eq("entidad_id", empresaId);
+  if (eo) return { error: faltaObl(eo.message) };
+  const oblDe = new Map<string, string>((obls || []).map((o: any) => [o.clase, o.id]));
+  if (!oblDe.size) return { error: "Esta empresa no tiene ninguna obligación registrada todavía." };
+
+  const { data: exist } = await supabase.from("obligacion_periodo")
+    .select("id,obligacion_id,anio,mes,declarado_en")
+    .in("obligacion_id", [...oblDe.values()]);
+  const clave = (oid: string, a: number, m: number) => `${oid}|${a}|${m}`;
+  const porClave = new Map<string, any>(
+    (exist || []).map((p: any) => [clave(p.obligacion_id, p.anio, p.mes), p]));
+
+  let marcados = 0, yaEstaban = 0, sinPeriodo = 0, sinObligacion = 0;
+  const faltantes: string[] = [];
+
+  for (const p of periodos) {
+    const oid = oblDe.get(p.clase);
+    if (!oid) { sinObligacion++; continue; }
+    /* Las anuales viven con `mes = 0`: el reporte las trae con el mes en que
+       se presentaron, y ese no es su periodo. */
+    const mes = p.clase === "igv_renta" ? p.mes : 0;
+    const fila = porClave.get(clave(oid, p.anio, mes));
+    if (!fila) {
+      sinPeriodo++;
+      faltantes.push(`${String(p.mes).padStart(2, "0")}/${p.anio}`);
+      continue;
+    }
+    if (fila.declarado_en && !pisarManual) { yaEstaban++; continue; }
+
+    /* ── QUIÉN LO APUNTÓ Y CUÁNDO, TAMBIÉN AL IMPORTAR ──
+       Aquí se guardaba `declarado_por` y NO `registrado_en`. El resultado era
+       que la lista enseñaba el nombre de quien importó y, al lado, «no consta
+       cuándo lo apuntó» — en las veintiocho filas, para siempre, porque
+       ninguna importación futura iba a escribirlo tampoco. El dato no faltaba
+       en los datos: faltaba en este `update`.
+       Ojo con la confusión que hace fácil este error: `declarado_en` es la
+       fecha de SUNAT y viene del reporte; `registrado_en` es cuándo pasó por
+       aquí y es AHORA. Van juntas en la misma línea y significan cosas
+       distintas. */
+    const fijar = (extra: Record<string, any>) => supabase.from("obligacion_periodo").update({
+      declarado_en: p.fecha,
+      declarado_por: user.id,
+      nro_orden: p.nroOrden,
+      rectificaciones: p.rectificaciones.length ? p.rectificaciones : null,
+      monto_pago: p.montoPago || 0,
+      ...extra,
+    }).eq("id", fila.id);
+
+    let { error } = await fijar({ registrado_en: new Date().toISOString() });
+    /* Sin db/obligacion-hilo.sql corrido, Postgres rechaza el UPDATE entero por
+       una columna que no existe y el importador dejaría de funcionar del todo.
+       Se reintenta sin ella: se pierde el «cuándo», que es lo nuevo, no la
+       importación, que es lo que se venía a hacer. */
+    if (error && /registrado_en/.test(error.message)) ({ error } = await fijar({}));
+    if (error) return { error: faltaObl(error.message) };
+    marcados++;
+  }
+
+  /* ── Y LAS CASILLAS, SI EL TEXTO LAS TRAÍA ──
+     Van SIEMPRE, aunque el periodo ya estuviera marcado: aquí no hay nada que
+     pisar de nadie —el declarado no se teclea a mano en ninguna pantalla— y es
+     justo el dato que se viene a corregir cuando se rectifica un mes. */
+  let conCasillas = 0;
+  const igvOblId = oblDe.get("igv_renta");
+  if (casillas.length && igvOblId) {
+    for (const [, c] of casillasVigentes(casillas)) {
+      const fila = porClave.get(clave(igvOblId, c.anio, c.mes));
+      if (!fila) { sinPeriodo++; faltantes.push(`${String(c.mes).padStart(2, "0")}/${c.anio}`); continue; }
+      const { error } = await supabase.from("obligacion_periodo").update({
+        igv_debito: c.debito,
+        igv_credito: c.credito,
+        igv_resultado: c.resultado,
+        igv_a_pagar: c.aPagar,
+        declarado_orden: c.nroOrden,
+      }).eq("id", fila.id);
+      if (error) return { error: faltaObl(error.message) };
+      conCasillas++;
+    }
+  }
+
+  await supabase.from("actividad").insert({
+    entidad_tipo: "empresa", entidad_id: empresaId, actor_id: user.id, tipo: "dato",
+    detalle: { mensaje: `importó de SUNAT ${marcados} presentación(es) y ${conCasillas} detalle(s) de casillas` },
+  });
+  revalidatePath("/obligaciones");
+  return {
+    marcados, yaEstaban, sinPeriodo, sinObligacion, conCasillas,
+    faltantes: [...new Set(faltantes)].slice(0, 12),
+    ignoradas: lectura.ignoradas.length,
+    razon: lectura.razon,
+  };
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   QUITAR UN PERIODO QUE NUNCA DEBIÓ EXISTIR
+
+   Los periodos se generan solos a partir de una fecha, y esa fecha puede estar
+   mal. A Apu Wilkakalle le salió un «abril 2024 · vencido» porque la
+   generación arrancó en su fecha de constitución, y SUNAT no le pide nada
+   antes de mayo: no hay constancia de abril, no la hubo nunca y no la va a
+   haber. Sin forma de quitarlo, esa fila se queda en rojo para siempre y el
+   titular dice «1 vencido» sobre algo que nadie debe.
+
+   Y eso es lo caro: un semáforo que alerta de algo que no existe no es un
+   detalle cosmético — es lo que enseña a no mirar el semáforo. La primera vez
+   se comprueba, la segunda se ignora, y la tercera se ignora el vencido de
+   verdad que está justo debajo.
+
+   ── LO DECLARADO NO SE BORRA ──
+   Si el periodo tiene fecha de presentación, esto se niega. Esa fecha y su
+   número de orden son la prueba de lo que sí se hizo ante SUNAT, y un botón
+   que la borra de un clic es un botón que un día borra el historial de un año.
+   Para quitarlo hay que desmarcarlo antes (el ↺), que es un acto deliberado y
+   distinto.
+
+   Los comentarios y reacciones del periodo se van con él por la cascada de la
+   base. Es correcto —hablaban de una fila que no debía existir— pero la
+   pantalla lo advierte antes, porque puede haber una conversación dentro.
+   ══════════════════════════════════════════════════════════════════════════ */
+export async function quitarPeriodo(periodoId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  const { data: p, error: eSel } = await supabase.from("obligacion_periodo")
+    .select("id,anio,mes,declarado_en").eq("id", periodoId).maybeSingle();
+  if (eSel) return { error: faltaObl(eSel.message) };
+  if (!p) return { error: "Ese periodo ya no está." };
+  if ((p as any).declarado_en) {
+    return { error: "Este periodo tiene una declaración registrada. Desmárcalo primero (↺) si de verdad no corresponde: la fecha y el número de orden son la prueba ante SUNAT y no se borran de un clic." };
+  }
+
+  /* `.select()` de cinturón: un delete bloqueado por RLS devuelve cero filas y
+     ningún error, y la fila «desaparecería» hasta recargar. */
+  const { data, error } = await supabase.from("obligacion_periodo")
+    .delete().eq("id", periodoId).select("id");
+  if (error) return { error: faltaObl(error.message) };
+  if (!data?.length) return { error: "No se pudo quitar: el permiso de la base lo rechazó." };
+
+  revalidatePath("/obligaciones");
+  return {};
+}
+
+/** Apagar o encender una obligación. No se borra: los periodos ya declarados
+ *  son el historial de la empresa ante SUNAT, y borrarlos por dar de baja una
+ *  regla sería tirar la prueba de lo que sí se hizo. */
+export async function activarObligacion(obligacionId: string, activa: boolean) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data, error } = await supabase.from("obligacion")
+    .update({ activa }).eq("id", obligacionId).select("id");
+  if (error) return { error: faltaObl(error.message) };
+  if (!data?.length) return { error: "No se pudo guardar: el permiso de la base lo rechazó." };
+  revalidatePath("/obligaciones");
+  return {};
 }

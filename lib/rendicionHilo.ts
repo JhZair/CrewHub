@@ -20,10 +20,12 @@
  */
 
 export type TablaRendicion =
-  | "comprobante" | "estado_cuenta" | "rhe" | "gasto_dj" | "movimiento_banco";
+  | "comprobante" | "estado_cuenta" | "rhe" | "gasto_dj" | "movimiento_banco"
+  | "obligacion_periodo";
 
 export const TABLAS_RENDICION: TablaRendicion[] =
-  ["comprobante", "estado_cuenta", "rhe", "gasto_dj", "movimiento_banco"];
+  ["comprobante", "estado_cuenta", "rhe", "gasto_dj", "movimiento_banco",
+    "obligacion_periodo"];
 
 const soles = (n: any) =>
   "S/ " + Number(n || 0).toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -47,11 +49,33 @@ export type MetaRendicion = {
   titulo: (r: any) => string;
   /** El archivo SQL que hay que correr si la columna no existe. */
   migracion: string;
+  /* ── DÓNDE VIVE LA FILA ──
+   * Esto estaba escrito a mano en dos sitios —`rutaNotif` y `casoDeRendicion`—
+   * como `/fondo/${postulacion_id}#…`, que valía mientras las cinco tablas
+   * fueran del fondo. Un periodo declarable no lo es: vive en /obligaciones y
+   * no tiene postulación. Con la ruta escrita fuera, añadirlo habría exigido
+   * un `if` en cada uno de esos dos sitios, y el que se olvidara no daría
+   * error — devolvería un enlace a `/fondo/undefined`.
+   * `fila` trae las columnas de `sel`; `null` significa «no sé llevar ahí», y
+   * quien recibe el null deja el aviso sin clic en vez de inventarse un
+   * destino. Un enlace al sitio equivocado es peor que ninguno: el segundo se
+   * nota. */
+  ruta: (fila: any, id: string) => string | null;
+  /** De dónde sacar el nombre del dueño cuando NO se puede traer con la fila.
+   *  Las cinco del fondo lo embeben (`post:postulaciones`); la sexta no puede,
+   *  porque su dueño es un par polimórfico sin clave foránea. */
+  dueno?: (fila: any) => { tabla: string; id: string } | null;
   /** El emoji con el que se titula el caso que se abra desde esta fila. En un
    *  tablero de cuarenta casos, el icono es lo que dice de un vistazo si esto
    *  salió de una factura o de un movimiento del banco. */
   ico: string;
 };
+
+/* Las cinco del fondo comparten destino y por eso lo comparten literalmente:
+   una sola función, cinco usos. Si el fondo no viene en la fila devuelve null
+   —no se cae a `/fondo/undefined`, que es un enlace roto con aspecto de bueno. */
+const rutaFondo = (tabla: TablaRendicion) => (fila: any, id: string) =>
+  fila?.postulacion_id ? `/fondo/${fila.postulacion_id}#${anclaRendicion(tabla, id)}` : null;
 
 /* ── EL RÓTULO LLEVA SIEMPRE EL MONTO ──
  * Misma lección que en caja: en una bandeja con veinte avisos, «Nuevo
@@ -67,7 +91,7 @@ export const META_RENDICION: Record<TablaRendicion, MetaRendicion> = {
     titulo: r => [soles(r?.importe),
       [r?.serie, r?.numero].filter(Boolean).join("-"),
       (r?.proveedor || r?.concepto || "").slice(0, 40)].filter(Boolean).join(" · "),
-    migracion: "db/rendicion-interaccion.sql", ico: "📄",
+    migracion: "db/rendicion-interaccion.sql", ico: "📄", ruta: rutaFondo("comprobante"),
   },
   estado_cuenta: {
     col: "estado_cuenta_id",
@@ -82,7 +106,7 @@ export const META_RENDICION: Record<TablaRendicion, MetaRendicion> = {
       const mes = m ? `${MESES[+m[2] - 1]} ${m[1]}` : "";
       return [mes, r?.saldo != null ? `saldo ${soles(r.saldo)}` : ""].filter(Boolean).join(" · ");
     },
-    migracion: "db/rendicion-interaccion.sql", ico: "🏦",
+    migracion: "db/rendicion-interaccion.sql", ico: "🏦", ruta: rutaFondo("estado_cuenta"),
   },
   rhe: {
     col: "rhe_id",
@@ -90,7 +114,7 @@ export const META_RENDICION: Record<TablaRendicion, MetaRendicion> = {
     sel: "postulacion_id,creado_por,monto,numero,fecha,concepto",
     titulo: r => [soles(r?.monto), r?.numero, dmy(r?.fecha),
       (r?.concepto || "").slice(0, 35)].filter(Boolean).join(" · "),
-    migracion: "db/rendicion-interaccion.sql", ico: "🧾",
+    migracion: "db/rendicion-interaccion.sql", ico: "🧾", ruta: rutaFondo("rhe"),
   },
   gasto_dj: {
     col: "gasto_dj_id",
@@ -98,7 +122,7 @@ export const META_RENDICION: Record<TablaRendicion, MetaRendicion> = {
     sel: "postulacion_id,creado_por,importe,descripcion,fecha",
     titulo: r => [soles(r?.importe), (r?.descripcion || "").slice(0, 45),
       dmy(r?.fecha)].filter(Boolean).join(" · "),
-    migracion: "db/rendicion-interaccion.sql", ico: "📝",
+    migracion: "db/rendicion-interaccion.sql", ico: "📝", ruta: rutaFondo("gasto_dj"),
   },
   movimiento_banco: {
     col: "movimiento_banco_id",
@@ -106,7 +130,41 @@ export const META_RENDICION: Record<TablaRendicion, MetaRendicion> = {
     sel: "postulacion_id,creado_por,monto,glosa,fecha,categoria",
     titulo: r => [soles(r?.monto), (r?.glosa || "").slice(0, 40),
       dmy(r?.fecha)].filter(Boolean).join(" · "),
-    migracion: "db/rendicion-interaccion.sql", ico: "💵",
+    migracion: "db/rendicion-interaccion.sql", ico: "💵", ruta: rutaFondo("movimiento_banco"),
+  },
+  /* ── LA SEXTA NO ES DEL FONDO ──
+     Un periodo declarable pertenece a una EMPRESA, no a una postulación: vive
+     en /obligaciones y no tiene `postulacion_id`. Es justo el caso que obligó a
+     sacar la ruta de `rutaNotif`, donde `/fondo/${postulacion_id}` estaba
+     escrito como si valiera para todas.
+     Y su rótulo no lleva monto —la regla de las otras cinco— porque un periodo
+     puede no tenerlo: lo que lo identifica es el MES y de quién es. «S/ 0.00»
+     en la bandeja no distinguiría nada; «octubre 2025» sí. */
+  obligacion_periodo: {
+    col: "obligacion_periodo_id",
+    etiqueta: "una declaración",
+    /* ── NO SE PUEDE TRAER LA EMPRESA DE UN TIRÓN ──
+       `obligacion` guarda a su dueño como par polimórfico
+       (`entidad_tipo` + `entidad_id`) y por eso NO tiene clave foránea a
+       `empresas`. Aquí había un `ent:empresas(nombre)` anidado: PostgREST no
+       puede resolver esa relación y rechaza la consulta ENTERA, así que el
+       pop-up se quedaba en «Cargando…» para siempre.
+       Se trae `entidad_id` y el nombre se resuelve aparte, con `duenoDe`, en
+       los dos sitios que arman un título para humanos. */
+    sel: "anio,mes,declarado_en,resultado,obl:obligacion(clase,entidad_tipo,entidad_id)",
+    titulo: r => (r?.mes ? `${MESES[Number(r.mes) - 1]} ${r?.anio}` : `${r?.anio ?? ""}`),
+    /* De qué tabla sacar el nombre del dueño. Va descrito y no escrito a mano
+       en la acción por lo mismo que todo lo demás de este archivo: el día que
+       una obligación cuelgue de otra cosa, se cambia aquí. */
+    dueno: r => {
+      const o = Array.isArray(r?.obl) ? r.obl[0] : r?.obl;
+      return o?.entidad_tipo === "empresa" && o?.entidad_id
+        ? { tabla: "empresas", id: o.entidad_id } : null;
+    },
+    migracion: "db/obligacion-hilo.sql", ico: "📅",
+    /* Sin `#ancla` a un fondo: la pantalla es una sola y la fila se busca por
+       su id, igual que hace /caja con sus apuntes. */
+    ruta: (_f, id) => `/obligaciones#${anclaRendicion("obligacion_periodo", id)}`,
   },
 };
 
@@ -130,6 +188,18 @@ export const esTablaRendicion = (t: any): t is TablaRendicion =>
  * y a cambio no hay una segunda tabla de prefijos que pueda desincronizarse.
  */
 export const anclaRendicion = (tabla: TablaRendicion, id: string) => `${tabla}-${id}`;
+
+/** El nombre del dueño de una fila, cuando hay que ir a buscarlo. Devuelve ""
+ *  si no aplica o si no se encuentra: un título sin dueño se lee raro, pero uno
+ *  con «undefined» se lee roto. */
+export async function duenoDe(
+  supabase: any, meta: MetaRendicion, fila: any,
+): Promise<string> {
+  const d = meta.dueno?.(fila);
+  if (!d) return "";
+  const { data } = await supabase.from(d.tabla).select("nombre").eq("id", d.id).maybeSingle();
+  return (data as any)?.nombre || "";
+}
 
 /** La columna de la notificación → de qué tabla es. Para `rutaNotif`, que
  *  recibe una fila con once columnas posibles y tiene que decidir. */

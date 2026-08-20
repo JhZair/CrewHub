@@ -123,7 +123,20 @@ export default function VistaHilo({
   const recargar = async () => {
     const id = ++reqRef.current;
     setError("");
-    const r: any = await cargar();
+    /* ── SI LA CARGA REVIENTA, SE DICE ──
+       Sin este try, una acción que lanza —red caída, error no controlado en el
+       servidor— dejaba la promesa rechazada y NADA cambiaba: el pop-up se
+       quedaba en «Cargando…» indefinidamente, que es indistinguible de una
+       consulta lenta. Quien lo ve espera, cierra, y vuelve a abrir. */
+    let r: any;
+    try {
+      r = await cargar();
+    } catch (e: any) {
+      if (montado.current && id === reqRef.current) {
+        setError(e?.message ? `No se pudo cargar: ${e.message}` : "No se pudo cargar. Revisa la conexión y vuelve a intentar.");
+      }
+      return;
+    }
     if (!montado.current || id !== reqRef.current) return;
     if (r?.error) { setError(r.error); return; }
     setData(r);

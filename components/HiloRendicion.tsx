@@ -128,8 +128,19 @@ export function AccionesFila({ tabla, filaId, reacciones, userId, nComentarios, 
   return (
     <span style={{
       display: "grid", flex: "none", alignItems: "center", justifyItems: "center",
-      gridTemplateColumns: `minmax(0,104px) minmax(0,46px) minmax(0,58px)${extra ? " minmax(0,52px)" : ""}`,
-      gap: 4,
+      /* ── LAS TRES PRIMERAS SE ALINEAN; LA ÚLTIMA SE MIDE ──
+         Las columnas fijas están para que reacciones, 💬 y caso queden a la
+         misma altura en veintiocho filas seguidas: es lo que deja recorrer una
+         lista con la vista sin saltos.
+         Pero eran fijas TAMBIÉN para `extra`, y ahí no vale: cada lista mete lo
+         suyo —dos botones en las facturas, tres en las obligaciones— y en
+         52 px se montaban unos encima de otros. `auto` la hace del tamaño de lo
+         que lleva dentro.
+         Y la del caso subió de 58 a 74: «＋ caso» con `nowrap` mide más de 58 y
+         se desbordaba sobre la celda de al lado. Una celda de ancho fijo con
+         contenido que no cabe no recorta ni avisa: pinta encima. */
+      gridTemplateColumns: `minmax(0,104px) minmax(0,46px) minmax(0,74px)${extra ? " auto" : ""}`,
+      gap: 6,
     }}
       title={err || undefined}>
       {/* Reaccionar SIN abrir nada. Un 👀 es «lo vi, está bien», y es lo que
@@ -190,7 +201,10 @@ export function AccionesFila({ tabla, filaId, reacciones, userId, nComentarios, 
       ) : (
         <button className="dato-btn" disabled={ocupado} onClick={abrirCaso}
           title="Abrir un caso para atender esta fila, con responsable y plazo"
-          style={{ opacity: ocupado ? .5 : .5, whiteSpace: "nowrap" }}>＋ caso</button>
+          /* Decía `ocupado ? .5 : .5` — un ternario que daba lo mismo por las
+             dos ramas, así que el botón no cambiaba de aspecto al pulsarlo y
+             parecía que no había pasado nada mientras el caso se creaba. */
+          style={{ opacity: ocupado ? .3 : .55, whiteSpace: "nowrap" }}>＋ caso</button>
       )}
 
       {extra}

@@ -551,6 +551,13 @@ a{color:inherit;text-decoration:none}
 .vtab{flex:0 0 auto;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:8px 14px;font-size:12.5px;color:var(--muted);font-weight:600;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
 .vtab:hover{border-color:var(--border2);color:var(--text)}
 .vtab.on{border-color:var(--accent);color:var(--text);background:rgba(124,92,255,.12)}
+/* Deshabilitado: se ve, no se pulsa y no finge que se puede. `.vtab` no tenía
+   este estado —nadie lo había deshabilitado nunca— y sin él un botón inerte se
+   veía idéntico a uno vivo, que es peor que no tenerlo. El cursor de ayuda es
+   deliberado: el `title` explica por qué no se puede, y con `not-allowed` a
+   secas la explicación queda escondida. */
+.vtab:disabled{opacity:.4;cursor:help}
+.vtab:disabled:hover{border-color:var(--border);color:var(--muted)}
 /* Combo de filtro (rol/especialidad): mismo lenguaje visual que los chips. */
 .combo-filtro{background:var(--card);border:1px solid var(--border);border-radius:10px;
   padding:8px 12px;font-size:12.5px;color:var(--text);font-weight:600;cursor:pointer;
@@ -4107,7 +4114,14 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
  * Un nombre neutro porque el elemento no es «del equipo» ni «de los
  * compromisos»: es «aquí empieza una sección de una lista», que es lo mismo en
  * las dos pantallas y en la próxima. */
-.sec-h{display:flex;gap:9px;align-items:baseline;flex-wrap:wrap;
+/* `center` y no `baseline`. Nació con `baseline` porque solo llevaba texto de
+   dos tamaños —el título y su monto— y ahí la línea base es lo correcto. En
+   cuanto entraron imágenes (el logo de la empresa, el avatar de quien firma)
+   dejó de serlo: una imagen no tiene línea base propia, así que se apoya en la
+   del texto y queda colgando por encima. Con `center` el texto pierde una
+   alineación que casi no se notaba y las caras dejan de flotar, que sí se
+   notaba. */
+.sec-h{display:flex;gap:9px;align-items:center;flex-wrap:wrap;
   font-size:11px;letter-spacing:1.1px;text-transform:uppercase;font-weight:700;
   color:var(--accent);
   background:rgba(124,92,255,.10);
@@ -4513,8 +4527,12 @@ mark.bq-marca{
 .fac-fila:hover{background:rgba(124,92,255,.05)}
 
 .fac-l1{display:grid;align-items:center;gap:9px;min-width:0;
-  /* fecha · tipo · proveedor · serie · RUC · concepto · quién · importe · pdf */
-  grid-template-columns:64px 62px minmax(0,1.5fr) 96px 148px minmax(0,2fr) 104px 86px 30px}
+  /* fecha · tipo · proveedor · serie · RUC · concepto · importe · pdf
+     «Quién lo registró» se fue a la segunda fila, con su avatar: en 104 px
+     truncados —«carga directa · 20 ag…»— no se leía ni el nombre ni la fecha,
+     y el hueco que deja lo aprovechan el proveedor y el concepto, que son los
+     que se leen de verdad al repasar un mes. */
+  grid-template-columns:64px 62px minmax(0,1.5fr) 96px 148px minmax(0,2fr) 86px 30px}
 /* Sin envolver y recortando: en una rejilla, un texto largo que no cabe debe
    cortarse en SU celda. Si envuelve, estira la fila entera hacia abajo y
    deshace la alineación que la rejilla venía a dar. */
@@ -4527,8 +4545,235 @@ mark.bq-marca{
    ESTA factura» y no como una fila suelta. */
 .fac-l2{display:flex;gap:8px;align-items:center;flex-wrap:nowrap;min-width:0;
   padding-left:135px}
+/* Quién registró la factura. `align-items:center` porque el avatar es una caja
+   de 18px y con la línea base cuelga — ya pasó en las cabeceras de sección y en
+   el pie de las obligaciones. */
+.fac-autor{display:inline-flex;align-items:center;gap:5px;font-size:11px;
+  color:var(--muted);white-space:nowrap;flex-shrink:0}
+.fac-autor b{font-weight:600;color:var(--text)}
 @media (max-width:900px){
   .fac-l1{grid-template-columns:64px minmax(0,1fr) 86px}
   .fac-l1 > :nth-child(n+4):nth-child(-n+7){display:none}
   .fac-l2{padding-left:0}
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   📅 OBLIGACIONES PERIÓDICAS
+   ══════════════════════════════════════════════════════════════════ */
+.obl-barra{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:2px 0 12px}
+
+/* La caja de una obligación: cerrada es una línea con su semáforo; abierta,
+   la lista de meses. Mismo lenguaje que los plegables de nivel 2 —caja tenue,
+   sin color— porque es lo mismo: una sub-sección dentro de una empresa. */
+.obl-caja{border:1px solid var(--border);border-radius:11px;
+  background:rgba(255,255,255,.018);margin-bottom:8px;overflow:visible}
+.obl-cab{display:flex;gap:9px;align-items:center;flex-wrap:wrap;width:100%;
+  background:none;border:0;cursor:pointer;text-align:left;padding:9px 12px;
+  color:var(--text);font-size:13px}
+.obl-cab:hover{background:rgba(255,255,255,.02)}
+.obl-flecha{flex:none;width:11px;font-size:10px;color:var(--dim)}
+.obl-sem{margin-left:auto;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;
+  font-size:11.5px}
+.obl-lista{padding:2px 12px 10px}
+
+/* Una fila de periodo. Rejilla y no flex: con flex, el ancho de cada celda
+   depende de su contenido —«sin fecha» mide distinto que «24/11/2025»— y las
+   columnas dejan de estar alineadas justo cuando se leen en vertical, que es
+   como se lee esta tabla. `minmax(0,…)` para que lo largo se encoja en vez de
+   desbordar. */
+/* ── DOS LÍNEAS POR MES ──
+   Arriba lo que dice SUNAT; abajo el rastro nuestro. Cabían en una sola hasta
+   que la línea tuvo nueve columnas: entonces el número de orden se leía en
+   9 px pegado a la fecha, «declaró S/ 0.00» chocaba con el botón de copiar de
+   la celda anterior y la barra de acciones perdía el botón de reacciones sin
+   dar ninguna señal. Apretar no avisa, solo empeora. */
+.obl-fila{display:flex;flex-direction:column;gap:2px;font-size:12px;
+  border-bottom:1px solid rgba(255,255,255,.05);
+  /* El relleno lateral y el margen negativo van juntos y por eso están en la
+     misma regla: el fondo del `:hover` se apoya en el primero para llegar al
+     borde del bloque, y el segundo devuelve el contenido a su sitio. Separados
+     en dos reglas, tocar uno sin el otro descuadra la sangría de la segunda
+     línea, que se mide desde aquí. */
+  padding:7px 8px;margin:0 -8px;
+  border-radius:8px;transition:background .12s ease}
+.obl-l1{display:grid;gap:12px;align-items:baseline;
+  /* Siete: periodo · vence · situación · presentación · declarado ·
+     resultado · nota. Las siete se pintan SIEMPRE, aunque alguna vaya vacía —
+     ver el comentario de la celda de fecha en Obligaciones.tsx: una celda que
+     no se pinta no deja hueco, corre todas las de su derecha, y esta tabla se
+     lee en vertical. */
+  /* Las dos de fecha crecen porque «25 ago 2026» ocupa más que «25/08/2026», y
+     una fecha que se corta a «25 ago 20…» es peor que la ambigua. Lo que
+     ceden el resultado y lo declarado, que son textos que ya recortan bien. */
+  grid-template-columns:minmax(0,102px) minmax(0,100px) minmax(0,104px)
+                        minmax(0,208px) minmax(0,156px) minmax(0,170px)
+                        minmax(0,1fr)}
+/* La segunda línea se sangra hasta debajo de la fecha de vencimiento: así la
+   columna de meses queda limpia y el ojo baja por ella sin tropezar. */
+.obl-l2{display:flex;align-items:center;gap:8px;padding-left:114px;min-height:24px}
+.obl-quien{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;
+  color:var(--muted);white-space:nowrap;overflow:hidden}
+.obl-quien b{font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis}
+@media (max-width:900px){ .obl-l2{padding-left:0} }
+.obl-fila:last-child{border-bottom:none}
+/* ── LA FRANJA ENTERA SE ENCIENDE, NO SOLO SU TEXTO ──
+   Pasar el cursor ya subía la opacidad, pero el efecto se leía como «este
+   texto se ha aclarado» y no como «esta es la fila en la que estoy». Con dos
+   líneas por mes eso importa más: el ojo tiene que saber dónde acaba una y
+   empieza la siguiente, y el nombre del autor de abajo pertenece al mes de
+   arriba.
+   El fondo llega al borde del bloque gracias al relleno lateral y al margen
+   negativo que ya lleva `.obl-fila`; sin ellos quedaría un carril oscuro a los
+   lados que rompe la sensación de franja. */
+.obl-fila:hover{background:rgba(255,255,255,.045)}
+/* Lo declarado se apaga un poco: ya no pide nada, y en una lista de doce
+   meses lo que importa es lo que queda. Se enciende al pasar el cursor. */
+.obl-fila.ok{opacity:.62;transition:opacity .16s ease}
+.obl-fila.ok:hover{opacity:1}
+.obl-per{font-weight:700;text-transform:capitalize}
+.obl-venc{color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.obl-sit{font-weight:700;white-space:nowrap;cursor:help;font-size:11px}
+/* Fecha y número de orden son DOS datos, no un texto seguido. Sin `gap` el
+   «#1133609320» quedaba soldado al «19/05/2025» y había que separarlos con la
+   vista antes de poder leer ninguno. */
+.obl-fecha{display:inline-flex;align-items:center;gap:7px;flex-wrap:wrap;
+  color:var(--dim);font-size:11px;cursor:help}
+/* La celda es `nowrap` y ahora lleva dentro el botón de copiar, que al
+   confirmar añade la palabra «copiado». Sin este `min-width:0` esa palabra
+   ensancharía la columna y correría media rejilla a la derecha durante los
+   cuatro segundos del aviso — el mismo salto que ya dio esta tabla cuando una
+   celda condicional no dejaba hueco. */
+.obl-fecha{min-width:0}
+.obl-fecha.tarde{color:var(--yellow)}
+.obl-res{font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* La nota del periodo. Aquí vivían cuatro siglas con los enlaces de las
+   constancias; se retiraron —la fuente de verdad es SOL, no una copia
+   nuestra— y el hueco lo ocupa lo único que de verdad hay que escribir a
+   mano de vez en cuando: por qué este mes fue raro. */
+.obl-nota{color:var(--dim);font-size:11px;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+/* En la segunda línea ya no compite con nada: sin `flex-shrink:0` la barra se
+   comprimía y el botón de reacciones desaparecía en las filas que tenían autor
+   —el mismo tipo de fallo mudo que la celda que no se pintaba—. */
+.obl-acc{display:flex;gap:3px;justify-content:flex-end;flex-shrink:0}
+
+/* El formulario de una fila ocupa el ancho entero de la rejilla. */
+/* Ya no hace falta `grid-column:1/-1`: la fila dejó de ser una rejilla y esto
+   es un hijo más de la columna. */
+.obl-ed{display:flex;gap:10px;flex-wrap:wrap;
+  padding:8px 10px;margin-top:4px;border:1px solid var(--border);
+  border-radius:9px;background:var(--bg)}
+/* El aviso ocupa la fila entera del formulario y va ARRIBA: debajo de los
+   campos lo leería quien ya tecleó. */
+.obl-ed-aviso{flex-basis:100%;font-size:11px;line-height:1.5;color:var(--muted);
+  padding:6px 9px;border-radius:7px;
+  background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.22)}
+.obl-ed-aviso b{color:var(--text)}
+.obl-ed-campo{display:flex;flex-direction:column;gap:3px;font-size:10.5px;color:var(--dim)}
+.obl-ed-campo input,.obl-ed-campo select{background:var(--panel);border:1px solid var(--border);
+  color:var(--text);border-radius:7px;padding:4px 8px;font-size:12px;min-width:180px}
+
+.obl-alta{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+.obl-alta select,.obl-alta input{background:var(--bg);border:1px solid var(--border);
+  color:var(--text);border-radius:8px;padding:5px 9px;font-size:12.5px}
+.obl-ayuda{color:var(--dim);font-size:11px;width:100%}
+.obl-pie{display:flex;gap:10px;align-items:center;justify-content:space-between;
+  flex-wrap:wrap;color:var(--dim);font-size:11px;padding-top:8px;margin-top:4px;
+  border-top:1px solid var(--border)}
+
+/* El resultado del periodo: calculado por defecto, a mano si alguien lo fijó.
+   La marca «a mano» no es decorativa — distingue un número que sale de los
+   comprobantes de uno que sale de la memoria de alguien. */
+.obl-res{display:flex;gap:5px;align-items:baseline;flex-wrap:wrap;
+  font-size:11.5px;min-width:0}
+.obl-manual{font-size:9px;text-transform:uppercase;letter-spacing:.5px;
+  color:var(--dim);border:1px solid var(--border2);border-radius:5px;
+  padding:0 4px;cursor:help}
+/* Cuando lo escrito a mano y lo que dicen las facturas no coinciden. No se
+   corrige solo —quien lo escribió puede saber algo que el sistema no— pero
+   tampoco se calla: se ve, y el tooltip dice qué dicen las facturas. */
+.obl-discrepa{color:var(--yellow);font-size:10px;cursor:help;white-space:nowrap}
+
+/* «Sigue desde» en el pie de cada obligación. Vacío no es un hueco: dice qué
+   se está usando en su lugar, porque «desde cuándo» decide cuántos meses en
+   rojo aparecen y eso no puede ser un misterio. */
+.obl-desde{display:inline-flex;gap:6px;align-items:center;flex-wrap:wrap;
+  color:var(--dim);font-size:11px}
+.obl-desde input{background:var(--bg);border:1px solid var(--border);
+  color:var(--text);border-radius:7px;padding:2px 7px;font-size:11.5px}
+.obl-desde-def{color:var(--muted);font-style:italic}
+
+/* El logo de la empresa en la cabecera de su bloque. Sin logo, un 🏢 del mismo
+   tamaño: un hueco desalinea la fila y la lista se lee en zig-zag. */
+.obl-logo{width:22px;height:22px;flex:none;object-fit:cover;border-radius:6px;
+  border:1px solid var(--border);background:var(--bg)}
+.obl-logo-rell{display:inline-flex;align-items:center;justify-content:center;
+  font-size:11px;line-height:1}
+/* Quien firma por la empresa. Sin él se DICE, en ámbar: para presentar
+   cualquier cosa ante SUNAT hace falta un representante. */
+.obl-rl{display:inline-flex;gap:5px;align-items:center;text-transform:none;
+  letter-spacing:0;font-size:11px;font-weight:400;color:var(--muted);cursor:help}
+.obl-rl-no{color:var(--yellow)}
+
+/* ── 🧾 Pantalla de comprobantes ── */
+.cmpp-barra{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:2px 0 8px}
+/* Los doce meses en una tira. Los que no tienen nada se apagan pero se pueden
+   pulsar: un mes vacío es un dato —quizá falte cargarlo— y esconderlo haría
+   creer que el año empieza en abril. */
+.cmpp-meses{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px}
+.cmpp-meses .vtab{padding:5px 10px;font-size:12px;text-transform:capitalize}
+/* «Sin comprobantes» es un pendiente, no un estado: lleva a donde se arregla,
+   con la empresa y el mes ya puestos. */
+.obl-cargar{color:var(--dim);text-decoration:none;border-bottom:1px dashed var(--border2)}
+.obl-cargar:hover{color:var(--teal);border-bottom-color:var(--teal)}
+
+/* ── Importar el reporte de SUNAT ── */
+.imp-pasos{margin:0 0 10px;padding-left:20px;color:var(--muted);font-size:12.5px;line-height:1.6}
+.imp-texto{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);
+  border-radius:9px;padding:9px 11px;font-size:11.5px;line-height:1.5;resize:vertical;
+  font-family:ui-monospace,Menlo,Consolas,monospace}
+/* La zona de soltar es lo primero que se ve y lo que hay que usar: va marcada
+   con borde discontinuo para que se lea como «suéltalo aquí» sin instrucciones,
+   y ocupa el ancho entero. El cuadro de texto de debajo queda como salida — se
+   ve lo leído antes de importar — y como puerta trasera para quien pegue. */
+.imp-soltar{display:flex;align-items:center;justify-content:center;gap:7px;
+  padding:16px 12px;margin-bottom:9px;border:1.5px dashed var(--border);border-radius:10px;
+  background:var(--bg);color:var(--muted);font-size:12.5px;cursor:pointer;
+  transition:border-color .12s,color .12s}
+.imp-soltar:hover{border-color:var(--acc);color:var(--text)}
+.imp-soltar.leyendo{opacity:.6;cursor:progress}
+.imp-leidos{margin:-3px 0 8px;font-size:11.5px;color:var(--green);line-height:1.5}
+.imp-res{margin-top:10px;padding:9px 11px;border:1px solid var(--border);border-radius:9px;
+  background:var(--bg);font-size:12px;display:flex;flex-direction:column;gap:4px;line-height:1.5}
+/* El pie de la obligación: la cara del responsable en línea con el texto. El
+   avatar es una caja de 20px y sin `align-items:center` cuelga por debajo de la
+   línea base — el mismo detalle que ya se corrigió en las cabeceras de sección. */
+.obl-resp{display:inline-flex;align-items:center;gap:5px}
+.obl-resp b{font-weight:600}
+.obl-sin-resp{color:var(--dim);font-style:italic}
+/* El número de orden, monoespaciado: es un identificador que se copia y se
+   compara dígito a dígito, no un texto que se lee. */
+/* Ya no lleva `cursor:help` ni margen propio: vive dentro de <Copiar/>, que
+   pone el suyo. Un `cursor:help` aquí dentro le ganaba por especificidad al
+   `pointer` del botón, y el número parecía un dato muerto en vez de algo en lo
+   que se puede hacer clic.
+   9,5 px era ilegible y quedaba pegado a la fecha: son diez dígitos que hay que
+   COMPARAR con los de una constancia, no adornos. Sube a 10,5 y la celda que lo
+   contiene los separa con su propio `gap`. */
+.obl-orden{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10.5px;
+  letter-spacing:.2px;color:var(--muted)}
+.copiable:hover .obl-orden{color:var(--text)}
+.obl-rect{color:var(--violet);font-size:10px;margin-left:4px;cursor:help;font-weight:700}
+
+/* ── Lo declarado, junto a lo calculado ──
+   El «sin usar» en ámbar es el hallazgo que este módulo existe para hacer
+   visible: crédito fiscal que estaba en las facturas y no llegó a la
+   declaración. Solo aparece si pasa de un sol — por debajo es el redondeo a
+   soles enteros del PDT, y un aviso por cuarenta y cinco céntimos enseña a
+   ignorar el de mil doscientos. */
+.obl-decl{display:flex;gap:6px;align-items:baseline;flex-wrap:wrap;
+  font-size:11.5px;color:var(--muted);min-width:0}
+.obl-decl b{color:var(--text)}
+.obl-sinusar{color:var(--yellow);font-size:10.5px;cursor:help;white-space:nowrap}
+.obl-cuadra{color:var(--green);font-size:11px;cursor:help}

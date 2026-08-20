@@ -45,6 +45,13 @@ create policy "editar_puerta" on plataforma_puertas for update to authenticated 
 create policy "borrar_puerta" on plataforma_puertas for delete to authenticated using (true);
 
 -- ── Las tres de Clave SOL ────────────────────────────────────
+-- OJO: la URL principal de aquí abajo QUEDÓ SUSTITUIDA por la portada
+-- https://www.sunat.gob.pe/sol.html — ver db/sunat-puerta-sol.sql, que explica
+-- por qué un enlace con `state=rO0ABX…` no sirve como entrada permanente.
+-- Este bloque se deja tal cual porque solo escribe cuando `url is null`, así
+-- que ya no hace nada; borrarlo dejaría el archivo sin explicar de dónde salió
+-- lo que hoy hay en la base.
+--
 -- La principal: el Menú SOL general. Va en plataformas.url porque es la
 -- que hereda la credencial de cada empresa.
 update plataformas
