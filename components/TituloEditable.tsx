@@ -4,8 +4,17 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 /* Título del caso con lápiz: clic, corriges, Enter. La bitácora recuerda. */
-export default function TituloEditable({ pubId, titulo }: {
+export default function TituloEditable({ pubId, titulo, chip }: {
   pubId: string; titulo: string;
+  /* ── QUÉ ES ESTO, PEGADO A CÓMO SE LLAMA ──
+   * El tipo («✅ Tarea», «❗ Problema») vivía arriba a la derecha, en la barra
+   * de navegación, al lado de un botón de administración. Ahí no se leía junto
+   * al título sino junto a los controles, y el título —que es lo primero que se
+   * mira— no decía de qué clase de cosa se trata.
+   * Va al final del texto y no delante: primero se lee el nombre del caso, que
+   * es lo que se estaba buscando, y el tipo matiza. Delante, veinte casos
+   * seguidos empezarían todos por la misma palabra. */
+  chip?: React.ReactNode;
 }) {
   const [editando, setEditando] = useState(false);
   const [valor, setValor] = useState(titulo);
@@ -26,7 +35,29 @@ export default function TituloEditable({ pubId, titulo }: {
 
   if (!editando) return (
     <h1 className="title-lg" style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-      <span style={{ flex: 1 }}>{titulo}</span>
+      {/* El chip va DENTRO del mismo `span`, no al lado: así fluye con la
+          última línea del título en vez de quedarse anclado arriba a la
+          derecha cuando el título ocupa dos o tres renglones. */}
+      <span style={{ flex: 1 }}>
+        {titulo}
+        {chip && (
+          /* ── CENTRADO CON LA LÍNEA, NO CON LA CAJA ──
+             `vertical-align: middle` alinea con el centro de la caja de texto,
+             que en un título de 26 px queda muy por encima del centro óptico de
+             las letras: el chip flotaba pegado al techo. `baseline` lo apoya
+             sobre la misma línea que las letras y el `translateY` lo sube la
+             mitad de su propia altura visual, que es donde el ojo espera un
+             marbete al lado de un nombre.
+             El `inline-flex` es lo que permite que el chip y el botón de
+             archivar viajen juntos como un bloque y no se separen al saltar de
+             línea. */
+          <span style={{
+            display: "inline-flex", alignItems: "center", gap: 8,
+            marginLeft: 12, verticalAlign: "baseline",
+            transform: "translateY(-0.12em)", whiteSpace: "nowrap",
+          }}>{chip}</span>
+        )}
+      </span>
       <button title="Editar título" onClick={() => setEditando(true)}
         style={{ color: "var(--dim)", fontSize: 15, marginTop: 6, flex: "none" }}>✎</button>
     </h1>

@@ -156,3 +156,51 @@ export const opcionesEstado = (tipo?: string | null, estado?: string): [string, 
   const opc = estado && !base.includes(estado) ? [estado, ...base] : base;
   return opc.map(k => [k, `${rotuloEstado(k, tipo)}${HINT[k] || ""}`]);
 };
+
+/* ══════════════════════════════════════════════════════════════════════════
+   EL SELLO DE UN CASO TERMINADO
+
+   Las postulaciones ya lo tenían: cuando un concurso acaba, el resultado se
+   estampa grande sobre el bloque y no hay que leer nada para saberlo. Los
+   casos no, y el desenlace vivía en un desplegable de estado como cualquier
+   otro valor — «Descartada» en una lista junto a «En progreso», del mismo
+   tamaño y con la misma voz.
+
+   No son lo mismo. Los estados vivos son una elección que sigue abierta; los
+   tres de aquí son un final, y un final tiene que verse antes de leer, porque
+   cambia qué sentido tiene todo lo demás de la pantalla. Alguien que entra a
+   un caso descartado y se pone a redactar un comentario ha perdido el tiempo
+   por no haber mirado un desplegable.
+
+   ── EL ORDEN IMPORTA ──
+   Archivada gana a los otros dos: un caso puede estar resuelto Y archivado, y
+   lo que hay que saber primero es que ya no está en el feed ni en el tablero.
+   Es dónde está, no cómo acabó.
+
+   Devuelve `null` para todo lo vivo. Un sello sobre un caso en progreso sería
+   exactamente el ruido que esto viene a evitar.
+   ══════════════════════════════════════════════════════════════════════════ */
+export type SelloCaso = { titulo: string; sub: string; ico: string; tono: string };
+
+export const selloDeCaso = (
+  estado?: string | null, archivado?: string | null,
+): SelloCaso | null => {
+  if (archivado) {
+    return { titulo: "Archivada", sub: "fuera del feed", ico: "🗄", tono: "cerrada" };
+  }
+  if (estado === "descartada") {
+    /* ── ROJO APAGADO, NI GRIS NI ALARMA ──
+       Nació en gris, el mismo que archivada, y las dos se veían idénticas: dos
+       finales distintos con el mismo sello no distinguen nada. Y son cosas
+       diferentes — archivar es guardar algo que se terminó; descartar es
+       decidir que no se hace.
+       Tampoco es el rojo de «no apta»: eso grita error, y aquí no hubo ningún
+       error. Un rojo bajado de tono dice «esto se cerró sin hacerse» sin
+       reclamar nada. */
+    return { titulo: "Descartada", sub: "ya no aplica", ico: "🚫", tono: "descartada" };
+  }
+  if (estado === "resuelta") {
+    return { titulo: "Resuelta", sub: "trabajo terminado", ico: "✅", tono: "gano" };
+  }
+  return null;
+};

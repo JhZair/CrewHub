@@ -22,7 +22,8 @@ import Realtime from "@/components/Realtime";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
-import { claseEstado, rotuloEstado } from "@/lib/estados";
+import { claseEstado, rotuloEstado, selloDeCaso } from "@/lib/estados";
+import SelloResultado from "@/components/SelloResultado";
 import { BOT, sinBot } from "@/lib/personas";
 import { CERRADOS } from "@/lib/familia";
 import { rotuloTipo, colorTipo, icoTipo } from "@/lib/tipos";
@@ -72,7 +73,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
     .from("publicaciones")
     .select(`
       *,
-      autor:perfiles!publicaciones_autor_id_fkey(nombre, color),
+      autor:perfiles!publicaciones_autor_id_fkey(nombre, color, avatar_url),
       resp:perfiles!publicaciones_responsable_fkey(nombre, color),
       vinculos:publicacion_vinculos(entidad_tipo, entidad_id)
     `)
@@ -304,6 +305,10 @@ export default async function Caso({ params }: { params: { id: string } }) {
      tenga: sub-casos primero, si no las entidades vinculadas que ya muestran
      trabajo, si no la escalera del estado. El cálculo vive en lib/progreso. */
   const totalHijos = (hijos || []).length;
+  /* El desenlace, si lo hay. La regla vive en lib/estados junto al resto de
+     lo que significa un estado, no aquí. */
+  const sello = selloDeCaso(p.estado, p.archivado_en);
+
   const progreso = progresoDe({
     creado_en: p.creado_en, fecha_limite: p.fecha_limite, estado: p.estado, tipo: p.tipo,
     /* Archivar TAMBIÉN cierra el asunto: el bot archiva avisos vencidos
@@ -365,14 +370,20 @@ export default async function Caso({ params }: { params: { id: string } }) {
   };
 
   return (
-    <div className="shell" style={{ paddingBottom: 64 }}>
+    /* `caso-pg` no pinta nada: es el gancho para apretar los huecos entre
+       bloques SOLO en esta pantalla. Bajar los márgenes de `.card` o `.linked`
+       en general habría apretado también el feed, las fichas y los listados,
+       que no tienen el mismo problema —esta página encadena ocho bloques
+       seguidos y ninguna otra—. */
+    <div className="shell caso-pg" style={{ paddingBottom: 64 }}>
       <Realtime tablas={["actividad", "comentarios", "publicaciones", "reacciones", "publicacion_vinculos"]} token={session?.access_token} />
       <div className="topbar">
         <Volver />
         <span className="spacer" />
         {/* Subirlo a la cabecera del feed: solo administración */}
         {miPerfil?.es_admin && <BotonDestacar pubId={p.id} hasta={p.destacado_hasta} />}
-        <span className="badge" style={{ color: tc, background: `${tc}22`, fontSize: TXT.chip }}>{tl}</span>
+        {/* El chip del tipo se fue de aquí al final del título: en esta barra
+            se leía junto a los controles y no junto a lo que nombra. */}
       </div>
 
       {padre && (
@@ -380,7 +391,18 @@ export default async function Caso({ params }: { params: { id: string } }) {
           ↑ Parte de: <b style={{ color: "var(--violet)" }}>{padre.titulo}</b>
         </Link>
       )}
-      <TituloEditable pubId={p.id} titulo={p.titulo} />
+      <TituloEditable pubId={p.id} titulo={p.titulo}
+        chip={
+          <>
+            <span className="badge" style={{ color: tc, background: `${tc}22`, fontSize: TXT.chip }}>{tl}</span>
+            {/* Archivar solo se ofrece si el caso ya está cerrado (resuelta o
+                descartada) — no se guarda algo vivo. Si ya está archivado, el
+                aviso de arriba lleva el «despertar»; aquí no se repite. */}
+            {!p.archivado_en && (
+              <BotonArchivar pubId={p.id} archivado={false} cerrado={CERRADOS.includes(p.estado)} />
+            )}
+          </>
+        } />
 
       {/* Si está archivado, decirlo antes que nada: quien llega aquí desde el
           buscador tiene que saber que esto NO está en el feed ni el tablero,
@@ -392,25 +414,46 @@ export default async function Caso({ params }: { params: { id: string } }) {
         </div>
       )}
 
+      {/* ── EL DESENLACE, ESTAMPADO ──
+          El sello va sobre la ficha de datos y no sobre la página entera: es
+          el bloque que lleva el estado, así que tapar justo eso es coherente
+          —lo que queda debajo es el dato que el sello ya está diciendo—, y
+          deja legible la descripción y la conversación, que es a lo que se
+          entra aunque el caso esté cerrado.
+          No captura clics: el desplegable de estado sigue usable por debajo
+          para reabrirlo, y el ✕ del sello lo aparta si estorba. Al recargar
+          vuelve, porque es el estado del caso y no un aviso que se descarta. */}
       <div className={`grid-meta est-${claseEstado(p.estado, p.tipo)}`}>
+        {sello && <SelloResultado {...sello} variante="ficha" />}
         <div className="gm"><span className="k">Estado</span><EstadoSelect pubId={p.id} estado={p.estado} tipo={p.tipo} /></div>
         <div className="gm"><span className="k">Responsable</span>
           <RespSelect pubId={p.id} actual={p.responsable} perfiles={perfiles || []} /></div>
         <div className="gm"><span className="k">Fecha límite</span>
           <FechaSelect pubId={p.id} fecha={p.fecha_limite} /></div>
         <div className="gm"><span className="k">Creado</span>
-          <span className="v">{fecha(p.creado_en)}<br /><span style={{ color: "var(--muted)", fontWeight: 400 }}>por {p.autor?.nombre}</span></span></div>
+          {/* Con cara. Las otras tres celdas de esta ficha ya identifican a
+              alguien por su nombre en un desplegable; esta es la única donde
+              el nombre iba solo, y en un equipo de siete el «por Michel Oros»
+              se lee más rápido si primero se reconoce la foto.
+              El tamaño es el del texto de al lado, no el de un avatar de
+              perfil: aquí acompaña a un dato, no encabeza nada. */}
+          <span className="v">{fecha(p.creado_en)}<br />
+            {/* Sin el «por»: con la cara delante del nombre ya no hace falta
+                una palabra que diga que eso es una persona. */}
+            <span className="gm-autor">
+              <Avatar nombre={p.autor?.nombre} src={p.autor?.avatar_url}
+                color={p.autor?.color} size={17} />
+              {p.autor?.nombre}
+            </span>
+          </span></div>
       </div>
 
-      {/* ⏳ Tiempo vs ⚡ Trabajo: si el trabajo no sigue el ritmo del plazo, se
-          ve aquí antes de leer nada más. */}
-      {progreso && (
-        <div className="card" style={{ padding: "12px 15px" }}>
-          <BarrasProgreso p={progreso} />
-        </div>
-      )}
-
-      <DescripcionEditable pubId={p.id} cuerpo={p.cuerpo || ""} estado={p.estado} tipo={p.tipo} imagenes={p.imagenes || []} />
+      {/* Las barras de progreso se fueron al final de la página. Ver el
+          comentario de allí abajo: mientras no midan bien, no pueden ocupar el
+          sitio que se lee primero. */}
+      <DescripcionEditable pubId={p.id} cuerpo={p.cuerpo || ""} estado={p.estado} tipo={p.tipo}
+        imagenes={p.imagenes || []}
+        pie={<Reacciones pubId={p.id} reacciones={rxPub} userId={user.id} />} />
 
       {p.tipo === "aviso" && (
         <AvisoEnterado
@@ -422,18 +465,13 @@ export default async function Caso({ params }: { params: { id: string } }) {
         />
       )}
 
-      <div style={{ margin: "4px 0 12px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <Reacciones pubId={p.id} reacciones={rxPub} userId={user.id} />
-        <span style={{ flex: 1 }} />
-        {/* Archivar solo se ofrece si el caso ya está cerrado (resuelta o
-            descartada) — no se guarda algo vivo. Si ya está archivado, el
-            aviso de arriba lleva el «despertar»; aquí no se repite. */}
-        {!p.archivado_en && (
-          <BotonArchivar pubId={p.id} archivado={false} cerrado={CERRADOS.includes(p.estado)} />
-        )}
-      </div>
+      {/* Aquí vivían las reacciones y el botón de archivar, compartiendo una
+          fila porque las dos sobraban donde estaban. Archivar subió junto al
+          tipo, con las demás decisiones sobre el caso; las reacciones entraron
+          en la tarjeta de la descripción, que es a lo que se reacciona. La
+          fila entera —y sus dos huecos— desaparece. */}
 
-      <div className="linked" style={{ marginTop: 4 }}>
+      <div className="linked">
         <h4>🔗 Vínculos y etiquetas</h4>
         <VinculosEditor pubId={p.id} actuales={actualesVinc} catalogos={catEnt} />
         <div style={{ marginTop: 8 }}>
@@ -444,7 +482,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
       {/* Plegado: con 15 personas la lista alarga muchísimo la página. El
           conteo en el resumen ya dice cuánto trabajo cuelga del caso. */}
       {trabajoRel.length > 0 && (
-        <details className="linked trabajo-rel" style={{ marginTop: 14 }}>
+        <details className="linked trabajo-rel">
           <summary>
             🧰 Trabajo relacionado <span className="tr-n">{relDelCaso.length}</span>
             <i>lo que hizo la gente de este caso sobre las entidades vinculadas</i>
@@ -556,12 +594,30 @@ export default async function Caso({ params }: { params: { id: string } }) {
       {/* Ancla del final. Las notificaciones de comentario y mención enlazan
           a /caso/{id}#comentarios: el aviso dice «Michel comentó» y ahora
           entrega el comentario, no la cabecera de un caso largo.
-          Va en el ÚLTIMO elemento a propósito: al no haber nada debajo, el
-          navegador scrollea hasta el tope y deja a la vista la cola de la
-          conversación —lo nuevo está abajo— con el cuadro de responder. */}
+          Iba en el ÚLTIMO elemento a propósito —sin nada debajo, el navegador
+          scrollea hasta el tope y deja a la vista la cola de la conversación
+          con el cuadro de responder—. Ahora tiene debajo las barras de
+          progreso, que son cortas: el efecto se mantiene porque lo que queda
+          por debajo cabe de sobra en la pantalla. Si algún día crece lo de
+          abajo, esto vuelve a ser el último. */}
       <div id="comentarios" style={{ scrollMarginTop: 16 }}>
         <CommentBox pubId={p.id} userId={user.id} perfiles={perfiles || []} />
       </div>
+
+      {/* ── ⏳ TIEMPO VS ⚡ TRABAJO, AL FINAL MIENTRAS NO SEA DE FIAR ──
+          Vivía justo debajo de la cabecera, en el sitio que se lee primero. Ese
+          sitio es una promesa: lo que está ahí es lo que hay que mirar antes
+          que nada, y estas barras todavía no miden bien —un caso descartado
+          aparece al 100 %—.
+          No se retira, porque la idea es buena y el trabajo de afinarla está
+          pendiente, no descartado. Se baja: una medida en la que aún no se
+          confía puede estar disponible sin encabezar la página, y así nadie
+          toma una decisión mirándola de reojo. Cuando cuadre, vuelve arriba. */}
+      {progreso && (
+        <div className="card" style={{ padding: "12px 15px", marginTop: 14 }}>
+          <BarrasProgreso p={progreso} />
+        </div>
+      )}
     </div>
   );
 }

@@ -8,13 +8,17 @@ import { useState } from "react";
    del concurso, no una notificación que se descarta para siempre. */
 export default function SelloResultado({ titulo, sub, ico, tono, variante }: {
   titulo: string; sub: string; ico: string; tono: string;
-  /** «cancha» (sobre el trío), «carne» (portada de la ficha) o «fila» (una fila
-   *  de la lista de participantes). Solo cambia el tamaño del sello. */
-  variante?: "cancha" | "carne" | "fila";
+  /** «cancha» (sobre el trío), «carne» (portada de la ficha), «fila» (una fila
+   *  de la lista de participantes) o «ficha» (la tarjeta de datos de un caso).
+   *  Solo cambia el tamaño del sello. */
+  variante?: "cancha" | "carne" | "fila" | "ficha";
 }) {
   const [cerrado, setCerrado] = useState(false);
   if (cerrado) return null;
-  const claseVar = variante === "carne" ? "sr-carne" : variante === "fila" ? "sr-fila" : "";
+  /* Un `Record` y no una escalera de ternarios: con cuatro variantes la
+     escalera ya obligaba a leerla entera para saber qué hace la última, y la
+     quinta se añade aquí sin tocar nada más. */
+  const claseVar = ({ carne: "sr-carne", fila: "sr-fila", ficha: "sr-ficha" } as Record<string, string>)[variante || ""] || "";
   return (
     <div className={`post-resultado tono-${tono} ${claseVar}`}
       aria-label={`Resultado: ${titulo}`}>

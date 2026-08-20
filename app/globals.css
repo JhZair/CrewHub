@@ -326,10 +326,27 @@ a{color:inherit;text-decoration:none}
 .pr-ico{font-size:34px;line-height:1;margin-bottom:2px}
 .pr-tit{font-size:38px;font-weight:900;letter-spacing:2.5px;text-transform:uppercase;line-height:1}
 .pr-sub{font-size:13px;font-weight:800;letter-spacing:2px;text-transform:uppercase;opacity:.92}
+/* ── EL SELLO SOBRE LA FICHA DE UN CASO ──
+   Mismo sello que el de las postulaciones, a la escala de este bloque: la
+   ficha mide unos 90 px de alto y el tamaño de la «cancha» se saldría por
+   arriba y por abajo.
+   `position:relative` sobre `.grid-meta` es lo que ancla la capa; sin eso el
+   `inset:0` se mediría contra la página entera y el sello acabaría estampado
+   sobre toda la pantalla. */
+.grid-meta{position:relative}
+.grid-meta:has(> .post-resultado)>:not(.post-resultado){opacity:.3;filter:saturate(.55)}
+.post-resultado.sr-ficha .pr-sello{padding:6px 22px;transform:rotate(-5deg)}
+.post-resultado.sr-ficha .pr-ico{font-size:19px;margin-bottom:0}
+.post-resultado.sr-ficha .pr-tit{font-size:26px;letter-spacing:2px}
+.post-resultado.sr-ficha .pr-sub{font-size:10px;letter-spacing:1.6px}
 .post-resultado.tono-gano{color:var(--green,#38b26a)}
 .post-resultado.tono-finalista{color:var(--yellow)}
 .post-resultado.tono-noapta{color:var(--red)}
 .post-resultado.tono-cerrada{color:#9aa3b8}
+/* Descartada: rojo bajado de tono. El gris la confundía con archivada —dos
+   finales distintos con el mismo sello— y el rojo pleno de «no apta» habría
+   gritado un error que aquí no hubo. Este dice «se cerró sin hacerse». */
+.post-resultado.tono-descartada{color:#d1707c}
 /* Tonos del sello de un EQUIPO fuera de juego. Ambar lo que vuelve —una
    reparacion, algo que no aparece— y rojo lo que ya no: perdido. Gris la baja,
    que no es una alarma sino el final de su vida util. */
@@ -426,17 +443,53 @@ a{color:inherit;text-decoration:none}
 .post-trio .pt-vida{margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;font-size:11.5px}
 /* Mini-portada dentro de un chip de vínculo (en vez del ícono genérico) */
 .echip-cartel{width:18px;height:18px;border-radius:4px;object-fit:cover;flex:none;vertical-align:middle}
-.grid-meta{display:grid;grid-template-columns:repeat(4,1fr);gap:0;background:linear-gradient(180deg,rgba(124,92,255,.055),transparent 130px),var(--card);border:1px solid rgba(124,92,255,.26);border-radius:14px;padding:14px 6px;margin-bottom:16px}
+/* ── LA FICHA Y SU DESCRIPCIÓN SON LA MISMA COSA ──
+   Entre las dos había 24 px —16 de aquí y 8 del `.desc`— y ese hueco las leía
+   como dos bloques sin relación. No lo son: el estado, el responsable y el
+   plazo son los datos del caso, y la descripción es el caso. Pegadas se leen
+   de corrido, que es como se entiende de qué va esto al abrirlo.
+   Los 10 px que quedan son para que se distingan los bordes; a cero parecerían
+   una sola tarjeta partida por un error. */
+.grid-meta{display:grid;grid-template-columns:repeat(4,1fr);gap:0;background:linear-gradient(180deg,rgba(124,92,255,.055),transparent 130px),var(--card);border:1px solid rgba(124,92,255,.26);border-radius:14px;padding:14px 6px;margin-bottom:10px}
 .gm{padding:2px 14px;border-left:1px solid var(--border)}
 .gm:first-child{border-left:none}
 .gm .k{font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:var(--dim);display:block;margin-bottom:6px}
 @media(max-width:640px){.grid-meta{grid-template-columns:repeat(2,1fr);row-gap:12px}.gm:nth-child(odd){border-left:none}}
 .gm .v{font-size:14px;font-weight:600}
+/* Quién lo creó, con su foto. `inline-flex` y no `inline` porque el avatar es
+   una caja y con la línea base cuelga por debajo del texto — el mismo detalle
+   que ya se corrigió en las cabeceras de sección, en el pie de las
+   obligaciones y en las facturas. */
+.gm-autor{display:inline-flex;align-items:center;gap:5px;margin-top:3px;
+  color:var(--muted);font-weight:400;font-size:13px}
 .gm select,.gm input[type=date]{width:100%;background:#181825;border:1px solid var(--border2);border-radius:8px;padding:6px 9px;font-size:13px;font-weight:600;outline:none;color:var(--text)}
 .gm input[type=date]::-webkit-calendar-picker-indicator{filter:invert(.7)}
 /* Descripción del caso: mismo criterio que el comentario — es lo que se lee
    para entender de qué va, a menudo largo. Sube a 14.5 con más aire. */
-.desc{color:var(--text);line-height:1.65;font-size:15.5px;margin:8px 0 16px;white-space:pre-wrap;padding:13px 16px;background:var(--card);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:12px}
+.desc{color:var(--text);line-height:1.65;font-size:15.5px;margin:0 0 16px;white-space:pre-wrap;padding:13px 16px;background:var(--card);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:12px}
+/* El pie de la descripción: hoy, las reacciones. Dentro de la tarjeta y no en
+   una fila propia — esa fila casi nunca se llena y costaba unos 40 px de
+   página para dos botones.
+   `white-space:normal` porque `.desc` es `pre-wrap`: sin esto, los saltos de
+   línea del JSX se convertirían en espacios reales entre los botones. */
+.desc-pie{margin-top:11px;white-space:normal;display:flex;align-items:center;
+  gap:8px;flex-wrap:wrap}
+
+/* ── LA PÁGINA DE UN CASO RESPIRA MENOS ──
+   Encadena ocho bloques —ficha, descripción, vínculos, trabajo relacionado,
+   sub-casos, actividad, comentarios, progreso— y con los márgenes generales
+   (12 a 18 px entre cada uno) la mitad de la pantalla era hueco: había que
+   desplazarse para ver lo que cabía sin desplazarse.
+   Se aprieta AQUÍ y no en `.card` o `.linked` a secas porque ninguna otra
+   pantalla encadena tantos bloques: el feed, las fichas y los listados usan
+   esos mismos márgenes para separar cosas que sí son independientes, y
+   apretarlos allí resolvería un problema que no tienen.
+   No baja de 8 px: por debajo, dos tarjetas contiguas se leen como una sola
+   partida por error. */
+.caso-pg .desc{margin-bottom:9px}
+.caso-pg .linked{margin-bottom:9px}
+.caso-pg .card{margin-bottom:9px}
+.caso-pg .h4{margin:14px 0 8px}
 .desc.est-abierta{border-left-color:rgba(255,77,94,.6)}
 .desc.est-vigente{border-left-color:rgba(167,139,250,.6)}
 .desc.est-en_progreso{border-left-color:rgba(244,180,0,.6)}
@@ -2236,6 +2289,25 @@ a.stat-card:hover{border-color:var(--border2)}
 .nav-item:hover{background:rgba(255,255,255,.04);color:var(--text)}
 .nav-item.on{background:rgba(124,92,255,.14);color:var(--text);font-weight:700}
 .nav-item-ico{font-size:14px;line-height:1;width:18px;text-align:center}
+/* ── LOS GRUPOS DEL MENÚ ──
+   Al mudar Agenda, Pulso, Llaves y Caja desde el menú de la cuenta, esta lista
+   pasó de once entradas a dieciocho. Una lista plana de dieciocho no se ojea:
+   se lee entera cada vez. El rótulo parte la búsqueda en dos y dice de qué va
+   cada mitad, que cuesta una línea y ahorra la lectura completa.
+   La lista se hace alta, así que se limita y se deja rodar: mejor eso que un
+   menú que se sale de la pantalla y esconde sus últimas entradas debajo. */
+.nav-lista{max-height:min(76vh,620px);overflow-y:auto}
+/* Dentro de la lista se va al extremo derecho; en el botón, pegada al resto.
+   `margin-left:auto` solo cuando es hija de una entrada, no del botón. */
+.nav-burbuja{color:#fff;font-size:9.5px;font-weight:800;border-radius:8px;
+  padding:1px 6px;min-width:16px;text-align:center;line-height:1.5}
+.nav-item .nav-burbuja{margin-left:auto}
+/* Cuando son dos, el `auto` lo lleva el envoltorio y ellas van pegadas. */
+.nav-burbujas{margin-left:auto;display:inline-flex;gap:4px}
+.nav-item .nav-burbujas .nav-burbuja{margin-left:0}
+.nav-grupo{border-top:1px solid var(--border);margin-top:5px;padding-top:5px}
+.nav-grupo-txt{display:block;padding:2px 10px 4px;font-size:9.5px;font-weight:800;
+  letter-spacing:.9px;text-transform:uppercase;color:var(--dim)}
 /* En pantalla angosta el nombre sobra: el ícono y la flecha bastan */
 @media(max-width:640px){.nav-txt{display:none}}
 img.av{border:1px solid var(--border2)}

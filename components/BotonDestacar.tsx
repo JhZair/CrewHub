@@ -32,7 +32,10 @@ export default function BotonDestacar({ pubId, hasta }: {
           ? "Quitarlo de la cabecera del feed"
           : "Subirlo a la cabecera del feed. Caduca solo: con su fecha límite, o a las 2 semanas"}
         style={{ fontSize: 12, padding: "7px 12px", ...(activo ? { color: "var(--yellow)", borderColor: "rgba(244,180,0,.4)" } : {}) }}>
-        {ocupado ? "..." : activo ? "📌 Destacado" : "📌 Destacar en el feed"}
+        {/* «en el feed» se fue al título del botón: es la explicación de a
+            dónde va, y una explicación repetida en la barra de cada caso ocupa
+            sitio todos los días para leerse una vez. */}
+        {ocupado ? "..." : activo ? "📌 Destacado" : "📌 Destacar"}
       </button>
       {activo && hasta && (
         <span style={{ color: "var(--dim)", fontSize: 11 }}>hasta el {fmt(hasta)}</span>

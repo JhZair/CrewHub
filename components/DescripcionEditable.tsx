@@ -13,10 +13,19 @@ import { claseEstado } from "@/lib/estados";
 /* Descripción del caso con lápiz: clic, corriges, Guardar. Si está vacía,
    muestra "+ Agregar descripción". Enter hace salto de línea (no guarda),
    Escape cancela. La bitácora recuerda la edición. */
-export default function DescripcionEditable({ pubId, cuerpo, estado, tipo, imagenes }: {
+export default function DescripcionEditable({ pubId, cuerpo, estado, tipo, imagenes, pie }: {
   /* `tipo` solo sirve para el filete de color de la izquierda: el cuerpo de un
      aviso vigente no se ribetea de rojo, que aquí significa "resuelve esto". */
   pubId: string; cuerpo: string; estado?: string; tipo?: string; imagenes?: string[];
+  /* ── LO QUE VA PEGADO AL TEXTO ──
+   * Hoy son las reacciones. Vivían en una fila propia debajo de la tarjeta y
+   * esa fila casi nunca se llena: un 👀 y un «+» ocupaban un renglón entero
+   * con su hueco arriba y su hueco abajo, o sea unos 40 px de página para dos
+   * botones pequeños.
+   * Van dentro porque es donde tienen sentido: se reacciona AL TEXTO, no al
+   * caso en abstracto. Pegadas, además, se leen como parte de él y no como
+   * otro bloque más de la pantalla. */
+  pie?: React.ReactNode;
 }) {
   const [editando, setEditando] = useState(false);
   const [valor, setValor] = useState(cuerpo);
@@ -65,9 +74,17 @@ export default function DescripcionEditable({ pubId, cuerpo, estado, tipo, image
             {imgsVista.map((u, i) => <Foto key={i} src={u} />)}
           </div>
         )}
+        {pie && <div className="desc-pie">{pie}</div>}
       </div>
     ) : (
-      <button className="desc-add" onClick={abrir}>+ Agregar descripción</button>
+      /* Sin descripción no hay tarjeta donde meter el pie, pero las reacciones
+         tienen que seguir estando: un caso sin texto se reacciona igual. Van
+         en la misma línea que el «+ Agregar», que es lo que había que evitar
+         —una fila entera para dos botones— resuelto de la otra manera. */
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", margin: "0 0 10px" }}>
+        <button className="desc-add" onClick={abrir}>+ Agregar descripción</button>
+        {pie}
+      </div>
     );
   }
 

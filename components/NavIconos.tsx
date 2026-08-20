@@ -4,6 +4,58 @@ import { SECCIONES } from "@/lib/secciones";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { casillaSinLeer } from "@/app/casilla/acciones";
+import { puedeVerCaja, obligacionesUrgentes, type UrgenteObl } from "@/app/nav-acciones";
+
+/* ── LOS SITIOS QUE NO SON UNA ENTIDAD ──
+ *
+ * `SECCIONES` describe los catálogos (proyectos, personas, empresas…): tienen
+ * ficha, historial y casos. Estos otros son lugares a los que se va a mirar o
+ * a trabajar, y hasta ahora estaban repartidos entre este menú y el de la
+ * cuenta, sin más criterio que el orden en que se fueron construyendo. Agenda,
+ * Pulso, Llaves y Caja vivían allí; un menú de cuenta es para la cuenta —tu
+ * perfil, tus notificaciones, salir— y no para navegar el sistema.
+ *
+ * ── ESTÁN AQUÍ COMO DATOS, NO COMO JSX ──
+ * La lista y el rótulo del botón («dónde estoy») se leían de dos sitios
+ * distintos: cada destino nuevo obligaba a tocar los dos, y olvidarse del
+ * segundo no da error — el enlace funciona y el botón sigue diciendo
+ * «Secciones» estando dentro. Con la lista como dato, quien añada un destino
+ * lo añade una vez.
+ */
+type Destino = {
+  ruta: string; ico: string; txt: string; grupo: "plata" | "dia";
+  /** Solo para quien lleva las finanzas. */
+  soloFinanzas?: boolean;
+  /** Cuándo se considera que «estás ahí». Por defecto, la ruta exacta. */
+  activo?: (p: string) => boolean;
+};
+
+const DESTINOS: Destino[] = [
+  { ruta: "/fondos", ico: "🎬", txt: "fondos en ejecución", grupo: "plata",
+    activo: p => p === "/fondos" || p.startsWith("/fondo/") },
+  { ruta: "/obligaciones", ico: "📅", txt: "obligaciones", grupo: "plata" },
+  { ruta: "/comprobantes", ico: "🧾", txt: "comprobantes", grupo: "plata" },
+  { ruta: "/caja", ico: "💰", txt: "caja", grupo: "plata", soloFinanzas: true },
+  { ruta: "/agenda", ico: "📆", txt: "agenda", grupo: "dia" },
+  { ruta: "/pulso", ico: "📊", txt: "pulso del equipo", grupo: "dia" },
+  { ruta: "/llaves", ico: "🔑", txt: "llaves", grupo: "dia" },
+  { ruta: "/etiquetas", ico: "🏷️", txt: "etiquetas", grupo: "dia" },
+  { ruta: "/casilla", ico: "📬", txt: "casilla DAFO", grupo: "dia" },
+];
+
+const estaEn = (d: Destino, p: string) => d.activo ? d.activo(p) : p === d.ruta;
+
+/* La burbuja se pinta en dos sitios —el botón y su entrada de la lista— y con
+   dos colores. Escrita una vez: dos copias con los mismos estilos en línea son
+   dos que se separan al primer retoque, y entonces el mismo pendiente se ve de
+   dos formas distintas en la misma pantalla. */
+function Burbuja({ n, col, txt }: { n: number; col: string; txt: string }) {
+  return (
+    <span title={txt} className="nav-burbuja" style={{ background: col }}>
+      {n > 99 ? "99+" : n}
+    </span>
+  );
+}
 
 /* LA NAVEGACIÓN ENTRE SECCIONES, en un solo control.
 
@@ -27,11 +79,37 @@ export default function NavIconos() {
      Se relee al navegar —marcar uno como leído en /casilla tiene que bajar el
      número— y es un `count` sin filas, así que cuesta casi nada. */
   const [casilla, setCasilla] = useState(0);
+  /* Si esta persona lleva las finanzas. Empieza en `false` para no parpadear
+     enseñando la caja y quitándola medio segundo después. */
+  const [conCaja, setConCaja] = useState(false);
+  /* Lo que vence. Igual que la casilla: se relee al navegar, porque marcar un
+     periodo como declarado tiene que bajar el número. */
+  const [obl, setObl] = useState<UrgenteObl>({ vencidos: 0, porVencer: 0 });
   useEffect(() => {
     let vivo = true;
     casillaSinLeer().then(n => { if (vivo) setCasilla(n); }).catch(() => {});
+    puedeVerCaja().then(v => { if (vivo) setConCaja(v); }).catch(() => {});
+    obligacionesUrgentes().then(o => { if (vivo) setObl(o); }).catch(() => {});
     return () => { vivo = false; };
   }, [pathname]);
+
+  /* ── LAS DOS BURBUJAS DE OBLIGACIONES ──
+     Rojo lo vencido, ámbar lo que vence dentro de la ventana de aviso. No se
+     suman —uno es una multa corriendo y lo otro una tarea de esta semana— y
+     tampoco se turnan.
+     La primera versión enseñaba el ámbar SOLO si no había ningún rojo, y con
+     trece vencidos el «1 por vencer» desaparecía: justo el que todavía se
+     puede evitar, tapado por los que ya no. La urgencia de uno no cancela al
+     otro, y quien tiene atraso crónico es quien más necesita ver el que aún
+     está a tiempo.
+     Estando DENTRO de /obligaciones no se pintan, igual que la casilla: el
+     pendiente ya está a la vista y repetirlo en el menú es ruido. */
+  const oblAvisos = [
+    obl.vencidos > 0 && { k: "v", n: obl.vencidos, col: "var(--red)",
+      txt: `${obl.vencidos} declaración(es) vencida(s)` },
+    obl.porVencer > 0 && { k: "p", n: obl.porVencer, col: "var(--yellow)",
+      txt: `${obl.porVencer} declaración(es) por vencer en los próximos días` },
+  ].filter(Boolean) as { k: string; n: number; col: string; txt: string }[];
 
   /* Dónde estás. Cuenta la sección entera: la ficha, su historial y sus casos
      también son «estar ahí». */
@@ -44,13 +122,12 @@ export default function NavIconos() {
     || pathname === `/casos/${s.tipo}`;
 
   const aqui = SECCIONES.find(enSeccion);
-  /* «Fondos» no es una sección de entidad (no tiene ficha en /entidad ni
-     historial propio): es una vista sobre las postulaciones ganadoras. Va
-     fijado aparte para no ensuciar SECCIONES con un tipo falso. */
-  const enFondos = pathname === "/fondos" || pathname.startsWith("/fondo/");
-  const enEtiquetas = pathname === "/etiquetas";
-  const enObligaciones = pathname === "/obligaciones";
-  const enComprobantes = pathname === "/comprobantes";
+  /* El destino en el que estás, si es uno de los que no son entidad. Sale de la
+     MISMA lista que se pinta abajo: antes cada uno tenía su `const enX` y su
+     rama en el rótulo, y el que se olvidara dejaba el botón diciendo
+     «Secciones» estando dentro. */
+  const destinos = DESTINOS.filter(d => !d.soloFinanzas || conCaja);
+  const aquiDestino = destinos.find(d => estaEn(d, pathname));
   const enCasilla = pathname === "/casilla";
 
   // Cerrar con Escape: un menú que solo se cierra con el ratón estorba.
@@ -66,23 +143,27 @@ export default function NavIconos() {
 
   return (
     <nav className="nav-menu">
-      <button type="button" className={`btn btn-ghost nav-btn${aqui || enFondos || enCasilla ? " nav-aqui" : ""}`}
+      <button type="button" className={`btn btn-ghost nav-btn${aqui || aquiDestino ? " nav-aqui" : ""}`}
         onClick={() => setAbierto(a => !a)} aria-expanded={abierto}
-        title={enCasilla ? "Casilla DAFO" : enFondos ? "Fondos en ejecución" : aqui ? aqui.titulo : "Secciones"}>
-        <span className="nav-ico">{enCasilla ? "📬" : enFondos ? "🎬" : aqui ? aqui.ico : "☰"}</span>
-        <span className="nav-txt">{enCasilla ? "casilla" : enFondos ? "fondos" : aqui ? aqui.plural : "Secciones"}</span>
+        title={aqui ? aqui.titulo : aquiDestino ? aquiDestino.txt : "Secciones"}>
+        <span className="nav-ico">{aqui ? aqui.ico : aquiDestino ? aquiDestino.ico : "☰"}</span>
+        <span className="nav-txt">{aqui ? aqui.plural : aquiDestino ? aquiDestino.txt : "Secciones"}</span>
         <span className="nav-cheb">▾</span>
-        {/* El punto rojo cuando hay correo de DAFO sin leer. Es el indicador
-            PERMANENTE: la campanita habla de lo que acaba de pasar y se calla al
-            leerse; esto sigue ahí mientras quede algo pendiente en la casilla. No
-            se pinta estando en /casilla, donde el pendiente ya está a la vista. */}
+        {/* ── LO PENDIENTE, TAMBIÉN CON EL MENÚ CERRADO ──
+            Es el indicador PERMANENTE: la campanita habla de lo que acaba de
+            pasar y se calla al leerse; esto sigue ahí mientras quede algo. Una
+            burbuja que solo se ve al abrir el menú no avisa de nada — hay que
+            haberse acordado para verla, y acordarse es justo lo que falla.
+            Van SEPARADAS y no sumadas: un correo sin leer y una declaración
+            vencida no se atienden igual, y un número que las mezcla no dice qué
+            hacer. Ninguna se pinta estando ya en su pantalla. */}
         {casilla > 0 && !enCasilla && (
-          <span title={`${casilla} correo(s) de DAFO sin leer`}
-            style={{
-              background: "var(--red)", color: "#fff", fontSize: 9.5, fontWeight: 800,
-              borderRadius: 8, padding: "1px 5px", minWidth: 16, textAlign: "center",
-            }}>{casilla > 99 ? "99+" : casilla}</span>
+          <Burbuja n={casilla} col="var(--red)"
+            txt={`${casilla} correo(s) de DAFO sin leer`} />
         )}
+        {pathname !== "/obligaciones" && oblAvisos.map(a => (
+          <Burbuja key={a.k} n={a.n} col={a.col} txt={a.txt} />
+        ))}
       </button>
       {abierto && (
         <>
@@ -96,52 +177,41 @@ export default function NavIconos() {
                 <span>{s.plural}</span>
               </Link>
             ))}
-            {/* Los fondos ganados en marcha: no son una entidad, pero sí un
-                lugar al que se va. */}
-            <Link href="/fondos" className={`nav-item${enFondos ? " on" : ""}`}
-              onClick={() => setAbierto(false)}
-              style={{ borderTop: "1px solid var(--border)", marginTop: 4, paddingTop: 8 }}>
-              <span className="nav-item-ico">🎬</span>
-              <span>fondos en ejecución</span>
-            </Link>
-            {/* Las etiquetas no son una entidad, pero son un lugar al que se va
-                a administrarlas — como fondos. Antes vivían en el menú de la
-                cuenta; aquí, junto a las demás secciones, se encuentran mejor. */}
-            {/* Lo que vence solo: las declaraciones de cada empresa ante
-                SUNAT. Va junto a fondos porque es de la misma clase de sitio
-                —un lugar al que se entra a mirar si algo está al día— y no una
-                entidad más del catálogo. */}
-            <Link href="/obligaciones" className={`nav-item${enObligaciones ? " on" : ""}`}
-              onClick={() => setAbierto(false)}>
-              <span className="nav-item-ico">📅</span>
-              <span>obligaciones</span>
-            </Link>
-            {/* Las facturas de cada empresa, de fondo y de fuera. Va pegado a
-                obligaciones porque es de donde salen sus números. */}
-            <Link href="/comprobantes" className={`nav-item${enComprobantes ? " on" : ""}`}
-              onClick={() => setAbierto(false)}>
-              <span className="nav-item-ico">🧾</span>
-              <span>comprobantes</span>
-            </Link>
-            <Link href="/etiquetas" className={`nav-item${enEtiquetas ? " on" : ""}`}
-              onClick={() => setAbierto(false)}>
-              <span className="nav-item-ico">🏷️</span>
-              <span>etiquetas</span>
-            </Link>
-            {/* La casilla DAFO tampoco es una entidad: es la bandeja donde
-                aterrizan los correos de todas las postulaciones, que antes
-                vivían repartidos en diez cuentas de Gmail. */}
-            <Link href="/casilla" className={`nav-item${enCasilla ? " on" : ""}`}
-              onClick={() => setAbierto(false)}>
-              <span className="nav-item-ico">📬</span>
-              <span>casilla DAFO</span>
-              {casilla > 0 && (
-                <span style={{
-                  marginLeft: "auto", background: "var(--red)", color: "#fff",
-                  fontSize: 9.5, fontWeight: 800, borderRadius: 8, padding: "1px 6px",
-                }}>{casilla > 99 ? "99+" : casilla}</span>
-              )}
-            </Link>
+            {/* ── LOS OTROS SITIOS, EN DOS GRUPOS CON NOMBRE ──
+                Con dieciocho entradas seguidas, una lista plana obliga a
+                leerlas todas para encontrar una. Los rótulos no son adorno:
+                dividen la búsqueda en dos y dicen de qué va cada mitad.
+                · «la plata» — fondos, obligaciones, comprobantes, caja: todo
+                  lo que se mira para saber si algo está al día o cuadra.
+                · «el día a día» — agenda, pulso, llaves, etiquetas, casilla. */}
+            {(["plata", "dia"] as const).map(g => (
+              <div key={g} className="nav-grupo">
+                <span className="nav-grupo-txt">{g === "plata" ? "la plata" : "el día a día"}</span>
+                {destinos.filter(d => d.grupo === g).map(d => (
+                  <Link key={d.ruta} href={d.ruta}
+                    className={`nav-item${estaEn(d, pathname) ? " on" : ""}`}
+                    onClick={() => setAbierto(false)}>
+                    <span className="nav-item-ico">{d.ico}</span>
+                    <span>{d.txt}</span>
+                    {/* Cada pendiente, en la entrada donde se va a atender. */}
+                    {d.ruta === "/casilla" && casilla > 0 && (
+                      <Burbuja n={casilla} col="var(--red)"
+                        txt={`${casilla} correo(s) de DAFO sin leer`} />
+                    )}
+                    {d.ruta === "/obligaciones" && oblAvisos.length > 0 && (
+                      /* Las dos juntas y pegadas al borde derecho: `nav-item`
+                         solo empuja a la PRIMERA con `margin-left:auto`, así
+                         que van envueltas para viajar como un bloque. */
+                      <span className="nav-burbujas">
+                        {oblAvisos.map(a => (
+                          <Burbuja key={a.k} n={a.n} col={a.col} txt={a.txt} />
+                        ))}
+                      </span>
+                    )}
+                  </Link>
+                ))}
+              </div>
+            ))}
           </div>
         </>
       )}
