@@ -415,7 +415,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
 
   return (
     <div className="shell">
-      <Realtime tablas={["publicaciones", "comentarios", "publicacion_vinculos", "reacciones", "notificaciones"]} token={session?.access_token} />
+      <Realtime tablas={["publicaciones", "comentarios", "publicacion_vinculos", "reacciones", "notificaciones"]} token={session?.access_token} miId={user.id} />
       <div className="topbar">
         <Link href="/" className="logo"><span className="ic">⬡</span><span>CrewHub<sup>+</sup></span></Link>
         <NavIconos />

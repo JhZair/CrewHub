@@ -282,13 +282,30 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   if (!conf) notFound();
 
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
 
-  const { data: ent } = await supabase.from(conf.tabla).select("*").eq("id", params.id).single();
-  if (!ent) notFound();
-
-  const [{ data: vincs }, { data: eventos, count: nEventos }, urlSunat] = await Promise.all([
+  /* ══ LAS CUATRO PRIMERAS ESPERAS ERAN UNA FILA INDIA ══
+     Estaban encadenadas —sesión, luego la entidad, luego sus vínculos y su
+     historial, luego los alias— y ninguna necesitaba a la anterior:
+       · la sesión solo decide si se sigue o se manda al login;
+       · la entidad se busca por `params.id`, que se conoce desde el principio;
+       · los vínculos y la actividad, por `params.tipo`/`params.id`, igual;
+       · los alias son la tabla de personas entera, sin filtro ninguno.
+     Cuatro viajes de ida y vuelta seguidos para empezar a trabajar. Con la
+     base a cien milisegundos eso es medio segundo antes de la primera línea
+     útil, en TODAS las fichas del sistema.
+     Ahora salen juntas. Las comprobaciones —sesión y existencia— se hacen
+     igual, solo que después de que todas hayan vuelto: en el peor caso se
+     gastan tres consultas que no se usan, y ese peor caso es alguien sin
+     sesión, que es raro y ya está esperando un redirect. */
+  const [
+    { data: { user } },
+    { data: ent },
+    [{ data: vincs }, { data: eventos, count: nEventos }, urlSunat],
+    { data: aliasPers },
+  ] = await Promise.all([
+    supabase.auth.getUser(),
+    supabase.from(conf.tabla).select("*").eq("id", params.id).single(),
+    Promise.all([
     supabase.from("publicacion_vinculos")
       .select("publicacion_id")
       .eq("entidad_tipo", params.tipo).eq("entidad_id", params.id)
@@ -307,14 +324,49 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     // El link de SUNAT sale del admin, no del código: si SUNAT lo cambia
     // —lo ha hecho— se corrige ahí sin esperar un deploy.
     urlPlataforma(PLAT.sunatConsultaRuc),
+    ]),
+    // Historial sin ruido: los actores salen con su alias (JohnO) en vez del
+    // nombre completo. Es la tabla de personas sin filtro: no depende de nada.
+    supabase.from("personas").select("usuario_id,alias")
+      .not("alias", "is", null).not("usuario_id", "is", null),
   ]);
 
-  // Historial sin ruido: los cambios de estado_sunat/condicion_sunat ya
-  // los resume el evento "Verificación SUNAT" del bot; se ocultan aquí.
-  // Los actores salen con su alias (JohnO) en vez del nombre completo.
-  const { data: aliasPers } = await supabase.from("personas").select("usuario_id,alias")
-    .not("alias", "is", null).not("usuario_id", "is", null);
+  /* Las dos puertas, en el mismo orden que antes: sin sesión al login, y sin
+     entidad un 404. Lo único que cambia es que ahora se comprueban con todo ya
+     traído. */
+  if (!user) redirect("/login");
+  if (!ent) notFound();
+
   const alias = mapaAlias(aliasPers);
+
+  /* ══ TRES QUE ESPERABAN AL FINAL SIN NECESIDAD ══
+     El repositorio de la entidad, los objetos de otros que la apuntan y su
+     portada viven al final del archivo, después de las ramas por tipo. Se
+     pedían allí, así que empezaban cuando ya había terminado todo lo demás:
+     tres viajes de ida y vuelta puestos en fila detrás de una cola que puede
+     durar segundos.
+     Solo necesitan `params`, que se conoce desde la primera línea. Se LANZAN
+     aquí y se recogen abajo, donde se usan.
+
+     El `.then(r => r)` no es adorno: el constructor de consultas de Supabase
+     es perezoso —no sale a la red hasta que alguien lo espera—, así que sin
+     esa línea esto seguiría arrancando abajo y el cambio no haría nada. Es la
+     clase de «optimización» que se ve bien en el diff y no mueve el reloj. */
+  const pRepo = supabase.from("objetos")
+    .select("id,tipo,titulo,url,fecha,notas,datos,creado_en,creado_por,quien:perfiles(nombre)")
+    .eq("entidad_tipo", params.tipo).eq("entidad_id", params.id)
+    .neq("tipo", "cv")
+    .order("fecha", { ascending: false, nullsFirst: false })
+    .order("creado_en", { ascending: false })
+    .then((r: any) => r);
+  const pObjVin = supabase.from("objeto_vinculos")
+    .select("obj:objetos(id,tipo,titulo,url,fecha,entidad_tipo,entidad_id)")
+    .eq("entidad_tipo", params.tipo).eq("entidad_id", params.id)
+    .then((r: any) => r);
+  const pMedia = supabase.from("entidad_media")
+    .select("portada_url,cartel_url")
+    .eq("entidad_tipo", params.tipo).eq("entidad_id", params.id).maybeSingle()
+    .then((r: any) => r);
   /* ── QUÉ PASÓ EN ESTE PROYECTO, no solo en su ficha ──
      Hasta aquí el historial contaba únicamente los eventos dirigidos al
      proyecto mismo. Pero abrir un caso de «A-roll», resolverlo, mover una
@@ -421,8 +473,74 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     .sort((a: any, b: any) => (a.creado_en < b.creado_en ? 1 : a.creado_en > b.creado_en ? -1 : 0))
     .slice(0, 120);
 
-  // Traduce los UUID sueltos (responsable, etc.) a nombres antes de mostrar.
-  const nomEv = await nombresDeEventos(supabase, eventosTodos);
+  /* ══ LA SEGUNDA FILA INDIA ══
+     Aquí venían, una detrás de otra: traducir los UUID de los eventos, cargar
+     lo que ha hecho esta persona en todo el sistema (tres consultas encadenadas
+     ella sola) y traer los casos de la ficha. Ninguna de las tres necesita a
+     las otras — miran cosas distintas de la misma entidad— y sumaban cinco
+     viajes seguidos. Salen juntas.
+
+     Lo que sí se respeta: DENTRO de la actividad de la persona hay un orden
+     real —primero sus eventos, y solo con ellos en la mano se pueden resolver
+     los nombres de las entidades que tocó—, así que ahí se encadena lo justo y
+     las dos resoluciones finales van en paralelo entre sí. */
+  const idsVinc = (vincs || []).map((v: any) => v.publicacion_id);
+  /* `cuerpo` va aquí porque en un aviso el título es solo el asunto: lo que
+     hay que hacer está en el cuerpo. Sin él, la tarjeta obligaba a entrar al
+     caso para leer la indicación — y a volver para darse por enterado. */
+  const SEL_PUB = "id,titulo,cuerpo,tipo,estado,archivado_en,creado_en,fecha_limite,autor_id,responsable,autor:perfiles!publicaciones_autor_id_fkey(nombre),resp:perfiles!publicaciones_responsable_fkey(nombre),comentarios(count)";
+  // Si la persona tiene cuenta, su vida también son los casos que creó o le asignaron
+  const uid = params.tipo === "persona" ? ent.usuario_id : null;
+  const uidPersona = uid;
+
+  const [nomEv, actividadUsuario, [porVinculo, porUsuario, misComs]] = await Promise.all([
+    // Traduce los UUID sueltos (responsable, etc.) a nombres antes de mostrar.
+    nombresDeEventos(supabase, eventosTodos),
+
+    /* LO QUE ESTA PERSONA HIZO EN TODO EL SISTEMA — no solo sobre su ficha.
+       Es lo mismo que el diario (/historial) filtrado por ella: `actividad`
+       donde el ACTOR es su cuenta. Se resuelve el nombre de cada entidad tocada
+       para que se lea «RT-Peli · cambió el cartel», como en el diario. Solo si
+       la persona tiene cuenta enlazada (sin actor no hay actividad suya). */
+    (async (): Promise<any[]> => {
+      if (!uidPersona) return [];
+      const { data: actsU } = await supabase.from("actividad")
+        .select("tipo,detalle,creado_en,entidad_tipo,entidad_id,actor_id,actor:perfiles(nombre)")
+        .eq("actor_id", uidPersona)
+        .order("creado_en", { ascending: false }).limit(80);
+      /* Las dos resoluciones necesitan `actsU`, pero no se necesitan entre
+         ellas: eran dos viajes seguidos y ahora es uno. */
+      const [nombresU, nomEvU] = await Promise.all([
+        resolverNombres(supabase, (actsU || []).map((a: any) => ({ tipo: a.entidad_tipo, id: a.entidad_id }))),
+        nombresDeEventos(supabase, actsU || []),
+      ]);
+      return conAlias(conNombresEventos((actsU || []).map((a: any) => {
+        const nom = nombresU.get(`${a.entidad_tipo}:${a.entidad_id}`) || undefined;
+        return { ...a, entidadNombre: nom, entidadTitulo: nom };
+      }), nomEvU) as any[], alias);
+    })(),
+
+    Promise.all([
+      idsVinc.length
+        ? supabase.from("publicaciones").select(SEL_PUB).in("id", idsVinc)
+        : Promise.resolve({ data: [] as any[] }),
+      uid
+        ? supabase.from("publicaciones").select(SEL_PUB)
+            .or(`autor_id.eq.${uid},responsable.eq.${uid}`)
+            .order("creado_en", { ascending: false }).limit(150)
+        : Promise.resolve({ data: [] as any[] }),
+      uid
+        /* `.not(publicacion_id, is, null)`: los comentarios de objetos del
+           repositorio viven en esta misma tabla con publicacion_id vacío. Sin
+           el filtro, ese null llega al `.in("id", …)` de abajo, Postgres no lo
+           puede castear a uuid y la consulta entera falla — se traga con `|| []`
+           y la ficha pierde en silencio los casos donde solo comentó. */
+        ? supabase.from("comentarios").select("publicacion_id")
+            .eq("autor_id", uid).not("publicacion_id", "is", null).limit(400)
+        : Promise.resolve({ data: [] as any[] }),
+    ]),
+  ]);
+
   const eventosVis = conAlias(conNombresEventos(eventosTodos.filter((e: any) =>
     !(e.tipo === "estado" && ["estado_sunat", "condicion_sunat"].includes(e.detalle?.campo))), nomEv) as any[], alias);
   /* Cuántos hay DE VERDAD, no cuántos cupieron. El rótulo mostraba las filas
@@ -430,53 +548,6 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
      la consulta —un número redondo que parecía un total y era un techo—. */
   const totEventos = (nEventos ?? 0) + totalHijos || eventosVis.length;
 
-  /* LO QUE ESTA PERSONA HIZO EN TODO EL SISTEMA — no solo sobre su ficha.
-     Es lo mismo que el diario (/historial) filtrado por ella: `actividad`
-     donde el ACTOR es su cuenta. Se resuelve el nombre de cada entidad tocada
-     para que se lea «RT-Peli · cambió el cartel», como en el diario. Solo si
-     la persona tiene cuenta enlazada (sin actor no hay actividad suya). */
-  let actividadUsuario: any[] = [];
-  const uidPersona = params.tipo === "persona" ? ent.usuario_id : null;
-  if (uidPersona) {
-    const { data: actsU } = await supabase.from("actividad")
-      .select("tipo,detalle,creado_en,entidad_tipo,entidad_id,actor_id,actor:perfiles(nombre)")
-      .eq("actor_id", uidPersona)
-      .order("creado_en", { ascending: false }).limit(80);
-    const nombresU = await resolverNombres(supabase,
-      (actsU || []).map((a: any) => ({ tipo: a.entidad_tipo, id: a.entidad_id })));
-    const nomEvU = await nombresDeEventos(supabase, actsU || []);
-    actividadUsuario = conAlias(conNombresEventos((actsU || []).map((a: any) => {
-      const nom = nombresU.get(`${a.entidad_tipo}:${a.entidad_id}`) || undefined;
-      return { ...a, entidadNombre: nom, entidadTitulo: nom };
-    }), nomEvU) as any[], alias);
-  }
-
-  const ids = (vincs || []).map((v: any) => v.publicacion_id);
-  /* `cuerpo` va aquí porque en un aviso el título es solo el asunto: lo que
-     hay que hacer está en el cuerpo. Sin él, la tarjeta obligaba a entrar al
-     caso para leer la indicación — y a volver para darse por enterado. */
-  const SEL_PUB = "id,titulo,cuerpo,tipo,estado,archivado_en,creado_en,fecha_limite,autor_id,responsable,autor:perfiles!publicaciones_autor_id_fkey(nombre),resp:perfiles!publicaciones_responsable_fkey(nombre),comentarios(count)";
-  // Si la persona tiene cuenta, su vida también son los casos que creó o le asignaron
-  const uid = params.tipo === "persona" ? ent.usuario_id : null;
-  const [porVinculo, porUsuario, misComs] = await Promise.all([
-    ids.length
-      ? supabase.from("publicaciones").select(SEL_PUB).in("id", ids)
-      : Promise.resolve({ data: [] as any[] }),
-    uid
-      ? supabase.from("publicaciones").select(SEL_PUB)
-          .or(`autor_id.eq.${uid},responsable.eq.${uid}`)
-          .order("creado_en", { ascending: false }).limit(150)
-      : Promise.resolve({ data: [] as any[] }),
-    uid
-      /* `.not(publicacion_id, is, null)`: los comentarios de objetos del
-         repositorio viven en esta misma tabla con publicacion_id vacío. Sin
-         el filtro, ese null llega al `.in("id", …)` de abajo, Postgres no lo
-         puede castear a uuid y la consulta entera falla — se traga con `|| []`
-         y la ficha pierde en silencio los casos donde solo comentó. */
-      ? supabase.from("comentarios").select("publicacion_id")
-          .eq("autor_id", uid).not("publicacion_id", "is", null).limit(400)
-      : Promise.resolve({ data: [] as any[] }),
-  ]);
   // Casos donde solo participó comentando (ni autor ni responsable ni vinculado)
   const yaTraidos = new Set([...(porVinculo.data || []), ...(porUsuario.data || [])].map((p: any) => p.id));
   const idsComentados = [...new Set((misComs.data || []).map((c: any) => c.publicacion_id))]
@@ -1572,7 +1643,11 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   let cuentasLibres: { id: string; nombre: string }[] = [];
   let pulso: { cerr: number; creo: number; coments: number; ab: number; venc: number; ultimo: string } | null = null;
   if (params.tipo === "persona") {
-    const [cg, cv, rh, pe, pr, cl, rg, pq, pa] = await Promise.all([
+    /* `s4` y el par [perfiles, cuentas usadas] estaban DESPUÉS de esta tanda,
+       cada uno con su propia espera, y ninguno depende de ella: la suspensión
+       de 4ta se busca por `persona_id`, y los perfiles son el catálogo entero.
+       Eran tres viajes en fila donde cabía uno. */
+    const [cg, cv, rh, pe, pr, cl, rg, pq, pa, s4, pf, up] = await Promise.all([
       supabase.from("empresa_miembros")
         .select("id,cargo,estado,fecha_inicio,fecha_fin,empresa:empresas(id,nombre,codigo)")
         .eq("persona_id", params.id).order("estado"),
@@ -1615,6 +1690,15 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       supabase.from("proyecto_actores")
         .select("id,rol,descripcion,personaje,proy:proyectos(id,nombre,nombre_corto,tipo,etapa,estado_actividad)")
         .eq("persona_id", params.id),
+      /* Quién la subió y cuándo. Es plata: una constancia sin autor es una
+         constancia que nadie puede explicar el día que la observan, y la
+         bitácora que sí lo guarda está en otra pestaña y en otro idioma. */
+      supabase.from("suspension_4ta")
+        .select("id,anio,url,operacion,presentado,nota,creado_en,creado:perfiles!creado_por(nombre)")
+        .eq("persona_id", params.id).order("anio", { ascending: false }),
+      // avatar_url: quien ya tiene cuenta trae su foto del login
+      supabase.from("perfiles").select("id,nombre,avatar_url").eq("activo", true).order("nombre"),
+      supabase.from("personas").select("usuario_id").not("usuario_id", "is", null),
     ]);
     cargosDe = cg.data || [];
     rheGirados = rg.data || [];
@@ -1633,12 +1717,6 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     // `titulo` → `enfoque`: la sección de CVs y sus alertas siguen igual.
     cvsDe = (cv.data || []).map((c: any) => ({ ...c, enfoque: c.titulo }));
     acum4ta = (rh.data || []).reduce((s: number, r: any) => s + Number(r.monto || 0), 0);
-    const s4 = await supabase.from("suspension_4ta")
-      /* Quién la subió y cuándo. Es plata: una constancia sin autor es una
-         constancia que nadie puede explicar el día que la observan, y la
-         bitácora que sí lo guarda está en otra pestaña y en otro idioma. */
-      .select("id,anio,url,operacion,presentado,nota,creado_en,creado:perfiles!creado_por(nombre)")
-      .eq("persona_id", params.id).order("anio", { ascending: false });
     susp4ta = s4.data || [];
     susp4taError = (s4 as any).error?.message || null;
     /* Una persona puede tener VARIAS filas en la misma postulación (Director +
@@ -1695,11 +1773,6 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     }
 
     // Cuenta de acceso: perfil enlazado + cuentas que aún no tienen persona
-    const [pf, up] = await Promise.all([
-      // avatar_url: quien ya tiene cuenta trae su foto del login
-      supabase.from("perfiles").select("id,nombre,avatar_url").eq("activo", true).order("nombre"),
-      supabase.from("personas").select("usuario_id").not("usuario_id", "is", null),
-    ]);
     const usadas = new Set((up.data || []).map((x: any) => x.usuario_id));
     const perfilesAll = sinBot(pf.data);
     cuentaDe = ent.usuario_id ? perfilesAll.find((p: any) => p.id === ent.usuario_id) || null : null;
@@ -1757,11 +1830,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   /* 📚 Repositorio: la cola infinita de la entidad (obras, prensa, premios…).
      Los CVs se excluyen: tienen su propia sección con la lógica del enfoque,
      aunque vivan en la misma tabla. Se estrena en persona. */
-  const { data: objData } = await supabase.from("objetos")
-    .select("id,tipo,titulo,url,fecha,notas,datos,creado_en,creado_por,quien:perfiles(nombre)")
-    .eq("entidad_tipo", params.tipo).eq("entidad_id", params.id)
-    .neq("tipo", "cv")
-    .order("fecha", { ascending: false, nullsFirst: false }).order("creado_en", { ascending: false });
+  // Se lanzó arriba, con la primera tanda; aquí solo se recoge.
+  const { data: objData } = await pRepo;
   /* La procedencia del dato es parte del dato: quién lo trajo, con su alias
      (JohnO) como en el resto del sistema, y cuándo. */
   /* Y su contexto: a qué apunta, y qué se movió encima. Tres consultas planas
@@ -1833,9 +1903,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   /* Objetos de OTROS que apuntan a esta entidad: el «Libro Khipukamaq» es de
      Jesús y es la base de «Los Khipus», así que el proyecto tiene que verlo
      —con su procedencia— sin que el libro deje de ser de su autor. */
-  const { data: objVin } = await supabase.from("objeto_vinculos")
-    .select("obj:objetos(id,tipo,titulo,url,fecha,entidad_tipo,entidad_id)")
-    .eq("entidad_tipo", params.tipo).eq("entidad_id", params.id);
+  const { data: objVin } = await pObjVin;   // lanzada arriba
   const objetosVinculados = (objVin || []).map((r: any) => r.obj).filter(Boolean);
   const duenosObj = await (async () => {
     const m = new Map<string, string>();
@@ -2016,9 +2084,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   /* Portada (banner) + cartel (póster) de la entidad. Una fila por entidad en
      `entidad_media`; puede no existir todavía (imágenes opcionales). Para las
      personas solo se usa el banner: su avatar sigue en `personas.foto_url`. */
-  const { data: media } = await supabase.from("entidad_media")
-    .select("portada_url,cartel_url")
-    .eq("entidad_tipo", params.tipo).eq("entidad_id", params.id).maybeSingle();
+  const { data: media } = await pMedia;   // lanzada arriba
   const conCartel = params.tipo !== "persona";
 
   /* Drive como «pestaña»: la carpeta Drive es un repositorio de contenido amplio,

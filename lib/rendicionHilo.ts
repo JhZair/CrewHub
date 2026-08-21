@@ -223,6 +223,24 @@ export const tablaDeNotif = (n: Record<string, any>): TablaRendicion | null =>
  */
 export async function hilosDeFilas(
   supabase: any, tabla: TablaRendicion, ids: string[],
+  opciones?: {
+    /* ── PREGUNTAR POR LA COLUMNA, NO POR LOS IDS ──
+     * Esta función nació para las listas de un fondo: veinte recibos, treinta
+     * facturas. Un `.in(col, ids)` con treinta identificadores es barato.
+     * En /obligaciones no: allí `ids` son TODOS los periodos de TODAS las
+     * empresas —varios cientos, y doce más por empresa cada año—. Ese `.in`
+     * viaja en la URL, así que eran tres consultas de veinte kilobytes de
+     * identificadores, creciendo solas cada mes, para averiguar que hay un
+     * comentario.
+     * Con `todas`, se pide al revés: «tráeme los hilos que existan en esta
+     * tabla». Lo que se trae deja de depender de cuántas filas hay y pasa a
+     * depender de cuántas conversaciones hay de verdad, que es un número
+     * pequeño y que además crece porque alguien escribe, no por el paso del
+     * tiempo.
+     * Devuelve también los hilos de filas que el llamador no pidió. Da igual:
+     * el resultado se indexa por id y se consulta por id. */
+    todas?: boolean;
+  },
 ): Promise<{
   conteo: Map<string, number>; reacciones: Map<string, any[]>;
   casos: Map<string, { id: string; estado?: string | null; tipo?: string | null }>;
@@ -234,11 +252,15 @@ export async function hilosDeFilas(
   const casos = new Map<string, { id: string; estado?: string | null; tipo?: string | null }>();
   if (!ids.length) return { conteo, reacciones, casos, error: null };
 
+  /* `todas` cambia el «dime cuáles de estos» por «dime los que hay». Ver la
+     explicación en las opciones. */
+  const acotar = (q: any) => opciones?.todas ? q.not(col, "is", null) : q.in(col, ids);
+
   const [{ data: coms, error: eC }, { data: rx, error: eR }] = await Promise.all([
-    supabase.from("comentarios").select(col).in(col, ids),
-    supabase.from("reacciones")
-      .select(`emoji,usuario_id,${col},perfil:perfiles!usuario_id(nombre)`)
-      .in(col, ids).is("comentario_id", null),
+    acotar(supabase.from("comentarios").select(col)),
+    acotar(supabase.from("reacciones")
+      .select(`emoji,usuario_id,${col},perfil:perfiles!usuario_id(nombre)`))
+      .is("comentario_id", null),
   ]);
   (coms || []).forEach((c: any) => {
     const k = c[col];
@@ -257,9 +279,13 @@ export async function hilosDeFilas(
      rechaza la consulta ENTERA: la lista de 26 recibos volvería vacía y el
      fondo diría «sin pagos» con S/ 98,270 cargados. Un dato de adorno no puede
      tumbar el dato principal. */
-  const { data: cs } = await supabase.from(tabla)
+  /* Con `todas`, sin `.in`: `caso_id not null` ya deja fuera todo lo que no
+     tiene caso, que es la inmensa mayoría. Filtrar además por varios cientos
+     de ids era pagar por acotar algo ya acotado. */
+  const qCasos = supabase.from(tabla)
     .select(`id,caso_id,caso:publicaciones(estado,tipo)`)
-    .in("id", ids).not("caso_id", "is", null);
+    .not("caso_id", "is", null);
+  const { data: cs } = await (opciones?.todas ? qCasos : qCasos.in("id", ids));
   (cs || []).forEach((r: any) => {
     const c = Array.isArray(r.caso) ? r.caso[0] : r.caso;
     if (r.caso_id) casos.set(r.id, { id: r.caso_id, estado: c?.estado, tipo: c?.tipo });

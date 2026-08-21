@@ -376,7 +376,32 @@ export default async function Caso({ params }: { params: { id: string } }) {
        que no tienen el mismo problema —esta página encadena ocho bloques
        seguidos y ninguna otra—. */
     <div className="shell caso-pg" style={{ paddingBottom: 64 }}>
-      <Realtime tablas={["actividad", "comentarios", "publicaciones", "reacciones", "publicacion_vinculos"]} token={session?.access_token} />
+      {/* ── ESCUCHAR SOLO LO DE ESTE CASO, DONDE SE PUEDE ──
+          Antes escuchaba las cinco tablas ENTERAS: un comentario de Katy en
+          otro caso, o una línea que el bot escribiera en `actividad`,
+          recargaban esta página con sus diecinueve consultas. Con varias
+          personas trabajando a la vez eso se realimenta solo.
+          Tres se pueden acotar sin perder nada, porque la página consulta
+          exactamente ese mismo filtro:
+            · comentarios → los de esta publicación
+            · actividad → los eventos de esta entidad
+            · publicacion_vinculos → los vínculos de esta publicación
+          Las otras dos NO se acotan, y es deliberado:
+            · `publicaciones` — los sub-casos son otras publicaciones y
+              cambiarles el estado tiene que refrescar el resumen «2/3».
+            · `reacciones` — las de los comentarios no llevan `publicacion_id`,
+              así que filtrar por él perdería justo esas.
+          Cuando la duda es «¿me pierdo un cambio real?», se escucha de más:
+          quedarse viejo en silencio es peor que un refresco de sobra. */}
+      <Realtime
+        tablas={[
+          { tabla: "comentarios", filtro: `publicacion_id=eq.${p.id}` },
+          { tabla: "actividad", filtro: `entidad_id=eq.${p.id}` },
+          { tabla: "publicacion_vinculos", filtro: `publicacion_id=eq.${p.id}` },
+          "publicaciones",
+          "reacciones",
+        ]}
+        token={session?.access_token} miId={user.id} />
       <div className="topbar">
         <Volver />
         <span className="spacer" />

@@ -50,30 +50,32 @@ export default async function ObligacionesPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [emp, obl, per, perf, cmp, urlSol] = await Promise.all([
+  const [emp, obl, per, perf, urlSol] = await Promise.all([
     /* `fecha_constitucion`: es el suelo de los periodos —una empresa no declara
        antes de existir— y lo que la pantalla ofrece como arranque por defecto. */
     supabase.from("empresas").select("id,nombre,ruc,estado,relacion,fecha_constitucion")
       .eq("relacion", "propia").order("nombre"),
-    supabase.from("obligacion").select("*"),
-    /* Los periodos enteros: son doce por empresa y año, no miles. Traerlos
-       paginados obligaría a un viaje por cada despliegue y el semáforo de la
-       cabecera —que se calcula sobre TODOS— saldría mal mientras tanto. */
-    supabase.from("obligacion_periodo").select("*"),
+    supabase.from("obligacion")
+      .select("id,entidad_id,entidad_tipo,clase,periodicidad,dias_aviso,activa,responsable,desde"),
+    /* ── LOS PERIODOS ENTEROS, PERO CON LAS COLUMNAS JUSTAS ──
+       Se siguen trayendo todos, y es deliberado: el semáforo de cada cabecera
+       —«9 vencidos · 26 declarados · 22 fuera de plazo de 28»— se calcula sobre
+       TODOS, y acotarlos por año lo haría mentir sin avisar. Son doce por
+       empresa y año, no miles.
+       Lo que sí sobraba eran las columnas. `select("*")` arrastraba el jsonb de
+       rectificaciones, los cuatro importes de casillas y media docena de campos
+       que esta pantalla no mira, multiplicado por varios cientos de filas. Se
+       piden las diecisiete que se usan de verdad — la lista sale de leer el
+       componente, no de adivinar. */
+    supabase.from("obligacion_periodo").select(
+      "id,obligacion_id,anio,mes,vence,declarado_en,declarado_por,declarado_orden," +
+      "registrado_en,nro_orden,rectificaciones,resultado,monto,nota,caso_id," +
+      "igv_debito,igv_credito"),
     /* `avatar_url` y `color`: quien responde de una declaración se reconoce de
        un vistazo por la cara, no leyendo un nombre en gris al pie del bloque.
        El color es el respaldo cuando no hay foto — lo usa <Avatar/> para las
        iniciales. */
     supabase.from("perfiles").select("id,nombre,avatar_url,color").eq("activo", true).order("nombre"),
-    /* Los comprobantes de las empresas: de aquí sale el resultado de cada
-       periodo (IGV de ventas menos IGV de compras). Se piden con las columnas
-       justas —fecha, IGV y sentido— porque el importe, el proveedor y el PDF
-       no intervienen en el cálculo y son cientos de filas viajando al
-       navegador para nada.
-       `empresa_id` puede no existir todavía: si falta db/comprobante-empresa.sql
-       la consulta falla entera y el resultado se queda en manual, que es
-       exactamente el estado anterior. No tumba la pantalla. */
-    supabase.from("comprobante").select("empresa_id,fecha,igv,sentido"),
     /* La puerta a SUNAT sale de `plataformas`, como todas las demás del
        sistema: si SUNAT cambia la URL se corrige en un sitio. Si la clave no
        está cargada, el botón sencillamente no se pinta — mejor que un enlace
@@ -89,12 +91,46 @@ export default async function ObligacionesPage() {
      listado: es quien tiene la Clave SOL y quien responde si algo se venció.
      Los dos van por lote, nunca uno por empresa. */
   const idsEmp = empresas.map((e: any) => e.id);
-  const [media, repLegal] = await Promise.all([
+  const periodosCrudos = (per.data || []) as any[];
+
+  /* ── LOS COMPROBANTES, ACOTADOS POR LO QUE LA PANTALLA PUEDE ENSEÑAR ──
+     Esta consulta no tenía ningún filtro: se traía TODOS los comprobantes que
+     existen, de todas las empresas y de todos los años, en cada render de la
+     página. Es la que peor envejecía — los periodos crecen doce al año por
+     empresa, pero las facturas crecen a cientos, y esto se volvía a pedir en
+     cada refresco.
+     Ahora se acota por las dos cosas que la pantalla realmente puede usar:
+       · las empresas propias, que son las únicas que se listan;
+       · desde el primer año que hay periodo, porque un comprobante anterior a
+         cualquier periodo no entra en ningún cálculo.
+     Va en esta segunda tanda porque el suelo de fechas sale de los periodos,
+     que se piden en la primera. No cuesta un viaje más: comparte tanda con los
+     logos y el representante legal, que ya estaban aquí.
+
+     `empresa_id` puede no existir todavía: si falta db/comprobante-empresa.sql
+     la consulta falla entera y el resultado se queda en manual, que es
+     exactamente el estado anterior. No tumba la pantalla. */
+  const anioMin = periodosCrudos.length
+    ? Math.min(...periodosCrudos.map((p: any) => Number(p.anio) || 9999)) : null;
+
+  const [media, repLegal, cmp, hilos] = await Promise.all([
     idsEmp.length
       ? supabase.from("entidad_media").select("entidad_id,cartel_url")
           .eq("entidad_tipo", "empresa").in("entidad_id", idsEmp)
       : Promise.resolve({ data: [] as any[] }),
     repLegalDeEmpresas(supabase, idsEmp),
+    idsEmp.length && anioMin
+      ? supabase.from("comprobante").select("empresa_id,fecha,igv,sentido")
+          .in("empresa_id", idsEmp).gte("fecha", `${anioMin}-01-01`)
+      : Promise.resolve({ data: [] as any[] }),
+    /* ── EL HILO, PREGUNTANDO POR LA COLUMNA Y NO POR LOS IDS ──
+       Antes iba en su propio `await`, con la lista COMPLETA de identificadores
+       de periodo: tres consultas de varios cientos de UUID en la URL, creciendo
+       doce por empresa y año, para averiguar que hay un comentario. Con
+       `todas` se pide al revés —«los hilos que existan»— y lo que viaja pasa a
+       depender de cuántas conversaciones hay, no de cuántas filas.
+       Y al entrar en esta tanda deja de ser una espera propia. */
+    hilosDeFilas(supabase, "obligacion_periodo", [], { todas: true }),
   ]);
   const logos: Record<string, string> = {};
   ((media as any).data || []).forEach((m: any) => {
@@ -112,16 +148,12 @@ export default async function ObligacionesPage() {
      falta es la otra manda a correr el archivo equivocado. */
   const errorIgv = (cmp as any)?.error?.message || null;
   const obligaciones = (obl.data || []) as any[];
-  const periodosCrudos = (per.data || []) as any[];
 
-  /* ── EL HILO DE CADA PERIODO ──
-     El contador de comentarios y los 👀 tienen que estar EN LA LISTA: una
+  /* El contador de comentarios y los 👀 tienen que estar EN LA LISTA: una
      conversación de cuatro mensajes sobre noviembre 2024 es invisible si hay
      que abrir mes por mes para descubrirla.
-     Si falta db/obligacion-hilo.sql esto vuelve vacío con su queja y la
+     Si falta db/obligacion-hilo.sql `hilos` vuelve vacío con su queja y la
      pantalla sigue —sin contadores— en vez de caerse. */
-  const hilos = await hilosDeFilas(supabase, "obligacion_periodo",
-    periodosCrudos.map((p: any) => p.id));
   const periodos = periodosCrudos.map((p: any) => ({
     ...p,
     nComentarios: hilos.conteo.get(p.id) || 0,

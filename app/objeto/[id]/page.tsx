@@ -165,7 +165,7 @@ export default async function ObjetoPage({ params }: { params: { id: string } })
     <div className="shell">
       {/* En vivo, como el caso: si otro comenta o reacciona sobre este objeto,
           la página se refresca sola sin tener que recargar. */}
-      <Realtime tablas={["actividad", "comentarios", "reacciones", "objetos"]} token={session?.access_token} />
+      <Realtime tablas={["actividad", "comentarios", "reacciones", "objetos"]} token={session?.access_token} miId={user.id} />
       <div className="topbar">
         <Volver />
         <span className="spacer" />

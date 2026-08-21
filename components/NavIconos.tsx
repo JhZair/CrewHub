@@ -3,8 +3,7 @@ import { usePathname } from "next/navigation";
 import { SECCIONES } from "@/lib/secciones";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { casillaSinLeer } from "@/app/casilla/acciones";
-import { puedeVerCaja, obligacionesUrgentes, type UrgenteObl } from "@/app/nav-acciones";
+import { estadoNav, type EstadoNav } from "@/app/nav-acciones";
 
 /* ── LOS SITIOS QUE NO SON UNA ENTIDAD ──
  *
@@ -78,20 +77,23 @@ export default function NavIconos() {
      enhebrar el dato por diecinueve páginas era la otra opción.
      Se relee al navegar —marcar uno como leído en /casilla tiene que bajar el
      número— y es un `count` sin filas, así que cuesta casi nada. */
-  const [casilla, setCasilla] = useState(0);
-  /* Si esta persona lleva las finanzas. Empieza en `false` para no parpadear
-     enseñando la caja y quitándola medio segundo después. */
-  const [conCaja, setConCaja] = useState(false);
-  /* Lo que vence. Igual que la casilla: se relee al navegar, porque marcar un
-     periodo como declarado tiene que bajar el número. */
-  const [obl, setObl] = useState<UrgenteObl>({ vencidos: 0, porVencer: 0 });
+  /* ── UNA LLAMADA, NO TRES ──
+     Aquí había tres: los correos sin leer, el permiso de la caja y lo que
+     vence. Lanzadas con tres promesas «en paralelo» que no lo eran — Next
+     encola las acciones de servidor y las manda de una en una, cada una con su
+     propia validación de sesión contra Supabase. Eran seis viajes de red en
+     CADA navegación, en las diecinueve pantallas, y se fueron sumando de a una
+     sin que ninguna pareciera cara.
+     `false` y ceros de arranque para no parpadear: enseñar la caja y quitarla
+     medio segundo después se lee como un fallo. */
+  const [nav, setNav] = useState<EstadoNav>({ casilla: 0, caja: false, vencidos: 0, porVencer: 0 });
   useEffect(() => {
     let vivo = true;
-    casillaSinLeer().then(n => { if (vivo) setCasilla(n); }).catch(() => {});
-    puedeVerCaja().then(v => { if (vivo) setConCaja(v); }).catch(() => {});
-    obligacionesUrgentes().then(o => { if (vivo) setObl(o); }).catch(() => {});
+    estadoNav().then(e => { if (vivo) setNav(e); }).catch(() => {});
     return () => { vivo = false; };
   }, [pathname]);
+  const casilla = nav.casilla;
+  const conCaja = nav.caja;
 
   /* ── LAS DOS BURBUJAS DE OBLIGACIONES ──
      Rojo lo vencido, ámbar lo que vence dentro de la ventana de aviso. No se
@@ -105,10 +107,10 @@ export default function NavIconos() {
      Estando DENTRO de /obligaciones no se pintan, igual que la casilla: el
      pendiente ya está a la vista y repetirlo en el menú es ruido. */
   const oblAvisos = [
-    obl.vencidos > 0 && { k: "v", n: obl.vencidos, col: "var(--red)",
-      txt: `${obl.vencidos} declaración(es) vencida(s)` },
-    obl.porVencer > 0 && { k: "p", n: obl.porVencer, col: "var(--yellow)",
-      txt: `${obl.porVencer} declaración(es) por vencer en los próximos días` },
+    nav.vencidos > 0 && { k: "v", n: nav.vencidos, col: "var(--red)",
+      txt: `${nav.vencidos} declaración(es) vencida(s)` },
+    nav.porVencer > 0 && { k: "p", n: nav.porVencer, col: "var(--yellow)",
+      txt: `${nav.porVencer} declaración(es) por vencer en los próximos días` },
   ].filter(Boolean) as { k: string; n: number; col: string; txt: string }[];
 
   /* Dónde estás. Cuenta la sección entera: la ficha, su historial y sus casos

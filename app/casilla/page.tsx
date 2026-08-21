@@ -284,7 +284,7 @@ export default async function CasillaPage() {
     <div className="shell" style={{ maxWidth: "min(1100px, 97vw)" }}>
       {/* En vivo: un correo puede entrar mientras la página está abierta, y el
           panel es justo el sitio donde se está esperando que entre. */}
-      <Realtime tablas={["dafo_comunicaciones"]} token={session?.access_token} />
+      <Realtime tablas={["dafo_comunicaciones"]} token={session?.access_token} miId={user.id} />
       <div className="topbar">
         <Volver />
         <span className="spacer" />

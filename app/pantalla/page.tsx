@@ -143,7 +143,7 @@ export default async function Pantalla() {
   return (
     <div className="tv">
       <Realtime tablas={["publicaciones", "actividad", "comentarios", "postulaciones", "cronograma_actividades"]}
-        token={session?.access_token} cadaSegundos={60} />
+        token={session?.access_token} miId={user?.id} cadaSegundos={60} />
 
       {/* ===== CABECERA: logo · marcador de temporada · reloj ===== */}
       <div className="tv-top">

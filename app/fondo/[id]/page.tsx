@@ -486,7 +486,7 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
   return (
     <div className="shell" style={{ maxWidth: "min(1200px, 96vw)" }}>
       <Realtime tablas={["cronograma_actividades", "rhe", "estado_cuenta", "movimiento_banco", "gasto_dj", "comprobante", "auditoria_financiera", "version_fondo", "postulaciones"]}
-        token={session?.access_token} />
+        token={session?.access_token} miId={user.id} />
       <div className="topbar">
         <Volver />
         <span className="spacer" />

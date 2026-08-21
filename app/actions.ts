@@ -1258,8 +1258,24 @@ export async function asignarResponsable(pubId: string, perfilId: string | null)
   /* Quién lo llevaba ANTES, leído antes del update: es el otro interesado del
      cambio y después ya no hay forma de saberlo. A quien le quitan un caso se
      le avisa igual que a quien se lo dan — si no, sigue creyendo que es suyo. */
-  const { data: previo } = await supabase.from("publicaciones")
-    .select("responsable").eq("id", pubId).maybeSingle();
+  /* ── LAS TRES LECTURAS, A LA VEZ ──
+     Iban una detrás de otra, y entre medias el update y los avisos: nueve
+     viajes de ida y vuelta encadenados para asignar un sub-caso. Con la base
+     a cien milisegundos, eso es el segundo largo que se nota al soltar el
+     desplegable.
+     Las tres se pueden pedir juntas porque ninguna depende de las otras, y las
+     tres ANTES del update porque lo que leen no cambia con él: el título y el
+     autor del caso son los mismos, y `previo` tiene que leerse antes por
+     definición. */
+  const [{ data: previo }, ctx, nuevo] = await Promise.all([
+    supabase.from("publicaciones").select("responsable").eq("id", pubId).maybeSingle(),
+    casoYActor(supabase, pubId, user.id),
+    perfilId
+      ? supabase.from("perfiles").select("nombre").eq("id", perfilId).maybeSingle()
+      : Promise.resolve({ data: null as any }),
+  ]);
+  const { pub, actorNombre } = ctx;
+
   const { data: filas, error } = await supabase.from("publicaciones")
     .update({ responsable: perfilId }).eq("id", pubId).select("id");
   if (error) return { error: error.message };
@@ -1270,11 +1286,11 @@ export async function asignarResponsable(pubId: string, perfilId: string | null)
      (auth.uid()) al hacer el UPDATE. Insertarlo aquí también lo dejaba
      DUPLICADO —igual que el cambio de estado, que confía solo en el trigger—. */
 
-  const { pub, actorNombre } = await casoYActor(supabase, pubId, user.id);
   /* El aviso del NUEVO responsable va primero y con su propio tipo: «te
      asignaron» es otra cosa que «cambió el responsable» —una pide trabajo, la
      otra informa— y quien recibe la primera no debe recibir además la segunda.
-     Por eso comparten `avisados`. */
+     Por eso comparten `avisados`, y por eso NO van en paralelo entre sí: el
+     segundo necesita saber a quién avisó el primero. */
   const avisados = new Set<string>();
   if (perfilId && perfilId !== user.id) {
     avisados.add(perfilId);
@@ -1286,10 +1302,8 @@ export async function asignarResponsable(pubId: string, perfilId: string | null)
   }
   // 🔔 Y al autor y a quien lo llevaba: el caso cambió de manos.
   if (pub) {
-    const quien = perfilId
-      ? ((await supabase.from("perfiles").select("nombre").eq("id", perfilId).maybeSingle())
-          .data?.nombre || "otra persona")
-      : null;
+    // El nombre ya vino con las lecturas de arriba; era un viaje más él solo.
+    const quien = perfilId ? ((nuevo as any)?.data?.nombre || "otra persona") : null;
     await avisarCambioCaso(supabase, {
       pubId, actorId: user.id, actorNombre, tipo: "cambio_responsable",
       mensaje: quien

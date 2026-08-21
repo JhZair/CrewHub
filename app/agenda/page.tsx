@@ -117,7 +117,7 @@ export default async function AgendaPage() {
       {/* Refresco en vivo: la agenda sale de cronograma + casos con fecha. */}
       {/* «comentarios» entra a la lista porque ahora la agenda muestra su
           conteo: sin eso el 💬 se quedaría congelado hasta recargar. */}
-      <Realtime tablas={["cronograma_actividades", "publicaciones", "comentarios"]} token={session?.access_token} />
+      <Realtime tablas={["cronograma_actividades", "publicaciones", "comentarios"]} token={session?.access_token} miId={user.id} />
       <div className="topbar">
         <Volver />
         <span className="spacer" />

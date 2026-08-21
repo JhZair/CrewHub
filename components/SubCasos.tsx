@@ -39,6 +39,21 @@ export default function SubCasos({ padreId, hijos, perfiles = [] }: {
      clic en silencio —ni acción, ni error, ni nada—. Cada fila se bloquea a
      sí misma; las demás siguen vivas. */
   const [guardando, setGuardando] = useState<string[]>([]);
+  /* ── LO QUE ACABAS DE ELEGIR, YA PUESTO ──
+     El botón enseñaba el valor del servidor, así que no se movía hasta que
+     terminaba TODO: la acción —que además avisa a tres personas— y luego el
+     `router.refresh()`, que vuelve a montar la página entera del caso. Un
+     segundo largo mirando el valor viejo, y la sensación de que el clic no
+     entró. La mitad de la gente lo pulsa otra vez.
+     Aquí se guarda lo elegido y se pinta al instante. No es fingir: si la
+     acción falla se DESHACE y se dice por qué, que es justo lo que un
+     optimismo mal hecho no hace. */
+  const [local, setLocal] = useState<Record<string, any>>({});
+  const clave = (id: string, campo: string) => `${id}|${campo}`;
+  const valorDe = (h: any, campo: string) => {
+    const k = clave(h.id, campo);
+    return k in local ? local[k] : h[campo];
+  };
   const router = useRouter();
 
   /* «Cerrado» = resuelta O archivada, y esa decisión vive en lib/familia:
@@ -70,15 +85,31 @@ export default function SubCasos({ padreId, hijos, perfiles = [] }: {
     router.refresh();
   };
 
-  /* Un solo camino para los dos cambios al vuelo: bloquear SU fila, llamar,
-     y si falla DECIRLO. El error va arriba, no en un alert. */
-  const alVuelo = async (id: string, fn: () => Promise<any>) => {
+  /* Un solo camino para los tres cambios al vuelo: pintar lo elegido, llamar,
+     y si falla DESHACERLO y decirlo. El error va arriba, no en un alert.
+     La fila sigue marcándose como «guardando» —el control se atenúa— pero ya
+     no enseña el valor viejo mientras tanto: el trabajo se ve hecho y el
+     sistema termina de confirmarlo por detrás. */
+  const alVuelo = async (id: string, campo: string, valor: any, fn: () => Promise<any>) => {
     if (guardando.includes(id)) return;   // solo su propia fila, no todas
+    const k = clave(id, campo);
+    setLocal(l => ({ ...l, [k]: valor }));
     setGuardando(g => [...g, id]); setError("");
     const res: any = await fn();
     setGuardando(g => g.filter(x => x !== id));
-    if (res?.error) { setError(res.error); return; }
+    if (res?.error) {
+      /* Se quita lo pintado: el botón vuelve solo a lo que dice el servidor,
+         que es lo que sigue siendo verdad. Dejarlo puesto con un error arriba
+         sería enseñar dos cosas contrarias a la vez. */
+      setLocal(l => { const n = { ...l }; delete n[k]; return n; });
+      setError(res.error);
+      return;
+    }
+    /* El refresco trae el valor de verdad; cuando llegue, `local` sobra. Se
+       limpia DESPUÉS —no antes— para que no parpadee al valor viejo en el
+       hueco entre una cosa y la otra. */
     router.refresh();
+    setTimeout(() => setLocal(l => { const n = { ...l }; delete n[k]; return n; }), 1500);
   };
 
   return (
@@ -103,14 +134,14 @@ export default function SubCasos({ padreId, hijos, perfiles = [] }: {
               estado (📥 🛠 🔭 ⏸ ✅ 🗄, los de lib/estados) y además el control
               para cambiarlo. Va a la izquierda porque es la columna por la que
               el ojo baja cuando repasas veinte líneas. */}
-          <MiniSelect value={h.estado} options={opcionesEstado(h.tipo, h.estado)}
-            etiqueta={icoEstado(h.estado, h.tipo)}
-            onSelect={v => alVuelo(h.id, async () => {
+          <MiniSelect value={valorDe(h, "estado")} options={opcionesEstado(h.tipo, valorDe(h, "estado"))}
+            etiqueta={icoEstado(valorDe(h, "estado"), h.tipo)}
+            onSelect={v => alVuelo(h.id, "estado", v, async () => {
               const r = await cambiarEstado(h.id, v);
               if (!r?.error && v === "resuelta" && h.estado !== "resuelta") celebrarResuelto();
               return r;
             })}
-            buttonClass={`sc-est st-${claseEstado(h.estado, h.tipo)}`}
+            buttonClass={`sc-est st-${claseEstado(valorDe(h, "estado"), h.tipo)}`}
             /* gap 2: el ícono y el ▾ tienen que caber en 38 px */
             buttonStyle={{ gap: 2 }} />
           <Link href={`/caso/${h.id}`} style={{ fontWeight: 600, flex: 1, minWidth: 0 }}
@@ -121,12 +152,12 @@ export default function SubCasos({ padreId, hijos, perfiles = [] }: {
               después quién. Se ven siempre —no escondidos tras un hover—:
               repartir veinte sub-casos es ir de fila en fila, y algo que solo
               aparece al pasar el cursor no se puede recorrer. */}
-          <FechaMini valor={h.fecha_limite || null} ocupado={guardando.includes(h.id)}
+          <FechaMini valor={valorDe(h, "fecha_limite") || null} ocupado={guardando.includes(h.id)}
             tituloVacio="Poner fecha límite"
             /* El color de plazo se calcula AQUÍ y se pasa: con el estado, para
                que un sub-caso cerrado no pinte «vencido» en rojo. */
-            color={plazoDe(h.fecha_limite || null, h.estado)?.color ?? null}
-            onCambia={v => alVuelo(h.id, () => cambiarFechaLimite(h.id, v))} />
+            color={plazoDe(valorDe(h, "fecha_limite") || null, valorDe(h, "estado"))?.color ?? null}
+            onCambia={v => alVuelo(h.id, "fecha_limite", v, () => cambiarFechaLimite(h.id, v))} />
           {/* Vacío: un 🙋 fantasma, no un 👤. El 👤 ya está tomado — es
               `ICO_ENT.persona`, la persona VINCULADA al caso, y es el ícono
               del picker de la bandeja de arriba. Una persona vinculada no es
@@ -137,10 +168,11 @@ export default function SubCasos({ padreId, hijos, perfiles = [] }: {
               mano.
               «Sin asignar» escrito veinte veces era la mitad del ruido de
               esta lista — un hueco no necesita frase. */}
-          <MiniSelect value={h.responsable || ""} options={OPC_RESP}
-            etiqueta={!h.responsable ? "🙋" : inactivo(h.responsable) ? "⚠ de baja" : cortoDe(h.responsable)}
-            onSelect={v => alVuelo(h.id, () => asignarResponsable(h.id, v || null))}
-            buttonClass={`sc-btn${h.responsable ? (inactivo(h.responsable) ? " puesto baja" : " puesto resp") : ""}`} />
+          <MiniSelect value={valorDe(h, "responsable") || ""} options={OPC_RESP}
+            etiqueta={!valorDe(h, "responsable") ? "🙋"
+              : inactivo(valorDe(h, "responsable")) ? "⚠ de baja" : cortoDe(valorDe(h, "responsable"))}
+            onSelect={v => alVuelo(h.id, "responsable", v || null, () => asignarResponsable(h.id, v || null))}
+            buttonClass={`sc-btn${valorDe(h, "responsable") ? (inactivo(valorDe(h, "responsable")) ? " puesto baja" : " puesto resp") : ""}`} />
           <VistaRapida pubId={h.id} />
         </div>
       ))}
