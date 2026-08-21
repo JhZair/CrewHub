@@ -16,3 +16,10 @@ _to_delete/
 # cargar algo, y confiar en acordarse de borrarla antes de cada `git add -A`
 # es confiar en no equivocarse nunca.
 _temp/
+
+# Mismo caso que _temp/, con otro nombre: aquí caen los expedientes guardados
+# de la Plataforma de Trámites para leerlos y generar el SQL de carga. Traen
+# DNI, fechas de nacimiento, domicilios, teléfonos y correos de todo el equipo
+# de cada proyecto. Se ignora la carpeta, no los archivos uno por uno, porque
+# el riesgo no es este archivo: es el siguiente que alguien deje ahí.
+Temporal/
