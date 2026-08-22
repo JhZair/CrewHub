@@ -7,7 +7,7 @@ import { META_RENDICION, esTablaRendicion, anclaRendicion, duenoDe, type TablaRe
 import { COLS_DUENO_COM, COLS_DUENO_COM_EXTRA } from "@/lib/vinculoComentario";
 import { icoTipo, esTipoCreable } from "@/lib/tipos";
 import { claseDe as claseDeObligacion, RESULTADOS as RESULTADOS_OBL, DIAS_AVISO } from "@/lib/obligaciones";
-import { leerReporteSol, periodosDeSol, leerCasillasSol, casillasVigentes, pareceCopiaPorColumnas } from "@/lib/importarSol";
+import { leerReporteSol, periodosDeSol, leerCasillasSol, casillasVigentes, pareceCopiaPorColumnas, leerDeclaracionesSol } from "@/lib/importarSol";
 import { FORM_CONF, nombreCorto, SUBCATS_EQUIPO } from "@/lib/entidades";
 import { ETAPAS_PROY_VALIDAS } from "@/lib/etapasProyecto";
 import { nrmQ } from "@/lib/quechua";
@@ -9052,7 +9052,15 @@ export async function importarDeclaracionesSol(
      sobre un reporte perfectamente válido. */
   const lectura = leerReporteSol(texto || "");
   const casillas = leerCasillasSol(texto || "");
-  if (!lectura.filas.length && !casillas.length) {
+  /* ── Y EL TERCERO: LA DECLARACIÓN EN SU PROPIO PDF ──
+     La jurada anual no se descarga como listado sino como el formulario 710
+     entero. Sin este lector, ese PDF —el documento oficial de la declaración—
+     entraba y la respuesta era «no encontré ninguna declaración», que manda a
+     dudar del archivo cuando el archivo está perfecto.
+     Se suma a las filas del listado, no las sustituye: los tres formatos se
+     pueden soltar juntos y cada uno aporta lo suyo. */
+  const sueltas = leerDeclaracionesSol(texto || "");
+  if (!lectura.filas.length && !casillas.length && !sueltas.length) {
     /* ── DECIR QUÉ PASÓ, NO SOLO QUE NO PASÓ ──
        «No encontré nada» ante un pegado que SÍ trae las cifras manda a la
        persona a comprobar el reporte, que está bien, en vez de la forma de
@@ -9079,7 +9087,11 @@ export async function importarDeclaracionesSol(
     return { error: `Ese reporte es del RUC ${lectura.ruc} (${lectura.razon || "—"}), y esta empresa es ${rucEmp}. No se importó nada.` };
   }
 
-  const periodos = periodosDeSol(lectura.filas);
+  /* Las del listado y las sueltas, juntas. `periodosDeSol` deduplica por
+     (clase, año, mes) y se queda con la primera presentación como original y
+     las siguientes como rectificatorias, así que soltar el listado Y el PDF de
+     la misma declaración no la cuenta dos veces. */
+  const periodos = periodosDeSol([...lectura.filas, ...sueltas]);
   if (!periodos.length && !casillas.length) {
     return { error: "El reporte se leyó, pero no trae ningún formulario que este sistema siga (0621 mensual o renta anual)." };
   }

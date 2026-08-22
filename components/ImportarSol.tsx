@@ -116,8 +116,18 @@ export default function ImportarSol({ empresaId, nombre }: {
                 usar. Va una por periodo.
               </li>
               <li>
+                {/* La jurada anual no se descarga como listado: se descarga
+                    entera. Sin decirlo aquí, ese PDF se soltaba y el
+                    importador contestaba «no encontré ninguna declaración»
+                    sobre el documento oficial de la declaración. */}
+                <b>La declaración entera</b>, tal como la descargas (el
+                formulario 710 de renta anual, por ejemplo). De ahí salen la
+                fecha y el número de orden. Es lo normal para las anuales, que
+                no aparecen en el listado mensual.
+              </li>
+              <li>
                 Descarga los PDF de SOL y <b>suéltalos aquí</b> — varios a la
-                vez, de los dos tipos mezclados, da igual. No se suben a ningún
+                vez, de los tres tipos mezclados, da igual. No se suben a ningún
                 sitio: se leen en tu navegador.
               </li>
             </ol>

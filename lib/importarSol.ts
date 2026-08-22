@@ -135,7 +135,16 @@ export function leerReporteSol(texto: string): LecturaSol {
     const fecha = dmyAiso(fechaDmy);
     if (!fecha) continue;
     const nMes = Number(mes);
-    if (nMes < 1 || nMes > 12) continue;
+    /* ── EL PERIODO 13 EXISTE, Y ES EL ANUAL ──
+       SUNAT numera el periodo de regularización anual como el mes 13 del año
+       («13/2024»). Este filtro decía «de 1 a 12» y descartaba esas filas en
+       silencio: la jurada anual de Wilkakalle salía vencida en la pantalla
+       mientras su constancia estaba presentada y en el PDF.
+       No se cuela nada por aceptarlo: quien empareja con la base es
+       `importarDeclaracionesSol`, y allí todo lo que no es la mensual se busca
+       con `mes = 0`, que es como la base guarda el periodo anual. El 13 nunca
+       llega a la tabla — solo tiene que sobrevivir hasta ahí. */
+    if (nMes < 1 || nMes > 13) continue;
     // Sin «S/» en la cola no hubo pago, que es lo que trae todo este reporte.
     const montoPago = monto ? Number(String(monto).replace(/,/g, "")) || 0 : 0;
 
@@ -163,6 +172,94 @@ export function leerReporteSol(texto: string): LecturaSol {
     ignoradas: perdidas
       ? [`${perdidas} fila(s) del reporte no se pudieron interpretar`] : [],
   };
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   EL TERCER FORMATO: LA DECLARACIÓN EN SU PROPIO PDF
+
+   Los dos lectores de arriba esperan LISTADOS —«estas veintitrés se
+   presentaron», «estas son las casillas de aquella»—. La jurada anual no
+   aparece así: se descarga como el formulario entero, un PDF de treinta
+   páginas cuya cabecera dice todo lo que hace falta y se repite en cada una:
+
+       Periodo Tributario: 202413
+       Número de Formulario: 0710
+       Fecha Presentación: 15/05/2025 Número de Orden: 1005204598
+       Tipo de Declaración : ORIGINAL
+
+   Sin este lector, ese PDF entraba y el importador contestaba «no encontré
+   ninguna declaración» — sobre el documento oficial de la declaración. Es la
+   peor respuesta posible: manda a dudar del archivo, que está perfecto.
+
+   ── EL PERIODO 202413 ──
+   Trece es el periodo de regularización anual, no un mes que sobra. Aquí se
+   lee como `mes = 13` y `importarDeclaracionesSol` lo empareja con el periodo
+   anual, que la base guarda con `mes = 0`.
+
+   ── VARIOS PDF DE UNA VEZ ──
+   La cabecera se repite por página, así que no vale contar apariciones: se
+   agrupa por NÚMERO DE ORDEN, igual que hace el lector de casillas. Así dos
+   juradas sueltas juntas —2024 y 2025— salen como dos declaraciones y una sola
+   de treinta páginas sale como una.
+   ══════════════════════════════════════════════════════════════════ */
+const RE_ORDEN_DECL = /N[úu]mero de Orden\s*:?\s*(?:Text Field\s*)?(\d{6,})/g;
+/* `Text Field` es basura del PDF: son los nombres de los campos del formulario,
+   que el lector de coordenadas recoge junto al valor. Se salta donde aparece en
+   vez de limpiarla del texto entero — limpiar a lo ancho es como se estropean
+   los datos de al lado. */
+const uno = (re: RegExp, t: string) => (re.exec(t) || [])[1] || "";
+
+export function leerDeclaracionesSol(texto: string): FilaSol[] {
+  const t = limpiar(texto);
+  const porOrden = new Map<string, FilaSol>();
+
+  for (const m of t.matchAll(RE_ORDEN_DECL)) {
+    const orden = m[1];
+    /* Una ventana alrededor de la cabecera: los cuatro campos viven juntos, y
+       mirar el documento entero mezclaría la cabecera de una declaración con
+       la de la siguiente cuando se pegan dos PDF. */
+    const i = m.index ?? 0;
+    const v = t.slice(Math.max(0, i - 700), i + 700);
+
+    const per = /Per[íi]odo Tributario\s*:?\s*(?:Text Field\s*)?(\d{4})(\d{2})/.exec(v);
+    if (!per) continue;                      // sin periodo no hay nada que emparejar
+    const anio = Number(per[1]);
+    const mes = Number(per[2]);
+    if (!anio || mes < 1 || mes > 13) continue;
+
+    const form = uno(/N[úu]mero de Formulario\s*:?\s*(?:Text Field\s*)?(\d{3,4})/, v);
+    const fechaDmy = uno(/Fecha Presentaci[óo]n\s*:?\s*(?:Text Field\s*)?(\d{2}\/\d{2}\/\d{4})/, v);
+    const fecha = dmyAiso(fechaDmy);
+    if (!fecha) continue;                    // sin fecha no se puede decir si fue a tiempo
+
+    const prev = porOrden.get(orden);
+    /* La primera cabecera completa manda. Las demás páginas repiten lo mismo, y
+       alguna sale coja porque el visor parte la línea: quedarse con la primera
+       que trajo fecha evita que una página rota pise a una buena. */
+    if (prev) continue;
+
+    const tipo = uno(/Tipo de Declaraci[óo]n\s*:?\s*(?:Text Field\s*)?(\w+)/, v).toLowerCase();
+    /* El título del documento sirve de descripción: `claseDeFormulario` mira
+       tanto el número como el texto, y «renta anual» aparece en la portada. */
+    const titulo = uno(/FORMULARIO\s+\d+\s+([A-ZÁÉÍÓÚÑ ]{6,60})/, t).trim();
+
+    porOrden.set(orden, {
+      anio, mes,
+      formulario: form.padStart(4, "0"),
+      descripcion: [titulo || "Declaración", tipo === "rectificatoria" ? "(rectificatoria)" : ""]
+        .filter(Boolean).join(" "),
+      nroOrden: orden,
+      fecha,
+      /* Este PDF trae el detalle de la deuda, pero leer el importe pagado de
+         aquí exigiría emparejar casillas en una tabla de tres columnas — el
+         mismo problema que ya se decidió no adivinar. Se deja en cero: lo que
+         este lector aporta es QUE se presentó y CUÁNDO, que es justo lo que a
+         la pantalla le faltaba. */
+      montoPago: 0,
+    });
+  }
+
+  return [...porOrden.values()].sort((a, b) => a.anio - b.anio || a.mes - b.mes);
 }
 
 export type PeriodoSol = {
