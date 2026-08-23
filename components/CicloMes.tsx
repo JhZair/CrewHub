@@ -16,9 +16,20 @@ type RheMio = {
 /* El ciclo de pago del mes, lado de la persona: confirmar (firma), ver el
    recibo cuando el admin liquida, y REGISTRAR EL RHE PROPIO. El mes es
    automático; esto es el cierre. */
-export default function CicloMes({ anio, mes, mesNombre, liq, personaId, rhes }: {
+export default function CicloMes({ anio, mes, mesNombre, liq, personaId, rhes, celda = false }: {
   anio: number; mes: number; mesNombre: string; liq: any | null;
   personaId?: string | null; rhes?: RheMio[];
+  /* ── COMO UNA TARJETA MÁS DEL PAGO ──
+   * Mientras el mes está abierto o confirmado, esto es una frase y un botón, y
+   * ocupaba una banda entera del ancho de la página por encima de «Mi pago».
+   * Justo debajo, la fila de tarjetas tiene cuatro huecos y solo tres cosas
+   * que poner. El estado del ciclo ES parte de la misma pregunta —cuánto
+   * llevo, cuánto me aprobaron, qué falta, y si ya lo cerré— así que su sitio
+   * es el cuarto hueco.
+   * Una vez LIQUIDADO deja de caber: ahí aparece el recibo, con su importe, su
+   * fecha y el formulario para registrar el RHE. Eso sigue siendo un panel
+   * entero, y la página lo pinta donde estaba. */
+  celda?: boolean;
 }) {
   const router = useRouter();
   const [ocupado, setOcupado] = useState(false);
@@ -26,6 +37,36 @@ export default function CicloMes({ anio, mes, mesNombre, liq, personaId, rhes }:
     setOcupado(true); const r: any = await fn(); setOcupado(false);
     if (r?.error) alert(r.error); else router.refresh();
   };
+
+  if (celda && liq?.estado !== "liquidado") {
+    const confirmado = liq?.estado === "confirmado";
+    return (
+      <div className="kpi kpi-ciclo" style={{
+        borderColor: confirmado ? "rgba(46,204,113,.35)" : "rgba(124,92,255,.35)",
+      }}>
+        <span className="l">📅 Mi ciclo · {mesNombre}</span>
+        <span className="n" style={{
+          fontSize: 19, color: confirmado ? "var(--green)" : "var(--text)",
+        }}>
+          {confirmado ? "Confirmado" : "Abierto"}
+        </span>
+        <span className="s">
+          {confirmado
+            ? <>el {fmt(liq.confirmado_en)} · esperando liquidación</>
+            : "confírmalo cuando esté completo"}
+        </span>
+        {confirmado
+          ? <button className="btn btn-ghost" disabled={ocupado}
+              style={{ marginTop: 6, fontSize: 12, padding: "5px 10px" }}
+              onClick={() => run(() => reabrirMiMes(anio, mes))}>↩ Reabrir</button>
+          : <button className="btn" disabled={ocupado}
+              style={{ marginTop: 6, fontSize: 12, padding: "6px 10px" }}
+              onClick={() => run(() => confirmarMiMes(anio, mes))}>
+              {ocupado ? "…" : "✓ Confirmar mi mes"}
+            </button>}
+      </div>
+    );
+  }
 
   if (liq?.estado === "liquidado") {
     return (

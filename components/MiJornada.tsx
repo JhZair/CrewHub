@@ -117,7 +117,9 @@ export default function MiJornada({ proyectos, mi }: {
         {tipo === "oficina" && (
           <span className="jr-seg">
             {FRACCIONES.map(f => (
-              <button key={f.v} className={fraccion === f.v ? "on" : ""} onClick={() => setFraccion(f.v)}>{f.largo}</button>
+              <button key={f.v} className={fraccion === f.v ? "on" : ""} onClick={() => setFraccion(f.v)}>
+                <span className="jr-dur-ico">{f.ico}</span> {f.largo}
+              </button>
             ))}
           </span>
         )}

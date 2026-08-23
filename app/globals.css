@@ -5101,3 +5101,12 @@ mark.bq-marca{
   font-style:normal;color:var(--dim);opacity:.55;text-align:left}
 .jr-fila:hover .jr-nota-add{opacity:1}
 .jr-nota-add:hover{color:var(--accent)}
+/* El círculo de la duración: hereda el color de su etiqueta —cada duración ya
+   tiene su tono— y va un punto más grande que el texto, porque a tamaño de
+   letra ◑ y ◕ se confunden. */
+.jr-dur-ico{font-size:1.15em;line-height:1;vertical-align:-1px;opacity:.9}
+/* La tarjeta del ciclo, en el cuarto hueco de «Mi pago». No lleva un número
+   grande como las otras tres —su dato es una palabra y un botón— así que se
+   alinea arriba y deja el botón abajo, a la altura del «s» de sus vecinas. */
+.kpi-ciclo{justify-content:flex-start}
+.kpi-ciclo .btn{align-self:flex-start}

@@ -18,15 +18,34 @@
    fila no es como la de arriba, y en treinta filas eso no se hace. Medio día
    se apaga, el completo es lo normal, y los dos que pasan de un día suben de
    temperatura: son los que hay que mirar al aprobar. */
-export const FRACCIONES: { v: number; corto: string; largo: string; tono: string }[] = [
-  { v: 0.5, corto: "½", largo: "½ Medio", tono: "medio" },
-  { v: 1, corto: "1", largo: "1 Completo", tono: "uno" },
-  { v: 1.5, corto: "1½", largo: "1½ Día y medio", tono: "medio-mas" },
-  { v: 2, corto: "2", largo: "2 Doble", tono: "doble" },
+/* ── EL ÍCONO ES UN DÍA VISTO POR ENCIMA ──
+ *
+ * `1½` y `1` en el mismo gris obligan a LEER el número para ver que una fila
+ * no es como la de arriba, y en treinta filas eso no se hace: se barre con la
+ * vista y se da todo por igual.
+ *
+ * El círculo lleno ES un día completo, y la duración se lee por cuánto está
+ * relleno — media luna, entero, entero y medio, dos. La forma sola ya ordena
+ * de menor a mayor sin saber qué significa, y sigue ordenando en gris, sin
+ * color y en una pantalla en blanco y negro. Con emojis se habría reconocido
+ * más rápido y ordenado peor: cambian de dibujo según el sistema y no forman
+ * una escala.
+ *
+ * Son caracteres de texto, no imágenes: pesan cero, heredan el color de la
+ * etiqueta —que ya lleva el tono de cada duración— y se copian con el resto
+ * de la fila. */
+export const FRACCIONES: { v: number; ico: string; corto: string; largo: string; tono: string }[] = [
+  { v: 0.5, ico: "◑", corto: "½",  largo: "½ Medio",         tono: "medio" },
+  { v: 1,   ico: "●", corto: "1",  largo: "1 Completo",      tono: "uno" },
+  { v: 1.5, ico: "◕", corto: "1½", largo: "1½ Día y medio",  tono: "medio-mas" },
+  { v: 2,   ico: "⬤", corto: "2",  largo: "2 Doble",         tono: "doble" },
 ];
 /** La fracción tal como se lee en una fila: «1½ día y medio». */
 export const metaFraccion = (n?: number | null) =>
-  FRACCIONES.find(f => f.v === Number(n)) || { v: Number(n) || 0, corto: String(n ?? "?"), largo: `${n}`, tono: "uno" };
+  FRACCIONES.find(f => f.v === Number(n))
+  /* Sin ícono para lo que no está en la lista, y a propósito: un valor que
+     nadie eligió no debe parecerse a los cuatro que sí. El «?» lo delata. */
+  || { v: Number(n) || 0, ico: "", corto: String(n ?? "?"), largo: `${n}`, tono: "uno" };
 
 /** ¿Es una fracción que ofrecemos? Para no guardar valores que nadie eligió. */
 export const fraccionValida = (n: number) => FRACCIONES.some(f => f.v === Number(n));

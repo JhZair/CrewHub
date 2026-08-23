@@ -252,7 +252,11 @@ export default async function Jornadas({ searchParams }: { searchParams: { m?: s
 
       <MiJornada proyectos={proyectos || []} mi={mi} />
 
-      {mi && (
+      {/* Con el mes LIQUIDADO esto es un panel entero —el recibo, su importe y
+          el formulario del RHE— y se queda donde estaba. Abierto o confirmado
+          es una frase y un botón, y baja a la fila de tarjetas de abajo, que
+          tiene cuatro huecos y solo tres cosas. */}
+      {mi && miLiq?.estado === "liquidado" && (
         <CicloMes anio={anio} mes={mesNum} mesNombre={MESES[mes]} liq={miLiq}
           personaId={miPersonaId} rhes={(misRhes || []) as any} />
       )}
@@ -265,6 +269,13 @@ export default async function Jornadas({ searchParams }: { searchParams: { m?: s
             <div className="kpi"><span className="l">Mis jornadas</span><span className="n" style={{ color: "var(--blue)" }}>{miDias}</span><span className="s">este mes</span></div>
             <div className="kpi"><span className="l">A pagar · aprobado</span><span className="n" style={{ color: "var(--teal)" }}>{soles(miAprob)}</span><span className="s">de {soles(miAprob + miPend)}</span></div>
             <div className="kpi"><span className="l">⏳ Pendiente</span><span className="n" style={{ color: miPend > 0 ? "var(--yellow)" : "var(--dim)" }}>{soles(miPend)}</span><span className="s">por aprobar</span></div>
+            {/* El cuarto hueco, que hasta ahora se quedaba vacío. El estado del
+                ciclo es parte de la misma pregunta que las tres de al lado:
+                cuánto llevo, cuánto me aprobaron, qué falta, y si ya lo cerré. */}
+            {miLiq?.estado !== "liquidado" && (
+              <CicloMes celda anio={anio} mes={mesNum} mesNombre={MESES[mes]} liq={miLiq}
+                personaId={miPersonaId} rhes={(misRhes || []) as any} />
+            )}
           </div>
         </>
       )}
