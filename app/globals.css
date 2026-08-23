@@ -5075,3 +5075,23 @@ mark.bq-marca{
    tres renglones rompe ese barrido para todas las demás. */
 .cta-rol{font-size:10.5px;color:var(--muted);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis;cursor:help}
+/* La celda «quién» de la tabla semanal de /jornadas: cara, nombre completo y
+   el alias detrás.
+   ⚠ NOMBRE PROPIO, y no `.jr-quien`: esa clase ya existe arriba para la fila
+   de la bitácora, que es texto plano. Reutilizarla le habría puesto `display:
+   flex` a treinta filas que no lo piden — el clásico arreglo que arregla una
+   pantalla y descoloca otra sin que nadie lo note hasta semanas después. */
+.jr-cel-quien{display:flex;align-items:center;gap:7px;min-width:0}
+.jr-cel-quien .av{flex:none}
+.jr-cel-quien b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.jr-alias{color:var(--dim);font-size:11px;font-style:normal}
+/* La nota de una jornada: explica el día, no decide el pago. Gris, una línea
+   y con corte — el texto entero está en el título. */
+.jr-nota{color:var(--dim);font-size:11.5px;font-style:italic;
+  /* `min-width` y no 0: con base 0 y `.jr-proy` reclamando lo mismo, al
+     estrecharse la fila la nota se encogía hasta CERO píxeles — la jornada con
+     nota se veía idéntica a la que no la tiene, y ni el texto ni su título
+     eran alcanzables. Un dato que desaparece sin dejar rastro es peor que uno
+     que no está: nadie va a buscarlo. */
+  flex:1 1 90px;min-width:70px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:help}

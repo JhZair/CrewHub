@@ -23,6 +23,7 @@ function FilaJornada({ j, esAdmin, puedeEditar, proyectos, onChange }: {
   const [tipo, setTipo] = useState(j.tipo);
   const [fraccion, setFraccion] = useState<number>(Number(j.fraccion));
   const [noche, setNoche] = useState(!!j.noche);
+  const [notas, setNotas] = useState<string>(j.notas || "");
 
   const aprobar = async (v: boolean) => {
     setOcupado(true); const r: any = await aprobarJornada(j.id, v); setOcupado(false);
@@ -30,7 +31,8 @@ function FilaJornada({ j, esAdmin, puedeEditar, proyectos, onChange }: {
   };
   const guardar = async () => {
     setOcupado(true);
-    const r: any = await editarJornada(j.id, fecha, proyectoId || null, tipo, tipo === "oficina" ? fraccion : 1, tipo !== "oficina" && noche);
+    const r: any = await editarJornada(j.id, fecha, proyectoId || null, tipo,
+      tipo === "oficina" ? fraccion : 1, tipo !== "oficina" && noche, notas);
     setOcupado(false);
     if (r?.error) { alert(r.error); return; }
     setEdit(false); onChange();
@@ -61,7 +63,15 @@ function FilaJornada({ j, esAdmin, puedeEditar, proyectos, onChange }: {
         {tipo !== "oficina" && (
           <button className={`jr-chip ${noche ? "on" : ""}`} onClick={() => setNoche(n => !n)}>🏕 {noche ? "✓" : ""}</button>
         )}
-        <span style={{ flex: 1 }} />
+        {/* La nota también se corrige aquí. Sin esto, un dedazo quedaba fijo
+            para siempre —la acción no la aceptaba y el modo edición no la
+            enseñaba— y encima DESAPARECÍA de la pantalla al entrar a editar,
+            que es como se ve un dato que se está perdiendo aunque no se pierda.
+            Vaciarla es válido: borrar una nota equivocada es tan necesario como
+            escribirla. */}
+        <input value={notas} onChange={e => setNotas(e.target.value)}
+          placeholder="nota del día (opcional)" maxLength={300}
+          style={{ ...inp, flex: "1 1 180px", minWidth: 120 }} />
         <button className="btn" style={{ padding: "5px 11px", fontSize: 11.5 }} disabled={ocupado} onClick={guardar}>{ocupado ? "…" : "Guardar"}</button>
         <button className="btn btn-ghost" style={{ padding: "5px 9px", fontSize: 11.5 }} onClick={() => setEdit(false)}>Cancelar</button>
       </div>
@@ -93,6 +103,15 @@ function FilaJornada({ j, esAdmin, puedeEditar, proyectos, onChange }: {
       </span>
       {j.noche && <span className="jr-pernocte" title="Con pernocte: se durmió fuera. Se paga aparte del día.">🏕 pernocte</span>}
       <span style={{ color: "var(--teal)", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>{money(j.monto)}</span>
+      {/* Qué se hizo ese día. Es lo que convierte «1 · rodaje · S/ 160» en algo
+          que se puede revisar tres meses después, cuando llega la liquidación y
+          nadie recuerda por qué hubo rodaje un domingo.
+          Va DETRÁS del monto y en gris: no decide el pago, lo explica. Y de una
+          sola línea, con el texto entero en el título — una fila que crece
+          rompe el barrido vertical de las otras treinta. */}
+      {j.notas && (
+        <span className="jr-nota" title={j.notas}>{j.notas}</span>
+      )}
       <span className="badge jr-est" style={{
         fontSize: 10.5,
         color: j.aprobada ? "var(--green)" : "var(--yellow)",

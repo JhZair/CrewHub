@@ -147,7 +147,7 @@ export default async function Admin({ searchParams }: {
       .gte("fecha", `${rAnio}-01-01`).lt("fecha", `${rAnio + 1}-01-01`)
       .order("fecha", { ascending: false }).limit(400),
     supabase.from("jornadas")
-      .select("id,persona_id,fecha,proyecto_id,tipo,fraccion,noche,monto,aprobada,per:personas(nombre,alias),proy:proyectos(nombre)")
+      .select("id,persona_id,fecha,proyecto_id,tipo,fraccion,noche,monto,aprobada,notas,per:personas(nombre,alias),proy:proyectos(nombre)")
       .eq("aprobada", false).order("fecha", { ascending: false }).limit(400),
     supabase.from("proyectos").select("id,nombre").order("nombre"),
     /* `proy` y `fecha` entran para la portada: sin proyecto no se puede decir
@@ -380,7 +380,7 @@ export default async function Admin({ searchParams }: {
   const jInicio = `${jAnio}-${pad(jMes + 1)}-01`;
   const jFin = `${jMes === 11 ? jAnio + 1 : jAnio}-${pad(jMes === 11 ? 1 : jMes + 2)}-01`;
   const { data: jornsCtx } = await supabase.from("jornadas")
-    .select("id,persona_id,fecha,proyecto_id,tipo,fraccion,noche,monto,aprobada,per:personas(nombre,alias),proy:proyectos(nombre)")
+    .select("id,persona_id,fecha,proyecto_id,tipo,fraccion,noche,monto,aprobada,notas,per:personas(nombre,alias),proy:proyectos(nombre)")
     .gte("fecha", jInicio).lt("fecha", jFin)
     .order("fecha", { ascending: false }).limit(3000);
 
@@ -392,6 +392,11 @@ export default async function Admin({ searchParams }: {
     id: j.id, persona_id: j.persona_id, proyecto_id: j.proyecto_id, aprobada: j.aprobada,
     fecha: j.fecha, persona: j.per?.alias || j.per?.nombre || "—",
     proyecto: j.proy?.nombre || null, tipo: j.tipo, fraccion: j.fraccion, noche: j.noche, monto: j.monto,
+    /* La nota de quien registró la jornada. AQUÍ es donde de verdad hace
+       falta: esta es la pantalla en la que se aprueba y se liquida, y «¿por
+       qué hubo rodaje un domingo?» se pregunta un mes después, mirando esta
+       tabla. Sin traerla, el campo solo se leía a sí mismo en /jornadas. */
+    notas: j.notas || null,
   }));
 
   /* De `jornsPend` —TODO lo pendiente— y no de `filasJornadas`, que ahora es

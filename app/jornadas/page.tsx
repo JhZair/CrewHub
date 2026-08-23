@@ -7,6 +7,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { rotuloMonton } from "@/lib/tipos";
+import Avatar from "@/components/Avatar";
 
 export const metadata: Metadata = { title: "⏱ Jornadas" };
 
@@ -57,9 +58,14 @@ export default async function Jornadas({ searchParams }: { searchParams: { m?: s
   /* Quién soy, ANTES de pedir las jornadas: esta página es personal y sin saber
      a qué persona corresponde la cuenta no se puede acotar la consulta. */
   const [{ data: miData }, { data: proyectos }, { data: perfilData }] = await Promise.all([
-    supabase.from("personas").select("id,nombre,alias,tarifa_dia,tarifa_rodaje,tarifa_noche").eq("usuario_id", user.id).maybeSingle(),
+    /* `foto_url`: en esta pantalla uno registra SU jornada, y la cara al lado
+       del nombre es lo que confirma de un vistazo que la está registrando la
+       persona correcta —hay tres cuentas que se llaman «John Zair Oros»—. */
+    supabase.from("personas").select("id,nombre,alias,foto_url,rol,tarifa_dia,tarifa_rodaje,tarifa_noche").eq("usuario_id", user.id).maybeSingle(),
     supabase.from("proyectos").select("id,nombre").order("nombre"),
-    supabase.from("perfiles").select("es_admin").eq("id", user.id).single(),
+    /* La foto de la cuenta es el respaldo de la de la ficha: quien no subió una
+       propia sí tiene la de Google. */
+    supabase.from("perfiles").select("es_admin,nombre,avatar_url,color").eq("id", user.id).single(),
   ]);
   const miPersonaIdRaw = (miData as any)?.id || "";
 
@@ -72,11 +78,28 @@ export default async function Jornadas({ searchParams }: { searchParams: { m?: s
      La vista de equipo vive en /admin, que ya comprueba `es_admin`. */
   const { data: jorns } = miPersonaIdRaw
     ? await supabase.from("jornadas")
-        .select("id,persona_id,fecha,proyecto_id,tipo,fraccion,noche,monto,aprobada,per:personas(nombre,alias),proy:proyectos(nombre)")
+        .select("id,persona_id,fecha,proyecto_id,tipo,fraccion,noche,monto,aprobada,notas,per:personas(nombre,alias),proy:proyectos(nombre)")
         .eq("persona_id", miPersonaIdRaw)
         .gte("fecha", inicio).lt("fecha", fin).order("fecha", { ascending: false })
     : { data: [] };
-  const mi = miData ? { nombre: (miData as any).alias || (miData as any).nombre, tarifa_dia: (miData as any).tarifa_dia, tarifa_rodaje: (miData as any).tarifa_rodaje, tarifa_noche: (miData as any).tarifa_noche } : null;
+  /* El nombre COMPLETO, con el alias de coletilla. Antes se enseñaba solo el
+     corto —«JOHNO»— y eso vale para una tabla de cuarenta filas donde ya se
+     sabe de quién se habla, pero no en la cabecera de «registrar MI jornada»,
+     que es exactamente donde hay que reconocerse. */
+  const mi = miData ? {
+    nombre: (miData as any).nombre,
+    alias: (miData as any).alias || null,
+    foto: (miData as any).foto_url || (perfilData as any)?.avatar_url || null,
+    color: (perfilData as any)?.color || null,
+    /* Sus especialidades, de la ficha. Aquí no es adorno: cuando alguien
+       registra un día de «rodaje» y su ficha dice «Sonidista, Operador de
+       dron», la nota que escriba tiene sentido; si la ficha está vacía, es que
+       falta darla de alta bien y este es el momento en que se nota. */
+    rol: (miData as any).rol || null,
+    tarifa_dia: (miData as any).tarifa_dia,
+    tarifa_rodaje: (miData as any).tarifa_rodaje,
+    tarifa_noche: (miData as any).tarifa_noche,
+  } : null;
   const miPersonaId = miPersonaIdRaw;
   const esAdmin = !!(perfilData as any)?.es_admin;
   /* ── MIS DOS SILUETAS: A QUÉ HORA Y QUÉ DÍAS ──
@@ -119,7 +142,7 @@ export default async function Jornadas({ searchParams }: { searchParams: { m?: s
     : { data: null };
 
   // ── Agregación persona × semana + panel personal ──
-  const nombreP = new Map<string, string>();
+  const nombreP = new Map<string, { nombre: string; alias: string | null }>();
   const semPer = new Map<string, number[]>();
   const totPer = new Map<string, { dias: number; aprob: number; pend: number }>();
   const miSem = new Array(nSem).fill(0);
@@ -128,7 +151,7 @@ export default async function Jornadas({ searchParams }: { searchParams: { m?: s
 
   (jorns || []).forEach((j: any) => {
     const pid = j.persona_id;
-    nombreP.set(pid, j.per?.alias || j.per?.nombre || "—");
+    nombreP.set(pid, { nombre: j.per?.nombre || "—", alias: j.per?.alias || null });
     const wi = semanaDelMes(new Date(j.fecha + "T12:00:00"), inicioMes);
     const d = Number(j.fraccion || 0), s = Number(j.monto || 0);
     const arr = semPer.get(pid) || new Array(nSem).fill(0);
@@ -143,7 +166,7 @@ export default async function Jornadas({ searchParams }: { searchParams: { m?: s
       miDias += d; if (j.aprobada) miAprob += s; else miPend += s;
     }
   });
-  const filas = [...nombreP.entries()].map(([id, nombre]) => ({ id, nombre }))
+  const filas = [...nombreP.entries()].map(([id, n]) => ({ id, ...n }))
     .sort((a, b) => a.nombre.localeCompare(b.nombre));
   const totalDias = [...totPer.values()].reduce((s, x) => s + x.dias, 0);
   const totalAprob = [...totPer.values()].reduce((s, x) => s + x.aprob, 0);
@@ -155,6 +178,10 @@ export default async function Jornadas({ searchParams }: { searchParams: { m?: s
     id: j.id, persona_id: j.persona_id, proyecto_id: j.proyecto_id, aprobada: j.aprobada,
     fecha: j.fecha, persona: j.per?.alias || j.per?.nombre || "—",
     proyecto: j.proy?.nombre || null, tipo: j.tipo, fraccion: j.fraccion, noche: j.noche, monto: j.monto,
+    /* La nota de esa jornada. Sin esto, el campo del formulario solo
+       escribiría: un dato que se guarda y no se lee en ninguna pantalla es un
+       dato que nadie vuelve a poner después de la tercera vez. */
+    notas: j.notas || null,
   }));
 
   // ── Mi actividad en CrewHub+ (trabajo de casos del logueado) ──
@@ -266,7 +293,18 @@ export default async function Jornadas({ searchParams }: { searchParams: { m?: s
               const tp = totPer.get(f.id) || { dias: 0, aprob: 0, pend: 0 };
               return (
                 <tr key={f.id}>
-                  <td className="quien">{f.nombre}</td>
+                  {/* La cara y el nombre completo. Esta tabla es de una sola
+                      fila —la tuya— así que el espacio sobra, y el alias suelto
+                      obligaba a recordar que «JohnO» eres tú. */}
+                  <td className="quien">
+                    <span className="jr-cel-quien">
+                      {f.id === miPersonaId && mi
+                        ? <Avatar nombre={mi.nombre} src={mi.foto} color={mi.color} size={22} />
+                        : <Avatar nombre={f.nombre} size={22} />}
+                      <b>{f.nombre}</b>
+                      {f.alias && <i className="jr-alias">{f.alias}</i>}
+                    </span>
+                  </td>
                   {semRango.map((_, i) => (
                     <td key={i} style={{ textAlign: "center" }}>
                       {arr[i] ? <span style={{ color: "var(--blue)", fontWeight: 700 }}>{arr[i]}</span> : <span style={{ color: "var(--dim)" }}>—</span>}

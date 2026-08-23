@@ -1768,8 +1768,20 @@ export async function borrarEtiqueta(id: string) {
 
 /* ── Jornadas: registro PERSONAL. Solo el usuario logueado registra su
       propia jornada; la persona se resuelve por su cuenta enlazada. ── */
+/* ── RECORTAR UN TEXTO SIN ROMPERLO ──
+ * `slice` cuenta unidades UTF-16, no caracteres: cortar en medio de un emoji
+ * deja media unidad suelta, que se serializa como � y puede hacer que Postgres
+ * rechace la fila entera. `Array.from` recorre por caracteres reales.
+ * Y se recorta ANTES de limpiar: al revés, el corte puede dejar justo el
+ * espacio final que el `trim` acababa de quitar. */
+function recorte(txt: string | null | undefined, max: number): string | null {
+  const t = Array.from(String(txt ?? "")).slice(0, max).join("").trim();
+  return t || null;
+}
+
 export async function registrarMiJornada(
-  fecha: string, proyectoId: string | null, tipo: string, fraccion: number, noche: boolean = false
+  fecha: string, proyectoId: string | null, tipo: string, fraccion: number,
+  noche: boolean = false, notas: string = ""
 ) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -1802,6 +1814,10 @@ export async function registrarMiJornada(
   const monto = dia != null ? dia + extraNoche : (nocheOk && extraNoche ? extraNoche : null);
   const { error } = await supabase.from("jornadas").insert({
     persona_id: yo.id, fecha, proyecto_id: proyectoId || null, tipo, fraccion: frac, noche: nocheOk, monto, registrado_por: user.id,
+    /* La columna existe desde db/jornadas.sql y no la escribía nadie. Se
+       recorta aquí y no solo en el formulario: una acción de servidor se puede
+       llamar sin pasar por la pantalla, y `notas` es `text` sin límite. */
+    notas: recorte(notas, 300),
   });
   if (error) return { error: error.message };
 
@@ -1853,7 +1869,13 @@ export async function aprobarJornada(id: string, aprobar: boolean) {
 
 // Editar una jornada (dueño o admin). Recalcula el monto y la deja pendiente de aprobar.
 export async function editarJornada(
-  id: string, fecha: string, proyectoId: string | null, tipo: string, fraccion: number, noche: boolean
+  id: string, fecha: string, proyectoId: string | null, tipo: string, fraccion: number,
+  noche: boolean,
+  /* `undefined` es «no la toques» y `""` es «bórrala». Son cosas distintas y
+     el valor por defecto tiene que ser la primera: si esta acción se llama sin
+     el argumento —desde otra pantalla, mañana— no puede llevarse por delante
+     una nota que nadie quiso tocar. */
+  notas?: string | null,
 ) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -1881,6 +1903,7 @@ export async function editarJornada(
   const { error } = await supabase.from("jornadas").update({
     fecha, proyecto_id: proyectoId || null, tipo, fraccion: frac, noche: nocheOk, monto,
     aprobada: false, aprobada_por: null, aprobada_en: null,
+    ...(notas === undefined ? {} : { notas: recorte(notas, 300) }),
   }).eq("id", id);
   if (error) return { error: error.message };
   revalidatePath("/jornadas");
