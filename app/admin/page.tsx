@@ -133,7 +133,8 @@ export default async function Admin({ searchParams }: {
          { data: proyectos }, { data: jornsMes }, { data: liqs, error: eLiqs }, { data: liqsAnio },
          { data: plats }, { data: credsPlat }, { data: vivos },
          { data: ganadoras }, { data: activid },
-         { data: cuentasBase }, { data: escrito, error: eEscrito }] = await Promise.all([
+         { data: cuentasBase }, { data: escrito, error: eEscrito },
+         { data: fichasCuenta }] = await Promise.all([
     // `usuario_id`: llave para poner el alias del actor en la actividad reciente
     supabase.from("personas").select("id,nombre,alias,usuario_id,estado,tarifa_dia,tarifa_rodaje,tarifa_noche")
       .eq("tipo", "personal").order("nombre"),
@@ -223,6 +224,16 @@ export default async function Admin({ searchParams }: {
        está corrida devuelve error, y entonces la columna dice «—» en vez de un
        cero que sería mentira. */
     supabase.rpc("resumen_cuentas"),
+    /* ── CON QUÉ PERSONA ESTÁ ENLAZADA CADA CUENTA ──
+       `personas.usuario_id` es lo que ata una cuenta de Google a la ficha de
+       una persona del colectivo, y es el dato que contesta «¿esta quién es?»
+       sin depender de `auth.users`. Una cuenta SIN ficha no es delito —alguien
+       recién llegado empieza así— pero junto a un «nada» en lo que ha escrito
+       es el retrato del login de paso.
+       Va aparte de la consulta de personas de arriba porque aquélla pide solo
+       `tipo = personal` y aquí interesan todas las que tengan cuenta. */
+    supabase.from("personas").select("id,nombre,alias,usuario_id,tipo")
+      .not("usuario_id", "is", null),
   ]);
 
   /* Las cuentas, con lo que ha escrito cada una pegado. Va aquí y no en el
@@ -232,8 +243,12 @@ export default async function Admin({ searchParams }: {
     ((escrito || []) as any[]).map((r: any) =>
       [r.id, { email: r.email || null,
                casos: Number(r.casos || 0), comentarios: Number(r.comentarios || 0) }]));
+  const fichaDe = new Map<string, { id: string; nombre: string; tipo?: string | null }>(
+    ((fichasCuenta || []) as any[]).map((f: any) =>
+      [f.usuario_id, { id: f.id, nombre: f.alias || f.nombre, tipo: f.tipo }]));
   const cuentas: Cuenta[] = ((cuentasBase || []) as any[]).map((c: any) => ({
     ...c, ...(escritoPor.get(c.id) || { email: null, casos: 0, comentarios: 0 }),
+    persona: fichaDe.get(c.id) || null,
   }));
   /* Sin la migración no hay conteo, y entonces NO se enseña un cero: un cero
      falso en esta columna es lo que haría apagar a quien no toca. */

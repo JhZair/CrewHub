@@ -46,6 +46,10 @@ export type Cuenta = {
   /** El correo con el que entró. No está en `perfiles` —vive en `auth.users`—
    *  y solo llega si quien mira es administración: ver db/cuentas-activas.sql. */
   email?: string | null;
+  /** La ficha de persona a la que está atada esta cuenta (`personas.usuario_id`).
+   *  Es lo que contesta «¿esta quién es?» sin depender de `auth.users`, y una
+   *  cuenta SIN ficha, con un «nada» al lado, es el retrato del login de paso. */
+  persona?: { id: string; nombre: string; tipo?: string | null } | null;
   /** Cuánto ha escrito. Lo cuenta Postgres, no esta lista. */
   casos: number;
   comentarios: number;
@@ -127,8 +131,19 @@ export default function CuentasPanel({ cuentas, yo, sinConteo = false }: {
                 )}
                 {c.rol && <span style={{ color: "var(--dim)", fontSize: 11.5 }}>{c.rol}</span>}
               </span>
-              <span className="cta-mail" title={c.email || undefined}>
-                {c.email || <i>correo no disponible</i>}
+              {/* Con qué entró y a quién corresponde. El correo desempata dos
+                  cuentas del mismo nombre; la ficha dice si esa cuenta es de
+                  alguien del colectivo. Cuando el correo no llega —solo lo
+                  devuelve la función de la migración, y solo a administración—
+                  la ficha sigue contestando la pregunta. */}
+              <span className="cta-mail">
+                {c.email && <span title={c.email}>{c.email}</span>}
+                {c.persona
+                  ? <a className="lnk" href={`/entidad/persona/${c.persona.id}`}
+                      title="Ficha de esta persona en el sistema">
+                      {c.email ? " · " : ""}👤 {c.persona.nombre}
+                    </a>
+                  : <i>{c.email ? " · " : ""}sin ficha de persona</i>}
               </span>
             </span>
           </span>
