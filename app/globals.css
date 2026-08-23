@@ -5095,3 +5095,8 @@ mark.bq-marca{
      que no está: nadie va a buscarlo. */
   flex:1 1 90px;min-width:70px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:help}
+/* Lo que se cuelga bajo la cabecera de una persona en el detalle diario: su
+   reparto por semanas. Separado de la cabecera por una línea, para que se lea
+   como algo suyo y no como parte del título. */
+.jr-bajo-cab{border-top:1px solid rgba(255,255,255,.06);margin-top:8px;padding-top:10px}
+.jr-bajo-cab .h4{margin-top:0}

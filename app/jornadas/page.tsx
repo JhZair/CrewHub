@@ -278,81 +278,97 @@ export default async function Jornadas({ searchParams }: { searchParams: { m?: s
         </div>
       )}
 
-      {/* Detalle del pago por semana (foco) */}
-      <div className="h4" style={{ marginTop: 14 }}>📅 Detalle del pago por semana</div>
-      <div className="pulso-wrap">
-        <table className="pulso">
-          <thead>
-            <tr>
-              <th className="quien">Quién</th>
-              {semRango.map((r, i) => <th key={i}>Sem {i + 1}<span className="rng">{r.ini}–{r.fin} {MESES[mes].slice(0, 3)}</span></th>)}
-              <th>Mes</th>
-              <th className="sep">A pagar</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filas.map(f => {
-              const arr = semPer.get(f.id) || [];
-              const tp = totPer.get(f.id) || { dias: 0, aprob: 0, pend: 0 };
-              return (
-                <tr key={f.id}>
-                  {/* La cara y el nombre completo. Esta tabla es de una sola
-                      fila —la tuya— así que el espacio sobra, y el alias suelto
-                      obligaba a recordar que «JohnO» eres tú. */}
-                  <td className="quien">
-                    <span className="jr-cel-quien">
-                      {f.id === miPersonaId && mi
-                        ? <Avatar nombre={mi.nombre} src={mi.foto} color={mi.color} size={22} />
-                        : <Avatar nombre={f.nombre} size={22} />}
-                      <b>{f.nombre}</b>
-                      {f.alias && <i className="jr-alias">{f.alias}</i>}
-                    </span>
-                  </td>
-                  {semRango.map((_, i) => (
-                    <td key={i} style={{ textAlign: "center" }}>
-                      {arr[i] ? <span style={{ color: "var(--blue)", fontWeight: 700 }}>{arr[i]}</span> : <span style={{ color: "var(--dim)" }}>—</span>}
-                    </td>
-                  ))}
-                  <td style={{ textAlign: "center", fontWeight: 700 }}>{tp.dias}</td>
-                  <td className="sep" style={{ textAlign: "center", color: "var(--teal)", fontWeight: 700 }}>
-                    {soles(tp.aprob)}
-                    {tp.pend > 0 && <span style={{ display: "block", color: "var(--yellow)", fontSize: 10.5, fontWeight: 600 }}>⏳ {soles(tp.pend)}</span>}
-                  </td>
-                </tr>
-              );
-            })}
-            {!filas.length && (
-              <tr><td className="quien" colSpan={nSem + 3} style={{ color: "var(--dim)" }}>— sin jornadas este mes —</td></tr>
-            )}
-          </tbody>
-          {/* La fila «Total» solo suma si hay algo que sumar. Desde que esta
-              página es personal, `filas` trae exactamente una persona y el pie
-              repetía la fila de arriba cifra por cifra: un total de una sola
-              cosa no es un total, es la misma línea dos veces. */}
-          {filas.length > 1 && (
-            <tfoot>
-              <tr>
-                <td className="quien">Total</td>
-                {totSem.map((n, i) => <td key={i} style={{ textAlign: "center" }}>{n}</td>)}
-                <td style={{ textAlign: "center" }}>{totalDias}</td>
-                <td className="sep" style={{ textAlign: "center" }}>{soles(totalAprob)}</td>
-              </tr>
-            </tfoot>
-          )}
-        </table>
-      </div>
-      <div style={{ color: "var(--dim)", fontSize: 12, margin: "8px 2px" }}>
-        Los números son jornadas por semana (½ = 0.5, día y medio = 1.5). "A pagar" cuenta solo lo aprobado; ⏳ es lo pendiente.
-      </div>
-
       {/* Detalle diario (pegado al pago) */}
       {/* `diasVacios` pinta en 0 los días sin registrar. Su condición —que
           `items` traiga el mes COMPLETO— se cumple aquí: `jorns` es todo el mes
           de esta persona, sin filtrar por aprobada. El hueco es el dato: sin él
           no se distingue «descansé» de «se me olvidó anotarlo», y una vez
           liquidado el mes corregirlo ya cuesta. */}
+      {/* ── EL PAGO POR SEMANA, DEBAJO DE SU NOMBRE ──
+          Estaba antes de la tarjeta, como una sección suelta con su propio
+          título. Pero es un dato DE ESA PERSONA —sus semanas, su mes, lo suyo
+          por cobrar— y ahora que la cabecera de la tarjeta es lo único que dice
+          de quién hablamos, la tabla vivía separada de su dueño con un título
+          en medio explicando lo que la cabecera ya dice.
+          Va como ranura y no dentro de `BitacoraJornadas`: el reparto por
+          semanas lo calcula esta página, y meterlo en el componente le
+          obligaría a saber de semanas, de tarifas y de meses para pintar una
+          lista de días. */}
       <BitacoraJornadas items={bitacora} esAdmin={false} miPersonaId={miPersonaId} proyectos={proyectos || []} titulo="🗒 Detalle diario del mes" bloqueado={!!miLiq} porMes diasVacios
-        horasPorPersona={horasPorPersona} diasPorPersona={diasPorPersona} mesFranja={inicio} />
+        horasPorPersona={horasPorPersona} diasPorPersona={diasPorPersona} mesFranja={inicio}
+        bajoCabecera={
+          <>
+        {/* Detalle del pago por semana (foco) */}
+        <div className="h4" style={{ marginTop: 14 }}>📅 Detalle del pago por semana</div>
+        <div className="pulso-wrap">
+          <table className="pulso">
+            <thead>
+              <tr>
+                {filas.length > 1 && <th className="quien">Quién</th>}
+                {semRango.map((r, i) => <th key={i}>Sem {i + 1}<span className="rng">{r.ini}–{r.fin} {MESES[mes].slice(0, 3)}</span></th>)}
+                <th>Mes</th>
+                <th className="sep">A pagar</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filas.map(f => {
+                const arr = semPer.get(f.id) || [];
+                const tp = totPer.get(f.id) || { dias: 0, aprob: 0, pend: 0 };
+                return (
+                  <tr key={f.id}>
+                    {/* Con VARIAS personas, la cara y el nombre completo: es lo
+                        que distingue una fila de otra. Con una sola, la columna
+                        no se pinta — la cabecera de la tarjeta que envuelve esta
+                        tabla ya dice de quién es, dos líneas más arriba. */}
+                    {filas.length > 1 && (
+                      <td className="quien">
+                        <span className="jr-cel-quien">
+                          {f.id === miPersonaId && mi
+                            ? <Avatar nombre={mi.nombre} src={mi.foto} color={mi.color} size={22} />
+                            : <Avatar nombre={f.nombre} size={22} />}
+                          <b>{f.nombre}</b>
+                          {f.alias && <i className="jr-alias">{f.alias}</i>}
+                        </span>
+                      </td>
+                    )}
+                    {semRango.map((_, i) => (
+                      <td key={i} style={{ textAlign: "center" }}>
+                        {arr[i] ? <span style={{ color: "var(--blue)", fontWeight: 700 }}>{arr[i]}</span> : <span style={{ color: "var(--dim)" }}>—</span>}
+                      </td>
+                    ))}
+                    <td style={{ textAlign: "center", fontWeight: 700 }}>{tp.dias}</td>
+                    <td className="sep" style={{ textAlign: "center", color: "var(--teal)", fontWeight: 700 }}>
+                      {soles(tp.aprob)}
+                      {tp.pend > 0 && <span style={{ display: "block", color: "var(--yellow)", fontSize: 10.5, fontWeight: 600 }}>⏳ {soles(tp.pend)}</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+              {!filas.length && (
+                <tr><td className="quien" colSpan={nSem + (filas.length > 1 ? 3 : 2)} style={{ color: "var(--dim)" }}>— sin jornadas este mes —</td></tr>
+              )}
+            </tbody>
+            {/* La fila «Total» solo suma si hay algo que sumar. Desde que esta
+                página es personal, `filas` trae exactamente una persona y el pie
+                repetía la fila de arriba cifra por cifra: un total de una sola
+                cosa no es un total, es la misma línea dos veces. */}
+            {filas.length > 1 && (
+              <tfoot>
+                <tr>
+                  <td className="quien">Total</td>
+                  {totSem.map((n, i) => <td key={i} style={{ textAlign: "center" }}>{n}</td>)}
+                  <td style={{ textAlign: "center" }}>{totalDias}</td>
+                  <td className="sep" style={{ textAlign: "center" }}>{soles(totalAprob)}</td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+        <div style={{ color: "var(--dim)", fontSize: 12, margin: "8px 2px" }}>
+          Los números son jornadas por semana (½ = 0.5, día y medio = 1.5). "A pagar" cuenta solo lo aprobado; ⏳ es lo pendiente.
+        </div>
+          </>
+        } />
 
       {/* ══ CONTEXTO (abajo, ordenado) ══ */}
       <div className="h4" style={{ marginTop: 22, color: "var(--dim)", letterSpacing: 1, textTransform: "uppercase", fontSize: 12 }}>Contexto adicional</div>

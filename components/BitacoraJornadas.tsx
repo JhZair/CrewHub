@@ -3,7 +3,7 @@ import { aprobarJornada, editarJornada, borrarJornada } from "@/app/actions";
 import DiaContexto from "@/components/DiaContexto";
 import MiniSelect from "@/components/MiniSelect";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { FRACCIONES, metaFraccion, fechaHum, esFinde, ICO_TIPO } from "@/lib/jornadas";
 
 const TIPOS: [string, string][] = [["rodaje", "🎬"], ["oficina", "🏢"], ["scouting", "🚙"]];
@@ -151,7 +151,7 @@ const diasDelMes = (ym: string) => {
     `${a}-${String(m).padStart(2, "0")}-${String(i + 1).padStart(2, "0")}`);
 };
 
-export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId = "", proyectos = [], titulo = "🗒 Jornadas del mes", bloqueado = false, porMes = false, diasVacios = false, plegable = true, horasPorPersona, diasPorPersona, mesFranja, ausentes = [] }: {
+export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId = "", proyectos = [], titulo = "🗒 Jornadas del mes", bloqueado = false, porMes = false, diasVacios = false, plegable = true, horasPorPersona, diasPorPersona, mesFranja, ausentes = [], bajoCabecera }: {
   items: any[]; esAdmin?: boolean; miPersonaId?: string; proyectos?: { id: string; nombre: string }[]; titulo?: string; bloqueado?: boolean;
   /** Subdivide cada persona por mes. Para listas que cruzan varios. */
   porMes?: boolean;
@@ -188,6 +188,20 @@ export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId =
   /** Quienes NO registraron ni una jornada este mes pero sí tocaron el sistema.
    *  Van al final, con su silueta y sin filas. */
   ausentes?: { id: string; nombre: string }[];
+  /** Lo que va justo DEBAJO de la cabecera de la persona, dentro de su tarjeta.
+   *
+   *  Existe para el reparto por semanas de /jornadas: es un dato de esa
+   *  persona —sus semanas, su mes, lo suyo por cobrar— y su sitio es bajo su
+   *  nombre, no en una sección aparte con un título que repite lo que la
+   *  cabecera ya dice.
+   *  Llega pintado desde fuera y no se calcula aquí: las semanas, las tarifas
+   *  y los meses son cosa de esa página. Este componente pinta una lista de
+   *  días y no tiene por qué aprender a repartir un sueldo.
+   *
+   *  Solo se pinta en la tarjeta de `miPersonaId`: con varias personas —el
+   *  caso de /admin— repetir el mismo bloque bajo cada nombre sería pegarle a
+   *  todos el reparto de uno. */
+  bajoCabecera?: ReactNode;
 }) {
   const router = useRouter();
   const onChange = () => router.refresh();
@@ -273,6 +287,9 @@ export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId =
                 : <span className="badge" style={{ color: "var(--green)", background: "rgba(46,204,113,.12)" }}>✅ al día</span>}
               <span className="jr-grupo-t">{soles(g.monto)}</span>
             </div>
+            {bajoCabecera && (!miPersonaId || g.id === miPersonaId) && (
+              <div className="jr-bajo-cab">{bajoCabecera}</div>
+            )}
             <FranjasPersona personaId={g.id} quien={g.nombre}
               hs={horasPorPersona?.[g.id]} ds={diasPorPersona?.[g.id]} mesFranja={mesFranja} />
             {!cerrados.has(g.id) && (() => {
