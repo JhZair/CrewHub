@@ -105,10 +105,12 @@ export default function CuentasPanel({ cuentas, yo, sinConteo = false, correoVie
       </p>
       {correoViejo && (
         <div className="empty" style={{ color: "var(--yellow)", marginBottom: 10 }}>
-          El correo de cada cuenta no llega porque la base se quedó con la
-          primera versión de <b>resumen_cuentas</b>, de cuando esa función aún
-          no lo devolvía. Vuelve a correr <b>db/cuentas-activas.sql</b>: lleva
-          un <code>drop function</code> delante justo para este cambio.
+          El correo de cada cuenta no llega: lo que responde es la primera
+          versión de <b>resumen_cuentas</b>, de cuando esa función aún no lo
+          devolvía. Vuelve a correr <b>db/cuentas-activas.sql</b> — y si ya lo
+          hiciste, lo que queda es la caché de PostgREST, que guarda la forma
+          de cada función y no la revisa sola: en el SQL Editor,
+          <code>notify pgrst, &apos;reload schema&apos;;</code>
         </div>
       )}
       {sinConteo && (

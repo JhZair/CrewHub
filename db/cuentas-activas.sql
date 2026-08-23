@@ -129,6 +129,17 @@ $$;
 
 grant execute on function public.resumen_cuentas() to authenticated;
 
+-- ── AVISAR A LA API DEL CAMBIO ──
+-- PostgREST guarda en memoria la forma de cada función —qué columnas devuelve—
+-- y no la vuelve a mirar por su cuenta. Cambiar la firma sin avisarle deja la
+-- base correcta y la API sirviendo la de antes: la llamada FUNCIONA, los
+-- conteos salen, y la columna nueva sencillamente no viene. Ni error, ni
+-- pista. Es el fallo que peor se diagnostica porque todo parece bien.
+--
+-- Esta línea es la que faltaba, y hace falta SIEMPRE que una migración cambie
+-- la firma de una función o añada una tabla.
+notify pgrst, 'reload schema';
+
 
 -- ── VERIFICAR ──
 -- Quién está encendido hoy y cuánto ha hecho. La segunda columna es la que
