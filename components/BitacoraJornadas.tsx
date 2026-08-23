@@ -107,21 +107,34 @@ function FilaJornada({ j, esAdmin, puedeEditar, proyectos, tarifas, onChange }: 
               inputMode="decimal" placeholder="recalcular"
               onKeyDown={e => { if (e.key === "Enter") guardar(); }}
               style={{ ...inp, width: 82 }} />
-            {/* ── EL ↻ ENSEÑA EL NÚMERO, NO LO PROMETE ──
-                Antes solo vaciaba el campo, y el cálculo pasaba en el servidor
+            {/* ── EL ↻ ENSEÑA EL NÚMERO, Y SI NO HAY, DICE POR QUÉ ──
+                Antes solo vaciaba el campo y el cálculo pasaba en el servidor
                 al guardar: se pulsaba «recalcular» y no se recalculaba nada
                 visible. Ahora pone el importe con la tarifa de hoy DENTRO del
-                campo, así que se ve antes de decidir — y se puede corregir a
-                mano encima si no cuadra.
-                Es la misma función que usa el servidor al guardar, así que no
-                hay dos cálculos que puedan discrepar. */}
-            {calculado != null && Math.round(calculado) !== Number(monto) && (
-              <button className="dato-btn" style={{ whiteSpace: "nowrap" }}
-                title={`Poner el importe con la tarifa de hoy: S/ ${Math.round(calculado)}`}
-                onClick={() => setMonto(String(Math.round(calculado)))}>
-                ↻ {Math.round(calculado)}
-              </button>
-            )}
+                campo — la misma función que usa el servidor, así que no hay
+                dos cálculos que puedan discrepar.
+
+                Y AQUÍ SIEMPRE HAY ALGO. El botón se escondía en dos casos que
+                desde fuera se ven igual: cuando el importe YA coincide con la
+                tarifa de hoy, y cuando esa persona no tiene tarifa cargada. En
+                los dos no pasaba nada al mirar, y en el segundo el arreglo ni
+                siquiera está en esta pantalla —está en su ficha—. Un botón
+                ausente no dice cuál de las dos cosas es. */}
+            {calculado == null
+              ? <span className="jr-tarifa-no"
+                  title="Esta persona no tiene tarifa cargada en su ficha, así que no hay con qué recalcular. Se arregla en su ficha de persona (Tarifas, en /admin).">
+                  sin tarifa
+                </span>
+              : Math.round(calculado) === Number(monto)
+              ? <span className="jr-tarifa-ok"
+                  title={`Este importe ya es el que sale de la tarifa de hoy (S/ ${Math.round(calculado)}). Si no es el correcto, lo que está desactualizado es la tarifa de su ficha.`}>
+                  = tarifa de hoy
+                </span>
+              : <button className="dato-btn" style={{ whiteSpace: "nowrap" }}
+                  title={`Poner el importe con la tarifa de hoy: S/ ${Math.round(calculado)}`}
+                  onClick={() => setMonto(String(Math.round(calculado)))}>
+                  ↻ {Math.round(calculado)}
+                </button>}
           </span>
         )}
         {/* La nota también se corrige aquí. Sin esto, un dedazo quedaba fijo

@@ -5154,3 +5154,8 @@ mark.bq-marca{
    que escribirla o borrarla, y es lo único de ese dato que nunca cambia. */
 .jr-ed-monto{display:inline-flex;align-items:center;gap:5px;flex:none;
   font-size:11.5px;color:var(--muted)}
+/* Por qué NO hay botón de recalcular. Dos estados que sin esto se veían igual
+   —«ya coincide» y «no hay tarifa»— y en el segundo el arreglo ni siquiera
+   está en esta pantalla. */
+.jr-tarifa-ok{font-size:10.5px;color:var(--dim);white-space:nowrap;cursor:help}
+.jr-tarifa-no{font-size:10.5px;color:var(--yellow);white-space:nowrap;cursor:help}
