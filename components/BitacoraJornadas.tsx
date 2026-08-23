@@ -201,10 +201,18 @@ export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId =
    * jornadas?»—, así que ese es el grupo natural.
    * Dentro de cada persona se conserva el orden que traía (por fecha): el
    * detalle diario sigue leyéndose como un diario. */
-  const grupos = new Map<string, { nombre: string; items: any[] }>();
+  /* ── DOS NOMBRES, Y CADA UNO EN SU SITIO ──
+     La CABECERA del grupo lleva el nombre completo: se lee una vez y es donde
+     hay que reconocer a quién se le está aprobando el mes. Las FILAS llevan el
+     corto: son treinta seguidas de la misma persona, y repetir «John Oros
+     Condori» treinta veces es ruido, no información.
+     Antes la cabecera también llevaba el corto, y con el rótulo de fuera fuera
+     esa cabecera pasó a ser lo único que dice de quién es la tarjeta. */
+  const grupos = new Map<string, { nombre: string; alias: string | null; items: any[] }>();
   items.forEach(j => {
     const k = j.persona_id || j.persona || "—";
-    const g = grupos.get(k) || { nombre: j.persona || "—", items: [] };
+    const g = grupos.get(k)
+      || { nombre: j.personaLargo || j.persona || "—", alias: j.personaLargo ? (j.persona || null) : null, items: [] };
     g.items.push(j); grupos.set(k, g);
   });
   /* Primero quien tiene más por aprobar: es lo accionable. A igual pendiente,
@@ -253,6 +261,9 @@ export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId =
                 title={cerrados.has(g.id) ? `Ver las jornadas de ${g.nombre}` : "Plegar"}
                 onClick={() => alternar(g.id)}>{cerrados.has(g.id) ? "▸" : "▾"}</button>
               <b>{g.nombre}</b>
+              {g.alias && g.alias !== g.nombre && (
+                <i style={{ color: "var(--dim)", fontSize: 11.5, fontStyle: "normal" }}>{g.alias}</i>
+              )}
               <span className="jr-grupo-n">{g.jorn}j · {g.items.length} registro{g.items.length === 1 ? "" : "s"}</span>
               <span style={{ flex: 1 }} />
               {g.nPend > 0
@@ -357,7 +368,17 @@ export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId =
       </div>
   );
 
-  if (!plegable) return cuerpo;
+  /* ── CUÁNDO SOBRA EL ENVOLTORIO ──
+     El plegable de fuera existe para esconder treinta filas de un tirón cuando
+     hay VARIAS personas: es lo que agrupa a las cuatro.
+     Con UNA sola —que es siempre el caso de /jornadas, una pantalla personal—
+     no agrupa nada y solo repite: su rótulo decía «19 · todas aprobadas ✅» y
+     la cabecera de la tarjeta de dentro ya dice «20j · 19 registros · ✅ al
+     día · S/ 3,230», dos centímetros más abajo. Dos cabeceras seguidas
+     contando lo mismo hacen dudar de si son dos cosas distintas.
+     Y el fold no se pierde: cada grupo trae el suyo (el ▾ de su izquierda),
+     que esconde exactamente las mismas filas. */
+  if (!plegable || lista.length <= 1) return cuerpo;
   return (
     <details className="jr-todo" open>
       <summary className="jr-todo-h">

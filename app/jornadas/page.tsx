@@ -177,6 +177,9 @@ export default async function Jornadas({ searchParams }: { searchParams: { m?: s
   const bitacora = (jorns || []).map((j: any) => ({
     id: j.id, persona_id: j.persona_id, proyecto_id: j.proyecto_id, aprobada: j.aprobada,
     fecha: j.fecha, persona: j.per?.alias || j.per?.nombre || "—",
+    /* El largo va aparte: la cabecera del grupo lo usa para decir de quién es
+       la tarjeta, y las filas siguen con el corto. */
+    personaLargo: j.per?.nombre || null,
     proyecto: j.proy?.nombre || null, tipo: j.tipo, fraccion: j.fraccion, noche: j.noche, monto: j.monto,
     /* La nota de esa jornada. Sin esto, el campo del formulario solo
        escribiría: un dato que se guarda y no se lee en ninguna pantalla es un
