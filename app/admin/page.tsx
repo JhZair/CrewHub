@@ -134,7 +134,8 @@ export default async function Admin({ searchParams }: {
          { data: plats }, { data: credsPlat }, { data: vivos },
          { data: ganadoras }, { data: activid },
          { data: cuentasBase }, { data: escrito, error: eEscrito },
-         { data: fichasCuenta }] = await Promise.all([
+         { data: fichasCuenta }, { data: fichasElegibles },
+         { data: invitados, error: eInv }] = await Promise.all([
     // `usuario_id`: llave para poner el alias del actor en la actividad reciente
     supabase.from("personas").select("id,nombre,alias,usuario_id,estado,tarifa_dia,tarifa_rodaje,tarifa_noche")
       .eq("tipo", "personal").order("nombre"),
@@ -232,8 +233,28 @@ export default async function Admin({ searchParams }: {
        es el retrato del login de paso.
        Va aparte de la consulta de personas de arriba porque aquélla pide solo
        `tipo = personal` y aquí interesan todas las que tengan cuenta. */
+    /* ── DOS CONSULTAS, Y LA DIFERENCIA IMPORTA ──
+       1) Las fichas YA ATADAS, sin filtrar por tipo. `tipo` vale «contacto»
+          por defecto en el esquema, así que filtrar aquí haría desaparecer
+          enlaces existentes: la fila diría «sin ficha» y, si alguien elegía
+          otra, el enlace invisible se borraría sin avisar. Son una docena. */
     supabase.from("personas").select("id,nombre,alias,usuario_id,tipo")
       .not("usuario_id", "is", null),
+    /* 2) Las que se pueden ELEGIR. Aquí sí se filtra: `personas` guarda
+          también proveedores, bancos y contactos heredados de SeaTable, y
+          ofrecer «Banco BCP» como ficha de una cuenta de acceso es una opción
+          que solo sirve para equivocarse. Los cuatro tipos son los mismos que
+          usa el panel de RHE para decidir a quién se le gira un recibo.
+          El tope va explícito porque el de PostgREST son mil filas y recorta
+          sin avisar. */
+    supabase.from("personas").select("id,nombre,alias,usuario_id,tipo")
+      .in("tipo", ["personal", "colaborador", "colaborador eventual", "independiente"])
+      .order("nombre").limit(2000),
+    /* La lista de invitados. Solo administración puede leerla (RLS), y si
+       falta db/invitaciones.sql vuelve con su queja y la pantalla lo dice en
+       vez de enseñar un bloque de invitar que no invitaría nada. */
+    supabase.from("cuenta_permitida").select("email,nota,creado_en")
+      .order("creado_en", { ascending: false }),
   ]);
 
   /* Las cuentas, con lo que ha escrito cada una pegado. Va aquí y no en el
@@ -243,9 +264,37 @@ export default async function Admin({ searchParams }: {
     ((escrito || []) as any[]).map((r: any) =>
       [r.id, { email: r.email || null,
                casos: Number(r.casos || 0), comentarios: Number(r.comentarios || 0) }]));
+  const atadas = (fichasCuenta || []) as any[];
   const fichaDe = new Map<string, { id: string; nombre: string; tipo?: string | null }>(
-    ((fichasCuenta || []) as any[]).map((f: any) =>
+    atadas.map((f: any) =>
       [f.usuario_id, { id: f.id, nombre: f.alias || f.nombre, tipo: f.tipo }]));
+  /* Para el selector: las elegibles MÁS las que ya están atadas aunque sean de
+     otro tipo. Sin esa unión, una cuenta enlazada a una ficha de tipo
+     «contacto» no encontraría la suya en su propio desplegable — vería «sin
+     ficha» teniendo una, y elegir otra habría borrado la primera.
+     El nombre va completo, con el alias entre paréntesis: aquí se ELIGE y hay
+     que reconocer a quién; el corto es para las listas donde ya se sabe de
+     quién se habla. */
+  const rotulo = (f: any) =>
+    f.alias && f.alias !== f.nombre ? `${f.nombre} (${f.alias})` : f.nombre;
+  const porId = new Map<string, any>();
+  [...((fichasElegibles || []) as any[]), ...atadas].forEach((f: any) => porId.set(f.id, f));
+  const fichasParaElegir = [...porId.values()]
+    .map((f: any) => ({ id: f.id, nombre: rotulo(f), libre: !f.usuario_id }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre));
+  /* Invitados que TODAVÍA no han entrado. Los que ya tienen cuenta salen en la
+     tabla de abajo con su nombre y su cara; repetirlos aquí como un correo
+     suelto sería la misma persona dos veces diciendo cosas distintas.
+     ⚠ Saber quién ya entró depende del correo, y el correo solo llega si la
+     función de db/cuentas-activas.sql está al día. Sin él, el cruce da vacío y
+     TODOS los invitados saldrían como pendientes —incluidos los que trabajan
+     aquí a diario, con una ✕ al lado que les quitaría la entrada—. Cuando no
+     se puede cruzar, la lista no se enseña: mejor sin ella que con gente que
+     no debería estar. */
+  const yaEntraron = new Set(
+    ((cuentasBase || []) as any[]).map((c: any) => (escritoPor.get(c.id)?.email || "").toLowerCase())
+      .filter(Boolean));
+  const sinInvitaciones = !!eInv;
   const cuentas: Cuenta[] = ((cuentasBase || []) as any[]).map((c: any) => ({
     ...c, ...(escritoPor.get(c.id) || { email: null, casos: 0, comentarios: 0 }),
     persona: fichaDe.get(c.id) || null,
@@ -262,6 +311,40 @@ export default async function Admin({ searchParams }: {
      vinieron filas y ninguna trae siquiera la CLAVE `email`, es la de antes. */
   const correoViejo = !sinConteo && ((escrito || []) as any[]).length > 0
     && !("email" in (((escrito || []) as any[])[0] || {}));
+
+  /* Va aquí y no arriba porque depende de las dos banderas de la migración:
+     escrito antes, TypeScript lo canta —y con razón, porque en tiempo de
+     ejecución habría leído `undefined` y la lista habría salido con todo el
+     mundo dentro. */
+  const puedoCruzar = !sinConteo && !correoViejo;
+  /* ── LA OTRA LISTA, LA QUE NO SE VEÍA ──
+     Mientras `ALLOWED_EMAILS` exista, las dos listas se suman en la puerta. Y
+     eso tenía una consecuencia fea: quitar a alguien desde aquí no le quitaba
+     la entrada si su correo seguía en la variable, y la pantalla decía que sí.
+     Se enseñan las dos, marcadas. Los del entorno traen un botón para pasarlos
+     a la lista de la base — que es el paso previo a poder borrar la variable
+     de Vercel y acabar con las dos verdades.
+     Se lee en el servidor: `process.env` no existe en el navegador. */
+  const delEntorno = (process.env.ALLOWED_EMAILS || "")
+    .split(",").map((x: string) => x.trim().toLowerCase()).filter(Boolean);
+  const enLaTabla = new Set(((invitados || []) as any[]).map((i: any) => String(i.email).toLowerCase()));
+
+  const invitacionesPend = puedoCruzar
+    ? [
+        ...((invitados || []) as any[])
+          .filter((i: any) => !yaEntraron.has(String(i.email).toLowerCase()))
+          .map((i: any) => ({ ...i, origen: "lista" as const })),
+        /* Los que solo están en la variable y todavía no han entrado. Son los
+           que se perderían el día que se borre `ALLOWED_EMAILS`, y hasta ahora
+           no había forma de saber que existían. */
+        ...delEntorno
+          .filter((e: string) => !enLaTabla.has(e) && !yaEntraron.has(e))
+          .map((e: string) => ({ email: e, nota: null, origen: "entorno" as const })),
+      ]
+    : [];
+  /* Los que están en las DOS. Quitarlos de la lista no les quita la entrada, y
+     eso hay que decirlo en el momento, no descubrirlo mañana. */
+  const tambienEnEntorno = delEntorno.filter((e: string) => enLaTabla.has(e));
   /* Encendidas y sin una sola línea escrita: el retrato del login de paso.
      No se apagan solas —una persona recién llegada empieza así— pero es lo
      que hay que ir a mirar. */
@@ -1011,7 +1094,9 @@ export default async function Admin({ searchParams }: {
     <>
       <h3 style={{ margin: "4px 0 2px", fontSize: 14 }}>👤 Cuentas</h3>
       <CuentasPanel cuentas={cuentas} yo={user.id} sinConteo={sinConteo}
-        correoViejo={correoViejo} />
+        correoViejo={correoViejo} personas={fichasParaElegir}
+        invitaciones={invitacionesPend} sinInvitaciones={sinInvitaciones}
+        puedoCruzar={puedoCruzar} tambienEnEntorno={tambienEnEntorno} />
     </>
   );
   /* El orden es el de la frecuencia: la portada, lo de cada semana, el dinero

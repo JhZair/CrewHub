@@ -31,6 +31,16 @@ function LoginInner() {
         {error === "no-autorizado" && (
           <p className="err">Tu correo no está autorizado. Habla con John para que te agregue al equipo.</p>
         )}
+        {/* No es lo mismo «no estás en la lista» que «no pude mirar la lista».
+            Lo primero se arregla hablando con alguien; lo segundo, volviendo a
+            intentarlo en un minuto. Decir lo primero cuando pasa lo segundo
+            manda a pedir un permiso que ya se tiene. */}
+        {error === "sin-comprobar" && (
+          <p className="err">
+            No se pudo comprobar tu acceso ahora mismo. Vuelve a intentarlo en
+            un minuto; si sigue igual, avisa a John.
+          </p>
+        )}
       </div>
     </div>
   );

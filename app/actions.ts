@@ -9358,3 +9358,136 @@ export async function cambiarCuentaActiva(cuentaId: string, activa: boolean) {
   revalidatePath("/", "layout");
   return {};
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   INVITAR, DESINVITAR Y ATAR UNA CUENTA A SU FICHA
+
+   Las tres cosas que hacían falta para dar de alta a alguien sin tocar Vercel
+   ni el SQL Editor. Ver db/invitaciones.sql.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const FALTA_INV =
+  "Falta correr db/invitaciones.sql: la lista de invitados todavía no existe en la base.";
+
+/** ¿Es admin quien pide? La comprobación de la pantalla no vale como cerradura
+ *  —se salta con la consola del navegador—, así que se repite aquí y además la
+ *  exige la base con sus políticas. Tres capas para lo mismo, a propósito. */
+async function exigirAdmin(supabase: any, userId: string) {
+  const { data } = await supabase.from("perfiles")
+    .select("es_admin").eq("id", userId).maybeSingle();
+  return !!data?.es_admin;
+}
+
+export async function invitarCorreo(correo: string, nota: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!await exigirAdmin(supabase, user.id)) {
+    return { error: "Solo administración invita cuentas." };
+  }
+
+  /* Minúsculas y sin espacios ANTES de guardar. La clave de la tabla es el
+     correo, y «Ana@Gmail.com » y «ana@gmail.com» serían dos invitaciones para
+     la misma persona — con la segunda pareciendo que no está invitada. */
+  const email = String(correo || "").trim().toLowerCase();
+  /* Una validación mínima, que es la que evita el error de verdad: invitar un
+     nombre en vez de un correo. Nadie entra con «Ana López» y el fallo no se
+     descubre hasta que esa persona no puede entrar, mañana, con prisa. */
+  if (!/^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(email)) {
+    return { error: "Eso no parece un correo. Hace falta el de Google con el que va a entrar." };
+  }
+
+  const { error } = await supabase.from("cuenta_permitida")
+    .insert({ email, nota: nota?.trim() || null, invitado_por: user.id });
+  if (error) {
+    if (/duplicate|unique/i.test(error.message)) return { error: "Ese correo ya estaba invitado." };
+    if (/does not exist|relation|schema cache/i.test(error.message)) return { error: FALTA_INV };
+    return { error: error.message };
+  }
+  revalidatePath("/admin");
+  return {};
+}
+
+export async function quitarInvitacion(correo: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!await exigirAdmin(supabase, user.id)) {
+    return { error: "Solo administración toca la lista de invitados." };
+  }
+
+  const email = String(correo || "").trim().toLowerCase();
+  /* `select` para saber si de verdad se borró: sin política de DELETE, RLS
+     descarta la fila y PostgREST responde «correcto» sin borrar nada. */
+  const { data, error } = await supabase.from("cuenta_permitida")
+    .delete().eq("email", email).select("email");
+  if (error) {
+    return { error: /does not exist|relation|schema cache/i.test(error.message)
+      ? FALTA_INV : error.message };
+  }
+  /* Cero filas puede ser dos cosas y no se sabe cuál: que ese correo ya no
+     estaba —doble clic, otro admin, la lista de la pantalla desactualizada— o
+     que falta la política de borrado. Se dicen las dos, en el orden en que son
+     probables. Mandar a correr una migración ya corrida es peor que no decir
+     nada: se busca donde no es. */
+  if (!data?.length) {
+    return { error: "No se quitó nada: o ese correo ya no estaba en la lista, "
+      + "o falta correr db/invitaciones.sql." };
+  }
+
+  revalidatePath("/admin");
+  /* ⚠ Quitar de la lista NO expulsa a quien ya entró: la allowlist se mira al
+     iniciar sesión, no en cada página. Para que deje de trabajar hay que
+     apagar su cuenta, que es el botón de al lado. Se dice en la pantalla. */
+  return {};
+}
+
+/* ── ATAR UNA CUENTA A SU FICHA DE PERSONA ──
+ *
+ * `personas.usuario_id` es lo que hace que el alias corto salga en la caja,
+ * que se le puedan pagar jornadas y que /admin sepa quién es cada cuenta.
+ * Hasta ahora se rellenaba a mano por SQL, porque `personas` no tenía política
+ * de UPDATE en el repositorio.
+ *
+ * Se pasa `personaId = null` para desatar. Y desatar es una operación normal:
+ * si alguien enlazó la ficha equivocada, lo importante es poder deshacerlo sin
+ * abrir el SQL Editor — que es de donde venimos. */
+export async function enlazarCuentaPersona(cuentaId: string, personaId: string | null) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  /* ── LAS DOS ESCRITURAS VAN EN LA BASE, NO AQUÍ ──
+     Atar una cuenta a una ficha es soltar la que tuviera y asignar la nueva.
+     Hechas desde aquí son dos viajes, y si el segundo falla —choque con el
+     índice único, ficha borrada— el primero YA se guardó: la cuenta se queda
+     sin ficha y el estado anterior, que era el correcto, se ha perdido. En
+     `enlazar_cuenta_persona` las dos van en la misma transacción: o las dos, o
+     ninguna. Y comprueba que la ficha esté libre ANTES de tocar nada, para que
+     el error llegue como una frase y no como «duplicate key value violates
+     unique constraint». */
+  const { data, error } = await supabase.rpc("enlazar_cuenta_persona", {
+    cuenta: cuentaId, persona: personaId,
+  });
+  if (error) {
+    return { error: /PGRST202|42883|does not exist|schema cache/i.test(
+      `${(error as any).code || ""} ${error.message}`)
+      ? "Falta correr db/invitaciones.sql: el enlace entre cuenta y ficha todavía no existe en la base."
+      : error.message };
+  }
+  /* La función devuelve un motivo, no un booleano: cada uno manda a un sitio
+     distinto y «no se pudo» no manda a ninguno. */
+  const r = String(data || "");
+  if (r === "no_admin") return { error: "Solo administración enlaza cuentas con fichas." };
+  if (r === "sin_ficha") return { error: "Esa ficha de persona ya no existe. Recarga la página." };
+  if (r === "ficha_ocupada") {
+    return { error: "Esa ficha ya está atada a otra cuenta. Desátala primero desde su fila." };
+  }
+  if (r !== "ok") return { error: `No se pudo enlazar (${r || "sin respuesta"}).` };
+
+  revalidatePath("/admin");
+  /* El alias corto y el nombre de quien apunta salen de este vínculo en media
+     docena de pantallas; todas tienen que enterarse. */
+  revalidatePath("/", "layout");
+  return {};
+}

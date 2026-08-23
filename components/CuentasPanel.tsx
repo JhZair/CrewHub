@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Avatar from "@/components/Avatar";
-import { cambiarCuentaActiva } from "@/app/actions";
+import { cambiarCuentaActiva, invitarCorreo, quitarInvitacion, enlazarCuentaPersona } from "@/app/actions";
 import { fechaCorta } from "@/lib/fechas";
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -33,6 +33,17 @@ import { fechaCorta } from "@/lib/fechas";
    fecha aproximada aquí sería peor que no ponerla.
    ══════════════════════════════════════════════════════════════════════════ */
 
+/** Una persona del sistema, para el selector de cada fila. */
+export type FichaPersona = { id: string; nombre: string; libre: boolean };
+
+/** Un correo invitado que todavía no ha entrado nunca. */
+export type Invitacion = {
+  email: string; nota?: string | null; creado_en?: string | null;
+  /** De dónde sale la invitación. «entorno» es ALLOWED_EMAILS, que esta
+   *  pantalla no puede tocar: solo ofrecer pasarla a la lista de la base. */
+  origen?: "lista" | "entorno";
+};
+
 export type Cuenta = {
   id: string;
   nombre: string;
@@ -55,8 +66,25 @@ export type Cuenta = {
   comentarios: number;
 };
 
-export default function CuentasPanel({ cuentas, yo, sinConteo = false, correoViejo = false }: {
+export default function CuentasPanel({
+  cuentas, yo, personas = [], invitaciones = [], sinInvitaciones = false,
+  puedoCruzar = true, tambienEnEntorno = [], sinConteo = false, correoViejo = false,
+}: {
   cuentas: Cuenta[]; yo: string;
+  /** Las fichas de persona, para atar una cuenta a la suya. */
+  personas?: FichaPersona[];
+  /** Invitados que aún no han entrado. Son la mitad que falta de la lista: sin
+   *  ellos, invitar a alguien no deja rastro visible hasta que esa persona
+   *  entra, y no hay forma de saber si se escribió bien el correo. */
+  invitaciones?: Invitacion[];
+  /** Sin db/invitaciones.sql no hay lista que enseñar ni a quién invitar. */
+  sinInvitaciones?: boolean;
+  /** Si se puede saber quién de los invitados ya entró. Cuando no, la lista de
+   *  pendientes no se enseña —saldría todo el equipo dentro— y se dice. */
+  puedoCruzar?: boolean;
+  /** Correos que están en la lista Y en ALLOWED_EMAILS. Quitarlos de aquí no
+   *  les quita la entrada, y eso hay que decirlo antes, no mañana. */
+  tambienEnEntorno?: string[];
   /** Sin db/cuentas-activas.sql no hay función de conteo. Se DICE, y la
    *  columna queda en blanco: un cero inventado aquí es lo que haría apagar a
    *  quien no toca. */
@@ -69,6 +97,25 @@ export default function CuentasPanel({ cuentas, yo, sinConteo = false, correoVie
 }) {
   const router = useRouter();
   const [ocupado, setOcupado] = useState<string | null>(null);
+  const [nuevo, setNuevo] = useState("");
+  const [nota, setNota] = useState("");
+  const [err, setErr] = useState("");
+
+  const correr = async (clave: string, fn: () => Promise<any>) => {
+    setErr(""); setOcupado(clave);
+    const res: any = await fn();
+    setOcupado(null);
+    if (res?.error) setErr(res.error); else router.refresh();
+  };
+
+  const invitar = async () => {
+    if (!nuevo.trim()) return;
+    setErr(""); setOcupado("invitar");
+    const res: any = await invitarCorreo(nuevo, nota);
+    setOcupado(null);
+    if (res?.error) { setErr(res.error); return; }
+    setNuevo(""); setNota(""); router.refresh();
+  };
 
   const cambiar = async (c: Cuenta) => {
     const enciende = !c.activo;
@@ -122,6 +169,99 @@ export default function CuentasPanel({ cuentas, yo, sinConteo = false, correoVie
         </div>
       )}
 
+      {err && <div className="empty" style={{ color: "var(--red)", marginBottom: 10 }}>⚠ {err}</div>}
+
+      {sinInvitaciones && (
+        <div className="empty" style={{ color: "var(--yellow)", marginBottom: 10 }}>
+          Para dar de alta a alguien desde aquí falta correr
+          <b> db/invitaciones.sql</b>. Mientras tanto, quién puede entrar lo
+          sigue decidiendo la variable <b>ALLOWED_EMAILS</b> de Vercel, y
+          añadir un correo ahí exige volver a desplegar.
+        </div>
+      )}
+
+      {/* ── DAR DE ALTA ──
+          Esto era editar una variable de entorno en Vercel y volver a
+          desplegar. La decisión no es de programador y el trámite sí, y encima
+          toca hacerlo el día que la persona llega. */}
+      {!sinInvitaciones && (
+        <div className="cta-invitar">
+          <b style={{ fontSize: 12.5 }}>Invitar a alguien</b>
+          <input value={nuevo} onChange={e => setNuevo(e.target.value)}
+            placeholder="su correo de Google" type="email" autoComplete="off"
+            onKeyDown={e => { if (e.key === "Enter") invitar(); }} />
+          {/* La nota no es adorno: dentro de un año, un correo suelto en la
+              lista no dice si sigue teniendo sentido que esté. */}
+          <input value={nota} onChange={e => setNota(e.target.value)}
+            placeholder="para qué (opcional)"
+            onKeyDown={e => { if (e.key === "Enter") invitar(); }} />
+          <button className="btn" disabled={!nuevo.trim() || ocupado === "invitar"}
+            onClick={invitar}>{ocupado === "invitar" ? "…" : "Invitar"}</button>
+          <span className="cta-ayuda">
+            Con eso ya puede entrar con Google. Su cuenta aparecerá sola en esta
+            lista la primera vez que lo haga — no hay que crear nada más.
+          </span>
+        </div>
+      )}
+
+      {/* Invitados que todavía no han entrado. Sin esta lista, invitar no deja
+          rastro hasta que la persona entra, y un correo mal escrito no se
+          descubre hasta que no puede entrar. */}
+      {!puedoCruzar && !sinInvitaciones && (
+        <div className="empty" style={{ color: "var(--dim)", marginBottom: 10, fontSize: 12 }}>
+          La lista de invitados pendientes no se puede enseñar hasta que el correo
+          de cada cuenta llegue (aviso de arriba): sin él no hay forma de saber
+          quién ya entró, y saldría el equipo entero como si no hubiera entrado
+          nunca. Invitar sí funciona.
+        </div>
+      )}
+
+      {invitaciones.length > 0 && (
+        <div className="cta-pend">
+          <b style={{ fontSize: 12 }}>Invitados sin entrar todavía</b>
+          {invitaciones.map(i => (
+            <span key={i.email}
+              className={`cta-pend-chip${i.origen === "entorno" ? " cta-entorno" : ""}`}>
+              {i.email}
+              {i.nota && <i style={{ color: "var(--dim)" }}> · {i.nota}</i>}
+              {i.origen === "entorno" ? (
+                /* No está en la tabla, así que no hay nada que quitar: está en
+                   ALLOWED_EMAILS, que solo se toca en Vercel. Lo útil aquí es
+                   lo contrario — pasarlo a la lista, que es el paso previo a
+                   poder borrar la variable y acabar con las dos verdades. */
+                <button className="cta-mas" title="Está en ALLOWED_EMAILS y no en la lista. Pásalo a la lista para poder dejar de depender de la variable de Vercel."
+                  disabled={ocupado === i.email}
+                  onClick={() => correr(i.email, () => invitarCorreo(i.email, "venía de ALLOWED_EMAILS"))}>
+                  {ocupado === i.email ? "…" : "＋ a la lista"}
+                </button>
+              ) : (
+                <button className="cta-x" title="Quitar de la lista"
+                  disabled={ocupado === i.email}
+                  onClick={() => correr(i.email, () => quitarInvitacion(i.email))}>
+                  {ocupado === i.email ? "…" : "✕"}
+                </button>
+              )}
+            </span>
+          ))}
+          <span className="cta-ayuda">
+            Quitar a alguien de esta lista NO lo expulsa si ya entró: la invitación
+            se mira al iniciar sesión. Para que deje de trabajar, apaga su cuenta
+            en la tabla de abajo.
+          </span>
+        </div>
+      )}
+
+      {tambienEnEntorno.length > 0 && (
+        <div className="empty" style={{ color: "var(--yellow)", marginBottom: 10, fontSize: 12 }}>
+          ⚠ Hay {tambienEnEntorno.length} correo{tambienEnEntorno.length === 1 ? "" : "s"} que
+          está{tambienEnEntorno.length === 1 ? "" : "n"} a la vez en esta lista y en la
+          variable <b>ALLOWED_EMAILS</b> de Vercel: quitarlo{tambienEnEntorno.length === 1 ? "" : "s"} de
+          aquí no le{tambienEnEntorno.length === 1 ? "" : "s"} quita la entrada, porque la puerta
+          suma las dos listas. Cuando todos los invitados estén en esta lista, borra la
+          variable y esto se acaba.
+        </div>
+      )}
+
       <div className="cta-cab">
         <span>Cuenta</span>
         <span style={{ textAlign: "right" }}>Escribió</span>
@@ -153,12 +293,30 @@ export default function CuentasPanel({ cuentas, yo, sinConteo = false, correoVie
                   la ficha sigue contestando la pregunta. */}
               <span className="cta-mail">
                 {c.email && <span title={c.email}>{c.email}</span>}
-                {c.persona
-                  ? <a className="lnk" href={`/entidad/persona/${c.persona.id}`}
-                      title="Ficha de esta persona en el sistema">
-                      {c.email ? " · " : ""}👤 {c.persona.nombre}
-                    </a>
-                  : <i>{c.email ? " · " : ""}sin ficha de persona</i>}
+                {c.persona && (
+                  <a className="lnk" href={`/entidad/persona/${c.persona.id}`}
+                    title="Abrir su ficha">
+                    {c.email ? " · " : ""}👤 {c.persona.nombre}
+                  </a>
+                )}
+                {/* Atar la cuenta a su ficha. Es lo que hace que salga su alias
+                    corto en la caja, que se le puedan pagar jornadas y que esta
+                    lista sepa quién es cada quien — y hasta hoy solo se podía
+                    escribiendo SQL a mano. */}
+                {personas.length > 0 && (
+                  <select className="cta-sel" disabled={ocupado === `p:${c.id}`}
+                    value={c.persona?.id || ""}
+                    onChange={e => correr(`p:${c.id}`,
+                      () => enlazarCuentaPersona(c.id, e.target.value || null))}>
+                    <option value="">{c.persona ? "— desatar —" : "· sin ficha ·"}</option>
+                    {personas
+                      /* Las que ya tienen otra cuenta no se ofrecen: una cuenta
+                         es una persona, y la base lo exige con un índice único.
+                         Ofrecerlas sería enseñar una opción que da error. */
+                      .filter(p => p.libre || p.id === c.persona?.id)
+                      .map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                  </select>
+                )}
               </span>
             </span>
           </span>

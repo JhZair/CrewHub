@@ -5045,3 +5045,28 @@ mark.bq-marca{
   .cta-fila>:nth-child(n+2):not(:last-child){display:none}
   .cta-cab>:last-child,.cta-fila>:last-child{text-align:right}
 }
+
+/* ── ALTA E INVITACIONES EN LA PESTAÑA CUENTAS ── */
+.cta-invitar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px}
+.cta-invitar input{background:var(--bg);border:1px solid var(--border);border-radius:8px;
+  padding:6px 10px;font-size:12.5px;color:var(--text);outline:none;min-width:210px}
+.cta-invitar input:focus{border-color:var(--accent)}
+/* La explicación ocupa toda la fila siguiente: es la respuesta a «¿y ya está?»,
+   y en línea con los campos se lee como una etiqueta más. */
+.cta-ayuda{flex-basis:100%;color:var(--dim);font-size:11.5px}
+.cta-pend{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;font-size:11.5px}
+.cta-pend-chip{display:inline-flex;align-items:center;gap:6px;color:var(--muted);
+  border:1px dashed var(--border2);border-radius:7px;padding:2px 6px 2px 9px}
+.cta-x{background:none;border:none;color:var(--dim);cursor:pointer;font-size:12px;padding:0 2px}
+.cta-x:hover{color:var(--red)}
+/* El selector de ficha vive en la segunda línea del nombre, junto al correo:
+   es parte de «quién es esta cuenta», no una columna que se compare. */
+.cta-sel{background:var(--bg);border:1px solid var(--border);border-radius:7px;
+  color:var(--muted);font-size:10.5px;padding:1px 4px;margin-left:6px;max-width:170px}
+/* Un invitado que viene de ALLOWED_EMAILS: se ve distinto porque esta pantalla
+   no puede borrarlo —vive en Vercel— y lo único que ofrece es traérselo. */
+.cta-entorno{border-color:rgba(245,158,11,.45);color:var(--yellow)}
+.cta-mas{background:none;border:none;color:var(--yellow);cursor:pointer;
+  font-size:10.5px;padding:0 2px;white-space:nowrap}
+.cta-mas:hover{text-decoration:underline}
