@@ -19,7 +19,7 @@ import { alertaSunat, empresaDeCasa, empresaViva, textoSunat } from "@/lib/sunat
 import { esProminente } from "@/lib/personas";
 import { fmtVence, venceVigencia, vigenciaVencida } from "@/lib/vigencia";
 import { fechaCorta, fechaLarga, haceOEn, hoyLima } from "@/lib/fechas";
-import { vinculosDeComentarios, COLS_DUENO_COM, COLS_DUENO_COM_EXTRA, type VinculoCom } from "@/lib/vinculoComentario";
+import { vinculosDeComentarios, type VinculoCom } from "@/lib/vinculoComentario";
 import { vinculosDePublicaciones, conNombre, type VincPub } from "@/lib/vinculosPub";
 import { rucDePersona } from "@/lib/ruc";
 import { urlPlataforma, platPorNombre, PLAT } from "@/lib/plataformas";
@@ -278,7 +278,18 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
        con el número de siempre. Es la forma más barata de saberlo: un `count`
        exacto obliga a Postgres a recorrer la tabla entera en cada búsqueda,
        justo lo que estamos tratando de dejar de hacer. */
-    const TOPE_TEXTO = 1500, TOPE_LISTA = 600;
+    /* Los techos. No son el mismo número porque no crecen igual: los
+       comentarios entran a unos 450 al mes y todo lo demás a goteo.
+       ⚠ Un techo más alto NO es la solución, es margen. Cuando el aviso de
+       «no se buscó en todo» vuelva a encenderse, lo que toca es filtrar en
+       Postgres (unaccent + índice), no subir el número otra vez: el peso
+       crece con el techo y el motor de lib/buscar —que ignora tildes y sabe
+       quechua— tiene que seguir viendo lo mismo que ve hoy.
+       Medido con db/medir-buscar.sql: 618 kB por búsqueda con 2.821 filas. */
+    const TOPE_TEXTO = 1500;       // publicaciones: 417 hoy, ~140 al mes
+    const TOPE_TEXTO_COM = 4000;   // comentarios:   986 hoy, ~450 al mes
+    const TOPE_LISTA = 600;
+    const TOPE_EQUIPO = 2000;      // equipamiento:  448 hoy, y el techo era 600
     const recortar = (r: any, tope: number, que: string) => {
       const filas = (r?.data || []) as any[];
       if (filas.length > tope) { recortado.push(que); r.data = filas.slice(0, tope); }
@@ -311,34 +322,31 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
         .select("id,titulo,cuerpo,tipo,estado,creado_en,padre_id,autor_id")
         // Las notas del muro solo viven en su proyecto: no salen en la búsqueda global.
         .neq("tipo", "bitacora")
-        .order("creado_en", { ascending: false }).limit(1501),
-      /* ── LAS ONCE PUERTAS DE UN COMENTARIO ──
-         Esto pedía DOS —`publicacion_id` y `objeto_id`— y el arreglo de
-         entonces («sin esto enlazaba a /caso/null, 404, firmado en «»») se
-         quedó a medias: desde aquel día se abrieron nueve puertas más y
-         ninguna llegó a esta consulta. Así que un comentario sobre una
-         factura, un recibo, un movimiento del banco o un apunte de caja salía
-         en los resultados con el mismo 404 y la misma firma vacía que el
-         comentario decía haber corregido.
-         Ahora se piden todas y `vinculosDeComentarios` las resuelve. Las
-         cinco de la rendición van en un `select` de reintento: si esa
-         migración no está corrida, PostgREST rechaza la consulta ENTERA y la
-         sección de comentarios se quedaría en blanco —sin error— también para
-         los casos, que no tienen nada que ver. */
-      (async () => {
-        /* `pub` y `obj` siguen viniendo embebidos aunque el vínculo ya se
-           resuelva aparte: son los dos únicos títulos que entran en el PAJAR
-           —se puede encontrar un comentario por el título de su caso— y eso
-           hay que decidirlo sobre los 1500, antes de filtrar, mientras que el
-           vínculo se resuelve sobre los 12 que se pintan. Las otras nueve
-           puertas no entran en el pajar: resolverlas mil quinientas veces para
-           que una de cada cien aporte una palabra no vale ese precio. */
-        const BASE = `id,cuerpo,creado_en,editado_en,autor:perfiles(nombre,avatar_url),pub:publicaciones(titulo),obj:objetos(titulo),${COLS_DUENO_COM}`;
-        const pedir = (cols: string) => supabase.from("comentarios")
-          .select(cols).order("creado_en", { ascending: false }).limit(1501);
-        const r = await pedir(BASE + COLS_DUENO_COM_EXTRA);
-        return r.error ? await pedir(BASE) : r;
-      })(),
+        .order("creado_en", { ascending: false }).limit(TOPE_TEXTO + 1),
+      /* ── SOLO LO QUE SIRVE PARA ENCONTRAR ──
+         `pub` y `obj` se quedan: son los dos títulos que entran en el PAJAR
+         —se puede encontrar un comentario por el título de su caso— y eso hay
+         que decidirlo sobre los miles, antes de filtrar.
+
+         Lo que se fue de aquí es todo lo que solo sirve para LEER el
+         resultado, y era casi todo el peso:
+
+           · `autor:perfiles(...)` — un JOIN sobre miles de filas para pintar
+             una cara en doce. El autor nunca entró en el pajar: nadie
+             encontraba un comentario escribiendo el nombre de quien lo
+             escribió, así que ese join no ayudaba a buscar nada.
+           · las DOCE columnas de vínculo. Un comentario entra por UNA de las
+             doce puertas, así que once vienen vacías en cada fila. Viajaban
+             miles de veces para que el vínculo de doce se resolviera abajo.
+
+         Con ellas se va también el `select` de reintento: la columna que
+         podía no existir —la de la rendición— ya no está en la consulta
+         grande, así que esta no puede fallar entera por una migración sin
+         correr. Esa red de seguridad se mudó a la consulta de los doce, que
+         es donde ahora vive el riesgo. */
+      supabase.from("comentarios")
+        .select("id,cuerpo,creado_en,editado_en,pub:publicaciones(titulo),obj:objetos(titulo)")
+        .order("creado_en", { ascending: false }).limit(TOPE_TEXTO_COM + 1),
       /* Los CVs viajan con la persona: se guardan por enfoque justo para
          poder pedir "el CV de Yajaida como Investigadora", y hasta hoy no
          había forma de encontrarlos. */
@@ -349,7 +357,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
            por (entidad_tipo, entidad_id) y no tiene FK a personas, así que no
            se puede embeber. Se traen aparte, abajo. */
         .select("id,nombre,alias,rol,tipo,estado,ruc_dni,email,region,dni_url,firma_url,carpeta_drive_url,foto_url,usuario_id,proys:proyecto_equipo(cargo,proy:proyectos(id,nombre,nombre_corto))")
-        .limit(601),
+        .limit(TOPE_LISTA + 1),
       // RENCA, presupuesto y Drive del proyecto: guardados desde siempre y
       // nunca seleccionados aquí
       supabase.from("proyectos")
@@ -360,7 +368,9 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
          cualquiera y le reclama la SUNAT a una empresa en cierre. */
       supabase.from("empresas")
         .select("id,nombre,razon_social,codigo,ruc,estado,estado_sunat,condicion_sunat,relacion,region,renca,renca_url,vigencia_poder_fecha,vigencia_poder_url,domicilio_fiscal,carpeta_drive_url"),
-      supabase.from("equipamiento").select("id,nombre,folio,categoria,subcategoria,estado,descripcion,compra_id").limit(601),
+      supabase.from("equipamiento")
+        .select("id,nombre,folio,categoria,subcategoria,estado,descripcion,compra_id")
+        .limit(TOPE_EQUIPO + 1),
       supabase.from("lugares").select("id,nombre"),
       supabase.from("convocatorias").select("id,codigo,nombre,anio,estado"),
       /* Las tres claves ajenas —proyecto, empresa, convocatoria— no se pintan:
@@ -375,7 +385,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
          buscar meses después. Estaban guardados y no se buscaban. */
       supabase.from("credenciales")
         .select("id,plataforma,identificador,ubicacion,notas,url,metodo_acceso,empresa_id,persona_id,datos:credencial_datos(id,etiqueta,valor)")
-        .limit(601),
+        .limit(TOPE_LISTA + 1),
       /* EL REPOSITORIO. Es la mitad de lo que la productora sabe —el libro que
          sostiene un documental, la referencia que justifica un plano, la nota
          de prensa de hace tres años— y el buscador no lo miraba: se podía
@@ -390,7 +400,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
         .select("id,tipo,titulo,url,notas,fecha,entidad_tipo,entidad_id")
         .neq("tipo", "cv")
         .order("fecha", { ascending: false, nullsFirst: false })
-        .order("creado_en", { ascending: false }).limit(601),
+        .order("creado_en", { ascending: false }).limit(TOPE_LISTA + 1),
       /* Los COMBOS DE COMPRA. Se busca por el código de la boleta, por lo que
          se compró y por el proveedor: «C-003», «Combo DJI» o «Amazon» son
          justo las tres formas en que alguien vuelve a una compra meses
@@ -415,9 +425,9 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
 
     /* El techo, comprobado y recortado en un solo sitio. */
     recortar(c1, TOPE_TEXTO, "casos");
-    recortar(c2, TOPE_TEXTO, "comentarios");
+    recortar(c2, TOPE_TEXTO_COM, "comentarios");
     recortar(c3, TOPE_LISTA, "personas");
-    recortar(c6, TOPE_LISTA, "equipos");
+    recortar(c6, TOPE_EQUIPO, "equipos");
     recortar(c10, TOPE_LISTA, "credenciales");
     recortar(c11, TOPE_LISTA, "repositorio");
 
@@ -785,7 +795,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
     const idsEq = equis.map((e: any) => e.id);
     const nada = { data: [] as any[] };
 
-    const [vc, vm, px, mm, rls, mmEq, prEq, cbEq, cpEq] = await Promise.all([
+    const [vc, vm, px, mm, rls, mmEq, prEq, cbEq, cpEq, aut] = await Promise.all([
       vinculosDePublicaciones(supabase, casos.map((p: any) => p.id)),
       vinculosDeComentarios(supabase, coms),
       padresQueFaltan.length
@@ -823,10 +833,30 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
             .select("id,prest:equipo_prestamos!inner(equipamiento_id)")
             .in("prest.equipamiento_id", idsEq)
         : Promise.resolve(nada),
+      /* La cara de quien escribió cada comentario. Antes venía embebida en la
+         consulta de los miles: un JOIN sobre toda la tabla para pintar doce
+         avatares. El autor no entra en el pajar —nadie busca un comentario
+         escribiendo el nombre de quien lo escribió—, así que ese join no
+         ayudaba a encontrar nada. */
+      /* Sí, son dos lecturas de `comentarios` por los mismos doce ids —ésta y
+         la que hace `vinculosDeComentarios` dentro—. Van en la misma tanda, en
+         paralelo, así que no cuestan latencia; y juntarlas obligaría a esta
+         página a volver a conocer las doce columnas de vínculo, que es
+         precisamente la regla que vive en un solo sitio. Doce filas es el
+         precio de no repartir esa regla por dos archivos. */
+      coms.length
+        ? supabase.from("comentarios").select("id,autor:perfiles(nombre,avatar_url)")
+            .in("id", coms.map((c: any) => c.id))
+        : Promise.resolve(nada),
     ]);
 
     vincCaso = vc;
     vincCom = vm;
+
+    {
+      const porId = new Map((((aut as any).data || []) as any[]).map((x: any) => [x.id, x.autor]));
+      coms = coms.map((c: any) => ({ ...c, autor: porId.get(c.id) || null }));
+    }
 
     (((px as any).data || []) as any[]).forEach((p: any) => tituloEn.set(p.id, p.titulo));
     idsPadre.forEach((id: any) => { const t = tituloEn.get(id); if (t) padreDe.set(id, t as string); });
