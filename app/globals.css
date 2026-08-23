@@ -5020,8 +5020,17 @@ mark.bq-marca{
 .cta-cab{font-size:9.5px;letter-spacing:1px;text-transform:uppercase;
   color:var(--dim);font-weight:700;padding:0 6px 6px}
 .cta-fila{padding:7px 6px;border-top:1px solid rgba(255,255,255,.05);font-size:12.5px}
-.cta-nom{display:flex;align-items:center;gap:8px;min-width:0}
-.cta-nom b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cta-nom{display:flex;align-items:center;gap:9px;min-width:0}
+.cta-nom .av{flex:none}
+/* Dos líneas en la misma celda: el nombre y, debajo, el correo con el que
+   entró. `min-width:0` en los dos niveles o el corte con puntos suspensivos no
+   funciona — un hijo de flex no se encoge por debajo de su contenido salvo que
+   se le diga. */
+.cta-id{display:flex;flex-direction:column;min-width:0;gap:1px}
+.cta-linea{display:flex;align-items:center;gap:6px;min-width:0}
+.cta-linea b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cta-mail{font-size:10.5px;color:var(--dim);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
 .cta-chip{font-size:10px;color:var(--dim);border:1px solid var(--border);
   border-radius:6px;padding:1px 6px;white-space:nowrap;flex:none}
 @media(max-width:860px){

@@ -228,11 +228,12 @@ export default async function Admin({ searchParams }: {
   /* Las cuentas, con lo que ha escrito cada una pegado. Va aquí y no en el
      panel porque contar es del servidor: al componente le llega la respuesta,
      no los datos para deducirla. */
-  const escritoPor = new Map<string, { casos: number; comentarios: number }>(
+  const escritoPor = new Map<string, { email: string | null; casos: number; comentarios: number }>(
     ((escrito || []) as any[]).map((r: any) =>
-      [r.id, { casos: Number(r.casos || 0), comentarios: Number(r.comentarios || 0) }]));
+      [r.id, { email: r.email || null,
+               casos: Number(r.casos || 0), comentarios: Number(r.comentarios || 0) }]));
   const cuentas: Cuenta[] = ((cuentasBase || []) as any[]).map((c: any) => ({
-    ...c, ...(escritoPor.get(c.id) || { casos: 0, comentarios: 0 }),
+    ...c, ...(escritoPor.get(c.id) || { email: null, casos: 0, comentarios: 0 }),
   }));
   /* Sin la migración no hay conteo, y entonces NO se enseña un cero: un cero
      falso en esta columna es lo que haría apagar a quien no toca. */

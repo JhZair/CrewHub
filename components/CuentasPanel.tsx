@@ -23,9 +23,14 @@ import { fechaCorta } from "@/lib/fechas";
    Cuántos casos y comentarios escribió cada cuenta. Es lo único que distingue
    de un vistazo a un miembro del colectivo de un login de paso, y es la
    pregunta que uno se hace justo antes de apagar: «¿esta quién es?».
-   No se enseña el último acceso porque no se puede: vive en `auth.users`, que
-   la aplicación no puede leer. Inventar una fecha aproximada aquí sería peor
-   que no ponerla.
+   Y el CORREO, que es lo que desempata: «John Zair Oros P» y «John Zair Oros
+   Pérez» son dos cuentas con el mismo nombre puesto por Google, y sin el
+   correo no hay forma de saber cuál apagar. Apagar la equivocada deja fuera a
+   quien sí trabaja.
+
+   No se enseña el último acceso porque no se puede: vive en `auth.users` y de
+   ahí solo se saca lo que la función de la migración devuelve. Inventar una
+   fecha aproximada aquí sería peor que no ponerla.
    ══════════════════════════════════════════════════════════════════════════ */
 
 export type Cuenta = {
@@ -38,7 +43,10 @@ export type Cuenta = {
   es_admin?: boolean | null;
   es_finanzas?: boolean | null;
   creado_en?: string | null;
-  /** Cuánto ha escrito. Lo cuenta la página, no esta lista. */
+  /** El correo con el que entró. No está en `perfiles` —vive en `auth.users`—
+   *  y solo llega si quien mira es administración: ver db/cuentas-activas.sql. */
+  email?: string | null;
+  /** Cuánto ha escrito. Lo cuenta Postgres, no esta lista. */
   casos: number;
   comentarios: number;
 };
@@ -88,10 +96,10 @@ export default function CuentasPanel({ cuentas, yo, sinConteo = false }: {
       </p>
       {sinConteo && (
         <div className="empty" style={{ color: "var(--yellow)", marginBottom: 10 }}>
-          No se puede saber cuánto ha escrito cada cuenta hasta correr
-          <b> db/cuentas-activas.sql</b>, así que esa columna va vacía. Y hasta
-          entonces el botón tampoco funcionará: la tabla de cuentas no acepta
-          cambios todavía.
+          Hasta correr <b>db/cuentas-activas.sql</b> no se puede saber ni el
+          correo de cada cuenta ni cuánto ha escrito —las dos cosas salen de la
+          misma función—, así que esas columnas van vacías. Y el botón tampoco
+          hará nada: la tabla de cuentas todavía no acepta cambios.
         </div>
       )}
 
@@ -105,14 +113,24 @@ export default function CuentasPanel({ cuentas, yo, sinConteo = false }: {
       {orden.map(c => (
         <div key={c.id} className={`cta-fila${c.activo ? "" : " fila-tenue"}`}>
           <span className="cta-nom">
-            <Avatar nombre={c.nombre} src={c.avatar_url} color={c.color} size={26} />
-            <b>{c.nombre}</b>
-            {c.id === yo && <span className="cta-chip">tú</span>}
-            {c.es_admin && <span className="cta-chip" title="Puede entrar a /admin">admin</span>}
-            {!c.es_admin && c.es_finanzas && (
-              <span className="cta-chip" title="Solo el panel de RHE">finanzas</span>
-            )}
-            {c.rol && <span style={{ color: "var(--dim)", fontSize: 11.5 }}>{c.rol}</span>}
+            <Avatar nombre={c.nombre} src={c.avatar_url} color={c.color} size={30} />
+            {/* Dos líneas: arriba cómo se llama, abajo con qué entró. El correo
+                va debajo y en pequeño porque no se lee, se comprueba — pero
+                cuando dos cuentas se llaman igual es lo único que decide. */}
+            <span className="cta-id">
+              <span className="cta-linea">
+                <b>{c.nombre}</b>
+                {c.id === yo && <span className="cta-chip">tú</span>}
+                {c.es_admin && <span className="cta-chip" title="Puede entrar a /admin">admin</span>}
+                {!c.es_admin && c.es_finanzas && (
+                  <span className="cta-chip" title="Solo el panel de RHE">finanzas</span>
+                )}
+                {c.rol && <span style={{ color: "var(--dim)", fontSize: 11.5 }}>{c.rol}</span>}
+              </span>
+              <span className="cta-mail" title={c.email || undefined}>
+                {c.email || <i>correo no disponible</i>}
+              </span>
+            </span>
           </span>
 
           {/* Lo que ha escrito. Un cero aquí, con una primera entrada de hace

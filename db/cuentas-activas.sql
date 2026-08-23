@@ -75,7 +75,7 @@ create policy "editar_perf" on perfiles
 -- llevarse por delante el autor de cada caso que esa persona escribió.
 
 
--- ── 3. CUÁNTO HA ESCRITO CADA CUENTA ──
+-- ── 3. QUIÉN ES CADA CUENTA ──
 --
 -- Lo que distingue de un vistazo a un miembro del colectivo de un login de
 -- paso, y la pregunta que uno se hace justo antes de apagar: «¿esta quién es?».
@@ -87,20 +87,44 @@ create policy "editar_perf" on perfiles
 -- real puede salir con «nada». En una pantalla que sirve para decidir a quién
 -- se apaga, un número equivocado hace que alguien apague a un compañero.
 --
--- `security invoker`: cuenta lo que el que pregunta puede ver, no lo que vería
--- el dueño de la función. Una función que enseña de más es la forma más
--- silenciosa de saltarse RLS.
+-- ── Y EL CORREO ──
+-- «John Zair Oros P» y «John Zair Oros Pérez» son dos cuentas con el mismo
+-- nombre puesto por Google. Sin el correo no hay forma de saber cuál apagar, y
+-- apagar la equivocada deja fuera a quien sí trabaja.
+--
+-- El correo NO está en `perfiles`: vive en `auth.users`, que la aplicación no
+-- puede leer. Se podría copiar a una columna —el trigger lo tiene a mano al
+-- crear el perfil— pero una copia envejece: quien cambie su cuenta de Google
+-- dejaría aquí el correo viejo, y un dato caducado en la pantalla que decide a
+-- quién se apaga es peor que no tenerlo. Se lee del original.
+--
+-- Por eso `security definer`: es la única forma de mirar `auth.users`. Y por
+-- eso mismo el correo sale SOLO si quien pregunta es administración: una
+-- función definer que enseña de más es la forma más silenciosa de saltarse
+-- RLS, y esto es una RPC que cualquier sesión puede invocar.
+--
+-- Los CONTEOS no llevan esa condición porque no hacen falta: las políticas de
+-- lectura de `publicaciones`, `comentarios` y `perfiles` son `using(true)`, o
+-- sea que ese número ya se puede sacar desde cualquier sesión contando a mano.
+-- `drop` antes del `create`: `create or replace` NO puede cambiar el tipo que
+-- devuelve una función, y esta ganó la columna del correo después de la
+-- primera versión. Sin el drop, volver a correr el archivo falla con «cannot
+-- change return type» — y este archivo promete ser idempotente.
+drop function if exists public.resumen_cuentas();
+
 create or replace function public.resumen_cuentas()
-returns table (id uuid, casos bigint, comentarios bigint)
+returns table (id uuid, email text, casos bigint, comentarios bigint)
 language sql
 stable
-security invoker
-set search_path = public
+security definer
+set search_path = public, auth
 as $$
   select p.id,
+         case when public.es_admin() then u.email::text end,
          (select count(*) from publicaciones x where x.autor_id = p.id),
          (select count(*) from comentarios  c where c.autor_id = p.id)
     from perfiles p
+    left join auth.users u on u.id = p.id
 $$;
 
 grant execute on function public.resumen_cuentas() to authenticated;
@@ -110,6 +134,7 @@ grant execute on function public.resumen_cuentas() to authenticated;
 -- Quién está encendido hoy y cuánto ha hecho. La segunda columna es la que
 -- distingue al miembro del colectivo del login de paso.
 select p.nombre,
+       r.email,
        p.activo,
        p.es_admin,
        r.casos,
