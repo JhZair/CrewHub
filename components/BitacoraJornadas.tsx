@@ -156,26 +156,31 @@ function FilaJornada({ j, esAdmin, puedeEditar, proyectos, onChange }: {
       {/* Qué más hizo ese día. Al lado de editar porque se usa JUNTO: se mira
           el contexto y se decide si la jornada cuadra. */}
       {j.persona_id && <DiaContexto personaId={j.persona_id} fecha={j.fecha} quien={j.persona} />}
+      {/* Escribir la nota que falta. Va AQUÍ, entre los botones de la derecha,
+          y no en el renglón de abajo: allí obligaba a TODAS las filas a medir
+          dos líneas para ofrecer algo que casi ninguna necesita —treinta filas
+          pasaban a sesenta renglones—. Aquí es un botón más de un grupo que ya
+          existe, de ancho fijo, y el segundo renglón vuelve a aparecer solo
+          cuando hay algo escrito.
+          Con su propio ícono y no reusando el ✎: «editar la jornada» y
+          «cuéntame el día» son dos cosas, y era justo no distinguirlas lo que
+          hacía que nadie encontrara la nota. */}
+      {puedeEditar && !j.notas && (
+        <button className="dato-btn" title="Escribir la nota del día"
+          onClick={() => { setANota(true); setEdit(true); }}>🗒</button>
+      )}
       {puedeEditar && <button className="dato-btn" title="Editar" onClick={() => setEdit(true)}>✎</button>}
       {puedeEditar && (borrando
         ? <span style={{ fontSize: 11.5, whiteSpace: "nowrap" }}>¿borrar? <button style={{ color: "var(--red)", fontWeight: 700 }} onClick={borrar}>sí</button>{" / "}<button style={{ color: "var(--dim)" }} onClick={() => setBorrando(false)}>no</button></span>
         : <button className="dato-btn" style={{ color: "var(--dim)" }} title="Borrar" onClick={() => setBorrando(true)}>✕</button>)}
       </div>
 
-      {/* ── EL SEGUNDO RENGLÓN: QUÉ SE HIZO ESE DÍA ──
+      {/* ── EL SEGUNDO RENGLÓN, SOLO SI HAY NOTA ──
           Es lo que convierte «1 jornada · S/ 160» en algo revisable tres meses
           después, cuando llega la liquidación y nadie recuerda por qué hubo
           rodaje un domingo. En gris y debajo: no decide el pago, lo explica.
-
-          Y si no hay nota, la puerta para escribirla. Se podía añadir desde el
-          ✎, pero eso hay que descubrirlo: el lápiz dice «editar la jornada»,
-          no «cuéntame el día». Un botón que hay que descubrir no existe. */}
-      {j.notas
-        ? <div className="jr-nota" title={j.notas}>{j.notas}</div>
-        : puedeEditar
-        ? <button className="jr-nota jr-nota-add" title="Escribir qué se hizo ese día"
-            onClick={() => { setANota(true); setEdit(true); }}>＋ nota</button>
-        : null}
+          Y una fila sin nota mide exactamente lo que medía antes. */}
+      {j.notas && <div className="jr-nota" title={j.notas}>{j.notas}</div>}
     </div>
   );
 }

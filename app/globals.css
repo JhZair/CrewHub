@@ -5117,8 +5117,6 @@ mark.bq-marca{
 .jr-cel-quien .av{flex:none}
 .jr-cel-quien b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .jr-alias{color:var(--dim);font-size:11px;font-style:normal}
-/* La nota de una jornada: explica el día, no decide el pago. Gris, una línea
-   y con corte — el texto entero está en el título. */
 /* La nota, en el renglón de abajo. Sangrada hasta donde empieza el chip del
    tipo —la fecha manda, y el segundo renglón se lee como algo que cuelga de
    ella— y de una sola línea: el texto entero está en el título. Ya no compite
@@ -5127,17 +5125,6 @@ mark.bq-marca{
   margin-left:95px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:help}
 @media(max-width:720px){.jr-nota{margin-left:0}}
-/* La invitación a escribir la nota que falta. Apagada: es una opción, no una
-   tarea pendiente — una fila sin nota no está incompleta. */
-.jr-nota-add{background:none;border:none;padding:0;cursor:pointer;
-  font-style:normal;color:var(--dim);opacity:.45;text-align:left;
-  /* Se alinea con la nota que ocuparía su sitio: si al escribirla el texto
-     apareciera en otra sangría, el «＋ nota» dejaría de parecer el hueco de
-     esa nota y pasaría a ser un botón suelto. */
-  display:block;font-size:11.5px;margin-left:95px}
-@media(max-width:720px){.jr-nota-add{margin-left:0}}
-.jr-fila:hover .jr-nota-add{opacity:1}
-.jr-nota-add:hover{color:var(--accent)}
 /* El círculo de la duración: hereda el color de su etiqueta —cada duración ya
    tiene su tono— y va un punto más grande que el texto, porque a tamaño de
    letra ◑ y ◕ se confunden. */
