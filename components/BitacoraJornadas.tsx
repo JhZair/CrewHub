@@ -101,7 +101,17 @@ function FilaJornada({ j, esAdmin, puedeEditar, proyectos, onChange }: {
      de la fila que se puede recortar sin perder sentido, y el completo queda
      en el tooltip. Los botones nunca se mueven de sitio. */
   return (
+    /* ── DOS RENGLONES, Y EL SEGUNDO SOLO SI HAY NOTA ──
+       La nota estaba EN la línea, compitiendo por el espacio elástico con el
+       nombre del proyecto. El efecto era el que se ve enseguida: las filas con
+       nota empujaban la duración, el monto y el estado hacia la izquierda, y
+       las que no la tenían los dejaban a la derecha. Cuatro columnas que
+       cambian de sitio según un dato opcional — o sea, ninguna columna.
+       Ahora la nota baja a su propio renglón y la línea de arriba mide siempre
+       lo mismo. Es la misma forma que la lista de /obligaciones, por la misma
+       razón. */
     <div className="info-row jr-fila">
+      <div className="jr-l1">
       <span className={`jr-fecha${esFinde(j.fecha) ? " finde" : ""}`} title={j.fecha}>
         {fechaHum(j.fecha)}
       </span>
@@ -135,24 +145,6 @@ function FilaJornada({ j, esAdmin, puedeEditar, proyectos, onChange }: {
       </span>
       {j.noche && <span className="jr-pernocte" title="Con pernocte: se durmió fuera. Se paga aparte del día.">🏕 pernocte</span>}
       <span style={{ color: "var(--teal)", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>{money(j.monto)}</span>
-      {/* Qué se hizo ese día. Es lo que convierte «1 · rodaje · S/ 160» en algo
-          que se puede revisar tres meses después, cuando llega la liquidación y
-          nadie recuerda por qué hubo rodaje un domingo.
-          Va DETRÁS del monto y en gris: no decide el pago, lo explica. Y de una
-          sola línea, con el texto entero en el título — una fila que crece
-          rompe el barrido vertical de las otras treinta. */}
-      {/* ── Y SI NO HAY NOTA, LA PUERTA PARA ESCRIBIRLA ──
-          Se podía añadir desde el ✎, pero eso hay que descubrirlo: el lápiz
-          dice «editar la jornada», no «cuéntame el día». Y la mitad de estas
-          filas se registraron antes de que el campo existiera, así que la
-          única forma de completarlas era adivinar dónde estaba.
-          Un botón que hay que descubrir no existe. */}
-      {j.notas
-        ? <span className="jr-nota" title={j.notas}>{j.notas}</span>
-        : puedeEditar
-        ? <button className="jr-nota jr-nota-add" title="Escribir qué se hizo ese día"
-            onClick={() => { setANota(true); setEdit(true); }}>＋ nota</button>
-        : null}
       <span className="badge jr-est" style={{
         fontSize: 10.5,
         color: j.aprobada ? "var(--green)" : "var(--yellow)",
@@ -168,6 +160,22 @@ function FilaJornada({ j, esAdmin, puedeEditar, proyectos, onChange }: {
       {puedeEditar && (borrando
         ? <span style={{ fontSize: 11.5, whiteSpace: "nowrap" }}>¿borrar? <button style={{ color: "var(--red)", fontWeight: 700 }} onClick={borrar}>sí</button>{" / "}<button style={{ color: "var(--dim)" }} onClick={() => setBorrando(false)}>no</button></span>
         : <button className="dato-btn" style={{ color: "var(--dim)" }} title="Borrar" onClick={() => setBorrando(true)}>✕</button>)}
+      </div>
+
+      {/* ── EL SEGUNDO RENGLÓN: QUÉ SE HIZO ESE DÍA ──
+          Es lo que convierte «1 jornada · S/ 160» en algo revisable tres meses
+          después, cuando llega la liquidación y nadie recuerda por qué hubo
+          rodaje un domingo. En gris y debajo: no decide el pago, lo explica.
+
+          Y si no hay nota, la puerta para escribirla. Se podía añadir desde el
+          ✎, pero eso hay que descubrirlo: el lápiz dice «editar la jornada»,
+          no «cuéntame el día». Un botón que hay que descubrir no existe. */}
+      {j.notas
+        ? <div className="jr-nota" title={j.notas}>{j.notas}</div>
+        : puedeEditar
+        ? <button className="jr-nota jr-nota-add" title="Escribir qué se hizo ese día"
+            onClick={() => { setANota(true); setEdit(true); }}>＋ nota</button>
+        : null}
     </div>
   );
 }
@@ -358,6 +366,7 @@ export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId =
                              y después de aprobar el mes corregirlo cuesta. */
                           return (
                             <div key={d} className="info-row jr-fila jr-dia-vacio">
+                              <div className="jr-l1">
                               <span className={`jr-fecha${esFinde(d) ? " finde" : ""}`}>{fechaHum(d)}</span>
                               {/* El hueco del tipo, vacío pero presente: sin él
                                   la fecha del día en blanco quedaría a otra
@@ -371,6 +380,7 @@ export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId =
                                   blanco no distingue «descansó» de «se le
                                   olvidó registrar», y el sistema sí lo sabe. */}
                               <DiaContexto personaId={g.id} fecha={d} quien={g.nombre} />
+                              </div>
                             </div>
                           );
                         })

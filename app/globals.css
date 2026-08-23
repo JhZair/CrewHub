@@ -3344,8 +3344,16 @@ button.repo-tit{text-align:left}
    de la fila —el que ademas es MAS util aqui que en las demas— se ve. */
 .jr-dia-vacio{font-size:12px;color:#3d3d52}
 .jr-dia-vacio .jr-fecha,.jr-dia-vacio .jr-proy{color:#3d3d52}
-/* Fila de jornada: una sola línea. El proyecto es lo que cede. */
-.jr-fila{display:flex;align-items:center;gap:9px;flex-wrap:nowrap}
+/* ── LA FILA, EN DOS RENGLONES ──
+   El de arriba (`.jr-l1`) es la jornada: una sola línea, sin `flex-wrap`, y lo
+   que cede es el nombre del proyecto. El de abajo, la nota, y solo si la hay.
+   Estuvieron en el mismo renglón y fue un error visible enseguida: la nota
+   competía por el espacio elástico con el proyecto, así que las filas con nota
+   empujaban duración, monto y estado a la izquierda y las que no la tenían los
+   dejaban a la derecha. Cuatro columnas que cambian de sitio según un dato
+   opcional no son columnas. */
+.jr-fila{display:flex;flex-direction:column;gap:1px}
+.jr-l1{display:flex;align-items:center;gap:9px;flex-wrap:nowrap}
 /* ── LA FRANJA QUE SE ENCIENDE ──
    Treinta filas de fecha, jornada, monto y estado se recorren con la vista, y
    sin nada que marque dónde está el cursor hay que apoyarse en el renglón —el
@@ -3367,8 +3375,8 @@ button.repo-tit{text-align:left}
 .jr-quien{font-weight:600;font-size:12.5px;white-space:nowrap;flex:none}
 .jr-proy{color:var(--dim);font-size:12px;flex:1;min-width:40px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.jr-fila .jr-est{flex:none;white-space:nowrap}
-.jr-fila .dato-btn{flex:none}
+.jr-l1 .jr-est{flex:none;white-space:nowrap}
+.jr-l1 .dato-btn{flex:none}
 .jr-plegar{min-width:24px;padding:1px 6px;flex:none}
 /* ── QUE HIZO ESE DIA, EN TODO EL SISTEMA ──
    La lupa vive apagada en cada fila y se enciende al pasar por encima: son
@@ -5105,18 +5113,23 @@ mark.bq-marca{
 .jr-alias{color:var(--dim);font-size:11px;font-style:normal}
 /* La nota de una jornada: explica el día, no decide el pago. Gris, una línea
    y con corte — el texto entero está en el título. */
+/* La nota, en el renglón de abajo. Sangrada hasta donde empieza el chip del
+   tipo —la fecha manda, y el segundo renglón se lee como algo que cuelga de
+   ella— y de una sola línea: el texto entero está en el título. Ya no compite
+   con nada, así que puede ocupar todo el ancho que le sobre. */
 .jr-nota{color:var(--dim);font-size:11.5px;font-style:italic;
-  /* `min-width` y no 0: con base 0 y `.jr-proy` reclamando lo mismo, al
-     estrecharse la fila la nota se encogía hasta CERO píxeles — la jornada con
-     nota se veía idéntica a la que no la tiene, y ni el texto ni su título
-     eran alcanzables. Un dato que desaparece sin dejar rastro es peor que uno
-     que no está: nadie va a buscarlo. */
-  flex:1 1 90px;min-width:70px;
+  margin-left:95px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:help}
+@media(max-width:720px){.jr-nota{margin-left:0}}
 /* La invitación a escribir la nota que falta. Apagada: es una opción, no una
    tarea pendiente — una fila sin nota no está incompleta. */
 .jr-nota-add{background:none;border:none;padding:0;cursor:pointer;
-  font-style:normal;color:var(--dim);opacity:.55;text-align:left}
+  font-style:normal;color:var(--dim);opacity:.45;text-align:left;
+  /* Se alinea con la nota que ocuparía su sitio: si al escribirla el texto
+     apareciera en otra sangría, el «＋ nota» dejaría de parecer el hueco de
+     esa nota y pasaría a ser un botón suelto. */
+  display:block;font-size:11.5px;margin-left:95px}
+@media(max-width:720px){.jr-nota-add{margin-left:0}}
 .jr-fila:hover .jr-nota-add{opacity:1}
 .jr-nota-add:hover{color:var(--accent)}
 /* El círculo de la duración: hereda el color de su etiqueta —cada duración ya
