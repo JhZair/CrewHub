@@ -369,7 +369,7 @@ export default async function Jornadas({ searchParams }: { searchParams: { m?: s
         </table>
       </div>
       <div style={{ color: "var(--dim)", fontSize: 12, margin: "8px 2px" }}>
-        Los números son jornadas por semana (½ = 0.5, día y medio = 1.5). "A pagar" cuenta solo lo aprobado; ⏳ es lo pendiente.
+        Los números son jornadas por semana (½ j = 0.5, 1½ j = 1.5). «A pagar» cuenta solo lo aprobado; ⏳ es lo pendiente.
       </div>
 
       {/* ══ CONTEXTO (abajo, ordenado) ══ */}
