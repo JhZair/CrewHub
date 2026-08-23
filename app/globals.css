@@ -5159,3 +5159,7 @@ mark.bq-marca{
    está en esta pantalla. */
 .jr-tarifa-ok{font-size:10.5px;color:var(--dim);white-space:nowrap;cursor:help}
 .jr-tarifa-no{font-size:10.5px;color:var(--yellow);white-space:nowrap;cursor:help}
+/* La cara en la cabecera de cada persona del detalle diario. `flex:none` para
+   que no se encoja cuando el nombre es largo: un avatar aplastado se lee como
+   un fallo de carga. */
+.jr-grupo-h .av{flex:none}

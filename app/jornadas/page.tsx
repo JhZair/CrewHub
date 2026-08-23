@@ -79,7 +79,7 @@ export default async function Jornadas({ searchParams }: { searchParams: { m?: s
      La vista de equipo vive en /admin, que ya comprueba `es_admin`. */
   const { data: jorns } = miPersonaIdRaw
     ? await supabase.from("jornadas")
-        .select("id,persona_id,fecha,proyecto_id,tipo,fraccion,noche,monto,aprobada,notas,per:personas(nombre,alias),proy:proyectos(nombre)")
+        .select("id,persona_id,fecha,proyecto_id,tipo,fraccion,noche,monto,aprobada,notas,per:personas(nombre,alias,foto_url),proy:proyectos(nombre)")
         .eq("persona_id", miPersonaIdRaw)
         .gte("fecha", inicio).lt("fecha", fin).order("fecha", { ascending: false })
     : { data: [] };
@@ -181,6 +181,7 @@ export default async function Jornadas({ searchParams }: { searchParams: { m?: s
     /* El largo va aparte: la cabecera del grupo lo usa para decir de quién es
        la tarjeta, y las filas siguen con el corto. */
     personaLargo: j.per?.nombre || null,
+    personaFoto: j.per?.foto_url || null,
     proyecto: j.proy?.nombre || null, tipo: j.tipo, fraccion: j.fraccion, noche: j.noche, monto: j.monto,
     /* La nota de esa jornada. Sin esto, el campo del formulario solo
        escribiría: un dato que se guarda y no se lee en ninguna pantalla es un

@@ -137,7 +137,7 @@ export default async function Admin({ searchParams }: {
          { data: fichasCuenta }, { data: fichasElegibles },
          { data: invitados, error: eInv }] = await Promise.all([
     // `usuario_id`: llave para poner el alias del actor en la actividad reciente
-    supabase.from("personas").select("id,nombre,alias,usuario_id,estado,tarifa_dia,tarifa_rodaje,tarifa_noche")
+    supabase.from("personas").select("id,nombre,alias,foto_url,usuario_id,estado,tarifa_dia,tarifa_rodaje,tarifa_noche")
       .eq("tipo", "personal").order("nombre"),
     // A quién se le puede girar un RHE, y los del año en curso
     supabase.from("personas").select("id,nombre,alias,suspension_4ta_anio")
@@ -157,7 +157,7 @@ export default async function Admin({ searchParams }: {
        leerlo y todas las filas pasan a ser `GenericStringError`, con lo que
        `j.monto` deja de existir cincuenta líneas más abajo. Compila mal en un
        sitio que no tiene nada que ver con este. */
-    .select("id,persona_id,fecha,proyecto_id,tipo,fraccion,noche,monto,aprobada,notas,per:personas(nombre,alias,tarifa_dia,tarifa_rodaje,tarifa_noche),proy:proyectos(nombre)")
+    .select("id,persona_id,fecha,proyecto_id,tipo,fraccion,noche,monto,aprobada,notas,per:personas(nombre,alias,foto_url,tarifa_dia,tarifa_rodaje,tarifa_noche),proy:proyectos(nombre)")
       .eq("aprobada", false).order("fecha", { ascending: false }).limit(400),
     supabase.from("proyectos").select("id,nombre").order("nombre"),
     /* `proy` y `fecha` entran para la portada: sin proyecto no se puede decir
@@ -400,7 +400,7 @@ export default async function Admin({ searchParams }: {
        leerlo y todas las filas pasan a ser `GenericStringError`, con lo que
        `j.monto` deja de existir cincuenta líneas más abajo. Compila mal en un
        sitio que no tiene nada que ver con este. */
-    .select("id,persona_id,fecha,proyecto_id,tipo,fraccion,noche,monto,aprobada,notas,per:personas(nombre,alias,tarifa_dia,tarifa_rodaje,tarifa_noche),proy:proyectos(nombre)")
+    .select("id,persona_id,fecha,proyecto_id,tipo,fraccion,noche,monto,aprobada,notas,per:personas(nombre,alias,foto_url,tarifa_dia,tarifa_rodaje,tarifa_noche),proy:proyectos(nombre)")
     .gte("fecha", jInicio).lt("fecha", jFin)
     .order("fecha", { ascending: false }).limit(3000);
 
@@ -414,6 +414,9 @@ export default async function Admin({ searchParams }: {
     /* El largo va aparte: la cabecera del grupo lo usa para decir de quién es
        la tarjeta, y las filas siguen con el corto. */
     personaLargo: j.per?.nombre || null,
+    /* La cara, para la cabecera de su tarjeta. Viene del mismo embebido: no
+       cuesta una consulta, solo una columna más. */
+    personaFoto: j.per?.foto_url || null,
     proyecto: j.proy?.nombre || null, tipo: j.tipo, fraccion: j.fraccion, noche: j.noche, monto: j.monto,
     /* La nota de quien registró la jornada. AQUÍ es donde de verdad hace
        falta: esta es la pantalla en la que se aprueba y se liquida, y «¿por
@@ -731,7 +734,10 @@ export default async function Admin({ searchParams }: {
     .filter((p: any) => p.estado !== "inactivo" && p.estado !== "vetado")
     .filter((p: any) => !conJornada.has(p.id))
     .filter((p: any) => (horasPorPersona[p.id] || diasPorPersona[p.id]))
-    .map((p: any) => ({ id: p.id, nombre: p.alias || p.nombre }));
+    /* Nombre completo y cara, como en las tarjetas de quienes SÍ registraron:
+       una lista donde unos salen con foto y otros no se lee como si los
+       segundos estuvieran a medias. */
+    .map((p: any) => ({ id: p.id, nombre: p.nombre || p.alias, foto: p.foto_url || null }));
 
   /* ── LOS PANELES, UNO POR SECCIÓN ──
      Antes cada bloque se pintaba con `{s === "x" && (…)}` dentro del return.

@@ -1,5 +1,6 @@
 "use client";
 import { aprobarJornada, editarJornada, borrarJornada } from "@/app/actions";
+import Avatar from "@/components/Avatar";
 import DiaContexto from "@/components/DiaContexto";
 import MiniSelect from "@/components/MiniSelect";
 import { useRouter } from "next/navigation";
@@ -307,7 +308,7 @@ export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId =
   mesFranja?: string;
   /** Quienes NO registraron ni una jornada este mes pero sí tocaron el sistema.
    *  Van al final, con su silueta y sin filas. */
-  ausentes?: { id: string; nombre: string }[];
+  ausentes?: { id: string; nombre: string; foto?: string | null }[];
   /** Tarifa de cada persona, por id. Solo hace falta donde el importe se puede
    *  editar —administración—, y es de donde sale el número que enseña el ↻. */
   tarifas?: Record<string, Tarifas>;
@@ -331,11 +332,13 @@ export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId =
      Condori» treinta veces es ruido, no información.
      Antes la cabecera también llevaba el corto, y con el rótulo de fuera fuera
      esa cabecera pasó a ser lo único que dice de quién es la tarjeta. */
-  const grupos = new Map<string, { nombre: string; alias: string | null; items: any[] }>();
+  const grupos = new Map<string, { nombre: string; alias: string | null; foto: string | null; items: any[] }>();
   items.forEach(j => {
     const k = j.persona_id || j.persona || "—";
     const g = grupos.get(k)
-      || { nombre: j.personaLargo || j.persona || "—", alias: j.personaLargo ? (j.persona || null) : null, items: [] };
+      || { nombre: j.personaLargo || j.persona || "—",
+           alias: j.personaLargo ? (j.persona || null) : null,
+           foto: j.personaFoto || null, items: [] };
     g.items.push(j); grupos.set(k, g);
   });
   /* Primero quien tiene más por aprobar: es lo accionable. A igual pendiente,
@@ -383,6 +386,11 @@ export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId =
               <button className="dato-btn jr-plegar"
                 title={cerrados.has(g.id) ? `Ver las jornadas de ${g.nombre}` : "Plegar"}
                 onClick={() => alternar(g.id)}>{cerrados.has(g.id) ? "▸" : "▾"}</button>
+              {/* La cara, una vez por persona y no por fila: dentro de la
+                  tarjeta todas las filas son suyas, así que repetirla treinta
+                  veces sería ruido. Aquí, en cambio, es lo que distingue una
+                  tarjeta de la de abajo cuando /admin apila a cuatro. */}
+              <Avatar nombre={g.nombre} src={g.foto} size={24} />
               <b>{g.nombre}</b>
               {g.alias && g.alias !== g.nombre && (
                 <i style={{ color: "var(--dim)", fontSize: 11.5, fontStyle: "normal" }}>{g.alias}</i>
@@ -481,6 +489,7 @@ export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId =
           <div key={a.id} className="jr-grupo card jr-grupo-aus">
             <div className="jr-grupo-h">
               <span className="jr-plegar" aria-hidden>·</span>
+              <Avatar nombre={a.nombre} src={a.foto} size={24} />
               <b>{a.nombre}</b>
               <span className="jr-grupo-n">sin jornadas registradas</span>
               <span style={{ flex: 1 }} />
