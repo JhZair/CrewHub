@@ -3352,8 +3352,14 @@ button.repo-tit{text-align:left}
    empujaban duración, monto y estado a la izquierda y las que no la tenían los
    dejaban a la derecha. Cuatro columnas que cambian de sitio según un dato
    opcional no son columnas. */
-.jr-fila{display:flex;flex-direction:column;gap:1px}
-.jr-l1{display:flex;align-items:center;gap:9px;flex-wrap:nowrap}
+/* ⚠ `align-items:stretch` NO es decoración: `.info-row` trae `center`, y en un
+   contenedor de COLUMNA eso deja de significar «centrado vertical» y pasa a
+   significar «centrado HORIZONTAL». El resultado fue que cada renglón se
+   encogía a lo que mide su contenido y se centraba, así que cada fila
+   empezaba en una x distinta. La misma palabra, dos ejes: cambiar la
+   dirección de un flex cambia lo que quiere decir todo lo que ya había. */
+.jr-fila{display:flex;flex-direction:column;align-items:stretch;gap:1px}
+.jr-l1{display:flex;align-items:center;gap:9px;flex-wrap:nowrap;min-width:0}
 /* ── LA FRANJA QUE SE ENCIENDE ──
    Treinta filas de fecha, jornada, monto y estado se recorren con la vista, y
    sin nada que marque dónde está el cursor hay que apoyarse en el renglón —el
