@@ -99,6 +99,14 @@ la práctica:
   tipo de proyecto siempre van rotulados y solo aparecen en contexto de
   proyecto, así que no se confunden con la entidad.
 - **Fucsia** (aviso) roza el **rosa** (lugar/animación), pero «lugar» es raro.
+- **Tipos de jornada** (`lib/jornadas.ts`, `TIPOS_JORNADA.tono` → `.jr-tipo.t-*`)
+  reusan tres anclas, cada uno con un vínculo real: rodaje = violeta
+  (*proyecto*: un rodaje siempre es de uno), oficina = teal (*empresa*: la
+  oficina es de la empresa), scouting = rosa (*lugar*: se sale a buscar
+  lugares). **No son un cuarto eje**: van al 8 % de opacidad de fondo y 22 % de
+  borde, con el texto en gris. Un velo no compite con un badge pleno, y por eso
+  no rompen la regla de «cada color, una cosa» — subirles la saturación sí lo
+  haría.
 
 Videojuego (tipo de proyecto) ya NO comparte el azul de persona: pasó a
 `#38bdf8`.

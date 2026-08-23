@@ -96,17 +96,36 @@ export const esFinde = (f?: string | null) => {
  * unas salía «🎬» a secas y en otras «🎬 Rodaje».
  *
  * Uno solo, con el ícono y la palabra separados: cada pantalla decide si le
- * caben las dos, pero ninguna se inventa un cuarto nombre. */
-export const TIPOS_JORNADA: { v: string; ico: string; txt: string }[] = [
-  { v: "rodaje",   ico: "🎬", txt: "Rodaje" },
-  { v: "oficina",  ico: "🏢", txt: "Oficina" },
-  { v: "scouting", ico: "🚙", txt: "Scouting" },
+ * caben las dos, pero ninguna se inventa un cuarto nombre.
+ *
+ * ── `tono`: POR QUÉ CADA UNO SE TIÑE DISTINTO ──
+ * Los tres chips eran del mismo gris, y en una tarjeta de treinta filas la
+ * columna se volvía una mancha: para ver que el jueves fue rodaje y el viernes
+ * oficina había que LEER la palabra, fila por fila. Con el tinte, el bloque de
+ * días iguales se ve de un vistazo y el que rompe la racha salta solo — que es
+ * justo lo que uno busca al revisar un mes antes de pagarlo.
+ *
+ * Los tres tonos NO son colores nuevos: son los anclas que COLORES-IDENTIDAD.md
+ * ya tiene, y cada uno con un vínculo real, no elegido a ojo —
+ *   rodaje   → violeta, el color de PROYECTO: un rodaje siempre es de uno.
+ *   oficina  → teal,    el color de EMPRESA:  la oficina es de la empresa.
+ *   scouting → rosa,    el color de LUGAR:    se sale a buscar lugares.
+ * Y van a un 8 % de opacidad, no plenos: la regla «cada color, una cosa» habla
+ * de identidad, y esto no compite con ninguna —el badge de un proyecto violeta
+ * y un chip con un velo violeta no se confunden—. Levantar la saturación sí
+ * sería inventar un cuarto eje de color. */
+export const TIPOS_JORNADA: { v: string; ico: string; txt: string; tono: string }[] = [
+  { v: "rodaje",   ico: "🎬", txt: "Rodaje",   tono: "rodaje" },
+  { v: "oficina",  ico: "🏢", txt: "Oficina",  tono: "oficina" },
+  { v: "scouting", ico: "🚙", txt: "Scouting", tono: "scouting" },
 ];
 
 /* Un tipo desconocido no se disfraza de los tres válidos: se pinta con un
-   punto y con su propio texto, para que se vea que hay algo que nadie eligió. */
+   punto, con su propio texto y SIN tono, para que se vea que hay algo que
+   nadie eligió. Darle color sería lo contrario: disfrazarlo de válido. */
 export const metaTipo = (t?: string | null) =>
-  TIPOS_JORNADA.find(x => x.v === t) || { v: String(t || ""), ico: "•", txt: String(t || "—") };
+  TIPOS_JORNADA.find(x => x.v === t)
+  || { v: String(t || ""), ico: "•", txt: String(t || "—"), tono: "" };
 
 /** Solo el ícono, para donde no cabe la palabra. */
 export const ICO_TIPO: Record<string, string> =

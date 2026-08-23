@@ -5139,16 +5139,40 @@ mark.bq-marca{
 .card-foco{border-color:rgba(124,92,255,.42);
   background:linear-gradient(180deg,rgba(124,92,255,.06),transparent 140px),var(--card)}
 /* ── EL TIPO DE JORNADA, COMO CHIP ──
-   Neutro y con borde tenue: la etiqueta de la duración, dos columnas más
-   allá, ya lleva color, y dos chips de color en la misma fila compiten en vez
-   de informar. Ancho fijo para los tres —el más largo es «Scouting»— porque
-   si cada uno mide lo suyo, todo lo que va detrás baila de fila en fila y la
-   columna deja de poder recorrerse con la vista. */
+   Ancho fijo para los tres —el más largo es «Scouting»— porque si cada uno
+   mide lo suyo, todo lo que va detrás baila de fila en fila y la columna deja
+   de poder recorrerse con la vista. */
 .jr-tipo{flex:none;display:inline-flex;align-items:center;gap:4px;
   min-width:92px;
   font-size:11px;color:var(--muted);
   border:1px solid var(--border);border-radius:7px;padding:1px 7px;
   white-space:nowrap}
+
+/* ── EL TINTE DE CADA TIPO ──
+   Los tres eran del mismo gris para no competir con la etiqueta de la
+   duración, y el resultado era una columna que había que leer palabra por
+   palabra. Lo que compite no es el color: es la saturación. Fondo al 8 % y
+   borde al 22 % — el bloque de días iguales se agrupa solo y el que rompe la
+   racha salta, sin que el chip se convierta en lo más fuerte de la fila.
+
+   Los tres anclas son los de COLORES-IDENTIDAD.md, cada uno con un vínculo
+   real: rodaje=violeta (proyecto), oficina=teal (empresa), scouting=rosa
+   (lugar). Se piden con `color-mix` sobre la variable y no con un hex nuevo,
+   que es la forma de que sigan siendo LOS MISMOS colores el día que la
+   paleta cambie. `--tinte` existe para que fondo y borde no puedan
+   discrepar: se escribe el ancla una vez por tipo.
+
+   El TEXTO no se tiñe. Once píxeles en violeta al 100 % sobre fondo oscuro se
+   leen peor que en gris, y aquí lo que tiene que distinguirse es el chip, no
+   la palabra. Y un tipo que nadie eligió no lleva clase: se queda gris, que
+   es exactamente lo que hay que ver. */
+.jr-tipo.t-rodaje  { --tinte: var(--violet) }
+.jr-tipo.t-oficina { --tinte: var(--teal) }
+.jr-tipo.t-scouting{ --tinte: #ec4899 }
+.jr-tipo.t-rodaje,.jr-tipo.t-oficina,.jr-tipo.t-scouting{
+  background:color-mix(in srgb, var(--tinte) 8%, transparent);
+  border-color:color-mix(in srgb, var(--tinte) 22%, transparent)}
+
 .jr-dia-vacio .jr-tipo{opacity:.35}
 /* El importe en la fila de edición. La «S/» va fuera del campo: dentro habría
    que escribirla o borrarla, y es lo único de ese dato que nunca cambia. */

@@ -188,10 +188,20 @@ function FilaJornada({ j, esAdmin, puedeEditar, proyectos, tarifas, onChange }: 
           juntos los mezcla. Dos, un dibujo de doce píxeles hay que
           descifrarlo — y 🎬 y 🚙 a ese tamaño son dos manchas.
           Con la palabra al lado no hay nada que descifrar, y el chip lo separa
-          del nombre. Neutro y sin color: la etiqueta de la duración, dos
-          columnas más allá, ya lleva el suyo, y dos chips de color en la misma
-          fila compiten en vez de informar. */}
-      <span className="jr-tipo" title={`Jornada de ${metaTipo(j.tipo).txt.toLowerCase()}`}>
+          del nombre.
+
+          ── Y CADA TIPO CON SU TINTE ──
+          Nacieron los tres del mismo gris por miedo a competir con la etiqueta
+          de la duración, dos columnas más allá. El miedo era razonable y la
+          respuesta, equivocada: en una tarjeta de treinta filas la columna se
+          volvía una mancha y había que LEER la palabra para ver que el jueves
+          fue rodaje y el viernes oficina. Lo que compite no es el color, es la
+          SATURACIÓN — a un 8 % el tinte agrupa sin gritar, y el número de
+          jornadas sigue siendo lo único fuerte de la fila.
+          El tono sale de `TIPOS_JORNADA`, no de aquí: son los mismos tres
+          chips en la bitácora personal y en /admin. */}
+      <span className={`jr-tipo${metaTipo(j.tipo).tono ? ` t-${metaTipo(j.tipo).tono}` : ""}`}
+        title={`Jornada de ${metaTipo(j.tipo).txt.toLowerCase()}`}>
         {metaTipo(j.tipo).ico} {metaTipo(j.tipo).txt}
       </span>
       <span className="jr-quien">{j.persona}</span>
