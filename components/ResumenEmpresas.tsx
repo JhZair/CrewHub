@@ -1,5 +1,7 @@
 import Link from "next/link";
 import Avatar from "@/components/Avatar";
+import Firma, { type Quien } from "@/components/Firma";
+import { haceDias } from "@/lib/fechas";
 import type { EmpresaPropia } from "@/lib/empresasPropias";
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -34,17 +36,6 @@ const dmy = (f?: string | null) => {
 };
 
 /** Cuánto hace, en palabras. Un «hace 4 meses» dice más que una fecha. */
-const hace = (iso?: string | null) => {
-  if (!iso) return "";
-  const d = Math.floor((Date.now() - Date.parse(iso)) / 86400000);
-  if (!Number.isFinite(d)) return "";
-  if (d <= 0) return "hoy";
-  if (d === 1) return "ayer";
-  if (d < 30) return `hace ${d} días`;
-  const m = Math.round(d / 30);
-  return m < 12 ? `hace ${m} mes${m > 1 ? "es" : ""}` : `hace ${Math.round(d / 365)} año(s)`;
-};
-
 export type FilaResumen = {
   empresaId: string;
   comprobantes: number;
@@ -52,7 +43,7 @@ export type FilaResumen = {
   igvVentas: number;
   /** Fecha del último comprobante CARGADO (no la del documento). */
   ultimaCarga?: string | null;
-  ultimaPor?: string | null;
+  ultimaPor?: Quien | null;
 };
 
 export default function ResumenEmpresas({ empresas, logos, filas, anio, href }: {
@@ -129,9 +120,9 @@ export default function ResumenEmpresas({ empresas, logos, filas, anio, href }: 
               {f.ultimaCarga ? (
                 <>
                   <span title={`Último comprobante cargado el ${dmy(String(f.ultimaCarga).slice(0, 10))}`}>
-                    {hace(f.ultimaCarga)}
+                    {haceDias(f.ultimaCarga)}
                   </span>
-                  {f.ultimaPor && <span style={{ color: "var(--dim)" }}> · {f.ultimaPor}</span>}
+                  {f.ultimaPor && <> · <Firma quien={f.ultimaPor} /></>}
                 </>
               ) : (
                 <i style={{ color: "var(--dim)" }}>sin cargas en {anio}</i>

@@ -1,5 +1,7 @@
 import Link from "next/link";
 import Avatar from "@/components/Avatar";
+import Firma, { type Quien } from "@/components/Firma";
+import { haceDias, fechaLarga, fechaHoraLima } from "@/lib/fechas";
 import { motivoNoDeclara, META_SIT } from "@/lib/obligaciones";
 import type { EmpresaPropia } from "@/lib/empresasPropias";
 
@@ -36,18 +38,7 @@ export type FilaObl = {
   inactivos?: number;
   /** Cuándo se apuntó el último periodo en CrewHub, y quién. */
   ultima?: string | null;
-  ultimaPor?: string | null;
-};
-
-const hace = (iso?: string | null) => {
-  if (!iso) return "";
-  const d = Math.floor((Date.now() - Date.parse(iso)) / 86400000);
-  if (!Number.isFinite(d)) return "";
-  if (d <= 0) return "hoy";
-  if (d === 1) return "ayer";
-  if (d < 30) return `hace ${d} días`;
-  const m = Math.round(d / 30);
-  return m < 12 ? `hace ${m} mes${m > 1 ? "es" : ""}` : `hace ${Math.round(d / 365)} año(s)`;
+  ultimaPor?: Quien | null;
 };
 
 export default function ResumenObligaciones({ empresas, logos, filas, href }: {
@@ -136,8 +127,13 @@ export default function ResumenObligaciones({ empresas, logos, filas, href }: {
             <span className="res-emp-ult">
               {f.ultima ? (
                 <>
-                  {hace(f.ultima)}
-                  {f.ultimaPor && <span style={{ color: "var(--dim)" }}> · {f.ultimaPor}</span>}
+                  {/* «ayer» se lee rápido pero no se puede comprobar. La fecha
+                      exacta va en el título: si alguien cree que ese apunte es
+                      de otro día, aquí lo verifica sin abrir la empresa. */}
+                  <span title={`Apuntado el ${fechaLarga(f.ultima)} a las ${fechaHoraLima(f.ultima).split(", ").pop()}`}>
+                    {haceDias(f.ultima)}
+                  </span>
+                  {f.ultimaPor && <> · <Firma quien={f.ultimaPor} /></>}
                 </>
               ) : (
                 <i style={{ color: "var(--dim)" }}>nunca</i>

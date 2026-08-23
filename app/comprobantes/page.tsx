@@ -186,7 +186,7 @@ export default async function ComprobantesPage({ searchParams }: {
     const ids = todas.map(e => e.id);
     const { data: filas } = ids.length
       ? await supabase.from("comprobante")
-          .select("empresa_id,igv,sentido,creado_en,creado:perfiles!creado_por(nombre)")
+          .select("empresa_id,igv,sentido,creado_en,creado:perfiles!creado_por(nombre,avatar_url,color),creado_por")
           .in("empresa_id", ids)
           .gte("fecha", `${anio}-01-01`).lte("fecha", `${anio}-12-31`)
       : { data: [] as any[] };
@@ -204,7 +204,11 @@ export default async function ComprobantesPage({ searchParams }: {
       if (f.creado_en && String(f.creado_en) > String(a.ultimaCarga || "")) {
         a.ultimaCarga = f.creado_en;
         const q = Array.isArray(f.creado) ? f.creado[0] : f.creado;
-        a.ultimaPor = q?.nombre || null;
+        /* Con su cara, y con el alias corto: «John Oros Condori» al final de
+           una fila de tabla no cabe, y no es como se llaman entre ellos. */
+        a.ultimaPor = q?.nombre
+          ? { nombre: alias[f.creado_por] || q.nombre, foto: q.avatar_url, color: q.color }
+          : null;
       }
       resumen.set(k, a);
     });

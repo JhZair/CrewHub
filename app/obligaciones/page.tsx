@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import Obligaciones from "@/components/Obligaciones";
 import { situacionPeriodo } from "@/lib/obligaciones";
 import ResumenObligaciones, { type FilaObl } from "@/components/ResumenObligaciones";
+import { type Quien } from "@/components/Firma";
 import { conRuc } from "@/lib/empresasPropias";
 import { hilosDeFilas } from "@/lib/rendicionHilo";
 import { urlPlataforma, PLAT } from "@/lib/plataformas";
@@ -243,10 +244,11 @@ export default async function ObligacionesPage({ searchParams }: {
      invisibles no se puede cuadrar mirando la tabla. */
   const oblPorId = new Map<string, any>(obligaciones.map((o: any) => [o.id, o]));
   const deEmpresa = new Set<string>(idsEmp);
-  /* El nombre de quien apuntó sale de los perfiles ya traídos; no vale una
-     consulta más para poner un nombre al lado de una fecha. */
-  const nombreDe = new Map<string, string>(
-    perfilesCortos.map((x: any) => [x.id, x.corto || x.nombre]));
+  /* Quién apuntó, con su cara. Sale de los perfiles ya traídos —que vienen con
+     `avatar_url` y `color` desde que la lista los usa— así que poner la foto no
+     cuesta ninguna consulta más. */
+  const quienDe = new Map<string, Quien>(perfilesCortos.map((x: any) =>
+    [x.id, { nombre: x.corto || x.nombre, foto: x.avatar_url, color: x.color }]));
 
   const resumen = new Map<string, FilaObl>();
   const res = { declarados: 0, vencidos: 0, porVencer: 0, sinFecha: 0, total: 0, inactivos: 0 };
@@ -275,7 +277,7 @@ export default async function ObligacionesPage({ searchParams }: {
        a la empresa que nadie mira. */
     if (p.registrado_en && String(p.registrado_en) > String(a.ultima || "")) {
       a.ultima = p.registrado_en;
-      a.ultimaPor = nombreDe.get(p.declarado_por) || null;
+      a.ultimaPor = quienDe.get(p.declarado_por) || null;
     }
     resumen.set(eid, a);
   });

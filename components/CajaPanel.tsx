@@ -9,7 +9,7 @@ import {
 } from "@/app/actions";
 import { useConfirmar, useAviso } from "@/components/useConfirmar";
 import { money, ICO_CAJA, type CajaMin, type CuentaMin } from "@/lib/caja";
-import { hoyLima } from "@/lib/fechas";
+import { hoyLima, diaLima } from "@/lib/fechas";
 import CampoAdjunto from "@/components/CampoAdjunto";
 import VerAdjunto from "@/components/VerAdjunto";
 import VistaMovCaja from "@/components/VistaMovCaja";
@@ -42,17 +42,6 @@ type Mov = {
 
 const dmy = (f: string) =>
   new Date(f + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short" });
-
-/* ── EL DÍA EN QUE SE APUNTÓ, EN LIMA ──
- * `creado_en` es un instante en UTC. Cortarle los diez primeros caracteres da
- * el día UTC, y a partir de las 7 de la tarde en Perú eso YA ES EL DÍA
- * SIGUIENTE: todo lo apuntado por la noche se habría marcado en ámbar como
- * «otro día» sin serlo. Se corrige la hora antes de quedarse con la fecha. */
-const diaLima = (iso: string) => {
-  const t = Date.parse(iso);
-  return Number.isFinite(t)
-    ? new Date(t - 5 * 3600 * 1000).toISOString().slice(0, 10) : "";
-};
 
 export default function CajaPanel({
   cajas, cuentas, movs, proyectos, saldos, esAdmin, userId, alias,

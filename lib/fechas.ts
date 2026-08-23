@@ -60,6 +60,50 @@ export const fechaDia = (f: string | Date) =>
 export const fechaConDia = (f: string | Date) =>
   aFecha(f).toLocaleDateString("es-PE", { weekday: "long", day: "numeric", month: "long" });
 
+/* ── EL DÍA DE UN INSTANTE, EN LIMA ──
+ * `creado_en` es un instante en UTC. Cortarle los diez primeros caracteres da
+ * el día UTC, y a partir de las 7 de la tarde en Perú eso YA ES EL DÍA
+ * SIGUIENTE. Esto estaba escrito a mano en /caja, con la resta de cinco horas
+ * puesta a pelo, que es la bomba de relojería que `hoyLima` avisa de no poner. */
+export const diaLima = (f: string | Date) => {
+  const d = aFecha(f);
+  // Una fecha ilegible devuelve "" y no la cadena «Invalid Date»: quien compara
+  // dos días no debería tener que saber que una de las dos puede ser un texto.
+  return Number.isFinite(d.getTime())
+    ? d.toLocaleDateString("en-CA", { timeZone: ZONA }) : "";
+};
+
+/* ── CUÁNTO HACE, CONTANDO DÍAS Y NO HORAS ──
+ *
+ * «hoy», «ayer», «hace 3 días». Parece lo mismo que `haceOEn` y no lo es:
+ * aquél cuenta tramos de 24 horas, que es lo correcto para un PLAZO —«vence
+ * en 3 días»—, pero no para un APUNTE.
+ *
+ * Un apunte de ayer a las nueve de la noche llevaba doce horas hechas, así
+ * que la resta daba cero y la lista decía «hoy» — y lo seguía diciendo hasta
+ * las nueve de HOY. Quien mira una lista de apuntes no cuenta horas: si fue
+ * ayer, quiere leer ayer. Y era peor de lo que parece, porque el error se ve
+ * justo al revés de como se produce: la fecha se lee bien por la mañana y se
+ * estropea por la noche, que es cuando se trabaja.
+ *
+ * Se comparan DÍAS DE CALENDARIO EN LIMA, los dos al mediodía UTC para que el
+ * cambio de día no dependa de la hora del servidor.
+ *
+ * Estaba copiado en /comprobantes y en /obligaciones, con la misma resta y el
+ * mismo fallo. Ahora está aquí. */
+export function haceDias(f?: string | Date | null): string {
+  if (!f) return "";
+  const dia = diaLima(f);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) return "";
+  const d = Math.round(
+    (Date.parse(hoyLima() + "T12:00:00Z") - Date.parse(dia + "T12:00:00Z")) / 86400000);
+  if (d <= 0) return "hoy";
+  if (d === 1) return "ayer";
+  if (d < 30) return `hace ${d} días`;
+  const m = Math.round(d / 30);
+  return m < 12 ? `hace ${m} mes${m > 1 ? "es" : ""}` : `hace ${Math.round(d / 365)} año(s)`;
+}
+
 /* Cuánto falta o cuánto pasó, dicho como se dice: "en 3 días", "hace 2 meses" */
 export function haceOEn(f: string | Date): string {
   const d = Math.round((aFecha(f).getTime() - Date.now()) / 86400000);
