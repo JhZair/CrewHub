@@ -4,9 +4,9 @@ import Avatar from "@/components/Avatar";
 import MiniSelect from "@/components/MiniSelect";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { FRACCIONES } from "@/lib/jornadas";
+import { FRACCIONES, TIPOS_JORNADA } from "@/lib/jornadas";
 
-const TIPOS: [string, string][] = [["rodaje", "🎬 Rodaje"], ["oficina", "🏢 Oficina"], ["scouting", "🚙 Scouting"]];
+const TIPOS: [string, string][] = TIPOS_JORNADA.map(t => [t.v, `${t.ico} ${t.txt}`]);
 
 
 /* Registro PERSONAL: el usuario logueado registra su propia jornada. */

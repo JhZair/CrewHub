@@ -5132,3 +5132,15 @@ mark.bq-marca{
    de casos, que ya es en el sistema «esto es donde se escribe». */
 .card-foco{border-color:rgba(124,92,255,.42);
   background:linear-gradient(180deg,rgba(124,92,255,.06),transparent 140px),var(--card)}
+/* ── EL TIPO DE JORNADA, COMO CHIP ──
+   Neutro y con borde tenue: la etiqueta de la duración, dos columnas más
+   allá, ya lleva color, y dos chips de color en la misma fila compiten en vez
+   de informar. Ancho fijo para los tres —el más largo es «Scouting»— porque
+   si cada uno mide lo suyo, todo lo que va detrás baila de fila en fila y la
+   columna deja de poder recorrerse con la vista. */
+.jr-tipo{flex:none;display:inline-flex;align-items:center;gap:4px;
+  min-width:92px;
+  font-size:11px;color:var(--muted);
+  border:1px solid var(--border);border-radius:7px;padding:1px 7px;
+  white-space:nowrap}
+.jr-dia-vacio .jr-tipo{opacity:.35}

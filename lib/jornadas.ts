@@ -88,4 +88,26 @@ export const esFinde = (f?: string | null) => {
   return n === 0 || n === 6;
 };
 
-export const ICO_TIPO: Record<string, string> = { rodaje: "🎬", oficina: "🏢", scouting: "🚙" };
+/* ── LOS TRES TIPOS DE JORNADA, EN UN SOLO SITIO ──
+ *
+ * Estaban escritos CUATRO veces: aquí solo los emojis, y una lista propia en
+ * la bitácora (solo íconos), otra en el formulario (ícono + palabra) y otra en
+ * /jornadas para el gráfico. Cuatro copias de tres cosas — y ya divergían: en
+ * unas salía «🎬» a secas y en otras «🎬 Rodaje».
+ *
+ * Uno solo, con el ícono y la palabra separados: cada pantalla decide si le
+ * caben las dos, pero ninguna se inventa un cuarto nombre. */
+export const TIPOS_JORNADA: { v: string; ico: string; txt: string }[] = [
+  { v: "rodaje",   ico: "🎬", txt: "Rodaje" },
+  { v: "oficina",  ico: "🏢", txt: "Oficina" },
+  { v: "scouting", ico: "🚙", txt: "Scouting" },
+];
+
+/* Un tipo desconocido no se disfraza de los tres válidos: se pinta con un
+   punto y con su propio texto, para que se vea que hay algo que nadie eligió. */
+export const metaTipo = (t?: string | null) =>
+  TIPOS_JORNADA.find(x => x.v === t) || { v: String(t || ""), ico: "•", txt: String(t || "—") };
+
+/** Solo el ícono, para donde no cabe la palabra. */
+export const ICO_TIPO: Record<string, string> =
+  Object.fromEntries(TIPOS_JORNADA.map(t => [t.v, t.ico]));

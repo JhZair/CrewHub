@@ -4,9 +4,11 @@ import DiaContexto from "@/components/DiaContexto";
 import MiniSelect from "@/components/MiniSelect";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { FRACCIONES, metaFraccion, fechaHum, esFinde, ICO_TIPO } from "@/lib/jornadas";
+import { FRACCIONES, metaFraccion, fechaHum, esFinde, TIPOS_JORNADA, metaTipo } from "@/lib/jornadas";
 
-const TIPOS: [string, string][] = [["rodaje", "🎬"], ["oficina", "🏢"], ["scouting", "🚙"]];
+/* En el modo edición cabe solo el ícono: son tres botones dentro de una fila
+   que ya lleva fecha, proyecto, duración, nota y dos botones más. */
+const TIPOS: [string, string][] = TIPOS_JORNADA.map(t => [t.v, t.ico]);
 
 const money = (n: number | null) => n != null ? `S/ ${Math.round(n).toLocaleString("es-PE")}` : "—";
 
@@ -103,7 +105,19 @@ function FilaJornada({ j, esAdmin, puedeEditar, proyectos, onChange }: {
       <span className={`jr-fecha${esFinde(j.fecha) ? " finde" : ""}`} title={j.fecha}>
         {fechaHum(j.fecha)}
       </span>
-      <span className="jr-quien">{ICO_TIPO[j.tipo] || ""} {j.persona}</span>
+      {/* ── EL TIPO, COMO CHIP Y CON SU PALABRA ──
+          Era un emoji suelto pegado al nombre de la persona: «🎬 JohnO». Dos
+          problemas. Uno, el tipo no es una propiedad de la persona y leerlos
+          juntos los mezcla. Dos, un dibujo de doce píxeles hay que
+          descifrarlo — y 🎬 y 🚙 a ese tamaño son dos manchas.
+          Con la palabra al lado no hay nada que descifrar, y el chip lo separa
+          del nombre. Neutro y sin color: la etiqueta de la duración, dos
+          columnas más allá, ya lleva el suyo, y dos chips de color en la misma
+          fila compiten en vez de informar. */}
+      <span className="jr-tipo" title={`Jornada de ${metaTipo(j.tipo).txt.toLowerCase()}`}>
+        {metaTipo(j.tipo).ico} {metaTipo(j.tipo).txt}
+      </span>
+      <span className="jr-quien">{j.persona}</span>
       <span className="jr-proy" title={j.proyecto || "sin proyecto"}>{j.proyecto || "sin proyecto"}</span>
       {/* CUÁNTO Y DE QUÉ CLASE. «1j» y «1.5j» en el mismo gris obligan a leer
           el número para ver que una fila no es como la de arriba; en treinta
@@ -345,6 +359,12 @@ export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId =
                           return (
                             <div key={d} className="info-row jr-fila jr-dia-vacio">
                               <span className={`jr-fecha${esFinde(d) ? " finde" : ""}`}>{fechaHum(d)}</span>
+                              {/* El hueco del tipo, vacío pero presente: sin él
+                                  la fecha del día en blanco quedaría a otra
+                                  altura que las de arriba, y una columna que
+                                  se descoloca cada pocas filas no se recorre
+                                  con la vista. */}
+                              <span className="jr-tipo" aria-hidden>—</span>
                               <span className="jr-proy">—</span>
                               <span style={{ fontWeight: 700, whiteSpace: "nowrap" }}>0j</span>
                               {/* AQUÍ es donde esto de verdad sirve: un día en

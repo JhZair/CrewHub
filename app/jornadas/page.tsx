@@ -8,6 +8,7 @@ import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { rotuloMonton } from "@/lib/tipos";
 import Avatar from "@/components/Avatar";
+import { TIPOS_JORNADA } from "@/lib/jornadas";
 
 export const metadata: Metadata = { title: "⏱ Jornadas" };
 
@@ -17,7 +18,7 @@ export const metadata: Metadata = { title: "⏱ Jornadas" };
 
 const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio",
   "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
-const TIPO_LBL: [string, string][] = [["rodaje", "🎬 Rodaje"], ["oficina", "🏢 Oficina"], ["scouting", "🚙 Scouting"]];
+const TIPO_LBL: [string, string][] = TIPOS_JORNADA.map(t => [t.v, `${t.ico} ${t.txt}`]);
 /* (Los rótulos de la gráfica salieron a lib/tipos: `rotuloMonton`. Esta era
    la copia ONCE del mapa de tipos, y /pulso tiene la MISMA gráfica con el
    mismo mapa. `TIPO_LBL` de arriba se queda: son los tipos de JORNADA
