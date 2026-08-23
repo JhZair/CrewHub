@@ -5082,6 +5082,54 @@ export async function agregarEquipoProyecto(proyectoId: string, personaId: strin
   return {};
 }
 
+/* ── CORREGIR A QUIÉN SE PUSO, SIN BORRAR LA FILA ──
+ *
+ * El cargo ya se podía cambiar; la persona no. Para arreglar un «lo puse en el
+ * de al lado» había que quitar la fila y volver a crearla — y eso no es
+ * equivalente: se pierde el `desde` (cuándo se sumó al proyecto) y la bitácora
+ * queda contando una baja y un alta que nunca pasaron. Un error de dedo no
+ * debería producir historia falsa.
+ */
+export async function cambiarPersonaProyecto(id: string, proyectoId: string, personaId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!personaId) return { error: "Elige a quién va la fila." };
+
+  /* Quién estaba y quién entra, en una sola tanda: la bitácora necesita los dos
+     nombres y ninguno depende del otro. */
+  const [{ data: prev }, { data: nueva }] = await Promise.all([
+    supabase.from("proyecto_equipo")
+      .select("cargo,persona_id,per:personas(nombre,alias)").eq("id", id).maybeSingle(),
+    supabase.from("personas").select("nombre,alias").eq("id", personaId).maybeSingle(),
+  ]);
+  if (!prev) return { error: "Esa fila ya no está." };
+  if ((prev as any).persona_id === personaId) return {};   // nada que cambiar
+
+  const { data: post, error } = await supabase.from("proyecto_equipo")
+    .update({ persona_id: personaId }).eq("id", id).select("id");
+  if (error) {
+    /* El duplicado aquí tiene un significado concreto y el mensaje de Postgres
+       no lo dice: esa persona ya figura con ese mismo cargo. */
+    return { error: /duplicate key/i.test(error.message)
+      ? "Esa persona ya está en el equipo con ese mismo cargo."
+      : error.message };
+  }
+  if (!post?.length) return { error: "No se guardó: no tienes permiso." };
+
+  const antes = (prev.per as any)?.alias || (prev.per as any)?.nombre || "alguien";
+  const ahora = (nueva as any)?.alias || (nueva as any)?.nombre || "otra persona";
+  await supabase.from("actividad").insert({
+    entidad_tipo: "proyecto", entidad_id: proyectoId, actor_id: user.id, tipo: "miembro",
+    detalle: {
+      mensaje: `cambió ${prev.cargo || "un cargo"}: de ${antes} a ${ahora}`,
+      cambios: [{ campo: prev.cargo || "cargo", de: antes, a: ahora }],
+    },
+  });
+  revalidatePath(`/entidad/proyecto/${proyectoId}`);
+  return {};
+}
+
 export async function editarCargoProyecto(id: string, proyectoId: string, cargo: string) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
