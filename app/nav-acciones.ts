@@ -62,11 +62,16 @@ export async function estadoNav(): Promise<EstadoNav> {
     /* Los tres `count` van sin filas (`head: true`): solo viaja el número.
        Y aquí sí es paralelo de verdad — son consultas a la base desde el
        servidor, no acciones que Next tenga que encolar. */
+    /* Las mismas dos condiciones que /obligaciones, y por la misma razón: una
+       obligación APAGADA no se vigila, y una que no cuelga de una empresa no
+       tiene pantalla donde mirarla. Si la burbuja cuenta algo que la lista no
+       pinta, el número no se puede cuadrar y deja de creerse. */
     const periodos = () => supabase.from("obligacion_periodo")
-      .select("id,obligacion!inner(activa)", { count: "exact", head: true })
+      .select("id,obligacion!inner(activa,entidad_tipo)", { count: "exact", head: true })
       .is("declarado_en", null)
       .not("vence", "is", null)
-      .eq("obligacion.activa", true);
+      .eq("obligacion.activa", true)
+      .eq("obligacion.entidad_tipo", "empresa");
 
     const [perfil, sinLeer, venc, porV] = await Promise.all([
       supabase.from("perfiles").select("es_admin,es_finanzas")

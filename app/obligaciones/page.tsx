@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import Obligaciones from "@/components/Obligaciones";
-import { resumenPeriodos, DIAS_AVISO, situacionPeriodo } from "@/lib/obligaciones";
+import { situacionPeriodo } from "@/lib/obligaciones";
 import ResumenObligaciones, { type FilaObl } from "@/components/ResumenObligaciones";
 import { conRuc } from "@/lib/empresasPropias";
 import { hilosDeFilas } from "@/lib/rendicionHilo";
@@ -225,48 +225,61 @@ export default async function ObligacionesPage({ searchParams }: {
     caso: hilos.casos.get(p.id) || null,
   }));
 
-  /* El titular. Se calcula aquí y no en el cliente porque es lo primero que se
-     lee y no debe depender de desplegar nada. */
-  const diasPorObl = new Map(obligaciones.map((o: any) => [o.id, o.dias_aviso ?? DIAS_AVISO]));
-  const res = resumenPeriodos(
-    periodosCrudos.map((p: any) => ({ ...p, _d: diasPorObl.get(p.obligacion_id) })));
-  const vencidos = periodosCrudos.filter((p: any) =>
-    !p.declarado_en && p.vence && String(p.vence).slice(0, 10) <
-      new Date().toLocaleDateString("en-CA", { timeZone: "America/Lima" })).length;
+  /* ── UN SOLO RECORRIDO, UNA SOLA REGLA ──
+     El titular de arriba y la columna de rojos del resumen se contaban por
+     separado, y con criterios distintos: el titular con un `filter` escrito a
+     mano que solo miraba `declarado_en` y `vence`, la columna con
+     `situacionPeriodo`. Dos formas de decir «vencido» dan dos números para el
+     mismo mes, y entonces no se cree ninguno — que es justo lo que pasó.
 
-  /* ── EL RESUMEN DE TODAS, CUANDO NO HAY NINGUNA ELEGIDA ──
-     Se cuenta con las MISMAS reglas que la pantalla de una empresa —
-     `situacionPeriodo` y los días de aviso de cada obligación—, no con un
-     criterio propio: dos formas de decir «vencido» acaban dando dos números
-     para el mismo mes, y entonces no se cree ninguno. */
+     Ahora los dos salen de la misma pasada, y a `situacionPeriodo` se le pasa
+     la obligación ENTERA. Eso arregla la mentira: una obligación apagada no se
+     vigila, así que sus meses sin declarar dejan de contarse como deuda. Antes
+     PachaApus+ decía «2 vencidos» de un bloque que alguien había apagado, y
+     ese era el desfase con la burbuja del menú, que sí filtraba por `activa`.
+
+     Y se cuenta solo lo de las empresas que esta pantalla PINTA —las propias
+     con RUC—, no todas las obligaciones que existan. Un titular que suma filas
+     invisibles no se puede cuadrar mirando la tabla. */
+  const oblPorId = new Map<string, any>(obligaciones.map((o: any) => [o.id, o]));
+  const deEmpresa = new Set<string>(idsEmp);
+  /* El nombre de quien apuntó sale de los perfiles ya traídos; no vale una
+     consulta más para poner un nombre al lado de una fecha. */
+  const nombreDe = new Map<string, string>(
+    perfilesCortos.map((x: any) => [x.id, x.corto || x.nombre]));
+
   const resumen = new Map<string, FilaObl>();
-  if (!pedido) {
-    /* El nombre de quien apuntó sale de los perfiles ya traídos; no vale una
-       consulta más para poner un nombre al lado de una fecha. */
-    const nombreDe = new Map<string, string>(
-      perfilesCortos.map((x: any) => [x.id, x.corto || x.nombre]));
-    const oblDeEmp = new Map<string, string>(
-      obligaciones.map((o: any) => [o.id, o.entidad_id]));
-    periodosCrudos.forEach((p: any) => {
-      const eid = oblDeEmp.get(p.obligacion_id);
-      if (!eid) return;
-      const a = resumen.get(eid)
-        || { empresaId: eid, vencidos: 0, porVencer: 0, declarados: 0, total: 0, ultima: null, ultimaPor: null };
-      a.total++;
-      const sit = situacionPeriodo(p, diasPorObl.get(p.obligacion_id) ?? DIAS_AVISO);
-      if (sit === "declarado") a.declarados++;
-      else if (sit === "vencido") a.vencidos++;
-      else if (sit === "por_vencer") a.porVencer++;
-      /* El último apunte es de CrewHub (`registrado_en`), no la fecha de
-         SUNAT: dice cuándo se tocó esto por última vez, que es lo que delata
-         a la empresa que nadie mira. */
-      if (p.registrado_en && String(p.registrado_en) > String(a.ultima || "")) {
-        a.ultima = p.registrado_en;
-        a.ultimaPor = nombreDe.get(p.declarado_por) || null;
-      }
-      resumen.set(eid, a);
-    });
-  }
+  const res = { declarados: 0, vencidos: 0, porVencer: 0, sinFecha: 0, total: 0, inactivos: 0 };
+  periodosCrudos.forEach((p: any) => {
+    const o = oblPorId.get(p.obligacion_id);
+    const eid = o?.entidad_id;
+    if (!o || !eid || o.entidad_tipo !== "empresa" || !deEmpresa.has(eid)) return;
+
+    const sit = situacionPeriodo(p, o);
+    if (sit === "inactiva") res.inactivos++; else res.total++;
+    if (sit === "declarado") res.declarados++;
+    else if (sit === "vencido") res.vencidos++;
+    else if (sit === "por_vencer") res.porVencer++;
+    else if (sit === "sin_fecha") res.sinFecha++;
+
+    /* La fila por empresa solo hace falta cuando se pintan todas. */
+    if (pedido) return;
+    const a = resumen.get(eid)
+      || { empresaId: eid, vencidos: 0, porVencer: 0, declarados: 0, total: 0, inactivos: 0, ultima: null, ultimaPor: null };
+    if (sit === "inactiva") a.inactivos = (a.inactivos || 0) + 1; else a.total++;
+    if (sit === "declarado") a.declarados++;
+    else if (sit === "vencido") a.vencidos++;
+    else if (sit === "por_vencer") a.porVencer++;
+    /* El último apunte es de CrewHub (`registrado_en`), no la fecha de
+       SUNAT: dice cuándo se tocó esto por última vez, que es lo que delata
+       a la empresa que nadie mira. */
+    if (p.registrado_en && String(p.registrado_en) > String(a.ultima || "")) {
+      a.ultima = p.registrado_en;
+      a.ultimaPor = nombreDe.get(p.declarado_por) || null;
+    }
+    resumen.set(eid, a);
+  });
+  const vencidos = res.vencidos;
 
   return (
     /* La cabecera, el rótulo y la barra viven en el `layout`: no dependen de

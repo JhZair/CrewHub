@@ -187,7 +187,7 @@ export default function Obligaciones({ empresas, logos, repLegal, obligaciones, 
 
   /* ── UNA FILA DE PERIODO ── */
   const filaPeriodo = (o: Obl, p: Per, empId: string) => {
-    const sit = situacionPeriodo(p, o.dias_aviso);
+    const sit = situacionPeriodo(p, o);
     const m = META_SIT[sit];
     const tarde = declaradoTarde(p);
     const edit = editando === p.id;
@@ -544,7 +544,7 @@ export default function Obligaciones({ empresas, logos, repLegal, obligaciones, 
   /* Una obligación con su semáforo y, desplegada, sus periodos. */
   const bloqueObligacion = (e: Emp, o: Obl) => {
       const ps = perPorObl.get(o.id) || [];
-      const res = resumenPeriodos(ps, o.dias_aviso);
+      const res = resumenPeriodos(ps, o);
       const ab = !!abierta[o.id];
       return (
         <div key={o.id} className={`obl-caja${o.activa ? "" : " fila-tenue"}`}>
@@ -579,6 +579,14 @@ export default function Obligaciones({ empresas, logos, repLegal, obligaciones, 
                 </span>
               )}
               <span style={{ color: "var(--dim)" }}>de {res.total}</span>
+              {/* Los meses de un bloque apagado no suman al «de N», pero se
+                  dicen: apagar no es esconder, y un mes que desaparece de la
+                  cuenta sin dejar rastro es un mes que nadie va a revisar. */}
+              {res.inactivos > 0 && (
+                <span style={{ color: "var(--dim)" }} title={META_SIT.inactiva.ayuda}>
+                  · ⏸ {res.inactivos} sin vigilar
+                </span>
+              )}
             </span>
           </button>
 

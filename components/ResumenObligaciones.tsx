@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Avatar from "@/components/Avatar";
-import { motivoNoDeclara } from "@/lib/obligaciones";
+import { motivoNoDeclara, META_SIT } from "@/lib/obligaciones";
 import type { EmpresaPropia } from "@/lib/empresasPropias";
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -29,7 +29,11 @@ export type FilaObl = {
   vencidos: number;
   porVencer: number;
   declarados: number;
+  /** De cuántos hay que responder. NO es cuántas filas hay: los meses de una
+   *  obligación apagada no entran, porque no había que declararlos. */
   total: number;
+  /** Meses de un bloque apagado. Fuera de la cuenta, pero dichos. */
+  inactivos?: number;
   /** Cuándo se apuntó el último periodo en CrewHub, y quién. */
   ultima?: string | null;
   ultimaPor?: string | null;
@@ -52,7 +56,7 @@ export default function ResumenObligaciones({ empresas, logos, filas, href }: {
   filas: Map<string, FilaObl>;
   href: (empresaId: string) => string;
 }) {
-  const vacio: FilaObl = { empresaId: "", vencidos: 0, porVencer: 0, declarados: 0, total: 0 };
+  const vacio: FilaObl = { empresaId: "", vencidos: 0, porVencer: 0, declarados: 0, total: 0, inactivos: 0 };
 
   const total = empresas.reduce((s, e) => {
     const f = filas.get(e.id) || vacio;
@@ -108,6 +112,14 @@ export default function ResumenObligaciones({ empresas, logos, filas, href }: {
                   por qué esa fila está en cero, no un dato que se compare
                   con el de al lado. */}
               {m && <span className="res-obl-motivo" title={m.ayuda}>{m.txt}</span>}
+              {/* Lo apagado no suma al semáforo, pero se ve: si aquí dice «⏸ 2»
+                  y alguien esperaba dos declaraciones, el bloque está apagado
+                  por error y esta es la única pista que lo delata. */}
+              {!!f.inactivos && (
+                <span className="res-obl-motivo" title={META_SIT.inactiva.ayuda}>
+                  ⏸ {f.inactivos} sin vigilar
+                </span>
+              )}
             </span>
             <span style={{ textAlign: "right", color: f.vencidos ? "var(--red)" : "var(--dim)", fontWeight: f.vencidos ? 700 : 400 }}>
               {f.vencidos || "—"}

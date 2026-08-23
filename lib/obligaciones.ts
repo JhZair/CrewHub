@@ -115,7 +115,7 @@ export const clavePeriodo = (anio: number, mes: number) =>
  *   · `vencido` es deuda de verdad: pasó la fecha y no hay constancia.
  */
 export type SituacionPeriodo =
-  | "declarado" | "vencido" | "por_vencer" | "pendiente" | "sin_fecha";
+  | "declarado" | "vencido" | "por_vencer" | "pendiente" | "sin_fecha" | "inactiva";
 
 export type PeriodoMin = {
   anio: number; mes: number;
@@ -146,6 +146,10 @@ export const META_SIT: Record<SituacionPeriodo, {
     ico: "⚠", txt: "Sin fecha", col: "var(--violet)",
     ayuda: "El periodo existe pero el cronograma de SUNAT de ese año no está cargado, así que no sabemos cuándo vence. No es que no venza: es que falta el dato. Se carga en vencimiento_oficial.",
   },
+  inactiva: {
+    ico: "⏸", txt: "No se vigila", col: "var(--dim)",
+    ayuda: "La obligación está apagada, así que este mes no se cuenta como deuda. El periodo sigue a la vista —apagar no es esconder—, pero no suma al semáforo ni abre casos. Si sí hay que declararlo, vuelve a encender la obligación.",
+  },
 };
 
 /** Hoy en Lima, como 'YYYY-MM-DD'. La comparación de vencimientos se hace en
@@ -153,15 +157,32 @@ export const META_SIT: Record<SituacionPeriodo, {
  *  antes de tiempo. */
 const hoy = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Lima" });
 
-export function situacionPeriodo(p: PeriodoMin, diasAviso = 7): SituacionPeriodo {
+/* ── LO QUE LA OBLIGACIÓN APORTA A LA SITUACIÓN DE SUS MESES ──
+ *
+ * Se pasa la obligación entera y no sus días de aviso sueltos, y eso es el
+ * arreglo: la situación depende de DOS cosas suyas —cuántos días avisa y si
+ * está encendida—, y pasar solo una fue exactamente la forma de olvidar la
+ * otra. Durante un tiempo los meses sin declarar de un bloque APAGADO se
+ * contaron como vencidos en la pantalla, mientras la burbuja del menú —que sí
+ * miraba `activa`— daba otro número. Dos cuentas para la misma deuda, y
+ * entonces no se cree ninguna.
+ *
+ * Con la obligación por delante no se puede llamar a esto sin saber si está
+ * encendida. */
+export type OblMin = { dias_aviso?: number | null; activa?: boolean | null };
+
+export function situacionPeriodo(p: PeriodoMin, o: OblMin): SituacionPeriodo {
+  /* Declarado primero, y a propósito: apagar la obligación después no
+     desdeclara marzo. Manda el hecho, no la bandera. */
   if (p.declarado_en) return "declarado";
+  if (o.activa === false) return "inactiva";
   if (!p.vence) return "sin_fecha";
   const h = hoy();
   const v = String(p.vence).slice(0, 10);
   if (v < h) return "vencido";
   const dias = Math.round(
     (new Date(v + "T12:00:00").getTime() - new Date(h + "T12:00:00").getTime()) / 86400000);
-  return dias <= diasAviso ? "por_vencer" : "pendiente";
+  return dias <= (o.dias_aviso ?? DIAS_AVISO) ? "por_vencer" : "pendiente";
 }
 
 /** ¿Se declaró después de la fecha? Se sabe porque `declarado_en` es una fecha
@@ -186,18 +207,25 @@ export const esFechaOficial = (fuente?: string | null) =>
  * Lo que se mira antes de leer fila por fila. `sinFecha` va aparte de
  * `pendientes` a propósito: mezclarlos daría un número tranquilizador sobre
  * meses de los que no sabemos nada. */
-export function resumenPeriodos(ps: (PeriodoMin & { clase?: string })[], diasAviso = 7) {
-  let declarados = 0, vencidos = 0, porVencer = 0, pendientes = 0, sinFecha = 0, tarde = 0;
+export function resumenPeriodos(ps: (PeriodoMin & { clase?: string })[], o: OblMin) {
+  let declarados = 0, vencidos = 0, porVencer = 0, pendientes = 0, sinFecha = 0,
+    tarde = 0, inactivos = 0;
   for (const p of ps) {
-    switch (situacionPeriodo(p, diasAviso)) {
+    switch (situacionPeriodo(p, o)) {
       case "declarado": declarados++; if (declaradoTarde(p)) tarde++; break;
       case "vencido": vencidos++; break;
       case "por_vencer": porVencer++; break;
       case "sin_fecha": sinFecha++; break;
+      case "inactiva": inactivos++; break;
       default: pendientes++;
     }
   }
-  return { total: ps.length, declarados, vencidos, porVencer, pendientes, sinFecha, tarde };
+  /* `total` es de cuántos hay que responder, no cuántas filas hay. Los meses
+     de una obligación apagada existen y se ven, pero decir «29 declarados de
+     31» cuando dos no había que declararlos es inventar dos deudas. Quien
+     quiera la cuenta cruda tiene `inactivos` al lado. */
+  return { total: ps.length - inactivos, declarados, vencidos, porVencer,
+    pendientes, sinFecha, tarde, inactivos };
 }
 
 /* ── EL RESULTADO DEL MES SE CALCULA, NO SE TECLEA ──
