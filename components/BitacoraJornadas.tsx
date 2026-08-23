@@ -24,6 +24,9 @@ function FilaJornada({ j, esAdmin, puedeEditar, proyectos, onChange }: {
   const [fraccion, setFraccion] = useState<number>(Number(j.fraccion));
   const [noche, setNoche] = useState(!!j.noche);
   const [notas, setNotas] = useState<string>(j.notas || "");
+  /* Si se entró a editar pulsando «＋ nota», el cursor va ahí. Quien pulsa eso
+     viene a escribir una frase, no a repasar la fecha y el proyecto. */
+  const [aNota, setANota] = useState(false);
 
   const aprobar = async (v: boolean) => {
     setOcupado(true); const r: any = await aprobarJornada(j.id, v); setOcupado(false);
@@ -35,7 +38,7 @@ function FilaJornada({ j, esAdmin, puedeEditar, proyectos, onChange }: {
       tipo === "oficina" ? fraccion : 1, tipo !== "oficina" && noche, notas);
     setOcupado(false);
     if (r?.error) { alert(r.error); return; }
-    setEdit(false); onChange();
+    setEdit(false); setANota(false); onChange();
   };
   const borrar = async () => {
     const r: any = await borrarJornada(j.id); setBorrando(false);
@@ -70,10 +73,16 @@ function FilaJornada({ j, esAdmin, puedeEditar, proyectos, onChange }: {
             Vaciarla es válido: borrar una nota equivocada es tan necesario como
             escribirla. */}
         <input value={notas} onChange={e => setNotas(e.target.value)}
-          placeholder="nota del día (opcional)" maxLength={300}
+          placeholder="nota del día (opcional)" maxLength={300} autoFocus={aNota}
+          onKeyDown={e => { if (e.key === "Enter") guardar(); }}
           style={{ ...inp, flex: "1 1 180px", minWidth: 120 }} />
         <button className="btn" style={{ padding: "5px 11px", fontSize: 11.5 }} disabled={ocupado} onClick={guardar}>{ocupado ? "…" : "Guardar"}</button>
-        <button className="btn btn-ghost" style={{ padding: "5px 9px", fontSize: 11.5 }} onClick={() => setEdit(false)}>Cancelar</button>
+        <button className="btn btn-ghost" style={{ padding: "5px 9px", fontSize: 11.5 }} onClick={() => {
+            /* Cancelar devuelve la nota a como estaba: si no, la fila seguiría
+               enseñando la vieja y el formulario recordaría la nueva, y al
+               volver a abrir aparecería un texto que nadie guardó. */
+            setNotas(j.notas || ""); setANota(false); setEdit(false);
+          }}>Cancelar</button>
       </div>
     );
   }
@@ -109,9 +118,18 @@ function FilaJornada({ j, esAdmin, puedeEditar, proyectos, onChange }: {
           Va DETRÁS del monto y en gris: no decide el pago, lo explica. Y de una
           sola línea, con el texto entero en el título — una fila que crece
           rompe el barrido vertical de las otras treinta. */}
-      {j.notas && (
-        <span className="jr-nota" title={j.notas}>{j.notas}</span>
-      )}
+      {/* ── Y SI NO HAY NOTA, LA PUERTA PARA ESCRIBIRLA ──
+          Se podía añadir desde el ✎, pero eso hay que descubrirlo: el lápiz
+          dice «editar la jornada», no «cuéntame el día». Y la mitad de estas
+          filas se registraron antes de que el campo existiera, así que la
+          única forma de completarlas era adivinar dónde estaba.
+          Un botón que hay que descubrir no existe. */}
+      {j.notas
+        ? <span className="jr-nota" title={j.notas}>{j.notas}</span>
+        : puedeEditar
+        ? <button className="jr-nota jr-nota-add" title="Escribir qué se hizo ese día"
+            onClick={() => { setANota(true); setEdit(true); }}>＋ nota</button>
+        : null}
       <span className="badge jr-est" style={{
         fontSize: 10.5,
         color: j.aprobada ? "var(--green)" : "var(--yellow)",
