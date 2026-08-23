@@ -1025,7 +1025,10 @@ export default async function Admin({ searchParams }: {
   const iSel = Math.max(0, PESTANAS.findIndex(([k]) => k === s));
 
   return (
-    <div className="shell">
+    /* El mismo ancho que /obligaciones, /comprobantes y /caja. Aquí hay tablas
+       de jornadas, de recibos y de cuentas: son pantallas de trabajar, y a 860
+       las columnas que hay que comparar se parten. */
+    <div className="shell shell-ancho">
       <div className="topbar">
         <Volver />
         <span className="spacer" />

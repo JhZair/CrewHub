@@ -165,7 +165,7 @@ export default async function CajaPage({ searchParams }: { searchParams: { m?: s
        un formulario de siete campos: con el ancho por defecto todo se apretaba
        más que en las pantallas hermanas, sin ninguna razón salvo que nadie lo
        había puesto. */
-    <div className="shell" style={{ maxWidth: "min(1180px, 96vw)" }}>
+    <div className="shell shell-ancho">
       <div className="topbar">
         <Volver />
         <span className="spacer" />

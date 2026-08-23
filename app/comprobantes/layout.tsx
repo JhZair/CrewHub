@@ -34,7 +34,7 @@ export default async function ComprobantesLayout({ children }: { children: React
   const sinRuc = empresas.length - conComprobantes.length;
 
   return (
-    <div className="shell" style={{ maxWidth: "min(1180px, 96vw)" }}>
+    <div className="shell shell-ancho">
       <div className="topbar">
         <Volver />
         <span className="spacer" />

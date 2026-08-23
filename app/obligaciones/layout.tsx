@@ -31,7 +31,7 @@ export default async function ObligacionesLayout({ children }: { children: React
        menú saltando de forma al cambiar de pantalla se lee como dos menús
        distintos. Si el ancho vuelve a separarse, es este comentario el que
        hay que leer antes de tocarlo. */
-    <div className="shell" style={{ maxWidth: "min(1180px, 96vw)" }}>
+    <div className="shell shell-ancho">
       <div className="topbar">
         <Volver />
         <span className="spacer" />

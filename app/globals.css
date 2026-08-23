@@ -1859,8 +1859,24 @@ button.obj-mini:hover,a.obj-mini:hover{border-color:var(--accent)}
 .cbx-crear{color:var(--yellow);font-weight:600}
 .cbx-vacio{color:var(--dim);font-size:11.5px;text-align:center;padding:12px 0}
 
+/* ── EL ANCHO DE UNA PANTALLA DE TRABAJO ──
+   `.shell` mide 860px: es el ancho de LEER —el feed, un caso, una ficha de
+   texto— y a esa medida se lee cómodo. Las pantallas de TRABAJAR son otra
+   cosa: una tabla de veintiocho periodos, una lista de comprobantes con su
+   IGV, la caja del mes. Ahí 860 obliga a partir columnas que se comparan.
+
+   Esa medida estaba escrita a mano en cada pantalla que la necesitaba —«min(
+   1180px, 96vw)» copiado en /caja, /comprobantes, /obligaciones,
+   /notificaciones— y encima había otra a 1150 con nombre propio para las
+   fichas. Cinco copias y dos números distintos para la misma decisión: por eso
+   /admin se veía más estrecho que /obligaciones sin que nadie lo hubiera
+   decidido.
+
+   Una clase, un número. El `min` con `96vw` es lo que impide que en una
+   pantalla de 1000px el contenido llegue pegado a los dos bordes. */
+.shell-ancho{max-width:min(1180px,96vw)}
+
 /* ===== Perfil de entidad en dos columnas ===== */
-.shell-ancho{max-width:1150px}
 .perfil-grid{display:grid;grid-template-columns:360px 1fr;gap:22px;align-items:start}
 /* LAS DOS COLUMNAS ARRANCAN A LA MISMA ALTURA.
    Lo que va primero en cada columna cambia según el tipo de ficha —el

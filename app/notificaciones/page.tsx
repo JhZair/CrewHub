@@ -21,7 +21,7 @@ export default async function Notificaciones({ searchParams }: { searchParams: {
     await notificacionesTodas(0, tabIni === "bot" ? "bot" : "personal") as any;
 
   return (
-    <div className="shell" style={{ maxWidth: "min(1180px, 97vw)" }}>
+    <div className="shell shell-ancho">
       <div className="topbar">
         <Volver />
         <span className="spacer" />
