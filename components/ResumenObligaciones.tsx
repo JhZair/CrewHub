@@ -133,7 +133,12 @@ export default function ResumenObligaciones({ empresas, logos, filas, href }: {
                   <span title={`Apuntado el ${fechaLarga(f.ultima)} a las ${fechaHoraLima(f.ultima).split(", ").pop()}`}>
                     {haceDias(f.ultima)}
                   </span>
-                  {f.ultimaPor && <> · <Firma quien={f.ultimaPor} /></>}
+                  {f.ultimaPor && (
+                    <>
+                      <span style={{ color: "var(--dim)" }}>·</span>
+                      <Firma quien={f.ultimaPor} />
+                    </>
+                  )}
                 </>
               ) : (
                 <i style={{ color: "var(--dim)" }}>nunca</i>

@@ -122,7 +122,12 @@ export default function ResumenEmpresas({ empresas, logos, filas, anio, href }: 
                   <span title={`Último comprobante cargado el ${dmy(String(f.ultimaCarga).slice(0, 10))}`}>
                     {haceDias(f.ultimaCarga)}
                   </span>
-                  {f.ultimaPor && <> · <Firma quien={f.ultimaPor} /></>}
+                  {f.ultimaPor && (
+                    <>
+                      <span style={{ color: "var(--dim)" }}>·</span>
+                      <Firma quien={f.ultimaPor} />
+                    </>
+                  )}
                 </>
               ) : (
                 <i style={{ color: "var(--dim)" }}>sin cargas en {anio}</i>
