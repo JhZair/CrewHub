@@ -5070,3 +5070,8 @@ mark.bq-marca{
 .cta-mas{background:none;border:none;color:var(--yellow);cursor:pointer;
   font-size:10.5px;padding:0 2px;white-space:nowrap}
 .cta-mas:hover{text-decoration:underline}
+/* La tercera línea de una cuenta: sus especialidades. Una sola línea y con
+   corte: la fila se recorre con la vista de arriba abajo, y una que crece a
+   tres renglones rompe ese barrido para todas las demás. */
+.cta-rol{font-size:10.5px;color:var(--muted);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;cursor:help}
