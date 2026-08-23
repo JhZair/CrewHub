@@ -256,6 +256,15 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
   /* Fuera del `if (q)`: ahí dentro se cargan los resultados, pero se pintan
      más abajo, ya fuera del bloque. */
   let urlSunat: string | undefined;
+  /* Qué se quedó fuera del pajar por el techo. NO es lo mismo que «hay más
+     resultados»: eso ya lo dice cada sección con su «ver todo». Esto es peor —
+     lo que ni siquiera llegó a compararse—, y hasta hoy no se decía en ningún
+     sitio: pasadas mil quinientas publicaciones, un caso de hace dos años
+     simplemente dejaba de encontrarse y la pantalla contestaba «nada, prueba
+     con menos palabras» con la misma cara de siempre.
+     Una búsqueda que no encuentra por un límite propio y no lo dice enseña a
+     no fiarse del buscador, que es lo único que un buscador tiene. */
+  let recortado: string[] = [];
   const palabras = q ? partir(q) : [];
 
   if (q) {
@@ -263,6 +272,18 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
     // por él: era el único que ignora tildes y sabe quechua, y sin embargo
     // había un ilike de Postgres decidiendo antes qué le llegaba.
     const coincide = buscadorDe(q);
+
+    /* Se pide UNO MÁS del techo. Si vuelve, se sabe que había más y se dice; y
+       ese sobrante se descarta para que el resto de la página siga contando
+       con el número de siempre. Es la forma más barata de saberlo: un `count`
+       exacto obliga a Postgres a recorrer la tabla entera en cada búsqueda,
+       justo lo que estamos tratando de dejar de hacer. */
+    const TOPE_TEXTO = 1500, TOPE_LISTA = 600;
+    const recortar = (r: any, tope: number, que: string) => {
+      const filas = (r?.data || []) as any[];
+      if (filas.length > tope) { recortado.push(que); r.data = filas.slice(0, tope); }
+      return r;
+    };
 
     /* ⚠ CASOS Y COMENTARIOS: se traen y se filtran en JS, como TODO lo demás
        de esta página. Antes eran los dos únicos con pre-filtro `.or(ilike)`
@@ -290,7 +311,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
         .select("id,titulo,cuerpo,tipo,estado,creado_en,padre_id,autor_id")
         // Las notas del muro solo viven en su proyecto: no salen en la búsqueda global.
         .neq("tipo", "bitacora")
-        .order("creado_en", { ascending: false }).limit(1500),
+        .order("creado_en", { ascending: false }).limit(1501),
       /* ── LAS ONCE PUERTAS DE UN COMENTARIO ──
          Esto pedía DOS —`publicacion_id` y `objeto_id`— y el arreglo de
          entonces («sin esto enlazaba a /caso/null, 404, firmado en «»») se
@@ -314,7 +335,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
            que una de cada cien aporte una palabra no vale ese precio. */
         const BASE = `id,cuerpo,creado_en,editado_en,autor:perfiles(nombre,avatar_url),pub:publicaciones(titulo),obj:objetos(titulo),${COLS_DUENO_COM}`;
         const pedir = (cols: string) => supabase.from("comentarios")
-          .select(cols).order("creado_en", { ascending: false }).limit(1500);
+          .select(cols).order("creado_en", { ascending: false }).limit(1501);
         const r = await pedir(BASE + COLS_DUENO_COM_EXTRA);
         return r.error ? await pedir(BASE) : r;
       })(),
@@ -328,7 +349,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
            por (entidad_tipo, entidad_id) y no tiene FK a personas, así que no
            se puede embeber. Se traen aparte, abajo. */
         .select("id,nombre,alias,rol,tipo,estado,ruc_dni,email,region,dni_url,firma_url,carpeta_drive_url,foto_url,usuario_id,proys:proyecto_equipo(cargo,proy:proyectos(id,nombre,nombre_corto))")
-        .limit(600),
+        .limit(601),
       // RENCA, presupuesto y Drive del proyecto: guardados desde siempre y
       // nunca seleccionados aquí
       supabase.from("proyectos")
@@ -339,17 +360,22 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
          cualquiera y le reclama la SUNAT a una empresa en cierre. */
       supabase.from("empresas")
         .select("id,nombre,razon_social,codigo,ruc,estado,estado_sunat,condicion_sunat,relacion,region,renca,renca_url,vigencia_poder_fecha,vigencia_poder_url,domicilio_fiscal,carpeta_drive_url"),
-      supabase.from("equipamiento").select("id,nombre,folio,categoria,subcategoria,estado,descripcion,compra_id").limit(600),
+      supabase.from("equipamiento").select("id,nombre,folio,categoria,subcategoria,estado,descripcion,compra_id").limit(601),
       supabase.from("lugares").select("id,nombre"),
       supabase.from("convocatorias").select("id,codigo,nombre,anio,estado"),
+      /* Las tres claves ajenas —proyecto, empresa, convocatoria— no se pintan:
+         están para el marcador 🏆 de más abajo. Esa cuenta se hacía con una
+         SEGUNDA lectura de esta misma tabla, entera, en la tanda siguiente.
+         Dos veces la misma tabla en la misma página. Tres columnas de más aquí
+         salen mucho más baratas que un viaje y una tabla enteros. */
       supabase.from("postulaciones")
-        .select("id,codigo,codigo_plataforma,codigo_acta,estado,feedback_jurado,acta_url,matriz_jurado_url,carpeta_drive_url,monto_adjudicado,fecha_limite_rendicion,fecha_prorroga,fecha_rendicion_real,proy:proyectos(nombre),conv:convocatorias(codigo,nombre,anio)"),
+        .select("id,codigo,codigo_plataforma,codigo_acta,estado,feedback_jurado,acta_url,matriz_jurado_url,carpeta_drive_url,monto_adjudicado,fecha_limite_rendicion,fecha_prorroga,fecha_rendicion_real,proyecto_id,empresa_id,convocatoria_id,proy:proyectos(nombre),conv:convocatorias(codigo,nombre,anio)"),
       /* Los datos sueltos de cada cuenta (código de afiliación, correo de
          recuperación, N° de contrato...) son justo lo que uno viene a
          buscar meses después. Estaban guardados y no se buscaban. */
       supabase.from("credenciales")
         .select("id,plataforma,identificador,ubicacion,notas,url,metodo_acceso,empresa_id,persona_id,datos:credencial_datos(id,etiqueta,valor)")
-        .limit(600),
+        .limit(601),
       /* EL REPOSITORIO. Es la mitad de lo que la productora sabe —el libro que
          sostiene un documental, la referencia que justifica un plano, la nota
          de prensa de hace tres años— y el buscador no lo miraba: se podía
@@ -364,7 +390,7 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
         .select("id,tipo,titulo,url,notas,fecha,entidad_tipo,entidad_id")
         .neq("tipo", "cv")
         .order("fecha", { ascending: false, nullsFirst: false })
-        .order("creado_en", { ascending: false }).limit(600),
+        .order("creado_en", { ascending: false }).limit(601),
       /* Los COMBOS DE COMPRA. Se busca por el código de la boleta, por lo que
          se compró y por el proveedor: «C-003», «Combo DJI» o «Amazon» son
          justo las tres formas en que alguien vuelve a una compra meses
@@ -387,9 +413,25 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
       supabase.from("kit_equipos").select("equipamiento_id,kit:kits(id,nombre,retirado_en)"),
     ]);
 
-    // El marcador en los resultados: 🏆 ganados · 🥈 casi · 🎯 intentos
-    const [{ data: postStats }, { data: equipoStats }, uSunat, { data: cvObj }, { data: perfAv }] = await Promise.all([
-      supabase.from("postulaciones").select("estado,proyecto_id,empresa_id,convocatoria_id"),
+    /* El techo, comprobado y recortado en un solo sitio. */
+    recortar(c1, TOPE_TEXTO, "casos");
+    recortar(c2, TOPE_TEXTO, "comentarios");
+    recortar(c3, TOPE_LISTA, "personas");
+    recortar(c6, TOPE_LISTA, "equipos");
+    recortar(c10, TOPE_LISTA, "credenciales");
+    recortar(c11, TOPE_LISTA, "repositorio");
+
+    /* ── SEGUNDA TANDA: lo que necesita saber lo que trajo la primera ──
+       El marcador de los resultados (🏆 ganados · 🥈 casi · 🎯 intentos) ya no
+       pide `postulaciones`: son las MISMAS filas que `c9`, que acaba de
+       llegar con las tres claves ajenas dentro.
+       Y aquí entran dos esperas que estaban sueltas más abajo —los dueños del
+       repositorio y el catálogo de plataformas—: las dos dependen solo de la
+       primera tanda, así que esperarlas aparte era regalar dos viajes. Tienen
+       que resolverse ANTES del filtro, no después, porque el nombre del dueño
+       y el de las puertas de una credencial entran en el pajar: si se
+       colgaran luego, se verían en la fila pero no la encontrarían. */
+    const [{ data: equipoStats }, uSunat, { data: cvObj }, { data: perfAv }, duenosObj, mapaPlat] = await Promise.all([
       supabase.from("postulacion_equipo").select("persona_id,post:postulaciones(estado)"),
       // El link de SUNAT sale del admin, no del código: si SUNAT lo cambia
       // —lo ha hecho— se corrige ahí sin esperar un deploy.
@@ -402,7 +444,14 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
       // Avatares de login: la foto de quien no subió una propia (foto_url) y la
       // del autor de cada caso. El nombre va para las iniciales de respaldo.
       supabase.from("perfiles").select("id,nombre,avatar_url"),
+      /* De quién es cada cosa del repositorio. Una tanda por tabla dueña —no
+         una consulta por objeto— con el mismo `nombreDe` de todas las
+         pantallas. */
+      resolverNombres(supabase, ((c11.data || []) as any[])
+        .map((o: any) => ({ tipo: o.entidad_tipo, id: o.entidad_id }))),
+      platPorNombre(),
     ]);
+    const postStats = c9.data;
     urlSunat = uSunat;
     avatarDe = new Map((perfAv || []).map((p: any) => [p.id, p.avatar_url]));
     perfilNom = new Map((perfAv || []).map((p: any) => [p.id, p.nombre]));
@@ -486,10 +535,6 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
     marcados.sort((a: any, b: any) =>
       peso(b) - peso(a) || (b.p.creado_en || "").localeCompare(a.p.creado_en || ""));
     casos = marcados.slice(0, 12).map((x: any) => x.p);
-    /* De qué habla cada uno. Va después del corte: los vínculos son para
-       LEER el resultado, no para encontrarlo, así que se resuelven doce veces
-       y no mil quinientas. */
-    vincCaso = await vinculosDePublicaciones(supabase, casos.map((p: any) => p.id));
 
     /* El título del objeto también entra en el pajar. Venía embebido desde que
        se abrió esa puerta y nunca se usó para buscar: se podía encontrar un
@@ -497,20 +542,12 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
        repositorio del que hablaba. */
     coms = (c2.data || []).filter((c: any) =>
       coincide(pal(c.cuerpo, (c.pub as any)?.titulo, (c.obj as any)?.titulo))).slice(0, 12);
-    // De qué cuelga cada uno de los doce: ícono, rótulo y destino real.
-    vincCom = await vinculosDeComentarios(supabase, coms);
 
     /* El título del padre para pintarlo. Casi siempre ya vino en c1; si el
-       padre es más viejo que los 1500 se pide aparte — son 12 filas. */
+       padre es más viejo que el techo se pide aparte — son 12 filas, y va en
+       la tanda de adorno de abajo. */
     const idsPadre = [...new Set(casos.map((p: any) => p.padre_id).filter(Boolean))];
-    if (idsPadre.length) {
-      const faltan = idsPadre.filter((id: any) => !tituloEn.has(id));
-      const { data: px } = faltan.length
-        ? await supabase.from("publicaciones").select("id,titulo").in("id", faltan)
-        : { data: [] };
-      (px || []).forEach((p: any) => tituloEn.set(p.id, p.titulo));
-      idsPadre.forEach((id: any) => { const t = tituloEn.get(id); if (t) padreDe.set(id, t as string); });
-    }
+    const padresQueFaltan = idsPadre.filter((id: any) => !tituloEn.has(id));
     /* El pajar lleva el número Y la palabra del documento: así «RENCA-1-PJ-…»
        encuentra la empresa, y «renca» sola encuentra a las que lo tienen.
        Un papel se busca de las dos formas: por su código cuando lo tienes a
@@ -595,37 +632,6 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
       (empEnJuego(b) ? 1 : 0) - (empEnJuego(a) ? 1 : 0)
       || String(a.nombre).localeCompare(String(b.nombre))
     ).slice(0, 10);
-    /* Carteles de los proyectos y empresas que se van a mostrar: un solo query
-       por los ids visibles, para adornar sus filas con el póster/logo. */
-    {
-      const idsMedia = [...proys.map((p: any) => p.id), ...emps.map((e: any) => e.id)];
-      if (idsMedia.length) {
-        const { data: mm } = await supabase.from("entidad_media")
-          .select("entidad_tipo,entidad_id,cartel_url").in("entidad_id", idsMedia);
-        (mm || []).forEach((m: any) => {
-          if (m.cartel_url) carteles.set(`${m.entidad_tipo}:${m.entidad_id}`, m.cartel_url);
-        });
-      }
-    }
-    /* Representante legal de las empresas mostradas: su miembro activo cuyo
-       cargo es «representante legal» (prioridad) o presidente/titular/gerente
-       —la misma regla que autocompleta el RL en la ficha. */
-    {
-      const idsEmp = emps.map((e: any) => e.id);
-      if (idsEmp.length) {
-        const { data: rls } = await supabase.from("empresa_miembros")
-          .select("empresa_id,cargo,persona:personas(nombre,alias,foto_url)")
-          .in("empresa_id", idsEmp).eq("estado", "activo");
-        const prio = (c: string) => /representante/i.test(c) ? 0 : /presidente|titular|gerente/i.test(c) ? 1 : 9;
-        const porEmp = new Map<string, any[]>();
-        (rls || []).forEach((m: any) => { const l = porEmp.get(m.empresa_id) || []; l.push(m); porEmp.set(m.empresa_id, l); });
-        porEmp.forEach((ms, eid) => {
-          const r = ms.filter((m: any) => prio(m.cargo || "") < 9).sort((a: any, b: any) => prio(a.cargo || "") - prio(b.cargo || ""))[0];
-          const per = r?.persona ? (Array.isArray(r.persona) ? r.persona[0] : r.persona) : null;
-          if (per) rlDe.set(eid, { nombre: per.alias || per.nombre, foto: per.foto_url });
-        });
-      }
-    }
     /* Combo y kits de CADA equipo —no solo de los que se pintan—, porque
        entran en el pajar: si se resolvieran después del filtro, los chips se
        verían pero «kit drone» no encontraría nada. Ambas tablas ya vinieron
@@ -660,30 +666,6 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
     });
     equis = equisTodos.slice(0, 15);
     equisMas = Math.max(0, equisTodos.length - 15);
-    /* Cartel (miniatura) y portador (quién lo tiene ahora) de los equipos que se
-       van a mostrar: para ponerles foto y decir en manos de quién están. */
-    if (equis.length) {
-      const idsEq = equis.map((e: any) => e.id);
-      const [{ data: mmEq }, { data: prEq }] = await Promise.all([
-        supabase.from("entidad_media").select("entidad_id,cartel_url").eq("entidad_tipo", "equipamiento").in("entidad_id", idsEq),
-        supabase.from("equipo_prestamos").select("equipamiento_id,persona:personas(id,nombre,alias,foto_url)").is("hasta", null).in("equipamiento_id", idsEq),
-      ]);
-      (mmEq || []).forEach((m: any) => { if (m.cartel_url) carteles.set(`equipamiento:${m.entidad_id}`, m.cartel_url); });
-      (prEq || []).forEach((p: any) => { const per = Array.isArray(p.persona) ? p.persona[0] : p.persona; if (per) portadorEq.set(p.equipamiento_id, per); });
-      /* Interacción en la bitácora de cada equipo mostrado: comentarios sueltos
-         (equipamiento_id) + los de sus usos (prestamo_id → equipo). */
-      const [{ data: cbEq }, { data: prsEq }] = await Promise.all([
-        supabase.from("comentarios").select("equipamiento_id").in("equipamiento_id", idsEq),
-        supabase.from("equipo_prestamos").select("id,equipamiento_id").in("equipamiento_id", idsEq),
-      ]);
-      (cbEq || []).forEach((c: any) => bitaEq.set(c.equipamiento_id, (bitaEq.get(c.equipamiento_id) || 0) + 1));
-
-      const prestEq = new Map((prsEq || []).map((p: any) => [p.id, p.equipamiento_id]));
-      if (prsEq && prsEq.length) {
-        const { data: cpEq } = await supabase.from("comentarios").select("prestamo_id").in("prestamo_id", prsEq.map((p: any) => p.id));
-        (cpEq || []).forEach((c: any) => { const eid = prestEq.get(c.prestamo_id); if (eid) bitaEq.set(eid, (bitaEq.get(eid) || 0) + 1); });
-      }
-    }
     lugs = (c7.data || []).filter((l: any) => coincide(`lugar ${l.nombre}`)).slice(0, 6);
     comps = (c12?.data || [])
       .filter((x: any) => coincide(`compra combo ${x.codigo || ""} ${x.nombre} ${x.proveedor || ""} ${x.nota || ""}`))
@@ -696,10 +678,8 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
        consulta por objeto— con el mismo `nombreDe` de todas las pantallas. */
     {
       const filas = (c11.data || []) as any[];
-      const duenos = await resolverNombres(supabase,
-        filas.map(o => ({ tipo: o.entidad_tipo, id: o.entidad_id })));
       const objsTodos = filas
-        .map(o => ({ ...o, dueno: duenos.get(`${o.entidad_tipo}:${o.entidad_id}`) || "" }))
+        .map(o => ({ ...o, dueno: duenosObj.get(`${o.entidad_tipo}:${o.entidad_id}`) || "" }))
         /* Sin la palabra «repositorio» en el pajar: la metía SOLO esta página, así
            que buscarla aquí devolvía todo y en el destino, nada. */
         .filter(o => coincide(pal(o.titulo, o.notas, lblObjeto(o.tipo), o.dueno)));
@@ -748,7 +728,6 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
        "declaraciones y pagos" son los nombres por los que uno busca —el que
        va a declarar el IGV no piensa "SUNAT", piensa "declaraciones"—. Si se
        colgaran después, saldrían en la fila pero no la encontrarían. */
-    const mapaPlat = await platPorNombre();
     const platDe = (c: any) => mapaPlat.get(String(c.plataforma || "").trim().toLowerCase());
     const puertasDe = (c: any) => platDe(c)?.puertas || [];
     const textoPuertas = (c: any) =>
@@ -779,6 +758,115 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
           puertas: puertasDe(c),
         };
       }).slice(0, 10);
+
+    /* ══════════════════════════════════════════════════════════════════
+       TERCERA TANDA — TODO LO QUE ADORNA, DE UNA VEZ
+
+       Aquí abajo estaba repartido en catorce esperas encadenadas: el cartel de
+       los proyectos, el logo de las empresas, su representante legal, la
+       miniatura de cada equipo, quién lo tiene, cuánta bitácora tiene, de qué
+       cuelga cada comentario, de qué habla cada caso, el título del padre de
+       un sub-caso. Cada una esperaba a que terminara la anterior, y NINGUNA
+       necesitaba nada de ella: todas cuelgan de los resultados YA elegidos.
+       Catorce idas y vueltas a la base, en fila, por una página que devuelve
+       doce filas de cada cosa.
+
+       No se fueron encadenando por descuido, sino de una en una: cada vez que
+       la búsqueda aprendió a enseñar un dato más, ese dato se pidió donde
+       hacía falta pintarlo. Es la misma forma en que el menú acabó con tres
+       llamadas en serie. Cada una parecía barata por separado.
+
+       El corte es limpio: lo que sirve para ENCONTRAR se resuelve antes del
+       filtro (arriba, en las dos primeras tandas); lo que sirve para LEER el
+       resultado se resuelve aquí, sobre el puñado que se va a pintar.
+       ══════════════════════════════════════════════════════════════════ */
+    const idsMedia = [...proys.map((p: any) => p.id), ...emps.map((e: any) => e.id)];
+    const idsEmp = emps.map((e: any) => e.id);
+    const idsEq = equis.map((e: any) => e.id);
+    const nada = { data: [] as any[] };
+
+    const [vc, vm, px, mm, rls, mmEq, prEq, cbEq, cpEq] = await Promise.all([
+      vinculosDePublicaciones(supabase, casos.map((p: any) => p.id)),
+      vinculosDeComentarios(supabase, coms),
+      padresQueFaltan.length
+        ? supabase.from("publicaciones").select("id,titulo").in("id", padresQueFaltan)
+        : Promise.resolve(nada),
+      idsMedia.length
+        ? supabase.from("entidad_media").select("entidad_tipo,entidad_id,cartel_url")
+            .in("entidad_id", idsMedia)
+        : Promise.resolve(nada),
+      idsEmp.length
+        ? supabase.from("empresa_miembros")
+            .select("empresa_id,cargo,persona:personas(nombre,alias,foto_url)")
+            .in("empresa_id", idsEmp).eq("estado", "activo")
+        : Promise.resolve(nada),
+      idsEq.length
+        ? supabase.from("entidad_media").select("entidad_id,cartel_url")
+            .eq("entidad_tipo", "equipamiento").in("entidad_id", idsEq)
+        : Promise.resolve(nada),
+      idsEq.length
+        ? supabase.from("equipo_prestamos")
+            .select("equipamiento_id,persona:personas(id,nombre,alias,foto_url)")
+            .is("hasta", null).in("equipamiento_id", idsEq)
+        : Promise.resolve(nada),
+      idsEq.length
+        ? supabase.from("comentarios").select("equipamiento_id").in("equipamiento_id", idsEq)
+        : Promise.resolve(nada),
+      /* Los comentarios de los USOS del equipo. Antes eran dos consultas en
+         serie —traer los préstamos, y luego preguntar por sus comentarios—
+         porque hacía falta el mapa préstamo→equipo. Preguntando por la
+         columna del embebido, PostgREST hace ese salto dentro y devuelve el
+         equipo pegado a cada comentario: una consulta, y además no viaja una
+         lista de identificadores en la URL. */
+      idsEq.length
+        ? supabase.from("comentarios")
+            .select("id,prest:equipo_prestamos!inner(equipamiento_id)")
+            .in("prest.equipamiento_id", idsEq)
+        : Promise.resolve(nada),
+    ]);
+
+    vincCaso = vc;
+    vincCom = vm;
+
+    (((px as any).data || []) as any[]).forEach((p: any) => tituloEn.set(p.id, p.titulo));
+    idsPadre.forEach((id: any) => { const t = tituloEn.get(id); if (t) padreDe.set(id, t as string); });
+
+    (((mm as any).data || []) as any[]).forEach((m: any) => {
+      if (m.cartel_url) carteles.set(`${m.entidad_tipo}:${m.entidad_id}`, m.cartel_url);
+    });
+    (((mmEq as any).data || []) as any[]).forEach((m: any) => {
+      if (m.cartel_url) carteles.set(`equipamiento:${m.entidad_id}`, m.cartel_url);
+    });
+
+    /* El representante legal: el miembro activo cuyo cargo es «representante
+       legal» (prioridad) o presidente/titular/gerente — la misma regla que
+       autocompleta el RL en la ficha. */
+    {
+      const prio = (c: string) => /representante/i.test(c) ? 0 : /presidente|titular|gerente/i.test(c) ? 1 : 9;
+      const porEmp = new Map<string, any[]>();
+      (((rls as any).data || []) as any[]).forEach((m: any) => {
+        const l = porEmp.get(m.empresa_id) || []; l.push(m); porEmp.set(m.empresa_id, l);
+      });
+      porEmp.forEach((ms, eid) => {
+        const r = ms.filter((m: any) => prio(m.cargo || "") < 9)
+          .sort((a: any, b: any) => prio(a.cargo || "") - prio(b.cargo || ""))[0];
+        const per = r?.persona ? (Array.isArray(r.persona) ? r.persona[0] : r.persona) : null;
+        if (per) rlDe.set(eid, { nombre: per.alias || per.nombre, foto: per.foto_url });
+      });
+    }
+
+    (((prEq as any).data || []) as any[]).forEach((p: any) => {
+      const per = Array.isArray(p.persona) ? p.persona[0] : p.persona;
+      if (per) portadorEq.set(p.equipamiento_id, per);
+    });
+    const sumaBita = (eid?: string | null) => {
+      if (eid) bitaEq.set(eid, (bitaEq.get(eid) || 0) + 1);
+    };
+    (((cbEq as any).data || []) as any[]).forEach((c: any) => sumaBita(c.equipamiento_id));
+    (((cpEq as any).data || []) as any[]).forEach((c: any) => {
+      const pr = Array.isArray(c.prest) ? c.prest[0] : c.prest;
+      sumaBita(pr?.equipamiento_id);
+    });
   }
 
   /* `objs` cuenta como cualquier otra sección. Sin sumarlo, una búsqueda que
@@ -958,6 +1046,21 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
           {q && (
             <span style={{ color: "var(--muted)", fontSize: TXT.meta }}>
               🤖 {total ? `${total} resultado${total === 1 ? "" : "s"}` : "nada — prueba con menos palabras"}
+              {/* El buscador no mira TODO: hay un techo por tabla, y pasado
+                  ese techo lo más viejo deja de compararse. Callarlo convertía
+                  un límite del sistema en un «eso no existe». */}
+              {/* Sin decir «lo más reciente»: solo casos, comentarios y
+                  repositorio llegan ordenados por fecha. Personas, equipos y
+                  credenciales se piden sin `order`, así que lo que queda fuera
+                  es un trozo cualquiera, no «lo viejo». Prometer un criterio
+                  que no existe es la misma clase de mentira que este aviso
+                  vino a arreglar. */}
+              {recortado.length > 0 && (
+                <span style={{ color: "var(--yellow)", marginLeft: 8 }}
+                  title={`El buscador tiene un techo de filas por tabla y se alcanzó en: ${recortado.join(", ")}. Queda material fuera de la comparación. Si lo que buscas no aparece, entra por su sección: ahí se lista todo.`}>
+                  · ⚠ no se buscó en todo
+                </span>
+              )}
             </span>
           )}
         </div>

@@ -70,56 +70,74 @@ export async function vinculosDeComentarios(
      `tipo`, una nota del muro abría una ficha de caso alrededor de un apunte,
      con su «Sin asignar» y su «Publicado» — tres avisos sobre algo que nadie
      prometió resolver. */
+  /* ── TODO LO QUE NO DEPENDE DE NADA, DE UNA VEZ ──
+     Esto eran seis esperas encadenadas —publicaciones, su muro, los objetos,
+     los préstamos, los equipos de esos préstamos, las cinco de la rendición—
+     y solo DOS de esos seis pasos necesitaban de verdad al anterior. Para un
+     puñado de doce comentarios, seis idas y vueltas a la base.
+
+     Los equipos ya no esperan a los préstamos: el préstamo trae el suyo
+     embebido. Lo único que sigue en fila es el muro de una nota, porque
+     primero hay que saber cuáles de esas publicaciones SON notas. */
   const idsPub = idsDe("publicacion_id");
-  const pubDe = new Map<string, { titulo: string; muro: { tipo: string; id: string } | null }>();
-  if (idsPub.length) {
-    const { data: pubs } = await supabase.from("publicaciones")
-      .select("id,titulo,tipo").in("id", idsPub);
-    const notas = (pubs || []).filter((p: any) => p.tipo === "bitacora").map((p: any) => p.id);
-    /* De qué muro es cada nota: su PRIMER vínculo, que es el que creó
-       `publicarBitacora` — una nota nace en un muro y solo en uno. Se pregunta
-       a `lib/vinculosPub`, el mismo sitio del que lo saca la campanita: eran
-       dos lecturas de la misma tabla con la misma regla escrita dos veces. */
-    const muroDe = new Map<string, { tipo: string; id: string }>();
+  const eqDirecto = idsDe("equipamiento_id");
+
+  const [pubs, objs, posts, cajas, prestamos, eqsDirectos, rend] = await Promise.all([
+    traer(supabase, "publicaciones", idsPub, "id,titulo,tipo"),
+    // ── Objetos del repositorio, expedientes, apuntes de caja ──
+    traer(supabase, "objetos", idsDe("objeto_id"), "id,titulo"),
+    traer(supabase, "postulaciones", idsDe("postulacion_id"), "id,codigo"),
+    traer(supabase, "movimiento_caja", idsDe("movimiento_caja_id"), "id,descripcion,monto"),
+    /* ── EQUIPOS A TRAVÉS DEL PRÉSTAMO ──
+       Un comentario de préstamo cuelga de `prestamo_id`, pero su sitio es la
+       ficha del EQUIPO: es lo que se busca y lo que se abre. El equipo viene
+       embebido para no tener que preguntarlo en un segundo viaje con la lista
+       de identificadores que acaba de llegar. */
+    traer(supabase, "equipo_prestamos", idsDe("prestamo_id"),
+      "id,equipamiento_id,eq:equipamiento(id,nombre)"),
+    // Y los que cuelgan del equipo directamente.
+    traer(supabase, "equipamiento", eqDirecto, "id,nombre"),
+    /* ── LAS CINCO DE LA RENDICIÓN ──
+       Se traen con el `sel` que ya declara `META_RENDICION`, porque de ahí
+       sale el rótulo —«S/ 7,588.61 · FF53-0002098 · WATUKUY»— y también el
+       `postulacion_id`, sin el cual `rutaNotif` no sabe en qué fondo vive la
+       fila y devuelve `null` a propósito. Un enlace que lleva al sitio
+       equivocado es peor que uno que no lleva: el segundo se nota. */
+    Promise.all(TABLAS_RENDICION.map(async t => {
+      const m = META_RENDICION[t];
+      const filas = await traer(supabase, t, idsDe(m.col), "id," + m.sel);
+      return [t, filas] as const;
+    })),
+  ]);
+
+  const filaRend = new Map<string, Fila>();
+  rend.forEach(([t, filas]) => filas.forEach((r: any) => filaRend.set(`${t}:${r.id}`, r)));
+
+  /* De qué muro es cada nota: su PRIMER vínculo, que es el que creó
+     `publicarBitacora` — una nota nace en un muro y solo en uno. Se pregunta
+     a `lib/vinculosPub`, el mismo sitio del que lo saca la campanita: eran
+     dos lecturas de la misma tabla con la misma regla escrita dos veces.
+     Es la única espera que queda en fila, y no se puede evitar: hay que tener
+     las publicaciones para saber cuáles son notas. */
+  const notas = pubs.filter((p: any) => p.tipo === "bitacora").map((p: any) => p.id);
+  const muroDe = new Map<string, { tipo: string; id: string }>();
+  if (notas.length) {
     const vincs = await vinculosDePublicaciones(supabase, notas);
     vincs.forEach((l, pubId) => {
       if (l[0]) muroDe.set(pubId, { tipo: l[0].tipo, id: l[0].id });
     });
-    (pubs || []).forEach((p: any) =>
-      pubDe.set(p.id, { titulo: p.titulo, muro: muroDe.get(p.id) || null }));
   }
+  const pubDe = new Map<string, { titulo: string; muro: { tipo: string; id: string } | null }>(
+    pubs.map((p: any) => [p.id, { titulo: p.titulo, muro: muroDe.get(p.id) || null }]));
 
-  // ── 2 · Objetos del repositorio, expedientes, apuntes de caja ──
-  const [objs, posts, cajas] = await Promise.all([
-    traer(supabase, "objetos", idsDe("objeto_id"), "id,titulo"),
-    traer(supabase, "postulaciones", idsDe("postulacion_id"), "id,codigo"),
-    traer(supabase, "movimiento_caja", idsDe("movimiento_caja_id"), "id,descripcion,monto"),
-  ]);
-
-  /* ── 3 · EQUIPOS: directo, o a través del préstamo ──
-     Un comentario de préstamo cuelga de `prestamo_id`, pero su sitio es la
-     ficha del EQUIPO: es lo que se busca y lo que se abre. */
-  const eqDirecto = idsDe("equipamiento_id");
-  const idsPrest = idsDe("prestamo_id");
-  const prestamos = await traer(supabase, "equipo_prestamos", idsPrest, "id,equipamiento_id");
-  const eqTodos = [...new Set([...eqDirecto, ...prestamos.map((p: any) => p.equipamiento_id).filter(Boolean)])];
-  const equipos = await traer(supabase, "equipamiento", eqTodos, "id,nombre");
+  /* El equipo de cada préstamo, y el catálogo de nombres de los dos caminos:
+     el directo y el que llegó embebido en su préstamo. */
   const eqDeP = new Map(prestamos.map((p: any) => [p.id, p.equipamiento_id]));
-
-  /* ── 4 · LAS CINCO DE LA RENDICIÓN ──
-     Se traen con el `sel` que ya declara `META_RENDICION`, porque de ahí sale
-     el rótulo —«S/ 7,588.61 · FF53-0002098 · WATUKUY»— y también el
-     `postulacion_id`, sin el cual `rutaNotif` no sabe en qué fondo vive la
-     fila y devuelve `null` a propósito. Un enlace que lleva al sitio
-     equivocado es peor que uno que no lleva: el segundo se nota. */
-  const filaRend = new Map<string, Fila>();
-  await Promise.all(TABLAS_RENDICION.map(async t => {
-    const m = META_RENDICION[t];
-    const ids = idsDe(m.col);
-    if (!ids.length) return;
-    const { data } = await supabase.from(t).select("id," + m.sel).in("id", ids);
-    (data || []).forEach((r: any) => filaRend.set(`${t}:${r.id}`, r));
-  }));
+  const equipos: Fila[] = [...eqsDirectos];
+  prestamos.forEach((p: any) => {
+    const e = Array.isArray(p.eq) ? p.eq[0] : p.eq;
+    if (e && !equipos.some(x => x.id === e.id)) equipos.push(e);
+  });
 
   const nombreDe = (lista: Fila[], id: string, campo: string) =>
     lista.find((x: any) => x.id === id)?.[campo] || "";
