@@ -10,6 +10,7 @@ import { opcionesEstado, esAviso, claseEstado } from "@/lib/estados";
 import { icoTipo } from "@/lib/tipos";
 import { TXT } from "@/lib/texto";
 import { ICO_ENT } from "@/lib/secciones";
+import { opcionesResp } from "@/lib/personas";
 import { menciones, MencionesMenu } from "@/components/Menciones";
 import LinkPreviews from "@/components/LinkPreviews";
 
@@ -182,8 +183,9 @@ export default function VistaRapida({ pubId }: { pubId: string }) {
                     <span className="k">Responsable</span>
                     <select value={caso.responsable || ""} disabled={ocupado}
                       onChange={e => { const v = e.target.value || null; correr(() => asignarResponsable(pubId, v)); }}>
-                      <option value="">Sin asignar</option>
-                      {perfiles.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                      {opcionesResp(perfiles, caso.responsable).map(([v, l]) => (
+                        <option key={v} value={v}>{l}</option>
+                      ))}
                     </select>
                   </div>
                   <div className="gm">

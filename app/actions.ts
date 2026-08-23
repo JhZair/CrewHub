@@ -9305,3 +9305,56 @@ export async function activarObligacion(obligacionId: string, activa: boolean) {
   revalidatePath("/obligaciones");
   return {};
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ENCENDER O APAGAR UNA CUENTA
+
+   `perfiles` lo crea un trigger en cada registro de Google, con `activo` en
+   true. Y hasta hoy no había forma de cambiarlo: ni acción, ni política de
+   escritura. La columna existía desde el primer día del esquema y nunca tuvo
+   interruptor, así que quien entró una vez a probar quedaba asignable para
+   siempre — en el combo de cada caso, de cada sub-caso y de cada actividad.
+
+   ── APAGAR NO ES BORRAR, NI ESCONDER ──
+   Una cuenta apagada deja de salir en los combos de ASIGNAR y deja de recibir
+   los avisos que van «a todo el equipo» —que es la otra cara de lo mismo: no
+   se le encarga trabajo, no se le interrumpe—. Nada más. Lo que escribió sigue
+   firmado con su nombre, sus casos siguen siendo suyos y sus jornadas cuentan
+   igual. Tampoco cierra su sesión: `activo` no lo mira la
+   autenticación. Es «no le encarguen trabajo», no «esta persona no existió».
+
+   ── NADIE SE APAGA A SÍ MISMO ──
+   No por cortesía: quien se apaga deja de salir en los combos y sigue siendo
+   administrador, así que el daño es reversible. Pero es un clic sin ningún
+   motivo bueno y con un despiste muy fácil en una lista de nombres parecidos.
+   ══════════════════════════════════════════════════════════════════════════ */
+export async function cambiarCuentaActiva(cuentaId: string, activa: boolean) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  const { data: yo } = await supabase.from("perfiles")
+    .select("es_admin").eq("id", user.id).maybeSingle();
+  if (!yo?.es_admin) return { error: "Solo administración enciende y apaga cuentas." };
+  if (cuentaId === user.id) return { error: "No puedes apagar tu propia cuenta." };
+
+  /* ── EL `select` NO ES DECORACIÓN ──
+     Sin db/cuentas-activas.sql corrido no hay política de UPDATE, y RLS no da
+     error por eso: descarta las filas y PostgREST responde «correcto» con cero
+     cambios. Un botón que no hace nada y dice que sí es peor que uno roto.
+     Pidiendo la fila de vuelta, «cero filas» ES la respuesta —en el mismo
+     viaje, y sin depender de comparar valores: releer y comparar fallaba justo
+     en el caso que importa, porque en una base sin migrar `activo` puede estar
+     en null y `!!null === false` coincidía con «apagar». */
+  const falta = "Falta correr db/cuentas-activas.sql: la tabla de cuentas todavía no acepta cambios.";
+  const { data: tocadas, error } = await supabase.from("perfiles")
+    .update({ activo: activa }).eq("id", cuentaId).select("id");
+  if (error) {
+    return { error: /policy|permission|denied|row-level/i.test(error.message) ? falta : error.message };
+  }
+  if (!tocadas?.length) return { error: falta };
+
+  revalidatePath("/admin");
+  revalidatePath("/", "layout");
+  return {};
+}

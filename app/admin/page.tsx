@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import TabsPanel from "@/components/TabsPanel";
+import CuentasPanel, { type Cuenta } from "@/components/CuentasPanel";
 import TarifasEditor from "@/components/TarifasEditor";
 import BitacoraJornadas from "@/components/BitacoraJornadas";
 import LiquidacionAdmin from "@/components/LiquidacionAdmin";
@@ -130,8 +131,9 @@ export default async function Admin({ searchParams }: {
 
   const [{ data: personas }, { data: cobrables }, { data: rhes }, { data: jornsPend },
          { data: proyectos }, { data: jornsMes }, { data: liqs, error: eLiqs }, { data: liqsAnio },
-         { data: vivos },
-         { data: plats }, { data: credsPlat }, { data: ganadoras }, { data: activid }] = await Promise.all([
+         { data: plats }, { data: credsPlat }, { data: vivos },
+         { data: ganadoras }, { data: activid },
+         { data: cuentasBase }, { data: escrito, error: eEscrito }] = await Promise.all([
     // `usuario_id`: llave para poner el alias del actor en la actividad reciente
     supabase.from("personas").select("id,nombre,alias,usuario_id,estado,tarifa_dia,tarifa_rodaje,tarifa_noche")
       .eq("tipo", "personal").order("nombre"),
@@ -202,7 +204,44 @@ export default async function Admin({ searchParams }: {
     supabase.from("actividad")
       .select("tipo,detalle,creado_en,entidad_tipo,entidad_id,actor_id,actor:perfiles(nombre)")
       .order("creado_en", { ascending: false }).limit(12),
+    /* ── LAS CUENTAS ──
+       TODAS, encendidas y apagadas: esta es la única pantalla desde la que se
+       vuelve a encender una, y una lista que esconde lo apagado no tiene de
+       dónde recuperarlo. */
+    supabase.from("perfiles")
+      .select("id,nombre,avatar_url,color,rol,activo,es_admin,es_finanzas,creado_en")
+      .order("nombre"),
+    /* ── CUÁNTO HA ESCRITO CADA CUENTA ──
+       Lo cuenta POSTGRES, no esta página. La primera versión se traía las dos
+       columnas de `autor_id` enteras y agrupaba en memoria, y eso tenía un
+       fallo que este panel no se puede permitir: PostgREST corta en 1.000
+       filas por defecto y no avisa. Con más de mil comentarios, el recorte es
+       arbitrario —no hay `order`— y una cuenta con trabajo real podía salir
+       con «nada». Este panel existe para decidir a quién se apaga: un número
+       que se equivoca aquí hace que alguien apague a un compañero.
+       `resumen_cuentas()` lo define db/cuentas-activas.sql. Si la migración no
+       está corrida devuelve error, y entonces la columna dice «—» en vez de un
+       cero que sería mentira. */
+    supabase.rpc("resumen_cuentas"),
   ]);
+
+  /* Las cuentas, con lo que ha escrito cada una pegado. Va aquí y no en el
+     panel porque contar es del servidor: al componente le llega la respuesta,
+     no los datos para deducirla. */
+  const escritoPor = new Map<string, { casos: number; comentarios: number }>(
+    ((escrito || []) as any[]).map((r: any) =>
+      [r.id, { casos: Number(r.casos || 0), comentarios: Number(r.comentarios || 0) }]));
+  const cuentas: Cuenta[] = ((cuentasBase || []) as any[]).map((c: any) => ({
+    ...c, ...(escritoPor.get(c.id) || { casos: 0, comentarios: 0 }),
+  }));
+  /* Sin la migración no hay conteo, y entonces NO se enseña un cero: un cero
+     falso en esta columna es lo que haría apagar a quien no toca. */
+  const sinConteo = !!eEscrito;
+  /* Encendidas y sin una sola línea escrita: el retrato del login de paso.
+     No se apagan solas —una persona recién llegada empieza así— pero es lo
+     que hay que ir a mirar. */
+  const cuentasDePaso = sinConteo
+    ? 0 : cuentas.filter(c => c.activo && !c.casos && !c.comentarios).length;
 
   const aliasMap = mapaAlias(personas as any);   // actor → alias (JohnO) en la actividad
   const tarifaLista = (personas || []).map((p: any) => ({
@@ -943,6 +982,12 @@ export default async function Admin({ searchParams }: {
           <TarifasEditor personas={tarifaLista} abierto />
         </>
       );
+  const panelCuentas = (
+    <>
+      <h3 style={{ margin: "4px 0 2px", fontSize: 14 }}>👤 Cuentas</h3>
+      <CuentasPanel cuentas={cuentas} yo={user.id} sinConteo={sinConteo} />
+    </>
+  );
   /* El orden es el de la frecuencia: la portada, lo de cada semana, el dinero
      del mes y al final lo que se toca una vez al año. `masUltima` manda
      Plataformas al menú «⋯», que es donde vive lo que casi nunca se abre. */
@@ -958,6 +1003,15 @@ export default async function Admin({ searchParams }: {
        final— y destacar un caso es de las cosas que menos se tocan; estaba
        tercera empujando el dinero hacia la derecha. */
     ["destacados", `📌 Destacados${nDestacados ? ` · ${nDestacados}` : ""}`, panelDestacados],
+    /* La última, o sea la que `masUltima` manda al menú «⋯»: se toca cuando
+       alguien nuevo entra o alguien se va, y eso pasa dos veces al año.
+       Plataformas vuelve a la fila con eso, y está bien: su contador señala
+       algo por arreglar —una puerta sin enlace— y esto no.
+       El número NO son las cuentas que hay, son las que están encendidas sin
+       haber escrito nunca nada. Ese es el aviso: alguien que entró una vez y
+       sigue saliendo en el combo de asignar. Un contador que solo dice cuánta
+       gente hay no pide que lo abras. */
+    ["cuentas", `👤 Cuentas${cuentasDePaso ? ` · ${cuentasDePaso}` : ""}`, panelCuentas],
   ];
   /* Con el rol de finanzas, una sola pestaña. Enseñar las demás apagadas sería
      peor que esconderlas: invita a pulsarlas y a preguntar por qué no funcionan.

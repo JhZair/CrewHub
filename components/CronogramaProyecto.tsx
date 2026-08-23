@@ -16,6 +16,7 @@ import FechaMini from "@/components/FechaMini";
 import { sinBot } from "@/lib/personas";
 import { type Etapa, ETAPAS_CINE, nombreEtapa } from "@/lib/etapas";
 import { DIAS_AVISO_DEF } from "@/lib/plazo";
+import { opcionesResp } from "@/lib/personas";
 /* `nombreEtapa` queda solo de respaldo: ver `nomEtapa` abajo. */
 
 /* Las etapas ya no son fijas: llegan por prop (la categoría de la convocatoria
@@ -116,10 +117,15 @@ function FormAct({ f, setF, perfiles, etapas, onSave, onCancel, ocupado, editar 
         onChange={e => setF({ ...f, fin: e.target.value })} />
       {/* Al elegir responsable, se le saca del equipo de apoyo: es líder, no
           apoyo — nadie en los dos a la vez. */}
+      {/* Este formulario también EDITA, así que puede llegar con un
+          responsable que ya está de baja — y entonces ninguna opción casa y el
+          navegador pinta «Responsable...», indistinguible de sin asignar. El
+          combo al vuelo de la fila ya lo decía; este se quedaba callado. */}
       <select style={inp} value={f.responsable}
         onChange={e => setF({ ...f, responsable: e.target.value, equipo: f.equipo.filter(x => x !== e.target.value) })}>
-        <option value="">Responsable...</option>
-        {plantelF.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+        {opcionesResp(plantelF, f.responsable, "Responsable...").map(([v, l]) => (
+          <option key={v} value={v}>{l}</option>
+        ))}
       </select>
       <label style={{ color: "var(--dim)", fontSize: 11, display: "flex", alignItems: "center", gap: 5 }}>
         avisar <input type="number" min={0} max={60} style={{ ...inp, width: 54 }}

@@ -4994,3 +4994,29 @@ mark.bq-marca{
 .obl-decl b{color:var(--text)}
 .obl-sinusar{color:var(--yellow);font-size:10.5px;cursor:help;white-space:nowrap}
 .obl-cuadra{color:var(--green);font-size:11px;cursor:help}
+
+/* ── LA LISTA DE CUENTAS DE /admin ──
+   Misma rejilla en cabecera y filas para que las columnas se lean en vertical;
+   la última va fija y a la derecha porque es un botón, y un botón que cambia
+   de sitio fila a fila es un botón que se pulsa por error. */
+.cta-cab,.cta-fila{display:grid;gap:10px;align-items:center;
+  grid-template-columns:minmax(0,1fr) 140px 110px 96px}
+.cta-cab{font-size:9.5px;letter-spacing:1px;text-transform:uppercase;
+  color:var(--dim);font-weight:700;padding:0 6px 6px}
+.cta-fila{padding:7px 6px;border-top:1px solid rgba(255,255,255,.05);font-size:12.5px}
+.cta-nom{display:flex;align-items:center;gap:8px;min-width:0}
+.cta-nom b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cta-chip{font-size:10px;color:var(--dim);border:1px solid var(--border);
+  border-radius:6px;padding:1px 6px;white-space:nowrap;flex:none}
+@media(max-width:860px){
+  /* Dos columnas: quién y el botón. El botón es la razón de esta pantalla, así
+     que es lo que sobrevive al recorte.
+     El `:not(:last-child)` importa: sin él se ocultaban los hijos 3 y 4 y el
+     botón se recuperaba después, con lo que quedaban TRES elementos en dos
+     columnas y el botón caía a una segunda fila de rejilla — debajo del
+     nombre en vez de a su derecha. */
+  .cta-cab,.cta-fila{grid-template-columns:minmax(0,1fr) 96px}
+  .cta-cab>:nth-child(n+2):not(:last-child),
+  .cta-fila>:nth-child(n+2):not(:last-child){display:none}
+  .cta-cab>:last-child,.cta-fila>:last-child{text-align:right}
+}

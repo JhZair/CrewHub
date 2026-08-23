@@ -634,7 +634,13 @@ export default function Obligaciones({ empresas, logos, repLegal, obligaciones, 
                   Avisa {o.dias_aviso} días antes ·
                   {(() => {
                     const r = perfilDe(o.responsable);
-                    if (!r) return <span className="obl-sin-resp"> sin responsable</span>;
+                    /* Hay responsable pero no está en la nómina: su cuenta se
+                       apagó. Decir «sin responsable» sería lo contrario de la
+                       verdad —hay dueño, ya no está— y mandaría a buscar a
+                       alguien para algo que ya tiene a alguien. */
+                    if (!r) return o.responsable
+                      ? <span className="obl-sin-resp"> ⚠ responsable de baja</span>
+                      : <span className="obl-sin-resp"> sin responsable</span>;
                     return (
                       <>
                         <Avatar nombre={r.nombre} src={r.avatar_url} color={r.color} size={20} />

@@ -2,7 +2,7 @@
 import { comentar, cambiarEstado, asignarResponsable, cambiarFechaLimite, archivar } from "@/app/actions";
 import { celebrarResuelto } from "@/lib/celebra";
 import { opcionesEstado } from "@/lib/estados";
-import { sinBot } from "@/lib/personas";
+import { sinBot, opcionesResp } from "@/lib/personas";
 import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
 import { menciones, MencionesMenu } from "@/components/Menciones";
 import BarraFormato from "@/components/BarraFormato";
@@ -56,8 +56,9 @@ export function RespSelect({ pubId, actual, perfiles }:
      un caso al bot?». No: «él reparte, no carga casos» (lo dice /pulso). */
   return (
     <select defaultValue={actual || ""} onChange={e => cambiar(e.target.value)}>
-      <option value="">Sin asignar</option>
-      {sinBot(perfiles).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+      {opcionesResp(sinBot(perfiles), actual).map(([v, l]) => (
+        <option key={v} value={v}>{l}</option>
+      ))}
     </select>
   );
 }

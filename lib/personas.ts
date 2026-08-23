@@ -95,3 +95,34 @@ export function conAlias<T extends { actor_id?: string | null; actor?: { nombre?
     return a ? { ...e, actor: { ...e.actor, alias: a } } : e;
   });
 }
+
+/* ── EL RESPONSABLE QUE YA NO ESTÁ ──
+   Los combos se alimentan de perfiles ACTIVOS, así que un caso asignado a
+   alguien dado de baja no encuentra su nombre entre las opciones. Un `select`
+   cuyo valor no casa con ninguna opción se pinta vacío, o sea igual que «Sin
+   asignar» — y eso es lo contrario de la verdad: hay dueño, lo que pasa es que
+   ya no está. Mientras nadie pudo apagar cuentas esto no se notaba; ahora sí.
+
+   SubCasos ya lo decía —«⚠ de baja»— pero por otra vía: su combo es un
+   `MiniSelect` con etiqueta propia, así que resuelve el rótulo del BOTÓN. Esto
+   es para los `<select>` nativos, donde el problema es otro: no hay etiqueta
+   que poner, hay que añadir la opción que falta o el navegador pinta un hueco
+   indistinguible de «Sin asignar». Dos formas del mismo cuidado, no dos
+   copias. */
+export function opcionesResp(
+  perfiles: { id: string; nombre: string }[],
+  actual?: string | null,
+  /** El rótulo del hueco vacío. Cada pantalla dice el suyo —«Sin asignar»,
+   *  «Responsable...»— y forzar uno solo cambiaría el texto de formularios que
+   *  no tienen nada que ver con esto. */
+  vacio = "Sin asignar",
+): [string, string][] {
+  const base: [string, string][] = [
+    ["", vacio],
+    ...perfiles.map(p => [p.id, p.nombre] as [string, string]),
+  ];
+  if (actual && !perfiles.some(p => p.id === actual)) {
+    base.push([actual, "⚠ asignado a alguien de baja"]);
+  }
+  return base;
+}
