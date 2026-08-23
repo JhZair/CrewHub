@@ -111,3 +111,46 @@ export const metaTipo = (t?: string | null) =>
 /** Solo el ícono, para donde no cabe la palabra. */
 export const ICO_TIPO: Record<string, string> =
   Object.fromEntries(TIPOS_JORNADA.map(t => [t.v, t.ico]));
+
+/* ══════════════════════════════════════════════════════════════════════════
+   CUÁNTO SE PAGA POR UNA JORNADA
+
+   La regla estaba escrita TRES veces: al registrar, al editar y en el
+   formulario que enseña «Esta jornada: S/ 160». Las tres decían lo mismo hoy,
+   pero eran tres sitios donde cambiar una decisión sobre dinero — y la
+   pantalla, además, calculaba en el navegador un número que el servidor
+   volvería a calcular por su cuenta. Dos cálculos del mismo importe es un
+   importe que puede discrepar.
+
+   Las tres reglas, juntas y explicadas:
+
+     · Solo el RODAJE usa la tarifa de rodaje. Oficina y scouting pagan con la
+       de día — un día de scouting no es un día de rodaje aunque se salga a la
+       misma hora.
+     · La FRACCIÓN solo aplica a oficina. Un rodaje o un scouting es un día
+       entero: no se vuelve de la puna a media jornada.
+     · El PERNOCTE se suma aparte y no multiplica. No es más tiempo —el rodaje
+       sigue siendo un día— es que además se durmió fuera. Y no existe en
+       oficina.
+
+   Sin tarifa cargada devuelve `null`, no cero: «no sabemos cuánto» y «no se
+   paga nada» son cosas distintas, y un cero se cobra.
+   ══════════════════════════════════════════════════════════════════════════ */
+export type Tarifas = {
+  tarifa_dia?: number | null;
+  tarifa_rodaje?: number | null;
+  tarifa_noche?: number | null;
+};
+
+export function montoJornada(
+  tipo: string, fraccion: number, noche: boolean, t?: Tarifas | null,
+): number | null {
+  if (!t) return null;
+  const frac = tipo === "oficina" ? (fraccionValida(fraccion) ? fraccion : 1) : 1;
+  const nocheOk = tipo !== "oficina" && !!noche;
+  const base = tipo === "rodaje" ? (t.tarifa_rodaje ?? t.tarifa_dia) : t.tarifa_dia;
+  const extra = nocheOk ? Number(t.tarifa_noche ?? t.tarifa_rodaje ?? t.tarifa_dia ?? 0) : 0;
+  const dia = base != null ? Number(base) * frac : null;
+  if (dia != null) return dia + extra;
+  return nocheOk && extra ? extra : null;
+}

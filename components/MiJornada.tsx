@@ -4,7 +4,7 @@ import Avatar from "@/components/Avatar";
 import MiniSelect from "@/components/MiniSelect";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { FRACCIONES, TIPOS_JORNADA } from "@/lib/jornadas";
+import { FRACCIONES, TIPOS_JORNADA, montoJornada } from "@/lib/jornadas";
 
 const TIPOS: [string, string][] = TIPOS_JORNADA.map(t => [t.v, `${t.ico} ${t.txt}`]);
 
@@ -48,13 +48,14 @@ export default function MiJornada({ proyectos, mi }: {
     );
   }
 
-  // scouting y oficina pagan con la tarifa de día; solo rodaje usa la de rodaje
-  const base = tipo === "rodaje" ? (mi.tarifa_rodaje ?? mi.tarifa_dia) : mi.tarifa_dia;
-  const nocheRate = mi.tarifa_noche ?? mi.tarifa_rodaje ?? mi.tarifa_dia;
+  /* El importe sale de `montoJornada`, la MISMA función que usa el servidor al
+     guardar. Aquí estaba calculado a mano, y eso es dos cálculos del mismo
+     número: el que se enseña antes de pulsar y el que se guarda después. El
+     día que discreparan, la pantalla habría prometido una cifra y la base
+     habría escrito otra. */
   const nocheOk = tipo !== "oficina" && noche;   // en oficina no hay pernocte
-  const extraNoche = nocheOk && nocheRate != null ? Number(nocheRate) : 0;
-  const dia = base != null ? Number(base) * fraccion : 0;
-  const monto = (base != null || (nocheOk && nocheRate != null)) ? dia + extraNoche : null;
+  const nocheRate = mi.tarifa_noche ?? mi.tarifa_rodaje ?? mi.tarifa_dia;
+  const monto = montoJornada(tipo, fraccion, nocheOk, mi);
 
   const inp = { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 9, padding: "7px 10px", fontSize: 12.5, color: "var(--text)", outline: "none", fontFamily: "inherit" } as const;
 

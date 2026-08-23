@@ -147,7 +147,17 @@ export default async function Admin({ searchParams }: {
       .gte("fecha", `${rAnio}-01-01`).lt("fecha", `${rAnio + 1}-01-01`)
       .order("fecha", { ascending: false }).limit(400),
     supabase.from("jornadas")
-      .select("id,persona_id,fecha,proyecto_id,tipo,fraccion,noche,monto,aprobada,notas,per:personas(nombre,alias),proy:proyectos(nombre)")
+      /* Las tarifas viajan CON la jornada y no en un mapa aparte sacado de
+       `personas`: aquella consulta filtra por `tipo = 'personal'`, así que la
+       jornada de un colaborador se habría quedado sin tarifa y su ↻ no habría
+       aparecido — sin decir por qué. Aquí, toda fila que se pinta trae la
+       suya. */
+    /* ⚠ UNA SOLA CADENA, sin concatenar. supabase-js deduce el tipo del
+       resultado LEYENDO este literal: partido en dos con un `+` deja de poder
+       leerlo y todas las filas pasan a ser `GenericStringError`, con lo que
+       `j.monto` deja de existir cincuenta líneas más abajo. Compila mal en un
+       sitio que no tiene nada que ver con este. */
+    .select("id,persona_id,fecha,proyecto_id,tipo,fraccion,noche,monto,aprobada,notas,per:personas(nombre,alias,tarifa_dia,tarifa_rodaje,tarifa_noche),proy:proyectos(nombre)")
       .eq("aprobada", false).order("fecha", { ascending: false }).limit(400),
     supabase.from("proyectos").select("id,nombre").order("nombre"),
     /* `proy` y `fecha` entran para la portada: sin proyecto no se puede decir
@@ -380,7 +390,17 @@ export default async function Admin({ searchParams }: {
   const jInicio = `${jAnio}-${pad(jMes + 1)}-01`;
   const jFin = `${jMes === 11 ? jAnio + 1 : jAnio}-${pad(jMes === 11 ? 1 : jMes + 2)}-01`;
   const { data: jornsCtx } = await supabase.from("jornadas")
-    .select("id,persona_id,fecha,proyecto_id,tipo,fraccion,noche,monto,aprobada,notas,per:personas(nombre,alias),proy:proyectos(nombre)")
+    /* Las tarifas viajan CON la jornada y no en un mapa aparte sacado de
+       `personas`: aquella consulta filtra por `tipo = 'personal'`, así que la
+       jornada de un colaborador se habría quedado sin tarifa y su ↻ no habría
+       aparecido — sin decir por qué. Aquí, toda fila que se pinta trae la
+       suya. */
+    /* ⚠ UNA SOLA CADENA, sin concatenar. supabase-js deduce el tipo del
+       resultado LEYENDO este literal: partido en dos con un `+` deja de poder
+       leerlo y todas las filas pasan a ser `GenericStringError`, con lo que
+       `j.monto` deja de existir cincuenta líneas más abajo. Compila mal en un
+       sitio que no tiene nada que ver con este. */
+    .select("id,persona_id,fecha,proyecto_id,tipo,fraccion,noche,monto,aprobada,notas,per:personas(nombre,alias,tarifa_dia,tarifa_rodaje,tarifa_noche),proy:proyectos(nombre)")
     .gte("fecha", jInicio).lt("fecha", jFin)
     .order("fecha", { ascending: false }).limit(3000);
 
@@ -401,6 +421,17 @@ export default async function Admin({ searchParams }: {
        tabla. Sin traerla, el campo solo se leía a sí mismo en /jornadas. */
     notas: j.notas || null,
   }));
+  /* La tarifa vigente de cada persona con jornadas este mes. Es lo que deja al
+     ↻ de la bitácora ENSEÑAR el importe recalculado en vez de prometerlo. */
+  const tarifasPorPersona: Record<string, any> = {};
+  (jornsCtx || []).forEach((j: any) => {
+    const p = Array.isArray(j.per) ? j.per[0] : j.per;
+    if (j.persona_id && p) tarifasPorPersona[j.persona_id] = {
+      tarifa_dia: p.tarifa_dia ?? null,
+      tarifa_rodaje: p.tarifa_rodaje ?? null,
+      tarifa_noche: p.tarifa_noche ?? null,
+    };
+  });
 
   /* De `jornsPend` —TODO lo pendiente— y no de `filasJornadas`, que ahora es
      un mes solo. Si el contador leyera lo pintado, navegar a un mes sin
@@ -1008,7 +1039,7 @@ export default async function Admin({ searchParams }: {
           <BitacoraJornadas items={filasJornadas} esAdmin miPersonaId="" proyectos={proyectos || []}
             porMes diasVacios plegable={false}
             horasPorPersona={horasPorPersona} diasPorPersona={diasPorPersona}
-            mesFranja={jInicio} ausentes={ausentesJ} />
+            mesFranja={jInicio} ausentes={ausentesJ} tarifas={tarifasPorPersona} />
         </>
       );
 

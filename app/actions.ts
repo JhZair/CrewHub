@@ -20,7 +20,7 @@ import { esCampoDelTrigger } from "@/lib/actividad";
 import { rotuloEstado } from "@/lib/estados";
 import { SECCIONES, grafiasDe, tipoCanonico, ICO_ENT } from "@/lib/secciones";
 import { vinculosDePublicaciones, conNombre } from "@/lib/vinculosPub";
-import { fraccionValida } from "@/lib/jornadas";
+import { fraccionValida, montoJornada } from "@/lib/jornadas";
 import { TIPOS_OBJETO } from "@/lib/objetos";
 import { catalogoObjetos, catalogosEntidades } from "@/lib/catalogos";
 import { resolverNombres } from "@/lib/nombres";
@@ -1808,10 +1808,10 @@ export async function registrarMiJornada(
      se convierte en dinero en el monto, callado. */
   const frac = tipo === "oficina" ? (fraccionValida(fraccion) ? fraccion : 1) : 1;
   const nocheOk = tipo !== "oficina" && !!noche;
-  const base = tipo === "rodaje" ? (yo.tarifa_rodaje ?? yo.tarifa_dia) : yo.tarifa_dia;
-  const extraNoche = nocheOk ? Number(yo.tarifa_noche ?? yo.tarifa_rodaje ?? yo.tarifa_dia ?? 0) : 0;
-  const dia = base != null ? Number(base) * frac : null;
-  const monto = dia != null ? dia + extraNoche : (nocheOk && extraNoche ? extraNoche : null);
+  /* La regla vive en lib/jornadas: estaba escrita aquí, en `editarJornada` y
+     en el formulario que enseña «Esta jornada: S/ 160». Tres sitios donde
+     cambiar una decisión sobre dinero. */
+  const monto = montoJornada(tipo, frac, nocheOk, yo);
   const { error } = await supabase.from("jornadas").insert({
     persona_id: yo.id, fecha, proyecto_id: proyectoId || null, tipo, fraccion: frac, noche: nocheOk, monto, registrado_por: user.id,
     /* La columna existe desde db/jornadas.sql y no la escribía nadie. Se
@@ -1912,10 +1912,7 @@ export async function editarJornada(
   // Misma guarda que al registrar: editar es otra puerta a la misma tabla.
   const frac = tipo === "oficina" ? (fraccionValida(fraccion) ? fraccion : 1) : 1;
   const nocheOk = tipo !== "oficina" && !!noche;
-  const base = tipo === "rodaje" ? (dueno!.tarifa_rodaje ?? dueno!.tarifa_dia) : dueno!.tarifa_dia;
-  const extraNoche = nocheOk ? Number(dueno!.tarifa_noche ?? dueno!.tarifa_rodaje ?? dueno!.tarifa_dia ?? 0) : 0;
-  const dia = base != null ? Number(base) * frac : null;
-  const calculado = dia != null ? dia + extraNoche : (nocheOk && extraNoche ? extraNoche : null);
+  const calculado = montoJornada(tipo, frac, nocheOk, dueno);
 
   /* El importe escrito a mano solo cuenta si quien edita es administración, y
      solo si es un número que se puede cobrar. Cualquier otra cosa —texto,

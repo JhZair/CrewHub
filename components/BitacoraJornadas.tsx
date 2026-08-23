@@ -4,7 +4,8 @@ import DiaContexto from "@/components/DiaContexto";
 import MiniSelect from "@/components/MiniSelect";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { FRACCIONES, metaFraccion, fechaHum, esFinde, TIPOS_JORNADA, metaTipo } from "@/lib/jornadas";
+import { FRACCIONES, metaFraccion, fechaHum, esFinde, TIPOS_JORNADA, metaTipo,
+  montoJornada, type Tarifas } from "@/lib/jornadas";
 
 /* En el modo edición cabe solo el ícono: son tres botones dentro de una fila
    que ya lleva fecha, proyecto, duración, nota y dos botones más. */
@@ -14,8 +15,13 @@ const money = (n: number | null) => n != null ? `S/ ${Math.round(n).toLocaleStri
 
 const inp = { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "5px 8px", fontSize: 12, color: "var(--text)", outline: "none" } as const;
 
-function FilaJornada({ j, esAdmin, puedeEditar, proyectos, onChange }: {
-  j: any; esAdmin: boolean; puedeEditar: boolean; proyectos: { id: string; nombre: string }[]; onChange: () => void;
+function FilaJornada({ j, esAdmin, puedeEditar, proyectos, tarifas, onChange }: {
+  j: any; esAdmin: boolean; puedeEditar: boolean; proyectos: { id: string; nombre: string }[];
+  /** Las tarifas de esta persona, para poder ENSEÑAR el importe recalculado en
+   *  vez de prometerlo. Sin ellas el ↻ no aparece: un botón que no puede hacer
+   *  su trabajo es peor que ninguno. */
+  tarifas?: Tarifas | null;
+  onChange: () => void;
 }) {
   const [edit, setEdit] = useState(false);
   const [borrando, setBorrando] = useState(false);
@@ -34,6 +40,11 @@ function FilaJornada({ j, esAdmin, puedeEditar, proyectos, onChange }: {
   /* Si se entró a editar pulsando «＋ nota», el cursor va ahí. Quien pulsa eso
      viene a escribir una frase, no a repasar la fecha y el proyecto. */
   const [aNota, setANota] = useState(false);
+  /* Lo que costaría esta jornada con la tarifa de HOY, tal como está el
+     formulario ahora mismo: cambia al tocar el tipo, la fracción o el
+     pernocte, que es cuando importa volver a mirarlo. */
+  const calculado = montoJornada(
+    tipo, tipo === "oficina" ? fraccion : 1, tipo !== "oficina" && noche, tarifas);
 
   const aprobar = async (v: boolean) => {
     setOcupado(true); const r: any = await aprobarJornada(j.id, v); setOcupado(false);
@@ -90,15 +101,26 @@ function FilaJornada({ j, esAdmin, puedeEditar, proyectos, onChange }: {
             Solo administración: quien edita puede ser el dueño de la fila, o
             sea justo quien cobra. El servidor lo exige otra vez. */}
         {esAdmin && (
-          <span className="jr-ed-monto" title="Vacío = recalcular con la tarifa de hoy">
+          <span className="jr-ed-monto">
             S/
             <input value={monto} onChange={e => setMonto(e.target.value)}
               inputMode="decimal" placeholder="recalcular"
               onKeyDown={e => { if (e.key === "Enter") guardar(); }}
               style={{ ...inp, width: 82 }} />
-            {monto !== "" && (
-              <button className="dato-btn" title="Vaciar para que se recalcule con la tarifa de hoy"
-                onClick={() => setMonto("")}>↻</button>
+            {/* ── EL ↻ ENSEÑA EL NÚMERO, NO LO PROMETE ──
+                Antes solo vaciaba el campo, y el cálculo pasaba en el servidor
+                al guardar: se pulsaba «recalcular» y no se recalculaba nada
+                visible. Ahora pone el importe con la tarifa de hoy DENTRO del
+                campo, así que se ve antes de decidir — y se puede corregir a
+                mano encima si no cuadra.
+                Es la misma función que usa el servidor al guardar, así que no
+                hay dos cálculos que puedan discrepar. */}
+            {calculado != null && Math.round(calculado) !== Number(monto) && (
+              <button className="dato-btn" style={{ whiteSpace: "nowrap" }}
+                title={`Poner el importe con la tarifa de hoy: S/ ${Math.round(calculado)}`}
+                onClick={() => setMonto(String(Math.round(calculado)))}>
+                ↻ {Math.round(calculado)}
+              </button>
             )}
           </span>
         )}
@@ -236,7 +258,7 @@ const diasDelMes = (ym: string) => {
     `${a}-${String(m).padStart(2, "0")}-${String(i + 1).padStart(2, "0")}`);
 };
 
-export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId = "", proyectos = [], titulo = "🗒 Jornadas del mes", bloqueado = false, porMes = false, diasVacios = false, plegable = true, horasPorPersona, diasPorPersona, mesFranja, ausentes = [] }: {
+export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId = "", proyectos = [], titulo = "🗒 Jornadas del mes", bloqueado = false, porMes = false, diasVacios = false, plegable = true, horasPorPersona, diasPorPersona, mesFranja, ausentes = [], tarifas }: {
   items: any[]; esAdmin?: boolean; miPersonaId?: string; proyectos?: { id: string; nombre: string }[]; titulo?: string; bloqueado?: boolean;
   /** Subdivide cada persona por mes. Para listas que cruzan varios. */
   porMes?: boolean;
@@ -273,6 +295,9 @@ export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId =
   /** Quienes NO registraron ni una jornada este mes pero sí tocaron el sistema.
    *  Van al final, con su silueta y sin filas. */
   ausentes?: { id: string; nombre: string }[];
+  /** Tarifa de cada persona, por id. Solo hace falta donde el importe se puede
+   *  editar —administración—, y es de donde sale el número que enseña el ↻. */
+  tarifas?: Record<string, Tarifas>;
 }) {
   const router = useRouter();
   const onChange = () => router.refresh();
@@ -364,6 +389,7 @@ export default function BitacoraJornadas({ items, esAdmin = false, miPersonaId =
               const pinta = (j: any) => (
                 <FilaJornada key={j.id} j={j} esAdmin={esAdmin}
                   puedeEditar={!bloqueado && (esAdmin || (j.persona_id === miPersonaId && !j.aprobada))}
+                  tarifas={tarifas?.[j.persona_id] || null}
                   proyectos={proyectos} onChange={onChange} />
               );
               if (!porMes) return g.items.map(pinta);
