@@ -60,7 +60,7 @@ export type Cuenta = {
   /** La ficha de persona a la que está atada esta cuenta (`personas.usuario_id`).
    *  Es lo que contesta «¿esta quién es?» sin depender de `auth.users`, y una
    *  cuenta SIN ficha, con un «nada» al lado, es el retrato del login de paso. */
-  persona?: { id: string; nombre: string; tipo?: string | null } | null;
+  persona?: { id: string; nombre: string; tipo?: string | null; rol?: string | null } | null;
   /** Cuánto ha escrito. Lo cuenta Postgres, no esta lista. */
   casos: number;
   comentarios: number;
@@ -284,7 +284,18 @@ export default function CuentasPanel({
                 {!c.es_admin && c.es_finanzas && (
                   <span className="cta-chip" title="Solo el panel de RHE">finanzas</span>
                 )}
-                {c.rol && <span style={{ color: "var(--dim)", fontSize: 11.5 }}>{c.rol}</span>}
+                {/* Su especialidad sale de la FICHA (`personas.rol`), no de la
+                    cuenta. `perfiles.rol` existe en el esquema desde el primer
+                    día y no lo escribe nadie en todo el repositorio: pintarlo
+                    aquí era pintar una columna que siempre está vacía.
+                    Y el sitio importa: el rol de trabajo de una persona es un
+                    dato de la persona, no de la llave con la que entra. */}
+                {c.persona?.rol && (
+                  <span style={{ color: "var(--dim)", fontSize: 11.5 }}
+                    title="Especialidades, de su ficha de persona">
+                    {c.persona.rol}
+                  </span>
+                )}
               </span>
               {/* Con qué entró y a quién corresponde. El correo desempata dos
                   cuentas del mismo nombre; la ficha dice si esa cuenta es de

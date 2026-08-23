@@ -238,7 +238,7 @@ export default async function Admin({ searchParams }: {
           por defecto en el esquema, así que filtrar aquí haría desaparecer
           enlaces existentes: la fila diría «sin ficha» y, si alguien elegía
           otra, el enlace invisible se borraría sin avisar. Son una docena. */
-    supabase.from("personas").select("id,nombre,alias,usuario_id,tipo")
+    supabase.from("personas").select("id,nombre,alias,usuario_id,tipo,rol")
       .not("usuario_id", "is", null),
     /* 2) Las que se pueden ELEGIR. Aquí sí se filtra: `personas` guarda
           también proveedores, bancos y contactos heredados de SeaTable, y
@@ -265,9 +265,9 @@ export default async function Admin({ searchParams }: {
       [r.id, { email: r.email || null,
                casos: Number(r.casos || 0), comentarios: Number(r.comentarios || 0) }]));
   const atadas = (fichasCuenta || []) as any[];
-  const fichaDe = new Map<string, { id: string; nombre: string; tipo?: string | null }>(
+  const fichaDe = new Map<string, { id: string; nombre: string; tipo?: string | null; rol?: string | null }>(
     atadas.map((f: any) =>
-      [f.usuario_id, { id: f.id, nombre: f.alias || f.nombre, tipo: f.tipo }]));
+      [f.usuario_id, { id: f.id, nombre: f.alias || f.nombre, tipo: f.tipo, rol: f.rol }]));
   /* Para el selector: las elegibles MÁS las que ya están atadas aunque sean de
      otro tipo. Sin esa unión, una cuenta enlazada a una ficha de tipo
      «contacto» no encontraría la suya en su propio desplegable — vería «sin
