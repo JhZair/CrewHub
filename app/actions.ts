@@ -1876,6 +1876,22 @@ export async function editarJornada(
      el argumento —desde otra pantalla, mañana— no puede llevarse por delante
      una nota que nadie quiso tocar. */
   notas?: string | null,
+  /* ── EL IMPORTE, A MANO ──
+   * `jornadas.monto` es una FOTO del cálculo al registrar, a propósito: subir
+   * una tarifa no puede reescribir lo que ya se pagó. Pero eso deja el caso
+   * contrario sin salida — la jornada que se apuntó con la tarifa vieja por
+   * error, y que hay que corregir a mano.
+   *
+   * Vacío o `undefined` significa «recalcula con la tarifa de hoy», que es lo
+   * que esta acción hacía siempre. Un número significa «este importe y no
+   * otro». Las dos intenciones son legítimas y por eso viajan distinto: un
+   * campo que solo acepta números obligaría a teclear el cálculo que la
+   * máquina ya sabe hacer.
+   *
+   * ⚠ SOLO ADMINISTRACIÓN. Sin esa condición, cualquiera podría fijarse el
+   * importe de su propia jornada — y esta acción la puede llamar el dueño de
+   * la fila, que es justo quien cobra. */
+  monto?: string | number | null,
 ) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -1899,9 +1915,16 @@ export async function editarJornada(
   const base = tipo === "rodaje" ? (dueno!.tarifa_rodaje ?? dueno!.tarifa_dia) : dueno!.tarifa_dia;
   const extraNoche = nocheOk ? Number(dueno!.tarifa_noche ?? dueno!.tarifa_rodaje ?? dueno!.tarifa_dia ?? 0) : 0;
   const dia = base != null ? Number(base) * frac : null;
-  const monto = dia != null ? dia + extraNoche : (nocheOk && extraNoche ? extraNoche : null);
+  const calculado = dia != null ? dia + extraNoche : (nocheOk && extraNoche ? extraNoche : null);
+
+  /* El importe escrito a mano solo cuenta si quien edita es administración, y
+     solo si es un número que se puede cobrar. Cualquier otra cosa —texto,
+     negativo, vacío— cae al cálculo, que es la respuesta segura. */
+  const aMano = perfil?.es_admin ? montoDe(monto ?? "") : 0;
+  const montoFinal = aMano > 0 ? aMano : calculado;
+
   const { error } = await supabase.from("jornadas").update({
-    fecha, proyecto_id: proyectoId || null, tipo, fraccion: frac, noche: nocheOk, monto,
+    fecha, proyecto_id: proyectoId || null, tipo, fraccion: frac, noche: nocheOk, monto: montoFinal,
     aprobada: false, aprobada_por: null, aprobada_en: null,
     ...(notas === undefined ? {} : { notas: recorte(notas, 300) }),
   }).eq("id", id);

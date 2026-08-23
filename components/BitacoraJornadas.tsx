@@ -26,6 +26,11 @@ function FilaJornada({ j, esAdmin, puedeEditar, proyectos, onChange }: {
   const [fraccion, setFraccion] = useState<number>(Number(j.fraccion));
   const [noche, setNoche] = useState(!!j.noche);
   const [notas, setNotas] = useState<string>(j.notas || "");
+  /* El importe, como TEXTO y no como número: vacío tiene que poder existir, y
+     es lo que significa «recalcula tú». Con un `number` el vacío se convierte
+     en NaN o en 0, y 0 es un importe. */
+  const [monto, setMonto] = useState<string>(
+    j.monto != null ? String(Math.round(Number(j.monto))) : "");
   /* Si se entró a editar pulsando «＋ nota», el cursor va ahí. Quien pulsa eso
      viene a escribir una frase, no a repasar la fecha y el proyecto. */
   const [aNota, setANota] = useState(false);
@@ -37,7 +42,8 @@ function FilaJornada({ j, esAdmin, puedeEditar, proyectos, onChange }: {
   const guardar = async () => {
     setOcupado(true);
     const r: any = await editarJornada(j.id, fecha, proyectoId || null, tipo,
-      tipo === "oficina" ? fraccion : 1, tipo !== "oficina" && noche, notas);
+      tipo === "oficina" ? fraccion : 1, tipo !== "oficina" && noche, notas,
+      esAdmin ? monto : undefined);
     setOcupado(false);
     if (r?.error) { alert(r.error); return; }
     setEdit(false); setANota(false); onChange();
@@ -73,6 +79,29 @@ function FilaJornada({ j, esAdmin, puedeEditar, proyectos, onChange }: {
         {tipo !== "oficina" && (
           <button className={`jr-chip ${noche ? "on" : ""}`} onClick={() => setNoche(n => !n)}>🏕 {noche ? "✓" : ""}</button>
         )}
+        {/* ── EL IMPORTE ──
+            El monto es una FOTO del cálculo al registrar, a propósito: subir
+            una tarifa no reescribe lo que ya se pagó. Pero eso dejaba sin
+            salida el caso contrario —la jornada apuntada con la tarifa vieja
+            por error— y arreglarla exigía SQL.
+            Vacío significa «recalcula con la tarifa de hoy», que es lo que
+            esta pantalla hacía siempre y sigue haciendo si no se toca. Un
+            número, «este importe y no otro».
+            Solo administración: quien edita puede ser el dueño de la fila, o
+            sea justo quien cobra. El servidor lo exige otra vez. */}
+        {esAdmin && (
+          <span className="jr-ed-monto" title="Vacío = recalcular con la tarifa de hoy">
+            S/
+            <input value={monto} onChange={e => setMonto(e.target.value)}
+              inputMode="decimal" placeholder="recalcular"
+              onKeyDown={e => { if (e.key === "Enter") guardar(); }}
+              style={{ ...inp, width: 82 }} />
+            {monto !== "" && (
+              <button className="dato-btn" title="Vaciar para que se recalcule con la tarifa de hoy"
+                onClick={() => setMonto("")}>↻</button>
+            )}
+          </span>
+        )}
         {/* La nota también se corrige aquí. Sin esto, un dedazo quedaba fijo
             para siempre —la acción no la aceptaba y el modo edición no la
             enseñaba— y encima DESAPARECÍA de la pantalla al entrar a editar,
@@ -88,7 +117,9 @@ function FilaJornada({ j, esAdmin, puedeEditar, proyectos, onChange }: {
             /* Cancelar devuelve la nota a como estaba: si no, la fila seguiría
                enseñando la vieja y el formulario recordaría la nueva, y al
                volver a abrir aparecería un texto que nadie guardó. */
-            setNotas(j.notas || ""); setANota(false); setEdit(false);
+            setNotas(j.notas || "");
+            setMonto(j.monto != null ? String(Math.round(Number(j.monto))) : "");
+            setANota(false); setEdit(false);
           }}>Cancelar</button>
       </div>
     );

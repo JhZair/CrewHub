@@ -5150,3 +5150,7 @@ mark.bq-marca{
   border:1px solid var(--border);border-radius:7px;padding:1px 7px;
   white-space:nowrap}
 .jr-dia-vacio .jr-tipo{opacity:.35}
+/* El importe en la fila de edición. La «S/» va fuera del campo: dentro habría
+   que escribirla o borrarla, y es lo único de ese dato que nunca cambia. */
+.jr-ed-monto{display:inline-flex;align-items:center;gap:5px;flex:none;
+  font-size:11.5px;color:var(--muted)}
