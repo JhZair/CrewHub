@@ -55,12 +55,17 @@ export type Cuenta = {
   comentarios: number;
 };
 
-export default function CuentasPanel({ cuentas, yo, sinConteo = false }: {
+export default function CuentasPanel({ cuentas, yo, sinConteo = false, correoViejo = false }: {
   cuentas: Cuenta[]; yo: string;
   /** Sin db/cuentas-activas.sql no hay función de conteo. Se DICE, y la
    *  columna queda en blanco: un cero inventado aquí es lo que haría apagar a
    *  quien no toca. */
   sinConteo?: boolean;
+  /** La migración está, pero en su primera versión: cuenta y no trae correo.
+   *  Se distingue de «no está» porque el arreglo es distinto —volver a correr
+   *  el mismo archivo— y porque callarlo hacía parecer que los correos no
+   *  existen. */
+  correoViejo?: boolean;
 }) {
   const router = useRouter();
   const [ocupado, setOcupado] = useState<string | null>(null);
@@ -98,6 +103,14 @@ export default function CuentasPanel({ cuentas, yo, sinConteo = false }: {
         sesión no se cierra.
         {nApagadas > 0 && <> · {nApagadas} apagada{nApagadas === 1 ? "" : "s"}.</>}
       </p>
+      {correoViejo && (
+        <div className="empty" style={{ color: "var(--yellow)", marginBottom: 10 }}>
+          El correo de cada cuenta no llega porque la base se quedó con la
+          primera versión de <b>resumen_cuentas</b>, de cuando esa función aún
+          no lo devolvía. Vuelve a correr <b>db/cuentas-activas.sql</b>: lleva
+          un <code>drop function</code> delante justo para este cambio.
+        </div>
+      )}
       {sinConteo && (
         <div className="empty" style={{ color: "var(--yellow)", marginBottom: 10 }}>
           Hasta correr <b>db/cuentas-activas.sql</b> no se puede saber ni el

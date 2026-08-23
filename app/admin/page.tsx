@@ -253,6 +253,15 @@ export default async function Admin({ searchParams }: {
   /* Sin la migración no hay conteo, y entonces NO se enseña un cero: un cero
      falso en esta columna es lo que haría apagar a quien no toca. */
   const sinConteo = !!eEscrito;
+  /* ── LA MIGRACIÓN CORRIDA A MEDIAS ──
+     `resumen_cuentas` ganó la columna del correo DESPUÉS de su primera
+     versión. Si la base se quedó con aquélla, la función responde —los conteos
+     salen— pero sin correo, y la pantalla decía «sin ficha de persona» en las
+     doce filas como si el dato no existiera. No es que no exista: es que la
+     función es vieja. La pregunta se contesta sin preguntar nada más: si
+     vinieron filas y ninguna trae siquiera la CLAVE `email`, es la de antes. */
+  const correoViejo = !sinConteo && ((escrito || []) as any[]).length > 0
+    && !("email" in (((escrito || []) as any[])[0] || {}));
   /* Encendidas y sin una sola línea escrita: el retrato del login de paso.
      No se apagan solas —una persona recién llegada empieza así— pero es lo
      que hay que ir a mirar. */
@@ -1001,7 +1010,8 @@ export default async function Admin({ searchParams }: {
   const panelCuentas = (
     <>
       <h3 style={{ margin: "4px 0 2px", fontSize: 14 }}>👤 Cuentas</h3>
-      <CuentasPanel cuentas={cuentas} yo={user.id} sinConteo={sinConteo} />
+      <CuentasPanel cuentas={cuentas} yo={user.id} sinConteo={sinConteo}
+        correoViejo={correoViejo} />
     </>
   );
   /* El orden es el de la frecuencia: la portada, lo de cada semana, el dinero
