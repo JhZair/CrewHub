@@ -34,23 +34,30 @@
  * Son caracteres de texto, no imágenes: pesan cero, heredan el color de la
  * etiqueta —que ya lleva el tono de cada duración— y se copian con el resto
  * de la fila. */
-/* ── LOS CUATRO NOMBRES, CON LA MISMA FORMA ──
+/* ── LOS CUATRO NOMBRES, CON LA MISMA FORMA Y LA UNIDAD CORRECTA ──
+ *
  * Eran «½ Medio», «1 Completo», «1½ Día y medio» y «2 Doble»: cuatro maneras
  * distintas de decir lo mismo —una con adjetivo, otra con la palabra entera,
  * otra con un sustantivo— y de largos tan dispares que los botones se partían
- * en dos líneas al añadirles el ícono.
+ * en dos líneas al añadirles el círculo.
  *
- * Ahora todos son «número + día(s)». Se leen de un vistazo porque son la misma
- * frase con un número distinto, que es lo único que cambia de verdad entre
- * ellos. Y caben.
+ * Y la unidad no es el DÍA, es la JORNADA. No es lo mismo: dos jornadas caben
+ * en un día largo de rodaje, y media jornada no es medio día de calendario.
+ * Lo que se registra —y lo que se paga— son jornadas.
  *
- * `ayuda` guarda lo que el nombre corto ya no dice: va al `title`, donde no
+ * Se escribe entera en la unidad —«1 jornada»— y abreviada en las otras tres.
+ * No es una excepción caprichosa: el 1 es el caso de referencia, el que define
+ * qué es una unidad aquí, y verlo escrito una vez en la fila enseña a leer las
+ * otras tres. En las demás la palabra completa solo repite lo que el número ya
+ * dijo.
+ *
+ * `ayuda` guarda lo que el rótulo corto ya no dice: va al `title`, donde no
  * estorba a nadie. */
 export const FRACCIONES: { v: number; ico: string; corto: string; largo: string; ayuda: string; tono: string }[] = [
-  { v: 0.5, ico: "◑", corto: "½",  largo: "½ día",  ayuda: "Media jornada",   tono: "medio" },
-  { v: 1,   ico: "●", corto: "1",  largo: "1 día",  ayuda: "Jornada completa", tono: "uno" },
-  { v: 1.5, ico: "◕", corto: "1½", largo: "1½ días", ayuda: "Jornada y media", tono: "medio-mas" },
-  { v: 2,   ico: "⬤", corto: "2",  largo: "2 días", ayuda: "Jornada doble",    tono: "doble" },
+  { v: 0.5, ico: "◑", corto: "½",  largo: "½ j",       ayuda: "Media jornada",    tono: "medio" },
+  { v: 1,   ico: "●", corto: "1",  largo: "1 jornada", ayuda: "Jornada completa", tono: "uno" },
+  { v: 1.5, ico: "◕", corto: "1½", largo: "1½ j",      ayuda: "Jornada y media",  tono: "medio-mas" },
+  { v: 2,   ico: "⬤", corto: "2",  largo: "2 j",       ayuda: "Jornada doble",    tono: "doble" },
 ];
 /** La fracción tal como se lee en una fila: «1½ día y medio». */
 export const metaFraccion = (n?: number | null) =>

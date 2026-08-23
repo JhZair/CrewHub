@@ -113,8 +113,11 @@ function FilaJornada({ j, esAdmin, puedeEditar, proyectos, onChange }: {
           la misma etiqueta, «1j 🏕» se leía como una jornada normal con un
           adorno, cuando cuesta el doble. */}
       <span className={`jr-dur t-${metaFraccion(j.fraccion).tono}`} title={metaFraccion(j.fraccion).ayuda}>
+        {/* El rótulo sale de `FRACCIONES` y no se arma aquí. Antes era
+            `corto + (v===1 ? "día" : "j")`, o sea una quinta forma de nombrar
+            las mismas cuatro cosas, escrita en un componente. */}
         <span className="jr-dur-ico">{metaFraccion(j.fraccion).ico}</span>
-        {metaFraccion(j.fraccion).corto} {metaFraccion(j.fraccion).v === 1 ? "día" : "j"}
+        {metaFraccion(j.fraccion).largo}
       </span>
       {j.noche && <span className="jr-pernocte" title="Con pernocte: se durmió fuera. Se paga aparte del día.">🏕 pernocte</span>}
       <span style={{ color: "var(--teal)", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>{money(j.monto)}</span>
