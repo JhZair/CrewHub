@@ -71,7 +71,11 @@ export default function MiJornada({ proyectos, mi }: {
   };
 
   return (
-    <div className="card">
+    /* ── LA TARJETA QUE SE MIRA PRIMERO ──
+       Es lo único de esta pantalla que pide una acción TODOS los días; el
+       resto es consulta. El realce estaba en la tarjeta del ciclo, que se
+       toca una vez al mes y ya se anuncia sola con su botón. */
+    <div className="card card-foco">
       {/* Con cara y nombre completo. Decía «REGISTRAR MI JORNADA — JOHNO», y
           el alias suelto en mayúsculas no confirma nada: esta pantalla escribe
           en el sueldo de alguien, y lo primero que hay que poder comprobar es
@@ -117,7 +121,8 @@ export default function MiJornada({ proyectos, mi }: {
         {tipo === "oficina" && (
           <span className="jr-seg">
             {FRACCIONES.map(f => (
-              <button key={f.v} className={fraccion === f.v ? "on" : ""} onClick={() => setFraccion(f.v)}>
+              <button key={f.v} className={fraccion === f.v ? "on" : ""}
+                title={f.ayuda} onClick={() => setFraccion(f.v)}>
                 <span className="jr-dur-ico">{f.ico}</span> {f.largo}
               </button>
             ))}

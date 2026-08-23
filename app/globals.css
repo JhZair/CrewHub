@@ -5110,3 +5110,7 @@ mark.bq-marca{
    alinea arriba y deja el botón abajo, a la altura del «s» de sus vecinas. */
 .kpi-ciclo{justify-content:flex-start}
 .kpi-ciclo .btn{align-self:flex-start}
+/* La tarjeta a la que hay que mirar primero. El mismo violeta del compositor
+   de casos, que ya es en el sistema «esto es donde se escribe». */
+.card-foco{border-color:rgba(124,92,255,.42);
+  background:linear-gradient(180deg,rgba(124,92,255,.06),transparent 140px),var(--card)}

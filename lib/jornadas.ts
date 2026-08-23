@@ -34,18 +34,31 @@
  * Son caracteres de texto, no imágenes: pesan cero, heredan el color de la
  * etiqueta —que ya lleva el tono de cada duración— y se copian con el resto
  * de la fila. */
-export const FRACCIONES: { v: number; ico: string; corto: string; largo: string; tono: string }[] = [
-  { v: 0.5, ico: "◑", corto: "½",  largo: "½ Medio",         tono: "medio" },
-  { v: 1,   ico: "●", corto: "1",  largo: "1 Completo",      tono: "uno" },
-  { v: 1.5, ico: "◕", corto: "1½", largo: "1½ Día y medio",  tono: "medio-mas" },
-  { v: 2,   ico: "⬤", corto: "2",  largo: "2 Doble",         tono: "doble" },
+/* ── LOS CUATRO NOMBRES, CON LA MISMA FORMA ──
+ * Eran «½ Medio», «1 Completo», «1½ Día y medio» y «2 Doble»: cuatro maneras
+ * distintas de decir lo mismo —una con adjetivo, otra con la palabra entera,
+ * otra con un sustantivo— y de largos tan dispares que los botones se partían
+ * en dos líneas al añadirles el ícono.
+ *
+ * Ahora todos son «número + día(s)». Se leen de un vistazo porque son la misma
+ * frase con un número distinto, que es lo único que cambia de verdad entre
+ * ellos. Y caben.
+ *
+ * `ayuda` guarda lo que el nombre corto ya no dice: va al `title`, donde no
+ * estorba a nadie. */
+export const FRACCIONES: { v: number; ico: string; corto: string; largo: string; ayuda: string; tono: string }[] = [
+  { v: 0.5, ico: "◑", corto: "½",  largo: "½ día",  ayuda: "Media jornada",   tono: "medio" },
+  { v: 1,   ico: "●", corto: "1",  largo: "1 día",  ayuda: "Jornada completa", tono: "uno" },
+  { v: 1.5, ico: "◕", corto: "1½", largo: "1½ días", ayuda: "Jornada y media", tono: "medio-mas" },
+  { v: 2,   ico: "⬤", corto: "2",  largo: "2 días", ayuda: "Jornada doble",    tono: "doble" },
 ];
 /** La fracción tal como se lee en una fila: «1½ día y medio». */
 export const metaFraccion = (n?: number | null) =>
   FRACCIONES.find(f => f.v === Number(n))
   /* Sin ícono para lo que no está en la lista, y a propósito: un valor que
      nadie eligió no debe parecerse a los cuatro que sí. El «?» lo delata. */
-  || { v: Number(n) || 0, ico: "", corto: String(n ?? "?"), largo: `${n}`, tono: "uno" };
+  || { v: Number(n) || 0, ico: "", corto: String(n ?? "?"), largo: `${n}`,
+       ayuda: `Valor fuera de las cuatro duraciones: ${n}`, tono: "uno" };
 
 /** ¿Es una fracción que ofrecemos? Para no guardar valores que nadie eligió. */
 export const fraccionValida = (n: number) => FRACCIONES.some(f => f.v === Number(n));

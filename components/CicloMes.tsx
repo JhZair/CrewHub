@@ -40,10 +40,12 @@ export default function CicloMes({ anio, mes, mesNombre, liq, personaId, rhes, c
 
   if (celda && liq?.estado !== "liquidado") {
     const confirmado = liq?.estado === "confirmado";
+    /* Sin borde de color: es una tarjeta MÁS de la fila del pago, no una
+       alerta. El realce va en «Registrar mi jornada», que es la única cosa de
+       esta pantalla que pide una acción todos los días — confirmar el mes se
+       hace una vez, y ya lo anuncia su botón. */
     return (
-      <div className="kpi kpi-ciclo" style={{
-        borderColor: confirmado ? "rgba(46,204,113,.35)" : "rgba(124,92,255,.35)",
-      }}>
+      <div className="kpi kpi-ciclo">
         <span className="l">📅 Mi ciclo · {mesNombre}</span>
         <span className="n" style={{
           fontSize: 19, color: confirmado ? "var(--green)" : "var(--text)",

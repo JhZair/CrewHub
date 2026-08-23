@@ -62,7 +62,7 @@ function FilaJornada({ j, esAdmin, puedeEditar, proyectos, onChange }: {
           <span className="jr-seg">
             {FRACCIONES.map(f => (
               <button key={f.v} className={fraccion === f.v ? "on" : ""}
-                title={f.largo} onClick={() => setFraccion(f.v)}>
+                title={f.ayuda} onClick={() => setFraccion(f.v)}>
                 <span className="jr-dur-ico">{f.ico}</span> {f.corto}
               </button>
             ))}
@@ -112,7 +112,7 @@ function FilaJornada({ j, esAdmin, puedeEditar, proyectos, onChange }: {
           día— es que además se durmió fuera, y por eso paga aparte. Metidos en
           la misma etiqueta, «1j 🏕» se leía como una jornada normal con un
           adorno, cuando cuesta el doble. */}
-      <span className={`jr-dur t-${metaFraccion(j.fraccion).tono}`} title={metaFraccion(j.fraccion).largo}>
+      <span className={`jr-dur t-${metaFraccion(j.fraccion).tono}`} title={metaFraccion(j.fraccion).ayuda}>
         <span className="jr-dur-ico">{metaFraccion(j.fraccion).ico}</span>
         {metaFraccion(j.fraccion).corto} {metaFraccion(j.fraccion).v === 1 ? "día" : "j"}
       </span>
