@@ -3346,6 +3346,24 @@ button.repo-tit{text-align:left}
 .jr-dia-vacio .jr-fecha,.jr-dia-vacio .jr-proy{color:#3d3d52}
 /* Fila de jornada: una sola línea. El proyecto es lo que cede. */
 .jr-fila{display:flex;align-items:center;gap:9px;flex-wrap:nowrap}
+/* ── LA FRANJA QUE SE ENCIENDE ──
+   Treinta filas de fecha, jornada, monto y estado se recorren con la vista, y
+   sin nada que marque dónde está el cursor hay que apoyarse en el renglón —el
+   error clásico es leer la fecha de una fila y el monto de la de abajo—.
+   Con el fondo, la línea que se mira es la que se está mirando.
+   La misma solución, y el mismo color, que la lista de /obligaciones: el
+   relleno lateral y el margen negativo van juntos en la misma regla porque uno
+   estira el fondo hasta el borde de la tarjeta y el otro devuelve el contenido
+   a su sitio. Separarlos es descuadrar la sangría al tocar solo uno.
+   Y la transición, corta: al bajar por la lista se encienden veinte filas
+   seguidas, y una animación lenta las deja todas a medio apagar. */
+.jr-fila{padding-left:8px;padding-right:8px;margin-left:-8px;margin-right:-8px;
+  border-radius:8px;transition:background .12s ease}
+.jr-fila:hover{background:rgba(255,255,255,.045)}
+/* Un día sin registrar no es una fila que se pueda tocar: no tiene jornada, ni
+   botones, ni nada que abrir. Se enciende MENOS, lo justo para no romper el
+   barrido — apagarlo del todo haría un salto en la franja al pasar por él. */
+.jr-dia-vacio.jr-fila:hover{background:rgba(255,255,255,.02)}
 .jr-quien{font-weight:600;font-size:12.5px;white-space:nowrap;flex:none}
 .jr-proy{color:var(--dim);font-size:12px;flex:1;min-width:40px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
