@@ -42,6 +42,8 @@ type Cmp = {
   concepto: string | null; etapa: string | null; rubro_item: string | null; url: string | null;
   nComentarios?: number; reacciones?: any[]; caso?: any;
   creado_en?: string | null;
+  /** Quién lo registró, para cruzarlo con el alias corto. */
+  creado_por?: string | null;
   creado?: { nombre: string | null } | { nombre: string | null }[] | null;
 };
 type Opcion = { id: string; nombre: string };
@@ -87,7 +89,7 @@ const cuandoLargo = (t?: string | null) => {
 
 export default function Comprobantes({
   postulacionId, empresaId, comprobantes, etapas, rubros, esAdmin, error, urlSunat, userId, hiloError,
-  fondos,
+  fondos, alias,
 }: {
   /* ── EL MISMO BLOQUE EN DOS SITIOS ──
    * Nació dentro de la rendición de un fondo, con `postulacionId` fijo. Desde
@@ -116,6 +118,10 @@ export default function Comprobantes({
   /** Si falta db/rendicion-interaccion.sql. Se dice una vez arriba y la lista
    *  sigue leyéndose: el hilo es un añadido, no el motivo del bloque. */
   hiloError?: string | null;
+  /** cuenta → alias corto («JohnO»). `perfiles` guarda el nombre largo, y en el
+   *  pie de una factura «John Oros Condori» ocupa media línea sin decir nada
+   *  más. Sin alias cargado se cae al nombre: mejor largo que vacío. */
+  alias?: Record<string, string>;
 }) {
   const router = useRouter();
   const { pedir, dialogo } = useConfirmar();
@@ -525,7 +531,9 @@ export default function Comprobantes({
                     ? <>
                         <Avatar nombre={autorDe(c)!.nombre} src={autorDe(c)!.avatar_url}
                           color={autorDe(c)!.color} size={18} />
-                        <b>{autorDe(c)!.nombre}</b>
+                        {/* El corto; el largo queda en el título de la celda,
+                            que ya lo lleva («Registrado por … el …»). */}
+                        <b>{(c.creado_por && alias?.[c.creado_por]) || autorDe(c)!.nombre}</b>
                       </>
                     : <i style={{ color: "var(--dim)" }}>carga directa</i>}
                   <span style={{ color: "var(--dim)" }}>· {cuando(c.creado_en)}</span>

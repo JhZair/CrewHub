@@ -26,6 +26,7 @@ import { integrantesDeFondo } from "@/lib/equipoFondo";
 import { urlPlataforma, PLAT } from "@/lib/plataformas";
 import { hilosDeFilas } from "@/lib/rendicionHilo";
 import { gastosDelFondo, ayudaRubro } from "@/lib/ejecutado";
+import { mapaAlias } from "@/lib/personas";
 
 /* ── LA EJECUCIÓN DEL FONDO — la segunda vida de un proyecto ──
  *
@@ -159,7 +160,7 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
          mientras en /comprobantes se ve la cara. El mismo bloque no puede
          enseñar dos cosas distintas según la pantalla. */
       .select("id,tipo,proveedor,ruc,serie,numero,fecha,importe,igv,concepto,etapa,rubro_item,url," +
-        "postulacion_id,creado_en,creado:perfiles!creado_por(nombre,avatar_url,color)")
+        "postulacion_id,creado_en,creado_por,creado:perfiles!creado_por(nombre,avatar_url,color)")
       .eq("postulacion_id", params.id).order("fecha"),
     /* La bitácora inmutable de este fondo. Filtra por el postulacion_id que
        vive dentro del JSON (antes/después), así también captura los borrados. */
@@ -671,7 +672,11 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
                     ) : dim("sin comprobantes")}>
                   <Comprobantes postulacionId={params.id} comprobantes={conHilo(comprobantes, hCmp) as any}
                     etapas={etapasFondo} rubros={fondoRubros} esAdmin={esAdmin} error={cmpError}
-                    urlSunat={urlSunat} userId={user.id} hiloError={hiloError} />
+                    urlSunat={urlSunat} userId={user.id} hiloError={hiloError}
+                    /* El alias corto sale de las personas que esta página ya
+                       trae enteras: no hace falta otra consulta para poner
+                       «JohnO» en vez de «John Oros Condori». */
+                    alias={mapaAlias((pc.data || []) as any)} />
                   </Plegable>
 
               </Plegable>

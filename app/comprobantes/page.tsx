@@ -2,11 +2,16 @@ import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import Volver from "@/components/Volver";
 import Comprobantes from "@/components/Comprobantes";
 import { urlPlataforma, PLAT } from "@/lib/plataformas";
 import { etapasDe, CATEGORIAS_OPC } from "@/lib/etapas";
 import { MESES, igvDelPeriodo, motivoNoDeclara } from "@/lib/obligaciones";
+import { empresasPropiasConLogo, conRuc, type EmpresaPropia } from "@/lib/empresasPropias";
+import ResumenEmpresas, { type FilaResumen } from "@/components/ResumenEmpresas";
+import { repLegalDeEmpresas } from "@/lib/repLegal";
+import Avatar from "@/components/Avatar";
+import Copiar from "@/components/Copiar";
+import { mapaAlias } from "@/lib/personas";
 
 export const metadata: Metadata = { title: "🧾 Comprobantes" };
 
@@ -39,47 +44,69 @@ export default async function ComprobantesPage({ searchParams }: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: perfil }, { data: emps }] = await Promise.all([
+  /* ══ SOLO LO QUE DEPENDE DE LA EMPRESA ELEGIDA ══
+     La lista de empresas y sus logos viven en el `layout` y no se vuelven a
+     pedir al cambiar de pestaña. Aquí, cuando la URL ya dice cuál —o sea,
+     siempre después del primer clic— se pide ESA empresa y ninguna más.
+     Antes se traían las quince en cada clic para usar una.
+
+     El caso sin `?emp=` es la primera entrada: ahí sí hace falta la lista, y
+     solo para saber cuál abrir. La regla de cuál es «la primera» sale de
+     `ordenarEmpresas`, la misma que usa la barra para encender la pestaña —si
+     cada una ordenara por su cuenta, entrar sin parámetros encendería una
+     pestaña y cargaría los datos de otra. No daría error: se vería una lista
+     de facturas bajo el nombre equivocado. */
+  const pedido = searchParams?.emp || "";
+  /* `razon_social` y `tipo`: la cabecera dice el nombre LEGAL completo, no el
+     corto de la pestaña. En un comprobante lo que vale es la razón social. */
+  const SEL_EMP = "id,nombre,razon_social,tipo,ruc,relacion,estado,fecha_constitucion";
+
+  const [{ data: perfil }, { data: aliasPers }, elegida] = await Promise.all([
     supabase.from("perfiles").select("es_admin,es_finanzas").eq("id", user.id).maybeSingle(),
-    /* Solo las propias: las facturas de una empresa aliada las lleva ella.
-       Misma regla que /obligaciones. */
-    /* `estado` para separar las que operan de las que no, y
-       `fecha_constitucion` porque es el suelo del navegador de años: ofrecer
-       2024 a una empresa nacida en 2025 es ofrecer una pantalla que solo puede
-       salir vacía. */
-    supabase.from("empresas").select("id,nombre,ruc,relacion,estado,fecha_constitucion")
-      .eq("relacion", "propia").order("nombre"),
+    /* El alias corto del equipo. Mismo cruce y misma función que /caja,
+       /obligaciones, /admin y las fichas: `mapaAlias`. */
+    supabase.from("personas").select("usuario_id,alias")
+      .not("alias", "is", null).not("usuario_id", "is", null),
+    pedido
+      ? supabase.from("empresas").select(SEL_EMP)
+          .eq("id", pedido).eq("relacion", "propia").maybeSingle()
+          .then((r: any) => r.data || null)
+      /* ── SIN `?emp=` NO SE ELIGE POR NADIE ──
+         Aquí se abría la primera empresa de la lista. Se leía como una
+         decisión cuando nadie había decidido nada, y la pregunta con la que
+         de verdad se entra a esta pantalla no es «qué tiene Wilkakalle» sino
+         «dónde falta cargar». Ahora «ninguna» es un estado con su propia
+         pantalla: el resumen de todas. */
+      : Promise.resolve(null),
   ]);
   const esAdmin = !!(perfil?.es_admin || perfil?.es_finanzas);
-  /* ── SOLO LAS QUE TIENEN RUC ──
-     Sin RUC no hay quien emita ni reciba comprobantes a su nombre, así que una
-     empresa sin RUC en esta lista es una pestaña que no lleva a ningún sitio:
-     se abre, sale vacía, y no hay forma de que deje de estarlo. Es la misma
-     regla que ya separa los bloques en /obligaciones — aquí ni siquiera hace
-     falta enseñarlas apagadas, porque no hay nada que apagar.
+  const alias = mapaAlias(aliasPers as any);
 
-     Se mira que HAYA once dígitos, no que el dígito verificador cuadre. Con
-     `rucValido` una empresa con el RUC mal tecleado desaparecería de la lista
-     sin decir por qué, y sus facturas con ella: el error se arregla en
-     /empresas, no escondiendo a quien lo tiene. */
-  const empresas = ((emps || []) as any[])
-    .filter(e => String(e.ruc || "").replace(/\D/g, "").length === 11);
-  const sinRuc = (emps || []).length - empresas.length;
+  /* Si el `?emp=` de la URL no existe o no es propia, `elegida` viene en nulo y
+     la pantalla lo dice. Antes esto no podía pasar porque se buscaba dentro de
+     una lista ya filtrada; ahora que se pide por id, un enlace viejo a una
+     empresa borrada tiene que tener respuesta. */
+  const empresa = elegida;
+  const empId = empresa?.id || "";
 
-  /* ── LAS QUE OPERAN, PRIMERO Y ENCENDIDAS ──
-     El criterio no se escribe aquí: `motivoNoDeclara` ya decide en
-     /obligaciones qué empresa está operando hoy, y tener dos definiciones de
-     «activa» en dos pantallas es garantizar que un día discrepen.
-     Apagadas, no escondidas: una empresa cerrada sigue teniendo facturas de
-     cuando operaba, y esconderla las haría inalcanzables. Se ven en gris, al
-     final, y siguen abriéndose con un clic. */
-  const activa = (e: any) => !motivoNoDeclara(e);
-  const empresasOrdenadas = [...empresas.filter(activa), ...empresas.filter(e => !activa(e))];
-
-  /* La empresa elegida, o la primera. Sin empresas propias no hay nada que
-     enseñar y se dice, en vez de pintar una pantalla vacía sin explicación. */
-  const empId = searchParams?.emp || empresasOrdenadas[0]?.id || "";
-  const empresa = empresas.find((e: any) => e.id === empId) || null;
+  /* ── LA FICHA DE QUIÉN FACTURA ──
+     Quién es la empresa se mira al empezar a cargar comprobantes: la razón
+     social va en la factura, el RUC se teclea en SOL y el representante legal
+     es a quien hay que llamar si algo falta. Estaban a dos pantallas de
+     distancia —en /empresas— y se acababa abriendo otra pestaña para
+     comprobar un dígito.
+     Las dos consultas son de UNA empresa y van juntas: el logo y quién firma.
+     `repLegalDeEmpresas` no es una columna, deduce el cargo vigente — misma
+     regla que /obligaciones, para que las dos pantallas nombren al mismo. */
+  const [repLegal, logoEmp] = empId
+    ? await Promise.all([
+        repLegalDeEmpresas(supabase, [empId]),
+        supabase.from("entidad_media").select("cartel_url")
+          .eq("entidad_tipo", "empresa").eq("entidad_id", empId).maybeSingle(),
+      ])
+    : [new Map(), { data: null } as any];
+  const rl = repLegal.get(empId) || null;
+  const logo = (logoEmp as any)?.data?.cartel_url || null;
 
   const hoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/Lima" });
   /* Por defecto, el mes PASADO y no el actual: el periodo que se está
@@ -141,6 +168,48 @@ export default async function ComprobantesPage({ searchParams }: {
     categoria = ((post.data || [])[0] as any)?.conv?.categoria || null;
   }
 
+  /* ══ EL RESUMEN DE TODAS, CUANDO NO HAY NINGUNA ELEGIDA ══
+     Una sola consulta para las quince empresas: los comprobantes del año con
+     las cinco columnas que el panel necesita, agrupadas aquí en memoria. La
+     alternativa —una consulta por empresa— serían quince viajes para pintar
+     quince filas, y crecería con cada asociación nueva.
+     `creado_en` y quién: la última carga es de CrewHub, no la fecha de la
+     factura. Es lo que delata lo abandonado — «tres meses sin tocar» no
+     aparece en ningún otro sitio. */
+  let resumen = new Map<string, FilaResumen>();
+  let todas: EmpresaPropia[] = [];
+  let logosTodas: Record<string, string> = {};
+  if (!empresa) {
+    const r = await empresasPropiasConLogo(supabase);
+    todas = r.empresas.filter(conRuc);
+    logosTodas = r.logos;
+    const ids = todas.map(e => e.id);
+    const { data: filas } = ids.length
+      ? await supabase.from("comprobante")
+          .select("empresa_id,igv,sentido,creado_en,creado:perfiles!creado_por(nombre)")
+          .in("empresa_id", ids)
+          .gte("fecha", `${anio}-01-01`).lte("fecha", `${anio}-12-31`)
+      : { data: [] as any[] };
+
+    (filas || []).forEach((f: any) => {
+      const k = f.empresa_id;
+      if (!k) return;
+      const a = resumen.get(k)
+        || { empresaId: k, comprobantes: 0, igvCompras: 0, igvVentas: 0, ultimaCarga: null, ultimaPor: null };
+      a.comprobantes++;
+      if (f.sentido === "venta") a.igvVentas += Number(f.igv || 0);
+      else a.igvCompras += Number(f.igv || 0);
+      /* La más reciente gana. Se compara como texto porque son ISO: ordenan
+         igual que como fechas y sin construir un Date por fila. */
+      if (f.creado_en && String(f.creado_en) > String(a.ultimaCarga || "")) {
+        a.ultimaCarga = f.creado_en;
+        const q = Array.isArray(f.creado) ? f.creado[0] : f.creado;
+        a.ultimaPor = q?.nombre || null;
+      }
+      resumen.set(k, a);
+    });
+  }
+
   // Lo que se pinta: el año entero, o solo el mes elegido.
   const visibles = mes >= 1 && mes <= 12
     ? comprobantes.filter((c: any) => Number(String(c.fecha).slice(5, 7)) === mes)
@@ -172,48 +241,63 @@ export default async function ComprobantesPage({ searchParams }: {
     .sort((a, b) => b - a);
 
   return (
-    <div className="shell" style={{ maxWidth: "min(1180px, 96vw)" }}>
-      <div className="topbar">
-        <Volver />
-        <span className="spacer" />
-        <span style={{ color: "var(--dim)", fontSize: 12 }}>compras y ventas de la empresa</span>
-      </div>
-
-      <h1 className="title-lg">🧾 Comprobantes</h1>
-      <p className="fondo-nat-sub">
-        Todas las facturas y boletas de cada empresa: las que se rinden en un fondo DAFO
-        y las que no. De aquí sale el IGV de cada mes en <Link href="/obligaciones">obligaciones</Link>.
-      </p>
-
-      {empresas.length === 0 && (
-        /* Decir CUÁL de los dos vacíos es: «no hay ninguna» y «las que hay no
-           tienen RUC» se arreglan en sitios distintos. */
-        <div className="empty">
-          {sinRuc > 0
-            ? `Ninguna empresa propia tiene RUC cargado (${sinRuc} sin RUC). Cárgalo en /empresas y aparecerán aquí.`
-            : "No hay empresas propias registradas."}
+    /* La cabecera, el rótulo y la barra de empresas viven en el `layout`: no
+       dependen de qué empresa mires y así no se vuelven a pedir en cada clic.
+       Aquí queda solo lo que sí cambia. */
+    <>
+      {/* ── QUIÉN FACTURA ──
+          El nombre corto está en la pestaña; aquí va el legal, que es el que
+          aparece en el comprobante. El RUC se copia de un clic porque su
+          destino es el casillero de SOL, y un dígito mal no da error: devuelve
+          otra empresa. Y quien firma, con cara: es a quien se llama cuando
+          falta una factura. */}
+      {empresa && (
+        <div className="cmpp-ficha">
+          <Avatar nombre={empresa.nombre} src={logo} size={38} />
+          <div className="cmpp-ficha-txt">
+            <b>{empresa.razon_social || empresa.nombre}</b>
+            <span className="cmpp-ficha-sub">
+              {empresa.ruc
+                ? <Copiar valor={String(empresa.ruc)} etiqueta="RUC">RUC {empresa.ruc}</Copiar>
+                : <i style={{ color: "var(--yellow)" }}>sin RUC</i>}
+              {empresa.fecha_constitucion && (
+                <span title="Fecha de constitución. Es el suelo de esta pantalla: no hay comprobantes anteriores.">
+                  · desde {new Date(`${String(empresa.fecha_constitucion).slice(0, 10)}T12:00:00`)
+                    .toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" })}
+                </span>
+              )}
+            </span>
+          </div>
+          {/* Sin representante legal se DICE, no se deja el hueco: en una
+              empresa que factura, no saber quién firma es un dato que falta,
+              no un espacio vacío. */}
+          <span className="cmpp-ficha-rl" title={rl?.cargo || "Representante legal"}>
+            {rl ? (
+              <>
+                <Avatar nombre={rl.nombre} src={rl.foto} size={22} />
+                <span>{rl.alias || rl.nombre}</span>
+              </>
+            ) : (
+              <i style={{ color: "var(--dim)" }}>sin representante legal</i>
+            )}
+          </span>
         </div>
       )}
 
-      {/* ── QUÉ EMPRESA Y QUÉ PERIODO ──
-          Las tres decisiones de esta pantalla, juntas y siempre a la vista. El
-          periodo va en la URL y no en estado del cliente para que un mes
+      {/* ── SIN EMPRESA ELEGIDA: TODAS DE UN VISTAZO ──
+          La pregunta con la que se entra aquí casi nunca es «qué tiene esta
+          empresa», es «dónde falta cargar». El panel la contesta antes de
+          pedir un clic. */}
+      {!empresa && (
+        <ResumenEmpresas empresas={todas} logos={logosTodas} filas={resumen} anio={anio}
+          href={id => `/comprobantes?emp=${id}&anio=${anio}&mes=${mes}`} />
+      )}
+
+      {/* El periodo va en la URL y no en estado del cliente para que un mes
           concreto se pueda enlazar — es lo que permite el atajo desde la fila
           de /obligaciones. */}
-      {empresas.length > 0 && (
+      {empresa && (
         <div className="cmpp-barra">
-          <div className="tv-vistas">
-            {empresasOrdenadas.map((e: any) => {
-              const m = motivoNoDeclara(e);
-              return (
-                <Link key={e.id} href={`/comprobantes?emp=${e.id}&anio=${anio}&mes=${mes}`}
-                  className={`vtab${e.id === empId ? " on" : ""}${m ? " fila-tenue" : ""}`}
-                  title={m ? `${e.nombre} — ${m.ayuda}` : e.nombre}>
-                  {e.nombre}
-                </Link>
-              );
-            })}
-          </div>
           <span style={{ flex: 1 }} />
           <div className="tv-vistas">
             {anios.map(a => (
@@ -223,7 +307,9 @@ export default async function ComprobantesPage({ searchParams }: {
         </div>
       )}
 
-      {empresas.length > 0 && (
+      {/* Los meses cuelgan de la empresa abierta, igual que los años: sin
+          empresa no hay periodo que filtrar. */}
+      {empresa && (
         <div className="cmpp-meses">
           <Link href={q({ mes: 0 })} className={`vtab${mes === 0 ? " on" : ""}`}
             title="Todo el año, para revisar un ejercicio completo">todo {anio}</Link>
@@ -288,9 +374,10 @@ export default async function ComprobantesPage({ searchParams }: {
             error={error}
             urlSunat={await urlPlataforma(PLAT.sunatConsultaRuc)}
             userId={user.id}
+            alias={alias}
           />
         </div>
       )}
-    </div>
+    </>
   );
 }

@@ -1,4 +1,5 @@
 "use client";
+import Avatar from "@/components/Avatar";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -29,7 +30,12 @@ type Mov = {
   descripcion: string | null; url: string | null;
   proyecto_id: string | null;
   proy?: { nombre: string | null } | null;
-  quien?: { nombre: string | null } | null;
+  quien?: { nombre: string | null; avatar_url?: string | null; color?: string | null } | null;
+  /** Cuándo se APUNTÓ en CrewHub. Distinto de `fecha`, que es cuándo se movió
+   *  la plata: un gasto del 14 apuntado el 20 no es lo mismo. */
+  creado_en?: string | null;
+  /** Quién lo apuntó, para cruzarlo con el alias corto. */
+  creado_por?: string | null;
   nComentarios?: number;
   reacciones?: Reaccion[];
 };
@@ -37,8 +43,19 @@ type Mov = {
 const dmy = (f: string) =>
   new Date(f + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short" });
 
+/* ── EL DÍA EN QUE SE APUNTÓ, EN LIMA ──
+ * `creado_en` es un instante en UTC. Cortarle los diez primeros caracteres da
+ * el día UTC, y a partir de las 7 de la tarde en Perú eso YA ES EL DÍA
+ * SIGUIENTE: todo lo apuntado por la noche se habría marcado en ámbar como
+ * «otro día» sin serlo. Se corrige la hora antes de quedarse con la fecha. */
+const diaLima = (iso: string) => {
+  const t = Date.parse(iso);
+  return Number.isFinite(t)
+    ? new Date(t - 5 * 3600 * 1000).toISOString().slice(0, 10) : "";
+};
+
 export default function CajaPanel({
-  cajas, cuentas, movs, proyectos, saldos, esAdmin, userId,
+  cajas, cuentas, movs, proyectos, saldos, esAdmin, userId, alias,
 }: {
   cajas: (CajaMin & { fecha_inicio: string | null; activa: boolean })[];
   cuentas: (CuentaMin & { activa: boolean })[];
@@ -48,12 +65,21 @@ export default function CajaPanel({
   esAdmin: boolean;
   /** Para saber cuál de las reacciones es la mía y poder quitarla. */
   userId: string;
+  /** cuenta → alias corto («JohnO»). El nombre largo de `perfiles` no cabe en
+   *  una fila y además no es como se llaman entre ellos. Sin alias cargado se
+   *  cae al nombre: mejor largo que vacío. */
+  alias?: Record<string, string>;
 }) {
   const router = useRouter();
   const { pedir, dialogo } = useConfirmar();
   const { avisar, aviso } = useAviso();
   const [ocupado, setOcupado] = useState(false);
   const [verCuentas, setVerCuentas] = useState(false);
+  /* Qué caja se está mirando. Vacío = todas. Ver el comentario del filtro, más
+     abajo: es una forma de mirar, no un sitio al que se llega, y por eso vive
+     aquí y no en la URL. */
+  const [verCaja, setVerCaja] = useState("");
+  const movsVistos = verCaja ? movs.filter(m => m.caja_id === verCaja) : movs;
   const [nuevaCuenta, setNuevaCuenta] = useState({ nombre: "", flujo: "egreso" });
   /* Renombrar una cuenta se hace sobre su propia fila. «Ingresos por Mujeres
      Ande» se escribe mal una vez y queda escrito así en cada movimiento que la
@@ -408,11 +434,52 @@ export default function CajaPanel({
       )}
 
       {/* ── LOS MOVIMIENTOS ── */}
+      {/* ── VER UNA CAJA SOLA ──
+          Las tres cajas —PachaApus+, Efectivo, BCP Oficina— viven en la misma
+          lista, y cuadrar una contra su extracto obligaba a leer la columna de
+          la izquierda saltándose dos de cada tres filas. Es justo lo que se
+          hace al cerrar el mes.
+          Es un filtro de VISTA, no de la consulta: los datos del mes ya están
+          aquí, así que filtrar en el cliente responde al instante y no pide
+          otro viaje. Por eso tampoco va en la URL — no es un sitio al que se
+          llegue, es una forma de mirar lo que ya tienes delante.
+          Los totales de arriba NO se tocan: son del mes entero, y hacer que
+          cambiaran con el filtro sería fácil de leer como «esto es todo lo que
+          hay». */}
+      {cajas.length > 1 && movs.length > 0 && (
+        <div className="tv-vistas" style={{ margin: "12px 0 8px" }}>
+          <button className={`vtab${!verCaja ? " on" : ""}`} onClick={() => setVerCaja("")}>
+            Todas <b style={{ color: "var(--dim)", marginLeft: 4 }}>{movs.length}</b>
+          </button>
+          {cajas.map(c => {
+            /* El número de cada caja se cuenta aquí y no en el servidor: una
+               caja con 0 movimientos este mes tiene que poder verse —es un
+               dato— y no desaparecer del filtro. */
+            const n = movs.filter(m => m.caja_id === c.id).length;
+            return (
+              <button key={c.id} className={`vtab${verCaja === c.id ? " on" : ""}${n === 0 ? " fila-tenue" : ""}`}
+                onClick={() => setVerCaja(c.id)}
+                title={n === 0 ? `${c.nombre} — sin movimientos este mes` : c.nombre}>
+                {c.nombre} <b style={{ color: "var(--dim)", marginLeft: 4 }}>{n}</b>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {movs.length === 0 ? (
         <div className="empty">Sin movimientos este mes.</div>
+      ) : movsVistos.length === 0 ? (
+        /* Filtrando y sin resultados: se dice CUÁL es el filtro que lo vació.
+           Un «sin movimientos» a secas aquí haría pensar que el mes está
+           vacío, cuando lo que pasa es que esa caja no se movió. */
+        <div className="empty">
+          {cajas.find(c => c.id === verCaja)?.nombre || "Esa caja"} no tuvo movimientos este mes.
+          {" "}<button className="lnk" onClick={() => setVerCaja("")}>Ver todas</button>
+        </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-          {movs.map(m => {
+          {movsVistos.map(m => {
             const traspasoM = !!m.caja_destino;
             const flujo = flujoCuenta.get(m.cuenta_id || "");
             /* Sin cuenta reconocible no se pinta como egreso: eso lo escondería
@@ -439,27 +506,33 @@ export default function CajaPanel({
                     ? <>⇄ traspaso a {nombreCaja.get(m.caja_destino || "") || "—"}</>
                     : nombreCuenta.get(m.cuenta_id || "") || "sin cuenta"}
                 </span>
-                {m.descripcion && (
-                  <span style={{ color: "var(--muted)", fontSize: 11.5, flex: 1, minWidth: 0,
-                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {m.descripcion}
-                  </span>
-                )}
-                {m.proy?.nombre && (
-                  <span style={{ color: "var(--dim)", fontSize: 11 }}>🎬 {m.proy.nombre}</span>
-                )}
-                {/* Quién lo apuntó. El dato ya venía en la consulta y no se
-                    pintaba, y en una caja que llevan varias manos es la primera
-                    pregunta cuando un movimiento no se entiende: no «¿qué es
-                    esto?» sino «¿a quién le pregunto qué es esto?». */}
-                {m.quien?.nombre && (
-                  <span style={{ color: "var(--dim)", fontSize: 11 }}
-                    title="Quién registró este movimiento">· {m.quien.nombre}</span>
-                )}
-                <span style={{ flex: 1 }} />
+                {/* ── LA DESCRIPCIÓN SE QUEDA CON TODO EL HUECO ──
+                    Aquí había DOS elementos con `flex:1` —esta y un separador
+                    vacío— así que el espacio sobrante se repartía a medias y la
+                    descripción se cortaba en «Transf Puente de P…» teniendo
+                    media fila libre al lado. Quitado el separador, lo que empuja
+                    a la derecha son los anchos fijos de lo que viene después,
+                    que es como debía ser desde el principio.
+                    Se pinta siempre, vacía o no: sin ella la fila colapsaría
+                    hacia la izquierda y las columnas de la derecha dejarían de
+                    coincidir entre filas. */}
+                <span style={{ color: "var(--muted)", fontSize: 11.5, flex: 1, minWidth: 0,
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {m.descripcion || ""}
+                </span>
+                {/* El proyecto, con ancho propio: está vacío en la mayoría de
+                    las filas, y sin ancho fijo lo de su derecha bailaría según
+                    quién tenga proyecto y quién no. */}
+                <span className="caja-proy" title={m.proy?.nombre || undefined}>
+                  {m.proy?.nombre ? <>🎬 {m.proy.nombre}</> : ""}
+                </span>
+
                 {/* El signo delante, no solo el color: en una lista larga el
-                    color se lee mal y en gris —los traspasos— no dice nada. */}
-                <span style={{ color: col, fontWeight: 700, whiteSpace: "nowrap" }}>
+                    color se lee mal y en gris —los traspasos— no dice nada.
+                    A la derecha y con ancho fijo, porque los importes se
+                    comparan en vertical: alineados por la izquierda, un 4,290
+                    y un 30 no se pueden leer de un vistazo. */}
+                <span className="caja-monto" style={{ color: col }}>
                   {traspasoM ? "⇄ " : flujo === "ingreso" ? "+ " : flujo === "egreso" ? "− " : "? "}
                   {money(m.monto)}
                 </span>
@@ -485,9 +558,17 @@ export default function CajaPanel({
                     otra vez. */}
                 <span style={{
                   display: "grid", flex: "none", alignItems: "center", justifyItems: "center",
+                  /* El autor entra como columna de ESTA rejilla —la segunda,
+                     detrás del comprobante— y no como un `span` suelto antes
+                     del monto. Es la diferencia entre «alineado casi siempre» y
+                     alineado: un `span` con ancho fijo se alinea mientras nada
+                     de su izquierda crezca, y aquí lo de la izquierda es una
+                     descripción de longitud libre. En la rejilla, las columnas
+                     las declara el contenedor y todas las filas cortan por los
+                     mismos puntos, pase lo que pase antes. */
                   gridTemplateColumns: esAdmin
-                    ? "minmax(0,34px) minmax(0,104px) minmax(0,46px) minmax(0,28px) minmax(0,24px)"
-                    : "minmax(0,34px) minmax(0,104px) minmax(0,46px)",
+                    ? "minmax(0,34px) minmax(0,150px) minmax(0,104px) minmax(0,46px) minmax(0,28px) minmax(0,24px)"
+                    : "minmax(0,34px) minmax(0,150px) minmax(0,104px) minmax(0,46px)",
                   gap: 4,
                 }}>
                   {/* Encima, no en otra pestaña: comprobar que la captura es la
@@ -497,6 +578,44 @@ export default function CajaPanel({
                     ? <VerAdjunto url={m.url} titulo="Ver el recibo" />
                     : <span style={{ color: "var(--dim)", opacity: .3, fontSize: 11 }}
                         title="Sin comprobante">·</span>}
+
+                  {/* Quién lo apuntó y cuándo. En una caja que llevan varias
+                      manos es la primera pregunta cuando un movimiento no se
+                      entiende: no «¿qué es esto?» sino «¿a quién le pregunto
+                      qué es esto?». Con cara, porque son cuatro personas y se
+                      reconocen antes por la foto que leyendo el nombre.
+                      La celda se pinta SIEMPRE, con o sin autor: vacía deja su
+                      hueco y las columnas de la derecha no se corren. */}
+                  <span className="caja-quien">
+                    {m.quien?.nombre && (
+                      <>
+                        <Avatar nombre={m.quien.nombre} src={m.quien.avatar_url}
+                          color={m.quien.color} size={17} />
+                        <span className="caja-quien-n" title={m.quien.nombre || undefined}>
+                          {(m.creado_por && alias?.[m.creado_por]) || m.quien.nombre}
+                        </span>
+                        {m.creado_en && (() => {
+                          /* ── ÁMBAR CUANDO SE APUNTÓ OTRO DÍA ──
+                             Que el gasto sea del 14 y el apunte del 15 no es un
+                             error, pero es lo que explica por qué el saldo no
+                             cuadraba el 14. En gris había que comparar las dos
+                             fechas a mano, fila por fila; en ámbar salta sola.
+                             Tenue a propósito: es un matiz, no una alarma —
+                             apuntar al día siguiente es normal. */
+                          const apunte = diaLima(m.creado_en!);
+                          const otroDia = !!apunte && apunte !== m.fecha;
+                          return (
+                            <span className={`caja-quien-f${otroDia ? " otro-dia" : ""}`}
+                              title={otroDia
+                                ? `Apuntado el ${dmy(apunte)}, un día distinto del movimiento (${dmy(m.fecha)}). No es un error: solo explica por qué el saldo de ese día podía no cuadrar todavía.`
+                                : `Apuntado el mismo día del movimiento, ${dmy(apunte)}.`}>
+                              {dmy(apunte)}
+                            </span>
+                          );
+                        })()}
+                      </>
+                    )}
+                  </span>
 
                   {/* Reaccionar SIN abrir nada. Un 👀 es «lo vi, está bien», y
                       es lo que más se hace al revisar la caja: si cuesta tres

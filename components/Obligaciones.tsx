@@ -78,7 +78,13 @@ export default function Obligaciones({ empresas, logos, repLegal, obligaciones, 
   repLegal?: Record<string, RepLegal>;
   obligaciones: Obl[];
   periodos: Per[];
-  perfiles: { id: string; nombre: string; avatar_url?: string | null; color?: string | null }[];
+  /* `corto` es el alias del equipo («JohnO»), cruzado desde `personas.alias`
+     en la página. `perfiles` —la cuenta— solo guarda el nombre largo, y en una
+     fila de veintiocho periodos «John Oros Condori» no cabe ni es como se
+     llaman entre ellos. Sin alias cargado se cae al nombre: mejor largo que
+     vacío. */
+  perfiles: { id: string; nombre: string; corto?: string | null;
+    avatar_url?: string | null; color?: string | null }[];
   /** Los comprobantes de estas empresas, con fecha, IGV y sentido. Es de
    *  donde sale el resultado de cada periodo — ver `igvDelPeriodo`. */
   comprobantes: { empresa_id: string; fecha?: string | null; igv?: any; sentido?: string | null }[];
@@ -163,6 +169,10 @@ export default function Obligaciones({ empresas, logos, repLegal, obligaciones, 
      `nombrePerfil` se queda porque lo usa el desplegable de responsable. */
   const perfilDe = (id?: string | null) => perfiles.find(p => p.id === id) || null;
   const nombrePerfil = (id?: string | null) => perfilDe(id)?.nombre || null;
+  /* El corto para las filas, el largo para el desplegable de responsable: ahí
+     se ELIGE a alguien y hay que reconocerlo entre siete. Son dos trabajos
+     distintos y por eso son dos funciones. */
+  const cortoDe = (p: { nombre: string; corto?: string | null }) => p.corto || p.nombre;
 
   /* ── LAS QUE DECLARAN Y LAS QUE HOY NO ──
      Un solo corte y un solo grupo apagado, no dos. «Sin RUC» y «cerrada» son
@@ -372,7 +382,7 @@ export default function Obligaciones({ empresas, logos, repLegal, obligaciones, 
                 <b title={p.registrado_en
                   ? `${q.nombre} lo apuntó en CrewHub el ${new Date(p.registrado_en).toLocaleString("es-PE", { dateStyle: "long", timeStyle: "short" })}. Ojo: la fecha de la izquierda es la de SUNAT, y son cosas distintas.`
                   : `${q.nombre} lo apuntó, pero no consta cuándo: este periodo se marcó antes de que se guardara esa fecha. Los que entren de ahora en adelante sí la traen.`}>
-                  {q.nombre}
+                  {cortoDe(q)}
                 </b>
                 {/* ── EL «NO CONSTA» VIVE EN EL TÍTULO, NO EN LA FILA ──
                     Repetido en veintiocho filas dejaba de informar y pasaba a
@@ -620,7 +630,10 @@ export default function Obligaciones({ empresas, logos, repLegal, obligaciones, 
                     return (
                       <>
                         <Avatar nombre={r.nombre} src={r.avatar_url} color={r.color} size={20} />
-                        <b>{r.nombre}</b>
+                        {/* El corto, con el largo en el título: al pie de la
+                            obligación se reconoce a quien responde, no se le
+                            presenta. */}
+                        <b title={r.nombre}>{cortoDe(r)}</b>
                       </>
                     );
                   })()}

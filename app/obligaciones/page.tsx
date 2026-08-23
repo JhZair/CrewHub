@@ -1,9 +1,11 @@
+import { mapaAlias } from "@/lib/personas";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
-import Volver from "@/components/Volver";
 import Obligaciones from "@/components/Obligaciones";
-import { resumenPeriodos, DIAS_AVISO } from "@/lib/obligaciones";
+import { resumenPeriodos, DIAS_AVISO, situacionPeriodo } from "@/lib/obligaciones";
+import ResumenObligaciones, { type FilaObl } from "@/components/ResumenObligaciones";
+import { conRuc } from "@/lib/empresasPropias";
 import { hilosDeFilas } from "@/lib/rendicionHilo";
 import { urlPlataforma, PLAT } from "@/lib/plataformas";
 import { repLegalDeEmpresas } from "@/lib/repLegal";
@@ -45,37 +47,52 @@ export const metadata: Metadata = { title: "📅 Obligaciones" };
  * sería reclamarnos un trabajo que no es nuestro, y con el semáforo en rojo
  * de por vida. Es la misma regla que ya aplica la alerta SUNAT de /empresas.
  */
-export default async function ObligacionesPage() {
+export default async function ObligacionesPage({ searchParams }: {
+  searchParams: { emp?: string };
+}) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [emp, obl, per, perf, urlSol] = await Promise.all([
+  const pedido = searchParams?.emp || "";
+
+  const [emp, obl, perf, aliasPers, urlSol] = await Promise.all([
     /* `fecha_constitucion`: es el suelo de los periodos —una empresa no declara
        antes de existir— y lo que la pantalla ofrece como arranque por defecto. */
-    supabase.from("empresas").select("id,nombre,ruc,estado,relacion,fecha_constitucion")
-      .eq("relacion", "propia").order("nombre"),
-    supabase.from("obligacion")
-      .select("id,entidad_id,entidad_tipo,clase,periodicidad,dias_aviso,activa,responsable,desde"),
-    /* ── LOS PERIODOS ENTEROS, PERO CON LAS COLUMNAS JUSTAS ──
-       Se siguen trayendo todos, y es deliberado: el semáforo de cada cabecera
-       —«9 vencidos · 26 declarados · 22 fuera de plazo de 28»— se calcula sobre
-       TODOS, y acotarlos por año lo haría mentir sin avisar. Son doce por
-       empresa y año, no miles.
-       Lo que sí sobraba eran las columnas. `select("*")` arrastraba el jsonb de
-       rectificaciones, los cuatro importes de casillas y media docena de campos
-       que esta pantalla no mira, multiplicado por varios cientos de filas. Se
-       piden las diecisiete que se usan de verdad — la lista sale de leer el
-       componente, no de adivinar. */
-    supabase.from("obligacion_periodo").select(
-      "id,obligacion_id,anio,mes,vence,declarado_en,declarado_por,declarado_orden," +
-      "registrado_en,nro_orden,rectificaciones,resultado,monto,nota,caso_id," +
-      "igv_debito,igv_credito"),
+    /* ── UNA EMPRESA, O TODAS ──
+       Con `?emp=` se pide solo esa: la pantalla de una empresa no necesita las
+       otras catorce, y hasta ahora las traía siempre. Sin parámetro se traen
+       todas, porque el resumen las cuenta a todas.
+       `fecha_constitucion` es el suelo de los periodos —una empresa no declara
+       antes de existir— y lo que la pantalla ofrece como arranque. */
+    (pedido
+      ? supabase.from("empresas").select("id,nombre,ruc,estado,relacion,fecha_constitucion")
+          .eq("id", pedido).eq("relacion", "propia")
+      : supabase.from("empresas").select("id,nombre,ruc,estado,relacion,fecha_constitucion")
+          .eq("relacion", "propia").order("nombre")),
+    /* Con empresa elegida, solo sus obligaciones: las de las otras catorce no
+       se pintan ni se cuentan en esa pantalla. */
+    (pedido
+      ? supabase.from("obligacion")
+          .select("id,entidad_id,entidad_tipo,clase,periodicidad,dias_aviso,activa,responsable,desde")
+          .eq("entidad_tipo", "empresa").eq("entidad_id", pedido)
+      : supabase.from("obligacion")
+          .select("id,entidad_id,entidad_tipo,clase,periodicidad,dias_aviso,activa,responsable,desde")),
     /* `avatar_url` y `color`: quien responde de una declaración se reconoce de
        un vistazo por la cara, no leyendo un nombre en gris al pie del bloque.
        El color es el respaldo cuando no hay foto — lo usa <Avatar/> para las
        iniciales. */
     supabase.from("perfiles").select("id,nombre,avatar_url,color").eq("activo", true).order("nombre"),
+    /* ── EL ALIAS CORTO ──
+       `perfiles.nombre` guarda el largo («Katherine Pérez Díaz»); el corto que
+       usa el equipo —«KatyP»— vive en `personas.alias`, cruzado por
+       `usuario_id`. En una fila de veintiocho periodos el largo no cabe, y no
+       es como se llaman entre ellos.
+       Mismo cruce y misma función que /admin, /caja y las fichas: `mapaAlias`.
+       Escribirlo aquí a mano habría sido la quinta versión de «cómo se llama
+       corto esta persona». */
+    supabase.from("personas").select("usuario_id,alias")
+      .not("alias", "is", null).not("usuario_id", "is", null),
     /* La puerta a SUNAT sale de `plataformas`, como todas las demás del
        sistema: si SUNAT cambia la URL se corrige en un sitio. Si la clave no
        está cargada, el botón sencillamente no se pinta — mejor que un enlace
@@ -83,7 +100,11 @@ export default async function ObligacionesPage() {
     urlPlataforma(PLAT.sunatSol),
   ]);
 
-  const empresas = (emp.data || []) as any[];
+  /* Sin RUC no hay último dígito, sin dígito no hay fecha de vencimiento y sin
+     fecha no hay nada que vigilar: esas empresas solo alargaban la lista con
+     ceros. Se ven en /empresas, que es donde se corrige lo que les falta.
+     El criterio es el mismo que usa la barra, importado del mismo sitio. */
+  const empresas = ((emp.data || []) as any[]).filter(conRuc);
   /* ── LA CARA DE CADA EMPRESA Y DE QUIEN FIRMA ──
      Diez asociaciones con nombres que empiezan igual («Asoc Pumachay», «Asoc
      Pichiuchallay», «Asoc Pumahuasi») se distinguen antes por su logo que por
@@ -91,7 +112,19 @@ export default async function ObligacionesPage() {
      listado: es quien tiene la Clave SOL y quien responde si algo se venció.
      Los dos van por lote, nunca uno por empresa. */
   const idsEmp = empresas.map((e: any) => e.id);
-  const periodosCrudos = (per.data || []) as any[];
+  const idsObl = ((obl.data || []) as any[]).map((o: any) => o.id);
+
+  /* ── EL SUELO DE LOS COMPROBANTES ──
+     Antes salía del año del periodo más antiguo, y los periodos se piden ahora
+     en la MISMA tanda: esperarlos para acotar esto habría costado un viaje
+     entero. La constitución vale igual de suelo y se conoce ya —un periodo no
+     puede ser anterior a que la empresa exista— así que se usa esa.
+     Sin fecha cargada no se pone suelo: inventarlo escondería facturas que sí
+     cuentan. */
+  const aniosNac = empresas
+    .map((e: any) => Number(String(e.fecha_constitucion || "").slice(0, 4)))
+    .filter((a: number) => a > 1990);
+  const anioMin = aniosNac.length ? Math.min(...aniosNac) : null;
 
   /* ── LOS COMPROBANTES, ACOTADOS POR LO QUE LA PANTALLA PUEDE ENSEÑAR ──
      Esta consulta no tenía ningún filtro: se traía TODOS los comprobantes que
@@ -110,18 +143,42 @@ export default async function ObligacionesPage() {
      `empresa_id` puede no existir todavía: si falta db/comprobante-empresa.sql
      la consulta falla entera y el resultado se queda en manual, que es
      exactamente el estado anterior. No tumba la pantalla. */
-  const anioMin = periodosCrudos.length
-    ? Math.min(...periodosCrudos.map((p: any) => Number(p.anio) || 9999)) : null;
-
-  const [media, repLegal, cmp, hilos] = await Promise.all([
+  const [media, repLegal, per, cmp, hilos] = await Promise.all([
     idsEmp.length
       ? supabase.from("entidad_media").select("entidad_id,cartel_url")
           .eq("entidad_tipo", "empresa").in("entidad_id", idsEmp)
       : Promise.resolve({ data: [] as any[] }),
     repLegalDeEmpresas(supabase, idsEmp),
-    idsEmp.length && anioMin
-      ? supabase.from("comprobante").select("empresa_id,fecha,igv,sentido")
-          .in("empresa_id", idsEmp).gte("fecha", `${anioMin}-01-01`)
+    /* ── LOS PERIODOS, DE LAS OBLIGACIONES QUE SE VAN A PINTAR ──
+       Se traen todos los de esas obligaciones, y es deliberado: el semáforo de
+       cada cabecera —«9 vencidos · 26 declarados · 22 fuera de plazo de 28»—
+       se calcula sobre TODOS, y acotarlos por año lo haría mentir sin avisar.
+       Lo que cambió es CUÁNTAS obligaciones son: con una empresa elegida, las
+       suyas. Antes se traían los periodos de las quince siempre.
+       Las columnas son las diecisiete que la pantalla usa de verdad; `*`
+       arrastraba el jsonb de rectificaciones y las casillas por varios cientos
+       de filas. */
+    idsObl.length
+      ? supabase.from("obligacion_periodo").select(
+          "id,obligacion_id,anio,mes,vence,declarado_en,declarado_por,declarado_orden," +
+          "registrado_en,nro_orden,rectificaciones,resultado,monto,nota,caso_id," +
+          "igv_debito,igv_credito").in("obligacion_id", idsObl)
+      : Promise.resolve({ data: [] as any[] }),
+    /* ── LOS COMPROBANTES, ACOTADOS POR LO QUE LA PANTALLA PUEDE ENSEÑAR ──
+       Esta consulta no tenía ningún filtro: traía TODOS los comprobantes que
+       existen, de todas las empresas y de todos los años, en cada render. Es
+       la que peor envejecía — los periodos crecen doce al año por empresa,
+       pero las facturas crecen a cientos.
+       Ahora, las de las empresas que se pintan y desde que la primera existe.
+       `empresa_id` puede no existir todavía: si falta db/comprobante-empresa.sql
+       la consulta falla entera y el resultado se queda en manual, que es
+       exactamente el estado anterior. No tumba la pantalla. */
+    idsEmp.length
+      ? (anioMin
+          ? supabase.from("comprobante").select("empresa_id,fecha,igv,sentido")
+              .in("empresa_id", idsEmp).gte("fecha", `${anioMin}-01-01`)
+          : supabase.from("comprobante").select("empresa_id,fecha,igv,sentido")
+              .in("empresa_id", idsEmp))
       : Promise.resolve({ data: [] as any[] }),
     /* ── EL HILO, PREGUNTANDO POR LA COLUMNA Y NO POR LOS IDS ──
        Antes iba en su propio `await`, con la lista COMPLETA de identificadores
@@ -132,6 +189,13 @@ export default async function ObligacionesPage() {
        Y al entrar en esta tanda deja de ser una espera propia. */
     hilosDeFilas(supabase, "obligacion_periodo", [], { todas: true }),
   ]);
+  const periodosCrudos = ((per as any).data || []) as any[];
+  /* El alias se pega al perfil aquí y no en el componente: así la pantalla
+     recibe «la persona» ya completa y no tiene que cruzar dos listas cada vez
+     que quiere escribir un nombre. */
+  const alias = mapaAlias((aliasPers as any).data as any);
+  const perfilesCortos = (((perf as any).data || []) as any[])
+    .map((x: any) => ({ ...x, corto: alias[x.id] || null }));
   const logos: Record<string, string> = {};
   ((media as any).data || []).forEach((m: any) => {
     if (m.cartel_url) logos[m.entidad_id] = m.cartel_url;
@@ -170,20 +234,44 @@ export default async function ObligacionesPage() {
     !p.declarado_en && p.vence && String(p.vence).slice(0, 10) <
       new Date().toLocaleDateString("en-CA", { timeZone: "America/Lima" })).length;
 
-  return (
-    <div className="shell" style={{ maxWidth: "min(1100px, 96vw)" }}>
-      <div className="topbar">
-        <Volver />
-        <span className="spacer" />
-        <span style={{ color: "var(--dim)", fontSize: 12 }}>lo que vence solo</span>
-      </div>
+  /* ── EL RESUMEN DE TODAS, CUANDO NO HAY NINGUNA ELEGIDA ──
+     Se cuenta con las MISMAS reglas que la pantalla de una empresa —
+     `situacionPeriodo` y los días de aviso de cada obligación—, no con un
+     criterio propio: dos formas de decir «vencido» acaban dando dos números
+     para el mismo mes, y entonces no se cree ninguno. */
+  const resumen = new Map<string, FilaObl>();
+  if (!pedido) {
+    /* El nombre de quien apuntó sale de los perfiles ya traídos; no vale una
+       consulta más para poner un nombre al lado de una fecha. */
+    const nombreDe = new Map<string, string>(
+      perfilesCortos.map((x: any) => [x.id, x.corto || x.nombre]));
+    const oblDeEmp = new Map<string, string>(
+      obligaciones.map((o: any) => [o.id, o.entidad_id]));
+    periodosCrudos.forEach((p: any) => {
+      const eid = oblDeEmp.get(p.obligacion_id);
+      if (!eid) return;
+      const a = resumen.get(eid)
+        || { empresaId: eid, vencidos: 0, porVencer: 0, declarados: 0, total: 0, ultima: null, ultimaPor: null };
+      a.total++;
+      const sit = situacionPeriodo(p, diasPorObl.get(p.obligacion_id) ?? DIAS_AVISO);
+      if (sit === "declarado") a.declarados++;
+      else if (sit === "vencido") a.vencidos++;
+      else if (sit === "por_vencer") a.porVencer++;
+      /* El último apunte es de CrewHub (`registrado_en`), no la fecha de
+         SUNAT: dice cuándo se tocó esto por última vez, que es lo que delata
+         a la empresa que nadie mira. */
+      if (p.registrado_en && String(p.registrado_en) > String(a.ultima || "")) {
+        a.ultima = p.registrado_en;
+        a.ultimaPor = nombreDe.get(p.declarado_por) || null;
+      }
+      resumen.set(eid, a);
+    });
+  }
 
-      <h1 className="title-lg">📅 Obligaciones · {obligaciones.length}</h1>
-      <p className="fondo-nat-sub">
-        Las declaraciones de cada empresa ante SUNAT. Los periodos se generan solos;
-        lo que se marca a mano es que ya se presentaron. Las constancias no se guardan
-        aquí: se comprueban en SOL, que es donde están de verdad.
-      </p>
+  return (
+    /* La cabecera, el rótulo y la barra viven en el `layout`: no dependen de
+       qué empresa mires y así no se vuelven a pedir en cada clic. */
+    <>
 
       {errorIgv && (
         <div className="empty" style={{ color: "var(--yellow)", marginBottom: 10 }}>
@@ -208,19 +296,29 @@ export default async function ObligacionesPage() {
         <span style={{ color: "var(--dim)" }}>{res.declarados} declarados de {res.total}</span>
       </div>
 
-      <Obligaciones
-        empresas={empresas}
-        logos={logos}
-        repLegal={rls}
-        obligaciones={obligaciones}
-        periodos={periodos}
-        perfiles={(perf.data || []) as any[]}
-        comprobantes={(cmp.data || []) as any[]}
-        urlSol={urlSol || null}
-        userId={user.id}
-        hiloError={hilos.error}
-        error={error}
-      />
-    </div>
+      {/* ── SIN EMPRESA ELEGIDA: TODAS EN UNA COLUMNA DE ROJOS ──
+          La pantalla apilaba las quince con sus bloques plegables, así que
+          para saber quién debía algo había que desplegar, mirar y plegar,
+          empresa por empresa. El semáforo estaba —cada cabecera lo tenía— pero
+          repartido en quince sitios que no se leen juntos. */}
+      {!pedido ? (
+        <ResumenObligaciones empresas={empresas} logos={logos} filas={resumen}
+          href={id => `/obligaciones?emp=${id}`} />
+      ) : (
+        <Obligaciones
+          empresas={empresas}
+          logos={logos}
+          repLegal={rls}
+          obligaciones={obligaciones}
+          periodos={periodos}
+          perfiles={perfilesCortos}
+          comprobantes={(cmp.data || []) as any[]}
+          urlSol={urlSol || null}
+          userId={user.id}
+          hiloError={hilos.error}
+          error={error}
+        />
+      )}
+    </>
   );
 }

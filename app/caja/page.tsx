@@ -1,3 +1,4 @@
+import { mapaAlias } from "@/lib/personas";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -44,7 +45,8 @@ export default async function CajaPage({ searchParams }: { searchParams: { m?: s
   const fin = `${mes === 11 ? anio + 1 : anio}-${pad(mes === 11 ? 1 : mes + 2)}-01`;
 
   const [{ data: cajas, error: eCajas }, { data: cuentas, error: eCuentas },
-         { data: movsMes, error: eMovs }, { data: proyectos }] = await Promise.all([
+         { data: movsMes, error: eMovs }, { data: proyectos },
+         { data: aliasPers }] = await Promise.all([
     /* TODAS, activas y archivadas. Las archivadas no llevan tarjeta de saldo
        —ya no se usan— pero sus movimientos siguen en el libro, y sin ellas en
        la lista esas filas salían con la caja en blanco: un gasto sin decir de
@@ -54,12 +56,29 @@ export default async function CajaPage({ searchParams }: { searchParams: { m?: s
       .order("activa", { ascending: false }).order("orden").order("nombre"),
     supabase.from("cuenta_caja").select("id,nombre,flujo,activa").order("orden").order("nombre"),
     supabase.from("movimiento_caja")
+      /* `avatar_url` y `color` para pintar la cara de quien apuntó, y
+         `creado_en` para decir CUÁNDO lo apuntó. La fecha de la izquierda es
+         la del movimiento —cuándo se movió la plata— y no la misma cosa: un
+         gasto del 14 apuntado el 20 se ve idéntico a uno apuntado el mismo
+         día, y esa diferencia es la que explica por qué un saldo no cuadraba
+         el martes. */
       .select("id,caja_id,fecha,monto,cuenta_id,caja_destino,descripcion,url,proyecto_id," +
-              "proy:proyectos(nombre),quien:perfiles!creado_por(nombre)")
+              "creado_en,creado_por,proy:proyectos(nombre)," +
+              "quien:perfiles!creado_por(nombre,avatar_url,color)")
       .gte("fecha", inicio).lt("fecha", fin)
       .order("fecha", { ascending: false }).order("creado_en", { ascending: false })
       .limit(2000),
     supabase.from("proyectos").select("id,nombre").order("nombre"),
+    /* ── EL ALIAS CORTO DE CADA CUENTA ──
+       `perfiles.nombre` guarda el nombre largo («John Oros Condori»); el corto
+       que usa el equipo —«JohnO»— vive en `personas.alias`, cruzado por
+       `usuario_id`. En una fila de caja el largo no cabe y además no es como se
+       llaman entre ellos.
+       Es el mismo cruce que ya hacen /admin y las fichas de entidad, con la
+       misma función: `mapaAlias`. Copiarlo aquí a mano habría sido la cuarta
+       versión de «cómo se llama corto esta persona». */
+    supabase.from("personas").select("usuario_id,alias")
+      .not("alias", "is", null).not("usuario_id", "is", null),
   ]);
 
   /* ── EL SALDO SE PIDE POR PÁGINAS, NO CON UN LIMIT GRANDE ──
@@ -141,7 +160,12 @@ export default async function CajaPage({ searchParams }: { searchParams: { m?: s
   const faltaSql = /movimiento_caja|cuenta_caja|relation .* does not exist|42P01/.test(problema || "");
 
   return (
-    <div className="shell">
+    /* El mismo ancho que /comprobantes y /obligaciones. `shell` a secas se
+       queda en 860 px y esta pantalla tiene tres tarjetas de saldo en fila y
+       un formulario de siete campos: con el ancho por defecto todo se apretaba
+       más que en las pantallas hermanas, sin ninguna razón salvo que nadie lo
+       había puesto. */
+    <div className="shell" style={{ maxWidth: "min(1180px, 96vw)" }}>
       <div className="topbar">
         <Volver />
         <span className="spacer" />
@@ -150,7 +174,19 @@ export default async function CajaPage({ searchParams }: { searchParams: { m?: s
         </span>
       </div>
 
-      <h1 className="title-lg">💰 Caja · <span style={{ textTransform: "capitalize" }}>{MESES[mes]} {anio}</span></h1>
+      {/* La explicación va en el ⓘ, como en comprobantes y obligaciones: se
+          lee el primer día y luego ocuparía dos líneas de todas las visitas.
+          Aquí importaba más que en las otras, porque el párrafo estaba DEBAJO
+          del selector de mes y de los totales — o sea, en medio de lo que se
+          viene a mirar. */}
+      <h1 className="title-lg" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        💰 Caja · <span style={{ textTransform: "capitalize" }}>{MESES[mes]} {anio}</span>
+        <span className="ayuda-ico" title={
+          "Ingresos y egresos del día a día. Esto NO se rinde a DAFO: lo que va a la "
+          + "rendición de un fondo —RHE, declaraciones juradas y comprobantes— vive en la "
+          + "ficha de ese fondo."
+        }>ⓘ</span>
+      </h1>
 
       {problema && (
         <div className="empty" style={{ color: "var(--yellow)", marginBottom: 10 }}>
@@ -179,11 +215,6 @@ export default async function CajaPage({ searchParams }: { searchParams: { m?: s
         </span>
       </div>
 
-      <p style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 0 }}>
-        Ingresos y egresos del día a día. <b>Esto no se rinde a DAFO</b>: lo que va a la
-        rendición de un fondo —RHE, declaraciones juradas y comprobantes— vive en la ficha
-        de ese fondo.
-      </p>
 
       {/* Entró / salió / quedó. Los traspasos NO están en ninguno de los dos
           primeros: mover plata de efectivo a banco no es ingreso ni egreso, y
@@ -212,6 +243,7 @@ export default async function CajaPage({ searchParams }: { searchParams: { m?: s
       </div>
 
       <CajaPanel cajas={(cajas || []) as any} cuentas={cs as any} movs={movsConHilo as any}
+        alias={mapaAlias(aliasPers as any)}
         proyectos={(proyectos || []) as any} saldos={saldos} esAdmin={esAdmin}
         userId={user.id} />
 

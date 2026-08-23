@@ -603,6 +603,139 @@ a{color:inherit;text-decoration:none}
 .vtabs::-webkit-scrollbar-thumb{background:var(--border2);border-radius:6px}
 .vtab{flex:0 0 auto;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:8px 14px;font-size:12.5px;color:var(--muted);font-weight:600;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
 .vtab:hover{border-color:var(--border2);color:var(--text)}
+/* La pestaña de una empresa lleva su logo delante. Un poco menos de relleno a
+   la izquierda para que la imagen no quede flotando, y el logo no se encoge:
+   con quince pestañas en una barra que hace scroll, un avatar aplastado se lee
+   como un error de carga. */
+/* ── LA FICHA DE LA EMPRESA ABIERTA ──
+   Una franja, no una tarjeta: es contexto de lo que hay debajo, no un bloque
+   con vida propia. Por eso lleva solo el filete de la izquierda —lo mismo que
+   hace la cabecera de empresa en /obligaciones— en vez de borde entero. */
+/* ── EL RESUMEN DE TODAS LAS EMPRESAS ──
+   Una rejilla y no una tabla: las cinco columnas tienen que quedar alineadas
+   entre filas para poder recorrerlas con la vista, que es todo el propósito
+   del panel. Los números a la derecha porque se comparan entre sí. */
+.res-emp-tit{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;
+  margin-bottom:10px;font-size:13px}
+.res-emp-cab,.res-emp-fila{display:grid;gap:10px;align-items:center;
+  grid-template-columns:minmax(0,1fr) 110px 118px 118px minmax(0,170px)}
+.res-emp-cab{font-size:9.5px;letter-spacing:1px;text-transform:uppercase;
+  color:var(--dim);font-weight:700;padding:0 6px 6px}
+.res-emp-fila{padding:7px 6px;border-top:1px solid rgba(255,255,255,.05);
+  font-size:12.5px;color:var(--text);text-decoration:none;border-radius:8px}
+.res-emp-fila:hover{background:rgba(255,255,255,.045)}
+.res-emp-nom{display:inline-flex;align-items:center;gap:8px;min-width:0}
+.res-emp-nom b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.res-emp-nom .av{flex:none}
+.res-emp-ult{font-size:11.5px;color:var(--muted);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+@media(max-width:860px){
+  /* Estrecho: el IGV de ventas es el primero que sobra — hoy casi siempre es
+     cero, y el de compras es el que se mira. */
+  .res-emp-cab,.res-emp-fila{grid-template-columns:minmax(0,1fr) 84px 110px}
+  .res-emp-cab>:nth-child(n+4),.res-emp-fila>:nth-child(n+4){display:none}
+}
+
+/* El resumen de obligaciones comparte fila y nombre con el de comprobantes
+   —misma altura, mismo hover, misma columna de la izquierda— y solo cambia la
+   rejilla, porque cuenta otra cosa. Reusar `.res-emp-fila` es lo que hace que
+   las dos pantallas se sientan la misma. */
+.res-obl-cab{display:grid;gap:10px;align-items:center;
+  grid-template-columns:minmax(0,1fr) 92px 100px 118px minmax(0,150px);
+  font-size:9.5px;letter-spacing:1px;text-transform:uppercase;
+  color:var(--dim);font-weight:700;padding:0 6px 6px}
+.res-obl-cab ~ .res-emp-fila{
+  grid-template-columns:minmax(0,1fr) 92px 100px 118px minmax(0,150px)}
+/* El motivo por el que una empresa no declara: pegado a su nombre, en pequeño
+   y sin color de alarma — no es un problema, es una explicación. */
+.res-obl-motivo{font-size:10px;color:var(--dim);border:1px solid var(--border);
+  border-radius:6px;padding:1px 6px;white-space:nowrap;cursor:help}
+@media(max-width:860px){
+  .res-obl-cab,.res-obl-cab ~ .res-emp-fila{
+    grid-template-columns:minmax(0,1fr) 76px 88px}
+  .res-obl-cab>:nth-child(n+4),.res-obl-cab ~ .res-emp-fila>:nth-child(n+4){display:none}
+}
+
+/* ── LAS DOS COLUMNAS DE CONTEXTO DE UN MOVIMIENTO DE CAJA ──
+   Ancho FIJO y siempre presentes, aunque vayan vacías. Antes eran dos textos
+   opcionales detrás de una descripción elástica: cada fila los ponía en una x
+   distinta y el nombre de quien apuntó saltaba de sitio línea a línea. Una
+   columna que se mueve no se puede recorrer con la vista, que es lo único que
+   se hace con una lista de cuarenta apuntes.
+   `flex:none` para que no se encojan cuando la descripción es larga: si se
+   encogen, vuelven a desalinearse — más despacio, pero igual. */
+.caja-proy{flex:none;width:132px;font-size:11px;color:var(--dim);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Ya no lleva ancho propio: es una CELDA de la rejilla de acciones y el ancho
+   lo declara el contenedor. Ponerle uno aquí lo pelearía con la rejilla, que
+   es justo lo que hacía que quedara «casi» alineado. `justify-content` a la
+   izquierda porque el contenido —cara, nombre, fecha— se lee, no se compara
+   como los números de al lado. */
+.caja-quien{display:inline-flex;align-items:center;justify-content:flex-start;
+  gap:5px;font-size:11px;color:var(--muted);overflow:hidden;min-width:0}
+.caja-quien .av{flex:none}
+.caja-quien-n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* La fecha de apunte, más tenue que el nombre: es el segundo dato de la misma
+   respuesta —quién y cuándo—, no una columna que se compare con las de al
+   lado. Y `cursor:help` porque su tooltip aclara que NO es la fecha de la
+   izquierda, que es la confusión que este dato puede crear. */
+.caja-quien-f{flex:none;color:var(--dim);cursor:help}
+/* Apuntado un día distinto del movimiento. Ámbar TENUE y no la alarma de
+   siempre: no es un error —apuntar al día siguiente es lo normal— sino lo que
+   explica por qué el saldo de ese día podía no cuadrar todavía. En gris había
+   que comparar las dos fechas a mano, fila por fila. */
+.caja-quien-f.otro-dia{color:rgba(244,180,0,.72)}
+/* Los importes se comparan en vertical: alineados por la izquierda, un 4,290 y
+   un 30 no se leen de un vistazo. Ancho fijo para que la coma caiga siempre en
+   el mismo sitio, y `tabular-nums` para que los dígitos no bailen. */
+.caja-monto{flex:none;width:104px;text-align:right;font-weight:700;
+  white-space:nowrap;font-variant-numeric:tabular-nums}
+@media(max-width:900px){
+  /* Estrecho: el proyecto es lo primero que sobra — casi siempre está vacío y
+     el autor contesta la pregunta que se hace de verdad. La fecha de apunte va
+     detrás: el nombre solo ya dice a quién preguntar. */
+  .caja-proy{display:none}
+  .caja-quien-f{display:none}
+}
+
+/* Un botón que se lee como enlace: para las salidas dentro de un texto —«no
+   tuvo movimientos este mes · Ver todas»—. Es un <button> y no un <a> porque
+   no navega a ninguna parte: deshace un filtro. Parecer un enlace es lo que
+   dice que se puede pulsar; serlo habría prometido una página nueva. */
+.lnk{color:var(--accent);text-decoration:underline;text-underline-offset:2px;
+  font-size:inherit;cursor:pointer;background:none;border:none;padding:0}
+.lnk:hover{color:var(--violet)}
+
+/* ── LA AYUDA DE UNA PANTALLA, EN UN ÍCONO ──
+   Para las explicaciones que se leen el primer día y luego solo ocupan sitio.
+   Va tenue y sube de tono al pasar el cursor: tiene que verse que está —una
+   ayuda que no se descubre no existe— sin competir con el título.
+   `cursor:help` es lo que dice que ahí hay algo que leer sin tener que
+   escribirlo. */
+.ayuda-ico{font-size:14px;font-weight:400;color:var(--dim);cursor:help;
+  line-height:1;transition:color .12s ease}
+.ayuda-ico:hover{color:var(--accent)}
+
+/* La separación con la barra la pone `.cmpp-emps`, que la envuelve: debajo de
+   la barra puede ir esta ficha o el resumen de todas, y el hueco tiene que ser
+   el mismo en los dos casos. Puesto en cada bloque, el día que aparezca un
+   tercero saldría pegado — o separado por otra distancia. */
+.cmpp-emps{margin-bottom:14px}
+.cmpp-ficha{display:flex;align-items:center;gap:11px;flex-wrap:wrap;
+  padding:9px 13px;margin:0 0 10px;border-radius:12px;
+  background:var(--card);border:1px solid var(--border);
+  border-left:3px solid var(--accent)}
+.cmpp-ficha .av{flex:none}
+.cmpp-ficha-txt{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
+.cmpp-ficha-txt b{font-size:13.5px;letter-spacing:.2px}
+.cmpp-ficha-sub{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;
+  font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+/* `align-items:center` porque el avatar es una caja: con la línea base cuelga.
+   Es el mismo detalle de las cabeceras de sección y del pie de obligaciones. */
+.cmpp-ficha-rl{display:inline-flex;align-items:center;gap:6px;flex:none;
+  font-size:12px;color:var(--muted);white-space:nowrap}
+.vtab.cmpp-emp{padding-left:8px}
+.vtab.cmpp-emp .av{flex:none}
 .vtab.on{border-color:var(--accent);color:var(--text);background:rgba(124,92,255,.12)}
 /* Deshabilitado: se ve, no se pulsa y no finge que se puede. `.vtab` no tenía
    este estado —nadie lo había deshabilitado nunca— y sin él un botón inerte se
