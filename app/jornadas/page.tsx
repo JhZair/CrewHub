@@ -244,13 +244,22 @@ export default async function Jornadas({ searchParams }: { searchParams: { m?: s
 
       <h1 className="title-lg">📓 Jornadas · <span style={{ textTransform: "capitalize" }}>{MESES[mes]} {anio}</span></h1>
 
-      <div className="vtabs" style={{ alignItems: "center" }}>
+      <MiJornada proyectos={proyectos || []} mi={mi} />
+
+      {/* ── EL NAVEGADOR DE MESES, DESPUÉS DEL FORMULARIO ──
+          Estaba pegado al título, o sea lo primero que se ve al entrar. Pero
+          entrar aquí es casi siempre para apuntar el día de HOY: el mes que ya
+          está abierto es el correcto el 95% de las veces, y tener «‹ mes
+          anterior» encima del formulario invita a viajar antes de hacer lo que
+          se vino a hacer.
+          Debajo empieza la CONSULTA —el pago, el día a día, el reparto por
+          semanas— y ahí sí manda qué mes se mira. Su sitio es la frontera
+          entre las dos cosas, que es justo aquí. */}
+      <div className="vtabs" style={{ alignItems: "center", marginTop: 14 }}>
         <Link href={`/jornadas?m=${off - 1}`} className="vtab">‹ mes anterior</Link>
         {off !== 0 && <Link href="/jornadas" className="vtab">hoy</Link>}
         {off < 0 && <Link href={`/jornadas?m=${off + 1}`} className="vtab">mes siguiente ›</Link>}
       </div>
-
-      <MiJornada proyectos={proyectos || []} mi={mi} />
 
       {/* Con el mes LIQUIDADO esto es un panel entero —el recibo, su importe y
           el formulario del RHE— y se queda donde estaba. Abierto o confirmado
