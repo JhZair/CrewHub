@@ -387,3 +387,57 @@ export const tituloDe = (m: string) => {
   const x = (m || "").match(/«([^»]+)»/);
   return x ? x[1] : (m || "");
 };
+
+/* ── EL DESTINO DEL CAMBIO, QUE LA FILA ESTABA TIRANDO ──
+ *
+ * `tituloDe` se queda con lo que va entre « », y la fila pintaba ese título más
+ * un verbo genérico sacado de `ETIQ`. Pero en los avisos de CAMBIO el mensaje
+ * trae el destino justo DETRÁS del título —«Michel puso «De Sandro» en ✅
+ * Resuelta»— y ahí se perdía: en pantalla quedaba «De Sandro · Michel cambió el
+ * estado», que obliga a abrir el caso para enterarse de lo único que la
+ * notificación venía a decir. El dato ya viajaba desde el primer día;
+ * simplemente no se pintaba.
+ *
+ * `colaDe` vive PEGADA a `tituloDe` a propósito: son el par que lee el formato
+ * del mensaje. Quien cambie una plantilla tiene que mirar aquí, y con las dos
+ * juntas es un solo sitio que mirar en vez de dos. Por eso `colaDe` NO se
+ * exporta: sola no significa nada (ver el porqué justo debajo).
+ *
+ * Se recorta el conector para que la frase cierre con dos puntos —«cambió el
+ * estado: ✅ Resuelta»—, que es EXACTAMENTE como ya lo redacta la bitácora de
+ * /notificaciones. Un mismo hecho, escrito igual en los dos sitios. */
+const colaDe = (m: string) => {
+  const i = (m || "").lastIndexOf("»");
+  if (i < 0) return "";
+  return (m || "").slice(i + 1).trim()
+    .replace(/^(en|a|al|para el|para)\s+/i, "").trim();
+};
+
+/* ── Y POR QUÉ NO SE LE PREGUNTA A CUALQUIER AVISO ──
+ *
+ * La primera versión pintaba la cola de TODOS los mensajes que la tuvieran. Es
+ * la trampa evidente en retrospectiva: los mensajes no los escribe un solo
+ * sitio. Los del Bot nacen en SQL (db/qhaway-matutino.sql) y llevan el
+ * predicado detrás del título, no un destino. Salía esto:
+ *
+ *   «⏰ «Declaración mensual» vence en 7 días»   → vence: **vence en 7 días**
+ *   «💤 «Rodaje bloque 2» lleva 3 días dormido»  → : **lleva 3 días dormido**
+ *   «Ana dividió «X» — nuevo sub-caso: <título>» → **— nuevo sub-caso: …**
+ *
+ * El primero repite el verbo, el segundo abre la línea con dos puntos huérfanos
+ * —esos avisos no tienen actor, así que `quien` va vacío— y el tercero mete un
+ * título sin recortar, en negrita, dentro de un menú de 330 px.
+ *
+ * Así que el destino se pide por TIPO y no por si el texto casualmente tiene
+ * cola. Estos tres son los únicos cuyas plantillas garantizan que detrás del
+ * título viene el valor nuevo, y están escritas a mano en app/actions.ts —
+ * `cambiarEstado`, `asignarResponsable` y `ponerFechaLimite`—, no generadas.
+ * Añadir un cuarto tipo aquí obliga a ir a leer su plantilla primero, que es
+ * exactamente la comprobación que faltó. */
+export const TIPOS_CON_DESTINO = new Set([
+  "cambio_estado", "cambio_responsable", "cambio_plazo",
+]);
+
+/** El valor nuevo de un aviso de cambio, o "" si ese aviso no lleva ninguno. */
+export const destinoDe = (n: { tipo?: string | null; mensaje?: string | null }) =>
+  TIPOS_CON_DESTINO.has(String(n?.tipo || "")) ? colaDe(n?.mensaje || "") : "";

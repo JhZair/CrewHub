@@ -2272,6 +2272,48 @@ a.stat-card:hover{border-color:var(--border2)}
    mouse vuelven a plena, como en el feed y el tablero. */
 .camp-item.leida{opacity:.5;transition:opacity .16s ease}
 .camp-item.leida:hover{opacity:1}
+
+/* ── A QUÉ CAMBIÓ ──
+   El destino del cambio, dentro de la línea gris de «quién y cuándo». Sin
+   color propio: se destaca subiendo el texto a `--text` y engordándolo, que es
+   contraste suficiente sobre `--dim` y no añade un significado nuevo que
+   aprender. Un color aquí competiría con los chips de vínculo de al lado. */
+.nf-dest{color:var(--text);font-weight:700;font-style:normal}
+
+/* ── MARCAR UNA SOLA COMO LEÍDA ──
+   Solo existía «✓ marcar», que se las lleva TODAS: para despachar un aviso
+   había que abrirlo, o vaciar la bandeja entera y perder de vista los tres que
+   sí importaban.
+
+   El ✓ aparece EN EL SITIO DEL PUNTO de no-leída, y lo sustituye al pasar por
+   encima. No es un adorno: el punto es donde el ojo ya mira para saber que
+   algo está sin leer, así que es donde espera poder quitarlo. Un botón en otra
+   esquina sería un segundo lugar que aprender para el mismo estado.
+
+   En pantalla táctil no hay «pasar por encima», así que ahí se enseñan los
+   dos, uno al lado del otro, y la fila abre hueco para ellos. Esconder el
+   botón detrás de un hover que no existe es esconderlo del todo.
+
+   ⚠ Se oculta con `opacity`, NO con `display:none`. Un elemento en display:none
+   sale del orden de tabulación, así que la única forma de marcar una sola sería
+   el ratón — y «marcar leídas TODAS» seguiría siendo la única opción para quien
+   navega con teclado, que es justo el problema que este botón vino a resolver.
+   Con opacity sigue siendo enfocable, y `:focus-visible` lo enseña. */
+.nf-visto{position:absolute;top:6px;right:4px;width:20px;height:20px;z-index:2;
+  display:flex;align-items:center;justify-content:center;
+  border:none;background:transparent;border-radius:6px;
+  color:var(--dim);font-size:12px;line-height:1;cursor:pointer;
+  opacity:0;transition:opacity .12s ease}
+.camp-item:hover .nf-visto,
+.nf-visto:focus-visible{opacity:1}
+.camp-item.nueva:hover::after{display:none}
+.nf-visto:hover,.nf-visto:focus-visible{background:var(--accent);color:#fff}
+@media (hover:none){
+  .nf-visto{opacity:1;right:22px}
+  /* Solo las que TIENEN botón abren hueco: reservarlo en las ya leídas dejaría
+     46 px de vacío a la derecha en cada fila del historial. */
+  .camp-item.nueva{padding-right:46px}
+}
 /* Pestañas de la campanita/página: 👤 Para ti · 🤖 Del Bot */
 .camp-tabs{display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid var(--border)}
 .camp-tab{background:transparent;border:1px solid transparent;border-radius:8px;padding:4px 9px;font-size:12px;color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}

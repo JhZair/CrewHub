@@ -137,7 +137,10 @@ export default function CampanitaGlobal() {
                 <Link key={g.n.id} href={rutaNotif(g.n)!}
                   className={`camp-item ${g.idsSinLeer.length ? "nueva" : "leida"}`}
                   onClick={() => { marcarGrupo(g); setAbierta(false); }}>
-                  <NotifFila n={g.n} cuenta={g.cuenta} actores={g.actores} />
+                  {/* El ✓ solo donde queda algo por leer: en una fila ya leída
+                      sería un botón que no hace nada. */}
+                  <NotifFila n={g.n} cuenta={g.cuenta} actores={g.actores}
+                    onMarcar={g.idsSinLeer.length ? () => marcarGrupo(g) : undefined} />
                 </Link>
               ) : (
                 /* Sin ruta no hay enlace, y eso se NOTA: el cursor no cambia y
@@ -146,7 +149,8 @@ export default function CampanitaGlobal() {
                 <div key={g.n.id} className={`camp-item ${g.idsSinLeer.length ? "nueva" : "leida"}`}
                   title="Este aviso no guarda a dónde llevar. Suele ser una migración pendiente en la base de datos."
                   onClick={() => marcarGrupo(g)} style={{ cursor: g.idsSinLeer.length ? "pointer" : "default" }}>
-                  <NotifFila n={g.n} cuenta={g.cuenta} actores={g.actores} />
+                  <NotifFila n={g.n} cuenta={g.cuenta} actores={g.actores}
+                    onMarcar={g.idsSinLeer.length ? () => marcarGrupo(g) : undefined} />
                 </div>
               )
             ))}

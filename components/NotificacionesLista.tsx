@@ -164,7 +164,9 @@ export default function NotificacionesLista({
       <div key={n.id}
         className={`camp-item ${n.leida ? "leida" : "nueva"} ${sel?.id === n.id ? "sel" : ""}`}
         onClick={() => seleccionar(n)} style={{ cursor: "pointer" }}>
-        <NotifFila n={n} />
+        {/* Aquí el ✓ marca SIN seleccionar: abrir el detalle ya la marcaba, y
+            lo que faltaba era despachar una sin tener que mirarla. */}
+        <NotifFila n={n} onMarcar={n.leida ? undefined : () => marcarLeida(n)} />
       </div>
     );
   }

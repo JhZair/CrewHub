@@ -79,12 +79,16 @@ export default function Campanita({ items: itemsProp, sinLeer: sinLeerProp, sinL
                 <Link key={g.n.id} href={rutaNotif(g.n)!}
                   className={`camp-item ${g.idsSinLeer.length ? "nueva" : "leida"}`}
                   onClick={() => { marcarGrupo(g); setAbierta(false); }}>
-                  <NotifFila n={g.n} cuenta={g.cuenta} actores={g.actores} />
+                  {/* El ✓ solo donde queda algo por leer: en una fila ya leída
+                      sería un botón que no hace nada. */}
+                  <NotifFila n={g.n} cuenta={g.cuenta} actores={g.actores}
+                    onMarcar={g.idsSinLeer.length ? () => marcarGrupo(g) : undefined} />
                 </Link>
               ) : (
                 <div key={g.n.id} className={`camp-item ${g.idsSinLeer.length ? "nueva" : "leida"}`}
                   onClick={() => marcarGrupo(g)} style={{ cursor: g.idsSinLeer.length ? "pointer" : "default" }}>
-                  <NotifFila n={g.n} cuenta={g.cuenta} actores={g.actores} />
+                  <NotifFila n={g.n} cuenta={g.cuenta} actores={g.actores}
+                    onMarcar={g.idsSinLeer.length ? () => marcarGrupo(g) : undefined} />
                 </div>
               )
             ))}
