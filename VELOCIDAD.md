@@ -430,6 +430,59 @@ que algo carga, la forma que no rompe nada es una barra de progreso en cliente
 
 ---
 
+## §0 — MEDIDO DESPUÉS (24 ago 2026, ya desplegado)
+
+| | Antes | Después |
+|---|---|---|
+| Portada · TTFB | 97 ms | 97 ms |
+| Portada · **HTML completo** | **7019 ms** | **3800 ms** |
+| `/personas` · **peticiones** | **53** | **15** |
+| `/personas` · acciones de servidor | 4 · 4484 ms | 4 · **3525 ms** |
+| `/personas` · precargas `?_rsc=` | **49** (277–776 ms) | **11** (279–426 ms) |
+
+**La portada tarda la mitad y `/personas` hace un tercio de las peticiones.**
+Se fueron las 31 del menú y las ~20 de los chips; quedan las once que sí
+apuntan a sitios donde se va a hacer clic —las fichas de persona, «Casos»,
+«Historial», «Nueva persona»—, que es exactamente lo que la precarga debe
+hacer.
+
+### Dos cosas que este número NO dice, y conviene no malinterpretar
+
+**1. «Transferido» subió de 77 kB a 358 kB, y no es una regresión.** Es la
+caché. En la medida de antes, `script: 0 kB` — todo el JavaScript venía del
+disco. Esta es la primera carga **después de un despliegue**, que cambia el
+hash de cada archivo y obliga a bajarlo todo otra vez: `script: 207 kB`,
+`link: 61 kB`. Las dos cifras son ciertas y describen momentos distintos: 358 kB
+la primera vez tras publicar, 77 kB todas las demás. Como el equipo entra a
+diario, la que importa es la segunda.
+
+**2. El tiempo POR precarga apenas bajó** (277–776 → 279–426 ms). Si el
+`getUser()` del middleware fuera los 300 ms, deberían haberse desplomado. O el
+salto no se está aplicando, o ~350 ms es simplemente el suelo de latencia entre
+Cusco y la región de Vercel más la invocación de la función. **Sin resolver.**
+Se distingue con un A/B en la consola:
+
+```js
+const t = async (h) => { const a = performance.now();
+  await fetch('/personas?_rsc=x', { headers: h }); return Math.round(performance.now() - a); };
+console.log('con precarga:', await t({ RSC: '1', 'Next-Router-Prefetch': '1' }),
+            'ms · sin ella:', await t({ RSC: '1' }), 'ms');
+```
+
+Si los dos números son parecidos, el salto no sirve de nada y es latencia pura.
+
+### Y lo que ahora manda
+
+Con las precargas fuera del camino, quedan dos cosas y las dos están medidas:
+
+- **3800 ms de portada** — su propia cascada (§4). Ya no hay a quién echarle la
+  culpa: es suya.
+- **3525 ms de acciones de servidor encoladas** (§1), en cada navegación.
+
+Son casi los mismos milisegundos. §4 y §1 pasan a ser el trabajo.
+
+---
+
 ## Orden de ataque — revisado tras medir
 
 0. **Comprobar Max rows** en Supabase → Settings → API. Dos minutos. Decide si
