@@ -66,7 +66,6 @@ export default async function TableroPage({ searchParams }: {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-  const { data: { session } } = await supabase.auth.getSession();
 
   /* ── LOS EJES DEL TABLERO ──
      Siete, y todos se suman. Antes había uno solo: `v` guardaba a la vez «de
@@ -116,39 +115,8 @@ export default async function TableroPage({ searchParams }: {
     return `/tablero${s ? "?" + s : ""}`;
   };
 
-  // El equipo, para poder mirar los asuntos de cada quien
-  const { data: equipoPerf } = await supabase.from("perfiles")
-    .select("id,nombre").eq("activo", true).neq("nombre", BOT).order("nombre");
-
-  // Vínculos de persona del USUARIO logueado (para "Mis asuntos" y su contador)
-  let misVinc: string[] = [];
-  {
-    const { data: yo } = await supabase.from("personas")
-      .select("id").eq("usuario_id", user.id).maybeSingle();
-    if (yo) {
-      const { data: vs } = await supabase.from("publicacion_vinculos")
-        .select("publicacion_id")
-        .eq("entidad_tipo", "persona").eq("entidad_id", yo.id).limit(300);
-      misVinc = (vs || []).map((x: any) => x.publicacion_id);
-    }
-  }
-
   // Persona en foco. `P_TODOS` es «el equipo entero», dicho a propósito.
   const uidFoco = pFiltro === P_TODOS ? null : (pFiltro || null);
-  let vinculadas: string[] = [];
-  if (uidFoco === user.id) {
-    vinculadas = misVinc;
-  } else if (uidFoco) {
-    const { data: yo } = await supabase.from("personas")
-      .select("id").eq("usuario_id", uidFoco).maybeSingle();
-    if (yo) {
-      const { data: vs } = await supabase.from("publicacion_vinculos")
-        .select("publicacion_id")
-        .eq("entidad_tipo", "persona").eq("entidad_id", yo.id).limit(300);
-      vinculadas = (vs || []).map((x: any) => x.publicacion_id);
-    }
-  }
-
   /* FILTROS POR VÍNCULO — la intersección.
      Un caso pasa si tiene TODOS los elegidos: «🏷 Subsanaciones DAFO» +
      «📁 Pampacucho» es lo que cuelga de las dos cosas, no de cualquiera. Y
@@ -156,16 +124,140 @@ export default async function TableroPage({ searchParams }: {
      y la unión no filtraría nada.
      Cinco consultas como mucho, y solo de las que están puestas. */
   const ejesPuestos = EJES_VINC.filter(e => F[e.param]);
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     ERA LA PANTALLA MÁS LENTA DEL SISTEMA: 2844 ms
+
+     Medido con la mediana de cinco, contra un suelo de 195 ms. Y lo revelador
+     es la comparación: la portada hace VEINTISÉIS consultas en seis olas y
+     tarda 1657; esto hacía VEINTE en trece olas y tardaba casi el doble. Lo que
+     cuesta no es cuántas consultas son — es cuántas veces se para a esperar.
+
+     Casi ninguna de esas trece esperas hacía falta. El equipo, mi ficha, la
+     ficha de la persona en foco, los filtros de la URL y el universo de los
+     contadores no dependen unos de otros: dependen de la URL y de `user.id`,
+     que se conocen antes de pedir nada.
+
+     Cinco tandas, cada una porque la siguiente necesita algo suyo:
+       1. lo que se sabe con la URL y `user.id`
+       2. los vínculos de persona y los del universo  ← necesitan las fichas
+       3. los casos del tablero y los desplegables    ← necesitan los vínculos
+       4. hijos, reacciones y vínculos de las tarjetas ← necesitan los ids
+       5. los nombres de las entidades vinculadas     ← necesitan esos vínculos
+     ══════════════════════════════════════════════════════════════════════════ */
+
+  /* Una FUNCIÓN y no un objeto compartido. Con un solo `{data:[]}` para las
+     seis ramas, en un tablero vacío `hijosData`, `reaccs`, `vincs` y los demás
+     serían LA MISMA instancia de array: el día que alguien le haga un `.sort()`
+     a uno, corrompe los otros cinco — y solo cuando no hay casos, que es donde
+     nadie mira. Cuesta un `()` evitarlo. */
+  const SIN_FILAS = () => ({ data: [] as any[] });
+  /* (Este mapa era una copia de `TABLA_DE` de lib/secciones — la tercera que
+     aparece hoy: la otra vive en actions.ts como `ENT_TABLA`. Se importa.) */
+  const TABLA_ENT = TABLA_DE;
+  const [{ data: { session } }, { data: equipoPerf }, { data: yoUser },
+    { data: yoFoco }, ejesData, { data: universo }] = await Promise.all([
+    supabase.auth.getSession(),
+    // El equipo, para poder mirar los asuntos de cada quien
+    supabase.from("perfiles")
+      .select("id,nombre").eq("activo", true).neq("nombre", BOT).order("nombre"),
+    // Mi ficha de persona, y la de la persona en foco si es otra.
+    supabase.from("personas").select("id").eq("usuario_id", user.id).maybeSingle(),
+    uidFoco && uidFoco !== user.id
+      ? supabase.from("personas").select("id").eq("usuario_id", uidFoco).maybeSingle()
+      : Promise.resolve({ data: null as any }),
+    /* Los ejes puestos, TODOS A LA VEZ.
+       Estaban en un `for` con la consulta dentro, y ese bucle tenía un `break`:
+       si la intersección se quedaba vacía, las siguientes no se pedían. Se
+       pierde ese ahorro y se gana mucho más — eran hasta cinco esperas
+       encadenadas para cruzar cinco listas que no se necesitan entre sí, y el
+       `break` solo salta en el caso raro de cruzar filtros sin nada en común.
+       Cambiar cinco esperas seguras por una posible de más es buen negocio. */
+    Promise.all(ejesPuestos.map(e =>
+      supabase.from("publicacion_vinculos").select("publicacion_id")
+        .eq("entidad_tipo", e.tipo).eq("entidad_id", F[e.param]).limit(2000))),
+    /* Universo para los contadores y los catálogos de filtros. Sigue al MODO:
+       en archivadas cuenta lo archivado, o «Todo» y los desplegables de etiqueta
+       mostrarían lo vivo mientras las columnas muestran lo guardado.
+       No depende de ningún filtro, y estaba a mitad de la cascada. */
+    (() => {
+      const qu = supabase.from("publicaciones")
+        .select("id,tipo,autor_id,responsable,fecha_limite")
+        .in("estado", ESTADOS).neq("tipo", "bitacora").limit(TOPE);
+      return arch ? qu.not("archivado_en", "is", null) : qu.is("archivado_en", null);
+    })(),
+  ]);
+
+  /* La intersección se aplica en MEMORIA, no con `.in("id", [...])`.
+     Cada uuid pesa ~39 bytes ya percent-encodeado; una etiqueta con 400 casos
+     hace una query string de ~16 KB y PostgREST la corta con un 414 mucho
+     antes del tope de 2000 que estas consultas piden. Y un 414 aquí no avisa:
+     se ve un tablero vacío y parece que no hay nada con esa etiqueta.
+
+     Sin `as any`: si el tipo de `ejesData` cambiara, el cast lo taparía y esto
+     se degradaría a un conjunto vacío — o sea, a un tablero vacío sin error,
+     que es exactamente el modo de fallo que el párrafo de arriba vigila. */
   let idsVinc: Set<string> | null = null;
-  for (const e of ejesPuestos) {
-    // Si ya no queda nada que cruzar, las consultas siguientes son de más
-    if (idsVinc && idsVinc.size === 0) break;
-    const { data } = await supabase.from("publicacion_vinculos")
-      .select("publicacion_id")
-      .eq("entidad_tipo", e.tipo).eq("entidad_id", F[e.param]).limit(2000);
-    const ids = new Set((data || []).map((x: any) => x.publicacion_id as string));
+  for (const r of ejesData) {
+    const ids = new Set<string>((r.data || []).map(x => x.publicacion_id as string));
     idsVinc = idsVinc === null ? ids : new Set([...idsVinc].filter(x => ids.has(x)));
   }
+
+  // Los avisos vencidos ya no cuentan en el tablero activo (igual que las columnas).
+  const U = (universo || []).filter((p: any) => arch || !avisoVencido(p.tipo, p.fecha_limite));
+  const idsUniv = U.map((p: any) => p.id);
+
+  /* ── LOS DESPLEGABLES, EN UNA VÍA MUERTA A PROPÓSITO ──
+     Salen del universo entero, no de lo filtrado —si no, elegir una etiqueta
+     vaciaría los otros cuatro—, así que no dependen de los casos del tablero y
+     los casos no dependen de ellos. Y son lo más caro de la página: un `.in()`
+     de hasta 500 uuids con tope 4000, más una consulta por eje.
+     Puestos en la misma tanda que los vínculos de persona, la consulta
+     principal —la que marca el camino crítico— arrancaba cuando terminaba la
+     más lenta que ni siquiera necesita. Aquí salen ya y se recogen al final.
+     ⚠ Sin `await`: una promesa guardada, no una espera. */
+  const pDesplegables = (async () => {
+    const { data: vincUniv } = idsUniv.length
+      ? await supabase.from("publicacion_vinculos").select("entidad_tipo,entidad_id")
+          .in("publicacion_id", idsUniv).limit(4000)
+      : SIN_FILAS();
+    /* Solo lo que EXISTE en el tablero: ofrecer las 60 etiquetas del sistema
+       cuando 8 tienen casos abiertos es hacerle buscar a alguien entre opciones
+       que no llevan a ningún sitio. */
+    const cat: Record<string, { id: string; nombre: string }[]> = {};
+    await Promise.all(EJES_VINC.map(async e => {
+      const ids = [...new Set((vincUniv || [])
+        .filter((x: any) => x.entidad_tipo === e.tipo).map((x: any) => x.entidad_id))];
+      if (!ids.length) { cat[e.param] = []; return; }
+      const t = TABLA_ENT[e.tipo];
+      const { data } = await supabase.from(t[0]).select(`id,${t[1]}`).in("id", ids);
+      cat[e.param] = (data || [])
+        .map((r: any) => ({ id: r.id, nombre: r[t[1]] }))
+        .filter(r => r.nombre)
+        .sort((a, b) => a.nombre.localeCompare(b.nombre));
+    }));
+    return cat;
+  })();
+
+  /* ══ TANDA 2 ══ los vínculos de persona: los míos y los de quien esté en
+     foco. Es lo único que la consulta principal necesita esperar. */
+  const [{ data: vsUser }, { data: vsFoco }] = await Promise.all([
+    yoUser?.id
+      ? supabase.from("publicacion_vinculos").select("publicacion_id")
+          .eq("entidad_tipo", "persona").eq("entidad_id", yoUser.id).limit(300)
+      : SIN_FILAS(),
+    yoFoco?.id
+      ? supabase.from("publicacion_vinculos").select("publicacion_id")
+          .eq("entidad_tipo", "persona").eq("entidad_id", yoFoco.id).limit(300)
+      : SIN_FILAS(),
+  ]);
+  // Vínculos de persona del USUARIO logueado (para "Mis asuntos" y su contador)
+  const misVinc: string[] = (vsUser || []).map((x: any) => x.publicacion_id);
+  /* Si la persona en foco soy yo, es la MISMA lista: no se vuelve a pedir. Esa
+     rama ya existía; lo que cambia es que ahora tampoco cuesta una espera. */
+  const vinculadas: string[] = uidFoco === user.id
+    ? misVinc
+    : (vsFoco || []).map((x: any) => x.publicacion_id);
 
   let q = supabase.from("publicaciones")
     .select("id,titulo,tipo,estado,fecha_limite,creado_en,autor_id,responsable,comentarios(count),resp:perfiles!publicaciones_responsable_fkey(nombre)")
@@ -184,17 +276,16 @@ export default async function TableroPage({ searchParams }: {
   }
   if (v) q = q.eq("tipo", v);
 
+  // ══ TANDA 3 ══ los casos del tablero.
   const { data: pubsCrudo } = await q;
 
-  /* La intersección se aplica en MEMORIA, no con `.in("id", [...])`.
-     Cada uuid pesa ~39 bytes ya percent-encodeado; una etiqueta con 400 casos
-     hace una query string de ~16 KB y PostgREST la corta con un 414 mucho
-     antes del tope de 2000 que este código pedía. Y un 414 aquí no avisa: se
-     ve un tablero vacío y parece que no hay nada con esa etiqueta.
-     ⚠ Esto es exacto mientras el `.limit(300)` de arriba cubra el tablero
-     entero — hoy son 169 casos vivos. El día que pase de 300, el filtro
-     empezaría a mirar solo los 300 más nuevos y a mentir en silencio. Ése es
-     el número a vigilar, y está aquí escrito para que se note. */
+  /* Aquí se APLICA la intersección que se calculó arriba (ver `idsVinc`).
+     ⚠ Es exacta mientras `TOPE` cubra el tablero entero — hoy son 169 casos
+     vivos contra un tope de 500. El día que se pase, el filtro por vínculo
+     empezaría a mirar solo los más nuevos y a mentir en silencio. Ése es el
+     número a vigilar, y está aquí escrito para que se note.
+     (El comentario decía «el `.limit(300)` de arriba» y ese 300 ya no existe:
+     `TOPE` unificó los tres números hace tiempo y esta frase se quedó atrás.) */
   const pubs = (idsVinc === null
     ? (pubsCrudo || [])
     : (pubsCrudo || []).filter((p: any) => idsVinc!.has(p.id)))
@@ -202,17 +293,26 @@ export default async function TableroPage({ searchParams }: {
     // archivadas no aplica —ahí solo hay `archivado_en`, no avisos vencidos—).
     .filter((p: any) => arch || !avisoVencido(p.tipo, p.fecha_limite));
 
-  // Indicadores sociales: sub-casos (hijos) y reacciones (comentarios ya vienen en el select)
+  /* ══ TANDA 4 ══ lo que decora cada tarjeta. Las tres cuelgan del mismo
+     `idsPubs` y ninguna del resultado de la anterior; eran tres esperas. */
   const idsPubs = (pubs || []).map((p: any) => p.id);
-  const { data: hijosData } = idsPubs.length
+  const [{ data: hijosData }, { data: reaccs }, { data: vincs }] = await Promise.all([
     // `estado` faltaba: este era el conteo que había divergido — solo sabía
     // cuántos hijos hay, nunca cuántos están cerrados.
-    ? await supabase.from("publicaciones").select("padre_id,estado,archivado_en").in("padre_id", idsPubs)
-    : { data: [] };
+    idsPubs.length
+      ? supabase.from("publicaciones").select("padre_id,estado,archivado_en").in("padre_id", idsPubs)
+      : SIN_FILAS(),
+    idsPubs.length
+      ? supabase.from("reacciones").select("publicacion_id,emoji")
+          .is("comentario_id", null).in("publicacion_id", idsPubs)
+      : SIN_FILAS(),
+    // Vínculos (entidades relacionadas) para dar contexto en cada tarjeta
+    idsPubs.length
+      ? supabase.from("publicacion_vinculos")
+          .select("publicacion_id,entidad_tipo,entidad_id").in("publicacion_id", idsPubs)
+      : SIN_FILAS(),
+  ]);
   const subDe = contarHijos(hijosData);
-  const { data: reaccs } = idsPubs.length
-    ? await supabase.from("reacciones").select("publicacion_id,emoji").is("comentario_id", null).in("publicacion_id", idsPubs)
-    : { data: [] };
   const reacDe = new Map<string, Record<string, number>>();
   (reaccs || []).forEach((r: any) => {
     const m = reacDe.get(r.publicacion_id) || {};
@@ -220,14 +320,9 @@ export default async function TableroPage({ searchParams }: {
     reacDe.set(r.publicacion_id, m);
   });
 
-  // Vínculos (entidades relacionadas) para dar contexto en cada tarjeta
-  const { data: vincs } = idsPubs.length
-    ? await supabase.from("publicacion_vinculos")
-        .select("publicacion_id,entidad_tipo,entidad_id").in("publicacion_id", idsPubs)
-    : { data: [] };
-  /* (Este mapa era una copia de `TABLA_DE` de lib/secciones — la tercera que
-     aparece hoy: la otra vive en actions.ts como `ENT_TABLA`. Se importa.) */
-  const TABLA_ENT = TABLA_DE;
+  /* ══ TANDA 5 ══ el nombre de cada entidad vinculada, una consulta por tabla.
+     Esta sí depende de la anterior: hasta que no se sabe QUÉ está vinculado no
+     se puede preguntar cómo se llama. */
   const porTipo = new Map<string, Set<string>>();
   (vincs || []).forEach((vv: any) => {
     if (!porTipo.has(vv.entidad_tipo)) porTipo.set(vv.entidad_tipo, new Set());
@@ -279,16 +374,7 @@ export default async function TableroPage({ searchParams }: {
     };
   });
 
-  /* Universo para los contadores y los catálogos de filtros. Sigue al MODO:
-     en archivadas cuenta lo archivado, o «Todo» y los desplegables de etiqueta
-     mostrarían lo vivo mientras las columnas muestran lo guardado. */
-  let qUniv = supabase.from("publicaciones")
-    .select("id,tipo,autor_id,responsable,fecha_limite")
-    .in("estado", ESTADOS).neq("tipo", "bitacora").limit(TOPE);
-  qUniv = arch ? qUniv.not("archivado_en", "is", null) : qUniv.is("archivado_en", null);
-  const { data: universo } = await qUniv;
-  // Los avisos vencidos ya no cuentan en el tablero activo (igual que las columnas).
-  const U = (universo || []).filter((p: any) => arch || !avisoVencido(p.tipo, p.fecha_limite));
+  // El universo y sus vínculos ya vinieron en las tandas 1 y 2.
   const misSet = new Set(misVinc);
   /* Los contadores son del UNIVERSO, no del filtro: dicen cuánto hay de cada
      tipo en el tablero entero. Con los ejes apilados eso podría confundir
@@ -304,28 +390,7 @@ export default async function TableroPage({ searchParams }: {
     pago: U.filter((p: any) => p.tipo === "pago").length,
   };
 
-  /* Catálogos de los desplegables. Solo lo que EXISTE en el tablero: ofrecer
-     las 60 etiquetas del sistema cuando 8 tienen casos abiertos es hacerle
-     buscar a alguien entre opciones que no llevan a ningún sitio. Sale de los
-     vínculos de todo el universo, no de los filtrados — si no, elegir una
-     etiqueta vaciaría los otros cuatro desplegables. */
-  const idsUniv = U.map((p: any) => p.id);
-  const { data: vincUniv } = idsUniv.length
-    ? await supabase.from("publicacion_vinculos")
-        .select("entidad_tipo,entidad_id").in("publicacion_id", idsUniv).limit(4000)
-    : { data: [] };
-  const catalogos: Record<string, { id: string; nombre: string }[]> = {};
-  await Promise.all(EJES_VINC.map(async e => {
-    const ids = [...new Set((vincUniv || [])
-      .filter((x: any) => x.entidad_tipo === e.tipo).map((x: any) => x.entidad_id))];
-    if (!ids.length) { catalogos[e.param] = []; return; }
-    const t = TABLA_ENT[e.tipo];
-    const { data } = await supabase.from(t[0]).select(`id,${t[1]}`).in("id", ids);
-    catalogos[e.param] = (data || [])
-      .map((r: any) => ({ id: r.id, nombre: r[t[1]] }))
-      .filter(r => r.nombre)
-      .sort((a, b) => a.nombre.localeCompare(b.nombre));
-  }));
+  // Los desplegables ya se llenaron en la tanda 3, junto a los casos.
   /* Hay filtro si algo recorta el tablero. `p=todos` NO recorta: es la
      ausencia de filtro dicha en voz alta. */
   const hayFiltro = !!(v || ejesPuestos.length || uidFoco);
@@ -373,6 +438,11 @@ export default async function TableroPage({ searchParams }: {
   // de los cinco ejes nuevos en cuanto existieran.
   const urlCols = urlCon({ modo: "" });
   const urlTime = urlCon({ modo: "timeline" });
+
+  /* Los desplegables, recogidos al final. Llevan volando desde antes de la
+     tanda 2, así que a estas alturas normalmente ya llegaron y este `await`
+     no espera nada. Si llegara a esperar, sería lo único que falta. */
+  const catalogos = await pDesplegables;
 
   return (
     <div className="shell" style={{ maxWidth: "96vw" }}>
