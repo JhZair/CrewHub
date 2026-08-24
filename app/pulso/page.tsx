@@ -6,6 +6,7 @@ import { claseEstado, textoEstado } from "@/lib/estados";
 import { icoTipo, rotuloMonton } from "@/lib/tipos";
 import { BOT } from "@/lib/personas";
 import { grafiasDe } from "@/lib/secciones";
+import { diaLima } from "@/lib/fechas";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "📊 Pulso del equipo" };
@@ -69,13 +70,41 @@ export default async function PulsoPage({ searchParams }: {
   const { data: equipo } = await supabase.from("perfiles")
     .select("id,nombre").eq("activo", true).neq("nombre", BOT).order("nombre");
 
-  // Bitácora del mes sobre publicaciones
-  const { data: eventos } = await supabase.from("actividad")
-    .select("actor_id,entidad_id,tipo,detalle,creado_en")
-    .eq("entidad_tipo", "publicacion")
-    .gte("creado_en", inicioMes.toISOString())
-    .lt("creado_en", finMes.toISOString())
-    .limit(6000);
+  /* ══════════════════════════════════════════════════════════════════════════
+     EL PULSO SE CUENTA EN LA BASE, Y POR DOS RAZONES
+
+     1. Esto pedía el mes de `actividad` con `.limit(6000)` y sin `order by`.
+        El ajuste «Max rows» del proyecto está en 1000, así que ese 6000 nunca
+        existió: volvían mil filas de unas cuatro mil, elegidas por el plan de
+        la consulta y no por una regla. Es el mismo fallo que documenta
+        db/franjas-actividad.sql, donde una semana entera desapareció del mes.
+
+     2. Y filtraba `entidad_tipo = 'publicacion'` en SINGULAR, cuando el trigger
+        de garantía escribe el nombre de la tabla —'publicaciones', plural— y es
+        el trigger quien registra las creaciones y los cambios de estado. Las
+        tres columnas de la matriz se calculaban sobre las filas equivocadas.
+        Este mismo archivo ya tenía el bicho identificado y arreglado en otro
+        contador («estaba en CERO permanente y sin parecerlo»); el de la matriz,
+        que es el que se mira, se quedó sin arreglar.
+
+     `pulso_mes` agrupa por persona y día de una pasada, con las DOS grafías, y
+     devuelve decenas de filas de conteos en vez de miles de filas de datos. Ya
+     no hay techo que sortear ni orden del que depender.
+     ══════════════════════════════════════════════════════════════════════════ */
+  /* ⚠ LA VENTANA VA EN LIMA, COMO EL DÍA QUE DEVUELVE LA FUNCIÓN.
+     `inicioMes.toISOString()` da medianoche del SERVIDOR —UTC en producción—,
+     y la función agrupa por día de Lima. Las dos puntas en idiomas distintos
+     desplazan cinco horas: lo del día 1 antes de las 5 de la mañana UTC es, en
+     Lima, el 31 del mes anterior, y acababa colocado en la última semana del
+     mes equivocado. No se perdía: se ponía mal, que es peor. */
+  const enLima = (a: number, m: number) => `${a}-${String(m + 1).padStart(2, "0")}-01T00:00:00-05:00`;
+  const { data: cuentas, error: eCuentas } = await supabase.rpc("pulso_mes", {
+    p_desde: enLima(anio, mes), p_hasta: enLima(mes === 11 ? anio + 1 : anio, (mes + 1) % 12),
+  });
+  /* Si falta la migración, la pantalla lo DICE. Un pulso en ceros se lee como
+     «esta semana no trabajó nadie», que es una frase sobre el equipo y no
+     sobre la base de datos. */
+  const faltaPulso = !!eCuentas;
 
   // Rango de días que abarca cada semana dentro del mes (para etiquetas)
   const semRango: { ini: number; fin: number }[] = [];
@@ -88,37 +117,37 @@ export default async function PulsoPage({ searchParams }: {
   const nuevo = (): Celda[] =>
     Array.from({ length: nSemanas }, () => ({ cerr: 0, creo: 0, avanzo: 0 }));
 
-  // Agregación persona × semana + ids de casos cerrados (para desglose por tipo)
+  /* Agregación persona × semana. El día llega ya contado; aquí solo se mete en
+     su semana, con la MISMA función que rotula las columnas. La regla de qué
+     es una semana vive en un solo sitio y en un solo idioma. */
   const matriz: Record<string, Celda[]> = {};
-  const cerradosIds: string[] = [];
-  for (const ev of eventos || []) {
-    const a = ev.actor_id;
-    const wi = semanaDelMes(new Date(ev.creado_en), inicioMes);
+  const comentDe = new Map<string, number>();
+  for (const r of (cuentas || []) as any[]) {
+    /* El total de comentarios NO es por semana: es del mes. Se acumula ANTES
+       del filtro semanal, porque un día que no encuentre semana no puede
+       llevarse por delante un número que no depende de las semanas. */
+    if (r.coment) comentDe.set(r.actor_id, (comentDe.get(r.actor_id) || 0) + Number(r.coment));
+    const wi = semanaDelMes(new Date(anio, mes, r.dia), inicioMes);
     if (wi < 0 || wi >= nSemanas) continue;
-    const det: any = ev.detalle || {};
-    const esCierre = ev.tipo === "estado" && det.campo === "estado" && det.a === "resuelta";
-    if (esCierre && ev.entidad_id) cerradosIds.push(ev.entidad_id);
-    if (!a) continue; // eventos automáticos del bot: no son trabajo de una persona
-    if (!matriz[a]) matriz[a] = nuevo();
-    const c = matriz[a][wi];
-    if (ev.tipo === "creado") c.creo++;
-    else if (ev.tipo === "estado" && det.campo === "estado") {
-      if (det.a === "resuelta") c.cerr++;
-      else if (det.a === "en_progreso") c.avanzo++;
-    }
+    if (!matriz[r.actor_id]) matriz[r.actor_id] = nuevo();
+    const c = matriz[r.actor_id][wi];
+    c.creo += Number(r.creo) || 0;
+    c.cerr += Number(r.cerr) || 0;
+    c.avanzo += Number(r.avanzo) || 0;
   }
 
-  // Desglose por tipo de lo cerrado este mes
+  // Desglose por tipo de lo cerrado este mes — también contado en la base.
+  const { data: cerrPorTipo } = await supabase.rpc("pulso_cerrados", {
+    p_desde: enLima(anio, mes), p_hasta: enLima(mes === 11 ? anio + 1 : anio, (mes + 1) % 12),
+  });
   const tipoCerr: Record<string, number> = {};
-  if (cerradosIds.length) {
-    const { data: tp } = await supabase.from("publicaciones")
-      .select("id,tipo").in("id", Array.from(new Set(cerradosIds)));
-    const tipoDe = new Map((tp || []).map((r: any) => [r.id, r.tipo]));
-    for (const id of cerradosIds) {
-      const t = tipoDe.get(id) || "otro";
-      tipoCerr[t] = (tipoCerr[t] || 0) + 1;
-    }
-  }
+  /* `+=` y no `=`: el SQL ya agrupa, pero `coalesce` no atrapa la cadena
+     vacía. Con filas de `tipo = ''` y de `tipo = null` vuelven dos, y las dos
+     caen aquí en «otro» — con `=`, la segunda pisaba a la primera. */
+  ((cerrPorTipo || []) as any[]).forEach(r => {
+    const k = r.tipo || "otro";
+    tipoCerr[k] = (tipoCerr[k] || 0) + (Number(r.n) || 0);
+  });
   const tiposOrden = Object.entries(tipoCerr).sort((a, b) => b[1] - a[1]);
   const maxTipo = Math.max(1, ...tiposOrden.map(([, n]) => n));
 
@@ -140,13 +169,10 @@ export default async function PulsoPage({ searchParams }: {
     }
   }
 
-  // Comentarios escritos este mes, por persona
-  const comentDe = new Map<string, number>();
-  {
-    const { data: coms } = await supabase.from("comentarios").select("autor_id")
-      .gte("creado_en", inicioMes.toISOString()).lt("creado_en", finMes.toISOString()).limit(6000);
-    (coms || []).forEach((c: any) => { if (c.autor_id) comentDe.set(c.autor_id, (comentDe.get(c.autor_id) || 0) + 1); });
-  }
+  /* (Los comentarios del mes por persona ya vienen contados en `pulso_mes`,
+     arriba. Estaban en una consulta suelta con el mismo `.limit(6000)` de
+     mentira — el mismo mes, la misma persona y la misma pantalla pedidos dos
+     veces, y las dos por encima del techo real.) */
 
   // ── Carga actual del equipo (bloque "Pulso del equipo", movido desde Qhaway) ──
   const hace3d = new Date(Date.now() - 3 * 86400000).toISOString();
@@ -219,6 +245,19 @@ export default async function PulsoPage({ searchParams }: {
   let drillTitulo = "";
   if (dPerson && dKind) {
     if (dKind === "cerr" || dKind === "creo" || dKind === "avanzo") {
+      /* El detalle se pide SOLO al pulsar una cifra, y solo el de esa persona.
+         Antes salía del mes entero que ya estaba en memoria — con el techo de
+         mil filas y la grafía equivocada, o sea que la lista podía no cuadrar
+         con el número del que se abrió. Un mes de UNA persona son decenas de
+         filas: aquí no hay techo que sortear. */
+      const { data: eventos } = await supabase.from("actividad")
+        .select("actor_id,entidad_id,tipo,detalle,creado_en")
+        .in("entidad_tipo", grafiasDe("publicacion"))
+        .eq("actor_id", dPerson)
+        .gte("creado_en", enLima(anio, mes))
+        .lt("creado_en", enLima(mes === 11 ? anio + 1 : anio, (mes + 1) % 12))
+        .order("creado_en", { ascending: false })
+        .limit(1000);
       const ids = new Set<string>();
       for (const ev of eventos || []) {
         if (ev.actor_id !== dPerson || !ev.entidad_id) continue;
@@ -228,7 +267,12 @@ export default async function PulsoPage({ searchParams }: {
           dKind === "cerr" ? (ev.tipo === "estado" && det.campo === "estado" && det.a === "resuelta") :
           (ev.tipo === "estado" && det.campo === "estado" && det.a === "en_progreso");
         if (!match) continue;
-        if (dW !== "mes" && String(semanaDelMes(new Date(ev.creado_en), inicioMes)) !== String(dW)) continue;
+        /* ⚠ LA MISMA REGLA QUE LA MATRIZ, o la lista no cuadra con el número
+           del que se abrió. La matriz agrupa por día de LIMA; esto agrupaba por
+           el timestamp crudo, así que un evento de las 2 de la mañana UTC caía
+           en una semana en el número y en otra en la lista. */
+        const diaEv = Number(diaLima(ev.creado_en).slice(8, 10));
+        if (dW !== "mes" && String(semanaDelMes(new Date(anio, mes, diaEv), inicioMes)) !== String(dW)) continue;
         ids.add(ev.entidad_id);
       }
       if (ids.size) {
@@ -260,6 +304,18 @@ export default async function PulsoPage({ searchParams }: {
       </div>
 
       <h1 className="title-lg">📊 Pulso · <span style={{ textTransform: "capitalize" }}>{etiquetaMes}</span></h1>
+
+      {/* ── EL MODO DEGRADADO, DICHO ──
+          Sin la función, la matriz sale en ceros. Y un pulso en ceros no se lee
+          como «falta un SQL»: se lee como «esta semana no trabajó nadie», que
+          es una frase sobre el equipo y no sobre la base de datos. */}
+      {faltaPulso && (
+        <div className="camp-degradado" style={{ marginBottom: 12 }}>
+          ⚠ Las cifras de esta tabla están en cero porque falta correr{" "}
+          <b>db/pulso-mes.sql</b> en la base de datos. No es que no haya
+          movimiento: es que no se puede contar.
+        </div>
+      )}
 
       <div className="vtabs" style={{ alignItems: "center" }}>
         <Link href={`/pulso?m=${off - 1}`} className="vtab">‹ mes anterior</Link>

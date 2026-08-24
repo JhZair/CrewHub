@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { techo } from "@/lib/api";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { buscadorDe, nrmB, pal, partir } from "@/lib/buscar";
@@ -278,18 +279,27 @@ export default async function Buscar({ searchParams }: { searchParams: { q?: str
        con el número de siempre. Es la forma más barata de saberlo: un `count`
        exacto obliga a Postgres a recorrer la tabla entera en cada búsqueda,
        justo lo que estamos tratando de dejar de hacer. */
-    /* Los techos. No son el mismo número porque no crecen igual: los
-       comentarios entran a unos 450 al mes y todo lo demás a goteo.
-       ⚠ Un techo más alto NO es la solución, es margen. Cuando el aviso de
-       «no se buscó en todo» vuelva a encenderse, lo que toca es filtrar en
-       Postgres (unaccent + índice), no subir el número otra vez: el peso
-       crece con el techo y el motor de lib/buscar —que ignora tildes y sabe
-       quechua— tiene que seguir viendo lo mismo que ve hoy.
+    /* ⚠ LOS TECHOS ESTABAN POR ENCIMA DEL TECHO.
+       Aquí decía 1500, 4000 y 2000, escritos como margen. Pero el ajuste «Max
+       rows» de este proyecto está en 1000, así que ninguno de los tres existía:
+       PostgREST devolvía mil filas y ya. Y lo peor no era traer menos, sino que
+       `recortar` compara `filas.length > tope` — con mil filas nunca mayores
+       que cuatro mil, **el aviso de «no se buscó en todo» no podía encenderse
+       jamás**. El mecanismo que vigilaba el techo estaba por encima del techo.
+
+       `techo()` los baja al máximo real (ver lib/api.ts). Los comentarios entran
+       a unos 450 al mes y hoy son 989: el aviso va a encenderse en días, y eso
+       es lo correcto — es lo que lleva semanas siendo verdad sin decirse.
+
+       ⚠ Y cuando se encienda, lo que toca NO es subir el número: es filtrar en
+       Postgres (unaccent + índice). El peso crece con el techo, y el motor de
+       lib/buscar —que ignora tildes y sabe quechua— tiene que seguir viendo lo
+       mismo que ve hoy.
        Medido con db/medir-buscar.sql: 618 kB por búsqueda con 2.821 filas. */
-    const TOPE_TEXTO = 1500;       // publicaciones: 417 hoy, ~140 al mes
-    const TOPE_TEXTO_COM = 4000;   // comentarios:   986 hoy, ~450 al mes
-    const TOPE_LISTA = 600;
-    const TOPE_EQUIPO = 2000;      // equipamiento:  448 hoy, y el techo era 600
+    const TOPE_TEXTO = techo(1500);       // publicaciones: 495 hoy, ~140 al mes
+    const TOPE_TEXTO_COM = techo(4000);   // comentarios:   989 hoy, ~450 al mes
+    const TOPE_LISTA = techo(600);
+    const TOPE_EQUIPO = techo(2000);      // equipamiento:  448 hoy
     const recortar = (r: any, tope: number, que: string) => {
       const filas = (r?.data || []) as any[];
       if (filas.length > tope) { recortado.push(que); r.data = filas.slice(0, tope); }

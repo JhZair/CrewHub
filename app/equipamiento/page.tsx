@@ -98,18 +98,23 @@ export default async function Equipamiento({ searchParams }: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: eqs }, { data: enManos, error: eManos }, { data: vincs }, { data: coms }, { data: media }, comsBita, comsUso, usosRec, { data: comBita }, { data: prestAll }, personasRaw, proyectosRaw, { data: kitsRaw, error: eKits }, { data: kitEqs }, { data: comprasRaw }, usosFin] = await Promise.all([
+  const [{ data: eqs }, { data: enManos, error: eManos }, { data: vincs }, { data: media }, comsBita, comsUso, usosRec, { data: comBita }, { data: prestAll }, personasRaw, proyectosRaw, { data: kitsRaw, error: eKits }, { data: kitEqs }, { data: comprasRaw }, usosFin] = await Promise.all([
     // `*`: para calcular la completitud de la ficha de cada equipo.
     supabase.from("equipamiento").select("*").order("folio"),
     supabase.from("equipo_prestamos")
       .select("id,desde,kit_id,tipo,equipo:equipamiento(id,folio,nombre,categoria,subcategoria,valor_compra,compra_id),persona:personas(id,nombre,alias,foto_url),proy:proyectos(id,nombre),entrego:perfiles!equipo_prestamos_entregado_por_fkey(id,nombre,avatar_url)")
       .is("hasta", null).order("desde", { ascending: false }),
     supabase.from("publicacion_vinculos")
-      .select("entidad_id,publicacion_id,pub:publicaciones(estado)").eq("entidad_tipo", "equipamiento"),
-    /* Solo los de caso: desde que los objetos del repositorio comentan en
-       esta misma tabla, sin el filtro sus filas gastan el tope de PostgREST
-       (1000) y el contador 💬 se queda corto en silencio. */
-    supabase.from("comentarios").select("publicacion_id").not("publicacion_id", "is", null),
+      /* ⚠ EL CONTADOR 💬 YA NO SE CUENTA A MANO.
+       Aquí había una consulta que se traía la tabla `comentarios` ENTERA —solo
+       la columna del caso, pero entera— para contar cuántos tiene cada uno. Sin
+       `.limit()` y sin `.order()`, contra un techo real de mil filas
+       (Supabase → Max rows). Hoy son 989 y entran ~450 al mes: en días, los
+       SEIS listados que hacían esto se habrían quedado cortos a la vez, cada
+       uno enseñando un número menor que el de verdad y ninguno dando error.
+       `comentarios(count)` es un agregado: lo cuenta Postgres y vuelve un
+       número por fila. Ni techo que sortear, ni una consulta más. */
+      .select("entidad_id,publicacion_id,pub:publicaciones(estado,comentarios(count))").eq("entidad_tipo", "equipamiento"),
     // Carteles (miniatura) de cada equipo, para las listas y las tarjetas.
     supabase.from("entidad_media").select("entidad_id,cartel_url").eq("entidad_tipo", "equipamiento"),
     // Última actividad — tres fuentes que se fusionan y ordenan por fecha:
@@ -366,8 +371,6 @@ export default async function Equipamiento({ searchParams }: {
     || gruposAct.some(g => g.total > g.items.length);
 
   // Su vida en CrewHub+, igual que en empresas, personas y proyectos
-  const comentPorPub = new Map<string, number>();
-  (coms || []).forEach((x: any) => comentPorPub.set(x.publicacion_id, (comentPorPub.get(x.publicacion_id) || 0) + 1));
   type Act = { casos: number; abiertos: number; coments: number };
   const VACIO: Act = { casos: 0, abiertos: 0, coments: 0 };
   const act = new Map<string, Act>();
@@ -375,7 +378,7 @@ export default async function Equipamiento({ searchParams }: {
     const a = act.get(v.entidad_id) || { ...VACIO };
     a.casos++;
     if (ABIERTOS.includes((v.pub as any)?.estado)) a.abiertos++;
-    a.coments += comentPorPub.get(v.publicacion_id) || 0;
+    a.coments += ((v.pub as any)?.comentarios?.[0]?.count ?? 0);
     act.set(v.entidad_id, a);
   });
 

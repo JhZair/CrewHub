@@ -48,17 +48,22 @@ export default async function Personas({ searchParams }: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: pers }, { data: vincs }, { data: coms }, { data: equipoPost },
+  const [{ data: pers }, { data: vincs }, { data: equipoPost },
          { data: vistasT }, { data: equipoProy }, { data: actoresProy }] = await Promise.all([
     // `*`: el listado necesita todos los campos para calcular la completitud
     // de cada ficha (la barrita). La tabla es chica, no pesa.
     supabase.from("personas").select("*").order("nombre"),
     supabase.from("publicacion_vinculos")
-      .select("entidad_id,publicacion_id,pub:publicaciones(estado)").eq("entidad_tipo", "persona"),
-    /* Solo los de caso: desde que los objetos del repositorio comentan en
-       esta misma tabla, sin el filtro sus filas gastan el tope de PostgREST
-       (1000) y el contador 💬 se queda corto en silencio. */
-    supabase.from("comentarios").select("publicacion_id").not("publicacion_id", "is", null),
+      /* ⚠ EL CONTADOR 💬 YA NO SE CUENTA A MANO.
+       Aquí había una consulta que se traía la tabla `comentarios` ENTERA —solo
+       la columna del caso, pero entera— para contar cuántos tiene cada uno. Sin
+       `.limit()` y sin `.order()`, contra un techo real de mil filas
+       (Supabase → Max rows). Hoy son 989 y entran ~450 al mes: en días, los
+       SEIS listados que hacían esto se habrían quedado cortos a la vez, cada
+       uno enseñando un número menor que el de verdad y ninguno dando error.
+       `comentarios(count)` es un agregado: lo cuenta Postgres y vuelve un
+       número por fila. Ni techo que sortear, ni una consulta más. */
+      .select("entidad_id,publicacion_id,pub:publicaciones(estado,comentarios(count))").eq("entidad_tipo", "persona"),
     // Su palmarés ante los fondos: en cuántas estuvo (🎯), cuántas ganó (🏆) y
     // en cuántas fue finalista sin ganar (🥈). Antes solo se contaba el total.
     /* `limit` explícito: sin él manda el tope por defecto de PostgREST (1000),
@@ -99,8 +104,6 @@ export default async function Personas({ searchParams }: {
   const coincide = buscadorDe(q);
 
   // Actividad real en CrewHub+
-  const comentPorPub = new Map<string, number>();
-  (coms || []).forEach((c: any) => comentPorPub.set(c.publicacion_id, (comentPorPub.get(c.publicacion_id) || 0) + 1));
 
   type Act = { abiertas: number; progreso: number; cerradas: number; coments: number; total: number };
   const VACIO: Act = { abiertas: 0, progreso: 0, cerradas: 0, coments: 0, total: 0 };
@@ -112,7 +115,7 @@ export default async function Personas({ searchParams }: {
     if (est === "abierta") x.abiertas++;
     else if (["en_progreso", "seguimiento", "en_pausa"].includes(est)) x.progreso++;
     else if (CERRADOS.includes(est)) x.cerradas++;   // resuelta | descartada
-    x.coments += comentPorPub.get(v.publicacion_id) || 0;
+    x.coments += ((v.pub as any)?.comentarios?.[0]?.count ?? 0);
     act.set(v.entidad_id, x);
   });
 

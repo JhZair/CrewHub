@@ -69,16 +69,21 @@ export default async function Postulaciones({ searchParams }: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: postsAll, error: qErr }, { data: vincs }, { data: coms }, { data: peq }, { data: pyeq }, { data: media }, { data: hitosAll }] = await Promise.all([
+  const [{ data: postsAll, error: qErr }, { data: vincs }, { data: peq }, { data: pyeq }, { data: media }, { data: hitosAll }] = await Promise.all([
     supabase.from("postulaciones")
       .select("*,conv:convocatorias(id,codigo,nombre,anio,estado,monto_adjudicado),proy:proyectos(id,nombre,tipo,relacion),emp:empresas(id,nombre,relacion)")
       .order("creado_en", { ascending: false }),
     supabase.from("publicacion_vinculos")
-      .select("entidad_id,publicacion_id,pub:publicaciones(estado,tipo,archivado_en,fecha_limite)").eq("entidad_tipo", "postulacion"),
-    /* Solo los de caso: desde que los objetos del repositorio comentan en
-       esta misma tabla, sin el filtro sus filas gastan el tope de PostgREST
-       (1000) y el contador 💬 se queda corto en silencio. */
-    supabase.from("comentarios").select("publicacion_id").not("publicacion_id", "is", null),
+      /* ⚠ EL CONTADOR 💬 YA NO SE CUENTA A MANO.
+       Aquí había una consulta que se traía la tabla `comentarios` ENTERA —solo
+       la columna del caso, pero entera— para contar cuántos tiene cada uno. Sin
+       `.limit()` y sin `.order()`, contra un techo real de mil filas
+       (Supabase → Max rows). Hoy son 989 y entran ~450 al mes: en días, los
+       SEIS listados que hacían esto se habrían quedado cortos a la vez, cada
+       uno enseñando un número menor que el de verdad y ninguno dando error.
+       `comentarios(count)` es un agregado: lo cuenta Postgres y vuelve un
+       número por fila. Ni techo que sortear, ni una consulta más. */
+      .select("entidad_id,publicacion_id,pub:publicaciones(estado,tipo,archivado_en,fecha_limite,comentarios(count))").eq("entidad_tipo", "postulacion"),
     /* El/la director(a): el tercer protagonista del trío. Vive en el equipo de
        la postulación; si ahí no está, se hereda del equipo del proyecto. */
     supabase.from("postulacion_equipo").select("postulacion_id,cargo,persona:personas(id,nombre,alias,foto_url)"),
@@ -131,8 +136,6 @@ export default async function Postulaciones({ searchParams }: {
   /* Su vida en CrewHub+: cuánto trabajo cuelga de cada postulación.
      Empresas y personas ya la muestran; aquí la fila terminaba en el estado
      y no decía si había algo sin resolver encima. */
-  const comentPorPub = new Map<string, number>();
-  (coms || []).forEach((c: any) => comentPorPub.set(c.publicacion_id, (comentPorPub.get(c.publicacion_id) || 0) + 1));
 
   type Act = { casos: number; abiertos: number; coments: number; muro: number };
   const VACIO: Act = { casos: 0, abiertos: 0, coments: 0, muro: 0 };
@@ -152,7 +155,7 @@ export default async function Postulaciones({ searchParams }: {
          filtro se contaba como pendiente. */
       if (pub && ABIERTOS.includes(pub.estado) && !pub.archivado_en
           && !avisoVencido(pub.tipo, pub.fecha_limite)) x.abiertos++;
-      x.coments += comentPorPub.get(v.publicacion_id) || 0;
+      x.coments += ((v.pub as any)?.comentarios?.[0]?.count ?? 0);
     }
     act.set(v.entidad_id, x);
   });

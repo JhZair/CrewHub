@@ -32,14 +32,19 @@ export default async function Proyectos({ searchParams }: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: proys }, { data: vincs }, { data: coms }, { data: equipos }, { data: postsProy }] = await Promise.all([
+  const [{ data: proys }, { data: vincs }, { data: equipos }, { data: postsProy }] = await Promise.all([
     supabase.from("proyectos").select("*").order("folio"),
     supabase.from("publicacion_vinculos")
-      .select("entidad_id,publicacion_id,pub:publicaciones(estado)").eq("entidad_tipo", "proyecto"),
-    /* Solo los de caso: desde que los objetos del repositorio comentan en
-       esta misma tabla, sin el filtro sus filas gastan el tope de PostgREST
-       (1000) y el contador 💬 se queda corto en silencio. */
-    supabase.from("comentarios").select("publicacion_id").not("publicacion_id", "is", null),
+      /* ⚠ EL CONTADOR 💬 YA NO SE CUENTA A MANO.
+       Aquí había una consulta que se traía la tabla `comentarios` ENTERA —solo
+       la columna del caso, pero entera— para contar cuántos tiene cada uno. Sin
+       `.limit()` y sin `.order()`, contra un techo real de mil filas
+       (Supabase → Max rows). Hoy son 989 y entran ~450 al mes: en días, los
+       SEIS listados que hacían esto se habrían quedado cortos a la vez, cada
+       uno enseñando un número menor que el de verdad y ninguno dando error.
+       `comentarios(count)` es un agregado: lo cuenta Postgres y vuelve un
+       número por fila. Ni techo que sortear, ni una consulta más. */
+      .select("entidad_id,publicacion_id,pub:publicaciones(estado,comentarios(count))").eq("entidad_tipo", "proyecto"),
     /* El triángulo que no se veía: proyecto — directora — empresa.
        «Para una convocatoria se comprometen la directora + su proyecto con la
        empresa postulante; esa relación pasa a matrimonio cuando ganan.» Hasta
@@ -55,8 +60,6 @@ export default async function Proyectos({ searchParams }: {
      `conteo` salía de publicacion_vinculos —o sea, CASOS— y se pintaba como
      "💬", con un panel llamado "los más conversados". Un proyecto con diez
      casos y cero comentarios figuraba como el más conversado del equipo. */
-  const comentPorPub = new Map<string, number>();
-  (coms || []).forEach((c: any) => comentPorPub.set(c.publicacion_id, (comentPorPub.get(c.publicacion_id) || 0) + 1));
 
   type Act = { casos: number; abiertos: number; coments: number };
   const act = new Map<string, Act>();
@@ -64,7 +67,7 @@ export default async function Proyectos({ searchParams }: {
     const x = act.get(v.entidad_id) || { casos: 0, abiertos: 0, coments: 0 };
     x.casos++;
     if (ABIERTOS.includes((v.pub as any)?.estado)) x.abiertos++;
-    x.coments += comentPorPub.get(v.publicacion_id) || 0;
+    x.coments += ((v.pub as any)?.comentarios?.[0]?.count ?? 0);
     act.set(v.entidad_id, x);
   });
   const VACIO: Act = { casos: 0, abiertos: 0, coments: 0 };
