@@ -292,6 +292,61 @@ envío al navegador de la aplicación, pero que conste el número bueno.
 
 ---
 
+## PASO 0 — MEDIDO en producción (crew-hub-sigma.vercel.app)
+
+```
+TTFB documento :   97 ms
+HTML completo  : 7019 ms
+Transferido    :   77 kB · 59 peticiones
+   link 1 kB · script 0 kB · fetch 12 kB · iframe 0 · other 0
+```
+
+Y el log de `next dev`, contando peticiones:
+
+```
+GET  / 200        ← la página
+POST / 200  ×5    ← acciones de servidor, detrás
+```
+
+### Los bytes NO son el problema. Y eso tumba mi propio §3.
+
+**77 kB.** No 175. Estimé el peso del catálogo **sin descontar la compresión**, y
+una lista de nombres repetitivos comprime como 10 a 1. `script: 0 kB` además dice
+que el JavaScript venía de caché, que es el caso real del equipo: entran todos
+los días.
+
+Con 77 kB en el cable, **ninguna cantidad de adelgazar consultas va a arreglar
+nada**. §3 baja de puesto — pero no desaparece, y por una razón distinta a la que
+lo puso ahí: traer ocho tablas sigue costando **tiempo de servidor**, y el tiempo
+de servidor es exactamente lo que sí resultó ser el problema.
+
+### El problema es el tiempo, y está entero en el servidor
+
+**TTFB de 97 ms contra 7019 ms de documento completo.** Los dos números juntos son
+el diagnóstico:
+
+- **97 ms** es lo que tarda Vercel en soltar el primer byte. La red está bien, el
+  servidor arranca bien, Supabase responde bien. Ahí no hay nada que arreglar.
+- **7019 ms** es cuando termina de llegar el documento. Sin ningún `<Suspense>` en
+  la aplicación, eso es literalmente **cuando el último `await` del Server
+  Component acaba**. Siete segundos de cascada.
+
+Y la cascada de la portada tiene **quince esperas en fila de las que solo cuatro
+dependen de verdad de la anterior** (§4). Eso deja de ser una nota técnica: es
+casi todo el «va lento».
+
+⚠ **Falta un control**: repetir la medida. Si esos 7 s son un arranque en frío de
+la función de Vercel, la segunda carga seguida bajará mucho. Si se queda en 6-7 s,
+es la cascada y no el frío.
+
+### Consecuencia para el orden
+
+§4 sube al primer puesto de velocidad y §3 baja, pero **los dos se arreglan con el
+mismo movimiento**: los catálogos dejan de pedirse en el render de la portada.
+Antes lo justificaba por los bytes; ahora lo justifica el reloj.
+
+---
+
 ## Orden de ataque — revisado tras medir
 
 0. **Comprobar Max rows** en Supabase → Settings → API. Dos minutos. Decide si
@@ -302,17 +357,18 @@ envío al navegador de la aplicación, pero que conste el número bueno.
 2. **Los seis contadores de 💬** (§5). `comentarios` cruza 1000 esta semana y se
    quedarían cortos los seis a la vez, sin error. Se arregla con
    `comentarios(count)` embebido, que `/tablero:171` ya hace bien.
-3. **§1 — una sola acción global.** El de mayor retorno en velocidad:
-   34 pantallas, cada navegación.
-4. **§2 — el realtime del banco.** El multiplicador.
-5. **§3 — catálogos bajo demanda.** ~175 kB por carga de portada y de caso.
-6. **§4 — la cascada de la portada.** 15 → 5 viajes.
+3. **§4 — la cascada de la portada.** 15 → 5 viajes. **Siete segundos medidos**
+   de documento; es casi todo el «va lento». Va antes que §1 porque §1 ocurre
+   *después* de que la página ya se ve.
+4. **§3 — catálogos bajo demanda.** Ya no por los bytes (son cuatro
+   comprimidos): porque ocho tablas en el render de la portada son ocho esperas
+   dentro de esos siete segundos. Se arregla a la vez que §4.
+5. **§1 — una sola acción global.** Cinco POST encolados detrás de cada
+   navegación, en 34 pantallas.
+6. **§2 — el realtime del banco.** El multiplicador: un comentario de cualquiera
+   dispara diez consultas en cada pestaña abierta del equipo.
 
 Los §6 y §7 después, si siguen doliendo.
-
-Y sigue pendiente el **Paso 0**: los tres números de la pestaña Red. La medición
-de la base dice que el problema no son los datos, pero no dice si el tiempo se
-va en el servidor o en el navegador.
 
 ---
 
