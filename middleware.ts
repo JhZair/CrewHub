@@ -1,7 +1,43 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+/* ══════════════════════════════════════════════════════════════════════════
+   LO QUE CUESTA UNA PRECARGA, Y POR QUÉ SE SALTA AQUÍ
+
+   Medido en producción: abrir /personas disparaba 53 peticiones. Cuarenta y
+   nueve eran precargas `?_rsc=` de `<Link>` —el menú al abrirlo, cada chip de
+   filtro, cada ficha visible— de 277 a 776 ms CADA UNA.
+
+   La primera explicación fue la equivocada, y conviene dejarla escrita para que
+   nadie la repita: NO era que la precarga renderizara la página. Next ya lo
+   impide — cortocircuita el árbol cuando no encuentra ningún `loading` en la
+   ruta («the prefetch will be short-circuited to avoid requesting a potentially
+   very expensive subtree», walk-tree-with-flight-router-state.js). Poner un
+   `app/loading.tsx` para «arreglarlo» habría APAGADO esa protección en toda la
+   aplicación, porque `hasLoadingComponentInTree` mira el árbol entero.
+
+   Lo que costaba esos 300 ms es esta línea de abajo. `auth.getUser()` no lee una
+   cookie: hace una llamada de RED a Supabase Auth para verificar el token. El
+   matcher excluye lo estático, pero no las peticiones RSC — así que cada una de
+   las 49 precargas pagaba una verificación completa.
+
+   ── Y SALTARLA EN UNA PRECARGA NO ABRE NADA ──
+   Una precarga con el árbol cortocircuitado devuelve estado de router: ni datos,
+   ni HTML de la página. No hay nada que proteger porque no se entrega nada. Y
+   cuando la persona PULSA el enlace, esa navegación llega sin la cabecera
+   `next-router-prefetch` y pasa por la comprobación de siempre.
+
+   Es la única forma segura de abaratarla: quitar `getUser()` del todo, o
+   cambiarlo por `getSession()` —que lee la cookie sin verificarla—, sí dejaría
+   la puerta entornada, porque una cookie se puede falsificar y el middleware es
+   quien decide si te manda a /login.
+   ══════════════════════════════════════════════════════════════════════════ */
+
 export async function middleware(request: NextRequest) {
+  if (request.headers.get("next-router-prefetch") === "1") {
+    return NextResponse.next({ request });
+  }
+
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(

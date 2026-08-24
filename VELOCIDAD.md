@@ -366,29 +366,67 @@ pantalla, y en la lista salen tal cual: `/equipamiento`, `/postulaciones`,
 (`?e=activo`, `?t=colaborador`, `?g=masculino`, `?a=dni_vencido`…) y una por cada
 ficha de persona visible.
 
-Y aquí está lo que lo convierte en el problema número uno: **en esta aplicación
-todas las rutas son dinámicas** —`lib/supabase/server.ts` llama a `cookies()`—,
-así que un prefetch no es traerse un archivo: es **ejecutar la página entera en
-el servidor**, con todas sus consultas a Supabase.
+### ⚠ MI PRIMER DIAGNÓSTICO FUE EL EQUIVOCADO. Queda escrito para no repetirlo.
 
-Comprobado en el código: **303 `<Link>` en el repositorio y ni uno solo con
-`prefetch={false}`**. Cero `loading.tsx`.
+Escribí que, como todas las rutas son dinámicas, cada precarga **ejecuta la
+página entera** en el servidor — y que el arreglo era añadir `loading.tsx`.
+**Las dos cosas eran falsas**, y lo dice el código de Next 14.2.15 en
+`node_modules`, no la documentación:
 
-### Por qué esto explica los siete segundos de la portada
+`server/app-render/walk-tree-with-flight-router-state.js:45-50`
 
-Mientras la portada hace su cascada, el mismo navegador le está pidiendo al mismo
-servidor que renderice otras dieciséis páginas, contra la misma base. No es que la
-portada sea lenta: es que **compite consigo misma**.
+> *«Pre-PPR, the `loading` component signals to the router how deep to render the
+> component tree… If there's no `loading` component anywhere in the tree being
+> rendered, the prefetch will be short-circuited to avoid requesting a
+> potentially very expensive subtree.»*
 
-### El arreglo es barato, y son dos
+```js
+const shouldSkipComponentTree =
+  !experimental.ppr && isPrefetch &&
+  !Boolean(components.loading) &&
+  !hasLoadingComponentInTree(loaderTree);   // ← el árbol COMPLETO de la ruta
+```
 
-1. **`prefetch={false}`** en los enlaces que están *siempre* a la vista y casi
-   nunca se pulsan: los del menú (`NavIconos.tsx:175` y `:193`) y los chips de
-   filtro de los listados. Dos ficheros se llevan la mayor parte.
-2. **`loading.tsx`**. Con una frontera de carga, Next deja de precargar la página
-   completa de una ruta dinámica y se trae solo el esqueleto. Es decir: el §7
-   **deja de ser cosmético**. Arregla la tormenta de prefetch *y* da algo que
-   mirar mientras carga, que era su motivo original.
+O sea: **Next ya protegía la aplicación**, precisamente porque no había ningún
+`loading.tsx`. Y `hasLoadingComponentInTree` mira el árbol **entero**, así que un
+único `app/loading.tsx` en la raíz habría **apagado esa protección en todas las
+rutas** y convertido cada precarga en un render completo de página — incluidos
+los enlaces `?query=` de la portada, las barras de empresa, los meses de
+`/comprobantes` y los paginadores de `/admin`, que hoy son gratis. El archivo que
+iba a apagar el incendio era el que lo encendía.
+
+Lección, otra vez la misma: **la explicación que encaja con los síntomas no es la
+explicación.** Los 49 prefetches eran reales y medidos; lo que yo supuse que
+costaban, no.
+
+### Lo que SÍ cuesta esos 277–776 ms: `middleware.ts`
+
+```ts
+const { data: { user } } = await supabase.auth.getUser();
+```
+
+`getUser()` **no lee una cookie**: hace una llamada de red a Supabase Auth para
+verificar el token. Y el `matcher` excluye lo estático pero **no las peticiones
+RSC**, así que cada una de las 49 precargas pagaba una verificación completa
+contra otro servidor. Ahí estaban los 300 ms, no en el render.
+
+### El arreglo, ya hecho
+
+1. **Saltar el middleware en las precargas.** Una precarga con el árbol
+   cortocircuitado devuelve estado de router: ni datos ni HTML. No hay nada que
+   proteger porque no se entrega nada, y el clic real llega **sin** la cabecera
+   `next-router-prefetch` y pasa por la comprobación de siempre. Quitar
+   `getUser()` del todo, o cambiarlo por `getSession()`, sí dejaría la puerta
+   entornada: una cookie se falsifica, y el middleware es quien manda a /login.
+2. **`prefetch={false}`** en el menú (`NavIconos`, 31 entradas que entran en
+   pantalla de golpe al abrirlo) y en el chip compartido (`Filtros.tsx`, ~20 por
+   listado). Es lo único del plan original que reducía peticiones de verdad.
+
+**Y NO se añade `loading.tsx`.** Queda un aviso en `app/globals.css` y el porqué
+completo en `middleware.ts`, para que el siguiente que quiera «arreglar la
+sensación de lentitud» no apague la protección sin saberlo. Si hace falta enseñar
+que algo carga, la forma que no rompe nada es una barra de progreso en cliente
+(`useTransition` + `usePathname`), no una frontera de carga.
 
 ---
 
@@ -402,14 +440,13 @@ portada sea lenta: es que **compite consigo misma**.
 2. **Los seis contadores de 💬** (§5). `comentarios` cruza 1000 esta semana y se
    quedarían cortos los seis a la vez, sin error. Se arregla con
    `comentarios(count)` embebido, que `/tablero:171` ya hace bien.
-3. **§0 — cortar la tormenta de prefetch.** `prefetch={false}` en el menú y en
-   los chips de filtro, más `loading.tsx`. **Cuarenta y nueve renders de servidor
-   por página abierta, ~19 s de trabajo.** Es lo más barato de arreglar y lo que
-   más quita de encima; y hasta que no esté, medir cualquier otra cosa es medir
-   ruido.
+3. ~~**§0 — cortar la tormenta de prefetch.**~~ **HECHO.** El middleware ya no
+   verifica sesión en las precargas, y el menú y los chips ya no precargan.
+   Queda **volver a medir** con el mismo parche de `window.fetch`: las 49
+   peticiones deberían bajar de número y, sobre todo, de tiempo.
 4. **§4 — la cascada de la portada.** 15 → 5 viajes. Siete segundos medidos de
-   documento — parte de los cuales son la competencia del §0. **Volver a medir
-   después del §0 antes de tocar esto**: puede que ya no haga falta entero.
+   documento. **Volver a medir después del §0 antes de tocar esto**: parte de
+   esos segundos era la competencia de las 49 verificaciones de sesión.
 5. **§3 — catálogos bajo demanda.** Ya no por los bytes (son cuatro
    comprimidos): porque ocho tablas en el render de la portada son ocho esperas
    dentro de esos siete segundos. Se arregla a la vez que §4.

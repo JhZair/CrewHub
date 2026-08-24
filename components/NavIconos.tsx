@@ -171,8 +171,19 @@ export default function NavIconos() {
         <>
           <div className="cbx-fondo" onClick={() => setAbierto(false)} />
           <div className="nav-lista">
+            {/* ── `prefetch={false}` EN TODO EL MENÚ ──
+                Son treinta y una entradas, y viven dentro de `{abierto && …}`,
+                así que no existen mientras el menú está cerrado. Pero en el
+                instante en que se abre, las treinta y una entran en pantalla a
+                la vez y Next las precarga todas de golpe.
+                No es tan caro como parecía —Next cortocircuita el árbol de una
+                ruta sin `loading`, así que no renderiza la página—, pero cada
+                una sigue costando una invocación y, hasta que se arregló en
+                `middleware.ts`, una verificación de sesión contra Supabase Auth.
+                Un menú se abre para ir a UN sitio: precargar los treinta y uno
+                es pagar treinta viajes para ahorrar uno. */}
             {SECCIONES.map(s => (
-              <Link key={s.tipo} href={s.ruta}
+              <Link key={s.tipo} href={s.ruta} prefetch={false}
                 className={`nav-item${enSeccion(s) ? " on" : ""}`}
                 onClick={() => setAbierto(false)}>
                 <span className="nav-item-ico">{s.ico}</span>
@@ -190,7 +201,7 @@ export default function NavIconos() {
               <div key={g} className="nav-grupo">
                 <span className="nav-grupo-txt">{g === "plata" ? "la plata" : "el día a día"}</span>
                 {destinos.filter(d => d.grupo === g).map(d => (
-                  <Link key={d.ruta} href={d.ruta}
+                  <Link key={d.ruta} href={d.ruta} prefetch={false}
                     className={`nav-item${estaEn(d, pathname) ? " on" : ""}`}
                     onClick={() => setAbierto(false)}>
                     <span className="nav-item-ico">{d.ico}</span>

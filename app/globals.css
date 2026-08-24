@@ -2326,6 +2326,21 @@ a.stat-card:hover{border-color:var(--border2)}
 .camp-vertodas{display:block;text-align:center;padding:9px 0 5px;margin-top:4px;border-top:1px solid var(--border);color:var(--muted);font-size:11.5px;font-weight:600}
 .camp-vertodas:hover{color:var(--accent)}
 
+/* ⚠ AQUÍ HUBO UN ESQUELETO DE CARGA, Y SE FUE. NO LO VUELVAS A PONER SIN LEER
+   ESTO — el porqué está en `middleware.ts`, junto al arreglo que sí funcionó.
+
+   Resumen: un `app/loading.tsx` parece gratis y no lo es. Next cortocircuita la
+   precarga de una ruta cuando NO encuentra ningún `loading` en su árbol
+   (`walk-tree-with-flight-router-state.js`: «the prefetch will be
+   short-circuited to avoid requesting a potentially very expensive subtree»), y
+   `hasLoadingComponentInTree` mira el árbol ENTERO. O sea que un solo
+   `loading.tsx` en la raíz apaga esa protección en TODA la aplicación y
+   convierte cada precarga en un render completo de página.
+
+   Si algún día hace falta enseñar que algo está cargando, la forma que no
+   rompe esto es una barra de progreso en el cliente (`useTransition` +
+   `usePathname`), no una frontera de carga. */
+
 /* ===== Página /notificaciones — el historial ===== */
 /* Reusa .camp-item / .camp-tt / .cuando / .camp-vinc de la campanita: la fila
    se ve igual que en el timbre, solo que a página completa y sin corte.
