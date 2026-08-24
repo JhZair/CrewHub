@@ -618,11 +618,25 @@ export default function Obligaciones({ empresas, logos, repLegal, obligaciones, 
                       ? `No puede ser anterior al ${dmy(e.fecha_constitucion)}, cuando se constituyó la empresa`
                       : "La empresa no tiene fecha de constitución cargada; sin ella, vacío significa «hace un año»"}
                     onChange={ev => correr(() => fijarDesdeObligacion(o.id, ev.target.value || null))} />
-                  {!o.desde && (
+                  {/* ── LA CONSTITUCIÓN SE VE SIEMPRE, NO SOLO CUANDO EL CAMPO
+                         ESTÁ VACÍO ──
+                      Esto solo se pintaba con `!o.desde`, así que en cuanto
+                      alguien tocaba el calendario la fecha de constitución
+                      desaparecía — justo después de usar el control para el que
+                      esa fecha es la referencia, y el suelo (`min` del input).
+                      Quien acaba de poner 24/07/2021 no puede comprobar si
+                      acertó porque el dato con el que compararlo se fue.
+                      Se dice siempre; lo que cambia es la FRASE: sin fecha
+                      explica qué significa el vacío, con fecha da el contexto. */}
+                  {e.fecha_constitucion ? (
                     <span className="obl-desde-def">
-                      {e.fecha_constitucion
-                        ? `desde su constitución · ${dmy(e.fecha_constitucion)}`
-                        : "⚠ hace un año — la empresa no tiene fecha de constitución"}
+                      {o.desde
+                        ? `constituida el ${dmy(e.fecha_constitucion)}`
+                        : `desde su constitución · ${dmy(e.fecha_constitucion)}`}
+                    </span>
+                  ) : !o.desde && (
+                    <span className="obl-desde-def">
+                      ⚠ hace un año — la empresa no tiene fecha de constitución
                     </span>
                   )}
                 </label>
