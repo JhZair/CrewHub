@@ -231,18 +231,88 @@ haga falta. Pero es barato y es literalmente el «va lento» que se percibe.
 
 ---
 
-## Orden de ataque propuesto
+## MEDIDO — 24 ago 2026
 
-1. **Comprobar Max rows** en Supabase (§5). Dos minutos, y puede cambiar la
-   urgencia de todo.
-2. **Los tres números del Paso 0.** Treinta segundos, y dicen si el enemigo es
-   el tiempo o los bytes.
-3. **§1 — una sola acción global.** El de mayor retorno: 34 pantallas.
+La consulta de abajo, corrida. Lo que dijeron los números, y en qué cambian el
+plan.
+
+### La base es PEQUEÑA. El volumen de datos no es el problema.
+
+Toda la base, índices incluidos, ronda los **12 MB**. La tabla más gorda son
+4 MB. Con esos tamaños, ninguna consulta es lenta por cantidad de datos.
+
+**Eso descarta un frente entero y confirma el otro:** si los bytes en la base no
+son el enemigo, lo son los **viajes** (§1, §4) y lo que se manda **al navegador**
+(§3). El orden de ataque no cambia; ahora está apoyado en una medición y no en
+una sospecha.
+
+⚠ Al leer la columna «peso»: `pg_total_relation_size` incluye índices y páginas
+vacías. `movimiento_caja` sale con 96 kB para 17 filas — eso es todo estructura.
+Solo son de fiar los pesos **por columna** y el de `actividad`.
+
+### Lo que sí apareció: tres tablas ya pasaron el techo de 1000
+
+| Tabla | Filas | Estado |
+|---|---|---|
+| `actividad` | **10 874** | ya lo pasó, con mucho |
+| `notificaciones` | **3 092** | ya lo pasó |
+| `comentarios` | **989** | lo cruza en días |
+
+`actividad` es la que más crece —una fila por cada acción de cualquiera— y es la
+única con `jsonb` (`detalle`, 877 kB). Y es justo la que dos pantallas piden a lo
+grande:
+
+- **`/pulso:73`** pide el mes entero de `actividad` con `.limit(6000)` y **sin
+  `.order()`**. Un mes son ~4 000 filas. Si Max rows está en 1000, esa pantalla
+  está enseñando **1000 filas arbitrarias de 4000 desde hace semanas** — que es
+  literalmente el fallo que `app/admin/page.tsx:676` documenta como ya ocurrido
+  («la semana del 10 de julio desapareció entera de la franja»). Allí se arregló
+  con la función `franjas_actividad()`; aquí no.
+- **`/historial:34`** pide `.limit(20000)` para los conteos de los chips. Sí lleva
+  `.order("creado_en" desc)`, así que al menos el recorte es el más reciente y no
+  uno al azar — pero los números de «Todo» y «Este año» estarían contando 1000
+  eventos de 10 874.
+
+**`comentarios` = 989.** El comentario de `buscar:290` decía «986 hoy» hace tres
+días: la cuenta era buena. Cruza 1000 esta semana, y ahí el `TOPE_TEXTO_COM =
+4000` deja de existir sin que su propio aviso pueda encenderse.
+
+**Todo esto depende de un dato que sigue sin comprobarse: Settings → API → Max
+rows.** Si está en 1000, lo de arriba está pasando hoy. Si lo subieron, es una
+nota al pie. Es la comprobación de mayor valor por minuto invertido de toda esta
+revisión.
+
+### Corrección al §3
+
+Con los números reales, el catálogo son **~975 ítems** (equipamiento 448,
+personas 147, proyectos 96, objetos 86, convocatorias 77, postulaciones 59,
+empresas 35, compras 21, lugares 6), no los ~1500 que estimé. El peso baja de
+~250 kB a **~175 kB** por carga contando las dos copias. Sigue siendo el mayor
+envío al navegador de la aplicación, pero que conste el número bueno.
+
+---
+
+## Orden de ataque — revisado tras medir
+
+0. **Comprobar Max rows** en Supabase → Settings → API. Dos minutos. Decide si
+   los puntos 1 y 2 son urgentes o no existen.
+1. **`/pulso` y `/historial` sobre `actividad`** (§5). No es velocidad: es que
+   los números pueden estar mal AHORA. Un caso ya está diagnosticado y resuelto
+   en `/admin` con `franjas_actividad()` — hay de dónde copiar.
+2. **Los seis contadores de 💬** (§5). `comentarios` cruza 1000 esta semana y se
+   quedarían cortos los seis a la vez, sin error. Se arregla con
+   `comentarios(count)` embebido, que `/tablero:171` ya hace bien.
+3. **§1 — una sola acción global.** El de mayor retorno en velocidad:
+   34 pantallas, cada navegación.
 4. **§2 — el realtime del banco.** El multiplicador.
-5. **§3 — catálogos bajo demanda.** ~250 KB por carga.
-6. **§4 — la cascada de la portada.** 15 → 5.
+5. **§3 — catálogos bajo demanda.** ~175 kB por carga de portada y de caso.
+6. **§4 — la cascada de la portada.** 15 → 5 viajes.
 
 Los §6 y §7 después, si siguen doliendo.
+
+Y sigue pendiente el **Paso 0**: los tres números de la pestaña Red. La medición
+de la base dice que el problema no son los datos, pero no dice si el tiempo se
+va en el servidor o en el navegador.
 
 ---
 
