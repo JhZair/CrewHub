@@ -39,7 +39,14 @@ export default function HiloRendicion({ tabla, filaId, cabecera, children }: {
   return (
     <VistaHilo
       ariaLabel="Fila de la rendición"
-      tituloCab="🧾 Rendición"
+      /* ── «COMENTARIOS», NO «RENDICIÓN» ──
+         Este pop-up es el HILO de una fila, y lo abre el 💬. Decía «Rendición»
+         porque nació en el fondo, donde las cinco tablas son rendición de
+         cuentas; luego se enchufó a las obligaciones y ahí una declaración
+         mensual de IGV no es una rendición de nada.
+         «Comentarios» es lo que la ventana ES en las seis, y además lo que
+         acaba de pulsar quien la abrió. */
+      tituloCab="💬 Comentarios"
       cargar={() => cargarRendicionRapido(tabla, filaId)}
       /* `fila` y no `!error`: si la migración no está corrida, la acción
          devuelve el nombre del SQL que falta y VistaHilo lo enseña. Un pop-up

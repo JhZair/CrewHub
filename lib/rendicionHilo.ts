@@ -250,7 +250,19 @@ export async function hilosDeFilas(
   const conteo = new Map<string, number>();
   const reacciones = new Map<string, any[]>();
   const casos = new Map<string, { id: string; estado?: string | null; tipo?: string | null }>();
-  if (!ids.length) return { conteo, reacciones, casos, error: null };
+  /* ⚠ EL ATAJO NO VALE CUANDO SE PIDEN «TODAS».
+     Esto era `if (!ids.length) return` a secas, y /obligaciones llama con
+     `ids = []` y `{ todas: true }` — porque justamente no quiere enumerar los
+     318 periodos, quiere «los que tengan hilo». Con el corte delante, esa
+     pantalla recibía SIEMPRE los tres mapas vacíos: ni conteo de comentarios,
+     ni reacciones, ni casos.
+     Y el síntoma no era un error, era peor: el botón «＋ caso» creaba el caso
+     de verdad, pero como `casos` volvía vacío la fila nunca pasaba a enseñar
+     «📋 caso». Parecía que no hacía nada. Al segundo clic contestaba «ya
+     existía», que es la única pista de que sí lo había hecho — y se lee como
+     un fallo.
+     Sin ids Y sin `todas` sí hay que cortar: no hay nada que preguntar. */
+  if (!ids.length && !opciones?.todas) return { conteo, reacciones, casos, error: null };
 
   /* `todas` cambia el «dime cuáles de estos» por «dime los que hay». Ver la
      explicación en las opciones. */
