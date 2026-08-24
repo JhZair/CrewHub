@@ -19,6 +19,7 @@ import { BOT, sinBot } from "@/lib/personas";
 import { CAMPOS_TABLA } from "@/lib/tablas-expediente";
 import { esCampoDelTrigger } from "@/lib/actividad";
 import { rotuloEstado } from "@/lib/estados";
+import { EMOJIS as EMOJIS_REACCION } from "@/lib/reacciones";
 import { SECCIONES, grafiasDe, tipoCanonico, ICO_ENT } from "@/lib/secciones";
 import { vinculosDePublicaciones, conNombre } from "@/lib/vinculosPub";
 import { fraccionValida, montoJornada } from "@/lib/jornadas";
@@ -8033,8 +8034,15 @@ export async function crearSubCaso(padreId: string, titulo: string, tipo: string
 }
 
 /* ===== REACCIONES: los famosos "me gusta" =====
-   Toggle por usuario: mismo emoji dos veces = quitar. */
-const EMOJIS_REACCION = ["👀", "👍", "✔️", "❤️", "🔥", "👏", "😂", "😮", "🤔", "😕", "😢"];
+   Toggle por usuario: mismo emoji dos veces = quitar.
+
+   ── LA LISTA QUE VALIDA ES LA MISMA QUE LA QUE SE OFRECE ──
+   Aquí había una copia de los once emojis. Idéntica, sí, pero copia: el día
+   que se añadiera uno a la paleta, el botón lo ofrecería y esto respondería
+   «Reacción no permitida» — un fallo que se ve al tocar, no al escribir.
+   El servidor sigue validando (el cliente elige lo que quiere mandar), pero
+   valida contra la MISMA lista —`EMOJIS_REACCION`, importada arriba de
+   lib/reacciones—, no contra su recuerdo de ella. */
 export async function toggleReaccion(
   pubId: string | null, comentarioId: string | null, emoji: string,
   objetoId?: string | null, postulacionId?: string | null, movCajaId?: string | null,

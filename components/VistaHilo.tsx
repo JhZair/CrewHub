@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { menciones, MencionesMenu } from "@/components/Menciones";
 import LinkPreviews from "@/components/LinkPreviews";
 import Avatar from "@/components/Avatar";
+import PaletaRx from "@/components/PaletaRx";
+import { agrupar } from "@/lib/reacciones";
 
 /* VISTA HILO — base compartida de los pop-up interactivos (objeto del
  * repositorio, postulación…). Aporta todo lo común: shell del modal, ciclo
@@ -17,7 +19,10 @@ import Avatar from "@/components/Avatar";
  * solo (el router.refresh de la página no alcanza a un modal con su propio
  * estado). El disparador lo pone cada superficie vía render-prop. */
 
-export const EMOJIS = ["👀", "👍", "❤️", "🔥", "👏", "🤔"];
+/* La lista de emojis vivía aquí, con seis; la de los chips de siempre tenía
+ * once. Como cada pantalla CONTABA recorriendo su propia lista, un ✔️ puesto
+ * desde el caso no aparecía en este pop-up: no salía más pequeño, no salía.
+ * La lista es una sola y está en lib/reacciones.ts. */
 
 export const fechaHilo = (iso?: string | null) => {
   if (!iso) return "";
@@ -27,28 +32,39 @@ export const fechaHilo = (iso?: string | null) => {
 
 export type RxItem = { emoji: string; usuario_id: string; nombre?: string };
 
-/* Barra de reacciones (chips con conteo + paleta para añadir). Se usa tanto en
- * cada comentario como a nivel del hilo. */
+/* Barra de reacciones (chips con conteo + el ＋ para añadir). Se usa tanto en
+ * cada comentario como a nivel del hilo.
+ *
+ * La paleta va EN FLUJO (`flotante={false}`) porque esto vive dentro de
+ * `.vo-cuerpo`, que hace scroll: una paleta absoluta que sale por arriba la
+ * recortaría el borde del contenedor, y el comentario más alto de la lista es
+ * el que peor lo pasaría. */
 function BarraRx({ rx, userId, ocupado, onReaccionar, titulo }: {
   rx: RxItem[]; userId: string; ocupado: boolean;
   onReaccionar: (emoji: string) => void; titulo?: string;
 }) {
-  const grupos = EMOJIS.map(e => ({
-    emoji: e, n: rx.filter(r => r.emoji === e).length,
-    mia: rx.some(r => r.emoji === e && r.usuario_id === userId),
-  })).filter(g => g.n > 0);
+  const grupos = agrupar(rx, userId);
+  const quienes = (g: { rs: RxItem[]; mia: boolean }) => {
+    const txt = [
+      ...(g.mia ? ["Tú"] : []),
+      ...g.rs.filter(r => r.usuario_id !== userId).map(r => r.nombre).filter(Boolean),
+    ].join(", ");
+    if (!txt) return g.mia ? "Quitar mi reacción" : "Reaccionar igual";
+    return g.mia ? `${txt} · toca para quitar la tuya` : `${txt} · toca para reaccionar igual`;
+  };
   return (
     <div className="vo-rx">
       {grupos.map(g => (
-        <button key={g.emoji} className={`rx-chip ${g.mia ? "mia" : ""}`} disabled={ocupado}
+        <button key={g.emoji} type="button" className={`rx-chip ${g.mia ? "mia" : ""}`}
+          disabled={ocupado} title={quienes(g)}
           onClick={() => onReaccionar(g.emoji)}>{g.emoji} {g.n}</button>
       ))}
-      <span className="vo-rx-pal">
-        {EMOJIS.map(e => (
-          <button key={e} className="vo-rx-add" disabled={ocupado} title={titulo || "Reaccionar"}
-            onClick={() => onReaccionar(e)}>{e}</button>
-        ))}
-      </span>
+      {/* El 👀 fuera de la paleta: «lo vi» es el acuse que sostiene medio
+          sistema y tiene que costar un toque. Solo mientras nadie lo haya
+          puesto — en cuanto hay uno, su chip hace el mismo trabajo. */}
+      <PaletaRx hayReacciones={grupos.length > 0} ocupado={ocupado}
+        rapido={grupos.some(g => g.emoji === "👀") ? undefined : "👀"}
+        titulo={titulo} flotante={false} onElegir={onReaccionar} />
     </div>
   );
 }

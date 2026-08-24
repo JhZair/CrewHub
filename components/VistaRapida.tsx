@@ -13,6 +13,8 @@ import { ICO_ENT } from "@/lib/secciones";
 import { opcionesResp } from "@/lib/personas";
 import { menciones, MencionesMenu } from "@/components/Menciones";
 import LinkPreviews from "@/components/LinkPreviews";
+import PaletaRx from "@/components/PaletaRx";
+import { agrupar } from "@/lib/reacciones";
 
 /* VISTA RÁPIDA — un caso en un pop-up, para interactuar sin abrir otra pestaña.
  *
@@ -27,7 +29,8 @@ import LinkPreviews from "@/components/LinkPreviews";
  * refrescarse solo (el `router.refresh` de los componentes normales no alcanza
  * a un modal que trae su propio estado). */
 
-const EMOJIS = ["👀", "👍", "❤️", "🔥", "👏", "🤔"];
+/* La paleta y el agrupado son los mismos de todo el sistema (lib/reacciones):
+ * aquí había una lista corta propia, y lo que no estaba en ella no se veía. */
 
 const fecha = (iso?: string | null) => {
   if (!iso) return "";
@@ -119,11 +122,7 @@ export default function VistaRapida({ pubId }: { pubId: string }) {
   const marcarEnterado = () => correr(() => toggleEnterado(pubId));
 
   const rx: { emoji: string; usuario_id: string }[] = caso?.reacciones || [];
-  const grupos = EMOJIS.map(e => ({
-    emoji: e,
-    n: rx.filter(r => r.emoji === e).length,
-    mia: rx.some(r => r.emoji === e && r.usuario_id === userId),
-  })).filter(g => g.n > 0);
+  const grupos = agrupar(rx, userId);
 
   const vistos = new Set(rx.filter(r => r.emoji === "👀").map(r => r.usuario_id));
   if (esAv && caso?.autor_id) vistos.add(caso.autor_id);
@@ -246,15 +245,14 @@ export default function VistaRapida({ pubId }: { pubId: string }) {
                 {/* Reacciones */}
                 <div className="vr-rx">
                   {grupos.map(g => (
-                    <button key={g.emoji} className={`rx-chip ${g.mia ? "mia" : ""}`} disabled={ocupado}
+                    <button key={g.emoji} type="button" className={`rx-chip ${g.mia ? "mia" : ""}`}
+                      disabled={ocupado} title={g.mia ? "Quitar mi reacción" : "Reaccionar igual"}
                       onClick={() => reaccionar(g.emoji)}>{g.emoji} {g.n}</button>
                   ))}
-                  <span className="vr-rx-pal">
-                    {EMOJIS.map(e => (
-                      <button key={e} className="vr-rx-add" disabled={ocupado} title="Reaccionar"
-                        onClick={() => reaccionar(e)}>{e}</button>
-                    ))}
-                  </span>
+                  {/* La paleta del caso sí flota: este bloque no está dentro
+                      de la caja que hace scroll (`.vr-coms` sí lo está). */}
+                  <PaletaRx hayReacciones={grupos.length > 0} ocupado={ocupado}
+                    onElegir={reaccionar} />
                 </div>
 
                 {/* Comentarios */}

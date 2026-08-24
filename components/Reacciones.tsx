@@ -2,17 +2,11 @@
 import { toggleReaccion } from "@/app/actions";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import PaletaRx from "@/components/PaletaRx";
+import { agrupar } from "@/lib/reacciones";
 
-const EMOJIS = ["👀", "👍", "✔️", "❤️", "🔥", "👏", "😂", "😮", "🤔", "😕", "😢"];
-const LABEL: Record<string, string> = {
-  "👀": "Visto — lo leí y lo tengo presente",
-  "👍": "De acuerdo",
-  "✔️": "Revisado — lo verifiqué y está conforme",
-  "❤️": "Me encanta", "🔥": "Genial",
-  "👏": "Aplausos", "😂": "Me dio risa", "😮": "Me sorprendió",
-  "🤔": "Estoy pensando / déjame revisarlo",
-  "😕": "No entendí / estoy confundido", "😢": "Triste",
-};
+/* La paleta, sus rótulos y el agrupado viven en lib/reacciones.ts: los tres
+ * sitios que pintan reacciones tienen que contar lo mismo. */
 
 /* Cada reacción trae, si el server la embebió, el nombre de quién la puso
    (`perfil.nombre`): así el tooltip dice QUIÉN reaccionó —el acuse de haber
@@ -42,7 +36,7 @@ export default function Reacciones({
    *  en una firma que ya tiene seis es una firma que se llama mal. */
   rendicion?: { tabla: string; id: string } | null;
 }) {
-  const [abierto, setAbierto] = useState(false);
+  // Abrir y cerrar la paleta es cosa suya (PaletaRx); aquí solo se reacciona.
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
@@ -55,18 +49,15 @@ export default function Reacciones({
     if (!p) return null;
     return (Array.isArray(p) ? p[0]?.nombre : p?.nombre) ?? null;
   };
-  const grupos = EMOJIS
-    .map(e => {
-      const rs = reacciones.filter(r => r.emoji === e);
-      // Quiénes reaccionaron: «Tú» primero, luego los demás por nombre. Es el
-      // acuse de lectura —quién ya lo vio—, no un botón anónimo.
-      const quien = [
-        ...(rs.some(r => r.usuario_id === userId) ? ["Tú"] : []),
-        ...rs.filter(r => r.usuario_id !== userId).map(nombreDe).filter(Boolean) as string[],
-      ];
-      return { emoji: e, n: rs.length, mia: rs.some(r => r.usuario_id === userId), quien };
-    })
-    .filter(g => g.n > 0);
+  // Quiénes reaccionaron: «Tú» primero, luego los demás por nombre. Es el
+  // acuse de lectura —quién ya lo vio—, no un botón anónimo.
+  const grupos = agrupar(reacciones, userId).map(g => ({
+    ...g,
+    quien: [
+      ...(g.mia ? ["Tú"] : []),
+      ...g.rs.filter(r => r.usuario_id !== userId).map(nombreDe).filter(Boolean) as string[],
+    ],
+  }));
 
   /* ── EN UNA FILA DE LISTA, EL ANCHO ESTÁ ACOTADO ──
      Una fila de caja tiene fecha, caja, cuenta, descripción, proyecto, quién,
@@ -92,7 +83,7 @@ export default function Reacciones({
 
   const tap = async (emoji: string) => {
     if (ocupado) return;
-    setOcupado(true); setAbierto(false); setError("");
+    setOcupado(true); setError("");
     const res = await toggleReaccion(pubId, comentarioId, emoji, objetoId, null, movCajaId, rendicion);
     setOcupado(false);
     if (res?.error) { setError(res.error); return; }
@@ -103,7 +94,7 @@ export default function Reacciones({
     <span className={`rx${compacto ? " rx-compacto" : ""}`} onClick={e => e.stopPropagation()}>
       {error && <span style={{ color: "var(--red)", fontSize: 11 }}>⚠ {error}</span>}
       {visibles.map(g => (
-        <button key={g.emoji} className={`rx-chip ${g.mia ? "mia" : ""}`}
+        <button key={g.emoji} type="button" className={`rx-chip ${g.mia ? "mia" : ""}`}
           title={tituloDe(g)}
           onClick={() => tap(g.emoji)}>
           {g.emoji} {g.n}
@@ -116,21 +107,7 @@ export default function Reacciones({
           ⋯{nResto}
         </span>
       )}
-      <span style={{ position: "relative", display: "inline-flex", flex: "none" }}>
-        <button className="rx-mas" title="Reaccionar" onClick={() => setAbierto(!abierto)}>
-          {grupos.length ? "＋" : "☺＋"}
-        </button>
-        {abierto && (
-          <>
-            <span className="rx-fondo" onClick={() => setAbierto(false)} />
-            <span className="rx-paleta">
-              {EMOJIS.map(e => (
-                <button key={e} title={LABEL[e] || ""} onClick={() => tap(e)}>{e}</button>
-              ))}
-            </span>
-          </>
-        )}
-      </span>
+      <PaletaRx hayReacciones={grupos.length > 0} ocupado={ocupado} onElegir={tap} />
     </span>
   );
 }
