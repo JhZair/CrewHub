@@ -2328,12 +2328,22 @@ a.stat-card:hover{border-color:var(--border2)}
 
 /* ===== Página /notificaciones — el historial ===== */
 /* Reusa .camp-item / .camp-tt / .cuando / .camp-vinc de la campanita: la fila
-   se ve igual que en el timbre, solo que a página completa y sin corte. */
-.notif-pag{display:flex;flex-direction:column;gap:2px}
+   se ve igual que en el timbre, solo que a página completa y sin corte.
+
+   ── SE FUERON CUATRO REGLAS DE `.notif-pag` ──
+   Esa clase no la pinta ningún componente: la página pasó a dos columnas y su
+   lista es `.notif-col-lista`, pero las reglas de la versión de una columna se
+   quedaron aquí. Cuatro selectores que no casaban con nada — y lo peor de un
+   CSS muerto no es el peso, son doscientos bytes: es que el siguiente que lea
+   este archivo creerá que la página se pinta con ellas y hará su cambio en el
+   sitio equivocado, sin ver ningún efecto y sin ningún error que lo explique.
+
+   No es una pérdida de estilo: llevaban tiempo sin aplicarse, así que la
+   página YA se veía sin ellas. Y revivirlas ahora sería un fallo — su
+   `padding:11px 12px` recortaba justo el lado derecho donde vive el ✓ nuevo,
+   que se apoya en los 26 px de `.camp-item`. */
 .notif-cab{display:flex;align-items:center;gap:10px;padding:2px 4px 12px}
 .notif-cab>span{flex:1;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--dim)}
-.notif-pag .camp-item{border-bottom:1px solid var(--border);border-radius:0;padding:11px 12px}
-.notif-pag .camp-item:last-of-type{border-bottom:none}
 .notif-vacia{color:var(--dim);font-size:13px;text-align:center;padding:32px 0}
 .notif-mas{margin:14px auto 4px;background:transparent;border:1px solid var(--border);border-radius:9px;color:var(--muted);font-size:12.5px;font-weight:600;padding:8px 22px;cursor:pointer}
 .notif-mas:hover{border-color:var(--accent);color:var(--text)}
@@ -2352,7 +2362,7 @@ a.stat-card:hover{border-color:var(--border2)}
 /* Encabezado de bloque de fecha */
 .notif-bloque{font-size:10.5px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);font-weight:700;padding:14px 12px 5px}
 /* Fila seleccionada */
-.notif-pag .camp-item.sel,.notif-col-lista .camp-item.sel{background:rgba(167,139,250,.12);border-left:2px solid var(--accent)}
+.notif-col-lista .camp-item.sel{background:rgba(167,139,250,.12);border-left:2px solid var(--accent)}
 /* Panel de detalle */
 .notif-det-vacio{color:var(--dim);font-size:12.5px;text-align:center;padding:40px 18px;border:1px dashed var(--border);border-radius:12px;line-height:1.6}
 .notif-det{border:1px solid var(--border);border-radius:12px;padding:14px;background:var(--card)}

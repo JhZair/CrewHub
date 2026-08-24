@@ -26,11 +26,19 @@ export default function NotifFila({ n, cuenta = 1, actores, onMarcar }: {
   n: any; cuenta?: number; actores?: string[]; onMarcar?: () => void;
 }) {
   const nombres = cuenta > 1 && actores?.length ? actoresTexto(actores) : corto(n.actor_nombre);
-  const quien = [nombres, ETIQ[n.tipo]].filter(Boolean).join(" ");
   /* A QUÉ CAMBIÓ. «Michel cambió el estado» obliga a abrir el caso para saber
      lo único que el aviso venía a contar, y el dato ya venía en el mensaje.
      Solo los tres tipos de cambio lo tienen; ver `destinoDe`. */
   const destino = destinoDe(n);
+  /* ── UNA AUSENCIA NO ES UN DESTINO ──
+     Quitarle el responsable a un caso daba «Michel cambió el responsable: sin
+     responsable»: el sustantivo dos veces, y la segunda diciendo lo contrario
+     de la primera. El verbo de `ETIQ` supone que detrás viene un valor nuevo, y
+     aquí lo que viene es que no hay ninguno. Así que la ausencia SUSTITUYE al
+     verbo en vez de seguirlo —«Michel lo dejó sin responsable»— y sin los dos
+     puntos, que anuncian un valor. */
+  const esAusencia = /^sin\s/i.test(destino);
+  const quien = [nombres, esAusencia ? "lo dejó" : ETIQ[n.tipo]].filter(Boolean).join(" ");
   /* El ✓ de una fila agrupada despacha TODO el grupo, y eso hay que decirlo
      antes de pulsar: en un caso con doce comentarios, «marcar como leída» en
      singular sería mentira sobre once de ellos. */
@@ -56,7 +64,7 @@ export default function NotifFila({ n, cuenta = 1, actores, onMarcar }: {
       <div className="cuando">
         <span>
           {quien}
-          {destino && <>: <b className="nf-dest">{destino}</b></>}
+          {destino && <>{esAusencia ? " " : ": "}<b className="nf-dest">{destino}</b></>}
           {quien ? " · " : ""}{hace(n.creado_en)}
         </span>
         {cuenta > 1 && (
