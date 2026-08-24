@@ -598,6 +598,42 @@ otro runtime— y esa se queda.
 
 ---
 
+## /tablero — MEDIDO DESPUÉS, y el ruido por fin acotado
+
+```
+                     antes    después
+/manifest.webmanifest  195      200 ms   ← el suelo, estable
+/tablero              2844     2010 ms   ← −29 %
+/                     1657     2015 ms   ← +358 ms… sin tocar una línea
+```
+
+**`/tablero` bajó 834 ms** al pasar de trece olas a seis. Es el número que
+faltaba: el aplanado sirve, y ahora la pantalla más lenta ya no destaca.
+
+**Pero mira la tercera fila.** La portada, con EL MISMO código, dio 1787, luego
+1657 y ahora 2015 en tres medidas distintas. Eso acota por fin el instrumento:
+**la mediana de cinco tiene un margen de ±20 %.** Sirve para ver un efecto del
+30 %, no para uno del 10 — y explica de golpe por qué las comparaciones de una
+sola muestra daban conclusiones opuestas cada vez.
+
+Regla para lo que venga: **si un cambio no mueve el reloj más de un 20 %, este
+instrumento no puede decir si sirvió.** O se buscan efectos grandes, o hace
+falta otra forma de medir.
+
+### Lo que queda es más grande que la página
+
+Con las dos pantallas aplanadas, el bloque mayor ya no es ninguna de ellas:
+
+| | |
+|---|---|
+| Render de la página | ~2000 ms |
+| **Acciones de servidor tras cada navegación** | **4772 ms** |
+
+Cuatro POST encolados, medidos en `/tablero`. **Tardan más del doble que
+pintar la pantalla entera.** Es el §1, y ya no compite con nada.
+
+---
+
 ## Orden de ataque — revisado tras medir
 
 0. **Comprobar Max rows** en Supabase → Settings → API. Dos minutos. Decide si
