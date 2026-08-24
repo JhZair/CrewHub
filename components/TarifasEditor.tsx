@@ -3,7 +3,7 @@ import { editarTarifa } from "@/app/actions";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-type P = { id: string; nombre: string; tarifa_dia: number | null; tarifa_rodaje: number | null; tarifa_noche: number | null };
+type P = { id: string; nombre: string; tipo?: string | null; tarifa_dia: number | null; tarifa_rodaje: number | null; tarifa_noche: number | null };
 
 const inp = { background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8, padding: "5px 8px", fontSize: 12.5, color: "var(--text)", outline: "none", width: 92 } as const;
 
@@ -22,7 +22,16 @@ function Fila({ p, onSaved }: { p: P; onSaved: () => void }) {
   };
   return (
     <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "5px 0", flexWrap: "wrap" }}>
-      <span style={{ flex: 1, minWidth: 120, fontSize: 12.5, fontWeight: 600 }}>{p.nombre}</span>
+      <span style={{ flex: 1, minWidth: 120, fontSize: 12.5, fontWeight: 600 }}>
+        {p.nombre}
+        {/* Solo cuando NO es de planilla: quien está aquí por tener cuenta
+            enlazada merece que se diga, o su presencia parece un error. */}
+        {p.tipo && (
+          <i style={{ marginLeft: 7, fontStyle: "normal", fontWeight: 400, fontSize: 11, color: "var(--dim)" }}>
+            {p.tipo}
+          </i>
+        )}
+      </span>
       <label style={{ fontSize: 11, color: "var(--dim)" }}>día</label>
       <input type="number" value={dia} placeholder="S/" onChange={e => setDia(e.target.value)} style={inp} />
       <label style={{ fontSize: 11, color: "var(--dim)" }}>rodaje</label>

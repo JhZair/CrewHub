@@ -137,8 +137,19 @@ export default async function Admin({ searchParams }: {
          { data: fichasCuenta }, { data: fichasElegibles },
          { data: invitados, error: eInv }] = await Promise.all([
     // `usuario_id`: llave para poner el alias del actor en la actividad reciente
-    supabase.from("personas").select("id,nombre,alias,foto_url,usuario_id,estado,tarifa_dia,tarifa_rodaje,tarifa_noche")
-      .eq("tipo", "personal").order("nombre"),
+    /* ⚠ QUIÉN SALE EN TARIFAS = QUIÉN PUEDE COBRAR UNA JORNADA.
+       Esto filtraba `tipo = 'personal'` y ya, pero `registrarMiJornada`
+       (app/actions.ts) busca la ficha por `usuario_id` y NO mira el tipo: con
+       la cuenta enlazada, cualquiera puede registrar jornadas. Ruby entró el
+       24 ago como `colaborador`, registró su primer caso y no aparecía aquí —
+       o sea que podía apuntar jornadas y administración no tenía dónde ponerle
+       la tarifa. El importe le habría salido «sin tarifa» para siempre, sin
+       error y sin sitio donde arreglarlo.
+       Dos reglas para la misma cosa en dos archivos. Ahora es una: entra quien
+       tiene cuenta enlazada (puede cobrar hoy) y quien es `personal` aunque
+       todavía no la tenga (va a poder). */
+    supabase.from("personas").select("id,nombre,alias,tipo,foto_url,usuario_id,estado,tarifa_dia,tarifa_rodaje,tarifa_noche")
+      .or("tipo.eq.personal,usuario_id.not.is.null").order("nombre"),
     // A quién se le puede girar un RHE, y los del año en curso
     supabase.from("personas").select("id,nombre,alias,suspension_4ta_anio")
       .in("tipo", ["personal", "colaborador", "colaborador eventual", "independiente"])
@@ -362,8 +373,14 @@ export default async function Admin({ searchParams }: {
     ? 0 : cuentas.filter(c => c.activo && !c.casos && !c.comentarios).length;
 
   const aliasMap = mapaAlias(personas as any);   // actor → alias (JohnO) en la actividad
+  /* `tipo` viaja para poder decirlo en la fila. Con la lista ampliada, ver
+     «RubyO» junto a los de planilla sin más contexto invita a pensar que
+     alguien se equivocó de tabla; con la etiqueta apagada al lado, se lee que
+     está ahí porque tiene cuenta y puede cobrar. */
   const tarifaLista = (personas || []).map((p: any) => ({
-    id: p.id, nombre: p.alias || p.nombre, tarifa_dia: p.tarifa_dia, tarifa_rodaje: p.tarifa_rodaje, tarifa_noche: p.tarifa_noche,
+    id: p.id, nombre: p.alias || p.nombre,
+    tipo: p.tipo === "personal" ? null : (p.tipo || null),
+    tarifa_dia: p.tarifa_dia, tarifa_rodaje: p.tarifa_rodaje, tarifa_noche: p.tarifa_noche,
   }));
   /* ── QUÉ MES SE REVISA ──
      Antes se traía «desde el mes más viejo con algo pendiente», y eso dejaba
