@@ -689,6 +689,9 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   let clienteDe: { id: string; nombre: string } | null = null;
   let cronoActs: any[] = [], perfilesCat: any[] = [], cronoPost: any[] = [], plantelPost: any[] = [];
   let postusProy: any[] = [], equipoProy: any[] = [], plantillas: any[] = [], actoresProy: any[] = [];
+  /* Cuántas actividades tiene el cronograma de cada postulación de este
+     proyecto. Ver el comentario de `cronoDeFondos`, más abajo. */
+  let cronoPorPostu = new Map<string, number>();
   /* Por qué la lista de personajes vino vacía, si vino vacía por un error.
      Una consulta que falla devuelve `data: null`, y `|| []` la convierte en
      «no hay ninguno»: exactamente lo mismo que se ve cuando de verdad no hay
@@ -753,6 +756,26 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       const logoDe = new Map<string, string>();
       (mediaEmp || []).forEach((mm: any) => { if (mm.cartel_url) logoDe.set(mm.entidad_id, mm.cartel_url); });
       postusProy = postusProy.map((p: any) => ({ ...p, _logoEmp: p.emp?.id ? logoDe.get(p.emp.id) || null : null }));
+    }
+    /* ── EL CRONOGRAMA QUE NO VIVE AQUÍ ──
+       Un proyecto tiene su propio cronograma —una cobertura contratada, un
+       encargo, el plan general— y ESE es el que se edita en esta pestaña. Pero
+       el de un fondo DAFO no: nace en la postulación y se queda ahí cuando el
+       fondo se gana (ver db/crono-postulacion.sql).
+       Sin este contador, un proyecto cuyo único trabajo es ejecutar un fondo
+       enseña la pestaña Crono en cero — y un cero se lee como «no hay nada
+       planificado», no como «está en otra pantalla». Pasó con Mujeres del Ande
+       el 24/08/2026, al mover sus 26 actividades a su postulación.
+       Se piden solo los ids: aquí únicamente se cuenta. */
+    const idsPostuProy = postusProy.map((p: any) => p.id).filter(Boolean) as string[];
+    if (idsPostuProy.length) {
+      const { data: cpp } = await supabase.from("cronograma_actividades")
+        .select("postulacion_id").in("postulacion_id", idsPostuProy)
+        .neq("estado", "cancelada");
+      (cpp || []).forEach((r: any) => {
+        if (!r.postulacion_id) return;
+        cronoPorPostu.set(r.postulacion_id, (cronoPorPostu.get(r.postulacion_id) || 0) + 1);
+      });
     }
     equipoProy = eq.data || [];
     // Protagonistas primero, luego secundarios, luego los demás.
@@ -4552,12 +4575,55 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             const proxima = vivasCrono
               .filter((a: any) => a.estado === "planificada")
               .sort((a: any, b: any) => (a.fecha_inicio < b.fecha_inicio ? -1 : 1))[0];
-            const etiquetaCrono = `📅 Crono · ${vivasCrono.length}` +
-              (proxima ? ` · próx. ${new Date(proxima.fecha_inicio + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short" })}` : "");
+            /* Si el proyecto no tiene cronograma propio pero sus postulaciones
+               sí, la pestaña no dice «0»: dice cuántas hay y dónde. Un cero es
+               una afirmación —«no hay trabajo planificado»— y en ese caso es
+               falsa. */
+            const nFondos = [...cronoPorPostu.values()].reduce((s, n) => s + n, 0);
+            const etiquetaCrono = vivasCrono.length === 0 && nFondos > 0
+              ? `📅 Crono · ${nFondos} en su postulación`
+              : `📅 Crono · ${vivasCrono.length}` +
+                (proxima ? ` · próx. ${new Date(proxima.fecha_inicio + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short" })}` : "");
+            /* ── DÓNDE ESTÁ EL CRONOGRAMA DEL FONDO ──
+               El de un fondo DAFO cuelga de su postulación, no del proyecto, y
+               por eso no sale abajo. Si no se dijera, la pestaña en cero de un
+               proyecto que sí tiene trabajo planificado se leería como que no
+               hay nada — que es la peor forma de fallar: convincente.
+               Se enseña SIEMPRE que haya, no solo cuando esto está vacío: un
+               proyecto puede tener su cobertura contratada aquí y la ejecución
+               del fondo allá, y las dos cosas hay que poder verlas. */
+            const conCrono = postusProy
+              .map((p: any) => ({ ...p, _n: cronoPorPostu.get(p.id) || 0 }))
+              .filter((p: any) => p._n > 0);
+            const cronoDeFondos = conCrono.length > 0 ? (
+              <div className="linked" style={{ marginBottom: 10, padding: "10px 12px" }}>
+                <div style={{ color: "var(--dim)", fontSize: 12, marginBottom: 6 }}>
+                  {cronoActs.length === 0
+                    ? "Este proyecto no tiene cronograma propio. Su trabajo planificado vive en la postulación:"
+                    : "Además, estas postulaciones tienen su propio cronograma:"}
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {conCrono.map((p: any) => (
+                    <Link key={p.id}
+                      href={p.estado === "ganadora" ? `/fondo/${p.id}` : `/entidad/postulacion/${p.id}`}
+                      className="btn btn-ghost" style={{ fontSize: 12, padding: "6px 12px" }}>
+                      {p.estado === "ganadora" ? "🎬" : "📄"} {p.codigo}
+                      {p.conv?.anio ? ` · ${p.conv.anio}` : ""}
+                      <span style={{ color: "var(--dim)" }}>
+                        {" · "}{p._n} {p._n === 1 ? "actividad" : "actividades"} →
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            ) : null;
             const cronoNode = (
-              <CronogramaProyecto key="crono" dueno={params.tipo as "proyecto" | "convocatoria"}
-                duenoId={params.id} actividades={cronoActs} perfiles={perfilesCat}
-                plantillas={plantillas} tipoProyecto={ent.tipo || ""} />
+              <>
+                {cronoDeFondos}
+                <CronogramaProyecto key="crono" dueno={params.tipo as "proyecto" | "convocatoria"}
+                  duenoId={params.id} actividades={cronoActs} perfiles={perfilesCat}
+                  plantillas={plantillas} tipoProyecto={ent.tipo || ""} />
+              </>
             );
 
             /* PROYECTO en pestañas, como empresa/persona:

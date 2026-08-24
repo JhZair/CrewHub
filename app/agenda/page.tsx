@@ -35,7 +35,7 @@ export default async function AgendaPage() {
          después de algo de Preproducción. */
       .select("id,nombre,fecha_inicio,fecha_fin,etapa,estado,responsable,equipo,publicacion_id,orden,creado_en," +
         "proy:proyectos(id,nombre,nombre_corto),conv:convocatorias(id,codigo,nombre,categoria)," +
-        "postu:postulaciones(id,codigo,conv:convocatorias(categoria))")
+        "postu:postulaciones(id,codigo,estado,conv:convocatorias(categoria))")
       .neq("estado", "cancelada").not("fecha_inicio", "is", null),
     supabase.from("publicaciones")
       .select("id,titulo,tipo,estado,fecha_limite,responsable,creado_en")
@@ -53,8 +53,29 @@ export default async function AgendaPage() {
   // préstamos, equipamiento y postulaciones viven en esa misma tabla y gastarían
   // el tope de filas de PostgREST, dejando el contador corto EN SILENCIO.
   // El `limit` explícito es por lo mismo: el default (1000) truncaría sin avisar.
+  /* ── LAS PROPUESTAS NO VAN A LA AGENDA ──
+     El cronograma de una postulación que sigue en concurso es lo que le
+     PROMETES a DAFO que harás si ganas: no hay trabajo que hacer todavía, ni
+     fecha que cumplir. Mezclarlo con lo que sí hay que hacer esta semana
+     llena la agenda de fechas hipotéticas —y de varias a la vez, porque se
+     postula a varios concursos con el mismo proyecto—, que es la forma más
+     rápida de que el equipo deje de mirarla.
+
+     Ganado el fondo deja de ser una promesa: pasa a ser la ejecución, con
+     plazo de acta y dinero que rendir. Por eso el corte es `ganadora` y no
+     «tiene postulación».
+
+     Es la misma regla que `qhaway_matutino()` aplica al materializar, escrita
+     aquí para la lectura. Ojo: hoy el bot excluye `postulacion_id` ENTERO, así
+     que los fondos ganados aparecen en esta agenda pero el bot todavía no les
+     abre casos. Las dos mitades tienen que acabar diciendo lo mismo. */
+  const actsVisibles = (acts || []).filter((a: any) => {
+    const postu = a.postu as any;
+    return !postu || postu.estado === "ganadora";
+  });
+
   const idsPub = [...new Set([
-    ...(acts || []).map((a: any) => a.publicacion_id),
+    ...actsVisibles.map((a: any) => a.publicacion_id),
     ...(casos || []).map((c: any) => c.id),
   ].filter(Boolean))] as string[];
   const { data: conteos } = idsPub.length
@@ -63,16 +84,19 @@ export default async function AgendaPage() {
   const nComs = new Map<string, number>();
   (conteos || []).forEach((p: any) => nComs.set(p.id, p.comentarios?.[0]?.count ?? 0));
 
-  // ── Actividades → items. Grupo = su proyecto/convocatoria. ──
-  const itemsAct: ItemAgenda[] = (acts || []).map((a: any) => {
+  // ── Actividades → items. Grupo = su proyecto/convocatoria/fondo. ──
+  const itemsAct: ItemAgenda[] = actsVisibles.map((a: any) => {
     const proy = a.proy as any, conv = a.conv as any, postu = a.postu as any;
     const grupo = proy ? { id: `p:${proy.id}`, label: proy.nombre_corto || proy.nombre }
-      : postu ? { id: `postu:${postu.id}`, label: `🎯 ${postu.codigo || "Postulación"}` }
+      /* Ya solo llegan ganadoras, así que esto es un FONDO EN EJECUCIÓN. El
+         🎬 es el mismo icono con que /fondos las llama, para que la agenda no
+         invente un vocabulario propio. */
+      : postu ? { id: `postu:${postu.id}`, label: `🎬 ${postu.codigo || "Fondo"}` }
       : conv ? { id: `c:${conv.id}`, label: [conv.codigo, conv.nombre].filter(Boolean).join(" · ") }
       : { id: "sin", label: "Sin proyecto" };
     const href = a.publicacion_id ? `/caso/${a.publicacion_id}`
       : proy ? `/entidad/proyecto/${proy.id}`
-      : postu ? `/entidad/postulacion/${postu.id}`
+      : postu ? `/fondo/${postu.id}`
       : conv ? `/entidad/convocatoria/${conv.id}` : "#";
     return {
       id: a.id, kind: "act", titulo: a.nombre,

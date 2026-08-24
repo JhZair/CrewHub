@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { ESTADOS_VIVOS } from "@/lib/estados";
+import { mapaAlias } from "@/lib/personas";
 import Volver from "@/components/Volver";
 import Realtime from "@/components/Realtime";
 import Plegable from "@/components/Plegable";
@@ -159,8 +160,14 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
          su avatar, pedir solo el nombre dejaría aquí unas iniciales grises
          mientras en /comprobantes se ve la cara. El mismo bloque no puede
          enseñar dos cosas distintas según la pantalla. */
+      /* `creado_por` a secas, además del perfil embebido: el bloque pinta el
+         ALIAS corto («JohnO») y lo cruza por esa columna. Sin ella el `||` se
+         caía al nombre largo, así que el mismo comprobante decía «JohnO» en
+         /comprobantes y «John Oros Condori» aquí — que es exactamente lo que
+         el comentario de arriba dice que no puede pasar. No fallaba nada: solo
+         se leía distinto según la puerta por la que entraras. */
       .select("id,tipo,proveedor,ruc,serie,numero,fecha,importe,igv,concepto,etapa,rubro_item,url," +
-        "postulacion_id,creado_en,creado:perfiles!creado_por(nombre,avatar_url,color)")
+        "postulacion_id,creado_en,creado_por,creado:perfiles!creado_por(nombre,avatar_url,color)")
       .eq("postulacion_id", params.id).order("fecha"),
     /* La bitácora inmutable de este fondo. Filtra por el postulacion_id que
        vive dentro del JSON (antes/después), así también captura los borrados. */
@@ -231,6 +238,10 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
   }));
   const plantillasPre = plPre.data || [];
   const personasCat = (pc.data || []).map((p: any) => ({ id: p.id, nombre: p.alias || p.nombre }));
+  /* Cuenta → alias corto, para la firma de cada comprobante. Sale de las
+     personas que esta página YA trae: es la misma consulta que /comprobantes
+     hace aparte, aquí no cuesta un viaje más. */
+  const aliasCuenta = mapaAlias(pc.data as any);
   /* El catálogo entero, con foto: la pestaña de equipo tiene que poner cara a
      quien aparezca por un recibo, y esa persona puede no estar en ninguna de
      las otras listas. */
@@ -690,7 +701,7 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
                     ) : dim("sin comprobantes")}>
                   <Comprobantes postulacionId={params.id} comprobantes={conHilo(comprobantes, hCmp) as any}
                     etapas={etapasFondo} rubros={fondoRubros} esAdmin={esAdmin} error={cmpError}
-                    urlSunat={urlSunat} userId={user.id} hiloError={hiloError} />
+                    urlSunat={urlSunat} userId={user.id} hiloError={hiloError} alias={aliasCuenta} />
                   </Plegable>
 
               </Plegable>
