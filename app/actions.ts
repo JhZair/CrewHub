@@ -8,7 +8,7 @@ import { META_RENDICION, esTablaRendicion, anclaRendicion, duenoDe, type TablaRe
 import { COLS_DUENO_COM, COLS_DUENO_COM_EXTRA } from "@/lib/vinculoComentario";
 import { icoTipo, esTipoCreable } from "@/lib/tipos";
 import { claseDe as claseDeObligacion, RESULTADOS as RESULTADOS_OBL, DIAS_AVISO } from "@/lib/obligaciones";
-import { leerReporteSol, periodosDeSol, leerCasillasSol, casillasVigentes, pareceCopiaPorColumnas, leerDeclaracionesSol } from "@/lib/importarSol";
+import { leerReporteSol, periodosDeSol, leerCasillasSol, casillasVigentes, pareceCopiaPorColumnas, leerDeclaracionesSol, rucDelTexto } from "@/lib/importarSol";
 import { FORM_CONF, nombreCorto, SUBCATS_EQUIPO } from "@/lib/entidades";
 import { ETAPAS_PROY_VALIDAS } from "@/lib/etapasProyecto";
 import { nrmQ } from "@/lib/quechua";
@@ -9189,13 +9189,30 @@ export async function importarDeclaracionesSol(
   /* ── EL RUC DE LA CABECERA SE COMPRUEBA ──
      Pegar el reporte de una empresa en la ficha de otra es el error fácil de
      esta pantalla: no daría ningún síntoma y dejaría a las dos mintiendo a la
-     vez —una con meses declarados que no son suyos, la otra sin ellos—. */
+     vez —una con meses declarados que no son suyos, la otra sin ellos—.
+
+     ⚠ El RUC sale de `rucDelTexto` y no de `lectura.ruc`. Eran lo mismo hasta
+     que se sumaron los otros dos formatos: la lectura solo lo traía cuando el
+     pegado era la relación de constancias, así que soltar el DETALLE DE
+     CASILLAS o la DECLARACIÓN ENTERA de otra empresa se saltaba esta guarda
+     por completo. La comprobación estaba escrita y no cubría dos de los tres
+     caminos que llegan hasta ella. */
+  const rucPapel = rucDelTexto(texto || "");
   const { data: emp } = await supabase.from("empresas")
     .select("ruc,nombre").eq("id", empresaId).maybeSingle();
   const rucEmp = String((emp as any)?.ruc || "").replace(/\D/g, "");
-  if (lectura.ruc && rucEmp && lectura.ruc !== rucEmp) {
-    return { error: `Ese reporte es del RUC ${lectura.ruc} (${lectura.razon || "—"}), y esta empresa es ${rucEmp}. No se importó nada.` };
+  if (rucPapel && rucEmp && rucPapel !== rucEmp) {
+    return { error: `Ese reporte es del RUC ${rucPapel} (${lectura.razon || "—"}), y esta empresa es ${rucEmp}. No se importó nada.` };
   }
+  /* Y si NO se pudo comprobar, se dice. Callarlo deja la puerta abierta al
+     mismo error con la apariencia de haberlo vigilado: quien ve «12
+     importadas» da por hecho que el archivo era el correcto porque la pantalla
+     no dijo lo contrario. */
+  const sinComprobar = !rucPapel
+    ? "No pude leer el RUC de ese archivo, así que no comprobé que sea de esta empresa."
+    : !rucEmp
+    ? `Esta empresa no tiene RUC cargado, así que no pude comprobar que el reporte (RUC ${rucPapel}) sea suyo.`
+    : "";
 
   /* Las del listado y las sueltas, juntas. `periodosDeSol` deduplica por
      (clase, año, mes) y se queda con la primera presentación como original y
@@ -9300,6 +9317,7 @@ export async function importarDeclaracionesSol(
     faltantes: [...new Set(faltantes)].slice(0, 12),
     ignoradas: lectura.ignoradas.length,
     razon: lectura.razon,
+    sinComprobar,
   };
 }
 

@@ -176,6 +176,18 @@ export default function ImportarSol({ empresaId, nombre }: {
 
             {res && (
               <div className="imp-res">
+                {/* ── LO QUE NO SE PUDO COMPROBAR, DICHO ──
+                    El importador rechaza un reporte cuyo RUC no sea el de esta
+                    empresa. Cuando no puede leer ese RUC —o la empresa no lo
+                    tiene cargado— no rechaza nada, y callarlo sería lo peor de
+                    los dos mundos: quien ve «12 importadas» da por hecho que el
+                    archivo era el correcto porque la pantalla no dijo lo
+                    contrario. Aquí se dice que la guarda no llegó a mirar. */}
+                {res.sinComprobar && (
+                  <div style={{ color: "var(--yellow)", marginBottom: 6 }}>
+                    ⚠ {res.sinComprobar}
+                  </div>
+                )}
                 {/* ── LOS DOS REPORTES SE CUENTAN POR SEPARADO ──
                     Este panel nació contando solo presentaciones, y cuando el
                     importador aprendió a leer también el detalle de casillas se

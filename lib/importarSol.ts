@@ -123,11 +123,33 @@ const limpiar = (t: string) => String(t || "")
   .replace(/\u00a0|\u2007|\u202f/g, " ")
   .replace(/[\u2010-\u2015]/g, "-");
 
+/* ══════════════════════════════════════════════════════════════════════════
+   DE QUIÉN ES ESTE PAPEL — sin depender de qué formato sea
+
+   El RUC se leía dentro de `leerReporteSol`, o sea SOLO en la relación de
+   constancias. Los otros dos formatos que este importador acepta —el detalle
+   de casillas y la declaración entera— no lo devolvían, así que la
+   comprobación de «este reporte no es de esta empresa» se saltaba entera para
+   ellos: soltar el detalle de casillas de otra empresa la importaba sin decir
+   nada. Justo el error que esa comprobación existe para evitar, entrando por
+   la puerta de al lado.
+
+   La cabecera «RUC : 20612545058» está en los tres. Se lee de aquí, del texto
+   crudo, para que la pregunta no dependa de qué lector acertó.
+
+   ⚠ Anclado a la ETIQUETA y no a «once dígitos seguidos». En estos reportes
+   hay números de orden de diez a trece dígitos, y un RUC inventado a partir de
+   uno de ellos no dejaría entrar un archivo perfectamente válido — un falso
+   positivo aquí bloquea trabajo legítimo, que es peor que no comprobar. */
+export function rucDelTexto(texto: string): string | null {
+  const m = /RUC\s*:?\s*(\d{11})/.exec(limpiar(texto || ""));
+  return m ? m[1] : null;
+}
+
 export function leerReporteSol(texto: string): LecturaSol {
   const t = limpiar(texto);
   const filas: FilaSol[] = [];
 
-  const mRuc = /RUC\s*:?\s*(\d{11})/.exec(t);
   const mRaz = /Nombre o raz[oó]n\s*:?\s*(.+)/i.exec(t);
 
   for (const m of t.matchAll(RE_FILA)) {
@@ -166,7 +188,7 @@ export function leerReporteSol(texto: string): LecturaSol {
   const perdidas = Math.max(0, candidatos - filas.length);
 
   return {
-    ruc: mRuc ? mRuc[1] : null,
+    ruc: rucDelTexto(texto),
     razon: mRaz ? mRaz[1].split(/\n/)[0].trim() : null,
     filas,
     ignoradas: perdidas
