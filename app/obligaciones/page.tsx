@@ -250,6 +250,31 @@ export default async function ObligacionesPage({ searchParams }: {
   const quienDe = new Map<string, Quien>(perfilesCortos.map((x: any) =>
     [x.id, { nombre: x.corto || x.nombre, foto: x.avatar_url, color: x.color }]));
 
+  /* ── QUIÉN RESPONDE POR CADA EMPRESA ──
+     Sale de las OBLIGACIONES y no de los periodos, y esa es la diferencia que
+     importa: una empresa puede tener obligaciones definidas y ningún periodo
+     generado todavía —«sin periodos» en la columna de al lado— y aun así tener
+     a alguien encargado. Contarlo por periodos la dejaría muda justo cuando lo
+     útil es saber a quién avisarle de que hay que generarlos.
+
+     Solo las ACTIVAS: una obligación dada de baja no avisa a nadie, así que su
+     encargado no responde por nada. Es la misma regla que el resto de la
+     pantalla —lo apagado no se vigila— aplicada a las personas.
+
+     Se guarda el conjunto, no «el responsable»: cada obligación tiene el suyo y
+     en una empresa pueden ser dos. Aplanarlo a uno solo obligaría a elegir cuál
+     mentir. */
+  const respPorEmp = new Map<string, { quienes: Map<string, Quien>; huerfanas: number }>();
+  obligaciones.forEach((o: any) => {
+    if (o.entidad_tipo !== "empresa" || !deEmpresa.has(o.entidad_id)) return;
+    if (o.activa === false) return;
+    const a = respPorEmp.get(o.entidad_id) || { quienes: new Map<string, Quien>(), huerfanas: 0 };
+    const q = o.responsable ? quienDe.get(o.responsable) : null;
+    if (q) a.quienes.set(o.responsable, q);
+    else a.huerfanas++;   // sin encargado, o con uno cuya cuenta se apagó
+    respPorEmp.set(o.entidad_id, a);
+  });
+
   const resumen = new Map<string, FilaObl>();
   const res = { declarados: 0, vencidos: 0, porVencer: 0, sinFecha: 0, total: 0, inactivos: 0 };
   periodosCrudos.forEach((p: any) => {
@@ -279,6 +304,21 @@ export default async function ObligacionesPage({ searchParams }: {
       a.ultima = p.registrado_en;
       a.ultimaPor = quienDe.get(p.declarado_por) || null;
     }
+    resumen.set(eid, a);
+  });
+  /* Se vuelca DESPUÉS del bucle de periodos: `respPorEmp` no depende de ellos,
+     y meterlo dentro lo recalcularía una vez por periodo. */
+  respPorEmp.forEach((r, eid) => {
+    /* Si no hay fila es que esa empresa no tiene NI UN periodo generado. Se
+       crea igual: son justo las que dicen «sin periodos · nunca», y saber a
+       quién avisarle de que hay que generarlos es lo único accionable que
+       tiene esa fila. Dejarla muda sería esconder el dato donde más falta. */
+    const a = resumen.get(eid) || {
+      empresaId: eid, vencidos: 0, porVencer: 0, declarados: 0, total: 0,
+      inactivos: 0, ultima: null, ultimaPor: null,
+    };
+    a.responsables = [...r.quienes.values()];
+    a.sinResponsable = r.huerfanas;
     resumen.set(eid, a);
   });
   const vencidos = res.vencidos;

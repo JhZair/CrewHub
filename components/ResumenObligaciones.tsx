@@ -39,6 +39,13 @@ export type FilaObl = {
   /** Cuándo se apuntó el último periodo en CrewHub, y quién. */
   ultima?: string | null;
   ultimaPor?: Quien | null;
+  /** A quién se le avisa. Es un CONJUNTO porque cada obligación tiene el suyo
+   *  y en una empresa pueden ser dos; aplanarlo a uno obligaría a elegir cuál
+   *  mentir. Solo cuenta lo activo: lo apagado no avisa a nadie. */
+  responsables?: Quien[];
+  /** Obligaciones activas SIN encargado. No es un cero cualquiera: el aviso de
+   *  vencimiento abre un caso y ese caso no tiene a quién asignárselo. */
+  sinResponsable?: number;
 };
 
 export default function ResumenObligaciones({ empresas, logos, filas, href }: {
@@ -88,6 +95,7 @@ export default function ResumenObligaciones({ empresas, logos, filas, href }: {
         <span style={{ textAlign: "right" }}>Vencidos</span>
         <span style={{ textAlign: "right" }}>Por vencer</span>
         <span style={{ textAlign: "right" }}>Declarados</span>
+        <span title="A quién avisa CrewHub cuando algo está por vencer">Responde</span>
         <span>Último apunte</span>
       </div>
 
@@ -131,6 +139,28 @@ export default function ResumenObligaciones({ empresas, logos, filas, href }: {
               title={ok ? "Al día: todo lo que había que declarar está declarado" : undefined}>
               {ok && <span aria-label="al día">✅ </span>}
               {f.total ? `${f.declarados} de ${f.total}` : <i style={{ color: "var(--dim)" }}>sin periodos</i>}
+            </span>
+            {/* ── A QUIÉN SE LE AVISA ──
+                «Último apunte» dice quién tocó esto la última vez, que NO es lo
+                mismo que quién responde: Wilfredo puede haber importado las
+                declaraciones de una empresa que lleva Katy. Son dos preguntas
+                distintas y hasta ahora la tabla solo contestaba una.
+                Y lo importante no son las caras: es el «⚠ N sin responsable».
+                Cuando algo vence, `rondaObligaciones` abre un caso y se lo
+                asigna al encargado — sin encargado, el caso nace huérfano y no
+                le suena a nadie. Esa es la fila que hay que arreglar. */}
+            <span className="res-obl-resp">
+              {(f.responsables || []).map((q, i) => (
+                <Firma key={i} quien={q} size={16} />
+              ))}
+              {!!f.sinResponsable && (
+                <span className="obl-sin-resp" title="Cuando una de estas obligaciones venza, el aviso se abrirá sin nadie a quien pedírselo">
+                  ⚠ {f.sinResponsable} sin responsable
+                </span>
+              )}
+              {!f.responsables?.length && !f.sinResponsable && (
+                <i style={{ color: "var(--dim)" }}>—</i>
+              )}
             </span>
             {/* Cuándo se tocó por última vez. Una empresa al día y una que
                 nadie mira desde marzo se ven igual en las tres columnas de la
