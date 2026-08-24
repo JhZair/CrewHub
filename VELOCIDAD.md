@@ -634,6 +634,65 @@ pintar la pantalla entera.** Es el §1, y ya no compite con nada.
 
 ---
 
+## §1 — MEDIDO DESPUÉS: de cuatro acciones a una
+
+```
+Acciones de servidor: 2 · suma 3020 ms      (1365 + 1655)
+```
+
+Dos acciones para DOS navegaciones: **una por navegación**, donde antes eran
+cuatro encoladas sumando 4772 ms. Cada una tarda ahora ~1500 ms en vez de
+4×1200.
+
+**Es el mayor ahorro de toda la revisión: unos 3,3 segundos por navegación**, en
+las 34 pantallas. Y no se ve en el reloj de la página: ocurre *después* de que
+la pantalla ya está pintada, así que lo que arregla es esa sensación de que el
+sistema sigue trabajando cuando ya llegaste.
+
+### Las medianas, otra vez dentro del ruido
+
+```
+/manifest.webmanifest   161 ms
+/tablero               2437 ms   (antes 2010)
+/                      2387 ms   (antes 2015)
+```
+
+Las dos subieron ~20 %, que es exactamente el margen del instrumento. **No dice
+nada**, ni bueno ni malo — y esta vez además se midieron mientras la página
+lanzaba dos docenas de precargas, así que hay contención de por medio.
+
+### Lo que se ve que queda
+
+En esa misma tabla hay **24 precargas de `/entidad/persona/<uuid>`**: los
+enlaces de cada ficha de la lista. Con `loading` ausente Next no renderiza la
+página al precargar, así que cada una es barata — pero son 24 invocaciones de
+función por abrir un listado. Es el mismo `prefetch={false}` de §0, aplicado a
+los enlaces de fila de los listados y a los chips de entidad de las tarjetas del
+tablero (`components/Tablero.tsx:222`).
+
+---
+
+## RESUMEN DE LA RONDA
+
+| Frente | Antes | Después |
+|---|---|---|
+| §0 · precargas al abrir `/personas` | 53 peticiones | **15** |
+| §4 · portada, esperas encadenadas | 16 | **6** |
+| §4b · `/tablero`, esperas | 13 | **6** |
+| §4b · `/tablero`, mediana | 2844 ms | **~2000-2400 ms** |
+| §1 · acciones por navegación | 4 · 4772 ms | **1 · ~1500 ms** |
+
+Lo que quedó descartado por medición, no por opinión: la región (suelo 195 ms),
+el volumen de datos (12 MB de base entera), los bytes al navegador (77 kB con
+caché caliente) y la teoría del pool de PostgREST.
+
+Lo que queda vivo: los `prefetch={false}` que faltan, el realtime del banco
+(§2), el zócalo de ~560 ms que paga cada pantalla, y el techo de 1000 filas de
+`actividad` — que no es velocidad, es corrección, y sigue sin comprobarse el
+ajuste **Max rows**.
+
+---
+
 ## Orden de ataque — revisado tras medir
 
 0. **Comprobar Max rows** en Supabase → Settings → API. Dos minutos. Decide si
