@@ -48,6 +48,18 @@ export type FilaObl = {
   sinResponsable?: number;
 };
 
+/* «jul 2021». El mes y el año bastan para recorrer quince filas con la vista;
+   el día exacto vive en el `title`, que es donde se comprueba y no donde
+   estorba. Se construye a mano y no con `toLocaleDateString` porque la fecha
+   viene como 'YYYY-MM-DD' y pasarla por `new Date()` la corre un día en zonas
+   al oeste de Greenwich — el mismo bicho que ya costó una ronda en lib/fechas. */
+const MES_CORTO = ["ene", "feb", "mar", "abr", "may", "jun",
+  "jul", "ago", "sep", "oct", "nov", "dic"];
+const mesAnio = (f: string) => {
+  const m = /^(\d{4})-(\d{2})/.exec(String(f || ""));
+  return m ? `${MES_CORTO[Number(m[2]) - 1]} ${m[1]}` : "";
+};
+
 export default function ResumenObligaciones({ empresas, logos, filas, href }: {
   empresas: EmpresaPropia[];
   logos?: Record<string, string>;
@@ -120,6 +132,26 @@ export default function ResumenObligaciones({ empresas, logos, filas, href }: {
                   por qué esa fila está en cero, no un dato que se compare
                   con el de al lado. */}
               {m && <span className="res-obl-motivo" title={m.ayuda}>{m.txt}</span>}
+              {/* ── DESDE CUÁNDO EXISTE ──
+                  Es el denominador de toda la fila: explica por qué una empresa
+                  tiene 63 periodos y otra 5 sin que eso signifique que alguien
+                  se descuidó. Va pegada al nombre y apagada porque es identidad,
+                  no una cifra que se compare con la de al lado.
+                  Y su ausencia se dice: sin fecha de constitución, la generación
+                  de periodos arranca «hace un año» —un suelo inventado— así que
+                  el «N de N» de esa fila puede estar contando de menos sin que
+                  nada más lo delate. */}
+              {e.fecha_constitucion ? (
+                <span className="res-obl-desde"
+                  title={`Constituida el ${fechaLarga(e.fecha_constitucion)}`}>
+                  desde {mesAnio(e.fecha_constitucion)}
+                </span>
+              ) : (
+                <span className="res-obl-desde res-obl-desde-falta"
+                  title="Sin fecha de constitución cargada. Los periodos se generan desde hace un año, así que puede faltar historia sin que nada lo avise.">
+                  ⚠ sin constitución
+                </span>
+              )}
               {/* Lo apagado no suma al semáforo, pero se ve: si aquí dice «⏸ 2»
                   y alguien esperaba dos declaraciones, el bloque está apagado
                   por error y esta es la única pista que lo delata. */}

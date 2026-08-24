@@ -5276,3 +5276,12 @@ mark.bq-marca{
    pero tampoco puede verse igual que uno puntual. El tono es la diferencia
    entre «a tiempo» y «no se sabe». */
 .obl-fecha.sin-plazo{color:var(--dim)}
+
+/* Desde cuándo existe la empresa, pegado a su nombre en el resumen de
+   obligaciones. Apagado y sin borde: es identidad, no un dato que se compare
+   con el de la fila de al lado — el borde lo convertiría en otra etiqueta más
+   compitiendo con el motivo y el «sin vigilar», que sí son excepciones. */
+.res-obl-desde{font-size:10px;color:var(--dim);white-space:nowrap;cursor:help}
+/* Que FALTE sí es una excepción: sin constitución, la generación arranca en un
+   suelo inventado y la cuenta de esa fila puede estar corta. */
+.res-obl-desde-falta{color:var(--yellow)}
