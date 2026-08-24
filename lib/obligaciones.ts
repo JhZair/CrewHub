@@ -228,6 +228,27 @@ export function resumenPeriodos(ps: (PeriodoMin & { clase?: string })[], o: OblM
     pendientes, sinFecha, tarde, inactivos };
 }
 
+/* ── ¿ESTÁ AL DÍA? ──
+ *
+ * Todo lo que había que declarar, declarado. Ni vencidos, ni por vencer, ni
+ * pendientes escondidos: `declarados === total` los cubre a los tres, porque
+ * `total` ya descuenta lo apagado. Las tres condiciones se escriben igual para
+ * que la frase se lea sola y para que quitar una sea una decisión visible.
+ *
+ * ⚠ `total > 0` NO es un detalle. Una empresa sin un solo periodo cargado
+ * cumple «declarados === total» —cero de cero— y pintarle un ✅ sería la peor
+ * mentira posible: decir «todo en orden» sobre algo que nadie ha configurado.
+ * Un cero aquí no es un cero, es «no lo sé», y la pantalla ya tiene palabras
+ * para eso («sin periodos», «nunca»).
+ *
+ * Una obligación APAGADA no rompe el al día: no había que declararla. Pero la
+ * fila sigue enseñando su «⏸ N sin vigilar» al lado, que es lo que delata un
+ * bloque apagado por error. El ✅ dice «lo que se vigila está al día», no
+ * «aquí no hay nada que mirar». */
+export function alDia(r: { total: number; declarados: number; vencidos: number; porVencer: number }) {
+  return r.total > 0 && r.declarados === r.total && r.vencidos === 0 && r.porVencer === 0;
+}
+
 /* ── EL RESULTADO DEL MES SE CALCULA, NO SE TECLEA ──
  *
  * En la tabla de SeaTable esta columna se llenaba sola, con tres columnas

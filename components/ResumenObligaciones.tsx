@@ -2,7 +2,7 @@ import Link from "@/components/Enlace";
 import Avatar from "@/components/Avatar";
 import Firma, { type Quien } from "@/components/Firma";
 import { haceDias, fechaLarga, fechaHoraLima } from "@/lib/fechas";
-import { motivoNoDeclara, META_SIT } from "@/lib/obligaciones";
+import { motivoNoDeclara, META_SIT, alDia } from "@/lib/obligaciones";
 import type { EmpresaPropia } from "@/lib/empresasPropias";
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -94,6 +94,15 @@ export default function ResumenObligaciones({ empresas, logos, filas, href }: {
       {orden.map(e => {
         const f = filas.get(e.id) || vacio;
         const m = motivoNoDeclara(e);
+        /* ── EL ✅ DE «AL DÍA» ──
+           La columna de declarados ya dice «29 de 29», pero para saber si eso
+           está completo hay que comparar dos números en cada fila, quince
+           veces. El ✅ contesta de un vistazo lo que la columna obliga a
+           calcular.
+           NO se pinta en las que hoy no declaran (sin RUC, en cierre): esa fila
+           ya dice por qué está en cero, y un «al día» encima sería una segunda
+           afirmación que contradice a la primera. */
+        const ok = !m && alDia(f);
         return (
           <Link key={e.id} href={href(e.id)} className={`res-emp-fila${m ? " fila-tenue" : ""}`}>
             <span className="res-emp-nom">
@@ -118,7 +127,9 @@ export default function ResumenObligaciones({ empresas, logos, filas, href }: {
             <span style={{ textAlign: "right", color: f.porVencer ? "var(--yellow)" : "var(--dim)", fontWeight: f.porVencer ? 700 : 400 }}>
               {f.porVencer || "—"}
             </span>
-            <span style={{ textAlign: "right", color: "var(--muted)" }}>
+            <span style={{ textAlign: "right", color: ok ? "var(--green)" : "var(--muted)" }}
+              title={ok ? "Al día: todo lo que había que declarar está declarado" : undefined}>
+              {ok && <span aria-label="al día">✅ </span>}
               {f.total ? `${f.declarados} de ${f.total}` : <i style={{ color: "var(--dim)" }}>sin periodos</i>}
             </span>
             {/* Cuándo se tocó por última vez. Una empresa al día y una que
