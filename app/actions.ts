@@ -1069,7 +1069,11 @@ export async function casoDeRendicion(tabla: string, filaId: string) {
 
   /* ¿Ya hay caso, y sigue VIVO? Uno archivado o descartado no cuenta: la fila
      quedaría atada para siempre a algo que no aparece en ningún tablero, y el
-     botón no ofrecería abrir otro. Misma regla que los compromisos del acta. */
+     botón no ofrecería abrir otro. Misma regla que los compromisos del acta.
+     ⚠ La LISTA hace esta misma pregunta con `casoVivo` (lib/rendicionHilo).
+     Son dos formas de la regla —aquí una consulta, allí un predicado sobre la
+     fila ya traída— y tienen que decir lo mismo. Durante un tiempo no lo
+     dijeron: la lista enseñaba los muertos y esta rama era inalcanzable. */
   const ya = (fila as any).caso_id as string | null;
   if (ya) {
     const { data: vive } = await supabase.from("publicaciones")

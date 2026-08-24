@@ -27,6 +27,18 @@ export const TABLAS_RENDICION: TablaRendicion[] =
   ["comprobante", "estado_cuenta", "rhe", "gasto_dj", "movimiento_banco",
     "obligacion_periodo"];
 
+/* ── QUÉ CASO CUENTA ──
+ * Uno archivado o descartado no ata la fila: dejarlo contar significaría que
+ * un periodo que tuvo un problema en 2024 no puede abrir otro nunca más.
+ * ⚠ `casoDeRendicion` (app/actions.ts) hace esta misma pregunta como CONSULTA
+ * —`.is("archivado_en", null).neq("estado", "descartada")`— porque allí se
+ * pregunta por una fila que aún no se ha traído. Son dos formas de la misma
+ * regla y tienen que decir lo mismo: si una cambia, la otra también.
+ * Sin `c` no hay caso que enseñar: el `caso_id` apunta a algo borrado, y un
+ * enlace a ninguna parte es peor que ningún enlace. */
+export const casoVivo = (c?: { estado?: string | null; archivado_en?: string | null } | null) =>
+  !!c && !c.archivado_en && c.estado !== "descartada";
+
 const soles = (n: any) =>
   "S/ " + Number(n || 0).toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -295,12 +307,22 @@ export async function hilosDeFilas(
      tiene caso, que es la inmensa mayoría. Filtrar además por varios cientos
      de ids era pagar por acotar algo ya acotado. */
   const qCasos = supabase.from(tabla)
-    .select(`id,caso_id,caso:publicaciones(estado,tipo)`)
+    .select(`id,caso_id,caso:publicaciones(estado,tipo,archivado_en)`)
     .not("caso_id", "is", null);
   const { data: cs } = await (opciones?.todas ? qCasos : qCasos.in("id", ids));
   (cs || []).forEach((r: any) => {
     const c = Array.isArray(r.caso) ? r.caso[0] : r.caso;
-    if (r.caso_id) casos.set(r.id, { id: r.caso_id, estado: c?.estado, tipo: c?.tipo });
+    /* ── SOLO LOS VIVOS, IGUAL QUE AL CREARLOS ──
+       Aquí se enseñaba cualquier `caso_id`, y `casoDeRendicion` en cambio ya
+       ignora los archivados y descartados —«la fila quedaría atada para
+       siempre a algo que no aparece en ningún tablero»—. Dos criterios para lo
+       mismo, y el peor de los dos ganaba: la fila mostraba «📋 caso» apuntando
+       a un caso muerto, y como el botón de crear solo aparece cuando NO hay
+       caso, la regla del servidor era inalcanzable. Un caso descartado dejaba
+       esa fila sin poder abrir otro nunca. */
+    if (r.caso_id && casoVivo(c)) {
+      casos.set(r.id, { id: r.caso_id, estado: c?.estado, tipo: c?.tipo });
+    }
   });
 
   const err = eC || eR;
