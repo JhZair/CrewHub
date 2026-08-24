@@ -79,17 +79,18 @@ export default async function PulsoPage({ searchParams }: {
         la consulta y no por una regla. Es el mismo fallo que documenta
         db/franjas-actividad.sql, donde una semana entera desapareció del mes.
 
-     2. Y filtraba `entidad_tipo = 'publicacion'` en SINGULAR, cuando el trigger
-        de garantía escribe el nombre de la tabla —'publicaciones', plural— y es
-        el trigger quien registra las creaciones y los cambios de estado. Las
-        tres columnas de la matriz se calculaban sobre las filas equivocadas.
-        Este mismo archivo ya tenía el bicho identificado y arreglado en otro
-        contador («estaba en CERO permanente y sin parecerlo»); el de la matriz,
-        que es el que se mira, se quedó sin arreglar.
+     2. Sospeché además que el filtro `entidad_tipo = 'publicacion'` en singular
+        se estaba dejando fuera lo que escribe el trigger, que usa el nombre de
+        la tabla en plural. Era razonable y era FALSO: de las 3.568 filas de
+        actividad sobre publicaciones, el 100 % está en singular. El filtro no
+        perdía nada. `pulso_mes` pregunta por las dos grafías igualmente —no
+        cuesta nada y cubre el día en que alguna llegue en plural—, pero eso no
+        arreglaba ningún cero. Queda escrito para no repetir la conclusión.
 
-     `pulso_mes` agrupa por persona y día de una pasada, con las DOS grafías, y
-     devuelve decenas de filas de conteos en vez de miles de filas de datos. Ya
-     no hay techo que sortear ni orden del que depender.
+     `pulso_mes` agrupa por persona y día de una pasada y devuelve decenas de
+     filas de conteos en vez de miles de filas de datos. Ya no hay techo que
+     sortear ni orden del que depender — y ESO sí era el problema: un mes ronda
+     las mil quinientas filas contra un techo de mil.
      ══════════════════════════════════════════════════════════════════════════ */
   /* ⚠ LA VENTANA VA EN LIMA, COMO EL DÍA QUE DEVUELVE LA FUNCIÓN.
      `inicioMes.toISOString()` da medianoche del SERVIDOR —UTC en producción—,

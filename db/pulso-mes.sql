@@ -13,20 +13,23 @@
 --  semana del 10 de julio desapareció entera de la silueta al cambiar un
 --  filtro. Allí se arregló contando en la base; aquí quedó pendiente.
 --
---  ── 2. LA MATRIZ NO CONTABA NI UN SOLO CIERRE ──
---  La consulta filtraba `entidad_tipo = 'publicacion'`, en singular. Pero el
---  trigger de garantía de db/schema.sql escribe `tg_table_name`, o sea
---  'publicaciones' EN PLURAL — y es el trigger quien escribe los eventos de
---  creación y de cambio de estado.
+--  ── 2. LAS DOS GRAFÍAS: LA SOSPECHA ERA RAZONABLE Y ERA FALSA ──
+--  La consulta filtraba `entidad_tipo = 'publicacion'` en singular, y el
+--  trigger de garantía de db/schema.sql escribe `tg_table_name`, que sería
+--  'publicaciones' en plural. Con ese razonamiento di por hecho que la matriz
+--  no contaba ni un solo cierre, y lo escribí aquí antes de comprobarlo.
 --
---  O sea que las tres columnas del pulso —creó, cerró, avanzó— se estaban
---  calculando sobre las filas equivocadas. El propio archivo ya tenía este
---  bicho identificado y arreglado en OTRO contador, dos bloques más abajo:
---  «este segundo contador estaba en CERO permanente y sin parecerlo». El de
---  la matriz, que es el que se mira, se quedó sin arreglar.
+--  **La medición dice que no.** De las 3.568 filas de actividad sobre
+--  publicaciones, el 100 % está en SINGULAR: 885 de estado, 520 de creado,
+--  809 de comentario, ninguna en plural. El filtro no se dejaba nada.
 --
---  Aquí se preguntan las DOS grafías, que es lo que hace `grafiasDe` en la
---  aplicación. Un filtro por una sola no da error: da un cero.
+--  Se pregunta igual por las dos, pero por lo que valen: no cuesta nada y
+--  cubre el día en que alguna llegue en plural —el trigger puede escribirlas—
+--  sin que nadie se entere. Lo que NO es cierto es que estuviera arreglando un
+--  cero: eso queda escrito para que el siguiente no repita la conclusión.
+--
+--  Lección: la explicación que encaja con el código no es la explicación. Los
+--  datos estaban a una consulta de distancia.
 --
 --  Correr en Supabase → SQL Editor. Idempotente.
 -- ════════════════════════════════════════════════════════════════════════
