@@ -1810,25 +1810,41 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
        la actividad se registra contra el usuario, no contra la persona.
        Mismas definiciones que /pulso, para no tener dos verdades. */
     if (ent.usuario_id) {
-      const [ev, viv, co] = await Promise.all([
-        supabase.from("actividad")
-          .select("tipo,detalle,creado_en").eq("entidad_tipo", "publicacion")
-          .eq("actor_id", ent.usuario_id).limit(4000),
+      const [ev, viv, co, ult] = await Promise.all([
+        /* ⚠ ESTO ERA UNA COPIA DEL FALLO DE /pulso, Y EL COMENTARIO DE ARRIBA
+           LO PROMETÍA AL REVÉS («mismas definiciones, para no tener dos
+           verdades»). Traía la actividad de una persona con `.limit(4000)`
+           —techo real: 1000, y una persona activa ya pasa de mil— y filtraba
+           `entidad_tipo = 'publicacion'` en singular, cuando el trigger escribe
+           el nombre de la tabla en plural. O sea: cortada por arriba y contando
+           sobre las filas equivocadas.
+           Ahora es la MISMA función que /pulso, con el filtro por persona.
+           Una verdad, contada en la base, sin techo que sortear. */
+        supabase.rpc("pulso_mes", {
+          p_desde: "1970-01-01T00:00:00Z", p_hasta: new Date().toISOString(),
+          p_actor: ent.usuario_id,
+        }),
         supabase.from("publicaciones").select("fecha_limite")
           .eq("responsable", ent.usuario_id)
           .in("estado", ["abierta", "en_progreso", "seguimiento", "en_pausa"])
           .is("archivado_en", null).limit(500),
         supabase.from("comentarios").select("id", { count: "exact", head: true })
           .eq("autor_id", ent.usuario_id),
+        /* Su último movimiento. Salía de recorrer las cuatro mil filas buscando
+           el máximo; ahora se pide UNA fila ordenada, que es lo que hace falta
+           para saber cuál es la última. */
+        supabase.from("actividad").select("creado_en")
+          .in("entidad_tipo", grafiasDe("publicacion"))
+          .eq("actor_id", ent.usuario_id)
+          .order("creado_en", { ascending: false }).limit(1).maybeSingle(),
       ]);
       const hoyStr = hoyLima();
-      let cerr = 0, creo = 0, ultimo = "";
-      (ev.data || []).forEach((e: any) => {
-        const det: any = e.detalle || {};
-        if (e.tipo === "creado") creo++;
-        else if (e.tipo === "estado" && det.campo === "estado" && det.a === "resuelta") cerr++;
-        if (e.creado_en > ultimo) ultimo = e.creado_en;
+      let cerr = 0, creo = 0;
+      ((ev.data || []) as any[]).forEach(r => {
+        creo += Number(r.creo) || 0;
+        cerr += Number(r.cerr) || 0;
       });
+      const ultimo = (ult.data as any)?.creado_en || "";
       pulso = {
         cerr, creo, ultimo,
         coments: co.count || 0,
@@ -3430,7 +3446,13 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                         plantillas={plantillas} tipoProyecto={(postCtx?.proy as any)?.tipo || ""}
                         etapas={etapasDe((postCtx?.conv as any)?.categoria)}
                         postulado={ent.cronograma_postulado || null}
-                        postuladoEn={ent.cronograma_postulado_en || null} />
+                        postuladoEn={ent.cronograma_postulado_en || null}
+                        /* Ganada, lo de aquí es la FOTO; lo vivo vive en el
+                           fondo. Sin foto fijada no se activa: enseñar «no hay
+                           cronograma» cuando sí lo hay sería peor que enseñar
+                           el de ejecución mal rotulado. */
+                        soloFoto={esGanadora && !!(ent.cronograma_postulado as any)?.length}
+                        hrefEjecucion={`/fondo/${params.id}`} />
                     </Plegable>
                   </div>
                   <div style={{ scrollMarginTop: 12 }}>

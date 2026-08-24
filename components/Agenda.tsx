@@ -260,7 +260,14 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, perfilDe, apa
             /* Acceso rápido al cronograma: el título del proyecto/convocatoria
                enlaza a su ficha (donde vive el cronograma completo). La flecha
                ▾ sigue siendo solo el plegar. Casos no tiene ficha → sin link. */
-            const hrefGrupo = gid.startsWith("postu:") ? `/entidad/postulacion/${gid.slice(6)}`
+            /* Un grupo `postu:` en la agenda es un FONDO EN EJECUCIÓN —las
+               postulaciones en concurso no llegan aquí, ver app/agenda/page.tsx—
+               así que el enlace va a su ejecución y no al expediente: el
+               cronograma que se está viendo es el del fondo, y el expediente
+               enseña la foto de lo postulado, que es otra cosa.
+               `#audiovisual` abre la pestaña donde vive ese cronograma; sin el
+               ancla se aterriza en Financiera y hay que buscarlo. */
+            const hrefGrupo = gid.startsWith("postu:") ? `/fondo/${gid.slice(6)}#audiovisual`
               : gid.startsWith("p:") ? `/entidad/proyecto/${gid.slice(2)}`
               : gid.startsWith("c:") ? `/entidad/convocatoria/${gid.slice(2)}` : null;
             const titulo = gid === "__casos__" ? "🗂 Casos" : `📁 ${g.label}`;

@@ -24,6 +24,7 @@ const fmt = (s: string | null) => s
 
 export default function CronogramaPostulacion({
   postulacionId, actividades, perfiles, plantillas, tipoProyecto, etapas = ETAPAS_CINE, postulado, postuladoEn, ocultarFijar = false,
+  soloFoto = false, hrefEjecucion,
 }: {
   postulacionId: string;
   actividades: any[];
@@ -37,12 +38,29 @@ export default function CronogramaPostulacion({
   /* En el fondo, las versiones las maneja el panel de arriba: se oculta la foto
      única y `postulado` es la versión VIGENTE. */
   ocultarFijar?: boolean;
+  /* ── UNA POSTULACIÓN GANADORA ENSEÑA LA FOTO, NO LAS FILAS VIVAS ──
+     Mientras se postula, las filas vivas SON lo postulado y esta pantalla
+     acierta enseñándolas. Ganado el fondo dejan de serlo: se siguen editando
+     durante los años de ejecución —se reprograma, se corren fechas, se pide
+     prórroga— y entonces enseñarlas bajo el rótulo «Cronograma postulado» es
+     enseñar la ejecución diciendo que es la propuesta.
+     Pasó el 24/08/2026 con PO-003: hasta ese día las filas vivas de la
+     postulación eran, por casualidad, las postuladas. Al deduplicar su
+     cronograma pasaron a ser las de ejecución y la pantalla empezó a mentir
+     sin cambiar una línea de código.
+     Con esto en true se pinta la FOTO —que no cambia— y se manda al fondo por
+     lo vivo. Requiere que la foto exista. */
+  soloFoto?: boolean;
+  /** A dónde ir por el cronograma vivo. Solo se usa con `soloFoto`. */
+  hrefEjecucion?: string;
 }) {
   const refNombre = ocultarFijar ? "la versión vigente" : "lo postulado";
   const ETAPA_ORDEN = etapas.map(e => e.clave);
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState("");
   const [verFoto, setVerFoto] = useState(false);
+  /* En modo foto no hay nada que desplegar: la foto ES el contenido. */
+  const laFotoMandaAqui = soloFoto && !!postulado?.length;
   /* Rehacer la foto es destructivo y no tiene deshacer: la anterior no se
      guarda en ningún sitio. Un clic no puede bastar. */
   const [confirmaRehacer, setConfirmaRehacer] = useState(false);
@@ -82,7 +100,7 @@ export default function CronogramaPostulacion({
   return (
     <div>
       {/* ===== Barra de estado de la foto (oculta en el fondo: versiones arriba) ===== */}
-      {!ocultarFijar && (
+      {!ocultarFijar && !laFotoMandaAqui && (
         <div className="card" style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
           <div style={{ flex: 1, minWidth: 200 }}>
             <b style={{ fontSize: 13 }}>📸 Cronograma postulado</b>
@@ -166,10 +184,12 @@ export default function CronogramaPostulacion({
       )}
 
       {/* ===== La foto, como tabla para copiar al formato DAFO ===== */}
-      {postulado && verFoto && (
+      {postulado && (verFoto || laFotoMandaAqui) && (
         <div className="card" style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 12, color: "var(--dim)", marginBottom: 8 }}>
-            Lo que se presentó — para copiar a la tabla de cronograma del formulario DAFO:
+            {laFotoMandaAqui
+              ? "Lo que se presentó a DAFO — la foto de con qué se ganó. No cambia."
+              : "Lo que se presentó — para copiar a la tabla de cronograma del formulario DAFO:"}
           </div>
           {fotoPorEtapa.map(g => (
             /* Mismo color de etapa que en el cronograma vivo: es la misma
@@ -194,9 +214,22 @@ export default function CronogramaPostulacion({
       )}
 
       {/* ===== El cronograma VIVO (editable) ===== */}
-      <CronogramaProyecto dueno="postulacion" duenoId={postulacionId}
-        actividades={actividades} perfiles={perfiles}
-        plantillas={plantillas} tipoProyecto={tipoProyecto} etapas={etapas} />
+      {laFotoMandaAqui ? (
+        /* Las filas vivas existen y son válidas, pero son las de la EJECUCIÓN:
+           su sitio es el fondo. Aquí solo se dice dónde están y cuántas son —
+           callarlo haría pensar que la foto es todo lo que hay. */
+        <div style={{ color: "var(--dim)", fontSize: 12, padding: "10px 12px" }}>
+          El cronograma que se ejecuta —{actividades.filter(a => a.estado !== "cancelada").length} actividades,
+          con sus cambios y su historial de versiones— vive en la ejecución del fondo.
+          {hrefEjecucion && (
+            <> <a href={hrefEjecucion} style={{ color: "var(--accent)", fontWeight: 600 }}>Abrirlo →</a></>
+          )}
+        </div>
+      ) : (
+        <CronogramaProyecto dueno="postulacion" duenoId={postulacionId}
+          actividades={actividades} perfiles={perfiles}
+          plantillas={plantillas} tipoProyecto={tipoProyecto} etapas={etapas} />
+      )}
     </div>
   );
 }

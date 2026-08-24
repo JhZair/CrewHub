@@ -35,7 +35,7 @@ export default async function AgendaPage() {
          después de algo de Preproducción. */
       .select("id,nombre,fecha_inicio,fecha_fin,etapa,estado,responsable,equipo,publicacion_id,orden,creado_en," +
         "proy:proyectos(id,nombre,nombre_corto),conv:convocatorias(id,codigo,nombre,categoria)," +
-        "postu:postulaciones(id,codigo,estado,conv:convocatorias(categoria))")
+        "postu:postulaciones(id,codigo,estado,proy:proyectos(nombre,nombre_corto),conv:convocatorias(categoria))")
       .neq("estado", "cancelada").not("fecha_inicio", "is", null),
     supabase.from("publicaciones")
       .select("id,titulo,tipo,estado,fecha_limite,responsable,creado_en")
@@ -90,13 +90,26 @@ export default async function AgendaPage() {
     const grupo = proy ? { id: `p:${proy.id}`, label: proy.nombre_corto || proy.nombre }
       /* Ya solo llegan ganadoras, así que esto es un FONDO EN EJECUCIÓN. El
          🎬 es el mismo icono con que /fondos las llama, para que la agenda no
-         invente un vocabulario propio. */
-      : postu ? { id: `postu:${postu.id}`, label: `🎬 ${postu.codigo || "Fondo"}` }
+         invente un vocabulario propio.
+         Y el código va con el NOMBRE del proyecto: «PO-001» a secas no dice de
+         qué es, y en una agenda donde los demás grupos se llaman «Linderaje» o
+         «SanEsteban», un código suelto obliga a recordar de memoria cuál era.
+         El nombre sale por la postulación porque estas filas ya no cuelgan de
+         un proyecto: su `proyecto_id` es null desde que el cronograma del fondo
+         vive en su postulación. */
+      : postu ? {
+          id: `postu:${postu.id}`,
+          label: [`🎬 ${postu.codigo || "Fondo"}`,
+                  (postu.proy as any)?.nombre_corto || (postu.proy as any)?.nombre]
+                 .filter(Boolean).join(" · "),
+        }
       : conv ? { id: `c:${conv.id}`, label: [conv.codigo, conv.nombre].filter(Boolean).join(" · ") }
       : { id: "sin", label: "Sin proyecto" };
     const href = a.publicacion_id ? `/caso/${a.publicacion_id}`
       : proy ? `/entidad/proyecto/${proy.id}`
-      : postu ? `/fondo/${postu.id}`
+      /* Mismo destino que el título del grupo: la pestaña donde está el
+         cronograma, no la portada del fondo. */
+      : postu ? `/fondo/${postu.id}#audiovisual`
       : conv ? `/entidad/convocatoria/${conv.id}` : "#";
     return {
       id: a.id, kind: "act", titulo: a.nombre,
