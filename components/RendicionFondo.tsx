@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
-import { masMeses, PLAZO_MESES } from "@/lib/plazoFondo";
+import { faltanEstados, textoFaltan } from "@/lib/estadosCuenta";
+import { hoyLima } from "@/lib/fechas";
 import { useRouter } from "next/navigation";
 import {
   guardarEstadoCuenta, borrarEstadoCuenta, guardarRhe, fijarEjesRhe, fijarEjesRheLote, borrarRhe,
@@ -84,12 +85,15 @@ const fechaSubido = (iso?: string | null) => {
 
 
 export default function RendicionFondo({
-  postulacionId, esAdmin, fechaDesembolso, montoAdjudicado,
+  postulacionId, esAdmin, fechaDesembolso, fechaRendicionReal, montoAdjudicado,
   estados, rhe, empresa, etapas, rubros, personas, userId, hiloError,
 }: {
   postulacionId: string;
   esAdmin: boolean;
   fechaDesembolso: string | null;
+  /** Si el fondo ya rindió, la serie de estados termina ahí y deja de faltar
+      nada. Sin esto, un fondo cerrado seguiría pidiendo meses para siempre. */
+  fechaRendicionReal?: string | null;
   montoAdjudicado: number | null;
   estados: EstadoCuenta[];
   rhe: RheFila[];
@@ -110,6 +114,14 @@ export default function RendicionFondo({
   // Un mes «tiene comprobante» si hay escaneo(s) adjunto(s) o un link de PDF.
   const tieneComprobante = (e: EstadoCuenta) => (e.imagenes?.length || 0) > 0 || !!e.url;
   const conComprobante = estados.filter(tieneComprobante).length;
+  /* ── LO QUE FALTA NO OCUPA ESPACIO EN LA PANTALLA ──
+     Seis meses cargados, cada uno con su saldo correcto, se leen como «al
+     día» aunque falten los dos últimos: el hueco no se ve. Por eso la cuenta
+     se hace contra el CALENDARIO —del desembolso al último mes cerrado, que
+     es lo que pide la cláusula 5.2.3— y no contra lo que hay cargado. */
+  const faltanEc = faltanEstados(
+    estados.map(e => e.periodo), fechaDesembolso, hoyLima(), fechaRendicionReal);
+  const avisoFaltan = textoFaltan(faltanEc);
   const totalRhe = rhe.reduce((s, r) => s + Number(r.monto || 0), 0);
   // Cuántos RHE ya tienen sus dos ejes puestos (lo que hace que la rendición cuadre sola)
   const rheSinEje = rhe.filter(r => !r.etapa || !r.rubro_item).length;
@@ -196,6 +208,21 @@ export default function RendicionFondo({
               <span style={{ marginLeft: 8, fontWeight: 600,
                 color: conComprobante === estados.length ? "var(--green)" : "var(--yellow)" }}>
                 {conComprobante === estados.length ? "✓" : "⚠"} {conComprobante}/{estados.length} compr.
+              </span>
+            )}
+            {/* Un mes que falta EN MEDIO de la serie va en rojo y no en ámbar:
+                que no esté el último significa que aún no lo han subido, pero
+                que no esté uno del medio significa que se dio por completa una
+                serie que no lo estaba. Son dos problemas distintos. */}
+            {avisoFaltan && (
+              <span style={{ marginLeft: 8, fontWeight: 600,
+                color: faltanEc.huecos.length ? "var(--red)" : "var(--yellow)" }}>
+                ⚠ {avisoFaltan}
+              </span>
+            )}
+            {!avisoFaltan && faltanEc.esperados.length > 0 && (
+              <span style={{ marginLeft: 8, fontWeight: 600, color: "var(--green)" }}>
+                ✓ serie completa
               </span>
             )}
           </>

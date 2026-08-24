@@ -1,5 +1,14 @@
-"use server";
-import { createClient } from "@/lib/supabase/server";
+/* ⚠ ESTE FICHERO YA NO ES `"use server"`, y es a propósito.
+   Lo era porque `NavIconos` —un componente de cliente— llamaba a `estadoNav()`
+   directamente. Ya no: el menú pide su parte al zócalo compartido
+   (lib/zocalo.ts), y el único que llama aquí es `estadoGlobal()` en
+   app/actions.ts, que corre en el servidor.
+   Importar una acción de servidor DESDE otra acción de servidor funciona, pero
+   es un patrón que no existía en este repositorio y que depende de cómo Next
+   decida envolver los exports. Un módulo normal no depende de nada de eso: es
+   una función que se llama. Menos magia en el camino más transitado.
+   `NavIconos` sigue usando el TIPO, con `import type`, que se borra al
+   compilar y no arrastra `next/headers` al navegador. */
 import { DIAS_AVISO } from "@/lib/obligaciones";
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -49,10 +58,13 @@ export type EstadoNav = {
 
 const VACIO: EstadoNav = { casilla: 0, caja: false, vencidos: 0, porVencer: 0 };
 
-export async function estadoNav(): Promise<EstadoNav> {
+/* Recibe el cliente y el usuario YA resueltos. Antes verificaba la sesión por
+   su cuenta, y al pasar a correr en paralelo con las otras tres del zócalo eso
+   se volvía una carrera por rotar el mismo refresh token. Como este fichero ya
+   no es `"use server"`, un parámetro aquí no es una puerta abierta: nadie
+   puede llamarlo desde el navegador. */
+export async function estadoNav(supabase: any, user: { id: string }): Promise<EstadoNav> {
   try {
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
     if (!user) return VACIO;
 
     const hoy = hoyLima();

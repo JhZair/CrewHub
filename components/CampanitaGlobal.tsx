@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { misNotificaciones, marcarNotifsLeidas, marcarNotifLeida } from "@/app/actions";
 import { createClient } from "@/lib/supabase/client";
+import { pedirZocalo } from "@/lib/zocalo";
 
 /* Campanita flotante global: aparece en las páginas internas (no en el feed,
    que ya tiene la suya, ni dentro de los paneles del Monitor). Trae las
@@ -35,12 +36,17 @@ export default function CampanitaGlobal() {
 
   useEffect(() => {
     if (oculto || !esTop) return;
-    const cargar = async () => {
-      const r: any = await misNotificaciones();
+    const pintar = (r: any) => {
       setItems(r.items || []); setSinLeer(r.sinLeer || 0); setSinLeerBot(r.sinLeerBot || 0);
       setFaltan(r.faltan || []);
     };
-    cargar();
+    /* En vivo se sigue pidiendo solo lo de aquí: que llegue una notificación no
+       tiene por qué recargar el banco de trabajo ni el menú. */
+    const cargar = async () => pintar(await misNotificaciones());
+    /* Al navegar, en cambio, los tres del zócalo preguntan a la vez — y esto
+       hace que compartan UNA llamada en vez de encolar cuatro POST (4772 ms
+       medidos). Ver lib/zocalo.ts. */
+    pedirZocalo(pathname).then(z => pintar(z.notifs)).catch(() => {});
     const supabase = createClient();
     let vivo = true;
     // Canal síncrono + nombre único por montaje: `createClient` es singleton, un

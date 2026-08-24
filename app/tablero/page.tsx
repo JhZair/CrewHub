@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient, usuarioActual } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import Tablero from "@/components/Tablero";
 import TableroTimeline from "@/components/TableroTimeline";
@@ -64,7 +64,8 @@ export default async function TableroPage({ searchParams }: {
      not null` en vez de `is null`. */
   const arch = searchParams?.arch === "1";
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  // Compartido con `QuienEstaGlobal` del layout: una verificación, no dos.
+  const user = await usuarioActual();
   if (!user) redirect("/login");
 
   /* ── LOS EJES DEL TABLERO ──

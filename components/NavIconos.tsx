@@ -3,7 +3,8 @@ import { usePathname } from "next/navigation";
 import { SECCIONES } from "@/lib/secciones";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { estadoNav, type EstadoNav } from "@/app/nav-acciones";
+import type { EstadoNav } from "@/app/nav-acciones";
+import { pedirZocalo } from "@/lib/zocalo";
 
 /* ── LOS SITIOS QUE NO SON UNA ENTIDAD ──
  *
@@ -86,10 +87,14 @@ export default function NavIconos() {
      sin que ninguna pareciera cara.
      `false` y ceros de arranque para no parpadear: enseñar la caja y quitarla
      medio segundo después se lee como un fallo. */
+  /* Y ahora tampoco es UNA: es un TERCIO de una. `pedirZocalo` comparte la
+     misma llamada con el banco de trabajo y la campanita, que preguntaban lo
+     suyo en el mismo instante. Cuatro POST encolados —4772 ms medidos— pasan a
+     ser uno. Ver lib/zocalo.ts. */
   const [nav, setNav] = useState<EstadoNav>({ casilla: 0, caja: false, vencidos: 0, porVencer: 0 });
   useEffect(() => {
     let vivo = true;
-    estadoNav().then(e => { if (vivo) setNav(e); }).catch(() => {});
+    pedirZocalo(pathname).then(z => { if (vivo) setNav(z.nav); }).catch(() => {});
     return () => { vivo = false; };
   }, [pathname]);
   const casilla = nav.casilla;

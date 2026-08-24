@@ -17,6 +17,7 @@ import VersionesFondo from "@/components/VersionesFondo";
 import { etapasDe, nombreEtapa } from "@/lib/etapas";
 import { rubrosDe, nombreRubro } from "@/lib/rubros";
 import { plazoRendicion, rendicionVencida } from "@/lib/fondos";
+import { plazoFondo, ETIQ_FUENTE, PLAZO_MESES } from "@/lib/plazoFondo";
 import { saldoDJ as calcSaldoDJ } from "@/lib/dj";
 import SaldoDj from "@/components/SaldoDj";
 import Comprobantes from "@/components/Comprobantes";
@@ -26,7 +27,6 @@ import { integrantesDeFondo } from "@/lib/equipoFondo";
 import { urlPlataforma, PLAT } from "@/lib/plataformas";
 import { hilosDeFilas } from "@/lib/rendicionHilo";
 import { gastosDelFondo, ayudaRubro } from "@/lib/ejecutado";
-import { mapaAlias } from "@/lib/personas";
 
 /* ── LA EJECUCIÓN DEL FONDO — la segunda vida de un proyecto ──
  *
@@ -160,7 +160,7 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
          mientras en /comprobantes se ve la cara. El mismo bloque no puede
          enseñar dos cosas distintas según la pantalla. */
       .select("id,tipo,proveedor,ruc,serie,numero,fecha,importe,igv,concepto,etapa,rubro_item,url," +
-        "postulacion_id,creado_en,creado_por,creado:perfiles!creado_por(nombre,avatar_url,color)")
+        "postulacion_id,creado_en,creado:perfiles!creado_por(nombre,avatar_url,color)")
       .eq("postulacion_id", params.id).order("fecha"),
     /* La bitácora inmutable de este fondo. Filtra por el postulacion_id que
        vive dentro del JSON (antes/después), así también captura los borrados. */
@@ -454,6 +454,10 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
 
   // Estado de la ejecución, en una línea.
   const plazo = plazoRendicion(ent);
+  /* El plazo real, decidido en lib/plazoFondo: la prórroga manda sobre el acta,
+     el acta sobre el cálculo, y si el acta y el cálculo no concuerdan se dice
+     en vez de elegir por nadie. */
+  const pz = plazoFondo(ent);
   const vencida = rendicionVencida(ent);
   const estadoEjec = ent.fecha_rendicion_real
     ? { ico: "✅", txt: "Rendido", col: "var(--green)" }
@@ -509,25 +513,38 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
           <Celda k="Acta firmada" v={dmy(ent.fecha_firma_acta)} />
           <Celda k="Desembolso" v={ent.fecha_desembolso ? dmy(ent.fecha_desembolso) : "⚠ falta"}
             alerta={!ent.fecha_desembolso} />
-          {/* ── AQUÍ NO VA UN «PLAZO» DERIVADO ──
-              Había un recuadro «Plazo (1 año)» que salía de sumarle 12 meses al
-              desembolso, y debajo el aviso de que no cuadraba con la fecha del
-              acta. Se quitaron los dos porque la premisa era falsa: el plazo NO
-              es el mismo en todas las actas. La 042-2024-DAFO dice un año; hay
-              actas posteriores que dicen otra cosa. Con el número fijo en el
-              código, cada acta que no fuera de un año producía una alarma
-              permanente sobre una fecha que estaba bien — y una alarma que
-              siempre está encendida enseña a no mirar los avisos.
-              Lo que queda son los dos HECHOS que vienen del acta y que alguien
-              cargó leyéndola: Desembolso y Rinde. La regla del plazo —con su
-              cláusula, que es lo que permite comprobarla— vive en la pestaña
-              Entregables, como fila de clase `plazo`. */}
+          {/* ── EL PLAZO, UN AÑO Y NO DOS ──
+              Aquí decía «Plazo (2 años)» y calculaba desembolso + 2, citando en
+              el comentario la cláusula 7.2 del acta… que dice UN año. Los dos
+              salían de sumarle la prórroga de la 8.1, que no es automática: hay
+              que pedirla antes de vencer, con sustento y documento bancario.
+              Para este fondo eso significaba anunciar 11/09/2026 cuando el
+              plazo vencía el 11/09/2025 — un año de tranquilidad falsa. */}
+          <Celda k={`Plazo (${PLAZO_MESES / 12} año)`}
+            v={pz.limite ? dmy(pz.limite) : "—"}
+            alerta={pz.discrepa} />
           <Celda k="Rinde" v={dmy(plazo)} />
         </div>
+        <div style={{ color: "var(--dim)", fontSize: 11, marginTop: 6 }}>
+          {pz.fuente ? ETIQ_FUENTE[pz.fuente] : "sin plazo: falta la fecha de desembolso o la del acta"}
+          {pz.techoConProrroga && !pz.conProrroga && (
+            <> · con prórroga concedida podría llegar al {dmy(pz.techoConProrroga)} (acta 8.1, hay que solicitarla ANTES de vencer)</>
+          )}
+        </div>
+        {/* Las dos fechas no concuerdan y las dos vienen del mismo acta: una de
+            las dos está mal cargada, y de eso depende si el fondo está en plazo
+            o en incumplimiento. No se elige por él: se dice. */}
+        {pz.discrepa && (
+          <p style={{ color: "var(--yellow)", fontSize: 11.5, margin: "8px 0 0", lineHeight: 1.5 }}>
+            ⚠ El límite cargado ({dmy(ent.fecha_limite_rendicion)}) no coincide con el año del
+            desembolso ({dmy(pz.calculado)}). Los dos deberían salir del acta: revisa cuál está mal
+            antes de fiarte de cualquiera de los dos.
+          </p>
+        )}
         {!ent.fecha_desembolso && (
           <p style={{ color: "var(--yellow)", fontSize: 11.5, margin: "8px 0 0", lineHeight: 1.5 }}>
-            ⚠ Falta la fecha de desembolso — el plazo de ejecución se cuenta desde que el dinero llega a
-            la cuenta, no desde la firma del acta. Se edita en el expediente de postulación.
+            ⚠ Falta la fecha de desembolso — el plazo de un año se cuenta desde que el dinero llega a la
+            cuenta, no desde la firma del acta. Se edita en el expediente de postulación.
           </p>
         )}
       </div>
@@ -602,6 +619,7 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
                 })()}>
                 <RendicionFondo postulacionId={params.id} esAdmin={esAdmin}
                   fechaDesembolso={ent.fecha_desembolso || null}
+                  fechaRendicionReal={ent.fecha_rendicion_real || null}
                   montoAdjudicado={ent.monto_adjudicado ? parseFloat(ent.monto_adjudicado) : null}
                   estados={conHilo(estadosFondo, hEct)} rhe={conHilo(rheFondo, hRhe)}
                   userId={user.id} hiloError={hiloError}
@@ -672,11 +690,7 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
                     ) : dim("sin comprobantes")}>
                   <Comprobantes postulacionId={params.id} comprobantes={conHilo(comprobantes, hCmp) as any}
                     etapas={etapasFondo} rubros={fondoRubros} esAdmin={esAdmin} error={cmpError}
-                    urlSunat={urlSunat} userId={user.id} hiloError={hiloError}
-                    /* El alias corto sale de las personas que esta página ya
-                       trae enteras: no hace falta otra consulta para poner
-                       «JohnO» en vez de «John Oros Condori». */
-                    alias={mapaAlias((pc.data || []) as any)} />
+                    urlSunat={urlSunat} userId={user.id} hiloError={hiloError} />
                   </Plegable>
 
               </Plegable>

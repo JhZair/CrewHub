@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient, usuarioActual } from "@/lib/supabase/server";
 import Composer, { type Catalogos } from "@/components/Composer";
 import Realtime from "@/components/Realtime";
 import Campanita from "@/components/Campanita";
@@ -61,7 +61,8 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
   const v = searchParams?.v || "mios";
   const linkParam = searchParams?.link || "";
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  // Compartido con `QuienEstaGlobal` del layout: una verificación, no dos.
+  const user = await usuarioActual();
   if (!user) redirect("/login");
 
   /* ══════════════════════════════════════════════════════════════════════════

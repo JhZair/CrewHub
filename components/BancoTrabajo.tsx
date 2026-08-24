@@ -1,5 +1,6 @@
 "use client";
 import { misEnProgreso, comentar, cambiarEstado, muroMensajes } from "@/app/actions";
+import { pedirZocalo } from "@/lib/zocalo";
 import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
 import { celebrarResuelto } from "@/lib/celebra";
 import { usePathname, useRouter } from "next/navigation";
@@ -57,16 +58,18 @@ export default function BancoTrabajo() {
     try { localStorage.setItem("banco", n ? "cerrado" : "abierto"); } catch {}
   };
 
-  const cargar = useCallback(async () => {
-    const r: any = await misEnProgreso();
+  /* `pintar` separado de `cargar`: el mismo dato llega por dos caminos —al
+     navegar viene dentro del zócalo compartido, y en vivo lo trae la acción
+     suelta— y quién lo pinta tiene que ser uno solo. */
+  const pintar = useCallback((r: any) => {
     if (!r?.error) { setCasos(r.casos || []); setAbiertas(r.abiertas || []); setSegui(r.seguimiento || []); }
   }, []);
+  const cargar = useCallback(async () => { pintar(await misEnProgreso()); }, [pintar]);
 
   /* Señal del muro: cuántos mensajes NUEVOS (de otros, después de la última vez
      que abrí el banco) hay sin ver. Con el banco abierto se marcan todos vistos.
      El marcador vive en localStorage; es por-navegador, sin campanita. */
-  const cargarMuro = useCallback(async () => {
-    const r: any = await muroMensajes();
+  const pintarMuro = useCallback((r: any) => {
     const msgs = r?.mensajes || [];
     if (!colapsadoRef.current) {   // banco abierto → todo visto
       try { localStorage.setItem("muro-visto", String(Date.now())); } catch {}
@@ -77,6 +80,7 @@ export default function BancoTrabajo() {
     try { vistoMs = Number(localStorage.getItem("muro-visto") || 0); } catch {}
     setMuroNuevos(msgs.filter((m: any) => m.autor_id !== r.yo && new Date(m.creado_en).getTime() > vistoMs).length);
   }, []);
+  const cargarMuro = useCallback(async () => { pintarMuro(await muroMensajes()); }, [pintarMuro]);
 
   // Activar = ponerlo En Progreso: pasa de la bandeja a la mesa
   const activar = async (id: string) => {
@@ -89,10 +93,31 @@ export default function BancoTrabajo() {
     cargar(); router.refresh();
   };
 
-  // Al montar y cada vez que cambias de página (pudo cambiar algo)
-  useEffect(() => { if (esTop && !enLogin) { cargar(); cargarMuro(); } }, [esTop, enLogin, pathname, cargar, cargarMuro]);
-  // Al abrir/cerrar el banco: abrir marca el muro como visto (apaga la señal).
-  useEffect(() => { if (esTop && !enLogin) cargarMuro(); }, [colapsado, esTop, enLogin, cargarMuro]);
+  /* Al montar y cada vez que cambias de página (pudo cambiar algo).
+     Los dos datos vienen del zócalo COMPARTIDO: eran dos acciones de servidor
+     —de las cuatro que Next encolaba en cada navegación, 4772 ms medidos— y
+     ahora viajan dentro de la misma llamada que el menú y la campanita.
+     Ver lib/zocalo.ts. */
+  useEffect(() => {
+    if (!esTop || enLogin) return;
+    let vivo = true;
+    pedirZocalo(pathname).then(z => {
+      if (!vivo) return;
+      pintar(z.banco); pintarMuro(z.muro);
+    }).catch(() => {});
+    return () => { vivo = false; };
+  }, [esTop, enLogin, pathname, pintar, pintarMuro]);
+  /* Al abrir/cerrar el banco: abrir marca el muro como visto (apaga la señal).
+     ⚠ SOLO cuando `colapsado` CAMBIA de verdad, no al montar. Sin la guarda,
+     este efecto disparaba `muroMensajes()` en el montaje —y otra vez si el
+     banco venía abierto de localStorage—, o sea una o dos acciones de servidor
+     encoladas DETRÁS del zócalo, pidiendo un dato que el zócalo ya trae. La
+     primera pintura pagaba entera esa latencia por nada. */
+  const primerColapso = useRef(true);
+  useEffect(() => {
+    if (primerColapso.current) { primerColapso.current = false; return; }
+    if (esTop && !enLogin) cargarMuro();
+  }, [colapsado, esTop, enLogin, cargarMuro]);
 
   // En vivo: si cambia una publicación (estado, responsable, nuevo caso) o llega
   // un comentario, recarga el banco; si llega un mensaje al muro, actualiza la

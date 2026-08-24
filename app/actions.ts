@@ -1,5 +1,6 @@
 "use server";
 import { createClient } from "@/lib/supabase/server";
+import { estadoNav } from "@/app/nav-acciones";
 import { revalidatePath } from "next/cache";
 import { entregableEq, porQueNoEq, enRonda, txtEstadoEq } from "@/lib/estadosEquipo";
 import { ESTADOS_COMP } from "@/lib/compromisos";
@@ -3544,6 +3545,14 @@ export async function misEnProgreso() {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
+  return bancoDe(supabase, user);
+}
+
+/* El cuerpo, separado de la puerta. `estadoGlobal` necesita llamarlo SIN
+   volver a verificar la sesión —ya la verificó una vez por las cuatro— y un
+   parámetro `user` en una acción de servidor exportada sería un agujero: el
+   cliente elige a quién dice ser. Por eso el helper NO se exporta. */
+async function bancoDe(supabase: any, user: { id: string }) {
   /* Solo lo que YO soy responsable. Antes entraba también lo que yo había
      creado, y eso llenaba el banco de trabajo ajeno: un caso que abrí y
      asigné a Katy es de Katy, no mío. */
@@ -8332,7 +8341,12 @@ const CAMP_LIM = 12;
 export async function misNotificaciones() {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { items: [], sinLeer: 0, sinLeerBot: 0 };
+  if (!user) return { items: [], sinLeer: 0, sinLeerBot: 0, faltan: [] };
+  return notifsDe(supabase, user);
+}
+
+/** El cuerpo de la campanita, sin la puerta. Ver `bancoDe` para el porqué. */
+async function notifsDe(supabase: any, user: { id: string }) {
   // `objeto_id`: una notificación puede colgar de un caso O de un objeto del
   // repositorio. Sin traerla, el aviso llega pero no lleva a ninguna parte.
   const cols = COLS_NOTIF;
@@ -8395,6 +8409,11 @@ export async function muroMensajes() {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { mensajes: [], yo: null };
+  return muroDe(supabase, user);
+}
+
+/** El cuerpo del muro, sin la puerta. Ver `bancoDe` para el porqué. */
+async function muroDe(supabase: any, user: { id: string }) {
   const { data } = await supabase.from("muro_mensajes")
     .select("id,texto,vistos,creado_en,autor_id,autor:perfiles(nombre,color,avatar_url)")
     .gte("creado_en", inicioDiaLima())
@@ -9533,4 +9552,77 @@ export async function enlazarCuentaPersona(cuentaId: string, personaId: string |
      docena de pantallas; todas tienen que enterarse. */
   revalidatePath("/", "layout");
   return {};
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   EL ZÓCALO, EN UN SOLO VIAJE
+
+   Tres componentes del layout piden cada uno lo suyo al cambiar de página:
+   NavIconos (`estadoNav`), BancoTrabajo (`misEnProgreso` y `muroMensajes`) y
+   CampanitaGlobal (`misNotificaciones`). Cuatro acciones.
+
+   Y Next ENCOLA las acciones de servidor de un mismo cliente: no salen a la
+   vez, salen de una en una. Medido en producción sobre /tablero: cuatro POST
+   sumando **4772 ms**, más del doble de lo que cuesta pintar la pantalla
+   entera. Es el trámite invisible de cada navegación, en las 34 pantallas.
+
+   Aquí las cuatro corren de verdad en paralelo, dentro del mismo servidor y
+   contra una base que está a un salto y no a un océano.
+
+   ── Y UNA SOLA VERIFICACIÓN DE SESIÓN, DE VERDAD ──
+   El primer intento fue envolver `getUser()` en `cache()` de React. NO
+   funciona dentro de una acción de servidor, y está comprobado en el código:
+   `cache` resuelve su mapa con `resolveRequest()`, que solo devuelve algo
+   dentro de un render flight; el manejador de acciones ejecuta la función
+   ANTES de crear ese contexto, así que cada llamada recibe un `Map` nuevo y
+   nada se deduplica.
+
+   Peor todavía: al ponerlas en paralelo, esas cuatro verificaciones dejaron de
+   ir en cuatro peticiones separadas y pasaron a salir A LA VEZ, cada una con
+   su propio cliente. Si el token está vencido justo al navegar, las cuatro
+   intentan refrescarlo con el mismo refresh token — y Supabase lo ROTA: la
+   primera gana y las otras tres presentan uno ya gastado. Una vez por hora,
+   al navegar, y con la sesión de por medio.
+
+   Por eso `estadoGlobal` verifica UNA vez y les pasa el `user` a los cuatro
+   cuerpos internos. Paralelizar sin mirar qué se estaba paralelizando habría
+   cambiado 4772 ms por un fallo de sesión intermitente.
+
+   ── LO QUE NO HACE ──
+   No sustituye a las cuatro: cada una sigue existiendo y siendo llamada por su
+   cuenta cuando algo cambia en vivo. Recargar el banco porque llegó un
+   comentario no tiene por qué traerse las notificaciones. Esto es solo para el
+   momento en que las cuatro se piden a la vez, que es al navegar.
+
+   ── NUNCA LANZA ──
+   `allSettled` y no `all`: si una falla, las otras tres llegan. Un zócalo que
+   se cae entero porque a una migración le falta una columna deja la
+   navegación sin menú, sin banco y sin campanita a la vez.
+   ══════════════════════════════════════════════════════════════════════════ */
+const ZOCALO_VACIO = {
+  nav: { casilla: 0, caja: false, vencidos: 0, porVencer: 0 },
+  banco: { error: "sin sesión" } as any,
+  muro: { mensajes: [], yo: null } as any,
+  notifs: { items: [], sinLeer: 0, sinLeerBot: 0, faltan: [] } as any,
+};
+
+export async function estadoGlobal() {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return ZOCALO_VACIO;
+
+  const [nav, banco, muro, notifs] = await Promise.allSettled([
+    estadoNav(supabase, user),
+    bancoDe(supabase, user),
+    muroDe(supabase, user),
+    notifsDe(supabase, user),
+  ]);
+  const ok = <T,>(r: PromiseSettledResult<T>, deFallo: T): T =>
+    r.status === "fulfilled" ? r.value : deFallo;
+  return {
+    nav: ok(nav, ZOCALO_VACIO.nav),
+    banco: ok(banco, { error: "no se pudo cargar" } as any),
+    muro: ok(muro, ZOCALO_VACIO.muro),
+    notifs: ok(notifs, ZOCALO_VACIO.notifs),
+  };
 }
