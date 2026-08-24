@@ -347,6 +347,51 @@ Antes lo justificaba por los bytes; ahora lo justifica el reloj.
 
 ---
 
+## §0 — ABRIR UNA PÁGINA MANDA AL SERVIDOR A RENDERIZAR CINCUENTA
+
+**Esto no lo vio ninguna de las tres auditorías. Lo encontró la medición.**
+
+Al abrir `/personas` en producción, el navegador hizo **53 peticiones**:
+
+- **4 acciones de servidor**, encoladas: 985 + 1133 + 647 + 1719 = **4484 ms**.
+  Es el §1, confirmado en producción y con reloj.
+- **49 peticiones `?_rsc=`**, de 277 a 776 ms cada una. Suman, en trabajo de
+  servidor, **cerca de 19 segundos**.
+
+Esas 49 son **prefetches de `<Link>`**. Next precarga todo enlace que entra en la
+pantalla, y en la lista salen tal cual: `/equipamiento`, `/postulaciones`,
+`/empresas`, `/proyectos`, `/repositorio`, `/fondos`, `/obligaciones`,
+`/comprobantes`, `/agenda`, `/caja`, `/pulso`, `/llaves`, `/convocatorias`,
+`/etiquetas`, `/casilla` — el menú entero —, más una por **cada chip de filtro**
+(`?e=activo`, `?t=colaborador`, `?g=masculino`, `?a=dni_vencido`…) y una por cada
+ficha de persona visible.
+
+Y aquí está lo que lo convierte en el problema número uno: **en esta aplicación
+todas las rutas son dinámicas** —`lib/supabase/server.ts` llama a `cookies()`—,
+así que un prefetch no es traerse un archivo: es **ejecutar la página entera en
+el servidor**, con todas sus consultas a Supabase.
+
+Comprobado en el código: **303 `<Link>` en el repositorio y ni uno solo con
+`prefetch={false}`**. Cero `loading.tsx`.
+
+### Por qué esto explica los siete segundos de la portada
+
+Mientras la portada hace su cascada, el mismo navegador le está pidiendo al mismo
+servidor que renderice otras dieciséis páginas, contra la misma base. No es que la
+portada sea lenta: es que **compite consigo misma**.
+
+### El arreglo es barato, y son dos
+
+1. **`prefetch={false}`** en los enlaces que están *siempre* a la vista y casi
+   nunca se pulsan: los del menú (`NavIconos.tsx:175` y `:193`) y los chips de
+   filtro de los listados. Dos ficheros se llevan la mayor parte.
+2. **`loading.tsx`**. Con una frontera de carga, Next deja de precargar la página
+   completa de una ruta dinámica y se trae solo el esqueleto. Es decir: el §7
+   **deja de ser cosmético**. Arregla la tormenta de prefetch *y* da algo que
+   mirar mientras carga, que era su motivo original.
+
+---
+
 ## Orden de ataque — revisado tras medir
 
 0. **Comprobar Max rows** en Supabase → Settings → API. Dos minutos. Decide si
@@ -357,18 +402,23 @@ Antes lo justificaba por los bytes; ahora lo justifica el reloj.
 2. **Los seis contadores de 💬** (§5). `comentarios` cruza 1000 esta semana y se
    quedarían cortos los seis a la vez, sin error. Se arregla con
    `comentarios(count)` embebido, que `/tablero:171` ya hace bien.
-3. **§4 — la cascada de la portada.** 15 → 5 viajes. **Siete segundos medidos**
-   de documento; es casi todo el «va lento». Va antes que §1 porque §1 ocurre
-   *después* de que la página ya se ve.
-4. **§3 — catálogos bajo demanda.** Ya no por los bytes (son cuatro
+3. **§0 — cortar la tormenta de prefetch.** `prefetch={false}` en el menú y en
+   los chips de filtro, más `loading.tsx`. **Cuarenta y nueve renders de servidor
+   por página abierta, ~19 s de trabajo.** Es lo más barato de arreglar y lo que
+   más quita de encima; y hasta que no esté, medir cualquier otra cosa es medir
+   ruido.
+4. **§4 — la cascada de la portada.** 15 → 5 viajes. Siete segundos medidos de
+   documento — parte de los cuales son la competencia del §0. **Volver a medir
+   después del §0 antes de tocar esto**: puede que ya no haga falta entero.
+5. **§3 — catálogos bajo demanda.** Ya no por los bytes (son cuatro
    comprimidos): porque ocho tablas en el render de la portada son ocho esperas
    dentro de esos siete segundos. Se arregla a la vez que §4.
-5. **§1 — una sola acción global.** Cinco POST encolados detrás de cada
-   navegación, en 34 pantallas.
-6. **§2 — el realtime del banco.** El multiplicador: un comentario de cualquiera
+6. **§1 — una sola acción global.** Cuatro POST encolados, **4484 ms medidos**,
+   detrás de cada navegación, en 34 pantallas.
+7. **§2 — el realtime del banco.** El multiplicador: un comentario de cualquiera
    dispara diez consultas en cada pestaña abierta del equipo.
 
-Los §6 y §7 después, si siguen doliendo.
+El §6 después, si sigue doliendo. El §7 ya no está aquí: se lo llevó el §0.
 
 ---
 
