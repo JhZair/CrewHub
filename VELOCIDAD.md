@@ -550,6 +550,54 @@ lista de velocidad** hasta que un número diga que sirve.
 
 ---
 
+## LA MEDIDA BUENA (mediana de 5-7, sobre el documento)
+
+```
+/manifest.webmanifest    195 ms   ← el suelo: red + función + middleware
+/etiquetas               758 ms   ·  2 consultas
+/llaves                  860 ms
+/personas               1074 ms   ·  ~6 consultas
+/tablero                2844 ms   ·  ~20 consultas, 13 olas
+/                       1657 ms   ·  26 consultas, 6 olas
+```
+
+### Esto zanja las tres discusiones anteriores
+
+**1. La región no es el problema.** El suelo son 195 ms. Descartado.
+
+**2. Los «4337 ms» de la portada no existían.** `responseEnd − requestStart` de la
+entrada de navegación medía la carga entera —358 kB de JavaScript compitiendo
+por la misma conexión, justo después de un despliegue—, no el servidor. El
+servidor tarda **1657 ms**. Dos rondas comparando números que no eran
+comparables.
+
+**3. La teoría del pool era falsa, y el aplanado SÍ funcionó.** La prueba está en
+la tabla: **la portada hace 26 consultas en 6 olas y tarda 1657 ms; `/tablero`
+hace 20 en 13 olas y tarda 2844.** Menos consultas y casi el doble de tiempo. Lo
+que manda no es cuántas son, es **cuántas veces se espera**. Es exactamente lo
+que decía el plan original, y no se veía porque las muestras de una no daban
+para verlo.
+
+### Y aparece un coste que no había mirado nadie: el zócalo
+
+`/etiquetas` hace **dos** consultas y aun así cuesta 563 ms por encima del suelo.
+Ese medio segundo lo paga **cada una de las 34 pantallas** antes de hacer su
+propio trabajo, y sale de aquí:
+
+- `middleware.ts` → `auth.getUser()`
+- `QuienEstaGlobal` (en el layout) → `auth.getUser()` + perfil + `getSession()`
+- la página → `auth.getUser()` otra vez
+
+Son **tres verificaciones de sesión por render**, y `getUser()` no lee una
+cookie: es una llamada de red a Supabase Auth. `lib/supabase/server.ts` no usa
+`cache()` de React, así que nada las agrupa.
+
+Las dos de dentro del render (layout y página) sí se pueden fusionar: `cache()`
+de React deduplica dentro de un mismo pase de render. La del middleware no —es
+otro runtime— y esa se queda.
+
+---
+
 ## Orden de ataque — revisado tras medir
 
 0. **Comprobar Max rows** en Supabase → Settings → API. Dos minutos. Decide si
