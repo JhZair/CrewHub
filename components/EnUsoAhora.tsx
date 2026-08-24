@@ -1,6 +1,6 @@
 "use client";
 import { Fragment, useMemo, useState } from "react";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import BotonDevolver from "@/components/BotonDevolver";
 import DevolverLote from "@/components/DevolverLote";
 import ChipPiezas, { type PiezaMontada } from "@/components/ChipPiezas";

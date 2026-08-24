@@ -4,7 +4,7 @@ import { EntPicker, type CatalogoItem } from "@/components/Composer";
 import MiniSelect from "@/components/MiniSelect";
 import Avatar from "@/components/Avatar";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { useState } from "react";
 
 /* «desde ene 2024» — el mes y el año en que se sumó al proyecto. Da contexto

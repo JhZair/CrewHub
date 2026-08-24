@@ -2,7 +2,7 @@
 import { actualizarPostulacion } from "@/app/actions";
 import { EntPicker, type CatalogoItem } from "@/components/Composer";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { useState } from "react";
 
 /* Quién postula: la empresa que pone el RUC y firma el acta.

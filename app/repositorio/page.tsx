@@ -10,7 +10,7 @@ import NuevoObjeto from "@/components/NuevoObjeto";
 import { catalogosDuenos, DUENOS } from "@/lib/catalogos";
 import { buscadorDe, pal } from "@/lib/buscar";
 import { mapaAlias } from "@/lib/personas";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 

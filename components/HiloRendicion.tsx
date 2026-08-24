@@ -1,6 +1,6 @@
 "use client";
 import { useState, type ReactNode } from "react";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { useRouter } from "next/navigation";
 import { rotuloEstado, claseEstado } from "@/lib/estados";
 import { cargarRendicionRapido, comentarRendicion, toggleReaccion, editarComentario,

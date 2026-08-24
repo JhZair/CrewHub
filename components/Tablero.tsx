@@ -3,7 +3,7 @@ import { cambiarEstado, archivar } from "@/app/actions";
 import { celebrarResuelto } from "@/lib/celebra";
 import VistaRapida from "@/components/VistaRapida";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { plazoDe } from "@/lib/plazo";
 import { icoTipo } from "@/lib/tipos";
 import { TXT } from "@/lib/texto";

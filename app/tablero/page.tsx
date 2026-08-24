@@ -9,7 +9,7 @@ import { progresoDe } from "@/lib/progreso";
 import { avisoVencido } from "@/lib/estados";
 import { BOT } from "@/lib/personas";
 import { TABLA_DE } from "@/lib/secciones";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 

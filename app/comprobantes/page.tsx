@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { createClient } from "@/lib/supabase/server";
 import Comprobantes from "@/components/Comprobantes";
 import { urlPlataforma, PLAT } from "@/lib/plataformas";

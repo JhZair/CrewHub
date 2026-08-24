@@ -19,7 +19,7 @@ import ComentarioTexto from "@/components/ComentarioTexto";
 import { ANCLA_COM } from "@/lib/notificaciones";
 import RespuestaBox from "@/components/RespuestaBox";
 import Realtime from "@/components/Realtime";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { claseEstado, rotuloEstado, selloDeCaso } from "@/lib/estados";

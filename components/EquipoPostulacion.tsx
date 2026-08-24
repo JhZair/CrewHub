@@ -5,7 +5,7 @@ import { EntPicker, type CatalogoItem } from "@/components/Composer";
 import Avatar from "@/components/Avatar";
 import { ROLES_EQUIPO as ROLES, ordenarEquipo } from "@/lib/rolesEquipo";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { useState } from "react";
 
 export default function EquipoPostulacion({ postulacionId, equipo, personas }: {

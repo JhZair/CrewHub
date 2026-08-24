@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { marcarCompromiso, editarDetalleCompromiso, casoDeCompromiso } from "@/app/actions";
 import { rotuloEstado, claseEstado } from "@/lib/estados";
 import {

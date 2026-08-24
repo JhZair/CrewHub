@@ -18,7 +18,7 @@ import {
 import { urlPlataforma, PLAT } from "@/lib/plataformas";
 import BotonFichaSunat from "@/components/BotonFichaSunat";
 import { buscadorDe, pal } from "@/lib/buscar";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 

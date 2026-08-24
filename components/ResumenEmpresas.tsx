@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import Avatar from "@/components/Avatar";
 import Firma, { type Quien } from "@/components/Firma";
 import { haceDias } from "@/lib/fechas";

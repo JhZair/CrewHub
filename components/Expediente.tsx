@@ -2,7 +2,7 @@
 import { guardarExpediente, casoDeExpediente, refrescarExpedienteAuto } from "@/app/actions";
 import { claseEstado, rotuloEstado } from "@/lib/estados";
 import VistaRapida from "@/components/VistaRapida";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 

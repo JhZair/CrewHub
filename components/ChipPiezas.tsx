@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { txtEstadoEq, colorEstadoEq } from "@/lib/estadosEquipo";
 
 export type PiezaMontada = {

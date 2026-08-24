@@ -2,7 +2,7 @@
 import Avatar from "@/components/Avatar";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import {
   guardarMovCaja, borrarMovCaja, guardarCuentaCaja, activarCuentaCaja,
   fijarSaldoInicial, guardarCaja, archivarCaja,

@@ -12,7 +12,7 @@ import RespuestaBox from "@/components/RespuestaBox";
 import { ANCLA_COM } from "@/lib/notificaciones";
 import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { useState } from "react";
 import { hoyLima } from "@/lib/fechas";
 

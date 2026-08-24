@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { misNotificaciones, marcarNotifsLeidas, marcarNotifLeida } from "@/app/actions";
 import { createClient } from "@/lib/supabase/client";
 import { pedirZocalo } from "@/lib/zocalo";

@@ -1,7 +1,7 @@
 "use client";
 import { borrarEtiqueta } from "@/app/actions";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { useState } from "react";
 
 /* Chip de una etiqueta sin uso: lleva a su página y ofrece borrarla

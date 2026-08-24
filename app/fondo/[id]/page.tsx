@@ -1,6 +1,6 @@
 import { redirect, notFound } from "next/navigation";
 import type { Metadata } from "next";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { createClient } from "@/lib/supabase/server";
 import { ESTADOS_VIVOS } from "@/lib/estados";
 import { mapaAlias } from "@/lib/personas";

@@ -1,5 +1,5 @@
 "use client";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import ChipPiezas from "@/components/ChipPiezas";
 import { porQueNo, nombraPieza, valorPieza, type PiezaKit } from "@/lib/kits";
 import { entregableEq } from "@/lib/estadosEquipo";

@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { EntidadForm } from "@/components/EntidadForm";
 import { FORM_CONF } from "@/lib/entidades";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { ICO_ENT } from "@/lib/secciones";

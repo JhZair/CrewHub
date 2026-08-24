@@ -12,7 +12,7 @@ import { OjoPersona } from "@/components/Ojo";
 import Completitud from "@/components/Completitud";
 import { completitud, EQUIPOS_PERSONA, ESPECIALIDADES } from "@/lib/entidades";
 import TablaVistas from "@/components/TablaVistas";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 

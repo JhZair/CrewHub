@@ -16,7 +16,7 @@ import { type Progreso } from "@/lib/progreso";
 // Ruta central: un objeto del repositorio no vive en /entidad/…
 import { rutaEntidad } from "@/lib/secciones";
 import { TIPOS_SEL } from "@/lib/tipos";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { useRouter } from "next/navigation";
 
 /* (TIPOS_SEL salió a lib/tipos, con el mismo orden y la misma decisión: no

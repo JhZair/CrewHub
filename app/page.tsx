@@ -19,7 +19,7 @@ import {
 } from "@/lib/notificaciones";
 import FiltroMas from "@/components/FiltroMas";
 import ListaFeed, { type CardFeed } from "@/components/ListaFeed";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 

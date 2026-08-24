@@ -4,7 +4,7 @@ import { EntPicker, type CatalogoItem } from "@/components/Composer";
 import Avatar from "@/components/Avatar";
 import MiniSelect from "@/components/MiniSelect";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { useState } from "react";
 
 const fmtF = (f: string) =>

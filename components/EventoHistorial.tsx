@@ -1,5 +1,5 @@
 import { ICO_ENT, rutaEntidad, tipoCanonico } from "@/lib/secciones";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { BOT } from "@/lib/personas";
 import LinkPreview from "@/components/LinkPreview";
 

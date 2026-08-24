@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { hace } from "@/lib/notificaciones";
 import { linkGmail, soloNombre, diasDesde, ORIGEN_VINCULO, esAcuse,
   claseCorreo, META_CLASE } from "@/lib/casilla";

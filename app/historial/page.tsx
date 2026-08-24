@@ -7,7 +7,7 @@ import { agruparEventos } from "@/lib/agrupar";
 import { PERIODOS, rangoDe, diaLima, horaLima, rotuloDia, type Periodo } from "@/lib/periodo";
 import { ICO_ENT, TABLA_DE, grafiasDe, tipoCanonico } from "@/lib/secciones";
 import { BOT, mapaAlias } from "@/lib/personas";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 

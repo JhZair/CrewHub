@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/Enlace";
 
 /* Chip de conversación de una postulación. La conversación vive en el MURO de la
  * postulación (una sola sede, en vez de un hilo aparte por tarjeta), así que el

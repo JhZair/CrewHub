@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { editarPersonalFondo, quitarPersonalFondo } from "@/app/actions";
 import Avatar from "@/components/Avatar";
 import SumarPersonalFondo from "@/components/SumarPersonalFondo";

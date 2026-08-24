@@ -3,7 +3,7 @@ import Volver from "@/components/Volver";
 import MiJornada from "@/components/MiJornada";
 import BitacoraJornadas from "@/components/BitacoraJornadas";
 import CicloMes from "@/components/CicloMes";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { rotuloMonton } from "@/lib/tipos";

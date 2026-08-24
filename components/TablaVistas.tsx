@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState, useTransition } from "react";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { useRouter } from "next/navigation";
 import Avatar from "@/components/Avatar";
 import Copiar from "@/components/Copiar";

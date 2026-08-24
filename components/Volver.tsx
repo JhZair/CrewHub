@@ -1,6 +1,6 @@
 "use client";
 import NavIconos from "@/components/NavIconos";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 
 /* El bloque de navegación de toda pantalla interna: el inicio y los accesos a
    las secciones.

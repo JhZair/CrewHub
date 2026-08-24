@@ -1,5 +1,5 @@
 "use client";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { useEffect, useRef, useState } from "react";
 import { notificacionesTodas, marcarNotifLeida, marcarNotifsLeidas, actividadDeCaso } from "@/app/actions";
 import { createClient } from "@/lib/supabase/client";

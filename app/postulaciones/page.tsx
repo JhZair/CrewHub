@@ -14,7 +14,7 @@ import FiltroCombo from "@/components/FiltroCombo";
 import { ordenarEquipo } from "@/lib/rolesEquipo";
 import Avatar from "@/components/Avatar";
 import RielHitos from "@/components/RielHitos";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 

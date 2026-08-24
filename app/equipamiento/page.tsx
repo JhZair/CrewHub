@@ -16,7 +16,7 @@ import { buscadorDe, pal } from "@/lib/buscar";
 import { completitud, AYUDA_CATEGORIA, CATEGORIAS_EQUIPO, SUBCATS_EQUIPO } from "@/lib/entidades";
 import { TXT } from "@/lib/texto";
 import Completitud from "@/components/Completitud";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 

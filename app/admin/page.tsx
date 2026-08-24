@@ -16,7 +16,7 @@ import { ejecutando, rendicionVencida, SEL_FONDO } from "@/lib/fondos";
 import { haceOEn } from "@/lib/fechas";
 import { ICO_ENT, rutaEntidad, tipoCanonico } from "@/lib/secciones";
 import { BOT, mapaAlias } from "@/lib/personas";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { plazoDe, diasHasta } from "@/lib/plazo";
 import { colorTipo, rotuloTipo } from "@/lib/tipos";
 import { redirect } from "next/navigation";

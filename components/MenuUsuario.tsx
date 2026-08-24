@@ -1,7 +1,7 @@
 "use client";
 import Avatar from "@/components/Avatar";
 import ActivarPush from "@/components/ActivarPush";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { useState } from "react";
 
 /* La esquina del usuario, compacta: solo el avatar.

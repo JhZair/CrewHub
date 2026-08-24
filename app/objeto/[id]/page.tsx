@@ -21,7 +21,7 @@ import { icoObjeto, lblObjeto } from "@/lib/objetos";
 import { ICO_ENT, SECCIONES, rutaEntidad } from "@/lib/secciones";
 import { claseEstado, rotuloEstado } from "@/lib/estados";
 import { icoTipo } from "@/lib/tipos";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
 

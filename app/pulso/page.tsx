@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { redirect } from "next/navigation";
 import { claseEstado, textoEstado } from "@/lib/estados";
 import { icoTipo, rotuloMonton } from "@/lib/tipos";

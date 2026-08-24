@@ -7,7 +7,7 @@ import { plazoDe } from "@/lib/plazo";
 import { icoTipo } from "@/lib/tipos";
 import { PERIODOS, rangoDe, type Periodo } from "@/lib/periodo";
 import { seccionDe } from "@/lib/secciones";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
 

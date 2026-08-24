@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { contextoDelDia } from "@/app/actions";
 import { fechaConDia } from "@/lib/fechas";
 

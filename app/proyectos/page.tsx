@@ -5,7 +5,7 @@ import { TIPO_COLOR, completitud } from "@/lib/entidades";
 import { ETAPAS_PROY_UNICAS, metaEtapaProy, enMarchaProy } from "@/lib/etapasProyecto";
 import Completitud from "@/components/Completitud";
 import { buscadorDe, pal } from "@/lib/buscar";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 

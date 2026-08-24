@@ -6,7 +6,7 @@ import SelloResultado from "@/components/SelloResultado";
 import { resultadoPostulacion } from "@/lib/resultados";
 import { TXT } from "@/lib/texto";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { useState } from "react";
 
 /* Estados alineados con el ciclo de vida real de una postulación (el mismo del

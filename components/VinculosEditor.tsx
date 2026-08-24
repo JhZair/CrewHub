@@ -1,7 +1,7 @@
 "use client";
 import { EntPicker, MultiPicker } from "@/components/Composer";
 import { agregarVinculo, quitarVinculo, vincularEnLote } from "@/app/actions";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ICO_ENT, rutaEntidad } from "@/lib/secciones";

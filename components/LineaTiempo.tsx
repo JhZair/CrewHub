@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/Enlace";
 
 /* LÍNEA DE TIEMPO — regla del sistema: lo que tiene fechas, se dibuja.
    Vertical, con el nodo HOY en su posición cronológica real, separación

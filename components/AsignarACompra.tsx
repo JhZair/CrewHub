@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { asignarACompra } from "@/app/compras/acciones";
 
 /* SUMAR AL COMBO EQUIPOS QUE YA EXISTEN.

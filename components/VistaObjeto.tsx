@@ -1,6 +1,6 @@
 "use client";
 import { type ReactNode } from "react";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { cargarObjetoRapido, comentarObjeto, toggleReaccion } from "@/app/actions";
 import { icoObjeto, lblObjeto } from "@/lib/objetos";
 import { icoTipo } from "@/lib/tipos";

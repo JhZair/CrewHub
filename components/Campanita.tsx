@@ -1,6 +1,6 @@
 "use client";
 import { marcarNotifsLeidas, marcarNotifLeida } from "@/app/actions";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { useState, useEffect } from "react";
 
 import { rutaNotif, esAutomatica, agruparNotifs } from "@/lib/notificaciones";

@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import GuionEstructura from "@/components/GuionEstructura";
 import { modoGuion, VOZ, plantillaDe, explicar } from "@/lib/guion";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
 

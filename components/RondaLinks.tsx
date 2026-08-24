@@ -1,6 +1,6 @@
 "use client";
 import { verificarLinksDrive } from "@/app/actions";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { useState } from "react";
 
 /* La ronda de links: ¿los documentos invocados de Drive siguen vivos? */

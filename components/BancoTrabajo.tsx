@@ -4,7 +4,7 @@ import { pedirZocalo } from "@/lib/zocalo";
 import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
 import { celebrarResuelto } from "@/lib/celebra";
 import { usePathname, useRouter } from "next/navigation";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { plazoDe } from "@/lib/plazo";
 import { icoTipo } from "@/lib/tipos";
 import { ICO_ENT, rutaEntidad } from "@/lib/secciones";

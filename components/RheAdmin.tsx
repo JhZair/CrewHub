@@ -3,7 +3,7 @@ import { guardarRhe, borrarRhe, enlazarRheALiquidacion } from "@/app/actions";
 import MiniSelect from "@/components/MiniSelect";
 import { estado4ta, money } from "@/lib/cuarta";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { useState } from "react";
 import { hoyLima } from "@/lib/fechas";
 import { VIAS_GIRO, rotuloGiro } from "@/lib/pagos";

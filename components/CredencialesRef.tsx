@@ -1,5 +1,5 @@
 import Copiar from "@/components/Copiar";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 
 /* Referencia rápida de las credenciales de la empresa, para tenerlas A LA MANO
    al entrar a DAFO o al correo desde la postulación —sin ir a la ficha de la

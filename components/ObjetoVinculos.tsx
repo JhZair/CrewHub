@@ -2,7 +2,7 @@
 import { EntPicker } from "@/components/Composer";
 import { vincularObjeto, desvincularObjeto } from "@/app/actions";
 import { ICO_ENT, rutaEntidad } from "@/lib/secciones";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 

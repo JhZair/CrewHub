@@ -1,7 +1,7 @@
 "use client";
 import { usePathname } from "next/navigation";
 import { SECCIONES } from "@/lib/secciones";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { useEffect, useState } from "react";
 import type { EstadoNav } from "@/app/nav-acciones";
 import { pedirZocalo } from "@/lib/zocalo";
@@ -176,19 +176,15 @@ export default function NavIconos() {
         <>
           <div className="cbx-fondo" onClick={() => setAbierto(false)} />
           <div className="nav-lista">
-            {/* ── `prefetch={false}` EN TODO EL MENÚ ──
-                Son treinta y una entradas, y viven dentro de `{abierto && …}`,
-                así que no existen mientras el menú está cerrado. Pero en el
-                instante en que se abre, las treinta y una entran en pantalla a
-                la vez y Next las precarga todas de golpe.
-                No es tan caro como parecía —Next cortocircuita el árbol de una
-                ruta sin `loading`, así que no renderiza la página—, pero cada
-                una sigue costando una invocación y, hasta que se arregló en
-                `middleware.ts`, una verificación de sesión contra Supabase Auth.
-                Un menú se abre para ir a UN sitio: precargar los treinta y uno
-                es pagar treinta viajes para ahorrar uno. */}
+            {/* (Estas treinta y una entradas fueron el primer sitio donde se
+                quitó la precarga: viven dentro de `{abierto && …}`, así que no
+                existen con el menú cerrado, pero en el instante en que se abre
+                entran las treinta y una en pantalla y Next las precargaba
+                todas de golpe. Un menú se abre para ir a UN sitio.
+                Ya no hace falta pedirlo aquí: `@/components/Enlace` no precarga
+                nunca, y ahí está el porqué.) */}
             {SECCIONES.map(s => (
-              <Link key={s.tipo} href={s.ruta} prefetch={false}
+              <Link key={s.tipo} href={s.ruta}
                 className={`nav-item${enSeccion(s) ? " on" : ""}`}
                 onClick={() => setAbierto(false)}>
                 <span className="nav-item-ico">{s.ico}</span>
@@ -206,7 +202,7 @@ export default function NavIconos() {
               <div key={g} className="nav-grupo">
                 <span className="nav-grupo-txt">{g === "plata" ? "la plata" : "el día a día"}</span>
                 {destinos.filter(d => d.grupo === g).map(d => (
-                  <Link key={d.ruta} href={d.ruta} prefetch={false}
+                  <Link key={d.ruta} href={d.ruta}
                     className={`nav-item${estaEn(d, pathname) ? " on" : ""}`}
                     onClick={() => setAbierto(false)}>
                     <span className="nav-item-ico">{d.ico}</span>

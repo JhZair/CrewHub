@@ -1,5 +1,5 @@
 "use client";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { usePathname, useSearchParams } from "next/navigation";
 import Avatar from "@/components/Avatar";
 import { motivoNoDeclara } from "@/lib/obligaciones";

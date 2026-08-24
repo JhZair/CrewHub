@@ -1,7 +1,7 @@
 "use client";
 import { Fragment, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { crearKit, guardarKit, setKitEquipos, borrarKit, revivirKit, fijarPortadaKit } from "@/app/actions";
 import { estadoKit, resumenKit, contextoKit, porQueNo, agruparPorCombo, valeAgrupar,
   type PiezaKit, type EqBase, type KitVista } from "@/lib/kits";

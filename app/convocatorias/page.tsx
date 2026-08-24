@@ -9,7 +9,7 @@ import { EN_JUEGO } from "@/lib/fondos";
 import { ordenarEquipo } from "@/lib/rolesEquipo";
 import { postApagada } from "@/lib/resultados";
 import Avatar from "@/components/Avatar";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { hoyLima } from "@/lib/fechas";

@@ -9,7 +9,7 @@ import Foto from "@/components/Foto";
 import { rotuloActores, rolesDe, ordenarActores, leerActor, personaDe, esDocumental,
   CAMPOS_FICHA, CAMPOS_DETALLE, ARQUETIPOS, TIENE_FICHA } from "@/lib/actores";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { useRef, useState } from "react";
 
 /* QUIÉN APARECE EN LA PELÍCULA.

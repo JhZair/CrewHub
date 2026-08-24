@@ -2,7 +2,7 @@
 import NavFechas from "@/components/NavFechas";
 import Avatar from "@/components/Avatar";
 import { useState, useEffect, type Dispatch, type SetStateAction } from "react";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { icoTipo, colorTipo } from "@/lib/tipos";
 import VistaRapida from "@/components/VistaRapida";
 import { colorEtapa, nombreEtapa, etapasDe, ETAPAS_CINE } from "@/lib/etapas";

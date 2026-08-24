@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import Avatar from "@/components/Avatar";
 import { clavePhone, digitos } from "@/lib/llaves";
 

@@ -8,7 +8,7 @@ import { PERIODOS, rangoDe, diaLima, rotuloDia, type Periodo } from "@/lib/perio
 import { seccionDe } from "@/lib/secciones";
 import { nombresDeEventos, conNombresEventos } from "@/lib/nombres";
 import { mapaAlias } from "@/lib/personas";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
 

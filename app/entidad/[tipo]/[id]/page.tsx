@@ -81,7 +81,7 @@ import VistaRapida from "@/components/VistaRapida";
 import FilasDatos, { camposSecundarios } from "@/components/MasDatos";
 import LinkVerificable from "@/components/LinkVerificable";
 import Completitud from "@/components/Completitud";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { ICO_ENT, nombreDe, grafiasDe, TABLA_DE, tipoCanonico } from "@/lib/secciones";

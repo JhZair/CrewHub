@@ -1,7 +1,7 @@
 "use client";
 import { agregarVinculo, quitarVinculo, crearEtiqueta } from "@/app/actions";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { useState } from "react";
 
 /* Editor de etiquetas de un caso: chips actuales con ✕ para quitar, y un

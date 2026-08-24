@@ -8,7 +8,7 @@ import { TIPOS_EQUIPO } from "@/lib/personas";
 import { fmtVence, vigenciaVencida } from "@/lib/vigencia";
 import { plazoRendicion } from "@/lib/fondos";
 import { plazoDe, diasHasta } from "@/lib/plazo";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 

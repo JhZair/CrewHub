@@ -30,7 +30,7 @@ import Volver from "@/components/Volver";
 import BuscadorGlobal from "@/components/BuscadorGlobal";
 import OjoCompra from "@/components/OjoCompra";
 import { ESTADOS_EQUIPO } from "@/lib/estadosEquipo";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { redirect } from "next/navigation";
 
 /* BÚSQUEDA GLOBAL — Qhaway busca en todo el conocimiento:

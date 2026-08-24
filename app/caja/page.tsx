@@ -1,7 +1,7 @@
 import { mapaAlias } from "@/lib/personas";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import CajaPanel from "@/components/CajaPanel";
