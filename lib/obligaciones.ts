@@ -190,6 +190,19 @@ export function situacionPeriodo(p: PeriodoMin, o: OblMin): SituacionPeriodo {
 export const declaradoTarde = (p: PeriodoMin) =>
   !!(p.declarado_en && p.vence && String(p.declarado_en).slice(0, 10) > String(p.vence).slice(0, 10));
 
+/* ── DECLARADO, PERO SIN CON QUÉ COMPARARLO ──
+ *
+ * `declaradoTarde` es falso en dos casos que NO son el mismo: se presentó a
+ * tiempo, y no hay fecha de vencimiento contra la que medirlo. El calendario de
+ * SUNAT se carga por año, y los años que faltan dejan sus periodos sin `vence`.
+ *
+ * Sin distinguirlos, tres años presentados de golpe en octubre de 2024 se ven
+ * exactamente igual que tres años presentados puntualmente mes a mes. Y el
+ * patrón de ámbares es de lo más útil que da esta pantalla: dice si alguien
+ * viene arrastrando plazos. Callar la diferencia convierte «no lo sé» en «todo
+ * bien», que es la mentira que este módulo lleva entero evitando. */
+export const declaradoSinPlazo = (p: PeriodoMin) => !!p.declarado_en && !p.vence;
+
 /* ── UNA FECHA PUEDE SER OFICIAL O REFERENCIAL ──
  *
  * `vencimiento_oficial.fuente` guarda de dónde salió cada fecha, y no es un
@@ -209,10 +222,14 @@ export const esFechaOficial = (fuente?: string | null) =>
  * meses de los que no sabemos nada. */
 export function resumenPeriodos(ps: (PeriodoMin & { clase?: string })[], o: OblMin) {
   let declarados = 0, vencidos = 0, porVencer = 0, pendientes = 0, sinFecha = 0,
-    tarde = 0, inactivos = 0;
+    tarde = 0, inactivos = 0, sinPlazo = 0;
   for (const p of ps) {
     switch (situacionPeriodo(p, o)) {
-      case "declarado": declarados++; if (declaradoTarde(p)) tarde++; break;
+      case "declarado":
+        declarados++;
+        if (declaradoTarde(p)) tarde++;
+        else if (declaradoSinPlazo(p)) sinPlazo++;
+        break;
       case "vencido": vencidos++; break;
       case "por_vencer": porVencer++; break;
       case "sin_fecha": sinFecha++; break;
@@ -225,7 +242,7 @@ export function resumenPeriodos(ps: (PeriodoMin & { clase?: string })[], o: OblM
      31» cuando dos no había que declararlos es inventar dos deudas. Quien
      quiera la cuenta cruda tiene `inactivos` al lado. */
   return { total: ps.length - inactivos, declarados, vencidos, porVencer,
-    pendientes, sinFecha, tarde, inactivos };
+    pendientes, sinFecha, tarde, inactivos, sinPlazo };
 }
 
 /* ── ¿ESTÁ AL DÍA? ──

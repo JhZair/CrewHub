@@ -5270,3 +5270,9 @@ mark.bq-marca{
   max-width:112px;cursor:pointer}
 .obl-resp-sel:hover,.obl-resp-sel:focus{border-color:var(--border2);color:var(--text)}
 .obl-resp-sel option{background:var(--card);color:var(--text)}
+
+/* Declarado, pero sin fecha de vencimiento con la que compararlo. Apagado y
+   sin ícono a propósito: no es una acusación —nadie llegó tarde que se sepa—
+   pero tampoco puede verse igual que uno puntual. El tono es la diferencia
+   entre «a tiempo» y «no se sabe». */
+.obl-fecha.sin-plazo{color:var(--dim)}

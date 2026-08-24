@@ -13,7 +13,7 @@ import { AccionesFila, AvisoHilo, idFila } from "@/components/HiloRendicion";
 import type { RepLegal } from "@/lib/repLegal";
 import {
   CLASES, claseDe, icoClase, nombreClase, rotuloPeriodo, situacionPeriodo,
-  declaradoTarde, resumenPeriodos, RESULTADOS, rotuloResultado,
+  declaradoTarde, declaradoSinPlazo, resumenPeriodos, RESULTADOS, rotuloResultado,
   digitoRuc, META_SIT, igvDelPeriodo, resultadoDe, motivoNoDeclara, MESES,
 } from "@/lib/obligaciones";
 
@@ -190,6 +190,9 @@ export default function Obligaciones({ empresas, logos, repLegal, obligaciones, 
     const sit = situacionPeriodo(p, o);
     const m = META_SIT[sit];
     const tarde = declaradoTarde(p);
+    /* Declarado y sin fecha contra la que medirlo: ni a tiempo ni tarde, sino
+       «no se puede saber». Ver `declaradoSinPlazo`. */
+    const sinPlazo = declaradoSinPlazo(p);
     const edit = editando === p.id;
     /* Lo que dicen los comprobantes de ese mes. Solo para las mensuales: una
        jurada anual no se resuelve sumando el IGV de doce meses. */
@@ -247,9 +250,11 @@ export default function Obligaciones({ empresas, logos, repLegal, obligaciones, 
             Es la misma lección que ya costó una ronda en las facturas del
             fondo, y no se aplicó aquí. */}
         {!p.declarado_en ? <span /> : (
-          <span className={`obl-fecha${tarde ? " tarde" : ""}`}
+          <span className={`obl-fecha${tarde ? " tarde" : ""}${sinPlazo ? " sin-plazo" : ""}`}
             title={tarde
               ? `Se declaró el ${dmy(p.declarado_en)}, después del vencimiento`
+              : sinPlazo
+              ? `Se declaró el ${dmy(p.declarado_en)}. No hay fecha de vencimiento cargada para este periodo —el calendario de SUNAT de ese año no está en el sistema—, así que NO se puede saber si se presentó a tiempo.`
               : `Declarado el ${dmy(p.declarado_en)}`}>
             {tarde ? "⚠ " : ""}{dmy(p.declarado_en)}
             {/* El número de orden es LA PRUEBA: es lo que se cita si SUNAT
@@ -576,6 +581,17 @@ export default function Obligaciones({ empresas, logos, repLegal, obligaciones, 
                 <span style={{ color: "var(--yellow)" }}
                   title="Declarados después del vencimiento. Se sabe porque se guarda la fecha real de presentación.">
                   · {res.tarde} fuera de plazo
+                </span>
+              )}
+              {/* ── LOS QUE NO SE PUEDEN JUZGAR ──
+                  Sin fecha de vencimiento no hay «a tiempo» ni «tarde»: hay
+                  «no lo sé». Contarlos aparte es lo que impide leer un bloque
+                  entero sin ámbares como si estuviera limpio, cuando lo que
+                  pasa es que el calendario de esos años no está cargado. */}
+              {res.sinPlazo > 0 && (
+                <span style={{ color: "var(--dim)" }}
+                  title="Declarados, pero sin fecha de vencimiento con la que compararlos: el calendario de SUNAT de esos años no está cargado. No se sabe si fueron puntuales.">
+                  · {res.sinPlazo} sin poder comprobar el plazo
                 </span>
               )}
               <span style={{ color: "var(--dim)" }}>de {res.total}</span>
