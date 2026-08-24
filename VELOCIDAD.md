@@ -483,6 +483,73 @@ Son casi los mismos milisegundos. §4 y §1 pasan a ser el trabajo.
 
 ---
 
+## §4 — MEDIDO DESPUÉS: NO MEJORÓ. Y eso hay que decirlo.
+
+| Portada · HTML completo | |
+|---|---|
+| Antes de todo | 7019 ms |
+| Tras el §0 | 3800 ms |
+| **Tras aplanar la cascada (§4)** | **4337 ms** |
+
+Aplanar de 16 esperas a 6 **no bajó el reloj — lo subió 537 ms**. Las acciones
+de servidor, igual: 3525 → 3903 ms.
+
+### Lo primero: esto no prueba nada, y ese es el problema
+
+**Son muestras de una.** 3800 y 4337 se llevan un 14 %, que en una función
+serverless con arranque en frío y una conexión desde Cusco cabe de sobra dentro
+del ruido. No puedo decir que empeoró, pero tampoco puedo decir que mejoró — y
+llevo tres medidas seguidas sacando conclusiones de un solo número. El
+instrumento estaba mal, no la conclusión.
+
+**Lo que sí dice el resultado**: si quitar nueve esperas encadenadas no mueve el
+reloj, **el tiempo no está dominado por el número de viajes**. Esa hipótesis se
+cae, y con ella la mitad del plan.
+
+### Dos candidatos para lo que sí lo domina
+
+1. **Ruido puro**, y hace falta medir bien antes de seguir.
+2. **El cuello está en Supabase, no en el ida y vuelta.** PostgREST atiende con
+   un pool de conexiones limitado. Antes, las 26 consultas llegaban repartidas en
+   quince olas; ahora **21 llegan de golpe**. Si el pool es más pequeño que 21,
+   la cola no desaparece: se muda de la aplicación a la base, y paralelizar por
+   encima de ese número deja de servir — o cuesta un poco. Encaja con que el
+   suelo de CUALQUIER petición medida sea ~300-400 ms.
+
+### El instrumento que debí usar desde el principio
+
+Siete muestras y la mediana, sobre el documento y sin repintar la página:
+
+```js
+const t = async () => { const a = performance.now();
+  const r = await fetch(location.href, { cache: 'no-store' }); await r.text();
+  return Math.round(performance.now() - a); };
+const xs = []; for (let i = 0; i < 7; i++) xs.push(await t());
+xs.sort((a, b) => a - b);
+console.log('muestras:', xs, '· mediana:', xs[3]);
+```
+
+Y el suelo con el que compararlo — una ruta que no consulta nada:
+
+```js
+const t0 = performance.now();
+await (await fetch('/manifest.webmanifest', { cache: 'no-store' })).text();
+console.log('suelo:', Math.round(performance.now() - t0), 'ms');
+```
+
+Si la mediana de la portada es 4000 y el suelo 400, el trabajo propio de la
+página son 3600 ms y hay que buscar dentro. Si el suelo ya es 2000, el problema
+no es la portada: es la distancia a la región.
+
+### Qué NO se deshace
+
+El aplanado se queda aunque no se vea en el reloj: no puede ser más lento en
+principio, quita nueve puntos donde un fallo dejaba la página a medias, y de
+paso destapó una regresión real en la campanita. Pero **deja de ser el §4 de la
+lista de velocidad** hasta que un número diga que sirve.
+
+---
+
 ## Orden de ataque — revisado tras medir
 
 0. **Comprobar Max rows** en Supabase → Settings → API. Dos minutos. Decide si
