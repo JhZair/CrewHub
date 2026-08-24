@@ -202,9 +202,11 @@ select c.clase, c.clausula, c.titulo,
 --        codigo_acta = '139-2025-DAFO'
 --  where codigo = 'PO-001';
 
--- El enlace al PDF del acta en Drive. Pega la URL y descomenta.
--- update postulaciones set acta_url = 'PEGAR-URL-DE-DRIVE'
---  where codigo = 'PO-001';
+-- El enlace al PDF del acta en Drive: YA ESTA CARGADO (verificado 24/08/2026).
+-- Aqui habia un `update` comentado con un 'PEGAR-URL-DE-DRIVE' de marcador.
+-- Se quita en vez de dejarlo: descomentarlo por inercia pisaria el enlace
+-- bueno con la cadena literal, y el fallo no daria ningun error — el boton
+-- del acta seguiria ahi, llevando a ninguna parte.
 
 -- ------------------------------------------------------------
 -- 4 · ESCRIBIR
