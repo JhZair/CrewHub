@@ -63,42 +63,84 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-  const { data: { session } } = await supabase.auth.getSession();
 
-  const { data: perfil } = await supabase
-    .from("perfiles").select("nombre,color,rol,avatar_url,es_admin,es_finanzas").eq("id", user.id).single();
+  /* ══════════════════════════════════════════════════════════════════════════
+     LA PORTADA SE PEDÍA EN QUINCE ESPERAS, UNA DETRÁS DE OTRA
 
-  // "Mis asuntos" incluye también publicaciones vinculadas a MI PERSONA
-  // (gracias al enlace personas.usuario_id ↔ perfil)
-  let misVinculadas: string[] = [];
-  let miPersonaId: string | null = null;   // para el enlace "Mi perfil"
-  {
-    const { data: yo } = await supabase.from("personas")
-      .select("id").eq("usuario_id", user.id).maybeSingle();
-    miPersonaId = yo?.id || null;
-    if (yo) {
-      const { data: vs } = await supabase.from("publicacion_vinculos")
-        .select("publicacion_id")
-        .eq("entidad_tipo", "persona").eq("entidad_id", yo.id)
-        .limit(300);
-      misVinculadas = (vs || []).map((x: any) => x.publicacion_id);
-    }
-  }
+     Medido en producción: 97 ms hasta el primer byte y **7019 ms** hasta que el
+     documento terminaba de llegar. Como no hay ningún `<Suspense>`, ese segundo
+     número es literalmente cuándo acaba el último `await` de aquí abajo. La
+     mitad del «va lento» del sistema era esta función.
 
-  // Casos que ESTE usuario ocultó de su feed (resueltos que ya no quiere ver)
-  const { data: ocultosData } = await supabase.from("feed_ocultos")
-    .select("publicacion_id").eq("usuario_id", user.id);
-  const idsOcultos = (ocultosData || []).map((x: any) => x.publicacion_id);
+     Y de las quince esperas, **solo cuatro dependían de verdad de la anterior**.
+     El resto se esperaban por el orden en que se escribieron: el perfil no
+     necesita saber qué casos ocultaste, y los seis conteos del Bot no necesitan
+     nada más que la fecha de hoy.
 
-  // Avisos que ESTE usuario ya dio por leídos: "me enteré" = reacción 👀 suya.
-  // Se ocultan de su feed (siguen visibles para quien aún no los vio, y el
-  // aviso se archiva solo cuando lo ve la mayoría).
-  const { data: enterData } = await supabase.from("reacciones")
-    .select("publicacion_id").eq("usuario_id", user.id).eq("emoji", "👀").is("comentario_id", null);
-  const misEnterados = new Set((enterData || []).map((x: any) => x.publicacion_id));
+     Ahora son CUATRO tandas, y cada una existe porque la siguiente necesita algo
+     que solo ella puede dar:
 
-  // Catálogos (pequeños: una consulta cada uno, en paralelo)
-  const [ents, pers, etiq, objs, perfs, destQ, postsQ, univQ] = await Promise.all([
+       1. Todo lo que se sabe con `user.id` y la fecha  → 21 consultas a la vez
+       2. Mis vínculos             ← necesita mi ficha de persona (de la 1)
+       3. El feed y su universo    ← necesitan mis vínculos y mis ocultos
+       4. Familia, reacciones y nombres ← necesitan los ids del feed
+
+     ⚠ Las `Promise.all` anidadas de la tanda 1 NO la parten en cuatro esperas:
+     las promesas nacen al evaluarse el array, así que las 21 salen juntas. Van
+     agrupadas por asunto solo para poder leerlas.
+     ══════════════════════════════════════════════════════════════════════════ */
+
+  /* Las fechas se calculan ANTES de pedir nada. Estaban repartidas por el
+     archivo, cada una justo encima de la consulta que la usaba, y eso era parte
+     del problema: una constante en medio del camino parece una dependencia. */
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  const hoyISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Lima" }); // YYYY-MM-DD
+  const en60ISO = new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10);
+
+  // Recientes de cada tipo por separado (12 y 12), no 20 mezcladas: así la
+  // pestaña "Del Bot" del desplegable tiene contenido aunque lo último sea
+  // personal. Desempate por id (varias del mismo lote comparten creado_en).
+  const NCAMP = 12;
+  /* En función para poder repetirla sin `dafo_id` cuando esa columna todavía no
+     existe: PostgREST rechaza la consulta entera, no la columna (ver
+     lib/notificaciones.ts → COL_DAFO). */
+  const tandaNotif = (cols: string, esBot: boolean) => {
+    const q = supabase.from("notificaciones").select(cols).eq("usuario_id", user.id);
+    return (esBot ? q.is("actor_nombre", null) : q.not("actor_nombre", "is", null))
+      .order("creado_en", { ascending: false }).order("id", { ascending: false }).limit(NCAMP);
+  };
+
+  /* ══ TANDA 1 ══ todo lo que no necesita más que `user.id` y la fecha.
+     Las CUATRO salen a la vez —las promesas nacen aquí, sin `await`— pero se
+     recogen por separado, y ese detalle es la mitad de la ganancia: el feed
+     solo depende del primer grupo, así que arranca en cuanto ese vuelve y no
+     espera al catálogo, que es lento por dentro (`catalogoObjetos` hace dos
+     viajes en serie: los objetos y luego el nombre de sus dueños).
+     Con un solo `await` de los cuatro grupos, la consulta más pesada de la
+     página —el feed— se quedaba esperando detrás de la más lenta que ni
+     siquiera necesita. */
+
+  // — quién soy y qué he escondido —
+  const pMio = Promise.all([
+    supabase.auth.getSession(),
+    supabase.from("perfiles")
+      .select("nombre,color,rol,avatar_url,es_admin,es_finanzas").eq("id", user.id).single(),
+    // Casos que ESTE usuario ocultó de su feed (resueltos que ya no quiere ver)
+    supabase.from("feed_ocultos").select("publicacion_id").eq("usuario_id", user.id),
+    /* Avisos que ESTE usuario ya dio por leídos: "me enteré" = reacción 👀
+       suya. Se ocultan de su feed (siguen visibles para quien aún no los vio,
+       y el aviso se archiva solo cuando lo ve la mayoría). */
+    supabase.from("reacciones").select("publicacion_id")
+      .eq("usuario_id", user.id).eq("emoji", "👀").is("comentario_id", null),
+    /* Mi ficha de persona: "Mis asuntos" incluye también lo vinculado a ELLA
+       (por el enlace personas.usuario_id ↔ perfil), y el enlace «Mi perfil»
+       la necesita. Se pide por su id y no se busca en el listado de personas
+       que trae el catálogo: son 147 filas hoy, pero preguntar por una fila
+       concreta no depende de que ese listado venga entero. */
+    supabase.from("personas").select("id").eq("usuario_id", user.id).maybeSingle(),
+  ]);
+  // — los catálogos y la cabecera —
+  const pCatalogos = Promise.all([
     /* Cómo se lee cada entidad en un desplegable lo decide lib/catalogos, no
        esta página: el mismo compositor se abre desde aquí, desde el «+» y
        desde la ficha del caso. */
@@ -133,6 +175,62 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
       .gt("destacado_hasta", new Date().toISOString())
       .order("fecha_limite", { ascending: true, nullsFirst: false })
       .limit(5),
+  ]);
+  // — la campanita —
+  const pCampana = Promise.all([
+      tandaNotif(COLS_NOTIF, false),
+      tandaNotif(COLS_NOTIF, true),
+      // Timbre = solo lo personal sin leer (lo que pide tu acción).
+      supabase.from("notificaciones").select("id", { count: "exact", head: true })
+        .eq("usuario_id", user.id).eq("leida", false).not("actor_nombre", "is", null),
+      // Contador propio de las automáticas del Bot sin leer.
+      supabase.from("notificaciones").select("id", { count: "exact", head: true })
+        .eq("usuario_id", user.id).eq("leida", false).is("actor_nombre", null),
+      supabase.from("actividad").select("id", { count: "exact", head: true })
+        .eq("tipo", "bot").gte("creado_en", hoy.toISOString()),
+  ]);
+  /* — los hallazgos del Bot —
+     Seis conteos que no dependen de NADA salvo la fecha de hoy, y que estaban
+     al final de la cascada esperando a que llegara el feed entero. */
+  const pQhaway = Promise.all([
+      supabase.from("publicaciones").select("id", { count: "exact", head: true })
+        .in("estado", ["abierta", "en_progreso", "seguimiento", "en_pausa"])
+        .is("archivado_en", null)   // un aviso archivado con fecha vencida NO es un vencido
+        .not("fecha_limite", "is", null).lt("fecha_limite", hoyISO),
+      supabase.from("publicaciones").select("id", { count: "exact", head: true })
+        .in("estado", ["abierta", "en_progreso", "seguimiento", "en_pausa"])
+        .is("archivado_en", null).is("responsable", null),
+      supabase.from("empresas").select("id", { count: "exact", head: true })
+        .eq("estado", "activa").not("estado_sunat", "is", null).neq("estado_sunat", "activo"),
+      supabase.from("personas").select("id", { count: "exact", head: true })
+        .not("dni_vencimiento", "is", null).lte("dni_vencimiento", en60ISO),
+      supabase.from("personas").select("nombre,alias,fecha_nacimiento")
+        .in("tipo", ["personal", "colaborador"]).not("fecha_nacimiento", "is", null),
+      supabase.from("postulaciones")
+        .select("estado, proy:proyectos(nombre), conv:convocatorias(anio)")
+        .in("estado", ["en_preparacion", "enviada", "en_subsanacion", "finalista", "ganadora"]),
+  ]);
+
+  /* Se recoge SOLO el primer grupo. Los otros tres ya están volando; se
+     esperan más abajo, cuando de verdad hagan falta. */
+  const [{ data: { session } }, { data: perfil }, { data: ocultosData },
+    { data: enterData }, { data: yo }] = await pMio;
+  const idsOcultos = (ocultosData || []).map((x: any) => x.publicacion_id);
+  const misEnterados = new Set((enterData || []).map((x: any) => x.publicacion_id));
+  const miPersonaId: string | null = yo?.id || null;
+
+  /* ══ TANDA 2 ══ lo único que de verdad necesitaba saber quién soy.
+     "Mis asuntos" incluye también publicaciones vinculadas a MI PERSONA. La
+     ficha ya vino arriba; lo que falta es qué hay colgado de ella. */
+  const misVinculadas: string[] = miPersonaId
+    ? ((await supabase.from("publicacion_vinculos").select("publicacion_id")
+        .eq("entidad_tipo", "persona").eq("entidad_id", miPersonaId)
+        .limit(300)).data || []).map((x: any) => x.publicacion_id)
+    : [];
+
+  /* ══ TANDA 3 ══ el feed y el universo de los contadores. Las dos necesitan
+     `idsOcultos` (tanda 1) y la primera además `misVinculadas` (tanda 2). */
+  const [postsQ, univQ] = await Promise.all([
     (() => {
       let q = supabase.from("publicaciones")
         .select(`
@@ -168,62 +266,17 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
     })(),
   ]);
 
-  // Familia de cada caso visible: ¿tiene hijos? ¿tiene padre?
-  const idsPubs = (postsQ.data || []).map((p: any) => p.id);
-  const { data: hijosData } = idsPubs.length
-    ? await supabase.from("publicaciones").select("padre_id,estado,archivado_en").in("padre_id", idsPubs)
-    : { data: [] };
-  const hijosDe = contarHijos(hijosData);
-  // Títulos de padres que no están en la página del feed
-  const idsPadres = [...new Set((postsQ.data || [])
-    .map((p: any) => p.padre_id).filter(Boolean)
-    .filter((id: string) => !idsPubs.includes(id)))];
-  const { data: padresExt } = idsPadres.length
-    ? await supabase.from("publicaciones").select("id,titulo").in("id", idsPadres)
-    : { data: [] };
-  const tituloPadre = new Map<string, string>();
-  (postsQ.data || []).forEach((p: any) => tituloPadre.set(p.id, p.titulo));
-  (padresExt || []).forEach((p: any) => tituloPadre.set(p.id, p.titulo));
-  const { data: reaccs } = idsPubs.length
-    ? await supabase.from("reacciones")
-        .select("publicacion_id,emoji,usuario_id")
-        .is("comentario_id", null).in("publicacion_id", idsPubs)
-    : { data: [] };
-  // El nombre de quién reaccionó, para el acuse en el tooltip. Se resuelve con el
-  // mismo catálogo de perfiles ya cargado (perfs), sin otra consulta.
-  const nombrePerfil = new Map((perfs.data || []).map((x: any) => [x.id, x.nombre]));
-  const reaccsDe = new Map<string, any[]>();
-  (reaccs || []).forEach((r: any) => {
-    const l = reaccsDe.get(r.publicacion_id) || [];
-    l.push({ emoji: r.emoji, usuario_id: r.usuario_id, nombre: nombrePerfil.get(r.usuario_id) }); reaccsDe.set(r.publicacion_id, l);
-  });
+  /* Ahora sí se recogen los otros tres grupos de la tanda 1. Llevan volando
+     desde el principio, así que a estas alturas normalmente ya llegaron: este
+     `await` no suele esperar nada. */
+  const [
+    [ents, pers, etiq, objs, perfs, destQ],
+    [{ data: notifPersRaw, error: ePers }, { data: notifBotRaw, error: eBot },
+      { count: sinLeer }, { count: sinLeerBot }, { count: botHoy }],
+    [{ count: cVencidos }, { count: cSinResp }, { count: cSunat }, { count: cDni },
+      { data: nacim }, { data: postAnio }],
+  ] = await Promise.all([pCatalogos, pCampana, pQhaway]);
 
-  // Notificaciones + actividad de Qhaway hoy
-  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
-  // Recientes de cada tipo por separado (12 y 12), no 20 mezcladas: así la
-  // pestaña "Del Bot" del desplegable tiene contenido aunque lo último sea
-  // personal. Desempate por id (varias del mismo lote comparten creado_en).
-  const NCAMP = 12;
-  /* En función para poder repetirla sin `dafo_id` cuando esa columna todavía no
-     existe: PostgREST rechaza la consulta entera, no la columna (ver
-     lib/notificaciones.ts → COL_DAFO). */
-  const tandaNotif = (cols: string, esBot: boolean) => {
-    const q = supabase.from("notificaciones").select(cols).eq("usuario_id", user.id);
-    return (esBot ? q.is("actor_nombre", null) : q.not("actor_nombre", "is", null))
-      .order("creado_en", { ascending: false }).order("id", { ascending: false }).limit(NCAMP);
-  };
-  const [{ data: notifPersRaw, error: ePers }, { data: notifBotRaw, error: eBot }, { count: sinLeer }, { count: sinLeerBot }, { count: botHoy }] = await Promise.all([
-    tandaNotif(COLS_NOTIF, false),
-    tandaNotif(COLS_NOTIF, true),
-    // Timbre = solo lo personal sin leer (lo que pide tu acción).
-    supabase.from("notificaciones").select("id", { count: "exact", head: true })
-      .eq("usuario_id", user.id).eq("leida", false).not("actor_nombre", "is", null),
-    // Contador propio de las automáticas del Bot sin leer.
-    supabase.from("notificaciones").select("id", { count: "exact", head: true })
-      .eq("usuario_id", user.id).eq("leida", false).is("actor_nombre", null),
-    supabase.from("actividad").select("id", { count: "exact", head: true })
-      .eq("tipo", "bot").gte("creado_en", hoy.toISOString()),
-  ]);
   /* ── SEGUNDO INTENTO, QUITANDO SOLO LO QUE FALTE ──
      Antes esto miraba una sola columna (`dafo_id`) y reintentaba una vez. Con
      once puertas eso ya no vale: si a la base le falta `comprobante_id` porque
@@ -234,7 +287,16 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
      `sinEstas`, y que aquí no se había aplicado.
      Se quita lo que la base nombró, no todo lo opcional: renunciar a `dafo_id`
      porque falta otra cosa deja los correos de la casilla sin destino, que fue
-     el fallo original. */
+     el fallo original.
+
+     ⚠ VA ANTES DE LA TANDA 4, y no después como estaba al reordenar esto. La
+     tanda 4 pide los vínculos de los casos notificados, y para saber CUÁLES
+     necesita las notificaciones DEFINITIVAS. Con el reintento detrás, en una
+     base a la que le falta una migración la primera respuesta viene vacía —por
+     eso hay reintento—, así que la lista de ids salía vacía y la campanita
+     perdía todos sus chips de contexto. Se habría degradado dos veces: una
+     prevista y otra no. En el camino normal esto no cuesta nada: el bucle no
+     entra y no hay ni un viaje de más. */
   let notifPers: any = notifPersRaw, notifBot: any = notifBotRaw;
   {
     let err: any = ePers || eBot;
@@ -251,29 +313,73 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
   }
   const notifs = [...(notifPers || []), ...(notifBot || [])];
 
-  // ── Mensaje de Qhaway: combina hallazgos reales + cumpleaños + frases decorativas,
-  //    elegido al azar (los cumpleaños tienen prioridad). No crea tarjetas: solo informa. ──
-  const hoyISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Lima" }); // YYYY-MM-DD
-  const en60ISO = new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10);
-  const [{ count: cVencidos }, { count: cSinResp }, { count: cSunat }, { count: cDni }, { data: nacim }, { data: postAnio }] =
-    await Promise.all([
-      supabase.from("publicaciones").select("id", { count: "exact", head: true })
-        .in("estado", ["abierta", "en_progreso", "seguimiento", "en_pausa"])
-        .is("archivado_en", null)   // un aviso archivado con fecha vencida NO es un vencido
-        .not("fecha_limite", "is", null).lt("fecha_limite", hoyISO),
-      supabase.from("publicaciones").select("id", { count: "exact", head: true })
-        .in("estado", ["abierta", "en_progreso", "seguimiento", "en_pausa"])
-        .is("archivado_en", null).is("responsable", null),
-      supabase.from("empresas").select("id", { count: "exact", head: true })
-        .eq("estado", "activa").not("estado_sunat", "is", null).neq("estado_sunat", "activo"),
-      supabase.from("personas").select("id", { count: "exact", head: true })
-        .not("dni_vencimiento", "is", null).lte("dni_vencimiento", en60ISO),
-      supabase.from("personas").select("nombre,alias,fecha_nacimiento")
-        .in("tipo", ["personal", "colaborador"]).not("fecha_nacimiento", "is", null),
-      supabase.from("postulaciones")
-        .select("estado, proy:proyectos(nombre), conv:convocatorias(anio)")
-        .in("estado", ["en_preparacion", "enviada", "en_subsanacion", "finalista", "ganadora"]),
-    ]);
+  /* ══ TANDA 4 ══ todo lo que necesita los ids del feed, de una vez.
+     Eran cuatro esperas seguidas —familia, padres de fuera, reacciones— y
+     ninguna necesitaba el resultado de la anterior: las tres cuelgan del mismo
+     `idsPubs`. Los padres externos son la excepción aparente (salen de
+     `padre_id`), pero eso también viene del feed y ya está en memoria. */
+  const idsPubs = (postsQ.data || []).map((p: any) => p.id);
+  // Títulos de padres que no están en la página del feed
+  const idsPadres = [...new Set((postsQ.data || [])
+    .map((p: any) => p.padre_id).filter(Boolean)
+    .filter((id: string) => !idsPubs.includes(id)))];
+  /* Los objetos que el feed necesita NOMBRAR no son los mismos que ofrece para
+     ELEGIR. El catálogo trae los 300 más recientes y sin CVs —para el
+     desplegable sobra—, pero un caso puede estar vinculado a material más
+     viejo: como los chips se filtran por «tiene nombre», ese vínculo
+     desaparecía de la tarjeta sin decir nada. Se resuelven aparte, solo los
+     que salen en pantalla. */
+  const idsObjFeed = [...new Set(
+    [...(postsQ.data || []), ...(destQ.data || [])]
+      .flatMap((p: any) => p.vinculos || [])
+      .filter((vi: any) => vi.entidad_tipo === "objeto")
+      .map((vi: any) => vi.entidad_id)
+  )];
+  // Contexto para las notificaciones: vínculos de entidad de cada caso
+  // notificado. De `notifs`, que es la lista DEFINITIVA (ver el aviso de
+  // arriba sobre el orden del reintento).
+  const idsNotif = [...new Set(
+    notifs.map((n: any) => n.publicacion_id).filter(Boolean))];
+
+  const vacio = { data: [] as any[] };
+  const [{ data: hijosData }, { data: padresExt }, { data: reaccs },
+    { data: objsFeed }, { data: vincNotif }] = await Promise.all([
+    idsPubs.length
+      ? supabase.from("publicaciones").select("padre_id,estado,archivado_en").in("padre_id", idsPubs)
+      : vacio,
+    idsPadres.length
+      ? supabase.from("publicaciones").select("id,titulo").in("id", idsPadres)
+      : vacio,
+    idsPubs.length
+      ? supabase.from("reacciones").select("publicacion_id,emoji,usuario_id")
+          .is("comentario_id", null).in("publicacion_id", idsPubs)
+      : vacio,
+    idsObjFeed.length
+      ? supabase.from("objetos").select("id,titulo").in("id", idsObjFeed)
+      : vacio,
+    idsNotif.length
+      ? supabase.from("publicacion_vinculos")
+          .select("publicacion_id,entidad_tipo,entidad_id").in("publicacion_id", idsNotif)
+      : vacio,
+  ]);
+
+  const hijosDe = contarHijos(hijosData);
+  const tituloPadre = new Map<string, string>();
+  (postsQ.data || []).forEach((p: any) => tituloPadre.set(p.id, p.titulo));
+  (padresExt || []).forEach((p: any) => tituloPadre.set(p.id, p.titulo));
+  // El nombre de quién reaccionó, para el acuse en el tooltip. Se resuelve con el
+  // mismo catálogo de perfiles ya cargado (perfs), sin otra consulta.
+  const nombrePerfil = new Map((perfs.data || []).map((x: any) => [x.id, x.nombre]));
+  const reaccsDe = new Map<string, any[]>();
+  (reaccs || []).forEach((r: any) => {
+    const l = reaccsDe.get(r.publicacion_id) || [];
+    l.push({ emoji: r.emoji, usuario_id: r.usuario_id, nombre: nombrePerfil.get(r.usuario_id) }); reaccsDe.set(r.publicacion_id, l);
+  });
+
+  /* ── Mensaje de Qhaway: combina hallazgos reales + cumpleaños + frases
+     decorativas, elegido al azar (los cumpleaños tienen prioridad). No crea
+     tarjetas: solo informa. Sus seis conteos ya vinieron en la tanda 1: no
+     dependen de nada y estaban al final de la cascada esperando su turno. ── */
 
   // 🎂 Cumpleaños de hoy (compara mes-día)
   const hoyMD = hoyISO.slice(5);
@@ -342,32 +448,23 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
   // para ocupar menos espacio; el buscador del compositor conserva el completo.
   (pers.data || []).forEach((x: any) => nombres.set(`persona:${x.id}`, x.alias || x.nombre));
 
-  /* Los objetos que el feed necesita NOMBRAR no son los mismos que ofrece para
-     ELEGIR. El catálogo trae los 300 más recientes y sin CVs —para el
-     desplegable sobra—, pero un caso puede estar vinculado a material más
-     viejo: como los chips se filtran por «tiene nombre», ese vínculo
-     desaparecía de la tarjeta sin decir nada. Se resuelven aparte, solo los
-     que salen en pantalla. */
-  {
-    const idsObj = [...new Set(
-      [...(postsQ.data || []), ...(destQ.data || [])]
-        .flatMap((p: any) => p.vinculos || [])
-        .filter((v: any) => v.entidad_tipo === "objeto")
-        .map((v: any) => v.entidad_id)
-        .filter((id: string) => !nombres.has(`objeto:${id}`))
-    )];
-    if (idsObj.length) {
-      const { data } = await supabase.from("objetos").select("id,titulo").in("id", idsObj);
-      (data || []).forEach((o: any) => nombres.set(`objeto:${o.id}`, o.titulo));
-    }
-  }
+  /* Los títulos del material del feed ya vinieron en la tanda 4 (`objsFeed`).
+     Antes se pedían aquí, filtrando primero los que el catálogo ya nombraba;
+     ahora se piden todos los del feed —son un puñado, y la tabla entera son 86
+     filas— porque en la tanda 4 el mapa `nombres` todavía no existe.
 
-  // Contexto para las notificaciones: vínculos de entidad de cada caso notificado
-  const idsNotif = [...new Set((notifs || []).map((n: any) => n.publicacion_id).filter(Boolean))];
-  const { data: vincNotif } = idsNotif.length
-    ? await supabase.from("publicacion_vinculos")
-        .select("publicacion_id,entidad_tipo,entidad_id").in("publicacion_id", idsNotif)
-    : { data: [] };
+     El filtro no desaparece: se mueve del `.in()` al `.set()`. Hoy da igual —
+     `catalogoObjetos` también nombra al objeto con `o.titulo`, y el dueño va
+     en `sub`, que nunca entra en este mapa—, así que el `if` no cambia ningún
+     valor. Se queda porque «lo que ya tiene nombre no se renombra» es la regla
+     que hacía cierto el filtro de antes, y quitarla dejaría este `set` pisando
+     al catálogo el día que los dos `select` dejen de traer el mismo texto. */
+  (objsFeed || []).forEach((o: any) => {
+    if (!nombres.has(`objeto:${o.id}`)) nombres.set(`objeto:${o.id}`, o.titulo);
+  });
+
+  // Contexto para las notificaciones: vínculos de entidad de cada caso
+  // notificado. La consulta también vino en la tanda 4.
   const vincDe = new Map<string, { tipo: string; nombre: string }[]>();
   (vincNotif || []).forEach((v: any) => {
     const nombre = nombres.get(`${v.entidad_tipo}:${v.entidad_id}`);
