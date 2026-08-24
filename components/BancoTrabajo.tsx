@@ -41,6 +41,11 @@ export default function BancoTrabajo() {
   const [guardado, setGuardado] = useState(false);   // acuse tras enviar
   const [muroNuevos, setMuroNuevos] = useState(0);   // señal: mensajes del muro sin ver
   const taRef = useRef<HTMLTextAreaElement>(null);
+  /* Quién soy y qué casos tengo a la vista. Los usa el filtro del realtime de
+     más abajo; van en refs y no en estado porque los lee un manejador de
+     eventos, no el render. */
+  const yoRef = useRef<string | null>(null);
+  const misIdsRef = useRef<Set<string>>(new Set());
   const colapsadoRef = useRef(colapsado); colapsadoRef.current = colapsado;
 
   const enLogin = pathname.startsWith("/login");
@@ -70,6 +75,11 @@ export default function BancoTrabajo() {
      que abrí el banco) hay sin ver. Con el banco abierto se marcan todos vistos.
      El marcador vive en localStorage; es por-navegador, sin campanita. */
   const pintarMuro = useCallback((r: any) => {
+    /* Quién soy, de paso. El muro ya lo devuelve para saber qué mensajes son
+       míos, y el filtro del realtime de más abajo lo necesita para reconocer
+       un caso que acaba de pasar a ser mío. Pedirlo aparte sería una consulta
+       para un dato que ya está en la respuesta. */
+    if (r?.yo) yoRef.current = r.yo;
     const msgs = r?.mensajes || [];
     if (!colapsadoRef.current) {   // banco abierto → todo visto
       try { localStorage.setItem("muro-visto", String(Date.now())); } catch {}
@@ -119,24 +129,79 @@ export default function BancoTrabajo() {
     if (esTop && !enLogin) cargarMuro();
   }, [colapsado, esTop, enLogin, cargarMuro]);
 
-  // En vivo: si cambia una publicación (estado, responsable, nuevo caso) o llega
-  // un comentario, recarga el banco; si llega un mensaje al muro, actualiza la
-  // señal. Canal único por montaje.
+  /* ══════════════════════════════════════════════════════════════════════════
+     EL MULTIPLICADOR DEL SISTEMA
+
+     Esto escuchaba `publicaciones` y `comentarios` ENTERAS, sin filtro, sin
+     retardo y sin mirar si el cambio tenía algo que ver contigo. Y el banco
+     vive en el layout, o sea en toda pantalla de toda pestaña abierta.
+
+     Cuentas: un comentario de cualquiera, en cualquier caso, hacía que TODAS
+     las pestañas del equipo llamaran a `misEnProgreso()` — diez consultas cada
+     una. Con siete personas y dos pestañas, **140 consultas por comentario**, y
+     ninguna sobre el caso comentado. Nadie lo notaba en su pantalla; lo notaba
+     la base, y se lo devolvía a todos como lentitud de fondo.
+
+     ── SE FILTRA AQUÍ Y NO EN LA SUSCRIPCIÓN ──
+     Lo obvio sería `filter: "responsable=eq.<yo>"`. Y sería un fallo: el filtro
+     de Supabase mira la fila NUEVA, así que un caso que te QUITAN deja de
+     casar y no te llega el evento — se quedaría en tu banco hasta que
+     navegaras. Justo el caso que más importa que llegue.
+
+     Se escucha todo y se decide en memoria, que es gratis: ya se sabe qué casos
+     hay en el banco. Un comentario importa si es de uno de ellos; una
+     publicación importa si YA está en el banco (te la quitaron, se resolvió) o
+     si acaba de pasar a ser tuya. Las dos direcciones, sin consultar nada.
+
+     Y con los mismos 600 ms de retardo que `Realtime.tsx`, para que una ráfaga
+     —una importación, el bot escribiendo diez filas— sea una recarga y no diez.
+     ══════════════════════════════════════════════════════════════════════════ */
+  useEffect(() => {
+    misIdsRef.current = new Set([...casos, ...abiertas, ...segui].map(c => c.id));
+  }, [casos, abiertas, segui]);
+
   useEffect(() => {
     if (!esTop || enLogin) return;
     const supabase = createClient();
     let vivo = true;
+    /* UN temporizador por cada cosa que se recarga, no uno compartido. Con uno
+       solo, un mensaje del muro llegado dentro de la misma ventana de 600 ms
+       cancelaba la recarga del banco —y al revés—: el retardo que existe para
+       agrupar ráfagas se habría comido eventos de otra clase. */
+    const temps: Record<string, ReturnType<typeof setTimeout> | null> = {};
+    const recargarPronto = (k: string, fn: () => void) => {
+      if (temps[k]) clearTimeout(temps[k]!);
+      temps[k] = setTimeout(() => { if (vivo) fn(); }, 600);
+    };
+    /* ¿Este cambio puede mover MI banco? Sin la fila no se puede saber, y ante
+       la duda se recarga: perder un caso de vista es peor que una consulta. */
+    const meToca = (tabla: string, payload: any) => {
+      const fila = payload?.new && Object.keys(payload.new).length ? payload.new : payload?.old;
+      if (!fila) return true;
+      if (tabla === "comentarios") {
+        return !!fila.publicacion_id && misIdsRef.current.has(fila.publicacion_id);
+      }
+      return misIdsRef.current.has(fila.id)
+        || (!!yoRef.current && fila.responsable === yoRef.current);
+    };
     const canal = supabase.channel(`banco-${Math.random().toString(36).slice(2)}`);
     ["publicaciones", "comentarios"].forEach(t =>
-      canal.on("postgres_changes", { event: "*", schema: "public", table: t }, () => { if (vivo) cargar(); }));
-    canal.on("postgres_changes", { event: "*", schema: "public", table: "muro_mensajes" }, () => { if (vivo) cargarMuro(); });
+      canal.on("postgres_changes", { event: "*", schema: "public", table: t },
+        (payload: any) => { if (vivo && meToca(t, payload)) recargarPronto("banco", cargar); }));
+    canal.on("postgres_changes", { event: "*", schema: "public", table: "muro_mensajes" },
+      () => { if (vivo) recargarPronto("muro", cargarMuro); });
     (async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!vivo) return;
       if (session) supabase.realtime.setAuth(session.access_token);
       canal.subscribe();
     })();
-    return () => { vivo = false; supabase.removeChannel(canal); };
+    return () => {
+      vivo = false;
+      // ningún retardo en vuelo sobrevive al desmontaje
+      Object.values(temps).forEach(t => { if (t) clearTimeout(t); });
+      supabase.removeChannel(canal);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [esTop, enLogin]);
 
