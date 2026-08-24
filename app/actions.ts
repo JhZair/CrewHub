@@ -9374,6 +9374,42 @@ export async function quitarPeriodo(periodoId: string) {
 /** Apagar o encender una obligación. No se borra: los periodos ya declarados
  *  son el historial de la empresa ante SUNAT, y borrarlos por dar de baja una
  *  regla sería tirar la prueba de lo que sí se hizo. */
+/* ══════════════════════════════════════════════════════════════════════════
+   CAMBIAR QUIÉN RESPONDE POR UNA OBLIGACIÓN
+
+   El responsable se elegía al CREAR la obligación y ahí se quedaba: el pie del
+   bloque lo pintaba en gris y el único botón era «Dar de baja». Pero la gente
+   cambia de encargo —Wilfredo llevaba las de Aynicha Films y ahora las lleva
+   Katy— y eso no es una excepción: es lo normal en un equipo.
+
+   Sin esta acción, la salida era el SQL Editor. Y lo que decide esa columna no
+   es decorativo: `lib/rondaObligaciones.ts` le abre el caso a quien figura
+   aquí, así que un responsable viejo significa que el aviso de vencimiento le
+   llega a alguien que ya no lo mira. Un dato que dirige avisos no puede
+   necesitar una consola para corregirse.
+
+   ⚠ Lo ya declarado NO se toca. `obligacion_periodo.declarado_por` guarda
+   quién apuntó cada mes, y eso es historia: reescribirla al cambiar de
+   encargado diría que Katy declaró meses que declaró Wilfredo. Esto cambia a
+   quién se le pedirá de ahora en adelante, no quién hizo lo de antes.
+   ══════════════════════════════════════════════════════════════════════════ */
+export async function cambiarResponsableObligacion(
+  obligacionId: string, responsable: string | null,
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  /* `.select()` no es adorno: sin él, un UPDATE que RLS descarta vuelve con
+     error nulo y cero filas, y la pantalla diría «guardado» sobre algo que no
+     se guardó. Es la misma trampa que documenta `cambiarEstado`. */
+  const { data, error } = await supabase.from("obligacion")
+    .update({ responsable: responsable || null }).eq("id", obligacionId).select("id");
+  if (error) return { error: faltaObl(error.message) };
+  if (!data?.length) return { error: "No se pudo guardar: el permiso de la base lo rechazó." };
+  revalidatePath("/obligaciones");
+  return {};
+}
+
 export async function activarObligacion(obligacionId: string, activa: boolean) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();

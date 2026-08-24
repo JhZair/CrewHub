@@ -5254,3 +5254,13 @@ mark.bq-marca{
    que no se encoja cuando el nombre es largo: un avatar aplastado se lee como
    un fallo de carga. */
 .jr-grupo-h .av{flex:none}
+
+/* El desplegable de responsable, al pie de cada obligación. Discreto a
+   propósito: es un control que se usa dos veces al año y vive al lado de un
+   dato que se lee todos los días. Con el aspecto de un botón competiría con
+   «Dar de baja», que es la acción de verdad de esa fila. */
+.obl-resp-sel{background:transparent;border:1px solid transparent;border-radius:7px;
+  color:var(--dim);font-size:11px;font-family:inherit;padding:1px 4px;
+  max-width:112px;cursor:pointer}
+.obl-resp-sel:hover,.obl-resp-sel:focus{border-color:var(--border2);color:var(--text)}
+.obl-resp-sel option{background:var(--card);color:var(--text)}

@@ -2,7 +2,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  crearObligacion, generarPeriodos, marcarDeclarado,
+  crearObligacion, generarPeriodos, marcarDeclarado, cambiarResponsableObligacion,
   fijarResultadoPeriodo, activarObligacion, fijarDesdeObligacion, quitarPeriodo,
 } from "@/app/actions";
 import { useConfirmar } from "@/components/useConfirmar";
@@ -651,6 +651,24 @@ export default function Obligaciones({ empresas, logos, repLegal, obligaciones, 
                       </>
                     );
                   })()}
+                  {/* ── Y SE PUEDE CAMBIAR AQUÍ MISMO ──
+                      Se elegía al crear la obligación y ahí se quedaba: la
+                      única forma de corregirlo era el SQL Editor. Y no es un
+                      dato decorativo — `rondaObligaciones` le abre el caso del
+                      vencimiento a quien figure aquí, así que un encargado
+                      viejo significa que el aviso le llega a quien ya no mira.
+                      El desplegable va al lado del nombre y no en un botón de
+                      «editar»: quien viene a cambiarlo está mirando justo eso.
+                      Solo cambia de aquí en adelante; `declarado_por` de cada
+                      mes ya apuntado es historia y no se toca. */}
+                  <select className="obl-resp-sel" disabled={ocupado}
+                    title="Cambiar quién responde por esta obligación de ahora en adelante"
+                    value={o.responsable || ""}
+                    onChange={ev => correr(() =>
+                      cambiarResponsableObligacion(o.id, ev.target.value || null))}>
+                    <option value="">sin responsable</option>
+                    {perfiles.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                  </select>
                 </span>
                 <button className="dato-btn" disabled={ocupado}
                   title={o.activa
