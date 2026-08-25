@@ -37,12 +37,6 @@ a{color:inherit;text-decoration:none}
    y ruido que además cobra alto. */
 .topbar{display:flex;align-items:center;gap:10px;padding:12px 0 4px;margin-bottom:12px;min-width:0}
 
-/* ── EL LOGO, EN TAMAÑO DE LOGO ──
-   Compartía el tamaño de letra de un botón cualquiera (13px), así que la marca
-   del sistema era lo más pequeño de su propia cabecera y el único ⬡ que hay
-   que acertar de un toque en el móvil. Es el atajo al inicio: se busca por
-   forma y color, no leyendo. */
-.btn-logo{font-size:22px;line-height:1;padding:6px 12px;font-weight:800;color:var(--violet)}
 .logo{display:flex;align-items:center;gap:8px;font-weight:800;font-size:17px;white-space:nowrap}
 .logo .ic{width:36px;height:36px;background:linear-gradient(135deg,#f4b400,#f59e0b);border-radius:10px;display:flex;align-items:center;justify-content:center;color:#1a1200;font-size:19px}
 .logo sup{color:var(--yellow);font-size:12px}
@@ -51,6 +45,15 @@ a{color:inherit;text-decoration:none}
 .btn{background:var(--accent);color:#fff;padding:9px 16px;border-radius:10px;font-weight:600;font-size:13px}
 .btn:disabled{opacity:.4}
 .btn-ghost{background:var(--card);border:1px solid var(--border);color:var(--muted)}
+/* ── EL LOGO, EN TAMAÑO DE LOGO ──
+   Compartía el tamaño de letra de un botón cualquiera (13px), así que la marca
+   del sistema era lo más pequeño de su propia cabecera y el único ⬡ que hay
+   que acertar de un toque en el móvil. Es el atajo al inicio: se busca por
+   forma y color, no leyendo.
+   ⚠ VA DETRÁS de `.btn` y `.btn-ghost` a propósito: las tres son una clase,
+   o sea la misma especificidad, y a igual peso gana la que está DESPUÉS en el
+   fichero. Puesta antes, `.btn` le devolvía sus 13px sin que nada avisara. */
+.btn-logo{font-size:22px;line-height:1;padding:6px 12px;font-weight:800;color:var(--violet)}
 .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:12px}
 .card.link:hover{border-color:var(--border2)}
 .badge{font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:6px}
