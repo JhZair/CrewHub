@@ -119,7 +119,9 @@ export async function estadoNav(supabase: any, user: { id: string }): Promise<Es
       periodos().lt("vence", hoy),
       periodos().gte("vence", hoy).lte("vence", tope),
       supabase.from("postulaciones")
-        .select("id,fecha_desembolso,fecha_rendicion_real,estado_cuenta(periodo)")
+        /* El plazo y su prórroga viajan porque CIERRAN la serie: un fondo de un
+           año que no rindió no acumula meses para siempre. */
+        .select("id,fecha_desembolso,fecha_rendicion_real,fecha_limite_rendicion,fecha_prorroga,estado_cuenta(periodo)")
         .eq("estado", "ganadora")
         .is("fecha_rendicion_real", null)      // rendido = la serie terminó
         .not("fecha_desembolso", "is", null),  // sin desembolso no hay serie

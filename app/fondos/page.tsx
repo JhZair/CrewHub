@@ -4,7 +4,7 @@ import Link from "@/components/Enlace";
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { ejecutando, plazoRendicion, rendicionVencida, rendicionSinPlazo } from "@/lib/fondos";
-import { faltanEstados, textoFaltan, seVigila } from "@/lib/estadosCuenta";
+import { faltanEstados, textoFaltan, seVigila, cierreDe } from "@/lib/estadosCuenta";
 import { hoyLima } from "@/lib/fechas";
 import { CATEGORIAS_OPC } from "@/lib/etapas";
 
@@ -62,7 +62,7 @@ export default async function FondosPage() {
           porFondo.set(e.postulacion_id, [...(porFondo.get(e.postulacion_id) || []), e.periodo]));
         const hoy = hoyLima();
         vigilados.forEach(f => faltanEc.set(f.id, faltanEstados(
-          porFondo.get(f.id) || [], f.fecha_desembolso, hoy, f.fecha_rendicion_real)));
+          porFondo.get(f.id) || [], f.fecha_desembolso, hoy, cierreDe(f))));
       }
     }
   }

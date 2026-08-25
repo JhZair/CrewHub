@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import Link from "@/components/Enlace";
 import { createClient } from "@/lib/supabase/server";
 import { ESTADOS_VIVOS } from "@/lib/estados";
-import { faltanEstados, seVigila } from "@/lib/estadosCuenta";
+import { faltanEstados, seVigila, cierreDe } from "@/lib/estadosCuenta";
 import { hoyLima } from "@/lib/fechas";
 import { mapaAlias } from "@/lib/personas";
 import Volver from "@/components/Volver";
@@ -509,7 +509,7 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
      hay que entrar sospechando. */
   const faltanEc = faltanEstados(
     estadosFondo.map((e: any) => e.periodo), ent.fecha_desembolso, hoyLima(),
-    ent.fecha_rendicion_real);
+    cierreDe(ent as any));
   const nFaltaEc = seVigila(ent) ? faltanEc.faltan.length : 0;
   const avisoEc = nFaltaEc > 0
     ? { n: nFaltaEc, txt: `${nFaltaEc} estado(s) de cuenta del banco sin cargar` }

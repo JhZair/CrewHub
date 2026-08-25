@@ -1,3 +1,4 @@
+import { plazoRendicion } from "@/lib/fondos";
 /* ── ¿CUÁNTOS ESTADOS DE CUENTA FALTAN? ──
  *
  * La cláusula 5.2.3 del acta pide «los estados mensuales de la cuenta
@@ -44,11 +45,21 @@ export const nombreMes = (ym: string): string => {
   return `${MES_CORTO[Number(m) - 1]}. ${y}`;
 };
 
-/** Los meses que el acta exige, del desembolso al último mes cerrado. */
+/** Cuándo deja de correr la serie. Los tres son fechas ISO o nulo. */
+export type CierreSerie = {
+  /** Cuándo se entregó la rendición de verdad. */
+  rendicionReal?: string | null;
+  /** Hasta cuándo dura la ejecución: el plazo de rendición, con su prórroga si
+   *  la hay (lib/fondos → `plazoRendicion`). */
+  plazo?: string | null;
+};
+
+/** Los meses que el acta exige: del desembolso al final de la EJECUCIÓN, sin
+ *  pasar del último mes cerrado. */
 export function mesesEsperados(
   desembolso?: string | null,
   hoy?: string | null,
-  rendicionReal?: string | null,
+  cierre?: CierreSerie,
 ): string[] {
   const ini = mesDe(desembolso);
   const hoyMes = mesDe(hoy);
@@ -58,8 +69,24 @@ export function mesesEsperados(
   let fin = masMes(hoyMes, -1);                 // el último mes CERRADO
   /* Rendido: la serie termina donde terminó la ejecución. Seguir pidiendo
      meses de un fondo cerrado es pedir papeles que ya no existen. */
-  const rend = mesDe(rendicionReal);
+  const rend = mesDe(cierre?.rendicionReal);
   if (rend && rend < fin) fin = rend;
+  /* ── Y EL PLAZO TAMBIÉN CIERRA LA SERIE ──
+     Esto faltaba, y era el fallo gordo: un fondo de UN AÑO que no rindió
+     seguía acumulando meses para siempre, porque el único tope era «hoy».
+     Chaccu —desembolso 09/2024, plazo 09/2025— pedía en agosto de 2026
+     veintitrés meses de estados de cuenta y decía que faltaban nueve, todos
+     posteriores al fin de la ejecución. Meses en los que ya no había fondo que
+     ejecutar, así que no hay estado que pedir: la cláusula 5.2.3 pide la serie
+     «hasta la ejecución total», no hasta hoy.
+     Y el plazo lleva la prórroga incorporada (`plazoRendicion`): prorrogar
+     alarga la ejecución, así que alarga la serie.
+     No rendir a tiempo es un problema —y grave— pero es OTRO, y ya lo dice la
+     cabecera en rojo: «Debe rendición — venció 11/09/2025». Inflar la cuenta
+     de papeles del banco no lo cuenta mejor; lo tapa con nueve meses de ruido
+     que nadie puede cargar. */
+  const pl = mesDe(cierre?.plazo);
+  if (pl && pl < fin) fin = pl;
   if (fin < ini) return [];
   const out: string[] = [];
   for (let m = ini; m <= fin; m = masMes(m, 1)) out.push(m);
@@ -81,9 +108,9 @@ export function faltanEstados(
   periodos: (string | null | undefined)[],
   desembolso?: string | null,
   hoy?: string | null,
-  rendicionReal?: string | null,
+  cierre?: CierreSerie,
 ): FaltanEstados {
-  const esperados = mesesEsperados(desembolso, hoy, rendicionReal);
+  const esperados = mesesEsperados(desembolso, hoy, cierre);
   const hay = new Set(periodos.map(mesDe).filter(Boolean) as string[]);
   const faltan = esperados.filter(m => !hay.has(m));
   const ultimo = [...hay].sort().pop();
@@ -118,7 +145,17 @@ export type FondoEC = {
   estado?: string | null;
   fecha_desembolso?: string | null;
   fecha_rendicion_real?: string | null;
+  /* El plazo, con su prórroga. Cierran la serie: ver `mesesEsperados`. */
+  fecha_limite_rendicion?: string | null;
+  fecha_prorroga?: string | null;
 };
+
+/** El cierre de la serie de un fondo, sacado de sus fechas. En un solo sitio
+ *  para que las cuatro pantallas no puedan armarlo cada una a su manera. */
+export const cierreDe = (f: FondoEC): CierreSerie => ({
+  rendicionReal: f?.fecha_rendicion_real || null,
+  plazo: plazoRendicion(f || {}),
+});
 
 /* ── ¿A ESTE FONDO SE LE SIGUE PIDIENDO EL BANCO? ──
  *
@@ -150,11 +187,10 @@ export function resumenFaltantes(
   let nFondos = 0, nMeses = 0;
   for (const f of fondos || []) {
     if (!f?.id || !seVigila(f)) continue;
-    // La fecha de rendición va igual que en la ficha —`faltanEstados` describe
-    // la serie y ésa es la que la corta— aunque aquí `seVigila` garantice que
-    // es nula: la misma llamada en los dos sitios es una cosa menos que cotejar.
+    // Mismo cierre que en la ficha —`cierreDe`—: la misma llamada en los dos
+    // sitios es una cosa menos que cotejar.
     const r = faltanEstados(
-      periodosPorFondo.get(f.id) || [], f.fecha_desembolso, hoy, f.fecha_rendicion_real);
+      periodosPorFondo.get(f.id) || [], f.fecha_desembolso, hoy, cierreDe(f));
     if (!r.faltan.length) continue;
     nFondos++; nMeses += r.faltan.length;
   }
