@@ -252,6 +252,10 @@ create table publicaciones (
   -- fecha. Ver db/publicacion-fecha-inicio.sql (incluye el check inicio<=fin).
   fecha_inicio date,
   fecha_limite date,
+  -- A qué hora ocurre. Solo para lo que pasa a una hora (tipo `reunion`): un
+  -- plazo se cumple en un día entero, nadie vence a las 15:30. Hora de pared
+  -- —la de Cusco—, sin zona: ver db/publicacion-hora.sql.
+  hora         time,
   -- El candado va también aquí y no solo en la migración: una base creada
   -- desde este fichero tendría la columna sin la regla, y una regla que solo
   -- existe en el sitio del que ya migraste no protege a la base siguiente.

@@ -1,5 +1,5 @@
 "use client";
-import { comentar, cambiarEstado, asignarResponsable, cambiarFechaLimite, cambiarFechaInicio, archivar } from "@/app/actions";
+import { comentar, cambiarEstado, asignarResponsable, cambiarFechaLimite, cambiarFechaInicio, cambiarHora, archivar } from "@/app/actions";
 import { celebrarResuelto } from "@/lib/celebra";
 import { opcionesEstado } from "@/lib/estados";
 import { sinBot, opcionesResp } from "@/lib/personas";
@@ -90,6 +90,25 @@ export function FechaSelect({ pubId, fecha, cual = "limite", tope }: {
       max={cual === "inicio" ? (tope || undefined) : undefined}
       min={cual === "limite" ? (tope || undefined) : undefined}
       onChange={e => cambiar(e.target.value)} />
+  );
+}
+
+/* La hora de una reunión. Mismo gesto que las fechas y por eso el mismo
+   patrón: se guarda al cambiar y se refresca. */
+export function HoraSelect({ pubId, hora }: { pubId: string; hora: string | null }) {
+  const router = useRouter();
+  const cambiar = async (v: string) => {
+    const res = await cambiarHora(pubId, v);
+    if (res?.error) alert(res.error); else router.refresh();
+  };
+  /* `onBlur` y no `onChange`: un campo de hora emite un cambio en cuanto se
+     completa el segmento de las horas, con el valor VACÍO porque los minutos
+     aún no están. Con onChange, teclear «10:30» guardaba primero un null
+     —«quitó la hora» en la bitácora— y luego la hora buena. Se guarda al
+     salir del campo, que es cuando el valor está entero. */
+  return (
+    <input type="time" defaultValue={String(hora || "").slice(0, 5)}
+      onBlur={e => cambiar(e.target.value)} />
   );
 }
 

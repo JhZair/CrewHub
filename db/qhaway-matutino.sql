@@ -40,10 +40,14 @@
    puede cerrar—. El 9 de agosto «Identidad y paleta de colores» llevaba
    tres avisos idénticos (2, 5 y 9 de agosto) y el buzón del Bot, 262.
 
-   Una sola definición, en SQL, que dice lo mismo que `esInformativo`. */
+   Una sola definición, en SQL, que dice lo mismo que `esInformativo`.
+   La REUNIÓN entró por la misma puerta: tampoco se resuelve —ocurre—, y sin
+   esta línea el Bot le preguntaría a cada reunión pasada si sigue viva.
+   ⚠ Se repite en db/publicacion-hora.sql, que es donde se creó el tipo: da
+   igual cuál se corra, las dos dejan la función idéntica. */
 create or replace function public.es_informativa(t text) returns boolean
  language sql immutable parallel safe
-as $$ select coalesce(t, '') in ('aviso', 'bitacora') $$;
+as $$ select coalesce(t, '') in ('aviso', 'bitacora', 'reunion') $$;
 
 create or replace function public.qhaway_matutino()
  returns text
@@ -278,7 +282,20 @@ begin
     select p.id, p.titulo, p.responsable, p.autor_id, (p.fecha_limite - current_date) as dias
     from publicaciones p
     where p.estado in ('abierta','en_progreso') and p.archivado_en is null
-      and p.tipo <> 'bitacora'   -- una nota del muro no tiene plazo que vencer
+      /* ── LO INFORMATIVO NO VENCE, DEJA DE REGIR ──
+         Decía `<> 'bitacora'`: UN tipo, no la idea. Con la reunión eso pasó de
+         incompleto a dañino — una reunión de ayer cumple todas las demás
+         condiciones, así que cada mañana recibiría «⚠ VENCIDO hace N días» y
+         su responsable una notificación. Y para siempre: el archivado
+         automático de arriba solo toca `tipo = 'aviso'`, así que una reunión
+         nunca se archiva sola. Nadie puede callar a un bot que le reclama a
+         una reunión que ya ocurrió — es literalmente el caso de la bitácora,
+         repetido.
+         `es_informativa` es la misma pregunta que hace el TypeScript
+         (`esInformativo`), escrita una vez. Los avisos ya salían por su
+         cuenta: el bucle de archivado corre ANTES y les pone `archivado_en`,
+         así que para ellos esto no cambia nada. */
+      and not es_informativa(p.tipo)
       and p.fecha_limite is not null
       and (p.fecha_limite - current_date) <= 7
     order by p.fecha_limite

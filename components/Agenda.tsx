@@ -38,6 +38,8 @@ export type ItemAgenda = {
   creado?: string;         // desempata el desempate, para que no bailen
   cat?: string;            // categoría de la convocatoria → preset de etapas
   tipo?: string;           // ícono del caso
+  /** A qué hora ocurre, 'HH:MM'. Solo lo que pasa a una hora (una reunión). */
+  hora?: string;
   respId: string | null;
   nc?: number;             // comentarios del caso (0 o ausente = no se pinta)
   personas: string[];      // responsable + equipo, para el filtro
@@ -260,6 +262,11 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, perfilDe, apa
   const cmp = (x: ItemAgenda, y: ItemAgenda) =>
     (x.orden ?? 0) !== (y.orden ?? 0) ? (x.orden ?? 0) - (y.orden ?? 0)
     : x.ini !== y.ini ? (x.ini < y.ini ? -1 : 1)
+    /* Mismo día: manda la hora. Dos reuniones del martes puestas al revés no
+       es un detalle — en un día, el orden ES la información. Lo que no tiene
+       hora va primero: no se sabe cuándo, así que no puede reclamar un sitio
+       entre dos que sí lo saben. */
+    : (x.hora || "") !== (y.hora || "") ? ((x.hora || "") < (y.hora || "") ? -1 : 1)
     : (x.creado || "") < (y.creado || "") ? -1 : (x.creado || "") > (y.creado || "") ? 1 : 0;
   grupos.forEach(([, g]) => g.items.sort(cmp));
   /* Se mira contra los grupos VISIBLES y no contra el tamaño de `colapsados`:
@@ -458,7 +465,12 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, perfilDe, apa
                    dos casos: «del 23 ene al 20 ago» sobre una fecha de
                    creación es una frase sobre el trabajo que nadie escribió.
                    Con ventana dice «→»; sin ella, «apuntado el …». */
-                const tramo = it.ventana
+                /* La hora va pegada a SU fecha y no al final de la frase: al
+                   final se leía «… apuntado el 18 ago a las 10:00», o sea la
+                   hora del apunte, que es justo lo que no es. */
+                const cuando = `${fmtCorto(it.fin)}${it.hora ? ` a las ${it.hora}` : ""}`;
+                const tramo = it.hora ? cuando
+                  : it.ventana
                   ? `${fmtCorto(it.ini)}${rango ? ` → ${fmtCorto(it.fin)}` : ""}`
                   : rango ? `vence ${fmtCorto(it.fin)} · apuntado el ${fmtCorto(it.ini)}`
                   : fmtCorto(it.fin);
@@ -484,6 +496,10 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, perfilDe, apa
                       <Link href={it.href} className="ag-tl-lbl-txt" title={it.titulo}>
                         {icoDe(it)} {it.titulo}
                       </Link>
+                      {/* La hora va pegada al título y no en la pista: ahí un
+                          día mide seis píxeles y «10:00» no cabe — y es lo
+                          primero que se pregunta de una reunión. */}
+                      {it.hora && <span className="ag-tl-hora">{it.hora}</span>}
                       {/* Solo las filas que tienen conversación gastan ancho:
                           un «💬 0» en veintitrés filas es ruido, y el título
                           necesita cada píxel. */}
@@ -603,7 +619,12 @@ function Calendario({ vis, mesOff, setMesOff, colorDe, icoDe, apagado }: {
      significan nada. Con ventana de verdad, ocupa los días que dura — que es
      justo lo que se viene a mirar en un calendario. */
   const enDia = (key: string) => vis.filter(it =>
-    (it.kind === "caso" && !it.ventana) ? it.fin === key : (it.ini <= key && key <= it.fin));
+    (it.kind === "caso" && !it.ventana) ? it.fin === key : (it.ini <= key && key <= it.fin))
+    /* Un día es una lista corta y ORDENADA: lo que tiene hora, por hora; lo
+       demás detrás. Salían en el orden crudo del arreglo, así que dos
+       reuniones del mismo día aparecían como cayera — en la vista que más se
+       parece a un calendario de reuniones. */
+    .sort((a, b) => (a.hora || "~") < (b.hora || "~") ? -1 : (a.hora || "~") > (b.hora || "~") ? 1 : 0);
 
   const celdas: (string | null)[] = [
     ...Array.from({ length: primerDow }, () => null),
@@ -632,10 +653,14 @@ function Calendario({ vis, mesOff, setMesOff, colorDe, icoDe, apagado }: {
             <div key={i} className={`ag-cal-dia ${key === hoyKey ? "hoy" : ""}`}>
               <span className="ag-cal-num">{dia}</span>
               {items.slice(0, TOPE).map(it => (
+                /* La hora ANTES del título, no en el tooltip: en un
+                   calendario, «10:00» es lo primero que se busca de una
+                   reunión, y el tooltip solo lo ve quien ya sospecha que hay
+                   algo que mirar. */
                 <Link key={it.id} href={it.href} className={`ag-cal-chip ${apagado(it) ? "ag-ajena" : ""}`}
-                  title={it.nc ? `${it.titulo} · 💬 ${it.nc}` : it.titulo}
+                  title={[it.hora && `${it.hora}`, it.titulo, it.nc && `💬 ${it.nc}`].filter(Boolean).join(" · ")}
                   style={{ borderLeft: `3px solid ${colorDe(it)}` }}>
-                  {icoDe(it)} {it.titulo}
+                  {it.hora ? <b className="ag-cal-hora">{it.hora}</b> : icoDe(it)} {it.titulo}
                 </Link>
               ))}
               {items.length > TOPE && <span className="ag-cal-mas">+{items.length - TOPE} más</span>}

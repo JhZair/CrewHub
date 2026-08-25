@@ -9,7 +9,7 @@ import VistaRapida from "@/components/VistaRapida";
 import { cambiarTipo, cambiarEstado, ocultarDelFeed } from "@/app/actions";
 import { celebrarResuelto } from "@/lib/celebra";
 import Foto from "@/components/Foto";
-import { opcionesEstado, claseEstado, rotuloEstado, esAviso } from "@/lib/estados";
+import { opcionesEstado, claseEstado, rotuloEstado, esAviso, llevaEnterado } from "@/lib/estados";
 import { type Plazo } from "@/lib/plazo";
 import BarrasProgreso from "@/components/BarrasProgreso";
 import { type Progreso } from "@/lib/progreso";
@@ -140,7 +140,9 @@ export default function PostCard({
           )}
           <div className="post-pie" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <span style={{ color: "var(--muted)", fontSize: 12.5, flexShrink: 0 }}>💬 {nc}</span>
-            {tipo === "aviso" && pubId && userId && (
+            {/* También en una reunión: el mismo mecanismo dice quién confirma que va.
+                Ver `llevaEnterado` en lib/estados. */}
+            {llevaEnterado(tipo) && pubId && userId && (
               <AvisoMini pubId={pubId} enterados={enterN} total={equipoTotal} mio={enterMio} />
             )}
             {pubId && userId && (

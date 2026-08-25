@@ -5,7 +5,7 @@ import { coincideQ } from "@/lib/quechua";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import MiniSelect from "@/components/MiniSelect";
-import { TIPOS_CASO, rotuloTipo } from "@/lib/tipos";
+import { TIPOS_CASO, rotuloTipo, llevaHora } from "@/lib/tipos";
 
 /* La lista salía de aquí, copiada a mano de lib/tipos. Ahora se deriva: quitar
    «Archivo» del selector era editar dos archivos y acordarse de los dos, y esa
@@ -204,6 +204,10 @@ export default function Composer({ userId, catalogos, perfiles, inicial, onListo
   /* Cuándo EMPIEZA. Vacío casi siempre: la mayoría de los casos no duran,
      pasan. Ver db/publicacion-fecha-inicio.sql. */
   const [fechaIni, setFechaIni] = useState("");
+  /* La hora, solo para lo que ocurre a una hora. Se guarda aunque se cambie
+     de tipo —no se borra al vuelo— pero solo VIAJA si el tipo la lleva: quien
+     escribió «10:00» y luego eligió «Idea» no quería una idea de las diez. */
+  const [hora, setHora] = useState("");
   const [links, setLinks] = useState<Sel[]>(inicial || []);
   const [extraEtq, setExtraEtq] = useState<CatalogoItem[]>([]);
   const [enviando, setEnviando] = useState(false);
@@ -264,11 +268,12 @@ export default function Composer({ userId, catalogos, perfiles, inicial, onListo
       fecha || null,
       imgs,
       fechaIni || null,
+      llevaHora(tipo) ? (hora || null) : null,
     );
     setEnviando(false);
     if (res?.error) { alert("Error al publicar: " + res.error); return; }
     setTitulo(""); setCuerpo(""); setLinks([]); setResp("");
-    setFecha(""); setFechaIni(""); setImgs([]);
+    setFecha(""); setFechaIni(""); setHora(""); setImgs([]);
     router.refresh();
     onListo?.();
   };
@@ -351,11 +356,30 @@ export default function Composer({ userId, catalogos, perfiles, inicial, onListo
             style={{ ...ESTILO_FECHA, ...(fechaIni ? { borderColor: "var(--teal)", color: "var(--teal)" } : {}) }}
             value={fechaIni} max={fecha || undefined}
             onChange={e => setFechaIni(e.target.value)} />
-          <span className="ent-lbl" title="Fecha límite" style={{ marginLeft: 8, minWidth: "auto" }}>📅</span>
+          {/* El rótulo cambia con el tipo, porque la fecha significa otra cosa:
+              en una reunión no es un plazo, es cuándo ocurre. Llamarla «fecha
+              límite» ahí enseñaría a leerla mal en las diez pantallas que la
+              muestran. */}
+          <span className="ent-lbl" title={llevaHora(tipo) ? "Cuándo es" : "Fecha límite"}
+            style={{ marginLeft: 8, minWidth: "auto" }}>📅</span>
           <input type="date" className="ent-ctrl"
+            title={llevaHora(tipo) ? "Cuándo es" : "Fecha límite"}
             style={{ ...ESTILO_FECHA, ...(fecha ? { borderColor: "var(--yellow)", color: "var(--yellow)" } : {}) }}
             value={fecha} min={fechaIni || undefined}
             onChange={e => setFecha(e.target.value)} />
+          {/* ── LA HORA, SOLO DONDE SIGNIFICA ALGO ──
+              «Vence a las 15:30» no es una frase que exista: un plazo se
+              cumple en un día entero. Un campo que aparece donde no aplica se
+              rellena igual, y después hay que explicar qué quería decir. */}
+          {llevaHora(tipo) && (
+            <>
+              <span className="ent-lbl" title="A qué hora" style={{ marginLeft: 8, minWidth: "auto" }}>🕐</span>
+              <input type="time" className="ent-ctrl" title="A qué hora empieza"
+                style={{ ...ESTILO_FECHA, width: 110, minWidth: 110,
+                  ...(hora ? { borderColor: "var(--teal)", color: "var(--teal)" } : {}) }}
+                value={hora} onChange={e => setHora(e.target.value)} />
+            </>
+          )}
           {/* la etiqueta no es entidad: vive aquí como chip */}
           <span className="etq-pick" style={{ marginLeft: 14 }}>
             <EntPicker etiqueta="🏷️ Etiqueta" items={itemsDe("etiqueta")}

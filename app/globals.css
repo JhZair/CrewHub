@@ -2556,6 +2556,13 @@ a.stat-card:hover{border-color:var(--border2)}
    grupo: es un control de la LISTA, no de ninguna fila, y ponerlo en la barra
    de fechas lo habría mezclado con el zoom y el «Hoy», que hablan del tiempo
    y no de la forma de la lista. */
+/* La hora de una reunión, junto al título. Fija (`flex:none`) para que el
+   título se recorte antes que ella: el título se adivina por la mitad, una
+   hora a medias no dice nada. */
+/* La hora en el chip del calendario: ocupa el sitio del ícono, así que la
+   fila no se ensancha — un chip de calendario mide lo que mide. */
+.ag-cal-hora{color:var(--teal);font-weight:800}
+.ag-tl-hora{flex:none;color:var(--teal);font-size:10.5px;font-weight:700;margin-left:2px}
 .ag-tl-todo{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin:2px 0 -4px}
 .ag-tl-todo-btn{background:transparent;border:1px solid var(--border);border-radius:8px;
   color:var(--muted);font-size:11px;font-weight:600;padding:3px 9px;cursor:pointer;white-space:nowrap}

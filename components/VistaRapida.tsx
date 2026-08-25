@@ -4,10 +4,10 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   cargarCasoRapido, comentar, toggleReaccion, toggleEnterado,
-  cambiarEstado, asignarResponsable, cambiarFechaLimite, cambiarFechaInicio,
+  cambiarEstado, asignarResponsable, cambiarFechaLimite, cambiarFechaInicio, cambiarHora,
 } from "@/app/actions";
-import { opcionesEstado, esAviso, claseEstado } from "@/lib/estados";
-import { icoTipo } from "@/lib/tipos";
+import { opcionesEstado, llevaEnterado, claseEstado } from "@/lib/estados";
+import { icoTipo, llevaHora } from "@/lib/tipos";
 import { TXT } from "@/lib/texto";
 import { ICO_ENT } from "@/lib/secciones";
 import { opcionesResp } from "@/lib/personas";
@@ -106,7 +106,7 @@ export default function VistaRapida({ pubId }: { pubId: string }) {
   const caso = data?.caso;
   const perfiles: { id: string; nombre: string }[] = data?.perfiles || [];
   const userId: string = data?.userId || "";
-  const esAv = caso ? esAviso(caso.tipo) : false;
+  const esAv = caso ? llevaEnterado(caso.tipo) : false;
   // Menciones @ en el comentario (misma ayuda que la caja del caso completo).
   const { enMencion, candidatos, aplicar } = menciones(texto, perfiles);
   const invocarMencion = (nombre: string) => setTexto(aplicar(nombre));
@@ -204,8 +204,20 @@ export default function VistaRapida({ pubId }: { pubId: string }) {
                       max={caso.fecha_limite ? String(caso.fecha_limite).slice(0, 10) : undefined}
                       onChange={e => { const v = e.target.value; correr(() => cambiarFechaInicio(pubId, v)); }} />
                   </div>
+                  {/* En una reunión la fecha es cuándo OCURRE, no un plazo:
+                      el rótulo lo dice, igual que en la ficha. Y la hora se
+                      edita aquí porque este pop-up sale de la agenda — el
+                      sitio desde donde se está mirando el calendario. */}
+                  {llevaHora(caso.tipo) && (
+                    <div className="gm">
+                      <span className="k">Hora</span>
+                      <input type="time" disabled={ocupado}
+                        defaultValue={String(caso.hora || "").slice(0, 5)}
+                        onBlur={e => { const v = e.target.value; correr(() => cambiarHora(pubId, v)); }} />
+                    </div>
+                  )}
                   <div className="gm">
-                    <span className="k">Fecha límite</span>
+                    <span className="k">{llevaHora(caso.tipo) ? "Cuándo es" : "Fecha límite"}</span>
                     <input type="date" disabled={ocupado}
                       value={caso.fecha_limite ? String(caso.fecha_limite).slice(0, 10) : ""}
                       min={caso.fecha_inicio ? String(caso.fecha_inicio).slice(0, 10) : undefined}

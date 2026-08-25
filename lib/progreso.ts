@@ -1,6 +1,6 @@
 import { CERRADOS } from "@/lib/familia";
 import { plazoDe, diasHasta } from "@/lib/plazo";
-import { esAviso, rotuloEstado } from "@/lib/estados";
+import { esInformativo, rotuloEstado } from "@/lib/estados";
 import { hoyLima } from "@/lib/fechas";
 
 /* ⏳ TIEMPO vs ⚡ TRABAJO — las dos barras que dicen si vamos al día.
@@ -171,7 +171,12 @@ export function progresoDe(a: {
    *  —los listados no cargan la bitácora y darían a todo por estancado—. */
   ultimoMovimiento?: string | null;
 }): Progreso | null {
-  if (a.tipo && esAviso(a.tipo)) return null;
+  /* `esInformativo` y no `esAviso`: en una reunión tampoco se «avanza» —
+     ocurre—, y con la escalera del estado salía con barra de trabajo, veredicto
+     y hasta «💤 estancada N días» sobre algo que solo estaba esperando su día.
+     Y como sus estados no incluyen «resuelta», esa barra era estructuralmente
+     incumplible: no había forma de llegar al 100 %. */
+  if (a.tipo && esInformativo(a.tipo)) return null;
 
   const trabajo = trabajoDe(a);
   if (!trabajo) return null;   // no se puede medir sin contradecir a otra pantalla

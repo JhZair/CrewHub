@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import Realtime from "@/components/Realtime";
 import Reloj from "@/components/Reloj";
 import { redirect } from "next/navigation";
-import { textoEstado } from "@/lib/estados";
+import { textoEstado, esInformativo } from "@/lib/estados";
 import { plazoDe, diasHasta } from "@/lib/plazo";
 import { BOT, sinBot } from "@/lib/personas";
 import type { Metadata } from "next";
@@ -57,9 +57,15 @@ export default async function Pantalla() {
      oficina, como si fuera un problema pendiente. Tienen su propia línea
      abajo: en una pared es donde una indicación sirve de verdad. */
   const vigentes = abiertos.filter(p => p.tipo === "aviso" && p.estado === "abierta");
-  const sinres = abiertos.filter(p => p.estado === "abierta" && p.tipo !== "aviso");
-  const enprog = abiertos.filter(p => p.estado === "en_progreso" && p.tipo !== "aviso");
-  const conFecha = abiertos.filter(p => p.fecha_limite).sort(
+  /* ── LO INFORMATIVO NO ES TRABAJO SIN RESOLVER ──
+     Estos tres filtros preguntaban por `tipo !== "aviso"`, o sea por UN tipo y
+     no por la idea. Con la reunión, ese literal empezó a mentir: una reunión
+     pasada salía en 🔴 SIN RESOLVER en la pared de la oficina y sumaba a la
+     carga de su responsable. Nadie va a «resolver» una reunión.
+     `esInformativo` es la misma pregunta escrita una vez, en lib/estados. */
+  const sinres = abiertos.filter(p => p.estado === "abierta" && !esInformativo(p.tipo));
+  const enprog = abiertos.filter(p => p.estado === "en_progreso" && !esInformativo(p.tipo));
+  const conFecha = abiertos.filter(p => p.fecha_limite && !esInformativo(p.tipo)).sort(
     (a, b) => (a.fecha_limite! < b.fecha_limite! ? -1 : 1)
   );
   const vencidos = conFecha.filter(p => dias(p.fecha_limite!) < 0);

@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import Avatar from "@/components/Avatar";
-import { EstadoSelect, CommentBox, RespSelect, FechaSelect, BotonArchivar } from "@/components/CaseActions";
+import { EstadoSelect, CommentBox, RespSelect, FechaSelect, HoraSelect, BotonArchivar } from "@/components/CaseActions";
 import Reacciones from "@/components/Reacciones";
 import AvisoEnterado from "@/components/AvisoEnterado";
 import SubCasos from "@/components/SubCasos";
@@ -22,11 +22,11 @@ import Realtime from "@/components/Realtime";
 import Link from "@/components/Enlace";
 import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
-import { claseEstado, rotuloEstado, selloDeCaso } from "@/lib/estados";
+import { claseEstado, rotuloEstado, selloDeCaso, llevaEnterado } from "@/lib/estados";
 import SelloResultado from "@/components/SelloResultado";
 import { BOT, sinBot } from "@/lib/personas";
 import { CERRADOS } from "@/lib/familia";
-import { rotuloTipo, colorTipo, icoTipo } from "@/lib/tipos";
+import { rotuloTipo, colorTipo, icoTipo, llevaHora } from "@/lib/tipos";
 import { TXT } from "@/lib/texto";
 import { catalogoObjetos, catalogosEntidades } from "@/lib/catalogos";
 
@@ -464,8 +464,14 @@ export default async function Caso({ params }: { params: { id: string } }) {
             puerta: escondido aquí, no había ninguna. */}
         <div className="gm"><span className="k">Empieza</span>
           <FechaSelect pubId={p.id} fecha={p.fecha_inicio} cual="inicio" tope={p.fecha_limite} /></div>
-        <div className="gm"><span className="k">Fecha límite</span>
+        {/* En una reunión la fecha no es un plazo: es cuándo ocurre. El rótulo
+            cambia con el tipo porque leerla como «límite» es leerla mal. */}
+        <div className="gm"><span className="k">{llevaHora(p.tipo) ? "Cuándo es" : "Fecha límite"}</span>
           <FechaSelect pubId={p.id} fecha={p.fecha_limite} tope={p.fecha_inicio} /></div>
+        {llevaHora(p.tipo) && (
+          <div className="gm"><span className="k">Hora</span>
+            <HoraSelect pubId={p.id} hora={p.hora} /></div>
+        )}
         <div className="gm"><span className="k">Creado</span>
           {/* Con cara. Las otras tres celdas de esta ficha ya identifican a
               alguien por su nombre en un desplegable; esta es la única donde
@@ -491,7 +497,8 @@ export default async function Caso({ params }: { params: { id: string } }) {
         imagenes={p.imagenes || []}
         pie={<Reacciones pubId={p.id} reacciones={rxPub} userId={user.id} />} />
 
-      {p.tipo === "aviso" && (
+      {/* En una reunión, «me enteré» es «confirmo que voy». */}
+      {llevaEnterado(p.tipo) && (
         <AvisoEnterado
           pubId={p.id}
           userId={user.id}

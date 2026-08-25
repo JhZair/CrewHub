@@ -22,6 +22,10 @@ export type TipoPub = {
   ico: string;
   label: string;
   color: string;
+  /** El plural, cuando no basta con añadir una «s». Los ocho primeros
+   *  pluralizaban bien por casualidad; «Reunión» fue el primero acentuado y
+   *  el desglose de /pulso decía «Reunións». */
+  plural?: string;
 };
 
 /* COLORES DE-CONFLICTADOS (ver los tres ejes de identidad):
@@ -49,6 +53,14 @@ export const TIPOS: TipoPub[] = [
      retirado se deja de ofrecer; no se borra debajo de lo que ya existe. */
   { tipo: "archivo", ico: "📎", label: "Archivo", color: "#6366f1" },
   { tipo: "aviso", ico: "📢", label: "Aviso", color: "#d946ef" },
+  /* ── REUNIÓN: LO ÚNICO QUE OCURRE A UNA HORA ──
+     Es un tipo y no una etiqueta porque cambia cómo la trata el sistema: su
+     fecha es CUÁNDO pasa y no cuándo vence, no se resuelve —ocurre—, el «me
+     enteré» hace de asistencia y los comentarios son el acta. Ver `esReunion`
+     en lib/estados.
+     Cian apagado: emparentado con la consulta —las dos son «hablar con
+     alguien»— y distinto de todo lo que es una deuda. */
+  { tipo: "reunion", ico: "🤝", label: "Reunión", color: "#2dd4bf", plural: "Reuniones" },
   // Bitácora: una nota del muro del proyecto (texto + imágenes). Informativa,
   // como el aviso — no es una tarea que se «resuelva».
   { tipo: "bitacora", ico: "📝", label: "Bitácora", color: "#c084fc" },
@@ -68,7 +80,15 @@ export const TIPOS: TipoPub[] = [
  * `conversacion` (es el cajón de lo que no se clasificó) y `archivo`
  * (retirado — para eso está el repositorio).
  */
-const CREABLES = new Set(["tarea", "problema", "consulta", "pago", "idea", "aviso"]);
+const CREABLES = new Set(["tarea", "problema", "consulta", "pago", "idea", "aviso", "reunion"]);
+
+/* ── LOS QUE PASAN A UNA HORA ──
+ * Solo estos enseñan el campo de hora: en los demás, la fecha es un plazo y
+ * una hora ahí no significaría nada —«vence a las 15:30» no es una idea que
+ * exista—. Un campo que aparece donde no aplica se rellena igual, y luego hay
+ * que explicar qué quiere decir. */
+export const TIPOS_CON_HORA = new Set(["reunion"]);
+export const llevaHora = (t?: string | null) => TIPOS_CON_HORA.has(String(t ?? ""));
 export const TIPOS_CASO = TIPOS.filter(t => CREABLES.has(t.tipo));
 export const esTipoCreable = (t?: string | null) => CREABLES.has(String(t ?? ""));
 
@@ -101,7 +121,7 @@ export const rotuloTipo = (t?: string | null) => `${icoTipo(t)} ${labelTipo(t)}`
  *  rompí y le dejé «💬 Otros». Es una decisión: vive una vez. */
 export const rotuloMonton = (t?: string | null) => {
   const x = tipoDe(t);
-  return x.tipo === "conversacion" ? "🗂 Otros" : `${x.ico} ${x.label}s`;
+  return x.tipo === "conversacion" ? "🗂 Otros" : `${x.ico} ${x.plural || `${x.label}s`}`;
 };
 
 /** Para los combos: [valor, etiqueta].

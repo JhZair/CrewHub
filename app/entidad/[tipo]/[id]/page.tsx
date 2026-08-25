@@ -39,7 +39,7 @@ import EmpresaChip from "@/components/EmpresaChip";
 import HistorialFicha from "@/components/HistorialFicha";
 import { resolverNombres, nombresDeEventos, conNombresEventos } from "@/lib/nombres";
 import { agruparEventos } from "@/lib/agrupar";
-import { claseEstado, rotuloEstado, esAviso, avisoVencido } from "@/lib/estados";
+import { claseEstado, rotuloEstado, esAviso, llevaEnterado, esReunion, avisoVencido } from "@/lib/estados";
 import { contarHijos, CERRADOS, type Familia } from "@/lib/familia";
 import { icoTipo } from "@/lib/tipos";
 import Reacciones, { type Reaccion } from "@/components/Reacciones";
@@ -2033,7 +2033,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     const hj = hijosDe.get(p.id);
     const rx = reaccDe.get(p.id) || [];
     const nComs = (p.comentarios as any)?.[0]?.count || 0;
-    const esAv = esAviso(p.tipo);
+    const esAv = llevaEnterado(p.tipo);
     // Conteo por emoji, solo para la línea de meta de un caso normal: ahí las
     // reacciones son un dato que se lee, no un botón que se toca.
     const cuenta = new Map<string, number>();
@@ -2060,8 +2060,14 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
           {(p.resp as any)?.nombre && <span className="tv-resp">{(p.resp as any).nombre.split(" ")[0]}</span>}
           {/* Un aviso dice «Vigente», no «Sin Resolver»: nadie lo va a resolver.
               Si venció (pasó su fecha), ya no rige → «Vencido» en gris, no «Vigente». */}
+          {/* Una REUNIÓN pasada no está vencida: ocurrió. El literal «📢
+              Vencido» se escribió cuando esta función solo hablaba de avisos,
+              y decirle eso a una reunión es justo la lectura que el tipo viene
+              a negar. */}
           {avisoVencido(p.tipo, p.fecha_limite)
-            ? <span className="pill st-descartada">📢 Vencido</span>
+            ? <span className="pill st-descartada">
+                {esReunion(p.tipo) ? "🤝 Realizada" : "📢 Vencido"}
+              </span>
             : <span className={`pill st-${claseEstado(p.estado, p.tipo)}`}>{rotuloEstado(p.estado, p.tipo)}</span>}
           {/* Interactuar al vuelo, sin abrir otra pestaña */}
           <VistaRapida pubId={p.id} />

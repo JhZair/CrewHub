@@ -425,7 +425,11 @@ export async function crearPublicacion(
      nueva al lado de la otra compila igual si se intercambian, y el error
      —el caso empieza el día que vence— no lo ve nadie hasta mirar la agenda
      semanas después. Al final, un error de orden no puede pasar por bueno. */
-  fechaInicio: string | null = null
+  fechaInicio: string | null = null,
+  /* La hora, para lo que OCURRE a una hora (hoy: una reunión). Igual que
+     `fechaInicio`, al final y no junto a las fechas: la firma es posicional y
+     ya tiene ocho argumentos. */
+  hora: string | null = null
 ) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -444,6 +448,7 @@ export async function crearPublicacion(
     responsable: responsable || null,
     fecha_inicio: fechaInicio || null,
     fecha_limite: fechaLimite || null,
+    hora: hora || null,
     imagenes: (imagenes || []).slice(0, 6),
     estado: "abierta",  // todo caso nace Sin Resolver; En Progreso se gana trabajando
   }).select("id").single();
@@ -8388,6 +8393,37 @@ export async function cambiarFechaInicio(pubId: string, fecha: string) {
   return {};
 }
 
+/* La hora de lo que ocurre a una hora. Hermana de las dos fechas, con la
+   misma forma: valida, escribe bitácora solo si cambió y no notifica —mover la
+   hora de una reunión que ya está convocada es un ajuste, y un timbre por cada
+   ajuste enseña a apagar el timbre—. */
+export async function cambiarHora(pubId: string, hora: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  // 'HH:MM' del <input type="time">; vacío = quitarla.
+  const val = /^\d{2}:\d{2}$/.test(hora) ? hora : null;
+  const { data: antes } = await supabase.from("publicaciones")
+    .select("hora").eq("id", pubId).single();
+  const { data: tocado, error } = await supabase.from("publicaciones")
+    .update({ hora: val }).eq("id", pubId).select("id");
+  if (error) return { error: error.message };
+  if (!tocado?.length) return { error: "No se pudo guardar (sin permiso o el caso ya no existe)." };
+  // La base devuelve 'HH:MM:SS'; se comparan los cinco primeros o cada guardado
+  // parecería un cambio y la bitácora se llenaría de horas idénticas.
+  if (String(antes?.hora || "").slice(0, 5) !== (val || "")) {
+    await supabase.from("actividad").insert({
+      entidad_tipo: "publicacion", entidad_id: pubId, actor_id: user.id, tipo: "edicion",
+      detalle: { mensaje: val ? `puso la hora en ${val}` : "quitó la hora" },
+    });
+  }
+  revalidatePath(`/caso/${pubId}`);
+  revalidatePath("/");
+  revalidatePath("/tablero");
+  revalidatePath("/agenda");
+  return {};
+}
+
 export async function cambiarFechaLimite(pubId: string, fecha: string) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -8395,7 +8431,7 @@ export async function cambiarFechaLimite(pubId: string, fecha: string) {
   // Acepta 'YYYY-MM-DD'; vacío = quitar la fecha
   const val = /^\d{4}-\d{2}-\d{2}$/.test(fecha) ? fecha : null;
   const { data: antes } = await supabase.from("publicaciones")
-    .select("fecha_limite,fecha_inicio").eq("id", pubId).single();
+    .select("fecha_limite,fecha_inicio,hora").eq("id", pubId).single();
   // La otra punta de la ventana: adelantar el vencimiento por detrás del
   // inicio es el error que no se ve, porque se toca esta fecha mirando otra.
   if (val && antes?.fecha_inicio && val < antes.fecha_inicio) {
@@ -8407,9 +8443,12 @@ export async function cambiarFechaLimite(pubId: string, fecha: string) {
      Se borran las dos y se DICE en la bitácora, en vez de dejar un
      `fecha_inicio` huérfano que nadie vuelve a ver ni entiende de dónde sale
      el día que reaparece un vencimiento. */
+  /* La HORA cuelga de la fecha igual que el inicio: sin día, «10:00» no
+     significa nada y la agenda ni siquiera trae la fila. Se va con ella. */
   const soltarVentana = !val && !!antes?.fecha_inicio;
   const { error } = await supabase.from("publicaciones")
-    .update(soltarVentana ? { fecha_limite: null, fecha_inicio: null } : { fecha_limite: val })
+    .update(val ? { fecha_limite: val }
+      : { fecha_limite: null, fecha_inicio: null, hora: null })
     .eq("id", pubId);
   if (error) return { error: error.message };
   // 🗂 Bitácora
@@ -8419,8 +8458,9 @@ export async function cambiarFechaLimite(pubId: string, fecha: string) {
     await supabase.from("actividad").insert({
       entidad_tipo: "publicacion", entidad_id: pubId, actor_id: user.id, tipo: "edicion",
       detalle: { mensaje: val ? `puso la fecha límite en ${fmt(val)}`
-        : soltarVentana ? "quitó la fecha límite (y con ella el inicio)"
-        : "quitó la fecha límite" },
+        : `quitó la fecha límite${soltarVentana && antes?.hora ? " (y con ella el inicio y la hora)"
+            : soltarVentana ? " (y con ella el inicio)"
+            : antes?.hora ? " (y con ella la hora)" : ""}` },
     });
     /* 🔔 Solo si CAMBIÓ —está dentro del mismo `if`—: guardar la misma fecha
        otra vez no es un hecho y no debe sonar. Mover el plazo sin decírselo a
@@ -8802,7 +8842,7 @@ export async function cargarCasoRapido(id: string) {
   if (!user) return { error: "Sesión no encontrada." };
 
   const { data: p, error } = await supabase.from("publicaciones")
-    .select("id,titulo,cuerpo,tipo,estado,fecha_inicio,fecha_limite,archivado_en,creado_en,autor_id,responsable," +
+    .select("id,titulo,cuerpo,tipo,estado,fecha_inicio,fecha_limite,hora,archivado_en,creado_en,autor_id,responsable," +
       "autor:perfiles!publicaciones_autor_id_fkey(nombre)," +
       "vinculos:publicacion_vinculos(entidad_tipo,entidad_id)")
     .eq("id", id).single();

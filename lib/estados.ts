@@ -77,26 +77,64 @@ export const esAviso = (tipo?: string | null) => tipo === "aviso";
    muro «¿sigue vivo?» cada tres días durante meses —y una bitácora no se
    puede cerrar, así que no había forma de callarlo—. Si aquí se agrega un
    tercer tipo informativo, hay que agregarlo allá EL MISMO DÍA. */
-export const esInformativo = (tipo?: string | null) => tipo === "aviso" || tipo === "bitacora";
+/* ── UNA REUNIÓN OCURRE, NO SE RESUELVE ──
+   Es el motivo de que sea un tipo y no una etiqueta: cambia cómo la trata el
+   sistema, no solo de qué va. Su fecha no es un vencimiento sino CUÁNDO pasa;
+   pasada la hora no está «vencida» ni «pendiente», está hecha. Con tipo tarea
+   se quedaba en el tablero pidiendo que alguien la cerrara, y nadie cierra
+   una reunión que ya ocurrió.
+   Va ARRIBA de `esInformativo` a propósito: se declara con `const`, así que
+   usarla antes de esta línea compila pero revienta si alguien llegara a
+   llamarla durante la carga del módulo. */
+export const esReunion = (tipo?: string | null) => tipo === "reunion";
+
+export const esInformativo = (tipo?: string | null) =>
+  tipo === "aviso" || tipo === "bitacora" || esReunion(tipo);
+
+/* ── QUIÉN LO DIO POR VISTO ──
+   El aviso tiene un «me enteré» que dice quiénes lo leyeron. Una reunión usa
+   el MISMO mecanismo con otro significado: quién confirma que va. No es una
+   pantalla nueva ni una tabla nueva —ya existía— pero hay que decir dónde
+   aplica, o cuatro sitios lo preguntan cada uno a su manera: eso es lo que
+   pasó cuando el feed ofrecía «Resuelta» a un aviso. */
+export const llevaEnterado = (tipo?: string | null) =>
+  esAviso(tipo) || esReunion(tipo);
 const INFO_TXT: Record<string, Record<string, string>> = {
   aviso: { abierta: "Vigente" },
   bitacora: { abierta: "Publicado" },
+  // «Convocada» y no «Vigente»: una reunión se convoca y luego ocurre.
+  reunion: { abierta: "Convocada" },
 };
 const INFO_ICO: Record<string, Record<string, string>> = {
   aviso: { abierta: "📢" },
   bitacora: { abierta: "📝" },
+  reunion: { abierta: "🤝" },
 };
 
 /* Un aviso VENCIÓ cuando pasó su fecha límite: deja de regir y desde entonces
    se comporta como cerrado —sale del muro y cae en «cerradas»— sin tener que
    archivarlo a mano. Los avisos SIN fecha rigen hasta que otro los reemplace.
-   La comparación es por día: «vence hoy» sigue vigente hoy; vence al terminar. */
+   La comparación es por día: «vence hoy» sigue vigente hoy; vence al terminar.
+   Una REUNIÓN pasada entra por la misma puerta —deja de ser pendiente el día
+   siguiente— pero no desaparece de la agenda: ver `fueraDeAgenda`. */
 export const avisoVencido = (tipo?: string | null, fechaLimite?: string | null): boolean => {
-  if (!esAviso(tipo) || !fechaLimite) return false;
+  if (!(esAviso(tipo) || esReunion(tipo)) || !fechaLimite) return false;
   const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
   const dl = new Date(String(fechaLimite).slice(0, 10) + "T00:00:00");
   return !isNaN(+dl) && dl < hoy;
 };
+
+/* ── PASADA NO ES LO MISMO QUE BORRADA ──
+   Una reunión que ya ocurrió sale de lo PENDIENTE —feed, tablero, muro—: no
+   hay nada que hacer con ella y dejarla ahí es enseñar a ignorar la lista.
+   Pero en la AGENDA se queda, en su día: ahí no es una deuda, es historial —
+   «¿cuándo fue la reunión de producción?» es una pregunta que se hace a un
+   calendario, y un calendario al que se le borra el pasado deja de servir
+   para eso.
+   Un aviso vencido sí desaparece de las dos: dejó de regir y no hubo ningún
+   hecho, solo un papel que caducó. */
+export const fueraDeAgenda = (tipo?: string | null, fechaLimite?: string | null): boolean =>
+  !esReunion(tipo) && avisoVencido(tipo, fechaLimite);
 
 /* LOS ESTADOS VIVOS — para las consultas de «qué está en curso».
    ⚠ Filtrar por ESTOS ya NO basta para excluir lo archivado. Antes sí:
@@ -140,6 +178,10 @@ export const claseEstado = (estado: string, tipo?: string | null) =>
    Vive aquí y no en cada combo porque ya había dos listas —CaseActions y
    PostCard— y la del feed le ofrecía "Resuelta" a un aviso. */
 const OPC_AVISO = ["abierta", "en_pausa"];
+/* Una reunión se convoca y ocurre; lo único que le puede pasar antes es que
+   se CANCELE. «En pausa» no significa nada para algo que tiene día y hora, y
+   «resuelta» tampoco: no se resuelve, pasa. */
+const OPC_REUNION = ["abierta", "descartada"];
 const OPC_BITACORA = ["abierta"];
 const OPC_CASO = ["abierta", "en_progreso", "seguimiento", "en_pausa", "resuelta", "descartada"];
 const HINT: Record<string, string> = {
@@ -152,7 +194,9 @@ const HINT: Record<string, string> = {
  *  se agrega delante: sin eso el combo muestra otra cosa y el primer cambio
  *  la pisa en silencio. */
 export const opcionesEstado = (tipo?: string | null, estado?: string): [string, string][] => {
-  const base = tipo === "bitacora" ? OPC_BITACORA : esAviso(tipo) ? OPC_AVISO : OPC_CASO;
+  const base = tipo === "bitacora" ? OPC_BITACORA
+    : esReunion(tipo) ? OPC_REUNION
+    : esAviso(tipo) ? OPC_AVISO : OPC_CASO;
   const opc = estado && !base.includes(estado) ? [estado, ...base] : base;
   return opc.map(k => [k, `${rotuloEstado(k, tipo)}${HINT[k] || ""}`]);
 };

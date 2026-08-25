@@ -5,9 +5,10 @@ import Volver from "@/components/Volver";
 import Agenda, { type ItemAgenda } from "@/components/Agenda";
 import Realtime from "@/components/Realtime";
 import { sinBot } from "@/lib/personas";
-import { avisoVencido } from "@/lib/estados";
+import { fueraDeAgenda } from "@/lib/estados";
 import { diaLima } from "@/lib/fechas";
 import { techo } from "@/lib/api";
+import { llevaHora } from "@/lib/tipos";
 
 export const metadata: Metadata = { title: "📅 Agenda" };
 
@@ -40,7 +41,7 @@ export default async function AgendaPage() {
         "postu:postulaciones(id,codigo,estado,proy:proyectos(nombre,nombre_corto),conv:convocatorias(categoria))")
       .neq("estado", "cancelada").not("fecha_inicio", "is", null),
     supabase.from("publicaciones")
-      .select("id,titulo,tipo,estado,fecha_inicio,fecha_limite,responsable,creado_en")
+      .select("id,titulo,tipo,estado,fecha_inicio,fecha_limite,hora,responsable,creado_en")
       .in("estado", VIVOS).not("fecha_limite", "is", null).is("archivado_en", null)
       .neq("tipo", "bitacora"),   // las notas del muro solo viven en su proyecto
     supabase.from("perfiles").select("id,nombre,avatar_url,color").eq("activo", true).order("nombre"),
@@ -78,8 +79,12 @@ export default async function AgendaPage() {
 
   /* Los avisos VENCIDOS ya no rigen y no se pintan (misma regla que
      feed/kanban/muro), así que tampoco se les piden comentarios ni vínculos:
-     el filtro estaba más abajo y se pagaba el viaje igual. */
-  const casosVivos = (casos || []).filter((c: any) => !avisoVencido(c.tipo, c.fecha_limite));
+     el filtro estaba más abajo y se pagaba el viaje igual.
+     Una REUNIÓN pasada sí se queda: sale de lo pendiente pero no de la agenda,
+     porque en un calendario el pasado es historial y no deuda — «¿cuándo fue
+     la reunión de producción?» es exactamente lo que se le pregunta a un
+     calendario. Por eso `fueraDeAgenda` y no `avisoVencido`. */
+  const casosVivos = (casos || []).filter((c: any) => !fueraDeAgenda(c.tipo, c.fecha_limite));
   const idsCaso = casosVivos.map((c: any) => c.id);
   const idsPub = [...new Set([
     ...actsVisibles.map((a: any) => a.publicacion_id),
@@ -278,13 +283,22 @@ export default async function AgendaPage() {
        Perú, el día siguiente. Un caso escrito el 31 a las 20:00 salía
        arrancando el 1. */
     const creado = diaLima(c.creado_en || "");
-    const arranque = c.fecha_inicio || creado;
+    /* ── UNA REUNIÓN ES UN PUNTO, NO UN TRAMO ──
+       No dura: ocurre. Dibujarle la cola punteada desde el día en que se
+       apuntó la convertía en una barra de tres semanas para un acto de una
+       hora, y encima la ordenaba por la fecha del apunte —así que dos
+       reuniones del mismo martes salían separadas y en cualquier orden,
+       porque el desempate por hora nunca llegaba a evaluarse—.
+       Su `ini` es su día, igual que su `fin`: una sola marca, en su fecha. */
+    const arranque = llevaHora(c.tipo) ? c.fecha_limite : (c.fecha_inicio || creado);
     const ini = arranque && arranque < c.fecha_limite ? arranque : c.fecha_limite;
     return {
     id: c.id, kind: "caso" as const, titulo: c.titulo,
     ini, fin: c.fecha_limite,
     // Solo es ventana si alguien la puso: ver `ItemAgenda.ventana`.
     ventana: !!c.fecha_inicio,
+    // 'HH:MM:SS' de Postgres → 'HH:MM': los segundos de una reunión son ruido.
+    hora: c.hora ? String(c.hora).slice(0, 5) : undefined,
     estado: c.estado, tipo: c.tipo,
     respId: c.responsable || null,
     personas: [c.responsable].filter(Boolean) as string[],
