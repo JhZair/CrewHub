@@ -58,11 +58,28 @@ const EJES_VINC: { param: string; tipo: string; ico: string; titulo: string }[] 
   { param: "emp", tipo: "empresa", ico: "🏢", titulo: "Empresa" },
   { param: "conv", tipo: "convocatoria", ico: "📜", titulo: "Convocatoria" },
   { param: "post", tipo: "postulacion", ico: "🎯", titulo: "Postulación" },
+  /* Equipo y repositorio faltaban: se pueden VINCULAR desde el compositor —los
+     dos están en su bandeja— pero no se podían PEDIR aquí, así que «todo lo de
+     la Sony FX3» o «los casos de este documento» eran preguntas sin pantalla.
+     Un vínculo que se puede poner y no se puede buscar es media función.
+     Los desplegables solo ofrecen lo que TIENE casos en el tablero (ver
+     `pDesplegables`), así que sumar ejes no llena la barra de opciones muertas:
+     un eje sin nada sale vacío y se nota.
+     Quedan fuera persona y lugar a propósito: «persona» ya tiene su propio eje
+     —el 👤 de responsable, que es lo que se pregunta el 99 % de las veces— y
+     dos controles para la misma palabra se contradicen. El día que haga falta,
+     es una línea. */
+  { param: "equi", tipo: "equipamiento", ico: "🎥", titulo: "Equipo" },
+  { param: "obj", tipo: "objeto", ico: "📚", titulo: "Repositorio" },
 ];
 
 export default async function TableroPage({ searchParams }: {
   searchParams: { v?: string; p?: string; modo?: string; arch?: string; ord?: string;
-    etq?: string; proy?: string; emp?: string; conv?: string; post?: string };
+    /* Un parámetro por eje de vínculo. ⚠ Tiene que llevar el mismo `param` que
+       `EJES_VINC`: si se añade un eje allá y no aquí, TypeScript no dice nada
+       —`searchParams` es un objeto— y el filtro llega siempre vacío. */
+    etq?: string; proy?: string; emp?: string; conv?: string; post?: string;
+    equi?: string; obj?: string };
 }) {
   /* Tres vistas de los MISMOS casos, ya filtrados: columnas (¿cómo va?),
      línea de tiempo (¿cuándo?) y lista (todo junto, en el orden que yo diga).
@@ -103,11 +120,12 @@ export default async function TableroPage({ searchParams }: {
   const F: Record<string, string> = {
     v: searchParams?.v || "",
     p: searchParams?.p || "",
-    etq: searchParams?.etq || "",
-    proy: searchParams?.proy || "",
-    emp: searchParams?.emp || "",
-    conv: searchParams?.conv || "",
-    post: searchParams?.post || "",
+    /* Los ejes de vínculo se recogen DERIVANDO de `EJES_VINC`, no uno a uno:
+       escritos a mano, añadir un eje pedía tocar tres sitios —la lista, este
+       objeto y el tipo de `searchParams`— y olvidarse de este no da error: el
+       desplegable se pinta, se puede elegir… y el filtro llega vacío. */
+    ...Object.fromEntries(EJES_VINC.map(e =>
+      [e.param, (searchParams as Record<string, string | undefined>)?.[e.param] || ""])),
     modo: modo === "columnas" ? "" : modo,
     /* El orden de la LISTA viaja como los demás ejes. Era estado del
        componente y se perdía en cuanto se tocaba un filtro —cada filtro es una
@@ -266,7 +284,11 @@ export default async function TableroPage({ searchParams }: {
       const ids = [...new Set((vincUniv || [])
         .filter((x: any) => x.entidad_tipo === e.tipo).map((x: any) => x.entidad_id))];
       if (!ids.length) { cat[e.param] = []; return; }
+      /* Sin tabla conocida no se pide nada: un eje mal escrito daría
+         `supabase.from(undefined)` y tumbaría los SEIS desplegables, no solo
+         el suyo — están en el mismo `Promise.all`. */
       const t = TABLA_ENT[e.tipo];
+      if (!t) { cat[e.param] = []; return; }
       const { data } = await supabase.from(t[0]).select(`id,${t[1]}`).in("id", ids);
       cat[e.param] = (data || [])
         .map((r: any) => ({ id: r.id, nombre: r[t[1]] }))
