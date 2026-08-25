@@ -7,6 +7,7 @@ import Realtime from "@/components/Realtime";
 import { sinBot } from "@/lib/personas";
 import { avisoVencido } from "@/lib/estados";
 import { diaLima } from "@/lib/fechas";
+import { techo } from "@/lib/api";
 
 export const metadata: Metadata = { title: "📅 Agenda" };
 
@@ -75,15 +76,138 @@ export default async function AgendaPage() {
     return !postu || postu.estado === "ganadora";
   });
 
+  /* Los avisos VENCIDOS ya no rigen y no se pintan (misma regla que
+     feed/kanban/muro), así que tampoco se les piden comentarios ni vínculos:
+     el filtro estaba más abajo y se pagaba el viaje igual. */
+  const casosVivos = (casos || []).filter((c: any) => !avisoVencido(c.tipo, c.fecha_limite));
+  const idsCaso = casosVivos.map((c: any) => c.id);
   const idsPub = [...new Set([
     ...actsVisibles.map((a: any) => a.publicacion_id),
-    ...(casos || []).map((c: any) => c.id),
+    ...idsCaso,
   ].filter(Boolean))] as string[];
-  const { data: conteos } = idsPub.length
-    ? await supabase.from("publicaciones").select("id,comentarios(count)").in("id", idsPub).limit(5000)
-    : { data: [] as any[] };
+  /* Los conteos y los vínculos NO dependen el uno del otro: los dos salen de
+     ids que ya están resueltos. Encadenarlos añadía un viaje de red entero a
+     la página por nada — el mismo patrón que se fue a aplanar en la portada y
+     en /tablero. */
+  const [{ data: conteos }, { data: vincs }] = await Promise.all([
+    idsPub.length
+      ? supabase.from("publicaciones").select("id,comentarios(count)").in("id", idsPub)
+          .limit(techo(5000))
+      : Promise.resolve({ data: [] as any[] }),
+    idsCaso.length
+      ? supabase.from("publicacion_vinculos")
+          .select("publicacion_id,entidad_tipo,entidad_id").in("publicacion_id", idsCaso)
+          /* `creado_en` para que el orden sea SIEMPRE el mismo. Sin `order`,
+             Postgres devuelve las filas como le convenga —y eso cambia con un
+             update o un autovacuum—: un caso vinculado a dos proyectos habría
+             saltado de bloque entre recargas sin que nada hubiera cambiado. */
+          .order("creado_en").order("entidad_id")
+          /* `techo` y no 5000 a secas: PostgREST corta en mil (Max rows) y no
+             avisa. Un caso al que se le pierde el vínculo no da error — se va
+             al cajón de los sueltos como si no tuviera ninguno. */
+          .limit(techo(5000))
+      : Promise.resolve({ data: [] as any[] }),
+  ]);
   const nComs = new Map<string, number>();
   (conteos || []).forEach((p: any) => nComs.set(p.id, p.comentarios?.[0]?.count ?? 0));
+
+  /* ══════════════════════════════════════════════════════════════════
+     ¿A QUÉ PERTENECE CADA CASO?
+
+     Las actividades del cronograma salen agrupadas por su proyecto y el
+     contexto lo da la cabecera del grupo. Los casos caían todos en un único
+     bloque «Casos», así que eran justo ellos los que no decían de qué van:
+     «Rodaje bloque Zenon» a secas no dice de qué película es, y el título
+     está cortado por el ancho de la columna.
+
+     La solución no es meter más texto en una fila que ya va justa, sino usar
+     la estructura que la agenda YA tiene: si el caso está vinculado a «15
+     Emi», que aparezca bajo «15 Emi», al lado de las actividades de esa misma
+     película. Cero altura extra, cero ancho robado al título, y la agenda deja
+     de hablar dos idiomas.
+
+     ── UN CASO PUEDE COLGAR DE VARIAS COSAS ──
+     Se elige UNA por prioridad —fondo, proyecto, convocatoria, empresa— y las
+     demás siguen estando en la ficha. El criterio es dónde está el TRABAJO de
+     ese caso, no qué suena más específico: ver `PRIORIDAD` más abajo.
+     Persona, lugar, equipamiento y etiqueta NO agrupan: no tienen cronograma
+     y partirían la agenda en veinte grupos de una fila. Un caso etiquetado con
+     alguien no «pertenece» a esa persona.
+     ══════════════════════════════════════════════════════════════════ */
+  // Los vínculos de cada caso, en el orden estable que pidió la consulta.
+  const vincDe = new Map<string, { tipo: string; id: string }[]>();
+  (vincs || []).forEach((v: any) => vincDe.set(v.publicacion_id,
+    [...(vincDe.get(v.publicacion_id) || []), { tipo: v.entidad_tipo, id: v.entidad_id }]));
+
+  /* Los nombres, por lote y solo de los tipos que agrupan. Cuatro consultas en
+     paralelo y nunca una por fila. */
+  const idsDe = (t: string) => [...new Set([...vincDe.values()].flat()
+    .filter(v => v.tipo === t).map(v => v.id))];
+  const [proyG, postuG, convG, empG] = await Promise.all([
+    idsDe("proyecto").length
+      ? supabase.from("proyectos").select("id,nombre,nombre_corto").in("id", idsDe("proyecto"))
+      : Promise.resolve({ data: [] as any[] }),
+    /* Solo las GANADAS: una postulación en concurso no es un fondo, y este
+       grupo se rotula «🎬 Fondo» y enlaza a `/fondo/<id>`, que para una que
+       sigue compitiendo redirige al expediente y deja al lector en otra
+       pantalla. Es la misma regla que filtra las actividades («las propuestas
+       no van a la agenda»), que los casos se saltaban por no pasar por ahí.
+       Las que no ganaron caen al siguiente nivel de prioridad. */
+    idsDe("postulacion").length
+      ? supabase.from("postulaciones")
+          .select("id,codigo,proy:proyectos(nombre,nombre_corto)")
+          .in("id", idsDe("postulacion")).eq("estado", "ganadora")
+      : Promise.resolve({ data: [] as any[] }),
+    idsDe("convocatoria").length
+      ? supabase.from("convocatorias").select("id,codigo,nombre").in("id", idsDe("convocatoria"))
+      : Promise.resolve({ data: [] as any[] }),
+    idsDe("empresa").length
+      ? supabase.from("empresas").select("id,nombre").in("id", idsDe("empresa"))
+      : Promise.resolve({ data: [] as any[] }),
+  ]);
+
+  /* El grupo de cada entidad, con el MISMO `id` que arman las actividades
+     —`p:`, `postu:`, `c:`— para que un caso y las actividades de su película
+     caigan en el mismo bloque. Si estos prefijos se separan de los de arriba,
+     no falla nada: simplemente salen dos grupos con el mismo nombre, que es
+     de los errores que más tardan en verse. */
+  const grupoEnt = new Map<string, { id: string; label: string }>();
+  ((proyG.data || []) as any[]).forEach(p =>
+    grupoEnt.set(`proyecto:${p.id}`, { id: `p:${p.id}`, label: p.nombre_corto || p.nombre }));
+  ((postuG.data || []) as any[]).forEach(p =>
+    grupoEnt.set(`postulacion:${p.id}`, {
+      id: `postu:${p.id}`,
+      label: [`🎬 ${p.codigo || "Fondo"}`,
+              (p.proy as any)?.nombre_corto || (p.proy as any)?.nombre].filter(Boolean).join(" · "),
+    }));
+  ((convG.data || []) as any[]).forEach(c =>
+    grupoEnt.set(`convocatoria:${c.id}`, {
+      id: `c:${c.id}`, label: [c.codigo, c.nombre].filter(Boolean).join(" · "),
+    }));
+  ((empG.data || []) as any[]).forEach(e =>
+    grupoEnt.set(`empresa:${e.id}`, { id: `e:${e.id}`, label: `🏢 ${e.nombre}` }));
+
+  /* ── EL FONDO ANTES QUE EL PROYECTO ──
+     Parece al revés («el proyecto es más concreto»), y no lo es: el cronograma
+     de un fondo en ejecución NO cuelga del proyecto —sus filas tienen
+     `proyecto_id` en null— sino de la postulación. Con el proyecto primero, un
+     caso vinculado a los dos se iba a `p:<proyecto>` mientras su cronograma
+     vivía en `postu:<fondo>`: dos bloques de la misma película, uno con el
+     cronograma y otro con un caso solo. La prioridad tiene que seguir a dónde
+     está el trabajo, no a qué suena más específico. */
+  const PRIORIDAD = ["postulacion", "proyecto", "convocatoria", "empresa"];
+  const grupoDeCaso = (id: string) => {
+    const vs = vincDe.get(id) || [];
+    for (const t of PRIORIDAD) {
+      const v = vs.find(x => x.tipo === t);
+      const g = v && grupoEnt.get(`${t}:${v.id}`);
+      if (g) return g;
+    }
+    /* Sin vínculo que agrupe. «Sueltos» y no «Casos» a secas: el nombre dice
+       por qué están juntos —no comparten nada— en vez de sugerir que son «los
+       casos» y los demás otra cosa. */
+    return { id: "__casos__", label: "Casos sueltos" };
+  };
 
   // ── Actividades → items. Grupo = su proyecto/convocatoria/fondo. ──
   const itemsAct: ItemAgenda[] = actsVisibles.map((a: any) => {
@@ -130,13 +254,12 @@ export default async function AgendaPage() {
     };
   });
 
-  // ── Casos vivos con fecha límite → items. Grupo único "Casos". ──
+  // ── Casos vivos con fecha límite → items, cada uno en el grupo de su
+  //    vínculo principal (ver `grupoDeCaso`). ──
   // Un aviso VENCIDO ya no rige (misma regla que feed/kanban/muro): sale de la
   // agenda solo, sin esperar a que se archive a mano. Los casos normales y los
   // avisos aún vigentes se quedan.
-  const itemsCaso: ItemAgenda[] = (casos || [])
-    .filter((c: any) => !avisoVencido(c.tipo, c.fecha_limite))
-    .map((c: any) => {
+  const itemsCaso: ItemAgenda[] = casosVivos.map((c: any) => {
     /* ── DE CUÁNDO A CUÁNDO SE DIBUJA UN CASO ──
        Si el caso tiene VENTANA (`fecha_inicio`), esa es la barra: el trabajo
        va de ahí a su vencimiento. Es lo que hacía falta —«Rodaje bloque
@@ -167,7 +290,17 @@ export default async function AgendaPage() {
     personas: [c.responsable].filter(Boolean) as string[],
     nc: nComs.get(c.id) || 0,
     creado: c.creado_en || "",
-    grupo: "Casos", grupoId: "__casos__", href: `/caso/${c.id}`,
+    ...(() => { const g = grupoDeCaso(c.id); return { grupo: g.label, grupoId: g.id }; })(),
+    /* ── LOS CASOS, DEBAJO DEL CRONOGRAMA DE SU GRUPO ──
+       Dentro de un grupo se ordena por `orden`, que es la secuencia que una
+       persona decidió en el cronograma —primero se alistan los equipos,
+       después rueda cámara A—. Un caso no tiene esa secuencia, y con el 0 de
+       antes se colaba ENCIMA de toda ella: al juntarlos con las actividades,
+       los casos habrían partido en dos el cronograma de cada película.
+       Van al final del grupo, ordenados entre sí por fecha. El cronograma se
+       lee de un tirón y los casos cuelgan debajo, que es lo que son. */
+    orden: Number.MAX_SAFE_INTEGER,
+    href: `/caso/${c.id}`,
   }; });
 
   return (
@@ -175,7 +308,10 @@ export default async function AgendaPage() {
       {/* Refresco en vivo: la agenda sale de cronograma + casos con fecha. */}
       {/* «comentarios» entra a la lista porque ahora la agenda muestra su
           conteo: sin eso el 💬 se quedaría congelado hasta recargar. */}
-      <Realtime tablas={["cronograma_actividades", "publicaciones", "comentarios"]} token={session?.access_token} miId={user.id} />
+      {/* `publicacion_vinculos` entra a la lista desde que el grupo de un caso
+          sale de su vínculo: vincular un caso a un proyecto lo MUEVE de sitio
+          en esta pantalla, y sin esto el cambio no se vería hasta recargar. */}
+      <Realtime tablas={["cronograma_actividades", "publicaciones", "comentarios", "publicacion_vinculos"]} token={session?.access_token} miId={user.id} />
       <div className="topbar">
         <Volver />
         <span className="spacer" />

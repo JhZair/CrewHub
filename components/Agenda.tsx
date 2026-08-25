@@ -40,7 +40,7 @@ export type ItemAgenda = {
   respId: string | null;
   nc?: number;             // comentarios del caso (0 o ausente = no se pinta)
   personas: string[];      // responsable + equipo, para el filtro
-  grupo: string;           // rótulo del grupo (proyecto / "Casos")
+  grupo: string;           // rótulo del grupo (su proyecto, fondo, empresa…)
   grupoId: string;
   href: string;
 };
@@ -207,20 +207,27 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, perfilDe, apa
   };
   const dentro = vis.filter(it => pd(it.fin) + DAY >= inicioT && izqDe(it) < finT);
 
-  // Agrupar por proyecto; "Casos" PRIMERO, los cronogramas después
+  // Agrupar por proyecto. Cada caso viene ya con el grupo de su vínculo.
   const byGroup = new Map<string, { label: string; items: ItemAgenda[] }>();
   dentro.forEach(it => {
     const g = byGroup.get(it.grupoId) || { label: it.grupo, items: [] };
     g.items.push(it); byGroup.set(it.grupoId, g);
   });
-  /* Orden: Casos → proyectos → convocatorias → (sin proyecto). Antes era
+  /* Orden: proyectos → fondos → convocatorias → empresas → sueltos. Antes era
      alfabético a secas y los proyectos salían partidos alrededor del bloque
      "C-0xx" (15Emi arriba por el dígito, SanEsteban al final por la S). El
-     prefijo del grupoId dice el tipo: p: proyecto, c: convocatoria. Dentro de
-     cada bloque, alfabético (las convocatorias, por su código). */
+     prefijo del grupoId dice el tipo: p: proyecto, postu: fondo, c:
+     convocatoria, e: empresa. Dentro de cada bloque, alfabético (las
+     convocatorias, por su código).
+     ── LOS SUELTOS, AL FINAL ──
+     El bloque de casos iba PRIMERO cuando era «Casos» y contenía todos: era la
+     mitad de la agenda. Ahora cada caso vive con su película y ahí solo quedan
+     los que no cuelgan de nada; abrir la agenda con lo que no tiene contexto
+     sería empezar por lo que menos se entiende. */
   const rango = (gid: string) =>
-    gid === "__casos__" ? 0 : gid.startsWith("postu:") ? 2
-      : gid.startsWith("p:") ? 1 : gid.startsWith("c:") ? 3 : 4;
+    gid === "__casos__" ? 6 : gid.startsWith("postu:") ? 2
+      : gid.startsWith("p:") ? 1 : gid.startsWith("c:") ? 3
+      : gid.startsWith("e:") ? 4 : 5;
   const grupos = [...byGroup.entries()].sort((a, b) =>
     rango(a[0]) - rango(b[0]) || a[1].label.localeCompare(b[1].label));
   /* Dentro de cada grupo, el MISMO orden que su cronograma: el `orden` manual
@@ -232,7 +239,10 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, perfilDe, apa
      `cmpEtapa` de actions.ts): si la agenda ordena por fecha a secas, la misma
      etapa se lee en un orden aquí y en otro allá, y ninguno de los dos parece
      roto — solo se contradicen. Los casos no tienen `orden`: caen todos en 0 y
-     el comparador se reduce a la fecha, que es como estaban. */
+     el comparador se reduce a la fecha entre ellos. Y su `orden` es el
+     máximo posible, así que caen DESPUÉS del cronograma de su grupo: con el 0
+     de antes se colaban encima y partían en dos la secuencia que alguien
+     decidió. */
   const cmp = (x: ItemAgenda, y: ItemAgenda) =>
     (x.orden ?? 0) !== (y.orden ?? 0) ? (x.orden ?? 0) - (y.orden ?? 0)
     : x.ini !== y.ini ? (x.ini < y.ini ? -1 : 1)
@@ -289,8 +299,18 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, perfilDe, apa
                ancla se aterriza en Financiera y hay que buscarlo. */
             const hrefGrupo = gid.startsWith("postu:") ? `/fondo/${gid.slice(6)}#audiovisual`
               : gid.startsWith("p:") ? `/entidad/proyecto/${gid.slice(2)}`
-              : gid.startsWith("c:") ? `/entidad/convocatoria/${gid.slice(2)}` : null;
-            const titulo = gid === "__casos__" ? "🗂 Casos" : `📁 ${g.label}`;
+              : gid.startsWith("c:") ? `/entidad/convocatoria/${gid.slice(2)}`
+              : gid.startsWith("e:") ? `/entidad/empresa/${gid.slice(2)}` : null;
+            /* El 📁 solo donde el rótulo no trae ya el suyo. Los grupos que se
+               nombran a sí mismos —🎬 un fondo, 🏢 una empresa, 🗂 los sueltos—
+               salían con dos iconos pegados, que se lee como un error de copia.
+               Y el rótulo de los sueltos sale del DATO y no de un literal aquí:
+               estaba escrito «🗂 Casos» a mano, así que el nombre que arma la
+               página no se veía nunca y la lista se ordenaba por un texto que
+               no estaba en pantalla. */
+            const propio = /^\p{Extended_Pictographic}/u.test(g.label);
+            const titulo = gid === "__casos__" ? `🗂 ${g.label}`
+              : propio ? g.label : `📁 ${g.label}`;
             return (
             <div key={gid}>
               <div className="ag-tl-grupo">
@@ -316,8 +336,8 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, perfilDe, apa
                    —la de todos sus ítems— basta para saber cuál es el preset;
                    sin categoría, `etapasDe` devuelve el de cine, que es el que
                    usan los cronogramas de proyecto. Una etapa que no esté en el
-                   preset cae al final, y ahí sí manda la fecha. Los grupos sin
-                   etapa (los Casos) caen en un bloque sin rótulo, como antes. */}
+                   preset cae al final, y ahí sí manda la fecha. Lo que no tiene
+                   etapa —los casos— cae en la última tanda, rotulada aparte. */}
               {!cerrado && (() => {
                 const porEtapa = new Map<string, ItemAgenda[]>();
                 g.items.forEach(it => {
@@ -336,6 +356,17 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, perfilDe, apa
                       <div className="ag-tl-fase">
                         <i style={{ background: colorEtapa(et) }} />
                         {nombreEtapa(et)}
+                      </div>
+                    )}
+                    {/* La tanda SIN etapa, cuando el grupo tiene fases, son los
+                        casos: cuelgan del proyecto pero no del cronograma. Se
+                        rotulan igual que las fases porque si no se pegan a la
+                        última —«Postproducción» y debajo tres casos sin nada
+                        que los separe— y parecen parte de ella. */}
+                    {hayFases && !et && items.some(x => x.kind === "caso") && (
+                      <div className="ag-tl-fase">
+                        <i style={{ background: "var(--dim)" }} />
+                        Casos
                       </div>
                     )}
                     {items.map(it => {
