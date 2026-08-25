@@ -156,8 +156,24 @@ begin
       nullif(trim(coalesce(r.conv_nombre, r.conv_codigo, '')
         || case when r.conv_anio is not null then ' ' || r.conv_anio else '' end), ''),
       'el cronograma');
+    /* ── FIRMA EL BOT, SIEMPRE ──
+       Decía `coalesce(r.responsable, autor_defecto)`: cuando la actividad
+       tenía responsable —o sea casi siempre— el caso quedaba FIRMADO por esa
+       persona. En la ficha se leía «CREADO: John Oros» justo encima de un
+       cuerpo que dice «Generada por Qhaway desde el cronograma»: dos frases
+       de la misma pantalla contándose cosas distintas.
+       Quien lo va a hacer ya tiene su columna (`responsable`, la de al lado).
+       El autor contesta otra pregunta —quién lo creó— y la respuesta es el
+       bot. Atribuirle a alguien un trabajo que no hizo es peor que dejarlo
+       sin firmar: no se revisa nunca, porque parece correcto.
+       (El arreglo anterior tocó el respaldo —encontrar al bot tras el
+       renombrado— y dejó intacta la rama que se usa casi siempre. Por eso
+       «ya lo arreglamos» y seguía pasando.)
+       Las notificaciones no cambian: más abajo el destinatario es
+       `coalesce(responsable, autor_id)`, y con responsable puesto sale el
+       mismo; sin responsable, el autor ya era el bot antes que ahora. */
     insert into publicaciones (autor_id, responsable, tipo, titulo, cuerpo, estado, fecha_limite)
-    values (coalesce(r.responsable, autor_defecto), r.responsable,
+    values (autor_defecto, r.responsable,
       case when es_hito then 'aviso' else 'tarea' end,
       case when es_hito then '🏛 ' || r.nombre || ' — ' || contexto else r.nombre end,
       case when es_hito
