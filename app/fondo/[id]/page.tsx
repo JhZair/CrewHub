@@ -112,7 +112,7 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
 
   const categoria = ent.conv?.categoria || null;
 
-  const [cp, pl, pf, plPre, pc, vtp, ec, rf, mb, gdj, cmp, au, vf, eqp, eqf, cac, urlSunat, s4] = await Promise.all([
+  const [cp, pl, pf, plPre, pc, vtp, ec, rf, mb, gdj, cmp, au, vf, eqp, eqf, cac, urlSunat, s4, apo] = await Promise.all([
     supabase.from("cronograma_actividades").select("*, resp:perfiles!responsable(nombre)")
       .eq("postulacion_id", params.id)
       .order("etapa").order("orden").order("fecha_inicio").order("creado_en"),
@@ -142,11 +142,15 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
         "creado:perfiles!creado_por(nombre),quien:perfiles!comprobante_por(nombre)")
       .eq("postulacion_id", params.id).order("periodo"),
     supabase.from("rhe")
-      /* `pagado_en` viaja porque decide si el recibo todavía se puede tocar:
-         después del pago lo corrige administración y nadie más (la misma regla
-         que db/rhe-permisos.sql aplica en la base). Sin este dato, la pantalla
-         tendría que adivinarlo. */
-      .select("id,persona_id,fecha,monto,numero,url,etapa,rubro_item,concepto,pagado_en,persona:personas(nombre,alias)")
+      /* El CIERRE del expediente viaja porque es lo que decide si el
+         comprobante todavía se puede colgar — la misma línea que traza
+         db/apoyo-rendicion.sql en la base. Ojo: es el cierre y no el pago. El
+         pago protege las cifras, y aquí no se toca ninguna: el orden normal
+         del trabajo es cobrar primero y juntar los PDF después, así que
+         bloquear por «pagado» prohibiría justo la tarea. Sin este dato la
+         pantalla tendría que adivinar, y adivinaría distinto que la base. */
+      .select("id,persona_id,fecha,monto,numero,url,etapa,rubro_item,concepto,pagado_en," +
+              "liquidacion_id,liq:liquidaciones(cerrado_en),persona:personas(nombre,alias)")
       .eq("postulacion_id", params.id).order("fecha", { ascending: false }),
     supabase.from("movimiento_banco")
       .select("id,fecha,glosa,medio,tipo,monto,saldo,categoria,nota")
@@ -225,7 +229,27 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
        `error` viene con la queja, la pestaña Equipo cae a la columna vieja y
        el resto del fondo ni se entera. */
     supabase.from("suspension_4ta").select("persona_id,anio,url"),
+    /* Quién ayuda a administración con los papeles de ESTE fondo. Tolerante,
+       como las demás: sin db/apoyo-rendicion.sql corrido no hay apoyos y la
+       ficha funciona igual que ayer, en vez de caerse entera por una tabla que
+       solo gobierna un botón. */
+    supabase.from("fondo_apoyo").select("usuario_id").eq("postulacion_id", params.id),
   ]);
+  /* Los nombres salen del catálogo de perfiles que ya viajó (`pf`): la tabla
+     de apoyos cuelga de auth.users y no de perfiles, así que PostgREST no
+     puede traerlos embebidos —no hay clave foránea entre las dos— y pedirlos
+     aparte sería un viaje más para tres nombres. */
+  const apoyoIds: string[] = ((apo.data || []) as any[]).map(a => a.usuario_id);
+  /* RUC (o DNI) → persona, para que la carga por lote sepa DE QUIÉN es cada
+     PDF. Es el único dato que lo dice: el número del recibo no, porque la
+     serie E001 la tiene cada emisor y «E001-22» existe tantas veces como
+     personas cobran (ver lib/rheLote.ts). */
+  const rucsPersonas: Record<string, string> = {};
+  for (const p of ((pc.data || []) as any[])) {
+    const r = String(p.ruc_dni || "").replace(/\D/g, "");
+    if (r) rucsPersonas[r] = p.id;
+  }
+  const soyApoyo = apoyoIds.includes(user.id);
 
   /* Responsable de actividad de postulación = persona del equipo
      (`responsable_persona`), no cuenta del sistema. Se normaliza a
@@ -703,6 +727,10 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
                 })()}>
                 <RendicionFondo postulacionId={params.id} esAdmin={esAdmin}
                   miPersonaId={(miPersona as any)?.id || null}
+                  esApoyo={soyApoyo}
+                  apoyos={apoyoIds}
+                  equipo={(pf.data || []) as any[]}
+                  rucs={rucsPersonas}
                   fechaDesembolso={ent.fecha_desembolso || null}
                   fechaRendicionReal={ent.fecha_rendicion_real || null}
                   montoAdjudicado={ent.monto_adjudicado ? parseFloat(ent.monto_adjudicado) : null}

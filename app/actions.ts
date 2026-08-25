@@ -3316,40 +3316,115 @@ export async function fijarComprobanteRhe(id: string, postulacionId: string, url
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
-  const { data: perfil } = await supabase.from("perfiles")
-    .select("es_admin,es_finanzas").eq("id", user.id).maybeSingle();
-  /* ── O ERES ADMINISTRACIÓN, O ES TU RECIBO ──
-     Antes solo pasaba administración, y el comprobante lo tiene en la mano
-     quien cobró: pedírselo por WhatsApp para subirlo por él es el motivo de
-     que cincuenta y ocho recibos sigan sin PDF. La base ya lo permitía
-     (db/rhe-permisos.sql: el titular corrige su recibo mientras no esté
-     pagado); esta puerta estaba cerrada por encima de la política, así que el
-     permiso existía sin sitio por donde usarlo.
-     La comprobación se repite AQUÍ y no se delega a la RLS a propósito: el
-     rechazo de la base llega como «cero filas», y un mensaje que no distingue
-     «no es tuyo» de «ya está pagado» deja a la persona sin saber qué hacer. */
-  if (!(perfil?.es_admin || perfil?.es_finanzas)) {
-    const { data: fila } = await supabase.from("rhe")
-      .select("persona_id,pagado_en").eq("id", id).maybeSingle();
-    if (!fila) return { error: "No se encontró el recibo." };
-    const { data: mia } = await supabase.from("personas").select("id")
-      .eq("id", (fila as any).persona_id).eq("usuario_id", user.id).maybeSingle();
-    if (!mia) {
-      return { error: "Este recibo no es tuyo: su comprobante lo adjunta quien figura en él, o administración." };
-    }
-    if ((fila as any).pagado_en) {
-      return { error: "El recibo ya está pagado; a partir de ahí lo corrige administración." };
-    }
+  /* ── LA REGLA VIVE EN LA BASE, NO AQUÍ ──
+     Esto comprobaba el permiso por su cuenta y hacía el `update` directo. Con
+     tres clases de gente que puede adjuntar —administración, el apoyo del
+     fondo y el titular del recibo— esa comprobación tenía que existir a la vez
+     aquí y en la política de RLS, y dos escrituras de la misma regla divergen
+     en cuanto una de las dos se retoca.
+     `adjuntar_comprobante_rhe` decide y escribe UNA columna. Un `update`
+     abierto por RLS no podría: una política elige filas, nunca columnas, y
+     quien puede colgar el PDF acabaría pudiendo cambiar el monto.
+     Devuelve null si fue bien, o el motivo — que se enseña tal cual. */
+  const { data, error } = await supabase.rpc("adjuntar_comprobante_rhe", {
+    p_rhe: id, p_url: url,
+  });
+  if (error) {
+    /* La función puede no existir todavía: la migración se corre a mano. Se
+       dice cuál, en vez de soltar el error de Postgres en crudo. */
+    return { error: /adjuntar_comprobante_rhe/.test(error.message)
+      ? "Falta correr db/apoyo-rendicion.sql en la base."
+      : error.message };
   }
-  /* `.select()` de cinturón: un update bloqueado por RLS devuelve cero filas y
-     NINGÚN error, así que sin esto el adjunto «se guardaría» y desaparecería
-     al recargar. Es la misma trampa de siempre. */
-  const { data, error } = await supabase.from("rhe")
-    .update({ url: (url || "").trim() || null }).eq("id", id).select("id");
-  if (error) return { error: error.message };
-  if (!data?.length) return { error: "No se pudo guardar: el permiso de la base lo rechazó." };
+  if (data) return { error: String(data) };
   revalidatePath(`/fondo/${postulacionId}`);
   revalidatePath(`/entidad/postulacion/${postulacionId}`);
+  return {};
+}
+
+/* ── LOS COMPROBANTES DE UNA TANDA, EN UN SOLO VIAJE ──
+ *
+ * La carga por lote llega con cincuenta y ocho pares recibo→PDF. Llamar a
+ * `fijarComprobanteRhe` cincuenta y ocho veces desde el navegador son
+ * cincuenta y ocho acciones de servidor que Next ENCOLA de una en una, cada
+ * una con su validación de sesión y su `revalidatePath`: minutos de espera
+ * para escribir una columna, y una barra de progreso que no se mueve.
+ *
+ * Aquí el bucle corre en el servidor, donde la base está a un salto, y se
+ * revalida UNA vez al final.
+ *
+ * ── NO ES «TODO O NADA» ──
+ * Cada recibo se decide por separado y los fallos se DEVUELVEN uno a uno con
+ * su motivo. Abortar la tanda entera porque el recibo 41 pertenece a un
+ * expediente cerrado tiraría a la basura los cuarenta que sí entraron, y
+ * obligaría a repetir la carga entera para descubrir el siguiente problema.
+ */
+export async function adjuntarComprobantesRhe(
+  postulacionId: string, pares: { id: string; url: string }[],
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!Array.isArray(pares) || !pares.length) return { error: "No llegó ningún comprobante." };
+  /* Un tope de cordura: una tanda de miles sería un fallo de quien llama, y
+     dejarla correr bloquea la conexión un buen rato. */
+  if (pares.length > 300) return { error: "Demasiados de una vez: sube por tandas de 300." };
+
+  let hechos = 0;
+  const fallos: { id: string; error: string }[] = [];
+  for (const par of pares) {
+    const { data, error } = await supabase.rpc("adjuntar_comprobante_rhe", {
+      p_rhe: par.id, p_url: par.url,
+    });
+    if (error) {
+      /* Si falta la migración, falla el primero y fallarían los 58 iguales:
+         se corta y se dice una vez. */
+      if (/adjuntar_comprobante_rhe/.test(error.message)) {
+        return { error: "Falta correr db/apoyo-rendicion.sql en la base." };
+      }
+      fallos.push({ id: par.id, error: error.message });
+    } else if (data) {
+      fallos.push({ id: par.id, error: String(data) });
+    } else {
+      hechos++;
+    }
+  }
+  revalidatePath(`/fondo/${postulacionId}`);
+  revalidatePath(`/entidad/postulacion/${postulacionId}`);
+  return { hechos, fallos };
+}
+
+/* ── NOMBRAR Y QUITAR APOYOS DE RENDICIÓN ──
+ * Solo administración, y la base lo vuelve a exigir con su política: un apoyo
+ * que pudiera nombrarse a sí mismo no sería un permiso. Ver db/apoyo-rendicion.sql.
+ */
+export async function fijarApoyoFondo(
+  postulacionId: string, usuarioId: string, sumar: boolean,
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const q = sumar
+    ? supabase.from("fondo_apoyo")
+        .insert({ postulacion_id: postulacionId, usuario_id: usuarioId, creado_por: user.id })
+        .select("usuario_id")
+    : supabase.from("fondo_apoyo").delete()
+        .eq("postulacion_id", postulacionId).eq("usuario_id", usuarioId)
+        .select("usuario_id");
+  const { data, error } = await q;
+  if (error) {
+    /* 42P01 = la tabla no existe. La migración se corre a mano y este es el
+       primer sitio donde se nota. */
+    if ((error as any).code === "42P01") return { error: "Falta correr db/apoyo-rendicion.sql en la base." };
+    /* Nombrar dos veces al mismo no es un fallo: el resultado deseado ya está. */
+    if ((error as any).code === "23505") return {};
+    return { error: error.message };
+  }
+  /* El mismo cinturón de siempre: un insert o un delete que la RLS rechaza
+     devuelve cero filas y NINGÚN error, así que sin esto «se guardaría» y
+     desaparecería al recargar. */
+  if (!data?.length) return { error: "No se pudo guardar: el permiso de la base lo rechazó. Solo administración nombra apoyos." };
+  revalidatePath(`/fondo/${postulacionId}`);
   return {};
 }
 

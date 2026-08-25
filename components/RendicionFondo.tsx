@@ -1,5 +1,7 @@
 "use client";
 import { useState } from "react";
+import CargarComprobantes from "@/components/CargarComprobantes";
+import ApoyosFondo from "@/components/ApoyosFondo";
 import { textoFaltan, seVigila, type FaltanEstados } from "@/lib/estadosCuenta";
 import { estadoConPrueba } from "@/lib/pruebasFondo";
 import { useRouter } from "next/navigation";
@@ -43,8 +45,13 @@ type RheFila = {
   id: string; persona_id: string; persona?: string;
   fecha: string; monto: number; numero: string | null; url: string | null;
   etapa: string | null; rubro_item: string | null; concepto?: string | null;
-  /** Si ya se pagó, el recibo deja de ser corregible por su titular. */
+  /** Si ya se pagó, el recibo deja de ser corregible por su titular (montos).
+   *  Para el COMPROBANTE no manda esto, sino el cierre del expediente. */
   pagado_en?: string | null;
+  liquidacion_id?: string | null;
+  /** El expediente del que cuelga, si cuelga de alguno. Cerrado = ya se
+   *  presentó, y el respaldo de lo presentado lo cambia administración. */
+  liq?: { cerrado_en?: string | null } | null;
 };
 type Opcion = {
   id: string; nombre: string;
@@ -87,7 +94,7 @@ const fechaSubido = (iso?: string | null) => {
 
 
 export default function RendicionFondo({
-  postulacionId, esAdmin, miPersonaId, fechaDesembolso, fechaRendicionReal, montoAdjudicado,
+  postulacionId, esAdmin, miPersonaId, esApoyo, apoyos, equipo, rucs, fechaDesembolso, fechaRendicionReal, montoAdjudicado,
   estados, rhe, empresa, etapas, rubros, personas, userId, hiloError, faltanEc,
 }: {
   postulacionId: string;
@@ -95,6 +102,17 @@ export default function RendicionFondo({
   /** La ficha de persona de quien mira, si su cuenta está enlazada. Sirve para
    *  una sola cosa: reconocer SUS recibos entre los del resto. */
   miPersonaId?: string | null;
+  /** Si a quien mira lo nombraron apoyo de rendición DE ESTE fondo: puede
+   *  colgar el PDF de cualquier recibo de aquí, y nada más. */
+  esApoyo?: boolean;
+  /** Los apoyos nombrados (ids de cuenta), para el bloque de administración. */
+  apoyos?: string[];
+  /** El catálogo de cuentas activas, para elegir a quién nombrar. */
+  equipo?: { id: string; nombre?: string | null; avatar_url?: string | null; color?: string | null }[];
+  /** RUC o DNI → id de persona. Lo usa la carga por lote para saber DE QUIÉN
+   *  es cada PDF: el número del recibo no lo dice, porque la serie E001 la
+   *  tiene cada emisor. */
+  rucs?: Record<string, string>;
   fechaDesembolso: string | null;
   /** Si el fondo ya rindió, la serie de estados termina ahí y deja de faltar
       nada. Sin esto, un fondo cerrado seguiría pidiendo meses para siempre. */
@@ -178,8 +196,16 @@ export default function RendicionFondo({
      que es el fallo más difícil de ver porque no da ningún error.
      Después del pago se cierra: a partir de ahí el número ya se usó y lo
      corrige alguien con responsabilidad, que es lo que dice la política. */
+  /* ⚠ Esta condición es el reflejo EXACTO de `adjuntar_comprobante_rhe`
+     (db/apoyo-rendicion.sql). Son dos escrituras de la misma regla y no hay
+     forma de evitarlo —una decide si se pinta el botón, la otra si se guarda—,
+     así que si un día cambia una, cambia la otra el mismo día. Cuando
+     divergen, el síntoma es un botón que está y no funciona, o un permiso que
+     existe y no tiene puerta: los dos fallos tardan meses en encontrarse. */
+  const cerrado = (r: RheFila) => !!r.liq?.cerrado_en;
   const puedeAdjuntar = (r: RheFila) =>
-    esAdmin || (!!miPersonaId && r.persona_id === miPersonaId && !r.pagado_en);
+    esAdmin
+    || ((esApoyo || (!!miPersonaId && r.persona_id === miPersonaId)) && !cerrado(r));
   const totGrupo = (g: { items: RheFila[] }) => g.items.reduce((s, r) => s + Number(r.monto || 0), 0);
   const nombreDe = (opc: Opcion[], id: string) => opc.find(o => o.id === id)?.nombre;
   const SIN = "∅";  // clave del grupo «sin asignar»
@@ -371,6 +397,10 @@ export default function RendicionFondo({
         </div>
       )}
       {rhe.length > 0 && (
+        <ApoyosFondo postulacionId={postulacionId} esAdmin={esAdmin}
+          apoyos={apoyos || []} equipo={equipo || []} />
+      )}
+      {rhe.length > 0 && (
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
           <span style={{ color: "var(--dim)", fontSize: 12 }}>Ver:</span>
           <div className="rhe-vistas">
@@ -380,6 +410,20 @@ export default function RendicionFondo({
             ))}
           </div>
           <span style={{ flex: 1 }} />
+          {/* ── LA CARGA POR LOTE ──
+              Solo para quien puede escribir en TODAS las filas —administración
+              o el apoyo nombrado—: a quien solo puede con las suyas, una tanda
+              de 58 no le sirve, y el botón le prometería algo que la base le
+              va a negar fila por fila. */}
+          {(esAdmin || esApoyo) && rheSinPdf > 0 && (
+            <CargarComprobantes postulacionId={postulacionId} nombreFondo={empresa || null}
+              rucs={rucs || {}}
+              filas={rhe.map(r => ({
+                id: r.id, persona_id: r.persona_id, numero: r.numero,
+                monto: Number(r.monto || 0), fecha: r.fecha, url: r.url,
+                persona: r.persona,
+              }))} />
+          )}
           <button className="plg-todo" onClick={() => plegarTodos(true)}>⤢ Expandir todo</button>
           <button className="plg-todo" onClick={() => plegarTodos(false)}>⤡ Plegar todo</button>
         </div>
