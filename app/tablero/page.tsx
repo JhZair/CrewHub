@@ -536,16 +536,24 @@ export default async function TableroPage({ searchParams }: {
       <Realtime tablas={["publicaciones", "publicacion_vinculos", "reacciones"]} token={session?.access_token} miId={user.id} />
       <div className="topbar" style={{ gap: 10, flexWrap: "wrap" }}>
         <Volver />
-        <h1 className="title-lg" style={{ margin: 0, fontSize: 20 }}>🗂 Tablero</h1>
+        {/* «Tablero» a secas no decía de qué: el sistema tiene el tablero de
+            casos, el de fondos y el de obligaciones. El nombre es el mismo con
+            el que aparece en el menú de secciones — dos nombres para la misma
+            pantalla obligan a traducir cada vez. */}
+        <h1 className="title-lg" style={{ margin: 0, fontSize: 20 }}>🗂 Tablero de Casos</h1>
         {/* El toggle de vista no aparece en el archivo: la línea de tiempo no
             tiene fila para Descartadas —las escondería— y el archivo se
             gestiona por columnas y la zona de arrastre. Sin esto, «Línea de
             tiempo» preservaba `arch` y te metía en la combinación prohibida. */}
         {!arch && (
+          /* El orden dice para qué se usa cada una: se trabaja en el kanban,
+             se revisa en la lista y se planifica en la línea de tiempo. La
+             lista va segunda por eso —es la que más se abre después del
+             tablero— y no por ser la última que se construyó. */
           <div className="tl-toggle">
-            <Link href={urlCols} className={modo === "columnas" ? "on" : ""}>🗂 Columnas</Link>
-            <Link href={urlTime} className={modo === "timeline" ? "on" : ""}>🗓 Línea de tiempo</Link>
+            <Link href={urlCols} className={modo === "columnas" ? "on" : ""}>🗂 Columnas Kanban</Link>
             <Link href={urlLista} className={modo === "lista" ? "on" : ""}>📋 Lista</Link>
+            <Link href={urlTime} className={modo === "timeline" ? "on" : ""}>🗓 Línea de tiempo</Link>
           </div>
         )}
         {/* Vivo ↔ archivado. A PIZARRA LIMPIA en ambos sentidos, sin arrastrar
