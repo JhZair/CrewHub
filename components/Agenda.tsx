@@ -164,12 +164,25 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, perfilDe, apa
   useEffect(() => {
     try { const raw = localStorage.getItem(CLAVE); if (raw) setColapsados(new Set(JSON.parse(raw))); } catch { /* modo privado */ }
   }, []);
+  const guardar = (n: Set<string>) => {
+    try { localStorage.setItem(CLAVE, JSON.stringify([...n])); } catch { /* modo privado */ }
+    return n;
+  };
   const plegar = (gid: string) => setColapsados(prev => {
     const n = new Set(prev);
     n.has(gid) ? n.delete(gid) : n.add(gid);
-    try { localStorage.setItem(CLAVE, JSON.stringify([...n])); } catch { }
-    return n;
+    return guardar(n);
   });
+  /* ── PLEGAR O DESPLEGAR TODO ──
+     Con nueve grupos, dejar la agenda como uno la quiere costaba nueve clics,
+     y al día siguiente otros nueve para volver. Se guarda igual que el plegado
+     de a uno —misma clave—, así que «ver solo lo mío plegado» sobrevive a la
+     recarga.
+     Un solo botón y no dos: su rótulo dice lo que VA A HACER, así que nunca
+     hay uno de los dos que no haga nada. Con algo abierto, pliega; con todo
+     cerrado, despliega. */
+  const plegarTodo = (gids: string[]) => setColapsados(() => guardar(new Set(gids)));
+  const desplegarTodo = () => setColapsados(() => guardar(new Set()));
 
   // Zoom de la ventana (persistente por navegador).
   const [zoom, setZoom] = useState(1);   // índice en ZOOMS (default: 2 meses)
@@ -249,6 +262,10 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, perfilDe, apa
     : x.ini !== y.ini ? (x.ini < y.ini ? -1 : 1)
     : (x.creado || "") < (y.creado || "") ? -1 : (x.creado || "") > (y.creado || "") ? 1 : 0;
   grupos.forEach(([, g]) => g.items.sort(cmp));
+  /* Se mira contra los grupos VISIBLES y no contra el tamaño de `colapsados`:
+     esa lista guarda también los de una ventana de fechas anterior, así que
+     podría estar llena mientras en pantalla está todo abierto. */
+  const hayAbierto = grupos.some(([gid]) => !colapsados.has(gid));
 
   // Marcas del eje: el paso se adapta al zoom para no amontonar etiquetas
   // (semanal en ventanas cortas, quincenal/mensual en las largas). Sin el tick
@@ -270,6 +287,19 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, perfilDe, apa
         rango={`${fmtCorto(ymd(new Date(inicioT)))} — ${fmtCorto(ymd(new Date(finT - DAY)))}`} />
 
       {!dentro.length && <div className="empty" style={{ padding: "20px 0" }}>Nada con fecha en esta ventana.</div>}
+
+      {grupos.length > 1 && (
+        <div className="ag-tl-todo">
+          <button className="ag-tl-todo-btn"
+            onClick={() => hayAbierto ? plegarTodo(grupos.map(([gid]) => gid)) : desplegarTodo()}>
+            {hayAbierto ? "▸ Plegar todo" : "▾ Desplegar todo"}
+          </button>
+          <span className="ag-tl-todo-n">
+            {grupos.length} grupo{grupos.length === 1 ? "" : "s"}
+            {hayAbierto && colapsados.size ? ` · ${colapsados.size} plegado${colapsados.size === 1 ? "" : "s"}` : ""}
+          </span>
+        </div>
+      )}
 
       {!!dentro.length && (
         <div className="ag-tl-body">

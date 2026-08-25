@@ -2552,6 +2552,15 @@ a.stat-card:hover{border-color:var(--border2)}
 .ag-tl-caret{background:transparent;border:none;font-size:9px;color:var(--dim);width:12px;flex-shrink:0;cursor:pointer;padding:0}
 .ag-tl-caret:hover{color:var(--text)}
 .ag-tl-gtit{color:var(--gcol, var(--muted));opacity:.95}
+/* Plegar o desplegar todo. Va pegado arriba a la derecha, encima del primer
+   grupo: es un control de la LISTA, no de ninguna fila, y ponerlo en la barra
+   de fechas lo habría mezclado con el zoom y el «Hoy», que hablan del tiempo
+   y no de la forma de la lista. */
+.ag-tl-todo{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin:2px 0 -4px}
+.ag-tl-todo-btn{background:transparent;border:1px solid var(--border);border-radius:8px;
+  color:var(--muted);font-size:11px;font-weight:600;padding:3px 9px;cursor:pointer;white-space:nowrap}
+.ag-tl-todo-btn:hover{border-color:var(--border2);color:var(--text)}
+.ag-tl-todo-n{color:var(--dim);font-size:10.5px}
 .ag-tl-gtit:hover{color:var(--text)}
 .ag-tl-flecha{color:var(--accent);font-weight:700}
 .ag-tl-gn{color:var(--dim);font-weight:600;margin-left:2px}
