@@ -143,9 +143,14 @@ export function cruzar(
   /** RUC (solo dígitos) → id de persona. Sale de `personas.ruc_dni`. */
   personaPorRuc: Map<string, string>,
 ): Cruce[] {
-  return docs.map(doc => {
+  const bruto = docs.map(doc => {
     const persona = doc.ruc ? personaPorRuc.get(soloDigitos(doc.ruc)) : undefined;
     const cn = doc.clave || "";
+    /* Se leyó un RUC y no corresponde a ninguna ficha. Es un hallazgo, no un
+       fracaso: casi siempre significa que a esa persona le falta el RUC en su
+       ficha. Dicho así, se arregla en un minuto; dicho como «no encontré
+       nada», se abandona el archivo. */
+    const rucHuerfano = !!doc.ruc && !persona;
 
     /* 1) El camino bueno: RUC + número. Los dos son datos escritos en el
           papel, y juntos identifican el recibo sin ambigüedad posible. */
@@ -204,10 +209,27 @@ export function cruzar(
       return ok(doc, porMonto[0], "dudoso", "Solo el importe coincide, y con un único recibo");
     }
     if (porMonto.length > 1) return dudoso(doc, porMonto, "Varios recibos con ese mismo importe");
+    if (rucHuerfano) {
+      return nada(doc, `El RUC ${doc.ruc} del PDF no está en ninguna ficha de persona`);
+    }
     return nada(doc, doc.ilegible
       ? "No pude sacar texto del archivo (es un escaneo o una foto)"
       : "No encontré nada que coincida");
   });
+
+  /* ── LO QUE YA TIENE PAPEL NO SE PISA POR SUPOSICIÓN ──
+     Un cruce firme —RUC + número— que caiga sobre un recibo que ya tenía PDF
+     es casi siempre una resubida, y reemplazar está bien: la pantalla lo
+     avisa. Pero una SUPOSICIÓN que además borra lo que había es el peor
+     desenlace posible de esta pantalla: se pierde un comprobante correcto por
+     una coincidencia de número, y no queda rastro de lo que había antes.
+     Esas se sueltan: siguen ahí para elegirlas a mano, que es lo que convierte
+     un accidente en una decisión. */
+  const conUrl = new Set(filas.filter(f => f.url).map(f => f.id));
+  return bruto.map(c => (c.filaId && c.certeza !== "seguro" && conUrl.has(c.filaId))
+    ? { ...c, filaId: null, certeza: "dudoso" as const,
+        motivo: `${c.motivo} — pero ese recibo YA tiene comprobante: elígelo a mano si quieres reemplazarlo` }
+    : c);
 }
 
 const ok = (doc: DocRhe, f: FilaRhe, certeza: Certeza, motivo: string): Cruce =>
