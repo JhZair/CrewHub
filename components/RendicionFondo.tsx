@@ -2,7 +2,8 @@
 import { useState } from "react";
 import CargarComprobantes from "@/components/CargarComprobantes";
 import ApoyosFondo from "@/components/ApoyosFondo";
-import { textoFaltan, seVigila, type FaltanEstados } from "@/lib/estadosCuenta";
+import CierreCuenta from "@/components/CierreCuenta";
+import { textoFaltan, seVigila, motivoCierre, nombreMes, type FaltanEstados } from "@/lib/estadosCuenta";
 import { estadoConPrueba } from "@/lib/pruebasFondo";
 import { useRouter } from "next/navigation";
 import {
@@ -96,7 +97,8 @@ const fechaSubido = (iso?: string | null) => {
 
 
 export default function RendicionFondo({
-  postulacionId, esAdmin, miPersonaId, esApoyo, apoyos, equipo, rucs, fechaDesembolso, fechaRendicionReal, montoAdjudicado,
+  postulacionId, esAdmin, miPersonaId, esApoyo, apoyos, equipo, rucs, fechaDesembolso,
+  fechaRendicionReal, fechaLimiteRendicion, fechaProrroga, fechaCierreCuenta, montoAdjudicado,
   estados, rhe, empresa, etapas, rubros, personas, userId, hiloError, faltanEc,
 }: {
   postulacionId: string;
@@ -119,6 +121,12 @@ export default function RendicionFondo({
   /** Si el fondo ya rindió, la serie de estados termina ahí y deja de faltar
       nada. Sin esto, un fondo cerrado seguiría pidiendo meses para siempre. */
   fechaRendicionReal?: string | null;
+  /** Las otras dos fechas que cierran la serie: el plazo del acta (con su
+   *  prórroga) y el día en que el banco cerró la cuenta. Viajan para poder
+   *  decir POR QUÉ la serie termina donde termina. */
+  fechaLimiteRendicion?: string | null;
+  fechaProrroga?: string | null;
+  fechaCierreCuenta?: string | null;
   montoAdjudicado: number | null;
   estados: EstadoCuenta[];
   rhe: RheFila[];
@@ -164,6 +172,12 @@ export default function RendicionFondo({
      Tres sitios que enseñan lo mismo tienen que enseñar el MISMO valor, no
      tres cálculos que casi siempre coinciden. */
   const avisoFaltan = textoFaltan(faltanEc);
+  const motivo = motivoCierre({
+    id: postulacionId,
+    fecha_desembolso: fechaDesembolso, fecha_rendicion_real: fechaRendicionReal,
+    fecha_limite_rendicion: fechaLimiteRendicion, fecha_prorroga: fechaProrroga,
+    fecha_cierre_cuenta: fechaCierreCuenta,
+  });
   // ¿A este fondo se le sigue pidiendo el banco? La MISMA pregunta que decide
   // la burbuja de la pestaña y la del menú (lib/estadosCuenta).
   const vigilado = seVigila({
@@ -307,8 +321,25 @@ export default function RendicionFondo({
                 ✓ serie completa
               </span>
             )}
+            {/* POR QUÉ la serie termina donde termina. Un tope sin motivo se
+                lee como un error de cuenta —«¿y los meses de este año?»— y
+                obliga a reconstruirlo de memoria cada vez que alguien mira. */}
+            {motivo && (
+              <span style={{ marginLeft: 8, color: "var(--dim)", fontSize: 12 }}>
+                · hasta {nombreMes(faltanEc.esperados[faltanEc.esperados.length - 1] || "")}: {motivo}
+              </span>
+            )}
           </>
         }>
+      {/* ── LA CUENTA CERRADA ──
+          El fondo se gastó entero y el banco cerró la cuenta: no hay más
+          estados que pedir, por mucho que el plazo del acta siga corriendo.
+          Se registra el HECHO y la cuenta de meses sale sola. Va aquí, en la
+          sub-sección de los estados, porque es aquí donde uno descubre que le
+          están pidiendo papeles que no existen. */}
+      <CierreCuenta postulacionId={postulacionId} esAdmin={esAdmin}
+        fecha={fechaCierreCuenta || null} faltan={faltanEc.faltan.length} />
+
       {estados.length > 0 && (
         <div className="linked" style={{ marginBottom: 8, padding: "4px 10px" }}>
           {estados.map(e => (

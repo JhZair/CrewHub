@@ -30,7 +30,7 @@ export default async function FondosPage() {
 
   const { data } = await supabase.from("postulaciones")
     .select("id,codigo,estado,monto_adjudicado,fecha_desembolso,fecha_limite_rendicion," +
-      "fecha_prorroga,fecha_rendicion_real,proy:proyectos(id,nombre)," +
+      "fecha_prorroga,fecha_rendicion_real,fecha_cierre_cuenta,proy:proyectos(id,nombre)," +
       /* `categoria` faltaba, y es lo que agrupa: la línea gris de cada tarjeta
          enseña el NOMBRE de la convocatoria («Cine Indígena», «DOCU-Producción»)
          y eso es el concurso concreto, no la clase de fondo. Nueve tarjetas con

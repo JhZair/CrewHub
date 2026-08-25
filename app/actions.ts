@@ -3403,6 +3403,44 @@ export async function adjuntarComprobantesRhe(
   return { hechos, fallos };
 }
 
+/* ── LA CUENTA DEL FONDO SE CERRÓ ──
+ *
+ * PO-005 gastó el fondo entero y cerró la cuenta exclusiva; el sistema seguía
+ * pidiendo cinco estados mensuales porque su serie solo sabía terminar por dos
+ * motivos —rendición entregada o plazo del acta vencido—. Este es el tercero,
+ * y el más definitivo: sin cuenta no hay estado que emitir.
+ *
+ * La alternativa era registrar esos meses en cero, y sería guardar como hecho
+ * algo que no ocurrió: un cero AFIRMA que el banco reportó saldo cero. Aquí se
+ * guarda el hecho —el día del cierre— y la cuenta de meses sale sola.
+ */
+export async function fijarCierreCuenta(postulacionId: string, fecha: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: perfil } = await supabase.from("perfiles")
+    .select("es_admin,es_finanzas").eq("id", user.id).maybeSingle();
+  if (!perfil?.es_admin && !perfil?.es_finanzas) {
+    return { error: "Solo administración registra el cierre de la cuenta." };
+  }
+  const f = String(fecha || "").trim() || null;
+  if (f && !/^\d{4}-\d{2}-\d{2}$/.test(f)) return { error: "La fecha no tiene el formato correcto." };
+
+  const { data, error } = await supabase.from("postulaciones")
+    .update({ fecha_cierre_cuenta: f }).eq("id", postulacionId).select("id");
+  if (error) {
+    /* 42703 = la columna no existe; 23514 = la lo rechazó el check. Los dos
+       tienen arreglos distintos y decirlos igual manda a buscar donde no es. */
+    if ((error as any).code === "42703") return { error: "Falta correr db/cuenta-cerrada.sql en Supabase." };
+    if ((error as any).code === "23514") return { error: "La cuenta no puede cerrarse antes del desembolso. Revisa el año." };
+    return { error: error.message };
+  }
+  if (!data?.length) return { error: "No se pudo guardar: el permiso de la base lo rechazó." };
+  revalidatePath(`/fondo/${postulacionId}`);
+  revalidatePath("/fondos");
+  return {};
+}
+
 /* ── EL RUC QUE FALTABA, CARGADO DONDE SE DESCUBRE QUE FALTA ──
  *
  * El cruce de comprobantes necesita las dos puntas: el RUC del PDF y el RUC de

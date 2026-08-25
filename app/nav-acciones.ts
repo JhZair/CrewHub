@@ -159,7 +159,7 @@ export async function estadoNav(supabase: any, user: { id: string }): Promise<Es
            tamaño del pendiente, no del historial.
            `estado_cuenta` sí viene entero: sus periodos son los que sostienen
            la cuenta del rojo. */
-        .select("id,fecha_desembolso,fecha_rendicion_real,fecha_limite_rendicion,fecha_prorroga," +
+        .select("id,fecha_desembolso,fecha_rendicion_real,fecha_limite_rendicion,fecha_prorroga,fecha_cierre_cuenta," +
           "estado_cuenta(periodo,url,imagenes),rhe(url),comprobante(url),gasto_dj(dj_numero,dj_url)")
         .is("rhe.url", null)
         .is("comprobante.url", null)

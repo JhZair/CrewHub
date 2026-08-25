@@ -52,6 +52,10 @@ export type CierreSerie = {
   /** Hasta cuándo dura la ejecución: el plazo de rendición, con su prórroga si
    *  la hay (lib/fondos → `plazoRendicion`). */
   plazo?: string | null;
+  /** Cuándo se cerró la cuenta bancaria exclusiva. El más definitivo de los
+   *  tres: sin cuenta no hay estado que emitir, por mucho que el plazo siga
+   *  corriendo. */
+  cuentaCerrada?: string | null;
 };
 
 /** Los meses que el acta exige: del desembolso al final de la EJECUCIÓN, sin
@@ -87,6 +91,16 @@ export function mesesEsperados(
      que nadie puede cargar. */
   const pl = mesDe(cierre?.plazo);
   if (pl && pl < fin) fin = pl;
+  /* ── Y LA CUENTA CERRADA, QUE MANDA SOBRE LOS DOS ──
+     PO-005 gastó el fondo entero y cerró la cuenta. Seguía pidiendo cinco
+     meses porque el plazo aún corría, pero el banco no emite estados de una
+     cuenta que no existe: es el tope más definitivo de los tres.
+     La otra salida —registrar esos cinco meses en cero— guardaría como hecho
+     algo que no ocurrió: un cero AFIRMA que el banco reportó saldo cero, y lo
+     que pasó es que ya no había cuenta. El mes del cierre SÍ cuenta: ese
+     estado existe y es justamente el que prueba el cierre. */
+  const cc = mesDe(cierre?.cuentaCerrada);
+  if (cc && cc < fin) fin = cc;
   if (fin < ini) return [];
   const out: string[] = [];
   for (let m = ini; m <= fin; m = masMes(m, 1)) out.push(m);
@@ -158,6 +172,8 @@ export type FondoEC = {
   /* El plazo, con su prórroga. Cierran la serie: ver `mesesEsperados`. */
   fecha_limite_rendicion?: string | null;
   fecha_prorroga?: string | null;
+  /* Cuando el banco cerró la cuenta exclusiva. Ver `mesesEsperados`. */
+  fecha_cierre_cuenta?: string | null;
 };
 
 /** El cierre de la serie de un fondo, sacado de sus fechas. En un solo sitio
@@ -165,6 +181,7 @@ export type FondoEC = {
 export const cierreDe = (f: FondoEC): CierreSerie => ({
   rendicionReal: f?.fecha_rendicion_real || null,
   plazo: plazoRendicion(f || {}),
+  cuentaCerrada: f?.fecha_cierre_cuenta || null,
 });
 
 /* ── ¿A ESTE FONDO SE LE SIGUE PIDIENDO EL BANCO? ──
@@ -188,6 +205,17 @@ export const cierreDe = (f: FondoEC): CierreSerie => ({
 export const seVigila = (f: {
   fecha_desembolso?: string | null; fecha_rendicion_real?: string | null;
 }) => !!f?.fecha_desembolso && !f?.fecha_rendicion_real;
+
+/* Por qué la serie termina donde termina, dicho en una frase. Un tope sin
+   motivo se lee como un error de cuenta: «¿y por qué no pide los meses de
+   este año?». Con el motivo delante, la serie corta se explica sola. */
+export function motivoCierre(f: FondoEC): string | null {
+  if (f?.fecha_rendicion_real) return "la rendición ya se entregó";
+  if (f?.fecha_cierre_cuenta) return `la cuenta se cerró el ${f.fecha_cierre_cuenta.split("-").reverse().join("/")}`;
+  const pl = plazoRendicion(f || {});
+  if (pl && pl < new Date().toISOString().slice(0, 10)) return "la ejecución ya terminó";
+  return null;
+}
 
 export function resumenFaltantes(
   fondos: FondoEC[],

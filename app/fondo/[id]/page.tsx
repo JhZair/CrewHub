@@ -760,6 +760,9 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
                   rucs={rucsPersonas}
                   fechaDesembolso={ent.fecha_desembolso || null}
                   fechaRendicionReal={ent.fecha_rendicion_real || null}
+                  fechaLimiteRendicion={ent.fecha_limite_rendicion || null}
+                  fechaProrroga={ent.fecha_prorroga || null}
+                  fechaCierreCuenta={ent.fecha_cierre_cuenta || null}
                   montoAdjudicado={ent.monto_adjudicado ? parseFloat(ent.monto_adjudicado) : null}
                   estados={conHilo(estadosFondo, hEct)} rhe={conHilo(rheFondo, hRhe)}
                   faltanEc={faltanEc}
