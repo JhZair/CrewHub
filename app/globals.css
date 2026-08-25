@@ -1188,11 +1188,13 @@ a{color:inherit;text-decoration:none}
    línea que le quitas arriba es una tarjeta más sin scroll, y ése es todo el
    negocio de un tablero. Persona, Pulso y TV subieron al topbar, donde
    sobraba hueco. */
-.barra-filtros{display:flex;gap:7px;flex-wrap:wrap;align-items:center;
+/* Dos LÍNEAS dentro de la misma caja: el corte lo decide el significado —qué
+   es arriba, de qué trata abajo— y no el ancho de la ventana. Siguen siendo un
+   solo bloque porque son un solo gesto: recortar el tablero. */
+.barra-filtros{display:flex;flex-direction:column;gap:7px;
   margin:0 0 12px;padding:7px 9px;border-radius:12px;
   border:1px solid var(--border);background:rgba(124,92,255,.03)}
-/* Separa «qué tipo» de «de qué trata» sin gastar una fila en decirlo */
-.barra-sep{width:1px;align-self:stretch;margin:1px 4px;background:var(--border2)}
+.bf-linea{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
 .barra-filtros .vtab{font-size:11.5px;padding:5px 10px}
 /* El filtro de persona vive arriba, hombro con hombro con Pulso y TV: si no
    comparte su tamaño la fila se lee torcida — 11.5 punteado al lado de 12.5

@@ -71,6 +71,12 @@ const EJES_VINC: { param: string; tipo: string; ico: string; titulo: string }[] 
      es una línea. */
   { param: "equi", tipo: "equipamiento", ico: "🎥", titulo: "Equipo" },
   { param: "obj", tipo: "objeto", ico: "📚", titulo: "Repositorio" },
+  /* Y el LUGAR. Este tablero es donde se mira todo lo referido a casos, así
+     que un vínculo que el compositor deja poner tiene que poderse pedir aquí:
+     «qué hay pendiente en Pomacanchi» es una pregunta de rodaje, no un
+     capricho. Queda fuera solo persona, que ya tiene su propio eje (el 👤 de
+     responsable). */
+  { param: "lug", tipo: "lugar", ico: "📍", titulo: "Lugar" },
 ];
 
 export default async function TableroPage({ searchParams }: {
@@ -79,7 +85,7 @@ export default async function TableroPage({ searchParams }: {
        `EJES_VINC`: si se añade un eje allá y no aquí, TypeScript no dice nada
        —`searchParams` es un objeto— y el filtro llega siempre vacío. */
     etq?: string; proy?: string; emp?: string; conv?: string; post?: string;
-    equi?: string; obj?: string };
+    equi?: string; obj?: string; lug?: string };
 }) {
   /* Tres vistas de los MISMOS casos, ya filtrados: columnas (¿cómo va?),
      línea de tiempo (¿cuándo?) y lista (todo junto, en el orden que yo diga).
@@ -575,16 +581,20 @@ export default async function TableroPage({ searchParams }: {
         </Link>
       </div>
 
-      {/* UNA SOLA FILA DE FILTROS: los tipos y los cinco ejes de vínculo.
-          Eran dos y el kanban vive de su alto — cada línea que le quitas
-          arriba es una tarjeta más que se ve sin scroll, y ése es todo el
-          negocio de un tablero.
+      {/* ── DOS LÍNEAS, Y CADA UNA UNA PREGUNTA ──
+          Estuvo en una sola fila con `wrap` para ahorrarle alto al kanban, y
+          con ocho ejes de vínculo eso dejó de funcionar: la fila se partía
+          por donde cayera, así que un desplegable de «de qué trata» acababa
+          pegado a los chips de «qué tipo es» y el corte se movía al cambiar
+          el ancho de la ventana. Un grupo que cambia de forma no se aprende.
+          Ahora el corte lo decide el SIGNIFICADO: arriba QUÉ ES —lo mío, todo,
+          los tipos— y abajo DE QUÉ TRATA —los ocho vínculos—. Cuesta un
+          renglón y lo devuelve en que se encuentra a la primera.
           «Mis asuntos» ya no es un tipo: toca el eje persona, así que puede
           estar encendido A LA VEZ que «Tareas». Eso es «mis tareas», que
-          hasta hoy no se podía pedir.
-          Mirar los asuntos de cada quien es para coordinar y repartir, no
-          para auditar. */}
+          hasta hoy no se podía pedir. */}
       <div className="barra-filtros">
+        <div className="bf-linea">
         {/* Apagar «lo mío» es pedir «el equipo entero», y hay que decirlo con
             una palabra: `p=""` deja la URL limpia y el default lo devuelve
             aquí mismo. */}
@@ -607,8 +617,12 @@ export default async function TableroPage({ searchParams }: {
             {label} <span className="vtab-n">{conteo[val] ?? 0}</span>
           </Link>
         ))}
-        {/* La raya separa QUÉ TIPO de DE QUÉ TRATA sin costar una fila */}
-        <span className="barra-sep" />
+        </div>
+
+        {/* Segunda línea: de qué trata. La raya que separaba los dos grupos
+            dentro de la misma fila ya no hace falta — la separación es el
+            salto de línea, que además no se puede «cruzar» al reajustar. */}
+        <div className="bf-linea">
         {EJES_VINC.map(e => (
           <FiltroTablero key={e.param} ico={e.ico} titulo={e.titulo} param={e.param}
             actual={F[e.param]} items={catalogos[e.param] || []} vivos={vivos} ancho={168} />
@@ -624,6 +638,7 @@ export default async function TableroPage({ searchParams }: {
         <span className="barra-cuenta">
           {pubsE.length} de {U.length}
         </span>
+        </div>
       </div>
 
       {modo === "timeline" ? <TableroTimeline casos={casosTL} />
