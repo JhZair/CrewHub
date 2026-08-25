@@ -2589,7 +2589,12 @@ a.stat-card:hover{border-color:var(--border2)}
 .feed-ocultos button:hover{border-color:var(--border2);color:var(--text)}
 .ag-cal-hora{color:var(--teal);font-weight:800}
 .ag-tl-hora{flex:none;color:var(--teal);font-size:10.5px;font-weight:700;margin-left:2px}
-.ag-tl-todo{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin:2px 0 -4px}
+/* El título, dentro de la fila de controles. Tamaño de h2 aunque sea el h1 de
+   la página: manda la jerarquía visual, no la etiqueta — y aquí compite con
+   dos pestañas, no con el resto de la pantalla. */
+.ag-titulo{font-size:17px;font-weight:800;margin:0;letter-spacing:.2px;white-space:nowrap}
+/* Los controles que cada pantalla mete al final de la barra de fechas. */
+.ag-tl-nav-extra{display:inline-flex;align-items:center;gap:8px;margin-left:12px}
 .ag-tl-todo-btn{background:transparent;border:1px solid var(--border);border-radius:8px;
   color:var(--muted);font-size:11px;font-weight:600;padding:3px 9px;cursor:pointer;white-space:nowrap}
 .ag-tl-todo-btn:hover{border-color:var(--border2);color:var(--text)}

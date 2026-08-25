@@ -12,7 +12,8 @@
    aritmética habría obligado a las dos a compartir también su noción de tiempo,
    que no es la misma. */
 export default function NavFechas({
-  onHoy, onPrev, onNext, fecha, onFecha, zooms, zoom, onZoom, rango, tituloPrev = "Un mes antes", tituloNext = "Un mes después",
+  onHoy, onPrev, onNext, fecha, onFecha, zooms, zoom, onZoom, rango, extra,
+  tituloPrev = "Un mes antes", tituloNext = "Un mes después",
 }: {
   onHoy: () => void;
   onPrev: () => void;
@@ -27,6 +28,11 @@ export default function NavFechas({
   rango?: string;
   tituloPrev?: string;
   tituloNext?: string;
+  /** Controles propios de cada pantalla, al final de la misma fila. Es un
+   *  HUECO y no una lista de props: esta barra no tiene por qué saber qué es
+   *  «plegar todo» ni cuántos grupos hay — solo que ahí cabe algo. Sin esto,
+   *  cada control extra se llevaba un renglón entero de la pantalla. */
+  extra?: React.ReactNode;
 }) {
   return (
     <div className="ag-tl-nav">
@@ -45,6 +51,7 @@ export default function NavFechas({
       {rango && (
         <span style={{ color: "var(--muted)", fontSize: 10.5, marginLeft: "auto" }}>{rango}</span>
       )}
+      {extra && <span className="ag-tl-nav-extra">{extra}</span>}
     </div>
   );
 }

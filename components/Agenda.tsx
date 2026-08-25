@@ -112,8 +112,14 @@ export default function Agenda({ items, perfiles, miId }: {
 
   return (
     <>
-      {/* ── Controles: vista + persona ── */}
-      <div className="card" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+      {/* ── Controles: título + vista + persona ── */}
+      {/* El h1 vivía en su propio renglón, con toda la anchura de la pantalla
+          para dos palabras. En una línea de tiempo el sitio vertical ES el
+          contenido: cada renglón de cabecera es una fila de trabajo menos a la
+          vista. El título se muda aquí, al lado de las pestañas de vista, que
+          es donde ya se está mirando. */}
+      <div className="card" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+        <h1 className="ag-titulo">📅 Agenda</h1>
         <div className="vtabs" style={{ margin: 0 }}>
           <button className={`vtab ${vista === "tl" ? "on" : ""}`} onClick={() => setVista("tl")}>📊 Línea de tiempo</button>
           <button className={`vtab ${vista === "cal" ? "on" : ""}`} onClick={() => setVista("cal")}>🗓 Calendario</button>
@@ -291,22 +297,26 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, perfilDe, apa
         onNext={() => setShift(s => s + 30)}
         fecha={fechaFoco} onFecha={irAFecha}
         zooms={ZOOMS} zoom={zoom} onZoom={cambiarZoom}
-        rango={`${fmtCorto(ymd(new Date(inicioT)))} — ${fmtCorto(ymd(new Date(finT - DAY)))}`} />
+        rango={`${fmtCorto(ymd(new Date(inicioT)))} — ${fmtCorto(ymd(new Date(finT - DAY)))}`}
+        /* ── UN RENGLÓN MENOS ──
+           Esto vivía en su propia línea entre la barra de fechas y el primer
+           grupo. Dos controles de la misma cosa —cómo se ve la lista— en dos
+           renglones distintos: el de arriba mandaba en el tiempo y el de abajo
+           en la forma, y el que perdía sitio era el contenido. Cabe aquí. */
+        extra={grupos.length > 1 ? (
+          <>
+            <button className="ag-tl-todo-btn"
+              onClick={() => hayAbierto ? plegarTodo(grupos.map(([gid]) => gid)) : desplegarTodo()}>
+              {hayAbierto ? "▸ Plegar todo" : "▾ Desplegar todo"}
+            </button>
+            <span className="ag-tl-todo-n">
+              {grupos.length} grupo{grupos.length === 1 ? "" : "s"}
+              {hayAbierto && colapsados.size ? ` · ${colapsados.size} plegado${colapsados.size === 1 ? "" : "s"}` : ""}
+            </span>
+          </>
+        ) : null} />
 
       {!dentro.length && <div className="empty" style={{ padding: "20px 0" }}>Nada con fecha en esta ventana.</div>}
-
-      {grupos.length > 1 && (
-        <div className="ag-tl-todo">
-          <button className="ag-tl-todo-btn"
-            onClick={() => hayAbierto ? plegarTodo(grupos.map(([gid]) => gid)) : desplegarTodo()}>
-            {hayAbierto ? "▸ Plegar todo" : "▾ Desplegar todo"}
-          </button>
-          <span className="ag-tl-todo-n">
-            {grupos.length} grupo{grupos.length === 1 ? "" : "s"}
-            {hayAbierto && colapsados.size ? ` · ${colapsados.size} plegado${colapsados.size === 1 ? "" : "s"}` : ""}
-          </span>
-        </div>
-      )}
 
       {!!dentro.length && (
         <div className="ag-tl-body">

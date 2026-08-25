@@ -331,7 +331,6 @@ export default async function AgendaPage() {
         <span className="spacer" />
         <span style={{ color: "var(--dim)", fontSize: 12 }}>todo lo que tiene fecha, junto</span>
       </div>
-      <h1 className="title-lg">📅 Agenda</h1>
       <Agenda items={[...itemsAct, ...itemsCaso]} perfiles={sinBot(perfs || [])} miId={user.id} />
     </div>
   );
