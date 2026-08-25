@@ -36,16 +36,18 @@ export default function MenuUsuario({ nombre, rol, color, src, esAdmin, personaI
                 busca «dónde está la caja» abre el menú de navegar, no su foto.
                 Con dos menús que llevan a sitios, la respuesta a «¿dónde
                 estaba eso?» era «prueba en los dos».
-                Se quedan Tablero y Jornadas: los dos son TUYOS —tus asuntos y
-                tus días trabajados— y por eso siguen colgando de tu avatar. */}
-            {/* «Mi» y «Mis» no son adorno: es lo que distingue este menú del de
-                secciones ahora que los dos llevan a pantallas. Ahí se va a lo
-                del colectivo; aquí, a lo tuyo. Dicho en el rótulo no hay que
-                aprenderse la regla. */}
-            <Link href="/tablero" onClick={() => setAbierto(false)} className="btn btn-ghost"
-              style={{ marginTop: personaId ? 6 : 10, fontSize: 12.5, textAlign: "center" }}>🗂 Mi tablero</Link>
+                Se quedan tus jornadas: son TUYAS —tus días trabajados— y por
+                eso siguen colgando de tu avatar.
+                ── «MI TABLERO» SE FUE ──
+                Estaba aquí de cuando el tablero no figuraba en el menú de
+                secciones y este era la única puerta. Ahora está en las dos, y
+                dos caminos al mismo sitio obligan a preguntarse cuál es cuál:
+                «Mi tablero» sonaba a una pantalla distinta —la mía— cuando es
+                exactamente la misma con el filtro de siempre. Y el menú de
+                secciones ya lleva sus burbujas, así que la puerta que se queda
+                es además la que avisa. */}
             <Link href="/jornadas" onClick={() => setAbierto(false)} className="btn btn-ghost"
-              style={{ marginTop: 6, fontSize: 12.5, textAlign: "center" }}>📓 Mis jornadas</Link>
+              style={{ marginTop: personaId ? 6 : 10, fontSize: 12.5, textAlign: "center" }}>📓 Mis jornadas</Link>
             {esAdmin && (
               /* `esAdmin` aquí quiere decir «administración o finanzas»: quien
                  lleva la plata entra a las dos, aunque en /admin solo vea el
