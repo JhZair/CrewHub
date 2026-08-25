@@ -6,6 +6,7 @@ import Link from "@/components/Enlace";
 import { icoTipo, colorTipo } from "@/lib/tipos";
 import VistaRapida from "@/components/VistaRapida";
 import { colorEtapa, nombreEtapa, etapasDe, ETAPAS_CINE } from "@/lib/etapas";
+import { COLOR_ENTIDAD } from "@/lib/entidades";
 import { TXT } from "@/lib/texto";
 import { diaLima } from "@/lib/fechas";
 
@@ -308,12 +309,27 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, perfilDe, apa
                estaba escrito «🗂 Casos» a mano, así que el nombre que arma la
                página no se veía nunca y la lista se ordenaba por un texto que
                no estaba en pantalla. */
+            /* ── CADA GRUPO, DEL COLOR DE LO QUE ES ──
+               Las cabeceras eran texto gris sobre una línea gris, así que
+               veinte filas y seis cabeceras se leían como una sola lista
+               larga: para saber dónde empieza un proyecto había que leer.
+               El color no se inventa aquí — sale de `COLOR_ENTIDAD`, el mismo
+               que usa el buscador para teñir sus bloques y el que enseña la
+               ficha de cada entidad. Violeta un proyecto, verde un fondo,
+               ámbar una convocatoria, teal una empresa. Así la agenda no
+               estrena un vocabulario de colores propio: usa el que el ojo ya
+               aprendió en las otras pantallas. */
+            const colGrupo = gid.startsWith("p:") ? COLOR_ENTIDAD.proyecto
+              : gid.startsWith("postu:") ? COLOR_ENTIDAD.postulacion
+              : gid.startsWith("c:") ? COLOR_ENTIDAD.convocatoria
+              : gid.startsWith("e:") ? COLOR_ENTIDAD.empresa
+              : "var(--dim)";
             const propio = /^\p{Extended_Pictographic}/u.test(g.label);
             const titulo = gid === "__casos__" ? `🗂 ${g.label}`
               : propio ? g.label : `📁 ${g.label}`;
             return (
             <div key={gid}>
-              <div className="ag-tl-grupo">
+              <div className="ag-tl-grupo" style={{ ["--gcol" as any]: colGrupo }}>
                 <button className="ag-tl-caret" onClick={() => plegar(gid)}
                   title={cerrado ? "Desplegar" : "Plegar"} aria-label={cerrado ? "Desplegar" : "Plegar"}>
                   {cerrado ? "▸" : "▾"}

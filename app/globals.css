@@ -2535,10 +2535,23 @@ a.stat-card:hover{border-color:var(--border2)}
 /* Cabecera de sección. Su borde superior separa una sección de la anterior
    (la "línea tenue" entre proyectos). La flecha pliega; el título enlaza al
    cronograma. */
-.ag-tl-grupo{display:flex;align-items:center;gap:6px;width:100%;border-top:1px solid var(--border);color:var(--muted);font-size:13px;font-weight:700;letter-spacing:.4px;margin:10px 0 2px;padding:8px 0 4px}
+/* ── LA CABECERA DE UN GRUPO SE VE COMO UNA CABECERA ──
+   Era texto gris sobre una línea gris: seis grupos y veinte filas se leían
+   como una lista larga, y para saber dónde empieza un proyecto había que
+   LEER. Ahora lleva una banda tenue del color de su entidad y una barra a la
+   izquierda del mismo color —violeta proyecto, verde fondo, ámbar
+   convocatoria, teal empresa—, así que la separación se ve antes de leer.
+   El color entra por `--gcol` desde el componente (COLOR_ENTIDAD), no se
+   repite aquí: una lista de colores en el CSS y otra en el TypeScript es la
+   forma más rápida de que dos pantallas pinten la misma cosa distinta. */
+.ag-tl-grupo{display:flex;align-items:center;gap:6px;width:100%;
+  background:color-mix(in srgb, var(--gcol, var(--dim)) 10%, transparent);
+  border-left:3px solid var(--gcol, var(--dim));border-radius:0 8px 8px 0;
+  color:var(--muted);font-size:13px;font-weight:700;letter-spacing:.4px;
+  margin:14px 0 4px;padding:7px 10px}
 .ag-tl-caret{background:transparent;border:none;font-size:9px;color:var(--dim);width:12px;flex-shrink:0;cursor:pointer;padding:0}
 .ag-tl-caret:hover{color:var(--text)}
-.ag-tl-gtit{color:var(--muted)}
+.ag-tl-gtit{color:var(--gcol, var(--muted));opacity:.95}
 .ag-tl-gtit:hover{color:var(--text)}
 .ag-tl-flecha{color:var(--accent);font-weight:700}
 .ag-tl-gn{color:var(--dim);font-weight:600;margin-left:2px}
