@@ -3403,6 +3403,32 @@ export async function adjuntarComprobantesRhe(
   return { hechos, fallos };
 }
 
+/* ── EL RUC QUE FALTABA, CARGADO DONDE SE DESCUBRE QUE FALTA ──
+ *
+ * El cruce de comprobantes necesita las dos puntas: el RUC del PDF y el RUC de
+ * la ficha. Cuando el segundo no está, el archivo se queda en «no sé de quién
+ * es» y el arreglo vive en otra pantalla — con 58 archivos a medio clasificar,
+ * eso quiere decir que no se arregla.
+ * Escribe UNA columna a través de una función de la base: `personas` no tiene
+ * política de UPDATE a propósito (db/invitaciones.sql), porque abrirla daría
+ * acceso a las tarifas y al estado SUNAT de cualquier ficha.
+ */
+export async function fijarRucPersona(personaId: string, ruc: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data, error } = await supabase.rpc("fijar_ruc_persona", {
+    p_persona: personaId, p_ruc: ruc,
+  });
+  if (error) {
+    return { error: faltaLaFuncion(error)
+      ? "Falta correr db/ruc-persona.sql en la base."
+      : error.message };
+  }
+  if (data) return { error: String(data) };
+  return {};
+}
+
 /* ── NOMBRAR Y QUITAR APOYOS DE RENDICIÓN ──
  * Solo administración, y la base lo vuelve a exigir con su política: un apoyo
  * que pudiera nombrarse a sí mismo no sería un permiso. Ver db/apoyo-rendicion.sql.

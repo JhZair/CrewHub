@@ -42,6 +42,9 @@ export type DocRhe = {
   emisor?: string;
   /** true si el PDF no soltó texto (escaneo, foto). */
   ilegible?: boolean;
+  /** true si algo de lo que se sabe salió del NOMBRE del archivo y no del
+   *  papel. Lo que venga de ahí no puede valer «seguro». */
+  delNombre?: boolean;
   /** Cuántos recibos distintos parece traer dentro, si trae más de uno. */
   varios?: number;
 };
@@ -60,6 +63,10 @@ export type Certeza = "seguro" | "probable" | "dudoso" | "ninguno";
 
 export type Cruce = {
   doc: DocRhe;
+  /** Se leyó un RUC y no corresponde a ninguna ficha de persona. Es el
+   *  hallazgo más rentable de esta pantalla: cargarlo UNA vez deja bien todos
+   *  los recibos de esa persona de golpe. */
+  rucSinFicha?: boolean;
   /** La fila que SE VA A GUARDAR. Null mientras nadie lo haya decidido.
    *  ⚠ Lo dudoso nunca llega aquí: va en `sugerido`. */
   filaId: string | null;
@@ -104,7 +111,7 @@ export const soloDigitos = (s?: string | null) => String(s || "").replace(/\D/g,
    `undefined` y el cruce lo tratará como lo que es —algo que no se sabe. */
 export function leerRhe(archivo: string, texto: string): DocRhe {
   const t = (texto || "").replace(/ /g, " ");
-  if (!t.trim()) return { archivo, ilegible: true, ...deNombre(archivo) };
+  if (!t.trim()) return { archivo, ilegible: true, ...deNombre(archivo), delNombre: true };
 
   /* ── EL NÚMERO, EN EL PDF, VA SIN GUION ──
      Comprobado con recibos reales: SUNAT escribe «E001 24», con un espacio.
@@ -159,10 +166,12 @@ export function leerRhe(archivo: string, texto: string): DocRhe {
   const emisor = (t.split("\n").map(x => x.trim())
     .find(x => /^[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ .\-]{7,}$/.test(x)) || "").trim() || undefined;
 
+  const nom = deNombre(archivo);
   return {
     archivo,
-    clave: mNum || deNombre(archivo).clave,
-    ruc: rucs[0],
+    clave: mNum || nom.clave,
+    ruc: rucs[0] || nom.ruc,
+    delNombre: !mNum || !rucs[0],
     emisor,
     monto: mHon ? Number(mHon[1].replace(/,/g, ""))
       : montos.length ? Math.max(...montos) : undefined,
@@ -187,12 +196,20 @@ function deLetras(d: string, mes: string, anio: string): string | undefined {
   return `${anio}-${String(i + 1).padStart(2, "0")}-${d.padStart(2, "0")}`;
 }
 
-/* Del NOMBRE del archivo se saca lo único que suele traer: el número. Es el
-   último recurso —para escaneos y fotos— y por eso nunca da «seguro» por sí
-   solo. */
-function deNombre(archivo: string): { clave?: string } {
-  const c = claveNumero(archivo.replace(/\.[a-z0-9]+$/i, ""));
-  return c ? { clave: c } : {};
+/* ── EL NOMBRE DEL ARCHIVO TAMBIÉN HABLA ──
+   La convención de la carpeta es «F-00212-RHE10430674183-E001-24 x 2000.pdf»:
+   trae el RUC y el número. Es el último recurso —para los escaneos, que no
+   sueltan texto— y por eso lo que salga de aquí nunca vale «seguro»: el nombre
+   lo escribió una persona a mano y una letra de más lo cambia. Pero un recibo
+   escaneado con su RUC en el nombre es un archivo que se puede colocar, y
+   antes se quedaba fuera. */
+function deNombre(archivo: string): { clave?: string; ruc?: string } {
+  const base = archivo.replace(/\.[a-z0-9]+$/i, "");
+  const c = claveNumero(base);
+  /* El RUC pegado a letras («RHE10430674183») no lo encuentra un `\b`: se
+     busca la cifra de once que empieza en 10 o 15 esté como esté. */
+  const ruc = (base.match(/(?:10|15)\d{9}/g) || [])[0];
+  return { ...(c ? { clave: c } : {}), ...(ruc ? { ruc } : {}) };
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -225,7 +242,12 @@ export function cruzar(
     if (persona && cn) {
       const exactas = filas.filter(f => f.persona_id === persona && claveNumero(f.numero) === cn);
       if (exactas.length === 1) {
-        return ok(doc, exactas[0], "seguro", "RUC del emisor + número del recibo");
+        /* Si el RUC o el número salieron del NOMBRE del archivo, el cruce vale
+           tanto como el cuidado de quien lo bautizó: buen candidato, pero no es
+           un dato del papel, así que no se guarda solo. */
+        return doc.delNombre
+          ? ok(doc, exactas[0], "probable", "RUC + número, leídos del NOMBRE del archivo (el PDF no soltó texto)")
+          : ok(doc, exactas[0], "seguro", "RUC del emisor + número del recibo");
       }
       if (exactas.length > 1) {
         return dudoso(doc, exactas, "Esa persona tiene más de un recibo con ese número");
@@ -260,21 +282,34 @@ export function cruzar(
           desempata, porque dos personas pueden cobrar lo mismo el mismo mes y
           el error resultante sería invisible. */
     if (cn) {
+      /* ── DECIR LA VERDAD SOBRE POR QUÉ NO SE SABE DE QUIÉN ES ──
+         Estos mensajes decían «no pude leer el RUC del emisor» también cuando
+         el RUC estaba leído y a la vista en la misma fila. La causa real es
+         otra —ese RUC no está en ninguna ficha de persona— y es además la
+         única que se puede arreglar: cargarlo una vez deja bien TODOS los
+         recibos de esa persona. Un mensaje que señala al sitio equivocado no
+         es un detalle de redacción: manda a revisar el PDF cuando lo que falta
+         es un dato de la ficha. */
+      const porQue = rucHuerfano
+        ? `el RUC ${doc.ruc}${doc.emisor ? ` (${doc.emisor})` : ""} no está en ninguna ficha`
+        : "no pude leer el RUC del emisor";
       const mismas = filas.filter(f => claveNumero(f.numero) === cn);
       if (mismas.length === 1) {
         return casiIgual(mismas[0].monto, doc.monto)
-          ? ok(doc, mismas[0], "probable", "Número + importe (no pude leer el RUC del emisor)")
-          : ok(doc, mismas[0], "dudoso", "Solo el número: es el único recibo con ese número, pero no pude comprobar de quién es");
+          ? ok(doc, mismas[0], "probable", `Número + importe — ${porQue}`)
+          : ok(doc, mismas[0], "dudoso", `Solo el número: es el único con ese número, pero ${porQue}`);
       }
       if (mismas.length > 1) {
-        return dudoso(doc, mismas, `Ese número lo tienen ${mismas.length} recibos de personas distintas`);
+        return dudoso(doc, mismas, `Ese número lo tienen ${mismas.length} recibos de personas distintas, y ${porQue}`);
       }
     }
 
     /* 4) Ni RUC ni número: solo queda el importe, y solo si es único. */
     const porMonto = filas.filter(f => casiIgual(f.monto, doc.monto));
     if (porMonto.length === 1) {
-      return ok(doc, porMonto[0], "dudoso", "Solo el importe coincide, y con un único recibo");
+      return ok(doc, porMonto[0], "dudoso", rucHuerfano
+        ? `Solo el importe coincide — el RUC ${doc.ruc}${doc.emisor ? ` (${doc.emisor})` : ""} no está en ninguna ficha`
+        : "Solo el importe coincide, y con un único recibo");
     }
     if (porMonto.length > 1) return dudoso(doc, porMonto, "Varios recibos con ese mismo importe");
     if (rucHuerfano) {
@@ -293,9 +328,15 @@ export function cruzar(
      una coincidencia de número, y no queda rastro de lo que había antes.
      Esas se sueltan: siguen ahí para elegirlas a mano, que es lo que convierte
      un accidente en una decisión. */
+  /* La marca viaja fuera del `motivo` para que la pantalla pueda contar
+     cuántos archivos se arreglarían cargando un RUC, y ofrecer hacerlo ahí. */
+  const sinFicha = new Set(docs
+    .filter(d => d.ruc && !personaPorRuc.get(soloDigitos(d.ruc)))
+    .map(d => d.archivo));
   const conUrl = new Set(filas.filter(f => f.url).map(f => f.id));
   const yaTiene = " — ojo: ese recibo YA tiene comprobante, confírmalo solo si quieres reemplazarlo";
-  return bruto.map(c => {
+  return bruto.map(cc => {
+    const c: Cruce = sinFicha.has(cc.doc.archivo) ? { ...cc, rucSinFicha: true } : cc;
     if (c.filaId && c.certeza !== "seguro" && conUrl.has(c.filaId)) {
       return { ...c, filaId: null, sugerido: c.filaId, certeza: "dudoso" as const,
                motivo: c.motivo + yaTiene };

@@ -3,7 +3,7 @@ import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { textoDePdf } from "@/lib/leerPdf";
 import { subirAdjunto } from "@/lib/subirImagen";
-import { adjuntarComprobantesRhe } from "@/app/actions";
+import { adjuntarComprobantesRhe, fijarRucPersona } from "@/app/actions";
 import {
   leerRhe, cruzar, repetidos, claveNumero, soloDigitos,
   type Cruce, type FilaRhe,
@@ -35,10 +35,13 @@ import {
 type Estado = "" | "leyendo" | "subiendo" | "hecho";
 
 export default function CargarComprobantes({
-  postulacionId, filas, rucs, nombreFondo,
+  postulacionId, filas, rucs, nombreFondo, esAdmin,
 }: {
   postulacionId: string;
   filas: FilaRhe[];
+  /** Solo administración puede completar el RUC de una ficha. El apoyo cuelga
+   *  papeles; el catálogo de personas es otra cosa. */
+  esAdmin?: boolean;
   /** RUC (o DNI) → id de persona, ya aplanado por el servidor. Un objeto y no
    *  un Map: entre servidor y cliente solo cruzan datos planos. */
   rucs: Record<string, string>;
@@ -58,11 +61,19 @@ export default function CargarComprobantes({
   const entrada = useRef<HTMLInputElement>(null);
 
   const porId = useMemo(() => new Map(filas.map(f => [f.id, f])), [filas]);
+  /* ── EL MAPA DE RUC SE APRENDE SOBRE LA MARCHA ──
+     Empieza con lo que había en las fichas, pero cuando alguien carga aquí el
+     RUC que faltaba, se añade y se vuelve a cruzar TODO. Ese es el momento en
+     que la pantalla paga: un solo dato bien puesto coloca de golpe los cinco
+     recibos de esa persona que estaban en «no sé de quién es».
+     Recargar la página para enterarse habría sido perder la tanda. */
+  const [aprendidos, setAprendidos] = useState<Record<string, string>>({});
   const mapaRuc = useMemo(() => {
     const m = new Map<string, string>();
     for (const [ruc, id] of Object.entries(rucs || {})) m.set(soloDigitos(ruc), id);
+    for (const [ruc, id] of Object.entries(aprendidos)) m.set(soloDigitos(ruc), id);
     return m;
-  }, [rucs]);
+  }, [rucs, aprendidos]);
   const dobles = useMemo(() => repetidos(cruces), [cruces]);
 
   const rotulo = (f?: FilaRhe) => f
@@ -103,6 +114,37 @@ export default function CargarComprobantes({
   const quitar = (i: number) => {
     setArchivos(p => p.filter((_, k) => k !== i));
     setCruces(p => p.filter((_, k) => k !== i));
+  };
+
+  /* Cuántos archivos se colocarían solos con un dato de ficha. Se cuenta por
+     RUC y no por archivo: son «cinco personas», no «doce papeles». */
+  const rucsHuerfanos = useMemo(() => {
+    const m = new Map<string, { emisor?: string; n: number }>();
+    for (const c of cruces) {
+      if (!c.rucSinFicha || !c.doc.ruc) continue;
+      const p = m.get(c.doc.ruc) || { emisor: c.doc.emisor, n: 0 };
+      m.set(c.doc.ruc, { emisor: p.emisor || c.doc.emisor, n: p.n + 1 });
+    }
+    return m;
+  }, [cruces]);
+
+  /* Cargar el RUC que faltaba y volver a cruzar la tanda entera con él. */
+  const [guardandoRuc, setGuardandoRuc] = useState("");
+  const aprenderRuc = async (ruc: string, personaId: string) => {
+    setErr(""); setGuardandoRuc(ruc);
+    const r: any = await fijarRucPersona(personaId, ruc);
+    setGuardandoRuc("");
+    if (r?.error) { setErr(r.error); return; }
+    setAprendidos(p => ({ ...p, [ruc]: personaId }));
+    /* Se recruzan los que NADIE ha tocado a mano. Rehacer también los elegidos
+       borraría decisiones de una persona con una suposición de la máquina, que
+       es exactamente al revés de como tiene que ser. */
+    const nuevoMapa = new Map(mapaRuc); nuevoMapa.set(soloDigitos(ruc), personaId);
+    setCruces(p => {
+      const rehechos = cruzar(p.map(c => c.doc), filas, nuevoMapa);
+      return p.map((c, i) => (c.motivo === "Elegido a mano" ? c : rehechos[i]));
+    });
+    router.refresh();
   };
 
   const listas = cruces.filter(c => c.filaId && !dobles.has(c.filaId!));
@@ -238,6 +280,12 @@ export default function CargarComprobantes({
                       ⚠ {dobles.size} recibo(s) con dos archivos
                     </span>
                   )}
+                  {esAdmin && rucsHuerfanos.size > 0 && (
+                    <span style={{ color: "var(--yellow)", fontSize: 12.5 }}
+                      title="Esos RUC están escritos en los PDF pero no en ninguna ficha de persona. Cárgalos con el botón de su fila y esos archivos se colocan solos.">
+                      ⚠ {rucsHuerfanos.size} RUC sin ficha ({[...rucsHuerfanos.values()].reduce((s, x) => s + x.n, 0)} archivo(s))
+                    </span>
+                  )}
                   {pisan > 0 && (
                     <span style={{ color: "var(--yellow)", fontSize: 12.5 }}
                       title="Esos recibos ya tenían un comprobante colgado. Guardar lo reemplaza.">
@@ -288,6 +336,22 @@ export default function CargarComprobantes({
                             style={{ color: "var(--yellow)", whiteSpace: "nowrap" }}
                             onClick={() => elegir(i, c.sugerido!)}>
                             ↩ usar {porId.get(c.sugerido)?.persona || "esa"}
+                          </button>
+                        )}
+                        {/* ── EL ARREGLO, DONDE SE VE EL PROBLEMA ──
+                            El RUC está en el PDF y no en la ficha. En cuanto
+                            alguien dice de quién es el recibo, ya sabemos las
+                            dos puntas: cargarlo es un toque, y con él se
+                            colocan solos los demás recibos de esa persona.
+                            Aparece solo cuando la fila ya está elegida: antes
+                            de eso, sería preguntar a quién pertenece un dato
+                            fiscal sin saberlo. */}
+                        {esAdmin && c.rucSinFicha && c.doc.ruc && c.filaId && (
+                          <button className="dato-btn" disabled={estado === "subiendo" || !!guardandoRuc}
+                            style={{ color: "var(--teal)", whiteSpace: "nowrap" }}
+                            title={`Guardar el RUC ${c.doc.ruc}${c.doc.emisor ? ` (${c.doc.emisor})` : ""} en la ficha de ${porId.get(c.filaId)?.persona || "esa persona"}. Los demás recibos suyos se colocarán solos.`}
+                            onClick={() => aprenderRuc(c.doc.ruc!, porId.get(c.filaId!)!.persona_id)}>
+                            {guardandoRuc === c.doc.ruc ? "…" : "＋ RUC a su ficha"}
                           </button>
                         )}
                         <button className="dato-btn" title="Quitar este archivo de la tanda"

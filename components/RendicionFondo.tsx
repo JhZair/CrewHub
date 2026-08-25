@@ -422,7 +422,7 @@ export default function RendicionFondo({
               confirmación. También sirve para reemplazar un escaneo malo. */}
           {(esAdmin || esApoyo) && rhe.length > 0 && (
             <CargarComprobantes postulacionId={postulacionId} nombreFondo={empresa || null}
-              rucs={rucs || {}}
+              rucs={rucs || {}} esAdmin={esAdmin}
               filas={rhe.map(r => ({
                 id: r.id, persona_id: r.persona_id, numero: r.numero,
                 monto: Number(r.monto || 0), fecha: r.fecha, url: r.url,
