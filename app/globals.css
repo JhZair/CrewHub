@@ -936,11 +936,16 @@ a{color:inherit;text-decoration:none}
 .cn-stage{font-weight:700;white-space:nowrap;text-align:right}
 @media(max-width:640px){.cn-lane{grid-template-columns:1fr auto;gap:6px}.cn-race{grid-column:1/-1;order:3}}
 /* Filtros del feed: una fila compacta (sin recortar el desplegable) */
-.vtabs-compacta{flex-wrap:wrap;gap:6px;margin:2px 0 14px;justify-content:center}
+/* UNA fila, siempre. Estaba en `wrap`, así que al añadir una pestaña la fila
+   se partía en dos y la segunda quedaba centrada bajo la primera: se lee como
+   dos grupos de filtros que no son. Si no cabe, se arrastra —la barra ya es
+   `overflow-x:auto`— y lo que sobra vive en el «⋯ Más». */
+.vtabs-compacta{flex-wrap:nowrap;gap:6px;margin:2px 0 14px;justify-content:center}
 .vtabs-compacta .vtab{padding:6px 10px;font-size:11.5px;white-space:nowrap;flex:0 0 auto}
 .vtabs-compacta .vtab-n{min-width:15px;padding:0 4px;font-size:10px}
 .vtabs-compacta .vtab{cursor:pointer}
-.filtro-mas-menu{position:absolute;top:calc(100% + 6px);right:0;z-index:50;background:var(--panel);border:1px solid var(--border2);border-radius:12px;padding:6px;min-width:170px;box-shadow:0 12px 30px rgba(0,0,0,.4);display:flex;flex-direction:column;gap:2px}
+/* `fixed`: el menú se dibuja en un portal, fuera de la fila que lo recortaba. */
+.filtro-mas-menu{position:fixed;z-index:80;background:var(--panel);border:1px solid var(--border2);border-radius:12px;padding:6px;min-width:170px;box-shadow:0 12px 30px rgba(0,0,0,.4);display:flex;flex-direction:column;gap:2px}
 .filtro-mas-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 10px;border-radius:8px;font-size:12.5px;color:var(--muted);font-weight:600}
 .filtro-mas-item:hover{background:#22223a;color:var(--text)}
 .filtro-mas-item.on{background:rgba(124,92,255,.12);color:var(--text)}

@@ -47,7 +47,6 @@ const ENT_ICO = ICO_ENT;
 const VISTAS: [string, string][] = [
   ["mios", "🙋 Mis asuntos"], ["tarea", "✅ Tareas"], ["problema", "❗ Problemas"],
   ["consulta", "❓ Consultas"], ["aviso", "📢 Avisos"], ["reunion", "🤝 Reuniones"],
-  ["todo", "🌐 Todo"],
 ];
 // Filtros menos usados → van al desplegable "⋯ Más"
 /* Sin «📎 Archivos»: el tipo se retiró del compositor, así que ese filtro solo
@@ -55,6 +54,12 @@ const VISTAS: [string, string][] = [
    de los de al lado. Los archivos viejos que haya siguen saliendo en «🌐 Todo»
    y en «🙋 Mis asuntos», con su 📎 intacto. */
 const VISTAS_MAS: [string, string][] = [
+  /* «Todo» se mudó aquí cuando entró Reuniones: con siete pestañas la fila se
+     partía en dos y la segunda quedaba centrada debajo, que se lee como dos
+     grupos de filtros distintos. De las siete, «Todo» es la que menos se toca
+     —se entra al feed a ver lo tuyo, no el universo— y la única cuyo nombre
+     se entiende igual dentro de un menú. */
+  ["todo", "🌐 Todo"],
   ["pago", "💰 Pagos"], ["idea", "💡 Ideas"],
 ];
 
