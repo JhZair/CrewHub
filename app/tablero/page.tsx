@@ -9,6 +9,7 @@ import { contarHijos } from "@/lib/familia";
 import { progresoDe } from "@/lib/progreso";
 import { avisoVencido } from "@/lib/estados";
 import { BOT } from "@/lib/personas";
+import { TIPOS_CASO, rotuloMonton } from "@/lib/tipos";
 import { TABLA_DE } from "@/lib/secciones";
 import Link from "@/components/Enlace";
 import { redirect } from "next/navigation";
@@ -19,10 +20,15 @@ export const metadata: Metadata = { title: "🗂 Tablero" };
 /* `v` es SOLO el tipo. «Mis asuntos» salió de aquí: era el «de quién», y
    vivía en la misma variable que el «de qué» — por eso eran excluyentes y no
    existía «mis tareas». Ahora es un chip que toca el eje persona. */
-const TIPOS_F: [string, string][] = [
-  ["tarea", "✅ Tareas"], ["problema", "❗ Problemas"],
-  ["consulta", "❓ Consultas"], ["pago", "💰 Pagos"],
-];
+/* ── SE DERIVAN, NO SE ESCRIBEN ──
+   Eran cuatro a mano —tarea, problema, consulta, pago— y por eso Ideas,
+   Avisos y Reuniones no se podían filtrar aquí: los casos SÍ estaban en el
+   tablero, pero no había con qué pedirlos. Un tipo nuevo no puede depender de
+   que alguien se acuerde de esta lista; es la misma trampa que el compositor
+   ya había desarmado tirando de `TIPOS_CASO`.
+   El plural sale de `rotuloMonton`, que también sabe que «Reunión» hace
+   «Reuniones» y no «Reunións». */
+const TIPOS_F: [string, string][] = TIPOS_CASO.map(t => [t.tipo, rotuloMonton(t.tipo)]);
 
 /* Estados que viven en el tablero. Ya NO se excluye por estado —«archivada»
    dejó de ser uno—: lo archivado se filtra por `archivado_en`, abajo. Entra
@@ -420,10 +426,10 @@ export default async function TableroPage({ searchParams }: {
   const conteo: Record<string, number> = {
     mios: U.filter((p: any) => p.autor_id === user.id || p.responsable === user.id || misSet.has(p.id)).length,
     todo: U.length,
-    tarea: U.filter((p: any) => p.tipo === "tarea").length,
-    problema: U.filter((p: any) => p.tipo === "problema").length,
-    consulta: U.filter((p: any) => p.tipo === "consulta").length,
-    pago: U.filter((p: any) => p.tipo === "pago").length,
+    /* Uno por cada chip, y sacado de la MISMA lista que los pinta: con los
+       cuatro conteos escritos a mano, un chip nuevo salía siempre con «0»
+       —`conteo[val] ?? 0`— y parecía que no había nada de ese tipo. */
+    ...Object.fromEntries(TIPOS_F.map(([t]) => [t, U.filter((p: any) => p.tipo === t).length])),
   };
 
   // Los desplegables ya se llenaron en la tanda 3, junto a los casos.
