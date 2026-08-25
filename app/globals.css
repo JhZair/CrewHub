@@ -1256,6 +1256,51 @@ a{color:inherit;text-decoration:none}
 .ae-mini:hover{border-color:var(--accent);color:var(--text)}
 
 /* ===== Tablero · Línea de tiempo ===== */
+/* ══ LA LISTA DEL TABLERO ══
+   Una fila por caso, en columnas fijas. El TÍTULO es lo único elástico: todo
+   lo demás —cara, estado, plazo— mide siempre igual, así que las columnas se
+   leen en vertical de un vistazo. Con anchos flexibles, cada fila empieza sus
+   datos en un sitio distinto y la tabla deja de ser una tabla. */
+.lc-cab{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.lc-cab-txt{color:var(--dim);font-size:11px;letter-spacing:.6px;text-transform:uppercase;margin-right:2px}
+.lc-n{color:var(--dim);font-size:11.5px}
+.lc-lista{display:flex;flex-direction:column}
+.lc-fila{display:flex;align-items:center;gap:10px;padding:7px 4px;
+  border-bottom:1px solid rgba(255,255,255,.05)}
+.lc-fila:last-child{border-bottom:none}
+.lc-fila:hover{background:rgba(255,255,255,.03)}
+.lc-tit{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--text);font-size:13.5px;font-weight:600}
+.lc-tit:hover{color:var(--accent)}
+.lc-vinc{flex:none;display:inline-flex;gap:5px;max-width:280px;overflow:hidden}
+.lc-chip{background:var(--panel);border:1px solid var(--border);border-radius:20px;
+  padding:1px 8px;font-size:10.5px;color:var(--muted);white-space:nowrap;
+  max-width:130px;overflow:hidden;text-overflow:ellipsis}
+.lc-nc{flex:none;color:var(--dim);font-size:11px}
+.lc-marca{flex:none;font-size:12px;opacity:.8}
+/* `overflow:hidden` y `nowrap` en las tres columnas fijas: sin ellos, «sin
+   asignar» o «🔭 Seguimiento» se salen de su caja en pantalla estrecha y pisan
+   la de al lado — y una fila que crece de alto rompe justo la lectura en
+   vertical que esta vista viene a dar. */
+.lc-resp{flex:none;width:88px;display:flex;justify-content:flex-end;overflow:hidden}
+.lc-est{flex:none;width:132px;text-align:center;overflow:hidden;white-space:nowrap}
+/* El plazo, alineado a la DERECHA y con ancho fijo: es la columna que se
+   escanea de arriba abajo buscando lo que está en rojo. */
+.lc-plazo{flex:none;width:104px;text-align:right;font-size:11.5px;font-weight:600;white-space:nowrap;overflow:hidden}
+.lc-hora{color:var(--teal)}
+/* Lo que falta, dicho. Un hueco en la fila se lee como un fallo de carga —y
+   «sin asignar» es justamente lo que se viene a buscar aquí. */
+.lc-nadie{color:var(--dim);font-style:normal;font-size:11px;opacity:.75}
+@media(max-width:900px){
+  /* En estrecho se van los vínculos y el conteo de comentarios: son contexto,
+     y sin sitio el contexto estorba antes que el dato. */
+  .lc-vinc,.lc-nc{display:none}
+  .lc-est{width:110px}.lc-plazo{width:82px}.lc-resp{width:30px}
+  /* En estrecho, «sin asignar» no cabe ni acortado: se queda el hueco con su
+     título. El dato sigue siendo legible al pasar, y la columna no se rompe. */
+  .lc-nadie{font-size:0}
+  .lc-nadie::before{content:"—";font-size:12px}
+}
 .tl-toggle{display:inline-flex;gap:3px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:3px}
 .tl-toggle a{padding:6px 12px;border-radius:8px;font-size:12px;color:var(--muted);font-weight:600}
 .tl-toggle a.on{background:rgba(124,92,255,.16);color:var(--text)}

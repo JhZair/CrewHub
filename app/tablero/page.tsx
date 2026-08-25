@@ -2,6 +2,7 @@ import { createClient, usuarioActual } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import Tablero from "@/components/Tablero";
 import TableroTimeline from "@/components/TableroTimeline";
+import ListaCasos from "@/components/ListaCasos";
 import Realtime from "@/components/Realtime";
 import FiltroTablero from "@/components/FiltroTablero";
 import { contarHijos } from "@/lib/familia";
@@ -54,15 +55,30 @@ const EJES_VINC: { param: string; tipo: string; ico: string; titulo: string }[] 
 ];
 
 export default async function TableroPage({ searchParams }: {
-  searchParams: { v?: string; p?: string; modo?: string; arch?: string;
+  searchParams: { v?: string; p?: string; modo?: string; arch?: string; ord?: string;
     etq?: string; proy?: string; emp?: string; conv?: string; post?: string };
 }) {
-  const modo = searchParams?.modo === "timeline" ? "timeline" : "columnas";
+  /* Tres vistas de los MISMOS casos, ya filtrados: columnas (¿cómo va?),
+     línea de tiempo (¿cuándo?) y lista (todo junto, en el orden que yo diga).
+     `modo` se valida contra la lista y no se acepta en crudo: una URL con
+     `modo=loquesea` tiene que caer en algo que exista. */
+  const modoPedido = searchParams?.modo === "timeline" ? "timeline"
+    : searchParams?.modo === "lista" ? "lista" : "columnas";
   /* Modo ARCHIVADAS: el mismo tablero, mirando lo guardado en vez de lo vivo.
      Las columnas siguen siendo el eje ESTADO —una archivada resuelta cae en
      Resueltas—; lo único que cambia es qué dataset se trae. `archivado_en is
      not null` en vez de `is null`. */
   const arch = searchParams?.arch === "1";
+  /* ── EL ARCHIVO SE MIRA POR COLUMNAS ──
+     El toggle de vista no se pinta en el archivo, pero eso solo impide ENTRAR:
+     `modo` viaja en la URL y en todos los enlaces de filtro, así que un
+     marcador o un enlace compartido dejaba a alguien en «lista + archivo» sin
+     ningún control a la vista para salir. Y ahí la lista miente por partida
+     doble: casi todo lo archivado está cerrado, así que la columna de plazo
+     entera queda muda y el orden por defecto la usa.
+     Se corrige el valor, no se esconde el problema: la URL puede pedir lo que
+     quiera, la pantalla decide qué tiene sentido. */
+  const modo = arch && modoPedido !== "columnas" ? "columnas" : modoPedido;
   const supabase = createClient();
   // Compartido con `QuienEstaGlobal` del layout: una verificación, no dos.
   const user = await usuarioActual();
@@ -86,7 +102,11 @@ export default async function TableroPage({ searchParams }: {
     emp: searchParams?.emp || "",
     conv: searchParams?.conv || "",
     post: searchParams?.post || "",
-    modo: modo === "timeline" ? "timeline" : "",
+    modo: modo === "columnas" ? "" : modo,
+    /* El orden de la LISTA viaja como los demás ejes. Era estado del
+       componente y se perdía en cuanto se tocaba un filtro —cada filtro es una
+       navegación—, además de no poderse compartir. */
+    ord: searchParams?.ord || "",
     arch: arch ? "1" : "",   // viaja en la URL como los demás, para preservarse
   };
   /* «Nunca lo toqué» y «quiero verlo TODO» son dos cosas, y una URL vacía
@@ -271,7 +291,7 @@ export default async function TableroPage({ searchParams }: {
     : (vsFoco || []).map((x: any) => x.publicacion_id);
 
   let q = supabase.from("publicaciones")
-    .select("id,titulo,tipo,estado,fecha_inicio,fecha_limite,creado_en,autor_id,responsable,comentarios(count),resp:perfiles!publicaciones_responsable_fkey(nombre)")
+    .select("id,titulo,tipo,estado,fecha_inicio,fecha_limite,hora,creado_en,autor_id,responsable,comentarios(count),resp:perfiles!publicaciones_responsable_fkey(nombre,color,avatar_url)")
     .in("estado", ESTADOS)
     .neq("tipo", "bitacora")   // las notas del muro solo viven en su proyecto
     .order("creado_en", { ascending: false })
@@ -414,7 +434,7 @@ export default async function TableroPage({ searchParams }: {
   // `modo` y `arch` se preservan: limpiar filtros no debe sacarte de la vista.
   const urlLimpia = (() => {
     const u = new URLSearchParams({ p: P_TODOS });
-    if (modo === "timeline") u.set("modo", "timeline");
+    if (modo !== "columnas") u.set("modo", modo);
     if (arch) u.set("arch", "1");
     return `/tablero?${u.toString()}`;
   })();
@@ -454,6 +474,14 @@ export default async function TableroPage({ searchParams }: {
   // de los cinco ejes nuevos en cuanto existieran.
   const urlCols = urlCon({ modo: "" });
   const urlTime = urlCon({ modo: "timeline" });
+  const urlLista = urlCon({ modo: "lista" });
+  /* «plazo» es el defecto y por eso NO va en la URL: un parámetro que repite
+     el valor por omisión ensucia todos los enlaces del tablero para no decir
+     nada. Y se valida contra la lista de órdenes: `ord=loquesea` cae en el
+     defecto en vez de dejar la tabla sin ordenar. */
+  const ORDS = ["plazo", "estado", "responsable", "reciente"] as const;
+  const ordenLista = (ORDS as readonly string[]).includes(F.ord)
+    ? (F.ord as typeof ORDS[number]) : "plazo";
 
   /* Los desplegables, recogidos al final. Llevan volando desde antes de la
      tanda 2, así que a estas alturas normalmente ya llegaron y este `await`
@@ -476,6 +504,7 @@ export default async function TableroPage({ searchParams }: {
           <div className="tl-toggle">
             <Link href={urlCols} className={modo === "columnas" ? "on" : ""}>🗂 Columnas</Link>
             <Link href={urlTime} className={modo === "timeline" ? "on" : ""}>🗓 Línea de tiempo</Link>
+            <Link href={urlLista} className={modo === "lista" ? "on" : ""}>📋 Lista</Link>
           </div>
         )}
         {/* Vivo ↔ archivado. A PIZARRA LIMPIA en ambos sentidos, sin arrastrar
@@ -562,8 +591,14 @@ export default async function TableroPage({ searchParams }: {
         </span>
       </div>
 
-      {modo === "timeline"
-        ? <TableroTimeline casos={casosTL} />
+      {modo === "timeline" ? <TableroTimeline casos={casosTL} />
+        /* La lista recibe los MISMOS casos ya filtrados y el orden de las
+           columnas: ordenar por estado tiene que dar la misma secuencia que se
+           ve en el kanban, o serían dos tableros distintos con los mismos
+           datos. */
+        : modo === "lista"
+          ? <ListaCasos casos={pubsE} ordenEstados={columnas.map(c => c.estado)}
+              orden={ordenLista} hrefOrden={o => urlCon({ ord: o === "plazo" ? "" : o })} />
         : <Tablero columnas={columnasVista} archivado={arch} />}
     </div>
   );
