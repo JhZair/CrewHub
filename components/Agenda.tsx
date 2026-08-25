@@ -366,12 +366,12 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, perfilDe, apa
                    empieza el 1» es la historia de esa fila. */
                 const espera = it.kind === "caso" && !!it.ventana
                   && !!creadoYMD && creadoYMD < it.ini;
-                /* La marca final se achica cuando la fila tiene ventana: ahí no
-                   está sola —lleva triángulo de arranque y barra—, y una marca
-                   del mismo tamaño que cuando es lo ÚNICO de la fila se comería
-                   el tramo corto. Sin ventana se queda como estaba: es la
-                   protagonista y tiene que verse desde lejos. */
-                const marca = rango ? (it.ventana ? 1.2 : 1.6) : w;
+                /* El ancho de la marca final, en % de la pista. Uno solo para
+                   todas las filas: tenerlo más gordo en las que no tienen
+                   ventana partía la lista en dos tamaños según un dato que no
+                   dice nada del tamaño. Sin rango, la marca ES el tramo —un
+                   día— y ocupa lo que ocupa ese día. */
+                const marca = rango ? 1.2 : w;
                 const leftCreado = espera ? Math.max(0, pct(pd(creadoYMD))) : left;
                 /* Un solo texto para las dos marcas de la fila: si el punto de
                    inicio y la marca final dijeran cosas distintas, la misma
@@ -484,8 +484,7 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, perfilDe, apa
                       {/* Marca en la fecha clave: al final del rango, o en su única
                           fecha si no hay rango. Hueca para casos, rellena para
                           actividades — la misma identidad de color de siempre. */}
-                      <Link href={it.href} title={tip}
-                        className={`ag-tl-bar${rango && it.ventana ? " ag-tl-bar-chica" : ""}`}
+                      <Link href={it.href} title={tip} className="ag-tl-bar"
                         style={{
                           left: `${rango ? Math.max(0, right - marca) : left}%`,
                           width: `${marca}%`,

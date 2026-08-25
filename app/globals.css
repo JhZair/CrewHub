@@ -2558,7 +2558,15 @@ a.stat-card:hover{border-color:var(--border2)}
    temporal se ancla a él), centrada. */
 .ag-tl-resp{flex:0 0 36px;width:36px;font-size:13px;color:var(--muted);display:flex;align-items:center;justify-content:center;padding-right:6px}
 .ag-tl-track{position:relative;flex:1;height:100%}
-.ag-tl-bar{position:absolute;top:4px;height:18px;border-radius:5px;min-width:6px;box-sizing:border-box;transition:filter .12s}
+/* ── UNA SOLA MARCA, DEL MISMO TAMAÑO SIEMPRE ──
+   Medía 18 px de alto, que era su medida de cuando era lo único que llevaba
+   la fila. Con triángulo y barra al lado se veía desproporcionada, y dejarla
+   grande solo en las filas sin ventana partía la lista en dos tamaños según
+   un dato que no tiene nada que ver con el tamaño.
+   Diez de alto: el mismo que el triángulo del otro extremo y el mismo en
+   todas las filas. Lo que distingue a un caso de una actividad sigue siendo
+   que esté hueca o rellena, no que sea más gorda. */
+.ag-tl-bar{position:absolute;top:8px;height:10px;border-radius:3px;min-width:5px;box-sizing:border-box;transition:filter .12s}
 .ag-tl-bar:hover{filter:brightness(1.15)}
 /* Tramo inicio→fin: línea horizontal tenue y punteada centrada en la fila.
    No captura clics (la marca y la fila siguen siendo lo interactivo). */
@@ -2586,10 +2594,6 @@ a.stat-card:hover{border-color:var(--border2)}
   border-left:9px solid currentColor;pointer-events:none}
 /* La marca final, cuando la fila ya tiene triángulo y barra: más baja y menos
    redondeada, para que la fila tenga UN protagonista y no tres. */
-/* Diez de alto, como el triángulo del otro extremo: las dos puntas del tramo
-   pesan lo mismo y la barra las une sin escalones. Antes tenía catorce y se
-   leía como la marca gorda de siempre, un poco encogida. */
-.ag-tl-bar-chica{top:8px;height:10px;border-radius:3px;min-width:5px}
 .ag-tl-ini{position:absolute;top:9px;width:8px;height:8px;margin-left:-2px;border-radius:50%;opacity:.75;display:block;transition:filter .12s,opacity .12s}
 .ag-tl-ini:hover{opacity:1;filter:brightness(1.25)}
 /* Apagado lo que no es del foco (uno mismo o la persona filtrada); al pasar el
