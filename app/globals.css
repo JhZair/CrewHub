@@ -2594,7 +2594,12 @@ a.stat-card:hover{border-color:var(--border2)}
   border-left:9px solid currentColor;pointer-events:none}
 /* La marca final, cuando la fila ya tiene triángulo y barra: más baja y menos
    redondeada, para que la fila tenga UN protagonista y no tres. */
-.ag-tl-ini{position:absolute;top:9px;width:8px;height:8px;margin-left:-2px;border-radius:50%;opacity:.75;display:block;transition:filter .12s,opacity .12s}
+/* El punto de la fecha de CREACIÓN. Seis y no ocho: es el dato menos
+   importante de la fila —dice cuándo se apuntó el caso, no cuándo se trabaja—
+   y con ocho competía con la marca del vencimiento, que es la que hay que ver
+   desde lejos. `top` y `margin-left` se recalculan con el tamaño para que el
+   centro siga en el eje 13 y sobre el día exacto. */
+.ag-tl-ini{position:absolute;top:10px;width:6px;height:6px;margin-left:-1px;border-radius:50%;opacity:.7;display:block;transition:filter .12s,opacity .12s}
 .ag-tl-ini:hover{opacity:1;filter:brightness(1.25)}
 /* Apagado lo que no es del foco (uno mismo o la persona filtrada); al pasar el
    mouse vuelve a plena, igual que el tablero y el feed. */
