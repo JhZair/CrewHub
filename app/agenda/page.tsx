@@ -6,6 +6,7 @@ import Agenda, { type ItemAgenda } from "@/components/Agenda";
 import Realtime from "@/components/Realtime";
 import { sinBot } from "@/lib/personas";
 import { avisoVencido } from "@/lib/estados";
+import { diaLima } from "@/lib/fechas";
 
 export const metadata: Metadata = { title: "📅 Agenda" };
 
@@ -149,7 +150,11 @@ export default async function AgendaPage() {
        guard se dibujaría hacia atrás. Con `fecha_inicio` no debería pasar
        (lo impiden la acción y el check de la base), pero este dibujo no es
        el sitio donde descubrir que una de las dos falló. */
-    const creado = String(c.creado_en || "").slice(0, 10);
+    /* `diaLima` y no `slice(0,10)`: `creado_en` es un instante en UTC, y sus
+       diez primeros caracteres son el día UTC — pasadas las 7 de la tarde en
+       Perú, el día siguiente. Un caso escrito el 31 a las 20:00 salía
+       arrancando el 1. */
+    const creado = diaLima(c.creado_en || "");
     const arranque = c.fecha_inicio || creado;
     const ini = arranque && arranque < c.fecha_limite ? arranque : c.fecha_limite;
     return {

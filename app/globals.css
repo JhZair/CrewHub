@@ -2562,7 +2562,23 @@ a.stat-card:hover{border-color:var(--border2)}
 .ag-tl-bar:hover{filter:brightness(1.15)}
 /* Tramo inicio→fin: línea horizontal tenue y punteada centrada en la fila.
    No captura clics (la marca y la fila siguen siendo lo interactivo). */
-.ag-tl-span{position:absolute;top:13px;height:0;border-top:2px dotted;opacity:.5;pointer-events:none}
+.ag-tl-span{position:absolute;top:12px;height:0;border-top:2px dotted;opacity:.5;pointer-events:none}
+/* La VENTANA de verdad: barra fina y llena, del inicio al vencimiento. Fina
+   —4 px frente a los 18 de la marca final— porque dice cuánto dura, no dónde
+   hay que mirar: si compitiera con la marca, la fila tendría dos protagonistas
+   y ninguno. Y llena, frente al punteado de la espera: sólido es dato. */
+.ag-tl-vent{position:absolute;top:11px;height:4px;border-radius:3px;opacity:.85;pointer-events:none}
+/* El triángulo de arranque. Hecho con bordes —el truco de siempre— para que
+   herede el color por `border-left-color` y no haya que dibujar un SVG por
+   fila. `margin-left:-1px` lo pega al nacimiento de la barra: sin eso queda un
+   pelo de fondo entre la punta y el tramo, y a 4px de alto se nota.
+   `top:8px` lo centra: 10px de alto (5+5 de los bordes) sobre el eje 13. */
+.ag-tl-tri{position:absolute;top:8px;width:0;height:0;margin-left:-1px;
+  border-top:5px solid transparent;border-bottom:5px solid transparent;
+  border-left:9px solid currentColor;pointer-events:none}
+/* La marca final, cuando la fila ya tiene triángulo y barra: más baja y menos
+   redondeada, para que la fila tenga UN protagonista y no tres. */
+.ag-tl-bar-chica{top:6px;height:14px;border-radius:4px;min-width:5px}
 .ag-tl-ini{position:absolute;top:9px;width:8px;height:8px;margin-left:-2px;border-radius:50%;opacity:.75;display:block;transition:filter .12s,opacity .12s}
 .ag-tl-ini:hover{opacity:1;filter:brightness(1.25)}
 /* Apagado lo que no es del foco (uno mismo o la persona filtrada); al pasar el

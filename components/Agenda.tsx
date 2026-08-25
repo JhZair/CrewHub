@@ -7,6 +7,7 @@ import { icoTipo, colorTipo } from "@/lib/tipos";
 import VistaRapida from "@/components/VistaRapida";
 import { colorEtapa, nombreEtapa, etapasDe, ETAPAS_CINE } from "@/lib/etapas";
 import { TXT } from "@/lib/texto";
+import { diaLima } from "@/lib/fechas";
 
 /* AGENDA — todo lo que tiene fecha, en dos vistas.
    Línea de tiempo (barras por proyecto, con la duración inicio→fin de cada
@@ -194,8 +195,17 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, perfilDe, apa
     setShift(Math.round((d - pd(ymd(hoy0))) / DAY));
   };
 
-  // Solo lo que cruza la ventana
-  const dentro = vis.filter(it => pd(it.fin) + DAY >= inicioT && pd(it.ini) < finT);
+  /* Solo lo que cruza la ventana visible.
+     El borde izquierdo del dibujo ya no es `ini`: en un caso con ventana, la
+     fila empieza en el día en que se APUNTÓ. Filtrando por `ini` desaparecía
+     entera justo la fila que el tramo de espera venía a contar —«lo apunté
+     hace mes y medio y todavía no empieza»— cuando su inicio caía más allá
+     del zoom. Se filtra por lo que de verdad se pinta. */
+  const izqDe = (it: ItemAgenda) => {
+    const c = it.kind === "caso" && it.ventana ? diaLima(it.creado || "") : "";
+    return pd(c && c < it.ini ? c : it.ini);
+  };
+  const dentro = vis.filter(it => pd(it.fin) + DAY >= inicioT && izqDe(it) < finT);
 
   // Agrupar por proyecto; "Casos" PRIMERO, los cronogramas después
   const byGroup = new Map<string, { label: string; items: ItemAgenda[] }>();
@@ -334,12 +344,40 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, perfilDe, apa
                 const w = Math.max(right - left, 1.5);
                 const col = colorDe(it);
                 const rango = it.fin !== it.ini;   // tiene inicio y fin distintos
+                /* El tramo de ESPERA: de cuando se apuntó el caso a cuando
+                   empieza el trabajo. Solo existe si hay ventana de verdad
+                   —sin ella, `ini` YA es la fecha de creación y dibujarlo
+                   sería una línea sobre sí misma— y solo si se apuntó antes:
+                   un rodaje que se registra a mitad de rodaje no tiene espera
+                   que enseñar, y sin este guard la línea saldría hacia atrás. */
+                /* `diaLima` y no `slice(0,10)`: `creado_en` es un instante en
+                   UTC, y cortarle diez caracteres da el día UTC — a partir de
+                   las 7 de la tarde en Perú, el día SIGUIENTE. Aquí eso no
+                   movía el punto un pelo: un caso escrito el 31 a las 20:00
+                   para empezar el 1 daba `creado === ini` y la cola de espera
+                   desaparecía entera. lib/fechas ya tenía la función y la
+                   advertencia escrita. */
+                const creadoYMD = diaLima(it.creado || "");
+                /* Solo en CASOS. En una actividad del cronograma, `creado_en`
+                   es el día en que alguien escribió el plan —meses antes, casi
+                   siempre— y no dice nada del trabajo: veintitrés colas
+                   punteadas cruzando la pantalla taparían justamente lo que se
+                   viene a mirar. En un caso, en cambio, «lo apunté el 18 y
+                   empieza el 1» es la historia de esa fila. */
+                const espera = it.kind === "caso" && !!it.ventana
+                  && !!creadoYMD && creadoYMD < it.ini;
+                /* La marca final se achica cuando la fila tiene ventana: ahí no
+                   está sola —lleva triángulo de arranque y barra—, y una marca
+                   del mismo tamaño que cuando es lo ÚNICO de la fila se comería
+                   el tramo corto. Sin ventana se queda como estaba: es la
+                   protagonista y tiene que verse desde lejos. */
+                const marca = rango ? (it.ventana ? 1.2 : 1.6) : w;
+                const leftCreado = espera ? Math.max(0, pct(pd(creadoYMD))) : left;
                 /* Un solo texto para las dos marcas de la fila: si el punto de
                    inicio y la marca final dijeran cosas distintas, la misma
                    actividad se leería como dos.
-                   El tramo se DIBUJA igual con ventana o sin ella —un caso sin
-                   inicio se sigue viendo desde que se apuntó, que es lo único
-                   que se sabe—, pero el texto no puede afirmar lo mismo en los
+                   Con ventana el tramo va en barra sólida y sin ella en
+                   punteado, y el texto tampoco puede afirmar lo mismo en los
                    dos casos: «del 23 ene al 20 ago» sobre una fecha de
                    creación es una frase sobre el trabajo que nadie escribió.
                    Con ventana dice «→»; sin ella, «apuntado el …». */
@@ -347,7 +385,12 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, perfilDe, apa
                   ? `${fmtCorto(it.ini)}${rango ? ` → ${fmtCorto(it.fin)}` : ""}`
                   : rango ? `vence ${fmtCorto(it.fin)} · apuntado el ${fmtCorto(it.ini)}`
                   : fmtCorto(it.fin);
-                const tip = `${it.titulo} · ${tramo}${it.respId ? ` · ${cortoDe(it.respId)}` : ""}`;
+                /* El punto se mudó a la fecha de creación, así que el texto
+                   tiene que decirla: si no, hay un punto dibujado en un día
+                   que no se puede averiguar por ninguna parte —y con el zoom
+                   corto, ese punto se recorta al borde izquierdo y encima
+                   miente sobre dónde está—. */
+                const tip = `${it.titulo} · ${tramo}${espera ? ` · apuntado el ${fmtCorto(creadoYMD)}` : ""}${it.respId ? ` · ${cortoDe(it.respId)}` : ""}`;
                 return (
                   <div className={`ag-tl-row ${apagado(it) ? "ag-ajena" : ""}`} key={it.id}>
                     <div className="ag-tl-lbl">
@@ -383,28 +426,63 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, perfilDe, apa
                         : <i style={{ opacity: .35, fontStyle: "normal" }}>—</i>}
                     </span>
                     <div className="ag-tl-track">
-                      {/* El tramo inicio→fin va tenue y punteado: dice cuánto dura
-                          sin robar protagonismo. Solo cuando hay rango real (fin
-                          distinto del inicio); un solo día no traza línea. */}
-                      {rango && (
+                      {/* ── PUNTEADO = ESPERA · SÓLIDO = TRABAJO ──
+                          Un mismo renglón cuenta dos cosas distintas y hasta
+                          ahora las dibujaba igual: desde que el caso se apuntó
+                          hasta que empieza NO se está trabajando, se está
+                          esperando; del inicio al vencimiento sí.
+                          Por eso la ventana real —la que alguien escribió— va
+                          en barra fina y llena, y lo demás sigue punteado. El
+                          punteado dice «esto es lo único que sabemos»: en un
+                          caso sin `fecha_inicio` arranca en la fecha en que se
+                          escribió, que es una suposición, no un dato. */}
+                      {espera && (
                         <span className="ag-tl-span"
-                          style={{ left: `${left}%`, width: `${w}%`, borderColor: col }} />
+                          style={{ left: `${leftCreado}%`, width: `${Math.max(left - leftCreado, 0)}%`, borderColor: col }} />
+                      )}
+                      {rango && (
+                        it.ventana
+                          /* Se detiene ANTES de la marca final (1.6 %, su
+                             ancho): la marca de un caso es hueca a propósito
+                             —«hueca = caso, rellena = actividad»— y una barra
+                             sólida cruzándola por dentro deshacía esa
+                             distinción justo en la fila donde más se mira. */
+                          ? <span className="ag-tl-vent"
+                              style={{ left: `${left}%`, width: `${Math.max(w - marca, 0.5)}%`, background: col }} />
+                          : <span className="ag-tl-span"
+                              style={{ left: `${left}%`, width: `${w}%`, borderColor: col }} />
+                      )}
+                      {/* ── EL TRIÁNGULO DICE «AQUÍ EMPIEZA» ──
+                          Un punto redondo marca un instante; la punta de
+                          flecha marca un instante Y una dirección, que es lo
+                          que hace falta al principio de un tramo que corre
+                          hacia la derecha. Además separa de un vistazo las dos
+                          fechas de la fila: triángulo = arranca, cuadrado =
+                          vence. Solo donde hay ventana de verdad: en una fila
+                          sin `fecha_inicio` no hay arranque que señalar, solo
+                          el día en que se apuntó. */}
+                      {rango && it.ventana && (
+                        <span className="ag-tl-tri" title={tip}
+                          style={{ left: `${left}%`, borderLeftColor: col }} />
                       )}
                       {/* Punto de arranque: sin él, el tramo punteado se pierde
                           contra la rejilla y solo se ve la fecha final. El punto
-                          dice «aquí empieza» sin competir con la marca clave. */}
-                      {rango && (
+                          dice «aquí empieza» sin competir con la marca clave.
+                          Con espera, el punto se va al DÍA EN QUE SE APUNTÓ —el
+                          principio de lo que se dibuja— y el comienzo del
+                          trabajo lo marca ya el cambio de punteado a barra. */}
+                      {(rango || espera) && !(rango && it.ventana && !espera) && (
                         <Link href={it.href} className="ag-tl-ini" title={tip}
-                          style={{ left: `${left}%`, background: col }} />
+                          style={{ left: `${espera ? leftCreado : left}%`, background: col }} />
                       )}
                       {/* Marca en la fecha clave: al final del rango, o en su única
                           fecha si no hay rango. Hueca para casos, rellena para
                           actividades — la misma identidad de color de siempre. */}
-                      <Link href={it.href} className="ag-tl-bar"
-                        title={tip}
+                      <Link href={it.href} title={tip}
+                        className={`ag-tl-bar${rango && it.ventana ? " ag-tl-bar-chica" : ""}`}
                         style={{
-                          left: `${rango ? Math.max(0, right - 1.6) : left}%`,
-                          width: `${rango ? 1.6 : w}%`,
+                          left: `${rango ? Math.max(0, right - marca) : left}%`,
+                          width: `${marca}%`,
                           background: it.kind === "caso" ? "transparent" : col,
                           border: `2px solid ${col}`,
                         }} />
