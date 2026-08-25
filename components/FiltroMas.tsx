@@ -42,9 +42,18 @@ export default function FiltroMas({ v, items }: {
 
   return (
     <>
+      {/* ── EL BOTÓN NO CRECE CON LO QUE SE ELIGE ──
+          Enseñaba el nombre del filtro activo («💰 Pagos»), así que al elegir
+          uno de los escondidos el botón se ensanchaba y empujaba la fila
+          —justo la fila que este menú existe para que quepa—. Ahora se queda
+          en «⋯ Más» y, cuando el activo vive aquí dentro, lo dice con su
+          ÍCONO: cabe en el mismo sitio y sigue contestando «¿dónde estoy?».
+          El nombre completo está a un clic, en el menú, con su marca. */}
       <button ref={btnRef} className={`vtab ${actual ? "on" : ""}`}
+        title={actual ? `${actual.label} — cambiar de filtro` : "Más filtros"}
         aria-expanded={abierto} onClick={() => setAbierto(a => !a)}>
-        {actual ? actual.label : "⋯ Más"} <span className="vtab-n">{actual ? actual.n : total}</span> ▾
+        ⋯ {actual ? actual.label.split(" ")[0] : "Más"}{" "}
+        <span className="vtab-n">{actual ? actual.n : total}</span> ▾
       </button>
       {abierto && pos && typeof document !== "undefined" && createPortal(
         <>

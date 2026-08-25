@@ -940,7 +940,11 @@ a{color:inherit;text-decoration:none}
    se partía en dos y la segunda quedaba centrada bajo la primera: se lee como
    dos grupos de filtros que no son. Si no cabe, se arrastra —la barra ya es
    `overflow-x:auto`— y lo que sobra vive en el «⋯ Más». */
-.vtabs-compacta{flex-wrap:nowrap;gap:6px;margin:2px 0 14px;justify-content:center}
+/* `safe center`: centrada mientras quepa y pegada al inicio cuando no. Con
+   `center` a secas, una fila que desborda se recorta por LOS DOS LADOS y las
+   primeras pestañas quedan fuera del alcance del scroll — inalcanzables, no
+   solo escondidas. */
+.vtabs-compacta{flex-wrap:nowrap;gap:6px;margin:2px 0 14px;justify-content:safe center}
 /* Sin barra de scroll a la vista. La fila SIGUE arrastrándose —con el dedo, la
    rueda o el trackpad— pero la barra gris debajo de los filtros se leía como
    un borde de la página partido en dos. Se esconde y no se desactiva: quitarle
