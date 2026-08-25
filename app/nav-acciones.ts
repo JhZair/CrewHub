@@ -69,10 +69,19 @@ export type EstadoNav = {
    *  APARTE de `mesesEc` y no sumados, igual que las dos de obligaciones: uno
    *  es «pídeselo al banco», el otro «sube el archivo que ya tienes». */
   docsEc: number;
+  /** MIS casos abiertos y MIS casos en progreso. Míos = de los que soy
+   *  responsable, que es lo mismo que cuenta el banco de trabajo.
+   *  ── POR QUÉ MÍOS Y NO DEL SISTEMA ──
+   *  «324 sin resolver» es un dato de informe, no un pendiente: no baja
+   *  aunque uno trabaje toda la semana, así que la burbuja se vuelve parte
+   *  del decorado. Lo que se puede atender hoy es lo propio. */
+  casosMios: number;
+  casosCurso: number;
 };
 
 const VACIO: EstadoNav = {
   casilla: 0, caja: false, vencidos: 0, porVencer: 0, fondosEc: 0, mesesEc: 0, docsEc: 0,
+  casosMios: 0, casosCurso: 0,
 };
 
 /* Recibe el cliente y el usuario YA resueltos. Antes verificaba la sesión por
@@ -118,7 +127,19 @@ export async function estadoNav(supabase: any, user: { id: string }): Promise<Es
        filas de PRIMER nivel —los fondos, que son nueve—, no a lo embebido. Con
        dos consultas, un corte en `estado_cuenta` habría hecho pasar por «no
        cargado» todo lo que quedara fuera. */
-    const [perfil, sinLeer, venc, porV, fondos] = await Promise.all([
+    /* Mis casos por estado. Dos `count` sin filas —solo viaja el número— y en
+       la misma tanda que los demás.
+       `es_informativa` no existe en TypeScript, así que la exclusión va a
+       mano: un aviso o una reunión NO están «sin resolver» —no se resuelven—,
+       y contarlos ahí inflaría la burbuja con cosas que nadie puede cerrar,
+       que es la forma más rápida de que se deje de mirar. */
+    const misCasos = () => supabase.from("publicaciones")
+      .select("id", { count: "exact", head: true })
+      .eq("responsable", user.id)
+      .is("archivado_en", null)
+      .not("tipo", "in", "(aviso,bitacora,reunion)");
+
+    const [perfil, sinLeer, venc, porV, fondos, abiertos, curso] = await Promise.all([
       supabase.from("perfiles").select("es_admin,es_finanzas")
         .eq("id", user.id).maybeSingle(),
       supabase.from("dafo_comunicaciones")
@@ -146,6 +167,8 @@ export async function estadoNav(supabase: any, user: { id: string }): Promise<Es
         .eq("estado", "ganadora")
         .is("fecha_rendicion_real", null)      // rendido = la serie terminó
         .not("fecha_desembolso", "is", null),  // sin desembolso no hay serie
+      misCasos().eq("estado", "abierta"),
+      misCasos().eq("estado", "en_progreso"),
     ]);
 
     const caja = !!((perfil.data as any)?.es_admin || (perfil.data as any)?.es_finanzas);
@@ -188,6 +211,10 @@ export async function estadoNav(supabase: any, user: { id: string }): Promise<Es
       fondosEc: ec.fondos,
       mesesEc: ec.meses,
       docsEc: docs,
+      /* Igual que los demás: `count` en null —una migración a medias, un
+         fallo de red— es «no lo sé», y una burbuja en cero no se pinta. */
+      casosMios: abiertos.count || 0,
+      casosCurso: curso.count || 0,
     };
   } catch {
     return VACIO;

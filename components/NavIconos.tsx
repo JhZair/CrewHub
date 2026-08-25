@@ -102,6 +102,7 @@ export default function NavIconos() {
      ser uno. Ver lib/zocalo.ts. */
   const [nav, setNav] = useState<EstadoNav>({
     casilla: 0, caja: false, vencidos: 0, porVencer: 0, fondosEc: 0, mesesEc: 0, docsEc: 0,
+    casosMios: 0, casosCurso: 0,
   });
   useEffect(() => {
     let vivo = true;
@@ -149,6 +150,22 @@ export default function NavIconos() {
      En rojo: cualquier mes que falte es un mes ya cerrado, o sea un papel
      vencido, no una tarea futura.
      Estando en /fondos no se pinta: allí cada tarjeta lo dice por su cuenta. */
+  /* ── EL TABLERO TAMBIÉN AVISA ──
+     Rojo lo que está SIN RESOLVER y ámbar lo que está EN PROGRESO, y solo lo
+     MÍO: «324 sin resolver en el sistema» es un dato de informe —no baja
+     aunque uno trabaje toda la semana— y una burbuja que no se mueve se
+     vuelve parte del decorado. Lo que se puede atender hoy es lo propio.
+     Los dos números no se suman: uno es trabajo sin empezar y el otro trabajo
+     en marcha, y mezclarlos no dice qué hacer con ninguno.
+     Estando DENTRO del tablero no se pintan, igual que la casilla y las
+     obligaciones: el pendiente ya está a la vista. */
+  const casosAvisos = [
+    nav.casosMios > 0 && { k: "cx", n: nav.casosMios, tono: "rojo" as const,
+      txt: `${nav.casosMios} caso(s) tuyo(s) sin resolver` },
+    nav.casosCurso > 0 && { k: "cp", n: nav.casosCurso, tono: "ambar" as const,
+      txt: `${nav.casosCurso} caso(s) tuyo(s) en progreso` },
+  ].filter(Boolean) as { k: string; n: number; tono: "rojo" | "ambar"; txt: string }[];
+
   /* Dos burbujas, como en obligaciones y por la misma razón: no se suman ni se
      turnan. El rojo es «no existe el registro» —hay que pedirle el extracto al
      banco— y el ámbar es «el registro está, falta subir su archivo». Se
@@ -221,6 +238,13 @@ export default function NavIconos() {
         {pathname !== "/fondos" && fondosAvisos.map(a => (
           <Burbuja key={a.k} n={a.n} tono={a.tono} txt={a.txt} />
         ))}
+        {/* En el BOTÓN va solo lo sin resolver. «En progreso» no es un
+            pendiente: es trabajo en marcha, y no necesita gritar desde fuera
+            del menú. Con siete burbujas seguidas ninguna se lee —y la que
+            importa es siempre la primera. */}
+        {pathname !== "/tablero" && casosAvisos.filter(a => a.tono === "rojo").map(a => (
+          <Burbuja key={a.k} n={a.n} tono={a.tono} txt={a.txt} />
+        ))}
       </button>
       {abierto && (
         <>
@@ -261,6 +285,13 @@ export default function NavIconos() {
                     {d.ruta === "/casilla" && casilla > 0 && (
                       <Burbuja n={casilla} tono="rojo"
                         txt={`${casilla} correo(s) de DAFO sin leer`} />
+                    )}
+                    {d.ruta === "/tablero" && casosAvisos.length > 0 && (
+                      <span className="nav-burbujas">
+                        {casosAvisos.map(a => (
+                          <Burbuja key={a.k} n={a.n} tono={a.tono} txt={a.txt} />
+                        ))}
+                      </span>
                     )}
                     {d.ruta === "/fondos" && fondosAvisos.length > 0 && (
                       <span className="nav-burbujas">
