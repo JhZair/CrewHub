@@ -125,13 +125,24 @@ export default function NavIconos() {
      sub-sección plegada: para verlo había que entrar al fondo correcto y abrir
      la sección correcta, o sea sospechar antes de mirar. Lo que falta no ocupa
      sitio en la pantalla; si además hay que ir a buscarlo, no avisa de nada.
-     La burbuja cuenta FONDOS —que es lo que la lista de /fondos deja contar—,
-     y el título dice cuántos meses son en total. En rojo: cualquier mes que
-     falte es un mes ya cerrado, o sea un papel vencido, no una tarea futura.
+     ── CUENTA MESES, NO FONDOS ──
+     Empezó contando FONDOS, con el argumento de que así se podía cuadrar con
+     la lista de /fondos: tres tarjetas, un tres. Pero el trabajo no son las
+     tarjetas, son los PDF: un fondo al que le faltan diez meses y otro al que
+     le falta uno valían lo mismo, y «3» sonaba a tarde de trabajo cuando eran
+     dieciséis estados de cuenta que pedirle al banco. Un indicador que aplana
+     la diferencia entre uno y diez no ayuda a decidir por dónde empezar.
+     Y así todo el rastro cuenta lo mismo —meses—: la burbuja del menú, la de
+     la pestaña Financiera y la de Rendición. Cuadrar sigue siendo posible, y
+     mejor: los números de las tarjetas de /fondos SUMAN el del menú.
+     El título dice en cuántos fondos están repartidos, que es lo que se perdió
+     al cambiar de unidad.
+     En rojo: cualquier mes que falte es un mes ya cerrado, o sea un papel
+     vencido, no una tarea futura.
      Estando en /fondos no se pinta: allí cada tarjeta lo dice por su cuenta. */
-  const fondosAviso = nav.fondosEc > 0
-    ? { n: nav.fondosEc, col: "var(--red)",
-        txt: `${nav.fondosEc} fondo(s) con estados de cuenta sin cargar · ${nav.mesesEc} mes(es) en total` }
+  const fondosAviso = nav.mesesEc > 0
+    ? { n: nav.mesesEc, col: "var(--red)",
+        txt: `${nav.mesesEc} estado(s) de cuenta del banco sin cargar · en ${nav.fondosEc} fondo(s)` }
     : null;
 
   /* Dónde estás. Cuenta la sección entera: la ficha, su historial y sus casos

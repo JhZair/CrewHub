@@ -58,8 +58,9 @@ export type EstadoNav = {
   /** Fondos en ejecución a los que les falta algún estado de cuenta, y cuántos
    *  meses faltan en total. Dos números porque contestan preguntas distintas:
    *  uno dice a cuántas fichas hay que entrar, el otro cuánto papel hay que
-   *  pedirle al banco. La burbuja enseña el primero —es lo que la lista de
-   *  /fondos deja contar— y el segundo va en su título. */
+   *  pedirle al banco. La burbuja enseña los MESES —que es el trabajo real, y
+   *  lo mismo que cuentan la pestaña y la cabecera dentro de la ficha— y los
+   *  fondos van en su título, para saber en cuántos sitios están repartidos. */
   fondosEc: number;
   mesesEc: number;
 };
