@@ -11,6 +11,7 @@
    compilar y no arrastra `next/headers` al navegador. */
 import { DIAS_AVISO } from "@/lib/obligaciones";
 import { resumenFaltantes } from "@/lib/estadosCuenta";
+import { sinPruebas } from "@/lib/pruebasFondo";
 
 /* ══════════════════════════════════════════════════════════════════════════
    LO QUE EL MENÚ NECESITA SABER — EN UN SOLO VIAJE
@@ -63,10 +64,15 @@ export type EstadoNav = {
    *  fondos van en su título, para saber en cuántos sitios están repartidos. */
   fondosEc: number;
   mesesEc: number;
+  /** Documentos ya registrados a los que les falta su archivo: recibos sin
+   *  PDF, meses del banco sin extracto, facturas y DJ sin escanear. Van
+   *  APARTE de `mesesEc` y no sumados, igual que las dos de obligaciones: uno
+   *  es «pídeselo al banco», el otro «sube el archivo que ya tienes». */
+  docsEc: number;
 };
 
 const VACIO: EstadoNav = {
-  casilla: 0, caja: false, vencidos: 0, porVencer: 0, fondosEc: 0, mesesEc: 0,
+  casilla: 0, caja: false, vencidos: 0, porVencer: 0, fondosEc: 0, mesesEc: 0, docsEc: 0,
 };
 
 /* Recibe el cliente y el usuario YA resueltos. Antes verificaba la sesión por
@@ -121,8 +127,22 @@ export async function estadoNav(supabase: any, user: { id: string }): Promise<Es
       periodos().gte("vence", hoy).lte("vence", tope),
       supabase.from("postulaciones")
         /* El plazo y su prórroga viajan porque CIERRAN la serie: un fondo de un
-           año que no rindió no acumula meses para siempre. */
-        .select("id,fecha_desembolso,fecha_rendicion_real,fecha_limite_rendicion,fecha_prorroga,estado_cuenta(periodo)")
+           año que no rindió no acumula meses para siempre.
+           Y de las tres tablas del ámbar viajan SOLO LAS FILAS QUE FALTAN, con
+           su campo de documento y nada más: los filtros `…url=is.null` se
+           aplican a lo embebido, no al padre, así que el fondo sale igual
+           aunque lo tenga todo subido.
+           Sin esos filtros, aquí viajaban cientos de filas con sus URL enteras
+           —decenas de KB— en CADA navegación de las diecinueve pantallas, para
+           acabar contando cuántas venían vacías. Lo que viaja ahora es del
+           tamaño del pendiente, no del historial.
+           `estado_cuenta` sí viene entero: sus periodos son los que sostienen
+           la cuenta del rojo. */
+        .select("id,fecha_desembolso,fecha_rendicion_real,fecha_limite_rendicion,fecha_prorroga," +
+          "estado_cuenta(periodo,url,imagenes),rhe(url),comprobante(url),gasto_dj(dj_numero,dj_url)")
+        .is("rhe.url", null)
+        .is("comprobante.url", null)
+        .is("gasto_dj.dj_url", null)
         .eq("estado", "ganadora")
         .is("fecha_rendicion_real", null)      // rendido = la serie terminó
         .not("fecha_desembolso", "is", null),  // sin desembolso no hay serie
@@ -141,6 +161,7 @@ export async function estadoNav(supabase: any, user: { id: string }): Promise<Es
        menú, en las diecinueve pantallas, sobre papeles que uno no puede subir,
        es ruido que además enseña a ignorar los rojos de verdad. */
     let ec = { fondos: 0, meses: 0 };
+    let docs = 0;
     if (caja && !fondos.error) {
       const vivos = (fondos.data || []) as any[];
       const porFondo = new Map<string, string[]>();
@@ -148,6 +169,12 @@ export async function estadoNav(supabase: any, user: { id: string }): Promise<Es
         porFondo.set(f.id, ((f.estado_cuenta || []) as any[]).map(e => e.periodo));
       }
       ec = resumenFaltantes(vivos, porFondo, hoy);
+      /* Los documentos sin adjuntar, de los MISMOS fondos que se vigilan: la
+         consulta ya los filtró. Contar los de un fondo cerrado sería pedir que
+         alguien suba el PDF de una rendición entregada hace un año. */
+      docs = vivos.reduce((s, f) => s + sinPruebas({
+        estados: f.estado_cuenta, rhe: f.rhe, facturas: f.comprobante, dj: f.gasto_dj,
+      }).total, 0);
     }
 
     return {
@@ -160,6 +187,7 @@ export async function estadoNav(supabase: any, user: { id: string }): Promise<Es
       porVencer: porV.count || 0,
       fondosEc: ec.fondos,
       mesesEc: ec.meses,
+      docsEc: docs,
     };
   } catch {
     return VACIO;

@@ -49,9 +49,9 @@ const estaEn = (d: Destino, p: string) => d.activo ? d.activo(p) : p === d.ruta;
    dos colores. Escrita una vez: dos copias con los mismos estilos en línea son
    dos que se separan al primer retoque, y entonces el mismo pendiente se ve de
    dos formas distintas en la misma pantalla. */
-function Burbuja({ n, col, txt }: { n: number; col: string; txt: string }) {
+function Burbuja({ n, tono, txt }: { n: number; tono: "rojo" | "ambar"; txt: string }) {
   return (
-    <span title={txt} className="nav-burbuja" style={{ background: col }}>
+    <span title={txt} className={`nav-burbuja${tono === "ambar" ? " tono-ambar" : ""}`}>
       {n > 99 ? "99+" : n}
     </span>
   );
@@ -92,7 +92,7 @@ export default function NavIconos() {
      suyo en el mismo instante. Cuatro POST encolados —4772 ms medidos— pasan a
      ser uno. Ver lib/zocalo.ts. */
   const [nav, setNav] = useState<EstadoNav>({
-    casilla: 0, caja: false, vencidos: 0, porVencer: 0, fondosEc: 0, mesesEc: 0,
+    casilla: 0, caja: false, vencidos: 0, porVencer: 0, fondosEc: 0, mesesEc: 0, docsEc: 0,
   });
   useEffect(() => {
     let vivo = true;
@@ -114,11 +114,11 @@ export default function NavIconos() {
      Estando DENTRO de /obligaciones no se pintan, igual que la casilla: el
      pendiente ya está a la vista y repetirlo en el menú es ruido. */
   const oblAvisos = [
-    nav.vencidos > 0 && { k: "v", n: nav.vencidos, col: "var(--red)",
+    nav.vencidos > 0 && { k: "v", n: nav.vencidos, tono: "rojo" as const,
       txt: `${nav.vencidos} declaración(es) vencida(s)` },
-    nav.porVencer > 0 && { k: "p", n: nav.porVencer, col: "var(--yellow)",
+    nav.porVencer > 0 && { k: "p", n: nav.porVencer, tono: "ambar" as const,
       txt: `${nav.porVencer} declaración(es) por vencer en los próximos días` },
-  ].filter(Boolean) as { k: string; n: number; col: string; txt: string }[];
+  ].filter(Boolean) as { k: string; n: number; tono: "rojo" | "ambar"; txt: string }[];
 
   /* ── LOS ESTADOS DE CUENTA QUE FALTAN ──
      El aviso existía solo DENTRO de la ficha del fondo, y encima dentro de una
@@ -140,10 +140,17 @@ export default function NavIconos() {
      En rojo: cualquier mes que falte es un mes ya cerrado, o sea un papel
      vencido, no una tarea futura.
      Estando en /fondos no se pinta: allí cada tarjeta lo dice por su cuenta. */
-  const fondosAviso = nav.mesesEc > 0
-    ? { n: nav.mesesEc, col: "var(--red)",
-        txt: `${nav.mesesEc} estado(s) de cuenta del banco sin cargar · en ${nav.fondosEc} fondo(s)` }
-    : null;
+  /* Dos burbujas, como en obligaciones y por la misma razón: no se suman ni se
+     turnan. El rojo es «no existe el registro» —hay que pedirle el extracto al
+     banco— y el ámbar es «el registro está, falta subir su archivo». Se
+     resuelven en sitios distintos y por gente distinta; un número que las
+     mezcla no dice qué hacer. */
+  const fondosAvisos = [
+    nav.mesesEc > 0 && { k: "ec", n: nav.mesesEc, tono: "rojo" as const,
+      txt: `${nav.mesesEc} estado(s) de cuenta del banco sin cargar · en ${nav.fondosEc} fondo(s)` },
+    nav.docsEc > 0 && { k: "doc", n: nav.docsEc, tono: "ambar" as const,
+      txt: `${nav.docsEc} documento(s) registrados sin su archivo adjunto: recibos, extractos, facturas y DJ` },
+  ].filter(Boolean) as { k: string; n: number; tono: "rojo" | "ambar"; txt: string }[];
 
   /* Dónde estás. Cuenta la sección entera: la ficha, su historial y sus casos
      también son «estar ahí». */
@@ -192,19 +199,19 @@ export default function NavIconos() {
             vencida no se atienden igual, y un número que las mezcla no dice qué
             hacer. Ninguna se pinta estando ya en su pantalla. */}
         {casilla > 0 && !enCasilla && (
-          <Burbuja n={casilla} col="var(--red)"
+          <Burbuja n={casilla} tono="rojo"
             txt={`${casilla} correo(s) de DAFO sin leer`} />
         )}
         {pathname !== "/obligaciones" && oblAvisos.map(a => (
-          <Burbuja key={a.k} n={a.n} col={a.col} txt={a.txt} />
+          <Burbuja key={a.k} n={a.n} tono={a.tono} txt={a.txt} />
         ))}
         {/* En el BOTÓN no se pinta estando ya en /fondos —el pendiente está a
             la vista en cada tarjeta—, pero en la entrada del menú sí, igual que
             la casilla y las obligaciones: dentro del menú la burbuja dice a
             dónde ir, no que haya algo nuevo. */}
-        {fondosAviso && pathname !== "/fondos" && (
-          <Burbuja n={fondosAviso.n} col={fondosAviso.col} txt={fondosAviso.txt} />
-        )}
+        {pathname !== "/fondos" && fondosAvisos.map(a => (
+          <Burbuja key={a.k} n={a.n} tono={a.tono} txt={a.txt} />
+        ))}
       </button>
       {abierto && (
         <>
@@ -243,11 +250,15 @@ export default function NavIconos() {
                     <span>{d.txt}</span>
                     {/* Cada pendiente, en la entrada donde se va a atender. */}
                     {d.ruta === "/casilla" && casilla > 0 && (
-                      <Burbuja n={casilla} col="var(--red)"
+                      <Burbuja n={casilla} tono="rojo"
                         txt={`${casilla} correo(s) de DAFO sin leer`} />
                     )}
-                    {d.ruta === "/fondos" && fondosAviso && (
-                      <Burbuja n={fondosAviso.n} col={fondosAviso.col} txt={fondosAviso.txt} />
+                    {d.ruta === "/fondos" && fondosAvisos.length > 0 && (
+                      <span className="nav-burbujas">
+                        {fondosAvisos.map(a => (
+                          <Burbuja key={a.k} n={a.n} tono={a.tono} txt={a.txt} />
+                        ))}
+                      </span>
                     )}
                     {d.ruta === "/obligaciones" && oblAvisos.length > 0 && (
                       /* Las dos juntas y pegadas al borde derecho: `nav-item`
@@ -255,7 +266,7 @@ export default function NavIconos() {
                          que van envueltas para viajar como un bloque. */
                       <span className="nav-burbujas">
                         {oblAvisos.map(a => (
-                          <Burbuja key={a.k} n={a.n} col={a.col} txt={a.txt} />
+                          <Burbuja key={a.k} n={a.n} tono={a.tono} txt={a.txt} />
                         ))}
                       </span>
                     )}

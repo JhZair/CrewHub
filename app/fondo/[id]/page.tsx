@@ -4,6 +4,7 @@ import Link from "@/components/Enlace";
 import { createClient } from "@/lib/supabase/server";
 import { ESTADOS_VIVOS } from "@/lib/estados";
 import { faltanEstados, seVigila, cierreDe } from "@/lib/estadosCuenta";
+import { sinPruebas, textoSinPruebas } from "@/lib/pruebasFondo";
 import { hoyLima } from "@/lib/fechas";
 import { mapaAlias } from "@/lib/personas";
 import Volver from "@/components/Volver";
@@ -515,8 +516,41 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
   const avisoEc = nFaltaEc > 0
     ? { n: nFaltaEc, txt: `${nFaltaEc} estado(s) de cuenta del banco sin cargar` }
     : null;
-  const burbujaEc = avisoEc && (
-    <span className="b-alerta" title={avisoEc.txt} aria-label={avisoEc.txt}>{avisoEc.n}</span>
+  /* ── Y EL ÁMBAR: LO QUE ESTÁ REGISTRADO PERO SIN SU PAPEL ──
+     Un recibo apuntado sin su PDF, un mes del banco con su saldo pero sin el
+     extracto. La fila existe, así que ninguna cuenta sale mal y nada se ve
+     rojo — pero el día de rendir, DAFO recibe papeles, no filas. Es un
+     pendiente distinto del rojo y por eso va aparte y no sumado: el rojo se
+     resuelve pidiéndole algo al banco, el ámbar subiendo un archivo que ya se
+     tiene. Un número que mezcla las dos cosas no dice qué hacer. */
+  /* `seVigila` manda también aquí, igual que en el rojo. Sin esto, un fondo ya
+     rendido enseñaba ámbar en su ficha y cero en el menú y en su tarjeta: el
+     mismo descuadre que se acaba de arreglar para el rojo, reintroducido en el
+     otro color. A una rendición entregada no se le piden más PDF. */
+  const docsTodos = sinPruebas({
+    estados: estadosFondo, rhe: rheFondo as any[],
+    facturas: comprobantes as any[], dj: gastosDj as any[],
+  });
+  /* La cuenta se hace SIEMPRE —dentro de la ficha, un fondo cerrado con papeles
+     sin subir sigue siendo un hallazgo y cada sub-sección lo dice—, pero solo
+     enciende burbujas si al fondo se le sigue pidiendo algo. Sin esto, un fondo
+     rendido enseñaba ámbar en su ficha y cero en el menú y en su tarjeta: el
+     mismo descuadre que se acaba de arreglar para el rojo, en el otro color. */
+  const docsEc = seVigila(ent) ? docsTodos : { estados: 0, rhe: 0, facturas: 0, dj: 0, total: 0 };
+  const avisoDocs = docsEc.total > 0
+    ? { n: docsEc.total, txt: textoSinPruebas(docsEc), tono: "ambar" as const }
+    : null;
+  const avisosFin = [avisoEc, avisoDocs]
+    .filter(Boolean) as { n: number; txt: string; tono?: "rojo" | "ambar" }[];
+  const burbujas = (
+    <>
+      {avisoEc && (
+        <span className="b-alerta" title={avisoEc.txt} aria-label={avisoEc.txt}>{avisoEc.n}</span>
+      )}
+      {avisoDocs && (
+        <span className="b-alerta tono-ambar" title={avisoDocs.txt} aria-label={avisoDocs.txt}>{avisoDocs.n}</span>
+      )}
+    </>
   );
   const preItems = ((ent.presupuesto as any)?.items || []) as any[];
   const preCosto = preItems.reduce((s, i) => s + (i.cantidad || 0) * (i.costo_unit || 0), 0);
@@ -592,7 +626,7 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
            Rendición y en la sub-sección de estados de cuenta. Sin él, lo que
            falta vive a tres clics de distancia dentro de una sección plegada,
            y para encontrarlo hay que sospechar primero. */
-        avisos={[avisoEc, null, null, null]}
+        avisos={[avisosFin, null, null, null]}
         /* Nombres de pestaña para poder enlazarlas: `…/fondo/<id>#equipo`.
            Sin esto, un enlace a la pestaña de equipo apunta a un panel que
            está montado pero oculto, y el clic no hace nada — el mismo fallo
@@ -634,7 +668,7 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
                   S/ 200,000. Es la única línea de toda la página que contesta
                   «¿cómo vamos?» sin abrir nada. */}
               <Plegable id={`fondo:${params.id}:rendicion`}
-                titulo={<>🧾 Rendición del fondo{burbujaEc}</>} abiertoPorDefecto={true}
+                titulo={<>🧾 Rendición del fondo{burbujas}</>} abiertoPorDefecto={true}
                 resumen={(() => {
                   const estimulo = ent.monto_adjudicado ? parseFloat(ent.monto_adjudicado) : 0;
                   const sustentado = totRhe + usadoDj + totCmp;
@@ -721,10 +755,13 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
                         {/* El PDF que falta se cuenta aquí también, con el mismo
                             ⚠ que los estados y los recibos: es lo que separa
                             «cargado» de «presentable», y plegado era invisible. */}
-                        {comprobantes.filter((c: any) => !c.url).length > 0 && (
+                        {/* El mismo número que alimenta la burbuja ámbar, y de
+                            la misma cuenta (`docsEc`): contarlo aquí a mano era
+                            una tercera copia de la misma pregunta. */}
+                        {docsTodos.facturas > 0 && (
                           <span style={{ marginLeft: 8, color: "var(--yellow)", fontWeight: 600 }}
                             title="Comprobantes sin el PDF adjunto: cuentan en el ejecutado pero no se pueden presentar.">
-                            ⚠ {comprobantes.filter((c: any) => !c.url).length} sin PDF
+                            ⚠ {docsTodos.facturas} sin PDF
                           </span>
                         )}
                       </>

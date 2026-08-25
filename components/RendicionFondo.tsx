@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { textoFaltan, seVigila, type FaltanEstados } from "@/lib/estadosCuenta";
+import { estadoConPrueba } from "@/lib/pruebasFondo";
 import { useRouter } from "next/navigation";
 import {
   guardarEstadoCuenta, borrarEstadoCuenta, guardarRhe, fijarEjesRhe, fijarEjesRheLote, borrarRhe,
@@ -116,7 +117,12 @@ export default function RendicionFondo({
 
   const totalIntereses = estados.reduce((s, e) => s + Number(e.intereses || 0), 0);
   // Un mes «tiene comprobante» si hay escaneo(s) adjunto(s) o un link de PDF.
-  const tieneComprobante = (e: EstadoCuenta) => (e.imagenes?.length || 0) > 0 || !!e.url;
+  /* La regla de «¿tiene papel?» vive en lib/pruebasFondo, que es quien alimenta
+     las burbujas ámbar. Aquí estaba escrita otra vez, carácter por carácter:
+     hoy coincidían, y el día que una de las dos cambiara —admitir un tercer
+     sitio donde guardar el escaneo, por ejemplo— la fila diría una cosa y la
+     burbuja otra sin que nada fallara. */
+  const tieneComprobante = estadoConPrueba;
   const conComprobante = estados.filter(tieneComprobante).length;
   /* ── LO QUE FALTA NO OCUPA ESPACIO EN LA PANTALLA ──
      Seis meses cargados, cada uno con su saldo correcto, se leen como «al

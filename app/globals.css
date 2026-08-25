@@ -789,6 +789,16 @@ a{color:inherit;text-decoration:none}
   background:var(--red);color:#fff;font-size:10.5px;font-weight:700;text-align:center;
   vertical-align:middle;letter-spacing:normal}
 .plg-cab .b-alerta{margin-left:7px}
+/* ── EL TONO ÁMBAR DE CUALQUIER BURBUJA ──
+   Una sola regla para las tres familias —el menú, las pestañas y las
+   cabeceras— porque es el mismo concepto: «está registrado, falta su archivo».
+   El texto se oscurece: el blanco sobre #f4b400 da un contraste de 2:1, que no
+   se lee. Las tres pintaban blanco o negro según quién las hubiera escrito, y
+   el mismo número salía de dos colores en la misma pantalla.
+   Los selectores largos son para ganarle a `.vtabs-nav .vtab.on .vtab-n`, que
+   tiene una clase más y va antes en el fichero. */
+.tono-ambar,.nav-burbuja.tono-ambar,
+.vtabs-nav .vtab .tono-ambar,.vtabs-nav .vtab.on .tono-ambar{background:var(--yellow);color:#1a1400}
 /* Nota breve de una pestaña (p. ej. «próx. 1 set.»): tenue, compacta y en una
    sola línea, para que informe sin ensanchar ni descuadrar la fila. */
 .vtab-nota{font-size:10.5px;font-weight:600;color:var(--dim)}

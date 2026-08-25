@@ -54,8 +54,14 @@ export default function TabsPanel({ labels, paneles, inicial = 0, iconoSolo = []
      puede seguir el rastro sin abrir nada por si acaso.
      Es distinto del contador de la etiqueta («📦 Entregables · 39»): aquél
      cuenta lo que hay, éste lo que falta. Por eso va en rojo y aparte — un
-     número que a veces cuenta cosas y a veces problemas no se puede leer. */
-  avisos?: (null | { n: number; txt: string })[];
+     número que a veces cuenta cosas y a veces problemas no se puede leer.
+     Van varias por pestaña porque hay clases de pendiente que no se suman: en
+     un fondo, lo que no existe (rojo) y lo que existe sin su papel (ámbar) se
+     resuelven de formas distintas. `tono` elige cuál; por defecto, rojo.
+     El tono va como CLASE y no como color en línea: un estilo en línea solo
+     pisaba el fondo, así que el ámbar salía con el `color:#fff` de la regla
+     de la alerta — blanco sobre amarillo, ilegible. */
+  avisos?: (null | { n: number; txt: string; tono?: "rojo" | "ambar" }[])[];
   /** NO montar los paneles que nunca se han abierto.
    *
    *  Por defecto se montan los siete y se ocultan con `display:none`, y eso es
@@ -137,18 +143,19 @@ export default function TabsPanel({ labels, paneles, inicial = 0, iconoSolo = []
   const tabBtn = (k: number) => {
     const { nombre, n, nota } = parte(labels[k]);
     const hay = n != null && Number(n) > 0;
-    const aviso = avisos?.[k] || null;
+    const avs = (avisos?.[k] || []).filter(a => a && a.n > 0);
     const solo = iconoSolo.includes(k);
     // En modo ícono-solo se muestra solo el emoji inicial del nombre.
     const emoji = nombre.split(" ")[0];
     return (
       <button key={k} className={`vtab ${i === k ? "on" : ""}`}
-        title={[nombre, nota, aviso?.txt].filter(Boolean).join(" · ")} onClick={() => abrir(k)}>
+        title={[nombre, nota, ...avs.map(a => a.txt)].filter(Boolean).join(" · ")} onClick={() => abrir(k)}>
         {solo ? emoji : nombre}
         {hay && <span className="vtab-n">{n}</span>}
-        {aviso && aviso.n > 0 && (
-          <span className="vtab-n vtab-alerta" title={aviso.txt} aria-label={aviso.txt}>{aviso.n}</span>
-        )}
+        {avs.map((a, j) => (
+          <span key={j} title={a.txt} aria-label={a.txt}
+            className={`vtab-n vtab-alerta${a.tono === "ambar" ? " tono-ambar" : ""}`}>{a.n}</span>
+        ))}
         {!solo && nota && <span className="vtab-nota">{nota}</span>}
       </button>
     );
@@ -174,10 +181,17 @@ export default function TabsPanel({ labels, paneles, inicial = 0, iconoSolo = []
                   solo se ve al abrir el menú no avisa: hay que haberse
                   acordado, y acordarse es justo lo que falla. */}
               {(() => {
-                const n = enMas.reduce((s, k) => s + (avisos?.[k]?.n || 0), 0);
+                /* Aquí SÍ se suman, y es distinto: no es un indicador, es «hay
+                   esto de pendiente ahí dentro». Cuántas clases sean se ve al
+                   abrir; lo que no puede pasar es que no se vea nada. */
+                const dentro = enMas.flatMap(k => avisos?.[k] || []).filter(a => a && a.n > 0);
+                const n = dentro.reduce((s, a) => s + a.n, 0);
+                // Rojo solo si de verdad hay algo rojo dentro: si todo lo
+                // escondido es ámbar, el color no puede decir otra cosa.
+                const hayRojo = dentro.some(a => a.tono !== "ambar");
                 return n > 0
-                  ? <span className="vtab-n vtab-alerta"
-                      title={enMas.map(k => avisos?.[k]?.txt).filter(Boolean).join(" · ")}>{n}</span>
+                  ? <span className={`vtab-n vtab-alerta${hayRojo ? "" : " tono-ambar"}`}
+                      title={dentro.map(a => a.txt).join(" · ")}>{n}</span>
                   : null;
               })()}
               <span className="vtab-mas-flecha">▾</span>
@@ -192,15 +206,16 @@ export default function TabsPanel({ labels, paneles, inicial = 0, iconoSolo = []
                     const hay = n != null && Number(n) > 0;
                     // También aquí: una pestaña escondida en el «⋯» es
                     // justamente la que nadie va a abrir por si acaso.
-                    const av = avisos?.[k] || null;
+                    const av = (avisos?.[k] || []).filter(a => a && a.n > 0);
                     return (
                       <button key={k} role="menuitem" className={`vtab-mas-item ${i === k ? "on" : ""}`}
                         onClick={() => { abrir(k); setMasOpen(false); }}>
                         <span>{nombre}</span>
                         {hay && <span className="vtab-n">{n}</span>}
-                        {av && av.n > 0 && (
-                          <span className="vtab-n vtab-alerta" title={av.txt}>{av.n}</span>
-                        )}
+                        {av.map((a, j) => (
+                          <span key={j} title={a.txt} aria-label={a.txt}
+                            className={`vtab-n vtab-alerta${a.tono === "ambar" ? " tono-ambar" : ""}`}>{a.n}</span>
+                        ))}
                       </button>
                     );
                   })}

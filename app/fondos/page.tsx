@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { ejecutando, plazoRendicion, rendicionVencida, rendicionSinPlazo } from "@/lib/fondos";
 import { faltanEstados, listaFaltan, seVigila, cierreDe } from "@/lib/estadosCuenta";
+import { sinPruebas, textoSinPruebas } from "@/lib/pruebasFondo";
 import { hoyLima } from "@/lib/fechas";
 import { CATEGORIAS_OPC } from "@/lib/etapas";
 
@@ -47,23 +48,63 @@ export default async function FondosPage() {
      `faltanEstados` que usa la ficha, para que las tres pantallas no puedan
      discrepar. */
   const faltanEc = new Map<string, ReturnType<typeof faltanEstados>>();
+  const docsEc = new Map<string, ReturnType<typeof sinPruebas>>();
   {
     const vigilados = fondos.filter(f => f.estado === "ganadora" && seVigila(f));
     if (vigilados.length) {
-      const { data: ec, error } = await supabase.from("estado_cuenta")
-        .select("postulacion_id,periodo").in("postulacion_id", vigilados.map(f => f.id));
-      /* Si la consulta falla, `data` viene en null y NO se pinta nada. Sin esta
-         guarda, un fallo dejaba el mapa vacío y todas las tarjetas salían con
-         la serie entera faltando: la alarma más alta posible justo cuando el
-         sistema no sabe nada. */
-      if (!error) {
-        const porFondo = new Map<string, string[]>();
-        (ec || []).forEach((e: any) =>
-          porFondo.set(e.postulacion_id, [...(porFondo.get(e.postulacion_id) || []), e.periodo]));
+      const ids = vigilados.map(f => f.id);
+      /* Las cuatro tablas de la rendición, en paralelo y por lote —nunca una
+         por tarjeta—. De `estado_cuenta` viajan el periodo Y su archivo: es la
+         misma consulta para las dos cuentas, la del rojo (qué mes no está) y
+         la del ámbar (qué mes está sin extracto). Pedirla dos veces sería
+         pagar dos viajes por las mismas quince filas.
+         Solo de los fondos vigilados: pedirle el PDF a una rendición ya
+         entregada no es tarea de nadie. */
+      /* ── SOLO LO QUE FALTA ──
+         De los recibos, facturas y DJ se piden ÚNICAMENTE las filas sin
+         archivo (`url is null`). Traerlas todas era caro y, peor, frágil:
+         PostgREST corta en mil filas de primer nivel SIN AVISAR, y nueve
+         fondos con cuarenta recibos cada uno rondan ese techo. El corte no
+         habría dado error: habría BAJADO el ámbar en silencio, y el número
+         habría dejado de cuadrar con el de la ficha —que nunca se corta
+         porque filtra por un solo fondo—. Pidiendo solo las que faltan, lo que
+         viaja es del tamaño del pendiente, no del historial.
+         `estado_cuenta` sí viene entero: sus periodos son los que sostienen la
+         cuenta del ROJO, y son quince por fondo. */
+      const [est, rhe, cmp, dj] = await Promise.all([
+        supabase.from("estado_cuenta").select("postulacion_id,periodo,url,imagenes").in("postulacion_id", ids),
+        supabase.from("rhe").select("postulacion_id,url").in("postulacion_id", ids).is("url", null),
+        supabase.from("comprobante").select("postulacion_id,url").in("postulacion_id", ids).is("url", null),
+        supabase.from("gasto_dj").select("postulacion_id,dj_numero,dj_url").in("postulacion_id", ids).is("dj_url", null),
+      ]);
+      /* Si una consulta falla, `data` viene en null y esa cuenta NO se pinta.
+         Sin esta guarda, un fallo dejaba el mapa vacío y todas las tarjetas
+         salían con la serie entera faltando: la alarma más alta posible justo
+         cuando el sistema no sabe nada. Mejor quedarse corto que inventar. */
+      const agrupar = (r: any) => {
+        const m = new Map<string, any[]>();
+        if (r?.error) return m;
+        (r?.data || []).forEach((x: any) =>
+          m.set(x.postulacion_id, [...(m.get(x.postulacion_id) || []), x]));
+        return m;
+      };
+      const mEst = agrupar(est), mRhe = agrupar(rhe), mCmp = agrupar(cmp), mDj = agrupar(dj);
+
+      if (!est.error) {
         const hoy = hoyLima();
         vigilados.forEach(f => faltanEc.set(f.id, faltanEstados(
-          porFondo.get(f.id) || [], f.fecha_desembolso, hoy, cierreDe(f))));
+          (mEst.get(f.id) || []).map(e => e.periodo), f.fecha_desembolso, hoy, cierreDe(f))));
       }
+      /* `sinPruebas` vuelve a filtrar por «sin archivo», así que darle solo las
+         filas que ya vienen filtradas da el mismo número: la regla sigue
+         estando en un solo sitio, la consulta solo evita traer lo que esa
+         regla iba a descartar.
+         Si una de las cuatro falla, su mapa queda vacío y esa clase suma cero:
+         quedarse corto es preferible a inventar pendientes. */
+      vigilados.forEach(f => docsEc.set(f.id, sinPruebas({
+        estados: mEst.get(f.id) || [], rhe: mRhe.get(f.id) || [],
+        facturas: mCmp.get(f.id) || [], dj: mDj.get(f.id) || [],
+      })));
     }
   }
 
@@ -209,6 +250,20 @@ export default async function FondosPage() {
               <div style={{ color: "var(--red)", fontSize: 10.5, marginTop: 3 }}>
                 <span className="b-alerta" title={txt} aria-label={txt}>{t.faltan.length}</span>
                 {" "}{lista}
+              </div>
+            );
+          })()}
+          {/* Y el ámbar: registrado, sin su archivo. Va debajo del rojo y no
+              sumado con él — son dos trabajos distintos, y aquí es donde se
+              decide a cuál de los nueve fondos entrar primero. */}
+          {(() => {
+            const s = docsEc.get(f.id);
+            if (!s || !s.total) return null;
+            const txt = textoSinPruebas(s);
+            return (
+              <div style={{ color: "var(--yellow)", fontSize: 10.5, marginTop: 2 }}>
+                <span className="b-alerta tono-ambar" title={txt} aria-label={txt}>{s.total}</span>
+                {" "}sin su archivo adjunto
               </div>
             );
           })()}
