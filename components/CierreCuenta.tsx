@@ -25,8 +25,8 @@ export default function CierreCuenta({ postulacionId, esAdmin, fecha, faltan }: 
   postulacionId: string;
   esAdmin: boolean;
   fecha: string | null;
-  /** Cuántos meses siguen faltando. Solo para decidir si vale la pena ofrecer
-   *  esto: sin nada que falte, es un dato que se puede cargar sin prisa. */
+  /** Cuántos meses siguen faltando. NO decide si esto se ve —eso se probó y
+   *  salió mal—: solo el TONO con que se ofrece. */
   faltan: number;
 }) {
   const router = useRouter();
@@ -60,19 +60,39 @@ export default function CierreCuenta({ postulacionId, esAdmin, fecha, faltan }: 
     );
   }
 
-  /* Sin registrar: solo se ofrece a administración, y solo cuando hay meses
-     faltando — que es cuando la pregunta «¿y estos papeles?» se hace sola.
-     Ofrecerlo siempre sería invitar a cerrar la serie de un fondo en marcha. */
-  if (!esAdmin || !faltan) return null;
+  /* ── SE OFRECE SIEMPRE, PERO NO SIEMPRE IGUAL ──
+     La primera versión solo lo enseñaba cuando faltaban meses, con el
+     argumento de que ahí la pregunta se hace sola. El resultado en pantalla
+     fue otro: PO-005 tenía el control y PO-003 no, siendo dos fondos con la
+     misma historia —el mismo estímulo, la misma asociación, la cuenta cerrada
+     los dos—. Un control que aparece y desaparece según un cálculo que no se
+     ve no se lee como criterio: se lee como que el sistema falla, y lo
+     siguiente es no fiarse de lo que sí muestra.
+     Que la serie esté completa no significa que la cuenta siga abierta. En
+     PO-003 la serie la cerró el PLAZO del acta, que es otra cosa: el dato de
+     cuándo se cerró la cuenta sigue faltando y sigue siendo verdad.
+     Así que se ofrece siempre a administración, y lo que cambia es el tono:
+     una pregunta cuando hay papeles en disputa, una línea discreta cuando no. */
+  if (!esAdmin) return null;
 
   if (!abierto) {
-    return (
+    return faltan ? (
       <div className="cierre-cta">
         <span style={{ color: "var(--dim)" }}>
           ¿Ya no existen esos estados porque el banco cerró la cuenta?
         </span>
         <button className="dato-btn" onClick={() => setAbierto(true)}>
           🏦 Registrar el cierre de la cuenta
+        </button>
+      </div>
+    ) : (
+      /* Sin nada en disputa, esto es un dato que se carga sin prisa: va en un
+         renglón pequeño, sin recuadro, para no competir con la lista. */
+      <div style={{ margin: "0 0 8px" }}>
+        <button className="dato-btn" style={{ fontSize: 11, color: "var(--dim)" }}
+          title="Si el banco ya cerró la cuenta del fondo, regístralo: deja escrito por qué la serie termina donde termina."
+          onClick={() => setAbierto(true)}>
+          🏦 registrar el cierre de la cuenta
         </button>
       </div>
     );
