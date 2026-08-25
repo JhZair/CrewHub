@@ -4,7 +4,7 @@ import Link from "@/components/Enlace";
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { ejecutando, plazoRendicion, rendicionVencida, rendicionSinPlazo } from "@/lib/fondos";
-import { faltanEstados, textoFaltan, seVigila, cierreDe } from "@/lib/estadosCuenta";
+import { faltanEstados, listaFaltan, seVigila, cierreDe } from "@/lib/estadosCuenta";
 import { hoyLima } from "@/lib/fechas";
 import { CATEGORIAS_OPC } from "@/lib/etapas";
 
@@ -193,14 +193,24 @@ export default async function FondosPage() {
           {!f.fecha_desembolso && !rendido && (
             <div style={{ color: "var(--yellow)", fontSize: 10.5, marginTop: 1 }}>sin desembolso</div>
           )}
-          {/* En rojo, como dentro de la ficha: el último mes que se exige es un
-              mes ya CERRADO, así que lo que falta lleva un mes de retraso. */}
+          {/* La MISMA burbuja roja que en la pestaña y en la cabecera de la
+              ficha —y el mismo número que suma la del menú—: el rastro se
+              sigue si los cuatro escalones se ven iguales. Antes esto era un
+              «⚠ faltan 10: …» y había que leerlo entero para saber que era un
+              pendiente; el ⚠ es el mismo glifo que usa media pantalla.
+              El conteo va SOLO en la burbuja y los meses al lado: decirlo dos
+              veces obliga a comprobar si coinciden cada vez que se mira. */}
           {(() => {
             const t = faltanEc.get(f.id);
-            const txt = t && textoFaltan(t);
-            return txt
-              ? <div style={{ color: "var(--red)", fontSize: 10.5, marginTop: 1 }}>⚠ {txt}</div>
-              : null;
+            const lista = t && listaFaltan(t);
+            if (!t || !lista) return null;
+            const txt = `${t.faltan.length} estado(s) de cuenta del banco sin cargar`;
+            return (
+              <div style={{ color: "var(--red)", fontSize: 10.5, marginTop: 3 }}>
+                <span className="b-alerta" title={txt} aria-label={txt}>{t.faltan.length}</span>
+                {" "}{lista}
+              </div>
+            );
           })()}
         </div>
       </Link>

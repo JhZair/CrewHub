@@ -516,7 +516,7 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
     ? { n: nFaltaEc, txt: `${nFaltaEc} estado(s) de cuenta del banco sin cargar` }
     : null;
   const burbujaEc = avisoEc && (
-    <span className="plg-alerta" title={avisoEc.txt} aria-label={avisoEc.txt}>{avisoEc.n}</span>
+    <span className="b-alerta" title={avisoEc.txt} aria-label={avisoEc.txt}>{avisoEc.n}</span>
   );
   const preItems = ((ent.presupuesto as any)?.items || []) as any[];
   const preCosto = preItems.reduce((s, i) => s + (i.cantidad || 0) * (i.costo_unit || 0), 0);

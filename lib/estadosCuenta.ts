@@ -119,13 +119,23 @@ export function faltanEstados(
   return { esperados, faltan, huecos, fuera };
 }
 
-/** El texto del resumen. Null cuando no hay nada que decir. */
-export function textoFaltan(f: FaltanEstados): string | null {
+/** QUÉ meses faltan, sin decir cuántos: «oct. 2025, nov. 2025 y 7 más».
+ *  Para cuando el cuántos ya lo dice una burbuja al lado — repetirlo obliga a
+ *  comprobar si los dos números coinciden cada vez que se mira. */
+export function listaFaltan(f: FaltanEstados): string | null {
   if (!f.faltan.length) return null;
   const lista = f.faltan.slice(0, 3).map(nombreMes).join(", ");
   const resto = f.faltan.length > 3 ? ` y ${f.faltan.length - 3} más` : "";
   const rotas = f.huecos.length ? ` · ${f.huecos.length} en medio de la serie` : "";
-  return `falta${f.faltan.length > 1 ? "n" : ""} ${f.faltan.length}: ${lista}${resto}${rotas}`;
+  return `${lista}${resto}${rotas}`;
+}
+
+/** El texto del resumen, con el conteo delante. Null cuando no hay nada que
+ *  decir. */
+export function textoFaltan(f: FaltanEstados): string | null {
+  const lista = listaFaltan(f);
+  if (!lista) return null;
+  return `falta${f.faltan.length > 1 ? "n" : ""} ${f.faltan.length}: ${lista}`;
 }
 
 /* ── EL MISMO CONTEO PARA LA BURBUJA Y PARA LA LISTA ──
