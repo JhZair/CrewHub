@@ -8347,9 +8347,16 @@ export async function cambiarFechaLimite(pubId: string, fecha: string) {
 }
 
 // Notificaciones del usuario (con vínculos de entidad) para la campanita global.
-// Trae las recientes de CADA tipo por separado (12 y 12), no 20 mezcladas: así
+// Trae las recientes de CADA tipo por separado (17 y 17), no 34 mezcladas: así
 // la pestaña "Del Bot" del desplegable no queda con las pocas que se colaron.
-const CAMP_LIM = 12;
+/* 17 y no 12: el desplegable cabía más de lo que traía. Con doce, la lista se
+   acababa antes de llegar al borde del panel y el «ver todas →» aparecía con
+   sitio de sobra encima — que se lee como «esto es todo lo que hay», no como
+   «hay más». Cinco más llenan el alto que ya estaba puesto.
+   Sigue siendo por TIPO (17 y 17, no 17 mezcladas): si se pidieran juntas, un
+   día ruidoso del bot dejaría la pestaña «Para ti» con las tres que se
+   colaron. */
+const CAMP_LIM = 17;
 export async function misNotificaciones() {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
