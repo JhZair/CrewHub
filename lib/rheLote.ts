@@ -52,6 +52,9 @@ export type DocRhe = {
 export type FilaRhe = {
   id: string;
   persona_id: string;
+  /** El nombre COMPLETO de la ficha. `persona` suele ser el alias —«KatyP»— y
+   *  contra el «PEREZ DIAZ KATY» del recibo el alias solo dice la mitad. */
+  nombre?: string | null;
   numero: string | null;
   monto: number;
   fecha: string;
@@ -373,4 +376,40 @@ export function repetidos(cruces: Cruce[]): Set<string> {
     if (c.filaId) veces.set(c.filaId, (veces.get(c.filaId) || 0) + 1);
   }
   return new Set([...veces.entries()].filter(([, n]) => n > 1).map(([id]) => id));
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ¿ES LA MISMA PERSONA? — solo para ORDENAR, nunca para decidir
+
+   El PDF dice «OROS CONDORI CARLOS ZENON» y la ficha dice «Carlos Oros». Un
+   humano lo ve en medio segundo; una comparación de cadenas no. Esto cuenta
+   cuántas palabras comparten —sin tildes, sin mayúsculas, sin palabras de dos
+   letras— y sirve para poner al candidato más probable ARRIBA del desplegable.
+
+   ⚠ No se usa para asignar nada. Los apellidos se repiten mucho en un mismo
+   equipo —aquí hay dos OROS— y «coincide en dos palabras» sería suficiente
+   para colgarle a alguien el recibo de su hermano. Ordenar una lista es una
+   ayuda; elegir por parecido es una apuesta.
+   ══════════════════════════════════════════════════════════════════════════ */
+const palabras = (s?: string | null) => String(s || "")
+  .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+  .toUpperCase().split(/[^A-Z]+/).filter(x => x.length > 2);
+
+export function parecido(a?: string | null, b?: string | null): number {
+  const A = palabras(a), B = palabras(b);
+  if (!A.length || !B.length) return 0;
+  const setA = new Set(A);
+  let pts = B.filter(x => setA.has(x)).length;
+  /* ── LOS ALIAS VAN PEGADOS ──
+     En este sistema la gente se llama «KatyP», «MichelM», «CarlosO»: el alias
+     es el nombre y la inicial del apellido, sin espacio. Comparando palabra
+     con palabra, «PEREZ DIAZ KATY» y «KATYP» no comparten NADA y el
+     desplegable ordenaba al azar justo en el caso más común.
+     Se cuenta también el prefijo: cuatro letras seguidas ya no son casualidad
+     entre los quince nombres de un fondo. Sigue siendo solo para ORDENAR. */
+  for (const x of B) {
+    if (setA.has(x)) continue;
+    if (A.some(y => (x.startsWith(y) || y.startsWith(x)) && Math.min(x.length, y.length) >= 4)) pts++;
+  }
+  return pts;
 }

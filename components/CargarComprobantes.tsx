@@ -5,7 +5,7 @@ import { textoDePdf } from "@/lib/leerPdf";
 import { subirAdjunto } from "@/lib/subirImagen";
 import { adjuntarComprobantesRhe, fijarRucPersona } from "@/app/actions";
 import {
-  leerRhe, cruzar, repetidos, claveNumero, soloDigitos,
+  leerRhe, cruzar, repetidos, claveNumero, soloDigitos, parecido,
   type Cruce, type FilaRhe,
 } from "@/lib/rheLote";
 
@@ -75,6 +75,20 @@ export default function CargarComprobantes({
     return m;
   }, [rucs, aprendidos]);
   const dobles = useMemo(() => repetidos(cruces), [cruces]);
+
+  /* Las personas que aparecen en los recibos de este fondo. El desplegable de
+     los RUC huérfanos se llena con estas y no con el directorio entero: el
+     emisor de un recibo de este fondo está aquí por definición, y ciento
+     cuarenta nombres para elegir entre dieciocho es esconder la aguja. */
+  const personasDelFondo = useMemo(() => {
+    const m = new Map<string, { alias: string; nombre: string }>();
+    for (const f of filas) {
+      if (!m.has(f.persona_id)) {
+        m.set(f.persona_id, { alias: f.persona || "—", nombre: f.nombre || f.persona || "" });
+      }
+    }
+    return [...m.entries()].map(([id, x]) => ({ id, ...x }));
+  }, [filas]);
 
   const rotulo = (f?: FilaRhe) => f
     ? `${f.persona || "—"} · ${f.numero || "sin número"} · S/ ${Number(f.monto).toFixed(2)}`
@@ -149,6 +163,14 @@ export default function CargarComprobantes({
 
   const listas = cruces.filter(c => c.filaId && !dobles.has(c.filaId!));
   const pisan = cruces.filter(c => c.filaId && porId.get(c.filaId!)?.url).length;
+  /* Cuántos apuntan a un recibo que YA tiene su papel. Soltar la carpeta
+     entera por segunda vez es lo normal —se baja de Drive de una vez— y sin
+     este número la pantalla parece decir que no se cargó nada, cuando lo que
+     pasa es lo contrario: ya estaban. */
+  const yaEstaban = cruces.filter(c => {
+    const id = c.filaId || c.sugerido;
+    return id && porId.get(id)?.url;
+  }).length;
 
   const guardar = async () => {
     setErr(""); setEstado("subiendo");
@@ -286,6 +308,12 @@ export default function CargarComprobantes({
                       ⚠ {rucsHuerfanos.size} RUC sin ficha ({[...rucsHuerfanos.values()].reduce((s, x) => s + x.n, 0)} archivo(s))
                     </span>
                   )}
+                  {yaEstaban > 0 && (
+                    <span style={{ color: "var(--teal)", fontSize: 12.5 }}
+                      title="Sus recibos ya tienen un comprobante colgado. No hace falta volver a subirlos: solo confírmalos si quieres reemplazar el que hay.">
+                      🗄 {yaEstaban} apunta(n) a recibos que ya tienen comprobante
+                    </span>
+                  )}
                   {pisan > 0 && (
                     <span style={{ color: "var(--yellow)", fontSize: 12.5 }}
                       title="Esos recibos ya tenían un comprobante colgado. Guardar lo reemplaza.">
@@ -293,6 +321,53 @@ export default function CargarComprobantes({
                     </span>
                   )}
                 </div>
+
+                {/* ── LOS RUC QUE FALTAN, TODOS JUNTOS ──
+                    Con dieciocho fichas sin RUC, NINGÚN archivo se coloca solo
+                    y por tanto ningún botón de fila llega a aparecer: el
+                    arreglo estaba encerrado detrás del problema que arregla.
+                    Aquí están los dieciocho, con el nombre que trae cada PDF y
+                    un desplegable de las personas de este fondo. Cada uno que
+                    se carga vuelve a cruzar la tanda entera al instante. */}
+                {esAdmin && rucsHuerfanos.size > 0 && (
+                  <div className="ruc-huerfanos">
+                    <div className="ruc-huerfanos-tit">
+                      ⚠ Estos RUC están en los PDF pero no en ninguna ficha. Cárgalos y
+                      los archivos se colocan solos — es el trabajo que de verdad falta.
+                    </div>
+                    {[...rucsHuerfanos.entries()].map(([ruc, info]) => {
+                      /* El más parecido primero, y dicho con un ↩ para que se
+                         vea que es una ayuda y no una respuesta. */
+                      const orden = [...personasDelFondo]
+                        /* Se compara contra el nombre COMPLETO y el alias: el
+                           recibo dice «PEREZ DIAZ KATY» y la lista «KatyP». */
+                        .map(p => ({ ...p, pts: parecido(info.emisor, `${p.nombre} ${p.alias}`) }))
+                        .sort((a, b) => b.pts - a.pts || a.alias.localeCompare(b.alias));
+                      return (
+                        <div key={ruc} className="ruc-fila">
+                          <b style={{ fontSize: 12 }}>{ruc}</b>
+                          <span style={{ color: "var(--muted)", fontSize: 12, flex: 1, minWidth: 140 }}>
+                            {info.emisor || "sin nombre en el PDF"}
+                          </span>
+                          <span style={{ color: "var(--dim)", fontSize: 11.5, whiteSpace: "nowrap" }}>
+                            {info.n} archivo(s)
+                          </span>
+                          <select className="cmp-lote-sel" defaultValue=""
+                            disabled={!!guardandoRuc}
+                            onChange={e => e.target.value && aprenderRuc(ruc, e.target.value)}>
+                            <option value="">¿de quién es? …</option>
+                            {orden.map(p => (
+                              <option key={p.id} value={p.id}>
+                                {p.pts > 0 ? "↩ " : ""}{p.alias}
+                                {p.nombre && p.nombre !== p.alias ? ` · ${p.nombre}` : ""}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
 
                 <div className="cmp-lote">
                   {cruces.map((c, i) => {
@@ -346,11 +421,11 @@ export default function CargarComprobantes({
                             Aparece solo cuando la fila ya está elegida: antes
                             de eso, sería preguntar a quién pertenece un dato
                             fiscal sin saberlo. */}
-                        {esAdmin && c.rucSinFicha && c.doc.ruc && c.filaId && (
+                        {esAdmin && c.rucSinFicha && c.doc.ruc && (c.filaId || c.sugerido) && (
                           <button className="dato-btn" disabled={estado === "subiendo" || !!guardandoRuc}
                             style={{ color: "var(--teal)", whiteSpace: "nowrap" }}
-                            title={`Guardar el RUC ${c.doc.ruc}${c.doc.emisor ? ` (${c.doc.emisor})` : ""} en la ficha de ${porId.get(c.filaId)?.persona || "esa persona"}. Los demás recibos suyos se colocarán solos.`}
-                            onClick={() => aprenderRuc(c.doc.ruc!, porId.get(c.filaId!)!.persona_id)}>
+                            title={`Guardar el RUC ${c.doc.ruc}${c.doc.emisor ? ` (${c.doc.emisor})` : ""} en la ficha de ${porId.get((c.filaId || c.sugerido)!)?.persona || "esa persona"}. Los demás recibos suyos se colocarán solos.`}
+                            onClick={() => aprenderRuc(c.doc.ruc!, porId.get((c.filaId || c.sugerido)!)!.persona_id)}>
                             {guardandoRuc === c.doc.ruc ? "…" : "＋ RUC a su ficha"}
                           </button>
                         )}

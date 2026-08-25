@@ -358,6 +358,10 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
   }
   const rheFondo = (rheCrudo || []).map((r: any) => ({
     ...r, persona: r.persona?.alias || r.persona?.nombre || "—",
+    /* El nombre completo va APARTE del alias: el recibo dice «PEREZ DIAZ KATY»
+       y la lista dice «KatyP». Para reconocer a quién pertenece un RUC hacen
+       falta los dos. */
+    personaNombre: r.persona?.nombre || null,
     /* PostgREST devuelve el embebido de uno-a-uno como objeto, pero hay
        versiones y relaciones donde llega como array de uno. Se aplana AQUÍ,
        una vez, para que la pantalla no tenga que saberlo: si lo leyera mal,

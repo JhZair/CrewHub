@@ -45,6 +45,8 @@ type RheFila = {
   id: string; persona_id: string; persona?: string;
   fecha: string; monto: number; numero: string | null; url: string | null;
   etapa: string | null; rubro_item: string | null; concepto?: string | null;
+  /** El nombre completo de la ficha, aparte del alias (ver lib/rheLote). */
+  personaNombre?: string | null;
   /** Si ya se pagó, el recibo deja de ser corregible por su titular (montos).
    *  Para el COMPROBANTE no manda esto, sino el cierre del expediente. */
   pagado_en?: string | null;
@@ -426,7 +428,7 @@ export default function RendicionFondo({
               filas={rhe.map(r => ({
                 id: r.id, persona_id: r.persona_id, numero: r.numero,
                 monto: Number(r.monto || 0), fecha: r.fecha, url: r.url,
-                persona: r.persona,
+                persona: r.persona, nombre: r.personaNombre,
               }))} />
           )}
           <button className="plg-todo" onClick={() => plegarTodos(true)}>⤢ Expandir todo</button>
