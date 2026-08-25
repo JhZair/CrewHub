@@ -22,8 +22,10 @@ import Link from "@/components/Enlace";
 export default function Volver() {
   return (
     <span style={{ display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-      <Link href="/" className="btn btn-ghost" title="Ir al inicio"
-        style={{ fontWeight: 800, color: "var(--violet)" }}>⬡</Link>
+      {/* El tamaño va en `.btn-logo` y no en estilos en línea: es la marca, se
+          toca poco y se mira siempre, y un `style=` aquí es un sitio donde
+          nadie va a buscarlo. */}
+      <Link href="/" className="btn btn-ghost btn-logo" title="Ir al inicio">⬡</Link>
       <NavIconos />
     </span>
   );
