@@ -46,7 +46,8 @@ const ENT_ICO = ICO_ENT;
 
 const VISTAS: [string, string][] = [
   ["mios", "🙋 Mis asuntos"], ["tarea", "✅ Tareas"], ["problema", "❗ Problemas"],
-  ["consulta", "❓ Consultas"], ["aviso", "📢 Avisos"], ["todo", "🌐 Todo"],
+  ["consulta", "❓ Consultas"], ["aviso", "📢 Avisos"], ["reunion", "🤝 Reuniones"],
+  ["todo", "🌐 Todo"],
 ];
 // Filtros menos usados → van al desplegable "⋯ Más"
 /* Sin «📎 Archivos»: el tipo se retiró del compositor, así que ese filtro solo
@@ -509,6 +510,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
     pago: U.filter((p: any) => p.tipo === "pago").length,
     idea: U.filter((p: any) => p.tipo === "idea").length,
     aviso: U.filter((p: any) => p.tipo === "aviso").length,
+    reunion: U.filter((p: any) => p.tipo === "reunion").length,
   };
 
   return (

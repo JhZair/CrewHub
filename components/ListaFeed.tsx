@@ -55,15 +55,40 @@ export default function ListaFeed({ items }: { items: CardFeed[] }) {
     setOcultos(esconder);
   }, [items]);
 
-  const vis = items.filter(it => !ocultos.has(it.id));
+  /* Se pueden volver a ver sin recargar. Es un interruptor de SESIÓN: no toca
+     el registro de localStorage, así que al recargar vuelven a esconderse.
+     Quien quiere verlos ahora, los ve ahora; quien no, no se entera. */
+  const [mostrarTodos, setMostrarTodos] = useState(false);
+  const vis = items.filter(it => mostrarTodos || !ocultos.has(it.id));
   const resVis = vis.filter(it => it.resuelto).map(it => it.id);
+  const nOcultos = mostrarTodos ? 0 : ocultos.size;
+
+  /* ── EL NÚMERO DE LA PESTAÑA CUENTA LO QUE ESTA LISTA ESCONDE ──
+     La pestaña dice «❓ Consultas 2» y aquí no salía nada: el contador lo hace
+     el servidor y el auto-ocultado vive en este navegador, así que el servidor
+     no puede saberlo. Un número que no cuadra con la lista deja de creerse —y
+     el mensaje «Nada en esta vista todavía» era además FALSO: sí había, y lo
+     había escondido esta lista.
+     No se arregla bajando el número (el servidor no puede) sino DICIENDO lo
+     que falta, que además es lo único accionable. */
+  const aviso = nOcultos > 0 && (
+    <div className="feed-ocultos">
+      <span>
+        🗄 {nOcultos} resuelto{nOcultos === 1 ? "" : "s"} que ya viste
+        {nOcultos === items.length ? " — no queda nada más en esta vista" : ""}
+      </span>
+      <button type="button" onClick={() => setMostrarTodos(true)}>Mostrar igual</button>
+    </div>
+  );
 
   return (
     <>
       {resVis.length > 0 && <BotonOcultarResueltos ids={resVis} />}
       {vis.length
-        ? vis.map(it => <Fragment key={it.id}>{it.card}</Fragment>)
-        : <div className="empty">Nada en esta vista todavía.</div>}
+        ? <>{vis.map(it => <Fragment key={it.id}>{it.card}</Fragment>)}{aviso}</>
+        : nOcultos > 0
+          ? aviso
+          : <div className="empty">Nada en esta vista todavía.</div>}
     </>
   );
 }
