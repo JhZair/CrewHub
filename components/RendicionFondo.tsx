@@ -210,13 +210,18 @@ export default function RendicionFondo({
                 {conComprobante === estados.length ? "✓" : "⚠"} {conComprobante}/{estados.length} compr.
               </span>
             )}
-            {/* Un mes que falta EN MEDIO de la serie va en rojo y no en ámbar:
-                que no esté el último significa que aún no lo han subido, pero
-                que no esté uno del medio significa que se dio por completa una
-                serie que no lo estaba. Son dos problemas distintos. */}
+            {/* ── FALTA ES ROJO, SIEMPRE ──
+                Estuvo en ámbar salvo cuando el hueco caía en medio de la serie.
+                El razonamiento era «que no esté el último solo quiere decir que
+                aún no lo han subido», y es falso por construcción: la serie que
+                se exige termina en el último mes CERRADO, así que cualquier mes
+                que falte lleva ya un mes entero de retraso. Ámbar decía «esto
+                puede esperar» de un papel que el acta (5.2.3) da por vencido.
+                La distinción entre cola y hueco no se pierde: sigue escrita en
+                el propio aviso —«N en medio de la serie»—, que es donde se
+                puede leer, en vez de en un matiz de color que nadie descifra. */}
             {avisoFaltan && (
-              <span style={{ marginLeft: 8, fontWeight: 600,
-                color: faltanEc.huecos.length ? "var(--red)" : "var(--yellow)" }}>
+              <span style={{ marginLeft: 8, fontWeight: 600, color: "var(--red)" }}>
                 ⚠ {avisoFaltan}
               </span>
             )}

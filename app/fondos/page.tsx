@@ -4,6 +4,8 @@ import Link from "@/components/Enlace";
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { ejecutando, plazoRendicion, rendicionVencida, rendicionSinPlazo } from "@/lib/fondos";
+import { faltanEstados, textoFaltan } from "@/lib/estadosCuenta";
+import { hoyLima } from "@/lib/fechas";
 import { CATEGORIAS_OPC } from "@/lib/etapas";
 
 export const metadata: Metadata = { title: "🎬 Fondos en ejecución" };
@@ -36,6 +38,29 @@ export default async function FondosPage() {
     .eq("estado", "ganadora");
 
   const fondos = (data || []) as any[];
+
+  /* ── LO QUE FALTA DEL BANCO, EN LA TARJETA ──
+     La burbuja del menú cuenta fondos con estados de cuenta sin cargar. Si al
+     llegar aquí no se ve CUÁL, el número no se puede cuadrar y deja de
+     creerse; y el aviso vivía dentro de la ficha, en una sub-sección plegada.
+     Una consulta por lote —no una por tarjeta—, y la cuenta la hace la misma
+     `faltanEstados` que usa la ficha, para que las tres pantallas no puedan
+     discrepar. */
+  const faltanEc = new Map<string, ReturnType<typeof faltanEstados>>();
+  {
+    const vivosIds = fondos.filter(f => ejecutando(f) && f.fecha_desembolso).map(f => f.id);
+    if (vivosIds.length) {
+      const { data: ec } = await supabase.from("estado_cuenta")
+        .select("postulacion_id,periodo").in("postulacion_id", vivosIds);
+      const porFondo = new Map<string, string[]>();
+      (ec || []).forEach((e: any) =>
+        porFondo.set(e.postulacion_id, [...(porFondo.get(e.postulacion_id) || []), e.periodo]));
+      const hoy = hoyLima();
+      fondos.filter(f => vivosIds.includes(f.id)).forEach(f =>
+        faltanEc.set(f.id, faltanEstados(
+          porFondo.get(f.id) || [], f.fecha_desembolso, hoy, f.fecha_rendicion_real)));
+    }
+  }
 
   /* ── LOS CARTELES, EN UNA CONSULTA ──
    * El póster del proyecto y el logo de la empresa viven en `entidad_media`,
@@ -158,6 +183,15 @@ export default async function FondosPage() {
           {!f.fecha_desembolso && !rendido && (
             <div style={{ color: "var(--yellow)", fontSize: 10.5, marginTop: 1 }}>sin desembolso</div>
           )}
+          {/* En rojo, como dentro de la ficha: el último mes que se exige es un
+              mes ya CERRADO, así que lo que falta lleva un mes de retraso. */}
+          {(() => {
+            const t = faltanEc.get(f.id);
+            const txt = t && textoFaltan(t);
+            return txt
+              ? <div style={{ color: "var(--red)", fontSize: 10.5, marginTop: 1 }}>⚠ {txt}</div>
+              : null;
+          })()}
         </div>
       </Link>
     );

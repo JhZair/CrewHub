@@ -10,6 +10,7 @@
    `NavIconos` sigue usando el TIPO, con `import type`, que se borra al
    compilar y no arrastra `next/headers` al navegador. */
 import { DIAS_AVISO } from "@/lib/obligaciones";
+import { resumenFaltantes } from "@/lib/estadosCuenta";
 
 /* ══════════════════════════════════════════════════════════════════════════
    LO QUE EL MENÚ NECESITA SABER — EN UN SOLO VIAJE
@@ -54,9 +55,18 @@ export type EstadoNav = {
    *  corriendo y la otra una tarea de esta semana. */
   vencidos: number;
   porVencer: number;
+  /** Fondos en ejecución a los que les falta algún estado de cuenta, y cuántos
+   *  meses faltan en total. Dos números porque contestan preguntas distintas:
+   *  uno dice a cuántas fichas hay que entrar, el otro cuánto papel hay que
+   *  pedirle al banco. La burbuja enseña el primero —es lo que la lista de
+   *  /fondos deja contar— y el segundo va en su título. */
+  fondosEc: number;
+  mesesEc: number;
 };
 
-const VACIO: EstadoNav = { casilla: 0, caja: false, vencidos: 0, porVencer: 0 };
+const VACIO: EstadoNav = {
+  casilla: 0, caja: false, vencidos: 0, porVencer: 0, fondosEc: 0, mesesEc: 0,
+};
 
 /* Recibe el cliente y el usuario YA resueltos. Antes verificaba la sesión por
    su cuenta, y al pasar a correr en paralelo con las otras tres del zócalo eso
@@ -85,14 +95,41 @@ export async function estadoNav(supabase: any, user: { id: string }): Promise<Es
       .eq("obligacion.activa", true)
       .eq("obligacion.entidad_tipo", "empresa");
 
-    const [perfil, sinLeer, venc, porV] = await Promise.all([
+    /* ── LOS ESTADOS DE CUENTA QUE FALTAN ──
+       Esto NO se puede contar con un `count`: lo que falta no está en ninguna
+       tabla. Se cuenta contra el calendario que exige el acta (5.2.3), o sea
+       comparando los meses cargados con los que deberían estar. Por eso viajan
+       filas y no números — pero son pocas: los fondos ganados son nueve y sus
+       estados, una por mes de ejecución. Las dos consultas caben de sobra por
+       debajo del techo de mil de PostgREST.
+       Van en la MISMA tanda que las demás: encadenarlas sería añadir dos idas y
+       vueltas a cada navegación de las diecinueve pantallas. */
+    const [perfil, sinLeer, venc, porV, fondos] = await Promise.all([
       supabase.from("perfiles").select("es_admin,es_finanzas")
         .eq("id", user.id).maybeSingle(),
       supabase.from("dafo_comunicaciones")
         .select("id", { count: "exact", head: true }).is("leido_en", null),
       periodos().lt("vence", hoy),
       periodos().gte("vence", hoy).lte("vence", tope),
+      supabase.from("postulaciones")
+        .select("id,fecha_desembolso,fecha_rendicion_real")
+        .eq("estado", "ganadora")
+        .is("fecha_rendicion_real", null)      // rendido = la serie terminó
+        .not("fecha_desembolso", "is", null),  // sin desembolso no hay serie
     ]);
+
+    const vivos = (fondos.data || []) as any[];
+    let ec = { fondos: 0, meses: 0, huecos: 0 };
+    if (vivos.length) {
+      const { data: estados } = await supabase.from("estado_cuenta")
+        .select("postulacion_id,periodo")
+        .in("postulacion_id", vivos.map(f => f.id));
+      const porFondo = new Map<string, string[]>();
+      for (const e of (estados || []) as any[]) {
+        porFondo.set(e.postulacion_id, [...(porFondo.get(e.postulacion_id) || []), e.periodo]);
+      }
+      ec = resumenFaltantes(vivos, porFondo, hoy);
+    }
 
     return {
       casilla: sinLeer.count || 0,
@@ -102,6 +139,8 @@ export async function estadoNav(supabase: any, user: { id: string }): Promise<Es
          sé», y un 0 rojo mandaría a buscar algo que no está. */
       vencidos: venc.count || 0,
       porVencer: porV.count || 0,
+      fondosEc: ec.fondos,
+      mesesEc: ec.meses,
     };
   } catch {
     return VACIO;

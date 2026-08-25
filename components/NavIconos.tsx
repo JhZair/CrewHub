@@ -91,7 +91,9 @@ export default function NavIconos() {
      misma llamada con el banco de trabajo y la campanita, que preguntaban lo
      suyo en el mismo instante. Cuatro POST encolados —4772 ms medidos— pasan a
      ser uno. Ver lib/zocalo.ts. */
-  const [nav, setNav] = useState<EstadoNav>({ casilla: 0, caja: false, vencidos: 0, porVencer: 0 });
+  const [nav, setNav] = useState<EstadoNav>({
+    casilla: 0, caja: false, vencidos: 0, porVencer: 0, fondosEc: 0, mesesEc: 0,
+  });
   useEffect(() => {
     let vivo = true;
     pedirZocalo(pathname).then(z => { if (vivo) setNav(z.nav); }).catch(() => {});
@@ -117,6 +119,20 @@ export default function NavIconos() {
     nav.porVencer > 0 && { k: "p", n: nav.porVencer, col: "var(--yellow)",
       txt: `${nav.porVencer} declaración(es) por vencer en los próximos días` },
   ].filter(Boolean) as { k: string; n: number; col: string; txt: string }[];
+
+  /* ── LOS ESTADOS DE CUENTA QUE FALTAN ──
+     El aviso existía solo DENTRO de la ficha del fondo, y encima dentro de una
+     sub-sección plegada: para verlo había que entrar al fondo correcto y abrir
+     la sección correcta, o sea sospechar antes de mirar. Lo que falta no ocupa
+     sitio en la pantalla; si además hay que ir a buscarlo, no avisa de nada.
+     La burbuja cuenta FONDOS —que es lo que la lista de /fondos deja contar—,
+     y el título dice cuántos meses son en total. En rojo: cualquier mes que
+     falte es un mes ya cerrado, o sea un papel vencido, no una tarea futura.
+     Estando en /fondos no se pinta: allí cada tarjeta lo dice por su cuenta. */
+  const fondosAviso = nav.fondosEc > 0 && pathname !== "/fondos"
+    ? { n: nav.fondosEc, col: "var(--red)",
+        txt: `${nav.fondosEc} fondo(s) con estados de cuenta sin cargar · ${nav.mesesEc} mes(es) en total` }
+    : null;
 
   /* Dónde estás. Cuenta la sección entera: la ficha, su historial y sus casos
      también son «estar ahí». */
@@ -171,6 +187,7 @@ export default function NavIconos() {
         {pathname !== "/obligaciones" && oblAvisos.map(a => (
           <Burbuja key={a.k} n={a.n} col={a.col} txt={a.txt} />
         ))}
+        {fondosAviso && <Burbuja n={fondosAviso.n} col={fondosAviso.col} txt={fondosAviso.txt} />}
       </button>
       {abierto && (
         <>
@@ -211,6 +228,9 @@ export default function NavIconos() {
                     {d.ruta === "/casilla" && casilla > 0 && (
                       <Burbuja n={casilla} col="var(--red)"
                         txt={`${casilla} correo(s) de DAFO sin leer`} />
+                    )}
+                    {d.ruta === "/fondos" && fondosAviso && (
+                      <Burbuja n={fondosAviso.n} col={fondosAviso.col} txt={fondosAviso.txt} />
                     )}
                     {d.ruta === "/obligaciones" && oblAvisos.length > 0 && (
                       /* Las dos juntas y pegadas al borde derecho: `nav-item`

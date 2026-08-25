@@ -1,6 +1,6 @@
 "use server";
 import { createClient } from "@/lib/supabase/server";
-import { estadoNav } from "@/app/nav-acciones";
+import { estadoNav, type EstadoNav } from "@/app/nav-acciones";
 import { revalidatePath } from "next/cache";
 import { entregableEq, porQueNoEq, enRonda, txtEstadoEq } from "@/lib/estadosEquipo";
 import { ESTADOS_COMP } from "@/lib/compromisos";
@@ -9666,7 +9666,10 @@ export async function enlazarCuentaPersona(cuentaId: string, personaId: string |
    navegación sin menú, sin banco y sin campanita a la vez.
    ══════════════════════════════════════════════════════════════════════════ */
 const ZOCALO_VACIO = {
-  nav: { casilla: 0, caja: false, vencidos: 0, porVencer: 0 },
+  /* Tipado como `EstadoNav` a propósito: era un objeto suelto, y al añadirle un
+     indicador al menú este quedaba sin él —el menú se dibujaba con la forma
+     vieja mientras no llegara la respuesta— sin que nada avisara. */
+  nav: { casilla: 0, caja: false, vencidos: 0, porVencer: 0, fondosEc: 0, mesesEc: 0 } as EstadoNav,
   banco: { error: "sin sesión" } as any,
   muro: { mensajes: [], yo: null } as any,
   notifs: { items: [], sinLeer: 0, sinLeerBot: 0, faltan: [] } as any,

@@ -100,3 +100,38 @@ export function textoFaltan(f: FaltanEstados): string | null {
   const rotas = f.huecos.length ? ` · ${f.huecos.length} en medio de la serie` : "";
   return `falta${f.faltan.length > 1 ? "n" : ""} ${f.faltan.length}: ${lista}${resto}${rotas}`;
 }
+
+/* ── EL MISMO CONTEO PARA LA BURBUJA Y PARA LA LISTA ──
+ *
+ * La burbuja del menú y la tarjeta de /fondos tienen que decir lo mismo que la
+ * sub-sección de dentro del fondo. Si el menú dice «1» y al entrar no se ve
+ * cuál, el número no se puede cuadrar y deja de creerse: eso es lo que mata a
+ * un indicador, no que sea alto.
+ *
+ * Se salta lo que no tiene serie que exigir —un fondo ya rendido, o uno sin
+ * desembolso cargado— por la misma razón que `mesesEsperados`: pedir meses de
+ * un fondo cerrado es pedir papeles que no existen, y sin desembolso no se
+ * sabe ni dónde empieza la cuenta. Esos dos casos ya se avisan por su lado.
+ */
+export type FondoEC = {
+  id: string;
+  estado?: string | null;
+  fecha_desembolso?: string | null;
+  fecha_rendicion_real?: string | null;
+};
+
+export function resumenFaltantes(
+  fondos: FondoEC[],
+  periodosPorFondo: Map<string, (string | null | undefined)[]>,
+  hoy: string,
+): { fondos: number; meses: number; huecos: number } {
+  let nFondos = 0, nMeses = 0, nHuecos = 0;
+  for (const f of fondos || []) {
+    if (!f?.id || !f.fecha_desembolso || f.fecha_rendicion_real) continue;
+    const r = faltanEstados(
+      periodosPorFondo.get(f.id) || [], f.fecha_desembolso, hoy, f.fecha_rendicion_real);
+    if (!r.faltan.length) continue;
+    nFondos++; nMeses += r.faltan.length; nHuecos += r.huecos.length;
+  }
+  return { fondos: nFondos, meses: nMeses, huecos: nHuecos };
+}
