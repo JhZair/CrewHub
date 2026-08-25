@@ -3312,6 +3312,19 @@ export async function quitarSuspension4ta(id: string, personaId: string) {
  * la interfaz le dejaba pulsar; no se toca aquí —cambiar permisos de paso es
  * como se acaban repartiendo llaves de más— pero queda dicho.
  */
+/* ── «NO EXISTE» NO ES «NO PUEDES» ──
+ * Se distinguía por el NOMBRE de la función dentro del mensaje, y ese nombre
+ * aparece igual en «permission denied for function adjuntar_comprobante_rhe».
+ * Con eso, un permiso mal dado se anunciaba como una migración sin correr: se
+ * manda a alguien a ejecutar un SQL que ya está ejecutado, y el problema real
+ * —el grant— no se mira. Los códigos sí distinguen: PGRST202 es «PostgREST no
+ * la encuentra» y 42883 es «no existe» de Postgres. */
+const faltaLaFuncion = (e: any) =>
+  e?.code === "PGRST202" || e?.code === "42883";
+
+const mensajeRpc = (e: any) =>
+  faltaLaFuncion(e) ? "Falta correr db/apoyo-rendicion.sql en la base." : e?.message || "No se pudo guardar.";
+
 export async function fijarComprobanteRhe(id: string, postulacionId: string, url: string) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -3329,13 +3342,7 @@ export async function fijarComprobanteRhe(id: string, postulacionId: string, url
   const { data, error } = await supabase.rpc("adjuntar_comprobante_rhe", {
     p_rhe: id, p_url: url,
   });
-  if (error) {
-    /* La función puede no existir todavía: la migración se corre a mano. Se
-       dice cuál, en vez de soltar el error de Postgres en crudo. */
-    return { error: /adjuntar_comprobante_rhe/.test(error.message)
-      ? "Falta correr db/apoyo-rendicion.sql en la base."
-      : error.message };
-  }
+  if (error) return { error: mensajeRpc(error) };
   if (data) return { error: String(data) };
   revalidatePath(`/fondo/${postulacionId}`);
   revalidatePath(`/entidad/postulacion/${postulacionId}`);
@@ -3378,8 +3385,10 @@ export async function adjuntarComprobantesRhe(
     });
     if (error) {
       /* Si falta la migración, falla el primero y fallarían los 58 iguales:
-         se corta y se dice una vez. */
-      if (/adjuntar_comprobante_rhe/.test(error.message)) {
+         se corta y se dice una vez. Un «permiso denegado» NO es eso: ahí la
+         función existe, y cortar la tanda mandaría a correr un SQL que ya está
+         corrido mientras se tira lo que sí habría entrado. */
+      if (faltaLaFuncion(error)) {
         return { error: "Falta correr db/apoyo-rendicion.sql en la base." };
       }
       fallos.push({ id: par.id, error: error.message });

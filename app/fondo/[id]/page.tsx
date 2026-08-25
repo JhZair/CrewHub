@@ -339,8 +339,31 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
     { tope_dj_pct: (topes as any)?.tope_dj_pct },
     { tope_dj_pct: convTope?.tope_dj_pct },
   );
-  const rheFondo = (rf.data || []).map((r: any) => ({
+  /* ── EL EMBED NO PUEDE COSTAR LA LISTA ENTERA ──
+     La consulta de recibos pide `liq:liquidaciones(cerrado_en)`. Si esa tabla
+     o su clave foránea no están —db/pagos-expediente.sql sin correr—,
+     PostgREST no devuelve «los recibos sin el cierre»: falla la consulta
+     COMPLETA, y con `rf.data` en null la rendición diría «sin pagos» con los
+     totales en cero. Un fondo con 58 recibos enseñándose vacío es peor que
+     cualquier error: se lee como un hecho.
+     Así que si falla, se vuelve a pedir sin el adorno. Lo que se pierde es
+     saber qué expedientes están cerrados —y el botón de adjuntar aparecerá de
+     más en esos—, pero la función de la base sigue diciendo que no. */
+  let rheCrudo: any[] | null = (rf.data as any) || null;
+  if (rf.error) {
+    const r2 = await supabase.from("rhe")
+      .select("id,persona_id,fecha,monto,numero,url,etapa,rubro_item,concepto,persona:personas(nombre,alias)")
+      .eq("postulacion_id", params.id).order("fecha", { ascending: false });
+    rheCrudo = (r2.data as any) || null;
+  }
+  const rheFondo = (rheCrudo || []).map((r: any) => ({
     ...r, persona: r.persona?.alias || r.persona?.nombre || "—",
+    /* PostgREST devuelve el embebido de uno-a-uno como objeto, pero hay
+       versiones y relaciones donde llega como array de uno. Se aplana AQUÍ,
+       una vez, para que la pantalla no tenga que saberlo: si lo leyera mal,
+       `cerrado` daría false siempre y el botón saldría en expedientes
+       cerrados. */
+    liq: Array.isArray(r.liq) ? (r.liq[0] || null) : (r.liq || null),
   }));
   const totComision = movBanco.filter((m: any) => m.categoria === "comision").reduce((s: number, m: any) => s + Number(m.monto || 0), 0);
 

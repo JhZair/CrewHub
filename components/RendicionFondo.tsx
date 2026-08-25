@@ -415,7 +415,12 @@ export default function RendicionFondo({
               o el apoyo nombrado—: a quien solo puede con las suyas, una tanda
               de 58 no le sirve, y el botón le prometería algo que la base le
               va a negar fila por fila. */}
-          {(esAdmin || esApoyo) && rheSinPdf > 0 && (
+          {/* Se pinta aunque no falte ninguno: cuando la tanda entra completa,
+              `rheSinPdf` cae a 0 y con la condición anterior el pop-up se
+              desmontaba llevándose el resumen antes de que nadie lo leyera —o
+              sea, el único caso en que todo salió bien era el único sin
+              confirmación. También sirve para reemplazar un escaneo malo. */}
+          {(esAdmin || esApoyo) && rhe.length > 0 && (
             <CargarComprobantes postulacionId={postulacionId} nombreFondo={empresa || null}
               rucs={rucs || {}}
               filas={rhe.map(r => ({

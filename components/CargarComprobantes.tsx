@@ -133,19 +133,26 @@ export default function CargarComprobantes({
     const res: any = await adjuntarComprobantesRhe(postulacionId, pares);
     setEstado("hecho");
     if (res?.error) { setErr(res.error); return; }
+    const rechazados = new Set<string>((res?.fallos || []).map((f: any) => f.id));
     for (const f of res?.fallos || []) {
       const c = cruces.find(x => x.filaId === f.id);
       fallos.push(`${c?.doc.archivo || "un archivo"}: ${f.error}`);
     }
     setResumen({ hechos: res?.hechos || 0, fallos });
-    /* Los que entraron se quitan de la lista: dejarlos invita a darle otra vez
-       al botón y volver a subir los mismos archivos. */
-    const ok = new Set((res?.fallos || []).map((f: any) => f.id));
-    setArchivos(p => p.filter((_, k) => {
-      const c = cruces[k];
-      return !c?.filaId || ok.has(c.filaId) || dobles.has(c.filaId);
-    }));
-    setCruces(p => p.filter(c => !c.filaId || ok.has(c.filaId) || dobles.has(c.filaId)));
+    /* ── SE QUITA LO QUE DE VERDAD ENTRÓ, Y NADA MÁS ──
+       La primera versión borraba de la tanda todo lo que tuviera fila. Los
+       archivos cuya SUBIDA falló también la tenían, así que desaparecían de la
+       lista como si se hubieran guardado: el motivo salía en el resumen, pero
+       la fila ya no estaba y no había forma de reintentar sin volver a soltar
+       el archivo. Ahora se calcula por ÍNDICE, con los mismos índices que se
+       usaron para subir —nadie pudo tocar la lista mientras tanto, la pantalla
+       estaba bloqueada— y sobrevive todo lo que no llegó a guardarse. */
+    const entraron = new Set<number>(
+      pendientes.filter(({ c }) => !rechazados.has(c.filaId!) && pares.some(x => x.id === c.filaId))
+        .map(({ i }) => i),
+    );
+    setArchivos(p => p.filter((_, k) => !entraron.has(k)));
+    setCruces(p => p.filter((_, k) => !entraron.has(k)));
     router.refresh();
   };
 
@@ -188,10 +195,16 @@ export default function CargarComprobantes({
               </li>
             </ol>
 
+            {/* ⚠ Durante la subida esta zona NO acepta nada, y el ✕ y los
+                desplegables tampoco. `archivos` y `cruces` van emparejados por
+                índice: soltar un archivo a mitad de la subida corre los índices
+                y a partir de ahí cada PDF se guarda en la fila del vecino. Es
+                un fallo que no da error y que no se ve hasta que lo abre DAFO. */}
             <div className={"imp-soltar" + (estado === "leyendo" ? " leyendo" : "")}
+              style={estado === "subiendo" ? { opacity: .45, pointerEvents: "none" } : undefined}
               onDragOver={e => e.preventDefault()}
-              onDrop={e => { e.preventDefault(); tomar(e.dataTransfer.files); }}
-              onClick={() => entrada.current?.click()}>
+              onDrop={e => { e.preventDefault(); if (estado !== "subiendo") tomar(e.dataTransfer.files); }}
+              onClick={() => { if (estado !== "subiendo") entrada.current?.click(); }}>
               <input ref={entrada} type="file" accept="application/pdf,.pdf,image/*" multiple
                 style={{ display: "none" }} onChange={e => tomar(e.target.files)} />
               {estado === "leyendo"
@@ -252,7 +265,7 @@ export default function CargarComprobantes({
                         {/* El desplegable con TODAS las filas: lo que la máquina
                             no supo decidir se decide aquí, sin salir. */}
                         <select value={c.filaId || ""} onChange={e => elegir(i, e.target.value)}
-                          className="cmp-lote-sel">
+                          disabled={estado === "subiendo"} className="cmp-lote-sel">
                           <option value="">— sin asignar —</option>
                           {filas.map(f => (
                             <option key={f.id} value={f.id}>
@@ -264,8 +277,21 @@ export default function CargarComprobantes({
                           {doble ? "Otro archivo apunta al mismo recibo" : c.motivo}
                           {pisa && !doble ? " · reemplaza el que ya había" : ""}
                         </span>
+                        {/* La sugerencia que la máquina no se atrevió a dar por
+                            buena. Aceptarla es un toque, y el toque lo da una
+                            persona: preelegirla habría hecho que una tanda de
+                            58 se guardara entera de un clic, suposiciones
+                            incluidas. */}
+                        {!c.filaId && c.sugerido && (
+                          <button className="dato-btn" disabled={estado === "subiendo"}
+                            title={`Usar ${rotulo(porId.get(c.sugerido))}`}
+                            style={{ color: "var(--yellow)", whiteSpace: "nowrap" }}
+                            onClick={() => elegir(i, c.sugerido!)}>
+                            ↩ usar {porId.get(c.sugerido)?.persona || "esa"}
+                          </button>
+                        )}
                         <button className="dato-btn" title="Quitar este archivo de la tanda"
-                          onClick={() => quitar(i)}>✕</button>
+                          disabled={estado === "subiendo"} onClick={() => quitar(i)}>✕</button>
                       </div>
                     );
                   })}

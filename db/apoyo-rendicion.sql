@@ -30,6 +30,12 @@
 -- sitio y el permiso es del tamaño exacto del trabajo.
 -- ══════════════════════════════════════════════════════════════════════════
 
+-- ⚠ TODO EN UNA TRANSACCIÓN, y no es adorno: `create or replace function`
+-- concede EXECUTE a PUBLIC en el momento de crearse, así que entre el CREATE y
+-- su REVOKE hay una ventana en la que la función es ejecutable por `anon`.
+-- Dentro de una transacción esa ventana no existe para nadie de fuera.
+begin;
+
 -- ── 1. QUIÉN APOYA EN QUÉ FONDO ──
 create table if not exists fondo_apoyo (
   postulacion_id uuid not null references postulaciones(id) on delete cascade,
@@ -130,15 +136,37 @@ begin
     return 'No tienes permiso para adjuntar el comprobante de este recibo.';
   end if;
 
+  -- ── QUITAR NO ES ADJUNTAR ──
+  -- Un texto vacío borraría el comprobante. Adjuntar suma un dato; quitar
+  -- destruye uno que alguien subió, y eso no es lo que esta puerta vino a
+  -- permitir. Reemplazar sí se puede —se pone otro, y el trigger de auditoría
+  -- deja escrito el cambio—; vaciar la casilla lo hace administración.
+  if nullif(btrim(coalesce(p_url, '')), '') is null then
+    if not public.es_finanzas() then
+      return 'Para quitar un comprobante ya cargado, habla con administración. Sí puedes reemplazarlo por otro.';
+    end if;
+    update rhe set url = null where id = p_rhe;
+    return null;
+  end if;
+
+  -- ── QUE SEA UN ENLACE, Y DE LOS NORMALES ──
+  -- Esto acaba dentro de un `href` y de un `iframe` en la ficha. Mientras solo
+  -- escribía administración el riesgo era teórico; ahora escriben el titular
+  -- de cada recibo y el apoyo del fondo, así que la forma se exige aquí en vez
+  -- de confiar en que el navegador de quien lo abra haga lo correcto.
+  if btrim(p_url) !~* '^https?://' then
+    return 'El comprobante tiene que ser un enlace http(s) o un archivo subido desde aquí.';
+  end if;
+
   -- UNA columna. Ni monto, ni fecha, ni persona: eso es la rendición, y no es
   -- lo que se estaba pidiendo poder hacer.
-  update rhe set url = nullif(btrim(coalesce(p_url, '')), '') where id = p_rhe;
+  update rhe set url = btrim(p_url) where id = p_rhe;
   return null;
 end $$;
 
--- ⚠ El orden importa: primero se quita a todo el mundo, después se da a quien
--- toca. Al revés, entre las dos sentencias la función queda abierta —y en una
--- base con `anon` publicado eso es una ventana, no un instante.
+-- Quitar a todo el mundo y dar solo a quien entra con sesión. Lo que protege
+-- de verdad es el `begin` de arriba: sin él la ventana peligrosa no está entre
+-- estas dos líneas, sino entre el CREATE de la función y su REVOKE.
 revoke execute on function public.adjuntar_comprobante_rhe(uuid, text) from public;
 revoke execute on function public.adjuntar_comprobante_rhe(uuid, text) from anon;
 grant  execute on function public.adjuntar_comprobante_rhe(uuid, text) to authenticated;
@@ -149,3 +177,5 @@ grant  execute on function public.es_apoyo_fondo(uuid) to authenticated;
 
 comment on function public.adjuntar_comprobante_rhe(uuid, text) is
   'Cuelga el PDF de un RHE escribiendo SOLO rhe.url. Devuelve null si fue bien, o el motivo del rechazo. Es la única puerta por la que un apoyo o el titular pueden tocar un recibo.';
+
+commit;

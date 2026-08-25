@@ -30,6 +30,12 @@ export default function ApoyosFondo({ postulacionId, apoyos, equipo, esAdmin }: 
 
   const puestos = equipo.filter(p => apoyos.includes(p.id));
   const libres = equipo.filter(p => !apoyos.includes(p.id));
+  /* ── LOS QUE YA NO ESTÁN EN EL CATÁLOGO ──
+     `equipo` son las cuentas ACTIVAS. Un apoyo cuya cuenta se desactiva
+     desaparecía del bloque —y con él su ✕—, pero su fila seguía viva en la
+     base y el permiso con ella: un permiso que no se ve no se puede quitar.
+     Se pintan igual, dichos por lo que son, para poder retirarlos. */
+  const fantasmas = apoyos.filter(id => !equipo.some(p => p.id === id));
 
   const mover = (usuarioId: string, sumar: boolean) => {
     setErr("");
@@ -40,7 +46,7 @@ export default function ApoyosFondo({ postulacionId, apoyos, equipo, esAdmin }: 
     });
   };
 
-  if (!esAdmin && !puestos.length) return null;
+  if (!esAdmin && !puestos.length && !fantasmas.length) return null;
 
   return (
     <div className="apoyos-fondo">
@@ -58,7 +64,17 @@ export default function ApoyosFondo({ postulacionId, apoyos, equipo, esAdmin }: 
           )}
         </span>
       ))}
-      {!puestos.length && (
+      {fantasmas.map(id => (
+        <span key={id} className="apoyos-chip" title="Su cuenta ya no está activa, pero el permiso sigue puesto">
+          <span style={{ color: "var(--yellow)" }}>⚠ cuenta desactivada</span>
+          {esAdmin && (
+            <button className="dato-btn" disabled={ocupado}
+              title="Quitarle el apoyo en este fondo"
+              onClick={() => mover(id, false)}>✕</button>
+          )}
+        </span>
+      ))}
+      {!puestos.length && !fantasmas.length && (
         <span style={{ color: "var(--dim)", fontSize: 12 }}>nadie por ahora</span>
       )}
       {esAdmin && (

@@ -38,6 +38,8 @@ export type DocRhe = {
   fecha?: string;
   /** true si el PDF no soltó texto (escaneo, foto). */
   ilegible?: boolean;
+  /** Cuántos recibos distintos parece traer dentro, si trae más de uno. */
+  varios?: number;
 };
 
 export type FilaRhe = {
@@ -54,8 +56,15 @@ export type Certeza = "seguro" | "probable" | "dudoso" | "ninguno";
 
 export type Cruce = {
   doc: DocRhe;
-  /** La fila propuesta, o null si no se pudo decidir. */
+  /** La fila que SE VA A GUARDAR. Null mientras nadie lo haya decidido.
+   *  ⚠ Lo dudoso nunca llega aquí: va en `sugerido`. */
   filaId: string | null;
+  /** La fila que la máquina cree, sin atreverse a afirmarlo. Se enseña con un
+   *  botón para aceptarla de un toque — la comodidad se conserva, pero el que
+   *  la acepta es una persona. Preelegirla habría bastado para que una tanda
+   *  de 58 se guardara entera de un clic, suposiciones incluidas, que es
+   *  exactamente lo que este archivo existe para evitar. */
+  sugerido?: string | null;
   certeza: Certeza;
   /** Por qué se propuso ESA fila, en palabras. Se enseña tal cual. */
   motivo: string;
@@ -69,7 +78,14 @@ export type Cruce = {
    tecleó la fila casi nunca los puso. */
 export function claveNumero(n?: string | null): string {
   if (!n) return "";
-  const m = String(n).toUpperCase().replace(/\s+/g, "").match(/([A-Z]\d{2,3})-?(\d{1,8})/);
+  /* ⚠ Serie = una letra y TRES dígitos, ni más ni menos. Con `\d{2,3}` y sin
+     anclas, «WhatsApp Image 2024-05-16» daba la clave «E202-4» y «Recibo
+     12345678» daba «O123-45678»: claves inventadas a partir del nombre del
+     archivo que luego podían coincidir con un número tecleado sin separador.
+     Una clave falsa es peor que ninguna — ninguna manda el archivo a la
+     columna de «asígnalo a mano», que es donde tiene que estar. */
+  const m = String(n).toUpperCase()
+    .match(/(?:^|[^A-Z0-9])([A-Z]\d{3})\s*-\s*(\d{1,8})(?!\d)/);
   if (!m) return "";
   return `${m[1]}-${String(Number(m[2]))}`;
 }
@@ -89,7 +105,16 @@ export function leerRhe(archivo: string, texto: string): DocRhe {
   /* El número. `E001` (electrónico) o `R001`/`B001` (los de papel antiguos).
      Se descartan los que vengan pegados a más dígitos para no comerse un
      código de barras. */
-  const mNum = t.match(/\b([EBR]\d{3})\s*-\s*(\d{1,8})\b/);
+  const nums = [...new Set((t.match(/\b[EBR]\d{3}\s*-\s*\d{1,8}\b/g) || [])
+    .map(x => claveNumero(x)))];
+  const mNum = nums[0];
+  /* ── UN ARCHIVO CON VARIOS RECIBOS NO SE CRUZA ──
+     La descarga agrupada de SOL mete varios RHE en un mismo PDF. Ahí el
+     importe mayor y el primer RUC pueden ser de recibos DISTINTOS, y esas dos
+     cifras son justo las que ascienden un cruce a «probable». El resultado
+     sería un emparejamiento con pinta de razonable construido con datos de dos
+     papeles diferentes: se para aquí y se dice. */
+  if (nums.length > 1) return { archivo, varios: nums.length };
 
   /* El RUC del EMISOR. En un RHE aparecen dos: el de quien cobra (persona
      natural, empieza en 10 o 15) y el del cliente (la asociación, 20). Se
@@ -113,7 +138,7 @@ export function leerRhe(archivo: string, texto: string): DocRhe {
 
   return {
     archivo,
-    clave: mNum ? claveNumero(`${mNum[1]}-${mNum[2]}`) : deNombre(archivo).clave,
+    clave: mNum || deNombre(archivo).clave,
     ruc: rucs[0],
     monto: montos.length ? Math.max(...montos) : undefined,
     fecha: mFec
@@ -144,6 +169,9 @@ export function cruzar(
   personaPorRuc: Map<string, string>,
 ): Cruce[] {
   const bruto = docs.map(doc => {
+    if (doc.varios) {
+      return nada(doc, `El archivo parece traer ${doc.varios} recibos dentro: sepáralos, o asígnalo a mano si sabes cuál es`);
+    }
     const persona = doc.ruc ? personaPorRuc.get(soloDigitos(doc.ruc)) : undefined;
     const cn = doc.clave || "";
     /* Se leyó un RUC y no corresponde a ninguna ficha. Es un hallazgo, no un
@@ -226,16 +254,30 @@ export function cruzar(
      Esas se sueltan: siguen ahí para elegirlas a mano, que es lo que convierte
      un accidente en una decisión. */
   const conUrl = new Set(filas.filter(f => f.url).map(f => f.id));
-  return bruto.map(c => (c.filaId && c.certeza !== "seguro" && conUrl.has(c.filaId))
-    ? { ...c, filaId: null, certeza: "dudoso" as const,
-        motivo: `${c.motivo} — pero ese recibo YA tiene comprobante: elígelo a mano si quieres reemplazarlo` }
-    : c);
+  const yaTiene = " — ojo: ese recibo YA tiene comprobante, confírmalo solo si quieres reemplazarlo";
+  return bruto.map(c => {
+    if (c.filaId && c.certeza !== "seguro" && conUrl.has(c.filaId)) {
+      return { ...c, filaId: null, sugerido: c.filaId, certeza: "dudoso" as const,
+               motivo: c.motivo + yaTiene };
+    }
+    /* La misma advertencia para lo que solo se SUGIERE. Se perdía: la
+       comprobación miraba `filaId`, y desde que lo dudoso dejó de preelegirse,
+       ninguna sugerencia la disparaba — justo las que más falta hacía avisar,
+       porque son las que alguien va a aceptar de un toque. */
+    if (!c.filaId && c.sugerido && conUrl.has(c.sugerido)) {
+      return { ...c, motivo: c.motivo + yaTiene };
+    }
+    return c;
+  });
 }
 
 const ok = (doc: DocRhe, f: FilaRhe, certeza: Certeza, motivo: string): Cruce =>
-  ({ doc, filaId: f.id, certeza, motivo, candidatos: [f.id] });
+  certeza === "dudoso"
+    ? { doc, filaId: null, sugerido: f.id, certeza, motivo, candidatos: [f.id] }
+    : { doc, filaId: f.id, certeza, motivo, candidatos: [f.id] };
 const dudoso = (doc: DocRhe, fs: FilaRhe[], motivo: string): Cruce =>
-  ({ doc, filaId: null, certeza: "dudoso", motivo, candidatos: fs.map(f => f.id) });
+  ({ doc, filaId: null, sugerido: fs.length === 1 ? fs[0].id : null,
+     certeza: "dudoso", motivo, candidatos: fs.map(f => f.id) });
 const nada = (doc: DocRhe, motivo: string): Cruce =>
   ({ doc, filaId: null, certeza: "ninguno", motivo, candidatos: [] });
 
