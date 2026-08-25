@@ -447,8 +447,14 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, perfilDe, apa
                              —«hueca = caso, rellena = actividad»— y una barra
                              sólida cruzándola por dentro deshacía esa
                              distinción justo en la fila donde más se mira. */
-                          ? <span className="ag-tl-vent"
-                              style={{ left: `${left}%`, width: `${Math.max(w - marca, 0.5)}%`, background: col }} />
+                          /* Enlace y no adorno: la barra es la parte de la
+                             fila que dice de cuándo a cuándo, y era lo único
+                             que no se podía tocar ni preguntar. El texto de
+                             ayuda estaba solo en dos marcas de ocho píxeles;
+                             ahora está en todo el tramo, que es donde el ojo
+                             ya está cuando se pregunta «¿esto qué es?». */
+                          ? <Link href={it.href} className="ag-tl-vent" title={tip}
+                              style={{ left: `${left}%`, width: `${Math.max(w - marca, 0.5)}%`, color: col }} />
                           : <span className="ag-tl-span"
                               style={{ left: `${left}%`, width: `${w}%`, borderColor: col }} />
                       )}

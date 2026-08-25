@@ -2567,7 +2567,15 @@ a.stat-card:hover{border-color:var(--border2)}
    —4 px frente a los 18 de la marca final— porque dice cuánto dura, no dónde
    hay que mirar: si compitiera con la marca, la fila tendría dos protagonistas
    y ninguno. Y llena, frente al punteado de la espera: sólido es dato. */
-.ag-tl-vent{position:absolute;top:11px;height:4px;border-radius:3px;opacity:.85;pointer-events:none}
+/* La barra ocupa TODO el alto de la fila aunque se vea de 4 px: lo que se
+   pinta es el `::before`, y el resto es zona de ayuda y de clic. Una barra de
+   4 px es imposible de apuntar con el ratón, y era justo la pieza que contesta
+   «¿de cuándo a cuándo?».
+   El color entra por `color` y se hereda con `currentColor`: así el inline
+   style trae un solo valor y no dos que se puedan separar. */
+.ag-tl-vent{position:absolute;top:4px;height:18px;display:block;box-sizing:border-box}
+.ag-tl-vent::before{content:"";position:absolute;left:0;right:0;top:7px;height:4px;
+  border-radius:3px;background:currentColor;opacity:.85}
 /* El triángulo de arranque. Hecho con bordes —el truco de siempre— para que
    herede el color por `border-left-color` y no haya que dibujar un SVG por
    fila. `margin-left:-1px` lo pega al nacimiento de la barra: sin eso queda un
@@ -2578,7 +2586,10 @@ a.stat-card:hover{border-color:var(--border2)}
   border-left:9px solid currentColor;pointer-events:none}
 /* La marca final, cuando la fila ya tiene triángulo y barra: más baja y menos
    redondeada, para que la fila tenga UN protagonista y no tres. */
-.ag-tl-bar-chica{top:6px;height:14px;border-radius:4px;min-width:5px}
+/* Diez de alto, como el triángulo del otro extremo: las dos puntas del tramo
+   pesan lo mismo y la barra las une sin escalones. Antes tenía catorce y se
+   leía como la marca gorda de siempre, un poco encogida. */
+.ag-tl-bar-chica{top:8px;height:10px;border-radius:3px;min-width:5px}
 .ag-tl-ini{position:absolute;top:9px;width:8px;height:8px;margin-left:-2px;border-radius:50%;opacity:.75;display:block;transition:filter .12s,opacity .12s}
 .ag-tl-ini:hover{opacity:1;filter:brightness(1.25)}
 /* Apagado lo que no es del foco (uno mismo o la persona filtrada); al pasar el
