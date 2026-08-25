@@ -107,6 +107,30 @@ export function claveNumero(n?: string | null): string {
 /** Solo dígitos, para comparar RUC y DNI escritos de mil maneras. */
 export const soloDigitos = (s?: string | null) => String(s || "").replace(/\D/g, "");
 
+/* ══════════════════════════════════════════════════════════════════════════
+   EL RUC DE UNA PERSONA NATURAL ES SU DNI
+
+   10404559821 = «10» + 40455982 (el DNI) + «1» (dígito de control). No es una
+   coincidencia ni una convención local: así los construye SUNAT.
+
+   Esto importa mucho aquí. Las fichas del equipo se cargaron con el DNI —que
+   es lo que uno pide para un contrato—, y los recibos traen el RUC. Comparando
+   las cifras enteras no coinciden NUNCA, y dieciocho personas aparecían como
+   «no está en ninguna ficha» teniendo su ficha delante, con el mismo número
+   escrito de otra forma. Un dato que el sistema ya tenía y no reconocía.
+   ══════════════════════════════════════════════════════════════════════════ */
+export function dniDeRuc(ruc?: string | null): string {
+  const d = soloDigitos(ruc);
+  return /^10\d{9}$/.test(d) ? d.slice(2, 10) : "";
+}
+
+/** Busca por RUC y, si no está, por el DNI que ese RUC lleva dentro. */
+export const personaDe = (mapa: Map<string, string>, ruc?: string | null) => {
+  const d = soloDigitos(ruc);
+  if (!d) return undefined;
+  return mapa.get(d) || (dniDeRuc(d) ? mapa.get(dniDeRuc(d)) : undefined);
+};
+
 /* ── LEER UN RHE ──
    Se busca por patrón y no por posición: el PDF de SUNAT ha cambiado de
    maqueta varias veces y una lectura «la línea 7, columna 2» se rompe con el
@@ -232,7 +256,7 @@ export function cruzar(
     if (doc.varios) {
       return nada(doc, `El archivo parece traer ${doc.varios} recibos dentro: sepáralos, o asígnalo a mano si sabes cuál es`);
     }
-    const persona = doc.ruc ? personaPorRuc.get(soloDigitos(doc.ruc)) : undefined;
+    const persona = personaDe(personaPorRuc, doc.ruc);
     const cn = doc.clave || "";
     /* Se leyó un RUC y no corresponde a ninguna ficha. Es un hallazgo, no un
        fracaso: casi siempre significa que a esa persona le falta el RUC en su
@@ -334,7 +358,7 @@ export function cruzar(
   /* La marca viaja fuera del `motivo` para que la pantalla pueda contar
      cuántos archivos se arreglarían cargando un RUC, y ofrecer hacerlo ahí. */
   const sinFicha = new Set(docs
-    .filter(d => d.ruc && !personaPorRuc.get(soloDigitos(d.ruc)))
+    .filter(d => d.ruc && !personaDe(personaPorRuc, d.ruc))
     .map(d => d.archivo));
   const conUrl = new Set(filas.filter(f => f.url).map(f => f.id));
   const yaTiene = " — ojo: ese recibo YA tiene comprobante, confírmalo solo si quieres reemplazarlo";
