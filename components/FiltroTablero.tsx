@@ -16,7 +16,7 @@ import MiniSelect from "@/components/MiniSelect";
  * mismo. Cambia el suyo y conserva el resto. Es la única forma de que sumar
  * un eje nuevo no obligue a acordarse de los otros seis.
  */
-export default function FiltroTablero({ ico, titulo, items, param, actual, vivos, ancho, vacio = "" }: {
+export default function FiltroTablero({ ico, titulo, items, param, actual, vivos, ancho, vacio = "", extra = [] }: {
   ico: string;
   /** Lo que dice cuando no hay nada puesto: «Proyecto», «Etiqueta»… */
   titulo: string;
@@ -27,6 +27,10 @@ export default function FiltroTablero({ ico, titulo, items, param, actual, vivos
   /** Los filtros vivos, para preservarlos. */
   vivos: Record<string, string>;
   ancho?: number;
+  /** Opciones que NO son items del catálogo pero contestan la misma pregunta
+   *  —«— Sin asignar —» en el eje persona—. Van justo debajo de «Todas», que
+   *  es donde se buscan: primero lo general, luego lo raro, luego la lista. */
+  extra?: [string, string][];
   /** Qué valor significa «todas». Vacío para casi todos —quitar el parámetro
    *  es no filtrar— pero el eje PERSONA necesita decirlo con una palabra
    *  (`todos`): ahí la URL sin `p` significa «recién llego», y el sistema
@@ -43,9 +47,11 @@ export default function FiltroTablero({ ico, titulo, items, param, actual, vivos
     router.push(`/tablero${s ? "?" + s : ""}`);
   };
 
+  const extraPuesta = extra.find(([val]) => val === actual);
   const puesto = items.find(i => i.id === actual);
   const opciones: [string, string][] = [
     [vacio, `Todas · ${titulo}`],
+    ...extra,
     ...items.map(i => [i.id, i.nombre] as [string, string]),
   ];
 
@@ -54,8 +60,8 @@ export default function FiltroTablero({ ico, titulo, items, param, actual, vivos
       /* El botón dice QUÉ hay puesto, no el nombre del eje: con seis
          desplegables seguidos, «Proyecto ▾» seis veces no informa de nada.
          Puesto = el nombre. Vacío = el eje, apagado. */
-      etiqueta={`${ico} ${puesto ? puesto.nombre : titulo}`}
-      buttonClass={`filtro-tb${puesto ? " puesto" : ""}`}
+      etiqueta={`${ico} ${extraPuesta ? extraPuesta[1] : puesto ? puesto.nombre : titulo}`}
+      buttonClass={`filtro-tb${puesto || extraPuesta ? " puesto" : ""}`}
       buttonStyle={ancho ? { maxWidth: ancho } : undefined} />
   );
 }

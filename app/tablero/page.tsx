@@ -95,6 +95,15 @@ export default async function TableroPage({ searchParams }: {
      le devolvía «Mis asuntos»: era IMPOSIBLE ver el tablero entero: el botón
      que existe justo para eso te regresaba a lo tuyo, sin decir nada. */
   const P_TODOS = "todos";
+  /* ── SIN ASIGNAR ──
+     Un caso sin responsable no se veía en NINGUNA pantalla: el eje persona
+     solo sabía preguntar «¿de quién es?», y la respuesta «de nadie» no estaba
+     entre las opciones. Es justo el caso que más merece salir solo: nadie lo
+     está mirando por definición, así que no hay quien lo eche de menos.
+     Va como un valor del MISMO eje y no como un chip aparte: «de quién es» es
+     una pregunta con una respuesta, y dos controles para ella acabarían
+     contradiciéndose (persona=Katy + sin asignar = ¿qué?). */
+  const P_NADIE = "nadie";
   const enLimpio = !Object.entries(F).some(([k, x]) => k !== "modo" && k !== "arch" && x);
   /* El default depende de la VISTA:
      · vivo    → «Mis asuntos» (tu trabajo de hoy)
@@ -117,7 +126,8 @@ export default async function TableroPage({ searchParams }: {
   };
 
   // Persona en foco. `P_TODOS` es «el equipo entero», dicho a propósito.
-  const uidFoco = pFiltro === P_TODOS ? null : (pFiltro || null);
+  const uidFoco = (pFiltro === P_TODOS || pFiltro === P_NADIE) ? null : (pFiltro || null);
+  const sinAsignar = pFiltro === P_NADIE;
   /* FILTROS POR VÍNCULO — la intersección.
      Un caso pasa si tiene TODOS los elegidos: «🏷 Subsanaciones DAFO» +
      «📁 Pampacucho» es lo que cuelga de las dos cosas, no de cualquiera. Y
@@ -276,6 +286,10 @@ export default async function TableroPage({ searchParams }: {
     q = q.or(cond.join(","));
   }
   if (v) q = q.eq("tipo", v);
+  /* En la CONSULTA y no en memoria: el tablero trae como mucho `TOPE` filas
+     ordenadas por fecha, así que filtrar después dejaría fuera lo viejo sin
+     responsable — que es precisamente lo que se viene a buscar aquí. */
+  if (sinAsignar) q = q.is("responsable", null);
 
   // ══ TANDA 3 ══ los casos del tablero.
   const { data: pubsCrudo } = await q;
@@ -395,7 +409,7 @@ export default async function TableroPage({ searchParams }: {
   // Los desplegables ya se llenaron en la tanda 3, junto a los casos.
   /* Hay filtro si algo recorta el tablero. `p=todos` NO recorta: es la
      ausencia de filtro dicha en voz alta. */
-  const hayFiltro = !!(v || ejesPuestos.length || uidFoco);
+  const hayFiltro = !!(v || ejesPuestos.length || uidFoco || sinAsignar);
   // La URL de «sin nada»: los siete ejes fuera y el «todo el equipo» explícito.
   // `modo` y `arch` se preservan: limpiar filtros no debe sacarte de la vista.
   const urlLimpia = (() => {
@@ -482,7 +496,10 @@ export default async function TableroPage({ searchParams }: {
             El «arrastra a otra columna para cambiar el estado» se fue con
             ellos: se aprende una vez y ocupaba media fila para siempre. Lo
             dice el `title` del kanban, que es donde se pregunta. */}
+        {/* «Sin asignar» va DENTRO del eje persona, arriba del equipo: es una
+            respuesta a «¿de quién es?», no otra pregunta. */}
         <FiltroTablero ico="👤" titulo="Persona" param="p" vacio={P_TODOS}
+          extra={[[P_NADIE, "— Sin asignar —"]]}
           actual={pFiltro} items={equipoPerf || []} vivos={vivos} ancho={150} />
         <Link href="/pulso" className="vtab"
           title="Pulso semanal del equipo — quién cerró qué, semana a semana">

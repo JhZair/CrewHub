@@ -36,6 +36,15 @@ const DESTINOS: Destino[] = [
   { ruta: "/obligaciones", ico: "📅", txt: "obligaciones", grupo: "plata" },
   { ruta: "/comprobantes", ico: "🧾", txt: "comprobantes", grupo: "plata" },
   { ruta: "/caja", ico: "💰", txt: "caja", grupo: "plata", soloFinanzas: true },
+  /* ── EL TABLERO, EN EL MENÚ ──
+     Es la pantalla más usada del sistema y la única a la que había que llegar
+     de memoria: solo se entraba por el menú del avatar y por un botón de
+     /pulso. Una pantalla que no está en el menú no existe para el equipo —
+     existe para quien la construyó y para quien se acuerda.
+     Va primero de «el día a día» y antes que la agenda: la agenda contesta
+     «¿cuándo?» y el tablero «¿qué hay que hacer?», que es la pregunta con la
+     que se abre el día. */
+  { ruta: "/tablero", ico: "🗂", txt: "tablero de casos", grupo: "dia" },
   { ruta: "/agenda", ico: "📆", txt: "agenda", grupo: "dia" },
   { ruta: "/pulso", ico: "📊", txt: "pulso del equipo", grupo: "dia" },
   { ruta: "/llaves", ico: "🔑", txt: "llaves", grupo: "dia" },
