@@ -8347,16 +8347,21 @@ export async function cambiarFechaLimite(pubId: string, fecha: string) {
 }
 
 // Notificaciones del usuario (con vínculos de entidad) para la campanita global.
-// Trae las recientes de CADA tipo por separado (17 y 17), no 34 mezcladas: así
+// Trae las recientes de CADA tipo por separado (25 y 25), no 50 mezcladas: así
 // la pestaña "Del Bot" del desplegable no queda con las pocas que se colaron.
-/* 17 y no 12: el desplegable cabía más de lo que traía. Con doce, la lista se
-   acababa antes de llegar al borde del panel y el «ver todas →» aparecía con
-   sitio de sobra encima — que se lee como «esto es todo lo que hay», no como
-   «hay más». Cinco más llenan el alto que ya estaba puesto.
-   Sigue siendo por TIPO (17 y 17, no 17 mezcladas): si se pidieran juntas, un
+/* ── ESTE NÚMERO NO ES «CUÁNTAS SE VEN» ──
+   Son FILAS pedidas, y la campanita las AGRUPA antes de pintarlas: tres
+   comentarios en el mismo caso son un solo renglón con un «3». Por eso con
+   doce filas se veían once cosas, y subirlo a diecisiete habría dado unas
+   doce o trece. La cuenta no es lineal y depende del día: una mañana en la
+   que todos comentan el mismo caso encoge mucho más que una repartida.
+   Veinticinco por pestaña deja el panel lleno incluso agrupando fuerte, y el
+   panel hace scroll (70vh), así que sobrar no estorba — faltar sí: el «ver
+   todas →» con sitio de sobra encima se lee como «esto es todo lo que hay».
+   Sigue siendo por TIPO (25 y 25, no 50 mezcladas): si se pidieran juntas, un
    día ruidoso del bot dejaría la pestaña «Para ti» con las tres que se
    colaron. */
-const CAMP_LIM = 17;
+const CAMP_LIM = 25;
 export async function misNotificaciones() {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();

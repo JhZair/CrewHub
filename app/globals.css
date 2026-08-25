@@ -2330,6 +2330,14 @@ a.stat-card:hover{border-color:var(--border2)}
 .camp-menu{position:absolute;top:calc(100% + 8px);right:0;background:#191928;border:1px solid var(--border2);border-radius:14px;padding:8px;width:min(400px, calc(100vw - 32px));z-index:70;box-shadow:0 14px 44px rgba(0,0,0,.65)}
 .camp-item{position:relative;display:block;padding:9px 26px 9px 11px;border-radius:9px;font-size:12.5px;color:#c6c6da;line-height:1.45}
 .camp-item:hover{background:#22223a}
+/* ── UNA LÍNEA ENTRE AVISOS ──
+   Cada renglón tiene dos líneas —el título y el «quién hizo qué»— y sin
+   separación el subtítulo de uno se leía pegado al título del siguiente: la
+   lista se veía como un párrafo largo en vez de como cosas distintas.
+   `+` y no `border-bottom`: así la primera no lleva raya arriba ni la última
+   una raya suelta antes del «ver todas →». Y el radio del hover se respeta,
+   porque la línea es del elemento y no del contenedor. */
+.camp-item + .camp-item{border-top:1px solid var(--border)}
 .camp-item .camp-tt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
 .camp-item .cuando{color:var(--dim);font-size:10.5px;margin-top:3px;display:flex;flex-wrap:wrap;align-items:center;gap:5px}
 /* No leídas: negrita + tinte + punto violeta a la derecha */
