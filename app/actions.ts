@@ -14,6 +14,10 @@ import { ETAPAS_PROY_VALIDAS } from "@/lib/etapasProyecto";
 import { nrmQ } from "@/lib/quechua";
 import { procesarSunatEmpresa, correrRondaSunat, consultarRucApi } from "@/lib/sunat";
 import { rucDePersona } from "@/lib/ruc";
+/* La MISMA normalización de números de recibo que usa el cruce del lote. Dos
+   formas de normalizar entre el cliente y el servidor es tener un cinturón
+   más flojo que los tirantes. */
+import { claveNumero } from "@/lib/rheLote";
 import { TOKEN } from "@/lib/puertas";
 import { BOT, sinBot } from "@/lib/personas";
 import { CAMPOS_TABLA } from "@/lib/tablas-expediente";
@@ -3424,44 +3428,71 @@ export async function adjuntarComprobantesRhe(
  * repetido se DEVUELVE dicho, no se ignora en silencio.
  */
 export async function crearRhesDeLote(postulacionId: string, items: {
+  /** Referencia del cliente para esta fila. Vuelve en la respuesta para que la
+   *  pantalla sepa CUÁL entró y cuál no, sin adivinarlo por el nombre del
+   *  archivo — que se repite. */
+  ref: number;
   personaId: string; numero: string; fecha: string; monto: number;
-  concepto?: string; url: string;
+  retencion: number; concepto?: string; url: string; archivo?: string;
 }[]) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
-  const { data: perfil } = await supabase.from("perfiles")
+  const { data: perfil, error: ePerfil } = await supabase.from("perfiles")
     .select("es_admin,es_finanzas").eq("id", user.id).maybeSingle();
+  /* Un fallo de red al leer el perfil no es «no eres admin». Decirlo así manda
+     a pedir permisos que ya se tienen. */
+  if (ePerfil) return { error: "No se pudo comprobar tu permiso: " + ePerfil.message };
   if (!perfil?.es_admin && !perfil?.es_finanzas) {
     return { error: "Solo administración registra recibos. Tú sí puedes adjuntar el PDF de los que ya están." };
   }
   if (!Array.isArray(items) || !items.length) return { error: "No llegó ningún recibo." };
   if (items.length > 300) return { error: "Demasiados de una vez: sube por tandas de 300." };
 
-  /* Los que YA existen en este fondo, en un solo viaje. Preguntar uno por uno
-     serían trescientas idas y vueltas para no crear duplicados. */
+  /* ── EL DUPLICADO SE BUSCA EN TODA LA TABLA, NO EN ESTE FONDO ──
+     La primera versión miraba solo los recibos de esta postulación. Un RHE es
+     único por EMISOR ante SUNAT, no por fondo: el mismo recibo registrado en
+     otro fondo —o sin fondo, que `postulacion_id` lo permite— era invisible y
+     se creaba otra vez. Y no es solo un renglón repetido en la rendición: la
+     tabla `rhe` es la que acumula el tope anual de 4ta de cada persona, así
+     que un duplicado le mueve a alguien su límite tributario. */
+  const personas = [...new Set(items.map(i => i.personaId).filter(Boolean))];
   const { data: yaHay, error: eLee } = await supabase.from("rhe")
-    .select("persona_id,numero").eq("postulacion_id", postulacionId);
+    .select("persona_id,numero,postulacion_id").in("persona_id", personas);
   if (eLee) return { error: eLee.message };
-  const clave = (p: string, n: string) =>
-    `${p}|${String(n || "").toUpperCase().replace(/\s+/g, "")}`;
-  const existen = new Set((yaHay || []).map((r: any) => clave(r.persona_id, r.numero)));
+  /* La MISMA normalización que usa el cruce del cliente (lib/rheLote): sin
+     ella, «E001-024» tecleado a mano no chocaba con el «E001-24» del PDF y el
+     último cinturón era más flojo que el primero. */
+  const clave = (p: string, n?: string | null) => `${p}|${claveNumero(n) || String(n || "").trim().toUpperCase()}`;
+  const existen = new Map<string, string | null>();
+  for (const r of (yaHay || []) as any[]) existen.set(clave(r.persona_id, r.numero), r.postulacion_id);
 
-  let creados = 0;
-  const fallos: { archivo?: string; error: string }[] = [];
+  const hoy = new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 10);
+  const hechos: number[] = [];
+  const fallos: { ref: number; archivo?: string; error: string }[] = [];
+  const falla = (it: any, error: string) => fallos.push({ ref: it.ref, archivo: it.archivo, error });
+
   for (const it of items) {
     const k = clave(it.personaId, it.numero);
     if (existen.has(k)) {
-      fallos.push({ error: `El recibo ${it.numero} de esa persona ya estaba registrado en este fondo.` });
+      const donde = existen.get(k);
+      falla(it, donde && donde !== postulacionId
+        ? `El recibo ${it.numero} de esa persona ya está registrado en OTRO fondo.`
+        : `El recibo ${it.numero} de esa persona ya estaba registrado.`);
       continue;
     }
     if (!it.personaId || !it.numero || !(it.monto > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(it.fecha)) {
-      fallos.push({ error: `${it.numero || "un recibo"}: le faltan datos para registrarlo.` });
+      falla(it, `${it.numero || "un recibo"}: le faltan datos para registrarlo.`);
       continue;
     }
+    /* Un recibo con fecha futura es siempre un error de lectura: se paran aquí
+       en vez de dejar una fila que va a descuadrar el informe por etapas. */
+    if (it.fecha > hoy) { falla(it, `${it.numero}: la fecha (${it.fecha}) es futura. Revísalo a mano.`); continue; }
+    if (!(it.retencion >= 0) || it.retencion > it.monto) {
+      falla(it, `${it.numero}: la retención leída no cuadra con el importe.`); continue;
+    }
     if (!/^https?:\/\/\S+$/.test(String(it.url || "").trim())) {
-      fallos.push({ error: `${it.numero}: el PDF no se subió.` });
-      continue;
+      falla(it, `${it.numero}: el PDF no se subió.`); continue;
     }
     const { error } = await supabase.from("rhe").insert({
       persona_id: it.personaId,
@@ -3469,28 +3500,26 @@ export async function crearRhesDeLote(postulacionId: string, items: {
       numero: it.numero,
       fecha: it.fecha,
       monto: it.monto,
-      /* La retención en cero: los recibos del fondo van sin retención —el 8 %
-         solo aplica pasado el tope anual— y el propio PDF lo dice. Si alguno
-         la llevara, se corrige en su fila; inventarla aquí sería peor. */
-      retencion: 0,
+      /* Leída del papel, no supuesta: ver lib/rheLote. */
+      retencion: it.retencion,
       concepto: it.concepto || null,
       url: it.url.trim(),
       creado_por: user.id,
     });
-    if (error) { fallos.push({ archivo: it.numero, error: error.message }); continue; }
-    existen.add(k);      // por si la misma tanda trae el mismo dos veces
-    creados++;
+    if (error) { falla(it, error.message); continue; }
+    existen.set(k, postulacionId);   // la misma tanda puede traerlo dos veces
+    hechos.push(it.ref);
   }
 
-  if (creados) {
+  if (hechos.length) {
     await supabase.from("actividad").insert({
       entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "dato",
-      detalle: { mensaje: `registró ${creados} recibo(s) por honorarios desde sus PDF` },
+      detalle: { mensaje: `registró ${hechos.length} recibo(s) por honorarios desde sus PDF` },
     });
   }
   revalidatePath(`/fondo/${postulacionId}`);
   revalidatePath(`/entidad/postulacion/${postulacionId}`);
-  return { creados, fallos };
+  return { hechos, fallos };
 }
 
 /* ── LA CUENTA DEL FONDO SE CERRÓ ──

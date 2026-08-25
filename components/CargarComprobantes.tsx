@@ -118,8 +118,12 @@ export default function CargarComprobantes({
   };
 
   const elegir = (i: number, filaId: string) => {
+    /* `tocado` deja dicho que aquí decidió una persona. Sin esa marca, quitar
+       la fila a mano —o sea, «esto no lo toques»— mandaba el archivo a la
+       lista de altas, ya marcado: la señal de prudencia se convertía en la
+       orden de registrar un gasto nuevo. */
     setCruces(p => p.map((c, k) => k === i ? {
-      ...c, filaId: filaId || null,
+      ...c, filaId: filaId || null, tocado: true, sugerido: null,
       certeza: filaId ? "seguro" : "ninguno",
       motivo: filaId ? "Elegido a mano" : "Sin asignar",
     } : c));
@@ -165,43 +169,96 @@ export default function CargarComprobantes({
      El PDF trae de quién es, número, fecha, importe y concepto: todo lo que
      una fila necesita. En un fondo que empieza esto es el 100 % de la tanda,
      y sin ello el importador se queda mudo justo cuando más ahorraría. */
+  /* ⚠ Cada alta viaja con el ÍNDICE de su archivo, no con su nombre. Buscar el
+     File por `doc.archivo` contradecía el invariante de arriba: con dos
+     «recibo.pdf» bajados de carpetas distintas se subía dos veces el mismo, y
+     la fila creada con los datos de uno acababa con el PDF del otro. */
   const altas = useMemo(
-    () => cruces.map(c => altaDe(c, mapaRuc)).filter(Boolean) as NonNullable<ReturnType<typeof altaDe>>[],
+    () => cruces
+      .map((c, i) => ({ i, a: altaDe(c, mapaRuc) }))
+      .filter(x => x.a) as { i: number; a: NonNullable<ReturnType<typeof altaDe>> }[],
     [cruces, mapaRuc]);
   /* Cuáles se van a dar de alta. Empieza con TODAS marcadas —es el caso normal
      y desmarcar de a una es más rápido que marcar cincuenta— pero el acto de
      crear sigue siendo un botón aparte que alguien pulsa. */
-  const [noAlta, setNoAlta] = useState<Set<string>>(new Set());
-  const altasElegidas = altas.filter(a => !noAlta.has(a.archivo));
+  const [noAlta, setNoAlta] = useState<Set<number>>(new Set());
+  /* Dos archivos del mismo recibo en la misma tanda: uno de los dos sobra. Se
+     dejan fuera los dos y se dice, en vez de crear uno y que el otro rebote
+     contra el servidor con un «ya estaba registrado» sobre algo que se acaba
+     de crear en la misma pulsación. */
+  const altasDobles = useMemo(() => {
+    const veces = new Map<string, number>();
+    for (const { a } of altas) {
+      const k = `${a.personaId}|${a.numero}`;
+      veces.set(k, (veces.get(k) || 0) + 1);
+    }
+    return new Set([...veces.entries()].filter(([, n]) => n > 1).map(([k]) => k));
+  }, [altas]);
+  const esDoble = (a: { personaId: string; numero: string }) =>
+    altasDobles.has(`${a.personaId}|${a.numero}`);
+  const altasElegidas = altas.filter(x => !noAlta.has(x.i) && !esDoble(x.a));
 
   const [creando, setCreando] = useState(false);
+  /* Lo ya subido, por índice. Si el registro falla y se vuelve a intentar, el
+     archivo NO se sube otra vez: cada reintento dejaba una copia más en el
+     bucket, con ruta nueva, sin nada apuntando a ella. */
+  const subidas = useRef(new Map<number, string>());
+
+  const subirUna = async (i: number): Promise<{ url?: string; error?: string }> => {
+    const ya = subidas.current.get(i);
+    if (ya) return { url: ya };
+    const r = await subirAdjunto(archivos[i]);
+    if (r.url) subidas.current.set(i, r.url);
+    return r;
+  };
+
   const crear = async () => {
-    if (!altasElegidas.length) return;
-    setErr(""); setCreando(true); setEstado("subiendo");
+    if (!altasElegidas.length || creando) return;   // doble clic = doble gasto
+    setErr(""); setCreando(true); setEstado("subiendo"); setResumen(null);
     setAvance({ n: 0, de: altasElegidas.length });
     const items: any[] = [];
     const fallos: string[] = [];
-    for (let k = 0; k < altasElegidas.length; k++) {
-      const a = altasElegidas[k];
-      const i = cruces.findIndex(c => c.doc.archivo === a.archivo);
-      const r = await subirAdjunto(archivos[i]);
-      if (r.error || !r.url) fallos.push(`${a.archivo}: ${r.error || "no se pudo subir"}`);
-      else items.push({ ...a, url: r.url });
-      setAvance({ n: k + 1, de: altasElegidas.length });
+    try {
+      for (let k = 0; k < altasElegidas.length; k++) {
+        const { i, a } = altasElegidas[k];
+        const r = await subirUna(i);
+        if (r.error || !r.url) fallos.push(`${a.archivo}: ${r.error || "no se pudo subir"}`);
+        else items.push({ ...a, url: r.url, ref: i });
+        setAvance({ n: k + 1, de: altasElegidas.length });
+      }
+      const res: any = items.length
+        ? await crearRhesDeLote(postulacionId, items)
+        : { hechos: [], fallos: [] };
+      if (res?.error) { setErr(res.error); return; }
+      for (const f of res?.fallos || []) {
+        const arch = cruces[f.ref]?.doc.archivo;
+        fallos.push(`${arch ? arch + ": " : ""}${f.error}`);
+      }
+      setResumen({ hechos: (res?.hechos || []).length, fallos });
+      /* ── SE QUITA LO QUE DE VERDAD SE CREÓ ──
+         Antes se borraba todo lo que se hubiera SUBIDO. Un insert rechazado
+         —RLS, red, duplicado— dejaba el PDF huérfano en el bucket y el recibo
+         desaparecido de la lista, sin forma de reintentar: exactamente la
+         regresión que `guardar()` ya había corregido a su lado. El servidor
+         devuelve los índices que entraron; se quitan esos. */
+      const entraron = new Set<number>(res?.hechos || []);
+      if (entraron.size) {
+        setArchivos(p => p.filter((_, k) => !entraron.has(k)));
+        setCruces(p => p.filter((_, k) => !entraron.has(k)));
+        subidas.current = new Map(
+          [...subidas.current].filter(([k]) => !entraron.has(k)));
+        setNoAlta(new Set());
+      }
+      router.refresh();
+    } catch (e: any) {
+      /* Sin esto, cualquier tropiezo dejaba `creando` en true para siempre: el
+         ✕ bloqueado, la zona de soltar inerte y ni un mensaje. La tanda entera
+         perdida en silencio. */
+      setErr(e?.message || "Se cortó a mitad del registro. Vuelve a intentarlo: lo que ya se subió no se sube dos veces.");
+      if (fallos.length) setResumen({ hechos: 0, fallos });
+    } finally {
+      setCreando(false); setEstado("hecho");
     }
-    const res: any = items.length
-      ? await crearRhesDeLote(postulacionId, items)
-      : { creados: 0, fallos: [] };
-    setCreando(false); setEstado("hecho");
-    if (res?.error) { setErr(res.error); return; }
-    for (const f of res?.fallos || []) fallos.push(f.error);
-    setResumen({ hechos: res?.creados || 0, fallos });
-    /* Los creados se van de la tanda: al refrescar, sus filas ya existen y
-       volver a ofrecerlos sería invitar a duplicar el gasto. */
-    const hechos = new Set(items.map(x => x.archivo));
-    setArchivos(p => p.filter((_, k) => !hechos.has(cruces[k]?.doc.archivo)));
-    setCruces(p => p.filter(c => !hechos.has(c.doc.archivo)));
-    router.refresh();
   };
 
   const listas = cruces.filter(c => c.filaId && !dobles.has(c.filaId!));
@@ -216,6 +273,7 @@ export default function CargarComprobantes({
   }).length;
 
   const guardar = async () => {
+    if (estado === "subiendo" || creando) return;   // doble clic
     setErr(""); setEstado("subiendo");
     const pares: { id: string; url: string }[] = [];
     const fallos: string[] = [];
@@ -223,12 +281,13 @@ export default function CargarComprobantes({
       .map((c, i) => ({ c, i }))
       .filter(({ c }) => c.filaId && !dobles.has(c.filaId!));
     setAvance({ n: 0, de: pendientes.length });
+    try {
     /* Subir PRIMERO todos los archivos y guardar DESPUÉS de una sola vez: si
        algo se cae a mitad de la subida, en la base no queda ninguna fila
        apuntando a un archivo que no llegó. */
     for (let k = 0; k < pendientes.length; k++) {
       const { c, i } = pendientes[k];
-      const r = await subirAdjunto(archivos[i]);
+      const r = await subirUna(i);
       if (r.error || !r.url) fallos.push(`${c.doc.archivo}: ${r.error || "no se pudo subir"}`);
       else pares.push({ id: c.filaId!, url: r.url });
       setAvance({ n: k + 1, de: pendientes.length });
@@ -261,6 +320,13 @@ export default function CargarComprobantes({
     setArchivos(p => p.filter((_, k) => !entraron.has(k)));
     setCruces(p => p.filter((_, k) => !entraron.has(k)));
     router.refresh();
+    } catch (e: any) {
+      /* Igual que en `crear`: sin esto, un tropiezo dejaba `estado` en
+         «subiendo» para siempre —el ✕ bloqueado y ni un mensaje— y la tanda
+         se perdía en silencio. */
+      setEstado("");
+      setErr(e?.message || "Se cortó a mitad de la subida. Vuelve a intentarlo: lo que ya subió no se sube dos veces.");
+    }
   };
 
   const cerrar = () => {
@@ -323,7 +389,7 @@ export default function CargarComprobantes({
 
             {resumen && (
               <div className="ok-inline" style={{ marginTop: 8 }}>
-                ✓ {resumen.hechos} comprobante(s) guardado(s).
+                ✓ {resumen.hechos} {creando || altas.length ? "recibo(s) registrado(s)" : "comprobante(s) guardado(s)"}.
                 {resumen.fallos.length > 0 && (
                   <ul style={{ margin: "6px 0 0 16px", color: "var(--yellow)" }}>
                     {resumen.fallos.map((f, i) => <li key={i}>{f}</li>)}
@@ -423,29 +489,46 @@ export default function CargarComprobantes({
                       🧾 {altas.length} recibo(s) no están registrados en este fondo.
                       El PDF trae todo lo que hace falta — se pueden dar de alta con su comprobante ya colgado.
                     </div>
-                    {altas.map(a => {
+                    {altas.map(({ i, a }) => {
                       const p = personasDelFondo.find(x => x.id === a.personaId);
-                      const marcada = !noAlta.has(a.archivo);
+                      const doble = esDoble(a);
+                      const marcada = !noAlta.has(i) && !doble;
                       return (
-                        <label key={a.archivo} className="alta-fila">
-                          <input type="checkbox" checked={marcada} disabled={creando}
+                        /* La clave es el ÍNDICE: dos archivos con el mismo
+                           nombre son dos filas distintas, y con el nombre por
+                           clave React las trataba como una —desmarcar una
+                           desmarcaba las dos. */
+                        <label key={i} className="alta-fila"
+                          title={doble ? "Dos archivos de esta tanda son el mismo recibo. Quita uno con la ✕ de la lista de abajo." : undefined}>
+                          <input type="checkbox" checked={marcada} disabled={creando || doble}
                             onChange={() => setNoAlta(s => {
                               const n = new Set(s);
-                              if (n.has(a.archivo)) n.delete(a.archivo); else n.add(a.archivo);
+                              if (n.has(i)) n.delete(i); else n.add(i);
                               return n;
                             })} />
-                          <b style={{ fontSize: 12 }}>{a.numero}</b>
+                          <b style={{ fontSize: 12, color: doble ? "var(--red)" : undefined }}>
+                            {doble ? "⚠ " : ""}{a.numero}
+                          </b>
                           <span style={{ color: "var(--muted)", fontSize: 12, whiteSpace: "nowrap" }}>
                             {p?.alias || "—"}
                           </span>
                           <span style={{ color: "var(--teal)", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>
                             S/ {a.monto.toFixed(2)}
                           </span>
+                          {/* La retención se ENSEÑA aunque casi siempre sea 0:
+                              es lo que separa lo que se giró de lo que la
+                              persona cobró, y va leída del papel, no supuesta. */}
+                          {a.retencion > 0 && (
+                            <span style={{ color: "var(--yellow)", fontSize: 11.5, whiteSpace: "nowrap" }}
+                              title="Retención de 4ta que declara el recibo">
+                              −{a.retencion.toFixed(2)}
+                            </span>
+                          )}
                           <span style={{ color: "var(--dim)", fontSize: 11.5, whiteSpace: "nowrap" }}>
                             {a.fecha.split("-").reverse().join("/")}
                           </span>
                           <span className="cmp-lote-motivo" title={a.concepto || "sin concepto en el PDF"}>
-                            {a.concepto || "sin concepto en el PDF"}
+                            {doble ? "Repetido en esta misma tanda" : (a.concepto || "sin concepto en el PDF")}
                           </span>
                         </label>
                       );

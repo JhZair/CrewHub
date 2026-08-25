@@ -34,6 +34,9 @@ export type DocRhe = {
   /** RUC de quien emite (el que cobra). En Perú, persona natural = 10……. */
   ruc?: string;
   monto?: number;
+  /** La retención de 4ta que el recibo declara. `undefined` = no se pudo leer,
+   *  que NO es lo mismo que cero: ver `altaDe`. */
+  retencion?: number;
   /** ISO, «2024-05-16». */
   fecha?: string;
   /** «Por concepto de …»: para qué se giró. No sirve para cruzar, pero es lo
@@ -88,6 +91,10 @@ export type Cruce = {
   motivo: string;
   /** Las filas que quedaron empatadas, para el desplegable de a mano. */
   candidatos: string[];
+  /** Una persona lo tocó: eligió fila, o la quitó. Su decisión no se rehace ni
+   *  se reinterpreta — en particular, quitar una fila a mano NO puede
+   *  convertirse en «pues créalo como gasto nuevo». */
+  tocado?: boolean;
 };
 
 /* ── NORMALIZAR EL NÚMERO ──
@@ -175,6 +182,9 @@ export function leerRhe(archivo: string, texto: string): DocRhe {
      tiene dos recibos del mismo importe. Se leen las dos formas. */
   const mFec = t.match(/\b(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})\b/);
   const mFecTxt = t.match(/(\d{1,2})\s+de\s+([a-zA-ZáéíóúÁÉÍÓÚ]+)\s+d[e]?l?\s+(\d{4})/);
+  /* ⚠ MANDA LA DE LETRAS. La maqueta escribe la EMISIÓN en letras («02 de
+     Abril del 2024»); cualquier fecha en cifras que aparezca —una impresión,
+     un pago— es otra cosa, y coger «la primera numérica» la dejaba ganar. */
 
   /* El importe. Se toma el MAYOR de los importes con dos decimales: en un RHE
      conviven el bruto, la retención (8 %) y el neto, y el que aparece en la
@@ -187,7 +197,15 @@ export function leerRhe(archivo: string, texto: string): DocRhe {
   /* Y si el recibo lo dice con todas las letras —«Total por honorarios:
      2,000.00»— se cree eso antes que a la aritmética. El máximo es un buen
      respaldo, no una buena primera opción. */
-  const mHon = t.match(/Total\s+por\s+honorarios\s*:?\s*([\d,]+\.\d{2})/i);
+  const mHon = t.match(/Total\s+por\s+honorarios\s*:?\s*(?:S\/\.?\s*)?([\d,]+\.\d{2})/i);
+
+  /* ── LA RETENCIÓN, LEÍDA Y NO SUPUESTA ──
+     El papel la trae: «Retención ( %) IR: (0.00)». Darla por cero sin mirar
+     era escribir un dato inventado en una fila de rendición — y encima uno que
+     nadie va a revisar, porque el cero es lo esperado. Si no se puede leer se
+     queda en `undefined`, y `altaDe` se niega a crear la fila: no sabemos
+     cuánto se retuvo, y eso cambia lo que la persona cobró. */
+  const mRet = t.match(/Retenci[oó]n[^\n]*?\(?\s*([\d,]+\.\d{2})\s*\)?/i);
 
   /* El nombre del emisor: la primera línea del recibo, encima del R.U.C. No
      sirve para cruzar —«PEREZ DIAZ KATY» y «Katy Pérez» son la misma persona
@@ -212,9 +230,9 @@ export function leerRhe(archivo: string, texto: string): DocRhe {
     emisor,
     monto: mHon ? Number(mHon[1].replace(/,/g, ""))
       : montos.length ? Math.max(...montos) : undefined,
-    fecha: mFec
-      ? `${mFec[3]}-${mFec[2].padStart(2, "0")}-${mFec[1].padStart(2, "0")}`
-      : mFecTxt ? deLetras(mFecTxt[1], mFecTxt[2], mFecTxt[3])
+    retencion: mRet ? Number(mRet[1].replace(/,/g, "")) : undefined,
+    fecha: mFecTxt ? deLetras(mFecTxt[1], mFecTxt[2], mFecTxt[3])
+      : mFec ? `${mFec[3]}-${mFec[2].padStart(2, "0")}-${mFec[1].padStart(2, "0")}`
       : undefined,
   };
 }
@@ -471,13 +489,35 @@ export type AltaRhe = {
   numero: string;
   fecha: string;
   monto: number;
+  retencion: number;
   concepto?: string;
 };
 
 export function altaDe(c: Cruce, mapa: Map<string, string>): AltaRhe | null {
-  if (c.filaId) return null;                       // ya tiene dónde colgarse
+  /* ── SOLO SI NO SE PARECE A NADA ──
+     La primera versión miraba únicamente `filaId`, y eso metía en la lista de
+     altas —marcadas— tres clases de archivo que NO son recibos nuevos:
+       · los que cruzaron con una fila que ya tenía comprobante (ahí `filaId`
+         se suelta a `sugerido` a propósito): habrían duplicado el gasto;
+       · los ambiguos —«esa persona tiene dos recibos con ese número»—, que son
+         justo los que hay que mirar antes de tocar nada;
+       · los que alguien DESASIGNÓ a mano, convirtiendo «esto no lo toques» en
+         «regístralo como gasto nuevo».
+     Crear una fila es más caro que colgar un papel: si algo se le parece —una
+     sugerencia, un candidato— o si una persona ya decidió sobre él, no se
+     propone. Que quede fuera cuesta un registro a mano; que entre de más
+     cuesta un gasto duplicado en una rendición ante el Estado. */
+  if (c.filaId || c.sugerido || c.candidatos.length || c.tocado) return null;
+
   const personaId = personaDe(mapa, c.doc.ruc);
-  const { clave, monto, fecha, concepto, archivo } = c.doc;
-  if (!personaId || !clave || !monto || !fecha) return null;
-  return { archivo, personaId, numero: clave, monto, fecha, concepto };
+  const { clave, monto, fecha, concepto, archivo, retencion, delNombre } = c.doc;
+  /* Nada sacado del NOMBRE del archivo: para cruzar vale como «probable»
+     —lo peor que pasa es colgar el papel donde no era, y se ve—, pero para
+     CREAR una fila con cifras significa inventarse un gasto a partir de cómo
+     alguien bautizó un fichero. */
+  if (delNombre) return null;
+  /* `retencion` en `undefined` no es cero: es «no lo sé», y cambia lo que la
+     persona cobró de verdad. Sin ese dato no se da de alta. */
+  if (!personaId || !clave || !monto || !fecha || retencion == null) return null;
+  return { archivo, personaId, numero: clave, monto, fecha, retencion, concepto };
 }
