@@ -50,7 +50,7 @@ const ORDENES: [Orden, string][] = [
   ["reciente", "🆕 Reciente"],
 ];
 
-export default function ListaCasos({ casos, ordenEstados, orden, hrefOrden }: {
+export default function ListaCasos({ casos, ordenEstados, orden, hrefs }: {
   casos: Caso[];
   /** Los estados en el orden del KANBAN. Ordenar la lista con el mismo
    *  criterio que las columnas no es un detalle: si aquí «En pausa» fuera
@@ -63,9 +63,14 @@ export default function ListaCasos({ casos, ordenEstados, orden, hrefOrden }: {
    *  tablero ya había arreglado con `modo`, un nivel más abajo. Y así «la
    *  lista por responsable» se puede compartir en un enlace. */
   orden: Orden;
-  /** La URL de cada orden, armada por el tablero con `urlCon`: conserva los
-   *  siete filtros y la vista. */
-  hrefOrden: (o: Orden) => string;
+  /** La URL ya ARMADA de cada orden, hecha por el tablero con `urlCon` (que
+   *  conserva los siete filtros y la vista).
+   *  ⚠ Un objeto y no una función: de un componente de SERVIDOR a uno de
+   *  cliente solo cruzan DATOS. Pasar `hrefOrden: (o) => string` compila sin
+   *  una queja —para TypeScript es una prop más— y revienta en el navegador
+   *  con «Functions cannot be passed directly to Client Components». El tipo
+   *  no vigila esa frontera; hay que tenerla en la cabeza. */
+  hrefs: Record<Orden, string>;
 }) {
 
   const rangoEstado = (e: string) => {
@@ -124,7 +129,7 @@ export default function ListaCasos({ casos, ordenEstados, orden, hrefOrden }: {
       <div className="lc-cab">
         <span className="lc-cab-txt">Ordenar por</span>
         {ORDENES.map(([val, lbl]) => (
-          <Link key={val} href={hrefOrden(val)} className={`vtab ${orden === val ? "on" : ""}`}>{lbl}</Link>
+          <Link key={val} href={hrefs[val]} className={`vtab ${orden === val ? "on" : ""}`}>{lbl}</Link>
         ))}
       </div>
 

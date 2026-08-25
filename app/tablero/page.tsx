@@ -482,6 +482,13 @@ export default async function TableroPage({ searchParams }: {
   const ORDS = ["plazo", "estado", "responsable", "reciente"] as const;
   const ordenLista = (ORDS as readonly string[]).includes(F.ord)
     ? (F.ord as typeof ORDS[number]) : "plazo";
+  /* Las cuatro URLs, ARMADAS AQUÍ. A un componente de cliente solo cruzan
+     datos: mandarle la función que las arma compila igual y revienta en el
+     navegador. Son cuatro cadenas; construirlas todas cuesta menos que la
+     duda. */
+  const hrefsOrden = Object.fromEntries(
+    ORDS.map(o => [o, urlCon({ ord: o === "plazo" ? "" : o })]),
+  ) as Record<typeof ORDS[number], string>;
 
   /* Los desplegables, recogidos al final. Llevan volando desde antes de la
      tanda 2, así que a estas alturas normalmente ya llegaron y este `await`
@@ -598,7 +605,7 @@ export default async function TableroPage({ searchParams }: {
            datos. */
         : modo === "lista"
           ? <ListaCasos casos={pubsE} ordenEstados={columnas.map(c => c.estado)}
-              orden={ordenLista} hrefOrden={o => urlCon({ ord: o === "plazo" ? "" : o })} />
+              orden={ordenLista} hrefs={hrefsOrden} />
         : <Tablero columnas={columnasVista} archivado={arch} />}
     </div>
   );
