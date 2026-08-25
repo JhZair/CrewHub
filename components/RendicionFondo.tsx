@@ -43,6 +43,8 @@ type RheFila = {
   id: string; persona_id: string; persona?: string;
   fecha: string; monto: number; numero: string | null; url: string | null;
   etapa: string | null; rubro_item: string | null; concepto?: string | null;
+  /** Si ya se pagó, el recibo deja de ser corregible por su titular. */
+  pagado_en?: string | null;
 };
 type Opcion = {
   id: string; nombre: string;
@@ -85,11 +87,14 @@ const fechaSubido = (iso?: string | null) => {
 
 
 export default function RendicionFondo({
-  postulacionId, esAdmin, fechaDesembolso, fechaRendicionReal, montoAdjudicado,
+  postulacionId, esAdmin, miPersonaId, fechaDesembolso, fechaRendicionReal, montoAdjudicado,
   estados, rhe, empresa, etapas, rubros, personas, userId, hiloError, faltanEc,
 }: {
   postulacionId: string;
   esAdmin: boolean;
+  /** La ficha de persona de quien mira, si su cuenta está enlazada. Sirve para
+   *  una sola cosa: reconocer SUS recibos entre los del resto. */
+  miPersonaId?: string | null;
   fechaDesembolso: string | null;
   /** Si el fondo ya rindió, la serie de estados termina ahí y deja de faltar
       nada. Sin esto, un fondo cerrado seguiría pidiendo meses para siempre. */
@@ -160,6 +165,21 @@ export default function RendicionFondo({
      de adjuntar abiertas en una lista de veintiséis recibos es pedir que se
      pegue la foto en la fila equivocada. */
   const [adj, setAdj] = useState<string | null>(null);
+
+  /* ── EL COMPROBANTE DE TU RECIBO LO SUBES TÚ ──
+     Adjuntar exigía ser administración, y eso dejaba el trabajo donde no
+     está: el PDF del RHE lo tiene EN LA MANO quien cobró —se lo emitió él—,
+     mientras administración tiene que pedírselo por WhatsApp, esperarlo y
+     subirlo. Cincuenta y ocho recibos por ese camino no se cargan nunca, y el
+     resultado es una rendición que no se puede presentar.
+     La base ya pensaba así desde db/rhe-permisos.sql: su política deja al
+     titular corregir su recibo mientras no se haya pagado. Era la PANTALLA la
+     que no ofrecía la puerta —el permiso existía y no había por dónde entrar,
+     que es el fallo más difícil de ver porque no da ningún error.
+     Después del pago se cierra: a partir de ahí el número ya se usó y lo
+     corrige alguien con responsabilidad, que es lo que dice la política. */
+  const puedeAdjuntar = (r: RheFila) =>
+    esAdmin || (!!miPersonaId && r.persona_id === miPersonaId && !r.pagado_en);
   const totGrupo = (g: { items: RheFila[] }) => g.items.reduce((s, r) => s + Number(r.monto || 0), 0);
   const nombreDe = (opc: Opcion[], id: string) => opc.find(o => o.id === id)?.nombre;
   const SIN = "∅";  // clave del grupo «sin asignar»
@@ -419,13 +439,13 @@ export default function RendicionFondo({
                         {r.url ? (
                           <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
                             <VerAdjunto url={r.url} titulo="Ver el recibo">📄</VerAdjunto>
-                            {esAdmin && (
+                            {puedeAdjuntar(r) && (
                               <button className="dato-btn" title="Cambiar o quitar el comprobante"
                                 onClick={() => setAdj(adj === r.id ? null : r.id)}
                                 style={{ fontSize: 10.5, opacity: .6 }}>✎</button>
                             )}
                           </span>
-                        ) : esAdmin ? (
+                        ) : puedeAdjuntar(r) ? (
                           <button className="dato-btn" onClick={() => setAdj(adj === r.id ? null : r.id)}
                             title="Falta el PDF del recibo. Pega la foto, arrástrala o escribe el enlace."
                             style={{ color: "var(--yellow)", fontSize: 11.5 }}>
@@ -443,7 +463,7 @@ export default function RendicionFondo({
                       {/* El campo se abre DEBAJO y a lo ancho: pegar una foto
                           necesita sitio, y meterlo en la fila apretaría los dos
                           selectores de eje hasta hacerlos inservibles. */}
-                      {adj === r.id && esAdmin && (
+                      {adj === r.id && puedeAdjuntar(r) && (
                         <div style={{ marginTop: 6, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                           <CampoAdjunto valor={r.url || ""}
                             placeholder="Recibo: pega la foto, arrástrala o escribe el enlace"

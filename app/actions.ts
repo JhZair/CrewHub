@@ -3318,8 +3318,28 @@ export async function fijarComprobanteRhe(id: string, postulacionId: string, url
   if (!user) return { error: "Sesión no encontrada." };
   const { data: perfil } = await supabase.from("perfiles")
     .select("es_admin,es_finanzas").eq("id", user.id).maybeSingle();
+  /* ── O ERES ADMINISTRACIÓN, O ES TU RECIBO ──
+     Antes solo pasaba administración, y el comprobante lo tiene en la mano
+     quien cobró: pedírselo por WhatsApp para subirlo por él es el motivo de
+     que cincuenta y ocho recibos sigan sin PDF. La base ya lo permitía
+     (db/rhe-permisos.sql: el titular corrige su recibo mientras no esté
+     pagado); esta puerta estaba cerrada por encima de la política, así que el
+     permiso existía sin sitio por donde usarlo.
+     La comprobación se repite AQUÍ y no se delega a la RLS a propósito: el
+     rechazo de la base llega como «cero filas», y un mensaje que no distingue
+     «no es tuyo» de «ya está pagado» deja a la persona sin saber qué hacer. */
   if (!(perfil?.es_admin || perfil?.es_finanzas)) {
-    return { error: "Solo administración o finanzas adjunta comprobantes." };
+    const { data: fila } = await supabase.from("rhe")
+      .select("persona_id,pagado_en").eq("id", id).maybeSingle();
+    if (!fila) return { error: "No se encontró el recibo." };
+    const { data: mia } = await supabase.from("personas").select("id")
+      .eq("id", (fila as any).persona_id).eq("usuario_id", user.id).maybeSingle();
+    if (!mia) {
+      return { error: "Este recibo no es tuyo: su comprobante lo adjunta quien figura en él, o administración." };
+    }
+    if ((fila as any).pagado_en) {
+      return { error: "El recibo ya está pagado; a partir de ahí lo corrige administración." };
+    }
   }
   /* `.select()` de cinturón: un update bloqueado por RLS devuelve cero filas y
      NINGÚN error, así que sin esto el adjunto «se guardaría» y desaparecería

@@ -95,8 +95,14 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
     redirect(`/entidad/postulacion/${params.id}`);
   }
 
-  const { data: perfilActual } = await supabase.from("perfiles")
-    .select("es_admin,es_finanzas").eq("id", user.id).maybeSingle();
+  /* Dos preguntas sobre quién mira, en el mismo viaje: qué permisos tiene y a
+     qué FICHA DE PERSONA corresponde su cuenta. La segunda hace falta para
+     saber cuáles de los recibos de esta pantalla son suyos —el puente
+     `personas.usuario_id` es el mismo que usa /jornadas. */
+  const [{ data: perfilActual }, { data: miPersona }] = await Promise.all([
+    supabase.from("perfiles").select("es_admin,es_finanzas").eq("id", user.id).maybeSingle(),
+    supabase.from("personas").select("id").eq("usuario_id", user.id).maybeSingle(),
+  ]);
   /* «Admin» aquí significa «puede tocar los datos de plata de esta ficha», que
      no es lo mismo que tener /admin entero. El asistente de administración
      registra recibos de terceros y no debería necesitar la llave maestra para
@@ -136,7 +142,11 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
         "creado:perfiles!creado_por(nombre),quien:perfiles!comprobante_por(nombre)")
       .eq("postulacion_id", params.id).order("periodo"),
     supabase.from("rhe")
-      .select("id,persona_id,fecha,monto,numero,url,etapa,rubro_item,concepto,persona:personas(nombre,alias)")
+      /* `pagado_en` viaja porque decide si el recibo todavía se puede tocar:
+         después del pago lo corrige administración y nadie más (la misma regla
+         que db/rhe-permisos.sql aplica en la base). Sin este dato, la pantalla
+         tendría que adivinarlo. */
+      .select("id,persona_id,fecha,monto,numero,url,etapa,rubro_item,concepto,pagado_en,persona:personas(nombre,alias)")
       .eq("postulacion_id", params.id).order("fecha", { ascending: false }),
     supabase.from("movimiento_banco")
       .select("id,fecha,glosa,medio,tipo,monto,saldo,categoria,nota")
@@ -692,6 +702,7 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
                   );
                 })()}>
                 <RendicionFondo postulacionId={params.id} esAdmin={esAdmin}
+                  miPersonaId={(miPersona as any)?.id || null}
                   fechaDesembolso={ent.fecha_desembolso || null}
                   fechaRendicionReal={ent.fecha_rendicion_real || null}
                   montoAdjudicado={ent.monto_adjudicado ? parseFloat(ent.monto_adjudicado) : null}
