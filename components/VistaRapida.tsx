@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   cargarCasoRapido, comentar, toggleReaccion, toggleEnterado,
-  cambiarEstado, asignarResponsable, cambiarFechaLimite,
+  cambiarEstado, asignarResponsable, cambiarFechaLimite, cambiarFechaInicio,
 } from "@/app/actions";
 import { opcionesEstado, esAviso, claseEstado } from "@/lib/estados";
 import { icoTipo } from "@/lib/tipos";
@@ -187,10 +187,28 @@ export default function VistaRapida({ pubId }: { pubId: string }) {
                       ))}
                     </select>
                   </div>
+                  {/* ── LA VENTANA SE EDITA AQUÍ ──
+                      Este pop-up sale de la agenda, del tablero y del feed, o
+                      sea desde donde se está MIRANDO el calendario: es el
+                      sitio natural para decir «esto empieza el 3». A un caso
+                      que ya existe no se le puede poner el inicio desde el
+                      compositor —ese ya se cerró—, así que si no estuviera
+                      aquí solo se podría abriendo la ficha entera.
+                      A diferencia de la ficha, el campo se ve SIEMPRE aunque
+                      esté vacío: aquí es donde se viene a ponerlo. */}
+                  <div className="gm">
+                    <span className="k">Empieza</span>
+                    <input type="date" disabled={ocupado}
+                      title="Cuándo empieza. Vacío si el caso no dura."
+                      value={caso.fecha_inicio ? String(caso.fecha_inicio).slice(0, 10) : ""}
+                      max={caso.fecha_limite ? String(caso.fecha_limite).slice(0, 10) : undefined}
+                      onChange={e => { const v = e.target.value; correr(() => cambiarFechaInicio(pubId, v)); }} />
+                  </div>
                   <div className="gm">
                     <span className="k">Fecha límite</span>
                     <input type="date" disabled={ocupado}
                       value={caso.fecha_limite ? String(caso.fecha_limite).slice(0, 10) : ""}
+                      min={caso.fecha_inicio ? String(caso.fecha_inicio).slice(0, 10) : undefined}
                       onChange={e => { const v = e.target.value; correr(() => cambiarFechaLimite(pubId, v)); }} />
                   </div>
                   <div className="gm">

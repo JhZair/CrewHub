@@ -419,17 +419,30 @@ export async function crearPublicacion(
   vinculos: Vinculo[] = [],
   responsable: string | null = null,
   fechaLimite: string | null = null,
-  imagenes: string[] = []
+  imagenes: string[] = [],
+  /* ⚠ AL FINAL Y NO JUNTO A `fechaLimite`, que es donde «pertenece».
+     Esta firma es POSICIONAL y ya tiene siete argumentos: meter una fecha
+     nueva al lado de la otra compila igual si se intercambian, y el error
+     —el caso empieza el día que vence— no lo ve nadie hasta mirar la agenda
+     semanas después. Al final, un error de orden no puede pasar por bueno. */
+  fechaInicio: string | null = null
 ) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada. Vuelve a iniciar sesión." };
+  /* La ventana al revés no se guarda «como venga»: se dice. El check de la
+     base lo impediría igual, pero con un mensaje de Postgres que no explica
+     nada a quien está escribiendo un caso. */
+  if (fechaInicio && fechaLimite && fechaInicio > fechaLimite) {
+    return { error: "El inicio no puede ir después del vencimiento." };
+  }
   const { data: pub, error } = await supabase.from("publicaciones").insert({
     autor_id: user.id,
     tipo,
     titulo,
     cuerpo: cuerpo || null,
     responsable: responsable || null,
+    fecha_inicio: fechaInicio || null,
     fecha_limite: fechaLimite || null,
     imagenes: (imagenes || []).slice(0, 6),
     estado: "abierta",  // todo caso nace Sin Resolver; En Progreso se gana trabajando
@@ -5700,6 +5713,18 @@ export async function agregarActividadCrono(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
   if (!d.nombre.trim() || !d.ini) return { error: "Nombre y fecha de inicio son obligatorios." };
+  /* ── LA VENTANA, TAMBIÉN AL CREAR ──
+     `editarActividadCrono` y `cambiarFechaActividad` ya lo comprobaban; esta,
+     que es por donde NACEN, no. Daba igual mientras la actividad solo se
+     dibujara en el cronograma —una barra al revés se ve—, pero ahora esa
+     ventana VIAJA al caso que la materializa, y allí choca contra el check
+     `publicaciones_ventana_ok`: la acción de materializar contestaría con un
+     error de Postgres en crudo y el bot de la mañana se caería entero, con él
+     los avisos y el mensaje al Chat.
+     Se ataja donde se escribe el dato, que es donde se puede explicar. */
+  if (d.fin && d.fin < d.ini) {
+    return { error: "La actividad no puede terminar antes de empezar." };
+  }
   /* Orden = al final de su etapa (max + 10). Como el orden manual manda dentro
      de la etapa, una actividad nueva sin orden (0) saltaría al TOPE de una
      etapa ya ordenada a mano. Se anexa al final —es lo que uno espera al
@@ -6317,6 +6342,14 @@ export async function materializarActividad(actId: string, dueno: string, duenoI
       ? `Hito del concurso (${contexto}): ${act.fecha_inicio}${act.fecha_fin && act.fecha_fin !== act.fecha_inicio ? ` → ${act.fecha_fin}` : ""}. Fecha fijada por la institución — dar seguimiento.`
       : `Generada desde el cronograma de ${contexto}. Ventana planificada: ${act.fecha_inicio} → ${act.fecha_fin || "—"}.`) + equipoTxt,
     estado: "en_progreso",
+    /* ── LA VENTANA VIAJA, YA NO SE PIERDE ──
+       La actividad del cronograma tiene inicio y fin; al materializarla, el
+       fin se convertía en la fecha límite y el INICIO se tiraba: sobrevivía
+       como prosa en el cuerpo («Ventana planificada: … → …»), que no la lee
+       ninguna pantalla. El caso de un rodaje planificado para agosto nacía
+       dibujándose desde el día en que el bot lo abrió.
+       Un hito no lleva inicio a propósito: es una fecha, no un tramo. */
+    fecha_inicio: esHito ? null : (act.fecha_inicio || null),
     fecha_limite: act.fecha_fin || act.fecha_inicio,
   }).select("id").single();
   if (error) return { error: error.message };
@@ -8309,6 +8342,52 @@ export async function archivar(pubId: string, archivar = true) {
   return {};
 }
 
+/* ── LAS DOS PUNTAS DE LA VENTANA ──
+   `cambiarFechaInicio` y `cambiarFechaLimite` son hermanas y se vigilan: cada
+   una comprueba la ventana contra la OTRA punta antes de guardar. Sin eso, la
+   forma más fácil de romper el orden no es poner mal el inicio —eso se ve—,
+   sino adelantar el vencimiento de un caso que ya tenía inicio, que no se ve.
+   El check de la base lo impediría, pero con un error de Postgres en crudo:
+   aquí se contesta con una frase que dice qué hacer. */
+export async function cambiarFechaInicio(pubId: string, fecha: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  // Acepta 'YYYY-MM-DD'; vacío = quitar la fecha
+  const val = /^\d{4}-\d{2}-\d{2}$/.test(fecha) ? fecha : null;
+  const { data: antes } = await supabase.from("publicaciones")
+    .select("fecha_inicio,fecha_limite").eq("id", pubId).single();
+  if (val && antes?.fecha_limite && val > antes.fecha_limite) {
+    return { error: "El inicio no puede ir después del vencimiento." };
+  }
+  /* `.select("id")` para VER lo que pasó: un UPDATE bloqueado por RLS no da
+     error, devuelve cero filas. Sin mirarlo, la función diría «ok» y encima
+     escribiría en la bitácora que alguien puso una fecha que no se guardó —una
+     mentira firmada, que es peor que un fallo. */
+  const { data: tocado, error } = await supabase.from("publicaciones")
+    .update({ fecha_inicio: val }).eq("id", pubId).select("id");
+  if (error) return { error: error.message };
+  if (!tocado?.length) return { error: "No se pudo guardar (sin permiso o el caso ya no existe)." };
+  if ((antes?.fecha_inicio || null) !== val) {
+    const fmt = (d: string) => new Date(d + "T12:00:00")
+      .toLocaleDateString("es-PE", { day: "numeric", month: "short", timeZone: "America/Lima" });
+    await supabase.from("actividad").insert({
+      entidad_tipo: "publicacion", entidad_id: pubId, actor_id: user.id, tipo: "edicion",
+      detalle: { mensaje: val ? `puso el inicio en ${fmt(val)}` : "quitó la fecha de inicio" },
+    });
+    /* 🔔 Sin notificación, y es a propósito: mover el INICIO no mueve lo que
+       hay que cumplir. Quien tiene el caso ya se entera al abrirlo, y un
+       timbre por cada ajuste de calendario enseña a apagar el timbre. El
+       cambio queda en la bitácora, que es donde se busca el «¿quién movió
+       esto?». Mover el VENCIMIENTO sí suena: ver `cambiarFechaLimite`. */
+  }
+  revalidatePath(`/caso/${pubId}`);
+  revalidatePath("/");
+  revalidatePath("/tablero");
+  revalidatePath("/agenda");
+  return {};
+}
+
 export async function cambiarFechaLimite(pubId: string, fecha: string) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -8316,9 +8395,22 @@ export async function cambiarFechaLimite(pubId: string, fecha: string) {
   // Acepta 'YYYY-MM-DD'; vacío = quitar la fecha
   const val = /^\d{4}-\d{2}-\d{2}$/.test(fecha) ? fecha : null;
   const { data: antes } = await supabase.from("publicaciones")
-    .select("fecha_limite").eq("id", pubId).single();
+    .select("fecha_limite,fecha_inicio").eq("id", pubId).single();
+  // La otra punta de la ventana: adelantar el vencimiento por detrás del
+  // inicio es el error que no se ve, porque se toca esta fecha mirando otra.
+  if (val && antes?.fecha_inicio && val < antes.fecha_inicio) {
+    return { error: "El vencimiento no puede ir antes del inicio del caso." };
+  }
+  /* ── QUITAR EL VENCIMIENTO SE LLEVA LA VENTANA ──
+     Un caso con inicio y sin fin no es media ventana: es una que no se puede
+     dibujar, y la agenda ni siquiera lo trae (pide `fecha_limite not null`).
+     Se borran las dos y se DICE en la bitácora, en vez de dejar un
+     `fecha_inicio` huérfano que nadie vuelve a ver ni entiende de dónde sale
+     el día que reaparece un vencimiento. */
+  const soltarVentana = !val && !!antes?.fecha_inicio;
   const { error } = await supabase.from("publicaciones")
-    .update({ fecha_limite: val }).eq("id", pubId);
+    .update(soltarVentana ? { fecha_limite: null, fecha_inicio: null } : { fecha_limite: val })
+    .eq("id", pubId);
   if (error) return { error: error.message };
   // 🗂 Bitácora
   if ((antes?.fecha_limite || null) !== val) {
@@ -8326,7 +8418,9 @@ export async function cambiarFechaLimite(pubId: string, fecha: string) {
       .toLocaleDateString("es-PE", { day: "numeric", month: "short", timeZone: "America/Lima" });
     await supabase.from("actividad").insert({
       entidad_tipo: "publicacion", entidad_id: pubId, actor_id: user.id, tipo: "edicion",
-      detalle: { mensaje: val ? `puso la fecha límite en ${fmt(val)}` : "quitó la fecha límite" },
+      detalle: { mensaje: val ? `puso la fecha límite en ${fmt(val)}`
+        : soltarVentana ? "quitó la fecha límite (y con ella el inicio)"
+        : "quitó la fecha límite" },
     });
     /* 🔔 Solo si CAMBIÓ —está dentro del mismo `if`—: guardar la misma fecha
        otra vez no es un hecho y no debe sonar. Mover el plazo sin decírselo a
@@ -8343,6 +8437,9 @@ export async function cambiarFechaLimite(pubId: string, fecha: string) {
   revalidatePath(`/caso/${pubId}`);
   revalidatePath("/");
   revalidatePath("/tablero");
+  // La agenda vive de estas fechas y no se revalidaba: se cambiaba el plazo y
+  // la línea de tiempo seguía enseñando el anterior hasta que caducara sola.
+  revalidatePath("/agenda");
   return {};
 }
 
@@ -8705,7 +8802,7 @@ export async function cargarCasoRapido(id: string) {
   if (!user) return { error: "Sesión no encontrada." };
 
   const { data: p, error } = await supabase.from("publicaciones")
-    .select("id,titulo,cuerpo,tipo,estado,fecha_limite,archivado_en,creado_en,autor_id,responsable," +
+    .select("id,titulo,cuerpo,tipo,estado,fecha_inicio,fecha_limite,archivado_en,creado_en,autor_id,responsable," +
       "autor:perfiles!publicaciones_autor_id_fkey(nombre)," +
       "vinculos:publicacion_vinculos(entidad_tipo,entidad_id)")
     .eq("id", id).single();

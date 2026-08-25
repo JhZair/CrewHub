@@ -38,7 +38,7 @@ export default async function AgendaPage() {
         "postu:postulaciones(id,codigo,estado,proy:proyectos(nombre,nombre_corto),conv:convocatorias(categoria))")
       .neq("estado", "cancelada").not("fecha_inicio", "is", null),
     supabase.from("publicaciones")
-      .select("id,titulo,tipo,estado,fecha_limite,responsable,creado_en")
+      .select("id,titulo,tipo,estado,fecha_inicio,fecha_limite,responsable,creado_en")
       .in("estado", VIVOS).not("fecha_limite", "is", null).is("archivado_en", null)
       .neq("tipo", "bitacora"),   // las notas del muro solo viven en su proyecto
     supabase.from("perfiles").select("id,nombre,avatar_url,color").eq("activo", true).order("nombre"),
@@ -114,6 +114,9 @@ export default async function AgendaPage() {
     return {
       id: a.id, kind: "act", titulo: a.nombre,
       ini: a.fecha_inicio, fin: a.fecha_fin || a.fecha_inicio,
+      // Una actividad del cronograma SIEMPRE tiene ventana: su `ini` es un
+      // dato y no un relleno. Ver `ItemAgenda.ventana`.
+      ventana: true,
       estado: a.estado, etapa: a.etapa || "",
       respId: a.responsable || null,
       personas: [a.responsable, ...((a.equipo as string[]) || [])].filter(Boolean) as string[],
@@ -133,14 +136,27 @@ export default async function AgendaPage() {
   const itemsCaso: ItemAgenda[] = (casos || [])
     .filter((c: any) => !avisoVencido(c.tipo, c.fecha_limite))
     .map((c: any) => {
-    // El caso «dura» desde que se creó hasta su fecha límite: ese tramo se
-    // dibuja tenue y punteado en la línea de tiempo, con la marca en el límite.
-    // Si nació el mismo día del límite (o después), no hay tramo: solo la marca.
+    /* ── DE CUÁNDO A CUÁNDO SE DIBUJA UN CASO ──
+       Si el caso tiene VENTANA (`fecha_inicio`), esa es la barra: el trabajo
+       va de ahí a su vencimiento. Es lo que hacía falta —«Rodaje bloque
+       Zenon» se dibujaba desde el día en que alguien lo escribió, o sea la
+       vida del apunte y no la del rodaje—.
+       Sin ventana se conserva el respaldo de siempre: de `creado_en` al
+       límite, tenue y punteado. No es la verdad, es lo único que se sabe, y
+       enseñar un tramo aproximado dice más que una marca suelta.
+       El `< fin` de los dos casos evita la barra al revés: un caso creado
+       DESPUÉS de su propio vencimiento existe —se apunta tarde— y sin este
+       guard se dibujaría hacia atrás. Con `fecha_inicio` no debería pasar
+       (lo impiden la acción y el check de la base), pero este dibujo no es
+       el sitio donde descubrir que una de las dos falló. */
     const creado = String(c.creado_en || "").slice(0, 10);
-    const ini = creado && creado < c.fecha_limite ? creado : c.fecha_limite;
+    const arranque = c.fecha_inicio || creado;
+    const ini = arranque && arranque < c.fecha_limite ? arranque : c.fecha_limite;
     return {
     id: c.id, kind: "caso" as const, titulo: c.titulo,
     ini, fin: c.fecha_limite,
+    // Solo es ventana si alguien la puso: ver `ItemAgenda.ventana`.
+    ventana: !!c.fecha_inicio,
     estado: c.estado, tipo: c.tipo,
     respId: c.responsable || null,
     personas: [c.responsable].filter(Boolean) as string[],

@@ -246,7 +246,17 @@ create table publicaciones (
   prioridad    text,                         -- alta | media | baja | null
   estado       text default 'abierta',       -- abierta | en_progreso | resuelta | archivada
   responsable  uuid references perfiles(id), -- asignado principal (opcional)
+  -- La VENTANA del caso. `fecha_inicio` es opcional porque la mayoría de los
+  -- casos no duran, pasan; cuando está, la agenda dibuja el tramo real en vez
+  -- de arrancar en `creado_en`. `fecha_limite` hace de fin: no hay una tercera
+  -- fecha. Ver db/publicacion-fecha-inicio.sql (incluye el check inicio<=fin).
+  fecha_inicio date,
   fecha_limite date,
+  -- El candado va también aquí y no solo en la migración: una base creada
+  -- desde este fichero tendría la columna sin la regla, y una regla que solo
+  -- existe en el sitio del que ya migraste no protege a la base siguiente.
+  constraint publicaciones_ventana_ok
+    check (fecha_inicio is null or fecha_limite is null or fecha_inicio <= fecha_limite),
   datos_extra  jsonb default '{}',
     -- Campos específicos por tipo SIN crear tablas nuevas:
     --   pago:        {"monto": 4800.00, "moneda": "PEN",

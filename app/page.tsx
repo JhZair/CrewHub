@@ -235,7 +235,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
     (() => {
       let q = supabase.from("publicaciones")
         .select(`
-          id, tipo, titulo, cuerpo, estado, prioridad, creado_en, fecha_limite, imagenes, padre_id,
+          id, tipo, titulo, cuerpo, estado, prioridad, creado_en, fecha_inicio, fecha_limite, imagenes, padre_id,
           autor_id, responsable,
           autor:perfiles!publicaciones_autor_id_fkey(nombre, color, avatar_url),
           resp:perfiles!publicaciones_responsable_fkey(nombre),
@@ -674,7 +674,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
               /* Sin `ultimoMovimiento`: el feed no carga la bitácora por caso,
                  y no saberlo no es estar detenido (lib/progreso lo respeta). */
               prog={progresoDe({
-                creado_en: p.creado_en, fecha_limite: p.fecha_limite,
+                creado_en: p.creado_en, fecha_inicio: p.fecha_inicio, fecha_limite: p.fecha_limite,
                 estado: p.estado, tipo: p.tipo, hijos: hijosDe.get(p.id) || null,
                 // Cuántas hay, para que calle si su ficha usaría ese denominador
                 vinculadasTotal: chips.length,

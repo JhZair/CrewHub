@@ -20,6 +20,16 @@ export type ItemAgenda = {
   titulo: string;
   ini: string;             // YYYY-MM-DD
   fin: string;             // YYYY-MM-DD (caso: = fecha límite)
+  /* ── ¿ESE `ini` ES UN DATO O UN RELLENO? ──
+     Una actividad del cronograma siempre tiene ventana. Un caso solo la tiene
+     si alguien le puso `fecha_inicio`; si no, `ini` sale de `creado_en`, que
+     es un respaldo razonable para dibujar un tramo tenue pero NO es una
+     afirmación sobre cuándo empieza el trabajo.
+     La diferencia importa donde se ocupa espacio en nombre del dato: en el
+     calendario mensual, pintar todos los casos en todos los días desde que se
+     escribieron llenaría el mes de ruido. Con esta bandera, solo se extienden
+     los que de verdad duran. */
+  ventana?: boolean;
   estado: string;
   etapa?: string;          // color de la actividad
   orden?: number;          // desempate manual dentro de la etapa (del cronograma)
@@ -326,8 +336,18 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, perfilDe, apa
                 const rango = it.fin !== it.ini;   // tiene inicio y fin distintos
                 /* Un solo texto para las dos marcas de la fila: si el punto de
                    inicio y la marca final dijeran cosas distintas, la misma
-                   actividad se leería como dos. */
-                const tip = `${it.titulo} · ${fmtCorto(it.ini)}${rango ? ` → ${fmtCorto(it.fin)}` : ""}${it.respId ? ` · ${cortoDe(it.respId)}` : ""}`;
+                   actividad se leería como dos.
+                   El tramo se DIBUJA igual con ventana o sin ella —un caso sin
+                   inicio se sigue viendo desde que se apuntó, que es lo único
+                   que se sabe—, pero el texto no puede afirmar lo mismo en los
+                   dos casos: «del 23 ene al 20 ago» sobre una fecha de
+                   creación es una frase sobre el trabajo que nadie escribió.
+                   Con ventana dice «→»; sin ella, «apuntado el …». */
+                const tramo = it.ventana
+                  ? `${fmtCorto(it.ini)}${rango ? ` → ${fmtCorto(it.fin)}` : ""}`
+                  : rango ? `vence ${fmtCorto(it.fin)} · apuntado el ${fmtCorto(it.ini)}`
+                  : fmtCorto(it.fin);
+                const tip = `${it.titulo} · ${tramo}${it.respId ? ` · ${cortoDe(it.respId)}` : ""}`;
                 return (
                   <div className={`ag-tl-row ${apagado(it) ? "ag-ajena" : ""}`} key={it.id}>
                     <div className="ag-tl-lbl">
@@ -417,9 +437,13 @@ function Calendario({ vis, mesOff, setMesOff, colorDe, icoDe, apagado }: {
   const primerDow = (new Date(y, m, 1).getDay() + 6) % 7;   // lunes = 0
   const diasMes = new Date(y, m + 1, 0).getDate();
 
-  // Un ítem cae en un día si el día está dentro de su rango (caso: solo su fecha)
+  /* Un ítem cae en un día si el día está dentro de su rango. Un caso SIN
+     ventana ocupa solo su fecha límite: su `ini` es la fecha en que se
+     escribió, y extenderlo desde ahí llenaría el mes de barras que no
+     significan nada. Con ventana de verdad, ocupa los días que dura — que es
+     justo lo que se viene a mirar en un calendario. */
   const enDia = (key: string) => vis.filter(it =>
-    it.kind === "caso" ? it.fin === key : (it.ini <= key && key <= it.fin));
+    (it.kind === "caso" && !it.ventana) ? it.fin === key : (it.ini <= key && key <= it.fin));
 
   const celdas: (string | null)[] = [
     ...Array.from({ length: primerDow }, () => null),

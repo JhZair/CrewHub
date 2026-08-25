@@ -454,7 +454,14 @@ a{color:inherit;text-decoration:none}
 .gm{padding:2px 14px;border-left:1px solid var(--border)}
 .gm:first-child{border-left:none}
 .gm .k{font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:var(--dim);display:block;margin-bottom:6px}
-@media(max-width:640px){.grid-meta{grid-template-columns:repeat(2,1fr);row-gap:12px}.gm:nth-child(odd){border-left:none}}
+/* ── CINCO CELDAS CUANDO EL CASO TIENE VENTANA ──
+   La rejilla es de cuatro columnas fijas; al añadir «Empieza», la quinta celda
+   —«Creado»— se caía sola a una segunda fila, y con la raya izquierda puesta
+   (`.gm:first-child` solo desarma la primera del grid, no la primera de cada
+   fila). Una fila huérfana con un filete a la izquierda se lee como un fallo
+   de maquetación, que es exactamente lo que era. */
+.grid-meta-5{grid-template-columns:repeat(5,1fr)}
+@media(max-width:640px){.grid-meta,.grid-meta-5{grid-template-columns:repeat(2,1fr);row-gap:12px}.gm:nth-child(odd){border-left:none}}
 .gm .v{font-size:14px;font-weight:600}
 /* Quién lo creó, con su foto. `inline-flex` y no `inline` porque el avatar es
    una caja y con la línea base cuelga por debajo del texto — el mismo detalle

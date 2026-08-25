@@ -1,5 +1,5 @@
 "use client";
-import { comentar, cambiarEstado, asignarResponsable, cambiarFechaLimite, archivar } from "@/app/actions";
+import { comentar, cambiarEstado, asignarResponsable, cambiarFechaLimite, cambiarFechaInicio, archivar } from "@/app/actions";
 import { celebrarResuelto } from "@/lib/celebra";
 import { opcionesEstado } from "@/lib/estados";
 import { sinBot, opcionesResp } from "@/lib/personas";
@@ -63,14 +63,33 @@ export function RespSelect({ pubId, actual, perfiles }:
   );
 }
 
-export function FechaSelect({ pubId, fecha }: { pubId: string; fecha: string | null }) {
+/* Las DOS puntas de la ventana con el mismo control: `cual` decide a qué
+   acción llama. Se parametriza en vez de clonar porque son el mismo gesto —
+   tocar una fecha del caso— y dos copias se separan al primer retoque; ya
+   pasó con las reacciones y con «¿tiene papel?».
+   `tope` limita el calendario del navegador para que el error ni siquiera se
+   pueda elegir: el inicio no ofrece días posteriores al vencimiento y el
+   vencimiento no ofrece días anteriores al inicio. La acción vuelve a
+   comprobarlo igual —el navegador es del cliente y el cliente elige qué
+   mandar—, pero avisar antes es mejor que rechazar después. */
+export function FechaSelect({ pubId, fecha, cual = "limite", tope }: {
+  pubId: string; fecha: string | null;
+  cual?: "limite" | "inicio";
+  /** La otra punta, si la hay: acota el calendario. */
+  tope?: string | null;
+}) {
   const router = useRouter();
   const cambiar = async (v: string) => {
-    const res = await cambiarFechaLimite(pubId, v);
+    const res = cual === "inicio"
+      ? await cambiarFechaInicio(pubId, v)
+      : await cambiarFechaLimite(pubId, v);
     if (res?.error) alert(res.error); else router.refresh();
   };
   return (
-    <input type="date" defaultValue={fecha || ""} onChange={e => cambiar(e.target.value)} />
+    <input type="date" defaultValue={fecha || ""}
+      max={cual === "inicio" ? (tope || undefined) : undefined}
+      min={cual === "limite" ? (tope || undefined) : undefined}
+      onChange={e => cambiar(e.target.value)} />
   );
 }
 

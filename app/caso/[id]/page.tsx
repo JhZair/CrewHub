@@ -310,7 +310,8 @@ export default async function Caso({ params }: { params: { id: string } }) {
   const sello = selloDeCaso(p.estado, p.archivado_en);
 
   const progreso = progresoDe({
-    creado_en: p.creado_en, fecha_limite: p.fecha_limite, estado: p.estado, tipo: p.tipo,
+    creado_en: p.creado_en, fecha_inicio: p.fecha_inicio, fecha_limite: p.fecha_limite,
+    estado: p.estado, tipo: p.tipo,
     /* Archivar TAMBIÉN cierra el asunto: el bot archiva avisos vencidos
        dejándolos en «abierta», y contarlos como pendientes hacía que un padre
        nunca llegara al 100%. */
@@ -448,13 +449,23 @@ export default async function Caso({ params }: { params: { id: string } }) {
           No captura clics: el desplegable de estado sigue usable por debajo
           para reabrirlo, y el ✕ del sello lo aparta si estorba. Al recargar
           vuelve, porque es el estado del caso y no un aviso que se descarta. */}
-      <div className={`grid-meta est-${claseEstado(p.estado, p.tipo)}`}>
+      <div className={`grid-meta grid-meta-5 est-${claseEstado(p.estado, p.tipo)}`}>
         {sello && <SelloResultado {...sello} variante="ficha" />}
         <div className="gm"><span className="k">Estado</span><EstadoSelect pubId={p.id} estado={p.estado} tipo={p.tipo} /></div>
         <div className="gm"><span className="k">Responsable</span>
           <RespSelect pubId={p.id} actual={p.responsable} perfiles={perfiles || []} /></div>
+        {/* ── LA VENTANA, SIEMPRE VISIBLE ──
+            Estuvo escondida cuando el caso no tenía inicio, para no gastar una
+            celda en una pregunta que casi nadie contesta. Era una trampilla:
+            al borrar el inicio, el campo desaparecía en el mismo render y
+            volver a ponerlo obligaba a salir a buscar el caso en otra pantalla
+            y abrir la vista rápida. Y en un caso ARCHIVADO —que no sale del
+            feed, ni del tablero, ni de la agenda— esta ficha es la única
+            puerta: escondido aquí, no había ninguna. */}
+        <div className="gm"><span className="k">Empieza</span>
+          <FechaSelect pubId={p.id} fecha={p.fecha_inicio} cual="inicio" tope={p.fecha_limite} /></div>
         <div className="gm"><span className="k">Fecha límite</span>
-          <FechaSelect pubId={p.id} fecha={p.fecha_limite} /></div>
+          <FechaSelect pubId={p.id} fecha={p.fecha_limite} tope={p.fecha_inicio} /></div>
         <div className="gm"><span className="k">Creado</span>
           {/* Con cara. Las otras tres celdas de esta ficha ya identifican a
               alguien por su nombre en un desplegable; esta es la única donde

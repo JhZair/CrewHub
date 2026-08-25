@@ -57,9 +57,17 @@ declare
   porvencer int := 0; vencidos int := 0; materializadas int := 0; huerfanas int := 0;
   emp_alerta text := ''; emp_sinverif int := 0;
   lista_venc text := ''; msg text; hook text; r record; d int; dest uuid;
-  nueva_pub uuid; autor_defecto uuid; contexto text; es_hito boolean;
+  nueva_pub uuid; autor_defecto uuid; contexto text; es_hito boolean; hay_ventana boolean;
   sep text := E'\n' || '━━━━━━━━━━━━━━━━━━━━';
 begin
+  /* ¿Está la columna de la ventana? (db/publicacion-fecha-inicio.sql). Se
+     pregunta UNA vez y se guarda: preguntarlo dentro del bucle sería una
+     consulta al catálogo por cada actividad materializada. */
+  select exists (
+    select 1 from information_schema.columns
+     where table_schema = 'public' and table_name = 'publicaciones'
+       and column_name = 'fecha_inicio') into hay_ventana;
+
   /* El bot firma sus obras.
      Buscaba 'Qhaway' a secas, pero la cuenta se renombró a 'Bot Qhaway'
      (db/rename-bot-qhaway.sql) y esta función no se enteró: desde ese día
@@ -189,6 +197,32 @@ begin
       case when es_hito then 'abierta' else 'en_progreso' end,
       coalesce(r.fecha_fin, r.fecha_inicio))
     returning id into nueva_pub;
+    /* ── LA VENTANA, POR SEPARADO Y CON `execute` ──
+       La actividad del cronograma tiene inicio y fin; al materializarla, el
+       fin se convertía en la fecha límite y el INICIO se tiraba: sobrevivía
+       como prosa en el cuerpo («Ventana: … → …»), que no lee ninguna
+       pantalla. Un rodaje planificado para agosto nacía dibujándose en la
+       agenda desde el día en que el bot lo abrió.
+       Un hito va sin inicio a propósito: es una fecha, no un tramo.
+       ⚠ Espejo de `materializarActividad` en app/actions.ts — la misma regla
+       en dos lenguajes, porque esta función vive en Postgres y no puede
+       importar del TypeScript. Si cambia una, cambia la otra.
+
+       Y va FUERA del insert de arriba a propósito.
+       Iba dentro del insert de arriba, y eso ataba la ronda ENTERA a que la
+       migración hubiera corrido: plpgsql no valida los nombres de columna al
+       crear la función —solo la sintaxis—, así que el fichero instalaba sin
+       quejarse y reventaba en la primera ejecución del cron, llevándose por
+       delante lo que viene después: avisos, archivado, contadores y el
+       mensaje al Chat. Un bot mudo se ve igual que un bot sin novedades.
+       `execute` resuelve la columna al ejecutar, y el `if` de `hay_ventana`
+       —comprobado una vez, al principio— hace que sin migración se pierda
+       solo la ventana. Es el mismo cuidado que ya tiene el bloque del muro
+       con `to_regclass`. */
+    if hay_ventana and not es_hito and r.fecha_inicio is not null then
+      execute 'update publicaciones set fecha_inicio = $1 where id = $2'
+        using r.fecha_inicio, nueva_pub;
+    end if;
     insert into publicacion_vinculos (publicacion_id, entidad_tipo, entidad_id)
     values (nueva_pub,
       case when r.proyecto_id is not null then 'proyecto' else 'convocatoria' end,

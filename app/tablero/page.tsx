@@ -261,7 +261,7 @@ export default async function TableroPage({ searchParams }: {
     : (vsFoco || []).map((x: any) => x.publicacion_id);
 
   let q = supabase.from("publicaciones")
-    .select("id,titulo,tipo,estado,fecha_limite,creado_en,autor_id,responsable,comentarios(count),resp:perfiles!publicaciones_responsable_fkey(nombre)")
+    .select("id,titulo,tipo,estado,fecha_inicio,fecha_limite,creado_en,autor_id,responsable,comentarios(count),resp:perfiles!publicaciones_responsable_fkey(nombre)")
     .in("estado", ESTADOS)
     .neq("tipo", "bitacora")   // las notas del muro solo viven en su proyecto
     .order("creado_en", { ascending: false })
@@ -368,7 +368,8 @@ export default async function TableroPage({ searchParams }: {
       /* ⏳ vs ⚡ para la barrita de la tarjeta. Sin `ultimoMovimiento`: el
          tablero no carga la bitácora, y no saberlo no es estar detenido. */
       prog: progresoDe({
-        creado_en: p.creado_en, fecha_limite: p.fecha_limite, estado: p.estado, tipo: p.tipo,
+        creado_en: p.creado_en, fecha_inicio: p.fecha_inicio, fecha_limite: p.fecha_limite,
+        estado: p.estado, tipo: p.tipo,
         hijos: fam && fam.total > 0 ? fam : null,
         vinculadasTotal: (vincDe.get(p.id) || []).length,
       }),

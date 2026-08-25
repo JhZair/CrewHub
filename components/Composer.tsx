@@ -49,6 +49,14 @@ const ENT_META: Record<string, string> = {
 /* El nombre largo para cuando hay sitio: tooltip del botón y chips ya puestos. */
 const ENT_TITULO: Record<string, string> = { objeto: "📚 Repositorio" };
 
+/* Los dos campos de fecha son gemelos y van pegados: si uno mide 34 de alto y
+   el otro 36, la fila se descuadra y no se sabe por qué. Escrito una vez. */
+const ESTILO_FECHA: React.CSSProperties = {
+  height: 34, minHeight: 34, maxHeight: 34, width: 150, minWidth: 150,
+  padding: "0 10px", margin: 0, boxSizing: "border-box", fontSize: 12.5,
+  fontFamily: "inherit", lineHeight: "32px", borderRadius: 9,
+};
+
 type Sel = Vinculo & { nombre: string };
 
 /* Buscador desplegable para entidades: filtra mientras escribes */
@@ -193,6 +201,9 @@ export default function Composer({ userId, catalogos, perfiles, inicial, onListo
   const [tipo, setTipo] = useState("tarea");
   const [resp, setResp] = useState("");
   const [fecha, setFecha] = useState("");
+  /* Cuándo EMPIEZA. Vacío casi siempre: la mayoría de los casos no duran,
+     pasan. Ver db/publicacion-fecha-inicio.sql. */
+  const [fechaIni, setFechaIni] = useState("");
   const [links, setLinks] = useState<Sel[]>(inicial || []);
   const [extraEtq, setExtraEtq] = useState<CatalogoItem[]>([]);
   const [enviando, setEnviando] = useState(false);
@@ -251,11 +262,13 @@ export default function Composer({ userId, catalogos, perfiles, inicial, onListo
       links.map(({ tipo: t, id }) => ({ tipo: t, id })),
       resp || null,
       fecha || null,
-      imgs
+      imgs,
+      fechaIni || null,
     );
     setEnviando(false);
     if (res?.error) { alert("Error al publicar: " + res.error); return; }
-    setTitulo(""); setCuerpo(""); setLinks([]); setResp(""); setFecha(""); setImgs([]);
+    setTitulo(""); setCuerpo(""); setLinks([]); setResp("");
+    setFecha(""); setFechaIni(""); setImgs([]);
     router.refresh();
     onListo?.();
   };
@@ -325,10 +338,24 @@ export default function Composer({ userId, catalogos, perfiles, inicial, onListo
             buttonClass="ent-ctrl"
             buttonStyle={{ height: 34, padding: "0 11px", boxSizing: "border-box", fontSize: 12.5, borderRadius: 9, minWidth: 132, ...(resp ? { borderColor: "var(--teal)", color: "var(--teal)" } : {}) }}
           />
-          <span className="ent-lbl" title="Fecha límite" style={{ marginLeft: 14, minWidth: "auto" }}>📅</span>
+          {/* ── LA VENTANA: «del … al …» ──
+              El inicio va PRIMERO porque es el orden en que se cuenta un
+              trabajo, y va vacío por defecto: la mayoría de los casos no
+              duran, pasan. Un rodaje sí dura, y hasta hoy su barra en la
+              agenda arrancaba el día en que alguien lo escribió.
+              Se pinta en teal —no en el ámbar del vencimiento— porque no es
+              una alarma: el ámbar es «esto se acaba», el inicio es solo
+              cuándo empieza. */}
+          <span className="ent-lbl" title="Empieza (opcional)" style={{ marginLeft: 14, minWidth: "auto" }}>▶</span>
+          <input type="date" className="ent-ctrl" title="Cuándo empieza. Déjalo vacío si el caso no dura."
+            style={{ ...ESTILO_FECHA, ...(fechaIni ? { borderColor: "var(--teal)", color: "var(--teal)" } : {}) }}
+            value={fechaIni} max={fecha || undefined}
+            onChange={e => setFechaIni(e.target.value)} />
+          <span className="ent-lbl" title="Fecha límite" style={{ marginLeft: 8, minWidth: "auto" }}>📅</span>
           <input type="date" className="ent-ctrl"
-            style={{ height: 34, minHeight: 34, maxHeight: 34, width: 150, minWidth: 150, padding: "0 10px", margin: 0, boxSizing: "border-box", fontSize: 12.5, fontFamily: "inherit", lineHeight: "32px", borderRadius: 9, ...(fecha ? { borderColor: "var(--yellow)", color: "var(--yellow)" } : {}) }}
-            value={fecha} onChange={e => setFecha(e.target.value)} />
+            style={{ ...ESTILO_FECHA, ...(fecha ? { borderColor: "var(--yellow)", color: "var(--yellow)" } : {}) }}
+            value={fecha} min={fechaIni || undefined}
+            onChange={e => setFecha(e.target.value)} />
           {/* la etiqueta no es entidad: vive aquí como chip */}
           <span className="etq-pick" style={{ marginLeft: 14 }}>
             <EntPicker etiqueta="🏷️ Etiqueta" items={itemsDe("etiqueta")}
