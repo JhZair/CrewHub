@@ -690,6 +690,27 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
           ),
         };
       })} />
+
+      {/* ── EL FEED ES UNA VENTANA, NO LA LISTA ENTERA ──
+          La pestaña dice «✅ Tareas 243» y la consulta trae las 50 más
+          recientes: sumando lo que se ve más lo que esconde el auto-ocultado
+          nunca daba 243, y la primera sospecha razonable es que el número
+          cuente archivados. No: las dos consultas excluyen exactamente lo
+          mismo —archivado, descartado, bitácora, lo que ocultaste—; lo que
+          cambia es que una tiene tope y la otra no.
+          El tope se queda (cincuenta tarjetas con sus comentarios, vínculos y
+          reacciones es lo que hace que la portada abra rápido), pero deja de
+          ser un secreto: el número dice cuántas hay y esta línea dice cuántas
+          se están viendo. Lo viejo se busca por el buscador o por la ficha de
+          su proyecto, que es donde uno lo va a buscar de verdad. */}
+      {conteo[v] > posts.length && (
+        <div className="feed-ocultos">
+          <span>
+            📜 Se ven las {posts.length} más recientes de {conteo[v]}
+            {" "}— lo anterior está en el buscador y en cada ficha
+          </span>
+        </div>
+      )}
     </div>
   );
 }
