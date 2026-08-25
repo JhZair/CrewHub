@@ -145,7 +145,12 @@ export default async function FondosPage() {
     const chip = rendido
       ? { ico: "✅", txt: "Rendido", col: "var(--green)" }
       : vencida
-        ? { ico: "🔴", txt: `Venció ${dmy(plazoRendicion(f))}`, col: "var(--red)" }
+        /* ⏰ y no 🔴: el círculo rojo, pegado al borde derecho y a la altura de
+           las cifras, se lee como una burbuja de conteo —«¿un pendiente?»— y no
+           como un estado. Desde que hay burbujas rojas de verdad en el menú y
+           en las pestañas, el parecido pasó de incómodo a engañoso. El reloj
+           dice lo que pasó: se acabó el tiempo. */
+        ? { ico: "⏰", txt: `Venció ${dmy(plazoRendicion(f))}`, col: "var(--red)" }
         : sinPlazo
           ? { ico: "⚠", txt: "Sin plazo cargado", col: "var(--yellow)" }
           : { ico: "🎬", txt: `Rinde ${dmy(plazoRendicion(f))}`, col: "var(--teal)" };

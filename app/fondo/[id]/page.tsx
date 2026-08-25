@@ -470,7 +470,8 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
   const estadoEjec = ent.fecha_rendicion_real
     ? { ico: "✅", txt: "Rendido", col: "var(--green)" }
     : vencida
-      ? { ico: "🔴", txt: `Debe rendición — venció ${dmy(plazo)}`, col: "var(--red)" }
+      // El mismo reloj que en la lista: un plazo que se acabó, no un contador.
+      ? { ico: "⏰", txt: `Debe rendición — venció ${dmy(plazo)}`, col: "var(--red)" }
       : { ico: "🎬", txt: plazo ? `En ejecución — rinde ${dmy(plazo)}` : "En ejecución", col: "var(--teal)" };
 
   const titulo = [ent.codigo, ent.proy?.nombre, ent.conv?.anio].filter(Boolean).join(" · ");
