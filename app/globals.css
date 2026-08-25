@@ -809,6 +809,12 @@ a{color:inherit;text-decoration:none}
 .vtabs-nav .vtab:hover{background:rgba(255,255,255,.09);color:var(--text);border-color:var(--border2)}
 .vtabs-nav .vtab.on{background:rgba(124,92,255,.12);color:var(--text);border-color:var(--border);border-bottom-color:var(--accent);font-weight:700}
 .vtabs-nav .vtab.on .vtab-n{background:rgba(124,92,255,.24);color:var(--text)}
+/* La alerta se pinta roja también en la pestaña ACTIVA de esta barra. La regla
+   general de más arriba (.vtab.on .vtab-alerta) perdía contra el selector de
+   la línea anterior —tiene una clase más y va después—, así que la burbuja
+   roja se volvía violeta justo en la pestaña donde estás, que es donde más se
+   mira: un pendiente disfrazado del contador de al lado. */
+.vtabs-nav .vtab .vtab-alerta,.vtabs-nav .vtab.on .vtab-alerta{background:var(--red);color:#fff}
 .vtabs-nav .vtab-drive{color:#8ab4f8;background:rgba(26,115,232,.08);border-color:color-mix(in srgb, #1a73e8 28%, var(--border));border-bottom-color:transparent}
 .vtabs-nav .vtab-drive:hover{background:rgba(26,115,232,.18);color:#9cc0fb;border-color:#1a73e8}
 .vtabs-nav .vtab-mas{padding-left:11px;padding-right:11px;letter-spacing:1px}
