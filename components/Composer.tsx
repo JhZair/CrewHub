@@ -49,13 +49,17 @@ const ENT_META: Record<string, string> = {
 /* El nombre largo para cuando hay sitio: tooltip del botón y chips ya puestos. */
 const ENT_TITULO: Record<string, string> = { objeto: "📚 Repositorio" };
 
-/* Los dos campos de fecha son gemelos y van pegados: si uno mide 34 de alto y
-   el otro 36, la fila se descuadra y no se sabe por qué. Escrito una vez. */
-const ESTILO_FECHA: React.CSSProperties = {
-  height: 34, minHeight: 34, maxHeight: 34, width: 150, minWidth: 150,
-  padding: "0 10px", margin: 0, boxSizing: "border-box", fontSize: 12.5,
+/* Los campos de fecha son gemelos y van pegados: si uno mide 34 de alto y el
+   otro 36, la fila se descuadra y no se sabe por qué. Escrito una vez.
+   `ancho` se encoge cuando el tipo trae HORA: son cinco controles en la misma
+   línea en vez de cuatro, y con los 150 de siempre la etiqueta 🏷️ se caía a un
+   segundo renglón. Un formulario que cambia de alto según lo que elijas se
+   siente roto aunque funcione. */
+const estiloFecha = (ancho: number): React.CSSProperties => ({
+  height: 34, minHeight: 34, maxHeight: 34, width: ancho, minWidth: ancho,
+  padding: "0 8px", margin: 0, boxSizing: "border-box", fontSize: 12.5,
   fontFamily: "inherit", lineHeight: "32px", borderRadius: 9,
-};
+});
 
 type Sel = Vinculo & { nombre: string };
 
@@ -258,6 +262,13 @@ export default function Composer({ userId, catalogos, perfiles, inicial, onListo
   const quitar = (t: string, id: string) =>
     setLinks(links.filter(l => !(l.tipo === t && l.id === id)));
 
+  /* Cinco controles en la fila cuando el tipo lleva hora, cuatro cuando no.
+     Los anchos salen de aquí y no de cada `style` para que no se pueda ajustar
+     uno y olvidar el otro: si los dos campos de fecha no miden lo mismo, la
+     fila se lee torcida sin que se sepa por qué. */
+  const conHora = llevaHora(tipo);
+  const anchoFecha = conHora ? 128 : 150;
+
   const publicar = async () => {
     if (!titulo.trim() || enviando) return;
     setEnviando(true);
@@ -341,7 +352,7 @@ export default function Composer({ userId, catalogos, perfiles, inicial, onListo
             options={[["", "Sin asignar"], ...perfiles.map(p => [p.id, p.nombre])]}
             onSelect={setResp}
             buttonClass="ent-ctrl"
-            buttonStyle={{ height: 34, padding: "0 11px", boxSizing: "border-box", fontSize: 12.5, borderRadius: 9, minWidth: 132, ...(resp ? { borderColor: "var(--teal)", color: "var(--teal)" } : {}) }}
+            buttonStyle={{ height: 34, padding: "0 10px", boxSizing: "border-box", fontSize: 12.5, borderRadius: 9, minWidth: conHora ? 108 : 132, ...(resp ? { borderColor: "var(--teal)", color: "var(--teal)" } : {}) }}
           />
           {/* ── LA VENTANA: «del … al …» ──
               El inicio va PRIMERO porque es el orden en que se cuenta un
@@ -351,9 +362,9 @@ export default function Composer({ userId, catalogos, perfiles, inicial, onListo
               Se pinta en teal —no en el ámbar del vencimiento— porque no es
               una alarma: el ámbar es «esto se acaba», el inicio es solo
               cuándo empieza. */}
-          <span className="ent-lbl" title="Empieza (opcional)" style={{ marginLeft: 14, minWidth: "auto" }}>▶</span>
+          <span className="ent-lbl" title="Empieza (opcional)" style={{ marginLeft: conHora ? 8 : 14, minWidth: "auto" }}>▶</span>
           <input type="date" className="ent-ctrl" title="Cuándo empieza. Déjalo vacío si el caso no dura."
-            style={{ ...ESTILO_FECHA, ...(fechaIni ? { borderColor: "var(--teal)", color: "var(--teal)" } : {}) }}
+            style={{ ...estiloFecha(anchoFecha), ...(fechaIni ? { borderColor: "var(--teal)", color: "var(--teal)" } : {}) }}
             value={fechaIni} max={fecha || undefined}
             onChange={e => setFechaIni(e.target.value)} />
           {/* El rótulo cambia con el tipo, porque la fecha significa otra cosa:
@@ -364,7 +375,7 @@ export default function Composer({ userId, catalogos, perfiles, inicial, onListo
             style={{ marginLeft: 8, minWidth: "auto" }}>📅</span>
           <input type="date" className="ent-ctrl"
             title={llevaHora(tipo) ? "Cuándo es" : "Fecha límite"}
-            style={{ ...ESTILO_FECHA, ...(fecha ? { borderColor: "var(--yellow)", color: "var(--yellow)" } : {}) }}
+            style={{ ...estiloFecha(anchoFecha), ...(fecha ? { borderColor: "var(--yellow)", color: "var(--yellow)" } : {}) }}
             value={fecha} min={fechaIni || undefined}
             onChange={e => setFecha(e.target.value)} />
           {/* ── LA HORA, SOLO DONDE SIGNIFICA ALGO ──
@@ -375,13 +386,13 @@ export default function Composer({ userId, catalogos, perfiles, inicial, onListo
             <>
               <span className="ent-lbl" title="A qué hora" style={{ marginLeft: 8, minWidth: "auto" }}>🕐</span>
               <input type="time" className="ent-ctrl" title="A qué hora empieza"
-                style={{ ...ESTILO_FECHA, width: 110, minWidth: 110,
+                style={{ ...estiloFecha(92),
                   ...(hora ? { borderColor: "var(--teal)", color: "var(--teal)" } : {}) }}
                 value={hora} onChange={e => setHora(e.target.value)} />
             </>
           )}
           {/* la etiqueta no es entidad: vive aquí como chip */}
-          <span className="etq-pick" style={{ marginLeft: 14 }}>
+          <span className="etq-pick" style={{ marginLeft: conHora ? 8 : 14 }}>
             <EntPicker etiqueta="🏷️ Etiqueta" items={itemsDe("etiqueta")}
               onPick={id => agregar("etiqueta", id)} onCrear={crearYAgregarEtiqueta} />
           </span>
