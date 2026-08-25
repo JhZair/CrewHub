@@ -36,6 +36,10 @@ export type DocRhe = {
   monto?: number;
   /** ISO, «2024-05-16». */
   fecha?: string;
+  /** El nombre de quien emite, tal como sale en la cabecera del recibo. No se
+   *  usa para cruzar —los nombres se escriben de mil maneras— pero sí para
+   *  decir de quién es un PDF cuyo RUC no está en ninguna ficha. */
+  emisor?: string;
   /** true si el PDF no soltó texto (escaneo, foto). */
   ilegible?: boolean;
   /** Cuántos recibos distintos parece traer dentro, si trae más de uno. */
@@ -102,11 +106,16 @@ export function leerRhe(archivo: string, texto: string): DocRhe {
   const t = (texto || "").replace(/ /g, " ");
   if (!t.trim()) return { archivo, ilegible: true, ...deNombre(archivo) };
 
-  /* El número. `E001` (electrónico) o `R001`/`B001` (los de papel antiguos).
-     Se descartan los que vengan pegados a más dígitos para no comerse un
-     código de barras. */
-  const nums = [...new Set((t.match(/\b[EBR]\d{3}\s*-\s*\d{1,8}\b/g) || [])
-    .map(x => claveNumero(x)))];
+  /* ── EL NÚMERO, EN EL PDF, VA SIN GUION ──
+     Comprobado con recibos reales: SUNAT escribe «E001 24», con un espacio.
+     La regla estricta de `claveNumero` —que exige guion— es la correcta para
+     el NOMBRE DEL ARCHIVO, donde cualquier cifra suelta puede fabricar una
+     clave falsa; dentro de un recibo por honorarios, en cambio, «E001 24»
+     solo puede ser una cosa. Por eso el texto se lee con su propio patrón.
+     Los tres primeros archivos de prueba acertaron por casualidad: el número
+     estaba en el nombre del archivo. Con la carpeta real, muchos no lo tendrán. */
+  const nums = [...new Set((t.match(/\b[EBR]\d{3}[\s-]+\d{1,8}\b/g) || [])
+    .map(x => `${x.slice(0, 4)}-${String(Number(x.slice(4).replace(/\D/g, "")))}`))];
   const mNum = nums[0];
   /* ── UN ARCHIVO CON VARIOS RECIBOS NO SE CRUZA ──
      La descarga agrupada de SOL mete varios RHE en un mismo PDF. Ahí el
@@ -122,10 +131,12 @@ export function leerRhe(archivo: string, texto: string): DocRhe {
      Si hubiera varios —un RUC repetido en el pie— da igual: es el mismo. */
   const rucs = (t.match(/\b\d{11}\b/g) || []).filter(r => /^(10|15)/.test(r));
 
-  /* La fecha de emisión. Se coge la PRIMERA del documento: en la maqueta de
-     SUNAT la emisión va arriba y cualquier otra fecha (pago, impresión) va
-     después. Si el cruce depende de esto, sale como «probable», no «seguro». */
+  /* ── LA FECHA VIENE EN LETRAS ──
+     «Fecha de emisión 02 de Abril del 2024». Una expresión de dd/mm/aaaa no
+     encuentra nada ahí, y la fecha es lo que desempata cuando una persona
+     tiene dos recibos del mismo importe. Se leen las dos formas. */
   const mFec = t.match(/\b(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})\b/);
+  const mFecTxt = t.match(/(\d{1,2})\s+de\s+([a-zA-ZáéíóúÁÉÍÓÚ]+)\s+d[e]?l?\s+(\d{4})/);
 
   /* El importe. Se toma el MAYOR de los importes con dos decimales: en un RHE
      conviven el bruto, la retención (8 %) y el neto, y el que aparece en la
@@ -135,16 +146,45 @@ export function leerRhe(archivo: string, texto: string): DocRhe {
   const montos = (t.match(/\d[\d,]*\.\d{2}/g) || [])
     .map(x => Number(x.replace(/,/g, "")))
     .filter(x => x > 0);
+  /* Y si el recibo lo dice con todas las letras —«Total por honorarios:
+     2,000.00»— se cree eso antes que a la aritmética. El máximo es un buen
+     respaldo, no una buena primera opción. */
+  const mHon = t.match(/Total\s+por\s+honorarios\s*:?\s*([\d,]+\.\d{2})/i);
+
+  /* El nombre del emisor: la primera línea del recibo, encima del R.U.C. No
+     sirve para cruzar —«PEREZ DIAZ KATY» y «Katy Pérez» son la misma persona
+     para un humano y dos cadenas distintas para una máquina— pero convierte
+     «el RUC no está en ninguna ficha» en «a Katy le falta el RUC en su
+     ficha», que ya se puede arreglar. */
+  const emisor = (t.split("\n").map(x => x.trim())
+    .find(x => /^[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ .\-]{7,}$/.test(x)) || "").trim() || undefined;
 
   return {
     archivo,
     clave: mNum || deNombre(archivo).clave,
     ruc: rucs[0],
-    monto: montos.length ? Math.max(...montos) : undefined,
+    emisor,
+    monto: mHon ? Number(mHon[1].replace(/,/g, ""))
+      : montos.length ? Math.max(...montos) : undefined,
     fecha: mFec
       ? `${mFec[3]}-${mFec[2].padStart(2, "0")}-${mFec[1].padStart(2, "0")}`
+      : mFecTxt ? deLetras(mFecTxt[1], mFecTxt[2], mFecTxt[3])
       : undefined,
   };
+}
+
+const MESES = ["enero","febrero","marzo","abril","mayo","junio",
+  "julio","agosto","setiembre","octubre","noviembre","diciembre"];
+
+/* «02 de Abril del 2024» → «2024-04-02». Setiembre y septiembre se escriben
+   de las dos formas en el Perú, y SUNAT usa la primera. */
+function deLetras(d: string, mes: string, anio: string): string | undefined {
+  const m = mes.toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace("septiembre", "setiembre");
+  const i = MESES.findIndex(x => x === m);
+  if (i < 0) return undefined;
+  return `${anio}-${String(i + 1).padStart(2, "0")}-${d.padStart(2, "0")}`;
 }
 
 /* Del NOMBRE del archivo se saca lo único que suele traer: el número. Es el
@@ -238,7 +278,7 @@ export function cruzar(
     }
     if (porMonto.length > 1) return dudoso(doc, porMonto, "Varios recibos con ese mismo importe");
     if (rucHuerfano) {
-      return nada(doc, `El RUC ${doc.ruc} del PDF no está en ninguna ficha de persona`);
+      return nada(doc, `El RUC ${doc.ruc}${doc.emisor ? ` (${doc.emisor})` : ""} no está en ninguna ficha de persona: cárgalo en su ficha y vuelve a soltar el archivo`);
     }
     return nada(doc, doc.ilegible
       ? "No pude sacar texto del archivo (es un escaneo o una foto)"
