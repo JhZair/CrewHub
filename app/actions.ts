@@ -3403,6 +3403,96 @@ export async function adjuntarComprobantesRhe(
   return { hechos, fallos };
 }
 
+/* ── DAR DE ALTA LOS RECIBOS QUE EL PDF YA TRAE ──
+ *
+ * Un fondo que empieza no tiene ni una fila de RHE, así que la carga por lote
+ * no tenía a qué colgar los PDF y se quedaba muda justo cuando más trabajo
+ * ahorraría. Pero el recibo trae dentro TODO lo que una fila necesita: de
+ * quién es (su RUC), número, fecha, importe y concepto. Teclear eso cincuenta
+ * veces mirando los mismos PDF es el trabajo que esta pantalla vino a quitar.
+ *
+ * ── SOLO ADMINISTRACIÓN ──
+ * Adjuntar un papel a un gasto ya registrado y REGISTRAR el gasto son cosas
+ * distintas: lo primero completa un expediente, lo segundo mete plata en la
+ * rendición. El apoyo de rendición puede lo primero y no lo segundo, y la
+ * política `crear_rhe` de la base dice lo mismo (db/rhe-permisos.sql).
+ *
+ * ── NO CREA DOS VECES EL MISMO ──
+ * Se comprueba persona + número dentro del fondo antes de insertar. Soltar la
+ * carpeta dos veces es lo normal —se baja de Drive de una tacada— y un gasto
+ * duplicado en la rendición es el error que ninguna auditoría perdona. El
+ * repetido se DEVUELVE dicho, no se ignora en silencio.
+ */
+export async function crearRhesDeLote(postulacionId: string, items: {
+  personaId: string; numero: string; fecha: string; monto: number;
+  concepto?: string; url: string;
+}[]) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: perfil } = await supabase.from("perfiles")
+    .select("es_admin,es_finanzas").eq("id", user.id).maybeSingle();
+  if (!perfil?.es_admin && !perfil?.es_finanzas) {
+    return { error: "Solo administración registra recibos. Tú sí puedes adjuntar el PDF de los que ya están." };
+  }
+  if (!Array.isArray(items) || !items.length) return { error: "No llegó ningún recibo." };
+  if (items.length > 300) return { error: "Demasiados de una vez: sube por tandas de 300." };
+
+  /* Los que YA existen en este fondo, en un solo viaje. Preguntar uno por uno
+     serían trescientas idas y vueltas para no crear duplicados. */
+  const { data: yaHay, error: eLee } = await supabase.from("rhe")
+    .select("persona_id,numero").eq("postulacion_id", postulacionId);
+  if (eLee) return { error: eLee.message };
+  const clave = (p: string, n: string) =>
+    `${p}|${String(n || "").toUpperCase().replace(/\s+/g, "")}`;
+  const existen = new Set((yaHay || []).map((r: any) => clave(r.persona_id, r.numero)));
+
+  let creados = 0;
+  const fallos: { archivo?: string; error: string }[] = [];
+  for (const it of items) {
+    const k = clave(it.personaId, it.numero);
+    if (existen.has(k)) {
+      fallos.push({ error: `El recibo ${it.numero} de esa persona ya estaba registrado en este fondo.` });
+      continue;
+    }
+    if (!it.personaId || !it.numero || !(it.monto > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(it.fecha)) {
+      fallos.push({ error: `${it.numero || "un recibo"}: le faltan datos para registrarlo.` });
+      continue;
+    }
+    if (!/^https?:\/\/\S+$/.test(String(it.url || "").trim())) {
+      fallos.push({ error: `${it.numero}: el PDF no se subió.` });
+      continue;
+    }
+    const { error } = await supabase.from("rhe").insert({
+      persona_id: it.personaId,
+      postulacion_id: postulacionId,
+      numero: it.numero,
+      fecha: it.fecha,
+      monto: it.monto,
+      /* La retención en cero: los recibos del fondo van sin retención —el 8 %
+         solo aplica pasado el tope anual— y el propio PDF lo dice. Si alguno
+         la llevara, se corrige en su fila; inventarla aquí sería peor. */
+      retencion: 0,
+      concepto: it.concepto || null,
+      url: it.url.trim(),
+      creado_por: user.id,
+    });
+    if (error) { fallos.push({ archivo: it.numero, error: error.message }); continue; }
+    existen.add(k);      // por si la misma tanda trae el mismo dos veces
+    creados++;
+  }
+
+  if (creados) {
+    await supabase.from("actividad").insert({
+      entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "dato",
+      detalle: { mensaje: `registró ${creados} recibo(s) por honorarios desde sus PDF` },
+    });
+  }
+  revalidatePath(`/fondo/${postulacionId}`);
+  revalidatePath(`/entidad/postulacion/${postulacionId}`);
+  return { creados, fallos };
+}
+
 /* ── LA CUENTA DEL FONDO SE CERRÓ ──
  *
  * PO-005 gastó el fondo entero y cerró la cuenta exclusiva; el sistema seguía

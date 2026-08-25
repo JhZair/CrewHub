@@ -429,19 +429,24 @@ export default function RendicionFondo({
           Girados por <b style={{ color: "var(--muted)", fontWeight: 600 }}>{empresa}</b> — la asociación titular del fondo.
         </div>
       )}
-      {rhe.length > 0 && (
+      {/* Sin recibos todavía no se puede nombrar a nadie… y es justo cuando hay
+          que hacerlo: el apoyo entra ANTES de que llegue el trabajo, no
+          después. Se enseña siempre a administración. */}
+      {(rhe.length > 0 || esAdmin) && (
         <ApoyosFondo postulacionId={postulacionId} esAdmin={esAdmin}
           apoyos={apoyos || []} equipo={equipo || []} />
       )}
-      {rhe.length > 0 && (
+      {(rhe.length > 0 || esAdmin) && (
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
-          <span style={{ color: "var(--dim)", fontSize: 12 }}>Ver:</span>
-          <div className="rhe-vistas">
-            {([["persona", "👤 Por persona"], ["etapa", "🎬 Por etapa"], ["rubro", "🗂 Por rubro"]] as const).map(([m, txt]) => (
-              <button key={m} onClick={() => setModo(m)}
-                className={modo === m ? "on" : ""}>{txt}</button>
-            ))}
-          </div>
+          {rhe.length > 0 && <span style={{ color: "var(--dim)", fontSize: 12 }}>Ver:</span>}
+          {rhe.length > 0 && (
+            <div className="rhe-vistas">
+              {([["persona", "👤 Por persona"], ["etapa", "🎬 Por etapa"], ["rubro", "🗂 Por rubro"]] as const).map(([m, txt]) => (
+                <button key={m} onClick={() => setModo(m)}
+                  className={modo === m ? "on" : ""}>{txt}</button>
+              ))}
+            </div>
+          )}
           <span style={{ flex: 1 }} />
           {/* ── LA CARGA POR LOTE ──
               Solo para quien puede escribir en TODAS las filas —administración
@@ -453,7 +458,13 @@ export default function RendicionFondo({
               desmontaba llevándose el resumen antes de que nadie lo leyera —o
               sea, el único caso en que todo salió bien era el único sin
               confirmación. También sirve para reemplazar un escaneo malo. */}
-          {(esAdmin || esApoyo) && rhe.length > 0 && (
+          {/* ── SE OFRECE CON CERO RECIBOS, Y SOBRE TODO CON CERO ──
+              Antes hacía falta al menos una fila, porque el lote solo sabía
+              ADJUNTAR. Desde que también da de alta lo que el PDF trae, un
+              fondo vacío es el caso en que más ahorra: se suelta la carpeta y
+              quedan registrados con su comprobante. Al apoyo se le sigue
+              pidiendo que haya filas — él cuelga papeles, no registra gastos. */}
+          {(esAdmin || (esApoyo && rhe.length > 0)) && (
             <CargarComprobantes postulacionId={postulacionId} nombreFondo={empresa || null}
               rucs={rucs || {}} esAdmin={esAdmin}
               filas={rhe.map(r => ({
@@ -462,8 +473,12 @@ export default function RendicionFondo({
                 persona: r.persona, nombre: r.personaNombre,
               }))} />
           )}
-          <button className="plg-todo" onClick={() => plegarTodos(true)}>⤢ Expandir todo</button>
-          <button className="plg-todo" onClick={() => plegarTodos(false)}>⤡ Plegar todo</button>
+          {rhe.length > 0 && (
+            <>
+              <button className="plg-todo" onClick={() => plegarTodos(true)}>⤢ Expandir todo</button>
+              <button className="plg-todo" onClick={() => plegarTodos(false)}>⤡ Plegar todo</button>
+            </>
+          )}
         </div>
       )}
       {esAdmin && rhe.length > 0 && etapas.length === 0 && (

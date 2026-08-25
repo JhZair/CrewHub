@@ -3,9 +3,9 @@ import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { textoDePdf } from "@/lib/leerPdf";
 import { subirAdjunto } from "@/lib/subirImagen";
-import { adjuntarComprobantesRhe, fijarRucPersona } from "@/app/actions";
+import { adjuntarComprobantesRhe, fijarRucPersona, crearRhesDeLote } from "@/app/actions";
 import {
-  leerRhe, cruzar, repetidos, claveNumero, soloDigitos, parecido,
+  leerRhe, cruzar, repetidos, claveNumero, soloDigitos, parecido, altaDe,
   type Cruce, type FilaRhe,
 } from "@/lib/rheLote";
 
@@ -158,6 +158,49 @@ export default function CargarComprobantes({
       const rehechos = cruzar(p.map(c => c.doc), filas, nuevoMapa);
       return p.map((c, i) => (c.motivo === "Elegido a mano" ? c : rehechos[i]));
     });
+    router.refresh();
+  };
+
+  /* ── LOS QUE NO ESTÁN REGISTRADOS ──
+     El PDF trae de quién es, número, fecha, importe y concepto: todo lo que
+     una fila necesita. En un fondo que empieza esto es el 100 % de la tanda,
+     y sin ello el importador se queda mudo justo cuando más ahorraría. */
+  const altas = useMemo(
+    () => cruces.map(c => altaDe(c, mapaRuc)).filter(Boolean) as NonNullable<ReturnType<typeof altaDe>>[],
+    [cruces, mapaRuc]);
+  /* Cuáles se van a dar de alta. Empieza con TODAS marcadas —es el caso normal
+     y desmarcar de a una es más rápido que marcar cincuenta— pero el acto de
+     crear sigue siendo un botón aparte que alguien pulsa. */
+  const [noAlta, setNoAlta] = useState<Set<string>>(new Set());
+  const altasElegidas = altas.filter(a => !noAlta.has(a.archivo));
+
+  const [creando, setCreando] = useState(false);
+  const crear = async () => {
+    if (!altasElegidas.length) return;
+    setErr(""); setCreando(true); setEstado("subiendo");
+    setAvance({ n: 0, de: altasElegidas.length });
+    const items: any[] = [];
+    const fallos: string[] = [];
+    for (let k = 0; k < altasElegidas.length; k++) {
+      const a = altasElegidas[k];
+      const i = cruces.findIndex(c => c.doc.archivo === a.archivo);
+      const r = await subirAdjunto(archivos[i]);
+      if (r.error || !r.url) fallos.push(`${a.archivo}: ${r.error || "no se pudo subir"}`);
+      else items.push({ ...a, url: r.url });
+      setAvance({ n: k + 1, de: altasElegidas.length });
+    }
+    const res: any = items.length
+      ? await crearRhesDeLote(postulacionId, items)
+      : { creados: 0, fallos: [] };
+    setCreando(false); setEstado("hecho");
+    if (res?.error) { setErr(res.error); return; }
+    for (const f of res?.fallos || []) fallos.push(f.error);
+    setResumen({ hechos: res?.creados || 0, fallos });
+    /* Los creados se van de la tanda: al refrescar, sus filas ya existen y
+       volver a ofrecerlos sería invitar a duplicar el gasto. */
+    const hechos = new Set(items.map(x => x.archivo));
+    setArchivos(p => p.filter((_, k) => !hechos.has(cruces[k]?.doc.archivo)));
+    setCruces(p => p.filter(c => !hechos.has(c.doc.archivo)));
     router.refresh();
   };
 
@@ -366,6 +409,58 @@ export default function CargarComprobantes({
                         </div>
                       );
                     })}
+                  </div>
+                )}
+
+                {/* ── DAR DE ALTA LOS QUE NO ESTÁN ──
+                    Va DESPUÉS de los RUC huérfanos a propósito: cargar un RUC
+                    puede hacer que un archivo pase de «no sé de quién es» a
+                    «este recibo no está registrado», y el orden de la pantalla
+                    sigue el orden en que se resuelven las cosas. */}
+                {esAdmin && altas.length > 0 && (
+                  <div className="altas-rhe">
+                    <div className="altas-tit">
+                      🧾 {altas.length} recibo(s) no están registrados en este fondo.
+                      El PDF trae todo lo que hace falta — se pueden dar de alta con su comprobante ya colgado.
+                    </div>
+                    {altas.map(a => {
+                      const p = personasDelFondo.find(x => x.id === a.personaId);
+                      const marcada = !noAlta.has(a.archivo);
+                      return (
+                        <label key={a.archivo} className="alta-fila">
+                          <input type="checkbox" checked={marcada} disabled={creando}
+                            onChange={() => setNoAlta(s => {
+                              const n = new Set(s);
+                              if (n.has(a.archivo)) n.delete(a.archivo); else n.add(a.archivo);
+                              return n;
+                            })} />
+                          <b style={{ fontSize: 12 }}>{a.numero}</b>
+                          <span style={{ color: "var(--muted)", fontSize: 12, whiteSpace: "nowrap" }}>
+                            {p?.alias || "—"}
+                          </span>
+                          <span style={{ color: "var(--teal)", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>
+                            S/ {a.monto.toFixed(2)}
+                          </span>
+                          <span style={{ color: "var(--dim)", fontSize: 11.5, whiteSpace: "nowrap" }}>
+                            {a.fecha.split("-").reverse().join("/")}
+                          </span>
+                          <span className="cmp-lote-motivo" title={a.concepto || "sin concepto en el PDF"}>
+                            {a.concepto || "sin concepto en el PDF"}
+                          </span>
+                        </label>
+                      );
+                    })}
+                    <div style={{ marginTop: 6, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                      <button className="btn" style={{ fontSize: 12, padding: "5px 12px" }}
+                        disabled={!altasElegidas.length || creando || estado === "subiendo"}
+                        onClick={crear}>
+                        {creando ? `Registrando ${avance.n}/${avance.de}…`
+                          : `＋ Registrar ${altasElegidas.length} recibo(s) con su PDF`}
+                      </button>
+                      <span style={{ color: "var(--dim)", fontSize: 11.5 }}>
+                        Los ejes —etapa y rubro— se ponen después, en la lista.
+                      </span>
+                    </div>
                   </div>
                 )}
 

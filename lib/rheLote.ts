@@ -36,6 +36,10 @@ export type DocRhe = {
   monto?: number;
   /** ISO, «2024-05-16». */
   fecha?: string;
+  /** «Por concepto de …»: para qué se giró. No sirve para cruzar, pero es lo
+   *  que hace legible una fila de la rendición dos años después, y viene
+   *  escrito en el papel — teclearlo a mano cincuenta veces no lo hace nadie. */
+  concepto?: string;
   /** El nombre de quien emite, tal como sale en la cabecera del recibo. No se
    *  usa para cruzar —los nombres se escriben de mil maneras— pero sí para
    *  decir de quién es un PDF cuyo RUC no está en ninguna ficha. */
@@ -193,9 +197,15 @@ export function leerRhe(archivo: string, texto: string): DocRhe {
   const emisor = (t.split("\n").map(x => x.trim())
     .find(x => /^[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ .\-]{7,}$/.test(x)) || "").trim() || undefined;
 
+  /* El concepto va entre «Por concepto de» y la siguiente etiqueta de la
+     maqueta. Se corta ahí y no en el salto de línea porque el concepto ocupa
+     dos y tres renglones a menudo. */
+  const mCon = t.match(/Por\s+concepto\s+de\s+([\s\S]*?)\s*(?:Observaci[oó]n|Inciso|Fecha\s+de\s+emisi[oó]n|Total\s+por|$)/i);
+
   const nom = deNombre(archivo);
   return {
     archivo,
+    concepto: mCon ? mCon[1].replace(/\s+/g, " ").trim().slice(0, 400) || undefined : undefined,
     clave: mNum || nom.clave,
     ruc: rucs[0] || nom.ruc,
     delNombre: !mNum || !rucs[0],
@@ -436,4 +446,38 @@ export function parecido(a?: string | null, b?: string | null): number {
     if (A.some(y => (x.startsWith(y) || y.startsWith(x)) && Math.min(x.length, y.length) >= 4)) pts++;
   }
   return pts;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LOS RECIBOS QUE NO ESTÁN REGISTRADOS
+
+   Un fondo que empieza no tiene ni una fila de RHE, así que no hay nada con
+   qué cruzar: el importador se quedaba mudo justo cuando más trabajo ahorra.
+   Pero el PDF trae TODO lo que una fila necesita —de quién es (por su RUC),
+   número, fecha, importe y concepto—, así que se puede dar de alta.
+
+   ── QUÉ SE CONSIDERA DABLE DE ALTA ──
+   Solo lo que está completo Y es de alguien conocido: RUC que resuelve a una
+   ficha, número, importe y fecha. Con un dato menos, la fila nacería coja y
+   habría que corregirla después mirando el mismo PDF — no se ahorra nada y se
+   ensucia la rendición.
+   Y solo si NO va a colgarse de una fila existente: si el archivo ya encontró
+   su recibo, crear otro sería duplicar el gasto en la rendición, que es
+   exactamente el error que nadie perdona en una auditoría.
+   ══════════════════════════════════════════════════════════════════════════ */
+export type AltaRhe = {
+  archivo: string;
+  personaId: string;
+  numero: string;
+  fecha: string;
+  monto: number;
+  concepto?: string;
+};
+
+export function altaDe(c: Cruce, mapa: Map<string, string>): AltaRhe | null {
+  if (c.filaId) return null;                       // ya tiene dónde colgarse
+  const personaId = personaDe(mapa, c.doc.ruc);
+  const { clave, monto, fecha, concepto, archivo } = c.doc;
+  if (!personaId || !clave || !monto || !fecha) return null;
+  return { archivo, personaId, numero: clave, monto, fecha, concepto };
 }
