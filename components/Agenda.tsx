@@ -2,6 +2,7 @@
 import NavFechas from "@/components/NavFechas";
 import Avatar from "@/components/Avatar";
 import { useState, useEffect, type Dispatch, type SetStateAction } from "react";
+import { createPortal } from "react-dom";
 import Link from "@/components/Enlace";
 import { icoTipo, colorTipo } from "@/lib/tipos";
 import VistaRapida from "@/components/VistaRapida";
@@ -644,6 +645,27 @@ function Calendario({ vis, mesOff, setMesOff, colorDe, icoDe, apagado }: {
 
   const TOPE = 4;   // chips por día antes de "+N"
 
+  /* ── EL DÍA COMPLETO, EN UN POP-UP ──
+     Una celda de calendario cabe cuatro chips y el resto se resumía en «+3
+     más», que decía cuántos faltaban y no dejaba verlos: para saber qué había
+     el día 25 tocaba irse a la línea de tiempo y buscar. Un número que informa
+     de algo que no se puede abrir es una puerta pintada.
+     Se abre el día ENTERO y no solo lo escondido: quien pulsa «+3» quiere ver
+     el día, y empezar por el cuarto elemento obliga a recomponerlo de memoria.
+     El pop-up es la vista honesta de una celda que no da más de sí. */
+  const [diaAbierto, setDiaAbierto] = useState<string | null>(null);
+  useEffect(() => {
+    if (!diaAbierto) return;
+    const onEsc = (e: KeyboardEvent) => { if (e.key === "Escape") setDiaAbierto(null); };
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [diaAbierto]);
+  const itemsDia = diaAbierto ? enDia(diaAbierto) : [];
+  const rotuloDia = (key: string) => {
+    const d = new Date(key + "T12:00:00");
+    return d.toLocaleDateString("es-PE", { weekday: "long", day: "numeric", month: "long" });
+  };
+
   return (
     <div className="card">
       <div className="ag-tl-nav">
@@ -673,11 +695,52 @@ function Calendario({ vis, mesOff, setMesOff, colorDe, icoDe, apagado }: {
                   {it.hora ? <b className="ag-cal-hora">{it.hora}</b> : icoDe(it)} {it.titulo}
                 </Link>
               ))}
-              {items.length > TOPE && <span className="ag-cal-mas">+{items.length - TOPE} más</span>}
+              {items.length > TOPE && (
+                <button type="button" className="ag-cal-mas"
+                  title={`Ver los ${items.length} de este día`}
+                  onClick={() => setDiaAbierto(key)}>
+                  +{items.length - TOPE} más
+                </button>
+              )}
             </div>
           );
         })}
       </div>
+
+      {/* El día entero. Mismo pop-up que el resto del sistema (`modal-fondo` /
+          `modal-caja`), para que cerrar con Esc o tocando fuera funcione igual
+          aquí que en la vista rápida de un caso. */}
+      {diaAbierto && typeof document !== "undefined" && createPortal(
+        <div className="modal-fondo"
+          onMouseDown={e => { if (e.target === e.currentTarget) setDiaAbierto(null); }}>
+          <div className="modal-caja ag-dia-caja" role="dialog" aria-modal="true"
+            aria-label={`Actividades del ${rotuloDia(diaAbierto)}`}>
+            <div className="modal-cab">
+              <b style={{ textTransform: "capitalize" }}>📅 {rotuloDia(diaAbierto)}</b>
+              <span className="ag-dia-n">{itemsDia.length}</span>
+              <span style={{ flex: 1 }} />
+              <button className="modal-x" title="Cerrar (Esc)" onClick={() => setDiaAbierto(null)}>✕</button>
+            </div>
+            <div className="ag-dia-lista">
+              {itemsDia.map(it => (
+                <Link key={it.id} href={it.href} className={`ag-dia-fila ${apagado(it) ? "ag-ajena" : ""}`}
+                  style={{ borderLeft: `3px solid ${colorDe(it)}` }}
+                  onClick={() => setDiaAbierto(null)}>
+                  {/* La hora manda: es lo que ordena la lista y lo primero que
+                      se busca. Lo que no la tiene enseña su ícono, y así las
+                      dos clases de fila se distinguen sin leer. */}
+                  <span className="ag-dia-hora">{it.hora || icoDe(it)}</span>
+                  <span className="ag-dia-tit">{it.titulo}</span>
+                  {/* De qué es: el grupo ya lo sabe la fila, y en un pop-up sin
+                      cabeceras es lo único que da contexto. */}
+                  <span className="ag-dia-grupo">{it.grupo}</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }
