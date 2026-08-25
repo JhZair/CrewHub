@@ -238,11 +238,13 @@ export default function NavIconos() {
         {pathname !== "/fondos" && fondosAvisos.map(a => (
           <Burbuja key={a.k} n={a.n} tono={a.tono} txt={a.txt} />
         ))}
-        {/* En el BOTÓN va solo lo sin resolver. «En progreso» no es un
-            pendiente: es trabajo en marcha, y no necesita gritar desde fuera
-            del menú. Con siete burbujas seguidas ninguna se lee —y la que
-            importa es siempre la primera. */}
-        {pathname !== "/tablero" && casosAvisos.filter(a => a.tono === "rojo").map(a => (
+        {/* Las DOS, igual que en la entrada del menú. Probé dejar fuera el
+            ámbar —«en progreso no es un pendiente»— y el resultado fue un menú
+            que dice 13 y una lista que dice 13 y 3: el mismo número contado de
+            dos formas en la misma pantalla, que es exactamente lo que hace que
+            se dejen de creer las burbujas. Si un número se enseña, se enseña
+            entero en los dos sitios. */}
+        {pathname !== "/tablero" && casosAvisos.map(a => (
           <Burbuja key={a.k} n={a.n} tono={a.tono} txt={a.txt} />
         ))}
       </button>
