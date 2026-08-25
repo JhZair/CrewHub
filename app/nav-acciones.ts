@@ -99,11 +99,18 @@ export async function estadoNav(supabase: any, user: { id: string }): Promise<Es
        Esto NO se puede contar con un `count`: lo que falta no está en ninguna
        tabla. Se cuenta contra el calendario que exige el acta (5.2.3), o sea
        comparando los meses cargados con los que deberían estar. Por eso viajan
-       filas y no números — pero son pocas: los fondos ganados son nueve y sus
-       estados, una por mes de ejecución. Las dos consultas caben de sobra por
-       debajo del techo de mil de PostgREST.
-       Van en la MISMA tanda que las demás: encadenarlas sería añadir dos idas y
-       vueltas a cada navegación de las diecinueve pantallas. */
+       filas y no números.
+
+       ── UN VIAJE, NO DOS ──
+       La primera versión pedía los fondos y DESPUÉS sus estados, cuando ya
+       sabía los ids. Eso son dos idas y vueltas encadenadas en cada navegación
+       de las diecinueve pantallas, y encima esta rama es la que hace esperar al
+       zócalo entero. Con la relación embebida (`estado_cuenta(periodo)`) es una
+       sola consulta y entra en la misma tanda que las demás.
+       De paso desaparece el techo de mil: el corte de PostgREST se aplica a las
+       filas de PRIMER nivel —los fondos, que son nueve—, no a lo embebido. Con
+       dos consultas, un corte en `estado_cuenta` habría hecho pasar por «no
+       cargado» todo lo que quedara fuera. */
     const [perfil, sinLeer, venc, porV, fondos] = await Promise.all([
       supabase.from("perfiles").select("es_admin,es_finanzas")
         .eq("id", user.id).maybeSingle(),
@@ -112,28 +119,37 @@ export async function estadoNav(supabase: any, user: { id: string }): Promise<Es
       periodos().lt("vence", hoy),
       periodos().gte("vence", hoy).lte("vence", tope),
       supabase.from("postulaciones")
-        .select("id,fecha_desembolso,fecha_rendicion_real")
+        .select("id,fecha_desembolso,fecha_rendicion_real,estado_cuenta(periodo)")
         .eq("estado", "ganadora")
         .is("fecha_rendicion_real", null)      // rendido = la serie terminó
         .not("fecha_desembolso", "is", null),  // sin desembolso no hay serie
     ]);
 
-    const vivos = (fondos.data || []) as any[];
-    let ec = { fondos: 0, meses: 0, huecos: 0 };
-    if (vivos.length) {
-      const { data: estados } = await supabase.from("estado_cuenta")
-        .select("postulacion_id,periodo")
-        .in("postulacion_id", vivos.map(f => f.id));
+    const caja = !!((perfil.data as any)?.es_admin || (perfil.data as any)?.es_finanzas);
+
+    /* ── SI LA CONSULTA FALLÓ, CERO — NO EL MÁXIMO ──
+       supabase-js no lanza: devuelve `{data:null,error}`. Sin esta guarda, un
+       timeout o una migración que falte dejaban el mapa vacío, y un mapa vacío
+       se lee como «nadie ha cargado un solo estado de cuenta»: la alarma más
+       alta posible, justo cuando el sistema no sabe nada.
+
+       ── Y SOLO A QUIEN PUEDE CARGARLOS ──
+       Los estados de cuenta los sube administración. Un rojo permanente en el
+       menú, en las diecinueve pantallas, sobre papeles que uno no puede subir,
+       es ruido que además enseña a ignorar los rojos de verdad. */
+    let ec = { fondos: 0, meses: 0 };
+    if (caja && !fondos.error) {
+      const vivos = (fondos.data || []) as any[];
       const porFondo = new Map<string, string[]>();
-      for (const e of (estados || []) as any[]) {
-        porFondo.set(e.postulacion_id, [...(porFondo.get(e.postulacion_id) || []), e.periodo]);
+      for (const f of vivos) {
+        porFondo.set(f.id, ((f.estado_cuenta || []) as any[]).map(e => e.periodo));
       }
       ec = resumenFaltantes(vivos, porFondo, hoy);
     }
 
     return {
       casilla: sinLeer.count || 0,
-      caja: !!((perfil.data as any)?.es_admin || (perfil.data as any)?.es_finanzas),
+      caja,
       /* Si falta una migración, `count` viene en null y la burbuja no se
          pinta. Es lo correcto: una burbuja en cero no es un cero, es «no lo
          sé», y un 0 rojo mandaría a buscar algo que no está. */

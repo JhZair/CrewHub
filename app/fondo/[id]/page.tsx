@@ -3,6 +3,8 @@ import type { Metadata } from "next";
 import Link from "@/components/Enlace";
 import { createClient } from "@/lib/supabase/server";
 import { ESTADOS_VIVOS } from "@/lib/estados";
+import { faltanEstados, seVigila } from "@/lib/estadosCuenta";
+import { hoyLima } from "@/lib/fechas";
 import { mapaAlias } from "@/lib/personas";
 import Volver from "@/components/Volver";
 import Realtime from "@/components/Realtime";
@@ -481,6 +483,40 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
   const equipoDelFondo = integrantesDeFondo(
     (eqp.data || []) as any[], rheFondo as any[], previstosFondo, personasMin as any).length;
   const totInt = estadosFondo.reduce((s: number, e: any) => s + Number(e.intereses || 0), 0);
+
+  /* ── LO QUE FALTA DEL BANCO, CONTADO UNA VEZ PARA LOS TRES ESCALONES ──
+     La pestaña Financiera, la cabecera de Rendición y la sub-sección de
+     estados de cuenta enseñan el MISMO número. Tres cuentas distintas para lo
+     mismo acaban discrepando, y el día que discrepan no se sabe cuál creer.
+     Y se cuenta con `resumenFaltantes` —la misma del menú y de /fondos— para
+     que los cinco sitios compartan criterio: un fondo ya rendido o sin
+     desembolso no debe nada, y lo demás se mide contra el calendario que
+     exige el acta (5.2.3), no contra lo que hay cargado.
+     El rastro importa porque lo que falta no ocupa sitio: sin él, el aviso
+     vive en la tercera sub-sección de una pestaña, y para verlo hay que
+     sospechar antes de mirar. */
+  /* Dos preguntas distintas, y antes estaban mezcladas:
+     · `faltanEstados` DESCRIBE la serie —qué meses exige el acta y cuáles no
+       están—. Recibe siempre la fecha de rendición real, que es la que corta
+       la serie por el final: a un fondo cerrado en mayo no se le piden los
+       meses de después.
+     · `seVigila` decide si eso ENCIENDE una alarma. Un fondo ya rendido, o sin
+       desembolso, no tiene a quién pedirle el papel: la serie incompleta se
+       sigue viendo dentro de la sub-sección —es un hallazgo, y ahí es donde se
+       audita—, pero sin burbujas que nadie pueda apagar.
+     Mezcladas, un fondo cerrado con un hueco salía en rojo en la sub-sección y
+     en ninguna otra pantalla: el único sitio donde se veía era aquel al que
+     hay que entrar sospechando. */
+  const faltanEc = faltanEstados(
+    estadosFondo.map((e: any) => e.periodo), ent.fecha_desembolso, hoyLima(),
+    ent.fecha_rendicion_real);
+  const nFaltaEc = seVigila(ent) ? faltanEc.faltan.length : 0;
+  const avisoEc = nFaltaEc > 0
+    ? { n: nFaltaEc, txt: `${nFaltaEc} estado(s) de cuenta del banco sin cargar` }
+    : null;
+  const burbujaEc = avisoEc && (
+    <span className="plg-alerta" title={avisoEc.txt} aria-label={avisoEc.txt}>{avisoEc.n}</span>
+  );
   const preItems = ((ent.presupuesto as any)?.items || []) as any[];
   const preCosto = preItems.reduce((s, i) => s + (i.cantidad || 0) * (i.costo_unit || 0), 0);
   // Conciliación: el presupuesto VIGENTE es la referencia (si no hay versión
@@ -551,6 +587,11 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
           Arranca en Financiera —el dinero es lo que tiene reloj—. */}
       <TabsPanel
         labels={["💰 Financiera", "🎥 Audiovisual", `📦 Entregables${compromisos.length ? ` · ${compromisos.length}` : ""}`, `👥 Equipo · ${equipoDelFondo}`]}
+        /* El rastro rojo: el mismo número en la pestaña, en la cabecera de
+           Rendición y en la sub-sección de estados de cuenta. Sin él, lo que
+           falta vive a tres clics de distancia dentro de una sección plegada,
+           y para encontrarlo hay que sospechar primero. */
+        avisos={[avisoEc, null, null, null]}
         /* Nombres de pestaña para poder enlazarlas: `…/fondo/<id>#equipo`.
            Sin esto, un enlace a la pestaña de equipo apunta a un panel que
            está montado pero oculto, y el clic no hace nada — el mismo fallo
@@ -591,7 +632,8 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
                   declaraciones y comprobantes— y lo que falta para los
                   S/ 200,000. Es la única línea de toda la página que contesta
                   «¿cómo vamos?» sin abrir nada. */}
-              <Plegable id={`fondo:${params.id}:rendicion`} titulo="🧾 Rendición del fondo" abiertoPorDefecto={true}
+              <Plegable id={`fondo:${params.id}:rendicion`}
+                titulo={<>🧾 Rendición del fondo{burbujaEc}</>} abiertoPorDefecto={true}
                 resumen={(() => {
                   const estimulo = ent.monto_adjudicado ? parseFloat(ent.monto_adjudicado) : 0;
                   const sustentado = totRhe + usadoDj + totCmp;
@@ -619,6 +661,7 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
                   fechaRendicionReal={ent.fecha_rendicion_real || null}
                   montoAdjudicado={ent.monto_adjudicado ? parseFloat(ent.monto_adjudicado) : null}
                   estados={conHilo(estadosFondo, hEct)} rhe={conHilo(rheFondo, hRhe)}
+                  faltanEc={faltanEc}
                   userId={user.id} hiloError={hiloError}
                   empresa={ent.emp?.nombre || null}
                   etapas={etapasFondo} rubros={fondoRubros} personas={personasCat} />

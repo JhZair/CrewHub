@@ -1,7 +1,6 @@
 "use client";
 import { useState } from "react";
-import { faltanEstados, textoFaltan } from "@/lib/estadosCuenta";
-import { hoyLima } from "@/lib/fechas";
+import { textoFaltan, seVigila, type FaltanEstados } from "@/lib/estadosCuenta";
 import { useRouter } from "next/navigation";
 import {
   guardarEstadoCuenta, borrarEstadoCuenta, guardarRhe, fijarEjesRhe, fijarEjesRheLote, borrarRhe,
@@ -86,7 +85,7 @@ const fechaSubido = (iso?: string | null) => {
 
 export default function RendicionFondo({
   postulacionId, esAdmin, fechaDesembolso, fechaRendicionReal, montoAdjudicado,
-  estados, rhe, empresa, etapas, rubros, personas, userId, hiloError,
+  estados, rhe, empresa, etapas, rubros, personas, userId, hiloError, faltanEc,
 }: {
   postulacionId: string;
   esAdmin: boolean;
@@ -105,6 +104,11 @@ export default function RendicionFondo({
   userId: string;
   /** Si falta db/rendicion-interaccion.sql: se dice y las listas siguen. */
   hiloError?: string | null;
+  /** Los estados de cuenta que faltan, YA CONTADOS por el servidor con el
+   *  mismo `faltanEstados` que alimenta la burbuja de la pestaña y la de la
+   *  cabecera. Llega hecho para que los tres escalones del rastro no puedan
+   *  decir números distintos. */
+  faltanEc: FaltanEstados;
 }) {
   const router = useRouter();
   const { pedir, dialogo } = useConfirmar();
@@ -118,10 +122,22 @@ export default function RendicionFondo({
      Seis meses cargados, cada uno con su saldo correcto, se leen como «al
      día» aunque falten los dos últimos: el hueco no se ve. Por eso la cuenta
      se hace contra el CALENDARIO —del desembolso al último mes cerrado, que
-     es lo que pide la cláusula 5.2.3— y no contra lo que hay cargado. */
-  const faltanEc = faltanEstados(
-    estados.map(e => e.periodo), fechaDesembolso, hoyLima(), fechaRendicionReal);
+     es lo que pide la cláusula 5.2.3— y no contra lo que hay cargado.
+
+     ── LA CUENTA VIENE DE FUERA, YA HECHA ──
+     Se calculaba aquí, con `hoyLima()` leído en el cuerpo del componente. Eso
+     eran DOS relojes: la pestaña y la cabecera traen el día que fijó el
+     servidor al renderizar, y esto lo recalculaba en cada re-render del
+     cliente. Con la pestaña abierta a las 23:59, un clic pasada la medianoche
+     dejaba un número en la sub-sección y otro distinto dos escalones arriba.
+     Tres sitios que enseñan lo mismo tienen que enseñar el MISMO valor, no
+     tres cálculos que casi siempre coinciden. */
   const avisoFaltan = textoFaltan(faltanEc);
+  // ¿A este fondo se le sigue pidiendo el banco? La MISMA pregunta que decide
+  // la burbuja de la pestaña y la del menú (lib/estadosCuenta).
+  const vigilado = seVigila({
+    fecha_desembolso: fechaDesembolso, fecha_rendicion_real: fechaRendicionReal,
+  });
   const totalRhe = rhe.reduce((s, r) => s + Number(r.monto || 0), 0);
   // Cuántos RHE ya tienen sus dos ejes puestos (lo que hace que la rendición cuadre sola)
   const rheSinEje = rhe.filter(r => !r.etapa || !r.rubro_item).length;
@@ -221,8 +237,15 @@ export default function RendicionFondo({
                 el propio aviso —«N en medio de la serie»—, que es donde se
                 puede leer, en vez de en un matiz de color que nadie descifra. */}
             {avisoFaltan && (
-              <span style={{ marginLeft: 8, fontWeight: 600, color: "var(--red)" }}>
-                ⚠ {avisoFaltan}
+              /* Rojo mientras se le pueda pedir el papel a alguien. En un fondo
+                 ya rendido el hueco no deja de existir —se sigue diciendo, es
+                 un hallazgo— pero deja de ser una tarea: no hay a quién
+                 pedírselo, y una alarma que nadie puede apagar solo enseña a
+                 ignorar las alarmas. */
+              <span style={{ marginLeft: 8, fontWeight: 600,
+                color: vigilado ? "var(--red)" : "var(--dim)" }}
+                title={vigilado ? undefined : "El fondo ya se rindió: la serie quedó incompleta, pero ya no hay nada que cargar."}>
+                ⚠ {avisoFaltan}{vigilado ? "" : " · fondo ya rendido"}
               </span>
             )}
             {!avisoFaltan && faltanEc.esperados.length > 0 && (

@@ -4,7 +4,7 @@ import Link from "@/components/Enlace";
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { ejecutando, plazoRendicion, rendicionVencida, rendicionSinPlazo } from "@/lib/fondos";
-import { faltanEstados, textoFaltan } from "@/lib/estadosCuenta";
+import { faltanEstados, textoFaltan, seVigila } from "@/lib/estadosCuenta";
 import { hoyLima } from "@/lib/fechas";
 import { CATEGORIAS_OPC } from "@/lib/etapas";
 
@@ -48,17 +48,22 @@ export default async function FondosPage() {
      discrepar. */
   const faltanEc = new Map<string, ReturnType<typeof faltanEstados>>();
   {
-    const vivosIds = fondos.filter(f => ejecutando(f) && f.fecha_desembolso).map(f => f.id);
-    if (vivosIds.length) {
-      const { data: ec } = await supabase.from("estado_cuenta")
-        .select("postulacion_id,periodo").in("postulacion_id", vivosIds);
-      const porFondo = new Map<string, string[]>();
-      (ec || []).forEach((e: any) =>
-        porFondo.set(e.postulacion_id, [...(porFondo.get(e.postulacion_id) || []), e.periodo]));
-      const hoy = hoyLima();
-      fondos.filter(f => vivosIds.includes(f.id)).forEach(f =>
-        faltanEc.set(f.id, faltanEstados(
+    const vigilados = fondos.filter(f => f.estado === "ganadora" && seVigila(f));
+    if (vigilados.length) {
+      const { data: ec, error } = await supabase.from("estado_cuenta")
+        .select("postulacion_id,periodo").in("postulacion_id", vigilados.map(f => f.id));
+      /* Si la consulta falla, `data` viene en null y NO se pinta nada. Sin esta
+         guarda, un fallo dejaba el mapa vacío y todas las tarjetas salían con
+         la serie entera faltando: la alarma más alta posible justo cuando el
+         sistema no sabe nada. */
+      if (!error) {
+        const porFondo = new Map<string, string[]>();
+        (ec || []).forEach((e: any) =>
+          porFondo.set(e.postulacion_id, [...(porFondo.get(e.postulacion_id) || []), e.periodo]));
+        const hoy = hoyLima();
+        vigilados.forEach(f => faltanEc.set(f.id, faltanEstados(
           porFondo.get(f.id) || [], f.fecha_desembolso, hoy, f.fecha_rendicion_real)));
+      }
     }
   }
 

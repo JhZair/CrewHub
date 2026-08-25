@@ -129,7 +129,7 @@ export default function NavIconos() {
      y el título dice cuántos meses son en total. En rojo: cualquier mes que
      falte es un mes ya cerrado, o sea un papel vencido, no una tarea futura.
      Estando en /fondos no se pinta: allí cada tarjeta lo dice por su cuenta. */
-  const fondosAviso = nav.fondosEc > 0 && pathname !== "/fondos"
+  const fondosAviso = nav.fondosEc > 0
     ? { n: nav.fondosEc, col: "var(--red)",
         txt: `${nav.fondosEc} fondo(s) con estados de cuenta sin cargar · ${nav.mesesEc} mes(es) en total` }
     : null;
@@ -187,7 +187,13 @@ export default function NavIconos() {
         {pathname !== "/obligaciones" && oblAvisos.map(a => (
           <Burbuja key={a.k} n={a.n} col={a.col} txt={a.txt} />
         ))}
-        {fondosAviso && <Burbuja n={fondosAviso.n} col={fondosAviso.col} txt={fondosAviso.txt} />}
+        {/* En el BOTÓN no se pinta estando ya en /fondos —el pendiente está a
+            la vista en cada tarjeta—, pero en la entrada del menú sí, igual que
+            la casilla y las obligaciones: dentro del menú la burbuja dice a
+            dónde ir, no que haya algo nuevo. */}
+        {fondosAviso && pathname !== "/fondos" && (
+          <Burbuja n={fondosAviso.n} col={fondosAviso.col} txt={fondosAviso.txt} />
+        )}
       </button>
       {abierto && (
         <>

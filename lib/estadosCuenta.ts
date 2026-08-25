@@ -120,18 +120,43 @@ export type FondoEC = {
   fecha_rendicion_real?: string | null;
 };
 
+/* ── ¿A ESTE FONDO SE LE SIGUE PIDIENDO EL BANCO? ──
+ *
+ * Sin desembolso no hay serie: no se sabe dónde empieza. Ya rendido tampoco:
+ * el expediente se entregó, y perseguir un papel de un fondo cerrado no es
+ * una tarea de nadie.
+ *
+ * Está aquí, suelto y con nombre, porque de esto dependen CINCO sitios —la
+ * burbuja del menú, la tarjeta de /fondos, la pestaña, la cabecera de
+ * Rendición y la sub-sección de estados—. Estuvo escrito dos veces con dos
+ * criterios: `resumenFaltantes` descartaba el fondo rendido entero y
+ * `faltanEstados` solo le recortaba el final, así que un fondo cerrado con un
+ * hueco salía en rojo dentro de la ficha y en ninguna otra pantalla. Un aviso
+ * que solo existe en el sitio donde hay que sospechar para mirarlo es el
+ * mismo problema que este trabajo vino a arreglar.
+ *
+ * Lo que NO hace: esconder el hueco. Un fondo rendido con la serie
+ * incompleta lo sigue diciendo en su ficha —es un hallazgo, y ahí es donde se
+ * audita—; lo que no hace es encender alarmas que nadie puede apagar. */
+export const seVigila = (f: {
+  fecha_desembolso?: string | null; fecha_rendicion_real?: string | null;
+}) => !!f?.fecha_desembolso && !f?.fecha_rendicion_real;
+
 export function resumenFaltantes(
   fondos: FondoEC[],
   periodosPorFondo: Map<string, (string | null | undefined)[]>,
   hoy: string,
-): { fondos: number; meses: number; huecos: number } {
-  let nFondos = 0, nMeses = 0, nHuecos = 0;
+): { fondos: number; meses: number } {
+  let nFondos = 0, nMeses = 0;
   for (const f of fondos || []) {
-    if (!f?.id || !f.fecha_desembolso || f.fecha_rendicion_real) continue;
+    if (!f?.id || !seVigila(f)) continue;
+    // La fecha de rendición va igual que en la ficha —`faltanEstados` describe
+    // la serie y ésa es la que la corta— aunque aquí `seVigila` garantice que
+    // es nula: la misma llamada en los dos sitios es una cosa menos que cotejar.
     const r = faltanEstados(
       periodosPorFondo.get(f.id) || [], f.fecha_desembolso, hoy, f.fecha_rendicion_real);
     if (!r.faltan.length) continue;
-    nFondos++; nMeses += r.faltan.length; nHuecos += r.huecos.length;
+    nFondos++; nMeses += r.faltan.length;
   }
-  return { fondos: nFondos, meses: nMeses, huecos: nHuecos };
+  return { fondos: nFondos, meses: nMeses };
 }

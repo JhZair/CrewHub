@@ -32,7 +32,7 @@ function parte(label: string) {
   return { nombre, n, nota };
 }
 
-export default function TabsPanel({ labels, paneles, inicial = 0, iconoSolo = [], extra, masUltima = false, perezoso = false, claves }: {
+export default function TabsPanel({ labels, paneles, inicial = 0, iconoSolo = [], extra, masUltima = false, perezoso = false, claves, avisos }: {
   labels: string[]; paneles: ReactNode[]; inicial?: number; iconoSolo?: number[];
   /** Un nombre corto por pestaña («bitacora», «casos»…) para poder abrirla
    *  desde el enlace: `…/entidad/equipamiento/xyz#bitacora`.
@@ -46,6 +46,16 @@ export default function TabsPanel({ labels, paneles, inicial = 0, iconoSolo = []
   extra?: ReactNode;
   /** Manda la última pestaña (Historial) al menú «⋯ Más». */
   masUltima?: boolean;
+  /* ── EL RASTRO HASTA LO QUE FALTA ──
+     Un aviso enterrado en la tercera sub-sección de una pestaña cerrada no
+     avisa: hay que sospechar antes de mirar. La burbuja del menú dice que este
+     fondo debe algo; esto dice EN QUÉ PESTAÑA, y dentro, la cabecera de la
+     sección dice en cuál. Cada escalón enseña el mismo número, así que se
+     puede seguir el rastro sin abrir nada por si acaso.
+     Es distinto del contador de la etiqueta («📦 Entregables · 39»): aquél
+     cuenta lo que hay, éste lo que falta. Por eso va en rojo y aparte — un
+     número que a veces cuenta cosas y a veces problemas no se puede leer. */
+  avisos?: (null | { n: number; txt: string })[];
   /** NO montar los paneles que nunca se han abierto.
    *
    *  Por defecto se montan los siete y se ocultan con `display:none`, y eso es
@@ -127,14 +137,18 @@ export default function TabsPanel({ labels, paneles, inicial = 0, iconoSolo = []
   const tabBtn = (k: number) => {
     const { nombre, n, nota } = parte(labels[k]);
     const hay = n != null && Number(n) > 0;
+    const aviso = avisos?.[k] || null;
     const solo = iconoSolo.includes(k);
     // En modo ícono-solo se muestra solo el emoji inicial del nombre.
     const emoji = nombre.split(" ")[0];
     return (
       <button key={k} className={`vtab ${i === k ? "on" : ""}`}
-        title={nota ? `${nombre} · ${nota}` : nombre} onClick={() => abrir(k)}>
+        title={[nombre, nota, aviso?.txt].filter(Boolean).join(" · ")} onClick={() => abrir(k)}>
         {solo ? emoji : nombre}
         {hay && <span className="vtab-n">{n}</span>}
+        {aviso && aviso.n > 0 && (
+          <span className="vtab-n vtab-alerta" title={aviso.txt} aria-label={aviso.txt}>{aviso.n}</span>
+        )}
         {!solo && nota && <span className="vtab-nota">{nota}</span>}
       </button>
     );
@@ -156,6 +170,16 @@ export default function TabsPanel({ labels, paneles, inicial = 0, iconoSolo = []
                   no, los tres puntos VERTICALES (menú de más opciones). */}
               {activoEnMas ? actNom.nombre.split(" ")[0] : "⋮"}
               {activoEnMas && actNom.n && Number(actNom.n) > 0 && <span className="vtab-n">{actNom.n}</span>}
+              {/* Lo que falta dentro del «⋯», con el menú cerrado. Un aviso que
+                  solo se ve al abrir el menú no avisa: hay que haberse
+                  acordado, y acordarse es justo lo que falla. */}
+              {(() => {
+                const n = enMas.reduce((s, k) => s + (avisos?.[k]?.n || 0), 0);
+                return n > 0
+                  ? <span className="vtab-n vtab-alerta"
+                      title={enMas.map(k => avisos?.[k]?.txt).filter(Boolean).join(" · ")}>{n}</span>
+                  : null;
+              })()}
               <span className="vtab-mas-flecha">▾</span>
             </button>
             {masOpen && (
@@ -166,11 +190,17 @@ export default function TabsPanel({ labels, paneles, inicial = 0, iconoSolo = []
                   {enMas.map(k => {
                     const { nombre, n } = parte(labels[k]);
                     const hay = n != null && Number(n) > 0;
+                    // También aquí: una pestaña escondida en el «⋯» es
+                    // justamente la que nadie va a abrir por si acaso.
+                    const av = avisos?.[k] || null;
                     return (
                       <button key={k} role="menuitem" className={`vtab-mas-item ${i === k ? "on" : ""}`}
                         onClick={() => { abrir(k); setMasOpen(false); }}>
                         <span>{nombre}</span>
                         {hay && <span className="vtab-n">{n}</span>}
+                        {av && av.n > 0 && (
+                          <span className="vtab-n vtab-alerta" title={av.txt}>{av.n}</span>
+                        )}
                       </button>
                     );
                   })}
