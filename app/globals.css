@@ -941,6 +941,15 @@ a{color:inherit;text-decoration:none}
    dos grupos de filtros que no son. Si no cabe, se arrastra —la barra ya es
    `overflow-x:auto`— y lo que sobra vive en el «⋯ Más». */
 .vtabs-compacta{flex-wrap:nowrap;gap:6px;margin:2px 0 14px;justify-content:center}
+/* Sin barra de scroll a la vista. La fila SIGUE arrastrándose —con el dedo, la
+   rueda o el trackpad— pero la barra gris debajo de los filtros se leía como
+   un borde de la página partido en dos. Se esconde y no se desactiva: quitarle
+   el scroll dejaría las últimas pestañas inalcanzables en una pantalla
+   estrecha, que es peor que una barra fea.
+   Dos declaraciones porque los navegadores no se ponen de acuerdo: Firefox
+   entiende `scrollbar-width`, los de WebKit el pseudo-elemento. */
+.vtabs-compacta{scrollbar-width:none;-ms-overflow-style:none}
+.vtabs-compacta::-webkit-scrollbar{display:none;height:0}
 .vtabs-compacta .vtab{padding:6px 10px;font-size:11.5px;white-space:nowrap;flex:0 0 auto}
 .vtabs-compacta .vtab-n{min-width:15px;padding:0 4px;font-size:10px}
 .vtabs-compacta .vtab{cursor:pointer}
