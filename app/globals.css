@@ -2585,7 +2585,12 @@ a.stat-card:hover{border-color:var(--border2)}
 .nav-lista{max-height:min(76vh,620px);overflow-y:auto}
 /* Dentro de la lista se va al extremo derecho; en el botón, pegada al resto.
    `margin-left:auto` solo cuando es hija de una entrada, no del botón. */
-.nav-burbuja{color:#fff;font-size:9.5px;font-weight:800;border-radius:8px;
+/* El rojo es el color POR DEFECTO, no un caso especial: el ámbar lo pisa con
+   `.tono-ambar`. Estuvo un rato sin fondo ninguno —el color venía en un estilo
+   en línea desde el componente y al pasarlo a clases se quedó a medias—, y una
+   burbuja gris entre burbujas de colores no se lee como «urgente»: se lee como
+   un contador más. */
+.nav-burbuja{background:var(--red);color:#fff;font-size:9.5px;font-weight:800;border-radius:8px;
   padding:1px 6px;min-width:16px;text-align:center;line-height:1.5}
 .nav-item .nav-burbuja{margin-left:auto}
 /* Cuando son dos, el `auto` lo lleva el envoltorio y ellas van pegadas. */
