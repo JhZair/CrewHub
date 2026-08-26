@@ -7,6 +7,7 @@ import { ejecutando, plazoRendicion, rendicionVencida, rendicionSinPlazo } from 
 import { faltanEstados, listaFaltan, seVigila, cierreDe } from "@/lib/estadosCuenta";
 import { sinPruebas, textoSinPruebas } from "@/lib/pruebasFondo";
 import { avanceEntregables, META_ESTADO_COMP } from "@/lib/compromisos";
+import { CERRADOS } from "@/lib/familia";
 import { hoyLima } from "@/lib/fechas";
 import { CATEGORIAS_OPC } from "@/lib/etapas";
 
@@ -135,6 +136,34 @@ export default async function FondosPage() {
     }
   }
 
+  /* ── LOS CASOS DE CADA FONDO ──
+     El trabajo de un fondo no está solo en sus papeles: son los casos que el
+     equipo abrió alrededor —entregables, pendientes de la rendición, avisos—.
+     Desde la lista no había forma de saber si un fondo tenía tres o treinta, y
+     esa cifra dice si alguien lo está trabajando o si está solo.
+     Una consulta por lote, no una por tarjeta, y se cuentan los VIVOS: un caso
+     archivado no es trabajo, es trabajo retirado.
+     Tolerante: si falla, no se pinta el dato y las tarjetas siguen igual. */
+  const casosFondo = new Map<string, { total: number; abiertos: number }>();
+  if (fondos.length) {
+    const { data: vin, error } = await supabase.from("publicacion_vinculos")
+      .select("entidad_id,pub:publicaciones(estado,archivado_en)")
+      .eq("entidad_tipo", "postulacion")
+      .in("entidad_id", fondos.map(f => f.id));
+    if (!error) {
+      for (const v of (vin || []) as any[]) {
+        const pub = Array.isArray(v.pub) ? v.pub[0] : v.pub;
+        if (!pub || pub.archivado_en) continue;
+        const c = casosFondo.get(v.entidad_id) || { total: 0, abiertos: 0 };
+        c.total++;
+        /* «Sin resolver» y no «abiertos a secas»: lo que importa al mirar la
+           lista es cuánto queda por hacer, no cuánto se hizo. */
+        if (!CERRADOS.includes(String(pub.estado))) c.abiertos++;
+        casosFondo.set(v.entidad_id, c);
+      }
+    }
+  }
+
   /* ── LOS CARTELES, EN UNA CONSULTA ──
    * El póster del proyecto y el logo de la empresa viven en `entidad_media`,
    * no en sus tablas: se piden aparte y por lote, nunca uno por fila.
@@ -231,8 +260,15 @@ export default async function FondosPage() {
        enciende entero al pasar el cursor. Y el aviso «sin desembolso» se queda
        dentro, porque es lo único que hay que hacer con él. */
     const apagada = !f.fecha_desembolso && !rendido;
+    const cs = casosFondo.get(f.id);
     return (
-      <Link key={f.id} href={`/fondo/${f.id}`}
+      /* ── LA TARJETA Y SU PIE ──
+         La tarjeta entera es un enlace al fondo, así que el enlace a sus casos
+         NO puede ir dentro: un `<a>` dentro de otro `<a>` no es HTML válido y
+         el navegador lo desarma por su cuenta —a veces sacándolo de sitio—.
+         Va en un pie, fuera del enlace grande y dentro del mismo bloque. */
+      <div key={f.id} className="fondo-bloque">
+      <Link href={`/fondo/${f.id}`}
         className={`card fondo-fila${apagada ? " fila-tenue" : ""}`}>
         {/* ── EL CARTEL DE LA PELÍCULA Y EL LOGO DE LA EMPRESA ──
             Nueve códigos «PO-0xx» son nueve códigos: la obra se reconoce por su
@@ -352,6 +388,23 @@ export default async function FondosPage() {
           })()}
         </div>
       </Link>
+      {/* ── CUÁNTOS CASOS, Y LLEVANDO A ELLOS ──
+          Al tablero con este fondo ya filtrado y en vista de lista: el número
+          y el sitio donde se comprueba, sin pasos intermedios. Un contador que
+          obliga a ir a buscar la lista a mano es un contador que no se usa.
+          Se dicen los DOS: el total, y cuántos siguen sin resolver — «30
+          casos» de los que 28 están cerrados es un fondo tranquilo, y sin la
+          segunda cifra parece lo contrario. */}
+      {cs && cs.total > 0 && (
+        <Link className="fondo-casos" href={`/tablero?p=todos&modo=lista&post=${f.id}`}
+          title={`Ver los ${cs.total} caso(s) de este fondo en el tablero`}>
+          🗂 {cs.total} caso{cs.total === 1 ? "" : "s"}
+          {cs.abiertos > 0 && (
+            <b style={{ color: "var(--red)" }}> · {cs.abiertos} sin resolver</b>
+          )}
+        </Link>
+      )}
+      </div>
     );
   };
 
