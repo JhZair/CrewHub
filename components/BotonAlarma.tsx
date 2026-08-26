@@ -3,6 +3,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "@/components/Enlace";
 import { encenderAlarma, apagarAlarma } from "@/app/actions";
+import { olvidarZocalo } from "@/lib/zocalo";
 import { pieAlarma, estadoAlarma, AVISO_ESCASEZ, type Alarma } from "@/lib/alarmas";
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -51,6 +52,9 @@ export default function BotonAlarma({
       if (r?.error) { setErr(r.error); return; }
       setAbierto(false);
       setF({ titulo: tituloSugerido || "", motivo: "", revisarEl: "" });
+      /* La franja de arriba vive del zócalo, que se guarda por ruta: sin
+         olvidarlo, encender aquí no la enciende allí hasta cambiar de página. */
+      olvidarZocalo();
       router.refresh();
     });
   };
@@ -62,6 +66,7 @@ export default function BotonAlarma({
       const r: any = await apagarAlarma(alarma.id, cierre);
       if (r?.error) { setErr(r.error); return; }
       setApagando(false); setCierre("");
+      olvidarZocalo();
       router.refresh();
     });
   };

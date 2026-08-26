@@ -5,6 +5,7 @@ import Campanita from "@/components/Campanita";
 import PostCard from "@/components/PostCard";
 import BuscadorGlobal from "@/components/BuscadorGlobal";
 import NavIconos from "@/components/NavIconos";
+import FranjaAlarmas from "@/components/FranjaAlarmas";
 import MenuUsuario from "@/components/MenuUsuario";
 import { ICO_ENT, rutaEntidad } from "@/lib/secciones";
 import { catalogoObjetos, catalogosEntidades } from "@/lib/catalogos";
@@ -523,6 +524,12 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
       <Realtime tablas={["publicaciones", "comentarios", "publicacion_vinculos", "reacciones", "notificaciones"]} token={session?.access_token} miId={user.id} />
       <div className="topbar">
         <Link href="/" className="logo"><span className="ic">⬡</span><span>CrewHub<sup>+</sup></span></Link>
+        {/* ── LA PORTADA MONTA SU PROPIA CABECERA ──
+            No usa `<Volver>`, así que la franja de alarmas —que vive dentro de
+            él— no llegaba justo a la pantalla que más se abre: la primera de
+            la mañana. Se pone a mano aquí; el componente es el mismo y se
+            pinta una sola vez porque en esta pantalla no hay Volver. */}
+        <FranjaAlarmas />
         <NavIconos />
         <span className="spacer" />
         <BuscadorGlobal />

@@ -8646,16 +8646,30 @@ export async function archivar(pubId: string, archivar = true) {
    ══════════════════════════════════════════════════════════════════════════ */
 
 /** Las vivas, para la franja de arriba y para contar antes de encender otra. */
-export async function alarmasVivas() {
-  const supabase = createClient();
+export async function alarmasVivas(cliente?: any) {
+  /* Recibe el cliente cuando quien llama ya tiene uno —el zócalo, las
+     páginas—: crear otro por cada sitio que pregunta es un `createClient()` de
+     más en cada navegación, y este se pregunta en todas. */
+  const supabase = cliente || createClient();
   const { data, error } = await supabase.from("alarmas")
     .select("id,entidad_tipo,entidad_id,titulo,motivo,revisar_el,caso_id,encendida_en," +
             "quien:perfiles!encendida_por(nombre)")
     .is("apagada_en", null).order("encendida_en", { ascending: false });
   /* Sin tabla —migración sin correr— NO es un error que se enseñe: el sistema
      funcionaba ayer sin alarmas y tiene que seguir funcionando hoy. Se
-     devuelve la lista vacía y la franja no se pinta. */
-  if (error) return [];
+     devuelve la lista vacía y la franja no se pinta.
+     ⚠ Pero CUALQUIER otro error se escribe en el registro del servidor. Antes
+     se tragaban todos por igual, y un embed mal escrito —el nombre de quien la
+     encendió, que estaba pedido contra una clave foránea inexistente— dejaba
+     la lista vacía para siempre: la franja no aparecía nunca, el botón ofrecía
+     encender una alarma ya encendida y el aviso de escasez no saltaba jamás.
+     Todo el mecanismo muerto, y ni una línea en ninguna consola. */
+  if (error) {
+    if ((error as any).code !== "42P01") {
+      console.error("[alarmas] no se pudieron leer:", error.message);
+    }
+    return [];
+  }
   return (data || []).map((a: any) => ({
     ...a, quien: Array.isArray(a.quien) ? a.quien[0] : a.quien,
   }));
@@ -8668,8 +8682,11 @@ export async function encenderAlarma(f: {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
-  const { data: perfil } = await supabase.from("perfiles")
+  const { data: perfil, error: ePerfil } = await supabase.from("perfiles")
     .select("es_admin,es_finanzas,nombre").eq("id", user.id).maybeSingle();
+  /* Un fallo de red al leer el perfil no es «no eres admin»: decirlo así manda
+     a pedir un permiso que ya se tiene. */
+  if (ePerfil) return { error: "No se pudo comprobar tu permiso: " + ePerfil.message };
   if (!perfil?.es_admin && !perfil?.es_finanzas) {
     return { error: "Solo administración enciende una alarma." };
   }
@@ -8690,29 +8707,21 @@ export async function encenderAlarma(f: {
      Es lo único que impide que una alarma se quede encendida sola: pasada esa
      fecha, la pantalla la delata. Con una fecha ya vencida nacería delatada,
      que es la forma más rápida de enseñar a ignorar el aviso. */
-  const hoy = new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 10);
-  if (f.revisarEl < hoy) return { error: "La fecha de revisión tiene que ser de hoy en adelante." };
+  /* El día de Lima, con la MISMA función que el resto del sistema. Escribirlo
+     a mano con «menos cinco horas» es un tercer reloj, y lib/fechas avisa
+     justo de eso. */
+  if (f.revisarEl < hoyLima()) return { error: "La fecha de revisión tiene que ser de hoy en adelante." };
 
-  /* ── EL CASO, PRIMERO ──
-     La alarma señala; el trabajo ocurre donde ocurre siempre. Si el caso
-     fallara, no se enciende nada: una alarma sin sitio donde trabajar es un
-     grito sin destinatario. */
-  const { data: pub, error: eCaso } = await supabase.from("publicaciones").insert({
-    tipo: "problema", estado: "abierta", autor_id: user.id,
-    titulo: `🚨 ${titulo}`.slice(0, 200),
-    cuerpo: [motivo, "", `— Abierto desde una ALARMA. Se revisa el ${f.revisarEl}.`].join("\n"),
-    fecha_limite: f.revisarEl,
-  }).select("id").single();
-  if (eCaso || !pub) return { error: eCaso?.message || "No se pudo abrir el caso de la alarma." };
-
-  await supabase.from("publicacion_vinculos").insert({
-    publicacion_id: pub.id, entidad_tipo: f.entidadTipo, entidad_id: f.entidadId,
-  });
-
+  /* ── LA ALARMA PRIMERO, EL CASO DESPUÉS ──
+     El orden estaba al revés: caso → vínculo → alarma. Si el tercer paso
+     fallaba —y falla en cuanto ya hay una encendida sobre esa entidad, que es
+     el caso normal del segundo clic— quedaba un caso «🚨 …» abierto,
+     vinculado y con plazo, sin alarma que lo explicara ni forma de saber que
+     era basura. Sin transacción, el orden ES la protección: lo que puede
+     rechazarse va primero, y lo que se crea después ya no se queda huérfano. */
   const { data: al, error } = await supabase.from("alarmas").insert({
     entidad_tipo: f.entidadTipo, entidad_id: f.entidadId,
-    titulo, motivo, revisar_el: f.revisarEl,
-    caso_id: pub.id, encendida_por: user.id,
+    titulo, motivo, revisar_el: f.revisarEl, encendida_por: user.id,
   }).select("id").single();
   if (error) {
     /* 23505 = el índice único de «una viva por entidad». No es un fallo del
@@ -8723,6 +8732,30 @@ export async function encenderAlarma(f: {
     }
     if ((error as any).code === "42P01") return { error: "Falta correr db/alarmas.sql en Supabase." };
     return { error: error.message };
+  }
+
+  /* El caso: la alarma señala, el trabajo ocurre donde ocurre siempre. Si
+     esto fallara, la alarma YA existe y se queda encendida sin caso — que es
+     el fallo menos malo de los dos: se ve, se puede apagar, y el trabajo se
+     abre a mano. Al revés se quedaba basura invisible. */
+  const { data: pub, error: eCaso } = await supabase.from("publicaciones").insert({
+    tipo: "problema", estado: "abierta", autor_id: user.id,
+    titulo: `🚨 ${titulo}`.slice(0, 200),
+    cuerpo: [motivo, "", `— Abierto desde una ALARMA. Se revisa el ${f.revisarEl}.`].join("\n"),
+    fecha_limite: f.revisarEl,
+  }).select("id").single();
+
+  if (pub) {
+    /* El vínculo SÍ se comprueba: sin él, el caso no aparece en la ficha del
+       fondo y la alarma manda a un sitio que no se puede encontrar desde el
+       otro lado. */
+    const { error: eVin } = await supabase.from("publicacion_vinculos").insert({
+      publicacion_id: pub.id, entidad_tipo: f.entidadTipo, entidad_id: f.entidadId,
+    });
+    await supabase.from("alarmas").update({ caso_id: pub.id }).eq("id", al.id);
+    if (eVin) console.error("[alarmas] el caso quedó sin vincular:", eVin.message);
+  } else if (eCaso) {
+    console.error("[alarmas] alarma encendida sin caso:", eCaso.message);
   }
 
   /* ── SE AVISA UNA VEZ, A TODO EL EQUIPO ──
@@ -10322,7 +10355,7 @@ export async function estadoGlobal() {
     bancoDe(supabase, user),
     muroDe(supabase, user),
     notifsDe(supabase, user),
-    alarmasVivas(),
+    alarmasVivas(supabase),
   ]);
   const ok = <T,>(r: PromiseSettledResult<T>, deFallo: T): T =>
     r.status === "fulfilled" ? r.value : deFallo;

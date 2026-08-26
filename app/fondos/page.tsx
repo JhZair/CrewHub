@@ -170,13 +170,21 @@ export default async function FondosPage() {
      El único rojo que declaró una persona. Se traen todas de una vez —son
      poquísimas por definición— y se reparten por entidad. Quién puede
      encenderlas se decide con el mismo perfil que ya se lee para la caja. */
-  const vivas = await alarmasVivas();
+  /* Las dos EN PARALELO: eran dos `await` seguidos, y esta pantalla ya se
+     desencascadó una vez a propósito. Dos esperas en serie por dos datos que
+     no dependen entre sí son un viaje regalado en cada visita. */
+  const [vivas, { data: perfilYo, error: ePerfilYo }] = await Promise.all([
+    alarmasVivas(supabase),
+    supabase.from("perfiles").select("es_admin,es_finanzas").eq("id", user.id).maybeSingle(),
+  ]);
   const alarmaDe = new Map<string, any>();
   for (const a of vivas) {
     if (a.entidad_tipo === "postulacion") alarmaDe.set(a.entidad_id, a);
   }
-  const { data: perfilYo } = await supabase.from("perfiles")
-    .select("es_admin,es_finanzas").eq("id", user.id).maybeSingle();
+  /* Si el perfil no se pudo leer, el botón no se pinta —falla cerrado— pero
+     queda dicho en el registro: si no, un admin ve desaparecer el botón sin
+     ninguna explicación y da por hecho que le quitaron el permiso. */
+  if (ePerfilYo) console.error("[alarmas] no se pudo leer el perfil:", ePerfilYo.message);
   const puedeAlarma = !!(perfilYo?.es_admin || perfilYo?.es_finanzas);
 
   /* ── LOS CARTELES, EN UNA CONSULTA ──

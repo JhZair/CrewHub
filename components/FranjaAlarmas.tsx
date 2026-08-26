@@ -1,8 +1,8 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "@/components/Enlace";
-import { pedirZocalo } from "@/lib/zocalo";
+import { pedirZocalo, EVENTO_ZOCALO } from "@/lib/zocalo";
 import { estadoAlarma, pieAlarma, type Alarma } from "@/lib/alarmas";
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -27,6 +27,8 @@ import { estadoAlarma, pieAlarma, type Alarma } from "@/lib/alarmas";
 export default function FranjaAlarmas() {
   const pathname = usePathname() || "";
   const [alarmas, setAlarmas] = useState<Alarma[]>([]);
+  const [tic, setTic] = useState(0);
+  const caja = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let vivo = true;
@@ -34,12 +36,46 @@ export default function FranjaAlarmas() {
       .then(z => { if (vivo) setAlarmas(((z as any).alarmas || []) as Alarma[]); })
       .catch(() => {});
     return () => { vivo = false; };
-  }, [pathname]);
+  }, [pathname, tic]);
+
+  /* Encender o apagar una alarma no cambia de página, así que sin esto la
+     franja seguía como estaba hasta navegar: se apagaba en la ficha y arriba
+     seguía roja. Quien la toca olvida el zócalo y avisa; aquí se vuelve a
+     pedir. */
+  useEffect(() => {
+    const alCambiar = () => setTic(t => t + 1);
+    window.addEventListener(EVENTO_ZOCALO, alCambiar);
+    return () => window.removeEventListener(EVENTO_ZOCALO, alCambiar);
+  }, []);
+
+  /* ── EL HUECO LO MIDE LA FRANJA, NO UNA CONSTANTE ──
+     La franja está FIJA arriba, así que el resto de la página necesita saber
+     cuánto ocupa. Estaba escrito a mano —34px— y eso solo vale para UNA
+     alarma de una línea: con dos, o con un título que envuelve en el móvil,
+     la franja se comía la barra de navegación. Se mide lo que mide y se
+     publica en una variable que usan el `body` y las cabeceras pegajosas. */
+  useEffect(() => {
+    const raiz = document.documentElement;
+    if (!alarmas.length) { raiz.style.removeProperty("--alto-franja"); return; }
+    const medir = () => {
+      const h = caja.current?.offsetHeight || 0;
+      raiz.style.setProperty("--alto-franja", `${h}px`);
+    };
+    medir();
+    const ro = new ResizeObserver(medir);
+    if (caja.current) ro.observe(caja.current);
+    window.addEventListener("resize", medir);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", medir);
+      raiz.style.removeProperty("--alto-franja");
+    };
+  }, [alarmas]);
 
   if (!alarmas.length) return null;
 
   return (
-    <div className="alarma-franja">
+    <div className="alarma-franja" ref={caja}>
       {alarmas.map(a => {
         const e = estadoAlarma(a);
         return (

@@ -252,7 +252,7 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
      aparte sería un viaje más para tres nombres. */
   /* Las alarmas encendidas: la de este fondo se pinta arriba, y el total se
      usa para avisar de la escasez antes de encender otra. */
-  const vivasAlarmas = await alarmasVivas();
+  const vivasAlarmas = await alarmasVivas(supabase);
   const miAlarma = vivasAlarmas.find(
     (a: any) => a.entidad_tipo === "postulacion" && a.entidad_id === params.id) || null;
 

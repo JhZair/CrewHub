@@ -63,3 +63,24 @@ export function pedirZocalo(ruta: string): Promise<Zocalo> {
   }
   return vuelo;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   OLVIDAR LO PEDIDO — para lo que cambia SIN navegar
+
+   `router.refresh()` vuelve a renderizar el servidor, pero este módulo guarda
+   la promesa por RUTA: si no se cambia de página, el zócalo sigue devolviendo
+   lo que trajo la primera vez. Se veía al apagar una alarma: el bloque de la
+   ficha decía «apagada» y la franja roja de arriba seguía encendida, en la
+   misma pantalla. Dos partes de la interfaz contando cosas distintas del mismo
+   hecho es exactamente lo que no puede pasar con un aviso.
+
+   Quien cambia algo del zócalo llama a esto y AVISA: los que lo pintan
+   escuchan el evento y vuelven a pedir. No es un contexto ni un estado
+   compartido —seguimos sin nada que sincronizar—, solo un «esto ya no vale».
+   ══════════════════════════════════════════════════════════════════════════ */
+export const EVENTO_ZOCALO = "zocalo:cambio";
+
+export function olvidarZocalo() {
+  clave = ""; vuelo = null;
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(EVENTO_ZOCALO));
+}

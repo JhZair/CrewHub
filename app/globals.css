@@ -5747,10 +5747,17 @@ mark.bq-marca{
 .alarma-item + .alarma-item{border-top:1px solid rgba(239,68,68,.25)}
 .alarma-vieja{color:var(--yellow);font-size:11.5px}
 .alarma-ir{margin-left:auto;color:#ffd9dc;opacity:.75;font-size:11.5px;white-space:nowrap}
-/* El hueco que deja la franja. Se aplica solo cuando hay franja: la clase la
-   pone el propio componente en el <html> — sin esto, la primera línea de cada
-   pantalla se quedaría debajo. */
-body:has(.alarma-franja){padding-top:34px}
+/* ── EL HUECO QUE DEJA LA FRANJA ──
+   `--alto-franja` la publica el propio componente midiéndose (ver
+   FranjaAlarmas): estaba clavado en 34px y eso solo vale para UNA alarma de
+   una línea. Con dos, o con un título que envuelve en el móvil, la franja se
+   comía la barra de navegación — el ⬡ y el menú quedaban debajo.
+   Sin alarmas la variable no existe y el `0` de respaldo deja todo como estaba. */
+body{padding-top:var(--alto-franja, 0)}
+/* Las cabeceras pegajosas se pegan al borde del scrollport, no al padding del
+   body: sin esto quedarían DEBAJO de la franja, que es donde no se leen. */
+.tv-tabla th,.eq-uso-barra{top:var(--alto-franja, 0)}
+.notif-col-detalle{top:calc(var(--alto-franja, 0px) + 14px)}
 
 /* ── LA ALARMA EN SU FICHA Y EN LA TARJETA ── */
 .alarma-btn{background:rgba(239,68,68,.10);border:1px solid rgba(239,68,68,.45);

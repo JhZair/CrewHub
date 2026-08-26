@@ -35,6 +35,16 @@
 -- sin tocar una línea. Hacerlo después habría sido migrar datos vivos.
 -- ══════════════════════════════════════════════════════════════════════════
 
+-- ⚠ Depende de `public.es_finanzas()` (db/rhe-permisos.sql). Sin el guardián,
+-- correrlo fuera de orden falla con un error de Postgres en crudo que no dice
+-- cuál es el archivo que falta — el mismo aviso que llevan sus hermanos
+-- (db/caja.sql, db/facturas.sql).
+do $$ begin
+  if to_regprocedure('public.es_finanzas()') is null then
+    raise exception 'Falta public.es_finanzas(): corre antes db/rhe-permisos.sql';
+  end if;
+end $$;
+
 begin;
 
 create table if not exists alarmas (
@@ -56,13 +66,20 @@ create table if not exists alarmas (
   -- alarma NO desaparece — el problema sigue existiendo.
   caso_id uuid references publicaciones(id) on delete set null,
 
-  encendida_por uuid references auth.users(id),
+  /* ⚠ A `perfiles`, NO a `auth.users`. Es lo que permite traer el nombre
+     embebido (`quien:perfiles!encendida_por`): PostgREST resuelve el embebido
+     buscando una clave foránea hacia esa tabla, y sin ella la consulta ENTERA
+     falla con un 400 — no devuelve la alarma sin nombre, no devuelve nada.
+     Ya pasó con `fondo_apoyo`, que cuelga de auth.users y por eso tiene que
+     resolver los nombres a mano en la página. `perfiles.id` es a su vez clave
+     foránea de auth.users, así que no se pierde ninguna garantía. */
+  encendida_por uuid references perfiles(id),
   encendida_en  timestamptz not null default now(),
 
   -- Apagarla no la borra: es el registro de que esto pasó y de cómo se
   -- resolvió. Borrarla sería perder justo la parte que sirve para la próxima.
   apagada_en  timestamptz,
-  apagada_por uuid references auth.users(id),
+  apagada_por uuid references perfiles(id),
   cierre      text,
 
   -- Las dos mitades van juntas o no van: una alarma apagada sin fecha, o una
