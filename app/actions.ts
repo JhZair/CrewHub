@@ -4645,8 +4645,36 @@ export async function guardarPresupuesto(postulacionId: string, presupuesto: any
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
+
+  /* ── EL EDITOR NO SABE DE ROLES, Y NO PUEDE BORRARLOS ──
+     `rol` y `persona_id` los escribe la sección «Por rol» dentro del MISMO
+     jsonb. El editor de presupuesto trabaja sobre una copia que cargó al
+     montarse y guarda el array entero al perder el foco: si alguien etiquetaba
+     un rol y luego tocaba cualquier celda de arriba, las etiquetas
+     desaparecían sin aviso y sin error. Y no hacían falta dos pestañas — los
+     dos bloques están uno debajo del otro.
+     Así que aquí se releen y se vuelven a poner, línea por línea. La regla:
+     cada pantalla escribe lo suyo y respeta lo que no entiende. */
+  const { data: previo } = await supabase.from("postulaciones")
+    .select("presupuesto").eq("id", postulacionId).maybeSingle();
+  const marcas = new Map<string, { rol?: any; persona_id?: any }>(
+    (((previo?.presupuesto as any)?.items || []) as any[])
+      .filter((it: any) => it?.id && (it.rol || it.persona_id))
+      .map((it: any) => [it.id, { rol: it.rol ?? null, persona_id: it.persona_id ?? null }]));
+  const conMarcas = marcas.size
+    ? {
+      ...presupuesto,
+      items: ((presupuesto?.items || []) as any[]).map((it: any) => {
+        const m = marcas.get(it?.id);
+        /* Lo que el editor ya trae manda: si algún día aprende a escribir el
+           rol, esto no se lo pisa. Solo rellena lo que viene vacío. */
+        return m ? { ...m, ...it, rol: it.rol ?? m.rol, persona_id: it.persona_id ?? m.persona_id } : it;
+      }),
+    }
+    : presupuesto;
+
   const { data, error } = await supabase.from("postulaciones")
-    .update({ presupuesto }).eq("id", postulacionId).select("id");
+    .update({ presupuesto: conMarcas }).eq("id", postulacionId).select("id");
   if (error) return { error: error.message };
   if (!data?.length) return { error: "No se guardó: no tienes permiso." };
   return {};
@@ -4674,11 +4702,20 @@ export async function guardarPresupuesto(postulacionId: string, presupuesto: any
    tocan los ítems nombrados; el resto viaja de vuelta tal cual.
    ══════════════════════════════════════════════════════════════════════════ */
 export async function etiquetarPartidas(
-  postulacionId: string, ids: string[], rol: string | null, personaId?: string | null,
+  postulacionId: string, ids: string[], rol: string | null | undefined, personaId?: string | null,
 ) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
+  /* ── EL PERMISO SE COMPRUEBA AQUÍ, NO SOLO EN LA PANTALLA ──
+     La política de `postulaciones` deja escribir a cualquier autenticado
+     (db/schema.sql), así que esconder el botón no protege nada: la acción se
+     puede llamar igual. Y esto decide A NOMBRE DE QUIÉN se gira un recibo. */
+  const { data: perfil } = await supabase.from("perfiles")
+    .select("es_admin,es_finanzas").eq("id", user.id).maybeSingle();
+  if (!(perfil as any)?.es_admin && !(perfil as any)?.es_finanzas) {
+    return { error: "Solo administración etiqueta las partidas." };
+  }
   const objetivo = new Set((ids || []).filter(Boolean));
   if (!objetivo.size) return { error: "No se dijo qué partidas etiquetar." };
 
@@ -4688,23 +4725,29 @@ export async function etiquetarPartidas(
   const pre: any = post?.presupuesto;
   if (!pre?.items?.length) return { error: "Este fondo todavía no tiene presupuesto." };
 
-  const limpio = (rol || "").trim();
+  const limpio = rol === undefined ? undefined : (rol || "").trim();
   let tocados = 0;
   const items = pre.items.map((it: any) => {
     if (!objetivo.has(it.id)) return it;
     tocados++;
     return {
       ...it,
-      /* Vacío = quitar la etiqueta y volver a agrupar por el concepto. Se
-         guarda `null` y no `""`: en un jsonb, un texto vacío es un valor que
-         hay que interpretar cada vez que se lee. */
-      rol: limpio || null,
-      /* `undefined` = no se dijo nada de la persona, así que no se toca. Es
-         distinto de `null`, que es «quítasela». */
+      /* `undefined` = no se dijo nada del rol, así que no se toca —es lo que
+         manda el desplegable de persona—. Vacío («») = quitar la etiqueta y
+         volver a agrupar por el concepto; se guarda `null` y no `""` porque en
+         un jsonb un texto vacío es un valor que hay que interpretar cada vez.
+         Lo mismo, y por lo mismo, con la persona. */
+      ...(limpio === undefined ? {} : { rol: limpio || null }),
       ...(personaId === undefined ? {} : { persona_id: personaId || null }),
     };
   });
   if (!tocados) return { error: "Ninguna de esas partidas está en el presupuesto." };
+  /* Más tocados que pedidos = hay ids repetidos en el presupuesto, y entonces
+     se ha etiquetado una línea que nadie eligió. Se dice: mover en silencio la
+     cifra de otra persona es lo peor que puede hacer esta pantalla. */
+  if (tocados !== objetivo.size) {
+    return { error: `Hay partidas con el mismo código: se tocarían ${tocados} líneas y se pidieron ${objetivo.size}. Revisa los códigos del presupuesto antes de etiquetar.` };
+  }
 
   const { data, error } = await supabase.from("postulaciones")
     .update({ presupuesto: { ...pre, items } }).eq("id", postulacionId).select("id");
@@ -4713,6 +4756,21 @@ export async function etiquetarPartidas(
      ninguna: sin esto la pantalla diría «guardado» sobre algo que no se
      guardó. Mismo trato que `guardarPresupuesto`. */
   if (!data?.length) return { error: "No se guardó: no tienes permiso." };
+
+  /* ── QUEDA DICHO QUIÉN LO DIJO ──
+     «A Katy le tocan S/ 76,000» es una afirmación financiera: el día que
+     observen un recibo hay que poder decir quién la hizo y cuándo. Las otras
+     escrituras de plata dejan su rastro (auditoría o `actividad`); esta vive
+     dentro de un jsonb, donde ningún trigger la ve. */
+  await supabase.from("actividad").insert({
+    entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id,
+    tipo: "editado",
+    detalle: {
+      mensaje: `etiquetó ${tocados} partida(s) del presupuesto`
+        + (limpio === undefined ? "" : limpio ? ` como «${limpio}»` : " (les quitó el rol)")
+        + (personaId === undefined ? "" : personaId ? " y les asignó una persona" : " y les quitó la persona"),
+    },
+  });
 
   revalidatePath(`/fondo/${postulacionId}`);
   revalidatePath(`/entidad/postulacion/${postulacionId}`);

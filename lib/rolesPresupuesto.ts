@@ -36,28 +36,41 @@ export type ItemRol = ItemPre & {
   persona_id?: string | null;
 };
 
-/* Sufijos de numeración que NO distinguen un rol: «Operador de cámara 01» y
-   «Operador de cámara 02» son dos personas del mismo rol, y para el
-   presupuesto por rol interesa el rol. Los números romanos van aparte porque
-   «II» no es una palabra que se pueda tirar a la ligera en otro contexto. */
-const COLA_NUMERO = /\s*(?:n[°º]?\s*)?(?:\d{1,2}|i{1,3}|iv|v|vi{1,3}|ix|x)\s*$/i;
-
 /** El texto de un concepto, listo para comparar: sin tildes, sin mayúsculas,
- *  sin puntuación, sin numeración al final y con los espacios colapsados. */
+ *  sin puntuación y con los espacios colapsados.
+ *
+ *  ⚠ La numeración SE RESPETA. La primera versión la borraba —«Operador de
+ *  cámara 01» y «02» eran el mismo grupo— y eso son DOS PERSONAS sumadas en
+ *  una fila de S/ 17,400 sin manera de separarlas: exactamente el recibo mal
+ *  girado que esta pantalla viene a evitar. Los numerados se agrupan aparte y
+ *  se ofrecen como sugerencia de unión, que es lo que se hace con todo lo
+ *  demás: la máquina acota, la persona decide. */
 export function normalizarRol(texto?: string | null): string {
-  const base = String(texto || "")
+  return String(texto || "")
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "")   // fuera tildes
     .toLowerCase()
     .replace(/[.,;:()"'`´]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  return base.replace(COLA_NUMERO, "").trim();
 }
+
+/* La misma clave SIN su numeración final, solo para comparar dos grupos.
+   ⚠ Exige separador y se come el número ENTERO: con `\s*` y `\d{1,2}`,
+   «Cámara Sony FX30» y «Cámara Sony FX3» acababan en la misma clave —se comía
+   dos dígitos de en medio de una palabra— y dos alquileres distintos se
+   sumaban en una fila. */
+const COLA_NUMERO = /\s+(?:n[°º]?\s*)?(?:\d+|i{1,3}|iv|vi{0,3}|ix|xi{0,3}|x|v)\s*$/i;
+export const sinNumeracion = (clave: string) => clave.replace(COLA_NUMERO, "").trim();
 
 /** La clave por la que se agrupa una partida: la etiqueta escrita a mano si la
  *  hay, y si no el concepto normalizado. */
 export const claveRol = (it: ItemRol): string =>
-  normalizarRol(it.rol) || normalizarRol(it.concepto) || "sin concepto";
+  /* Sin etiqueta y sin concepto NO se agrupa con nadie: la clave es su propio
+     id. Agrupar «todo lo que aún no tiene nombre» juntaba partidas inconexas
+     en una fila —y el editor crea las líneas nuevas con el concepto vacío—, así
+     que bastaba añadir dos ítems para que alguien heredara una suma que no era
+     suya. */
+  normalizarRol(it.rol) || normalizarRol(it.concepto) || `sin-concepto:${it.id}`;
 
 /** Cuánto cuesta una línea. Igual que en el editor: cantidad × unitario. */
 export const totalItem = (it: ItemPre): number =>
@@ -145,11 +158,22 @@ const palabrasDe = (s: string) =>
    para sony fx30 (sigma 18-50mm…)» no. */
 const COLA_MAX = 25;
 
-export function seParecen(a: string, b: string, distintiva?: (p: string) => boolean): boolean {
-  if (!a || !b || a === b) return false;
+export function seParecen(a0: string, b0: string, distintiva?: (p: string) => boolean): boolean {
+  if (!a0 || !b0 || a0 === b0) return false;
+  /* Se comparan SIN la numeración final: «operador de camara 01» y «02» son
+     grupos distintos —dos personas— pero sí se PROPONE unirlos. */
+  const a = sinNumeracion(a0), b = sinNumeracion(b0);
+  if (!a || !b) return false;
+  if (a === b) return true;
   const [corto, largo] = a.length <= b.length ? [a, b] : [b, a];
   // Uno empieza por el otro y lo que sobra es una coletilla, no otro concepto.
-  if (largo.startsWith(corto)) return largo.length - corto.length <= COLA_MAX;
+  if (largo.startsWith(corto)) {
+    if (largo.length - corto.length > COLA_MAX) return false;
+    /* Y que el nombre común signifique algo aquí: «alquiler røde ntg» ⊂
+       «alquiler røde videomic ntg + kit…» son dos alquileres distintos. */
+    const pc = palabrasDe(corto);
+    return distintiva ? pc.some(distintiva) : true;
+  }
   /* ⚠ DOS palabras largas en común como mínimo, y no una.
      Con una bastaba, y la primera prueba con el presupuesto real de PO-001
      escupió TREINTA Y OCHO sugerencias: «Alquiler DJI Mic» = «Alquiler Sony

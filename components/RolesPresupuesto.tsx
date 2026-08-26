@@ -71,6 +71,14 @@ export default function RolesPresupuesto({
     [grupos, giradoPorPersona]);
 
   const totalPre = filas.reduce((s, f) => s + f.presupuestado, 0);
+  /* Lo girado a quien NO tiene partida: la diferencia entre todos los recibos
+     del fondo y los que sí caen en una fila. */
+  const sinPartida = useMemo(() => {
+    const asignadas = new Set(filas.map(f => f.personaId).filter(Boolean) as string[]);
+    let n = 0;
+    for (const [id, monto] of giradoPorPersona.entries()) if (!asignadas.has(id)) n += monto;
+    return n;
+  }, [filas, giradoPorPersona]);
 
   const correr = async (fn: () => Promise<any>) => {
     if (ocupado) return;
@@ -83,7 +91,12 @@ export default function RolesPresupuesto({
     finally { setOcupado(false); }
   };
 
-  const etiquetar = (gs: GrupoRol[], rol: string | null, personaId?: string | null) =>
+  /* `rol === undefined` = no se toca la etiqueta. El desplegable de persona
+     pasaba el título del PRIMER grupo, y en una fila que junta dos roles de la
+     misma persona eso los fundía de verdad en el jsonb —y se llevaba por
+     delante la etiqueta que el segundo tuviera puesta a mano—. Reelegir a la
+     misma persona bastaba para disparar la fusión. */
+  const etiquetar = (gs: GrupoRol[], rol: string | null | undefined, personaId?: string | null) =>
     correr(() => etiquetarPartidas(
       postulacionId, gs.flatMap(g => g.items.map(i => i.id)), rol, personaId));
 
@@ -137,7 +150,8 @@ export default function RolesPresupuesto({
           return (
             <div key={clave}>
               <div className="rp-fila">
-                <button type="button" className="rp-tit" onClick={() => setAbierto(abierto === clave ? null : clave)}
+                <button type="button" className="rp-tit" aria-expanded={abierto === clave}
+                  onClick={() => setAbierto(abierto === clave ? null : clave)}
                   title="Ver las partidas que suman este total">
                   <span className="rp-flecha">{abierto === clave ? "▾" : "▸"}</span>
                   {f.titulo}
@@ -154,7 +168,8 @@ export default function RolesPresupuesto({
                   {esAdmin ? (
                     <select className="rp-sel" disabled={ocupado}
                       value={f.personaId || ""}
-                      onChange={e => etiquetar(f.grupos, f.grupos[0]?.titulo || null, e.target.value || null)}>
+                      aria-label={`¿Quién cobra «${f.titulo}»?`}
+                      onChange={e => etiquetar(f.grupos, undefined, e.target.value || null)}>
                       <option value="">— ¿quién lo cobra? —</option>
                       {personas.map(p => (
                         <option key={p.id} value={p.id}>{p.alias || p.nombre}</option>
@@ -185,6 +200,14 @@ export default function RolesPresupuesto({
                     : f.falta > 0 ? S(f.falta)
                       : f.falta < 0 ? <span className="rp-exceso" title="Se giró más de lo presupuestado para este rol">+{S(-f.falta)}</span>
                         : "✓"}
+                  {/* Con contrapartida, «falta» no es lo que se puede girar
+                      contra el estímulo: una parte la pone otro bolsillo, y
+                      girarla del fondo se pasa del rubro al rendir. */}
+                  {f.falta !== null && f.otras > 0 && (
+                    <span className="rp-otras" title="Descontando lo que pone la otra fuente">
+                      {S(Math.max(0, f.presupuestado - f.otras - (f.girado || 0)))} del estímulo
+                    </span>
+                  )}
                 </span>
               </div>
 
@@ -203,8 +226,10 @@ export default function RolesPresupuesto({
 
               {abierto === clave && (
                 <div className="rp-detalle">
-                  {f.grupos.flatMap(g => g.items).map(it => (
-                    <div key={it.id} className="rp-linea">
+                  {f.grupos.flatMap(g => g.items).map((it, i) => (
+                    /* `it.id` puede faltar en un presupuesto viejo cargado por
+                       SQL: sin el índice, dos líneas sin id comparten clave. */
+                    <div key={it.id || `s-${i}`} className="rp-linea">
                       <span className="rp-id">{it.id}</span>
                       <span className="rp-concepto">{it.concepto}</span>
                       <span className="rp-etapa">{etapaCorta(etapaDe(it))}</span>
@@ -212,21 +237,24 @@ export default function RolesPresupuesto({
                       <span className="rp-num">{S(totalItem(it))}</span>
                     </div>
                   ))}
-                  {esAdmin && (
-                    <form className="rp-etq" onSubmit={e => {
+                  {/* Un formulario POR GRUPO, no uno por fila: cuando la fila
+                      junta dos roles de la misma persona, escribir «Directora ·
+                      Editora» en las líneas de ambos los fundiría en uno. */}
+                  {esAdmin && f.grupos.map(g => (
+                    <form key={g.clave} className="rp-etq" onSubmit={e => {
                       e.preventDefault();
                       const v = new FormData(e.currentTarget).get("rol");
-                      etiquetar(f.grupos, String(v || "").trim() || null);
+                      etiquetar([g], String(v || "").trim());
                     }}>
-                      <label className="rp-dim">Llamar a este rol</label>
-                      <input name="rol" list="roles-presu" defaultValue={f.titulo}
+                      <label className="rp-dim" htmlFor={`rol-${g.clave}`}>Llamar a este rol</label>
+                      <input id={`rol-${g.clave}`} name="rol" list="roles-presu" defaultValue={g.titulo}
                         className="rp-input" placeholder="Directora, Sonidista…" />
                       <button className="btn btn-ghost rp-btn" disabled={ocupado} type="submit">Guardar</button>
                       <span className="rp-dim">
-                        Se escribe en las {f.grupos.reduce((s, g) => s + g.items.length, 0)} líneas: vacío vuelve a agrupar por el concepto.
+                        Se escribe en sus {g.items.length} línea(s): vacío vuelve a agrupar por el concepto.
                       </span>
                     </form>
-                  )}
+                  ))}
                 </div>
               )}
             </div>
@@ -237,6 +265,18 @@ export default function RolesPresupuesto({
       <datalist id="roles-presu">
         {ROLES_EQUIPO.map(r => <option key={r} value={r} />)}
       </datalist>
+
+      {/* ── LO QUE SE GIRÓ Y NO CUADRA CON NINGUNA PARTIDA ──
+          La tabla solo suma los recibos de las personas asignadas a un rol. Si
+          alguien cobró sin tener partida, su plata no aparece en ninguna fila
+          y la columna «girado» suma menos que la rendición — sin decir por qué.
+          Se dice. */}
+      {sinPartida > 0 && (
+        <p className="rp-sobra">
+          ⚠ {S(sinPartida)} girados a personas que no están asignadas a ninguna partida.
+          No entran en ninguna fila de arriba: asigna su rol para que cuadren.
+        </p>
+      )}
 
       <p className="rp-pie">
         El presupuesto no distingue personas: el rol sale del texto de cada partida y se puede
