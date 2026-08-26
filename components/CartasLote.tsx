@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { registrarCarta } from "@/app/casilla/acciones";
 import { subirAdjunto } from "@/lib/subirImagen";
@@ -62,6 +62,10 @@ export default function CartasLote({
   const [leyendo, setLeyendo] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const [hechas, setHechas] = useState(0);
+  /* El recuadro se enciende mientras se arrastra encima: sin esa señal, quien
+     arrastra no sabe si va a soltar en el sitio bueno. */
+  const [arrastra, setArrastra] = useState(false);
+  const entrada = useRef<HTMLInputElement>(null);
 
   const cargar = async (files: FileList | null) => {
     if (!files?.length || ocupado) return;
@@ -157,10 +161,23 @@ export default function CartasLote({
   return (
     <div className="cl">
       {aviso}
-      <label className="cl-soltar">
-        <input type="file" accept="application/pdf,.pdf" multiple className="cl-file" disabled={ocupado}
+      {/* ── SOLTAR DE VERDAD ──
+          Esto era un `<label>` con el input dentro: se podía hacer clic, pero
+          ARRASTRAR encima no hacía nada —el navegador abría el PDF en otra
+          pestaña— y el recuadro decía «soltar aquí». Un cartel que promete algo
+          que la pantalla no hace.
+          Mismo trato que el importador de SOL (components/ImportarSol.tsx):
+          `onDragOver` con `preventDefault` —sin eso el navegador se queda el
+          archivo— y el clic abre el selector. Las dos vías, siempre. */}
+      <div className={`cl-soltar${arrastra ? " cl-encima" : ""}${ocupado ? " cl-quieto" : ""}`}
+        onDragOver={e => { e.preventDefault(); if (!ocupado) setArrastra(true); }}
+        onDragLeave={() => setArrastra(false)}
+        onDrop={e => { e.preventDefault(); setArrastra(false); cargar(e.dataTransfer.files); }}
+        onClick={() => { if (!ocupado) entrada.current?.click(); }}>
+        <input ref={entrada} type="file" accept="application/pdf,.pdf" multiple
+          className="cl-file" disabled={ocupado}
           onChange={e => { cargar(e.target.files); e.target.value = ""; }} />
-        <b>📥 Soltar aquí los PDF de la casilla electrónica</b>
+        <b>📥 Suelta aquí los PDF de la casilla electrónica — o haz clic para elegirlos</b>
         {/* Las dos cosas, dichas: leerlos es local, guardarlos no. El PDF de
             una carta lleva nombres y a veces DNI, y quien la sube tiene derecho
             a saber que queda accesible por su enlace a quien lo tenga. */}
@@ -168,7 +185,7 @@ export default function CartasLote({
           Se leen aquí, en tu ordenador: no se suben para leerlos. Al registrarlas, el PDF sí se
           guarda como prueba —queda accesible para quien tenga el enlace—.
         </span>
-      </label>
+      </div>
 
       {leyendo && <p className="rc-dim">Leyendo los PDF…</p>}
 

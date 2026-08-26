@@ -6159,6 +6159,10 @@ body{padding-top:var(--alto-franja, 0)}
   padding:14px 16px;border:1px dashed var(--border2);border-radius:12px;
   background:rgba(255,255,255,.015);transition:border-color .12s,background .12s}
 .cl-soltar:hover{border-color:var(--violet);background:rgba(124,92,255,.05)}
+/* Arrastrando encima: el recuadro se enciende. Sin esa señal, quien arrastra
+   veinte PDF no sabe si está soltando en el sitio bueno hasta que los suelta. */
+.cl-encima{border-color:var(--violet);border-style:solid;background:rgba(124,92,255,.1)}
+.cl-quieto{opacity:.55;cursor:progress}
 .cl-soltar b{font-size:13px}
 .cl-file{display:none}
 .cl-tabla{display:flex;flex-direction:column;border:1px solid var(--border);border-radius:12px;
