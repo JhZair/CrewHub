@@ -288,7 +288,7 @@ export default function NavIconos() {
                 <span className="nav-item-ico">{s.ico}</span>
                 <span>{s.plural}</span>
                 {!!alarmasPor.get(s.ruta) && (
-                  <span className="nav-alarma" title="Hay una alarma encendida aquí">🚨</span>
+                  <span className="nav-alarma" title="Hay una alarma encendida aquí">alarma</span>
                 )}
               </Link>
             ))}
@@ -308,12 +308,6 @@ export default function NavIconos() {
                     onClick={() => setAbierto(false)}>
                     <span className="nav-item-ico">{d.ico}</span>
                     <span>{d.txt}</span>
-                    {/* La alarma va PRIMERO, antes que cualquier burbuja de
-                        conteo: las burbujas dicen cuánto falta, la alarma dice
-                        que algo está mal. No es lo mismo y no se ordena igual. */}
-                    {!!alarmasPor.get(d.ruta) && (
-                      <span className="nav-alarma" title="Hay una alarma encendida aquí">🚨</span>
-                    )}
                     {/* Cada pendiente, en la entrada donde se va a atender. */}
                     {d.ruta === "/casilla" && casilla > 0 && (
                       <Burbuja n={casilla} tono="rojo"
@@ -342,6 +336,17 @@ export default function NavIconos() {
                           <Burbuja key={a.k} n={a.n} tono={a.tono} txt={a.txt} />
                         ))}
                       </span>
+                    )}
+                    {/* ── LA MARCA, AL FINAL Y AL BORDE DERECHO ──
+                        Estaba delante de las burbujas, razonando que una alarma
+                        no es un conteo. Pero en una lista el ojo baja por UNA
+                        columna, y ponerla antes la dejaba a media fila, distinta
+                        en cada entrada según cuántas burbujas hubiera al lado.
+                        Al final, todas las marcas caen en la misma vertical y se
+                        ven de un vistazo — que es justo lo que tiene que pasar
+                        con la única señal que no calculó nadie. */}
+                    {!!alarmasPor.get(d.ruta) && (
+                      <span className="nav-alarma" title="Hay una alarma encendida aquí">alarma</span>
                     )}
                   </Link>
                 ))}

@@ -5882,7 +5882,16 @@ body{padding-top:var(--alto-franja, 0)}
    —«faltan 5»— y una alarma no se cuenta, está o no está. Por eso el mismo
    icono de la franja y no un número, con un latido lento que la separa del
    resto de indicadores sin gritar. */
-.nav-alarma{font-size:12px;line-height:1;animation:alarma-late 2.4s ease-in-out infinite}
+/* La palabra, no el 🚨: en una fila de menú con burbujas al lado, un emoji
+   suelto se lee como parte de la decoración de la entrada. «alarma» escrito no
+   se confunde con nada. Y va al borde derecho, en la misma columna que las
+   burbujas: el que va detrás de ellas no necesita el `auto`, el que va solo sí. */
+.nav-alarma{margin-left:auto;font-size:10px;line-height:1;font-weight:800;
+  letter-spacing:.04em;text-transform:uppercase;padding:3px 7px;border-radius:999px;
+  color:#ffb4b4;background:rgba(239,68,68,.16);border:1px solid rgba(239,68,68,.38);
+  animation:alarma-late 2.4s ease-in-out infinite}
+.nav-item .nav-burbujas + .nav-alarma,
+.nav-item .nav-burbuja + .nav-alarma{margin-left:5px}
 @keyframes alarma-late{0%,100%{opacity:1}50%{opacity:.45}}
 /* Quien prefiera la pantalla quieta —o lo necesite— no ve el latido: la marca
    sigue estando, que es lo que importa. */
