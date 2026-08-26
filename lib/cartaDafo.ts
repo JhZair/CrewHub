@@ -115,16 +115,31 @@ export function leerCarta(textoCrudo: string): CartaLeida {
      número. Compactado, «…/MC» se pega a la palabra siguiente del sello y el
      número salía como «…/MCASUNTO» — que parece un número y no lo es, así que
      la llave anti-duplicado dejaba de funcionar sin que nadie lo notara. */
-  const numeros = [...t.matchAll(/\b(CARTA|OFICIO|MEMORANDO)\s+N°\s*([0-9]{3,}-[0-9]{4}-[A-Z0-9\-\/\.]+)/gi)]
-    .map(m => `${m[1].toUpperCase()} N° ${m[2].toUpperCase()}`);
-  const distintos = [...new Set(numeros)];
-  /* ── UN PDF, UNA CARTA ──
-     La Plataforma deja descargar varias juntas, y con dos dentro cada campo se
-     leería de una: el número de la primera, el plazo de la segunda. Eso no es
-     un dato incompleto, es un dato FALSO con toda la pinta de bueno. Se para y
-     se dice. */
-  const varias = distintos.length > 1;
-  const numero = varias ? null : (distintos[0] || null);
+  const hallados = [...t.matchAll(/\b(CARTA|OFICIO|MEMORANDO)\s+N°\s*([0-9]{3,}-[0-9]{4}-[A-Z0-9\-\/\.]+)/gi)]
+    .map(m => ({ num: `${m[1].toUpperCase()} N° ${m[2].toUpperCase()}`, i: m.index ?? 0 }));
+  const distintos = [...new Set(hallados.map(h => h.num))];
+
+  /* ── VARIOS NÚMEROS EN UN PDF: MANDA EL DEL SELLO ──
+     Casi todas las cartas de DAFO citan otras: «mediante CARTA N° 000131-2025
+     se le requirió…». Con cuatro de cinco PDF así, bloquearlos era dejar la
+     carga por lote sin usar — y separar el PDF a mano no es algo que la
+     Plataforma permita hacer.
+     El número de LA carta es el del sello de firma digital, que va al final de
+     todo, debajo de «San Borja, 3 de julio del 2025». Los del cuerpo son citas
+     a documentos anteriores. Así que se toma el del sello y se DICE cuáles
+     otros aparecían, para que quien mira pueda corregirlo en un segundo.
+     Comprobado con la carta 000136-2025 (un solo número, al final) y con las
+     cuatro del segundo requerimiento (000131 citada en el cuerpo, 000500 en el
+     sello — que es la que la casilla enseña como notificada). */
+  const iSello = Math.max(
+    t.lastIndexOf("Firmado digitalmente"),
+    t.lastIndexOf("San Borja"),
+  );
+  const enSello = iSello >= 0 ? hallados.filter(h => h.i > iSello) : [];
+  const elegido = enSello.length ? enSello[enSello.length - 1]
+    : hallados.length ? hallados[hallados.length - 1] : null;
+  const numero = elegido ? elegido.num : null;
+  const otros = distintos.filter(n => n !== numero);
 
   /* ── EL CÓDIGO DEL VALIDADOR ── «… Código: SXP0Y4A»
      ⚠ Este va sobre el texto CON espacios. Sin ellos, el código se pega a la
@@ -206,11 +221,15 @@ export function leerCarta(textoCrudo: string): CartaLeida {
   const mFir = t.match(/Firmado\s+digitalmente\s+por\s+([A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑáéíóúñ\s]{4,60}?)\s+(?:FAU|FIR)\b/);
   const firmante = mFir ? mFir[1].replace(/\s+/g, " ").trim() : null;
 
-  const aviso = varias
-    ? `Este PDF tiene ${distintos.length} cartas dentro (${distintos.join(", ")}). Sepáralas y súbelas una a una: con dos juntas, cada campo se leería de una distinta.`
-    : actasUnicas.length > 1
+  const avisos = [
+    otros.length
+      ? `El PDF menciona también ${otros.join(", ")}. Se toma la del sello de firma; si la buena es otra, cámbiala aquí.`
+      : "",
+    actasUnicas.length > 1
       ? `La carta menciona ${actasUnicas.length} actas distintas: elige a mano de qué fondo es.`
-      : null;
+      : "",
+  ].filter(Boolean);
+  const aviso = avisos.length ? avisos.join(" ") : null;
 
   return { numero, codigo, fecha, hora, asunto, acta, plazoDias, firmante, aviso };
 }
