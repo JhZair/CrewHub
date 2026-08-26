@@ -1,3 +1,5 @@
+import { colorEtapa } from "@/lib/etapas";
+
 /* ── Los rubros del presupuesto DAFO, por categoría ──
    La Sección D del formulario es una tabla de costos agrupada por RUBRO. Como
    las etapas, los rubros dependen de la categoría del concurso. Hay tres
@@ -189,6 +191,48 @@ for (const arbol of [CATEGORIAS_PRESU_AUDIOVISUAL, CATEGORIAS_PRESU_FICCION])
     for (const r of c.rubros)
       RUBRO_META[r.clave] = { rubroCod: r.cod, catCod: c.cod, catNombre: c.nombre };
 export const metaRubro = (clave: string): RubroMeta | null => RUBRO_META[clave] || null;
+
+/* ── EL COLOR DE UNA ETAPA DEL PRESUPUESTO ──
+   Las etapas del presupuesto («PRE PRODUCCIÓN», «PRODUCCIÓN»…) son las mismas
+   que las del cronograma, escritas con las mayúsculas del formulario DAFO. Así
+   que el color NO se inventa aquí: se pide a lib/etapas por la clave que le
+   corresponde, y así el ámbar del rodaje es el mismo ámbar en el cronograma, en
+   la agenda y en estos chips. Un segundo juego de colores para las mismas
+   etapas sería dos identidades para una sola cosa.
+
+   Se compara por el texto porque es lo único que hay: el presupuesto guarda el
+   `rubro`, y de ahí sale el NOMBRE de la categoría, no una clave. Se normaliza
+   —sin tildes, sin mayúsculas, sin el número de delante— y el orden de la lista
+   importa: «post produccion» y «pre produccion» contienen «produccion», así que
+   se preguntan antes.
+
+   Sin correspondencia devuelve `null`, y el chip se queda apagado como hasta
+   ahora: «Otros» (un rubro que no está en ningún árbol) no es una etapa, y
+   pintarlo del gris de preproducción diría que sí lo es. */
+const norm = (s: string) => String(s || "")
+  .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+  .toLowerCase().replace(/^\d+\s*/, "").replace(/\s+/g, " ").trim();
+
+const COLOR_ETAPA_PRESU: [RegExp, string][] = [
+  [/gastos generales/, colorEtapa("administracion")],
+  /* «DESARROLLO DEL PROYECTO» va con el azul de «Desarrollo conceptual» y NO
+     con el violeta de «Desarrollo (arte, layout)»: ese violeta es el mismo de
+     Administración, y en el árbol de Cine Indígena las dos únicas categorías
+     son GASTOS GENERALES y DESARROLLO — con el mismo color no se distinguirían
+     precisamente donde hay que distinguirlas. */
+  [/desarrollo/,       colorEtapa("desarrollo_conceptual")],
+  [/post\s*produccion/, colorEtapa("postproduccion")],
+  [/pre\s*produccion/,  colorEtapa("preproduccion")],
+  [/produccion/,        colorEtapa("produccion")],
+];
+
+/** El color con el que se identifica una etapa del presupuesto, o `null` si ese
+ *  nombre no corresponde a ninguna etapa conocida. */
+export function colorEtapaPresu(nombre?: string | null): string | null {
+  const t = norm(nombre || "");
+  if (!t) return null;
+  return COLOR_ETAPA_PRESU.find(([re]) => re.test(t))?.[1] || null;
+}
 
 const TODOS = [...Object.values(RUBROS_POR_CATEGORIA).flat(), ...RUBROS_DEFAULT];
 export const nombreRubro = (clave: string) =>

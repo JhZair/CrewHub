@@ -8,6 +8,7 @@ import {
   type ItemRol, type GrupoRol,
 } from "@/lib/rolesPresupuesto";
 import { ROLES_EQUIPO } from "@/lib/rolesEquipo";
+import { colorEtapaPresu } from "@/lib/rubros";
 
 /* ══════════════════════════════════════════════════════════════════════════
    CUÁNTO LE TOCA A CADA UNO — y cuánto le falta cobrar
@@ -31,6 +32,23 @@ const S = (n: number) => `S/ ${Math.round(n).toLocaleString("es-PE")}`;
 /* La etapa sin su número («2 PRE PRODUCCIÓN» → «PRE PRODUCCIÓN»): el número
    ordena en el formulario y aquí solo estorba. */
 const etapaCorta = (e: string) => e.replace(/^\d+\s*/, "");
+
+/* ── EL CHIP DE UNA ETAPA, CON SU COLOR ──
+   Tres chips grises seguidos hay que LEERLOS para saber cuál es cuál; con el
+   color de su etapa se reconocen de un vistazo, y es el MISMO ámbar del rodaje
+   que ya usan el cronograma y la agenda (ver lib/rubros → colorEtapaPresu).
+
+   Tenue a propósito: la fila tiene tres cifras que sí hay que leer, y un chip
+   de 10px a todo color se las come. Si la etapa no se reconoce —«Otros», un
+   rubro que no está en ningún árbol DAFO— se queda apagado: pintarlo del gris
+   de preproducción diría que es preproducción. */
+function ChipEtapa({ etapa, children }: { etapa: string; children: React.ReactNode }) {
+  const c = colorEtapaPresu(etapa);
+  return (
+    <span className={`rp-etapa${c ? " rp-etapa-c" : ""}`}
+      style={c ? ({ ["--rp-et" as any]: c }) : undefined}>{children}</span>
+  );
+}
 
 export default function RolesPresupuesto({
   postulacionId, items, personas, rhe, esAdmin,
@@ -228,7 +246,7 @@ export default function RolesPresupuesto({
                       <span className="rp-lineas">{f.grupos.reduce((s, g) => s + g.items.length, 0)} líneas</span>
                       {/* Las etapas, que es lo que pregunta la alarma. */}
                       {f.grupos.flatMap(g => g.porEtapa).map((e, i) => (
-                        <span key={i} className="rp-etapa">{etapaCorta(e.etapa)} {S(e.total)}</span>
+                        <ChipEtapa key={i} etapa={e.etapa}>{etapaCorta(e.etapa)} {S(e.total)}</ChipEtapa>
                       ))}
                     </span>
                   </span>
@@ -304,7 +322,7 @@ export default function RolesPresupuesto({
                     <div key={it.id || `s-${i}`} className="rp-linea">
                       <span className="rp-id">{it.id}</span>
                       <span className="rp-concepto">{it.concepto}</span>
-                      <span className="rp-etapa">{etapaCorta(etapaDe(it))}</span>
+                      <ChipEtapa etapa={etapaDe(it)}>{etapaCorta(etapaDe(it))}</ChipEtapa>
                       <span className="rp-dim">{it.cantidad} {it.unidad} × {S(it.costo_unit)}</span>
                       <span className="rp-num">{S(totalItem(it))}</span>
                     </div>
