@@ -119,7 +119,7 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
   const categoria = ent.conv?.categoria || null;
 
   const [cp, pl, pf, plPre, pc, vtp, ec, rf, mb, gdj, cmp, au, vf, eqp, eqf, cac, urlSunat, s4, apo,
-    hitosQ, cartasQ] = await Promise.all([
+    hitosQ, cartasQ, casosQ] = await Promise.all([
     supabase.from("cronograma_actividades").select("*, resp:perfiles!responsable(nombre)")
       .eq("postulacion_id", params.id)
       .order("etapa").order("orden").order("fecha_inicio").order("creado_en"),
@@ -263,6 +263,16 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
       .select("id,asunto,extracto,recibido_en,origen,doc_numero,doc_url," +
               "responder_hasta,respondido_en,cierre_motivo,pide_accion,caso_id")
       .eq("postulacion_id", params.id).order("recibido_en", { ascending: false }).limit(200),
+    /* ── LOS CASOS DE ESTE FONDO ──
+       Para poder atar un hito a su caso: «llamamos a DAFO» tiene detrás una
+       conversación entera, y el hito solo lleva el titular. El campo existía
+       desde el principio (`hito_fondo.publicacion_id`) pero no había ningún
+       sitio donde rellenarlo — un enlace que nadie podía poner.
+       Van también los cerrados: un caso resuelto sigue siendo el sitio donde
+       está lo que se dijo. */
+    supabase.from("publicacion_vinculos")
+      .select("pub:publicaciones(id,titulo,tipo,estado,creado_en,archivado_en)")
+      .eq("entidad_tipo", "postulacion").eq("entidad_id", params.id).limit(200),
   ]);
   /* Los nombres salen del catálogo de perfiles que ya viajó (`pf`): la tabla
      de apoyos cuelga de auth.users y no de perfiles, así que PostgREST no
@@ -696,6 +706,15 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
      en la línea, así que sumarlos daría un contador que no cuadra con lo que
      se ve al abrir. */
   const hoyDia = hoyLima();
+  /* Los casos del fondo, para poder atar un hito al suyo. Se aplana el
+     embebido —PostgREST devuelve objeto o array de uno según cómo resuelva la
+     relación— y se quitan las bitácoras: una nota del muro no es «el caso
+     donde está la conversación». */
+  const casosDelFondo = ((casosQ.data || []) as any[])
+    .map(v => (Array.isArray(v.pub) ? v.pub[0] : v.pub))
+    .filter(p => p?.id && p.tipo !== "bitacora" && !p.archivado_en)
+    .map(p => ({ id: p.id as string, titulo: (p.titulo || "(sin título)") as string, estado: p.estado as string }))
+    .sort((a, b) => a.titulo.localeCompare(b.titulo, "es"));
   /* Sin la migración corrida, las dos consultas fallan y la pestaña lo dice en
      vez de aparecer vacía —que se leería como «no ha pasado nada»—. */
   const faltaVida = !!(hitosQ.error || cartasQ.error);
@@ -1131,7 +1150,8 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
               ) : (
                 <VidaFondo postulacionId={params.id} postulacion={ent as any}
                   hitos={(hitosQ.data || []) as any} cartas={(cartasQ.data || []) as any}
-                  hoy={hoyDia} etiquetaFondo={titulo} esAdmin={esAdmin} />
+                  hoy={hoyDia} etiquetaFondo={titulo} esAdmin={esAdmin}
+                  casos={casosDelFondo} />
               )}
             </div>
           </div>,

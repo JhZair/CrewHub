@@ -37,8 +37,33 @@ const COLOR: Record<string, string> = {
   propio: "var(--muted)",
 };
 
+/* ── ¿QUIÉN DIJO ESTO? ──
+   Con la conversación entera en una sola columna, lo que mandamos nosotros y
+   lo que nos dijo DAFO se leían igual. Y no es un matiz: en un descargo, la
+   diferencia entre «lo avisamos» y «nos lo advirtieron» es toda la diferencia.
+
+   No hace falta una columna nueva: ya está dicho en el TIPO del hito —enviar y
+   recibir son las dos direcciones— y en la clase —una carta viene siempre de
+   ellos—. Lo que no tiene dirección (una llamada, una reunión, una fecha del
+   acta) no lleva etiqueta: inventarle un lado sería peor que no decir nada. */
+type Lado = "nos" | "dafo" | null;
+function ladoDe(h: Hito): Lado {
+  if (h.clase === "carta") return "dafo";
+  if (h.clase !== "propio") return null;
+  const t = h.tipo || undefined;
+  return t === "envio" ? "nos" : t === "recepcion" ? "dafo" : null;
+}
+
+/* Los mensajes del buzón guardan en su cuerpo una primera línea con la ficha
+   del mensaje —`[060-2023-DAFO-28 · Nosotros · 12:42:14]`— para poder citarlos
+   por su número. Eso es metadato, no texto: se saca del cuerpo y se pinta
+   aparte, que es donde se lee sin estorbar. */
+const RE_FICHA = /^\[([^\]\n]{4,120})\]\s*\n+/;
+const fichaDe = (d?: string | null) => (String(d || "").match(RE_FICHA) || [])[1] || null;
+const cuerpoDe = (d?: string | null) => String(d || "").replace(RE_FICHA, "");
+
 export default function VidaFondo({
-  postulacionId, postulacion, hitos, cartas, hoy, etiquetaFondo, esAdmin,
+  postulacionId, postulacion, hitos, cartas, hoy, etiquetaFondo, esAdmin, casos,
 }: {
   postulacionId: string;
   postulacion: PostulacionVida;
@@ -48,6 +73,8 @@ export default function VidaFondo({
   etiquetaFondo: string;
   /** Registrar cartas es escribir en el expediente: solo administración. */
   esAdmin: boolean;
+  /** Los casos de este fondo, para poder atar un hito al suyo. */
+  casos: { id: string; titulo: string; estado?: string | null }[];
   /** El día de HOY según el servidor, en Lima. Se pasa desde la página en vez
    *  de preguntarlo aquí: calculado en el navegador, un equipo con la fecha
    *  torcida vería vencido lo que no lo está — y al revés. */
@@ -102,6 +129,7 @@ export default function VidaFondo({
       titulo: String(d.get("titulo") || ""),
       detalle: String(d.get("detalle") || ""),
       url: String(d.get("url") || ""),
+      publicacionId: String(d.get("caso") || "") || null,
     }));
     if (ok) { setAbierto(false); setEditando(null); }
   };
@@ -243,6 +271,28 @@ export default function VidaFondo({
           <input name="url" className="rp-input vf-ancho" defaultValue={editando?.url || ""}
             aria-label="Enlace a la prueba (opcional)"
             placeholder="Enlace a la prueba (cargo, acta de la reunión, correo) — opcional" />
+          {/* ── EL CASO DONDE ESTÁ LA CONVERSACIÓN ──
+              Un hito es el titular; lo que se dijo, con quién y qué quedó
+              pendiente vive en el caso. Sin este campo el enlace existía en la
+              base y no había forma de ponerlo — la línea de tiempo enseñaba
+              «ver el caso →» solo si alguien lo escribía por SQL. */}
+          <label className="vf-lbl vf-ancho">
+            ¿Hay un caso de esto?
+            <select name="caso" className="rp-sel vf-ancho"
+              defaultValue={editando?.publicacion_id || ""}>
+              <option value="">— ninguno —</option>
+              {casos.map(c => (
+                <option key={c.id} value={c.id}>
+                  {c.titulo.slice(0, 90)}{c.estado ? ` · ${c.estado}` : ""}
+                </option>
+              ))}
+            </select>
+            <span className="rc-ayuda">
+              {casos.length
+                ? "Los casos vinculados a este fondo. El hito enseñará «ver el caso →»."
+                : "Este fondo todavía no tiene casos vinculados: abre uno desde el caso y enlázalo a la postulación."}
+            </span>
+          </label>
           <div className="vf-form-fila">
             <button className="btn" disabled={ocupado} type="submit">
               {editando ? "Guardar cambios" : "Apuntar"}
@@ -280,12 +330,23 @@ export default function VidaFondo({
         <div key={a.anio} className="vf-anio">
           <div className="vf-anio-h"><span>{a.anio}</span><i /></div>
           {a.hitos.map(h => (
-            <div key={h.clave} className="vf-fila">
+            <div key={h.clave} className={`vf-fila${ladoDe(h) ? ` vf-lado-${ladoDe(h)}` : ""}`}>
               <span className="vf-ico" style={{ color: COLOR[h.clase] }}>{h.ico}</span>
               <span className="vf-fecha">{fechaCorta(h.fecha)}</span>
               <span className="vf-txt">
                 <b>{h.titulo}</b>
-                {h.detalle && <span className="vf-det">{h.detalle}</span>}
+                {/* ── QUIÉN HABLA ──
+                    Con la conversación entera en una sola columna, lo que
+                    mandamos y lo que nos dijeron se leían igual. El icono no
+                    basta: 📤 y 📥 se distinguen mirándolos, no de un vistazo.
+                    La etiqueta lo dice con palabras. */}
+                {ladoDe(h) && (
+                  <span className={`vf-quien vf-quien-${ladoDe(h)}`}>
+                    {ladoDe(h) === "nos" ? "lo dijimos nosotros" : "nos lo dijo DAFO"}
+                  </span>
+                )}
+                {fichaDe(h.detalle) && <span className="cl-cod">{fichaDe(h.detalle)}</span>}
+                {cuerpoDe(h.detalle) && <span className="vf-det">{cuerpoDe(h.detalle)}</span>}
                 <span className="vf-pie">
                   {h.autor && <span className="rp-dim">lo apuntó {h.autor}</span>}
                   {h.resuelto && (h.motivoCierre

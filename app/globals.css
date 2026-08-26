@@ -6266,6 +6266,17 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
 /* El detalle respeta los saltos de línea: se pega tal cual se escribió, que es
    como se relee para un descargo. */
 .vf-det{color:var(--muted);font-size:12.5px;line-height:1.5;white-space:pre-wrap}
+/* ── QUIÉN DIJO ESTO ──
+   En un descargo, la diferencia entre «lo avisamos» y «nos lo advirtieron» es
+   toda la diferencia, y en una sola columna las dos cosas se leían igual. El
+   filo de color a la izquierda separa de un vistazo; la etiqueta lo dice con
+   palabras, que es lo que hay que poder citar. */
+.vf-quien{align-self:flex-start;font-size:9.5px;font-weight:800;letter-spacing:.5px;
+  text-transform:uppercase;padding:1px 7px;border-radius:999px}
+.vf-quien-nos{color:var(--teal);background:rgba(45,212,191,.12)}
+.vf-quien-dafo{color:var(--blue);background:rgba(59,130,246,.12)}
+.vf-lado-nos{box-shadow:inset 2px 0 0 rgba(45,212,191,.5)}
+.vf-lado-dafo{box-shadow:inset 2px 0 0 rgba(59,130,246,.5)}
 .vf-pie{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--dim)}
 .vf-dias{font-size:11px;color:var(--dim)}
 .vf-ok{color:var(--green);font-size:11px}

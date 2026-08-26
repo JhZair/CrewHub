@@ -64,6 +64,9 @@ export type Hito = {
   /** El id de la fila, para poder borrarla. Los derivados no tienen. */
   id?: string | null;
   autor?: string | null;
+  /** El tipo del hito propio (`envio`, `recepcion`, `llamada`…). Es lo que
+   *  dice la DIRECCIÓN: quién le habló a quién. */
+  tipo?: string | null;
   /** Solo para cartas: `true` si la registró una persona (y por tanto se puede
    *  borrar). Un correo que llegó de DAFO no se borra — es la prueba de que
    *  escribieron. */
@@ -205,7 +208,7 @@ export function vidaDelFondo(
   for (const h of hitos || []) {
     out.push({
       clave: `hito:${h.id}`, id: h.id, clase: "propio", fecha: h.fecha,
-      ico: icoTipo(h.tipo), titulo: h.titulo, detalle: h.detalle || null,
+      ico: icoTipo(h.tipo), tipo: h.tipo, titulo: h.titulo, detalle: h.detalle || null,
       url: h.url || null, casoId: h.publicacion_id || null,
       autor: unNombre(h.creado),
       futuro: h.fecha > hoy,
