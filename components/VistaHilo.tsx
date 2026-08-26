@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { menciones, MencionesMenu } from "@/components/Menciones";
 import LinkPreviews from "@/components/LinkPreviews";
+import TextoRico from "@/components/TextoRico";
 import Avatar from "@/components/Avatar";
 import PaletaRx from "@/components/PaletaRx";
 import { agrupar } from "@/lib/reacciones";
@@ -302,7 +303,11 @@ export default function VistaHilo({
                                   onClick={() => setEditando(null)}>Cancelar</button>
                               </div>
                             </div>
-                          ) : c.cuerpo ? <div className="vo-com-txt">{c.cuerpo}</div> : null}
+                          ) : c.cuerpo ? (
+                            /* Rico, como en el caso: aquí también hay urls y
+                               @menciones, y en plano quedan escritas y muertas. */
+                            <div className="vo-com-txt"><TextoRico texto={c.cuerpo} /></div>
+                          ) : null}
                           <LinkPreviews texto={c.cuerpo} />
                           {(c.imagenes || []).length > 0 && (
                             <div className="vo-com-imgs">

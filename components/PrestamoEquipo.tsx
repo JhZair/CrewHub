@@ -5,6 +5,7 @@ import { EntPicker, type CatalogoItem } from "@/components/Composer";
 import Avatar from "@/components/Avatar";
 import Reacciones, { type Reaccion } from "@/components/Reacciones";
 import LinkPreviews from "@/components/LinkPreviews";
+import TextoRico from "@/components/TextoRico";
 import { menciones, MencionesMenu, type Perfil } from "@/components/Menciones";
 import EditorImagenes from "@/components/EditorImagenes";
 import Foto from "@/components/Foto";
@@ -225,8 +226,13 @@ export default function PrestamoEquipo({ equipoId, prestamos, personas, proyecto
                 onDone={() => { setEditId(null); router.refresh(); }} onCancel={() => setEditId(null)} />
             ) : (
               <>
+                {/* ⚠ El `pre-wrap` SE QUEDA: `TextoRico` no envuelve las líneas
+                    en párrafos, deja los saltos como texto y cuenta con que el
+                    padre los respete. Quitarlo pega todos los renglones. */}
                 {c.cuerpo && c.cuerpo !== "📷" && (
-                  <div style={{ fontSize: 13.5, whiteSpace: "pre-wrap", wordBreak: "break-word", lineHeight: 1.5 }}>{c.cuerpo}</div>
+                  <div style={{ fontSize: 13.5, whiteSpace: "pre-wrap", wordBreak: "break-word", lineHeight: 1.5 }}>
+                    <TextoRico texto={c.cuerpo} />
+                  </div>
                 )}
                 {c.cuerpo !== "📷" && <LinkPreviews texto={c.cuerpo} />}
                 {c.editado_en && <span style={{ fontSize: 10.5, color: "var(--dim)", marginLeft: 2 }}>· editado</span>}

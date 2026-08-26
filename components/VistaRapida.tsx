@@ -13,6 +13,7 @@ import { ICO_ENT } from "@/lib/secciones";
 import { opcionesResp } from "@/lib/personas";
 import { menciones, MencionesMenu } from "@/components/Menciones";
 import LinkPreviews from "@/components/LinkPreviews";
+import TextoRico from "@/components/TextoRico";
 import PaletaRx from "@/components/PaletaRx";
 import { agrupar } from "@/lib/reacciones";
 
@@ -248,9 +249,15 @@ export default function VistaRapida({ pubId }: { pubId: string }) {
                   <b style={{ flex: 1, fontSize: TXT.titulo }}>{caso.titulo}</b>
                 </div>
 
-                {/* 3) Descripción del caso */}
+                {/* 3) Descripción del caso.
+                    ── EL MISMO TEXTO QUE EN LA FICHA ──
+                    Se pintaba a pelo, como texto plano: una url quedaba
+                    escrita pero muerta —«este link no funciona», y funcionaba
+                    en la ficha— y una @mención era texto gris. `TextoRico` es
+                    lo que usan el caso, el muro y los comentarios: enlaces,
+                    menciones y las marcas de siempre. */}
                 {caso.cuerpo && (
-                  <div className="vr-body-txt">{caso.cuerpo}</div>
+                  <div className="vr-body-txt"><TextoRico texto={caso.cuerpo} /></div>
                 )}
                 <LinkPreviews texto={caso.cuerpo} />
 
@@ -309,7 +316,7 @@ export default function VistaRapida({ pubId }: { pubId: string }) {
                         </b>
                         <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>{fecha(c.creado_en)}</span>
                       </div>
-                      <div className="vr-com-txt">{c.cuerpo}</div>
+                      <div className="vr-com-txt"><TextoRico texto={c.cuerpo} /></div>
                       <LinkPreviews texto={c.cuerpo} />
                     </div>
                   ))}
