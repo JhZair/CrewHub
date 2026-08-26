@@ -161,7 +161,12 @@ export function ordenarCompromisos(xs: Compromiso[]): Compromiso[] {
    nunca llegue a 100 y que nadie se lo crea.
    Y se dice cuántos se excluyeron, porque un 8/8 con tres exclusiones que no
    se ven es un 8/11 disfrazado. */
-export function avanceEntregables(xs: Compromiso[]) {
+/* Recibe lo MÍNIMO —clase y estado— y no un `Compromiso` entero: /fondos
+   calcula esto para nueve tarjetas y no necesita traerse el extracto del acta,
+   las notas ni los casos de cada cláusula para contar cuántas se entregaron.
+   Pedir de más en una consulta por lote es lo que acaba rozando el techo de
+   mil filas de PostgREST sin que nadie se entere. */
+export function avanceEntregables(xs: Pick<Compromiso, "clase" | "estado">[]) {
   const ent = xs.filter(x => x.clase === "entregable");
   const noAplica = ent.filter(x => x.estado === "no_aplica").length;
   const cuentan = ent.length - noAplica;

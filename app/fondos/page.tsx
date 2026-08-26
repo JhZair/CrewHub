@@ -6,6 +6,7 @@ import Volver from "@/components/Volver";
 import { ejecutando, plazoRendicion, rendicionVencida, rendicionSinPlazo } from "@/lib/fondos";
 import { faltanEstados, listaFaltan, seVigila, cierreDe } from "@/lib/estadosCuenta";
 import { sinPruebas, textoSinPruebas } from "@/lib/pruebasFondo";
+import { avanceEntregables } from "@/lib/compromisos";
 import { hoyLima } from "@/lib/fechas";
 import { CATEGORIAS_OPC } from "@/lib/etapas";
 
@@ -105,6 +106,32 @@ export default async function FondosPage() {
         estados: mEst.get(f.id) || [], rhe: mRhe.get(f.id) || [],
         facturas: mCmp.get(f.id) || [], dj: mDj.get(f.id) || [],
       })));
+    }
+  }
+
+  /* ── LO QUE EL ACTA OBLIGA A ENTREGAR, EN LA TARJETA ──
+     El avance de entregables vivía solo dentro de la ficha, en su pestaña. Y
+     es la pregunta con la que se abre esta pantalla: de los nueve fondos, ¿a
+     cuál hay que entrarle? «4/17» contesta eso de un vistazo; «faltan estados
+     de cuenta» contesta otra cosa —el papel del banco— y las dos hacen falta.
+     Una sola consulta para todos los fondos, y la cuenta la hace la MISMA
+     `avanceEntregables` que usa la pestaña: dos cálculos del mismo número
+     acaban discrepando, y entonces no se cree ninguno.
+     Tolerante: sin db/compromiso-acta.sql corrido, `error` viene con la queja,
+     el mapa queda vacío y las tarjetas se pintan igual que ayer. */
+  const avEnt = new Map<string, ReturnType<typeof avanceEntregables>>();
+  if (fondos.length) {
+    const { data: cmps, error } = await supabase.from("compromiso_acta")
+      .select("postulacion_id,clase,estado").in("postulacion_id", fondos.map(f => f.id));
+    if (!error) {
+      const porFondo = new Map<string, any[]>();
+      for (const c of (cmps || []) as any[]) {
+        porFondo.set(c.postulacion_id, [...(porFondo.get(c.postulacion_id) || []), c]);
+      }
+      for (const f of fondos) {
+        const xs = porFondo.get(f.id);
+        if (xs?.length) avEnt.set(f.id, avanceEntregables(xs));
+      }
     }
   }
 
@@ -225,6 +252,25 @@ export default async function FondosPage() {
           <div style={{ color: "var(--dim)", fontSize: 11.5, marginTop: 2 }}>
             {f.emp?.nombre || ""}{f.conv?.nombre ? ` · ${f.conv.nombre}` : ""}
           </div>
+          {/* El avance de lo que el acta obliga a entregar. Se dibuja igual que
+              en la pestaña del fondo: si aquí tuviera otra forma habría que
+              aprender dos veces a leer el mismo dato. */}
+          {(() => {
+            const a = avEnt.get(f.id);
+            if (!a || !a.cuentan) return null;
+            const txt = `${a.listos} de ${a.cuentan} entregables del acta ya entregados` +
+              (a.noAplica ? ` · ${a.noAplica} no aplican` : "") +
+              (a.enProceso ? ` · ${a.enProceso} en proceso` : "");
+            return (
+              <div className="fondo-ent" title={txt}>
+                <b style={{ color: a.pct === 100 ? "var(--green)" : "var(--muted)" }}>
+                  {a.listos}/{a.cuentan}
+                </b>
+                <span>entregables</span>
+                <span className="cmp-barra"><i style={{ width: `${a.pct}%` }} /></span>
+              </div>
+            );
+          })()}
         </div>
         <div style={{ textAlign: "right", flexShrink: 0 }}>
           <div style={{ color: "var(--teal)", fontWeight: 700, fontSize: 13 }}>

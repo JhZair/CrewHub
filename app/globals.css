@@ -5629,3 +5629,10 @@ mark.bq-marca{
 .alta-fila{display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;
   border-bottom:1px solid rgba(255,255,255,.05)}
 .alta-fila:last-of-type{border-bottom:none}
+
+/* El avance de entregables en la tarjeta de /fondos. Estrecho a propósito: la
+   pregunta de esta pantalla es a cuál de los nueve fondos entrar, no cuántos
+   papeles lleva cada uno — para eso está su pestaña. */
+.fondo-ent{display:flex;align-items:center;gap:6px;margin-top:4px;
+  font-size:11px;color:var(--dim);max-width:220px}
+.fondo-ent .cmp-barra{max-width:96px}
