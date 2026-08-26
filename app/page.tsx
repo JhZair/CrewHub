@@ -6,6 +6,7 @@ import NavIconos from "@/components/NavIconos";
 import FranjaAlarmas from "@/components/FranjaAlarmas";
 import MenuUsuario from "@/components/MenuUsuario";
 import Avatar from "@/components/Avatar";
+import Foto from "@/components/Foto";
 import EventoHistorial, { ROTULO_ENT } from "@/components/EventoHistorial";
 import EventoGrupo from "@/components/EventoGrupo";
 import { agruparEventos } from "@/lib/agrupar";
@@ -371,6 +372,9 @@ export default async function Portada({ searchParams }: {
      comentario en algo que se dice sin contexto. Se enseña quién, cuándo, de
      qué muro y qué dijo — y el enlace lleva a su sitio. */
   const MURO_CORTE = 240;
+  /* Cuántas miniaturas caben en una fila sin empujar la nota siguiente fuera
+     de la pantalla. Las demás se cuentan: «+4» es honesto y de un vistazo. */
+  const MURO_FOTOS = 4;
   const notas = ((muroQ.data || []) as any[]).map((n: any) => {
     const uno = (x: any) => (Array.isArray(x) ? x[0] : x);
     /* De qué muro es. Hoy `publicarBitacora` escribe UN solo vínculo, así que
@@ -386,7 +390,7 @@ export default async function Portada({ searchParams }: {
       id: n.id,
       autor: uno(n.autor),
       creado_en: n.creado_en,
-      nFotos: (n.imagenes || []).length,
+      fotos: ((n.imagenes || []) as string[]).filter(Boolean),
       texto: texto.length > MURO_CORTE ? texto.slice(0, MURO_CORTE - 1).trimEnd() + "…" : texto,
       /* «Cabe entera» es por caracteres Y por renglones: el CSS corta a tres
          líneas, así que una nota corta con ocho saltos se recortaba en la
@@ -592,11 +596,27 @@ export default async function Portada({ searchParams }: {
                     <span className="port-nota-cuando">{haceQue(n.creado_en)}</span>
                   </div>
                   {n.texto && <div className="port-nota-txt">{n.texto}</div>}
-                  {(!!n.nFotos || !n.corta) && (
-                    <div className="port-nota-pie">
-                      {!!n.nFotos && <span>📷 {n.nFotos} imagen{n.nFotos === 1 ? "" : "es"}</span>}
-                      {!n.corta && <span>seguir leyendo →</span>}
+                  {/* ── LAS FOTOS SE VEN ──
+                      Decían «📷 2 imágenes», que es el índice de un libro en vez
+                      del libro: media bitácora de este equipo ES la foto —el
+                      montaje, el rodaje, el papel firmado— y una nota que solo
+                      es una imagen se leía como una línea gris.
+                      Miniaturas cuadradas para que tres fotos de proporciones
+                      distintas no dibujen un escalón, y `fila-encima` para que
+                      el clic abra el visor en vez de irse a la ficha: la foto
+                      se mira aquí, la conversación está allá. */}
+                  {!!n.fotos.length && (
+                    <div className="port-nota-fotos fila-encima">
+                      {n.fotos.slice(0, MURO_FOTOS).map((u: string, i: number) => (
+                        <Foto key={i} src={u} lado={68} />
+                      ))}
+                      {n.fotos.length > MURO_FOTOS && (
+                        <span className="port-nota-mas">+{n.fotos.length - MURO_FOTOS}</span>
+                      )}
                     </div>
+                  )}
+                  {!n.corta && (
+                    <div className="port-nota-pie"><span>seguir leyendo →</span></div>
                   )}
                 </div>
               </div>

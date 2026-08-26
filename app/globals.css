@@ -2447,6 +2447,13 @@ a.stat-card:hover{border-color:var(--border2)}
 .port-nota-txt{font-size:12.5px;line-height:1.55;color:var(--muted);white-space:pre-wrap;
   display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .port-nota-pie{display:flex;gap:10px;font-size:11px;color:var(--dim)}
+/* La tira de miniaturas. `position:relative` + z-index los levanta por encima
+   del enlace estirado de la fila (`fila-encima` hace lo propio), o si no el
+   clic en una foto se lo comía la fila y no abría el visor. */
+.port-nota-fotos{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}
+.port-nota-mas{display:inline-flex;align-items:center;justify-content:center;
+  width:68px;height:68px;border-radius:8px;border:1px dashed var(--border2);
+  color:var(--dim);font-size:12px;font-weight:700}
 
 .port-dia{display:flex;align-items:center;gap:8px;margin:0 4px 8px}
 .port-dia-txt{font-size:10px;text-transform:uppercase;letter-spacing:1.2px;
