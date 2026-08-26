@@ -89,22 +89,34 @@ function conFechas(texto: string) {
     i % 2 === 1 ? <mark key={i} className="vf-clave">{t}</mark> : t);
 }
 
-/* ── Y LOS TEXTOS LARGOS, PLEGADOS ──
+/* ── Y LOS TEXTOS LARGOS, PLEGADOS DEL TODO ──
    Un mensaje del buzón ocupa media pantalla, y tres seguidos convierten la
    línea de tiempo en un documento que hay que leer entero para llegar al hito
-   de abajo. Se recorta a ocho renglones con el final desvanecido —que se ve
-   que hay más— y se abre con un clic. El corte es visual: el texto entero está
-   siempre en el HTML, así que el buscador del navegador lo encuentra igual. */
+   de abajo.
+
+   ── NI UN TROZO ──
+   La primera versión enseñaba ocho renglones con el final desvanecido. Un
+   asomo de texto no es media lectura: es una interrupción —se empieza a leer y
+   se corta— y encima ocupaba casi lo mismo que el mensaje entero. Plegado no
+   se ve nada del cuerpo; el titular ya dice de qué va, que para eso está.
+
+   Lo que se dice es CUÁNTO hay detrás, para que abrir sea una decisión y no
+   una sorpresa. */
 const LARGO = 420;
+const RENGLONES = 6;
 function Detalle({ texto }: { texto: string }) {
   const [abierto, setAbierto] = useState(false);
-  const largo = texto.length > LARGO || texto.split("\n").length > 8;
+  const renglones = texto.split("\n").filter(l => l.trim()).length;
+  const largo = texto.length > LARGO || texto.split("\n").length > RENGLONES;
   if (!largo) return <span className="vf-det">{conFechas(texto)}</span>;
   return (
     <span className="vf-det-caja">
-      <span className={`vf-det${abierto ? "" : " vf-recorte"}`}>{conFechas(texto)}</span>
-      <button type="button" className="vf-mas" onClick={() => setAbierto(!abierto)}>
-        {abierto ? "ver menos ↑" : "ver más ↓"}
+      {abierto && <span className="vf-det">{conFechas(texto)}</span>}
+      <button type="button" className="vf-mas" onClick={() => setAbierto(!abierto)}
+        aria-expanded={abierto}>
+        {abierto
+          ? "ver menos ↑"
+          : `ver más ↓ · ${renglones} renglón${renglones === 1 ? "" : "es"}`}
       </button>
     </span>
   );
