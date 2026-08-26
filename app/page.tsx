@@ -223,12 +223,15 @@ export default async function Portada({ searchParams }: {
       .is("archivado_en", null)
       /* ── UNA VENTANA, NO SOLO UN TOPE ──
          Sin ella, un mes sin escribir dejaba «🧱 El muro» clavado encima de lo
-         último con seis notas de hace medio año: una sección permanente que
+         último con notas de hace medio año: una sección permanente que
          cuenta cosas viejas es peor que no tenerla. Si nadie escribió, no hay
          muro, y eso también dice algo. */
       .gte("creado_en", desde30)
       .order("creado_en", { ascending: false }).order("id", { ascending: false })
-      .limit(6),
+      /* Nueve. Con seis, un día movido del equipo llenaba la tira entero y lo
+         escrito el día anterior ya no se veía; la ventana de 30 días es la que
+         evita que esto crezca sin fin, no el tope. */
+      .limit(9),
   ]);
 
   const [
