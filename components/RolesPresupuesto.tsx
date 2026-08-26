@@ -150,16 +150,27 @@ export default function RolesPresupuesto({
           return (
             <div key={clave}>
               <div className="rp-fila">
+                {/* ── DOS RENGLONES, NO UNA RETAHÍLA ──
+                    Estaba todo en línea —flecha, nombre, «3 líneas» y los chips
+                    de etapa— y con un concepto largo («Composición de música
+                    original (composición y producción…)») la celda envolvía en
+                    tres renglones, empujaba la flecha arriba sola y descuadraba
+                    la fila entera. Arriba el NOMBRE, en una sola línea; debajo
+                    lo que lo acompaña. */}
                 <button type="button" className="rp-tit" aria-expanded={abierto === clave}
                   onClick={() => setAbierto(abierto === clave ? null : clave)}
-                  title="Ver las partidas que suman este total">
+                  title={`${f.titulo} — ver las partidas que suman este total`}>
                   <span className="rp-flecha">{abierto === clave ? "▾" : "▸"}</span>
-                  {f.titulo}
-                  <span className="rp-lineas">{f.grupos.reduce((s, g) => s + g.items.length, 0)} líneas</span>
-                  {/* Las etapas, que es lo que pregunta la alarma. */}
-                  {f.grupos.flatMap(g => g.porEtapa).map((e, i) => (
-                    <span key={i} className="rp-etapa">{etapaCorta(e.etapa)} {S(e.total)}</span>
-                  ))}
+                  <span className="rp-tit-txt">
+                    <span className="rp-tit-nom">{f.titulo}</span>
+                    <span className="rp-tit-meta">
+                      <span className="rp-lineas">{f.grupos.reduce((s, g) => s + g.items.length, 0)} líneas</span>
+                      {/* Las etapas, que es lo que pregunta la alarma. */}
+                      {f.grupos.flatMap(g => g.porEtapa).map((e, i) => (
+                        <span key={i} className="rp-etapa">{etapaCorta(e.etapa)} {S(e.total)}</span>
+                      ))}
+                    </span>
+                  </span>
                 </button>
 
                 {/* Sin persona no hay recibos que buscar: el desplegable ES la
