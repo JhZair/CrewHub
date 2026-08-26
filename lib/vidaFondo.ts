@@ -222,15 +222,64 @@ export function vidaDelFondo(
   return out.sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : a.clave.localeCompare(b.clave)));
 }
 
-/** Los hitos agrupados por año, en el orden en que vienen. Dos años de fondo
- *  son treinta filas seguidas sin nada que las separe. */
-export function porAnio(hitos: Hito[]): { anio: string; hitos: Hito[] }[] {
-  const out: { anio: string; hitos: Hito[] }[] = [];
-  for (const h of hitos) {
-    const a = h.fecha.slice(0, 4);
-    const ult = out[out.length - 1];
-    if (ult && ult.anio === a) ult.hitos.push(h);
-    else out.push({ anio: a, hitos: [h] });
+/* ══════════════════════════════════════════════════════════════════════════
+   LOS SILENCIOS TAMBIÉN SON LA HISTORIA
+
+   En un fondo con problemas, lo que más pesa no es lo que se dijo: es el
+   tiempo en que nadie dijo nada. Entre el requerimiento de marzo de 2025 y el
+   siguiente movimiento pasaron meses, y esa distancia —que en una lista de
+   filas iguales no se ve— es justo lo que explica el expediente.
+
+   Así que entre dos hitos separados por más de un mes se mete un tramo de
+   silencio, con cuánto duró. No es adorno: leído de arriba abajo, un fondo se
+   entiende por sus huecos.
+
+   ── EL PRIMER SILENCIO ES EL DE AHORA ──
+   El hueco entre HOY y lo último que pasó es el que importa mientras el fondo
+   sigue abierto: «llevamos cuatro meses sin novedades» es una frase que hay
+   que poder leer sin restar fechas a mano.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+export type Tramo =
+  | { tipo: "hito"; hito: Hito }
+  /** El hueco entre dos hitos. `hasta` es el más reciente de los dos. */
+  | { tipo: "silencio"; desde: string; hasta: string; dias: number; hastaHoy: boolean };
+
+/** «45 días», «4 meses», «1 año y 2 meses». En meses a partir del mes y medio:
+ *  «73 días» obliga a dividir mentalmente, y lo que se quiere saber es si fue
+ *  mucho o poco. */
+export function duracion(dias: number): string {
+  if (dias < 45) return `${dias} días`;
+  const meses = Math.round(dias / 30.44);
+  if (meses < 12) return `${meses} mes${meses > 1 ? "es" : ""}`;
+  const a = Math.floor(meses / 12), m = meses % 12;
+  return `${a} año${a > 1 ? "s" : ""}${m ? ` y ${m} mes${m > 1 ? "es" : ""}` : ""}`;
+}
+
+/**
+ * La misma línea con los silencios intercalados, de lo más nuevo a lo más
+ * viejo. `minDias` es a partir de cuándo un hueco merece contarse: por debajo
+ * de un mes, un fondo simplemente no tiene novedades todos los días.
+ */
+export function conSilencios(
+  hitos: Hito[], hoy: string = hoyLima(), minDias = 31,
+): Tramo[] {
+  const out: Tramo[] = [];
+  if (!hitos.length) return out;
+
+  /* El hueco de arriba: desde lo último que pasó hasta hoy. */
+  const dHoy = diasHasta(hoy, hitos[0].fecha);
+  if (dHoy >= minDias) {
+    out.push({ tipo: "silencio", desde: hitos[0].fecha, hasta: hoy, dias: dHoy, hastaHoy: true });
+  }
+  for (let i = 0; i < hitos.length; i++) {
+    out.push({ tipo: "hito", hito: hitos[i] });
+    const sig = hitos[i + 1];
+    if (!sig) continue;
+    const d = diasHasta(hitos[i].fecha, sig.fecha);
+    if (d >= minDias) {
+      out.push({ tipo: "silencio", desde: sig.fecha, hasta: hitos[i].fecha, dias: d, hastaHoy: false });
+    }
   }
   return out;
 }

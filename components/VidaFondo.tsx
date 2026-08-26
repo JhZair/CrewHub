@@ -9,7 +9,7 @@ import CartasLote from "@/components/CartasLote";
 import BuzonPegar from "@/components/BuzonPegar";
 import { fechaCorta, hoyLima } from "@/lib/fechas";
 import {
-  vidaDelFondo, porAnio, porResponder, cuandoVence, TIPOS_HITO,
+  vidaDelFondo, conSilencios, duracion, porResponder, cuandoVence, TIPOS_HITO,
   type Hito, type FilaHito, type FilaCarta, type PostulacionVida,
 } from "@/lib/vidaFondo";
 
@@ -146,13 +146,17 @@ export default function VidaFondo({
   const linea = useMemo(
     () => vidaDelFondo(postulacion, hitos, cartas, hoy),
     [postulacion, hitos, cartas, hoy]);
-  const anios = useMemo(() => porAnio(linea), [linea]);
   const deudas = useMemo(() => porResponder(linea, hoy), [linea, hoy]);
   /* Lo que aún no ha llegado —el límite de rendición, la prórroga— se enseña
      aparte de lo que ya pasó: son compromisos, no hechos. */
   const futuros = useMemo(() => linea.filter(h => h.futuro).reverse(), [linea]);
-  const pasados = useMemo(() => anios.map(a => ({ ...a, hitos: a.hitos.filter(h => !h.futuro) }))
-    .filter(a => a.hitos.length), [anios]);
+  /* Lo que ya pasó, con los silencios intercalados. El año se marca cuando
+     cambia, dentro de la misma línea: una cabecera de año por bloque partía la
+     línea de tiempo en trozos y los huecos no se podían cruzar de un año a
+     otro — que es justo cuando más largos son. */
+  const tramos = useMemo(
+    () => conSilencios(linea.filter(h => !h.futuro), hoy),
+    [linea, hoy]);
 
   const correr = async (fn: () => Promise<any>) => {
     if (ocupado) return false;
@@ -361,102 +365,131 @@ export default function VidaFondo({
         <div className="vf-futuro">
           <span className="vf-futuro-h">Por delante</span>
           {futuros.map(h => (
-            <div key={h.clave} className="vf-fila vf-fila-fut">
-              <span className="vf-ico" style={{ color: COLOR[h.clase] }}>{h.ico}</span>
-              <span className="vf-fecha">{fechaCorta(h.fecha)}</span>
-              <span className="vf-txt">
+            <div key={h.clave} className="vf-hito vf-fila-fut">
+              <span className="vf-punto" style={{ borderColor: COLOR[h.clase] }}>{h.ico}</span>
+              <span className="vf-cuerpo">
+                <span className="vf-cab-hito">
+                  <b className="vf-fecha-hito">{fechaCorta(h.fecha)}</b>
+                  <span className="vf-dias">{cuandoVence(h.fecha, hoy)}</span>
+                </span>
                 <b>{h.titulo}</b>
-                <span className="vf-dias">{cuandoVence(h.fecha, hoy)}</span>
               </span>
             </div>
           ))}
         </div>
       )}
 
-      {/* ── LO QUE PASÓ, POR AÑOS ── */}
-      {pasados.map(a => (
-        <div key={a.anio} className="vf-anio">
-          <div className="vf-anio-h"><span>{a.anio}</span><i /></div>
-          {a.hitos.map(h => (
-            <div key={h.clave} className={`vf-fila${ladoDe(h) ? ` vf-lado-${ladoDe(h)}` : ""}`}>
-              <span className="vf-ico" style={{ color: COLOR[h.clase] }}>{h.ico}</span>
-              <span className="vf-fecha">{fechaCorta(h.fecha)}</span>
-              <span className="vf-txt">
-                <b>{h.titulo}</b>
-                {/* ── QUIÉN HABLA ──
-                    Con la conversación entera en una sola columna, lo que
-                    mandamos y lo que nos dijeron se leían igual. El icono no
-                    basta: 📤 y 📥 se distinguen mirándolos, no de un vistazo.
-                    La etiqueta lo dice con palabras. */}
-                {ladoDe(h) && (
-                  <span className={`vf-quien vf-quien-${ladoDe(h)}`}>
-                    {ladoDe(h) === "nos" ? "lo dijimos nosotros" : "nos lo dijo DAFO"}
-                  </span>
-                )}
-                {fichaDe(h.detalle) && <span className="cl-cod">{fichaDe(h.detalle)}</span>}
-                {cuerpoDe(h.detalle) && <Detalle texto={cuerpoDe(h.detalle)} />}
-                <span className="vf-pie">
-                  {h.autor && <span className="rp-dim">lo apuntó {h.autor}</span>}
-                  {h.resuelto && (h.motivoCierre
-                    ? <span className="vf-cerrada" title={h.motivoCierre}>
-                        cerrada el {fechaCorta(h.resuelto)} sin contestar — {h.motivoCierre}
-                      </span>
-                    : <span className="vf-ok">contestada el {fechaCorta(h.resuelto)}</span>)}
-                  {/* ── Y SE PUEDE DESHACER ──
-                      Marcar «ya se contestó» por error dejaba el reloj apagado
-                      para siempre: no había ninguna manera de volver a
-                      encenderlo desde la aplicación. */}
-                  {h.clase === "carta" && h.resuelto && (
-                    <button type="button" className="vf-mini" disabled={ocupado}
-                      onClick={async () => {
-                        if (!(await pedir(<>¿Volver a poner <b>{h.titulo}</b> entre lo que hay que contestar?</>,
-                          { aceptar: "Sí, sigue pendiente" }))) return;
-                        correr(() => responderCarta(h.id as string, null));
-                      }}>volver a abrirla</button>
-                  )}
-                  {h.url && <a className="vf-link" href={h.url} target="_blank" rel="noreferrer">ver documento →</a>}
-                  {h.casoId && <Link className="vf-link" href={`/caso/${h.casoId}`}>ver el caso →</Link>}
-                  {/* Solo lo escrito a mano se corrige aquí. Una fecha del acta
-                      se edita en el expediente —es un dato del documento, no
-                      una nota— y una carta, en la casilla. */}
-                  {/* Una carta registrada a mano se puede borrar —un número
-                      mal tecleado, una que no era de este fondo—. Una que llegó
-                      por correo, no: es la prueba de que DAFO escribió. */}
-                  {h.clase === "carta" && h.registrada && (
-                    <button type="button" className="vf-mini vf-mini-x" disabled={ocupado}
-                      onClick={async () => {
-                        if (!(await pedir(<>¿Borrar la carta <b>{h.titulo}</b> del registro?
-                          Solo se borra lo que apuntamos nosotros.</>,
-                          { peligro: true, aceptar: "Borrar" }))) return;
-                        correr(() => borrarCarta(h.id as string));
-                      }}>borrar</button>
-                  )}
-                  {h.clase === "propio" && (
-                    <>
-                      <button type="button" className="vf-mini" disabled={ocupado}
-                        onClick={() => {
-                          const f = (hitos || []).find(x => x.id === h.id);
-                          /* Si no está, alguien lo borró desde otra pantalla y
-                             esta copia es vieja. Un botón que no hace nada ni
-                             dice nada es peor que uno que falla. */
-                          if (!f) { avisar("Ese hito ya no está. Recarga la página."); return; }
-                          setEditando(f); setAbierto(false);
-                        }}>corregir</button>
-                      <button type="button" className="vf-mini vf-mini-x" disabled={ocupado}
-                        onClick={async () => {
-                          if (!(await pedir(`¿Borrar «${h.titulo}» de la línea de tiempo?`,
-                            { peligro: true, aceptar: "Borrar" }))) return;
-                          correr(() => borrarHitoFondo(h.id as string, postulacionId));
-                        }}>borrar</button>
-                    </>
-                  )}
-                </span>
-              </span>
-            </div>
-          ))}
-        </div>
-      ))}
+      {/* ══════════════════════════════════════════════════════════════
+          LA LÍNEA DE TIEMPO — con su raíl, sus nodos y sus silencios
 
+          Era una tabla: filas iguales, una debajo de otra, donde dos hitos
+          separados por ocho meses se leían igual que dos del mismo día. Y en
+          un fondo con problemas la distancia ES la historia — el hueco entre
+          el requerimiento y la respuesta explica el expediente mejor que
+          ninguna de las dos filas.
+
+          El año se marca cuando cambia, DENTRO de la misma línea. Con una
+          cabecera por año la línea se partía en trozos y los silencios no
+          podían cruzar de diciembre a enero, que es cuando más largos son.
+          ══════════════════════════════════════════════════════════════ */}
+      {tramos.length > 0 && (
+        <div className="vf-linea">
+          {tramos.map((t, i) => {
+            if (t.tipo === "silencio") {
+              return (
+                <div key={`s-${i}`} className={`vf-silencio${t.hastaHoy ? " vf-silencio-hoy" : ""}`}>
+                  <span className="vf-sil-txt">
+                    {t.hastaHoy
+                      ? `${duracion(t.dias)} sin novedades — hasta hoy`
+                      : `${duracion(t.dias)} sin que nadie dijera nada`}
+                  </span>
+                </div>
+              );
+            }
+            const h = t.hito;
+            /* El año se pinta cuando cambia respecto del tramo anterior — y
+               siempre en el primero. */
+            const anterior = [...tramos.slice(0, i)].reverse()
+              .find(x => x.tipo === "hito") as { tipo: "hito"; hito: Hito } | undefined;
+            const cambiaAnio = !anterior || anterior.hito.fecha.slice(0, 4) !== h.fecha.slice(0, 4);
+            return (
+              <div key={h.clave} className={`vf-hito${ladoDe(h) ? ` vf-lado-${ladoDe(h)}` : ""}`}>
+                {cambiaAnio && <span className="vf-anio-marca">{h.fecha.slice(0, 4)}</span>}
+                <span className="vf-punto" style={{ borderColor: COLOR[h.clase] }}>{h.ico}</span>
+                <span className="vf-cuerpo">
+                  <span className="vf-cab-hito">
+                    <b className="vf-fecha-hito">{fechaCorta(h.fecha)}</b>
+                    {ladoDe(h) && (
+                      <span className={`vf-quien vf-quien-${ladoDe(h)}`}>
+                        {ladoDe(h) === "nos" ? "lo dijimos nosotros" : "nos lo dijo DAFO"}
+                      </span>
+                    )}
+                  </span>
+            <b>{h.titulo}</b>
+            {fichaDe(h.detalle) && <span className="cl-cod">{fichaDe(h.detalle)}</span>}
+            {cuerpoDe(h.detalle) && <Detalle texto={cuerpoDe(h.detalle)} />}
+            <span className="vf-pie">
+              {h.autor && <span className="rp-dim">lo apuntó {h.autor}</span>}
+              {h.resuelto && (h.motivoCierre
+                ? <span className="vf-cerrada" title={h.motivoCierre}>
+                    cerrada el {fechaCorta(h.resuelto)} sin contestar — {h.motivoCierre}
+                  </span>
+                : <span className="vf-ok">contestada el {fechaCorta(h.resuelto)}</span>)}
+              {/* ── Y SE PUEDE DESHACER ──
+                  Marcar «ya se contestó» por error dejaba el reloj apagado
+                  para siempre: no había ninguna manera de volver a
+                  encenderlo desde la aplicación. */}
+              {h.clase === "carta" && h.resuelto && (
+                <button type="button" className="vf-mini" disabled={ocupado}
+                  onClick={async () => {
+                    if (!(await pedir(<>¿Volver a poner <b>{h.titulo}</b> entre lo que hay que contestar?</>,
+                      { aceptar: "Sí, sigue pendiente" }))) return;
+                    correr(() => responderCarta(h.id as string, null));
+                  }}>volver a abrirla</button>
+              )}
+              {h.url && <a className="vf-link" href={h.url} target="_blank" rel="noreferrer">ver documento →</a>}
+              {h.casoId && <Link className="vf-link" href={`/caso/${h.casoId}`}>ver el caso →</Link>}
+              {/* Solo lo escrito a mano se corrige aquí. Una fecha del acta
+                  se edita en el expediente —es un dato del documento, no
+                  una nota— y una carta, en la casilla. */}
+              {/* Una carta registrada a mano se puede borrar —un número
+                  mal tecleado, una que no era de este fondo—. Una que llegó
+                  por correo, no: es la prueba de que DAFO escribió. */}
+              {h.clase === "carta" && h.registrada && (
+                <button type="button" className="vf-mini vf-mini-x" disabled={ocupado}
+                  onClick={async () => {
+                    if (!(await pedir(<>¿Borrar la carta <b>{h.titulo}</b> del registro?
+                      Solo se borra lo que apuntamos nosotros.</>,
+                      { peligro: true, aceptar: "Borrar" }))) return;
+                    correr(() => borrarCarta(h.id as string));
+                  }}>borrar</button>
+              )}
+              {h.clase === "propio" && (
+                <>
+                  <button type="button" className="vf-mini" disabled={ocupado}
+                    onClick={() => {
+                      const f = (hitos || []).find(x => x.id === h.id);
+                      /* Si no está, alguien lo borró desde otra pantalla y
+                         esta copia es vieja. Un botón que no hace nada ni
+                         dice nada es peor que uno que falla. */
+                      if (!f) { avisar("Ese hito ya no está. Recarga la página."); return; }
+                      setEditando(f); setAbierto(false);
+                    }}>corregir</button>
+                  <button type="button" className="vf-mini vf-mini-x" disabled={ocupado}
+                    onClick={async () => {
+                      if (!(await pedir(`¿Borrar «${h.titulo}» de la línea de tiempo?`,
+                        { peligro: true, aceptar: "Borrar" }))) return;
+                      correr(() => borrarHitoFondo(h.id as string, postulacionId));
+                    }}>borrar</button>
+                </>
+              )}
+            </span>
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
       {!linea.length && (
         <p className="rp-vacio">
           Todavía no hay nada. En cuanto se cargue la fecha del acta o se apunte la primera
