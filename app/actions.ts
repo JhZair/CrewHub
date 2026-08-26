@@ -8638,6 +8638,149 @@ export async function archivar(pubId: string, archivar = true) {
   return {};
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   LAS ALARMAS — encender y apagar
+
+   La única señal roja del sistema que no calcula nadie: la declara una
+   persona con responsabilidad. Ver db/alarmas.sql para el porqué.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** Las vivas, para la franja de arriba y para contar antes de encender otra. */
+export async function alarmasVivas() {
+  const supabase = createClient();
+  const { data, error } = await supabase.from("alarmas")
+    .select("id,entidad_tipo,entidad_id,titulo,motivo,revisar_el,caso_id,encendida_en," +
+            "quien:perfiles!encendida_por(nombre)")
+    .is("apagada_en", null).order("encendida_en", { ascending: false });
+  /* Sin tabla —migración sin correr— NO es un error que se enseñe: el sistema
+     funcionaba ayer sin alarmas y tiene que seguir funcionando hoy. Se
+     devuelve la lista vacía y la franja no se pinta. */
+  if (error) return [];
+  return (data || []).map((a: any) => ({
+    ...a, quien: Array.isArray(a.quien) ? a.quien[0] : a.quien,
+  }));
+}
+
+export async function encenderAlarma(f: {
+  entidadTipo: string; entidadId: string;
+  titulo: string; motivo: string; revisarEl: string;
+}) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: perfil } = await supabase.from("perfiles")
+    .select("es_admin,es_finanzas,nombre").eq("id", user.id).maybeSingle();
+  if (!perfil?.es_admin && !perfil?.es_finanzas) {
+    return { error: "Solo administración enciende una alarma." };
+  }
+
+  const titulo = (f.titulo || "").trim();
+  const motivo = (f.motivo || "").trim();
+  /* ── LOS DOS TEXTOS SON OBLIGATORIOS ──
+     Un rojo sin explicación no se puede atender, solo sufrir: quien lo ve no
+     sabe si le toca a él, ni qué haría si le tocara. */
+  if (!titulo) return { error: "Escribe qué pasa, en una línea." };
+  if (motivo.length < 15) {
+    return { error: "Explica el problema con algo más de detalle: quien lo lea tiene que poder actuar sin preguntarte." };
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(f.revisarEl || "")) {
+    return { error: "Pon una fecha de revisión." };
+  }
+  /* ── LA FECHA VA HACIA ADELANTE ──
+     Es lo único que impide que una alarma se quede encendida sola: pasada esa
+     fecha, la pantalla la delata. Con una fecha ya vencida nacería delatada,
+     que es la forma más rápida de enseñar a ignorar el aviso. */
+  const hoy = new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 10);
+  if (f.revisarEl < hoy) return { error: "La fecha de revisión tiene que ser de hoy en adelante." };
+
+  /* ── EL CASO, PRIMERO ──
+     La alarma señala; el trabajo ocurre donde ocurre siempre. Si el caso
+     fallara, no se enciende nada: una alarma sin sitio donde trabajar es un
+     grito sin destinatario. */
+  const { data: pub, error: eCaso } = await supabase.from("publicaciones").insert({
+    tipo: "problema", estado: "abierta", autor_id: user.id,
+    titulo: `🚨 ${titulo}`.slice(0, 200),
+    cuerpo: [motivo, "", `— Abierto desde una ALARMA. Se revisa el ${f.revisarEl}.`].join("\n"),
+    fecha_limite: f.revisarEl,
+  }).select("id").single();
+  if (eCaso || !pub) return { error: eCaso?.message || "No se pudo abrir el caso de la alarma." };
+
+  await supabase.from("publicacion_vinculos").insert({
+    publicacion_id: pub.id, entidad_tipo: f.entidadTipo, entidad_id: f.entidadId,
+  });
+
+  const { data: al, error } = await supabase.from("alarmas").insert({
+    entidad_tipo: f.entidadTipo, entidad_id: f.entidadId,
+    titulo, motivo, revisar_el: f.revisarEl,
+    caso_id: pub.id, encendida_por: user.id,
+  }).select("id").single();
+  if (error) {
+    /* 23505 = el índice único de «una viva por entidad». No es un fallo del
+       sistema: es que ya hay una encendida ahí, y decirlo así evita que
+       alguien piense que su alarma se perdió. */
+    if ((error as any).code === "23505") {
+      return { error: "Ya hay una alarma encendida sobre esto. Apaga la anterior o edítala." };
+    }
+    if ((error as any).code === "42P01") return { error: "Falta correr db/alarmas.sql en Supabase." };
+    return { error: error.message };
+  }
+
+  /* ── SE AVISA UNA VEZ, A TODO EL EQUIPO ──
+     Encender no es una conversación recurrente: es un hecho que hay que
+     saber. Repetirlo cada día sería la forma más rápida de que la gente
+     aprenda a ignorar los avisos — y entonces el siguiente tampoco se lee. */
+  const { data: equipo } = await supabase.from("perfiles")
+    .select("id").eq("activo", true).neq("id", user.id);
+  if (equipo?.length) {
+    await supabase.from("notificaciones").insert(equipo.map((p: any) => ({
+      usuario_id: p.id, publicacion_id: pub.id,
+      actor_nombre: perfil?.nombre || "Administración",
+      tipo: "asignacion", mensaje: `🚨 ALARMA: ${titulo}`,
+    })));
+  }
+
+  await supabase.from("actividad").insert({
+    entidad_tipo: f.entidadTipo, entidad_id: f.entidadId, actor_id: user.id, tipo: "dato",
+    detalle: { mensaje: `🚨 encendió una alarma: «${titulo}»` },
+  });
+
+  revalidatePath("/", "layout");
+  return { id: al.id as string, casoId: pub.id as string };
+}
+
+export async function apagarAlarma(id: string, cierre: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const txt = (cierre || "").trim();
+  /* ── APAGAR EXIGE CONTAR CÓMO TERMINÓ ──
+     Una alarma que se apaga en silencio no deja aprender nada, y la siguiente
+     vez que pase lo mismo nadie sabrá qué se hizo. Es el único momento en que
+     esa explicación es barata: se sabe. */
+  if (txt.length < 10) {
+    return { error: "Escribe cómo se resolvió. Dentro de un año, eso es lo único que va a quedar." };
+  }
+
+  const { data, error } = await supabase.from("alarmas")
+    .update({ apagada_en: new Date().toISOString(), apagada_por: user.id, cierre: txt })
+    .eq("id", id).is("apagada_en", null).select("entidad_tipo,entidad_id,titulo");
+  if (error) return { error: error.message };
+  /* Cero filas: o no es administración —la RLS lo rechaza en silencio— o
+     alguien la apagó mientras tanto. Se dicen las dos, porque desde aquí no se
+     distinguen y mandar a buscar una sola sería mandar a medias. */
+  if (!data?.length) {
+    return { error: "No se pudo apagar: o ya la apagó alguien, o no tienes permiso." };
+  }
+
+  const a: any = data[0];
+  await supabase.from("actividad").insert({
+    entidad_tipo: a.entidad_tipo, entidad_id: a.entidad_id, actor_id: user.id, tipo: "dato",
+    detalle: { mensaje: `apagó la alarma «${a.titulo}»: ${txt}`.slice(0, 500) },
+  });
+  revalidatePath("/", "layout");
+  return {};
+}
+
 /* ── ARCHIVAR UNA TANDA ──
  *
  * La vista de lista del tablero deja filtrar hasta que en pantalla queda
@@ -10162,6 +10305,11 @@ const ZOCALO_VACIO = {
   banco: { error: "sin sesión" } as any,
   muro: { mensajes: [], yo: null } as any,
   notifs: { items: [], sinLeer: 0, sinLeerBot: 0, faltan: [] } as any,
+  /* Las alarmas encendidas. Viajan en el zócalo —la llamada que YA se hace en
+     cada navegación— y no en una propia: una alarma tiene que verse en las
+     diecinueve pantallas, y una acción de servidor más por navegación es
+     justo lo que este zócalo vino a evitar. */
+  alarmas: [] as any[],
 };
 
 export async function estadoGlobal() {
@@ -10169,11 +10317,12 @@ export async function estadoGlobal() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return ZOCALO_VACIO;
 
-  const [nav, banco, muro, notifs] = await Promise.allSettled([
+  const [nav, banco, muro, notifs, alarmas] = await Promise.allSettled([
     estadoNav(supabase, user),
     bancoDe(supabase, user),
     muroDe(supabase, user),
     notifsDe(supabase, user),
+    alarmasVivas(),
   ]);
   const ok = <T,>(r: PromiseSettledResult<T>, deFallo: T): T =>
     r.status === "fulfilled" ? r.value : deFallo;
@@ -10182,5 +10331,6 @@ export async function estadoGlobal() {
     banco: ok(banco, { error: "no se pudo cargar" } as any),
     muro: ok(muro, ZOCALO_VACIO.muro),
     notifs: ok(notifs, ZOCALO_VACIO.notifs),
+    alarmas: ok(alarmas, ZOCALO_VACIO.alarmas),
   };
 }

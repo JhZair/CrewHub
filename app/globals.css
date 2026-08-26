@@ -5731,3 +5731,58 @@ mark.bq-marca{
   padding:7px 10px;margin:2px 0 8px;border-radius:10px;
   background:rgba(124,92,255,.10);border:1px solid rgba(124,92,255,.32);
   font-size:12.5px;color:var(--muted)}
+
+/* ── LA FRANJA DE ALARMAS ──
+   Ancho completo por encima de todo. `position:fixed` y no una banda en el
+   flujo: al bajar por una lista de trescientos casos, una banda que se va con
+   el scroll deja de avisar justo cuando uno lleva un rato trabajando y ya se
+   olvidó. Ocupa su alto con un margen en el `body`, no tapando contenido. */
+.alarma-franja{position:fixed;top:0;left:0;right:0;z-index:60;
+  display:flex;flex-direction:column;
+  background:linear-gradient(90deg,rgba(239,68,68,.22),rgba(239,68,68,.12));
+  border-bottom:1px solid rgba(239,68,68,.5);backdrop-filter:blur(6px)}
+.alarma-item{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  padding:6px 14px;font-size:12.5px;color:#ffd9dc;text-decoration:none}
+.alarma-item:hover{background:rgba(239,68,68,.16)}
+.alarma-item + .alarma-item{border-top:1px solid rgba(239,68,68,.25)}
+.alarma-vieja{color:var(--yellow);font-size:11.5px}
+.alarma-ir{margin-left:auto;color:#ffd9dc;opacity:.75;font-size:11.5px;white-space:nowrap}
+/* El hueco que deja la franja. Se aplica solo cuando hay franja: la clase la
+   pone el propio componente en el <html> — sin esto, la primera línea de cada
+   pantalla se quedaría debajo. */
+body:has(.alarma-franja){padding-top:34px}
+
+/* ── LA ALARMA EN SU FICHA Y EN LA TARJETA ── */
+.alarma-btn{background:rgba(239,68,68,.10);border:1px solid rgba(239,68,68,.45);
+  color:#ff8a92;border-radius:10px;padding:6px 12px;font-size:12px;font-weight:700;
+  cursor:pointer;font-family:inherit}
+.alarma-btn:hover{background:rgba(239,68,68,.2);color:#ffd9dc}
+.alarma-btn-min{padding:3px 9px;font-size:10.5px;border-radius:999px}
+.alarma-caja{border:1px solid rgba(239,68,68,.5);background:rgba(239,68,68,.10);
+  border-radius:12px;padding:10px 12px;margin:0 0 12px;display:flex;
+  flex-direction:column;gap:6px}
+/* En una lista, la caja es un renglón: el detalle está en la ficha y en el
+   caso, y repetirlo aquí haría la lista ilegible justo el día que más hay que
+   leerla. */
+.alarma-caja-min{padding:6px 10px;margin:-4px 0 0 14px;border-radius:0 0 9px 9px;
+  border-top:none;font-size:11.5px}
+.alarma-caja-nueva{background:rgba(239,68,68,.07)}
+.alarma-tit{color:#ffd9dc;font-weight:700;font-size:13px}
+.alarma-motivo{color:var(--muted);font-size:12.5px;line-height:1.5;white-space:pre-wrap}
+.alarma-pie{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  color:var(--dim);font-size:11.5px}
+.alarma-ir-caso{color:#ff8a92;text-decoration:none;font-size:11.5px}
+.alarma-ir-caso:hover{text-decoration:underline}
+.alarma-escasez{color:var(--yellow);font-size:11.5px;line-height:1.45}
+.alarma-form{display:flex;flex-direction:column;gap:7px;margin-top:2px}
+.alarma-form input,.alarma-form textarea{background:var(--bg);
+  border:1px solid var(--border);border-radius:9px;padding:7px 10px;
+  font-size:12.5px;color:var(--text);font-family:inherit;outline:none}
+.alarma-form input:focus,.alarma-form textarea:focus{border-color:rgba(239,68,68,.6)}
+.alarma-fecha{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  font-size:12px;color:var(--muted)}
+.alarma-fecha input{flex:none}
+.alarma-nota{color:var(--dim);font-size:11px}
+.alarma-botones{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.alarma-botones .btn{font-size:12px;padding:5px 12px}
+.fondo-alarma{display:block}

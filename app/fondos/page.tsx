@@ -8,6 +8,8 @@ import { faltanEstados, listaFaltan, seVigila, cierreDe } from "@/lib/estadosCue
 import { sinPruebas, textoSinPruebas } from "@/lib/pruebasFondo";
 import { avanceEntregables, META_ESTADO_COMP } from "@/lib/compromisos";
 import { CERRADOS } from "@/lib/familia";
+import BotonAlarma from "@/components/BotonAlarma";
+import { alarmasVivas } from "@/app/actions";
 import { hoyLima } from "@/lib/fechas";
 import { CATEGORIAS_OPC } from "@/lib/etapas";
 
@@ -163,6 +165,19 @@ export default async function FondosPage() {
       }
     }
   }
+
+  /* ── LAS ALARMAS ENCENDIDAS ──
+     El único rojo que declaró una persona. Se traen todas de una vez —son
+     poquísimas por definición— y se reparten por entidad. Quién puede
+     encenderlas se decide con el mismo perfil que ya se lee para la caja. */
+  const vivas = await alarmasVivas();
+  const alarmaDe = new Map<string, any>();
+  for (const a of vivas) {
+    if (a.entidad_tipo === "postulacion") alarmaDe.set(a.entidad_id, a);
+  }
+  const { data: perfilYo } = await supabase.from("perfiles")
+    .select("es_admin,es_finanzas").eq("id", user.id).maybeSingle();
+  const puedeAlarma = !!(perfilYo?.es_admin || perfilYo?.es_finanzas);
 
   /* ── LOS CARTELES, EN UNA CONSULTA ──
    * El póster del proyecto y el logo de la empresa viven en `entidad_media`,
@@ -395,6 +410,19 @@ export default async function FondosPage() {
           Se dicen los DOS: el total, y cuántos siguen sin resolver — «30
           casos» de los que 28 están cerrados es un fondo tranquilo, y sin la
           segunda cifra parece lo contrario. */}
+      {/* ── LA ALARMA, EN EL PIE ──
+          Fuera del enlace grande por lo mismo que el contador de casos: un
+          <a> dentro de otro no es HTML válido, y aquí además hay un
+          formulario. Encendida se ve entera; apagada, el botón solo lo ve
+          administración. */}
+      {(alarmaDe.get(f.id) || puedeAlarma) && (
+        <div className="fondo-alarma">
+          <BotonAlarma entidadTipo="postulacion" entidadId={f.id}
+            tituloSugerido={`${f.codigo}${f.proy?.nombre ? ` · ${f.proy.nombre}` : ""}: `}
+            esAdmin={puedeAlarma} alarma={alarmaDe.get(f.id) || null}
+            vivas={vivas.length} compacto />
+        </div>
+      )}
       {cs && cs.total > 0 && (
         <Link className="fondo-casos" href={`/tablero?p=todos&modo=lista&post=${f.id}`}
           title={`Ver los ${cs.total} caso(s) de este fondo en el tablero`}>

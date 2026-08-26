@@ -1,5 +1,6 @@
 "use client";
 import NavIconos from "@/components/NavIconos";
+import FranjaAlarmas from "@/components/FranjaAlarmas";
 import Link from "@/components/Enlace";
 
 /* El bloque de navegación de toda pantalla interna: el inicio y los accesos a
@@ -21,7 +22,13 @@ import Link from "@/components/Enlace";
    la línea veinte que nadie miró. */
 export default function Volver() {
   return (
+    /* ── LA FRANJA VIVE AQUÍ ──
+       Por la misma razón que el menú: `<Volver>` está en las diecinueve
+       pantallas, así que es el único sitio donde algo se pinta en todas sin
+       tocar diecinueve archivos. Va ANTES del menú —arriba del todo— porque
+       una alarma no compite con la navegación: la precede. */
     <span style={{ display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+      <FranjaAlarmas />
       {/* El tamaño va en `.btn-logo` y no en estilos en línea: es la marca, se
           toca poco y se mira siempre, y un `style=` aquí es un sitio donde
           nadie va a buscarlo. */}

@@ -14,6 +14,8 @@ import TabsPanel from "@/components/TabsPanel";
 import CronogramaPostulacion from "@/components/CronogramaPostulacion";
 import Presupuesto from "@/components/Presupuesto";
 import RendicionFondo from "@/components/RendicionFondo";
+import BotonAlarma from "@/components/BotonAlarma";
+import { alarmasVivas } from "@/app/actions";
 import MovimientosBanco from "@/components/MovimientosBanco";
 import ConciliacionFondo from "@/components/ConciliacionFondo";
 import AuditoriaFondo from "@/components/AuditoriaFondo";
@@ -248,6 +250,12 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
      de apoyos cuelga de auth.users y no de perfiles, así que PostgREST no
      puede traerlos embebidos —no hay clave foránea entre las dos— y pedirlos
      aparte sería un viaje más para tres nombres. */
+  /* Las alarmas encendidas: la de este fondo se pinta arriba, y el total se
+     usa para avisar de la escasez antes de encender otra. */
+  const vivasAlarmas = await alarmasVivas();
+  const miAlarma = vivasAlarmas.find(
+    (a: any) => a.entidad_tipo === "postulacion" && a.entidad_id === params.id) || null;
+
   const apoyoIds: string[] = ((apo.data || []) as any[]).map(a => a.usuario_id);
   /* RUC (o DNI) → persona, para que la carga por lote sepa DE QUIÉN es cada
      PDF. Es el único dato que lo dice: el número del recibo no, porque la
@@ -639,6 +647,15 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
         <span className="spacer" />
         <span style={{ color: "var(--dim)", fontSize: 12 }}>🎬 EJECUCIÓN DEL FONDO</span>
       </div>
+
+      {/* ── LA ALARMA, ANTES QUE NADA ──
+          Encima del título y de las cifras: si alguien declaró que esto es
+          grave, es lo primero que hay que leer al entrar. Y aquí va con su
+          motivo entero —no el resumen de la franja—, porque esta es la
+          pantalla donde uno viene a entender qué pasa. */}
+      <BotonAlarma entidadTipo="postulacion" entidadId={params.id}
+        tituloSugerido={`${ent.codigo || "Este fondo"}: `}
+        esAdmin={esAdmin} alarma={miAlarma} vivas={vivasAlarmas.length} />
 
       {/* ── Cabecera del fondo ── */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", margin: "4px 0 2px" }}>
