@@ -3,14 +3,7 @@ import { useEffect, useState } from "react";
 
 /* Imagen con visor: al hacer clic se abre a tamaño real en una capa
    sobre el caso (lightbox). Clic fuera o Esc para cerrar. */
-export default function Foto({ src, maxHeight = 260, lado }: {
-  src: string; maxHeight?: number;
-  /** Miniatura cuadrada de N píxeles, recortada al centro. Para tiras de
-   *  varias fotos —el muro de la portada— donde lo que importa es que se vean
-   *  todas del mismo tamaño: con alturas libres, tres fotos de proporciones
-   *  distintas dibujan un escalón. El visor grande sigue siendo el mismo. */
-  lado?: number;
-}) {
+export default function Foto({ src, maxHeight = 260 }: { src: string; maxHeight?: number }) {
   const [abierto, setAbierto] = useState(false);
 
   useEffect(() => {
@@ -23,10 +16,12 @@ export default function Foto({ src, maxHeight = 260, lado }: {
 
   return (
     <>
-      <img src={src} alt="" onClick={() => setAbierto(true)}
-        style={lado
-          ? { width: lado, height: lado, objectFit: "cover", borderRadius: 8, border: "1px solid var(--border)", cursor: "zoom-in", display: "block" }
-          : { maxHeight, maxWidth: "100%", borderRadius: 10, border: "1px solid var(--border)", cursor: "zoom-in", display: "block" }} />
+      {/* `lazy`: el muro de la portada puede traer cincuenta fotos entre notas
+          y respuestas, y todas se descargaban de golpe al abrir la pantalla —la
+          primera de la mañana—. La del visor no lleva `lazy`: cuando se abre,
+          se quiere YA. */}
+      <img src={src} alt="" onClick={() => setAbierto(true)} loading="lazy" decoding="async"
+        style={{ maxHeight, maxWidth: "100%", borderRadius: 10, border: "1px solid var(--border)", cursor: "zoom-in", display: "block" }} />
       {abierto && (
         <div onClick={() => setAbierto(false)}
           style={{ position: "fixed", inset: 0, zIndex: 300, background: "rgba(0,0,0,.86)", backdropFilter: "blur(2px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, cursor: "zoom-out" }}>

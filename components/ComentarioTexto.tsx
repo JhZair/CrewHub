@@ -12,13 +12,15 @@ import { useEffect, useRef, useState } from "react";
 /* Texto de un comentario: resalta @menciones y, si es mío, se edita en línea —
    texto E imágenes (miniaturas con ✕, adjuntar, pegar). Las imágenes se muestran
    aquí (vista y edición) para que editarlas no dependa de otro bloque. */
-export default function ComentarioTexto({ comentarioId, pubId, cuerpo, imagenes, esMio, editadoEn }: {
+export default function ComentarioTexto({ comentarioId, pubId, cuerpo, imagenes, esMio, editadoEn, sinRed }: {
   comentarioId: string;
   pubId: string;
   cuerpo: string;
   imagenes?: string[];
   esMio: boolean;
   editadoEn?: string | null;
+  /** Sin consultar las Open Graph de los enlaces. Para listas largas. */
+  sinRed?: boolean;
 }) {
   const [editando, setEditando] = useState(false);
   const [texto, setTexto] = useState(cuerpo);
@@ -100,7 +102,10 @@ export default function ComentarioTexto({ comentarioId, pubId, cuerpo, imagenes,
           style={{ color: "var(--dim)", fontSize: 11.5, marginLeft: 8, background: "none", border: "none", cursor: "pointer", padding: 0 }}
           onClick={abrir}>✎</button>
       )}
-      {!soloFoto && <LinkPreviews texto={cuerpo} />}
+      {/* `sinRed` en listas largas: cada tarjeta de enlace consulta las Open
+          Graph con una acción de servidor, y Next las encola de una en una.
+          Ver components/LinkPreviews.tsx. */}
+      {!soloFoto && <LinkPreviews texto={cuerpo} sinRed={sinRed} />}
       {imgsVista.length > 0 && (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
           {imgsVista.map((u, j) => <Foto key={j} src={u} maxHeight={160} />)}

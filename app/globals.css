@@ -2434,7 +2434,7 @@ a.stat-card:hover{border-color:var(--border2)}
    `.cmp-fila` en los compromisos. Nombre de pantalla en cada clase. */
 .port-notas{display:flex;flex-direction:column;gap:8px}
 .port-nota{display:flex;gap:11px;align-items:flex-start;padding:10px 13px;
-  border-radius:12px;border:1px solid var(--border);background:var(--panel);cursor:pointer}
+  border-radius:12px;border:1px solid var(--border);background:var(--panel)}
 .port-nota:hover{border-color:var(--border2)}
 .port-nota-cuerpo{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
 .port-nota-cab{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
@@ -2442,18 +2442,19 @@ a.stat-card:hover{border-color:var(--border2)}
 .port-nota-donde{color:var(--violet);background:rgba(167,139,250,.12);
   text-transform:none;letter-spacing:0;text-decoration:none}
 .port-nota-cuando{font-size:11px;color:var(--dim);white-space:nowrap}
-/* Tres líneas y corta. Una nota larga entera convierte el muro en un muro de
-   una sola nota; para leerla está su ficha. */
-.port-nota-txt{font-size:12.5px;line-height:1.55;color:var(--muted);white-space:pre-wrap;
-  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
-.port-nota-pie{display:flex;gap:10px;font-size:11px;color:var(--dim)}
-/* La tira de miniaturas. `position:relative` + z-index los levanta por encima
-   del enlace estirado de la fila (`fila-encima` hace lo propio), o si no el
-   clic en una foto se lo comía la fila y no abría el visor. */
-.port-nota-fotos{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}
-.port-nota-mas{display:inline-flex;align-items:center;justify-content:center;
-  width:68px;height:68px;border-radius:8px;border:1px dashed var(--border2);
-  color:var(--dim);font-size:12px;font-weight:700}
+/* ── EL MISMO CUERPO QUE EN SU MURO ──
+   Estaba a 12.5px y recortado a tres líneas, con los comentarios debajo a 14px
+   heredados del body: la nota se leía MÁS CHICA que las respuestas a la nota.
+   Mismo tamaño y misma altura de línea que `.muro-cuerpo`, que es donde vive
+   esta misma nota en su ficha. */
+.port-nota-txt{font-size:14.5px;line-height:1.6;color:var(--text);
+  white-space:pre-wrap;word-break:break-word}
+.port-nota-pie{display:flex;gap:10px;font-size:11px;color:var(--dim);margin-top:2px}
+.port-nota-ir{color:var(--dim);text-decoration:none}
+.port-nota-ir:hover{color:var(--violet)}
+
+/* Las fotos de la nota, con el mismo aire que en el muro de su ficha. */
+.port-nota-fotos{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
 
 .port-dia{display:flex;align-items:center;gap:8px;margin:0 4px 8px}
 .port-dia-txt{font-size:10px;text-transform:uppercase;letter-spacing:1.2px;

@@ -7,29 +7,26 @@ import Foto from "@/components/Foto";
 import Miniatura from "@/components/Miniatura";
 import VistaObjeto from "@/components/VistaObjeto";
 import EditorImagenes from "@/components/EditorImagenes";
-import Reacciones, { type Reaccion } from "@/components/Reacciones";
-import ComentarioTexto from "@/components/ComentarioTexto";
+import { type Reaccion } from "@/components/Reacciones";
+import NotaSocial, { type NotaComentario } from "@/components/NotaSocial";
 import LinkPreviews from "@/components/LinkPreviews";
 import { menciones, MencionesMenu, type Perfil } from "@/components/Menciones";
 import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
 import { prepararImagen, MEDIDAS } from "@/lib/prepararImagen";
 import { icoObjeto, lblObjeto } from "@/lib/objetos";
 import { previewCandidates } from "@/lib/drive";
-import { publicarBitacora, borrarBitacora, destacarBitacora, destacarObjeto, editarBitacora, comentar } from "@/app/actions";
+import { publicarBitacora, borrarBitacora, destacarBitacora, destacarObjeto, editarBitacora } from "@/app/actions";
 
 /* MURO DEL PROYECTO — una bitácora simple: notas con texto e imágenes, ordenadas
    por etiquetas PROPIAS del muro (texto libre, acotadas al proyecto — NO las
    etiquetas del sistema de casos), con reacciones y comentarios. El motor social
    (reacciones, comentarios, menciones) se reusa del sistema de publicaciones. */
 
-export type MuroComentario = {
-  id: string; cuerpo: string; imagenes?: string[] | null; creado_en: string;
-  autor_id: string; editado_en?: string | null;
-  autor?: { nombre?: string | null; color?: string | null; avatar_url?: string | null } | null;
-  /** Se reacciona a un comentario igual que a una nota: el 👀 es el acuse de
-   *  «lo leí», y hace la misma falta en la respuesta de alguien. */
-  reacciones?: Reaccion[];
-};
+/* El comentario de una nota lo define quien lo pinta: components/NotaSocial.
+   Estaban los dos tipos escritos, campo por campo iguales, y TypeScript no
+   se queja de eso —compara la forma, no el nombre—: se enteraría uno al
+   añadir un campo en un lado y ver que no llega al otro. */
+export type MuroComentario = NotaComentario;
 export type MuroPost = {
   id: string; cuerpo: string | null; imagenes?: string[] | null; creado_en: string;
   editado_en?: string | null;
@@ -285,41 +282,11 @@ export default function MuroProyecto({ proyectoId, userId, perfiles, sugerencias
             </div>
           )}
 
-          <div className="muro-post-pie">
-            <Reacciones pubId={p.id} reacciones={p.reacciones} userId={userId} />
-          </div>
-
-          {/* Comentarios — sangrados y rotulados: lo que se escriba aquí
-              cuelga de ESTA nota, no del muro. */}
-          <div className="muro-coments">
-            <div className="muro-coments-h">
-              {p.comentarios.length
-                ? `${p.comentarios.length} comentario${p.comentarios.length === 1 ? "" : "s"} en esta nota`
-                : "Comentar esta nota"}
-            </div>
-            {p.comentarios.map(c => (
-              <div key={c.id} className="muro-coment">
-                <Avatar nombre={c.autor?.nombre} color={c.autor?.color} size={26} src={c.autor?.avatar_url} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
-                    <b style={{ fontSize: 12.5 }}>{c.autor?.nombre || "Alguien"}</b>
-                    <span style={{ color: "var(--dim)", fontSize: 11 }}>{fecha(c.creado_en)}</span>
-                  </div>
-                  <ComentarioTexto comentarioId={c.id} pubId={p.id} cuerpo={c.cuerpo}
-                    imagenes={c.imagenes || []} esMio={c.autor_id === userId} editadoEn={c.editado_en} />
-                  {/* `pubId` va igualmente: el servidor lo usa para revalidar y
-                      para avisar al autor. Lo que decide que la reacción es
-                      DEL COMENTARIO es `comentarioId`. */}
-                  <div className="muro-coment-rx">
-                    <Reacciones pubId={p.id} comentarioId={c.id}
-                      reacciones={c.reacciones || []} userId={userId} />
-                  </div>
-                </div>
-              </div>
-            ))}
-            <CajaComentario pubId={p.id} perfiles={perfiles} deQuien={p.autor?.nombre}
-              onSent={() => router.refresh()} />
-          </div>
+          {/* Reaccionar y responder: el mismo pie que la portada, porque es
+              el mismo gesto. Vive en components/NotaSocial.tsx. */}
+          <NotaSocial pubId={p.id} userId={userId} reacciones={p.reacciones}
+            comentarios={p.comentarios} perfiles={perfiles} deQuien={p.autor?.nombre}
+            onCambio={() => router.refresh()} />
         </div>
       ); })())}
     </div>
@@ -453,46 +420,3 @@ function EditorNota({ post, proyectoId, entidadTipo = "proyecto", perfiles, suge
   );
 }
 
-/* Caja para comentar una nota del muro. Mismo motor (`comentar`) y mismas
-   menciones que en un caso — solo más compacta. */
-function CajaComentario({ pubId, perfiles, deQuien, onSent }: {
-  pubId: string; perfiles: Perfil[];
-  /** Autor de la nota que se comenta: va en el marcador de posición. */
-  deQuien?: string | null;
-  onSent: () => void;
-}) {
-  const [texto, setTexto] = useState("");
-  const [enviando, setEnviando] = useState(false);
-  const { candidatos, aplicar } = menciones(texto, perfiles);
-  const enviar = async () => {
-    if (enviando || !texto.trim()) return;
-    setEnviando(true);
-    const r: any = await comentar(pubId, texto.trim());
-    setEnviando(false);
-    if (r?.error) { alert(r.error); return; }
-    setTexto(""); onSent();
-  };
-  return (
-    <div className="muro-caja" style={{ position: "relative" }}>
-      <MencionesMenu candidatos={candidatos} onElegir={n => setTexto(aplicar(n))} />
-      {/* El marcador de posición DICE a quién se le responde. «Comentar…» a
-          secas se lee igual que «Comparte una nota…» de arriba; con el nombre
-          del autor delante, escribir aquí una publicación nueva ya no es un
-          descuido posible. */}
-      <input value={texto}
-        placeholder={deQuien ? `Responder a ${deQuien}… (@nombre para invocar)` : "Comentar esta nota…"}
-        onChange={e => setTexto(e.target.value)}
-        onKeyDown={e => {
-          if (e.key === "Enter") {
-            if (candidatos.length) { e.preventDefault(); setTexto(aplicar(candidatos[0].nombre)); return; }
-            e.preventDefault(); enviar();
-          }
-        }}
-        className="muro-caja-input" />
-      <button className="btn btn-ghost" disabled={enviando || !texto.trim()} onClick={enviar}
-        style={{ padding: "6px 12px", fontSize: 12.5 }}>
-        {enviando ? "…" : "Comentar"}
-      </button>
-    </div>
-  );
-}

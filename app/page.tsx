@@ -8,6 +8,7 @@ import MenuUsuario from "@/components/MenuUsuario";
 import Avatar from "@/components/Avatar";
 import Foto from "@/components/Foto";
 import LinkPreviews from "@/components/LinkPreviews";
+import NotaSocial from "@/components/NotaSocial";
 import EventoHistorial, { ROTULO_ENT } from "@/components/EventoHistorial";
 import EventoGrupo from "@/components/EventoGrupo";
 import { agruparEventos } from "@/lib/agrupar";
@@ -278,7 +279,8 @@ export default async function Portada({ searchParams }: {
      antes cada bloque lo hacía a su manera y el mismo material salía con
      nombre en un sitio y sin él en el otro. */
   const idsNotif = [...new Set(notifs.map((n: any) => n.publicacion_id).filter(Boolean))];
-  const [nombrados, nombresVinc, vincNotifQ] = await Promise.all([
+  const idsNotas = ((muroQ.data || []) as any[]).map((n: any) => n.id);
+  const [nombrados, nombresVinc, vincNotifQ, rxNotas, comsNotas] = await Promise.all([
     /* Sin `conActores`: eso trae la tabla `perfiles` entera para poder nombrar
        a quien no salga en la página, y aquí las caras del filtro ya vienen de
        `equipoQ`. Lo necesita /historial, que pinta un chip por persona. */
@@ -293,19 +295,53 @@ export default async function Portada({ searchParams }: {
       ? supabase.from("publicacion_vinculos").select("publicacion_id,entidad_tipo,entidad_id")
         .in("publicacion_id", idsNotif)
       : Promise.resolve({ data: [] as any[] }),
+    /* ── EL HILO DE CADA NOTA ──
+       Una nota del muro sin sus reacciones ni sus respuestas es media nota: la
+       conversación es el muro. Las dos consultas son por LOTE —los ids de las
+       nueve notas—, no una por nota.
+       ⚠ `comentario_id is null`: una reacción a un comentario no es una
+       reacción a la nota. Es el mismo filtro que usa la ficha; sin él, el 👍
+       que alguien le puso a una respuesta aparecería como puesto a la nota. */
+    idsNotas.length
+      ? supabase.from("reacciones").select("publicacion_id,emoji,usuario_id")
+        .in("publicacion_id", idsNotas).is("comentario_id", null)
+      : Promise.resolve({ data: [] as any[] }),
+    idsNotas.length
+      ? supabase.from("comentarios")
+        .select(`id,publicacion_id,cuerpo,imagenes,creado_en,editado_en,autor_id,
+          autor:perfiles(nombre,color,avatar_url)`)
+        .in("publicacion_id", idsNotas).order("creado_en").order("id")
+      : Promise.resolve({ data: [] as any[] }),
+  ]);
+
+  /* ── TANDA 3 (solo si hay respuestas) ── las reacciones DE LOS COMENTARIOS.
+     No se pueden pedir antes: hacen falta sus ids. Si nadie ha respondido, no
+     hay tercera ola. */
+  const comentarios = ((comsNotas as any).data || []) as any[];
+  const idsComs = comentarios.map((c: any) => c.id);
+  const claveDe = (v: any) => `${tipoCanonico(v.entidad_tipo)}:${v.entidad_id}`;
+  const vincNotif = ((vincNotifQ as any).data || []) as any[];
+  const faltan = vincNotif.filter((v: any) => !nombresVinc.has(claveDe(v)));
+  const [rxComsQ, nombresNotif, perfilesTodos] = await Promise.all([
+    idsComs.length
+      ? supabase.from("reacciones").select("comentario_id,emoji,usuario_id").in("comentario_id", idsComs)
+      : Promise.resolve({ data: [] as any[] }),
+    /* Los nombres de los vínculos que aún no se resolvieron. Iba en una ola
+       propia, detrás de esta: son independientes, así que van juntas. */
+    faltan.length
+      ? nombresDe(supabase, faltan.map((v: any) => ({ tipo: v.entidad_tipo, id: v.entidad_id })))
+      : Promise.resolve(new Map<string, string>()),
+    /* TODOS los perfiles, no solo los activos: quien reaccionó y luego se fue
+       del equipo es justo el caso donde saber quién fue importa más. Con el
+       catálogo de activos, «👍 3» enseñaba dos nombres en su tooltip — el
+       número y la lista se contradecían. */
+    supabase.from("perfiles").select("id,nombre"),
   ]);
   const { eventos } = nombrados;
 
-  /* Contexto de cada notificación: de qué habla el caso avisado.
-     Se aprovecha lo YA resuelto para los destacados y el muro, y solo se
-     pregunta por lo que falte — que muchas veces es nada, y entonces esta ola
-     no existe. El mapa se consulta con la clave canónica (ver lib/eventos). */
-  const vincNotif = ((vincNotifQ as any).data || []) as any[];
-  const claveDe = (v: any) => `${tipoCanonico(v.entidad_tipo)}:${v.entidad_id}`;
-  const faltan = vincNotif.filter((v: any) => !nombresVinc.has(claveDe(v)));
-  const nombresNotif = faltan.length
-    ? await nombresDe(supabase, faltan.map((v: any) => ({ tipo: v.entidad_tipo, id: v.entidad_id })))
-    : new Map<string, string>();
+  /* Contexto de cada notificación: de qué habla el caso avisado. Los nombres
+     salen de lo ya resuelto para los destacados y el muro; lo que faltaba se
+     pidió arriba, en la misma ola que las reacciones. */
   const vincDe = new Map<string, { tipo: string; nombre: string }[]>();
   for (const v of vincNotif) {
     const nombre = nombresVinc.get(claveDe(v)) || nombresNotif.get(claveDe(v));
@@ -373,10 +409,31 @@ export default async function Portada({ searchParams }: {
      conversación, y un muro de escritura en la portada convertiría cada
      comentario en algo que se dice sin contexto. Se enseña quién, cuándo, de
      qué muro y qué dijo — y el enlace lleva a su sitio. */
-  const MURO_CORTE = 240;
-  /* Cuántas miniaturas caben en una fila sin empujar la nota siguiente fuera
-     de la pantalla. Las demás se cuentan: «+4» es honesto y de un vistazo. */
-  const MURO_FOTOS = 4;
+  /* Quién reaccionó, con nombre: es lo que convierte «👍 3» en «Katy, Wilfredo
+     y tú». Sale del equipo ya cargado (`equipoQ`), sin otra consulta. */
+  const nomDe = new Map<string, string>(
+    (((perfilesTodos as any).data || []) as any[]).map((p: any) => [p.id, p.nombre]));
+  const conNombre = (r: any) => ({ emoji: r.emoji, usuario_id: r.usuario_id, nombre: nomDe.get(r.usuario_id) });
+
+  const rxDeNota = new Map<string, any[]>();
+  for (const r of (((rxNotas as any).data || []) as any[])) {
+    const l = rxDeNota.get(r.publicacion_id) || [];
+    l.push(conNombre(r)); rxDeNota.set(r.publicacion_id, l);
+  }
+  const rxDeCom = new Map<string, any[]>();
+  for (const r of (((rxComsQ as any).data || []) as any[])) {
+    const l = rxDeCom.get(r.comentario_id) || [];
+    l.push(conNombre(r)); rxDeCom.set(r.comentario_id, l);
+  }
+  const comsDe = new Map<string, any[]>();
+  for (const c of comentarios) {
+    const l = comsDe.get(c.publicacion_id) || [];
+    // El embebido de PostgREST llega como objeto o como array de uno.
+    l.push({ ...c, autor: Array.isArray(c.autor) ? c.autor[0] : c.autor, reacciones: rxDeCom.get(c.id) || [] });
+    comsDe.set(c.publicacion_id, l);
+  }
+
+  const errHilo: any = (comsNotas as any).error || (rxNotas as any).error || (rxComsQ as any).error;
   const notas = ((muroQ.data || []) as any[]).map((n: any) => {
     const uno = (x: any) => (Array.isArray(x) ? x[0] : x);
     /* De qué muro es. Hoy `publicarBitacora` escribe UN solo vínculo, así que
@@ -387,22 +444,22 @@ export default async function Portada({ searchParams }: {
     const v = (n.vinculos || []).find((x: any) =>
       CON_MURO.includes(tipoCanonico(x.entidad_tipo))) || (n.vinculos || [])[0];
     const tipo = v ? tipoCanonico(v.entidad_tipo) : "";
+    /* ── LA NOTA, ENTERA ──
+       Se recortaba a 240 caracteres y a tres líneas. Pero debajo se enseñan
+       todas sus fotos a tamaño real y todo su hilo de respuestas: el texto
+       acababa siendo lo ÚNICO de la tarjeta que había que ir a otro sitio a
+       leer, y encima con letra más chica que la de sus propios comentarios.
+       Una nota de muro es un párrafo, no un documento. */
     const texto = String(n.cuerpo || "").trim();
     return {
       id: n.id,
       autor: uno(n.autor),
       creado_en: n.creado_en,
       fotos: ((n.imagenes || []) as string[]).filter(Boolean),
-      /* Los enlaces se sacan del cuerpo ENTERO, no del recortado: el texto que
-         se enseña corta a 240 caracteres y podía partir una url por la mitad
-         —la tarjeta habría apuntado a una dirección que no existe—. */
       enlaces: urlsDe(texto),
-      texto: texto.length > MURO_CORTE ? texto.slice(0, MURO_CORTE - 1).trimEnd() + "…" : texto,
-      /* «Cabe entera» es por caracteres Y por renglones: el CSS corta a tres
-         líneas, así que una nota corta con ocho saltos se recortaba en la
-         pantalla sin que apareciera el «seguir leyendo». Truncar en silencio
-         es justo lo que el resto de esta pantalla evita. */
-      corta: texto.length <= MURO_CORTE && (texto.match(/\n/g) || []).length < 3,
+      texto,
+      reacciones: rxDeNota.get(n.id) || [],
+      comentarios: comsDe.get(n.id) || [],
       muro: v && nombresVinc.get(`${tipo}:${v.entidad_id}`)
         ? { tipo, id: v.entidad_id, nombre: nombresVinc.get(`${tipo}:${v.entidad_id}`)! }
         : null,
@@ -566,6 +623,13 @@ export default async function Portada({ searchParams }: {
            «esta semana nadie escribió». */
         <div className="empty">⚠ No se pudo leer el muro ({muroQ.error.message}).</div>
       )}
+      {/* Y lo mismo con el hilo. Si a `comentarios` le falta una columna de una
+          migración, PostgREST rechaza la consulta ENTERA y las nueve notas
+          dirían «Comentar esta nota» —o sea «nadie ha respondido»— sobre
+          conversaciones que existen. */}
+      {errHilo && (
+        <div className="empty">⚠ No se pudieron leer las respuestas del muro ({errHilo.message}).</div>
+      )}
       {notas.length > 0 && (
         <>
           <div className="port-cab">
@@ -577,23 +641,21 @@ export default async function Portada({ searchParams }: {
           </div>
           <div className="port-notas">
             {notas.map(n => (
-              <div key={n.id} className="port-nota info-row fila-cap">
-                {/* ── AL MURO, NO AL CASO ──
-                    `/caso/{id}` existe, pero para una bitácora REDIRIGE a la
-                    ficha de su muro: sería pagar un render de servidor y un 307
-                    para llegar donde la portada ya sabe ir. El ancla `#pub-…`
-                    es el id que pinta el muro, así que la nota queda a la
-                    vista. Solo se pasa por el caso si la nota no tiene muro,
-                    que hoy no ocurre pero mañana no lo garantiza nadie. */}
-                <Link className="fila-cubre" aria-label="Abrir la nota en su muro"
-                  href={n.muro ? `${rutaEntidad(n.muro.tipo, n.muro.id)}#pub-${n.id}` : `/caso/${n.id}`} />
+              <div key={n.id} className="port-nota">
+                {/* ── SIN ENLACE ESTIRADO ──
+                    La nota lo tenía: la tarjeta entera abría el muro. Con
+                    reacciones y una caja de texto dentro, un enlace que cubre
+                    todo es un enlace que se traga los clics —o que te saca de
+                    la pantalla a mitad de escribir—. Las puertas ahora son
+                    explícitas: el chip del muro arriba, y «ver en su muro →»
+                    abajo, con el ancla de la nota. */}
                 <Avatar size={30} nombre={n.autor?.nombre} src={n.autor?.avatar_url} color={n.autor?.color} />
                 <div className="port-nota-cuerpo">
                   <div className="port-nota-cab">
                     <b className="port-nota-autor">{(n.autor?.nombre || "Alguien").split(" ")[0]}</b>
                     {n.muro && (
                       <Link href={rutaEntidad(n.muro.tipo, n.muro.id) || "/"}
-                        className="badge fila-encima port-nota-donde"
+                        className="badge port-nota-donde"
                         title={`Ir a ${n.muro.nombre}`}>
                         {ICO_ENT[n.muro.tipo] || "🔗"} {n.muro.nombre}
                       </Link>
@@ -602,15 +664,6 @@ export default async function Portada({ searchParams }: {
                     <span className="port-nota-cuando">{haceQue(n.creado_en)}</span>
                   </div>
                   {n.texto && <div className="port-nota-txt">{n.texto}</div>}
-                  {/* ── LAS FOTOS SE VEN ──
-                      Decían «📷 2 imágenes», que es el índice de un libro en vez
-                      del libro: media bitácora de este equipo ES la foto —el
-                      montaje, el rodaje, el papel firmado— y una nota que solo
-                      es una imagen se leía como una línea gris.
-                      Miniaturas cuadradas para que tres fotos de proporciones
-                      distintas no dibujen un escalón, y `fila-encima` para que
-                      el clic abra el visor en vez de irse a la ficha: la foto
-                      se mira aquí, la conversación está allá. */}
                   {/* ── LA CARA DEL ENLACE ──
                       Media bitácora es «mira esto» + una url. En texto plano,
                       «https://youtu.be/RfCl2UQzluY?si=…» no dice si es el corte
@@ -619,23 +672,53 @@ export default async function Portada({ searchParams }: {
                       `sinRed`: la miniatura y el tipo salen del patrón de la
                       url, sin pedirle nada al servidor — ver LinkPreviews. */}
                   {!!n.enlaces.length && (
-                    <div className="fila-encima">
-                      <LinkPreviews texto={n.enlaces.join("\n")} max={1} sinRed />
-                    </div>
+                    <LinkPreviews texto={n.enlaces.join("\n")} max={1} sinRed />
                   )}
+                  {/* ── LAS FOTOS, COMO EN SU MURO ──
+                      Decían «📷 2 imágenes», que es el índice de un libro en vez
+                      del libro: media bitácora de este equipo ES la foto —el
+                      montaje, el rodaje, el papel firmado— y una nota que solo
+                      era una imagen se leía como una línea gris.
+                      Probé miniaturas cuadradas de 68px «para que la lista no
+                      crezca», y una miniatura recortada de una foto de rodaje
+                      no es la foto: es el aviso de que hay una. Se enseñan con
+                      el mismo componente y el mismo alto que en el muro de su
+                      ficha, porque un muro es para MIRAR — y una portada que
+                      obliga a entrar para ver la foto no ahorra nada.
+                      El clic abre el visor, que es lo que se espera de una
+                      foto: mirarla aquí. La conversación está allá. */}
                   {!!n.fotos.length && (
-                    <div className="port-nota-fotos fila-encima">
-                      {n.fotos.slice(0, MURO_FOTOS).map((u: string, i: number) => (
-                        <Foto key={i} src={u} lado={68} />
+                    <div className="port-nota-fotos">
+                      {n.fotos.map((u: string, i: number) => (
+                        <Foto key={i} src={u} maxHeight={260} />
                       ))}
-                      {n.fotos.length > MURO_FOTOS && (
-                        <span className="port-nota-mas">+{n.fotos.length - MURO_FOTOS}</span>
-                      )}
                     </div>
                   )}
-                  {!n.corta && (
-                    <div className="port-nota-pie"><span>seguir leyendo →</span></div>
-                  )}
+                  {/* Reaccionar y responder, aquí mismo: el mismo pie que el
+                      muro de la ficha (components/NotaSocial.tsx). Lo que NO
+                      está es publicar, editar ni borrar — eso se administra
+                      donde vive la nota.
+                      `sinRed` viaja hasta los enlaces de cada respuesta: un
+                      hilo con urls encolaría una acción de servidor por
+                      tarjeta, y aquí hay nueve hilos. */}
+                  <NotaSocial pubId={n.id} userId={user.id}
+                    reacciones={n.reacciones} comentarios={n.comentarios}
+                    perfiles={equipo as any} deQuien={n.autor?.nombre} sinRed />
+                  {/* Al final del todo: es la salida, no un paso intermedio.
+                      Estaba entre el cuerpo y la barra de reacciones, o sea en
+                      mitad de la nota.
+                      `#pub-…` es el id que pinta el muro, así que la nota queda
+                      a la vista. Se va a la FICHA y no a `/caso/{id}`: el caso
+                      de una bitácora solo redirige al muro, o sea un render de
+                      servidor y un 307 para llegar donde ya sabemos ir. Sin
+                      muro (hoy no pasa, mañana quién sabe), el caso hace de
+                      respaldo. */}
+                  <div className="port-nota-pie">
+                    <Link className="port-nota-ir"
+                      href={n.muro ? `${rutaEntidad(n.muro.tipo, n.muro.id)}#pub-${n.id}` : `/caso/${n.id}`}>
+                      ver en su muro →
+                    </Link>
+                  </div>
                 </div>
               </div>
             ))}
