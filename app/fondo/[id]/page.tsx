@@ -32,6 +32,7 @@ import { integrantesDeFondo } from "@/lib/equipoFondo";
 import { urlPlataforma, PLAT } from "@/lib/plataformas";
 import { hilosDeFilas } from "@/lib/rendicionHilo";
 import { gastosDelFondo, ayudaRubro } from "@/lib/ejecutado";
+import RolesPresupuesto from "@/components/RolesPresupuesto";
 
 /* ── LA EJECUCIÓN DEL FONDO — la segunda vida de un proyecto ──
  *
@@ -732,6 +733,18 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
                   postulado={vigPresu?.datos || null}
                   postuladoEn={vigPresu?.creado_en || null} ocultarFijar
                   estimuloConcurso={ent.conv?.monto_adjudicado ? parseFloat(ent.conv.monto_adjudicado) : null} />
+                {/* ── POR ROL, DEBAJO DEL PRESUPUESTO ──
+                    Y no en la pestaña de Equipo, aunque hable de personas: es
+                    una LECTURA del presupuesto y tiene que estar donde se ven
+                    sus cifras, o los dos totales se comparan a ciegas entre
+                    pestañas. Plegado, porque el presupuesto sigue siendo lo
+                    primero que se viene a ver aquí. */}
+                <Plegable nivel={2} id={`fondo:${params.id}:presu:roles`} titulo="💼 Por rol — cuánto le toca a cada uno"
+                  abiertoPorDefecto={false}
+                  resumen={dim(preItems.length ? "presupuestado, girado y lo que falta" : "sin partidas")}>
+                  <RolesPresupuesto postulacionId={params.id} items={preItems as any}
+                    personas={personasCat} rhe={rheFondo as any} esAdmin={esAdmin} />
+                </Plegable>
                 <Plegable nivel={2} id={`fondo:${params.id}:presu:versiones`} titulo="🕑 Historial de versiones"
                   abiertoPorDefecto={false}
                   resumen={dim(versPresu.length ? `${versPresu.length} versión(es)` : "sin versiones")}>

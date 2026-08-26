@@ -4652,6 +4652,73 @@ export async function guardarPresupuesto(postulacionId: string, presupuesto: any
   return {};
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   ETIQUETAR UNA PARTIDA CON SU ROL Y SU PERSONA
+
+   El presupuesto se ordena por etapa y rubro —así lo pide DAFO—, pero para
+   girar un recibo hace falta lo contrario: cuánto suma UNA persona en todo el
+   proyecto. El rol solo está escrito en el `concepto`, a mano, y la misma
+   persona aparece como «Directora Responsable» en preproducción y «Directora»
+   en post. Agrupar por texto acierta casi siempre; cuando no, esto guarda la
+   corrección para no repetirla el mes que viene.
+
+   ── SIN MIGRACIÓN ──
+   `postulaciones.presupuesto` es un jsonb: `rol` y `persona_id` se escriben
+   dentro del ítem. Un presupuesto viejo simplemente no los tiene, y la
+   agrupación cae al concepto, que es lo que hacía antes.
+
+   ── SE LEE, SE TOCA Y SE GUARDA ENTERO ──
+   Es el mismo trato que `guardarPresupuesto`: el jsonb no se puede modificar
+   por partes desde aquí. Por eso se relee justo antes de escribir —no se usa
+   la copia que tenga la pantalla, que puede llevar un rato abierta— y solo se
+   tocan los ítems nombrados; el resto viaja de vuelta tal cual.
+   ══════════════════════════════════════════════════════════════════════════ */
+export async function etiquetarPartidas(
+  postulacionId: string, ids: string[], rol: string | null, personaId?: string | null,
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const objetivo = new Set((ids || []).filter(Boolean));
+  if (!objetivo.size) return { error: "No se dijo qué partidas etiquetar." };
+
+  const { data: post, error: eLeer } = await supabase.from("postulaciones")
+    .select("presupuesto").eq("id", postulacionId).maybeSingle();
+  if (eLeer) return { error: eLeer.message };
+  const pre: any = post?.presupuesto;
+  if (!pre?.items?.length) return { error: "Este fondo todavía no tiene presupuesto." };
+
+  const limpio = (rol || "").trim();
+  let tocados = 0;
+  const items = pre.items.map((it: any) => {
+    if (!objetivo.has(it.id)) return it;
+    tocados++;
+    return {
+      ...it,
+      /* Vacío = quitar la etiqueta y volver a agrupar por el concepto. Se
+         guarda `null` y no `""`: en un jsonb, un texto vacío es un valor que
+         hay que interpretar cada vez que se lee. */
+      rol: limpio || null,
+      /* `undefined` = no se dijo nada de la persona, así que no se toca. Es
+         distinto de `null`, que es «quítasela». */
+      ...(personaId === undefined ? {} : { persona_id: personaId || null }),
+    };
+  });
+  if (!tocados) return { error: "Ninguna de esas partidas está en el presupuesto." };
+
+  const { data, error } = await supabase.from("postulaciones")
+    .update({ presupuesto: { ...pre, items } }).eq("id", postulacionId).select("id");
+  if (error) return { error: error.message };
+  /* Sin filas devueltas = RLS. El `update` no falla, simplemente no alcanza a
+     ninguna: sin esto la pantalla diría «guardado» sobre algo que no se
+     guardó. Mismo trato que `guardarPresupuesto`. */
+  if (!data?.length) return { error: "No se guardó: no tienes permiso." };
+
+  revalidatePath(`/fondo/${postulacionId}`);
+  revalidatePath(`/entidad/postulacion/${postulacionId}`);
+  return { ok: tocados };
+}
+
 /* Guardar el presupuesto actual como PLANTILLA reusable (por categoría), como
    las plantillas del cronograma. Guarda solo la estructura del ítem (rubro,
    concepto, unidad, cantidad, costo unitario), no el split de fuentes —eso es

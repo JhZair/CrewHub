@@ -6081,3 +6081,63 @@ body{padding-top:var(--alto-franja, 0)}
 /* Quien prefiera la pantalla quieta —o lo necesite— no ve el latido: la marca
    sigue estando, que es lo que importa. */
 @media (prefers-reduced-motion:reduce){.nav-alarma{animation:none}}
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   POR ROL — cuánto le toca a cada uno (sección del presupuesto del fondo)
+   Rejilla de cinco columnas: rol, persona, y las tres cifras alineadas a la
+   derecha, que es como se leen los números que hay que restar. ══════════ */
+.rp{display:flex;flex-direction:column;gap:8px}
+.rp-cab{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.rp-dim{color:var(--dim);font-size:11.5px}
+.rp-vacio{color:var(--dim);font-size:12.5px;margin:4px 0}
+.rp-btn{font-size:11.5px;padding:4px 10px}
+/* Las sugerencias de unión: ámbar de «esto es una pregunta», no rojo de error. */
+.rp-sug{display:flex;flex-direction:column;gap:5px;border:1px solid rgba(244,180,0,.3);
+  background:rgba(244,180,0,.05);border-radius:10px;padding:8px 11px}
+.rp-sug-fila{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px;color:var(--muted)}
+.rp-sug-fila b{color:var(--text)}
+
+.rp-tabla{display:flex;flex-direction:column}
+.rp-fila{display:grid;grid-template-columns:minmax(0,1fr) 190px 120px 110px 110px;
+  gap:10px;align-items:center;padding:7px 4px;border-top:1px solid var(--border)}
+.rp-head{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);
+  font-weight:800;border-top:none}
+.rp-num{text-align:right;font-variant-numeric:tabular-nums;font-size:13px;font-weight:700}
+.rp-head .rp-num{font-weight:800}
+/* Lo que falta por girar: es la cifra que se viene a buscar. */
+.rp-falta{color:var(--yellow)}
+.rp-otras{display:block;font-size:9.5px;font-weight:400;color:var(--dim);white-space:nowrap}
+.rp-exceso{color:var(--red)}
+.rp-tit{display:flex;align-items:center;gap:8px;flex-wrap:wrap;text-align:left;
+  font-size:13px;color:var(--text);font-weight:600;background:none;border:none;
+  cursor:pointer;padding:0;min-width:0}
+.rp-tit:hover{color:var(--violet)}
+.rp-flecha{color:var(--dim);font-size:10px}
+.rp-lineas{color:var(--dim);font-size:10.5px;font-weight:400}
+.rp-etapa{font-size:10px;color:var(--muted);background:rgba(255,255,255,.05);
+  border-radius:6px;padding:1px 6px;white-space:nowrap}
+.rp-sel{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;
+  padding:4px 8px;font-size:12px;color:var(--text);outline:none}
+.rp-nota{font-size:11px;color:var(--yellow);padding:2px 4px 6px 22px;line-height:1.5}
+
+.rp-detalle{display:flex;flex-direction:column;gap:3px;margin:2px 0 8px;padding:8px 10px;
+  background:var(--bg);border-radius:10px}
+.rp-linea{display:grid;grid-template-columns:52px minmax(0,1fr) auto auto 100px;
+  gap:8px;align-items:center;font-size:12px;color:var(--muted)}
+.rp-id{color:var(--dim);font-family:ui-monospace,Menlo,monospace;font-size:11px}
+.rp-concepto{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rp-etq{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px;
+  padding-top:6px;border-top:1px solid var(--border)}
+.rp-input{background:var(--bg);border:1px solid var(--border2);border-radius:8px;
+  padding:5px 10px;font-size:12.5px;color:var(--text);outline:none;min-width:200px}
+.rp-pie{color:var(--dim);font-size:10.5px;line-height:1.6;margin:2px 0 0}
+/* En pantalla angosta la rejilla de cinco no cabe: las cifras bajan y se leen
+   en dos filas antes que salirse. */
+@media(max-width:820px){
+  .rp-fila{grid-template-columns:minmax(0,1fr) 110px 110px}
+  .rp-fila > :nth-child(2){grid-column:1/-1}
+  .rp-head{display:none}
+  .rp-linea{grid-template-columns:minmax(0,1fr) auto}
+  .rp-linea > :nth-child(1),.rp-linea > :nth-child(3){display:none}
+}
