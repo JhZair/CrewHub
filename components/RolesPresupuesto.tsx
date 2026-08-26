@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { etiquetarPartidas } from "@/app/actions";
 import { useAviso } from "@/components/useConfirmar";
 import {
-  agruparPorRol, unionesSugeridas, filasPorPersona, totalItem, etapaDe,
+  agruparPorRol, unionesSugeridas, filasPorPersona, totalItem, etapaDe, normalizarRol,
   type ItemRol, type GrupoRol,
 } from "@/lib/rolesPresupuesto";
 import { ROLES_EQUIPO } from "@/lib/rolesEquipo";
@@ -47,6 +47,8 @@ export default function RolesPresupuesto({
   const { avisar, aviso } = useAviso();
   const [abierto, setAbierto] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
+  /* Setenta y siete roles no se leen: se busca en ellos. */
+  const [q, setQ] = useState("");
 
   const nombreDe = useMemo(
     () => new Map(personas.map(p => [p.id, p.alias || p.nombre])),
@@ -70,6 +72,25 @@ export default function RolesPresupuesto({
     () => filasPorPersona(grupos, id => giradoPorPersona.get(id) || 0),
     [grupos, giradoPorPersona]);
 
+  /* ── EL BUSCADOR ──
+     Por el rol, por la persona y por el CONCEPTO de sus líneas: quien busca
+     «cámara» puede estar buscando el operador o el alquiler, y quien busca
+     «Katy» no sabe cómo se llama su rol. Se compara sin tildes ni mayúsculas
+     con la misma función que agrupa —dos formas de normalizar acabarían
+     encontrando cosas distintas—. */
+  const filtradas = useMemo(() => {
+    const t = normalizarRol(q);
+    if (!t) return filas;
+    return filas.filter(f =>
+      normalizarRol(f.titulo).includes(t)
+      || (f.personaId && normalizarRol(nombreDe.get(f.personaId) || "").includes(t))
+      || f.grupos.some(g => g.items.some(i => normalizarRol(i.concepto).includes(t)))
+      || f.grupos.some(g => g.porEtapa.some(e => normalizarRol(e.etapa).includes(t))));
+  }, [filas, q, nombreDe]);
+
+  /* El total es SIEMPRE el del presupuesto entero, con filtro o sin él: un
+     total que cambia al escribir en un buscador es un total que nadie puede
+     usar para cuadrar. Lo que filtra el buscador es qué filas se ven. */
   const totalPre = filas.reduce((s, f) => s + f.presupuestado, 0);
   /* Lo girado a quien NO tiene partida: la diferencia entre todos los recibos
      del fondo y los que sí caen en una fila. */
@@ -110,7 +131,18 @@ export default function RolesPresupuesto({
       <div className="rp-cab">
         <b>💼 Cuánto le toca a cada uno</b>
         <span className="rp-dim">
-          {filas.length} rol(es) · {S(totalPre)} presupuestado
+          {q ? `${filtradas.length} de ${filas.length} rol(es)` : `${filas.length} rol(es)`}
+          {" · "}{S(totalPre)} presupuestado
+        </span>
+        <span style={{ flex: 1 }} />
+        <span className="rp-buscar">
+          <input value={q} onChange={e => setQ(e.target.value)}
+            className="rp-input" type="search"
+            aria-label="Buscar un rol, una persona o una partida"
+            placeholder="Buscar rol, persona o partida…" />
+          {q && (
+            <button type="button" className="rp-x" title="Limpiar" onClick={() => setQ("")}>✕</button>
+          )}
         </span>
       </div>
 
@@ -130,6 +162,23 @@ export default function RolesPresupuesto({
                 onClick={() => etiquetar([a, b], a.titulo)}>
                 sí, unir como «{a.titulo}»
               </button>
+              {/* ── DECIR QUE NO TAMBIÉN ES UNA DECISIÓN ──
+                  «Operador de cámara 01» y «02» son dos personas, y la
+                  sugerencia volvía a salir en cada visita: una lista que
+                  pregunta lo mismo cada día se cierra sin leer, y ahí dentro se
+                  pierde la que sí importaba. Descartar deja a cada grupo con SU
+                  nombre escrito —y un grupo con nombre puesto a mano ya no se
+                  propone—, así que la respuesta se guarda igual que el sí. */}
+              <button className="btn btn-ghost rp-btn" disabled={ocupado}
+                title="Cada uno se queda como está, con su propio nombre, y deja de proponerse"
+                onClick={() => correr(async () => {
+                  const r1: any = await etiquetarPartidas(
+                    postulacionId, a.items.map(i => i.id), a.titulo);
+                  if (r1?.error) return r1;
+                  return etiquetarPartidas(postulacionId, b.items.map(i => i.id), b.titulo);
+                })}>
+                no, son distintos
+              </button>
             </div>
           ))}
         </div>
@@ -144,7 +193,7 @@ export default function RolesPresupuesto({
           <span className="rp-num">Falta</span>
         </div>
 
-        {filas.map(f => {
+        {filtradas.map(f => {
           const clave = f.grupos.map(g => g.clave).join("|");
           const mezclado = f.grupos.some(g => g.personas.length > 1);
           return (
@@ -271,6 +320,11 @@ export default function RolesPresupuesto({
             </div>
           );
         })}
+        {q && !filtradas.length && (
+          <div className="rp-vacio" style={{ padding: "10px 4px" }}>
+            Ningún rol, persona ni partida dice «{q}».
+          </div>
+        )}
       </div>
 
       <datalist id="roles-presu">
