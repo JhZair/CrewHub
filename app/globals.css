@@ -6183,6 +6183,13 @@ body{padding-top:var(--alto-franja, 0)}
    dice lo que dice. */
 .cl-cod{font-size:9.5px;color:var(--dim);font-style:normal;line-height:1.4}
 .cl-falta{border-color:rgba(244,180,0,.5)}
+/* A quién va dirigida: en violeta tenue porque es lo ÚNICO que delata una
+   carta ajena, y cuatro de las nuestras lo eran. */
+.cl-dest{color:var(--violet);opacity:.85}
+.cl-ajena{display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--dim);
+  cursor:pointer;margin-top:2px}
+.cl-ajena input{margin:0}
+.cl-ajena:hover{color:var(--text)}
 .cl-err{grid-column:1/-1;font-size:11px;color:var(--yellow);line-height:1.5}
 .cl-pie{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .cl-hechas{color:var(--green);font-size:12px;font-weight:700}
@@ -6205,6 +6212,12 @@ body{padding-top:var(--alto-franja, 0)}
 .rc-full{width:100%}
 .rc-ancho{width:100%}
 .rc-ayuda{font-size:10.5px;color:var(--dim);line-height:1.45}
+/* «No es nuestra»: en su propia caja, porque cambia lo que la carta significa
+   —deja de pedir nada— y no es una casilla más del formulario. */
+.rc-ajena{display:flex;flex-direction:column;gap:7px;padding:9px 11px;border-radius:10px;
+  border:1px solid rgba(244,180,0,.28);background:rgba(244,180,0,.05)}
+.rc-check{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);cursor:pointer}
+.rc-check b{color:var(--text)}
 
 /* ══════════════════════════════════════════════════════════════════════════
    📍 VIDA DEL FONDO — la línea de tiempo de la ejecución

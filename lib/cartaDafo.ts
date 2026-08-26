@@ -51,6 +51,13 @@ export type CartaLeida = {
   plazoDias: number | null;
   /** Quién firma («CHAVEZ HUAMAN Erika»). */
   firmante: string | null;
+  /** A QUIÉN va dirigida («ALMICAR ESCALANTE QUILLANUAMAN»). No es un adorno:
+   *  la Plataforma nos notificó una vez el requerimiento de otro beneficiario,
+   *  y lo único que lo delataba era este nombre. Enseñarlo en cada fila hace
+   *  que el error salte al cargar, no dos años después. */
+  destinatario: string | null;
+  /** La entidad destinataria, la línea de debajo del cargo. */
+  entidad: string | null;
   /** Lo que hay que decirle a quien carga: un PDF con dos cartas dentro, un
    *  plazo que no se pudo leer con certeza. Vacío = todo limpio. */
   aviso: string | null;
@@ -58,7 +65,8 @@ export type CartaLeida = {
 
 export const CARTA_VACIA: CartaLeida = {
   numero: null, codigo: null, fecha: null, hora: null, asunto: null,
-  acta: null, plazoDias: null, firmante: null, aviso: null,
+  acta: null, plazoDias: null, firmante: null, destinatario: null,
+  entidad: null, aviso: null,
 };
 
 /* ── EL TEXTO, PLANCHADO ──
@@ -221,6 +229,25 @@ export function leerCarta(textoCrudo: string): CartaLeida {
   const mFir = t.match(/Firmado\s+digitalmente\s+por\s+([A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑáéíóúñ\s]{4,60}?)\s+(?:FAU|FIR)\b/);
   const firmante = mFir ? mFir[1].replace(/\s+/g, " ").trim() : null;
 
+  /* ── A QUIÉN VA DIRIGIDA ──
+     El encabezado es siempre el mismo:
+        Señor :
+        ALMICAR ESCALANTE QUILLANUAMAN     ← el nombre
+        Presidente                          ← el cargo
+        ASOCIACION DE PRODUCTORES…          ← la entidad
+        Presente . -
+     Se corta en «Presente» y se toman la primera línea y la última. */
+  let destinatario: string | null = null, entidad: string | null = null;
+  const mDest = t.match(/Se[ñn]or(?:a|es)?\s*:\s*([\s\S]{0,240}?)Presente\s*[.\-]/i);
+  if (mDest) {
+    const lineas = mDest[1].split("\n").map(s => s.trim()).filter(Boolean);
+    destinatario = lineas[0] || null;
+    /* La entidad solo si hay más de una línea: en una carta a una persona
+       natural no hay entidad, y repetir su nombre ahí diría que es una
+       asociación que no existe. */
+    entidad = lineas.length > 1 ? lineas[lineas.length - 1] : null;
+  }
+
   const avisos = [
     otros.length
       ? `El PDF menciona también ${otros.join(", ")}. Se toma la del sello de firma; si la buena es otra, cámbiala aquí.`
@@ -231,7 +258,7 @@ export function leerCarta(textoCrudo: string): CartaLeida {
   ].filter(Boolean);
   const aviso = avisos.length ? avisos.join(" ") : null;
 
-  return { numero, codigo, fecha, hora, asunto, acta, plazoDias, firmante, aviso };
+  return { numero, codigo, fecha, hora, asunto, acta, plazoDias, firmante, destinatario, entidad, aviso };
 }
 
 /* ══════════════════════════════════════════════════════════════════════════

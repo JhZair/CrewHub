@@ -171,6 +171,11 @@ export async function registrarCarta(f: {
    *  validador documental y quién firma. Ver lib/cartaDafo.ts. */
   codigo?: string | null;
   firmante?: string | null;
+  /** A quién iba dirigida, tal como sale del PDF. */
+  destinatario?: string | null;
+  /** `true` = nos la notificaron a nosotros pero NO es nuestra. Queda como
+   *  prueba de que se notificó mal, sin fondo, sin plazo y sin pedir nada. */
+  ajena?: boolean;
 }) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -226,18 +231,27 @@ export async function registrarCarta(f: {
     doc_url: docUrl || null,
     doc_codigo: (f.codigo || "").trim().toUpperCase() || null,
     firmante: (f.firmante || "").trim() || null,
-    responder_hasta: f.responderHasta || null,
+    destinatario: (f.destinatario || "").trim() || null,
+    ajena: !!f.ajena,
+    /* ── LA QUE NO ES NUESTRA NO TIENE RELOJ ──
+       Aunque la carta traiga «diez días hábiles», ese plazo es de otro. Se
+       guarda el documento, no la obligación: un vencimiento ajeno en nuestra
+       lista de pendientes es una alarma que nadie puede apagar cumpliendo. */
+    responder_hasta: f.ajena ? null : (f.responderHasta || null),
     /* Una carta que alguien se tomó el trabajo de registrar pide algo por
        definición: si no pidiera nada, no estaría aquí. Salvo que ya se haya
-       contestado — entonces ya no pide nada, y volver a marcarla la resucitaría
-       en la lista de pendientes. */
-    pide_accion: !(yaHay as any)?.respondido_en,
+       contestado —entonces ya no pide nada, y volver a marcarla la resucitaría
+       en la lista de pendientes— o que sea de otro. */
+    pide_accion: !f.ajena && !(yaHay as any)?.respondido_en,
   };
   /* ⚠ EL VÍNCULO SOLO SE ESCRIBE SI SE DIJO. Yendo siempre en el payload, un
      `null` viajaba en el `upsert` y volver a registrar la misma carta sin
      elegir fondo la DESVINCULABA — desaparecía de la vida del fondo sin que
-     nadie tocara nada. Lo que no se dice, no se toca. */
-  if (f.postulacionId) {
+     nadie tocara nada. Lo que no se dice, no se toca.
+     Y una carta ajena no se cuelga de ningún fondo NUESTRO aunque alguien lo
+     elija por error en el desplegable: aparecería en su línea de tiempo como
+     si nos hubieran requerido a nosotros. */
+  if (f.postulacionId && !f.ajena) {
     fila.postulacion_id = f.postulacionId;
     fila.vinculo_por = "manual";
     if (empresaId) fila.empresa_id = empresaId;

@@ -49,6 +49,8 @@ export default function RegistrarCarta({
         docUrl: String(d.get("url") || ""),
         responderHasta: String(d.get("hasta") || "") || null,
         sistema: String(d.get("sistema") || ""),
+        destinatario: String(d.get("destinatario") || ""),
+        ajena: d.get("ajena") === "on",
       });
       if (r?.error) { avisar(r.error); return; }
       setAbierto(false);
@@ -117,6 +119,26 @@ export default function RegistrarCarta({
               El asunto suele decirlo: «…del acta de compromiso N° 061-2023-DAFO».
             </span>
           </label>
+          {/* ── LA QUE NO ES NUESTRA ──
+              Pasó de verdad: nos notificaron cuatro veces el requerimiento del
+              acta 061-2023-DAFO, dirigido a otro presidente y otra asociación.
+              Eso no se borra —es la prueba de que ese día nos notificaron algo
+              que no nos correspondía— pero tampoco puede reclamarnos nada: se
+              guarda sin fondo, sin plazo y fuera de los pendientes. */}
+          <div className="rc-ajena">
+            <label className="rc-check">
+              <input type="checkbox" name="ajena" />
+              <b>No es nuestra</b> — nos la notificaron por error, va dirigida a otro beneficiario
+            </label>
+            <label className="rc-lbl rc-full">
+              ¿A nombre de quién viene?
+              <input name="destinatario" className="rp-input rc-ancho"
+                placeholder="ROBERTO TAFUR SHUPINGAHUA · ASOCIACIÓN … — quien figura en la carta" />
+              <span className="rc-ayuda">
+                Es lo que explica, dentro de un año, por qué está marcada como ajena.
+              </span>
+            </label>
+          </div>
           <label className="rc-lbl rc-full">
             Enlace al documento
             <input name="url" className="rp-input rc-ancho"

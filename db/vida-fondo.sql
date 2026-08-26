@@ -106,6 +106,24 @@ alter table dafo_comunicaciones add column if not exists doc_codigo text;
 /* Quién la firma. No es adorno: la carta la firma una dirección concreta y a
    esa se le responde. */
 alter table dafo_comunicaciones add column if not exists firmante text;
+
+/* ── LA QUE NO ES NUESTRA ──
+   Pasó de verdad: la Plataforma nos notificó cuatro veces el SEGUNDO
+   REQUERIMIENTO del acta 061-2023-DAFO, dirigido a otro beneficiario —otro
+   presidente, otra asociación—. Casi con seguridad querían notificarnos a
+   nosotros y cargaron el documento equivocado.
+
+   Eso NO se borra: es la prueba de que en esa fecha nos notificaron algo que
+   no nos correspondía, y el día que alguien diga «se le requirió y no
+   contestó», la respuesta es enseñar esto. Pero tampoco puede pedirnos nada:
+   sin fondo, sin plazo y fuera de la lista de pendientes.
+   Por eso una columna y no un borrado — y por eso una columna y no una nota
+   suelta: «no es nuestra» tiene consecuencias en tres pantallas, y una nota no
+   las puede tener. */
+alter table dafo_comunicaciones add column if not exists ajena boolean not null default false;
+/* A quién iba dirigida de verdad. Es lo que delata el error, y sin guardarlo
+   dentro de un año nadie sabría por qué esta carta está marcada como ajena. */
+alter table dafo_comunicaciones add column if not exists destinatario text;
 /* Hasta cuándo hay que contestar, y cuándo se contestó.
    Un requerimiento NO es historia, es un reloj: «SEGUNDO REQUERIMIENTO» quiere
    decir que ya pasó un plazo. `pide_accion` decía que algo pedía algo; esto
@@ -171,6 +189,7 @@ select
   (select count(*) from information_schema.columns
     where table_name = 'dafo_comunicaciones'
       and column_name in ('origen','doc_numero','doc_url','doc_codigo','firmante',
+                          'ajena','destinatario',
                           'responder_hasta','respondido_en','respuesta_url')) as columnas_nuevas,
   (select is_nullable from information_schema.columns
     where table_name = 'dafo_comunicaciones' and column_name = 'gmail_msg_id') as gmail_opcional,

@@ -45,6 +45,9 @@ type Fila = {
   variosFondos?: boolean;
   /** No entra en el registro (PDF repetido en la misma lista). */
   fuera?: boolean;
+  /** Nos la notificaron pero va dirigida a otro: se guarda como prueba del
+   *  error, sin fondo y sin plazo. */
+  ajena?: boolean;
   error?: string | null;
 };
 
@@ -141,6 +144,7 @@ export default function CartasLote({
             postulacionId: f.postId || null,
             docUrl: url, responderHasta: f.hasta || null,
             codigo: f.carta.codigo, firmante: f.carta.firmante,
+            destinatario: f.carta.destinatario, ajena: !!f.ajena,
             sistema: "SGD",
           });
           if (r?.error) { set(i, { error: r.error }); continue; }
@@ -201,6 +205,23 @@ export default function CartasLote({
                 <span className="cl-arch" title={f.archivo.name}>
                   {f.hecha ? "✓ " : ""}{f.archivo.name}
                   {f.carta.codigo && <i className="cl-cod">código {f.carta.codigo}</i>}
+                  {/* ── A QUIÉN VA DIRIGIDA ──
+                      Aquí saltó el error de verdad: cuatro cartas notificadas
+                      a nosotros iban a nombre de otro presidente y otra
+                      asociación. Sin este renglón, se habrían registrado como
+                      nuestras y habrían pedido una respuesta que no nos tocaba
+                      dar. */}
+                  {f.carta.destinatario && (
+                    <i className="cl-cod cl-dest">
+                      para {f.carta.destinatario}
+                      {f.carta.entidad ? ` · ${f.carta.entidad}` : ""}
+                    </i>
+                  )}
+                  <label className="cl-ajena" title="Nos la notificaron, pero va dirigida a otro beneficiario">
+                    <input type="checkbox" checked={!!f.ajena} disabled={f.hecha || ocupado}
+                      onChange={e => set(i, { ajena: e.target.checked })} />
+                    no es nuestra
+                  </label>
                 </span>
                 <span className="cl-num">
                   <input value={f.numero} disabled={f.hecha || ocupado}
@@ -221,7 +242,7 @@ export default function CartasLote({
                   {f.carta.hora && <i className="cl-cod">firmada {f.carta.hora}</i>}
                 </span>
                 <span>
-                  <input type="date" value={f.hasta} disabled={f.hecha || ocupado}
+                  <input type="date" value={f.ajena ? "" : f.hasta} disabled={f.hecha || ocupado || !!f.ajena}
                     aria-label={`Plazo para responder de ${f.archivo.name}`}
                     onChange={e => set(i, { hasta: e.target.value })}
                     className="rp-input cl-inp" />
@@ -230,7 +251,7 @@ export default function CartasLote({
                     : <i className="cl-cod">la carta no pone plazo</i>}
                 </span>
                 <span>
-                  <select value={f.postId} disabled={f.hecha || ocupado}
+                  <select value={f.ajena ? "" : f.postId} disabled={f.hecha || ocupado || !!f.ajena}
                     aria-label={`Fondo de ${f.archivo.name}`}
                     onChange={e => set(i, { postId: e.target.value })}
                     className={`rp-sel cl-inp${f.postId ? "" : " cl-falta"}`}>

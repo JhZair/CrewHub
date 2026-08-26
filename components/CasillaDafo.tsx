@@ -34,6 +34,11 @@ type Com = {
   leido_en: string | null;
   caso_id: string | null;
   postulacion_id: string | null;
+  /* Nos la notificaron pero va dirigida a otro beneficiario. Ver
+     db/vida-fondo.sql: no se borra —es la prueba de que se notificó mal— pero
+     no cuelga de ningún fondo nuestro ni pide nada. */
+  ajena?: boolean | null;
+  destinatario?: string | null;
   post?: { id: string; codigo: string | null; proy?: { nombre?: string | null } | null } | null;
   emp?: { id: string; nombre: string | null } | null;
 };
@@ -454,6 +459,15 @@ export default function CasillaDafo({
           <span style={{ fontWeight: 700, fontSize: 13.5, flex: 1, minWidth: 220 }}>
             {alarma ? "🚨 " : esAcuse(c.asunto) ? "🧾 " : ""}{c.asunto || "(sin asunto)"}
           </span>
+          {/* Que no es nuestra se dice EN LA FILA, no en un detalle: si no,
+              dentro de un año alguien la lee como un requerimiento propio sin
+              contestar y se lleva un susto que no toca. */}
+          {c.ajena && (
+            <span className="badge" title={c.destinatario ? `Va dirigida a ${c.destinatario}` : "Nos la notificaron por error"}
+              style={{ color: "var(--yellow)", background: "rgba(244,180,0,.12)", fontWeight: 700 }}>
+              ⚠ no es nuestra{c.destinatario ? ` · ${c.destinatario}` : ""}
+            </span>
+          )}
           {chipVinculo(c)}
           <span style={{ color: "var(--dim)", fontSize: 11 }}>{hace(c.recibido_en)}</span>
         </div>
