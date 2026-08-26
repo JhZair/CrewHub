@@ -173,9 +173,14 @@ export default async function FondosPage() {
   /* Las dos EN PARALELO: eran dos `await` seguidos, y esta pantalla ya se
      desencascadó una vez a propósito. Dos esperas en serie por dos datos que
      no dependen entre sí son un viaje regalado en cada visita. */
-  const [vivas, { data: perfilYo, error: ePerfilYo }] = await Promise.all([
+  const [vivas, { data: perfilYo, error: ePerfilYo }, { data: equipoAct }] = await Promise.all([
     alarmasVivas(supabase),
     supabase.from("perfiles").select("es_admin,es_finanzas").eq("id", user.id).maybeSingle(),
+    /* El equipo, para elegir a quién le toca la alarma. Va en la misma tanda:
+       tres esperas en serie por tres datos que no dependen entre sí sería
+       regalar dos viajes en cada visita. */
+    supabase.from("perfiles").select("id,nombre,avatar_url,color")
+      .eq("activo", true).order("nombre"),
   ]);
   const alarmaDe = new Map<string, any>();
   for (const a of vivas) {
@@ -428,7 +433,7 @@ export default async function FondosPage() {
           <BotonAlarma entidadTipo="postulacion" entidadId={f.id}
             tituloSugerido={`${f.codigo}${f.proy?.nombre ? ` · ${f.proy.nombre}` : ""}: `}
             esAdmin={puedeAlarma} alarma={alarmaDe.get(f.id) || null}
-            vivas={vivas.length} compacto />
+            vivas={vivas.length} equipo={(equipoAct || []) as any[]} compacto />
         </div>
       )}
       {cs && cs.total > 0 && (

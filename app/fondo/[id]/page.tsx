@@ -655,7 +655,8 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
           pantalla donde uno viene a entender qué pasa. */}
       <BotonAlarma entidadTipo="postulacion" entidadId={params.id}
         tituloSugerido={`${ent.codigo || "Este fondo"}: `}
-        esAdmin={esAdmin} alarma={miAlarma} vivas={vivasAlarmas.length} />
+        esAdmin={esAdmin} alarma={miAlarma} vivas={vivasAlarmas.length}
+        equipo={(pf.data || []) as any[]} />
 
       {/* ── Cabecera del fondo ── */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", margin: "4px 0 2px" }}>

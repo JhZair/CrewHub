@@ -5793,3 +5793,21 @@ body{padding-top:var(--alto-franja, 0)}
 .alarma-botones{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .alarma-botones .btn{font-size:12px;padding:5px 12px}
 .fondo-alarma{display:block}
+
+/* ── QUIÉN ATIENDE LA ALARMA ──
+   Con cara y con nombre. La primera pregunta al ver un rojo es «¿me toca a
+   mí?», y una lista de nombres en texto plano obliga a leerla entera para
+   contestarla; una fila de caras se contesta de un vistazo. */
+.alarma-gente{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.alarma-quien{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;
+  color:var(--text);background:var(--card);border:1px solid var(--border);
+  border-radius:999px;padding:2px 9px 2px 3px}
+/* El que lleva el caso se dice, no se deduce del orden: «somos tres» sin decir
+   quién responde es la forma elegante de que no responda ninguno. */
+.alarma-jefe{color:#ff8a92;font-size:9.5px;text-transform:uppercase;letter-spacing:.3px}
+.alarma-elegible{cursor:pointer;font-family:inherit;opacity:.55}
+.alarma-elegible:hover{opacity:.85}
+.alarma-elegible.on{opacity:1;border-color:rgba(239,68,68,.6);
+  background:rgba(239,68,68,.14)}
+.alarma-elegir{display:flex;flex-direction:column;gap:6px}
+.alarma-franja-quien{color:#ffd9dc;opacity:.8;font-size:11.5px;white-space:nowrap}

@@ -8652,7 +8652,7 @@ export async function alarmasVivas(cliente?: any) {
      más en cada navegación, y este se pregunta en todas. */
   const supabase = cliente || createClient();
   const { data, error } = await supabase.from("alarmas")
-    .select("id,entidad_tipo,entidad_id,titulo,motivo,revisar_el,caso_id,encendida_en," +
+    .select("id,entidad_tipo,entidad_id,titulo,motivo,revisar_el,caso_id,encendida_en,involucrados," +
             "quien:perfiles!encendida_por(nombre)")
     .is("apagada_en", null).order("encendida_en", { ascending: false });
   /* Sin tabla —migración sin correr— NO es un error que se enseñe: el sistema
@@ -8670,14 +8670,37 @@ export async function alarmasVivas(cliente?: any) {
     }
     return [];
   }
-  return (data || []).map((a: any) => ({
-    ...a, quien: Array.isArray(a.quien) ? a.quien[0] : a.quien,
+  const filas = (data || []) as any[];
+
+  /* ── LAS CARAS DE QUIENES LA ATIENDEN ──
+     Los involucrados se guardan como arreglo de ids (ver db/alarmas.sql) y
+     aquí se les pone cara, en UNA consulta para todas las alarmas: son dos o
+     tres personas por alarma y nunca más de un puñado de alarmas vivas.
+     Una consulta por alarma sería el patrón que este repositorio lleva medio
+     año quitando de todas partes. */
+  const ids = [...new Set(filas.flatMap(a => (a.involucrados || []) as string[]))];
+  const gente = new Map<string, any>();
+  if (ids.length) {
+    const { data: ps } = await supabase.from("perfiles")
+      .select("id,nombre,avatar_url,color").in("id", ids);
+    for (const p of (ps || []) as any[]) gente.set(p.id, p);
+  }
+
+  return filas.map((a: any) => ({
+    ...a,
+    quien: Array.isArray(a.quien) ? a.quien[0] : a.quien,
+    /* Los que ya no estén en `perfiles` —una cuenta borrada— se caen de la
+       lista en vez de salir como huecos: un avatar en blanco al lado de una
+       alarma se lee como que algo no cargó. */
+    gente: ((a.involucrados || []) as string[]).map(id => gente.get(id)).filter(Boolean),
   }));
 }
 
 export async function encenderAlarma(f: {
   entidadTipo: string; entidadId: string;
   titulo: string; motivo: string; revisarEl: string;
+  /** Quiénes la atienden. El primero queda como responsable del caso. */
+  involucrados: string[];
 }) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -8712,6 +8735,13 @@ export async function encenderAlarma(f: {
      justo de eso. */
   if (f.revisarEl < hoyLima()) return { error: "La fecha de revisión tiene que ser de hoy en adelante." };
 
+  /* ── SIN NOMBRES NO HAY ALARMA ──
+     Una alarma que ve todo el mundo y no lleva nadie sigue igual a los tres
+     días: cada uno da por hecho que la atiende otro. Es la diferencia entre
+     «esto es grave» y «esto es grave y lo lleva Fulano». */
+  const gente = [...new Set((f.involucrados || []).filter(Boolean))];
+  if (!gente.length) return { error: "Elige a quién le toca atenderla. Al menos una persona." };
+
   /* ── LA ALARMA PRIMERO, EL CASO DESPUÉS ──
      El orden estaba al revés: caso → vínculo → alarma. Si el tercer paso
      fallaba —y falla en cuanto ya hay una encendida sobre esa entidad, que es
@@ -8722,6 +8752,7 @@ export async function encenderAlarma(f: {
   const { data: al, error } = await supabase.from("alarmas").insert({
     entidad_tipo: f.entidadTipo, entidad_id: f.entidadId,
     titulo, motivo, revisar_el: f.revisarEl, encendida_por: user.id,
+    involucrados: gente,
   }).select("id").single();
   if (error) {
     /* 23505 = el índice único de «una viva por entidad». No es un fallo del
@@ -8743,6 +8774,10 @@ export async function encenderAlarma(f: {
     titulo: `🚨 ${titulo}`.slice(0, 200),
     cuerpo: [motivo, "", `— Abierto desde una ALARMA. Se revisa el ${f.revisarEl}.`].join("\n"),
     fecha_limite: f.revisarEl,
+    /* El primero de la lista lleva el caso. Un caso sin responsable en un
+       tablero de trescientos es un caso que nadie mira, y esto es justo el que
+       no puede pasar desapercibido. */
+    responsable: gente[0],
   }).select("id").single();
 
   if (pub) {
@@ -8764,12 +8799,20 @@ export async function encenderAlarma(f: {
      aprenda a ignorar los avisos — y entonces el siguiente tampoco se lee. */
   const { data: equipo } = await supabase.from("perfiles")
     .select("id").eq("activo", true).neq("id", user.id);
-  if (equipo?.length) {
-    await supabase.from("notificaciones").insert(equipo.map((p: any) => ({
-      usuario_id: p.id, publicacion_id: pub.id,
+  if (equipo?.length && pub) {
+    const aviso = (id: string) => ({
+      usuario_id: id, publicacion_id: pub.id,
       actor_nombre: perfil?.nombre || "Administración",
-      tipo: "asignacion", mensaje: `🚨 ALARMA: ${titulo}`,
-    })));
+      tipo: "asignacion" as const,
+      /* ── «TE TOCA» Y «ENTÉRATE» NO SON EL MISMO AVISO ──
+         Al equipo se le dice para que lo sepa; a quien la atiende, para que
+         actúe. Mandar el mismo texto a los diez hace que los dos que tienen
+         que moverse lo lean como una circular más. */
+      mensaje: gente.includes(id)
+        ? `🚨 TE TOCA — ALARMA: ${titulo}`
+        : `🚨 ALARMA: ${titulo}`,
+    });
+    await supabase.from("notificaciones").insert(equipo.map((p: any) => aviso(p.id)));
   }
 
   await supabase.from("actividad").insert({

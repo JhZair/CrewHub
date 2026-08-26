@@ -2,6 +2,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "@/components/Enlace";
+import Avatar from "@/components/Avatar";
 import { encenderAlarma, apagarAlarma } from "@/app/actions";
 import { olvidarZocalo } from "@/lib/zocalo";
 import { pieAlarma, estadoAlarma, AVISO_ESCASEZ, type Alarma } from "@/lib/alarmas";
@@ -21,7 +22,7 @@ import { pieAlarma, estadoAlarma, AVISO_ESCASEZ, type Alarma } from "@/lib/alarm
    fácil de «ponerle nivel bajo», que es como no encenderla pero con ruido.
    ══════════════════════════════════════════════════════════════════════════ */
 export default function BotonAlarma({
-  entidadTipo, entidadId, tituloSugerido, esAdmin, alarma, vivas = 0, compacto,
+  entidadTipo, entidadId, tituloSugerido, esAdmin, alarma, vivas = 0, compacto, equipo = [],
 }: {
   entidadTipo: string;
   entidadId: string;
@@ -34,11 +35,18 @@ export default function BotonAlarma({
   vivas?: number;
   /** En la tarjeta de una lista: solo el botón, sin el bloque de detalle. */
   compacto?: boolean;
+  /** El equipo entre el que se elige a quién le toca. */
+  equipo?: { id: string; nombre?: string | null; avatar_url?: string | null; color?: string | null }[];
 }) {
   const router = useRouter();
   const [abierto, setAbierto] = useState(false);
   const [apagando, setApagando] = useState(false);
   const [f, setF] = useState({ titulo: tituloSugerido || "", motivo: "", revisarEl: "" });
+  /* Quiénes la atienden. Es una LISTA ordenada y no un conjunto: el primero
+     queda como responsable del caso, y ese orden lo decide quien enciende. */
+  const [gente, setGente] = useState<string[]>([]);
+  const tocar = (id: string) => setGente(p =>
+    p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
   const [cierre, setCierre] = useState("");
   const [err, setErr] = useState("");
   const [ocupado, correr] = useTransition();
@@ -47,11 +55,13 @@ export default function BotonAlarma({
     setErr("");
     correr(async () => {
       const r: any = await encenderAlarma({
-        entidadTipo, entidadId, titulo: f.titulo, motivo: f.motivo, revisarEl: f.revisarEl,
+        entidadTipo, entidadId, titulo: f.titulo, motivo: f.motivo,
+        revisarEl: f.revisarEl, involucrados: gente,
       });
       if (r?.error) { setErr(r.error); return; }
       setAbierto(false);
       setF({ titulo: tituloSugerido || "", motivo: "", revisarEl: "" });
+      setGente([]);
       /* La franja de arriba vive del zócalo, que se guarda por ruta: sin
          olvidarlo, encender aquí no la enciende allí hasta cambiar de página. */
       olvidarZocalo();
@@ -83,6 +93,24 @@ export default function BotonAlarma({
           {e.aviso && <span className="alarma-vieja"> · {e.aviso}</span>}
         </div>
         {!compacto && <div className="alarma-motivo">{alarma.motivo}</div>}
+        {/* ── QUIÉN LA ATIENDE, CON CARA ──
+            La primera pregunta al ver un rojo es «¿me toca a mí?», y hasta
+            que no se contesta nadie hace nada. El primero lleva el caso: se
+            dice, porque «somos tres» sin decir quién responde es la forma
+            elegante de que no responda ninguno. */}
+        {!!alarma.gente?.length && (
+          <div className="alarma-gente">
+            <span className="alarma-nota">le toca a</span>
+            {alarma.gente.map((p, i) => (
+              <span key={p.id} className="alarma-quien"
+                title={i === 0 ? `${p.nombre} — lleva el caso` : p.nombre || ""}>
+                <Avatar size={18} nombre={p.nombre} src={p.avatar_url} color={p.color} />
+                <span>{p.nombre}</span>
+                {i === 0 && <b className="alarma-jefe">lleva el caso</b>}
+              </span>
+            ))}
+          </div>
+        )}
         <div className="alarma-pie">
           <span>{pieAlarma(alarma)}{alarma.quien?.nombre ? ` · la encendió ${alarma.quien.nombre}` : ""}</span>
           {alarma.caso_id && (
@@ -137,6 +165,30 @@ export default function BotonAlarma({
           placeholder="Qué pasa, en una línea (lo que verá todo el equipo)" />
         <textarea value={f.motivo} onChange={e => setF({ ...f, motivo: e.target.value })} rows={3}
           placeholder="Por qué es grave y qué hay que hacer. Quien lo lea tiene que poder actuar sin preguntarte." />
+        {/* ── A QUIÉN LE TOCA ──
+            Va ANTES de la fecha porque es la pregunta más difícil de las tres:
+            escribir el problema es fácil, poner nombre a quien lo arregla es
+            lo que convierte una queja en un encargo. */}
+        <div className="alarma-elegir">
+          <span className="alarma-nota">
+            ¿A quién le toca? El primero que marques lleva el caso.
+          </span>
+          <div className="alarma-gente">
+            {equipo.map(p => {
+              const i = gente.indexOf(p.id);
+              return (
+                <button key={p.id} type="button" disabled={ocupado}
+                  className={`alarma-quien alarma-elegible${i >= 0 ? " on" : ""}`}
+                  onClick={() => tocar(p.id)}
+                  title={i === 0 ? `${p.nombre} llevará el caso` : p.nombre || ""}>
+                  <Avatar size={18} nombre={p.nombre} src={p.avatar_url} color={p.color} />
+                  <span>{p.nombre}</span>
+                  {i === 0 && <b className="alarma-jefe">lleva el caso</b>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
         <label className="alarma-fecha">
           <span>Se revisa el</span>
           <input type="date" value={f.revisarEl}

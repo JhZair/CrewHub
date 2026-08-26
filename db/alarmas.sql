@@ -66,6 +66,20 @@ create table if not exists alarmas (
   -- alarma NO desaparece — el problema sigue existiendo.
   caso_id uuid references publicaciones(id) on delete set null,
 
+  /* ── QUIÉNES LA ATIENDEN ──
+     Una alarma sin nombres es un grito sin destinatario: todo el mundo la ve,
+     nadie es responsable, y a los tres días sigue igual porque cada uno da por
+     hecho que la lleva otro. El PRIMERO de la lista queda como responsable del
+     caso; los demás son el equipo que trabaja con él.
+     Un arreglo y no una tabla puente: son dos o tres personas por alarma, se
+     leen siempre junto a la alarma y no hay nada que consultar por su lado.
+     Una tabla aparte serían dos consultas para pintar tres avatares. */
+  involucrados uuid[] not null default '{}',
+
+  -- Al menos una persona. Es la regla que convierte «esto es grave» en «esto
+  -- es grave y lo lleva Fulano»: sin ella, la alarma es una queja.
+  constraint alarmas_con_dueno check (array_length(involucrados, 1) >= 1),
+
   /* ⚠ A `perfiles`, NO a `auth.users`. Es lo que permite traer el nombre
      embebido (`quien:perfiles!encendida_por`): PostgREST resuelve el embebido
      buscando una clave foránea hacia esa tabla, y sin ella la consulta ENTERA

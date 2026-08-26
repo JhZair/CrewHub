@@ -85,6 +85,14 @@ export default function FranjaAlarmas() {
           <Link key={a.id} href={a.caso_id ? `/caso/${a.caso_id}` : "/"}
             className="alarma-item" title={`${a.motivo}\n\n${pieAlarma(a)}`}>
             <b>🚨 {a.titulo}</b>
+            {/* Quién la lleva, en la propia franja: sin eso, cada uno de los
+                diez que la ven tiene que abrir el caso para saber si le toca a
+                él — y como abrirlo cuesta, no lo abre nadie. */}
+            {!!a.gente?.length && (
+              <span className="alarma-franja-quien">
+                le toca a {a.gente.map(p => p.nombre).filter(Boolean).join(", ")}
+              </span>
+            )}
             {/* La alarma se delata sola cuando pasa su fecha de revisión: deja
                 de hablar del problema y empieza a hablar de sí misma. Es lo
                 que impide que se quede encendida para siempre. */}

@@ -23,6 +23,10 @@ export type Alarma = {
   apagada_en?: string | null;
   /** El nombre de quien la encendió, si viajó embebido. */
   quien?: { nombre?: string | null } | null;
+  /** Los ids de quienes la atienden, en orden: el primero lleva el caso. */
+  involucrados?: string[] | null;
+  /** Esos mismos, ya con cara y nombre (los resuelve `alarmasVivas`). */
+  gente?: { id: string; nombre?: string | null; avatar_url?: string | null; color?: string | null }[];
 };
 
 /** Días enteros entre dos fechas ISO (positivo si la segunda es posterior). */
