@@ -5718,12 +5718,19 @@ mark.bq-marca{
    una caja pegada por delante en vez de una pestaña que cuelga.
    El solape lo aporta el margen negativo; el `padding-top` de más devuelve el
    espacio que queda tapado, para que el texto no nazca pegado al borde. */
-/* Más aire entre bloques desde que hay colgajos: con 8px, la pestaña de una
-   tarjeta quedaba a la misma distancia de SU tarjeta que de la siguiente, y
-   entonces parecía de la siguiente. Un colgajo que no se sabe de qué cuelga es
-   peor que no tenerlo. */
-.fondo-bloque{margin-bottom:16px;position:relative}
-.fondo-bloque .fondo-fila{margin-bottom:0}
+/* Los 16px de separación se probaron y sobraban: con los colgajos ya pegados a
+   su tarjeta —sin la rendija de un píxel— no hace falta tanto aire para saber
+   de quién cuelgan, y la lista de nueve fondos se estiraba una pantalla entera.
+   Se vuelve a la separación de siempre. */
+.fondo-bloque{margin-bottom:8px;position:relative}
+/* ── EL ORDEN DE PILA DEL BLOQUE ──
+   Todo se solapa un píxel para fundir los bordes, así que hay que decir quién
+   va delante: la tarjeta, luego la alarma, y la pestaña de casos al fondo. Sin
+   decirlo gana el último del documento —los casos—, y su borde se dibujaba por
+   encima del de la caja roja: una línea gris cruzando la alarma. */
+.fondo-bloque .fondo-fila{margin-bottom:0;position:relative;z-index:3}
+.fondo-alarma{position:relative;z-index:2}
+.fondo-casos{position:relative;z-index:1}
 .fondo-casos{display:inline-flex;align-items:center;gap:5px;margin:0 0 0 14px;
   padding:4px 10px 5px;font-size:11px;color:var(--muted);text-decoration:none;
   background:var(--card);border:1px solid var(--border);border-top:none;
