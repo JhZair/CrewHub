@@ -449,7 +449,10 @@ export default async function Caso({ params }: { params: { id: string } }) {
           No captura clics: el desplegable de estado sigue usable por debajo
           para reabrirlo, y el ✕ del sello lo aparta si estorba. Al recargar
           vuelve, porque es el estado del caso y no un aviso que se descarta. */}
-      <div className={`grid-meta grid-meta-5 est-${claseEstado(p.estado, p.tipo)}`}>
+      {/* Seis celdas cuando el caso lleva hora (una reunión): con `grid-meta-5`
+          clavado, «Creado» se caía sola a un segundo renglón. Mismo arreglo que
+          la vista rápida, que pinta esta misma cabecera. */}
+      <div className={`grid-meta grid-meta-${llevaHora(p.tipo) ? 6 : 5} est-${claseEstado(p.estado, p.tipo)}`}>
         {sello && <SelloResultado {...sello} variante="ficha" />}
         <div className="gm"><span className="k">Estado</span><EstadoSelect pubId={p.id} estado={p.estado} tipo={p.tipo} /></div>
         <div className="gm"><span className="k">Responsable</span>

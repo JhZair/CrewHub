@@ -152,7 +152,10 @@ export default function VistaRapida({ pubId }: { pubId: string }) {
           <div className="modal-caja vr-caja" role="dialog" aria-modal="true"
             aria-label="Vista rápida del caso" onMouseDown={e => e.stopPropagation()}>
             <div className="modal-cab">
-              <b>⚡ Vista rápida</b>
+              {/* «del caso»: este pop-up también existe para un objeto del
+                  repositorio y para una fila de la rendición, y los tres decían
+                  «Vista rápida» a secas. */}
+              <b>⚡ Vista rápida del caso</b>
               <span style={{ flex: 1 }} />
               <a href={`/caso/${pubId}`} target="_blank" rel="noopener noreferrer"
                 className="vr-abrir" title="Abrir el caso completo en otra pestaña">Abrir completo ↗</a>
@@ -168,7 +171,14 @@ export default function VistaRapida({ pubId }: { pubId: string }) {
                 {/* 1) Mini-cabecera: misma identidad de color por estado que el
                     caso completo (borde y tinte), con Estado / Responsable /
                     Fecha límite / Creado. */}
-                <div className={`grid-meta est-${claseEstado(caso.estado, caso.tipo)}`}>
+                {/* ── LAS CELDAS QUE HAYA, EN UNA SOLA FILA ──
+                    La rejilla base es de CUATRO columnas y aquí hay cinco
+                    —Estado, Responsable, Empieza, Fecha límite, Creado— o seis
+                    con la hora de una reunión. «Creado» se caía sola a un
+                    segundo renglón, con su raya izquierda puesta, y parecía un
+                    bloque aparte. Es el mismo remiendo que ya llevaba la ficha
+                    del caso (`grid-meta-5`), ahora también para seis. */}
+                <div className={`grid-meta grid-meta-${llevaHora(caso.tipo) ? 6 : 5} est-${claseEstado(caso.estado, caso.tipo)}`}>
                   <div className="gm">
                     <span className="k">Estado</span>
                     <select value={caso.estado} disabled={ocupado}
