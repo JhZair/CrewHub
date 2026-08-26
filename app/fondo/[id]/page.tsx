@@ -28,7 +28,7 @@ import SaldoDj from "@/components/SaldoDj";
 import Comprobantes from "@/components/Comprobantes";
 import EquipoFondo from "@/components/EquipoFondo";
 import CompromisosActa from "@/components/CompromisosActa";
-import { integrantesDeFondo } from "@/lib/equipoFondo";
+import { integrantesDeFondo, resumenEquipo } from "@/lib/equipoFondo";
 import { urlPlataforma, PLAT } from "@/lib/plataformas";
 import { hilosDeFilas } from "@/lib/rendicionHilo";
 import { gastosDelFondo, ayudaRubro } from "@/lib/ejecutado";
@@ -562,8 +562,19 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
   /* Cuánta gente hay en el fondo, para el contador de la pestaña. Se calcula
      con la MISMA función que pinta la lista: un número de cabecera que no sale
      de lo que hay debajo es el que acaba discrepando. */
-  const equipoDelFondo = integrantesDeFondo(
-    (eqp.data || []) as any[], rheFondo as any[], previstosFondo, personasMin as any).length;
+  const integrantesFondo = integrantesDeFondo(
+    (eqp.data || []) as any[], rheFondo as any[], previstosFondo, personasMin as any);
+  const equipoDelFondo = integrantesFondo.length;
+  /* ── LO GIRADO, ARRIBA DEL TODO ──
+     Estaba solo dentro de la pestaña Equipo, y es de las tres cifras que se
+     vienen a mirar: cuánto se aprobó, cuánto ha salido y a cuánta gente. Sale
+     de `resumenEquipo`, la MISMA cuenta que pinta esa pestaña — una cabecera
+     con su propia suma es la que acaba discrepando de lo que hay debajo. */
+  const resEquipo = resumenEquipo(integrantesFondo);
+  /* Los recibos que no dicen de quién son (sin persona, o de una persona
+     borrada) no entran en el cruce del equipo. Si los hay, la cifra de arriba
+     no es toda la plata girada, y eso se dice en vez de callarlo. */
+  const rheSinPersona = totRhe - resEquipo.montoGirado;
   const totInt = estadosFondo.reduce((s: number, e: any) => s + Number(e.intereses || 0), 0);
 
   /* ── LO QUE FALTA DEL BANCO, CONTADO UNA VEZ PARA LOS TRES ESCALONES ──
@@ -706,6 +717,20 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
         </div>
         <div className="fondo-cab">
           <Celda k="Estímulo" v={ent.monto_adjudicado ? fmt(parseFloat(ent.monto_adjudicado)) : "—"} destacado />
+          {/* ── LO GIRADO EN RHE ──
+              La cifra que contesta «¿por dónde vamos?». Vivía dentro de la
+              pestaña Equipo, a dos clics de la pantalla que se abre para
+              saberlo. Va junto al estímulo porque es contra él que se lee: los
+              dos son plata y la comparación es inmediata. */}
+          <Celda k="Girado en RHE"
+            v={resEquipo.montoGirado ? fmt(resEquipo.montoGirado) : "—"}
+            sub={resEquipo.montoGirado
+              ? `a ${resEquipo.girados} persona${resEquipo.girados === 1 ? "" : "s"}`
+                + (ent.monto_adjudicado && parseFloat(ent.monto_adjudicado) > 0
+                  ? ` · ${Math.round(resEquipo.montoGirado / parseFloat(ent.monto_adjudicado) * 100)}% del estímulo`
+                  : "")
+                + (rheSinPersona >= 1 ? ` · ⚠ ${fmt(rheSinPersona)} en recibos sin persona` : "")
+              : "todavía no se gira ningún recibo"} />
           <Celda k="Acta firmada" v={dmy(ent.fecha_firma_acta)} />
           <Celda k="Desembolso" v={ent.fecha_desembolso ? dmy(ent.fecha_desembolso) : "⚠ falta"}
             alerta={!ent.fecha_desembolso} />
@@ -1053,7 +1078,13 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
   );
 }
 
-function Celda({ k, v, destacado, alerta }: { k: string; v: string; destacado?: boolean; alerta?: boolean }) {
+function Celda({ k, v, sub, destacado, alerta }: {
+  k: string; v: string;
+  /** Segunda línea, chica: lo que matiza la cifra («a 5 personas»). Sin ella,
+   *  o cabía en el rótulo o se perdía. */
+  sub?: string;
+  destacado?: boolean; alerta?: boolean;
+}) {
   return (
     <div className="fondo-celda">
       <span className="fondo-celda-k">{k}</span>
@@ -1061,6 +1092,7 @@ function Celda({ k, v, destacado, alerta }: { k: string; v: string; destacado?: 
         color: alerta ? "var(--yellow)" : destacado ? "var(--teal)" : "var(--text)",
         fontWeight: destacado ? 700 : 600,
       }}>{v}</span>
+      {sub && <span className="fondo-celda-sub">{sub}</span>}
     </div>
   );
 }
