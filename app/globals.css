@@ -2783,7 +2783,10 @@ a.stat-card:hover{border-color:var(--border2)}
 .nav-cheb{font-size:9px;color:var(--dim)}
 /* Dónde estoy: el botón se enciende cuando estás dentro de una sección */
 .nav-menu .nav-aqui{background:rgba(124,92,255,.16);box-shadow:inset 0 -2px 0 var(--accent);color:var(--text)}
-.nav-lista{position:absolute;top:calc(100% + 6px);left:10px;z-index:50;min-width:210px;
+/* Nació como una lista de enlaces y hoy es un panel de control: cada entrada
+   lleva su ícono, su nombre, sus burbujas de pendientes y, si toca, la marca de
+   alarma. Con 210px eso se apretaba y las burbujas empujaban al texto. */
+.nav-lista{position:absolute;top:calc(100% + 6px);left:10px;z-index:50;min-width:284px;
   background:var(--panel);border:1px solid var(--border2);border-radius:12px;padding:5px;
   box-shadow:0 16px 44px rgba(0,0,0,.55)}
 .nav-item{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;
@@ -5867,6 +5870,19 @@ body{padding-top:var(--alto-franja, 0)}
    de meterse en ella, y con el aire de abajo se ve de quién cuelga. */
 .alarma-btn-min{margin:0 14px 0 0;padding:4px 12px 5px;
   border-radius:0 0 10px 10px;border-top:none}
+
+/* ── EL BOTÓN EN LA BARRA DE UNA FICHA ──
+   Ahí no cuelga de nada: es un control más de la barra, así que píldora normal
+   y sin el recorte de pestaña que lleva en las tarjetas de /fondos. */
+.ficha-alarma{display:inline-flex;position:relative}
+.ficha-alarma .alarma-btn-min{margin:0;padding:4px 12px;border-radius:999px;
+  border-top:1px solid rgba(239,68,68,.45)}
+/* El formulario compacto se despliega por encima, anclado a la derecha: dentro
+   de la barra empujaría la fila entera hacia abajo. */
+.alarma-pop-ancla{position:relative;display:block}
+.alarma-pop{position:absolute;top:calc(100% + 6px);right:0;z-index:60;
+  width:min(460px,86vw);background:var(--panel);
+  box-shadow:0 18px 48px rgba(0,0,0,.6)}
 
 /* La franja: rótulo, motivo y caras */
 .alarma-rotulo{letter-spacing:.4px;font-size:11px;flex:none}

@@ -148,14 +148,21 @@ export default function BotonAlarma({
       <button className={`alarma-btn${compacto ? " alarma-btn-min" : ""}`}
         onClick={() => setAbierto(true)}
         title="Encender una alarma: el equipo entero la ve en todas las pantallas hasta que se apague. Para lo grave que el sistema no puede deducir solo.">
-        🚨 {compacto ? "alarma" : "Encender alarma"}
+        {/* En compacto, la palabra sola. El 🚨 al lado de un botón chico, en
+            una barra que ya tiene íconos, se lee como decoración; «alarma» en
+            rojo no se confunde con nada. El title dice lo que hace. */}
+        {compacto ? "alarma" : "🚨 Encender alarma"}
       </button>
     );
   }
 
   const escasez = AVISO_ESCASEZ(vivas);
-  return (
-    <div className="alarma-caja alarma-caja-nueva">
+  /* ── EN COMPACTO EL FORMULARIO FLOTA ──
+     El botón chico vive en una barra de controles o colgando de una tarjeta;
+     abrir ahí dentro un bloque de cuatro campos empujaría toda la fila. Se
+     despliega POR ENCIMA, anclado a la derecha del botón. */
+  const cuerpo = (
+    <div className={`alarma-caja alarma-caja-nueva${compacto ? " alarma-pop" : ""}`}>
       <div className="alarma-tit">🚨 Encender una alarma</div>
       {/* Se dice ANTES de escribir, no después de guardar: quien está a punto
           de encender la tercera tiene que poder parar aquí. */}
@@ -211,4 +218,5 @@ export default function BotonAlarma({
       {err && <div className="err-inline">⚠ {err}</div>}
     </div>
   );
+  return compacto ? <span className="alarma-pop-ancla">{cuerpo}</span> : cuerpo;
 }

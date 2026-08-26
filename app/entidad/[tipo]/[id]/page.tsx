@@ -2178,22 +2178,36 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       <div className="topbar">
         <Volver />
         <span className="spacer" />
+        {/* ── ENCENDER, EN LA BARRA DE CONTROLES ──
+            El botón es un CONTROL, no contenido: va con los demás controles, al
+            extremo derecho de la barra de arriba. Puesto sobre la portada
+            competía con el nombre de la ficha y parecía que la persona o la
+            empresa ya tenían un problema. Solo aparece si no hay alarma
+            encendida: cuando la hay, lo que se enseña es la alarma. */}
+        {!miAlarma && (
+          <span className="ficha-alarma">
+            <BotonAlarma entidadTipo={params.tipo} entidadId={params.id}
+              tituloSugerido={`${nombre}: `} esAdmin={puedeAlarma} compacto
+              vivas={(alarmasEnt as any[]).length} equipo={(equipoAl || []) as any[]} />
+          </span>
+        )}
         <span style={{ color: "var(--dim)", fontSize: TXT.chip, textTransform: "uppercase", letterSpacing: 1 }}>
           {conf.icono} {params.tipo}
         </span>
       </div>
 
-      {/* ── LA ALARMA, ANTES QUE NADA ──
+      {/* ── LA ALARMA ENCENDIDA, ANTES QUE NADA ──
           Encima de la portada y del nombre: si alguien declaró que esto es
-          grave, es lo primero que hay que leer al entrar. Aquí sirve para
-          CUALQUIER entidad —una empresa que no responde, una persona con un
-          problema de contrato, una convocatoria mal cargada— porque la alarma
-          nació polimórfica (db/alarmas.sql). Un botón por sección habría sido
-          el mismo formulario copiado cinco veces. */}
-      <BotonAlarma entidadTipo={params.tipo} entidadId={params.id}
-        tituloSugerido={`${nombre}: `} esAdmin={puedeAlarma}
-        alarma={miAlarma} vivas={(alarmasEnt as any[]).length}
-        equipo={(equipoAl || []) as any[]} />
+          grave, es lo primero que hay que leer al entrar. Esto YA no es un
+          control, es el problema — por eso ocupa el ancho y no se esconde en
+          la barra. Sirve para CUALQUIER entidad porque la alarma nació
+          polimórfica (db/alarmas.sql): un botón por sección habría sido el
+          mismo formulario copiado cinco veces. */}
+      {miAlarma && (
+        <BotonAlarma entidadTipo={params.tipo} entidadId={params.id}
+          esAdmin={puedeAlarma} alarma={miAlarma}
+          vivas={(alarmasEnt as any[]).length} equipo={(equipoAl || []) as any[]} />
+      )}
 
       {/* Cabecera visual: banner de fondo + cartel encima. Editable por
           cualquiera del equipo, como el resto de la ficha. */}
