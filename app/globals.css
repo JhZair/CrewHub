@@ -1779,10 +1779,21 @@ button.sc-est:hover{border-color:var(--border2);background:var(--bg)}
 .mon-salir{margin-left:auto;color:var(--muted);font-size:12px}
 .mon-salir:hover{color:var(--red)}
 .mon-grid{flex:1;display:grid;grid-template-columns:1fr 1.5fr;gap:8px;padding:8px;min-height:0;box-sizing:border-box}
-.mon-pane{display:flex;flex-direction:column;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--card);min-width:0}
-.mon-h{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 11px;background:var(--panel);border-bottom:1px solid var(--border);font-size:11.5px;color:var(--muted);font-weight:700}
-.mon-vivo{font-style:normal;font-size:9.5px;color:var(--green);border:1px solid rgba(46,204,113,.35);border-radius:6px;padding:1px 6px;margin-left:4px}
-.mon-pop{font-size:10.5px;color:var(--accent);font-weight:600}
+/* `position:relative` para el tirador de «abrir aparte», que ahora flota
+   dentro del panel en vez de tener su propia barra. */
+.mon-pane{position:relative;display:flex;flex-direction:column;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--card);min-width:0}
+/* (`.mon-h` y `.mon-vivo` se fueron con los rótulos «Navegación · trabaja
+   aquí» y «Tablero Kanban · en vivo»: nombraban algo que deja de ser cierto en
+   cuanto entras a un caso desde ese lado.) */
+/* El tirador: apagado hasta que el ratón entra en el panel. Está donde estaba
+   —arriba a la derecha— pero sin ocupar una fila entera. */
+.mon-pop{position:absolute;top:6px;right:10px;z-index:3;
+  width:22px;height:22px;display:flex;align-items:center;justify-content:center;
+  border-radius:7px;font-size:12px;color:var(--muted);
+  background:color-mix(in srgb, var(--panel) 88%, transparent);
+  border:1px solid var(--border);opacity:0;transition:opacity .15s,color .15s}
+.mon-pane:hover .mon-pop{opacity:.65}
+.mon-pop:hover{opacity:1;color:var(--accent);border-color:var(--border2)}
 .mon-frame{flex:1;width:100%;border:0;background:var(--bg)}
 @media(max-width:900px){.mon-grid{grid-template-columns:1fr;grid-auto-rows:minmax(320px,70vh);overflow:auto}}
 

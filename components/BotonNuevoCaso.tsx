@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import { esVentanaDeTrabajo } from "@/lib/panel";
 import { usePathname } from "next/navigation";
 import Composer, { type Catalogos } from "@/components/Composer";
 import { datosNuevoCaso } from "@/app/actions";
@@ -21,7 +22,12 @@ export default function BotonNuevoCaso() {
   // Arranca oculto y solo se muestra tras confirmar que somos la ventana
   // principal (no un iframe del Monitor). Así no parpadea en los paneles.
   const [esTop, setEsTop] = useState(false);
-  useEffect(() => { setEsTop(window.self === window.top); }, []);
+  /* ── TAMBIÉN EN LOS PANELES DEL MONITOR ──
+     Antes: `window.self === window.top`, o sea «solo en la ventana principal».
+     Un panel del Monitor es una ventana de trabajo entera —se entra a un caso y
+     se sigue trabajando ahí—, así que necesita esto igual que la otra mitad.
+     Ver lib/panel.ts. */
+  useEffect(() => { setEsTop(esVentanaDeTrabajo()); }, []);
 
   const abrir = async () => {
     setAbierto(true);

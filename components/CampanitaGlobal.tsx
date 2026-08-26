@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import { esVentanaDeTrabajo } from "@/lib/panel";
 import { usePathname } from "next/navigation";
 import Link from "@/components/Enlace";
 import { misNotificaciones, marcarNotifsLeidas, marcarNotifLeida } from "@/app/actions";
@@ -27,7 +28,12 @@ export default function CampanitaGlobal() {
   const [pestana, setPestana] = useState<"mias" | "bot">("mias");
   const [abierta, setAbierta] = useState(false);
 
-  useEffect(() => { setEsTop(window.self === window.top); }, []);
+  /* ── TAMBIÉN EN LOS PANELES DEL MONITOR ──
+     Antes: `window.self === window.top`, o sea «solo en la ventana principal».
+     Un panel del Monitor es una ventana de trabajo entera —se entra a un caso y
+     se sigue trabajando ahí—, así que necesita esto igual que la otra mitad.
+     Ver lib/panel.ts. */
+  useEffect(() => { setEsTop(esVentanaDeTrabajo()); }, []);
 
   /* Columnas que la base todavía no tiene. Mientras falten, los avisos que
      dependen de ellas llegan sin destino: se ven, se leen, y al pulsarlos no

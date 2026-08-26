@@ -1,5 +1,6 @@
 "use client";
 import { usePathname, useRouter } from "next/navigation";
+import { esVentanaDeTrabajo } from "@/lib/panel";
 import { useEffect, useRef, useState } from "react";
 
 /* Acceso rápido global al buscador: botón flotante 🔍 que abre una caja de
@@ -14,7 +15,12 @@ export default function BuscadorFlotante() {
   const inputRef = useRef<HTMLInputElement>(null);
   const oculto = pathname === "/" || pathname.startsWith("/login") || pathname.startsWith("/buscar");
 
-  useEffect(() => { setEsTop(window.self === window.top); }, []);
+  /* ── TAMBIÉN EN LOS PANELES DEL MONITOR ──
+     Antes: `window.self === window.top`, o sea «solo en la ventana principal».
+     Un panel del Monitor es una ventana de trabajo entera —se entra a un caso y
+     se sigue trabajando ahí—, así que necesita esto igual que la otra mitad.
+     Ver lib/panel.ts. */
+  useEffect(() => { setEsTop(esVentanaDeTrabajo()); }, []);
 
   useEffect(() => {
     if (oculto || !esTop) return;

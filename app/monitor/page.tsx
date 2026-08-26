@@ -1,18 +1,32 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { NOMBRE_PANEL } from "@/lib/panel";
 
-/* ── MONITOR (cockpit) ──────────────────────────────────────────────
-   Dos vistas a la vez en una sola ventana: navegación para trabajar +
-   Tablero Kanban, cada una en vivo (cada panel es la página real
-   embebida, con su propio Realtime).
-   Se muestra en pantalla ANCHA (escritorio / app). En móvil o ventanas
-   angostas redirige a la vista normal ("/"). La app abre aquí por su
-   start_url; para salir se cierra la ventana de la app. */
+/* ══════════════════════════════════════════════════════════════════════════
+   EL MONITOR — dos ventanas de trabajo en una pantalla
+
+   Cada panel es la aplicación entera, en vivo, con su propio Realtime. Se abre
+   en pantalla ANCHA (escritorio / app); en móvil redirige a «/». La app arranca
+   aquí por su `start_url`; para salir se cierra la ventana.
+
+   ── LOS DOS LADOS SON IGUALES, Y ESO ES EL DISEÑO ──
+   Nació como «izquierda para navegar, derecha el tablero», con su rótulo cada
+   uno. No sobrevive al primer clic: en cuanto entras a un caso desde el
+   tablero, ese lado deja de ser el tablero y el rótulo miente. Así que fuera
+   los rótulos —dos barras que ocupaban sitio para nombrar algo que cambia— y
+   cada panel lleva su ＋, su campanita y su buscador, como cualquier ventana.
+   Lo único que queda de aquella idea es POR DÓNDE EMPIEZA cada uno: la portada
+   a la izquierda, el tablero a la derecha. Un punto de partida, no una
+   etiqueta.
+
+   `name` en el iframe: es la marca que dice «esto es un panel, no una vista
+   previa» y sobrevive a las navegaciones de dentro. Ver lib/panel.ts.
+   ══════════════════════════════════════════════════════════════════════════ */
 
 const PANES = [
-  { titulo: "🧭 Navegación", src: "/", nota: "trabaja aquí" },
-  { titulo: "🗂 Tablero Kanban", src: "/tablero", nota: "en vivo" },
+  { src: "/", titulo: "Panel izquierdo" },
+  { src: "/tablero", titulo: "Panel derecho" },
 ];
 
 export default function MonitorPage() {
@@ -29,14 +43,15 @@ export default function MonitorPage() {
   return (
     <div className="monitor">
       <div className="mon-grid">
-        {PANES.map((p) => (
+        {PANES.map((p, i) => (
           <section key={p.src} className="mon-pane">
-            <header className="mon-h">
-              <span>{p.titulo} <em className="mon-vivo">{p.nota}</em></span>
-              <a href={p.src} target="_blank" rel="noreferrer" className="mon-pop"
-                title="Abrir en ventana aparte (para otra pantalla o la TV)">abrir ↗</a>
-            </header>
-            <iframe src={p.src} className="mon-frame" title={p.titulo} />
+            <iframe src={p.src} name={`${NOMBRE_PANEL}-${i}`} className="mon-frame" title={p.titulo} />
+            {/* Sacar el panel a su propia ventana —otra pantalla, la TV—
+                seguía haciendo falta, pero no una barra entera para él: se
+                queda como un tirador en la esquina, apagado hasta que el ratón
+                entra en ese lado. */}
+            <a href={p.src} target="_blank" rel="noreferrer" className="mon-pop"
+              title="Abrir este panel en una ventana aparte">↗</a>
           </section>
         ))}
       </div>
