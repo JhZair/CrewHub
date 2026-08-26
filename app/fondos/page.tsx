@@ -6,7 +6,7 @@ import Volver from "@/components/Volver";
 import { ejecutando, plazoRendicion, rendicionVencida, rendicionSinPlazo } from "@/lib/fondos";
 import { faltanEstados, listaFaltan, seVigila, cierreDe } from "@/lib/estadosCuenta";
 import { sinPruebas, textoSinPruebas } from "@/lib/pruebasFondo";
-import { avanceEntregables } from "@/lib/compromisos";
+import { avanceEntregables, META_ESTADO_COMP } from "@/lib/compromisos";
 import { hoyLima } from "@/lib/fechas";
 import { CATEGORIAS_OPC } from "@/lib/etapas";
 
@@ -263,26 +263,34 @@ export default async function FondosPage() {
               (a.enProceso ? ` · ${a.enProceso} en proceso` : "");
             return (
               <div className="fondo-ent" title={txt}>
-                <b style={{ color: a.pct === 100 ? "var(--green)" : "var(--muted)" }}>
-                  {a.listos}/{a.cuentan}
-                </b>
-                <span>entregables</span>
-                {/* Los dos matices que trae la pestaña, con sus mismos colores.
-                    «3 en proceso» dice que hay trabajo en marcha —un 4/16 con
-                    tres preparándose no es el mismo fondo que un 4/16 quieto— y
-                    «1 no aplica» explica por qué el total es 16 y no 17: sin
-                    eso, el número parece que no cuadra con la ficha. */}
+                {/* ── EL AVANCE Y SU BARRA, PEGADOS ──
+                    La barra iba al final, después de los matices, y quedaba
+                    lejos del número que ilustra: se leía como un cuarto dato
+                    suelto. Es la misma cifra dibujada, así que va con ella. */}
+                <span className="fondo-ent-av">
+                  <b style={{ color: a.pct === 100 ? "var(--green)" : "var(--muted)" }}>
+                    {a.listos}/{a.cuentan}
+                  </b>
+                  <span>entregables</span>
+                  <span className="acta-barra"><i style={{ width: `${a.pct}%` }} /></span>
+                </span>
+                {/* Los matices, con la MISMA pastilla que la lista de la ficha
+                    y el editor: tres sitios distintos donde aparece «en
+                    proceso» y en los tres se reconoce sin leerlo.
+                    Cada uno contesta algo: «3 en proceso» dice que hay trabajo
+                    en marcha —un 4/16 con tres preparándose no es el mismo
+                    fondo que un 4/16 quieto—, y «1 no aplica» explica por qué
+                    el total es 16 y no los 17 de la pestaña. */}
                 {!!a.enProceso && (
-                  <span style={{ color: "var(--yellow)", whiteSpace: "nowrap" }}>
-                    · {a.enProceso} en proceso
+                  <span className="acta-est" style={{ color: META_ESTADO_COMP.en_proceso.col }}>
+                    {META_ESTADO_COMP.en_proceso.ico} {a.enProceso} en proceso
                   </span>
                 )}
                 {!!a.noAplica && (
-                  <span style={{ color: "var(--violet)", whiteSpace: "nowrap" }}>
-                    · {a.noAplica} no aplica
+                  <span className="acta-est" style={{ color: META_ESTADO_COMP.no_aplica.col }}>
+                    {META_ESTADO_COMP.no_aplica.ico} {a.noAplica} no aplica
                   </span>
                 )}
-                <span className="acta-barra"><i style={{ width: `${a.pct}%` }} /></span>
               </div>
             );
           })()}

@@ -5676,9 +5676,13 @@ mark.bq-marca{
 /* El avance de entregables en la tarjeta de /fondos. Estrecho a propósito: la
    pregunta de esta pantalla es a cuál de los nueve fondos entrar, no cuántos
    papeles lleva cada uno — para eso está su pestaña. */
-.fondo-ent{display:flex;align-items:center;gap:6px;margin-top:4px;
-  font-size:11px;color:var(--dim);max-width:340px;flex-wrap:wrap;row-gap:2px}
-/* La barra, al final y con lo que sobre: los matices —«3 en proceso», «1 no
-   aplica»— son texto y se leen; la barra es un vistazo. Si compite por el
-   ancho, gana el texto. */
-.fondo-ent .acta-barra{max-width:96px;min-width:44px}
+.fondo-ent{display:flex;align-items:center;gap:6px;margin-top:5px;
+  font-size:11px;color:var(--dim);max-width:380px;flex-wrap:wrap;row-gap:4px}
+/* El número y su barra son UNA cosa: van juntos y envuelven juntos. Sueltos en
+   el mismo flex, la barra acababa al otro lado de dos pastillas y se leía como
+   un cuarto dato en vez de como la misma cifra dibujada. */
+.fondo-ent-av{display:inline-flex;align-items:center;gap:6px}
+.fondo-ent .acta-barra{width:70px;flex:none}
+/* En la tarjeta las pastillas son un apunte, no la información principal: el
+   mismo color y la misma forma, un punto más pequeñas. */
+.fondo-ent .acta-est{font-size:10px;padding:1px 7px;font-weight:600}
