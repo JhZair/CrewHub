@@ -5676,13 +5676,19 @@ mark.bq-marca{
 /* El avance de entregables en la tarjeta de /fondos. Estrecho a propósito: la
    pregunta de esta pantalla es a cuál de los nueve fondos entrar, no cuántos
    papeles lleva cada uno — para eso está su pestaña. */
-.fondo-ent{display:flex;align-items:center;gap:6px;margin-top:5px;
-  font-size:11px;color:var(--dim);max-width:380px;flex-wrap:wrap;row-gap:4px}
+/* Sin tope de ancho: la tarjeta lo tiene de sobra y recortarlo a 380px era
+   apretar por costumbre. Con sitio, la barra puede ser una barra. */
+.fondo-ent{display:flex;align-items:center;gap:8px;margin-top:5px;
+  font-size:11px;color:var(--dim);flex-wrap:wrap;row-gap:4px}
 /* El número y su barra son UNA cosa: van juntos y envuelven juntos. Sueltos en
    el mismo flex, la barra acababa al otro lado de dos pastillas y se leía como
    un cuarto dato en vez de como la misma cifra dibujada. */
 .fondo-ent-av{display:inline-flex;align-items:center;gap:6px}
-.fondo-ent .acta-barra{width:70px;flex:none}
+/* Setenta píxeles de barra no dibujan nada: a esa escala, 4/16 y 6/16 se ven
+   igual. Con doscientos, la diferencia se ve sin leer los números — que es lo
+   único que una barra sabe hacer mejor que el texto que tiene al lado.
+   Y un punto más gruesa, por lo mismo. */
+.fondo-ent .acta-barra{width:200px;max-width:34vw;flex:none;height:6px}
 /* En la tarjeta las pastillas son un apunte, no la información principal: el
    mismo color y la misma forma, un punto más pequeñas. */
 .fondo-ent .acta-est{font-size:10px;padding:1px 7px;font-weight:600}
