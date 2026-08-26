@@ -98,6 +98,14 @@ alter table dafo_comunicaciones add column if not exists origen text not null de
 alter table dafo_comunicaciones add column if not exists doc_numero text;
 /* El PDF de la carta («Ver Documento»), que es la prueba. */
 alter table dafo_comunicaciones add column if not exists doc_url text;
+/* El código del validador documental del Ministerio («SXP0Y4A»), que sale
+   impreso al pie de cada carta. Con él se comprueba en su web que el PDF que
+   tenemos es el que ellos emitieron —y en un descargo, esa es la diferencia
+   entre enseñar un documento y enseñar una prueba—. */
+alter table dafo_comunicaciones add column if not exists doc_codigo text;
+/* Quién la firma. No es adorno: la carta la firma una dirección concreta y a
+   esa se le responde. */
+alter table dafo_comunicaciones add column if not exists firmante text;
 /* Hasta cuándo hay que contestar, y cuándo se contestó.
    Un requerimiento NO es historia, es un reloj: «SEGUNDO REQUERIMIENTO» quiere
    decir que ya pasó un plazo. `pide_accion` decía que algo pedía algo; esto
@@ -125,7 +133,22 @@ alter table dafo_comunicaciones alter column gmail_msg_id drop not null;
    que ya esté puesto, y quien haya corrido la versión anterior se quedaría con
    el parcial y con el fallo. */
 drop index if exists idx_dafo_com_docnum;
-create unique index idx_dafo_com_docnum on dafo_comunicaciones(doc_numero);
+/* Con un DO y no a pelo: si por lo que fuera ya hubiera dos filas con el mismo
+   número, un `create unique index` suelto ABORTA el archivo entero —y las
+   columnas de arriba se habrían creado, así que la mitad del cambio quedaría
+   puesta y la otra mitad no—. Así se dice qué pasa y se sigue. */
+do $$
+declare repes int;
+begin
+  select count(*) into repes from (
+    select doc_numero from dafo_comunicaciones
+     where doc_numero is not null group by doc_numero having count(*) > 1) x;
+  if repes > 0 then
+    raise warning 'Hay % número(s) de carta repetidos: el índice único NO se creó. Búscalos con: select doc_numero, count(*) from dafo_comunicaciones where doc_numero is not null group by 1 having count(*) > 1;', repes;
+  else
+    create unique index idx_dafo_com_docnum on dafo_comunicaciones(doc_numero);
+  end if;
+end $$;
 
 /* Lo que vence y no se ha contestado: la consulta que va a correr cada día. */
 create index if not exists idx_dafo_com_responder
@@ -147,8 +170,8 @@ select
   (select count(*) from pg_policies where tablename = 'hito_fondo')        as politicas_hitos,
   (select count(*) from information_schema.columns
     where table_name = 'dafo_comunicaciones'
-      and column_name in ('origen','doc_numero','doc_url','responder_hasta',
-                          'respondido_en','respuesta_url'))                as columnas_nuevas,
+      and column_name in ('origen','doc_numero','doc_url','doc_codigo','firmante',
+                          'responder_hasta','respondido_en','respuesta_url')) as columnas_nuevas,
   (select is_nullable from information_schema.columns
     where table_name = 'dafo_comunicaciones' and column_name = 'gmail_msg_id') as gmail_opcional,
   (select count(*) from pg_indexes

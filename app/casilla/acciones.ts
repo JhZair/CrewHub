@@ -167,6 +167,10 @@ export async function registrarCarta(f: {
   docUrl?: string | null;
   responderHasta?: string | null;
   sistema?: string | null;        // SGD, Concursos DAFO…
+  /** Lo que trae el PDF cuando la carta se carga por lote: el código del
+   *  validador documental y quién firma. Ver lib/cartaDafo.ts. */
+  codigo?: string | null;
+  firmante?: string | null;
 }) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -204,6 +208,13 @@ export async function registrarCarta(f: {
     empresaId = (post as any)?.empresa_id || null;
   }
 
+  /* ── ¿YA ESTABA, Y YA SE CONTESTÓ? ──
+     Registrar otra vez la misma carta no puede resucitarla como pendiente: si
+     alguien ya la respondió, `pide_accion: true` la devolvía al tope de la
+     bandeja y a la lista de «hay que contestar», sobre algo ya hecho. */
+  const { data: yaHay } = await supabase.from("dafo_comunicaciones")
+    .select("id,respondido_en").eq("doc_numero", numero).maybeSingle();
+
   const fila: Record<string, any> = {
     origen: "casilla",
     doc_numero: numero,
@@ -213,11 +224,14 @@ export async function registrarCarta(f: {
        en cuanto alguien lo lea desde otra zona. */
     recibido_en: new Date(`${f.fecha}T12:00:00-05:00`).toISOString(),
     doc_url: docUrl || null,
+    doc_codigo: (f.codigo || "").trim().toUpperCase() || null,
+    firmante: (f.firmante || "").trim() || null,
     responder_hasta: f.responderHasta || null,
     /* Una carta que alguien se tomó el trabajo de registrar pide algo por
-       definición: si no pidiera nada, no estaría aquí. Al contestarla,
-       `responderCarta` lo apaga. */
-    pide_accion: true,
+       definición: si no pidiera nada, no estaría aquí. Salvo que ya se haya
+       contestado — entonces ya no pide nada, y volver a marcarla la resucitaría
+       en la lista de pendientes. */
+    pide_accion: !(yaHay as any)?.respondido_en,
   };
   /* ⚠ EL VÍNCULO SOLO SE ESCRIBE SI SE DIJO. Yendo siempre en el payload, un
      `null` viajaba en el `upsert` y volver a registrar la misma carta sin

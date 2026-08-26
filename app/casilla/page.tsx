@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import CasillaDafo from "@/components/CasillaDafo";
 import RegistrarCarta from "@/components/RegistrarCarta";
+import CartasLote from "@/components/CartasLote";
 import Realtime from "@/components/Realtime";
 import { enJuego, ejecutando } from "@/lib/fondos";
 import { hoyLima } from "@/lib/fechas";
@@ -57,7 +58,10 @@ export default async function CasillaPage() {
               "emp:empresas(id,nombre)")
       .order("recibido_en", { ascending: false }).limit(TOPE),
     supabase.from("postulaciones")
-      .select("id,codigo,estado,empresa_id,fecha_rendicion_real,proy:proyectos(nombre),conv:convocatorias(id,codigo,nombre,anio),emp:empresas(nombre)")
+      /* `codigo_acta` es lo que empareja una carta con su fondo: el PDF no
+         trae el código del expediente, trae el del ACTA DE COMPROMISO. Ver
+         lib/cartaDafo.ts → fondoDeActa. */
+      .select("id,codigo,codigo_acta,estado,empresa_id,fecha_rendicion_real,proy:proyectos(nombre),conv:convocatorias(id,codigo,nombre,anio),emp:empresas(nombre)")
       .order("creado_en", { ascending: false }).limit(300),
     /* Las cuentas de correo. El filtro es EXACTAMENTE el de la ingesta
        (route.ts → empresaDeCorreo): toda credencial con empresa y con un @ en
@@ -300,6 +304,8 @@ export default async function CasillaPage() {
           no avisa a ninguna parte: si nadie entra, no existe. Y ahí llegan los
           requerimientos del acta, que son los que muerden. Se registran a mano
           y aterrizan en esta misma bandeja — es la misma pregunta. */}
+      <CartasLote opciones={opciones}
+        posts={posts.map((p: any) => ({ id: p.id, codigo_acta: p.codigo_acta }))} />
       <RegistrarCarta opciones={opciones} hoy={hoyLima()} />
 
       <CasillaDafo items={coms} opciones={opciones} resumen={resumen}
