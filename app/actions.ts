@@ -9415,15 +9415,36 @@ export async function cargarCasoRapido(id: string) {
     .eq("id", id).single();
   if (error || !p) return { error: "No se encontró el caso." };
 
-  const [coms, rx, perf] = await Promise.all([
+  const [coms, rx, perf, rxCom] = await Promise.all([
     supabase.from("comentarios")
-      .select("id,cuerpo,imagenes,creado_en,autor_id,autor:perfiles(nombre,color,avatar_url)")
-      .eq("publicacion_id", id).order("creado_en"),
+      /* `editado_en` y `responde_a` también: el pop-up pinta el mismo hilo que
+         la ficha —con su «↳ en respuesta a» y su «· editado»— y sin estas dos
+         columnas la conversación se leía plana, como si nadie respondiera a
+         nadie. */
+      .select("id,cuerpo,imagenes,creado_en,editado_en,responde_a,autor_id,autor:perfiles(nombre,color,avatar_url)")
+      .eq("publicacion_id", id).order("creado_en").order("id"),
     supabase.from("reacciones").select("emoji,usuario_id")
       .is("comentario_id", null).eq("publicacion_id", id),
     supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
+    /* Las de CADA comentario. La de arriba lleva `comentario_id is null` a
+       propósito —una reacción a una respuesta no es una reacción al caso—, así
+       que estas hay que pedirlas aparte. Con el nombre de quien reaccionó, que
+       es lo que convierte «👍 3» en «Katy, Wilfredo y tú». */
+    supabase.from("reacciones").select("comentario_id,emoji,usuario_id")
+      .eq("publicacion_id", id).not("comentario_id", "is", null),
   ]);
   const perfiles = sinBot(perf.data || []);
+  /* Todos los perfiles, no solo los activos: quien reaccionó y luego dejó el
+     equipo es justo el caso donde saber quién fue importa más. */
+  const nomTodos = new Map<string, string>(
+    (((await supabase.from("perfiles").select("id,nombre")).data as any[]) || [])
+      .map((x: any) => [x.id, x.nombre]));
+  const rxDeCom = new Map<string, any[]>();
+  for (const r0 of ((rxCom.data || []) as any[])) {
+    const l = rxDeCom.get(r0.comentario_id) || [];
+    l.push({ emoji: r0.emoji, usuario_id: r0.usuario_id, nombre: nomTodos.get(r0.usuario_id) });
+    rxDeCom.set(r0.comentario_id, l);
+  }
 
   /* Vínculos → nombre (contexto del caso). Solo se consultan las tablas de los
      tipos que este caso realmente usa, por sus ids (barato). */
@@ -9459,7 +9480,13 @@ export async function cargarCasoRapido(id: string) {
     .filter(v => v.nombre);
 
   return {
-    caso: { ...(p as any), comentarios: coms.data || [], reacciones: rx.data || [], vinculos },
+    caso: {
+      ...(p as any),
+      comentarios: ((coms.data || []) as any[]).map((c: any) => ({
+        ...c, reacciones: rxDeCom.get(c.id) || [],
+      })),
+      reacciones: rx.data || [], vinculos,
+    },
     perfiles,
     userId: user.id,
     equipoTotal: perfiles.length,

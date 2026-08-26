@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
-  cargarCasoRapido, comentar, toggleReaccion, toggleEnterado,
+  cargarCasoRapido, toggleReaccion, toggleEnterado,
   cambiarEstado, asignarResponsable, cambiarFechaLimite, cambiarFechaInicio, cambiarHora,
 } from "@/app/actions";
 import { opcionesEstado, llevaEnterado, claseEstado } from "@/lib/estados";
@@ -11,9 +11,12 @@ import { icoTipo, llevaHora } from "@/lib/tipos";
 import { TXT } from "@/lib/texto";
 import { ICO_ENT } from "@/lib/secciones";
 import { opcionesResp } from "@/lib/personas";
-import { menciones, MencionesMenu } from "@/components/Menciones";
 import LinkPreviews from "@/components/LinkPreviews";
 import TextoRico from "@/components/TextoRico";
+import ComentarioTexto from "@/components/ComentarioTexto";
+import RespuestaBox from "@/components/RespuestaBox";
+import Reacciones from "@/components/Reacciones";
+import { CommentBox } from "@/components/CaseActions";
 import PaletaRx from "@/components/PaletaRx";
 import { agrupar } from "@/lib/reacciones";
 
@@ -43,7 +46,6 @@ export default function VistaRapida({ pubId }: { pubId: string }) {
   const [abierto, setAbierto] = useState(false);
   const [data, setData] = useState<any>(null);
   const [cargando, setCargando] = useState(false);
-  const [texto, setTexto] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
@@ -71,7 +73,7 @@ export default function VistaRapida({ pubId }: { pubId: string }) {
     setData(r);
   };
 
-  const cerrar = () => { setAbierto(false); setData(null); setTexto(""); setError(""); setCargando(false); };
+  const cerrar = () => { setAbierto(false); setData(null); setError(""); setCargando(false); };
 
   useEffect(() => {
     if (!abierto) return;
@@ -108,20 +110,6 @@ export default function VistaRapida({ pubId }: { pubId: string }) {
   const perfiles: { id: string; nombre: string }[] = data?.perfiles || [];
   const userId: string = data?.userId || "";
   const esAv = caso ? llevaEnterado(caso.tipo) : false;
-  // Menciones @ en el comentario (misma ayuda que la caja del caso completo).
-  const { enMencion, candidatos, aplicar } = menciones(texto, perfiles);
-  const invocarMencion = (nombre: string) => setTexto(aplicar(nombre));
-
-  const enviarComentario = () => {
-    if (!texto.trim()) return;
-    correr(() => comentar(pubId, texto.trim()), () => {
-      setTexto("");
-      /* `nearest`: desplaza el cuerpo del pop-up hasta el comentario nuevo y
-         nada más. Con el valor por defecto («start») el navegador también
-         movía la página de detrás para dejarlo arriba del todo. */
-      setTimeout(() => finRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 60);
-    });
-  };
   const reaccionar = (emoji: string) => correr(() => toggleReaccion(pubId, null, emoji, null));
   const marcarEnterado = () => correr(() => toggleEnterado(pubId));
 
@@ -315,18 +303,53 @@ export default function VistaRapida({ pubId }: { pubId: string }) {
                   {caso.comentarios.length === 0 && (
                     <div style={{ color: "var(--dim)", fontSize: TXT.micro, padding: "4px 0" }}>Aún no hay comentarios.</div>
                   )}
-                  {caso.comentarios.map((c: any) => (
-                    <div key={c.id} className="vr-com">
-                      <div className="vr-com-h">
-                        <b style={{ fontSize: TXT.meta, color: c.autor?.color || "var(--text)" }}>
-                          {c.autor?.nombre?.split(" ")[0] || "—"}
-                        </b>
-                        <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>{fecha(c.creado_en)}</span>
+                  {/* ── EL MISMO HILO QUE LA FICHA, PIEZA POR PIEZA ──
+                      Aquí se pintaba a mano: el texto y nada más. Ni editar el
+                      propio comentario, ni reaccionar a uno, ni responder, ni
+                      pegar una imagen — cosas que sí están en /caso, así que el
+                      pop-up obligaba a abrir el caso justo cuando se quería
+                      contestar, que es lo único que viene a evitar.
+                      Ahora monta LOS MISMOS componentes que la ficha
+                      (`ComentarioTexto`, `Reacciones`, `RespuestaBox`), no una
+                      versión parecida: lo que se arregle en uno vale para los
+                      dos. `onListo` recarga el hilo del pop-up — `router.refresh`
+                      solo repinta la página de detrás. */}
+                  {caso.comentarios.map((c: any) => {
+                    const padre = c.responde_a
+                      ? caso.comentarios.find((x: any) => x.id === c.responde_a) : null;
+                    return (
+                      <div key={c.id} className="vr-com">
+                        <div className="vr-com-h">
+                          <b style={{ fontSize: TXT.meta, color: c.autor?.color || "var(--text)" }}>
+                            {c.autor?.nombre?.split(" ")[0] || "—"}
+                          </b>
+                          <span style={{ color: "var(--dim)", fontSize: TXT.chip }}>{fecha(c.creado_en)}</span>
+                        </div>
+                        {/* A quién contesta, citado: sin esto un hilo de cinco
+                            respuestas se lee como cinco monólogos. */}
+                        {padre && (() => {
+                          const cita = String(padre.cuerpo || "").replace(/\s+/g, " ").trim();
+                          return (
+                            <div className="tl-resp-cita" style={{ cursor: "default" }}>
+                              <span className="tl-resp-cab">↳ en respuesta a <b>{padre.autor?.nombre?.split(" ")[0] || "un comentario"}</b></span>
+                              {cita && <span className="tl-resp-txt">{cita.length > 90 ? cita.slice(0, 90) + "…" : cita}</span>}
+                            </div>
+                          );
+                        })()}
+                        <ComentarioTexto comentarioId={c.id} pubId={pubId} cuerpo={c.cuerpo || ""}
+                          imagenes={c.imagenes || []} esMio={c.autor_id === userId}
+                          editadoEn={c.editado_en} onListo={cargar} />
+                        <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                          {/* La paleta EN FLUJO: esto vive dentro del cuerpo con
+                              scroll del pop-up y flotando la recortaría el borde. */}
+                          <Reacciones pubId={pubId} comentarioId={c.id}
+                            reacciones={c.reacciones || []} userId={userId}
+                            flotante={false} onListo={cargar} />
+                          <RespuestaBox pubId={pubId} comentarioId={c.id} onListo={cargar} />
+                        </div>
                       </div>
-                      <div className="vr-com-txt"><TextoRico texto={c.cuerpo} /></div>
-                      <LinkPreviews texto={c.cuerpo} />
-                    </div>
-                  ))}
+                    );
+                  })}
                   <div ref={finRef} />
                 </div>
               </div>
@@ -338,22 +361,14 @@ export default function VistaRapida({ pubId }: { pubId: string }) {
                     hasta el final para encontrar dónde escribir. Ahora el
                     contenido se desplaza y la caja se queda. */}
             {caso && (
+              /* La MISMA caja del caso (`CommentBox`): pegar con Ctrl+V,
+                 adjuntar, barra de formato y @menciones. La de antes era un
+                 textarea con menciones y ya está — el mismo gesto daba un
+                 resultado distinto según por dónde entraras. */
               <div className="vr-escribir">
-                <div className="cbox" style={{ position: "relative", flex: 1 }}>
-                  <MencionesMenu candidatos={candidatos} onElegir={invocarMencion} />
-                  <textarea value={texto} onChange={e => setTexto(e.target.value)}
-                    placeholder="Comentar al vuelo…  (@ para mencionar)" rows={2}
-                    onKeyDown={e => {
-                      // Enter con menú de mención abierto = elegir el primero.
-                      if (e.key === "Enter" && !e.shiftKey && enMencion && candidatos.length) {
-                        e.preventDefault(); invocarMencion(candidatos[0].nombre); return;
-                      }
-                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) enviarComentario();
-                    }} />
-                </div>
-                <button className="btn" disabled={ocupado || !texto.trim()} onClick={enviarComentario}>
-                  {ocupado ? "…" : "Comentar"}
-                </button>
+                <CommentBox pubId={pubId} userId={userId} perfiles={perfiles}
+                  onListo={() => { cargar(); setTimeout(() => finRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 120); }}
+                  placeholder="Comentar al vuelo… (Enter envía · @nombre para invocar · Ctrl+V pega una imagen)" />
               </div>
             )}
             {/* El error, con la caja: es de lo que se acaba de intentar

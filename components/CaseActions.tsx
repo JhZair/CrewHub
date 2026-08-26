@@ -132,8 +132,12 @@ export function EstadoSelect({ pubId, estado, tipo }: { pubId: string; estado: s
   );
 }
 
-export function CommentBox({ pubId, userId, perfiles = [] }: {
+export function CommentBox({ pubId, userId, perfiles = [], onListo, placeholder }: {
   pubId: string; userId: string; perfiles?: { id: string; nombre: string }[];
+  /** Dentro de un pop-up: `router.refresh()` recarga la página de detrás y deja
+   *  el hilo del modal como estaba, así que el dueño recarga lo suyo. */
+  onListo?: () => void;
+  placeholder?: string;
 }) {
   const [txt, setTxt] = useState("");
   const [enviando, setEnviando] = useState(false);
@@ -172,7 +176,7 @@ export function CommentBox({ pubId, userId, perfiles = [] }: {
     setEnviando(false);
     if (res?.error) { alert(res.error); return; }
     setTxt(""); setImgs([]);
-    router.refresh();
+    router.refresh(); onListo?.();
   };
 
   return (
@@ -194,7 +198,7 @@ export function CommentBox({ pubId, userId, perfiles = [] }: {
         <MencionesMenu candidatos={candidatos} onElegir={invocar} />
         <textarea
           ref={taRef}
-          placeholder="Escribe un comentario… (Enter envía · Shift+Enter salto de línea) · @nombre para invocar"
+          placeholder={placeholder || "Escribe un comentario… (Enter envía · Shift+Enter salto de línea) · @nombre para invocar"}
           value={txt}
           rows={1}
           onChange={e => setTxt(e.target.value)}

@@ -3338,6 +3338,12 @@ img.av{border:1px solid var(--border2)}
      SEGUNDA barra, la del fondo. */
   max-height:min(calc(100vh - 96px),900px);display:flex;flex-direction:column}
 .vr-caja .modal-cab,.vr-caja .vr-escribir{flex:none}
+/* El hueco entre el título y la cabecera del caso: eran tres separaciones
+   sumadas —el `padding-bottom` de la barra, su `margin-bottom` y el
+   `margin-top` del cuerpo— y en un pop-up que ya está apretado se leía como
+   una franja vacía. Una sola, y chica. */
+.vr-caja .modal-cab{margin-bottom:0;padding-bottom:9px}
+.vr-caja .vr-cuerpo{margin-top:9px}
 .vr-caja .vr-cuerpo{flex:1;min-height:0;overflow-y:auto;
   /* Un pelo de aire a la derecha para que la barra no pise las tarjetas. */
   padding-right:4px}

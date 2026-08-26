@@ -12,7 +12,7 @@ import { useEffect, useRef, useState } from "react";
 /* Texto de un comentario: resalta @menciones y, si es mío, se edita en línea —
    texto E imágenes (miniaturas con ✕, adjuntar, pegar). Las imágenes se muestran
    aquí (vista y edición) para que editarlas no dependa de otro bloque. */
-export default function ComentarioTexto({ comentarioId, pubId, cuerpo, imagenes, esMio, editadoEn, sinRed }: {
+export default function ComentarioTexto({ comentarioId, pubId, cuerpo, imagenes, esMio, editadoEn, sinRed, onListo }: {
   comentarioId: string;
   pubId: string;
   cuerpo: string;
@@ -21,6 +21,10 @@ export default function ComentarioTexto({ comentarioId, pubId, cuerpo, imagenes,
   editadoEn?: string | null;
   /** Sin consultar las Open Graph de los enlaces. Para listas largas. */
   sinRed?: boolean;
+  /** Además del refresco de la página: cuando esto vive dentro de un pop-up
+   *  con su propio estado, `router.refresh()` recarga lo de DETRÁS y deja el
+   *  hilo del modal como estaba. */
+  onListo?: () => void;
 }) {
   const [editando, setEditando] = useState(false);
   const [texto, setTexto] = useState(cuerpo);
@@ -61,7 +65,7 @@ export default function ComentarioTexto({ comentarioId, pubId, cuerpo, imagenes,
     setOcupado(false);
     if (res?.error) { setError(res.error); return; }
     setEditando(false);
-    router.refresh();
+    router.refresh(); onListo?.();
   };
 
   if (editando) {

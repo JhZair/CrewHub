@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from "react";
 /* Responder a un comentario concreto: botón "↩ Responder" que abre una
    caja inline; al enviar, el comentario queda enlazado al padre (responde_a).
    Soporta pegar (Ctrl+V) y adjuntar imágenes, igual que el comentario. */
-export default function RespuestaBox({ pubId, comentarioId, objetoId, prestamoId, equipoId, bitacoraEquipoId }: {
+export default function RespuestaBox({ pubId, comentarioId, objetoId, prestamoId, equipoId, bitacoraEquipoId, onListo }: {
   pubId?: string | null; comentarioId: string;
   /** Cuando se responde a un comentario del repositorio, no de un caso. */
   objetoId?: string | null;
@@ -15,6 +15,10 @@ export default function RespuestaBox({ pubId, comentarioId, objetoId, prestamoId
   prestamoId?: string | null; equipoId?: string | null;
   /** Cuando se responde en la bitácora del equipo (comentario suelto). */
   bitacoraEquipoId?: string | null;
+  /** Además del refresco de la página: cuando esto vive dentro de un pop-up
+   *  con su propio estado, `router.refresh()` recarga lo de DETRÁS y deja el
+   *  hilo del modal como estaba. */
+  onListo?: () => void;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [txt, setTxt] = useState("");
@@ -58,7 +62,7 @@ export default function RespuestaBox({ pubId, comentarioId, objetoId, prestamoId
     setEnviando(false);
     if (res?.error) { alert(res.error); return; }
     setTxt(""); setImgs([]); setAbierto(false);
-    router.refresh();
+    router.refresh(); onListo?.();
   };
 
   if (!abierto) {

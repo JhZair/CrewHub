@@ -17,7 +17,7 @@ export type Reaccion = { emoji: string; usuario_id: string; nombre?: string | nu
    El ＋ abre la paleta. Funciona en publicaciones y comentarios. */
 export default function Reacciones({
   pubId, comentarioId = null, reacciones, userId, objetoId = null,
-  movCajaId = null, compacto = false, rendicion = null,
+  movCajaId = null, compacto = false, rendicion = null, onListo, flotante,
 }: {
   pubId: string | null;
   comentarioId?: string | null;
@@ -35,6 +35,12 @@ export default function Reacciones({
    *  no como cinco props: son un solo concepto, y cinco props opcionales más
    *  en una firma que ya tiene seis es una firma que se llama mal. */
   rendicion?: { tabla: string; id: string } | null;
+  /** Dentro de un pop-up con estado propio: `router.refresh()` recarga lo de
+   *  detrás, no el hilo del modal. */
+  onListo?: () => void;
+  /** `false` deja la paleta EN FLUJO. Obligatorio dentro de un contenedor con
+   *  scroll: una capa absoluta la recorta el borde del scrollport. */
+  flotante?: boolean;
 }) {
   // Abrir y cerrar la paleta es cosa suya (PaletaRx); aquí solo se reacciona.
   const [ocupado, setOcupado] = useState(false);
@@ -87,7 +93,7 @@ export default function Reacciones({
     const res = await toggleReaccion(pubId, comentarioId, emoji, objetoId, null, movCajaId, rendicion);
     setOcupado(false);
     if (res?.error) { setError(res.error); return; }
-    router.refresh();
+    router.refresh(); onListo?.();
   };
 
   return (
@@ -107,7 +113,8 @@ export default function Reacciones({
           ⋯{nResto}
         </span>
       )}
-      <PaletaRx hayReacciones={grupos.length > 0} ocupado={ocupado} onElegir={tap} />
+      <PaletaRx hayReacciones={grupos.length > 0} ocupado={ocupado} onElegir={tap}
+        flotante={flotante} />
     </span>
   );
 }
