@@ -5,10 +5,11 @@ import { etiquetarPartidas } from "@/app/actions";
 import { useAviso } from "@/components/useConfirmar";
 import {
   agruparPorRol, unionesSugeridas, filasPorPersona, totalItem, etapaDe, normalizarRol,
-  type ItemRol, type GrupoRol,
+  type ItemRol, type GrupoRol, type FilaRol,
 } from "@/lib/rolesPresupuesto";
 import { ROLES_EQUIPO } from "@/lib/rolesEquipo";
-import { colorEtapaPresu } from "@/lib/rubros";
+import { colorEtapaPresu, ordenEtapaPresu } from "@/lib/rubros";
+import { fechaCorta } from "@/lib/fechas";
 
 /* ══════════════════════════════════════════════════════════════════════════
    CUÁNTO LE TOCA A CADA UNO — y cuánto le falta cobrar
@@ -42,6 +43,12 @@ const etapaCorta = (e: string) => e.replace(/^\d+\s*/, "");
    de 10px a todo color se las come. Si la etapa no se reconoce —«Otros», un
    rubro que no está en ningún árbol DAFO— se queda apagado: pintarlo del gris
    de preproducción diría que es preproducción. */
+/** Cuánto suma una fila EN una etapa. Con `null` (todas), su total. */
+const montoEnEtapa = (f: FilaRol, etapa: string | null): number =>
+  etapa === null ? f.presupuestado
+    : f.grupos.reduce((s, g) =>
+      s + g.porEtapa.reduce((t, e) => t + (e.etapa === etapa ? e.total : 0), 0), 0);
+
 function ChipEtapa({ etapa, children }: { etapa: string; children: React.ReactNode }) {
   const c = colorEtapaPresu(etapa);
   return (
@@ -51,7 +58,7 @@ function ChipEtapa({ etapa, children }: { etapa: string; children: React.ReactNo
 }
 
 export default function RolesPresupuesto({
-  postulacionId, items, personas, rhe, esAdmin,
+  postulacionId, items, personas, rhe, esAdmin, referencia,
 }: {
   postulacionId: string;
   items: ItemRol[];
@@ -60,6 +67,17 @@ export default function RolesPresupuesto({
    *  recibo no dice a qué rol pertenece. */
   rhe: { persona_id: string | null; monto: number | null }[];
   esAdmin: boolean;
+  /** De qué presupuesto salen estas cifras. Se dice en pantalla: quien gira un
+   *  recibo tiene que saber si está mirando lo aprobado o un borrador. */
+  referencia?: {
+    /** `true` = hay versión vigente CON ítems y es la que se lee. */
+    vigente: boolean;
+    etiqueta?: string | null;
+    fecha?: string | null;
+    /** En qué se diferencia hoy el presupuesto vivo de esta foto. Sale de
+     *  `comparaConVivo`: partida a partida, no por el total. */
+    cambios?: { nuevas: number; nuevasTotal: number; cambiadas: number; quitadas: number; hay: boolean };
+  };
 }) {
   const router = useRouter();
   const { avisar, aviso } = useAviso();
@@ -67,6 +85,9 @@ export default function RolesPresupuesto({
   const [ocupado, setOcupado] = useState(false);
   /* Setenta y siete roles no se leen: se busca en ellos. */
   const [q, setQ] = useState("");
+  /* La etapa elegida, o `null` para todas. La alarma no dice «giren los RHE»,
+     dice «giren los de PRE-PRODUCCIÓN». */
+  const [etapa, setEtapa] = useState<string | null>(null);
 
   const nombreDe = useMemo(
     () => new Map(personas.map(p => [p.id, p.alias || p.nombre])),
@@ -102,6 +123,25 @@ export default function RolesPresupuesto({
     () => filasPorPersona(grupos, id => giradoPorPersona.get(id) || 0),
     [grupos, giradoPorPersona]);
 
+  /* ── LAS ETAPAS QUE HAY, CON SU PLATA ──
+     Salen del propio presupuesto y no de un catálogo: si este fondo no tiene
+     postproducción, esa pestaña no debe existir. En el orden del formulario
+     DAFO, que es el que llevan delante («2 PRE PRODUCCIÓN»). */
+  const etapas = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const g of grupos)
+      for (const e of g.porEtapa) m.set(e.etapa, (m.get(e.etapa) || 0) + e.total);
+    return [...m.entries()].map(([nombre, total]) => ({ nombre, total }))
+      /* Una etapa que suma cero no da trabajo a nadie: su botón dejaría la
+         lista vacía (el filtro pide plata > 0) sin explicar por qué. Pasa de
+         verdad: una línea a medio llenar, con cantidad 0, ya crea la etapa. */
+      .filter(e => e.total > 0)
+      /* En el orden del formulario DAFO —1 generales, 2 pre, 3 producción,
+         4 post—, no en el alfabético, que pone la post antes del rodaje. */
+      .sort((a, b) => ordenEtapaPresu(a.nombre) - ordenEtapaPresu(b.nombre)
+        || a.nombre.localeCompare(b.nombre, "es"));
+  }, [grupos]);
+
   /* ── EL BUSCADOR ──
      Por el rol, por la persona y por el CONCEPTO de sus líneas: quien busca
      «cámara» puede estar buscando el operador o el alquiler, y quien busca
@@ -110,18 +150,30 @@ export default function RolesPresupuesto({
      encontrando cosas distintas—. */
   const filtradas = useMemo(() => {
     const t = normalizarRol(q);
-    if (!t) return filas;
-    return filas.filter(f =>
+    const porEtapa = etapa === null ? filas
+      /* Una fila entra si tiene plata EN esa etapa. Con `> 0` y no «aparece en
+         porEtapa»: una partida de importe cero no da trabajo a nadie en esa
+         etapa, y llenaría la lista de filas que no se pueden girar. */
+      : filas.filter(f => f.grupos.some(g =>
+        g.porEtapa.some(e => e.etapa === etapa && e.total > 0)));
+    const texto = !t ? porEtapa : porEtapa.filter(f =>
       normalizarRol(f.titulo).includes(t)
       || (f.personaId && normalizarRol(nombreDe.get(f.personaId) || "").includes(t))
       || f.grupos.some(g => g.items.some(i => normalizarRol(i.concepto).includes(t)))
       || f.grupos.some(g => g.porEtapa.some(e => normalizarRol(e.etapa).includes(t))));
-  }, [filas, q, nombreDe]);
+    /* Con una etapa elegida, mandan las de MÁS plata EN ESA ETAPA: el orden por
+       total del proyecto pondría arriba a quien casi no trabaja en ella. */
+    return etapa === null ? texto
+      : [...texto].sort((a, b) => montoEnEtapa(b, etapa) - montoEnEtapa(a, etapa));
+  }, [filas, q, etapa, nombreDe]);
 
   /* El total es SIEMPRE el del presupuesto entero, con filtro o sin él: un
      total que cambia al escribir en un buscador es un total que nadie puede
      usar para cuadrar. Lo que filtra el buscador es qué filas se ven. */
   const totalPre = filas.reduce((s, f) => s + f.presupuestado, 0);
+  /* Lo de la etapa elegida sale de la MISMA cuenta que pinta su chip: dos
+     sumas del mismo dinero acaban dando dos cifras. */
+  const totalEtapa = etapas.find(e => e.nombre === etapa)?.total ?? 0;
   /* Lo girado a quien NO tiene partida: la diferencia entre todos los recibos
      del fondo y los que sí caen en una fila. */
   const sinPartida = useMemo(() => {
@@ -137,6 +189,9 @@ export default function RolesPresupuesto({
     try {
       const r: any = await fn();
       if (r?.error) { avisar(r.error); return; }
+      /* Guardó, pero no del todo: hay partidas que ya no están en el vivo. Se
+         refresca igual —lo que se pudo escribir está escrito— y se dice. */
+      if (r?.aviso) avisar(r.aviso);
       router.refresh();
     } catch { avisar("No se pudo guardar."); }
     finally { setOcupado(false); }
@@ -161,8 +216,13 @@ export default function RolesPresupuesto({
       <div className="rp-cab">
         <b>💼 Cuánto le toca a cada uno</b>
         <span className="rp-dim">
-          {q ? `${filtradas.length} de ${filas.length} rol(es)` : `${filas.length} rol(es)`}
+          {q || etapa ? `${filtradas.length} de ${filas.length} rol(es)` : `${filas.length} rol(es)`}
           {" · "}{S(totalPre)} presupuestado
+          {/* Con una etapa elegida se dicen las DOS cifras: la de la etapa es
+              la que se va a girar, la del proyecto es contra la que se cuadra.
+              Enseñar solo una de las dos obliga a quitar el filtro para saber
+              dónde está parado. */}
+          {etapa !== null && ` · ${S(totalEtapa)} en ${etapaCorta(etapa).toLowerCase()}`}
         </span>
         <span style={{ flex: 1 }} />
         <span className="rp-buscar">
@@ -175,6 +235,79 @@ export default function RolesPresupuesto({
           )}
         </span>
       </div>
+
+      {/* ── DE QUÉ PRESUPUESTO SALEN ESTAS CIFRAS ──
+          Contra la versión vigente se rinde y se gira: es la que se envía a
+          DAFO. Quien está por girar un recibo tiene que poder ver, sin salir de
+          aquí, si está mirando lo aprobado o un borrador. */}
+      {referencia && (
+        <p className="rp-pie rp-ref">
+          {referencia.vigente
+            ? <>Cifras de la <b>versión vigente</b>
+              {referencia.etiqueta ? ` «${referencia.etiqueta}»` : ""}
+              {referencia.fecha ? `, del ${fechaCorta(referencia.fecha)}` : ""}
+              {" "}— la que se envió a DAFO. Los roles y el «lo cobra» se guardan en el presupuesto vivo.</>
+            : <>Todavía no hay versión vigente: estas cifras salen del <b>presupuesto vivo</b>,
+              que se sigue editando. Congela una versión antes de girar contra ella.</>}
+        </p>
+      )}
+      {/* ── EL BORRADOR YA NO ES LO APROBADO ──
+          No es un error —es el estado normal mientras se prepara una
+          modificación—, pero girar sin saberlo sí lo sería. Y se avisa aunque
+          el TOTAL no cambie: una modificación DAFO mueve plata entre rubros con
+          el estímulo fijo, así que comparar sumas diría «todo igual» justo aquí.
+          Las partidas NUEVAS se nombran aparte porque tienen consecuencia: no
+          salen en ninguna fila de abajo —esta foto no las tiene— y si alguien ya
+          cobró por ellas, su plata aparece como «girado de más» o como «sin
+          partida», que son dos acusaciones falsas. */}
+      {referencia?.vigente && referencia.cambios?.hay && (
+        <p className="rp-sobra">
+          ⚠ El presupuesto vivo ya no es igual a la versión vigente:
+          {" "}{[
+            referencia.cambios.nuevas ? `${referencia.cambios.nuevas} partida(s) nueva(s) por ${S(referencia.cambios.nuevasTotal)}` : "",
+            referencia.cambios.cambiadas ? `${referencia.cambios.cambiadas} con otro importe` : "",
+            referencia.cambios.quitadas ? `${referencia.cambios.quitadas} borrada(s)` : "",
+          ].filter(Boolean).join(" · ")}.
+          {" "}Aquí se ve <b>lo aprobado</b>; hay una modificación sin congelar.
+          {referencia.cambios.nuevas > 0 && " Lo nuevo no entra en ninguna fila: si alguien ya cobró por eso, saldrá como girado de más o sin partida."}
+        </p>
+      )}
+
+      {/* ── POR ETAPA ──
+          La alarma no dice «giren los RHE», dice «giren los de PRE-PRODUCCIÓN».
+          Las etapas salen del propio presupuesto, con su color de siempre. */}
+      {etapas.length > 1 && (
+        <div className="rp-etapas" role="group" aria-label="Filtrar por etapa">
+          {/* `aria-pressed`: encendido y apagado se distinguen por el color, y
+              el color no lo anuncia un lector de pantalla. */}
+          <button type="button" className={`rp-et-b${etapa === null ? " on" : ""}`}
+            aria-pressed={etapa === null} onClick={() => setEtapa(null)}>
+            todas <span className="rp-et-n">{S(totalPre)}</span>
+          </button>
+          {etapas.map(e => (
+            <button key={e.nombre} type="button"
+              className={`rp-et-b${etapa === e.nombre ? " on" : ""}`}
+              aria-pressed={etapa === e.nombre}
+              style={{ ["--rp-et" as any]: colorEtapaPresu(e.nombre) || "var(--dim)" }}
+              onClick={() => setEtapa(etapa === e.nombre ? null : e.nombre)}
+              title={`Ver solo los roles con partidas en ${etapaCorta(e.nombre).toLowerCase()}`}>
+              {etapaCorta(e.nombre).toLowerCase()} <span className="rp-et-n">{S(e.total)}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {/* ── LO QUE EL FILTRO NO PUEDE HACER ──
+          Un RHE guarda persona y monto; no dice a qué etapa pertenece. Así que
+          «girado» y «falta» siguen siendo del fondo entero aunque se mire una
+          sola etapa. Decirlo es la diferencia entre una lista útil y una resta
+          inventada. */}
+      {etapa !== null && (
+        <p className="rp-pie">
+          Presupuestado, girado y falta son del <b>fondo entero</b>: un recibo no dice a qué
+          etapa pertenece. La etapa filtra qué roles se ven —y su chip de color dice cuánto
+          suma cada uno en ella—.
+        </p>
+      )}
 
       {/* ── LAS UNIONES SE PROPONEN, NO SE HACEN ──
           Sumar dos líneas que no son de la misma persona es un recibo mal
@@ -366,9 +499,14 @@ export default function RolesPresupuesto({
             </div>
           );
         })}
-        {q && !filtradas.length && (
+        {/* Vacío por el buscador, por la etapa o por los dos: el mensaje dice
+            cuál de los tres, porque quitar el filtro equivocado deja la
+            pantalla igual de vacía y parece que está rota. */}
+        {!filtradas.length && (q || etapa) && (
           <div className="rp-vacio" style={{ padding: "10px 4px" }}>
-            Ningún rol, persona ni partida dice «{q}».
+            {q && etapa ? <>Ningún rol de {etapaCorta(etapa).toLowerCase()} dice «{q}».</>
+              : q ? <>Ningún rol, persona ni partida dice «{q}».</>
+                : <>Ningún rol tiene partidas en {etapaCorta(etapa || "").toLowerCase()}.</>}
           </div>
         )}
       </div>

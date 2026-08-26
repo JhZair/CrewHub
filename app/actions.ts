@@ -4741,13 +4741,30 @@ export async function etiquetarPartidas(
       ...(personaId === undefined ? {} : { persona_id: personaId || null }),
     };
   });
-  if (!tocados) return { error: "Ninguna de esas partidas está en el presupuesto." };
+  if (!tocados) {
+    /* Se pidieron partidas que el presupuesto vivo ya no tiene. Pasa de verdad
+       desde que «Por rol» lee la versión VIGENTE: si alguien borró esas líneas
+       del vivo después de congelarla, siguen en pantalla —salen de la foto—
+       pero ya no hay dónde escribirles la etiqueta. */
+    return { error: "Esas partidas ya no están en el presupuesto vivo (se borraron después de congelar la versión vigente). Vuelve a crearlas en el presupuesto para poder etiquetarlas." };
+  }
   /* Más tocados que pedidos = hay ids repetidos en el presupuesto, y entonces
      se ha etiquetado una línea que nadie eligió. Se dice: mover en silencio la
-     cifra de otra persona es lo peor que puede hacer esta pantalla. */
-  if (tocados !== objetivo.size) {
+     cifra de otra persona es lo peor que puede hacer esta pantalla.
+     ⚠ Y MENOS tocados que pedidos NO es lo mismo, aunque este `if` los juntaba
+     en un solo mensaje: ahí no sobra una línea, FALTAN —partidas que están en
+     la versión vigente y ya no en el vivo—. Culpar a «códigos repetidos»
+     mandaba a revisar el presupuesto buscando algo que no está roto. */
+  if (tocados > objetivo.size) {
     return { error: `Hay partidas con el mismo código: se tocarían ${tocados} líneas y se pidieron ${objetivo.size}. Revisa los códigos del presupuesto antes de etiquetar.` };
   }
+  /* ── Y SI FALTAN, SE HACE LO QUE SE PUEDE Y SE DICE ──
+     Abortar dejaba la fila en un callejón sin salida: sus líneas borradas no
+     van a volver al presupuesto vivo nunca, así que nadie podría asignarle
+     persona jamás y su «girado» se quedaría en «—» para siempre. Se etiquetan
+     las que existen y se avisa exactamente cuáles no —que es lo contrario de
+     guardar a medias en silencio—. */
+  const faltan = objetivo.size - tocados;
 
   const { data, error } = await supabase.from("postulaciones")
     .update({ presupuesto: { ...pre, items } }).eq("id", postulacionId).select("id");
@@ -4774,7 +4791,12 @@ export async function etiquetarPartidas(
 
   revalidatePath(`/fondo/${postulacionId}`);
   revalidatePath(`/entidad/postulacion/${postulacionId}`);
-  return { ok: tocados };
+  return {
+    ok: tocados,
+    aviso: faltan
+      ? `Se etiquetaron ${tocados} partida(s). Otra(s) ${faltan} ya no están en el presupuesto vivo —se borraron después de congelar la versión vigente—, así que conservan lo que decía la foto.`
+      : undefined,
+  };
 }
 
 /* Guardar el presupuesto actual como PLANTILLA reusable (por categoría), como

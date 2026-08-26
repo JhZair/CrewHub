@@ -33,7 +33,7 @@ import { urlPlataforma, PLAT } from "@/lib/plataformas";
 import { hilosDeFilas } from "@/lib/rendicionHilo";
 import { gastosDelFondo, ayudaRubro } from "@/lib/ejecutado";
 import RolesPresupuesto from "@/components/RolesPresupuesto";
-import { agruparPorRol, filasPorPersona } from "@/lib/rolesPresupuesto";
+import { agruparPorRol, filasPorPersona, itemsDeReferencia, comparaConVivo } from "@/lib/rolesPresupuesto";
 
 /* ── LA EJECUCIÓN DEL FONDO — la segunda vida de un proyecto ──
  *
@@ -641,7 +641,20 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
      con las MISMAS funciones que pinta la pestaña —no con una cuenta parecida
      escrita aquí—, que es como se evita que la etiqueta y el contenido digan
      cosas distintas. */
-  const rolesPre = agruparPorRol(preItems as any);
+  /* ── Y SE MIRA EL PRESUPUESTO VIGENTE, NO EL VIVO ──
+     Contra la versión vigente se rinde y se gira: es la que se envía a DAFO. El
+     vivo es el borrador de la siguiente modificación. Las etiquetas (rol y
+     quién cobra) sí salen del vivo, que es donde se escriben — ver
+     `itemsDeReferencia`. Sin versión vigente todavía, es el vivo. */
+  const vigItemsPre = (((vigPresu?.datos as any)?.items) || []) as any[];
+  const itemsRol = itemsDeReferencia(vigItemsPre, preItems as any);
+  /* Una versión vigente SIN ítems no es una referencia: `itemsDeReferencia` se
+     cae al vivo, y decir «vigente» sobre las cifras del vivo sería lo único
+     peor que no decir nada. Las dos pantallas tienen que responder lo mismo a
+     «¿hay foto contra la que girar?». */
+  const hayVigPresu = !!vigPresu && vigItemsPre.length > 0;
+  const cambiosPre = comparaConVivo(vigItemsPre, preItems as any);
+  const rolesPre = agruparPorRol(itemsRol as any);
   const rolesSinDueno = (() => {
     const filas = filasPorPersona(rolesPre, () => 0).filter(f => !f.personaId);
     return filas.length
@@ -1021,8 +1034,17 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
                 esta quedaba flotando sobre el fondo de la página mientras la de
                 al lado tenía su panel. */}
             <div className="card">
-              <RolesPresupuesto postulacionId={params.id} items={preItems as any}
-                personas={personasCat} rhe={rheFondo as any} esAdmin={esAdmin} />
+              <RolesPresupuesto postulacionId={params.id} items={itemsRol as any}
+                personas={personasCat} rhe={rheFondo as any} esAdmin={esAdmin}
+                /* Contra qué presupuesto habla, dicho en pantalla: si la
+                   vigente y el vivo ya no suman lo mismo, hay una modificación
+                   a medio hacer y las cifras de aquí son las de antes. */
+                referencia={{
+                  vigente: hayVigPresu,
+                  etiqueta: vigPresu?.etiqueta || null,
+                  fecha: vigPresu?.creado_en || null,
+                  cambios: cambiosPre,
+                }} />
             </div>
           </div>,
         ]}

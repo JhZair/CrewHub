@@ -6147,6 +6147,25 @@ body{padding-top:var(--alto-franja, 0)}
 .rp-etapa-c{color:color-mix(in srgb, var(--rp-et) 72%, var(--text));
   background:color-mix(in srgb, var(--rp-et) 12%, transparent);
   border-color:color-mix(in srgb, var(--rp-et) 26%, transparent)}
+/* ── LA TIRA DE ETAPAS ──
+   Filtra qué roles se ven. Cada botón lleva el color de su etapa, apagado
+   mientras no esté elegido y encendido cuando sí: con cuatro etapas, saber en
+   cuál estás parado tiene que costar cero. */
+.rp-etapas{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 4px;--rp-et:var(--dim)}
+.rp-et-b{display:inline-flex;align-items:baseline;gap:6px;cursor:pointer;
+  font-size:11.5px;font-weight:600;letter-spacing:.2px;padding:3px 9px;border-radius:999px;
+  color:var(--muted);background:transparent;
+  border:1px solid color-mix(in srgb, var(--rp-et) 26%, transparent)}
+.rp-et-b:hover{background:color-mix(in srgb, var(--rp-et) 10%, transparent)}
+.rp-et-b.on{color:color-mix(in srgb, var(--rp-et) 70%, var(--text));
+  background:color-mix(in srgb, var(--rp-et) 15%, transparent);
+  border-color:color-mix(in srgb, var(--rp-et) 45%, transparent)}
+.rp-et-n{font-size:10.5px;font-weight:700;color:var(--dim);font-variant-numeric:tabular-nums}
+.rp-et-b.on .rp-et-n{color:inherit;opacity:.85}
+/* De qué presupuesto salen las cifras: se lee una vez y se olvida, pero tiene
+   que estar. */
+.rp-ref{margin:0 0 2px}
+.rp-ref b{color:var(--muted);font-weight:700}
 .rp-sel{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;
   padding:4px 8px;font-size:12px;color:var(--text);outline:none}
 /* El de dentro del detalle no ocupa la columna entera: va en línea con el

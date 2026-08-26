@@ -142,6 +142,70 @@ export function agruparPorRol(items: ItemRol[]): GrupoRol[] {
   return [...mapa.values()].sort((a, b) => b.total - a.total || a.titulo.localeCompare(b.titulo));
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   ¿CONTRA QUÉ PRESUPUESTO SE GIRA?
+
+   Contra la VERSIÓN VIGENTE. Es la que se envía a DAFO y contra la que se
+   rinde; el presupuesto vivo es el borrador de la siguiente modificación y la
+   foto de lo postulado es historia —para ver cómo empezó y cómo va—. La
+   conciliación ya usaba la vigente; esta pantalla usaba el vivo, y el día que
+   se modifique el presupuesto sin congelar versión las dos habrían dicho
+   cifras distintas sobre la misma plata.
+
+   ── PERO LA ETIQUETA VIVE EN EL VIVO ──
+   `rol` y `persona_id` se escriben en `postulaciones.presupuesto` —una versión
+   es una foto, y escribir dentro de una foto sería reescribir el pasado—. Así
+   que las CIFRAS salen de la vigente y las ETIQUETAS del vivo, cruzadas por
+   `id`: la versión es una copia literal del mismo jsonb, así que los ids son
+   los mismos. Sin este cruce, etiquetar un rol no habría hecho nada visible —
+   se guardaba en el vivo y la pantalla leía la foto—.
+
+   Una partida que ya no está en el vivo (se borró después de congelar) conserva
+   la etiqueta que llevaba en la foto: es lo único que se sabe de ella.
+   ══════════════════════════════════════════════════════════════════════════ */
+export function itemsDeReferencia(
+  vigentes: ItemRol[] | null | undefined,
+  vivos: ItemRol[] | null | undefined,
+): ItemRol[] {
+  const vv = vivos || [];
+  if (!vigentes?.length) return vv;
+  const porId = new Map<string, ItemRol>();
+  for (const it of vv) if (it?.id) porId.set(it.id, it);
+  return vigentes.map(it => {
+    const vivo = it?.id ? porId.get(it.id) : undefined;
+    /* Si la partida sigue viva, manda SU etiqueta —incluida la que se quitó:
+       `?? null` y no `|| it.rol`, porque quitarle la persona a un rol tiene
+       que notarse—. Si ya no está, se queda con la que tenía en la foto. */
+    return vivo ? { ...it, rol: vivo.rol ?? null, persona_id: vivo.persona_id ?? null } : it;
+  });
+}
+
+/** En qué se diferencian el presupuesto vivo y la versión vigente.
+ *
+ *  ⚠ NO se comparan los TOTALES. Una modificación de presupuesto DAFO
+ *  redistribuye entre rubros con el estímulo fijo: mueve S/ 15,000 de arte a
+ *  postproducción y el total no se mueve un sol. Comparar sumas habría dicho
+ *  «todo igual» justo en el caso para el que existe este aviso. Se compara
+ *  partida a partida, por `id` y por importe. */
+export function comparaConVivo(
+  vigentes: ItemRol[] | null | undefined,
+  vivos: ItemRol[] | null | undefined,
+): { nuevas: number; nuevasTotal: number; cambiadas: number; quitadas: number; hay: boolean } {
+  const vg = vigentes || [], vv = vivos || [];
+  const enVig = new Map<string, ItemRol>();
+  for (const i of vg) if (i?.id) enVig.set(i.id, i);
+  let nuevas = 0, nuevasTotal = 0, cambiadas = 0;
+  for (const i of vv) {
+    const v = i?.id ? enVig.get(i.id) : undefined;
+    if (!v) { nuevas++; nuevasTotal += totalItem(i); continue; }
+    /* Un sol de diferencia por redondeo no es una modificación. */
+    if (Math.abs(totalItem(i) - totalItem(v)) >= 1) cambiadas++;
+  }
+  const enVivo = new Set(vv.map(i => i?.id).filter(Boolean) as string[]);
+  const quitadas = vg.filter(i => !i?.id || !enVivo.has(i.id)).length;
+  return { nuevas, nuevasTotal, cambiadas, quitadas, hay: !!(nuevas || cambiadas || quitadas) };
+}
+
 /* ── ¿SERÁN LA MISMA PERSONA? ──
    Solo para PROPONER. Dos grupos se parecen si uno empieza por el otro
    («directora» ⊂ «directora responsable») o si comparten todas las palabras

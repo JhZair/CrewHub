@@ -234,6 +234,22 @@ export function colorEtapaPresu(nombre?: string | null): string | null {
   return COLOR_ETAPA_PRESU.find(([re]) => re.test(t))?.[1] || null;
 }
 
+/* ── EL ORDEN DE LAS ETAPAS ES EL DEL FORMULARIO ──
+   1 gastos generales · 2 pre · 3 producción · 4 post. Alfabéticamente saldría
+   «GASTOS · POST · PRE · PRODUCCIÓN», que pone la postproducción antes del
+   rodaje: nadie lee así un presupuesto, y menos para girar. El número existe
+   en el árbol DAFO (`cod`) pero NO en el nombre, así que se saca de ahí. */
+const ORDEN_CAT_PRESU: string[] = [];
+for (const arbol of [CATEGORIAS_PRESU_FICCION, CATEGORIAS_PRESU_AUDIOVISUAL])
+  for (const c of arbol) if (!ORDEN_CAT_PRESU.includes(c.nombre)) ORDEN_CAT_PRESU.push(c.nombre);
+
+/** Dónde va una etapa del presupuesto al ordenar. Lo que no está en ningún
+ *  árbol («Otros») va al final, que es donde se lee sin estorbar. */
+export const ordenEtapaPresu = (nombre?: string | null): number => {
+  const i = ORDEN_CAT_PRESU.indexOf(String(nombre || ""));
+  return i < 0 ? ORDEN_CAT_PRESU.length : i;
+};
+
 const TODOS = [...Object.values(RUBROS_POR_CATEGORIA).flat(), ...RUBROS_DEFAULT];
 export const nombreRubro = (clave: string) =>
   TODOS.find(r => r.clave === clave)?.nombre || (clave || "").replace(/_/g, " ");
