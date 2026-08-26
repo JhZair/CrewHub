@@ -6257,41 +6257,55 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
    igual que dos del mismo día. El raíl continuo y los tramos de silencio
    devuelven lo único que una tabla no puede enseñar — la distancia.
    ══════════════════════════════════════════════════════════════════════════ */
-.vf-linea{position:relative;display:flex;flex-direction:column;padding-left:2px}
-/* El raíl: una línea de arriba abajo, por detrás de los nodos. */
-.vf-linea::before{content:"";position:absolute;left:13px;top:6px;bottom:6px;width:2px;
-  background:linear-gradient(180deg,transparent,var(--border) 12px,var(--border) calc(100% - 12px),transparent);
-  border-radius:2px}
+.vf-linea{display:flex;flex-direction:column}
+/* ── EL RAÍL, POR TRAMOS Y NO DE UNA PIEZA ──
+   Estaba pintado de una sola vez sobre el contenedor, y el punteado del
+   silencio le caía encima: se veían las dos líneas a la vez, la continua por
+   debajo de los puntos. Ahora cada tramo pinta SU trozo —continuo si es un
+   hito, punteado si es un silencio— y juntos forman la línea sin solaparse. */
 .vf-hito{position:relative;display:grid;grid-template-columns:28px minmax(0,1fr);
-  gap:10px;align-items:flex-start;padding:9px 4px 11px}
-.vf-hito:hover{background:rgba(255,255,255,.022);border-radius:8px}
+  gap:11px;align-items:flex-start;padding:8px 4px 12px}
+.vf-hito::before{content:"";position:absolute;left:17px;top:0;bottom:0;width:2px;
+  background:var(--border)}
+/* El primero y el último no sacan la línea por fuera: la línea de tiempo
+   empieza en el primer nodo y acaba en el último. */
+.vf-linea>.vf-tramo:first-child .vf-hito::before{top:22px}
+.vf-linea>.vf-tramo:last-child .vf-hito::before{bottom:calc(100% - 22px)}
+.vf-hito:hover{background:rgba(255,255,255,.02);border-radius:10px}
 /* El nodo, encima del raíl. Fondo opaco para que la línea no se le vea por
    debajo, y su borde del color de la clase de hito. */
 .vf-punto{position:relative;z-index:1;width:28px;height:28px;border-radius:50%;
   display:flex;align-items:center;justify-content:center;font-size:13px;
-  background:var(--card);border:1.5px solid var(--border2)}
-/* El año, colgado a la izquierda del raíl cuando cambia: separa sin partir. */
-.vf-anio-marca{position:absolute;left:0;top:-9px;font-size:9.5px;font-weight:800;
-  letter-spacing:1.2px;color:var(--dim);background:var(--card);padding:0 4px 0 2px}
-.vf-cuerpo{display:flex;flex-direction:column;gap:4px;min-width:0;font-size:13px}
+  background:var(--card);border:1.5px solid var(--border2);
+  box-shadow:0 0 0 3px var(--card)}
+/* El año, en su propio renglón: separa sin partir la línea. */
+.vf-anio-fila{display:flex;align-items:center;gap:9px;padding:10px 4px 4px 39px;
+  font-size:10px;font-weight:800;letter-spacing:1.4px;color:var(--dim)}
+.vf-anio-fila i{flex:1;height:1px;background:var(--border);opacity:.6}
+.vf-cuerpo{display:flex;flex-direction:column;gap:4px;min-width:0;font-size:13px;
+  padding-top:3px}
 .vf-cuerpo>b{font-weight:600;line-height:1.4}
 .vf-cab-hito{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .vf-fecha-hito{font-size:11px;color:var(--dim);font-weight:600;white-space:nowrap;
   font-variant-numeric:tabular-nums;letter-spacing:.2px}
 /* ── EL SILENCIO ──
-   Un tramo de raíl punteado con cuánto duró. En un fondo con problemas es la
-   mitad del expediente: «cuatro meses sin que nadie dijera nada» explica más
-   que los dos hitos que separa. */
+   Una banda tenue con el raíl punteado dentro. En un fondo con problemas es la
+   mitad del expediente: «un año sin que nadie dijera nada» explica más que los
+   dos hitos que separa. Tenue a propósito: es el hueco entre dos cosas, no una
+   tercera cosa — si pesara igual que un hito, la línea se leería como una
+   sucesión de alarmas. */
 .vf-silencio{position:relative;display:flex;align-items:center;
-  min-height:46px;padding-left:38px}
-.vf-silencio::before{content:"";position:absolute;left:13px;top:0;bottom:0;width:2px;
-  background:repeating-linear-gradient(180deg,var(--border2) 0 4px,transparent 4px 9px)}
-.vf-sil-txt{font-size:10.5px;color:var(--dim);font-style:italic;letter-spacing:.2px}
-/* El hueco que llega hasta hoy es el que importa mientras el fondo sigue
+  min-height:42px;padding:6px 12px 6px 39px;margin:1px 0;border-radius:10px;
+  background:rgba(255,255,255,.028)}
+.vf-silencio::before{content:"";position:absolute;left:17px;top:-2px;bottom:-2px;width:2px;
+  background:repeating-linear-gradient(180deg,var(--border2) 0 3px,transparent 3px 8px)}
+.vf-sil-txt{font-size:11px;color:var(--dim);letter-spacing:.2px}
+/* El hueco que llega hasta hoy es el que corre mientras el fondo sigue
    abierto: ese sí se dice en ámbar. */
-.vf-silencio-hoy .vf-sil-txt{color:var(--yellow);opacity:.85;font-style:normal;font-weight:600}
+.vf-silencio-hoy{background:rgba(244,180,0,.06)}
+.vf-silencio-hoy .vf-sil-txt{color:var(--yellow);opacity:.9;font-weight:600}
 .vf-silencio-hoy::before{background:repeating-linear-gradient(180deg,
-  rgba(244,180,0,.5) 0 4px,transparent 4px 9px)}
+  rgba(244,180,0,.45) 0 3px,transparent 3px 8px)}
 /* El detalle respeta los saltos de línea: se pega tal cual se escribió, que es
    como se relee para un descargo. */
 .vf-det{color:var(--muted);font-size:12.5px;line-height:1.5;white-space:pre-wrap}
@@ -6319,8 +6333,13 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
   text-transform:uppercase;padding:1px 7px;border-radius:999px}
 .vf-quien-nos{color:var(--teal);background:rgba(45,212,191,.12)}
 .vf-quien-dafo{color:var(--blue);background:rgba(59,130,246,.12)}
-.vf-lado-nos{box-shadow:inset 2px 0 0 rgba(45,212,191,.5)}
-.vf-lado-dafo{box-shadow:inset 2px 0 0 rgba(59,130,246,.5)}
+/* ── EL LADO SE DICE EN EL NODO, NO EN EL BORDE DE LA FILA ──
+   El filo iba como `inset box-shadow` a la izquierda del todo, o sea PEGADO al
+   raíl y compitiendo con él: dos líneas verticales de colores distintos a tres
+   píxeles una de otra. Ahora lo dice el anillo del propio nodo, que es donde
+   ya está mirando el ojo. */
+.vf-lado-nos .vf-punto{box-shadow:0 0 0 3px var(--card),0 0 0 4.5px rgba(45,212,191,.35)}
+.vf-lado-dafo .vf-punto{box-shadow:0 0 0 3px var(--card),0 0 0 4.5px rgba(59,130,246,.35)}
 .vf-pie{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--dim)}
 .vf-dias{font-size:11px;color:var(--dim)}
 .vf-ok{color:var(--green);font-size:11px}
@@ -6366,10 +6385,11 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
 @media (max-width:640px){
   /* El raíl se estrecha, pero no desaparece: es lo que hace que se lea como
      una línea de tiempo y no como una lista. */
-  .vf-hito{grid-template-columns:24px minmax(0,1fr);gap:8px}
+  .vf-hito{grid-template-columns:24px minmax(0,1fr);gap:9px}
   .vf-punto{width:24px;height:24px;font-size:11.5px}
-  .vf-linea::before,.vf-silencio::before{left:11px}
-  .vf-silencio{padding-left:32px;min-height:40px}
+  .vf-hito::before,.vf-silencio::before{left:15px}
+  .vf-silencio{padding-left:34px;min-height:38px}
+  .vf-anio-fila{padding-left:34px}
 }
 
 /* ── LA TIRA DE ETAPAS ──

@@ -413,8 +413,13 @@ export default function VidaFondo({
               .find(x => x.tipo === "hito") as { tipo: "hito"; hito: Hito } | undefined;
             const cambiaAnio = !anterior || anterior.hito.fecha.slice(0, 4) !== h.fecha.slice(0, 4);
             return (
-              <div key={h.clave} className={`vf-hito${ladoDe(h) ? ` vf-lado-${ladoDe(h)}` : ""}`}>
-                {cambiaAnio && <span className="vf-anio-marca">{h.fecha.slice(0, 4)}</span>}
+              <div key={h.clave} className="vf-tramo">
+                {/* El año, en su propio renglón y dentro del raíl. Iba flotando
+                    encima del nodo con posición absoluta y se pisaba con él. */}
+                {cambiaAnio && (
+                  <div className="vf-anio-fila"><span>{h.fecha.slice(0, 4)}</span><i /></div>
+                )}
+                <div className={`vf-hito${ladoDe(h) ? ` vf-lado-${ladoDe(h)}` : ""}`}>
                 <span className="vf-punto" style={{ borderColor: COLOR[h.clase] }}>{h.ico}</span>
                 <span className="vf-cuerpo">
                   <span className="vf-cab-hito">
@@ -485,6 +490,7 @@ export default function VidaFondo({
               )}
             </span>
                 </span>
+                </div>
               </div>
             );
           })}
