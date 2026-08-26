@@ -1,5 +1,6 @@
 "use client";
 import { misEnProgreso, comentar, cambiarEstado, muroMensajes } from "@/app/actions";
+import { esVentanaDeTrabajo } from "@/lib/panel";
 import { pedirZocalo } from "@/lib/zocalo";
 import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
 import { celebrarResuelto } from "@/lib/celebra";
@@ -51,7 +52,12 @@ export default function BancoTrabajo() {
   const enLogin = pathname.startsWith("/login");
 
   // Solo en la ventana principal (no en los paneles embebidos del Monitor)
-  useEffect(() => { setEsTop(window.self === window.top); }, []);
+  /* La misma regla que los demás flotantes (lib/panel.ts). Estos DOS siguen
+     sin pintarse dentro de un panel del Monitor —son franjas de pantalla
+     completa, y duplicadas en una pantalla ya partida en dos serían dos veces
+     lo mismo mirándose de frente—, pero comparten el criterio de qué ventana
+     manda para que no haya dos definiciones de «ventana principal». */
+  useEffect(() => { setEsTop(window.self === window.top && esVentanaDeTrabajo()); }, []);
 
   // Recuerda si lo dejaste abierto
   useEffect(() => {

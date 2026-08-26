@@ -1,5 +1,6 @@
 "use client";
 import { createClient } from "@/lib/supabase/client";
+import { esVentanaDeTrabajo } from "@/lib/panel";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import Avatar from "@/components/Avatar";
@@ -30,7 +31,12 @@ export default function QuienEsta({ yo, token }: { yo: Quien; token?: string }) 
 
   // Solo en la ventana principal: los paneles del Monitor son iframes y
   // aparecerían como gente conectada de más.
-  useEffect(() => { setEsTop(window.self === window.top); }, []);
+  /* La misma regla que los demás flotantes (lib/panel.ts). Estos DOS siguen
+     sin pintarse dentro de un panel del Monitor —son franjas de pantalla
+     completa, y duplicadas en una pantalla ya partida en dos serían dos veces
+     lo mismo mirándose de frente—, pero comparten el criterio de qué ventana
+     manda para que no haya dos definiciones de «ventana principal». */
+  useEffect(() => { setEsTop(window.self === window.top && esVentanaDeTrabajo()); }, []);
 
   useEffect(() => {
     if (!esTop || !yo?.id || pathname.startsWith("/login")) return;

@@ -1405,7 +1405,10 @@ a{color:inherit;text-decoration:none}
    descuadra en silencio.
    Va como modificador y no en `.modal-caja` porque la hoja para postular usa
    la misma caja y no tiene por qué crecer porque crezca el compositor. */
-.modal-caja.modal-compositor{max-width:828px}
+/* `min(…, 96vw)`: dentro de un panel del Monitor el `vw` es el del PANEL, no
+   el de la pantalla, así que 828px fijos se salían por los lados. Se aprieta
+   —el formulario se parte en dos líneas— pero se ve entero. */
+.modal-caja.modal-compositor{max-width:min(828px,96vw)}
 /* El expediente usa todo el ancho: es un formulario de 40+ campos */
 .modal-caja.modal-ancho{max-width:min(1500px,94vw)}
 /* ANCHO DE LECTURA, no ancho de pantalla — solo para los modales que son un
@@ -1773,12 +1776,13 @@ button.sc-est:hover{border-color:var(--border2);background:var(--bg)}
 
 /* ===== Monitor (cockpit de 3 vistas, solo app) ===== */
 .monitor{position:fixed;inset:0;display:flex;flex-direction:column;background:var(--bg);z-index:5}
-.mon-bar{display:flex;align-items:center;gap:12px;padding:7px 14px;border-bottom:1px solid var(--border);font-size:12.5px}
-.mon-bar b{color:var(--text)}
-.mon-note{color:var(--dim)}
-.mon-salir{margin-left:auto;color:var(--muted);font-size:12px}
-.mon-salir:hover{color:var(--red)}
-.mon-grid{flex:1;display:grid;grid-template-columns:1fr 1.5fr;gap:8px;padding:8px;min-height:0;box-sizing:border-box}
+/* (`.mon-bar`, `.mon-note` y `.mon-salir` eran de una barra superior que ya no
+   existe: el Monitor no tiene cromo propio.) */
+/* ── MITADES IGUALES ──
+   Era `1fr 1.5fr`, de cuando la izquierda «solo navegaba» y la derecha era el
+   tablero. Ya no hay lados con papeles distintos: los dos son ventanas de
+   trabajo, y el compositor —828px de ancho— no cabía en el panel chico. */
+.mon-grid{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px;min-height:0;box-sizing:border-box}
 /* `position:relative` para el tirador de «abrir aparte», que ahora flota
    dentro del panel en vez de tener su propia barra. */
 .mon-pane{position:relative;display:flex;flex-direction:column;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--card);min-width:0}
@@ -1787,13 +1791,20 @@ button.sc-est:hover{border-color:var(--border2);background:var(--bg)}
    cuanto entras a un caso desde ese lado.) */
 /* El tirador: apagado hasta que el ratón entra en el panel. Está donde estaba
    —arriba a la derecha— pero sin ocupar una fila entera. */
-.mon-pop{position:absolute;top:6px;right:10px;z-index:3;
+.mon-pop{position:absolute;top:3px;right:5px;z-index:3;
   width:22px;height:22px;display:flex;align-items:center;justify-content:center;
   border-radius:7px;font-size:12px;color:var(--muted);
-  background:color-mix(in srgb, var(--panel) 88%, transparent);
+  /* Fondo OPACO: flota sobre el contenido del panel y con transparencia se
+     leían las dos capas a la vez. */
+  background:var(--panel);
   border:1px solid var(--border);opacity:0;transition:opacity .15s,color .15s}
 .mon-pane:hover .mon-pop{opacity:.65}
 .mon-pop:hover{opacity:1;color:var(--accent);border-color:var(--border2)}
+/* Con el teclado también se ve: un enlace enfocado e invisible es una trampa. */
+.mon-pane:focus-within .mon-pop{opacity:1}
+/* Sin ratón no hay `hover`, y el Monitor se abre desde 760px —tabletas y
+   portátiles táctiles incluidos—: ahí el tirador se queda puesto. */
+@media(hover:none){.mon-pop{opacity:.6}}
 .mon-frame{flex:1;width:100%;border:0;background:var(--bg)}
 @media(max-width:900px){.mon-grid{grid-template-columns:1fr;grid-auto-rows:minmax(320px,70vh);overflow:auto}}
 

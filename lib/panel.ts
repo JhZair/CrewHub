@@ -37,5 +37,12 @@ export const NOMBRE_PANEL = "crewhub-panel";
  */
 export function esVentanaDeTrabajo(): boolean {
   if (typeof window === "undefined") return false;
+  /* ── LA VENTANA DEL MONITOR NO ES UNA SUPERFICIE DE TRABAJO ──
+     Es el marco que sostiene los dos paneles: no tiene contenido propio, así
+     que sus flotantes se dibujaban ENCIMA de los de los paneles, desplazados
+     los nueve píxeles del borde. Tres ＋, dos campanitas y dos buscadores
+     amontonados en la misma esquina — justo el desastre que este fichero dice
+     evitar. Aquí manda cada panel; el marco se calla. */
+  if (window.location.pathname.startsWith("/monitor")) return false;
   return window.self === window.top || window.name.startsWith(NOMBRE_PANEL);
 }

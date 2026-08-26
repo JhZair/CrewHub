@@ -24,9 +24,12 @@ import { NOMBRE_PANEL } from "@/lib/panel";
    previa» y sobrevive a las navegaciones de dentro. Ver lib/panel.ts.
    ══════════════════════════════════════════════════════════════════════════ */
 
+/* El `title` describe lo ESTABLE de cada panel —dónde empieza—, no dónde está
+   en la pantalla: es lo único que sigue siendo cierto tres clics después, y es
+   lo que anuncia un lector de pantalla. */
 const PANES = [
-  { src: "/", titulo: "Panel izquierdo" },
-  { src: "/tablero", titulo: "Panel derecho" },
+  { src: "/", titulo: "Ventana de trabajo 1 · empieza en la portada" },
+  { src: "/tablero", titulo: "Ventana de trabajo 2 · empieza en el tablero" },
 ];
 
 export default function MonitorPage() {
@@ -51,6 +54,7 @@ export default function MonitorPage() {
                 queda como un tirador en la esquina, apagado hasta que el ratón
                 entra en ese lado. */}
             <a href={p.src} target="_blank" rel="noreferrer" className="mon-pop"
+              aria-label={`Abrir en una ventana aparte: ${p.titulo}`}
               title="Abrir este panel en una ventana aparte">↗</a>
           </section>
         ))}
