@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { guardarHitoFondo, borrarHitoFondo } from "@/app/actions";
@@ -139,6 +139,22 @@ export default function VidaFondo({
   /* La carta cuyo plazo se está cerrando sin contestar, con su titular a la
      vista: el motivo se escribe mirando de qué carta se habla. */
   const [cerrando, setCerrando] = useState<{ id: string; titulo: string } | null>(null);
+  /* ── CORREGIR LLEVA AL FORMULARIO ──
+     El botón está al pie de un hito que puede estar a dos pantallas del
+     formulario, arriba del todo. Pulsarlo parecía no hacer nada: el
+     formulario se abría fuera de la vista, con los datos cargados, y quien lo
+     pulsaba volvía a pulsarlo. */
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (!editando) return;
+    formRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    /* Y el foco en el titular, que es lo que se viene a corregir. Sin esto hay
+       que volver a apuntar con el ratón a lo que ya está en pantalla. */
+    const t = setTimeout(() => {
+      (formRef.current?.querySelector('input[name="titulo"]') as HTMLInputElement | null)?.focus();
+    }, 260);
+    return () => clearTimeout(t);
+  }, [editando]);
   /* El acta de este fondo: es la llave con la que se comprueba que una carta
      cargada aquí es de verdad de este expediente. */
   const codigoActa = (postulacion as any)?.codigo_acta || null;
@@ -294,7 +310,7 @@ export default function VidaFondo({
            corregir un hito a corregir otro: se veían los datos del PRIMERO y se
            guardaban sobre el SEGUNDO. Con la clave, cambiar de hito monta un
            formulario nuevo. */
-        <form key={editando?.id ?? "nuevo"} className="vf-form" onSubmit={enviar}>
+        <form key={editando?.id ?? "nuevo"} ref={formRef} className="vf-form" onSubmit={enviar}>
           <div className="vf-form-fila">
             <label className="vf-lbl">
               Día
