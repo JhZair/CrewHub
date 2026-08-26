@@ -4734,6 +4734,14 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
    llega en línea desde META_ESTADO_COMP). Así la identidad de cada estado se
    define UNA vez: si mañana «preparando» deja de ser ámbar, cambia en la
    lista, en el chip y en su fondo a la vez. */
+/* ── LA PASTILLA TENUE, COMPARTIDA ──
+   `.chip-tenue` no es de los compromisos: nació aquí y la usan también las
+   tarjetas de /fondos. Se llama en genérico por lo mismo que `sec-h` —el
+   nombre de la pantalla donde nace no es el nombre de la cosa— y vive en una
+   lista de selectores para que nadie copie la receta: dos bloques iguales se
+   separan al primer retoque y entonces el mismo estado se ve de dos formas.
+   El color llega SIEMPRE en línea, desde el catálogo que corresponda. */
+.chip-tenue,
 .acta-est,
 .acta-est-btn{background:color-mix(in srgb, currentColor 10%, transparent);
   border:1px solid color-mix(in srgb, currentColor 32%, transparent);
@@ -4742,8 +4750,10 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
 .acta-est-btn{cursor:pointer;opacity:.72}
 /* El estado REAL de la fila va a plena luz, igual que el chip elegido: es un
    hecho, no una opción entre cuatro. */
+.chip-tenue,
 .acta-est{background:color-mix(in srgb, currentColor 18%, transparent);
   border-color:color-mix(in srgb, currentColor 45%, transparent)}
+.chip-tenue{font-size:10.5px;font-weight:700;white-space:nowrap;padding:1px 8px}
 .acta-est-btn:hover{opacity:1}
 /* El elegido, a plena luz: el resto se queda un punto apagado. Cuatro chips
    igual de vivos no dicen cuál está puesto — y esa es la única pregunta que

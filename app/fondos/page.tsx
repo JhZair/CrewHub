@@ -245,9 +245,24 @@ export default async function FondosPage() {
           <span className="fondo-mini-emp">{mini("empresa", f.emp?.id, "🏢")}</span>
         </span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: 14 }}>
-            {f.codigo}{f.proy?.nombre ? ` · ${f.proy.nombre}` : ""}
-            {f.conv?.anio ? <span style={{ color: "var(--dim)", fontWeight: 400 }}> · {f.conv.anio}</span> : null}
+          <div style={{ fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span>
+              {f.codigo}{f.proy?.nombre ? ` · ${f.proy.nombre}` : ""}
+              {f.conv?.anio ? <span style={{ color: "var(--dim)", fontWeight: 400 }}> · {f.conv.anio}</span> : null}
+            </span>
+            {/* ── EL PLAZO, JUNTO AL TÍTULO ──
+                Estaba en la columna derecha, debajo del monto y a la altura de
+                las burbujas: «Venció 20/10/2024» quedaba lejos del nombre del
+                fondo al que se refiere, y con el ojo en la derecha se leía como
+                otro contador más de los que hay ahí. Es un rasgo del fondo, no
+                una cifra: va pegado a su nombre.
+                En pastilla tenue —la misma de los estados— y no en rojo pleno:
+                a esta pantalla se viene a decidir a cuál entrar, y cuatro rojos
+                encendidos en columna no ayudan a elegir; encendido va lo que se
+                cuenta —lo que falta— y el plazo es contexto. */}
+            <span className="chip-tenue" style={{ color: chip.col }}>
+              {chip.ico} {chip.txt}
+            </span>
           </div>
           <div style={{ color: "var(--dim)", fontSize: 11.5, marginTop: 2 }}>
             {f.emp?.nombre || ""}{f.conv?.nombre ? ` · ${f.conv.nombre}` : ""}
@@ -299,7 +314,6 @@ export default async function FondosPage() {
           <div style={{ color: "var(--teal)", fontWeight: 700, fontSize: 13 }}>
             {f.monto_adjudicado ? fmt(f.monto_adjudicado) : "—"}
           </div>
-          <div style={{ color: chip.col, fontSize: 11.5, marginTop: 2 }}>{chip.ico} {chip.txt}</div>
           {!f.fecha_desembolso && !rendido && (
             <div style={{ color: "var(--yellow)", fontSize: 10.5, marginTop: 1 }}>sin desembolso</div>
           )}
