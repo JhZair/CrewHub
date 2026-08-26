@@ -43,7 +43,11 @@ import { resolverNombres, nombresDeEventos, conNombresEventos } from "@/lib/nomb
 import { agruparEventos } from "@/lib/agrupar";
 import { claseEstado, rotuloEstado, esAviso, llevaEnterado, esReunion, avisoVencido } from "@/lib/estados";
 import { contarHijos, CERRADOS, type Familia } from "@/lib/familia";
-import { icoTipo } from "@/lib/tipos";
+import { icoTipo, rotuloTipo, colorTipo } from "@/lib/tipos";
+import { plazoDe } from "@/lib/plazo";
+import { progresoDe } from "@/lib/progreso";
+import { vinculosDePublicaciones, type VincPub } from "@/lib/vinculosPub";
+import TarjetaCaso from "@/components/TarjetaCaso";
 import Reacciones, { type Reaccion } from "@/components/Reacciones";
 import AvisoMini from "@/components/AvisoMini";
 import TextoCorto from "@/components/TextoCorto";
@@ -181,6 +185,10 @@ const CAMPOS_SECUNDARIOS: Record<string, string[]> = {
    le faltaban los íconos de en_pausa/resuelta/archivada—. Se importa. */
 /* (El mapa de tipos salió a lib/tipos: eran diez copias, y a ésta le faltaba
    `conversacion`, así que caía al 💬 del `||` por accidente.) */
+
+/* Cuántas tarjetas grandes se pintan de golpe en la ficha de una etiqueta.
+   Ver el comentario del «⬇ Los otros N» más abajo. */
+const TOPE_TARJETAS = 20;
 
 const fecha = (d: string) =>
   new Date(d).toLocaleString("es-PE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "America/Lima" });
@@ -508,10 +516,28 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
      los nombres de las entidades que tocó—, así que ahí se encadena lo justo y
      las dos resoluciones finales van en paralelo entre sí. */
   const idsVinc = (vincs || []).map((v: any) => v.publicacion_id);
+  /* ── LA ETIQUETA NO ES UNA FICHA, ES UNA LISTA ──
+     Una empresa tiene datos que rellenar, documentos, credenciales y material:
+     su carné de la izquierda es media pantalla de información. Una etiqueta
+     tiene DOS campos —nombre y color— y ningún material propio, así que la
+     misma plantilla le dibujaba una columna entera para decir «2/2 campos ·
+     completa» y un repositorio vacío que nadie va a llenar.
+     A una etiqueta se entra a ver SUS CASOS. Todo lo demás estorba. */
+  const esEtiqueta = params.tipo === "etiqueta";
   /* `cuerpo` va aquí porque en un aviso el título es solo el asunto: lo que
      hay que hacer está en el cuerpo. Sin él, la tarjeta obligaba a entrar al
      caso para leer la indicación — y a volver para darse por enterado. */
-  const SEL_PUB = "id,titulo,cuerpo,tipo,estado,archivado_en,creado_en,fecha_limite,autor_id,responsable,autor:perfiles!publicaciones_autor_id_fkey(nombre),resp:perfiles!publicaciones_responsable_fkey(nombre),comentarios(count)";
+  /* `imagenes` SOLO en la etiqueta, que es donde se pintan: en las demás
+     fichas la fila es de una línea y traer el array de urls de trescientos
+     casos son decenas de KB por nada. */
+  const SEL_PUB = "id,titulo,cuerpo,tipo,estado,archivado_en,creado_en,fecha_limite,autor_id,responsable"
+    /* La cara del autor solo donde se pinta: la fila corta escribe su nombre y
+       nada más, así que pedir avatar y color en las demás fichas es traer dos
+       columnas por caso para tirarlas. */
+    + (esEtiqueta
+      ? ",imagenes,autor:perfiles!publicaciones_autor_id_fkey(nombre,color,avatar_url)"
+      : ",autor:perfiles!publicaciones_autor_id_fkey(nombre)")
+    + ",resp:perfiles!publicaciones_responsable_fkey(nombre),comentarios(count)";
   // Si la persona tiene cuenta, su vida también son los casos que creó o le asignaron
   const uid = params.tipo === "persona" ? ent.usuario_id : null;
   const uidPersona = uid;
@@ -606,6 +632,15 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       reaccDe.set(r.publicacion_id, l);
     });
   }
+  /* ── DE QUÉ HABLA CADA CASO ──
+     Los chips de la tarjeta grande. `vinculosDePublicaciones` los trae con UNA
+     consulta por tipo de entidad presente, no una por caso; es el mismo helper
+     que usa el buscador, así que un caso enseña los mismos chips en las dos
+     pantallas. Solo en la etiqueta: en las demás fichas la fila no los pinta. */
+  const vincDePub: Map<string, VincPub[]> = esEtiqueta && idsP.length
+    ? await vinculosDePublicaciones(supabase, idsP)
+    : new Map();
+
   /* Nombre de CUALQUIER cuenta —también inactivas—, para atribuir «quién creó»
      un hito del cronograma. El creador puede haber dejado el equipo, y ese es
      justo el caso donde saber quién fue importa más; los mapas de nómina activa
@@ -2052,6 +2087,54 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   const activas = pubsTrabajo.filter((p: any) => !p.archivado_en && !CERRADOS.includes(p.estado) && !avisoVencido(p.tipo, p.fecha_limite));
   const cerradas = pubsTrabajo.filter((p: any) => p.archivado_en || CERRADOS.includes(p.estado) || avisoVencido(p.tipo, p.fecha_limite));
 
+  /* ── LA TARJETA GRANDE (solo en la etiqueta) ──
+     La fila corta de abajo (`cardPub`) sirve para «¿qué hay pendiente de esta
+     empresa?»: se barre con el ojo y se entra al que interesa. En una etiqueta
+     la pregunta es otra —«¿qué se está haciendo en Rodaje?»— y la respuesta
+     está en el cuerpo de cada caso, no en su título: con la fila corta había
+     que abrir cinco pestañas para enterarse de lo mismo.
+     Es la tarjeta que tenía el feed de la portada, con su cuerpo, sus fotos,
+     sus chips y sus reacciones. Ver components/TarjetaCaso.tsx. */
+  const cardCaso = (p: any) => {
+    const hj = hijosDe.get(p.id);
+    return (
+      <TarjetaCaso key={p.id}
+        href={`/caso/${p.id}`} titulo={p.titulo} tipo={p.tipo}
+        tipoLabel={rotuloTipo(p.tipo)} tipoColor={colorTipo(p.tipo)} estado={p.estado}
+        autorNombre={(p.autor as any)?.nombre} autorSrc={(p.autor as any)?.avatar_url}
+        autorColor={(p.autor as any)?.color}
+        fechaStr={fecha(p.creado_en)}
+        respNombre={(p.resp as any)?.nombre}
+        /* El aviso de «sin responsable» solo donde se puede hacer algo con él:
+           en un caso vivo. Sobre uno cerrado es un reproche a destiempo. */
+        avisaSinResp={!p.archivado_en && !CERRADOS.includes(p.estado)}
+        nc={(p.comentarios as any)?.[0]?.count || 0}
+        plazo={plazoDe(p.fecha_limite, p.estado)}
+        cuerpo={p.cuerpo} imagenes={p.imagenes || []}
+        chips={(vincDePub.get(p.id) || [])
+          /* Sin el chip de ESTA etiqueta: estás dentro de ella, y repetirlo en
+             las cinco tarjetas es decir cinco veces dónde estás. */
+          .filter((v: any) => !(tipoCanonico(v.entidad_tipo) === params.tipo && v.entidad_id === params.id))
+          .filter((v: any) => v.nombre)
+          .map((v: any) => ({ tipo: v.entidad_tipo, id: v.entidad_id, nombre: v.nombre!, ico: v.ico }))}
+        pubId={p.id} userId={user.id} autorId={p.autor_id}
+        reacciones={reaccDe.get(p.id) || []}
+        hijos={hj ? { total: hj.total, ok: hj.ok } : null}
+        equipoTotal={equipoAvisos.length || undefined}
+        prog={progresoDe({
+          creado_en: p.creado_en, fecha_limite: p.fecha_limite,
+          estado: p.estado, tipo: p.tipo,
+          hijos: hj ? { ok: hj.ok, total: hj.total } : null,
+          /* ⚠ SIN ESTO LA BARRA MIENTE. `progresoDe` se calla a propósito
+             cuando el caso tiene entidades vinculadas y no se le dice cuántas
+             (lib/progreso.ts): sin el dato, un caso con vínculos caía a la
+             escalera del estado y decía «5%» donde su ficha dice «43%». El
+             número ya estaba cargado tres líneas más arriba. */
+          vinculadasTotal: (vincDePub.get(p.id) || []).length,
+        })} />
+    );
+  };
+
   const cardPub = (p: any) => {
     const hj = hijosDe.get(p.id);
     const rx = reaccDe.get(p.id) || [];
@@ -2174,7 +2257,12 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     : null;
 
   return (
-    <div className="shell shell-ancho">
+    /* La etiqueta va al ANCHO DE LA PORTADA (860px) y no al ancho de ficha
+       (1180px): sin carné a la izquierda, la columna de casos se estiraba a
+       mil cien píxeles y un párrafo con ese renglón no se lee — que es
+       justamente lo contrario de para lo que se abrió la etiqueta. Es la misma
+       tarjeta que vivía en la portada; recupera su ancho. */
+    <div className={esEtiqueta ? "shell" : "shell shell-ancho"}>
       <div className="topbar">
         <Volver />
         <span className="spacer" />
@@ -2316,12 +2404,28 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             ✍ Guion{nSecuencias ? ` · ${nSecuencias} sec` : ""}
           </Link>
         )}
+        {/* ── EDITAR, ARRIBA, EN LA ETIQUETA ──
+            Vive en el carné y la etiqueta ya no tiene carné. Renombrarla o
+            cambiarle el color siguen haciendo falta —son sus dos únicos
+            campos—, así que el botón sube junto al nombre en vez de
+            desaparecer con la columna. */}
+        {/* El color de la etiqueta, a la vista. Es uno de sus dos únicos
+            campos y no se pintaba en ninguna parte: se podía editar sin ver
+            nunca el resultado. */}
+        {esEtiqueta && ent.color && (
+          <span className="badge" title={`Color de la etiqueta: ${ent.color}`}
+            style={{ color: ent.color, background: `color-mix(in srgb, ${ent.color} 16%, transparent)` }}>
+            🏷️ {ent.color}
+          </span>
+        )}
+        {esEtiqueta && <Mantenimiento tipo={params.tipo} id={params.id} valores={ent} />}
         {/* Aquí vivía un "＋ Publicar" que te mandaba al feed con la entidad
             pre-vinculada. Lo hace el FAB flotante, sin sacarte de la ficha. */}
       </div>
 
-      <div className="perfil-grid">
+      <div className={`perfil-grid${esEtiqueta ? " sin-carne" : ""}`}>
         {/* ===== COLUMNA IZQUIERDA: el carné ===== */}
+        {!esEtiqueta && (
         <aside>
           {/* Veredicto también sobre el carné: si el concurso terminó, el
               resultado se estampa sobre la ficha (con «✕» para cerrarlo). */}
@@ -3321,6 +3425,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             <CuentaAcceso personaId={params.id} cuenta={cuentaDe} libres={cuentasLibres} />
           )}
         </aside>
+        )}
 
         {/* ===== COLUMNA DERECHA: la vida ===== */}
         <main>
@@ -3328,7 +3433,10 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               En cualquier entidad — un proyecto acumula referencias y prensa
               igual que una persona acumula obras. En PERSONA, EMPRESA y PROYECTO
               vive en su propia pestaña (abajo), no aquí arriba. */}
-          {params.tipo !== "persona" && params.tipo !== "empresa" && params.tipo !== "proyecto" && params.tipo !== "convocatoria" && params.tipo !== "postulacion" && params.tipo !== "equipamiento" && (
+          {/* …y tampoco en una ETIQUETA: no hay «material de Rodaje». El
+              bloque solo decía «Vacío» y ocupaba el sitio de lo que sí se
+              viene a ver. */}
+          {!esEtiqueta && params.tipo !== "persona" && params.tipo !== "empresa" && params.tipo !== "proyecto" && params.tipo !== "convocatoria" && params.tipo !== "postulacion" && params.tipo !== "equipamiento" && (
             <>
               <Repositorio entidadTipo={params.tipo} entidadId={params.id}
                 objetos={objetosDe} verif={verifDe} />
@@ -3396,7 +3504,51 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                 </div>
                 {/* Con muchos casos, filtros + vistas + búsqueda (que también
                     alcanza las cerradas); con pocos, la lista pelada. */}
-                {casosAct.length > 6 ? (
+                {esEtiqueta ? (
+                  /* En la etiqueta, tarjetas siempre — también con muchas. El
+                     corte a lista compacta existe para las fichas donde los
+                     casos son un pendiente que se repasa; aquí son el
+                     contenido de la pantalla. */
+                  <>
+                    {casosAct.slice(0, TOPE_TARJETAS).map(cardCaso)}
+                    {/* Cada tarjeta lleva cuerpo, fotos, chips, reacciones y
+                        dos desplegables: son componentes de cliente que hay que
+                        hidratar. Con una etiqueta transversal —trescientos
+                        casos— eso es una pantalla que tarda en responder al
+                        primer clic. Se pintan las primeras y el resto se pide;
+                        no se esconde ninguno, y el número lo dice. */}
+                    {casosAct.length > TOPE_TARJETAS && (
+                      <details style={{ marginTop: 14 }}>
+                        <summary style={{ color: "var(--muted)", fontSize: TXT.micro, cursor: "pointer", padding: "6px 0" }}>
+                          ⬇ Los otros {casosAct.length - TOPE_TARJETAS} casos abiertos con esta etiqueta
+                        </summary>
+                        <div style={{ marginTop: 10 }}>
+                          {casosAct.slice(TOPE_TARJETAS).map(cardCaso)}
+                        </div>
+                      </details>
+                    )}
+                    {!casosAct.length && (
+                      <div className="empty" style={{ padding: "18px 0" }}>
+                        Sin casos abiertos con esta etiqueta.
+                      </div>
+                    )}
+                    {cerradas.length > 0 && (
+                      <details style={{ marginTop: 16 }}>
+                        <summary style={{ color: "var(--muted)", fontSize: TXT.micro, cursor: "pointer", padding: "6px 0" }}>
+                          ✅ Cerradas y archivadas · {cerradas.length}
+                        </summary>
+                        {/* Las cerradas con la FILA CORTA, no con la tarjeta:
+                            de un caso archivado no se lee el cuerpo, se
+                            comprueba que está cerrado. Y la fila sabe decir
+                            «Realizada» de una reunión que ya pasó, que la
+                            tarjeta rotularía «Convocada» dentro de un desplegable
+                            titulado «cerradas». De paso, no ofrece cambiarle el
+                            tipo ni el estado a algo archivado. */}
+                        <div style={{ marginTop: 10 }}>{cerradas.map(cardPub)}</div>
+                      </details>
+                    )}
+                  </>
+                ) : casosAct.length > 6 ? (
                   <CasosLista ambitoId={params.id}
                     misInicial={!!user && ent.usuario_id === user.id}
                     casos={casosAct.map(metaCaso)}

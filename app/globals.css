@@ -1992,6 +1992,12 @@ button.obj-mini:hover,a.obj-mini:hover{border-color:var(--accent)}
 
 /* ===== Perfil de entidad en dos columnas ===== */
 .perfil-grid{display:grid;grid-template-columns:360px 1fr;gap:22px;align-items:start}
+/* ── UNA FICHA SIN CARNÉ ──
+   La etiqueta no tiene columna izquierda (dos campos no son un carné), y sin
+   esto el grid seguía reservando sus 360px: la lista de casos quedaba
+   estrujada a la derecha con medio metro de vacío al lado. Quitar el <aside>
+   no basta cuando las columnas están escritas a mano. */
+.perfil-grid.sin-carne{grid-template-columns:1fr}
 /* LAS DOS COLUMNAS ARRANCAN A LA MISMA ALTURA.
    Lo que va primero en cada columna cambia según el tipo de ficha —el
    repositorio, un panel, una tarjeta—, y varios de esos bloques traen su
