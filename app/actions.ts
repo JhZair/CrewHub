@@ -8638,6 +8638,54 @@ export async function archivar(pubId: string, archivar = true) {
   return {};
 }
 
+/* ── ARCHIVAR UNA TANDA ──
+ *
+ * La vista de lista del tablero deja filtrar hasta que en pantalla queda
+ * exactamente lo que sobra —un fondo terminado, una convocatoria del año
+ * pasado— y hasta ahora había que entrar caso por caso para archivarlo.
+ * Treinta veces: abrir, archivar, volver, perder el sitio.
+ *
+ * ── UN SOLO UPDATE, Y LA RLS DECIDE ──
+ * No se comprueba el permiso aquí. Se manda el `in(ids)` y la política de la
+ * base filtra sola: vuelven los que SÍ se archivaron, y la diferencia con lo
+ * pedido son los que no. Repetir la regla en TypeScript sería una segunda
+ * versión del permiso que un día deja de coincidir con la de la base — y la
+ * que manda es siempre la de la base.
+ * Por eso también se DICEN los saltados: «archivé 28 de 30» sin decir cuáles
+ * es peor que no decir nada, porque se cree que están los treinta.
+ */
+export async function archivarLote(ids: string[], archivar = true) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const limpio = [...new Set((ids || []).filter(Boolean))];
+  if (!limpio.length) return { error: "No hay nada seleccionado." };
+  /* Tope de cordura: con «seleccionar todo» sobre 335 casos, un dedazo podría
+     archivar el tablero entero. Se para y se dice, en vez de hacerlo. */
+  if (limpio.length > 200) {
+    return { error: `Son ${limpio.length} casos de una vez. Afina los filtros y ve por tandas de 200.` };
+  }
+
+  const { data, error } = await supabase.from("publicaciones")
+    .update({ archivado_en: archivar ? new Date().toISOString() : null })
+    .in("id", limpio).select("id");
+  if (error) return { error: error.message };
+
+  const hechos = (data || []).map((x: any) => x.id as string);
+  if (hechos.length) {
+    /* El rastro, uno por caso: el historial de cada ficha tiene que poder
+       contar su propia vida sin que haya que reconstruirla desde un registro
+       de «se archivaron 30». */
+    await supabase.from("actividad").insert(hechos.map(id => ({
+      entidad_tipo: "publicacion", entidad_id: id, actor_id: user.id, tipo: "archivo",
+      detalle: { a: archivar ? "archivado" : "despertado", lote: hechos.length },
+    })));
+  }
+  revalidatePath("/tablero");
+  revalidatePath("/");
+  return { hechos: hechos.length, saltados: limpio.length - hechos.length };
+}
+
 /* ── LAS DOS PUNTAS DE LA VENTANA ──
    `cambiarFechaInicio` y `cambiarFechaLimite` son hermanas y se vigilan: cada
    una comprueba la ventana contra la OTRA punta antes de guardar. Sin eso, la

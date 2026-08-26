@@ -5718,3 +5718,16 @@ mark.bq-marca{
   background:var(--card);border:1px solid var(--border);border-top:none;
   border-radius:0 0 9px 9px}
 .fondo-casos:hover{color:var(--text);border-color:var(--border2)}
+
+/* ── ARCHIVAR EN TANDA DESDE LA LISTA ── */
+.lc-todos{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;
+  color:var(--dim);cursor:pointer;white-space:nowrap}
+.lc-todos:hover{color:var(--muted)}
+.lc-check{flex:none;cursor:pointer;accent-color:var(--accent)}
+/* La fila marcada se ve marcada: sin esto, con la lista larga hay que fiarse
+   del contador de arriba para saber qué se va a archivar. */
+.lc-fila.lc-sel{background:rgba(124,92,255,.10)}
+.lc-lote{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  padding:7px 10px;margin:2px 0 8px;border-radius:10px;
+  background:rgba(124,92,255,.10);border:1px solid rgba(124,92,255,.32);
+  font-size:12.5px;color:var(--muted)}

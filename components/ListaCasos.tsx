@@ -1,5 +1,8 @@
 "use client";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import Link from "@/components/Enlace";
+import { archivarLote } from "@/app/actions";
 import VistaRapida from "@/components/VistaRapida";
 import Avatar from "@/components/Avatar";
 import { icoTipo } from "@/lib/tipos";
@@ -124,6 +127,53 @@ export default function ListaCasos({ casos, ordenEstados, orden, hrefs }: {
 
   const filas = [...casos].sort(cmp);
 
+  /* ══════════════════════════════════════════════════════════════════════
+     ARCHIVAR UNA TANDA
+
+     Los filtros de arriba ya dejan en pantalla exactamente lo que sobra —un
+     fondo terminado, una convocatoria del año pasado—, así que la lista es el
+     sitio natural para retirarlo. Hasta ahora había que entrar caso por caso:
+     abrir, archivar, volver, perder el sitio; treinta veces.
+
+     ── LA SELECCIÓN NO SOBREVIVE A UN FILTRO ──
+     Vive en esta pantalla y se pierde al navegar, a propósito. Una selección
+     que se guarda entre filtros acaba archivando cosas que ya no se ven, y
+     «¿qué tenía marcado?» no es una pregunta que se pueda contestar mirando.
+     ══════════════════════════════════════════════════════════════════════ */
+  const router = useRouter();
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [msj, setMsj] = useState("");
+  const [err, setErr] = useState("");
+  const [ocupado, correr] = useTransition();
+
+  const marcar = (id: string) => setSel(p => {
+    const n = new Set(p);
+    if (n.has(id)) n.delete(id); else n.add(id);
+    return n;
+  });
+  const todos = filas.length > 0 && filas.every(f => sel.has(f.id));
+  const marcarTodos = () => setSel(todos ? new Set() : new Set(filas.map(f => f.id)));
+
+  /* Cuántos de los marcados siguen VIVOS. Archivar es para lo terminado —es
+     la memoria, no la papelera— y llevarse por delante un caso abierto lo
+     saca de la vista de TODO el equipo sin que su responsable se entere. No
+     se prohíbe; se dice antes de pulsar. */
+  const abiertos = filas.filter(f => sel.has(f.id) && !CERRADOS.includes(f.estado)).length;
+
+  const archivar = () => {
+    if (!sel.size || ocupado) return;
+    setErr(""); setMsj("");
+    const ids = [...sel];
+    correr(async () => {
+      const r: any = await archivarLote(ids, true);
+      if (r?.error) { setErr(r.error); return; }
+      setSel(new Set());
+      setMsj(`Se archivaron ${r.hechos} caso(s)` +
+        (r.saltados ? ` · ${r.saltados} no se pudieron: no tienes permiso sobre ellos.` : "."));
+      router.refresh();
+    });
+  };
+
   return (
     <div className="card">
       <div className="lc-cab">
@@ -131,7 +181,44 @@ export default function ListaCasos({ casos, ordenEstados, orden, hrefs }: {
         {ORDENES.map(([val, lbl]) => (
           <Link key={val} href={hrefs[val]} className={`vtab ${orden === val ? "on" : ""}`}>{lbl}</Link>
         ))}
+        <span style={{ flex: 1 }} />
+        {/* El «marcar todo» va arriba, con el resto de controles de la lista,
+            y dice CUÁNTOS son: «todos» sobre una lista filtrada de 335 y sobre
+            una de 8 no es el mismo gesto ni de lejos. */}
+        {filas.length > 0 && (
+          <label className="lc-todos" title="Marcar todo lo que se ve ahora, con los filtros puestos">
+            <input type="checkbox" checked={todos} onChange={marcarTodos} disabled={ocupado} />
+            {todos ? "quitar la marca" : `marcar los ${filas.length}`}
+          </label>
+        )}
       </div>
+
+      {/* La barra de la tanda: solo aparece con algo marcado. Un control que
+          está siempre ahí para algo que se hace de vez en cuando es un control
+          que estorba todos los días. */}
+      {sel.size > 0 && (
+        <div className="lc-lote">
+          <b>{sel.size} seleccionado{sel.size === 1 ? "" : "s"}</b>
+          {abiertos > 0 && (
+            <span style={{ color: "var(--yellow)" }}
+              title="Archivar los saca de la vista de todo el equipo. Su estado no cambia: siguen sin resolver, pero dejan de verse.">
+              ⚠ {abiertos} sin resolver
+            </span>
+          )}
+          <button className="btn" disabled={ocupado} onClick={archivar}
+            style={{ fontSize: 12, padding: "5px 12px" }}>
+            {ocupado ? "Archivando…" : `🗃 Archivar ${sel.size}`}
+          </button>
+          <button className="btn btn-ghost" disabled={ocupado}
+            style={{ fontSize: 12, padding: "5px 12px" }}
+            onClick={() => setSel(new Set())}>Quitar la marca</button>
+          <span style={{ color: "var(--dim)", fontSize: 11.5 }}>
+            Se puede deshacer: siguen enteros en 🗃 Archivadas.
+          </span>
+        </div>
+      )}
+      {err && <div className="err-inline" style={{ marginBottom: 8 }}>⚠ {err}</div>}
+      {msj && <div className="ok-inline" style={{ marginBottom: 8 }}>✓ {msj}</div>}
 
       {!filas.length && <div className="empty" style={{ padding: "18px 0" }}>Nada con estos filtros.</div>}
 
@@ -140,7 +227,13 @@ export default function ListaCasos({ casos, ordenEstados, orden, hrefs }: {
           const pl = plazoDe(c.fecha_limite, c.estado);
           const cerrado = CERRADOS.includes(c.estado);
           return (
-            <div key={c.id} className="lc-fila">
+            <div key={c.id} className={`lc-fila${sel.has(c.id) ? " lc-sel" : ""}`}>
+              {/* La casilla, primero: es la columna por la que baja el dedo
+                  cuando se está limpiando, y en cualquier otro sitio obliga a
+                  buscarla fila por fila. */}
+              <input type="checkbox" className="lc-check" checked={sel.has(c.id)}
+                disabled={ocupado} onChange={() => marcar(c.id)}
+                title="Marcar para archivar en tanda" />
               {/* Trabajar sin salir: el mismo ⚡ del kanban y de la agenda. En
                   una lista de treinta filas es la diferencia entre revisar y
                   abrir treinta pestañas. */}
