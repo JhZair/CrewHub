@@ -5,6 +5,7 @@ import Link from "@/components/Enlace";
 import { useEffect, useState } from "react";
 import type { EstadoNav } from "@/app/nav-acciones";
 import { pedirZocalo } from "@/lib/zocalo";
+import { etiquetasDelMenu } from "@/app/actions";
 
 /* ── LOS SITIOS QUE NO SON UNA ENTIDAD ──
  *
@@ -134,13 +135,47 @@ export default function NavIconos() {
      ⚠ `postulacion` apunta a /fondos y no a /postulaciones: la alarma se
      enciende sobre un fondo en ejecución, que es donde está el dinero. */
   const alarmas = ((nav as any).__alarmas || []) as { entidad_tipo: string }[];
-  const RUTA_ALARMA: Record<string, string> = { postulacion: "/fondos" };
+  /* Una entidad puede tener alarma y no ser una SECCIÓN del menú: la
+     postulación se mira en «fondos en ejecución», y la etiqueta —que tiene
+     ficha, y por tanto botón de alarma— en «etiquetas». Sin este mapa la marca
+     no aparecía en ninguna entrada: la alarma existía y el menú callaba. */
+  const RUTA_ALARMA: Record<string, string> = {
+    postulacion: "/fondos", etiqueta: "/etiquetas",
+  };
   const alarmasPor = new Map<string, number>();
   for (const a of alarmas) {
     const ruta = RUTA_ALARMA[a.entidad_tipo]
       || SECCIONES.find(x => x.tipo === a.entidad_tipo)?.ruta;
     if (ruta) alarmasPor.set(ruta, (alarmasPor.get(ruta) || 0) + 1);
   }
+
+  /* ── LAS ETIQUETAS, DETRÁS DE SU ENTRADA ──
+     A una etiqueta se entra para ver sus casos —«¿qué hay de Rodaje?»—, y eso
+     eran tres pasos: abrir el menú, entrar al índice, buscar el chip. El índice
+     sigue existiendo (ahí se buscan, se ven las que no usa nadie y se borran),
+     pero para lo de todos los días sobra.
+     Se piden al ABRIR el submenú y se recuerdan mientras la página viva: el
+     zócalo es para lo que se ve sin abrir nada, y esto vive tras dos clics. */
+  const [etqAbierto, setEtqAbierto] = useState(false);
+  const [etqs, setEtqs] = useState<{ id: string; nombre: string; n: number }[] | null>(null);
+  const [etqErr, setEtqErr] = useState("");
+  useEffect(() => {
+    if (!etqAbierto || etqs || etqErr) return;
+    let vivo = true;
+    etiquetasDelMenu().then((r: any) => {
+      if (!vivo) return;
+      if (r?.error) setEtqErr(r.error); else setEtqs(r.etiquetas || []);
+    }).catch(() => { if (vivo) setEtqErr("No se pudieron cargar."); });
+    return () => { vivo = false; };
+  }, [etqAbierto, etqs, etqErr]);
+  // Al cerrarse el menú entero, el submenú se cierra con él.
+  useEffect(() => { if (!abierto) setEtqAbierto(false); }, [abierto]);
+  /* Y al navegar se olvida lo traído. En casi todas las pantallas este menú se
+     remonta al cambiar de página —vive dentro de <Volver>— y esto no hace
+     nada; pero en /obligaciones y /comprobantes el <Volver> está en el LAYOUT,
+     así que el componente sobrevive y la lista se quedaría congelada: una
+     etiqueta creada mientras tanto no aparecería nunca. */
+  useEffect(() => { setEtqs(null); setEtqErr(""); }, [pathname]);
 
   const casilla = nav.casilla;
   const conCaja = nav.caja;
@@ -316,6 +351,63 @@ export default function NavIconos() {
               <div key={g} className="nav-grupo">
                 <span className="nav-grupo-txt">{g === "plata" ? "la plata" : "el día a día"}</span>
                 {destinos.filter(d => d.grupo === g).map(d => (
+                  d.ruta === "/etiquetas" ? (
+                    <div key={d.ruta} className="nav-etq">
+                      {/* La fila es DOS cosas: el nombre lleva al índice y el ▸
+                          abre la lista. Un solo control para las dos obligaría
+                          a elegir cuál de los dos usos estorba. */}
+                      <div className={`nav-item${estaEn(d, pathname) ? " on" : ""}`}>
+                        {/* El ícono va DENTRO del enlace, como en las demás
+                            entradas: si no, es la única fila del menú donde
+                            apuntar al emoji no hace nada. */}
+                        <Link href={d.ruta} onClick={() => setAbierto(false)}
+                          className="nav-etq-txt">
+                          <span className="nav-item-ico">{d.ico}</span>
+                          <span>{d.txt}</span>
+                        </Link>
+                        {!!alarmasPor.get(d.ruta) && (
+                          <span className="nav-alarma" title="Hay una alarma encendida aquí">alarma</span>
+                        )}
+                        <button type="button" className={`nav-etq-mas${etqAbierto ? " on" : ""}`}
+                          aria-expanded={etqAbierto} aria-controls="nav-sub-etq"
+                          aria-label={etqAbierto ? "Ocultar las etiquetas" : "Ver las etiquetas más usadas"}
+                          title={etqAbierto ? "Ocultar las etiquetas" : "Ver las etiquetas más usadas"}
+                          /* Al reabrir se OLVIDA el error: si no, un corte de
+                             red de un segundo dejaba el ⚠ clavado para toda la
+                             vida de la página, sin forma de reintentar. */
+                          onClick={() => setEtqAbierto(v => { if (!v) setEtqErr(""); return !v; })}>▸</button>
+                      </div>
+                      {etqAbierto && (
+                        <div className="nav-sub" id="nav-sub-etq">
+                          {/* Tres estados, y los tres se dicen. Un submenú en
+                              blanco mientras carga se lee como vacío — y aquí
+                              «vacío» significaría «no hay etiquetas». */}
+                          {etqErr && <div className="nav-sub-nota">⚠ {etqErr}</div>}
+                          {!etqErr && !etqs && <div className="nav-sub-nota">cargando…</div>}
+                          {!etqErr && etqs?.length === 0 && (
+                            <div className="nav-sub-nota">ninguna etiqueta con casos vivos</div>
+                          )}
+                          {(etqs || []).map(e => (
+                            <Link key={e.id} href={`/entidad/etiqueta/${e.id}`}
+                              className="nav-sub-item" onClick={() => setAbierto(false)}>
+                              <span className="nav-sub-txt">{e.nombre}</span>
+                              {/* El número no es decoración: es lo que hace que
+                                  el orden se entienda sin explicarlo. */}
+                              {/* El title dice qué cuenta: el índice enseña el
+                                  total con archivados y este número no, así que
+                                  sin decirlo parecerían el mismo dato mal. */}
+                              <span className="nav-sub-n"
+                                title={`${e.n} caso(s) abierto(s) — el índice cuenta también los archivados`}>{e.n}</span>
+                            </Link>
+                          ))}
+                          <Link href="/etiquetas" className="nav-sub-todas"
+                            onClick={() => setAbierto(false)}>
+                            todas, y las que nadie usa →
+                          </Link>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
                   <Link key={d.ruta} href={d.ruta}
                     className={`nav-item${estaEn(d, pathname) ? " on" : ""}`}
                     onClick={() => setAbierto(false)}>
@@ -362,6 +454,7 @@ export default function NavIconos() {
                       <span className="nav-alarma" title="Hay una alarma encendida aquí">alarma</span>
                     )}
                   </Link>
+                  )
                 ))}
               </div>
             ))}

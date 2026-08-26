@@ -54,7 +54,19 @@ export default async function Etiquetas({ searchParams }: { searchParams: { q?: 
       </form>
 
       <div className="card">
-        <div className="panel-h">🏷️ En uso · {usadas.length}</div>
+        {/* ── QUÉ CUENTA ESTE NÚMERO ──
+            TODOS los casos de la etiqueta, archivados y cerrados incluidos,
+            porque aquí la pregunta es «¿se puede borrar?» y una etiqueta con
+            historia no se borra aunque hoy no tenga trabajo.
+            El submenú del menú cuenta otra cosa —solo lo abierto— y por eso
+            enseña números más bajos. Se dice, en vez de dejar que parezca que
+            uno de los dos está mal. */}
+        <div className="panel-h">
+          🏷️ En uso · {usadas.length}
+          <span style={{ color: "var(--dim)", fontWeight: 400, textTransform: "none", letterSpacing: 0, marginLeft: 8, fontSize: 11.5 }}>
+            el número son todos sus casos, archivados incluidos — el menú lista solo lo abierto
+          </span>
+        </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {usadas.map((e: any) => chip(e))}
           {!usadas.length && (

@@ -3329,6 +3329,33 @@ const faltaLaFuncion = (e: any) =>
 const mensajeRpc = (e: any) =>
   faltaLaFuncion(e) ? "Falta correr db/apoyo-rendicion.sql en la base." : e?.message || "No se pudo guardar.";
 
+/* ══════════════════════════════════════════════════════════════════════════
+   LAS ETIQUETAS DEL SUBMENÚ
+
+   Se piden CUANDO SE ABRE el submenú, no en cada navegación. El zócalo
+   (lib/zocalo.ts) es para lo que se ve sin abrir nada —las burbujas, la
+   campanita—; una lista que solo existe detrás de dos clics no puede viajar en
+   la petición que se hace en las 34 pantallas.
+
+   Y la ordena la BASE (db/etiquetas-uso.sql): contar aquí obligaría a traerse
+   todos los vínculos de etiqueta para calcular ocho números, con el corte de
+   mil filas recortando la cuenta en silencio.
+   ══════════════════════════════════════════════════════════════════════════ */
+export async function etiquetasDelMenu(tope = 12) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data, error } = await supabase.rpc("etiquetas_uso", { p_tope: tope });
+  if (error) {
+    /* Si falta la migración se DICE, en vez de enseñar un submenú vacío que se
+       lee como «no hay etiquetas» sobre una base que tiene cuarenta. */
+    return { error: faltaLaFuncion(error)
+      ? "Falta correr db/etiquetas-uso.sql en la base."
+      : error.message };
+  }
+  return { etiquetas: (data || []) as { id: string; nombre: string; n: number }[] };
+}
+
 export async function fijarComprobanteRhe(id: string, postulacionId: string, url: string) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
