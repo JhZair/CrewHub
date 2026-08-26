@@ -2811,6 +2811,15 @@ a.stat-card:hover{border-color:var(--border2)}
    un contador más. */
 .nav-burbuja{background:var(--red);color:#fff;font-size:9.5px;font-weight:800;border-radius:8px;
   padding:1px 6px;min-width:16px;text-align:center;line-height:1.5}
+/* ── EL TRABAJO DEL DÍA NO ES UNA DEUDA ──
+   Los casos propios nunca llegan a cero: es el trabajo, no algo que se acaba.
+   En rojo y ámbar competían con la declaración vencida y el estado de cuenta
+   que falta —esos SÍ tienen que desaparecer— y a fuerza de ver rojo perpetuo el
+   ojo deja de mirar los rojos de verdad. Violeta de la casa: el sólido es lo
+   que no se ha empezado, el hueco lo que ya está en marcha. */
+.nav-burbuja.tono-activo{background:rgba(124,92,255,.85);color:#fff}
+.nav-burbuja.tono-activo-flojo{background:rgba(124,92,255,.16);color:#c3b1ff;
+  box-shadow:inset 0 0 0 1px rgba(124,92,255,.45)}
 .nav-item .nav-burbuja{margin-left:auto}
 /* Cuando son dos, el `auto` lo lleva el envoltorio y ellas van pegadas. */
 .nav-burbujas{margin-left:auto;display:inline-flex;gap:4px}

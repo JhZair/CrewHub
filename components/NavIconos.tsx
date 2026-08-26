@@ -58,9 +58,20 @@ const estaEn = (d: Destino, p: string) => d.activo ? d.activo(p) : p === d.ruta;
    dos colores. Escrita una vez: dos copias con los mismos estilos en línea son
    dos que se separan al primer retoque, y entonces el mismo pendiente se ve de
    dos formas distintas en la misma pantalla. */
-function Burbuja({ n, tono, txt }: { n: number; tono: "rojo" | "ambar"; txt: string }) {
+/* ── LOS TONOS DICEN QUÉ CLASE DE PENDIENTE ES, NO CUÁNTO CORRE PRISA ──
+   Rojo y ámbar son para lo que TIENE QUE LLEGAR A CERO: una declaración
+   vencida, un estado de cuenta que falta, un correo sin leer. Se atienden y
+   desaparecen, y por eso el color puede gritar.
+   El trabajo del día a día —los casos propios— nunca llega a cero: siempre hay
+   casos abiertos, es el trabajo, no una deuda. Pintarlo del mismo rojo enseña
+   al ojo que el rojo no significa nada, y entonces el rojo que sí importaba
+   tampoco se ve. Ese es el modo en que mueren todos los indicadores.
+   Así que llevan el violeta de la casa: se leen igual de bien, se distinguen
+   entre sí, y no se confunden con lo que hay que terminar. */
+type Tono = "rojo" | "ambar" | "activo" | "activo-flojo";
+function Burbuja({ n, tono, txt }: { n: number; tono: Tono; txt: string }) {
   return (
-    <span title={txt} className={`nav-burbuja${tono === "ambar" ? " tono-ambar" : ""}`}>
+    <span title={txt} className={`nav-burbuja${tono === "rojo" ? "" : ` tono-${tono}`}`}>
       {n > 99 ? "99+" : n}
     </span>
   );
@@ -150,7 +161,7 @@ export default function NavIconos() {
       txt: `${nav.vencidos} declaración(es) vencida(s)` },
     nav.porVencer > 0 && { k: "p", n: nav.porVencer, tono: "ambar" as const,
       txt: `${nav.porVencer} declaración(es) por vencer en los próximos días` },
-  ].filter(Boolean) as { k: string; n: number; tono: "rojo" | "ambar"; txt: string }[];
+  ].filter(Boolean) as { k: string; n: number; tono: Tono; txt: string }[];
 
   /* ── LOS ESTADOS DE CUENTA QUE FALTAN ──
      El aviso existía solo DENTRO de la ficha del fondo, y encima dentro de una
@@ -182,11 +193,11 @@ export default function NavIconos() {
      Estando DENTRO del tablero no se pintan, igual que la casilla y las
      obligaciones: el pendiente ya está a la vista. */
   const casosAvisos = [
-    nav.casosMios > 0 && { k: "cx", n: nav.casosMios, tono: "rojo" as const,
+    nav.casosMios > 0 && { k: "cx", n: nav.casosMios, tono: "activo" as const,
       txt: `${nav.casosMios} caso(s) tuyo(s) sin resolver` },
-    nav.casosCurso > 0 && { k: "cp", n: nav.casosCurso, tono: "ambar" as const,
+    nav.casosCurso > 0 && { k: "cp", n: nav.casosCurso, tono: "activo-flojo" as const,
       txt: `${nav.casosCurso} caso(s) tuyo(s) en progreso` },
-  ].filter(Boolean) as { k: string; n: number; tono: "rojo" | "ambar"; txt: string }[];
+  ].filter(Boolean) as { k: string; n: number; tono: Tono; txt: string }[];
 
   /* Dos burbujas, como en obligaciones y por la misma razón: no se suman ni se
      turnan. El rojo es «no existe el registro» —hay que pedirle el extracto al
@@ -198,7 +209,7 @@ export default function NavIconos() {
       txt: `${nav.mesesEc} estado(s) de cuenta del banco sin cargar · en ${nav.fondosEc} fondo(s)` },
     nav.docsEc > 0 && { k: "doc", n: nav.docsEc, tono: "ambar" as const,
       txt: `${nav.docsEc} documento(s) registrados sin su archivo adjunto: recibos, extractos, facturas y DJ` },
-  ].filter(Boolean) as { k: string; n: number; tono: "rojo" | "ambar"; txt: string }[];
+  ].filter(Boolean) as { k: string; n: number; tono: Tono; txt: string }[];
 
   /* Dónde estás. Cuenta la sección entera: la ficha, su historial y sus casos
      también son «estar ahí». */
@@ -260,15 +271,17 @@ export default function NavIconos() {
         {pathname !== "/fondos" && fondosAvisos.map(a => (
           <Burbuja key={a.k} n={a.n} tono={a.tono} txt={a.txt} />
         ))}
-        {/* Las DOS, igual que en la entrada del menú. Probé dejar fuera el
-            ámbar —«en progreso no es un pendiente»— y el resultado fue un menú
-            que dice 13 y una lista que dice 13 y 3: el mismo número contado de
-            dos formas en la misma pantalla, que es exactamente lo que hace que
-            se dejen de creer las burbujas. Si un número se enseña, se enseña
-            entero en los dos sitios. */}
-        {pathname !== "/tablero" && casosAvisos.map(a => (
-          <Burbuja key={a.k} n={a.n} tono={a.tono} txt={a.txt} />
-        ))}
+        {/* ── LOS CASOS NO SALEN AQUÍ ──
+            Estuvieron, y con las dos burbujas: la regla era «si un número se
+            enseña, se enseña entero en los dos sitios». La regla sigue valiendo
+            —dentro del menú van los dos— pero el botón cerrado no es «los dos
+            sitios»: es el aviso permanente, el que se ve sin abrir nada, y ese
+            es para lo que hay que TERMINAR.
+            Los casos propios no terminan: siempre hay doce. Un número que nunca
+            baja, pegado al botón todo el día, deja de leerse a los tres días —y
+            se lleva por delante a los que estaban al lado, que sí bajaban.
+            Quien quiera saber cómo va su trabajo abre el menú o entra al
+            tablero; nadie necesita que se lo recuerden en cada pantalla. */}
       </button>
       {abierto && (
         <>
