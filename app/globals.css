@@ -3323,22 +3323,45 @@ img.av{border:1px solid var(--border2)}
    720px daban para cuatro campos; con cinco —y seis en una reunión— la fecha
    se partía o la última celda se caía de fila. Sigue sin ser una pantalla:
    `min(880px, 94vw)` para que en un portátil no toque los bordes. */
-.vr-caja{max-width:min(880px,94vw);width:100%}
+/* ── UN SOLO SCROLL, EL DEL POP-UP ──
+   Los comentarios vivían en una cajita de 280px con su propia barra: un hilo
+   de cuatro respuestas ya obligaba a hacer scroll DENTRO de un pop-up que
+   tenía sitio de sobra debajo, y la rueda del ratón hacía una cosa u otra
+   según dónde estuviera el cursor. Ahora la caja mide como mucho el alto de la
+   ventana y lo que se desplaza es su cuerpo entero.
+   La cabecera y la caja de escribir quedan fuera de ese scroll: la primera
+   porque es de dónde se cierra, la segunda porque comentar al vuelo es lo que
+   este pop-up viene a hacer. */
+.vr-caja{max-width:min(880px,94vw);width:100%;
+  /* El fondo del modal tiene 40px de aire arriba y abajo: sin descontarlos,
+     una caja de 88vh empujaba el pop-up fuera de la ventana y aparecía una
+     SEGUNDA barra, la del fondo. */
+  max-height:min(calc(100vh - 96px),900px);display:flex;flex-direction:column}
+.vr-caja .modal-cab,.vr-caja .vr-escribir{flex:none}
+.vr-caja .vr-cuerpo{flex:1;min-height:0;overflow-y:auto;
+  /* Un pelo de aire a la derecha para que la barra no pise las tarjetas. */
+  padding-right:4px}
 .vr-abrir{color:var(--violet);font-size:12px;text-decoration:none;white-space:nowrap;margin-right:14px}
 .vr-abrir:hover{text-decoration:underline}
 .vr-cuerpo{display:flex;flex-direction:column;gap:12px;margin-top:12px}
 .vr-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.vr-body-txt{white-space:pre-wrap;color:var(--muted);font-size:14.5px;line-height:1.5;background:var(--bg);border-radius:10px;padding:10px 12px;max-height:220px;overflow-y:auto}
+/* Tampoco la descripción: era la tercera barra de desplazamiento del mismo
+   pop-up. Si el caso es largo, se desplaza el pop-up. */
+.vr-body-txt{white-space:pre-wrap;color:var(--muted);font-size:14.5px;line-height:1.5;background:var(--bg);border-radius:10px;padding:10px 12px}
 /* La mini-cabecera reusa .grid-meta del caso; solo se ajusta el margen dentro del modal. */
 .vr-cuerpo .grid-meta{margin-bottom:0}
 .vr-aviso{display:flex;align-items:center;gap:10px;background:rgba(124,92,255,.08);border:1px solid rgba(124,92,255,.25);border-radius:10px;padding:7px 11px}
 .vr-rx{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-.vr-coms{display:flex;flex-direction:column;gap:8px;max-height:280px;overflow-y:auto;border-top:1px solid var(--border);padding-top:10px}
+/* Sin scroll propio: lo hace el cuerpo del pop-up (ver `.vr-caja`). */
+.vr-coms{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--border);padding-top:10px}
 .vr-coms-h{font-size:13px;font-weight:700;color:var(--muted)}
 .vr-com{background:var(--bg);border-radius:9px;padding:7px 10px}
 .vr-com-h{display:flex;align-items:baseline;gap:8px;margin-bottom:2px}
 .vr-com-txt{white-space:pre-wrap;font-size:14px;color:var(--text);line-height:1.45}
-.vr-escribir{display:flex;gap:8px;align-items:flex-end}
+/* Pegada abajo y separada del hilo por una línea: ya no es «lo último de la
+   lista», es la barra de escribir del pop-up. */
+.vr-escribir{display:flex;gap:8px;align-items:flex-end;
+  margin-top:10px;padding-top:10px;border-top:1px solid rgba(124,92,255,.22)}
 .vr-escribir textarea{flex:1;background:var(--card);border:1px solid var(--border);border-radius:9px;padding:8px 10px;font-size:14px;color:var(--text);outline:none;resize:vertical;font-family:inherit}
 .vr-escribir textarea:focus{border-color:var(--accent)}
 

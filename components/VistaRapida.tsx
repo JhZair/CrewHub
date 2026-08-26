@@ -116,7 +116,10 @@ export default function VistaRapida({ pubId }: { pubId: string }) {
     if (!texto.trim()) return;
     correr(() => comentar(pubId, texto.trim()), () => {
       setTexto("");
-      setTimeout(() => finRef.current?.scrollIntoView({ behavior: "smooth" }), 60);
+      /* `nearest`: desplaza el cuerpo del pop-up hasta el comentario nuevo y
+         nada más. Con el valor por defecto («start») el navegador también
+         movía la página de detrás para dejarlo arriba del todo. */
+      setTimeout(() => finRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 60);
     });
   };
   const reaccionar = (emoji: string) => correr(() => toggleReaccion(pubId, null, emoji, null));
@@ -296,10 +299,14 @@ export default function VistaRapida({ pubId }: { pubId: string }) {
                       disabled={ocupado} title={g.mia ? "Quitar mi reacción" : "Reaccionar igual"}
                       onClick={() => reaccionar(g.emoji)}>{g.emoji} {g.n}</button>
                   ))}
-                  {/* La paleta del caso sí flota: este bloque no está dentro
-                      de la caja que hace scroll (`.vr-coms` sí lo está). */}
+                  {/* ── EN FLUJO, NO FLOTANDO ──
+                      Antes flotaba porque este bloque quedaba FUERA de la caja
+                      con scroll. Ahora el scroll es de todo el cuerpo del
+                      pop-up, así que una paleta absoluta la recortaría el borde
+                      del scrollport — el mismo motivo por el que ya va en flujo
+                      dentro de VistaHilo. */}
                   <PaletaRx hayReacciones={grupos.length > 0} ocupado={ocupado}
-                    onElegir={reaccionar} />
+                    onElegir={reaccionar} flotante={false} />
                 </div>
 
                 {/* Comentarios */}
@@ -322,28 +329,36 @@ export default function VistaRapida({ pubId }: { pubId: string }) {
                   ))}
                   <div ref={finRef} />
                 </div>
-
-                {/* Escribir comentario (con @menciones, como en el caso completo) */}
-                <div className="vr-escribir">
-                  <div className="cbox" style={{ position: "relative", flex: 1 }}>
-                    <MencionesMenu candidatos={candidatos} onElegir={invocarMencion} />
-                    <textarea value={texto} onChange={e => setTexto(e.target.value)}
-                      placeholder="Comentar al vuelo…  (@ para mencionar)" rows={2}
-                      onKeyDown={e => {
-                        // Enter con menú de mención abierto = elegir el primero.
-                        if (e.key === "Enter" && !e.shiftKey && enMencion && candidatos.length) {
-                          e.preventDefault(); invocarMencion(candidatos[0].nombre); return;
-                        }
-                        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) enviarComentario();
-                      }} />
-                  </div>
-                  <button className="btn" disabled={ocupado || !texto.trim()} onClick={enviarComentario}>
-                    {ocupado ? "…" : "Comentar"}
-                  </button>
-                </div>
-                {error && <div className="err-inline" style={{ marginTop: 6 }}>⚠ {error}</div>}
               </div>
             )}
+            {/* Escribir comentario (con @menciones, como en el caso completo).
+                    ── FUERA DEL SCROLL ──
+                    Vive detrás del cuerpo y no dentro: comentar al vuelo ES lo
+                    que hace este pop-up, y con el hilo largo había que bajar
+                    hasta el final para encontrar dónde escribir. Ahora el
+                    contenido se desplaza y la caja se queda. */}
+            {caso && (
+              <div className="vr-escribir">
+                <div className="cbox" style={{ position: "relative", flex: 1 }}>
+                  <MencionesMenu candidatos={candidatos} onElegir={invocarMencion} />
+                  <textarea value={texto} onChange={e => setTexto(e.target.value)}
+                    placeholder="Comentar al vuelo…  (@ para mencionar)" rows={2}
+                    onKeyDown={e => {
+                      // Enter con menú de mención abierto = elegir el primero.
+                      if (e.key === "Enter" && !e.shiftKey && enMencion && candidatos.length) {
+                        e.preventDefault(); invocarMencion(candidatos[0].nombre); return;
+                      }
+                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) enviarComentario();
+                    }} />
+                </div>
+                <button className="btn" disabled={ocupado || !texto.trim()} onClick={enviarComentario}>
+                  {ocupado ? "…" : "Comentar"}
+                </button>
+              </div>
+            )}
+            {/* El error, con la caja: es de lo que se acaba de intentar
+                escribir, no del contenido de arriba. */}
+            {caso && error && <div className="err-inline" style={{ marginTop: 6 }}>⚠ {error}</div>}
           </div>
         </div>,
         document.body
