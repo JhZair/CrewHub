@@ -267,6 +267,21 @@ export default async function FondosPage() {
                   {a.listos}/{a.cuentan}
                 </b>
                 <span>entregables</span>
+                {/* Los dos matices que trae la pestaña, con sus mismos colores.
+                    «3 en proceso» dice que hay trabajo en marcha —un 4/16 con
+                    tres preparándose no es el mismo fondo que un 4/16 quieto— y
+                    «1 no aplica» explica por qué el total es 16 y no 17: sin
+                    eso, el número parece que no cuadra con la ficha. */}
+                {!!a.enProceso && (
+                  <span style={{ color: "var(--yellow)", whiteSpace: "nowrap" }}>
+                    · {a.enProceso} en proceso
+                  </span>
+                )}
+                {!!a.noAplica && (
+                  <span style={{ color: "var(--violet)", whiteSpace: "nowrap" }}>
+                    · {a.noAplica} no aplica
+                  </span>
+                )}
                 <span className="acta-barra"><i style={{ width: `${a.pct}%` }} /></span>
               </div>
             );
