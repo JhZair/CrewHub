@@ -280,16 +280,29 @@ export default function CompromisosActa({
       {/* El acta, a un clic. El extracto la indexa; no la reemplaza — y por eso
           la fuente tiene que estar siempre a la vista. */}
       <div className="acta-cab">
-        <span>
-          <b>{av.listos}/{av.cuentan}</b> entregables
-          {av.enProceso > 0 && <span style={{ color: "var(--yellow)" }}> · {av.enProceso} en proceso</span>}
-          {av.noAplica > 0 && (
-            <span style={{ color: "var(--dim)" }} title="Marcados «no aplica»: no cuentan en el total">
-              {" "}· {av.noAplica} no aplica
-            </span>
-          )}
+        {/* El avance y su barra son la MISMA cifra, dicha con números y
+            dibujada: van pegados. Con los matices en medio, la barra quedaba
+            al otro lado del renglón y se leía como un dato más. */}
+        <span className="acta-av">
+          <span><b>{av.listos}/{av.cuentan}</b> entregables</span>
+          <span className="acta-barra"><i style={{ width: `${av.pct}%` }} /></span>
         </span>
-        <span className="acta-barra"><i style={{ width: `${av.pct}%` }} /></span>
+        {/* Los dos matices, con la misma pastilla que la lista de abajo, los
+            chips del editor y la tarjeta de /fondos. Cuatro sitios, un solo
+            aspecto: «en proceso» se reconoce sin leerlo. */}
+        {av.enProceso > 0 && (
+          <span className="acta-est" style={{ color: META_ESTADO_COMP.en_proceso.col }}
+            title={META_ESTADO_COMP.en_proceso.ayuda}>
+            {META_ESTADO_COMP.en_proceso.ico} {av.enProceso} en proceso
+          </span>
+        )}
+        {av.noAplica > 0 && (
+          <span className="acta-est" style={{ color: META_ESTADO_COMP.no_aplica.col }}
+            title="Marcados «no aplica»: no cuentan en el total">
+            {META_ESTADO_COMP.no_aplica.ico} {av.noAplica} no aplica
+          </span>
+        )}
+        <span style={{ flex: 1 }} />
         {actaUrl ? (
           <a href={actaUrl} target="_blank" rel="noopener noreferrer" className="acta-acta">
             📄 Acta {codigoActa || ""} ↗
