@@ -33,6 +33,7 @@ import { urlPlataforma, PLAT } from "@/lib/plataformas";
 import { hilosDeFilas } from "@/lib/rendicionHilo";
 import { gastosDelFondo, ayudaRubro } from "@/lib/ejecutado";
 import RolesPresupuesto from "@/components/RolesPresupuesto";
+import { agruparPorRol, filasPorPersona } from "@/lib/rolesPresupuesto";
 
 /* ── LA EJECUCIÓN DEL FONDO — la segunda vida de un proyecto ──
  *
@@ -632,6 +633,22 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
     </>
   );
   const preItems = ((ent.presupuesto as any)?.items || []) as any[];
+
+  /* ── LO QUE DICE LA PESTAÑA «POR ROL» SIN ABRIRLA ──
+     Cuántos roles hay y cuántos siguen sin dueño. El segundo es el que
+     importa: un rol sin persona no puede decir cuánto le falta cobrar, así que
+     ese número es el trabajo que queda para que la pestaña sirva. Se calcula
+     con las MISMAS funciones que pinta la pestaña —no con una cuenta parecida
+     escrita aquí—, que es como se evita que la etiqueta y el contenido digan
+     cosas distintas. */
+  const rolesPre = agruparPorRol(preItems as any);
+  const rolesSinDueno = (() => {
+    const filas = filasPorPersona(rolesPre, () => 0).filter(f => !f.personaId);
+    return filas.length
+      ? [{ n: filas.length, txt: `${filas.length} rol(es) sin persona asignada: no se puede saber cuánto les falta cobrar`, tono: "ambar" as const }]
+      : null;
+  })();
+
   const preCosto = preItems.reduce((s, i) => s + (i.cantidad || 0) * (i.costo_unit || 0), 0);
   // Conciliación: el presupuesto VIGENTE es la referencia (si no hay versión
   // vigente aún, se cae al presupuesto vivo). Costo vigente y % ejecutado (RHE).
@@ -710,17 +727,22 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
           su propia información, y apiladas se volverían un scroll interminable.
           Arranca en Financiera —el dinero es lo que tiene reloj—. */}
       <TabsPanel
-        labels={["💰 Financiera", "🎥 Audiovisual", `📦 Entregables${compromisos.length ? ` · ${compromisos.length}` : ""}`, `👥 Equipo · ${equipoDelFondo}`]}
+        labels={["💰 Financiera", "🎥 Audiovisual", `📦 Entregables${compromisos.length ? ` · ${compromisos.length}` : ""}`, `👥 Equipo · ${equipoDelFondo}`, `💼 Por rol${rolesPre.length ? ` · ${rolesPre.length}` : ""}`]}
         /* El rastro rojo: el mismo número en la pestaña, en la cabecera de
            Rendición y en la sub-sección de estados de cuenta. Sin él, lo que
            falta vive a tres clics de distancia dentro de una sección plegada,
            y para encontrarlo hay que sospechar primero. */
-        avisos={[avisosFin, null, null, null]}
+        /* ── EL AVISO DE «POR ROL» ES CUÁNTOS ROLES NO TIENEN DUEÑO ──
+           Sin persona asignada, un rol no puede decir cuánto le falta cobrar:
+           la pestaña se abre y las columnas dicen «—». El número dice cuánto
+           trabajo falta para que la pestaña sirva, que es la pregunta con la
+           que se entra. */
+        avisos={[avisosFin, null, null, null, rolesSinDueno || null]}
         /* Nombres de pestaña para poder enlazarlas: `…/fondo/<id>#equipo`.
            Sin esto, un enlace a la pestaña de equipo apunta a un panel que
            está montado pero oculto, y el clic no hace nada — el mismo fallo
            que costó dos rondas en la ficha de postulación. */
-        claves={["financiera", "audiovisual", "entregables", "equipo"]}
+        claves={["financiera", "audiovisual", "entregables", "equipo", "porrol"]}
         paneles={[
           <div key="fin">
             <p className="fondo-nat-sub">La plata que hay que rendir a DAFO: presupuesto real, banco, pagos y rendiciones.</p>
@@ -733,18 +755,6 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
                   postulado={vigPresu?.datos || null}
                   postuladoEn={vigPresu?.creado_en || null} ocultarFijar
                   estimuloConcurso={ent.conv?.monto_adjudicado ? parseFloat(ent.conv.monto_adjudicado) : null} />
-                {/* ── POR ROL, DEBAJO DEL PRESUPUESTO ──
-                    Y no en la pestaña de Equipo, aunque hable de personas: es
-                    una LECTURA del presupuesto y tiene que estar donde se ven
-                    sus cifras, o los dos totales se comparan a ciegas entre
-                    pestañas. Plegado, porque el presupuesto sigue siendo lo
-                    primero que se viene a ver aquí. */}
-                <Plegable nivel={2} id={`fondo:${params.id}:presu:roles`} titulo="💼 Por rol — cuánto le toca a cada uno"
-                  abiertoPorDefecto={false}
-                  resumen={dim(preItems.length ? "presupuestado, girado y lo que falta" : "sin partidas")}>
-                  <RolesPresupuesto postulacionId={params.id} items={preItems as any}
-                    personas={personasCat} rhe={rheFondo as any} esAdmin={esAdmin} />
-                </Plegable>
                 <Plegable nivel={2} id={`fondo:${params.id}:presu:versiones`} titulo="🕑 Historial de versiones"
                   abiertoPorDefecto={false}
                   resumen={dim(versPresu.length ? `${versPresu.length} versión(es)` : "sin versiones")}>
@@ -993,6 +1003,21 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
                 casosPorPersona={casosPorPersona}
                 puedeEditar />
             </div>
+          </div>,
+          /* ── POR ROL, PESTAÑA PROPIA AL LADO DE EQUIPO ──
+             Estaba plegada dentro de Financiera, debajo del presupuesto, con el
+             argumento de que es una lectura de sus cifras. Pero la pregunta que
+             contesta es de personas —«¿cuánto le giro a Katy?»— y ahí, tres
+             plegables abajo, había que saber que existía para encontrarla. Al
+             lado de Equipo se lee sola: una pestaña dice quién trabaja y la
+             otra cuánto le toca. */
+          <div key="porrol">
+            <p className="fondo-nat-sub">
+              Cuánto suma cada rol en el presupuesto, cuánto se le giró y lo que falta — para saber
+              qué RHE toca girar.
+            </p>
+            <RolesPresupuesto postulacionId={params.id} items={preItems as any}
+              personas={personasCat} rhe={rheFondo as any} esAdmin={esAdmin} />
           </div>,
         ]}
       />
