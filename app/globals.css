@@ -4718,10 +4718,20 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
   border-radius:8px;padding:6px 10px;font-size:12px;color:var(--text);outline:none;
   flex:1;min-width:170px;font-family:inherit}
 .acta-estados{display:flex;gap:4px;flex-wrap:wrap;width:100%}
-.acta-est-btn{background:var(--card);border:1px solid var(--border);border-radius:20px;
-  padding:3px 10px;font-size:11px;color:var(--dim);cursor:pointer;font-family:inherit}
-.acta-est-btn:hover{border-color:var(--border2)}
-.acta-est-btn.on{border-color:currentColor;font-weight:700}
+/* El fondo y el borde salen del color del propio chip (`currentColor`, que
+   llega en línea desde META_ESTADO_COMP). Así la identidad de cada estado se
+   define UNA vez: si mañana «preparando» deja de ser ámbar, cambia en la
+   lista, en el chip y en su fondo a la vez. */
+.acta-est-btn{background:color-mix(in srgb, currentColor 10%, transparent);
+  border:1px solid color-mix(in srgb, currentColor 32%, transparent);
+  border-radius:20px;padding:3px 10px;font-size:11px;cursor:pointer;
+  font-family:inherit;opacity:.72;transition:opacity .12s,background .12s}
+.acta-est-btn:hover{opacity:1}
+/* El elegido, a plena luz: el resto se queda un punto apagado. Cuatro chips
+   igual de vivos no dicen cuál está puesto — y esa es la única pregunta que
+   se hace mirándolos. */
+.acta-est-btn.on{opacity:1;font-weight:700;border-color:currentColor;
+  background:color-mix(in srgb, currentColor 20%, transparent)}
 
 /* ══════════════════════════════════════════════════════════════════
    👥 EQUIPO DE UN FONDO EN EJECUCIÓN

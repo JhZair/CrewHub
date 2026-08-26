@@ -189,8 +189,19 @@ export default function CompromisosActa({
                 {ESTADOS_COMP.map(s => {
                   const m = META_ESTADO_COMP[s];
                   return (
+                    /* ── CADA CHIP CON SU COLOR, SIEMPRE ──
+                       Antes solo se pintaba el ACTIVO y los otros tres eran
+                       cuatro pastillas grises indistinguibles: había que leer
+                       las cuatro para encontrar la que se busca, cada vez.
+                       El color es el mismo que ese estado tiene en la lista
+                       —sale de `META_ESTADO_COMP`, un solo sitio—, así que la
+                       pastilla que se toca aquí y la palabra que aparece allá
+                       se reconocen como la misma cosa sin leerlas.
+                       El fondo se calcula del propio color con `color-mix`: un
+                       tono tenue por chip escrito a mano serían cuatro colores
+                       más que mantener a juego con los de la lista. */
                     <button key={s} className={`acta-est-btn${x.estado === s ? " on" : ""}`}
-                      style={{ color: x.estado === s ? m.col : undefined }}
+                      style={{ color: m.col }} title={m.ayuda}
                       disabled={ocupado} onClick={() => guardar(x, s)}>
                       {m.ico} {m.txt}
                     </button>

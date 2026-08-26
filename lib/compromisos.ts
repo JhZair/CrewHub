@@ -130,7 +130,11 @@ export const META_ESTADO_COMP: Record<EstadoCompromiso, {
   /* «No aplica» es una decisión, no un hueco: el 5.3.7 (material promocional)
      dice «de ser el caso», y marcarlo así deja constancia de que alguien lo
      miró y decidió — que es distinto de que nadie se haya ocupado. */
-  no_aplica: { ico: "—", txt: "no aplica", col: "var(--dim)",
+  /* Color PROPIO y no el gris de «sin entregar»: son lo contrario. Uno es un
+     hueco —nadie se ha ocupado—, el otro una decisión tomada y anotada.
+     Compartiendo gris, los dos chips se leían como «esto no está hecho», que
+     es justo lo que «no aplica» viene a desmentir. */
+  no_aplica: { ico: "—", txt: "no aplica", col: "var(--violet)",
     ayuda: "Se revisó y se decidió que esta cláusula no corresponde a este proyecto. No cuenta en el total de entregables." },
 };
 
