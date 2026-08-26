@@ -1,109 +1,105 @@
 import { createClient, usuarioActual } from "@/lib/supabase/server";
-import Composer, { type Catalogos } from "@/components/Composer";
 import Realtime from "@/components/Realtime";
 import Campanita from "@/components/Campanita";
-import PostCard from "@/components/PostCard";
 import BuscadorGlobal from "@/components/BuscadorGlobal";
 import NavIconos from "@/components/NavIconos";
 import FranjaAlarmas from "@/components/FranjaAlarmas";
 import MenuUsuario from "@/components/MenuUsuario";
-import { ICO_ENT, rutaEntidad } from "@/lib/secciones";
-import { catalogoObjetos, catalogosEntidades } from "@/lib/catalogos";
-import { contarHijos } from "@/lib/familia";
+import Avatar from "@/components/Avatar";
+import EventoHistorial, { ROTULO_ENT } from "@/components/EventoHistorial";
+import EventoGrupo from "@/components/EventoGrupo";
+import { agruparEventos } from "@/lib/agrupar";
+import { nombrarEventos, nombresDe, porDias } from "@/lib/eventos";
+import { ICO_ENT, rutaEntidad, grafiasDe, tipoCanonico } from "@/lib/secciones";
+import { rotuloDia } from "@/lib/periodo";
 import { plazoDe } from "@/lib/plazo";
-import { progresoDe } from "@/lib/progreso";
 import { rotuloTipo, colorTipo } from "@/lib/tipos";
-import { avisoVencido } from "@/lib/estados";
-import { sinBot } from "@/lib/personas";
+import { sinBot, BOT } from "@/lib/personas";
 import {
   COLS_NOTIF, COLS_NUEVAS, faltaAlguna, columnasQueFaltan, sinEstas,
 } from "@/lib/notificaciones";
-import FiltroMas from "@/components/FiltroMas";
-import ListaFeed, { type CardFeed } from "@/components/ListaFeed";
 import Link from "@/components/Enlace";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 
-/* El feed también se nombra, y no por simetría: es la pestaña que John tiene
-   abierta SIEMPRE, así que es la que más se confunde con las otras nueve. Se
-   quedó sin título en la primera pasada —hice 24 rutas y me salté la que
-   originó el encargo—. El ⬡ es el logo: en una pestaña recortada al mínimo,
-   ése es «la casa». */
-export const metadata: Metadata = { title: "⬡ Feed" };
+export const metadata: Metadata = { title: "⬡ CrewHub+" };
 
-/* (TIPO_META salió a lib/tipos: era una de diez copias del mismo mapa.)
+/* ══════════════════════════════════════════════════════════════════════════
+   LA PORTADA — QUÉ PASÓ MIENTRAS NO ESTABAS
 
-   El mismo mapa vivía dos veces con el nombre al revés: `ENT_ICO` aquí e
-   `ICO_ENT` en lib/secciones.ts. Y no eran iguales — el de allá sabe que una
-   publicación es 📌 y éste no, así que un caso vinculado a otro caso salía con
-   el 🔗 de «no sé qué es esto». Se queda el de lib, que además se arma solo
-   desde SECCIONES: agregar una entidad nueva no debería obligar a acordarse
-   de un mapa de íconos en el feed. */
-const ENT_ICO = ICO_ENT;
+   Antes era un feed de CASOS: seis pestañas, un compositor arriba y la lista
+   de lo que a uno le toca. Todo eso se mudó al tablero, que lo hace mejor —
+   por columnas, con arrastre y filtros propios— y desde que el tablero está en
+   el menú, la portada era la misma información peor contada. Dos pantallas que
+   cuentan lo mismo no son dos pantallas: son una y su copia desactualizada.
 
-/* (La cuenta regresiva salió de aquí a lib/plazo: estaba escrita cuatro veces
-   con tres umbrales distintos, y la barra del pie de la tarjeta ni miraba los
-   días — medía cuánto hacía que se escribió el caso.) */
+   Lo que ninguna pantalla contaba es lo que hizo el RESTO del equipo. Katy
+   subió los comprobantes de PO-001, Wilfredo enlazó una empresa, el bot dejó
+   su ronda: eso vivía solo en /historial, que es una pantalla a la que se
+   entra cuando ya se sospecha algo. Un rastro al que hay que ir a buscar no
+   entera a nadie.
 
-const VISTAS: [string, string][] = [
-  ["mios", "🙋 Mis asuntos"], ["tarea", "✅ Tareas"], ["problema", "❗ Problemas"],
-  ["consulta", "❓ Consultas"], ["aviso", "📢 Avisos"], ["reunion", "🤝 Reuniones"],
-];
-// Filtros menos usados → van al desplegable "⋯ Más"
-/* Sin «📎 Archivos»: el tipo se retiró del compositor, así que ese filtro solo
-   podía enseñar historia — y un filtro que siempre da cero enseña a no fiarse
-   de los de al lado. Los archivos viejos que haya siguen saliendo en «🌐 Todo»
-   y en «🙋 Mis asuntos», con su 📎 intacto. */
-const VISTAS_MAS: [string, string][] = [
-  /* «Todo» se mudó aquí cuando entró Reuniones: con siete pestañas la fila se
-     partía en dos y la segunda quedaba centrada debajo, que se lee como dos
-     grupos de filtros distintos. De las siete, «Todo» es la que menos se toca
-     —se entra al feed a ver lo tuyo, no el universo— y la única cuyo nombre
-     se entiende igual dentro de un menú. */
-  ["todo", "🌐 Todo"],
-  ["pago", "💰 Pagos"], ["idea", "💡 Ideas"],
-];
+   ── LO QUE SE QUEDA ARRIBA, Y POR QUÉ EN ESE ORDEN ──
+   1. La alarma (si la hay), que es lo único que puede parar el día.
+   2. El bot, con lo que vence hoy.
+   3. «Lo que corre»: lo que administración clavó a mano. Vacío casi siempre.
+   4. Tu trabajo en dos números, con la puerta al tablero. Dos números NO son
+      la lista: quien quiera la lista entra, y el que solo pasaba no la paga.
+   5. Lo último del sistema.
 
-export default async function Feed({ searchParams }: { searchParams: { v?: string; link?: string } }) {
-  const v = searchParams?.v || "mios";
-  const linkParam = searchParams?.link || "";
+   ── EL COMPOSITOR NO ESTÁ, Y NO SE PERDIÓ NADA ──
+   Ocupaba el primer tercio de la pantalla más abierta del sistema para una
+   acción que ya tiene su botón ＋ flotante en TODAS las pantallas
+   (app/layout.tsx). Una puerta que está en todos lados no necesita además un
+   vestíbulo en la entrada.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Cuántos eventos trae la portada. Decenas, no miles: esto es «lo último», y
+   para el rastro completo está /historial con sus periodos y su «ver más».
+   ⚠ Con `order` explícito SIEMPRE. `actividad` pasó de diez mil filas y el
+   corte de PostgREST (Max rows = 1000) devuelve filas ARBITRARIAS cuando no se
+   ordena — el mismo fallo que ya se pagó dos veces en /pulso y en /buscar. */
+const CUANTOS = 60;
+
+/* ── LOS CHIPS DE «SOBRE QUÉ» SON FIJOS, Y NO LLEVAN NÚMERO ──
+   La tentación era contar cuántos eventos hay de cada tipo. Pero contar de
+   verdad obliga a traerse el periodo entero —diez mil filas en la pantalla que
+   más se abre— y contar sobre los 60 traídos da el tamaño de la muestra
+   disfrazado de dato: fue literalmente el fallo de /historial («Michel · 21»
+   significaba «21 de los últimos 500»).
+   Sin número no se miente. Los que hoy no tienen nada dicen que no tienen nada
+   al pulsarlos, que es una respuesta honesta y de un solo clic. */
+const SOBRE_QUE = ["publicacion", "postulacion", "proyecto", "empresa", "persona", "objeto", "equipamiento"];
+
+/** Un uuid, para no mandar a la base lo que venga escrito en la barra. */
+const ES_UUID = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+
+export default async function Portada({ searchParams }: {
+  searchParams: { t?: string; a?: string };
+}) {
+  /* ── LO QUE VIENE DE LA URL SE COMPRUEBA ──
+     `?a=hola` acababa en `eq("actor_id","hola")`, PostgREST devolvía un 400 por
+     uuid inválido y la pantalla decía «nada con estos filtros»: un error de
+     tipo disfrazado de respuesta vacía. Y `?t=loquesea` dejaba la portada
+     filtrada por algo que ningún chip marcaba, o sea sin forma de volver.
+     Lo que no se reconoce, no filtra. */
+  const filtroEnt = SOBRE_QUE.includes(searchParams?.t || "") ? searchParams!.t! : "";
+  const filtroActor = (() => {
+    const a = searchParams?.a || "";
+    return a === "bot" || ES_UUID(a) ? a : "";
+  })();
   const supabase = createClient();
   // Compartido con `QuienEstaGlobal` del layout: una verificación, no dos.
   const user = await usuarioActual();
   if (!user) redirect("/login");
 
-  /* ══════════════════════════════════════════════════════════════════════════
-     LA PORTADA SE PEDÍA EN QUINCE ESPERAS, UNA DETRÁS DE OTRA
-
-     Medido en producción: 97 ms hasta el primer byte y **7019 ms** hasta que el
-     documento terminaba de llegar. Como no hay ningún `<Suspense>`, ese segundo
-     número es literalmente cuándo acaba el último `await` de aquí abajo. La
-     mitad del «va lento» del sistema era esta función.
-
-     Y de las quince esperas, **solo cuatro dependían de verdad de la anterior**.
-     El resto se esperaban por el orden en que se escribieron: el perfil no
-     necesita saber qué casos ocultaste, y los seis conteos del Bot no necesitan
-     nada más que la fecha de hoy.
-
-     Ahora son CUATRO tandas, y cada una existe porque la siguiente necesita algo
-     que solo ella puede dar:
-
-       1. Todo lo que se sabe con `user.id` y la fecha  → 21 consultas a la vez
-       2. Mis vínculos             ← necesita mi ficha de persona (de la 1)
-       3. El feed y su universo    ← necesitan mis vínculos y mis ocultos
-       4. Familia, reacciones y nombres ← necesitan los ids del feed
-
-     ⚠ Las `Promise.all` anidadas de la tanda 1 NO la parten en cuatro esperas:
-     las promesas nacen al evaluarse el array, así que las 21 salen juntas. Van
-     agrupadas por asunto solo para poder leerlas.
-     ══════════════════════════════════════════════════════════════════════════ */
-
-  /* Las fechas se calculan ANTES de pedir nada. Estaban repartidas por el
-     archivo, cada una justo encima de la consulta que la usaba, y eso era parte
-     del problema: una constante en medio del camino parece una dependencia. */
-  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
   const hoyISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Lima" }); // YYYY-MM-DD
+  /* La medianoche de HOY EN CUSCO, no la del servidor. Estaba con
+     `setHours(0,0,0,0)` sobre la hora de la máquina —UTC en producción—, así
+     que «hoy dejé N apuntes» empezaba a contar a las 19:00 del día anterior. */
+  const hoy = new Date(`${hoyISO}T00:00:00-05:00`);
   const en60ISO = new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10);
+  const desde30 = new Date(Date.now() - 30 * 86400000).toISOString();
 
   // Recientes de cada tipo por separado (12 y 12), no 20 mezcladas: así la
   // pestaña "Del Bot" del desplegable tiene contenido aunque lo último sea
@@ -118,61 +114,67 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
       .order("creado_en", { ascending: false }).order("id", { ascending: false }).limit(NCAMP);
   };
 
-  /* ══ TANDA 1 ══ todo lo que no necesita más que `user.id` y la fecha.
-     Las CUATRO salen a la vez —las promesas nacen aquí, sin `await`— pero se
-     recogen por separado, y ese detalle es la mitad de la ganancia: el feed
-     solo depende del primer grupo, así que arranca en cuanto ese vuelve y no
-     espera al catálogo, que es lento por dentro (`catalogoObjetos` hace dos
-     viajes en serie: los objetos y luego el nombre de sus dueños).
-     Con un solo `await` de los cuatro grupos, la consulta más pesada de la
-     página —el feed— se quedaba esperando detrás de la más lenta que ni
-     siquiera necesita. */
+  /* Mis casos por estado, con la MISMA regla que la burbuja del menú
+     (app/nav-acciones.ts → misCasos): un aviso o una reunión no están «sin
+     resolver» porque no se resuelven. Si esto contara distinto, la portada y
+     el menú dirían dos números para lo mismo en la misma pantalla. */
+  const misCasos = () => supabase.from("publicaciones")
+    .select("id", { count: "exact", head: true })
+    .eq("responsable", user.id)
+    .is("archivado_en", null)
+    .not("tipo", "in", "(aviso,bitacora,reunion)");
 
-  // — quién soy y qué he escondido —
+  /* ══ TANDA 1 ══ TODO lo que solo necesita `user.id` y la fecha, a la vez.
+     Nada de esto depende de nada de esto: la portada vieja lo pedía en quince
+     esperas encadenadas y tardaba siete segundos en cerrar el documento. Se
+     recogen en grupos solo para poder leerlos. */
   const pMio = Promise.all([
     supabase.auth.getSession(),
     supabase.from("perfiles")
       .select("nombre,color,rol,avatar_url,es_admin,es_finanzas").eq("id", user.id).single(),
-    // Casos que ESTE usuario ocultó de su feed (resueltos que ya no quiere ver)
-    supabase.from("feed_ocultos").select("publicacion_id").eq("usuario_id", user.id),
-    /* Avisos que ESTE usuario ya dio por leídos: "me enteré" = reacción 👀
-       suya. Se ocultan de su feed (siguen visibles para quien aún no los vio,
-       y el aviso se archiva solo cuando lo ve la mayoría). */
-    supabase.from("reacciones").select("publicacion_id")
-      .eq("usuario_id", user.id).eq("emoji", "👀").is("comentario_id", null),
-    /* Mi ficha de persona: "Mis asuntos" incluye también lo vinculado a ELLA
-       (por el enlace personas.usuario_id ↔ perfil), y el enlace «Mi perfil»
-       la necesita. Se pide por su id y no se busca en el listado de personas
-       que trae el catálogo: son 147 filas hoy, pero preguntar por una fila
-       concreta no depende de que ese listado venga entero. */
+    /* Mi ficha de persona: la necesita el enlace «Mi perfil» del menú. */
     supabase.from("personas").select("id").eq("usuario_id", user.id).maybeSingle(),
+    misCasos().eq("estado", "abierta"),
+    misCasos().eq("estado", "en_progreso"),
   ]);
-  // — los catálogos y la cabecera —
-  const pCatalogos = Promise.all([
-    /* Cómo se lee cada entidad en un desplegable lo decide lib/catalogos, no
-       esta página: el mismo compositor se abre desde aquí, desde el «+» y
-       desde la ficha del caso. */
-    catalogosEntidades(supabase),
-    // Aparte: el feed necesita el alias suelto para los chips (ver más abajo).
-    supabase.from("personas").select("id,nombre,alias").order("nombre"),
-    supabase.from("etiquetas").select("id,nombre").order("nombre"),
-    /* El repositorio, para poder decir «este caso trata sobre ESTE material».
-       Trae el dueño como coletilla: dos objetos se llaman igual con facilidad
-       y es de quién son lo que los distingue. */
-    catalogoObjetos(supabase),
-    supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
-    /* Cabecera del feed: SOLO lo que administración clavó a mano.
-       Antes también subía cualquier caso con la fecha límite a menos de 15
-       días, y eso no destacaba nada: esos casos ya están en el feed, en el
-       tablero, en el mensaje de Chat y con su chip rojo de vencimiento.
-       Subirlos aquí era repetirlos, y de paso le quitaba peso al ⭐ para
-       cuando de verdad hace falta clavar algo. Si todo destaca, nada destaca.
-       Sigue caducando solo: nada que desdestacar. */
-    /* `vinculos` es lo que le faltaba: sin ellos, «Cargar PDF de
-       Observaciones» no dice de qué proyecto, y «Pampacucho» solo se entiende
-       porque alguien tuvo el reflejo de escribirlo en el título. Un caso
-       clavado en la cabecera del feed es justo el que menos puede depender de
-       que el título esté bien redactado. */
+  // — la campanita —
+  const pCampana = Promise.all([
+    tandaNotif(COLS_NOTIF, false),
+    tandaNotif(COLS_NOTIF, true),
+    // Timbre = solo lo personal sin leer (lo que pide tu acción).
+    supabase.from("notificaciones").select("id", { count: "exact", head: true })
+      .eq("usuario_id", user.id).eq("leida", false).not("actor_nombre", "is", null),
+    // Contador propio de las automáticas del Bot sin leer.
+    supabase.from("notificaciones").select("id", { count: "exact", head: true })
+      .eq("usuario_id", user.id).eq("leida", false).is("actor_nombre", null),
+    supabase.from("actividad").select("id", { count: "exact", head: true })
+      .eq("tipo", "bot").gte("creado_en", hoy.toISOString()),
+  ]);
+  // — los hallazgos del Bot: seis conteos que solo dependen de la fecha —
+  const pQhaway = Promise.all([
+    supabase.from("publicaciones").select("id", { count: "exact", head: true })
+      .in("estado", ["abierta", "en_progreso", "seguimiento", "en_pausa"])
+      .is("archivado_en", null)   // un aviso archivado con fecha vencida NO es un vencido
+      .not("fecha_limite", "is", null).lt("fecha_limite", hoyISO),
+    supabase.from("publicaciones").select("id", { count: "exact", head: true })
+      .in("estado", ["abierta", "en_progreso", "seguimiento", "en_pausa"])
+      .is("archivado_en", null).is("responsable", null),
+    supabase.from("empresas").select("id", { count: "exact", head: true })
+      .eq("estado", "activa").not("estado_sunat", "is", null).neq("estado_sunat", "activo"),
+    supabase.from("personas").select("id", { count: "exact", head: true })
+      .not("dni_vencimiento", "is", null).lte("dni_vencimiento", en60ISO),
+    supabase.from("personas").select("nombre,alias,fecha_nacimiento")
+      .in("tipo", ["personal", "colaborador"]).not("fecha_nacimiento", "is", null),
+    supabase.from("postulaciones")
+      .select("estado, proy:proyectos(nombre), conv:convocatorias(anio)")
+      .in("estado", ["en_preparacion", "enviada", "en_subsanacion", "finalista", "ganadora"]),
+  ]);
+  // — la portada propiamente dicha: lo clavado y lo último —
+  const pFeed = Promise.all([
+    /* Lo que corre: SOLO lo que administración clavó a mano, y caduca solo.
+       `vinculos` para poder decir de qué proyecto habla: un caso clavado en la
+       cabecera es justo el que menos puede depender de que el título esté bien
+       redactado. */
     supabase.from("publicaciones")
       .select(`id,tipo,titulo,estado,fecha_limite,destacado_hasta,
         resp:perfiles!publicaciones_responsable_fkey(nombre),
@@ -183,128 +185,70 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
       .gt("destacado_hasta", new Date().toISOString())
       .order("fecha_limite", { ascending: true, nullsFirst: false })
       .limit(5),
-  ]);
-  // — la campanita —
-  const pCampana = Promise.all([
-      tandaNotif(COLS_NOTIF, false),
-      tandaNotif(COLS_NOTIF, true),
-      // Timbre = solo lo personal sin leer (lo que pide tu acción).
-      supabase.from("notificaciones").select("id", { count: "exact", head: true })
-        .eq("usuario_id", user.id).eq("leida", false).not("actor_nombre", "is", null),
-      // Contador propio de las automáticas del Bot sin leer.
-      supabase.from("notificaciones").select("id", { count: "exact", head: true })
-        .eq("usuario_id", user.id).eq("leida", false).is("actor_nombre", null),
-      supabase.from("actividad").select("id", { count: "exact", head: true })
-        .eq("tipo", "bot").gte("creado_en", hoy.toISOString()),
-  ]);
-  /* — los hallazgos del Bot —
-     Seis conteos que no dependen de NADA salvo la fecha de hoy, y que estaban
-     al final de la cascada esperando a que llegara el feed entero. */
-  const pQhaway = Promise.all([
-      supabase.from("publicaciones").select("id", { count: "exact", head: true })
-        .in("estado", ["abierta", "en_progreso", "seguimiento", "en_pausa"])
-        .is("archivado_en", null)   // un aviso archivado con fecha vencida NO es un vencido
-        .not("fecha_limite", "is", null).lt("fecha_limite", hoyISO),
-      supabase.from("publicaciones").select("id", { count: "exact", head: true })
-        .in("estado", ["abierta", "en_progreso", "seguimiento", "en_pausa"])
-        .is("archivado_en", null).is("responsable", null),
-      supabase.from("empresas").select("id", { count: "exact", head: true })
-        .eq("estado", "activa").not("estado_sunat", "is", null).neq("estado_sunat", "activo"),
-      supabase.from("personas").select("id", { count: "exact", head: true })
-        .not("dni_vencimiento", "is", null).lte("dni_vencimiento", en60ISO),
-      supabase.from("personas").select("nombre,alias,fecha_nacimiento")
-        .in("tipo", ["personal", "colaborador"]).not("fecha_nacimiento", "is", null),
-      supabase.from("postulaciones")
-        .select("estado, proy:proyectos(nombre), conv:convocatorias(anio)")
-        .in("estado", ["en_preparacion", "enviada", "en_subsanacion", "finalista", "ganadora"]),
-  ]);
-
-  /* Se recoge SOLO el primer grupo. Los otros tres ya están volando; se
-     esperan más abajo, cuando de verdad hagan falta. */
-  const [{ data: { session } }, { data: perfil }, { data: ocultosData },
-    { data: enterData }, { data: yo }] = await pMio;
-  const idsOcultos = (ocultosData || []).map((x: any) => x.publicacion_id);
-  const misEnterados = new Set((enterData || []).map((x: any) => x.publicacion_id));
-  const miPersonaId: string | null = yo?.id || null;
-
-  /* ══ TANDA 2 ══ lo único que de verdad necesitaba saber quién soy.
-     "Mis asuntos" incluye también publicaciones vinculadas a MI PERSONA. La
-     ficha ya vino arriba; lo que falta es qué hay colgado de ella. */
-  const misVinculadas: string[] = miPersonaId
-    ? ((await supabase.from("publicacion_vinculos").select("publicacion_id")
-        .eq("entidad_tipo", "persona").eq("entidad_id", miPersonaId)
-        .limit(300)).data || []).map((x: any) => x.publicacion_id)
-    : [];
-
-  /* ══ TANDA 3 ══ el feed y el universo de los contadores. Las dos necesitan
-     `idsOcultos` (tanda 1) y la primera además `misVinculadas` (tanda 2). */
-  const [postsQ, univQ] = await Promise.all([
+    /* ── LO ÚLTIMO ──
+       Los filtros van a la BASE y no a la lista traída: filtrando en memoria,
+       elegir a Wilfredo enseñaba «lo suyo dentro de los últimos 60 del
+       equipo», que casi siempre son tres líneas y parece que no trabaja. Es
+       exactamente el fallo que /historial ya corrigió. */
     (() => {
-      let q = supabase.from("publicaciones")
-        .select(`
-          id, tipo, titulo, cuerpo, estado, prioridad, creado_en, fecha_inicio, fecha_limite, imagenes, padre_id,
-          autor_id, responsable,
-          autor:perfiles!publicaciones_autor_id_fkey(nombre, color, avatar_url),
-          resp:perfiles!publicaciones_responsable_fkey(nombre),
-          comentarios(count),
-          vinculos:publicacion_vinculos(entidad_tipo, entidad_id)
-        `)
-        .is("archivado_en", null)   // lo archivado descansa fuera del feed (ya no es un estado)
-        .neq("estado", "descartada") // "ya no aplica": terminó sin hacerse, fuera del feed
-        .neq("tipo", "bitacora")     // las notas del muro solo viven en su proyecto
-        .order("creado_en", { ascending: false })
-        .limit(50);
-      if (idsOcultos.length) q = q.not("id", "in", `(${idsOcultos.join(",")})`);
-      if (v === "mios") {
-        const cond = [`autor_id.eq.${user.id}`, `responsable.eq.${user.id}`];
-        if (misVinculadas.length) cond.push(`id.in.(${misVinculadas.join(",")})`);
-        q = q.or(cond.join(","));
-      }
-      else if (v && v !== "todo") q = q.eq("tipo", v);
-      return q;
+      let q = supabase.from("actividad")
+        .select("tipo,detalle,creado_en,entidad_tipo,entidad_id,actor_id,actor:perfiles(nombre)");
+      /* Las DOS grafías: el trigger escribe el nombre de la tabla («proyectos»)
+         y el código a mano escribe el singular. Preguntando por una sola, la
+         mitad del rastro desaparece sin ningún error. */
+      if (filtroEnt) q = q.in("entidad_tipo", grafiasDe(filtroEnt));
+      if (filtroActor) q = filtroActor === "bot" ? q.is("actor_id", null) : q.eq("actor_id", filtroActor);
+      return q.order("creado_en", { ascending: false }).order("id", { ascending: false })
+        .limit(CUANTOS);
     })(),
-    (() => {
-      // Universo para los contadores de cada pestaña (independiente del filtro activo).
-      // `fecha_limite`: para excluir avisos vencidos igual que en la lista, y que
-      // el número de la pestaña cuadre con lo que se ve.
-      let q = supabase.from("publicaciones").select("id,tipo,autor_id,responsable,fecha_limite")
-        .is("archivado_en", null).neq("estado", "descartada").neq("tipo", "bitacora");
-      if (idsOcultos.length) q = q.not("id", "in", `(${idsOcultos.join(",")})`);
-      return q.limit(2000);
-    })(),
+    // El equipo, para los avatares del filtro «quién».
+    supabase.from("perfiles").select("id,nombre,avatar_url,color")
+      .eq("activo", true).order("nombre"),
+    /* ── EL MURO, JUNTO ──
+       Las notas de bitácora son lo único que el equipo escribe en prosa, y
+       viven cada una encerrada en el muro de SU proyecto, empresa o persona.
+       O sea: para enterarte de lo que se contó esta semana había que entrar a
+       ocho fichas y abrir ocho pestañas. Nadie hace eso, así que las notas se
+       escribían para nadie.
+       Aquí se ven todas y en orden, con el muro de donde salen. Se leen; se
+       responde en su sitio, que es donde está la conversación. */
+    supabase.from("publicaciones")
+      .select(`id,cuerpo,imagenes,creado_en,
+        autor:perfiles!publicaciones_autor_id_fkey(nombre,color,avatar_url),
+        vinculos:publicacion_vinculos(entidad_tipo, entidad_id)`)
+      .eq("tipo", "bitacora")
+      /* Archivadas fuera. En su ficha siguen saliendo —allí el muro es la
+         memoria del proyecto—; aquí no, porque esto es «lo que se está
+         contando», no el archivo. */
+      .is("archivado_en", null)
+      /* ── UNA VENTANA, NO SOLO UN TOPE ──
+         Sin ella, un mes sin escribir dejaba «🧱 El muro» clavado encima de lo
+         último con seis notas de hace medio año: una sección permanente que
+         cuenta cosas viejas es peor que no tenerla. Si nadie escribió, no hay
+         muro, y eso también dice algo. */
+      .gte("creado_en", desde30)
+      .order("creado_en", { ascending: false }).order("id", { ascending: false })
+      .limit(6),
   ]);
 
-  /* Ahora sí se recogen los otros tres grupos de la tanda 1. Llevan volando
-     desde el principio, así que a estas alturas normalmente ya llegaron: este
-     `await` no suele esperar nada. */
   const [
-    [ents, pers, etiq, objs, perfs, destQ],
+    [{ data: { session } }, { data: perfil }, { data: yo },
+      { count: casosMios }, { count: casosCurso }],
     [{ data: notifPersRaw, error: ePers }, { data: notifBotRaw, error: eBot },
       { count: sinLeer }, { count: sinLeerBot }, { count: botHoy }],
     [{ count: cVencidos }, { count: cSinResp }, { count: cSunat }, { count: cDni },
       { data: nacim }, { data: postAnio }],
-  ] = await Promise.all([pCatalogos, pCampana, pQhaway]);
+    [destQ, actQ, equipoQ, muroQ],
+  ] = await Promise.all([pMio, pCampana, pQhaway, pFeed]);
+
+  const miPersonaId: string | null = yo?.id || null;
+  const equipo = sinBot(equipoQ.data);
 
   /* ── SEGUNDO INTENTO, QUITANDO SOLO LO QUE FALTE ──
-     Antes esto miraba una sola columna (`dafo_id`) y reintentaba una vez. Con
-     once puertas eso ya no vale: si a la base le falta `comprobante_id` porque
-     nadie corrió db/rendicion-interaccion.sql, PostgREST rechaza la consulta
-     ENTERA y la campanita del feed se queda vacía con el timbre marcando tres.
+     Si a la base le falta una columna de otra migración, PostgREST rechaza la
+     consulta ENTERA y la campanita se queda vacía con el timbre marcando tres.
      Una pantalla que ya funcionaba no puede caerse porque alguien no corrió un
-     SQL de otro módulo — es la regla que lib/notificaciones.ts explica en
-     `sinEstas`, y que aquí no se había aplicado.
-     Se quita lo que la base nombró, no todo lo opcional: renunciar a `dafo_id`
-     porque falta otra cosa deja los correos de la casilla sin destino, que fue
-     el fallo original.
-
-     ⚠ VA ANTES DE LA TANDA 4, y no después como estaba al reordenar esto. La
-     tanda 4 pide los vínculos de los casos notificados, y para saber CUÁLES
-     necesita las notificaciones DEFINITIVAS. Con el reintento detrás, en una
-     base a la que le falta una migración la primera respuesta viene vacía —por
-     eso hay reintento—, así que la lista de ids salía vacía y la campanita
-     perdía todos sus chips de contexto. Se habría degradado dos veces: una
-     prevista y otra no. En el camino normal esto no cuesta nada: el bucle no
-     entra y no hay ni un viaje de más. */
+     SQL de otro módulo (ver lib/notificaciones.ts → `sinEstas`). */
   let notifPers: any = notifPersRaw, notifBot: any = notifBotRaw;
   {
     let err: any = ePers || eBot;
@@ -321,81 +265,60 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
   }
   const notifs = [...(notifPers || []), ...(notifBot || [])];
 
-  /* ══ TANDA 4 ══ todo lo que necesita los ids del feed, de una vez.
-     Eran cuatro esperas seguidas —familia, padres de fuera, reacciones— y
-     ninguna necesitaba el resultado de la anterior: las tres cuelgan del mismo
-     `idsPubs`. Los padres externos son la excepción aparente (salen de
-     `padre_id`), pero eso también viene del feed y ya está en memoria. */
-  const idsPubs = (postsQ.data || []).map((p: any) => p.id);
-  // Títulos de padres que no están en la página del feed
-  const idsPadres = [...new Set((postsQ.data || [])
-    .map((p: any) => p.padre_id).filter(Boolean)
-    .filter((id: string) => !idsPubs.includes(id)))];
-  /* Los objetos que el feed necesita NOMBRAR no son los mismos que ofrece para
-     ELEGIR. El catálogo trae los 300 más recientes y sin CVs —para el
-     desplegable sobra—, pero un caso puede estar vinculado a material más
-     viejo: como los chips se filtran por «tiene nombre», ese vínculo
-     desaparecía de la tarjeta sin decir nada. Se resuelven aparte, solo los
-     que salen en pantalla. */
-  const idsObjFeed = [...new Set(
-    [...(postsQ.data || []), ...(destQ.data || [])]
-      .flatMap((p: any) => p.vinculos || [])
-      .filter((vi: any) => vi.entidad_tipo === "objeto")
-      .map((vi: any) => vi.entidad_id)
-  )];
-  // Contexto para las notificaciones: vínculos de entidad de cada caso
-  // notificado. De `notifs`, que es la lista DEFINITIVA (ver el aviso de
-  // arriba sobre el orden del reintento).
-  const idsNotif = [...new Set(
-    notifs.map((n: any) => n.publicacion_id).filter(Boolean))];
-
-  const vacio = { data: [] as any[] };
-  const [{ data: hijosData }, { data: padresExt }, { data: reaccs },
-    { data: objsFeed }, { data: vincNotif }] = await Promise.all([
-    idsPubs.length
-      ? supabase.from("publicaciones").select("padre_id,estado,archivado_en").in("padre_id", idsPubs)
-      : vacio,
-    idsPadres.length
-      ? supabase.from("publicaciones").select("id,titulo").in("id", idsPadres)
-      : vacio,
-    idsPubs.length
-      ? supabase.from("reacciones").select("publicacion_id,emoji,usuario_id")
-          .is("comentario_id", null).in("publicacion_id", idsPubs)
-      : vacio,
-    idsObjFeed.length
-      ? supabase.from("objetos").select("id,titulo").in("id", idsObjFeed)
-      : vacio,
+  /* ══ TANDA 2 ══ ponerle nombre a lo que llegó. Las tres necesitan los ids de
+     la tanda 1 y ninguna necesita a las otras: salen juntas.
+     Los vínculos de los destacados y los de las notificaciones se resuelven
+     con la MISMA función que nombra los eventos (lib/eventos → nombresDe):
+     antes cada bloque lo hacía a su manera y el mismo material salía con
+     nombre en un sitio y sin él en el otro. */
+  const idsNotif = [...new Set(notifs.map((n: any) => n.publicacion_id).filter(Boolean))];
+  const [nombrados, nombresVinc, vincNotifQ] = await Promise.all([
+    /* Sin `conActores`: eso trae la tabla `perfiles` entera para poder nombrar
+       a quien no salga en la página, y aquí las caras del filtro ya vienen de
+       `equipoQ`. Lo necesita /historial, que pinta un chip por persona. */
+    nombrarEventos(supabase, actQ.data, { conActores: false }),
+    /* Los destacados y las notas del muro, en la MISMA consulta por tabla: son
+       vínculos de la misma clase y separarlos era pagar dos veces por nombrar
+       el mismo proyecto. */
+    nombresDe(supabase, [...(destQ.data || []), ...(muroQ.data || [])]
+      .flatMap((p: any) => (p.vinculos || [])
+        .map((v: any) => ({ tipo: v.entidad_tipo, id: v.entidad_id })))),
     idsNotif.length
-      ? supabase.from("publicacion_vinculos")
-          .select("publicacion_id,entidad_tipo,entidad_id").in("publicacion_id", idsNotif)
-      : vacio,
+      ? supabase.from("publicacion_vinculos").select("publicacion_id,entidad_tipo,entidad_id")
+        .in("publicacion_id", idsNotif)
+      : Promise.resolve({ data: [] as any[] }),
   ]);
+  const { eventos } = nombrados;
 
-  const hijosDe = contarHijos(hijosData);
-  const tituloPadre = new Map<string, string>();
-  (postsQ.data || []).forEach((p: any) => tituloPadre.set(p.id, p.titulo));
-  (padresExt || []).forEach((p: any) => tituloPadre.set(p.id, p.titulo));
-  // El nombre de quién reaccionó, para el acuse en el tooltip. Se resuelve con el
-  // mismo catálogo de perfiles ya cargado (perfs), sin otra consulta.
-  const nombrePerfil = new Map((perfs.data || []).map((x: any) => [x.id, x.nombre]));
-  const reaccsDe = new Map<string, any[]>();
-  (reaccs || []).forEach((r: any) => {
-    const l = reaccsDe.get(r.publicacion_id) || [];
-    l.push({ emoji: r.emoji, usuario_id: r.usuario_id, nombre: nombrePerfil.get(r.usuario_id) }); reaccsDe.set(r.publicacion_id, l);
-  });
+  /* Contexto de cada notificación: de qué habla el caso avisado.
+     Se aprovecha lo YA resuelto para los destacados y el muro, y solo se
+     pregunta por lo que falte — que muchas veces es nada, y entonces esta ola
+     no existe. El mapa se consulta con la clave canónica (ver lib/eventos). */
+  const vincNotif = ((vincNotifQ as any).data || []) as any[];
+  const claveDe = (v: any) => `${tipoCanonico(v.entidad_tipo)}:${v.entidad_id}`;
+  const faltan = vincNotif.filter((v: any) => !nombresVinc.has(claveDe(v)));
+  const nombresNotif = faltan.length
+    ? await nombresDe(supabase, faltan.map((v: any) => ({ tipo: v.entidad_tipo, id: v.entidad_id })))
+    : new Map<string, string>();
+  const vincDe = new Map<string, { tipo: string; nombre: string }[]>();
+  for (const v of vincNotif) {
+    const nombre = nombresVinc.get(claveDe(v)) || nombresNotif.get(claveDe(v));
+    if (!nombre) continue;
+    const l = vincDe.get(v.publicacion_id) || [];
+    l.push({ tipo: v.entidad_tipo, nombre });
+    vincDe.set(v.publicacion_id, l);
+  }
+  const notifsEnriq = (notifs || []).map((n: any) => ({
+    ...n, vinculos: n.publicacion_id ? (vincDe.get(n.publicacion_id) || []) : [],
+  }));
 
-  /* ── Mensaje de Qhaway: combina hallazgos reales + cumpleaños + frases
-     decorativas, elegido al azar (los cumpleaños tienen prioridad). No crea
-     tarjetas: solo informa. Sus seis conteos ya vinieron en la tanda 1: no
-     dependen de nada y estaban al final de la cascada esperando su turno. ── */
-
-  // 🎂 Cumpleaños de hoy (compara mes-día)
+  /* ── Mensaje de Qhaway: hallazgos reales + cumpleaños + frases decorativas,
+     elegido al azar (los cumpleaños tienen prioridad). Solo informa. ── */
   const hoyMD = hoyISO.slice(5);
   const cumples: string[] = (nacim || [])
     .filter((p: any) => (p.fecha_nacimiento || "").slice(5) === hoyMD)
     .map((p: any) => `🎂 ¡Hoy cumple años ${p.alias || (p.nombre || "").split(" ")[0]}! Que no falte el saludo, Kawsay 🎉`);
 
-  // 🔎 Hallazgos reales (solo los que existen)
   const hallazgos: string[] = [];
   if (cVencidos) hallazgos.push(`⏰ Hay ${cVencidos} caso${cVencidos === 1 ? "" : "s"} vencido${cVencidos === 1 ? "" : "s"} — un vistazo no cae mal.`);
   if (cSinResp) hallazgos.push(`🙋 ${cSinResp} caso${cSinResp === 1 ? "" : "s"} sin responsable — un caso huérfano es de todos.`);
@@ -403,7 +326,7 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
   if (cDni) hallazgos.push(`🪪 ${cDni} DNI por vencer — renovar a tiempo evita sustos.`);
   if (botHoy) hallazgos.push(`📝 Hoy dejé ${botHoy} apunte${botHoy === 1 ? "" : "s"} en mi ronda.`);
 
-  // 🍀 Buenas vibras a las postulaciones del año en curso (más ánimo mientras más avanzan)
+  // 🍀 Buenas vibras a las postulaciones del año en curso
   const anioActual = new Date().getFullYear();
   const vibras: string[] = [];
   for (const p of (postAnio || []) as any[]) {
@@ -420,7 +343,6 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
     }
   }
 
-  // 💬 Frases decorativas (siempre presentes en la mezcla)
   const DECORATIVAS = [
     "Nada se pierde mientras yo mire. 👁",
     "Lo que mañana importa, hoy se publica.",
@@ -429,106 +351,94 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
     "Recuerden: el chat coordina, CrewHub+ recuerda.",
     "Cada vínculo de hoy es una respuesta instantánea en el futuro.",
     "Menos tarjetas abiertas, más calma — cerrar también es avanzar.",
-    "Un feed corto es un equipo tranquilo. No acumulen, resuelvan.",
+    "Lo que no se registra, se discute dos veces.",
   ];
 
   const pick = (a: string[]): string => a[Math.floor(Math.random() * a.length)];
   const fraseQhaway: string = cumples.length
-    ? pick(cumples)                                              // el cumpleaños manda
-    : pick([...hallazgos, ...hallazgos, ...vibras, ...DECORATIVAS]); // hallazgos y vibras con más peso
+    ? pick(cumples)
+    : pick([...hallazgos, ...hallazgos, ...vibras, ...DECORATIVAS]);
 
-  /* Cada combo muestra lo mínimo para NO equivocarse de fila: el nombre, y al
-     lado lo que desempata. Apagado (`sub`) cuando es una coletilla del mismo
-     nombre —el alias, el año—; como etiqueta (`tipo`) cuando es una
-     clasificación que además ordena la lectura. */
-  const catalogos: Catalogos = {
-    ...(ents as any),
-    etiqueta: etiq.data || [],
-    objeto: objs || [],
-  };
-
-  // Resolver nombre de cada entidad vinculada: mapa "tipo:id" → nombre
-  const nombres = new Map<string, string>();
-  Object.entries(catalogos).forEach(([t, items]) =>
-    items.forEach((it: any) => nombres.set(`${t}:${it.id}`, it.nombre))
-  );
-  // En los chips del feed, la persona se muestra con su nombre corto (alias)
-  // para ocupar menos espacio; el buscador del compositor conserva el completo.
-  (pers.data || []).forEach((x: any) => nombres.set(`persona:${x.id}`, x.alias || x.nombre));
-
-  /* Los títulos del material del feed ya vinieron en la tanda 4 (`objsFeed`).
-     Antes se pedían aquí, filtrando primero los que el catálogo ya nombraba;
-     ahora se piden todos los del feed —son un puñado, y la tabla entera son 86
-     filas— porque en la tanda 4 el mapa `nombres` todavía no existe.
-
-     El filtro no desaparece: se mueve del `.in()` al `.set()`. Hoy da igual —
-     `catalogoObjetos` también nombra al objeto con `o.titulo`, y el dueño va
-     en `sub`, que nunca entra en este mapa—, así que el `if` no cambia ningún
-     valor. Se queda porque «lo que ya tiene nombre no se renombra» es la regla
-     que hacía cierto el filtro de antes, y quitarla dejaría este `set` pisando
-     al catálogo el día que los dos `select` dejen de traer el mismo texto. */
-  (objsFeed || []).forEach((o: any) => {
-    if (!nombres.has(`objeto:${o.id}`)) nombres.set(`objeto:${o.id}`, o.titulo);
+  const url = (t: string, a: string) =>
+    `/${t || a ? "?" : ""}${t ? `t=${t}` : ""}${t && a ? "&" : ""}${a ? `a=${encodeURIComponent(a)}` : ""}`;
+  /* ── LAS NOTAS DEL MURO, LISTAS PARA LEER ──
+     El muro de cada ficha permite escribir, comentar y reaccionar; aquí solo
+     se LEE. No es una limitación técnica: una nota se responde donde está la
+     conversación, y un muro de escritura en la portada convertiría cada
+     comentario en algo que se dice sin contexto. Se enseña quién, cuándo, de
+     qué muro y qué dijo — y el enlace lleva a su sitio. */
+  const MURO_CORTE = 240;
+  const notas = ((muroQ.data || []) as any[]).map((n: any) => {
+    const uno = (x: any) => (Array.isArray(x) ? x[0] : x);
+    /* De qué muro es. Hoy `publicarBitacora` escribe UN solo vínculo, así que
+       `vinculos[0]` bastaría; se busca igualmente entre los cuatro tipos que
+       tienen muro —proyecto, empresa, persona y postulación— para que el día
+       que una nota tenga dos vínculos no se elija una etiqueta como «muro». */
+    const CON_MURO = ["proyecto", "empresa", "persona", "postulacion"];
+    const v = (n.vinculos || []).find((x: any) =>
+      CON_MURO.includes(tipoCanonico(x.entidad_tipo))) || (n.vinculos || [])[0];
+    const tipo = v ? tipoCanonico(v.entidad_tipo) : "";
+    const texto = String(n.cuerpo || "").trim();
+    return {
+      id: n.id,
+      autor: uno(n.autor),
+      creado_en: n.creado_en,
+      nFotos: (n.imagenes || []).length,
+      texto: texto.length > MURO_CORTE ? texto.slice(0, MURO_CORTE - 1).trimEnd() + "…" : texto,
+      /* «Cabe entera» es por caracteres Y por renglones: el CSS corta a tres
+         líneas, así que una nota corta con ocho saltos se recortaba en la
+         pantalla sin que apareciera el «seguir leyendo». Truncar en silencio
+         es justo lo que el resto de esta pantalla evita. */
+      corta: texto.length <= MURO_CORTE && (texto.match(/\n/g) || []).length < 3,
+      muro: v && nombresVinc.get(`${tipo}:${v.entidad_id}`)
+        ? { tipo, id: v.entidad_id, nombre: nombresVinc.get(`${tipo}:${v.entidad_id}`)! }
+        : null,
+    };
   });
 
-  // Contexto para las notificaciones: vínculos de entidad de cada caso
-  // notificado. La consulta también vino en la tanda 4.
-  const vincDe = new Map<string, { tipo: string; nombre: string }[]>();
-  (vincNotif || []).forEach((v: any) => {
-    const nombre = nombres.get(`${v.entidad_tipo}:${v.entidad_id}`);
-    if (!nombre) return;
-    const l = vincDe.get(v.publicacion_id) || [];
-    l.push({ tipo: v.entidad_tipo, nombre });
-    vincDe.set(v.publicacion_id, l);
-  });
-  const notifsEnriq = (notifs || []).map((n: any) => ({
-    ...n, vinculos: n.publicacion_id ? (vincDe.get(n.publicacion_id) || []) : [],
-  }));
-
-  // Fuera del feed los avisos que YO ya di por leídos (mi 👀). Solo avisos: un
-  // 👀 en un caso normal es una reacción, no un acuse.
-  const yaVisto = (p: any) => p.tipo === "aviso" && misEnterados.has(p.id);
-  // Un aviso VENCIDO (pasó su fecha) ya no rige: fuera del feed, como en el muro.
-  const fueraFeed = (p: any) => yaVisto(p) || avisoVencido(p.tipo, p.fecha_limite);
-  const posts = (postsQ.data || []).filter((p: any) => !fueraFeed(p));
-
-  /* En "Mis asuntos", igual que en el tablero: PRENDIDO lo que es mi
-     responsabilidad, APAGADO lo que me incumbe pero trabaja otro (lo delegué,
-     📤) o solo me menciona (👁). En las demás pestañas no aplica —ahí se ven
-     casos de todos y apagar por "no es tuyo" apagaría casi todo—. */
-  const marcaFoco = (p: any): "delegado" | "mencion" | null => {
-    if (v !== "mios") return null;
-    if (p.responsable === user.id) return null;   // soy responsable → prendido
-    if (p.autor_id === user.id) return "delegado"; // lo pedí yo, lo hace otro
-    return "mencion";                              // vinculado a mi persona
+  /* «hace 2 h», «ayer». En una lista de notas la fecha completa es ruido: lo
+     que se pregunta es si es de hoy o de la semana pasada. */
+  const haceQue = (iso: string) => {
+    const m = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000));
+    if (m < 60) return m <= 1 ? "ahora mismo" : `hace ${m} min`;
+    const h = Math.round(m / 60);
+    if (h < 24) return `hace ${h} h`;
+    const d = Math.round(h / 24);
+    if (d === 1) return "ayer";
+    // Pasada la semana, la fecha dice más que la cuenta: «hace 23 días» obliga
+    // a hacer la resta mentalmente para saber si fue antes o después de algo.
+    return d <= 7 ? `hace ${d} días`
+      : new Date(iso).toLocaleDateString("es-PE",
+        { day: "numeric", month: "short", timeZone: "America/Lima" });
   };
 
-  // Contadores por pestaña (sobre el universo no archivado y no oculto, y sin
-  // los avisos que ya di por leídos, para que el número cuadre con la lista)
-  const misSet = new Set(misVinculadas);
-  const U = (univQ.data || []).filter((p: any) => !fueraFeed(p));
-  const conteo: Record<string, number> = {
-    mios: U.filter((p: any) => p.autor_id === user.id || p.responsable === user.id || misSet.has(p.id)).length,
-    todo: U.length,
-    problema: U.filter((p: any) => p.tipo === "problema").length,
-    tarea: U.filter((p: any) => p.tipo === "tarea").length,
-    consulta: U.filter((p: any) => p.tipo === "consulta").length,
-    pago: U.filter((p: any) => p.tipo === "pago").length,
-    idea: U.filter((p: any) => p.tipo === "idea").length,
-    aviso: U.filter((p: any) => p.tipo === "aviso").length,
-    reunion: U.filter((p: any) => p.tipo === "reunion").length,
-  };
+  const dias = porDias(eventos);
+  const hora = (iso: string) => new Date(iso).toLocaleTimeString("es-PE",
+    { hour: "2-digit", minute: "2-digit", timeZone: "America/Lima" });
+  const conFiltro = !!(filtroEnt || filtroActor);
 
   return (
     <div className="shell">
-      <Realtime tablas={["publicaciones", "comentarios", "publicacion_vinculos", "reacciones", "notificaciones"]} token={session?.access_token} miId={user.id} />
+      {/* `actividad` es la tabla que mueve esta pantalla: sin ella en la lista,
+          el feed se quedaba quieto mientras el equipo trabajaba al lado.
+          `miId` evita que tus propios actos te recarguen la página. */}
+      {/* Sin `publicaciones`: crear un caso o una nota, y los cambios de
+          estado, etapa, prioridad y responsable, YA escriben su fila en
+          `actividad` (triggers de db/schema.sql), así que escuchar las dos
+          tablas era refrescar dos veces por el mismo hecho — y el filtro
+          anti-eco compara el AUTOR, no el responsable, así que cerrar un caso
+          ajeno me disparaba a mí mismo el render entero de la portada.
+          Lo que se pierde: editar el texto de una nota o clavar un destacado
+          no llegan solos —no dejan evento—, y se ven en la siguiente carga. Un
+          render entero de la portada por cada tecleo ajeno costaba más. */}
+      <Realtime tablas={["actividad", "notificaciones"]}
+        token={session?.access_token} miId={user.id} />
       <div className="topbar">
         <Link href="/" className="logo"><span className="ic">⬡</span><span>CrewHub<sup>+</sup></span></Link>
         {/* ── LA PORTADA MONTA SU PROPIA CABECERA ──
             No usa `<Volver>`, así que la franja de alarmas —que vive dentro de
             él— no llegaba justo a la pantalla que más se abre: la primera de
-            la mañana. Se pone a mano aquí; el componente es el mismo y se
-            pinta una sola vez porque en esta pantalla no hay Volver. */}
+            la mañana. */}
         <FranjaAlarmas />
         <NavIconos />
         <span className="spacer" />
@@ -536,22 +446,11 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
         <Campanita items={notifsEnriq} sinLeer={sinLeer || 0} sinLeerBot={sinLeerBot || 0} />
         <MenuUsuario nombre={perfil?.nombre} rol={perfil?.rol}
           color={perfil?.color} src={perfil?.avatar_url}
-          /* También finanzas: /admin le enseña SOLO el panel de recibos (ver
-             app/admin/page.tsx → soloFinanzas), pero sin este enlace no tiene
-             por dónde llegar. Se le dio el permiso y se le dejó la pantalla sin
-             puerta: el permiso existía, la puerta no, y el síntoma era «no lo
-             veo» sin ningún error que lo explicara. */
+          /* También finanzas: /admin le enseña SOLO el panel de recibos, pero
+             sin este enlace no tiene por dónde llegar. */
           esAdmin={!!(perfil?.es_admin || (perfil as any)?.es_finanzas)}
           personaId={miPersonaId} />
       </div>
-
-      <Composer userId={user.id} catalogos={catalogos} perfiles={perfs.data || []}
-        inicial={(() => {
-          if (!linkParam) return undefined;
-          const [t, i] = linkParam.split(":");
-          const n = nombres.get(`${t}:${i}`);
-          return n ? [{ tipo: t, id: i, nombre: n }] : undefined;
-        })()} />
 
       <div className="qhaway-tira">
         <span className="qa">🤖</span>
@@ -570,33 +469,21 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
             📌 Lo que corre
           </div>
           {(destQ.data || []).map((p: any) => {
-            /* Este bloque tenía su propia cuenta —con T23:59:59 y el rojo a
-               los 3 días— a trescientas líneas de la del feed, que usaba
-               T12:00:00 y el rojo a los 2. El mismo caso, en la misma
-               pantalla, con dos urgencias distintas según el bloque. */
             const pl = plazoDe(p.fecha_limite, p.estado);
-            /* De qué habla. Mismo mecanismo que las tarjetas del feed —el mapa
-               `nombres` y `ENT_ICO` ya estaban armados a diez líneas de aquí—,
-               solo que este bloque no los usaba. */
             const chips = (p.vinculos || [])
               .map((v: any) => ({
                 tipo: v.entidad_tipo, id: v.entidad_id,
-                nombre: nombres.get(`${v.entidad_tipo}:${v.entidad_id}`),
-                ico: ENT_ICO[v.entidad_tipo] || "🔗",
+                nombre: nombresVinc.get(`${tipoCanonico(v.entidad_tipo)}:${v.entidad_id}`),
+                ico: ICO_ENT[v.entidad_tipo] || "🔗",
               }))
               .filter((v: any) => v.nombre);
             return (
               /* Dos líneas, como el buscador y los listados: arriba qué es y
-                 cuándo vence; abajo, de qué habla. Los chips en la misma línea
-                 competían con el título — que es lo que uno lee primero— y
-                 empujaban la fecha al borde.
-                 Enlace estirado: la fila entera abre el caso, y cada chip abre
-                 su entidad. */
+                 cuándo vence; abajo, de qué habla. Enlace estirado: la fila
+                 entera abre el caso, y cada chip abre su entidad. */
               <div key={p.id} className="info-row fila-cap"
                 style={{
                   cursor: "pointer", flexDirection: "column", alignItems: "stretch", gap: 0,
-                  // Línea de color por tipo: separa un ítem de otro y dice de un
-                  // vistazo qué es cada uno (mismo color que su badge).
                   borderLeft: `3px solid ${colorTipo(p.tipo)}`,
                   paddingLeft: 10, borderRadius: 4,
                 }}>
@@ -606,9 +493,6 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
                     color: colorTipo(p.tipo),
                     background: `${colorTipo(p.tipo)}22`,
                   }}>{rotuloTipo(p.tipo)}</span>
-                  {/* El 📌 servía para separar lo clavado a mano de lo que
-                      subía solo por fecha. Ya no sube nada solo: todo lo de
-                      aquí lo puso administración, y marcarlo todo no marca. */}
                   <b style={{ fontSize: 13, color: "var(--text)" }}>{p.titulo}</b>
                   <span style={{ flex: 1 }} />
                   {(p.resp as any)?.nombre && (
@@ -640,82 +524,158 @@ export default async function Feed({ searchParams }: { searchParams: { v?: strin
         </div>
       )}
 
-      <div className="vtabs vtabs-compacta">
-        {VISTAS.map(([val, label]) => (
-          <Link key={val} href={val === "mios" ? "/" : `/?v=${val}`}
-            className={`vtab ${v === val ? "on" : ""}`}>
-            {label} <span className="vtab-n">{conteo[val] ?? 0}</span>
-          </Link>
-        ))}
-        <FiltroMas v={v} items={VISTAS_MAS.map(([val, label]) => ({ val, label, n: conteo[val] ?? 0 }))} />
+      {/* ── TU TRABAJO, EN DOS NÚMEROS ──
+          Lo que queda de las seis pestañas de casos. No es la lista y no
+          pretende serlo: es el recordatorio de que existe, con la puerta al
+          sitio donde se trabaja. Los mismos colores que el menú —violeta, que
+          no es rojo— porque esto no es una deuda: es el trabajo.
+          Si no hay nada asignado, no se pinta: una tira que dice «0 · 0» es
+          una tira que enseña a no mirar esta zona de la pantalla. */}
+      {!!((casosMios || 0) + (casosCurso || 0)) && (
+        <Link href="/tablero" className="port-mio">
+          <span className="port-mio-txt">
+            Tienes
+            {!!casosMios && <b className="port-n">{casosMios} sin resolver</b>}
+            {!!casosMios && !!casosCurso && <span className="port-sep">·</span>}
+            {!!casosCurso && <b className="port-n flojo">{casosCurso} en progreso</b>}
+          </span>
+          <span className="port-mio-ir">tu tablero →</span>
+        </Link>
+      )}
+
+      {/* ── EL MURO ──
+          Va ANTES de «lo último» y no después: son las dos mitades de «qué
+          pasó», pero esto lo escribió alguien a propósito para que lo leas, y
+          la actividad es el rastro que deja el sistema solo. Lo escrito a mano
+          gana. */}
+      {muroQ.error && (
+        /* Igual que con la actividad: una consulta rota no puede leerse como
+           «esta semana nadie escribió». */
+        <div className="empty">⚠ No se pudo leer el muro ({muroQ.error.message}).</div>
+      )}
+      {notas.length > 0 && (
+        <>
+          <div className="port-cab">
+            <h2 className="port-tit">🧱 El muro</h2>
+            <span style={{ flex: 1 }} />
+            <span className="port-todo" style={{ pointerEvents: "none" }}>
+              se responde en su ficha
+            </span>
+          </div>
+          <div className="port-notas">
+            {notas.map(n => (
+              <div key={n.id} className="port-nota info-row fila-cap">
+                {/* ── AL MURO, NO AL CASO ──
+                    `/caso/{id}` existe, pero para una bitácora REDIRIGE a la
+                    ficha de su muro: sería pagar un render de servidor y un 307
+                    para llegar donde la portada ya sabe ir. El ancla `#pub-…`
+                    es el id que pinta el muro, así que la nota queda a la
+                    vista. Solo se pasa por el caso si la nota no tiene muro,
+                    que hoy no ocurre pero mañana no lo garantiza nadie. */}
+                <Link className="fila-cubre" aria-label="Abrir la nota en su muro"
+                  href={n.muro ? `${rutaEntidad(n.muro.tipo, n.muro.id)}#pub-${n.id}` : `/caso/${n.id}`} />
+                <Avatar size={30} nombre={n.autor?.nombre} src={n.autor?.avatar_url} color={n.autor?.color} />
+                <div className="port-nota-cuerpo">
+                  <div className="port-nota-cab">
+                    <b className="port-nota-autor">{(n.autor?.nombre || "Alguien").split(" ")[0]}</b>
+                    {n.muro && (
+                      <Link href={rutaEntidad(n.muro.tipo, n.muro.id) || "/"}
+                        className="badge fila-encima port-nota-donde"
+                        title={`Ir a ${n.muro.nombre}`}>
+                        {ICO_ENT[n.muro.tipo] || "🔗"} {n.muro.nombre}
+                      </Link>
+                    )}
+                    <span style={{ flex: 1 }} />
+                    <span className="port-nota-cuando">{haceQue(n.creado_en)}</span>
+                  </div>
+                  {n.texto && <div className="port-nota-txt">{n.texto}</div>}
+                  {(!!n.nFotos || !n.corta) && (
+                    <div className="port-nota-pie">
+                      {!!n.nFotos && <span>📷 {n.nFotos} imagen{n.nFotos === 1 ? "" : "es"}</span>}
+                      {!n.corta && <span>seguir leyendo →</span>}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* ── LO ÚLTIMO ── */}
+      <div className="port-cab">
+        <h2 className="port-tit">⚡ Lo último</h2>
+        <span style={{ flex: 1 }} />
+        <Link href="/historial" className="port-todo">el diario completo →</Link>
       </div>
 
-      <ListaFeed items={posts.map((p: any): CardFeed => {
-        const tl = rotuloTipo(p.tipo), tc = colorTipo(p.tipo);
-        const nc = p.comentarios?.[0]?.count ?? 0;
-        const chips = (p.vinculos || [])
-          .map((v: any) => ({
-            tipo: v.entidad_tipo, id: v.entidad_id,
-            nombre: nombres.get(`${v.entidad_tipo}:${v.entidad_id}`),
-            ico: ENT_ICO[v.entidad_tipo] || "🔗",
-          }))
-          .filter((v: any) => v.nombre);
-        return {
-          id: p.id,
-          resuelto: p.estado === "resuelta",
-          card: (
-            <PostCard
-              href={`/caso/${p.id}`}
-              titulo={p.titulo}
-              tipo={p.tipo} tipoLabel={tl} tipoColor={tc}
-              estado={p.estado}
-              autorNombre={p.autor?.nombre} autorColor={p.autor?.color} autorSrc={p.autor?.avatar_url}
-              fechaStr={new Date(p.creado_en).toLocaleString("es-PE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "America/Lima" })}
-              respNombre={p.resp?.nombre || null}
-              avisaSinResp={["tarea", "problema", "pago"].includes(p.tipo)}
-              nc={nc}
-              plazo={plazoDe(p.fecha_limite, p.estado)}
-              cuerpo={p.cuerpo}
-              chips={chips}
-              pubId={p.id} userId={user.id} reacciones={reaccsDe.get(p.id) || []}
-              imagenes={p.imagenes || []}
-              creadoEn={p.creado_en}
-              equipoTotal={sinBot(perfs.data).length}
-              padreId={p.padre_id || null}
-              padreTitulo={p.padre_id ? (tituloPadre.get(p.padre_id) || null) : null}
-              hijos={hijosDe.get(p.id) || null}
-              marca={marcaFoco(p)}
-              /* Sin `ultimoMovimiento`: el feed no carga la bitácora por caso,
-                 y no saberlo no es estar detenido (lib/progreso lo respeta). */
-              prog={progresoDe({
-                creado_en: p.creado_en, fecha_inicio: p.fecha_inicio, fecha_limite: p.fecha_limite,
-                estado: p.estado, tipo: p.tipo, hijos: hijosDe.get(p.id) || null,
-                // Cuántas hay, para que calle si su ficha usaría ese denominador
-                vinculadasTotal: chips.length,
-              })}
-            />
-          ),
-        };
-      })} />
+      <div className="port-filtros">
+        <Link href="/" className={`port-chip${conFiltro ? "" : " on"}`}>todo</Link>
+        {SOBRE_QUE.map(t => (
+          <Link key={t} href={url(filtroEnt === t ? "" : t, filtroActor)}
+            className={`port-chip${filtroEnt === t ? " on" : ""}`}>
+            {ICO_ENT[t] || "🔗"} {ROTULO_ENT[t] || t}
+          </Link>
+        ))}
+        <span className="port-corte" />
+        {/* Las caras y no los nombres: son cinco o seis personas que se
+            reconocen antes de leerlas, y así la fila entra en una línea. */}
+        {equipo.map((p: any) => (
+          <Link key={p.id} href={url(filtroEnt, filtroActor === p.id ? "" : p.id)}
+            className={`port-quien${filtroActor === p.id ? " on" : ""}`}
+            title={p.nombre || ""}>
+            <Avatar size={22} nombre={p.nombre} src={p.avatar_url} color={p.color} />
+          </Link>
+        ))}
+        <Link href={url(filtroEnt, filtroActor === "bot" ? "" : "bot")}
+          className={`port-chip${filtroActor === "bot" ? " on" : ""}`} title={`Lo que hizo ${BOT}`}>
+          🤖 el bot
+        </Link>
+      </div>
 
-      {/* ── EL FEED ES UNA VENTANA, NO LA LISTA ENTERA ──
-          La pestaña dice «✅ Tareas 243» y la consulta trae las 50 más
-          recientes: sumando lo que se ve más lo que esconde el auto-ocultado
-          nunca daba 243, y la primera sospecha razonable es que el número
-          cuente archivados. No: las dos consultas excluyen exactamente lo
-          mismo —archivado, descartado, bitácora, lo que ocultaste—; lo que
-          cambia es que una tiene tope y la otra no.
-          El tope se queda (cincuenta tarjetas con sus comentarios, vínculos y
-          reacciones es lo que hace que la portada abra rápido), pero deja de
-          ser un secreto: el número dice cuántas hay y esta línea dice cuántas
-          se están viendo. Lo viejo se busca por el buscador o por la ficha de
-          su proyecto, que es donde uno lo va a buscar de verdad. */}
-      {conteo[v] > posts.length && (
-        <div className="feed-ocultos">
-          <span>
-            📜 Se ven las {posts.length} más recientes de {conteo[v]}
-            {" "}— lo anterior está en el buscador y en cada ficha
-          </span>
+      {/* ── UN VACÍO NO ES UN FALLO, Y UN FALLO NO ES UN VACÍO ──
+          `actQ.data` viene `null` cuando la consulta falla, y sin esto la
+          pantalla decía «todavía no hay nada registrado» sobre una tabla con
+          diez mil filas de historia. La forma más convincente de mentir. */}
+      {!eventos.length && (actQ.error ? (
+        <div className="empty">
+          ⚠ No se pudo leer la actividad ({actQ.error.message}). Vuelve a cargar;
+          si sigue igual, avísale a John.
+        </div>
+      ) : (
+        <div className="empty">
+          {conFiltro
+            ? "Nada con estos filtros en lo último. Prueba en el diario completo, que llega más atrás."
+            : "Todavía no hay nada registrado."}
+        </div>
+      ))}
+
+      {dias.map(([dia, evs]) => (
+        <div key={dia} style={{ marginTop: 14 }}>
+          <div className="port-dia">
+            <span className="port-dia-txt">{rotuloDia(dia)}</span>
+            <span className="port-dia-linea" />
+          </div>
+          <div className="card">
+            <div className="tl">
+              {/* Nueve «vinculó persona: X» seguidas del mismo actor no son
+                  nueve hechos: son uno. Se pliegan igual que en el diario. */}
+              {agruparEventos(evs as any[]).map((f, i) =>
+                f.grupo
+                  ? <EventoGrupo key={i} items={f.grupo} horaDe={(x: any) => hora(x.creado_en)} conEntidad />
+                  : <EventoHistorial key={i} e={f.solo} hora={hora(f.solo.creado_en)} conEntidad />
+              )}
+            </div>
+          </div>
+        </div>
+      ))}
+
+      {eventos.length >= CUANTOS && (
+        /* El tope se DICE. Una lista que corta en seco enseña que el sistema
+           «solo guarda unos días», y de ahí a no fiarse del rastro hay un paso. */
+        <div className="port-tope">
+          Estos son los últimos {CUANTOS} movimientos
+          {conFiltro ? " con estos filtros" : ""}. <Link href="/historial">El diario completo →</Link>
         </div>
       )}
     </div>

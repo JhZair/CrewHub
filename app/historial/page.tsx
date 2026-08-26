@@ -1,12 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
-import EventoHistorial, { icoDe, ROTULO_EV, ROTULO_ENT, type Evento } from "@/components/EventoHistorial";
+import EventoHistorial, { icoDe, ROTULO_EV, ROTULO_ENT } from "@/components/EventoHistorial";
 import EventoGrupo from "@/components/EventoGrupo";
 import { agruparEventos } from "@/lib/agrupar";
-import { PERIODOS, rangoDe, diaLima, horaLima, rotuloDia, type Periodo } from "@/lib/periodo";
-import { ICO_ENT, TABLA_DE, grafiasDe, tipoCanonico } from "@/lib/secciones";
-import { BOT, mapaAlias } from "@/lib/personas";
+import { PERIODOS, rangoDe, horaLima, rotuloDia, type Periodo } from "@/lib/periodo";
+import { ICO_ENT, grafiasDe, tipoCanonico } from "@/lib/secciones";
+import { nombrarEventos, cortoActor, porDias } from "@/lib/eventos";
+import { BOT } from "@/lib/personas";
 import Link from "@/components/Enlace";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
@@ -36,11 +37,6 @@ const conteoBase = (sb: any, desde: string | null, hasta: string | null) => {
   if (desde) x = x.gte("creado_en", desde);
   if (hasta) x = x.lt("creado_en", hasta);
   return x;
-};
-
-const cortoActor = (n?: string | null) => {
-  const p = (n || "").trim().split(/\s+/);
-  return p.length > 1 ? `${p[0]} ${p[1][0]}.` : (p[0] || "");
 };
 
 export default async function HistorialTodo({ searchParams }: {
@@ -90,63 +86,20 @@ export default async function HistorialTodo({ searchParams }: {
   const [{ data: evs }, { data: crudos }] = await Promise.all([
     conFiltros(supabase.from("actividad")
       .select("tipo,detalle,creado_en,entidad_tipo,entidad_id,actor_id,actor:perfiles(nombre)")
-      .order("creado_en", { ascending: false })).limit(nPedido),
+      /* Desempate por id, igual que la portada: sin él, los eventos que
+         comparten `creado_en` —la ronda del bot, un lote de vínculos— salen en
+         un orden distinto en cada pantalla para los mismos hechos, y una
+         ráfaga que se pliega aquí puede quedar partida allá. */
+      .order("creado_en", { ascending: false }).order("id", { ascending: false })).limit(nPedido),
     qCuenta.limit(TOPE_CUENTA),
   ]);
-  /* Nombre de cada actor para los chips: el conteo solo trae `actor_id`. */
-  const { data: perfilesTodos } = await supabase.from("perfiles").select("id,nombre");
-  const nomActor = new Map<string, string>((perfilesTodos || []).map((x: any) => [x.id, x.nombre]));
-
-  // Alias del actor (JohnO): manda sobre el nombre corto derivado (cortoActor).
-  const { data: aliasPers } = await supabase.from("personas").select("usuario_id,alias")
-    .not("alias", "is", null).not("usuario_id", "is", null);
-  const alias = mapaAlias(aliasPers);
-
-  /* Los nombres de TODO lo tocado, agrupando por tabla: una consulta por
-     tipo de entidad, no una por evento. */
-  const porTipo = new Map<string, Set<string>>();
-  (evs || []).forEach((x: any) => {
-    if (!TABLA_DE[x.entidad_tipo]) return;
-    (porTipo.get(x.entidad_tipo) || porTipo.set(x.entidad_tipo, new Set()).get(x.entidad_tipo)!)
-      .add(x.entidad_id);
-  });
-  const nombre = new Map<string, string>();
-  await Promise.all([...porTipo.entries()].map(async ([tipo, ids]) => {
-    const [tabla, campo] = TABLA_DE[tipo];
-    // El alias manda cuando existe: en una lista larga, el nombre completo estorba
-    const sel = tipo === "persona" ? "id,nombre,alias"
-      : tipo === "proyecto" ? "id,nombre,nombre_corto" : `id,${campo}`;
-    const { data } = await supabase.from(tabla).select(sel).in("id", [...ids]);
-    (data || []).forEach((r: any) =>
-      nombre.set(`${tipo}:${r.id}`, r.alias || r.nombre_corto || r[campo] || "—"));
-  }));
-
-  /* Los cambios de RESPONSABLE los escribe el trigger con el id del perfil en
-     `de`/`a`, no el nombre — antes salían como UUID crudo. Se resuelven aquí,
-     igual que los nombres de entidad: se juntan los ids y una sola consulta. */
-  const perfilIds = new Set<string>();
-  (evs || []).forEach((x: any) => {
-    if (x.tipo === "estado" && x.detalle?.campo === "responsable") {
-      if (x.detalle.de) perfilIds.add(x.detalle.de);
-      if (x.detalle.a) perfilIds.add(x.detalle.a);
-    }
-  });
-  const perfilNom = new Map<string, string>();
-  if (perfilIds.size) {
-    const { data } = await supabase.from("perfiles").select("id,nombre").in("id", [...perfilIds]);
-    (data || []).forEach((r: any) => perfilNom.set(r.id, r.nombre));
-  }
-  // Un id que ya no existe (perfil borrado) se muestra tal cual antes que romper.
-  const persDe = (v: any) => v ? (perfilNom.get(v) || v) : "sin asignar";
-
-  const todos: Evento[] = (evs || []).map((x: any) => ({
-    ...x,
-    detalle: x.tipo === "estado" && x.detalle?.campo === "responsable"
-      ? { ...x.detalle, de: persDe(x.detalle.de), a: persDe(x.detalle.a) }
-      : x.detalle,
-    entidadNombre: nombre.get(`${x.entidad_tipo}:${x.entidad_id}`),
-    actor: x.actor ? { ...x.actor, nombre: cortoActor(x.actor.nombre), alias: alias[x.actor_id] } : x.actor,
-  }));
+  /* ── PONERLE NOMBRE A TODO ESTO ──
+     Nombres de entidad, alias del actor y los uuid que viajan dentro de
+     `detalle`. Estaba escrito aquí y la portada necesitaba lo mismo, así que
+     vive en lib/eventos.ts: dos traducciones del mismo evento acaban contando
+     cosas distintas. De paso, las consultas que antes iban en fila (perfiles,
+     luego alias, luego una por tabla) salen ahora todas a la vez. */
+  const { eventos: todos, alias, nombreActor: nomActor } = await nombrarEventos(supabase, evs);
 
   /* Los conteos salen de `crudos` —todo el periodo—, no de la página traída.
      Un chip que dice «21» sobre una muestra de 500 no es un dato, es el tamaño
@@ -188,13 +141,8 @@ export default async function HistorialTodo({ searchParams }: {
   // La hora más viva del equipo (sin contar al bot): el dato que cuenta algo
   const horaTop = [...porHora].sort((a, b) => b.humano - a.humano)[0];
 
-  // Por jornadas, no 500 filas seguidas
-  const dias: [string, Evento[]][] = [];
-  lista.forEach(x => {
-    const d = diaLima(x.creado_en);
-    const ult = dias[dias.length - 1];
-    if (ult && ult[0] === d) ult[1].push(x); else dias.push([d, [x]]);
-  });
+  // Por jornadas, no 500 filas seguidas (mismo corte que la portada)
+  const dias = porDias(lista);
 
   const hora = (iso: string) => new Date(iso).toLocaleTimeString("es-PE",
     { hour: "2-digit", minute: "2-digit", timeZone: "America/Lima" });

@@ -49,6 +49,9 @@ export const ROTULO_ENT: Record<string, string> = {
   publicacion: "casos", proyecto: "proyectos", empresa: "empresas",
   persona: "personas", postulacion: "postulaciones", convocatoria: "convocatorias",
   equipamiento: "equipos", lugar: "lugares", etiqueta: "etiquetas",
+  /* El repositorio se llama «objeto» en la base y «material» en el pasillo.
+     Salía crudo en los chips del diario —«objeto · 12»— y en la portada. */
+  objeto: "material",
   empresa_miembro: "cargos de empresa", cronograma_actividades: "cronograma",
 };
 

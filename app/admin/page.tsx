@@ -204,7 +204,7 @@ export default async function Admin({ searchParams }: {
       .select("*,puertas:plataforma_puertas(id,titulo,url,notas,orden)")
       .order("nombre"),
     supabase.from("credenciales").select("plataforma"),
-    /* Casos vivos, para elegir cuáles suben a la cabecera del feed.
+    /* Casos vivos, para elegir cuáles suben a «Lo que corre» de la portada.
        Estaba en 60 y ordenado por creación descendente: los que se caían
        eran los MÁS VIEJOS, o sea los olvidados, los sin fecha — justo los
        que esta pantalla existe para rescatar. Y los contadores del menú y
@@ -917,10 +917,10 @@ export default async function Admin({ searchParams }: {
         });
         return (
           <>
-            <div className="h4" style={{ marginTop: 0 }}>📌 Destacados del feed</div>
+            <div className="h4" style={{ marginTop: 0 }}>📌 Lo que corre (portada)</div>
             <p style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 0 }}>
-              Lo que clavas aquí sube a la cabecera del feed. <b>Nada sube solo</b>: si todo
-              destaca, nada destaca — un caso con fecha ya se ve en el feed, en el tablero y en
+              Lo que clavas aquí sube a «📌 Lo que corre», en la portada. <b>Nada sube solo</b>:
+              si todo destaca, nada destaca — un caso con fecha ya se ve en el tablero y en
               el mensaje de la mañana. Esto es para lo que no te puedes permitir que se pierda.
               El destacado <b>caduca solo</b>: con la fecha límite del caso, o a las 2 semanas.
             </p>
@@ -947,7 +947,7 @@ export default async function Admin({ searchParams }: {
             <PanelFiltros limpiar="/admin?s=destacados" mostrarLimpiar={!!fd || !!qd}>
               <FilaFiltro titulo="Ver">
                 <Chip href="/admin?s=destacados&fd=fijados" on={fd === "fijados"} color="var(--yellow)"
-                  title="Los que están arriba del feed ahora mismo">
+                  title="Los que están en la portada ahora mismo">
                   📌 destacados ahora · {cntD("fijados")}
                 </Chip>
                 <Chip href="/admin?s=destacados&fd=sin_fecha" on={fd === "sin_fecha"} color="var(--violet)"
@@ -978,7 +978,7 @@ export default async function Admin({ searchParams }: {
                     }}>{rotuloTipo(p.tipo)}</span>
                     <Link href={`/caso/${p.id}`} style={{ fontWeight: 600, fontSize: 12.5 }}>{p.titulo}</Link>
                     {fijado(p) && (
-                      <span className="badge" title="Está en la cabecera del feed"
+                      <span className="badge" title="Está en «Lo que corre», en la portada"
                         style={{ color: "var(--yellow)", background: "rgba(244,180,0,.12)" }}>📌 arriba</span>
                     )}
                     <span style={{ flex: 1 }} />

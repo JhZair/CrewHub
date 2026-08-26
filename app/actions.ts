@@ -8578,35 +8578,17 @@ export async function cambiarEstado(pubId: string, estado: string) {
   return {};
 }
 
-export async function ocultarDelFeed(pubId: string) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: "Sesión no encontrada." };
-  const { error } = await supabase.from("feed_ocultos").upsert(
-    { usuario_id: user.id, publicacion_id: pubId },
-    { onConflict: "usuario_id,publicacion_id", ignoreDuplicates: true });
-  if (error) return { error: error.message };
-  revalidatePath("/");
-  return {};
-}
-
-/* Ocultar en BLOQUE los resueltos que el usuario tiene A LA VISTA —el mismo
-   "quítalo de MI feed" del ojo, pero de una—. Recibe los ids visibles (los que
-   ve en su pestaña actual), NO barre todo el sistema. Es personal
-   (feed_ocultos) y reversible: reabrir el caso lo devuelve al feed. */
-export async function ocultarResueltosDelFeed(ids: string[]) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: "Sesión no encontrada." };
-  const limpio = (ids || []).filter(Boolean);
-  if (!limpio.length) return { ok: 0 };
-  const { error } = await supabase.from("feed_ocultos").upsert(
-    limpio.map(id => ({ usuario_id: user.id, publicacion_id: id })),
-    { onConflict: "usuario_id,publicacion_id", ignoreDuplicates: true });
-  if (error) return { error: error.message };
-  revalidatePath("/");
-  return { ok: limpio.length };
-}
+/* ── «QUÍTALO DE MI FEED» YA NO EXISTE ──
+   `ocultarDelFeed` y `ocultarResueltosDelFeed` vivían aquí. Eran de la portada
+   vieja, la que listaba casos: servían para que un caso resuelto dejara de
+   estorbar en TU lista sin desaparecer de la de los demás.
+   La portada ya no lista casos —los lista el tablero, que se ordena por
+   columnas y no necesita esconder nada—, así que las dos acciones se quedaron
+   sin quien las llamara. Se van con su pantalla.
+   La tabla `feed_ocultos` se queda en la base: tiene datos de verdad, y la
+   línea de arriba (reabrir un caso lo devuelve al feed) sigue limpiándola. Si
+   algún día vuelve una lista personal de casos, el rastro está.
+   Ver components/PostCard.tsx y ListaFeed.tsx en el historial de git. */
 
 /* ARCHIVAR / DESPERTAR — el eje `archivado_en`, no el estado.
    Archivar es GLOBAL (sale de la vista de todos) y distinto de `feed_ocultos`,

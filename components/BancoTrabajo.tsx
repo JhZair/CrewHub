@@ -352,7 +352,11 @@ export default function BancoTrabajo() {
                   )}
                   {c.ctx.map((v, i) => (
                     <Link key={i} title={`${v.tipo}: ${v.nombre}`}
-                      href={v.tipo === "etiqueta" ? `/?e=${v.id}` : (rutaEntidad(v.tipo, v.id) || `/entidad/${v.tipo}/${v.id}`)}
+                      /* La etiqueta llevaba a `/?e=…`, un filtro que la portada
+                         NUNCA leyó —ni antes ni ahora—: el chip parecía un
+                         enlace y dejaba en la pantalla de inicio sin filtrar
+                         nada. El eje real de etiquetas es el tablero. */
+                      href={v.tipo === "etiqueta" ? `/tablero?p=todos&etq=${v.id}` : (rutaEntidad(v.tipo, v.id) || `/entidad/${v.tipo}/${v.id}`)}
                       style={{
                         fontSize: 10, borderRadius: 5, padding: "1px 6px", whiteSpace: "nowrap",
                         maxWidth: 152, overflow: "hidden", textOverflow: "ellipsis",

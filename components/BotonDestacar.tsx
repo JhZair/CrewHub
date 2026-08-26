@@ -6,7 +6,7 @@ import { useState } from "react";
 const fmt = (f: string) =>
   new Date(f).toLocaleDateString("es-PE", { day: "numeric", month: "short" });
 
-/* Subir un caso a la cabecera del feed. Solo administración.
+/* Subir un caso a «Lo que corre», en la portada. Solo administración.
    Caduca solo, así que no hay que acordarse de bajarlo. */
 export default function BotonDestacar({ pubId, hasta }: {
   pubId: string; hasta?: string | null;
@@ -29,10 +29,10 @@ export default function BotonDestacar({ pubId, hasta }: {
     <span style={{ display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
       <button className="btn btn-ghost" disabled={ocupado} onClick={cambiar}
         title={activo
-          ? "Quitarlo de la cabecera del feed"
-          : "Subirlo a la cabecera del feed. Caduca solo: con su fecha límite, o a las 2 semanas"}
+          ? "Quitarlo de «Lo que corre», en la portada"
+          : "Subirlo a «Lo que corre», en la portada. Caduca solo: con su fecha límite, o a las 2 semanas"}
         style={{ fontSize: 12, padding: "7px 12px", ...(activo ? { color: "var(--yellow)", borderColor: "rgba(244,180,0,.4)" } : {}) }}>
-        {/* «en el feed» se fue al título del botón: es la explicación de a
+        {/* «en la portada» se fue al título del botón: es la explicación de a
             dónde va, y una explicación repetida en la barra de cada caso ocupa
             sitio todos los días para leerse una vez. */}
         {ocupado ? "..." : activo ? "📌 Destacado" : "📌 Destacar"}

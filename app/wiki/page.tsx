@@ -45,21 +45,27 @@ export default async function Wiki() {
         vía link de Drive).</P>
         <P><K>Estados</K>: Sin Resolver → En Progreso → Resuelta. Además: ⏸ En Pausa (Bot Qhaway no
         molesta), 🔭 Seguimiento (casos largos de meses: viven sin regaños de "dormido") y
-        Archivada (ya no aplica; sale del feed pero queda buscable).</P>
+        Archivada (ya no aplica; sale del tablero pero queda buscable).</P>
         <P><K>Sub-casos</K> 🧩: un caso largo se descompone en hijos desde su página; heredan los
-        vínculos del padre y el feed muestra el progreso (2/5). <K>Menciones</K>: escribe
+        vínculos del padre y el tablero muestra el progreso (2/5). <K>Menciones</K>: escribe
         @nombre en un comentario para invocar a alguien (le llega a su campanita).
         <K> Imágenes</K>: pega pantallazos con Ctrl+V en publicaciones y comentarios.
         <K> Reacciones</K>: 👍 ❤️ 🔥 👏 😂 😢 — toca para poner, toca de nuevo para quitar.
         El <K>título</K> se corrige con el ✎ (la bitácora recuerda el anterior).</P>
       </S>
 
-      <S titulo="🙋 Mi día: feed, Mis asuntos y tablero">
-        <P>El <K>feed</K> es el muro común (lo archivado no aparece). ✨ NUEVO marca lo publicado
-        desde tu última visita — es personal. La vista <K>🙋 Mis asuntos</K> junta lo que creaste,
-        lo que te asignaron y lo vinculado a tu persona.</P>
-        <P>El <K>🗂 Tablero</K> es el kanban: arrastra tarjetas entre columnas para cambiar estado.
-        Tiene los mismos filtros del feed, incluido Mis asuntos.</P>
+      <S titulo="🙋 Mi día: la portada y el tablero">
+        <P>La <K>portada</K> (⬡) ya no lista casos: cuenta <K>qué pasó</K>. Arriba, lo que Bot
+        Qhaway ve hoy y lo que administración clavó en <K>📌 Lo que corre</K>; después el
+        <K>🧱 muro</K> —las notas de bitácora de TODOS los muros, juntas y en orden— y por
+        último <K>Lo último</K>: el rastro del sistema por día, que se puede filtrar por
+        sección y por persona. Para el rastro completo, el <K>🕐 diario</K> (/historial).</P>
+        <P>Tu trabajo vive en el <K>🗂 Tablero</K>: el kanban donde se arrastran las tarjetas
+        entre columnas para cambiar de estado, con <K>🙋 Mis asuntos</K> —lo que creaste, lo que
+        te asignaron y lo vinculado a tu persona— como vista por defecto. Los casos también
+        salen por tipo en <K>/casos</K> y en el <K>banco de trabajo</K> de la derecha.</P>
+        <P>Un caso se crea desde el botón <K>＋</K>, que está en todas las pantallas (o con la
+        tecla <K>C</K>).</P>
         <P>La <K>🔔 campanita</K> avisa: asignaciones, vencimientos, menciones y despertares de
         Bot Qhaway. El <K>buscador global</K> (Ctrl+K) busca por palabras en TODO — y entiende
         quechua: «mujunacuy» encuentra a Mujunakuy, «guamani» a Huamani.</P>
@@ -149,7 +155,7 @@ export default async function Wiki() {
         <P>Su perfil es el <K>centro de acciones</K>: hallazgos en vivo, semáforo pre-postulación
         (RENCA, SUNAT, vigencias, DNI, materiales), higiene de datos y el <K>🫀 Pulso del
         equipo</K> — carga por persona para redistribuir, nunca ranking. Los lunes 7:35
-        publica el pulso en el feed.</P>
+        publica el pulso como aviso.</P>
         <P>Bot Qhaway firma sus creaciones. No se le asignan tareas: él crea, los humanos ejecutan.</P>
       </S>
 

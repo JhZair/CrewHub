@@ -406,7 +406,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
       <div className="topbar">
         <Volver />
         <span className="spacer" />
-        {/* Subirlo a la cabecera del feed: solo administración */}
+        {/* Subirlo a «Lo que corre», en la portada: solo administración */}
         {miPerfil?.es_admin && <BotonDestacar pubId={p.id} hasta={p.destacado_hasta} />}
         {/* El chip del tipo se fue de aquí al final del título: en esta barra
             se leía junto a los controles y no junto a lo que nombra. */}
@@ -431,11 +431,11 @@ export default async function Caso({ params }: { params: { id: string } }) {
         } />
 
       {/* Si está archivado, decirlo antes que nada: quien llega aquí desde el
-          buscador tiene que saber que esto NO está en el feed ni el tablero,
+          buscador tiene que saber que esto NO está en el tablero,
           y poder traerlo de vuelta de un clic. */}
       {p.archivado_en && (
         <div className="err-inline" style={{ background: "#1c1c2c", borderColor: "var(--border2)", color: "var(--muted)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          🗄 Archivado el {fecha(p.archivado_en)} — fuera del feed y del tablero, pero en la memoria.
+          🗄 Archivado el {fecha(p.archivado_en)} — fuera del tablero, pero en la memoria.
           <BotonArchivar pubId={p.id} archivado cerrado />
         </div>
       )}

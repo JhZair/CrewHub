@@ -953,33 +953,6 @@ a{color:inherit;text-decoration:none}
 .cn-flag{position:absolute;right:2px;top:50%;transform:translateY(-50%);font-size:10px;line-height:1;opacity:.85}
 .cn-stage{font-weight:700;white-space:nowrap;text-align:right}
 @media(max-width:640px){.cn-lane{grid-template-columns:1fr auto;gap:6px}.cn-race{grid-column:1/-1;order:3}}
-/* Filtros del feed: una fila compacta (sin recortar el desplegable) */
-/* UNA fila, siempre. Estaba en `wrap`, así que al añadir una pestaña la fila
-   se partía en dos y la segunda quedaba centrada bajo la primera: se lee como
-   dos grupos de filtros que no son. Si no cabe, se arrastra —la barra ya es
-   `overflow-x:auto`— y lo que sobra vive en el «⋯ Más». */
-/* `safe center`: centrada mientras quepa y pegada al inicio cuando no. Con
-   `center` a secas, una fila que desborda se recorta por LOS DOS LADOS y las
-   primeras pestañas quedan fuera del alcance del scroll — inalcanzables, no
-   solo escondidas. */
-.vtabs-compacta{flex-wrap:nowrap;gap:6px;margin:2px 0 14px;justify-content:safe center}
-/* Sin barra de scroll a la vista. La fila SIGUE arrastrándose —con el dedo, la
-   rueda o el trackpad— pero la barra gris debajo de los filtros se leía como
-   un borde de la página partido en dos. Se esconde y no se desactiva: quitarle
-   el scroll dejaría las últimas pestañas inalcanzables en una pantalla
-   estrecha, que es peor que una barra fea.
-   Dos declaraciones porque los navegadores no se ponen de acuerdo: Firefox
-   entiende `scrollbar-width`, los de WebKit el pseudo-elemento. */
-.vtabs-compacta{scrollbar-width:none;-ms-overflow-style:none}
-.vtabs-compacta::-webkit-scrollbar{display:none;height:0}
-.vtabs-compacta .vtab{padding:6px 10px;font-size:11.5px;white-space:nowrap;flex:0 0 auto}
-.vtabs-compacta .vtab-n{min-width:15px;padding:0 4px;font-size:10px}
-.vtabs-compacta .vtab{cursor:pointer}
-/* `fixed`: el menú se dibuja en un portal, fuera de la fila que lo recortaba. */
-.filtro-mas-menu{position:fixed;z-index:80;background:var(--panel);border:1px solid var(--border2);border-radius:12px;padding:6px;min-width:170px;box-shadow:0 12px 30px rgba(0,0,0,.4);display:flex;flex-direction:column;gap:2px}
-.filtro-mas-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 10px;border-radius:8px;font-size:12.5px;color:var(--muted);font-weight:600}
-.filtro-mas-item:hover{background:#22223a;color:var(--text)}
-.filtro-mas-item.on{background:rgba(124,92,255,.12);color:var(--text)}
 /* Desplegable propio de tipo/estado en las tarjetas (reemplaza al select nativo) */
 .combo-menu{position:absolute;top:calc(100% + 5px);left:0;z-index:50;background:var(--panel);border:1px solid var(--border2);border-radius:11px;padding:5px;min-width:150px;max-height:260px;overflow-y:auto;box-shadow:0 12px 30px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:2px;text-transform:none;letter-spacing:normal}
 .combo-menu.arriba{top:auto;bottom:calc(100% + 5px)}
@@ -2407,6 +2380,83 @@ a.stat-card:hover{border-color:var(--border2)}
 .qhaway-tira .qa{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#7c5cff);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
 .qhaway-tira a{color:var(--blue);font-weight:600}
 
+/* ══════════════════════════════════════════════════════════════════════════
+   LA PORTADA — «lo último»
+
+   Toda la pantalla es una columna de líneas de tiempo, así que lo que hace
+   falta es JERARQUÍA, no color: un título que se lee como título, una fila de
+   filtros que no compita con él, y separadores de día que se vean sin gritar.
+   ══════════════════════════════════════════════════════════════════════════ */
+/* Tu trabajo, en dos números. Violeta y no rojo: los casos propios no son una
+   deuda que llegue a cero — es el trabajo. (Mismo criterio que las burbujas
+   del menú.) La fila entera es el enlace. */
+.port-mio{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  background:rgba(124,92,255,.07);border:1px solid rgba(124,92,255,.25);
+  border-radius:12px;padding:9px 14px;margin-bottom:12px;
+  font-size:12.5px;color:var(--muted);text-decoration:none}
+.port-mio:hover{background:rgba(124,92,255,.13);border-color:rgba(124,92,255,.45)}
+.port-mio-txt{display:flex;align-items:center;gap:7px;flex:1;flex-wrap:wrap}
+.port-n{color:#cbb8ff;font-weight:700}
+.port-n.flojo{color:#a89ac9;font-weight:600}
+.port-sep{color:var(--dim)}
+.port-mio-ir{color:var(--violet);font-weight:700;white-space:nowrap}
+
+.port-cab{display:flex;align-items:baseline;gap:10px;margin:18px 2px 10px}
+.port-tit{font-size:19px;font-weight:800;letter-spacing:-.2px;margin:0;color:var(--text)}
+.port-todo{font-size:12px;color:var(--dim);text-decoration:none;white-space:nowrap}
+.port-todo:hover{color:var(--violet)}
+
+/* Los filtros: una sola fila que envuelve. Sin números a propósito — ver el
+   comentario de SOBRE_QUE en app/page.tsx. */
+.port-filtros{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 2px 6px}
+.port-chip{font-size:11.5px;padding:4px 10px;border-radius:999px;text-decoration:none;
+  color:var(--muted);background:var(--panel);border:1px solid var(--border);white-space:nowrap}
+.port-chip:hover{border-color:var(--border2);color:var(--text)}
+.port-chip.on{background:rgba(124,92,255,.16);border-color:rgba(124,92,255,.5);color:#cbb8ff;font-weight:700}
+/* Un respiro entre «sobre qué» y «quién»: son dos preguntas distintas y
+   pegadas se leen como una fila de quince chips iguales. */
+.port-corte{width:1px;height:18px;background:var(--border);margin:0 4px}
+/* Las personas, por la cara. El anillo dice quién está elegido: un avatar
+   apagado no se distingue de uno con foto oscura. */
+.port-quien{display:inline-flex;border-radius:50%;padding:2px;border:2px solid transparent;
+  line-height:0;opacity:.75;transition:opacity .12s}
+.port-quien:hover{opacity:1}
+.port-quien.on{border-color:var(--violet);opacity:1}
+
+/* El muro: notas de prosa. Cada una es una tarjeta baja con la cara de quien
+   escribió a la izquierda — se reconoce el autor antes de leer, que es como se
+   lee un muro. */
+/* ⚠ TODO CON PREFIJO `port-`. La primera versión las llamó `.muro-*` y
+   `.muro-cuerpo` YA EXISTÍA —es del muro de verdad, el de la ficha—, así que
+   las dos reglas se sumaban: en la portada el avatar se descolgaba 10px y en
+   la ficha el cuerpo de cada nota se volvía una columna flex. Sin error y sin
+   nada roto en el código: exactamente el fallo que ya costó una tarde con
+   `.cmp-fila` en los compromisos. Nombre de pantalla en cada clase. */
+.port-notas{display:flex;flex-direction:column;gap:8px}
+.port-nota{display:flex;gap:11px;align-items:flex-start;padding:10px 13px;
+  border-radius:12px;border:1px solid var(--border);background:var(--panel);cursor:pointer}
+.port-nota:hover{border-color:var(--border2)}
+.port-nota-cuerpo{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.port-nota-cab{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.port-nota-autor{font-size:12.5px;color:var(--text)}
+.port-nota-donde{color:var(--violet);background:rgba(167,139,250,.12);
+  text-transform:none;letter-spacing:0;text-decoration:none}
+.port-nota-cuando{font-size:11px;color:var(--dim);white-space:nowrap}
+/* Tres líneas y corta. Una nota larga entera convierte el muro en un muro de
+   una sola nota; para leerla está su ficha. */
+.port-nota-txt{font-size:12.5px;line-height:1.55;color:var(--muted);white-space:pre-wrap;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.port-nota-pie{display:flex;gap:10px;font-size:11px;color:var(--dim)}
+
+.port-dia{display:flex;align-items:center;gap:8px;margin:0 4px 8px}
+.port-dia-txt{font-size:10px;text-transform:uppercase;letter-spacing:1.2px;
+  color:var(--dim);font-weight:700}
+.port-dia-linea{flex:1;height:1px;background:var(--border)}
+/* El tope, dicho. Una lista que corta en seco enseña que el sistema «solo
+   guarda unos días». */
+.port-tope{margin:14px 2px 0;font-size:11.5px;color:var(--dim);text-align:center}
+.port-tope a{color:var(--violet);font-weight:600}
+
 /* ===== Campanita de notificaciones ===== */
 .campanita{position:relative}
 .camp-btn{position:relative;font-size:17px;padding:8px 10px;color:var(--muted);border-radius:10px}
@@ -2644,14 +2694,6 @@ a.stat-card:hover{border-color:var(--border2)}
    hora a medias no dice nada. */
 /* La hora en el chip del calendario: ocupa el sitio del ícono, así que la
    fila no se ensancha — un chip de calendario mide lo que mide. */
-/* El renglón que dice cuántos resueltos esconde la lista. Tenue: es una
-   explicación, no un pendiente — pero tiene que estar, o el número de la
-   pestaña parece roto. */
-.feed-ocultos{display:flex;align-items:center;gap:10px;justify-content:center;
-  color:var(--dim);font-size:12px;padding:10px 0}
-.feed-ocultos button{background:transparent;border:1px solid var(--border);border-radius:8px;
-  color:var(--muted);font-size:11.5px;padding:3px 10px;cursor:pointer}
-.feed-ocultos button:hover{border-color:var(--border2);color:var(--text)}
 .ag-cal-hora{color:var(--teal);font-weight:800}
 .ag-tl-hora{flex:none;color:var(--teal);font-size:10.5px;font-weight:700;margin-left:2px}
 /* El título, dentro de la fila de controles. Tamaño de h2 aunque sea el h1 de
