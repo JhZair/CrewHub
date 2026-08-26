@@ -91,7 +91,8 @@ export default function VersionesFondo({ postulacionId, tipo, esAdmin, versiones
                 {v.etiqueta}
               </span>
               {v.vigente && (
-                <span className="badge" style={{ color: "var(--green)", background: "rgba(46,204,113,.12)", fontWeight: 700 }}>✓ vigente</span>
+                <span className="badge" style={{ color: "var(--green)", background: "rgba(46,204,113,.12)", fontWeight: 700 }}
+                  title={`La foto contra la que se rinde y se gira. No es el ${cual} de arriba: ése es el de trabajo y se sigue editando.`}>✓ vigente</span>
               )}
               <span style={{ color: "var(--muted)", fontSize: 12, minWidth: 0 }}>{v.motivo || <i style={{ color: "var(--dim)" }}>sin motivo</i>}</span>
               <span style={{ flex: 1 }} />
@@ -113,8 +114,16 @@ export default function VersionesFondo({ postulacionId, tipo, esAdmin, versiones
               )}
             </div>
           ))}
+          {/* ── «VIGENTE» NO ES «EL QUE ESTOY VIENDO» ──
+              Se leía como «el actual», y el actual, para quien lo mira, es el
+              que tiene delante en la pantalla. Son dos cosas: arriba el de
+              TRABAJO, que se edita; aquí la FOTO contra la que se rinde. Y
+              decía «(abajo)» cuando el editor está justo ARRIBA de esta lista:
+              mandaba a buscar al lado contrario. */}
           <p style={{ color: "var(--dim)", fontSize: 10.5, margin: "4px 0 0", lineHeight: 1.5 }}>
-            La versión <b style={{ color: "var(--green)" }}>vigente</b> es contra la que se compara el {cual} vivo (abajo) y la que manda para rendir.
+            La versión <b style={{ color: "var(--green)" }}>vigente</b> es la <b>foto</b> contra la que se rinde
+            y se gira — la que se envió a DAFO. El {cual} de arriba es el de <b>trabajo</b>: se sigue editando,
+            y en cuanto se aleje de esta foto el editor te dice en qué.
           </p>
         </div>
       )}
