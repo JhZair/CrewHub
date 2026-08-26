@@ -6,6 +6,7 @@ import { guardarHitoFondo, borrarHitoFondo } from "@/app/actions";
 import { responderCarta, borrarCarta } from "@/app/casilla/acciones";
 import { useAviso, useConfirmar } from "@/components/useConfirmar";
 import CartasLote from "@/components/CartasLote";
+import BuzonPegar from "@/components/BuzonPegar";
 import { fechaCorta, hoyLima } from "@/lib/fechas";
 import {
   vidaDelFondo, porAnio, porResponder, cuandoVence, TIPOS_HITO,
@@ -58,7 +59,11 @@ export default function VidaFondo({
   const [ocupado, setOcupado] = useState(false);
   const [abierto, setAbierto] = useState(false);
   const [cargando, setCargando] = useState(false);
+  const [pegando, setPegando] = useState(false);
   const [editando, setEditando] = useState<FilaHito | null>(null);
+  /* La carta cuyo plazo se está cerrando sin contestar, con su titular a la
+     vista: el motivo se escribe mirando de qué carta se habla. */
+  const [cerrando, setCerrando] = useState<{ id: string; titulo: string } | null>(null);
   /* El acta de este fondo: es la llave con la que se comprueba que una carta
      cargada aquí es de verdad de este expediente. */
   const codigoActa = (postulacion as any)?.codigo_acta || null;
@@ -125,8 +130,42 @@ export default function VidaFondo({
                     { aceptar: "Sí, ya se contestó" }))) return;
                   correr(() => responderCarta(h.id as string, hoy));
                 }}>Ya se contestó</button>
+              {/* ── CERRAR SIN CONTESTAR ──
+                  Un requerimiento de hace quinientos días no se va a contestar:
+                  se resolvió por otra vía o se dejó pasar. La única salida era
+                  marcarlo «ya se contestó», que es una mentira escrita en el
+                  expediente — justo donde no se puede mentir. Aquí se apaga el
+                  reloj diciendo POR QUÉ, y la línea de tiempo lo lee distinto. */}
+              <button type="button" className="vf-mini" disabled={ocupado}
+                onClick={() => setCerrando({ id: h.id as string, titulo: h.titulo })}>
+                ya no se va a contestar
+              </button>
             </div>
           ))}
+          {/* El motivo NO es opcional: sin él, dentro de un año la fila diría
+              «dejó de estar pendiente» y nadie sabría si se contestó, si se
+              resolvió por otra vía o si se dejó caer. */}
+          {cerrando && (
+            <form className="vf-cerrar" onSubmit={async e => {
+              e.preventDefault();
+              const motivo = String(new FormData(e.currentTarget).get("motivo") || "").trim();
+              if (!motivo) { avisar("Escribe por qué se cierra: es lo que explicará esta fila dentro de un año."); return; }
+              const ok = await correr(() => responderCarta(cerrando.id, hoy, null, motivo));
+              if (ok) setCerrando(null);
+            }}>
+              <label className="vf-lbl vf-ancho">
+                ¿Por qué se cierra «{cerrando.titulo}» sin contestarla?
+                <input name="motivo" className="rp-input vf-ancho" autoFocus
+                  placeholder="Se entregó todo el material el 19/01/2026 (expediente 007170); este requerimiento ya no aplica." />
+              </label>
+              <div className="vf-form-fila">
+                <button className="btn" type="submit" disabled={ocupado}>Cerrar el plazo</button>
+                <button type="button" className="btn btn-ghost" disabled={ocupado}
+                  onClick={() => setCerrando(null)}>Cancelar</button>
+                <span className="rp-dim">Queda escrito que NO se contestó, y por qué.</span>
+              </div>
+            </form>
+          )}
         </div>
       )}
 
@@ -141,16 +180,26 @@ export default function VidaFondo({
             Aquí, además, el fondo ya se sabe: la carta se vincula sola y, si su
             acta es otra, se dice. */}
         {esAdmin && (
-          <button type="button" className="btn btn-ghost vf-btn"
-            onClick={() => { setCargando(!cargando); setAbierto(false); setEditando(null); }}>
-            {cargando ? "Cerrar la carga" : "📥 Cargar cartas (PDF)"}
-          </button>
+          <>
+            <button type="button" className="btn btn-ghost vf-btn"
+              onClick={() => { setCargando(!cargando); setPegando(false); setAbierto(false); setEditando(null); }}>
+              {cargando ? "Cerrar la carga" : "📥 Cargar cartas (PDF)"}
+            </button>
+            {/* La tercera ventanilla. Ver components/BuzonPegar.tsx: no hay API
+                ni PDF, pero la tabla se puede pegar. */}
+            <button type="button" className="btn btn-ghost vf-btn"
+              onClick={() => { setPegando(!pegando); setCargando(false); setAbierto(false); setEditando(null); }}>
+              {pegando ? "Cerrar el buzón" : "📋 Pegar el buzón"}
+            </button>
+          </>
         )}
         <button type="button" className="btn btn-ghost vf-btn"
           onClick={() => { setEditando(null); setAbierto(!abierto); setCargando(false); }}>
           {abierto ? "Cancelar" : "＋ Apuntar algo que pasó"}
         </button>
       </div>
+
+      {pegando && <BuzonPegar postulacionId={postulacionId} codigoActa={codigoActa} />}
 
       {cargando && (
         <CartasLote
@@ -239,7 +288,23 @@ export default function VidaFondo({
                 {h.detalle && <span className="vf-det">{h.detalle}</span>}
                 <span className="vf-pie">
                   {h.autor && <span className="rp-dim">lo apuntó {h.autor}</span>}
-                  {h.resuelto && <span className="vf-ok">contestada el {fechaCorta(h.resuelto)}</span>}
+                  {h.resuelto && (h.motivoCierre
+                    ? <span className="vf-cerrada" title={h.motivoCierre}>
+                        cerrada el {fechaCorta(h.resuelto)} sin contestar — {h.motivoCierre}
+                      </span>
+                    : <span className="vf-ok">contestada el {fechaCorta(h.resuelto)}</span>)}
+                  {/* ── Y SE PUEDE DESHACER ──
+                      Marcar «ya se contestó» por error dejaba el reloj apagado
+                      para siempre: no había ninguna manera de volver a
+                      encenderlo desde la aplicación. */}
+                  {h.clase === "carta" && h.resuelto && (
+                    <button type="button" className="vf-mini" disabled={ocupado}
+                      onClick={async () => {
+                        if (!(await pedir(<>¿Volver a poner <b>{h.titulo}</b> entre lo que hay que contestar?</>,
+                          { aceptar: "Sí, sigue pendiente" }))) return;
+                        correr(() => responderCarta(h.id as string, null));
+                      }}>volver a abrirla</button>
+                  )}
                   {h.url && <a className="vf-link" href={h.url} target="_blank" rel="noreferrer">ver documento →</a>}
                   {h.casoId && <Link className="vf-link" href={`/caso/${h.casoId}`}>ver el caso →</Link>}
                   {/* Solo lo escrito a mano se corrige aquí. Una fecha del acta

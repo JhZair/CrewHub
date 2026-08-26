@@ -261,7 +261,7 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
       .eq("postulacion_id", params.id).order("fecha", { ascending: false }).limit(300),
     supabase.from("dafo_comunicaciones")
       .select("id,asunto,extracto,recibido_en,origen,doc_numero,doc_url," +
-              "responder_hasta,respondido_en,pide_accion,caso_id")
+              "responder_hasta,respondido_en,cierre_motivo,pide_accion,caso_id")
       .eq("postulacion_id", params.id).order("recibido_en", { ascending: false }).limit(200),
   ]);
   /* Los nombres salen del catálogo de perfiles que ya viajó (`pf`): la tabla

@@ -53,8 +53,11 @@ export type Hito = {
   futuro: boolean;
   /** Hasta cuándo hay que contestar (solo cartas con plazo). */
   vence?: string | null;
-  /** Cuándo se contestó. Con esto puesto, el reloj se apaga. */
+  /** Cuándo dejó de estar pendiente. Con esto puesto, el reloj se apaga. */
   resuelto?: string | null;
+  /** Por qué se cerró SIN contestar. Vacío = se contestó de verdad. Son dos
+   *  cosas distintas y en un expediente no se pueden leer igual. */
+  motivoCierre?: string | null;
   url?: string | null;
   /** El caso donde está la conversación. */
   casoId?: string | null;
@@ -90,6 +93,7 @@ export type FilaCarta = {
   recibido_en: string; origen?: string | null;
   doc_numero?: string | null; doc_url?: string | null;
   responder_hasta?: string | null; respondido_en?: string | null;
+  cierre_motivo?: string | null;
   pide_accion?: boolean | null; caso_id?: string | null;
 };
 
@@ -190,6 +194,7 @@ export function vidaDelFondo(
       url: c.doc_url || null,
       vence: c.responder_hasta || null,
       resuelto: c.respondido_en || null,
+      motivoCierre: c.cierre_motivo || null,
       casoId: c.caso_id || null,
       registrada,
       futuro: fecha > hoy,

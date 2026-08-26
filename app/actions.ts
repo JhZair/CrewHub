@@ -7432,6 +7432,87 @@ export async function guardarHitoFondo(f: {
   return { id: (data[0] as any).id as string };
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   APUNTAR EL BUZÓN DE COMUNICACIONES DE GOLPE
+
+   La plataforma de concursos tiene un hilo por proyecto donde escriben los dos
+   lados, y ahí está la conversación de verdad: la consulta que hicimos, la
+   entrega que informamos, el «su solicitud se tiene por NO PRESENTADA». No
+   avisa a ninguna parte y no tiene API — se pega el texto y se apunta.
+
+   ── SE PUEDE PEGAR EL BUZÓN ENTERO CADA MES ──
+   Cada mensaje trae su código («060-2023-DAFO-29») y se guarda en `ref` con un
+   índice único por fondo. Los que ya están, se saltan. Sin eso, la segunda
+   pegada duplicaría la mitad de la línea de tiempo y habría que borrar a mano.
+   ══════════════════════════════════════════════════════════════════════════ */
+export async function apuntarBuzon(postulacionId: string, mensajes: {
+  ref: string; fecha: string; tipo: string; titulo: string; detalle: string;
+}[]) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const buenos = (mensajes || []).filter(m => m?.ref && m?.fecha && (m?.titulo || "").trim());
+  if (!buenos.length) return { error: "No hay ningún mensaje que apuntar." };
+
+  /* Los que ya están. Se pregunta ANTES en vez de confiar en que el índice
+     único rechace los repetidos: el `insert` entero fallaría por uno solo, y
+     quien pega veinte mensajes de los que dieciocho son nuevos se quedaría sin
+     ninguno. */
+  const { data: previos, error: eLeer } = await supabase.from("hito_fondo")
+    .select("ref").eq("postulacion_id", postulacionId).not("ref", "is", null);
+  if (eLeer) {
+    return {
+      error: /hito_fondo|ref/.test(eLeer.message)
+        ? "Falta correr db/vida-fondo.sql en Supabase → SQL Editor."
+        : eLeer.message,
+    };
+  }
+  const ya = new Set((previos || []).map((p: any) => p.ref));
+  const hoy = hoyLima();
+  const nuevos = buenos.filter(m => !ya.has(m.ref)
+    /* Fecha de calendario válida y no futura, igual que un hito a mano. Un
+       reloj torcido en la plataforma no puede meter en la línea de tiempo algo
+       que todavía no ha pasado. */
+    && /^\d{4}-\d{2}-\d{2}$/.test(m.fecha) && m.fecha <= hoy);
+  if (!nuevos.length) return { ok: 0, repetidos: buenos.length };
+
+  /* ── UNO A UNO, NO LOS VEINTE DE GOLPE ──
+     Un `insert` con veinte filas falla ENTERO si una choca con el índice único
+     —dos personas pegando el mismo buzón a la vez— y entonces no entra
+     ninguna: justo lo que este bucle previo de comprobación venía a evitar.
+     Veinte viajes en una operación que se hace una vez al mes es un precio
+     ridículo comparado con perder la carga completa por una fila. */
+  let ok = 0, chocaron = 0;
+  const fallos: string[] = [];
+  for (const m of nuevos) {
+    const { error } = await supabase.from("hito_fondo").insert({
+      postulacion_id: postulacionId, fecha: m.fecha,
+      tipo: m.tipo || "otro", titulo: m.titulo.trim().slice(0, 400),
+      detalle: (m.detalle || "").trim() || null,
+      ref: m.ref, creado_por: user.id,
+    });
+    if (!error) { ok++; continue; }
+    /* 23505 = ya estaba. No es un fallo: es que alguien se adelantó. */
+    if ((error as any).code === "23505" || /duplicate key/i.test(error.message)) chocaron++;
+    else fallos.push(`${m.ref}: ${error.message}`);
+  }
+
+  if (ok) {
+    await supabase.from("actividad").insert({
+      entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "editado",
+      detalle: { mensaje: `cargó ${ok} mensaje(s) del buzón de comunicaciones` },
+    });
+    revalidatePath(`/fondo/${postulacionId}`);
+  }
+  return {
+    ok,
+    repetidos: buenos.length - nuevos.length + chocaron,
+    /* Los fallos de verdad se dicen con su motivo: «se guardaron 18 de 20» sin
+       decir cuáles ni por qué es la peor forma de informar de un error. */
+    fallos: fallos.length ? fallos : undefined,
+  };
+}
+
 export async function borrarHitoFondo(id: string, postulacionId: string) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();

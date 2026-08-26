@@ -6269,6 +6269,40 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
 .vf-pie{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--dim)}
 .vf-dias{font-size:11px;color:var(--dim)}
 .vf-ok{color:var(--green);font-size:11px}
+/* Cerrada sin contestar: ni verde ni rojo. No es un logro y tampoco una
+   alarma; es un hecho con su explicación al lado. */
+.vf-cerrada{color:var(--muted);font-size:11px}
+.vf-cerrar{display:flex;flex-direction:column;gap:8px;margin-top:6px;padding-top:8px;
+  border-top:1px solid rgba(255,255,255,.08)}
+
+/* ── PEGAR EL BUZÓN DE COMUNICACIONES ── */
+.bz{display:flex;flex-direction:column;gap:9px;padding:11px 12px;
+  background:var(--bg);border:1px solid var(--border);border-radius:11px}
+.bz-como{line-height:1.55}
+.bz-caja{width:100%;font-family:inherit;font-size:12px;line-height:1.5;resize:vertical}
+.bz-lista{display:flex;flex-direction:column;border:1px solid var(--border);
+  border-radius:10px;overflow:hidden;background:var(--card)}
+.bz-fila{display:grid;grid-template-columns:26px 22px 120px minmax(0,1fr);gap:8px;
+  align-items:start;padding:7px 9px;border-top:1px solid var(--border)}
+.bz-fila:first-child{border-top:none}
+/* Desmarcado = no se apunta. Apagado y no escondido: lo que se deja fuera
+   tiene que verse, o nadie sabe qué se quedó sin cargar. */
+.bz-off{opacity:.45}
+.bz-chk{display:flex;align-items:center;justify-content:center;padding-top:5px}
+.bz-ico{font-size:14px;line-height:1.7;text-align:center}
+.bz-meta{display:flex;flex-direction:column;gap:2px;font-size:11.5px;line-height:1.4}
+.bz-txt{display:flex;flex-direction:column;gap:4px;min-width:0}
+.bz-det{font-size:11px;color:var(--dim)}
+.bz-det summary{cursor:pointer}
+.bz-det summary:hover{color:var(--text)}
+/* El mensaje entero, tal como se escribió: con sus párrafos. */
+.bz-cuerpo{white-space:pre-wrap;color:var(--muted);font-size:12px;line-height:1.55;
+  margin-top:5px;padding:8px 10px;background:var(--bg);border-radius:8px;
+  max-height:260px;overflow-y:auto}
+@media (max-width:760px){
+  .bz-fila{grid-template-columns:26px 22px minmax(0,1fr)}
+  .bz-meta{grid-column:3}
+}
 .vf-link{color:var(--violet);font-size:11px;text-decoration:none}
 .vf-link:hover{text-decoration:underline}
 .vf-mini{background:none;border:none;color:var(--dim);font-size:11px;cursor:pointer;padding:0}

@@ -60,7 +60,19 @@ create table if not exists hito_fondo (
   creado_en      timestamptz default now()
 );
 
+/* ── DE DÓNDE SALIÓ ESTE HITO ──
+   Los mensajes del BUZÓN DE COMUNICACIONES de la plataforma de concursos
+   —otra ventanilla más, con su propio hilo por proyecto— se cargan pegando el
+   texto. Cada mensaje trae su código («060-2023-DAFO-29»), y guardarlo es lo
+   que permite pegar el buzón entero cada mes sin duplicar lo de la vez
+   anterior. Vacío en los hitos escritos a mano. */
+alter table hito_fondo add column if not exists ref text;
+
 create index if not exists idx_hito_fondo_post on hito_fondo(postulacion_id, fecha desc);
+/* Un mensaje del buzón, una sola vez por fondo. Parcial: los hitos a mano no
+   tienen `ref` y no deben chocar entre sí. */
+create unique index if not exists idx_hito_fondo_ref
+  on hito_fondo(postulacion_id, ref) where ref is not null;
 
 alter table hito_fondo enable row level security;
 
@@ -133,6 +145,16 @@ alter table dafo_comunicaciones add column if not exists respondido_en date;
 /* Con qué se respondió: el cargo, el oficio, el correo enviado. */
 alter table dafo_comunicaciones add column if not exists respuesta_url text;
 
+/* ── EL PLAZO QUE SE CIERRA SIN CONTESTAR ──
+   Un requerimiento de hace quinientos días no se va a contestar: se resolvió
+   por otra vía, o se dejó pasar. Pero el reloj tiene que poder apagarse, y la
+   única salida que había era «ya se contestó» — que sería mentira escrita en
+   el expediente, justo donde no se puede mentir.
+   Con motivo, `respondido_en` deja de significar «contestamos» y pasa a
+   significar «dejó de estar pendiente»; el motivo dice cuál de las dos cosas
+   fue, y la línea de tiempo lo lee distinto. */
+alter table dafo_comunicaciones add column if not exists cierre_motivo text;
+
 /* Una carta registrada a mano no tiene id de Gmail. La columna era
    `not null unique`; se le quita el NOT NULL y el unique sigue valiendo para
    las que sí lo traen —en Postgres un índice único ignora los nulos, así que
@@ -189,8 +211,10 @@ select
   (select count(*) from information_schema.columns
     where table_name = 'dafo_comunicaciones'
       and column_name in ('origen','doc_numero','doc_url','doc_codigo','firmante',
-                          'ajena','destinatario',
+                          'ajena','destinatario','cierre_motivo',
                           'responder_hasta','respondido_en','respuesta_url')) as columnas_nuevas,
+  (select count(*) from information_schema.columns
+    where table_name = 'hito_fondo' and column_name = 'ref')                 as hito_ref,
   (select is_nullable from information_schema.columns
     where table_name = 'dafo_comunicaciones' and column_name = 'gmail_msg_id') as gmail_opcional,
   (select count(*) from pg_indexes

@@ -320,10 +320,22 @@ export async function borrarCarta(id: string) {
   return {};
 }
 
-/** Contestada, o ya no. `null` la vuelve a poner en el reloj: una carta que se
- *  marcó respondida por error tiene que poder volver, o el aviso se apaga para
- *  siempre con un clic. */
-export async function responderCarta(id: string, fecha: string | null, url?: string | null) {
+/**
+ * Apagar el reloj de una carta — o volver a encenderlo.
+ *
+ * `fecha = null` la devuelve a los pendientes: una carta marcada por error
+ * tiene que poder volver, o el aviso se apaga para siempre con un clic.
+ *
+ * ── CONTESTADA NO ES LO MISMO QUE CERRADA ──
+ * Un requerimiento de hace quinientos días no se va a contestar. La única
+ * salida que había era marcarlo «ya se contestó», que es una mentira escrita
+ * en el expediente — y este expediente existe justamente para no tener que
+ * mentir. Con `motivo`, la fila dice que dejó de estar pendiente Y POR QUÉ:
+ * «se entregó todo el material el 19/01/2026, ya no aplica».
+ */
+export async function responderCarta(
+  id: string, fecha: string | null, url?: string | null, motivo?: string | null,
+) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada. Vuelve a iniciar sesión." };
@@ -331,6 +343,9 @@ export async function responderCarta(id: string, fecha: string | null, url?: str
   const { data, error } = await supabase.from("dafo_comunicaciones")
     .update({
       respondido_en: fecha, respuesta_url: (url || "").trim() || null,
+      /* Al reabrirla se borra el motivo: si vuelve a estar pendiente, la
+         explicación de por qué se cerró ya no describe nada. */
+      cierre_motivo: fecha ? ((motivo || "").trim() || null) : null,
       /* Contestada deja de pedir algo. Sin esto seguía subiendo al tope de la
          bandeja para siempre, y una lista de urgencias que nunca se vacía es
          una lista que se deja de mirar. */
