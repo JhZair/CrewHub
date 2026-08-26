@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "@/components/Enlace";
+import Avatar from "@/components/Avatar";
 import { pedirZocalo, EVENTO_ZOCALO } from "@/lib/zocalo";
 import { estadoAlarma, pieAlarma, type Alarma } from "@/lib/alarmas";
 
@@ -24,6 +25,15 @@ import { estadoAlarma, pieAlarma, type Alarma } from "@/lib/alarmas";
    exige contar cómo se resolvió y lo hace administración. La molestia es el
    mecanismo, no un efecto secundario.
    ══════════════════════════════════════════════════════════════════════════ */
+/* La primera línea del motivo, recortada. Se corta por el salto de línea o por
+   el primer punto: lo que sigue es el detalle, y el detalle vive en el caso.
+   Sin tope de largo la franja crecería a tres renglones y taparía la pantalla
+   —que es lo contrario de lo que hace una franja—. */
+const primeraLinea = (motivo?: string | null) => {
+  const t = String(motivo || "").trim().split(/\n|(?<=\.)\s/)[0]?.trim() || "";
+  return t.length > 120 ? t.slice(0, 118).trimEnd() + "…" : t;
+};
+
 export default function FranjaAlarmas() {
   const pathname = usePathname() || "";
   const [alarmas, setAlarmas] = useState<Alarma[]>([]);
@@ -84,13 +94,28 @@ export default function FranjaAlarmas() {
              enseñar el problema otra vez en vez de llevar a hacer algo. */
           <Link key={a.id} href={a.caso_id ? `/caso/${a.caso_id}` : "/"}
             className="alarma-item" title={`${a.motivo}\n\n${pieAlarma(a)}`}>
-            <b>🚨 {a.titulo}</b>
-            {/* Quién la lleva, en la propia franja: sin eso, cada uno de los
-                diez que la ven tiene que abrir el caso para saber si le toca a
-                él — y como abrirlo cuesta, no lo abre nadie. */}
+            {/* La palabra, no solo el icono. Un 🚨 suelto en una barra roja se
+                lee como decoración de la barra; «ALARMA» dice qué es esto antes
+                de leer de qué va, que es lo que hace parar. */}
+            <b className="alarma-rotulo">🚨 ALARMA</b>
+            <b className="alarma-franja-tit">{a.titulo}</b>
+            {/* ── LA PRIMERA LÍNEA DEL MOTIVO ──
+                El título dice QUÉ; esto dice algo de por qué, y es la
+                diferencia entre enterarse y tener que abrir el caso para
+                enterarse. Solo la primera línea: la franja informa, el caso
+                explica. */}
+            {primeraLinea(a.motivo) && (
+              <span className="alarma-franja-motivo">{primeraLinea(a.motivo)}</span>
+            )}
+            {/* Quién la lleva, con cara: sin eso, cada uno de los diez que la
+                ven tiene que abrir el caso para saber si le toca a él — y como
+                abrirlo cuesta, no lo abre nadie. */}
             {!!a.gente?.length && (
               <span className="alarma-franja-quien">
-                le toca a {a.gente.map(p => p.nombre).filter(Boolean).join(", ")}
+                {a.gente.map(p => (
+                  <Avatar key={p.id} size={17} nombre={p.nombre} src={p.avatar_url} color={p.color} />
+                ))}
+                <span>le toca a {a.gente.map(p => p.nombre).filter(Boolean).join(", ")}</span>
               </span>
             )}
             {/* La alarma se delata sola cuando pasa su fecha de revisión: deja

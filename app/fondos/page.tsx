@@ -423,28 +423,32 @@ export default async function FondosPage() {
           Se dicen los DOS: el total, y cuántos siguen sin resolver — «30
           casos» de los que 28 están cerrados es un fondo tranquilo, y sin la
           segunda cifra parece lo contrario. */}
-      {/* ── LA ALARMA, EN EL PIE ──
-          Fuera del enlace grande por lo mismo que el contador de casos: un
-          <a> dentro de otro no es HTML válido, y aquí además hay un
-          formulario. Encendida se ve entera; apagada, el botón solo lo ve
-          administración. */}
-      {(alarmaDe.get(f.id) || puedeAlarma) && (
-        <div className="fondo-alarma">
-          <BotonAlarma entidadTipo="postulacion" entidadId={f.id}
-            tituloSugerido={`${f.codigo}${f.proy?.nombre ? ` · ${f.proy.nombre}` : ""}: `}
-            esAdmin={puedeAlarma} alarma={alarmaDe.get(f.id) || null}
-            vivas={vivas.length} equipo={(equipoAct || []) as any[]} compacto />
-        </div>
-      )}
-      {cs && cs.total > 0 && (
-        <Link className="fondo-casos" href={`/tablero?p=todos&modo=lista&post=${f.id}`}
-          title={`Ver los ${cs.total} caso(s) de este fondo en el tablero`}>
-          🗂 {cs.total} caso{cs.total === 1 ? "" : "s"}
-          {cs.abiertos > 0 && (
-            <b style={{ color: "var(--red)" }}> · {cs.abiertos} sin resolver</b>
-          )}
-        </Link>
-      )}
+      {/* ── EL PIE DE LA TARJETA ──
+          Los dos colgajos van FUERA del enlace grande: un <a> dentro de otro no
+          es HTML válido, y la alarma además lleva un formulario.
+          Se reparten los extremos —casos a la izquierda, alarma a la derecha—
+          en vez de apilarse: apilados parecían dos pestañas de lo mismo, y son
+          cosas distintas. Con la alarma ENCENDIDA la caja se lleva el renglón
+          entero: ahí ya no es un botón, es el titular de la tarjeta. */}
+      <div className="fondo-pie">
+        {cs && cs.total > 0 ? (
+          <Link className="fondo-casos" href={`/tablero?p=todos&modo=lista&post=${f.id}`}
+            title={`Ver los ${cs.total} caso(s) de este fondo en el tablero`}>
+            🗂 {cs.total} caso{cs.total === 1 ? "" : "s"}
+            {cs.abiertos > 0 && (
+              <b style={{ color: "var(--red)" }}> · {cs.abiertos} sin resolver</b>
+            )}
+          </Link>
+        ) : <span />}
+        {(alarmaDe.get(f.id) || puedeAlarma) && (
+          <div className="fondo-alarma">
+            <BotonAlarma entidadTipo="postulacion" entidadId={f.id}
+              tituloSugerido={`${f.codigo}${f.proy?.nombre ? ` · ${f.proy.nombre}` : ""}: `}
+              esAdmin={puedeAlarma} alarma={alarmaDe.get(f.id) || null}
+              vivas={vivas.length} equipo={(equipoAct || []) as any[]} compacto />
+          </div>
+        )}
+      </div>
       </div>
     );
   };
