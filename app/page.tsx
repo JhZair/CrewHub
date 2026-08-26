@@ -7,6 +7,7 @@ import FranjaAlarmas from "@/components/FranjaAlarmas";
 import MenuUsuario from "@/components/MenuUsuario";
 import Avatar from "@/components/Avatar";
 import Foto from "@/components/Foto";
+import LinkPreviews from "@/components/LinkPreviews";
 import EventoHistorial, { ROTULO_ENT } from "@/components/EventoHistorial";
 import EventoGrupo from "@/components/EventoGrupo";
 import { agruparEventos } from "@/lib/agrupar";
@@ -15,6 +16,7 @@ import { ICO_ENT, rutaEntidad, grafiasDe, tipoCanonico } from "@/lib/secciones";
 import { rotuloDia } from "@/lib/periodo";
 import { plazoDe } from "@/lib/plazo";
 import { rotuloTipo, colorTipo } from "@/lib/tipos";
+import { urlsDe } from "@/lib/drive";
 import { sinBot, BOT } from "@/lib/personas";
 import {
   COLS_NOTIF, COLS_NUEVAS, faltaAlguna, columnasQueFaltan, sinEstas,
@@ -391,6 +393,10 @@ export default async function Portada({ searchParams }: {
       autor: uno(n.autor),
       creado_en: n.creado_en,
       fotos: ((n.imagenes || []) as string[]).filter(Boolean),
+      /* Los enlaces se sacan del cuerpo ENTERO, no del recortado: el texto que
+         se enseña corta a 240 caracteres y podía partir una url por la mitad
+         —la tarjeta habría apuntado a una dirección que no existe—. */
+      enlaces: urlsDe(texto),
       texto: texto.length > MURO_CORTE ? texto.slice(0, MURO_CORTE - 1).trimEnd() + "…" : texto,
       /* «Cabe entera» es por caracteres Y por renglones: el CSS corta a tres
          líneas, así que una nota corta con ocho saltos se recortaba en la
@@ -605,6 +611,18 @@ export default async function Portada({ searchParams }: {
                       distintas no dibujen un escalón, y `fila-encima` para que
                       el clic abra el visor en vez de irse a la ficha: la foto
                       se mira aquí, la conversación está allá. */}
+                  {/* ── LA CARA DEL ENLACE ──
+                      Media bitácora es «mira esto» + una url. En texto plano,
+                      «https://youtu.be/RfCl2UQzluY?si=…» no dice si es el corte
+                      del documental o un tutorial: hay que abrirlo para saber
+                      si vale la pena abrirlo. La tarjeta lo dice antes.
+                      `sinRed`: la miniatura y el tipo salen del patrón de la
+                      url, sin pedirle nada al servidor — ver LinkPreviews. */}
+                  {!!n.enlaces.length && (
+                    <div className="fila-encima">
+                      <LinkPreviews texto={n.enlaces.join("\n")} max={1} sinRed />
+                    </div>
+                  )}
                   {!!n.fotos.length && (
                     <div className="port-nota-fotos fila-encima">
                       {n.fotos.slice(0, MURO_FOTOS).map((u: string, i: number) => (

@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { previewCandidates, formatoDe, enlaceLimpio } from "@/lib/drive";
+import { previewCandidates, formatoDe, enlaceLimpio, urlsDe } from "@/lib/drive";
 import { unfurlEnlace } from "@/app/actions";
 
 /* PREVIEW DE ENLACES en un texto (comentarios, bitácora, muro…). Detecta las
@@ -14,13 +14,6 @@ import { unfurlEnlace } from "@/app/actions";
  *     carátula de verdad + título + descripción. Así el video muestra su nombre y
  *     su imagen real, no el gris que YouTube devuelve al adivinar por el ID. */
 
-const URL_RE = /\bhttps?:\/\/[^\s<>()]+|\bwww\.[^\s<>()]+/gi;
-
-const sinCola = (u: string) => {
-  const m = u.match(/[)\].,;:!?]+$/);
-  return m ? u.slice(0, -m[0].length) : u;
-};
-
 const hostDe = (u: string) => {
   try { return new URL(u.startsWith("http") ? u : `https://${u}`).hostname.replace(/^www\./, ""); }
   catch { return u; }
@@ -28,7 +21,7 @@ const hostDe = (u: string) => {
 
 type Meta = { title?: string; description?: string; image?: string; site?: string };
 
-function Tarjeta({ url }: { url: string }) {
+function Tarjeta({ url, sinRed }: { url: string; sinRed?: boolean }) {
   const href = enlaceLimpio(url.startsWith("http") ? url : `https://${url}`);
   const cand = previewCandidates(url, 320);
   const [i, setI] = useState(0);
@@ -37,11 +30,20 @@ function Tarjeta({ url }: { url: string }) {
   const host = hostDe(url);
   const esVideo = fmt?.key === "video";
 
+  /* ── `sinRed`: la cara instantánea, sin ir a buscar las OG ──
+     El unfurl es una acción de servidor POR TARJETA, y Next las encola de una
+     en una. En una ficha con dos enlaces da igual; en la portada, con nueve
+     notas, serían nueve viajes encolados en la pantalla que más se abre — que
+     es exactamente lo que costó el «cada vez más lento» de hace dos semanas.
+     Sin red se pierde el título real y la descripción, pero la miniatura de
+     YouTube, el icono del PDF y el host salen del PATRÓN de la url, que es lo
+     que hace falta para saber qué hay al otro lado. */
   useEffect(() => {
+    if (sinRed) return;
     let vivo = true;
     unfurlEnlace(url).then(m => { if (vivo && m && (m.title || m.image)) setMeta(m); }).catch(() => {});
     return () => { vivo = false; };
-  }, [url]);
+  }, [url, sinRed]);
 
   // Imagen: la real de las OG manda; si no, la tentativa por patrón.
   const imgPatron = i < cand.length ? cand[i] : null;
@@ -85,8 +87,13 @@ function Tarjeta({ url }: { url: string }) {
   );
 }
 
-export default function LinkPreviews({ texto, max = 3 }: { texto?: string | null; max?: number }) {
-  const urls = [...new Set((texto || "").match(URL_RE)?.map(sinCola) || [])].slice(0, max);
+export default function LinkPreviews({ texto, max = 3, sinRed }: {
+  texto?: string | null; max?: number;
+  /** Sin ir a buscar las etiquetas Open Graph: solo lo que se deduce de la
+   *  url. Para listas largas — ver el comentario de `Tarjeta`. */
+  sinRed?: boolean;
+}) {
+  const urls = urlsDe(texto).slice(0, max);
   if (!urls.length) return null;
-  return <div className="lp-wrap">{urls.map((u, i) => <Tarjeta key={i} url={u} />)}</div>;
+  return <div className="lp-wrap">{urls.map((u, i) => <Tarjeta key={i} url={u} sinRed={sinRed} />)}</div>;
 }

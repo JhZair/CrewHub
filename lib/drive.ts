@@ -20,6 +20,24 @@ export function driveFileId(url?: string | null): string | null {
    `.../file/d/ID/view` desde el ID — así funciona aunque la URL guardada venga
    recortada (el historial truncaba a 70 chars y rompía el link, pero el ID casi
    siempre queda entero). Si no es de Drive, se devuelve tal cual. */
+/* ── LAS URLS DE UN TEXTO ──
+   Vive aquí y no dentro de LinkPreviews porque ahora la usan los dos lados:
+   el componente (cliente), para pintar una tarjeta por enlace, y la portada
+   (servidor), que recorta el cuerpo de la nota a 240 caracteres y por tanto NO
+   puede buscar las urls en el texto que enseña — cortaría una por la mitad y
+   la tarjeta apuntaría a un sitio que no existe. Un solo patrón para los dos.
+
+   La cola de puntuación se recorta aparte: «(mira https://x.com/a)» acaba en
+   paréntesis, y ese paréntesis no es de la url. */
+const URL_RE = /\bhttps?:\/\/[^\s<>()]+|\bwww\.[^\s<>()]+/gi;
+const sinCola = (u: string) => {
+  const m = u.match(/[)\].,;:!?]+$/);
+  return m ? u.slice(0, -m[0].length) : u;
+};
+export function urlsDe(texto?: string | null): string[] {
+  return [...new Set((texto || "").match(URL_RE)?.map(sinCola) || [])];
+}
+
 export function enlaceLimpio(url?: string | null): string {
   const s = (url || "").trim();
   const id = /drive\.google\.com/.test(s) ? driveFileId(s) : null;
