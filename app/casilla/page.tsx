@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import CasillaDafo from "@/components/CasillaDafo";
+import RegistrarCarta from "@/components/RegistrarCarta";
 import Realtime from "@/components/Realtime";
 import { enJuego, ejecutando } from "@/lib/fondos";
 import { hoyLima } from "@/lib/fechas";
@@ -293,6 +294,13 @@ export default async function CasillaPage() {
         </span>
       </div>
       <h1 className="title-lg">📬 Casilla DAFO{sinLeer ? ` · ${sinLeer} sin leer` : ""}</h1>
+
+      {/* ── LO QUE NO LLEGA POR CORREO ──
+          La Plataforma Virtual del Ministerio notifica en su propia casilla y
+          no avisa a ninguna parte: si nadie entra, no existe. Y ahí llegan los
+          requerimientos del acta, que son los que muerden. Se registran a mano
+          y aterrizan en esta misma bandeja — es la misma pregunta. */}
+      <RegistrarCarta opciones={opciones} hoy={hoyLima()} />
 
       <CasillaDafo items={coms} opciones={opciones} resumen={resumen}
         inventario={inventario} empresas={empresas}

@@ -6150,6 +6150,81 @@ body{padding-top:var(--alto-franja, 0)}
 .rp-etapa-c{color:color-mix(in srgb, var(--rp-et) 72%, var(--text));
   background:color-mix(in srgb, var(--rp-et) 12%, transparent);
   border-color:color-mix(in srgb, var(--rp-et) 26%, transparent)}
+/* ── REGISTRAR UNA CARTA DE LA CASILLA ELECTRÓNICA ──
+   Vive arriba de la bandeja, plegado: se usa una vez por semana y no puede
+   ocupar el sitio de lo que sí se lee todos los días. */
+.rc{margin-bottom:12px}
+.rc-cab{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.rc-btn{font-size:12px;padding:4px 11px}
+.rc-dim{color:var(--dim);font-size:11.5px;line-height:1.5}
+.rc-form{display:flex;flex-direction:column;gap:9px;margin-top:9px;padding:12px 14px;
+  background:var(--card);border:1px solid var(--border);border-radius:12px}
+.rc-fila{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap}
+.rc-lbl{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--dim)}
+.rc-full{width:100%}
+.rc-ancho{width:100%}
+.rc-ayuda{font-size:10.5px;color:var(--dim);line-height:1.45}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   📍 VIDA DEL FONDO — la línea de tiempo de la ejecución
+   Prefijo `vf-` para todo: es la cuarta pantalla que estrena bloque y las tres
+   anteriores costaron una colisión de nombres cada una.
+   ══════════════════════════════════════════════════════════════════════════ */
+.vf{display:flex;flex-direction:column;gap:10px}
+.vf-cab{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px}
+.vf-btn{font-size:12px;padding:4px 11px}
+/* Lo que hay que contestar. Ámbar mientras hay tiempo, rojo cuando el plazo ya
+   pasó: son dos situaciones distintas y el mismo color las igualaría. */
+.vf-deuda{display:flex;flex-direction:column;gap:6px;padding:9px 12px;border-radius:11px;
+  border:1px solid rgba(244,180,0,.35);background:rgba(244,180,0,.06);font-size:12.5px}
+.vf-deuda-mal{border-color:rgba(239,68,68,.4);background:rgba(239,68,68,.07)}
+.vf-deuda-fila{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.vf-deuda-t{color:var(--text);font-weight:600;min-width:0}
+.vf-deuda-v{color:var(--yellow);font-size:11.5px;font-weight:700;white-space:nowrap}
+.vf-deuda-v.mal{color:var(--red)}
+/* El formulario de apuntar. Vertical: el titular y el detalle son largos y en
+   fila quedaban en dos columnas de ocho caracteres. */
+.vf-form{display:flex;flex-direction:column;gap:8px;padding:11px 12px;
+  background:var(--bg);border:1px solid var(--border);border-radius:11px}
+.vf-form-fila{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap}
+.vf-lbl{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--dim)}
+.vf-ancho{width:100%;font-family:inherit}
+textarea.vf-ancho{resize:vertical;line-height:1.5}
+/* Lo que aún no ha llegado, apagado: es un compromiso, no un hecho. */
+.vf-futuro{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border-radius:11px;
+  border:1px dashed var(--border2);background:rgba(255,255,255,.015)}
+.vf-futuro-h{font-size:9.5px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);
+  font-weight:800;margin-bottom:2px}
+.vf-fila-fut{opacity:.85}
+/* La separación por años: dos años de fondo son treinta filas seguidas. */
+.vf-anio{display:flex;flex-direction:column;gap:2px}
+.vf-anio-h{display:flex;align-items:center;gap:10px;margin:6px 0 2px;
+  font-size:11px;font-weight:800;letter-spacing:1px;color:var(--dim)}
+.vf-anio-h i{flex:1;height:1px;background:var(--border)}
+.vf-fila{display:grid;grid-template-columns:22px 92px minmax(0,1fr);gap:8px;
+  align-items:flex-start;padding:7px 4px;border-top:1px solid var(--border)}
+.vf-fila:hover{background:rgba(255,255,255,.022)}
+.vf-ico{font-size:14px;line-height:1.4;text-align:center}
+.vf-fecha{font-size:11px;color:var(--dim);line-height:1.6;white-space:nowrap;
+  font-variant-numeric:tabular-nums}
+.vf-txt{display:flex;flex-direction:column;gap:3px;min-width:0;font-size:13px}
+.vf-txt>b{font-weight:600;line-height:1.4}
+/* El detalle respeta los saltos de línea: se pega tal cual se escribió, que es
+   como se relee para un descargo. */
+.vf-det{color:var(--muted);font-size:12.5px;line-height:1.5;white-space:pre-wrap}
+.vf-pie{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--dim)}
+.vf-dias{font-size:11px;color:var(--dim)}
+.vf-ok{color:var(--green);font-size:11px}
+.vf-link{color:var(--violet);font-size:11px;text-decoration:none}
+.vf-link:hover{text-decoration:underline}
+.vf-mini{background:none;border:none;color:var(--dim);font-size:11px;cursor:pointer;padding:0}
+.vf-mini:hover{color:var(--text)}
+.vf-mini-x:hover{color:var(--red)}
+@media (max-width:640px){
+  .vf-fila{grid-template-columns:22px minmax(0,1fr)}
+  .vf-fecha{grid-column:2;order:-1}
+}
+
 /* ── LA TIRA DE ETAPAS ──
    Filtra qué roles se ven. Cada botón lleva el color de su etapa, apagado
    mientras no esté elegido y encendido cuando sí: con cuatro etapas, saber en

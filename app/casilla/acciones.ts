@@ -141,3 +141,179 @@ export async function casoDeComunicacion(id: string) {
   if (eLink) return { id: pub.id as string, error: "Caso creado, pero no quedó anotado en el correo: " + eLink.message };
   return { id: pub.id as string };
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   REGISTRAR UNA CARTA DE LA CASILLA ELECTRÓNICA
+
+   La Plataforma Virtual del Ministerio no manda correo de todo y no tiene API:
+   si nadie entra a mirar, la carta no existe para nosotros. Y las que llegan
+   ahí son justo las que muerden —«SEGUNDO REQUERIMIENTO DE OBLIGACIONES DEL
+   ACTA»—.
+
+   Así que se registran a mano, en la misma bandeja donde ya aterrizan los
+   correos: es la misma pregunta —«¿qué nos ha dicho DAFO?»— y dos bandejas
+   serían dos respuestas.
+
+   ⚠ EL NÚMERO DE CARTA ES LA LLAVE, NO LA FECHA. En la casilla de PO-005 la
+   carta 000500-2025 aparece CUATRO VECES, notificada el mismo día a la misma
+   hora. Registrando por fecha, la línea de tiempo diría que DAFO requirió
+   cuatro veces; por número, la segunda vez actualiza la primera.
+   ══════════════════════════════════════════════════════════════════════════ */
+export async function registrarCarta(f: {
+  numero: string;
+  asunto: string;
+  fecha: string;                  // YYYY-MM-DD, el día notificado
+  postulacionId?: string | null;
+  docUrl?: string | null;
+  responderHasta?: string | null;
+  sistema?: string | null;        // SGD, Concursos DAFO…
+}) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada. Vuelve a iniciar sesión." };
+
+  /* El número, en una sola forma. «CARTA N°000500…» y «CARTA N° 000500…» son
+     la misma carta escrita por dos personas, y con solo `trim()` la llave
+     anti-duplicado no evitaba nada. Se guarda ya normalizado porque es lo que
+     se enseña: mayúsculas (así viene de la plataforma), un espacio entre
+     palabras y el «N°» siempre despegado de su número. */
+  const numero = (f.numero || "").trim().toUpperCase()
+    .replace(/\s+/g, " ").replace(/N\s*[°º]\s*/g, "N° ").trim();
+  const asunto = (f.asunto || "").trim();
+  if (!numero) return { error: "Falta el número de la carta: es lo que evita registrarla dos veces." };
+  if (!f.fecha) return { error: "Falta la fecha en que se notificó." };
+  /* Un plazo anterior a la notificación es un tecleo, y uno que se guarda deja
+     el requerimiento vencido desde el primer día — con su aviso rojo puesto
+     para siempre. */
+  if (f.responderHasta && f.responderHasta < f.fecha) {
+    return { error: "El plazo para responder es anterior a la fecha de notificación. Revisa las dos fechas." };
+  }
+
+  const docUrl = (f.docUrl || "").trim();
+  if (docUrl && !/^https?:\/\/\S+$/.test(docUrl)) {
+    return { error: "El enlace al documento tiene que ser un link completo (https://…)." };
+  }
+
+  /* La empresa sale de la postulación, no se pide otra vez: en la bandeja las
+     cartas se agrupan por empresa, y una registrada a mano aparecía suelta al
+     final aunque su fondo tuviera empresa de sobra. */
+  let empresaId: string | null = null;
+  if (f.postulacionId) {
+    const { data: post } = await supabase.from("postulaciones")
+      .select("empresa_id").eq("id", f.postulacionId).maybeSingle();
+    empresaId = (post as any)?.empresa_id || null;
+  }
+
+  const fila: Record<string, any> = {
+    origen: "casilla",
+    doc_numero: numero,
+    asunto: asunto || numero,
+    buzon: (f.sistema || "").trim() || "Plataforma Virtual",
+    /* Mediodía de Lima: guardado como medianoche, el día se corre al anterior
+       en cuanto alguien lo lea desde otra zona. */
+    recibido_en: new Date(`${f.fecha}T12:00:00-05:00`).toISOString(),
+    doc_url: docUrl || null,
+    responder_hasta: f.responderHasta || null,
+    /* Una carta que alguien se tomó el trabajo de registrar pide algo por
+       definición: si no pidiera nada, no estaría aquí. Al contestarla,
+       `responderCarta` lo apaga. */
+    pide_accion: true,
+  };
+  /* ⚠ EL VÍNCULO SOLO SE ESCRIBE SI SE DIJO. Yendo siempre en el payload, un
+     `null` viajaba en el `upsert` y volver a registrar la misma carta sin
+     elegir fondo la DESVINCULABA — desaparecía de la vida del fondo sin que
+     nadie tocara nada. Lo que no se dice, no se toca. */
+  if (f.postulacionId) {
+    fila.postulacion_id = f.postulacionId;
+    fila.vinculo_por = "manual";
+    if (empresaId) fila.empresa_id = empresaId;
+  }
+
+  /* `upsert` por el número: registrar la misma carta dos veces corrige la
+     primera en vez de duplicarla. Lo que NO viaja en el payload se conserva
+     —`leido_en`, `caso_id`, `respondido_en`—: si alguien ya la leyó, le abrió
+     un caso o la contestó, volver a registrarla no lo borra. */
+  const { data, error } = await supabase.from("dafo_comunicaciones")
+    .upsert(fila, { onConflict: "doc_numero" }).select("id").maybeSingle();
+  if (error) {
+    return {
+      error: /doc_numero|origen|column/.test(error.message)
+        ? "Falta correr db/vida-fondo.sql en Supabase → SQL Editor."
+        : error.message,
+    };
+  }
+
+  if (f.postulacionId) {
+    await supabase.from("actividad").insert({
+      entidad_tipo: "postulacion", entidad_id: f.postulacionId, actor_id: user.id,
+      tipo: "editado",
+      detalle: { mensaje: `registró la carta «${numero}» de la casilla electrónica` },
+    });
+    revalidatePath(`/fondo/${f.postulacionId}`);
+    revalidatePath(`/entidad/postulacion/${f.postulacionId}`);
+  }
+  revalidatePath("/casilla");
+  return { id: (data as any)?.id as string | undefined };
+}
+
+/** Borrar una carta registrada a mano — un número mal tecleado, una que no era
+ *  de este fondo.
+ *
+ *  ⚠ SOLO LO REGISTRADO A MANO. La política de la base solo deja borrar donde
+ *  `origen <> 'gmail'`: un correo de la ingesta es la prueba de que DAFO
+ *  escribió, y eso no se borra —si molesta, se marca leído—. Aquí se comprueba
+ *  también, para poder decirlo con palabras en vez de devolver «cero filas». */
+export async function borrarCarta(id: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada. Vuelve a iniciar sesión." };
+
+  const { data: prev } = await supabase.from("dafo_comunicaciones")
+    .select("origen,doc_numero,postulacion_id").eq("id", id).maybeSingle();
+  if (!prev) return { error: "Esa carta ya no está." };
+  if (((prev as any).origen || "gmail") === "gmail") {
+    return { error: "Esto llegó por correo desde DAFO: no se borra. Si ya no hace falta, márcalo como leído." };
+  }
+
+  const { data, error } = await supabase.from("dafo_comunicaciones")
+    .delete().eq("id", id).select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "No se borró: no tienes permiso." };
+
+  const pid = (prev as any).postulacion_id;
+  if (pid) {
+    await supabase.from("actividad").insert({
+      entidad_tipo: "postulacion", entidad_id: pid, actor_id: user.id, tipo: "editado",
+      detalle: { mensaje: `borró la carta «${(prev as any).doc_numero || "sin número"}» de la casilla` },
+    });
+    revalidatePath(`/fondo/${pid}`);
+  }
+  revalidatePath("/casilla");
+  return {};
+}
+
+/** Contestada, o ya no. `null` la vuelve a poner en el reloj: una carta que se
+ *  marcó respondida por error tiene que poder volver, o el aviso se apaga para
+ *  siempre con un clic. */
+export async function responderCarta(id: string, fecha: string | null, url?: string | null) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada. Vuelve a iniciar sesión." };
+
+  const { data, error } = await supabase.from("dafo_comunicaciones")
+    .update({
+      respondido_en: fecha, respuesta_url: (url || "").trim() || null,
+      /* Contestada deja de pedir algo. Sin esto seguía subiendo al tope de la
+         bandeja para siempre, y una lista de urgencias que nunca se vacía es
+         una lista que se deja de mirar. */
+      pide_accion: !fecha,
+    })
+    .eq("id", id).select("postulacion_id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "No se guardó: no tienes permiso o la carta ya no está." };
+
+  revalidatePath("/casilla");
+  const pid = (data[0] as any)?.postulacion_id;
+  if (pid) revalidatePath(`/fondo/${pid}`);
+  return {};
+}

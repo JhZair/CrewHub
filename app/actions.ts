@@ -7351,6 +7351,109 @@ export async function quitarPersonalFondo(id: string, postulacionId: string) {
   return {};
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   APUNTAR UN HITO EN LA VIDA DEL FONDO
+
+   «Llamamos a DAFO y nos dijeron que recién están revisando nuestro informe»:
+   eso no es una cifra ni un documento, y hoy vive en la memoria de quien hizo
+   la llamada. Dentro de un año, cuando haya que explicar por qué la rendición
+   fue tarde, esa frase vale más que media contabilidad — si está escrita y
+   fechada.
+
+   ── LO QUE NO SE ESCRIBE AQUÍ ──
+   Las cuatro fechas del acta no: son columnas de `postulaciones` y la línea de
+   tiempo las lee. Escribirlas también aquí daría dos respuestas a «¿cuándo
+   vence?». Ver lib/vidaFondo.ts.
+   ══════════════════════════════════════════════════════════════════════════ */
+export async function guardarHitoFondo(f: {
+  id?: string | null;
+  postulacionId: string;
+  fecha: string;
+  tipo: string;
+  titulo: string;
+  detalle?: string | null;
+  url?: string | null;
+  publicacionId?: string | null;
+}) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  const titulo = (f.titulo || "").trim();
+  if (!titulo) return { error: "Escribe qué pasó: sin titular, dentro de un año la fila no dice nada." };
+  if (!f.fecha) return { error: "Falta el día en que pasó." };
+  /* Un hito con fecha futura no es un hito, es un plan — y los planes tienen
+     su sitio (el cronograma, la agenda). Dejarlo entrar llenaría la línea de
+     cosas que quizá no pasen, y una línea de tiempo con futuros inventados
+     deja de servir para un descargo. */
+  if (f.fecha > hoyLima()) {
+    return { error: "Esa fecha todavía no ha llegado. La línea de tiempo guarda lo que pasó; lo que va a pasar va en la agenda." };
+  }
+
+  const url = (f.url || "").trim();
+  if (url && !/^https?:\/\/\S+$/.test(url)) {
+    return { error: "El enlace a la prueba tiene que ser un link completo (https://…)." };
+  }
+
+  const fila = {
+    postulacion_id: f.postulacionId,
+    fecha: f.fecha,
+    tipo: (f.tipo || "otro").trim() || "otro",
+    titulo,
+    detalle: (f.detalle || "").trim() || null,
+    url: url || null,
+    publicacion_id: f.publicacionId || null,
+  };
+
+  const q = f.id
+    /* El `eq(postulacion_id)` no sobra: sin él, un id de otro fondo se
+       actualizaría igual —RLS deja escribir a cualquiera— y la bitácora
+       quedaría escrita en el fondo equivocado. La fila manda a dónde
+       pertenece; el formulario, no. */
+    ? supabase.from("hito_fondo").update(fila)
+      .eq("id", f.id).eq("postulacion_id", f.postulacionId).select("id")
+    : supabase.from("hito_fondo").insert({ ...fila, creado_por: user.id }).select("id");
+  const { data, error } = await q;
+  if (error) {
+    return {
+      error: /hito_fondo/.test(error.message)
+        ? "Falta correr db/vida-fondo.sql en Supabase → SQL Editor."
+        : error.message,
+    };
+  }
+  if (!data?.length) return { error: "No se guardó: no tienes permiso, o el hito ya no está." };
+
+  await supabase.from("actividad").insert({
+    entidad_tipo: "postulacion", entidad_id: f.postulacionId, actor_id: user.id, tipo: "editado",
+    detalle: { mensaje: `${f.id ? "corrigió" : "apuntó"} un hito del fondo: «${titulo}»` },
+  });
+  revalidatePath(`/fondo/${f.postulacionId}`);
+  revalidatePath(`/entidad/postulacion/${f.postulacionId}`);
+  return { id: (data[0] as any).id as string };
+}
+
+export async function borrarHitoFondo(id: string, postulacionId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  /* Se lee ANTES de borrar: después no hay qué nombrar en la bitácora, y
+     «borró un hito» no sirve de nada dentro de un año. */
+  const { data: prev } = await supabase.from("hito_fondo")
+    .select("titulo").eq("id", id).maybeSingle();
+
+  const { data, error } = await supabase.from("hito_fondo").delete().eq("id", id).select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "No se borró: no tienes permiso, o ya no estaba." };
+
+  await supabase.from("actividad").insert({
+    entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "editado",
+    detalle: { mensaje: `borró el hito «${(prev as any)?.titulo || "sin título"}» de la vida del fondo` },
+  });
+  revalidatePath(`/fondo/${postulacionId}`);
+  return {};
+}
+
 /* ── PONER LA SUBCATEGORÍA SIN ABRIR LA FICHA ──
  *
  * Hay cincuenta y ocho equipos sin subcategoría. Arreglarlos uno a uno es

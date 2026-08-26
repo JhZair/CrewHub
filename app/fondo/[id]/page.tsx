@@ -29,6 +29,8 @@ import Comprobantes from "@/components/Comprobantes";
 import EquipoFondo from "@/components/EquipoFondo";
 import CompromisosActa from "@/components/CompromisosActa";
 import { integrantesDeFondo, resumenEquipo } from "@/lib/equipoFondo";
+import VidaFondo from "@/components/VidaFondo";
+import { vidaDelFondo, porResponder } from "@/lib/vidaFondo";
 import { urlPlataforma, PLAT } from "@/lib/plataformas";
 import { hilosDeFilas } from "@/lib/rendicionHilo";
 import { gastosDelFondo, ayudaRubro } from "@/lib/ejecutado";
@@ -116,7 +118,8 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
 
   const categoria = ent.conv?.categoria || null;
 
-  const [cp, pl, pf, plPre, pc, vtp, ec, rf, mb, gdj, cmp, au, vf, eqp, eqf, cac, urlSunat, s4, apo] = await Promise.all([
+  const [cp, pl, pf, plPre, pc, vtp, ec, rf, mb, gdj, cmp, au, vf, eqp, eqf, cac, urlSunat, s4, apo,
+    hitosQ, cartasQ] = await Promise.all([
     supabase.from("cronograma_actividades").select("*, resp:perfiles!responsable(nombre)")
       .eq("postulacion_id", params.id)
       .order("etapa").order("orden").order("fecha_inicio").order("creado_en"),
@@ -247,6 +250,19 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
        ficha funciona igual que ayer, en vez de caerse entera por una tabla que
        solo gobierna un botón. */
     supabase.from("fondo_apoyo").select("usuario_id").eq("postulacion_id", params.id),
+    /* ── LA VIDA DEL FONDO ──
+       Los hitos que alguien apuntó y lo que DAFO nos ha dicho. Las dos van
+       tolerantes: sin db/vida-fondo.sql corrido, `error` trae la queja, la
+       pestaña lo dice y el resto de la ficha funciona igual que ayer.
+       De las comunicaciones se piden SOLO las de este fondo: la casilla entera
+       son cientos de correos y aquí no pinta ninguno que no sea suyo. */
+    supabase.from("hito_fondo")
+      .select("id,fecha,tipo,titulo,detalle,url,publicacion_id,creado:perfiles!creado_por(nombre)")
+      .eq("postulacion_id", params.id).order("fecha", { ascending: false }).limit(300),
+    supabase.from("dafo_comunicaciones")
+      .select("id,asunto,extracto,recibido_en,origen,doc_numero,doc_url," +
+              "responder_hasta,respondido_en,pide_accion,caso_id")
+      .eq("postulacion_id", params.id).order("recibido_en", { ascending: false }).limit(200),
   ]);
   /* Los nombres salen del catálogo de perfiles que ya viajó (`pf`): la tabla
      de apoyos cuelga de auth.users y no de perfiles, así que PostgREST no
@@ -673,6 +689,27 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
       : null;
   })();
 
+  /* ── LA VIDA DEL FONDO, CONTADA UNA VEZ ──
+     La pestaña necesita el contador y el aviso; el panel, la línea entera. Se
+     arma aquí con la MISMA función que pinta dentro (`vidaDelFondo`), y no con
+     un `length` de las dos consultas: los correos que no piden nada no entran
+     en la línea, así que sumarlos daría un contador que no cuadra con lo que
+     se ve al abrir. */
+  const hoyDia = hoyLima();
+  /* Sin la migración corrida, las dos consultas fallan y la pestaña lo dice en
+     vez de aparecer vacía —que se leería como «no ha pasado nada»—. */
+  const faltaVida = !!(hitosQ.error || cartasQ.error);
+  const lineaVida = faltaVida ? [] : vidaDelFondo(
+    ent as any, (hitosQ.data || []) as any, (cartasQ.data || []) as any, hoyDia);
+  const porContestar = porResponder(lineaVida, hoyDia);
+  const avisoVida = faltaVida
+    ? [{ n: 1, txt: "Falta correr db/vida-fondo.sql", tono: "ambar" as const }]
+    : porContestar.vencidas.length
+      ? [{ n: porContestar.vencidas.length, txt: `${porContestar.vencidas.length} carta(s) de DAFO con el plazo de respuesta vencido`, tono: "rojo" as const }]
+      : porContestar.todas.length
+        ? [{ n: porContestar.todas.length, txt: `${porContestar.todas.length} carta(s) de DAFO por contestar`, tono: "ambar" as const }]
+        : null;
+
   const preCosto = preItems.reduce((s, i) => s + (i.cantidad || 0) * (i.costo_unit || 0), 0);
   // Conciliación: el presupuesto VIGENTE es la referencia (si no hay versión
   // vigente aún, se cae al presupuesto vivo). Costo vigente y % ejecutado (RHE).
@@ -765,7 +802,7 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
           su propia información, y apiladas se volverían un scroll interminable.
           Arranca en Financiera —el dinero es lo que tiene reloj—. */}
       <TabsPanel
-        labels={["💰 Financiera", "🎥 Audiovisual", `📦 Entregables${compromisos.length ? ` · ${compromisos.length}` : ""}`, `👥 Equipo · ${equipoDelFondo}`, `💼 Por rol${rolesPre.length ? ` · ${rolesPre.length}` : ""}`]}
+        labels={["💰 Financiera", "🎥 Audiovisual", `📦 Entregables${compromisos.length ? ` · ${compromisos.length}` : ""}`, `👥 Equipo · ${equipoDelFondo}`, `💼 Por rol${rolesPre.length ? ` · ${rolesPre.length}` : ""}`, `📍 Vida del fondo${lineaVida.length ? ` · ${lineaVida.length}` : ""}`]}
         /* El rastro rojo: el mismo número en la pestaña, en la cabecera de
            Rendición y en la sub-sección de estados de cuenta. Sin él, lo que
            falta vive a tres clics de distancia dentro de una sección plegada,
@@ -775,12 +812,16 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
            la pestaña se abre y las columnas dicen «—». El número dice cuánto
            trabajo falta para que la pestaña sirva, que es la pregunta con la
            que se entra. */
-        avisos={[avisosFin, null, null, null, rolesSinDueno || null]}
+        /* ── Y EL DE «VIDA DEL FONDO» ES LO QUE HAY QUE CONTESTAR ──
+           Un requerimiento con plazo vencido no puede estar escondido dentro
+           de una pestaña: es lo único de esta ficha que se convierte en una
+           sanción por no mirarlo. */
+        avisos={[avisosFin, null, null, null, rolesSinDueno || null, avisoVida]}
         /* Nombres de pestaña para poder enlazarlas: `…/fondo/<id>#equipo`.
            Sin esto, un enlace a la pestaña de equipo apunta a un panel que
            está montado pero oculto, y el clic no hace nada — el mismo fallo
            que costó dos rondas en la ficha de postulación. */
-        claves={["financiera", "audiovisual", "entregables", "equipo", "porrol"]}
+        claves={["financiera", "audiovisual", "entregables", "equipo", "porrol", "vida"]}
         paneles={[
           <div key="fin">
             <p className="fondo-nat-sub">La plata que hay que rendir a DAFO: presupuesto real, banco, pagos y rendiciones.</p>
@@ -1070,6 +1111,28 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
                   fecha: vigPresu?.creado_en || null,
                   cambios: cambiosPre,
                 }} />
+            </div>
+          </div>,
+          /* ── 📍 LA VIDA DEL FONDO ──
+             Dos años de ejecución en una pantalla. No es un adorno: es el
+             expediente con el que se contesta «¿y ustedes qué hicieron?» — y
+             hoy esa respuesta vive en la memoria de quien hizo la llamada. */
+          <div key="vida">
+            <p className="fondo-nat-sub">
+              Lo que ha pasado en este fondo, de la firma del acta al cierre: fechas del acta, cartas
+              de DAFO y lo que hicimos nosotros. Lo que no se apunta, en un año no existió.
+            </p>
+            <div className="card">
+              {faltaVida ? (
+                <p className="rp-vacio" style={{ color: "var(--yellow)" }}>
+                  ⚠ Falta correr <b>db/vida-fondo.sql</b> en Supabase → SQL Editor.
+                  Hasta entonces esta pestaña no puede guardar nada.
+                </p>
+              ) : (
+                <VidaFondo postulacionId={params.id} postulacion={ent as any}
+                  hitos={(hitosQ.data || []) as any} cartas={(cartasQ.data || []) as any}
+                  hoy={hoyDia} />
+              )}
             </div>
           </div>,
         ]}
