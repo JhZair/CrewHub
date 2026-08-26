@@ -267,7 +267,7 @@ export default async function FondosPage() {
                   {a.listos}/{a.cuentan}
                 </b>
                 <span>entregables</span>
-                <span className="cmp-barra"><i style={{ width: `${a.pct}%` }} /></span>
+                <span className="acta-barra"><i style={{ width: `${a.pct}%` }} /></span>
               </div>
             );
           })()}

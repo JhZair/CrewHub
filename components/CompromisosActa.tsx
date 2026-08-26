@@ -95,13 +95,19 @@ export default function CompromisosActa({
     const hecho = x.estado === "entregado" || x.estado === "no_aplica";
     const casos = casosDe(x);
     return (
-      <div key={x.id} className={`cmp-fila${hecho && seTacha ? " hecho" : ""}`}>
-        <div className="cmp-l1">
-          {/* La cláusula, monoespaciada y primero: es la llave para volver al
-              PDF, y en columna se recorre con el dedo. */}
-          <span className="cmp-cl">{x.clausula || "—"}</span>
-          <span className="cmp-tit">{x.titulo}</span>
-          {x.fecha_limite && <span className="cmp-fecha">📅 {dmy(x.fecha_limite)}</span>}
+      /* ── UNA REJILLA DE DOS COLUMNAS, NO UNA FILA QUE ENVUELVE ──
+         La cláusula tiene columna propia y todo lo demás cuelga de la segunda.
+         Antes se sostenía con un margen de 61px repetido en cuatro reglas: si
+         la cláusula crecía un dígito, el extracto y la fecha se quedaban
+         desalineados sin que nada fallara. Ahora la rejilla los alinea sola. */
+      <div key={x.id} className={`acta-fila${hecho && seTacha ? " hecho" : ""}`}>
+        {/* La cláusula, monoespaciada y primero: es la llave para volver al
+            PDF, y en columna se recorre con el dedo. */}
+        <span className="acta-cl">{x.clausula || "—"}</span>
+        <div className="acta-cuerpo">
+        <div className="acta-l1">
+          <span className="acta-tit">{x.titulo}</span>
+          {x.fecha_limite && <span className="acta-fecha">📅 {dmy(x.fecha_limite)}</span>}
           <span style={{ flex: 1 }} />
           {/* ── LOS DOS ESTADOS, DICIENDO A QUÉ CONTESTA CADA UNO ──
               Antes los dos ponían «en proceso» uno al lado del otro y no había
@@ -111,12 +117,12 @@ export default function CompromisosActa({
               Ministerio la apruebe. Lo que faltaba era que las palabras
               distinguieran la pregunta. */}
           {seTacha && (
-            <span className="cmp-est" style={{ color: e.col }} title={e.ayuda}>
+            <span className="acta-est" style={{ color: e.col }} title={e.ayuda}>
               {e.ico} {e.txt}
             </span>
           )}
           {x.url && (
-            <a href={x.url} target="_blank" rel="noopener noreferrer" className="cmp-prueba"
+            <a href={x.url} target="_blank" rel="noopener noreferrer" className="acta-prueba"
               title="Lo entregado">📎 ver</a>
           )}
           {/* ── DE LA CLÁUSULA AL TRABAJO: TODOS LOS CASOS ──
@@ -127,7 +133,7 @@ export default function CompromisosActa({
               cláusula. En una rendición, lo hecho es justo lo que hay que poder
               enseñar. Ahora cuelgan todos y el ＋ está siempre. */}
           {casos.map(c => (
-            <Link key={c.id} href={`/caso/${c.id}`} className="cmp-caso"
+            <Link key={c.id} href={`/caso/${c.id}`} className="acta-caso"
               title={`${c.resp?.nombre ? `${c.resp.nombre} — ` : "Sin responsable — "}el caso dice si alguien está trabajando en esto. El estado de la izquierda dice si ya se entregó al Ministerio: son dos cosas distintas.`}>
               {/* La cara de quien lo lleva. «¿Quién lo está haciendo?» es la
                   primera pregunta al mirar esta lista, y hasta hoy había que
@@ -135,7 +141,7 @@ export default function CompromisosActa({
                   hueco marcado, no con un vacío que parece un fallo de carga. */}
               {c.resp?.nombre
                 ? <Avatar size={16} nombre={c.resp.nombre} src={c.resp.avatar_url} color={c.resp.color} />
-                : <span className="cmp-nadie" title="Sin responsable">·</span>}
+                : <span className="acta-nadie" title="Sin responsable">·</span>}
               {/* El estado, con el mismo rótulo y color que en el tablero: si
                   aquí se llamara de otra forma habría dos nombres para el mismo
                   estado, que es peor que no enseñarlo. */}
@@ -148,7 +154,7 @@ export default function CompromisosActa({
             </Link>
           ))}
           {puedeEditar && (
-            <button className="dato-btn cmp-caso-btn" disabled={ocupado}
+            <button className="dato-btn acta-caso-btn" disabled={ocupado}
               title={casos.length
                 ? "Abrir OTRO caso para esta cláusula — el trabajo de una cláusula puede repartirse"
                 : "Abrir un caso para atender esta cláusula, con responsable y plazo"}
@@ -163,18 +169,27 @@ export default function CompromisosActa({
           )}
         </div>
 
-        {x.detalle && <div className="cmp-det">{x.detalle}</div>}
-        {x.entregado_en && <div className="cmp-ent">entregado el {dmy(x.entregado_en)}</div>}
-        {x.nota && <div className="cmp-nota">📝 {x.nota}</div>}
+        {x.detalle && <div className="acta-det">{x.detalle}</div>}
+        {/* ── LOS DATOS DE LA ENTREGA, EN UN SOLO RENGLÓN ──
+            Iban en dos bloques sueltos y, con la fila puesta en flex por una
+            colisión de nombres, acababan flotando cada uno donde cabía: la
+            fecha a la derecha en una fila y debajo en la siguiente. Juntos y en
+            su propia línea se leen como lo que son: el pie de la cláusula. */}
+        {(x.entregado_en || x.nota) && (
+          <div className="acta-pie">
+            {x.entregado_en && <span className="acta-ent">✅ entregado el {dmy(x.entregado_en)}</span>}
+            {x.nota && <span className="acta-nota">📝 {x.nota}</span>}
+          </div>
+        )}
 
         {abierto === x.id && (
-          <div className="cmp-ed">
+          <div className="acta-ed">
             {seTacha && (
-              <span className="cmp-estados">
+              <span className="acta-estados">
                 {ESTADOS_COMP.map(s => {
                   const m = META_ESTADO_COMP[s];
                   return (
-                    <button key={s} className={`cmp-est-btn${x.estado === s ? " on" : ""}`}
+                    <button key={s} className={`acta-est-btn${x.estado === s ? " on" : ""}`}
                       style={{ color: x.estado === s ? m.col : undefined }}
                       disabled={ocupado} onClick={() => guardar(x, s)}>
                       {m.ico} {m.txt}
@@ -210,7 +225,7 @@ export default function CompromisosActa({
         )}
 
         {edTexto === x.id && (
-          <div className="cmp-ed">
+          <div className="acta-ed">
             <input value={txt.titulo} onChange={ev => setTxt({ ...txt, titulo: ev.target.value })}
               placeholder="Título" style={{ minWidth: 240 }} />
             <textarea value={txt.detalle} onChange={ev => setTxt({ ...txt, detalle: ev.target.value })}
@@ -224,6 +239,7 @@ export default function CompromisosActa({
             <button className="btn btn-ghost" onClick={() => setEdTexto(null)}>Cancelar</button>
           </div>
         )}
+        </div>
       </div>
     );
   };
@@ -252,7 +268,7 @@ export default function CompromisosActa({
     <div>
       {/* El acta, a un clic. El extracto la indexa; no la reemplaza — y por eso
           la fuente tiene que estar siempre a la vista. */}
-      <div className="cmp-cab">
+      <div className="acta-cab">
         <span>
           <b>{av.listos}/{av.cuentan}</b> entregables
           {av.enProceso > 0 && <span style={{ color: "var(--yellow)" }}> · {av.enProceso} en proceso</span>}
@@ -262,9 +278,9 @@ export default function CompromisosActa({
             </span>
           )}
         </span>
-        <span className="cmp-barra"><i style={{ width: `${av.pct}%` }} /></span>
+        <span className="acta-barra"><i style={{ width: `${av.pct}%` }} /></span>
         {actaUrl ? (
-          <a href={actaUrl} target="_blank" rel="noopener noreferrer" className="cmp-acta">
+          <a href={actaUrl} target="_blank" rel="noopener noreferrer" className="acta-acta">
             📄 Acta {codigoActa || ""} ↗
           </a>
         ) : (
