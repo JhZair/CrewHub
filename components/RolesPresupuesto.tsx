@@ -54,6 +54,18 @@ export default function RolesPresupuesto({
     () => new Map(personas.map(p => [p.id, p.alias || p.nombre])),
     [personas]);
 
+  /* ── ORDENADAS POR LO QUE SE VE ──
+     La lista llega ordenada por el NOMBRE COMPLETO («MARÍA ÁGUEDA VARGAS…»)
+     pero en el desplegable se lee el ALIAS («AguedaVargas»), así que Águeda
+     aparecía entre María y Marina: un desplegable de cien personas ordenado por
+     un texto que no está en pantalla es un desplegable en el que se busca a
+     ojo. Y con `localeCompare` en español, para que las tildes y la Ñ caigan
+     donde uno las busca. */
+  const personasOrd = useMemo(
+    () => [...personas].sort((a, b) =>
+      (a.alias || a.nombre).localeCompare(b.alias || b.nombre, "es", { sensitivity: "base" })),
+    [personas]);
+
   /* Lo girado por persona. Se suma UNA vez, aquí, y de ahí sale tanto la
      columna «girado» como el «falta»: dos recorridos distintos del mismo dato
      acaban dando dos cifras. */
@@ -231,7 +243,7 @@ export default function RolesPresupuesto({
                       aria-label={`¿Quién cobra «${f.titulo}»?`}
                       onChange={e => etiquetar(f.grupos, undefined, e.target.value || null)}>
                       <option value="">— ¿quién lo cobra? —</option>
-                      {personas.map(p => (
+                      {personasOrd.map(p => (
                         <option key={p.id} value={p.id}>{p.alias || p.nombre}</option>
                       ))}
                     </select>
@@ -322,7 +334,7 @@ export default function RolesPresupuesto({
                         value={g.personas.length === 1 ? g.personas[0] : ""}
                         onChange={e => etiquetar([g], undefined, e.target.value || null)}>
                         <option value="">— nadie por ahora —</option>
-                        {personas.map(p => (
+                        {personasOrd.map(p => (
                           <option key={p.id} value={p.id}>{p.alias || p.nombre}</option>
                         ))}
                       </select>
