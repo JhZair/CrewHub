@@ -1,5 +1,6 @@
 "use client";
 import { misEnProgreso, comentar, cambiarEstado, muroMensajes } from "@/app/actions";
+import { destinoPanel } from "@/lib/panel";
 import { pedirZocalo } from "@/lib/zocalo";
 import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
 import { celebrarResuelto } from "@/lib/celebra";
@@ -62,6 +63,14 @@ export default function BancoTrabajo() {
      Regla: lo que se duplica, lo pone el panel; lo que ocupa toda la pantalla,
      el marco. */
   useEffect(() => { setEsTop(window.self === window.top); }, []);
+  /* ── DESDE EL MONITOR, AL PANEL DE AL LADO ──
+     Pinchar un caso aquí navegaba la ventana de arriba, o sea tiraba abajo la
+     pantalla partida y dejaba el caso ocupándolo todo. El `target` manda el
+     enlace al panel izquierdo —el que está pegado al banco— y los dos lados
+     siguen en pie. Fuera del Monitor vale `undefined` y el enlace navega como
+     siempre. Ver lib/panel.ts. */
+  const [aPanel, setAPanel] = useState<string | undefined>(undefined);
+  useEffect(() => { setAPanel(destinoPanel()); }, []);
 
   // Recuerda si lo dejaste abierto
   useEffect(() => {
@@ -298,7 +307,7 @@ export default function BancoTrabajo() {
                 <div style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
                   <span style={{ fontSize: 11 }}>{icoTipo(c.tipo)}</span>
                   <span style={{ flex: 1 }}>
-                    <Link href={`/caso/${c.id}`} style={{ fontSize: 11.5, lineHeight: 1.3, color: "var(--muted)" }}>
+                    <Link target={aPanel} href={`/caso/${c.id}`} style={{ fontSize: 11.5, lineHeight: 1.3, color: "var(--muted)" }}>
                       {c.titulo}
                     </Link>
                     {/* Contexto en una línea: sin esto la bandeja son títulos
@@ -366,6 +375,7 @@ export default function BancoTrabajo() {
                          NUNCA leyó —ni antes ni ahora—: el chip parecía un
                          enlace y dejaba en la pantalla de inicio sin filtrar
                          nada. El eje real de etiquetas es el tablero. */
+                      target={aPanel}
                       href={v.tipo === "etiqueta" ? `/tablero?p=todos&etq=${v.id}` : (rutaEntidad(v.tipo, v.id) || `/entidad/${v.tipo}/${v.id}`)}
                       style={{
                         fontSize: 10, borderRadius: 5, padding: "1px 6px", whiteSpace: "nowrap",
@@ -411,7 +421,7 @@ export default function BancoTrabajo() {
                       style={{ padding: "3px 8px", fontSize: 10.5, color: "var(--green)" }}
                       disabled={ocupado} onClick={() => resolver(c.id)}>✓ resolver</button>
                   </div>
-                  <Link href={`/caso/${c.id}`}
+                  <Link target={aPanel} href={`/caso/${c.id}`}
                     style={{ display: "block", marginTop: 6, color: "var(--dim)", fontSize: 10.5, textDecoration: "underline dotted", textUnderlineOffset: 3 }}>
                     abrir el caso →
                   </Link>
@@ -438,7 +448,7 @@ export default function BancoTrabajo() {
                   <div style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
                     <span style={{ fontSize: 11 }}>{icoTipo(c.tipo)}</span>
                     <span style={{ flex: 1 }}>
-                      <Link href={`/caso/${c.id}`} style={{ fontSize: 12, lineHeight: 1.35, color: "var(--muted)" }}>
+                      <Link target={aPanel} href={`/caso/${c.id}`} style={{ fontSize: 12, lineHeight: 1.35, color: "var(--muted)" }}>
                         {c.titulo}
                       </Link>
                       {c.ctx.length > 0 && (

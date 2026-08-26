@@ -56,3 +56,25 @@ export function esVentanaDeTrabajo(): boolean {
   if (window.location.pathname.startsWith("/monitor")) return false;
   return window.self === window.top || window.name.startsWith(NOMBRE_PANEL);
 }
+
+/**
+ * A qué ventana mandar un enlace desde el MARCO del Monitor.
+ *
+ * El banco de trabajo vive en el marco —es una franja de pantalla completa y
+ * duplicarla en los dos paneles sería absurdo—, pero sus enlaces navegaban el
+ * marco: pinchar un caso desde el banco tiraba abajo la pantalla partida y
+ * dejaba el caso ocupándolo todo. Justo lo contrario de para lo que existe el
+ * Monitor.
+ *
+ * Un `target` con el NOMBRE de un iframe existente carga ahí dentro. Así que
+ * desde el marco se apunta al panel de la izquierda —el que está al lado del
+ * banco, que es de donde vino el clic— y la pantalla partida sigue en pie.
+ *
+ * Fuera del Monitor devuelve `undefined`: el enlace navega como siempre.
+ * ⚠ Como mira `window`, se resuelve en un `useEffect`, no al renderizar.
+ */
+export function destinoPanel(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  if (!window.location.pathname.startsWith("/monitor")) return undefined;
+  return `${NOMBRE_PANEL}-0`;
+}
