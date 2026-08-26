@@ -106,9 +106,31 @@ export default function NavIconos() {
   });
   useEffect(() => {
     let vivo = true;
-    pedirZocalo(pathname).then(z => { if (vivo) setNav(z.nav); }).catch(() => {});
+    /* Las alarmas viajan en el mismo zócalo. Se cuelgan del estado del menú en
+       vez de en un `useState` aparte para que lleguen en el mismo render: dos
+       estados que se llenan por separado hacen que el menú parpadee con la
+       marca puesta a medias. */
+    pedirZocalo(pathname).then(z => {
+      if (vivo) setNav({ ...z.nav, __alarmas: (z as any).alarmas || [] } as any);
+    }).catch(() => {});
     return () => { vivo = false; };
   }, [pathname]);
+  /* ── LAS ALARMAS, EN LA ENTRADA QUE LES TOCA ──
+     Una alarma es de una entidad, así que su marca va en la sección donde vive
+     esa entidad: un fondo la pone en «fondos en ejecución», una empresa en
+     «empresas». La franja de arriba dice CUÁL es el problema; esto dice DÓNDE
+     está, que es lo que se necesita cuando uno navega y ya leyó la franja.
+     ⚠ `postulacion` apunta a /fondos y no a /postulaciones: la alarma se
+     enciende sobre un fondo en ejecución, que es donde está el dinero. */
+  const alarmas = ((nav as any).__alarmas || []) as { entidad_tipo: string }[];
+  const RUTA_ALARMA: Record<string, string> = { postulacion: "/fondos" };
+  const alarmasPor = new Map<string, number>();
+  for (const a of alarmas) {
+    const ruta = RUTA_ALARMA[a.entidad_tipo]
+      || SECCIONES.find(x => x.tipo === a.entidad_tipo)?.ruta;
+    if (ruta) alarmasPor.set(ruta, (alarmasPor.get(ruta) || 0) + 1);
+  }
+
   const casilla = nav.casilla;
   const conCaja = nav.caja;
 
@@ -265,6 +287,9 @@ export default function NavIconos() {
                 onClick={() => setAbierto(false)}>
                 <span className="nav-item-ico">{s.ico}</span>
                 <span>{s.plural}</span>
+                {!!alarmasPor.get(s.ruta) && (
+                  <span className="nav-alarma" title="Hay una alarma encendida aquí">🚨</span>
+                )}
               </Link>
             ))}
             {/* ── LOS OTROS SITIOS, EN DOS GRUPOS CON NOMBRE ──
@@ -283,6 +308,12 @@ export default function NavIconos() {
                     onClick={() => setAbierto(false)}>
                     <span className="nav-item-ico">{d.ico}</span>
                     <span>{d.txt}</span>
+                    {/* La alarma va PRIMERO, antes que cualquier burbuja de
+                        conteo: las burbujas dicen cuánto falta, la alarma dice
+                        que algo está mal. No es lo mismo y no se ordena igual. */}
+                    {!!alarmasPor.get(d.ruta) && (
+                      <span className="nav-alarma" title="Hay una alarma encendida aquí">🚨</span>
+                    )}
                     {/* Cada pendiente, en la entrada donde se va a atender. */}
                     {d.ruta === "/casilla" && casilla > 0 && (
                       <Burbuja n={casilla} tono="rojo"

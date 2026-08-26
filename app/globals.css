@@ -5877,3 +5877,13 @@ body{padding-top:var(--alto-franja, 0)}
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .alarma-franja-quien{display:inline-flex;align-items:center;gap:5px;
   color:#ffd9dc;opacity:.85;font-size:11.5px;white-space:nowrap;flex:none}
+
+/* La marca de alarma en el menú. No es una burbuja: las burbujas cuentan
+   —«faltan 5»— y una alarma no se cuenta, está o no está. Por eso el mismo
+   icono de la franja y no un número, con un latido lento que la separa del
+   resto de indicadores sin gritar. */
+.nav-alarma{font-size:12px;line-height:1;animation:alarma-late 2.4s ease-in-out infinite}
+@keyframes alarma-late{0%,100%{opacity:1}50%{opacity:.45}}
+/* Quien prefiera la pantalla quieta —o lo necesite— no ve el latido: la marca
+   sigue estando, que es lo que importa. */
+@media (prefers-reduced-motion:reduce){.nav-alarma{animation:none}}

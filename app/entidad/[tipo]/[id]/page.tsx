@@ -1,4 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
+import BotonAlarma from "@/components/BotonAlarma";
+import { alarmasVivas } from "@/app/actions";
 import Volver from "@/components/Volver";
 import { Mantenimiento } from "@/components/EntidadForm";
 import { SUNAT_EMPRESA, DOCS_EMPRESA, DNI_PERSONA, DOCS_PERSONA, SUNAT_PERSONA, GRUPO_TONO, completitud, REGIONES, COLOR_ENTIDAD, TIPO_COLOR } from "@/lib/entidades";
@@ -302,6 +304,9 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     { data: ent },
     [{ data: vincs }, { data: eventos, count: nEventos }, urlSunat],
     { data: aliasPers },
+    alarmasEnt,
+    { data: perfilAl },
+    { data: equipoAl },
   ] = await Promise.all([
     supabase.auth.getUser(),
     supabase.from(conf.tabla).select("*").eq("id", params.id).single(),
@@ -329,6 +334,19 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     // nombre completo. Es la tabla de personas sin filtro: no depende de nada.
     supabase.from("personas").select("usuario_id,alias")
       .not("alias", "is", null).not("usuario_id", "is", null),
+    /* ── LA ALARMA DE ESTA FICHA ──
+       En la misma tanda que todo lo demás: esta página se desencascadó a
+       propósito, y un `await` suelto para tres datos que no dependen de nada
+       sería devolverle un viaje encadenado. */
+    alarmasVivas(supabase),
+    /* El perfil de quien mira. No se puede usar el `user` de esta misma tanda
+       —todavía no ha llegado—, así que se resuelve por su cuenta; `getUser`
+       ya está validado por el middleware y no cuesta otro viaje a la base. */
+    supabase.auth.getUser().then(({ data }) => data.user
+      ? supabase.from("perfiles").select("es_admin,es_finanzas").eq("id", data.user.id).maybeSingle()
+      : { data: null }),
+    supabase.from("perfiles").select("id,nombre,avatar_url,color")
+      .eq("activo", true).order("nombre"),
   ]);
 
   /* Las dos puertas, en el mismo orden que antes: sin sesión al login, y sin
@@ -338,6 +356,11 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   if (!ent) notFound();
 
   const alias = mapaAlias(aliasPers);
+
+  /* La alarma de ESTA entidad, y el total para avisar de la escasez. */
+  const miAlarma = (alarmasEnt as any[]).find(
+    (a: any) => a.entidad_tipo === params.tipo && a.entidad_id === params.id) || null;
+  const puedeAlarma = !!((perfilAl as any)?.es_admin || (perfilAl as any)?.es_finanzas);
 
   /* ══ TRES QUE ESPERABAN AL FINAL SIN NECESIDAD ══
      El repositorio de la entidad, los objetos de otros que la apuntan y su
@@ -2159,6 +2182,18 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
           {conf.icono} {params.tipo}
         </span>
       </div>
+
+      {/* ── LA ALARMA, ANTES QUE NADA ──
+          Encima de la portada y del nombre: si alguien declaró que esto es
+          grave, es lo primero que hay que leer al entrar. Aquí sirve para
+          CUALQUIER entidad —una empresa que no responde, una persona con un
+          problema de contrato, una convocatoria mal cargada— porque la alarma
+          nació polimórfica (db/alarmas.sql). Un botón por sección habría sido
+          el mismo formulario copiado cinco veces. */}
+      <BotonAlarma entidadTipo={params.tipo} entidadId={params.id}
+        tituloSugerido={`${nombre}: `} esAdmin={puedeAlarma}
+        alarma={miAlarma} vivas={(alarmasEnt as any[]).length}
+        equipo={(equipoAl || []) as any[]} />
 
       {/* Cabecera visual: banner de fondo + cartel encima. Editable por
           cualquiera del equipo, como el resto de la ficha. */}
