@@ -5830,8 +5830,19 @@ body{padding-top:var(--alto-franja, 0)}
    Los casos a la izquierda y la alarma al otro extremo. Apilados a la
    izquierda parecían dos pestañas de lo mismo, y no lo son: uno es trabajo
    normal, la otra es un aviso grave. */
+/* ⚠ `row-gap:0`. El `gap:10px` servía para separar los dos colgajos EN
+   HORIZONTAL, pero cuando la alarma está encendida el pie se pone en columna y
+   ese mismo gap abría un hueco entre la caja de la alarma y la pestaña de
+   casos: dos cosas que cuelgan de la misma tarjeta con fondo visible en medio
+   dejan de parecer de esa tarjeta. Separación solo en el eje donde hacía
+   falta. */
 .fondo-pie{display:flex;justify-content:space-between;align-items:flex-start;
-  gap:10px;flex-wrap:wrap}
+  gap:0 10px;flex-wrap:wrap}
+/* Un píxel de solape para que los bordes se FUNDAN. Sin él quedaban dos líneas
+   de un píxel pegadas —la de abajo de la tarjeta y la de arriba del colgajo— y
+   entre ellas se colaba el fondo: se veía una rendija que hacía parecer el
+   colgajo despegado. */
+.fondo-pie > *{margin-top:-1px}
 .fondo-alarma{display:flex;justify-content:flex-end}
 /* Encendida, la alarma deja de ser un colgajo y se lleva el renglón entero:
    ahí ya no es un botón, es el titular de la tarjeta. */
