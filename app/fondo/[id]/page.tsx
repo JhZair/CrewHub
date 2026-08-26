@@ -1016,8 +1016,14 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
               Cuánto suma cada rol en el presupuesto, cuánto se le giró y lo que falta — para saber
               qué RHE toca girar.
             </p>
-            <RolesPresupuesto postulacionId={params.id} items={preItems as any}
-              personas={personasCat} rhe={rheFondo as any} esAdmin={esAdmin} />
+            {/* Dentro de una `card`, igual que Equipo: son las dos caras de la
+                misma pregunta —quién trabaja y cuánto le toca— y sin el marco
+                esta quedaba flotando sobre el fondo de la página mientras la de
+                al lado tenía su panel. */}
+            <div className="card">
+              <RolesPresupuesto postulacionId={params.id} items={preItems as any}
+                personas={personasCat} rhe={rheFondo as any} esAdmin={esAdmin} />
+            </div>
           </div>,
         ]}
       />
