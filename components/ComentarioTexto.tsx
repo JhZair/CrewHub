@@ -75,7 +75,9 @@ export default function ComentarioTexto({ comentarioId, pubId, cuerpo, imagenes,
         <BarraFormato areaRef={areaRef} valor={texto} setValor={setTexto} />
         <textarea ref={areaRef} value={texto} autoFocus rows={2}
           onChange={e => setTexto(e.target.value)}
-          onKeyDown={e => { if (e.key === "Escape") cancelar(); }}
+          /* `stopPropagation` por lo mismo que en RespuestaBox: en la vista
+             rápida, Esc cerraba el pop-up entero en vez de cancelar la edición. */
+          onKeyDown={e => { if (e.key === "Escape") { e.stopPropagation(); cancelar(); } }}
           onPaste={e => { const f = imagenesDePaste(e); if (f.length) { e.preventDefault(); pegar(f); } }}
           style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", fontSize: 14.5, color: "var(--text)", outline: "none", resize: "none", overflowY: "auto", lineHeight: 1.6 }} />
         <EditorImagenes imgs={imgs} setImgs={setImgs} />

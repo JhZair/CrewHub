@@ -9415,7 +9415,7 @@ export async function cargarCasoRapido(id: string) {
     .eq("id", id).single();
   if (error || !p) return { error: "No se encontró el caso." };
 
-  const [coms, rx, perf, rxCom] = await Promise.all([
+  const [coms, rxTodas, perfTodos] = await Promise.all([
     supabase.from("comentarios")
       /* `editado_en` y `responde_a` también: el pop-up pinta el mismo hilo que
          la ficha —con su «↳ en respuesta a» y su «· editado»— y sin estas dos
@@ -9423,26 +9423,32 @@ export async function cargarCasoRapido(id: string) {
          nadie. */
       .select("id,cuerpo,imagenes,creado_en,editado_en,responde_a,autor_id,autor:perfiles(nombre,color,avatar_url)")
       .eq("publicacion_id", id).order("creado_en").order("id"),
-    supabase.from("reacciones").select("emoji,usuario_id")
-      .is("comentario_id", null).eq("publicacion_id", id),
-    supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
-    /* Las de CADA comentario. La de arriba lleva `comentario_id is null` a
-       propósito —una reacción a una respuesta no es una reacción al caso—, así
-       que estas hay que pedirlas aparte. Con el nombre de quien reaccionó, que
-       es lo que convierte «👍 3» en «Katy, Wilfredo y tú». */
-    supabase.from("reacciones").select("comentario_id,emoji,usuario_id")
-      .eq("publicacion_id", id).not("comentario_id", "is", null),
+    /* TODAS las del caso en UNA consulta —las del caso y las de cada
+       comentario— y se reparten aquí. Eran dos que solo se diferenciaban en
+       `comentario_id is null`: la ficha ya lo resuelve así. */
+    supabase.from("reacciones").select("comentario_id,emoji,usuario_id").eq("publicacion_id", id),
+    /* Y los perfiles UNA vez, con su `activo`: el desplegable de responsable
+       quiere solo los activos, y los nombres de quien reaccionó los quieren
+       TODOS —el que se fue del equipo es justo al que hay que poder nombrar—.
+       Eran dos viajes a la misma tabla, y el segundo además iba en serie. */
+    supabase.from("perfiles").select("id,nombre,activo").order("nombre"),
   ]);
-  const perfiles = sinBot(perf.data || []);
-  /* Todos los perfiles, no solo los activos: quien reaccionó y luego dejó el
-     equipo es justo el caso donde saber quién fue importa más. */
-  const nomTodos = new Map<string, string>(
-    (((await supabase.from("perfiles").select("id,nombre")).data as any[]) || [])
-      .map((x: any) => [x.id, x.nombre]));
+  /* ── UN FALLO NO ES UN HILO VACÍO ──
+     Sin esto, una consulta rota dejaba el pop-up diciendo «Aún no hay
+     comentarios» y «nadie reaccionó» sobre una conversación que existe. Y aquí
+     las reacciones son el acuse de lectura: un cero falso es peor que un error. */
+  if (coms.error || rxTodas.error) return { error: "No se pudo cargar el hilo del caso." };
+
+  const todosPerf = ((perfTodos.data || []) as any[]);
+  const perfiles = sinBot(todosPerf.filter((x: any) => x.activo).map((x: any) => ({ id: x.id, nombre: x.nombre })));
+  const nomTodos = new Map<string, string>(todosPerf.map((x: any) => [x.id, x.nombre]));
+  const conNom = (r0: any) => ({ emoji: r0.emoji, usuario_id: r0.usuario_id, nombre: nomTodos.get(r0.usuario_id) });
   const rxDeCom = new Map<string, any[]>();
-  for (const r0 of ((rxCom.data || []) as any[])) {
+  const rxCaso: any[] = [];
+  for (const r0 of ((rxTodas.data || []) as any[])) {
+    if (!r0.comentario_id) { rxCaso.push(conNom(r0)); continue; }
     const l = rxDeCom.get(r0.comentario_id) || [];
-    l.push({ emoji: r0.emoji, usuario_id: r0.usuario_id, nombre: nomTodos.get(r0.usuario_id) });
+    l.push(conNom(r0));
     rxDeCom.set(r0.comentario_id, l);
   }
 
@@ -9485,7 +9491,10 @@ export async function cargarCasoRapido(id: string) {
       comentarios: ((coms.data || []) as any[]).map((c: any) => ({
         ...c, reacciones: rxDeCom.get(c.id) || [],
       })),
-      reacciones: rx.data || [], vinculos,
+      /* Con nombre también las del caso: los chips de arriba decían
+         «Reaccionar igual» mientras los de cada comentario ya nombraban a
+         quien reaccionó. Mismo dato, mismo tooltip. */
+      reacciones: rxCaso, vinculos,
     },
     perfiles,
     userId: user.id,

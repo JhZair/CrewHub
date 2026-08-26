@@ -91,7 +91,10 @@ export default function RespuestaBox({ pubId, comentarioId, objetoId, prestamoId
         onChange={e => setTxt(e.target.value)}
         onKeyDown={e => {
           if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); }
-          if (e.key === "Escape") { setAbierto(false); setTxt(""); setImgs([]); }
+          /* `stopPropagation`: dentro de un pop-up (la vista rápida) el Esc
+             sube hasta la ventana y cierra el modal ENTERO, con lo escrito
+             dentro. Aquí Esc cancela ESTA respuesta y ahí se queda. */
+          if (e.key === "Escape") { e.stopPropagation(); setAbierto(false); setTxt(""); setImgs([]); }
         }}
         onPaste={e => { const f = imagenesDePaste(e); if (f.length) { e.preventDefault(); subir(f); } }}
         style={{ resize: "none", overflowY: "auto", maxHeight: 140, lineHeight: 1.4 }} />

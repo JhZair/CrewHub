@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
@@ -78,7 +78,16 @@ export default function VistaRapida({ pubId }: { pubId: string }) {
   useEffect(() => {
     if (!abierto) return;
     cargar();
-    const onEsc = (e: KeyboardEvent) => { if (e.key === "Escape") cerrar(); };
+    /* ── ESC NO TIRA UN BORRADOR ──
+       Si el foco está en un campo con algo escrito, Esc es «cancelar lo que
+       estoy haciendo», no «cerrar el pop-up»: cerrarlo perdería el comentario
+       a medias sin preguntar. Vacío, cierra como siempre. */
+    const onEsc = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      const campo = t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT");
+      if (campo && (t as HTMLInputElement).value) return;
+      if (e.key === "Escape") cerrar();
+    };
     window.addEventListener("keydown", onEsc);
     return () => window.removeEventListener("keydown", onEsc);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -107,6 +116,11 @@ export default function VistaRapida({ pubId }: { pubId: string }) {
   };
 
   const caso = data?.caso;
+  /* Cada comentario con `responde_a` buscaba a su padre recorriendo la lista
+     entera, en cada render. Un mapa, una vez. */
+  const comPorId = useMemo(
+    () => new Map<string, any>(((caso?.comentarios || []) as any[]).map((c: any) => [c.id, c])),
+    [caso]);
   const perfiles: { id: string; nombre: string }[] = data?.perfiles || [];
   const userId: string = data?.userId || "";
   const esAv = caso ? llevaEnterado(caso.tipo) : false;
@@ -315,8 +329,7 @@ export default function VistaRapida({ pubId }: { pubId: string }) {
                       dos. `onListo` recarga el hilo del pop-up — `router.refresh`
                       solo repinta la página de detrás. */}
                   {caso.comentarios.map((c: any) => {
-                    const padre = c.responde_a
-                      ? caso.comentarios.find((x: any) => x.id === c.responde_a) : null;
+                    const padre = c.responde_a ? comPorId.get(c.responde_a) : null;
                     return (
                       <div key={c.id} className="vr-com">
                         <div className="vr-com-h">
@@ -367,7 +380,15 @@ export default function VistaRapida({ pubId }: { pubId: string }) {
                  resultado distinto según por dónde entraras. */
               <div className="vr-escribir">
                 <CommentBox pubId={pubId} userId={userId} perfiles={perfiles}
-                  onListo={() => { cargar(); setTimeout(() => finRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 120); }}
+                  /* Primero llega el comentario y DESPUÉS se baja: con un
+                     `setTimeout` fijo se bajaba antes de que existiera, el
+                     contenido crecía por debajo y lo recién escrito quedaba
+                     fuera de la pantalla — justo lo que se quería evitar. */
+                  onListo={async () => {
+                    await cargar();
+                    requestAnimationFrame(() =>
+                      finRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
+                  }}
                   placeholder="Comentar al vuelo… (Enter envía · @nombre para invocar · Ctrl+V pega una imagen)" />
               </div>
             )}

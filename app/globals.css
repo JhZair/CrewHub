@@ -568,6 +568,10 @@ a{color:inherit;text-decoration:none}
 /* Cita del comentario padre: enlace-ancla que salta y resalta el original. */
 .tl-resp-cita{display:block;border-left:2px solid var(--violet);background:rgba(167,139,250,.06);border-radius:0 6px 6px 0;padding:3px 9px;margin:2px 0 6px;text-decoration:none}
 .tl-resp-cita:hover{background:rgba(167,139,250,.13)}
+/* En el pop-up la cita NO es un enlace —los comentarios de ahí no tienen
+   ancla—, así que tampoco se ilumina: un realce que promete un clic que no
+   existe es una promesa rota. */
+.vr-com .tl-resp-cita,.vr-com .tl-resp-cita:hover{background:rgba(167,139,250,.06)}
 .tl-resp-cab{display:block;font-size:11px;color:var(--dim)}
 .tl-resp-cab b{color:var(--violet)}
 .tl-resp-txt{display:block;font-size:12px;color:var(--muted);font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -3363,13 +3367,21 @@ img.av{border:1px solid var(--border2)}
 .vr-coms-h{font-size:13px;font-weight:700;color:var(--muted)}
 .vr-com{background:var(--bg);border-radius:9px;padding:7px 10px}
 .vr-com-h{display:flex;align-items:baseline;gap:8px;margin-bottom:2px}
-.vr-com-txt{white-space:pre-wrap;font-size:14px;color:var(--text);line-height:1.45}
+/* (`.vr-com-txt` se fue con el hilo artesanal: ahora el texto lo pinta
+   `ComentarioTexto`, igual que en la ficha.) */
 /* Pegada abajo y separada del hilo por una línea: ya no es «lo último de la
-   lista», es la barra de escribir del pop-up. */
-.vr-escribir{display:flex;gap:8px;align-items:flex-end;
-  margin-top:10px;padding-top:10px;border-top:1px solid rgba(124,92,255,.22)}
-.vr-escribir textarea{flex:1;background:var(--card);border:1px solid var(--border);border-radius:9px;padding:8px 10px;font-size:14px;color:var(--text);outline:none;resize:vertical;font-family:inherit}
-.vr-escribir textarea:focus{border-color:var(--accent)}
+   lista», es la barra de escribir del pop-up.
+   ⚠ `block` y no `flex`: dentro va la caja del caso (`CommentBox`), que es UN
+   solo hijo sin `flex` propio — como ítem flex se encogía a su contenido y el
+   compositor quedaba a un tercio del ancho, pegado a la izquierda.
+   (Las reglas de `textarea` que había aquí se fueron: pisaban a las de `.cbox`
+   con otro tamaño y otro borde, así que la «misma caja del caso» se veía
+   distinta justo aquí.) */
+.vr-escribir{display:block;margin-top:8px;padding-top:8px;
+  border-top:1px solid rgba(124,92,255,.22)}
+/* La barra de formato ya trae su propia separación de la caja; sumada al aire
+   de arriba dejaba 34px de vacío en un pop-up que se acaba de apretar. */
+.vr-escribir .fmt-bar{margin-top:0}
 
 .vr-vinc{display:flex;flex-wrap:wrap;gap:6px}
 
