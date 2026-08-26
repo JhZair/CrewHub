@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apuntarBuzon } from "@/app/actions";
 import { useAviso } from "@/components/useConfirmar";
-import { leerBuzon, refBuzon, type MensajeBuzon } from "@/lib/buzonDafo";
+import { analizarBuzon, refBuzon, type MensajeBuzon } from "@/lib/buzonDafo";
 import { normActa } from "@/lib/cartaDafo";
 import { fechaCorta } from "@/lib/fechas";
 
@@ -42,7 +42,8 @@ export default function BuzonPegar({ postulacionId, codigoActa }: {
 
   /* Se relee en cada tecla: pegar un texto largo y ver al momento cuántos
      mensajes salieron es lo que dice si el pegado sirvió. */
-  const mensajes = useMemo(() => leerBuzon(texto), [texto]);
+  const lectura = useMemo(() => analizarBuzon(texto), [texto]);
+  const mensajes = lectura.mensajes;
   /* Los que no son de este expediente. No se bloquean —a lo mejor el acta está
      mal cargada— pero se dicen y llegan desmarcados. */
   const ajeno = (m: MensajeBuzon) =>
@@ -93,11 +94,25 @@ export default function BuzonPegar({ postulacionId, codigoActa }: {
         onChange={e => setTexto(e.target.value)}
         placeholder="Pega aquí la tabla del buzón…" />
 
+      {/* ── CUANDO NO SALE NADA, DECIR QUÉ SE VIO ──
+          «No encontré ningún mensaje» sobre un pegado que evidentemente los
+          tiene no ayuda a nadie: hay que decir qué se llegó a reconocer para
+          que se pueda arreglar sin adivinar. */}
       {!!texto.trim() && !mensajes.length && (
         <p className="rp-sobra">
-          ⚠ No encontré ningún mensaje en lo que pegaste. Cada fila tiene que traer quién escribe,
-          su código (060-2023-DAFO-29) y la fecha con hora — que es lo que sale al seleccionar la
-          tabla del buzón.
+          ⚠ No pude separar los mensajes.
+          {lectura.codigos > 0
+            ? ` Veo ${lectura.codigos} código(s) de mensaje y ${lectura.fechas} fecha(s), pero no consigo emparejarlos: seguramente falta alguna columna. Copia la tabla ENTERA —con las columnas REMITENTE y FECHA— desde la primera fila.`
+            : " No veo ningún código como 060-2023-DAFO-29. Selecciona la tabla del buzón entera, desde la cabecera, y pégala aquí."}
+        </p>
+      )}
+
+      {/* La pasada suelta salva el pegado, pero se avisa: con ella, una cita
+          dentro de un mensaje puede colarse como si fuera otro mensaje. */}
+      {lectura.suelto && mensajes.length > 0 && (
+        <p className="rp-sobra">
+          ⚠ Lo pegado no vino con la forma de tabla, así que lo leí como pude. Repasa que cada fila
+          sea un mensaje de verdad: si alguna es una cita dentro de otro mensaje, desmárcala.
         </p>
       )}
 

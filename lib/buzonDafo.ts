@@ -61,12 +61,27 @@ export type MensajeBuzon = {
      en dos y creaba un fantasma del Ministerio con texto nuestro dentro —que
      además se quedaba con el `ref` del mensaje real y lo bloqueaba para
      siempre—. */
-const SEP = "[ \\t]*[\\t\\n]\\s*";
-const CABECERA = new RegExp(
-  `^[ \\t]*(POSTULANTE|MINISTERIO DE CULTURA|DAFO|MINISTERIO)${SEP}` +
-  `((?:\\d{2,4}-\\d{4}-[A-Z]+)-\\d{1,4})${SEP}` +
-  `(\\d{4})[/-](\\d{2})[/-](\\d{2})${SEP}(\\d{2}:\\d{2}(?::\\d{2})?)`,
-  "gim");
+const QUIEN = "(POSTULANTE|MINISTERIO DE CULTURA|DAFO|MINISTERIO)";
+const CODIGO = "((?:\\d{2,4}-\\d{4}-[A-Z]+)-\\d{1,4})";
+const FECHA = "(\\d{4})[/-](\\d{2})[/-](\\d{2})";
+const HORA = "(\\d{2}:\\d{2}(?::\\d{2})?)";
+/* ⚠ Entre la FECHA y la HORA vale cualquier espacio, también en la regla
+   estricta. En la tabla van en la misma celda («2026/02/04\n13:10:32») pero
+   media forma de copiar las junta con un espacio, y exigir ahí un tabulador
+   tiraba a la regla suelta pegados que estaban perfectos.
+   Lo que sí se mantiene estricto es lo de antes —quién, código y fecha—, que
+   es lo que distingue una fila de una cita dentro de un mensaje. */
+const cabecera = (sep: string, ancla: string) =>
+  new RegExp(`${ancla}${QUIEN}${sep}${CODIGO}${sep}${FECHA}\\s+${HORA}`, "gim");
+
+/* ── DOS PASADAS, Y LA SEGUNDA SE AVISA ──
+   La estricta es la buena y se prueba primero. Si no encuentra nada —porque el
+   navegador copió la tabla con espacios en vez de tabuladores, que también
+   pasa— se cae a la suelta antes que dejar a nadie con «no encontré ningún
+   mensaje» sobre un pegado que sí los tiene. Pero la suelta se DICE, porque
+   con ella una cita dentro de un cuerpo sí puede colarse como mensaje. */
+const CABECERA = cabecera("[ \\t]*[\\t\\n]\\s*", "^[ \\t]*");
+const CABECERA_SUELTA = cabecera("\\s+", "");
 
 /** ¿Es una fecha que existe? `2026/13/45` casa con el patrón y llegaría a una
  *  columna `date` a reventar el guardado — o peor, a guardarse rodada. */
@@ -121,13 +136,44 @@ function tituloDe(texto: string): string {
  * en blanco.
  */
 export function leerBuzon(pegado: string): MensajeBuzon[] {
-  const t = String(pegado || "").replace(/\r\n?/g, "\n");
-  if (!t.trim()) return [];
+  return analizarBuzon(pegado).mensajes;
+}
 
+/** Lo mismo, con lo que hay que contarle a quien pegó: si hizo falta la pasada
+ *  suelta y —cuando no salió nada— qué se llegó a ver, que es lo único que
+ *  permite arreglarlo sin adivinar. */
+export function analizarBuzon(pegado: string): {
+  mensajes: MensajeBuzon[];
+  /** `true` = hubo que leerlo con la regla suelta. Revisar con más cuidado. */
+  suelto: boolean;
+  /** Cuántos códigos de mensaje se ven en el texto, aunque no se hayan podido
+   *  leer como filas. Con códigos y cero mensajes, lo que falta es la fecha. */
+  codigos: number;
+  fechas: number;
+} {
+  /* El pie de la tabla («Mostrando registros del 1 al 5 de un total de 29»)
+     se pega con todo lo demás y se quedaba dentro del último mensaje — hasta
+     salir de titular suyo. No es parte de ningún mensaje: fuera. */
+  const t = String(pegado || "").replace(/\r\n?/g, "\n")
+    .split(/\n?\s*Mostrando\s+registros\b/i)[0];
+  const codigos = new Set((t.match(new RegExp(CODIGO, "gi")) || []).map(s => s.toUpperCase())).size;
+  const fechas = (t.match(/\d{4}[/-]\d{2}[/-]\d{2}/g) || []).length;
+  if (!t.trim()) return { mensajes: [], suelto: false, codigos, fechas };
+
+  let mensajes = conCabecera(t, CABECERA);
+  let suelto = false;
+  if (!mensajes.length) {
+    mensajes = conCabecera(t, CABECERA_SUELTA);
+    suelto = mensajes.length > 0;
+  }
+  return { mensajes, suelto, codigos, fechas };
+}
+
+function conCabecera(t: string, re: RegExp): MensajeBuzon[] {
   const heads: { i: number; fin: number; quien: string; codigo: string; fecha: string; hora: string }[] = [];
-  CABECERA.lastIndex = 0;
+  re.lastIndex = 0;
   let m: RegExpExecArray | null;
-  while ((m = CABECERA.exec(t))) {
+  while ((m = re.exec(t))) {
     /* Una fecha imposible se descarta aquí: dejarla pasar la mandaría tal cual
        a una columna `date`, y lo que se rompe entonces es el guardado del lote
        entero. */
