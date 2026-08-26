@@ -310,8 +310,24 @@ export default function RolesPresupuesto({
                       <input id={`rol-${g.clave}`} name="rol" list="roles-presu" defaultValue={g.titulo}
                         className="rp-input" placeholder="Directora, Sonidista…" />
                       <button className="btn btn-ghost rp-btn" disabled={ocupado} type="submit">Guardar</button>
+                      {/* ── Y LA PERSONA, TAMBIÉN POR GRUPO ──
+                          El desplegable de arriba es de la FILA, y una fila
+                          puede juntar tres roles de la misma persona: cambiar
+                          ahí los cambiaba los tres a la vez. Para quitarle UNO
+                          a alguien —«esta composición no la hace Frank»— no
+                          había manera; había que desasignarlo de todo y volver
+                          a asignar lo demás. */}
+                      <label className="rp-dim" htmlFor={`per-${g.clave}`}>lo cobra</label>
+                      <select id={`per-${g.clave}`} className="rp-sel rp-sel-min" disabled={ocupado}
+                        value={g.personas.length === 1 ? g.personas[0] : ""}
+                        onChange={e => etiquetar([g], undefined, e.target.value || null)}>
+                        <option value="">— nadie por ahora —</option>
+                        {personas.map(p => (
+                          <option key={p.id} value={p.id}>{p.alias || p.nombre}</option>
+                        ))}
+                      </select>
                       <span className="rp-dim">
-                        Se escribe en sus {g.items.length} línea(s): vacío vuelve a agrupar por el concepto.
+                        Afecta a sus {g.items.length} línea(s).
                       </span>
                     </form>
                   ))}

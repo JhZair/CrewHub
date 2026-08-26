@@ -6137,6 +6137,9 @@ body{padding-top:var(--alto-franja, 0)}
   letter-spacing:.2px}
 .rp-sel{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;
   padding:4px 8px;font-size:12px;color:var(--text);outline:none}
+/* El de dentro del detalle no ocupa la columna entera: va en línea con el
+   nombre del rol, y ahí un `width:100%` empujaba todo lo demás abajo. */
+.rp-sel-min{width:auto;min-width:150px}
 .rp-nota{font-size:11px;color:var(--yellow);padding:2px 4px 6px 22px;line-height:1.5}
 
 .rp-detalle{display:flex;flex-direction:column;gap:3px;margin:2px 0 8px;padding:8px 10px;
