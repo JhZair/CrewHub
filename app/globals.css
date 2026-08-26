@@ -6271,6 +6271,21 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
    toda la diferencia, y en una sola columna las dos cosas se leían igual. El
    filo de color a la izquierda separa de un vistazo; la etiqueta lo dice con
    palabras, que es lo que hay que poder citar. */
+/* ── LO QUE SE VIENE A BUSCAR ──
+   Las fechas y los plazos: es lo que se cita en un descargo. Fondo tenue y el
+   texto un punto más claro, sin negrita — subrayar con estridencia media carta
+   es no subrayar nada. */
+.vf-clave{background:rgba(244,180,0,.14);color:var(--text);border-radius:4px;
+  padding:0 3px;font-weight:600}
+/* El texto largo, recortado a ocho renglones con el final desvanecido: se ve
+   que hay más sin tener que decirlo. */
+.vf-det-caja{display:flex;flex-direction:column;gap:2px;align-items:flex-start;min-width:0}
+.vf-recorte{max-height:11.5em;overflow:hidden;position:relative;
+  -webkit-mask-image:linear-gradient(180deg,#000 72%,transparent 100%);
+  mask-image:linear-gradient(180deg,#000 72%,transparent 100%)}
+.vf-mas{background:none;border:none;padding:0;cursor:pointer;
+  color:var(--violet);font-size:11px;font-weight:600}
+.vf-mas:hover{text-decoration:underline}
 .vf-quien{align-self:flex-start;font-size:9.5px;font-weight:800;letter-spacing:.5px;
   text-transform:uppercase;padding:1px 7px;border-radius:999px}
 .vf-quien-nos{color:var(--teal);background:rgba(45,212,191,.12)}

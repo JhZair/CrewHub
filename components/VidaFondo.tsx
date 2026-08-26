@@ -62,6 +62,54 @@ const RE_FICHA = /^\[([^\]\n]{4,120})\]\s*\n+/;
 const fichaDe = (d?: string | null) => (String(d || "").match(RE_FICHA) || [])[1] || null;
 const cuerpoDe = (d?: string | null) => String(d || "").replace(RE_FICHA, "");
 
+/* ══════════════════════════════════════════════════════════════════════════
+   LAS FECHAS, RESALTADAS
+
+   Un descargo se arma citando fechas: «entregamos el 19 de enero de 2026»,
+   «el plazo era de diez (10) días hábiles», «venció el 20/10/2024». En un
+   mensaje de veinte renglones esas cuatro palabras son lo único que se busca,
+   y estaban del mismo color que el resto.
+
+   Se resalta lo que tiene FORMA de fecha o de plazo, no lo que parezca
+   importante: una regla que adivina qué es clave acabaría subrayando media
+   carta, y media carta subrayada es una carta sin subrayar.
+   ══════════════════════════════════════════════════════════════════════════ */
+const RE_CLAVE = new RegExp(
+  "(\\d{1,2}\\s+de\\s+[a-záéíóúñ]+\\s+de\\s+\\d{4}"      // 19 de enero de 2026
+  + "|\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}"                    // 20/10/2024
+  + "|\\d{4}-\\d{2}-\\d{2}"                                // 2026-02-04
+  + "|\\(\\d{1,3}\\)\\s*d[íi]as\\s+h[áa]biles"             // (10) días hábiles
+  + "|\\bplazo\\s+m[áa]ximo\\b)", "gi");
+
+/** El texto con sus fechas marcadas. `split` con UN grupo de captura deja las
+ *  coincidencias en las posiciones impares — así no hace falta volver a probar
+ *  cada trozo contra una expresión global, que lleva estado y se equivoca. */
+function conFechas(texto: string) {
+  return texto.split(RE_CLAVE).map((t, i) =>
+    i % 2 === 1 ? <mark key={i} className="vf-clave">{t}</mark> : t);
+}
+
+/* ── Y LOS TEXTOS LARGOS, PLEGADOS ──
+   Un mensaje del buzón ocupa media pantalla, y tres seguidos convierten la
+   línea de tiempo en un documento que hay que leer entero para llegar al hito
+   de abajo. Se recorta a ocho renglones con el final desvanecido —que se ve
+   que hay más— y se abre con un clic. El corte es visual: el texto entero está
+   siempre en el HTML, así que el buscador del navegador lo encuentra igual. */
+const LARGO = 420;
+function Detalle({ texto }: { texto: string }) {
+  const [abierto, setAbierto] = useState(false);
+  const largo = texto.length > LARGO || texto.split("\n").length > 8;
+  if (!largo) return <span className="vf-det">{conFechas(texto)}</span>;
+  return (
+    <span className="vf-det-caja">
+      <span className={`vf-det${abierto ? "" : " vf-recorte"}`}>{conFechas(texto)}</span>
+      <button type="button" className="vf-mas" onClick={() => setAbierto(!abierto)}>
+        {abierto ? "ver menos ↑" : "ver más ↓"}
+      </button>
+    </span>
+  );
+}
+
 export default function VidaFondo({
   postulacionId, postulacion, hitos, cartas, hoy, etiquetaFondo, esAdmin, casos,
 }: {
@@ -346,7 +394,7 @@ export default function VidaFondo({
                   </span>
                 )}
                 {fichaDe(h.detalle) && <span className="cl-cod">{fichaDe(h.detalle)}</span>}
-                {cuerpoDe(h.detalle) && <span className="vf-det">{cuerpoDe(h.detalle)}</span>}
+                {cuerpoDe(h.detalle) && <Detalle texto={cuerpoDe(h.detalle)} />}
                 <span className="vf-pie">
                   {h.autor && <span className="rp-dim">lo apuntó {h.autor}</span>}
                   {h.resuelto && (h.motivoCierre
