@@ -37,14 +37,49 @@ export type Compromiso = {
   url?: string | null;
   nota?: string | null;
   orden?: number | null;
-  /** El caso abierto desde esta cláusula, si alguien decidió atenderla ahora.
-   *  Un compromiso no es una tarea —sigue pendiente aunque nadie se ocupe—;
-   *  el caso es la decisión de ocuparse, con responsable y plazo. */
+  /** ⚠ OBSOLETA: la relación vive ahora en `publicaciones.compromiso_id`, que
+   *  admite varios casos por cláusula (db/compromiso-casos.sql). Se conserva
+   *  el campo porque las filas viejas lo traen, pero no se pinta. */
   caso_id?: string | null;
-  /** El estado del caso, si hay caso. NO es el estado del compromiso: uno dice
-   *  si estamos trabajando, el otro si ya se entregó. */
-  caso?: { estado?: string | null; tipo?: string | null } | null;
+  /** LOS casos abiertos desde esta cláusula. Un compromiso no es una tarea
+   *  —sigue pendiente aunque nadie se ocupe—; cada caso es una decisión de
+   *  ocuparse, con responsable y plazo. Los resueltos siguen aquí: en una
+   *  rendición, lo hecho es lo que hay que poder enseñar. */
+  casos?: CasoCompromiso[];
 };
+
+export type CasoCompromiso = {
+  id: string;
+  estado?: string | null;
+  tipo?: string | null;
+  archivado_en?: string | null;
+  /** Quién lo está haciendo, con su cara. Sin esto hay que abrir el caso para
+   *  contestar la primera pregunta que uno se hace mirando la lista. */
+  resp?: { id?: string; nombre?: string | null; avatar_url?: string | null; color?: string | null } | null;
+};
+
+/* PostgREST devuelve lo embebido como objeto o como arreglo según cómo
+   resuelva la relación. Se aplana en un solo sitio: leer solo una de las dos
+   formas deja la cara en blanco sin que nada falle, y un hueco se lee como
+   «no tiene responsable». */
+export const unoDe = <T,>(x: T | T[] | null | undefined): T | null =>
+  (Array.isArray(x) ? x[0] : x) || null;
+
+/* Los casos de una cláusula, ordenados para leerse: primero lo vivo —que es
+   donde hay que mirar— y dentro de cada grupo lo más nuevo arriba. Lo
+   archivado se cae: no es trabajo hecho, es trabajo retirado. */
+export function casosDe(x: Compromiso): CasoCompromiso[] {
+  const cs = (Array.isArray(x.casos) ? x.casos : x.casos ? [x.casos as any] : [])
+    .filter(Boolean)
+    .map(c => ({ ...c, resp: unoDe(c.resp as any) }))
+    .filter(c => !c.archivado_en);
+  const CERRADO = ["resuelta", "descartada"];
+  return cs.sort((a, b) => {
+    const ca = CERRADO.includes(String(a.estado)) ? 1 : 0;
+    const cb = CERRADO.includes(String(b.estado)) ? 1 : 0;
+    return ca - cb || String(b.id).localeCompare(String(a.id));
+  });
+}
 
 export const META_CLASE_COMP: Record<ClaseCompromiso, {
   ico: string; titulo: string; sub: string; seTacha: boolean;

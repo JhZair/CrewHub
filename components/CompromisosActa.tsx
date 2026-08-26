@@ -4,9 +4,10 @@ import { useRouter } from "next/navigation";
 import Link from "@/components/Enlace";
 import { marcarCompromiso, editarDetalleCompromiso, casoDeCompromiso } from "@/app/actions";
 import { rotuloEstado, claseEstado } from "@/lib/estados";
+import Avatar from "@/components/Avatar";
 import {
   META_CLASE_COMP, META_ESTADO_COMP, ESTADOS_COMP, ordenarCompromisos,
-  avanceEntregables, type Compromiso, type ClaseCompromiso, type EstadoCompromiso,
+  avanceEntregables, casosDe, type Compromiso, type ClaseCompromiso, type EstadoCompromiso,
 } from "@/lib/compromisos";
 
 /* ── 📦 LO QUE EL ACTA OBLIGA ──
@@ -22,14 +23,6 @@ import {
  * a cuál creerle — que es exactamente el problema que veníamos a resolver, no a
  * mudar de sitio. Por eso el enlace al PDF se queda arriba, visible.
  */
-/* PostgREST devuelve la relación como objeto o como arreglo según cómo la
-   resuelva. Leer solo una de las dos formas deja el estado del caso en blanco
-   sin que nada falle — y un hueco se lee como «no tiene estado». */
-const caso1 = (x: Compromiso) => {
-  const c: any = (x as any).caso;
-  return (Array.isArray(c) ? c[0] : c) || null;
-};
-
 const dmy = (f?: string | null) => {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(f ?? ""));
   return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
@@ -78,9 +71,11 @@ export default function CompromisosActa({
     setOcupado(true); setErr("");
     const r: any = await casoDeCompromiso(x.id, postulacionId);
     setOcupado(false);
-    /* «Ya existía» no es un error: es la respuesta correcta al segundo clic.
-       Se dice, y el enlace aparece igual. */
     if (r?.error) { setErr(r.error); if (!r?.id) return; }
+    /* El botón ya no devuelve «ya existía»: cada pulsación abre un caso nuevo,
+       porque el trabajo de una cláusula se reparte. Lo que sí protege del
+       doble clic es `ocupado`, arriba — sin él, dos toques rápidos abrirían
+       dos casos iguales y habría que descartar uno a mano. */
     router.refresh();
   };
 
@@ -98,6 +93,7 @@ export default function CompromisosActa({
   const fila = (x: Compromiso, seTacha: boolean) => {
     const e = META_ESTADO_COMP[x.estado] || META_ESTADO_COMP.pendiente;
     const hecho = x.estado === "entregado" || x.estado === "no_aplica";
+    const casos = casosDe(x);
     return (
       <div key={x.id} className={`cmp-fila${hecho && seTacha ? " hecho" : ""}`}>
         <div className="cmp-l1">
@@ -123,26 +119,39 @@ export default function CompromisosActa({
             <a href={x.url} target="_blank" rel="noopener noreferrer" className="cmp-prueba"
               title="Lo entregado">📎 ver</a>
           )}
-          {/* De la cláusula al trabajo. Con caso abierto es un enlace; sin él,
-              el botón que lo abre — nunca los dos, para que no haya que
-              adivinar cuál de los dos hace qué. */}
-          {x.caso_id ? (
-            <Link href={`/caso/${x.caso_id}`} className="cmp-caso"
-              title="El caso dice si alguien está trabajando en esto. El estado de la izquierda dice si ya se entregó al Ministerio: son dos cosas distintas.">
-              📋 caso
-              {/* El estado del caso, con el mismo rótulo y color que en el
-                  tablero: si aquí se llamara de otra forma habría dos nombres
-                  para el mismo estado, que es peor que no enseñarlo. */}
-              {caso1(x)?.estado && (
-                <span className={`pill st-${claseEstado(caso1(x)!.estado!, caso1(x)!.tipo || "tarea")}`}
-                  style={{ fontSize: 9, marginLeft: 4 }}>
-                  {rotuloEstado(caso1(x)!.estado!, caso1(x)!.tipo || "tarea")}
+          {/* ── DE LA CLÁUSULA AL TRABAJO: TODOS LOS CASOS ──
+              Antes se enseñaba UNO, y el botón de abrir otro solo aparecía si
+              ese hueco estaba libre o el caso muerto. Dos consecuencias malas:
+              una cláusula como la 5.2.4 —meses y tres personas— no podía tener
+              más de un caso a la vez, y al RESOLVERSE el caso desaparecía de la
+              cláusula. En una rendición, lo hecho es justo lo que hay que poder
+              enseñar. Ahora cuelgan todos y el ＋ está siempre. */}
+          {casos.map(c => (
+            <Link key={c.id} href={`/caso/${c.id}`} className="cmp-caso"
+              title={`${c.resp?.nombre ? `${c.resp.nombre} — ` : "Sin responsable — "}el caso dice si alguien está trabajando en esto. El estado de la izquierda dice si ya se entregó al Ministerio: son dos cosas distintas.`}>
+              {/* La cara de quien lo lleva. «¿Quién lo está haciendo?» es la
+                  primera pregunta al mirar esta lista, y hasta hoy había que
+                  abrir el caso para contestarla. Sin responsable se DICE con un
+                  hueco marcado, no con un vacío que parece un fallo de carga. */}
+              {c.resp?.nombre
+                ? <Avatar size={16} nombre={c.resp.nombre} src={c.resp.avatar_url} color={c.resp.color} />
+                : <span className="cmp-nadie" title="Sin responsable">·</span>}
+              {/* El estado, con el mismo rótulo y color que en el tablero: si
+                  aquí se llamara de otra forma habría dos nombres para el mismo
+                  estado, que es peor que no enseñarlo. */}
+              {c.estado && (
+                <span className={`pill st-${claseEstado(c.estado, c.tipo || "tarea")}`}
+                  style={{ fontSize: 9 }}>
+                  {rotuloEstado(c.estado, c.tipo || "tarea")}
                 </span>
               )}
             </Link>
-          ) : puedeEditar && (
+          ))}
+          {puedeEditar && (
             <button className="dato-btn cmp-caso-btn" disabled={ocupado}
-              title="Abrir un caso para atender esta cláusula, con responsable y plazo"
+              title={casos.length
+                ? "Abrir OTRO caso para esta cláusula — el trabajo de una cláusula puede repartirse"
+                : "Abrir un caso para atender esta cláusula, con responsable y plazo"}
               onClick={() => abrirCaso(x)}>＋ caso</button>
           )}
           {puedeEditar && (

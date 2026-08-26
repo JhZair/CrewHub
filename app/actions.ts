@@ -7002,16 +7002,15 @@ export async function casoDeCompromiso(id: string, postulacionId: string) {
   }
   if (!c) return { error: "Ese compromiso ya no está." };
 
-  /* ¿Ya hay caso, y sigue VIVO? Uno archivado o descartado no cuenta: el
-     compromiso quedaría atado para siempre a algo que no aparece en ningún
-     tablero, y el botón no ofrecería abrir otro. Misma regla que la casilla. */
-  const ya = (c as any).caso_id as string | null;
-  if (ya) {
-    const { data: vive } = await supabase.from("publicaciones")
-      .select("id").eq("id", ya)
-      .is("archivado_en", null).neq("estado", "descartada").maybeSingle();
-    if (vive) return { id: ya, ya: true };
-  }
+  /* ── SIEMPRE SE ABRE UNO NUEVO ──
+     Antes, si la cláusula ya tenía un caso vivo, este botón devolvía ESE en
+     vez de crear otro. Con una cláusula como la 5.2.4 —juntar los
+     comprobantes, revisarlos contra el reglamento, armar el anexo: meses y
+     tres personas— eso obligaba a desatar el caso anterior para poder abrir el
+     siguiente, y el anterior era justo el que guardaba la historia.
+     Desde db/compromiso-casos.sql la relación es de uno a muchos: la cláusula
+     tiene los casos que haga falta y todos siguen colgando de ella, resueltos
+     incluidos — en una rendición, lo hecho es lo que hay que poder enseñar. */
 
   const post: any = Array.isArray((c as any).post) ? (c as any).post[0] : (c as any).post;
   const quien = post
@@ -7038,8 +7037,16 @@ export async function casoDeCompromiso(id: string, postulacionId: string) {
       "",
       "— Abierto desde 📦 Entregables del fondo. El texto de arriba es el extracto del acta: si hay duda, manda el PDF.",
     ].filter(Boolean).join("\n"),
+    /* La cláusula de la que sale, EN EL PROPIO CASO. Es lo que permite listar
+       todos los de una cláusula —resueltos incluidos— sin adivinar por el
+       título. Ver db/compromiso-casos.sql. */
+    compromiso_id: id,
   }).select("id").single();
-  if (error || !pub) return { error: error?.message || "No se pudo crear el caso." };
+  if (error || !pub) {
+    return { error: (error as any)?.code === "42703"
+      ? "Falta correr db/compromiso-casos.sql en Supabase (columna compromiso_id)."
+      : error?.message || "No se pudo crear el caso." };
+  }
 
   await supabase.from("publicacion_vinculos").insert({
     publicacion_id: pub.id, entidad_tipo: "postulacion", entidad_id: postulacionId,
@@ -7049,16 +7056,13 @@ export async function casoDeCompromiso(id: string, postulacionId: string) {
     detalle: { mensaje: `abrió un caso desde el acta ${cl}«${(c as any).titulo}»`.trim() },
   });
 
-  /* Se anota en el compromiso. Si esto falla el caso YA existe, así que se
-     devuelve su id igual y se dice qué pasó: callarlo dejaría al botón
-     ofreciendo abrir otro caso sobre lo mismo. */
-  const { error: eLink } = await supabase.from("compromiso_acta")
-    .update({ caso_id: pub.id }).eq("id", id);
-
+  /* Ya no se escribe `compromiso_acta.caso_id`: la relación vive en el caso
+     (`compromiso_id`) y punto. Dos sitios que dicen «el caso de esta cláusula»
+     acaban diciendo cosas distintas, y el que se mira nunca es el que se
+     actualizó. Ver db/compromiso-casos.sql. */
   revalidatePath(`/fondo/${postulacionId}`);
   revalidatePath("/");
   revalidatePath(`/entidad/postulacion/${postulacionId}`);
-  if (eLink) return { id: pub.id as string, error: "Caso creado, pero no quedó anotado en el compromiso: " + eLink.message };
   return { id: pub.id as string };
 }
 

@@ -217,8 +217,17 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
       /* El estado del CASO viaja con el compromiso. Son dos preguntas distintas
          —«¿se entregó?» y «¿estamos trabajando en ello?»— y si solo se enseña
          una de las dos, la que se ve se lee como si contestara las dos. */
-      .select("id,clase,clausula,titulo,detalle,fecha_limite,estado,entregado_en,url,nota,orden," +
-              "caso_id,caso:publicaciones(estado,tipo)")
+      /* ── TODOS los casos de la cláusula, no «el» caso ──
+         Se traen embebidos por `publicaciones.compromiso_id`
+         (db/compromiso-casos.sql): una cláusula puede tener varios, y los
+         RESUELTOS siguen colgando de ella — en una rendición, lo hecho es
+         justo lo que hay que poder enseñar.
+         Viene el responsable con su cara: «quién lo está haciendo» es la
+         primera pregunta de esta pantalla, y sin ella hay que abrir el caso
+         para saberlo. */
+      .select("id,clase,clausula,titulo,detalle,fecha_limite,estado,entregado_en,url,nota,orden,caso_id," +
+              "casos:publicaciones!compromiso_id(id,estado,tipo,archivado_en," +
+              "resp:perfiles!responsable(id,nombre,avatar_url,color))")
       .eq("postulacion_id", params.id).order("orden"),
     /* La URL del buscador de SUNAT, administrada en /admin?s=plataformas.
        Devuelve `undefined` si nadie la cargó y el botón usa su respaldo: un
