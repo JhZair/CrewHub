@@ -1,6 +1,5 @@
 "use client";
 import { misEnProgreso, comentar, cambiarEstado, muroMensajes } from "@/app/actions";
-import { esVentanaDeTrabajo } from "@/lib/panel";
 import { pedirZocalo } from "@/lib/zocalo";
 import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
 import { celebrarResuelto } from "@/lib/celebra";
@@ -52,12 +51,17 @@ export default function BancoTrabajo() {
   const enLogin = pathname.startsWith("/login");
 
   // Solo en la ventana principal (no en los paneles embebidos del Monitor)
-  /* La misma regla que los demás flotantes (lib/panel.ts). Estos DOS siguen
-     sin pintarse dentro de un panel del Monitor —son franjas de pantalla
-     completa, y duplicadas en una pantalla ya partida en dos serían dos veces
-     lo mismo mirándose de frente—, pero comparten el criterio de qué ventana
-     manda para que no haya dos definiciones de «ventana principal». */
-  useEffect(() => { setEsTop(window.self === window.top && esVentanaDeTrabajo()); }, []);
+  /* ── ESTAS DOS SÍ LAS PINTA EL MARCO DEL MONITOR ──
+     `window.self === window.top` a secas, y NO `esVentanaDeTrabajo()`: esa
+     función apaga el marco del Monitor a propósito —los ＋, la campanita y el
+     buscador los pone cada panel—, pero el banco de trabajo y «quién está» no
+     los pone nadie dentro de los paneles (son franjas de pantalla completa y
+     duplicadas serían dos veces lo mismo). Al usar allí el mismo criterio
+     desaparecieron de TODAS partes: en la aplicación de escritorio la ventana
+     principal ES el Monitor.
+     Regla: lo que se duplica, lo pone el panel; lo que ocupa toda la pantalla,
+     el marco. */
+  useEffect(() => { setEsTop(window.self === window.top); }, []);
 
   // Recuerda si lo dejaste abierto
   useEffect(() => {

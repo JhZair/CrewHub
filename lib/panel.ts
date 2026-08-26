@@ -7,6 +7,16 @@
    el Monitor: dos paneles con la aplicación dentro, y cinco botones flotantes
    duplicados encima de la pantalla partida.
 
+   ── ESTO NO VALE PARA LAS CINCO ──
+   Solo para las TRES que se usan estando en una pantalla concreta: crear un
+   caso, mirar los avisos, buscar. El banco de trabajo y «quién está» son
+   franjas de pantalla completa que no se duplican: las sigue pintando la
+   ventana de arriba con `window.self === window.top` a secas.
+   Usar esta función también allí las hizo desaparecer de TODAS partes —en la
+   aplicación de escritorio la ventana principal es el propio Monitor, y aquí
+   abajo el Monitor se apaga—. La regla, en una línea: lo que se duplicaría lo
+   pone el panel; lo que ocupa la pantalla entera, el marco.
+
    Pero un panel del Monitor NO es un iframe cualquiera: es una ventana de
    trabajo entera. La idea de «izquierda para navegar, derecha para el tablero»
    no sobrevive al primer clic —en cuanto entras a un caso, ese lado deja de ser
