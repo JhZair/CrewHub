@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { guardarHitoFondo, borrarHitoFondo } from "@/app/actions";
 import { responderCarta, borrarCarta } from "@/app/casilla/acciones";
 import { useAviso, useConfirmar } from "@/components/useConfirmar";
+import CartasLote from "@/components/CartasLote";
 import { fechaCorta, hoyLima } from "@/lib/fechas";
 import {
   vidaDelFondo, porAnio, porResponder, cuandoVence, TIPOS_HITO,
@@ -36,12 +37,16 @@ const COLOR: Record<string, string> = {
 };
 
 export default function VidaFondo({
-  postulacionId, postulacion, hitos, cartas, hoy,
+  postulacionId, postulacion, hitos, cartas, hoy, etiquetaFondo, esAdmin,
 }: {
   postulacionId: string;
   postulacion: PostulacionVida;
   hitos: FilaHito[];
   cartas: FilaCarta[];
+  /** Cómo se llama este fondo, para el selector de la carga por lote. */
+  etiquetaFondo: string;
+  /** Registrar cartas es escribir en el expediente: solo administración. */
+  esAdmin: boolean;
   /** El día de HOY según el servidor, en Lima. Se pasa desde la página en vez
    *  de preguntarlo aquí: calculado en el navegador, un equipo con la fecha
    *  torcida vería vencido lo que no lo está — y al revés. */
@@ -52,7 +57,11 @@ export default function VidaFondo({
   const { pedir, dialogo } = useConfirmar();
   const [ocupado, setOcupado] = useState(false);
   const [abierto, setAbierto] = useState(false);
+  const [cargando, setCargando] = useState(false);
   const [editando, setEditando] = useState<FilaHito | null>(null);
+  /* El acta de este fondo: es la llave con la que se comprueba que una carta
+     cargada aquí es de verdad de este expediente. */
+  const codigoActa = (postulacion as any)?.codigo_acta || null;
 
   const linea = useMemo(
     () => vidaDelFondo(postulacion, hitos, cartas, hoy),
@@ -125,11 +134,30 @@ export default function VidaFondo({
         <b>📍 Vida del fondo</b>
         <span className="rp-dim">{linea.length} hito(s)</span>
         <span style={{ flex: 1 }} />
+        {/* ── LA CARGA DE CARTAS, AQUÍ ──
+            Estaba solo en 📬 la casilla, que es la bandeja general. Pero quien
+            descarga los PDF de la Plataforma está trabajando en UN fondo —el
+            que le está reclamando— y tenía que irse a otra pantalla y volver.
+            Aquí, además, el fondo ya se sabe: la carta se vincula sola y, si su
+            acta es otra, se dice. */}
+        {esAdmin && (
+          <button type="button" className="btn btn-ghost vf-btn"
+            onClick={() => { setCargando(!cargando); setAbierto(false); setEditando(null); }}>
+            {cargando ? "Cerrar la carga" : "📥 Cargar cartas (PDF)"}
+          </button>
+        )}
         <button type="button" className="btn btn-ghost vf-btn"
-          onClick={() => { setEditando(null); setAbierto(!abierto); }}>
+          onClick={() => { setEditando(null); setAbierto(!abierto); setCargando(false); }}>
           {abierto ? "Cancelar" : "＋ Apuntar algo que pasó"}
         </button>
       </div>
+
+      {cargando && (
+        <CartasLote
+          opciones={[{ id: postulacionId, etiqueta: etiquetaFondo, enJuego: true }]}
+          posts={[{ id: postulacionId, codigo_acta: codigoActa }]}
+          fondoFijo={{ id: postulacionId, etiqueta: etiquetaFondo, codigo_acta: codigoActa }} />
+      )}
 
       {(abierto || editando) && (
         /* ⚠ EL `key` NO ES DECORACIÓN. Los campos son no controlados

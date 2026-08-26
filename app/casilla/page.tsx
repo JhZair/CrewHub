@@ -4,7 +4,6 @@ import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import CasillaDafo from "@/components/CasillaDafo";
 import RegistrarCarta from "@/components/RegistrarCarta";
-import CartasLote from "@/components/CartasLote";
 import Realtime from "@/components/Realtime";
 import { enJuego, ejecutando } from "@/lib/fondos";
 import { hoyLima } from "@/lib/fechas";
@@ -304,8 +303,15 @@ export default async function CasillaPage() {
           no avisa a ninguna parte: si nadie entra, no existe. Y ahí llegan los
           requerimientos del acta, que son los que muerden. Se registran a mano
           y aterrizan en esta misma bandeja — es la misma pregunta. */}
-      <CartasLote opciones={opciones}
-        posts={posts.map((p: any) => ({ id: p.id, codigo_acta: p.codigo_acta }))} />
+      {/* ── LA CARGA POR LOTE SE FUE A LA FICHA DEL FONDO ──
+          Estuvo aquí un rato y era el sitio equivocado: quien descarga los PDF
+          de la Plataforma está trabajando en UN fondo —el que le está
+          reclamando— y esto le obligaba a salir a la bandeja general y volver.
+          Allí, además, el fondo ya se sabe, así que la carta se vincula sola y
+          si su acta es OTRA se avisa: exactamente el error que nos coló cuatro
+          cartas de otro beneficiario.
+          Aquí se queda el alta a mano, que es la salida para lo que no cuelga
+          de ningún fondo. */}
       <RegistrarCarta opciones={opciones} hoy={hoyLima()} />
 
       <CasillaDafo items={coms} opciones={opciones} resumen={resumen}

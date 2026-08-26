@@ -1131,7 +1131,7 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
               ) : (
                 <VidaFondo postulacionId={params.id} postulacion={ent as any}
                   hitos={(hitosQ.data || []) as any} cartas={(cartasQ.data || []) as any}
-                  hoy={hoyDia} />
+                  hoy={hoyDia} etiquetaFondo={titulo} esAdmin={esAdmin} />
               )}
             </div>
           </div>,

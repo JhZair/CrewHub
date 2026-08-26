@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { registrarCarta } from "@/app/casilla/acciones";
 import { subirAdjunto } from "@/lib/subirImagen";
 import { textoDePdf } from "@/lib/leerPdf";
-import { leerCarta, diaHabilTras, fondosDeActa, type CartaLeida } from "@/lib/cartaDafo";
+import { leerCarta, diaHabilTras, fondosDeActa, normActa, type CartaLeida } from "@/lib/cartaDafo";
 import { useAviso } from "@/components/useConfirmar";
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -52,12 +52,19 @@ type Fila = {
 };
 
 export default function CartasLote({
-  opciones, posts,
+  opciones, posts, fondoFijo,
 }: {
   opciones: { id: string; etiqueta: string; enJuego?: boolean }[];
   /** Las postulaciones con su número de acta: es lo único que dice de qué
    *  fondo es cada carta. */
   posts: { id: string; codigo_acta?: string | null }[];
+  /** ── DENTRO DE UN FONDO ──
+   *  Cuando esto se abre desde la pestaña «Vida del fondo», el fondo ya se
+   *  sabe: es este. Entonces el emparejamiento por acta deja de ser una
+   *  búsqueda y pasa a ser una COMPROBACIÓN —¿el acta de esta carta es la de
+   *  este fondo?—, que es justo la pregunta que habría evitado registrar como
+   *  nuestras cuatro cartas de otro beneficiario. */
+  fondoFijo?: { id: string; etiqueta: string; codigo_acta?: string | null } | null;
 }) {
   const router = useRouter();
   const { avisar, aviso } = useAviso();
@@ -86,9 +93,22 @@ export default function CartasLote({
       const num = carta.numero || "";
       const repetida = !!num && yaEnLista.has(num.toUpperCase());
       if (num) yaEnLista.add(num.toUpperCase());
+
+      /* ── ¿ES DE ESTE FONDO? ──
+         Dentro de un fondo, la carta se vincula sola SALVO que su acta sea
+         otra. Ese «salvo» es lo importante: es exactamente lo que pasó con las
+         cuatro cartas del acta 061-2023 cargadas en el fondo del acta
+         060-2023. Antes se vinculaba lo que casaba; ahora, además, se dice lo
+         que NO casa. */
+      const actaAjena = !!(fondoFijo && carta.acta && fondoFijo.codigo_acta
+        && normActa(carta.acta) !== normActa(fondoFijo.codigo_acta));
+      const postId = fondoFijo
+        ? (actaAjena ? "" : fondoFijo.id)
+        : (candidatos.length === 1 ? candidatos[0].id : "");
+
       nuevas.push({
         archivo: f, carta,
-        postId: candidatos.length === 1 ? candidatos[0].id : "",
+        postId,
         variosFondos: candidatos.length > 1,
         fecha: carta.fecha || "",
         /* El plazo se calcula, pero se puede corregir: el cálculo NO cuenta
@@ -97,9 +117,11 @@ export default function CartasLote({
         numero: num,
         asunto: carta.asunto || "",
         error: !texto.trim()
-          ? "No se pudo leer el PDF. Si es un escaneo (una foto dentro del PDF) no tiene texto que leer: regístralo a mano abajo."
+          ? "No se pudo leer el PDF. Si es un escaneo (una foto dentro del PDF) no tiene texto que leer: regístralo a mano en la casilla."
           : repetida ? "Esta carta ya está en la lista de arriba: se quita para no contarla dos veces."
-            : carta.aviso || null,
+            : actaAjena
+              ? `⚠ Esta carta es del acta ${carta.acta} y este fondo es del acta ${fondoFijo!.codigo_acta}. Revisa a quién va dirigida: si no es tuya, márcala «no es nuestra».`
+              : carta.aviso || null,
         fuera: repetida,
       });
     }
@@ -181,7 +203,10 @@ export default function CartasLote({
         <input ref={entrada} type="file" accept="application/pdf,.pdf" multiple
           className="cl-file" disabled={ocupado}
           onChange={e => { cargar(e.target.files); e.target.value = ""; }} />
-        <b>📥 Suelta aquí los PDF de la casilla electrónica — o haz clic para elegirlos</b>
+        <b>
+          📥 Suelta aquí los PDF de la casilla electrónica — o haz clic para elegirlos
+          {fondoFijo ? " · se vincularán a este fondo" : ""}
+        </b>
         {/* Las dos cosas, dichas: leerlos es local, guardarlos no. El PDF de
             una carta lleva nombres y a veces DNI, y quien la sube tiene derecho
             a saber que queda accesible por su enlace a quien lo tenga. */}

@@ -73,6 +73,8 @@ export type PostulacionVida = {
   fecha_limite_rendicion?: string | null;
   fecha_prorroga?: string | null;
   fecha_rendicion_real?: string | null;
+  /** El número del ACTA DE COMPROMISO. Además de rotular la firma, es la llave
+   *  con la que se comprueba que una carta cargada en este fondo es suya. */
   codigo_acta?: string | null;
   acta_url?: string | null;
 };
