@@ -11,6 +11,7 @@ import { useConfirmar, useAviso } from "@/components/useConfirmar";
 import { olvidarZocalo } from "@/lib/zocalo";
 import { money, ICO_CAJA, porCuenta, totales, type CajaMin, type CuentaMin } from "@/lib/caja";
 import { suenoDeCaja, COLOR_SUENO } from "@/lib/cajaDormida";
+import { revisarMedio, medioLimpio, pareceNumeroDeTarjeta } from "@/lib/medioPago";
 import { hoyLima, diaLima } from "@/lib/fechas";
 import CampoAdjunto from "@/components/CampoAdjunto";
 import VerAdjunto from "@/components/VerAdjunto";
@@ -48,7 +49,7 @@ const dmy = (f: string) =>
 export default function CajaPanel({
   cajas, cuentas, movs, proyectos, saldos, esAdmin, userId, alias, mesNombre, pulsos, hoy,
 }: {
-  cajas: (CajaMin & { fecha_inicio: string | null; activa: boolean })[];
+  cajas: (CajaMin & { fecha_inicio: string | null; activa: boolean; medio?: string | null })[];
   cuentas: (CuentaMin & { activa: boolean })[];
   movs: Mov[];
   proyectos: { id: string; nombre: string }[];
@@ -102,7 +103,13 @@ export default function CajaPanel({
      nombre que hay que cambiar es el que se está mirando. */
   const [editCaja, setEditCaja] = useState<string | null>(null);
   const [nombreCaja2, setNombreCaja2] = useState("");
-  const [nuevaCaja, setNuevaCaja] = useState({ nombre: "", tipo: "efectivo" });
+  /* El medio de pago se edita junto al nombre, en la misma tarjeta. Va aparte
+     del nombre y no dentro de él para que quepan las dos cosas: «Banco BCP
+     Oficina» sigue siendo el nombre, y «Visa Débito ···8897» es con qué se
+     paga — la segunda tarjeta sobre la misma cuenta habría obligado a
+     inventarse un nombre nuevo. */
+  const [medioCaja, setMedioCaja] = useState("");
+  const [nuevaCaja, setNuevaCaja] = useState({ nombre: "", tipo: "efectivo", medio: "" });
   const [creandoCaja, setCreandoCaja] = useState(false);
 
   const activas = cuentas.filter(c => c.activa);
@@ -227,22 +234,61 @@ export default function CajaPanel({
                 color: "var(--dim)", display: "flex", gap: 5, alignItems: "center" }}>
                 <span>{ICO_CAJA[c.tipo] || "📦"} {c.nombre}</span>
                 {esAdmin && editCaja !== c.id && (
-                  <button className="dato-btn" style={{ fontSize: 10 }} title="Renombrar o archivar"
-                    onClick={() => { setEditCaja(c.id); setNombreCaja2(c.nombre); }}>✎</button>
+                  <button className="dato-btn" style={{ fontSize: 10 }} title="Renombrar, poner la tarjeta o archivar"
+                    onClick={() => {
+                      setEditCaja(c.id); setNombreCaja2(c.nombre);
+                      setMedioCaja(c.medio || "");
+                    }}>✎</button>
                 )}
               </div>
+              {/* ── CON QUÉ SE PAGA ──
+                  Va pegado al nombre y en texto normal, no escondido en un
+                  tooltip: la pregunta que contesta —«¿de qué tarjeta salió
+                  esto?»— se hace mirando la pantalla, y un dato que hay que
+                  descubrir pasando el ratón no se descubre. */}
+              {medioLimpio(c.medio) && editCaja !== c.id && (
+                <div className="caja-medio" title="Con qué se paga desde esta caja">
+                  💳 {medioLimpio(c.medio)}
+                </div>
+              )}
               {/* «Banco» se vuelve «Banco BCP Oficina» en cuanto aparece la
                   segunda cuenta, y un saldo que no dice de qué cuenta es no se
                   puede contrastar con nada. */}
               {editCaja === c.id && esAdmin && (
                 <div style={{ display: "flex", gap: 5, margin: "5px 0", flexWrap: "wrap" }}>
                   <input value={nombreCaja2} onChange={e => setNombreCaja2(e.target.value)}
-                    placeholder="Nombre de la caja" style={{ ...inp, flex: 1, minWidth: 130 }} />
+                    placeholder="Nombre de la caja"
+                    style={{ ...inp, flex: 1, minWidth: 130,
+                      borderColor: pareceNumeroDeTarjeta(nombreCaja2) ? "var(--red)" : undefined }} />
+                  {/* ── CON QUÉ SE PAGA ──
+                      Solo la marca y los CUATRO ÚLTIMOS dígitos. El aviso salta
+                      mientras se teclea, pero no es la defensa: el servidor lo
+                      vuelve a exigir y la base lo tiene como `check`. Un número
+                      completo que entra una vez ya no se borra del pasado —queda
+                      en cada copia de seguridad—, así que la única protección
+                      que sirve es la que impide que entre. */}
+                  <input value={medioCaja} onChange={e => setMedioCaja(e.target.value)}
+                    placeholder="Visa Débito ···8897"
+                    title="Marca y últimos cuatro dígitos. NO el número completo, ni el vencimiento, ni el CVV."
+                    style={{ ...inp, flex: 1, minWidth: 130,
+                      borderColor: revisarMedio(medioCaja) ? "var(--red)" : undefined }} />
+                  {(revisarMedio(medioCaja) || pareceNumeroDeTarjeta(nombreCaja2)) && (
+                    <div style={{ flexBasis: "100%", color: "var(--red)", fontSize: 11.5 }}>
+                      {/* El nombre se avisa aquí y no en su propio renglón: es
+                          el mismo problema y la misma frase, y dos avisos
+                          rojos a la vez sobre lo mismo se leen como dos fallos
+                          distintos. */}
+                      {pareceNumeroDeTarjeta(nombreCaja2)
+                        ? "El nombre tiene tantos dígitos como un número de tarjeta. El número completo no se guarda aquí."
+                        : revisarMedio(medioCaja)}
+                    </div>
+                  )}
                   <button className="btn" style={{ fontSize: 12, padding: "5px 11px" }}
-                    disabled={ocupado || !nombreCaja2.trim()}
+                    disabled={ocupado || !nombreCaja2.trim()
+                      || !!revisarMedio(medioCaja) || pareceNumeroDeTarjeta(nombreCaja2)}
                     onClick={async () => {
                       avisar(""); setOcupado(true);
-                      const r: any = await guardarCaja({ id: c.id, nombre: nombreCaja2 });
+                      const r: any = await guardarCaja({ id: c.id, nombre: nombreCaja2, medio: medioCaja });
                       setOcupado(false);
                       if (r?.error) { avisar(r.error); return; }
                       setEditCaja(null); router.refresh();
@@ -365,7 +411,14 @@ export default function CajaPanel({
               <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                 <input value={nuevaCaja.nombre} autoFocus
                   onChange={e => setNuevaCaja({ ...nuevaCaja, nombre: e.target.value })}
-                  placeholder="Ej. Banco BCP Oficina" style={inp} />
+                  placeholder="Ej. Banco BCP Oficina"
+                  style={{ ...inp,
+                    borderColor: pareceNumeroDeTarjeta(nuevaCaja.nombre) ? "var(--red)" : undefined }} />
+                {pareceNumeroDeTarjeta(nuevaCaja.nombre) && (
+                  <div style={{ color: "var(--red)", fontSize: 11.5 }}>
+                    Eso tiene tantos dígitos como un número de tarjeta. El número completo no se guarda aquí.
+                  </div>
+                )}
                 <select value={nuevaCaja.tipo}
                   onChange={e => setNuevaCaja({ ...nuevaCaja, tipo: e.target.value })}
                   title="Solo decide el ícono" style={inp}>
@@ -373,15 +426,25 @@ export default function CajaPanel({
                   <option value="banco">🏦 Banco</option>
                   <option value="otro">📦 Otro</option>
                 </select>
+                {/* Opcional: el efectivo del sobre no tiene tarjeta. */}
+                <input value={nuevaCaja.medio}
+                  onChange={e => setNuevaCaja({ ...nuevaCaja, medio: e.target.value })}
+                  placeholder="Visa Débito ···8897 (opcional)"
+                  title="Marca y últimos cuatro dígitos. NO el número completo, ni el vencimiento, ni el CVV."
+                  style={{ ...inp, borderColor: revisarMedio(nuevaCaja.medio) ? "var(--red)" : undefined }} />
+                {revisarMedio(nuevaCaja.medio) && (
+                  <div style={{ color: "var(--red)", fontSize: 11.5 }}>{revisarMedio(nuevaCaja.medio)}</div>
+                )}
                 <div style={{ display: "flex", gap: 5 }}>
                   <button className="btn" style={{ fontSize: 12, padding: "5px 11px" }}
-                    disabled={ocupado || !nuevaCaja.nombre.trim()}
+                    disabled={ocupado || !nuevaCaja.nombre.trim()
+                      || !!revisarMedio(nuevaCaja.medio) || pareceNumeroDeTarjeta(nuevaCaja.nombre)}
                     onClick={async () => {
                       avisar(""); setOcupado(true);
                       const r: any = await guardarCaja(nuevaCaja);
                       setOcupado(false);
                       if (r?.error) { avisar(r.error); return; }
-                      setNuevaCaja({ nombre: "", tipo: "efectivo" });
+                      setNuevaCaja({ nombre: "", tipo: "efectivo", medio: "" });
                       setCreandoCaja(false); router.refresh();
                     }}>Crear</button>
                   <button className="btn btn-ghost" style={{ fontSize: 12 }}
@@ -410,10 +473,22 @@ export default function CajaPanel({
                 misma caja, la opción desaparecía de la lista y el select se veía
                 vacío con el estado todavía lleno — el error saltaba sobre un
                 campo aparentemente en blanco. */}
+            {/* Ancho mínimo en vez de fijo: con el medio dentro de la opción,
+                130 px cortaban el texto justo en los cuatro dígitos, que es lo
+                que se añadió para poder distinguir dos tarjetas del mismo
+                banco. Crece con el contenido y no empuja al resto de la fila. */}
             <select value={f.cajaId}
               onChange={e => setF({ ...f, cajaId: e.target.value, cajaDestino: "" })}
-              style={{ ...inp, width: 130 }}>
-              {cajasVivas.map(c => <option key={c.id} value={c.id}>{ICO_CAJA[c.tipo] || "📦"} {c.nombre}</option>)}
+              style={{ ...inp, minWidth: 130, maxWidth: 260 }}>
+              {/* El medio va en la opción: al apuntar, «Banco BCP» y «Banco
+                  Interbank» se distinguen peor que «···8897» y «···4102», que
+                  es lo que se tiene delante en el voucher. */}
+              {cajasVivas.map(c => (
+                <option key={c.id} value={c.id}>
+                  {ICO_CAJA[c.tipo] || "📦"} {c.nombre}
+                  {medioLimpio(c.medio) ? ` · ${medioLimpio(c.medio)}` : ""}
+                </option>
+              ))}
             </select>
 
             {traspaso ? (

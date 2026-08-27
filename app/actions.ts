@@ -23,6 +23,7 @@ import { BOT, sinBot } from "@/lib/personas";
 import { CAMPOS_TABLA } from "@/lib/tablas-expediente";
 import { esCampoDelTrigger } from "@/lib/actividad";
 import { rotuloEstado } from "@/lib/estados";
+import { revisarMedio, medioLimpio, pareceNumeroDeTarjeta, TOPE_DIGITOS, LARGO_MAX } from "@/lib/medioPago";
 import { EMOJIS as EMOJIS_REACCION } from "@/lib/reacciones";
 import { SECCIONES, grafiasDe, tipoCanonico, ICO_ENT } from "@/lib/secciones";
 import { vinculosDePublicaciones, conNombre } from "@/lib/vinculosPub";
@@ -2886,7 +2887,7 @@ export async function activarCuentaCaja(id: string, activa: boolean) {
  * cuenta es no se puede contrastar con nada.
  */
 export async function guardarCaja(f: {
-  id?: string | null; nombre: string; tipo?: string;
+  id?: string | null; nombre: string; tipo?: string; medio?: string | null;
 }) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -2895,6 +2896,15 @@ export async function guardarCaja(f: {
 
   const nombre = String(f.nombre || "").trim();
   if (!nombre) return { error: "Ponle nombre a la caja." };
+  /* ── LA MISMA PUERTA EN EL NOMBRE ──
+     A quien le rechacen el número en la casilla de la tarjeta, el sitio
+     siguiente donde lo va a pegar es esta, que está tres centímetros a la
+     izquierda. Una defensa que cubre un campo y deja abierto el de al lado no
+     defiende nada. Aquí el listón es más flojo —doce dígitos, el PAN más corto
+     que existe— porque un nombre sí puede llevar dígitos con motivo: «Banco
+     BCP 191-2345678 Soles» tiene diez y es un nombre razonable. */
+  if (pareceNumeroDeTarjeta(nombre))
+    return { error: "Ese nombre tiene tantos dígitos como un número de tarjeta. El número completo no se guarda en CrewHub — en la casilla de al lado van solo los cuatro últimos." };
   const tipo = ["efectivo", "banco", "otro"].includes(f.tipo || "") ? f.tipo : "efectivo";
 
   /* Al renombrar NO se toca el tipo si no viene: el tipo solo decide el ícono, y
@@ -2902,14 +2912,61 @@ export async function guardarCaja(f: {
      por el simple hecho de haberle corregido el nombre. */
   const fila: any = f.id && f.tipo === undefined ? { nombre } : { nombre, tipo };
 
+  /* ── EL MEDIO DE PAGO, COMPROBADO AQUÍ TAMBIÉN ──
+     El navegador ya avisa mientras se teclea, pero el navegador es del
+     usuario: cualquiera puede llamar a esta acción sin pasar por el
+     formulario. Y esto no es una validación de formato cualquiera —es la que
+     impide que el número completo de una tarjeta entre en una tabla que lee
+     todo el equipo y que queda en cada copia de seguridad—, así que se vuelve
+     a exigir en el servidor y una tercera vez en la base, como `check`.
+     Mismo `revisarMedio` en los tres sitios: comprueban lo mismo, no cosas
+     parecidas. */
+  /* `!== undefined` distingue «no me lo mandaron» de «me lo mandaron vacío»:
+     lo primero deja el medio como estaba —una acción que solo renombra no
+     puede borrar la tarjeta—, lo segundo lo borra a propósito. */
+  if (f.medio !== undefined) {
+    const medio = medioLimpio(f.medio);
+    const mal = revisarMedio(medio);
+    if (mal) return { error: mal };
+    /* Vacío se guarda como null y no como cadena vacía: «no tiene tarjeta» y
+       «tiene una tarjeta sin nombre» se pintan distinto. */
+    fila.medio = medio || null;
+  }
+
   const { data: tocadas, error } = f.id
     ? await supabase.from("caja").update(fila).eq("id", f.id).select("id")
     : await supabase.from("caja").insert(fila).select("id");
   if (error) {
+    const cod = (error as any).code;
+    const msg = error.message || "";
+    /* ── LA COLUMNA `medio` EXISTE SOLO TRAS db/caja-medio.sql ──
+       Y PostgREST lo dice de DOS formas distintas según la operación: en un
+       select propaga el 42703 de Postgres («column caja.medio does not
+       exist»), pero en un insert o un update contesta PGRST204 —«Could not
+       find the 'medio' column of 'caja' in the schema cache»—, que no lleva la
+       palabra «column» en esa forma ni el código de Postgres. Comprobar solo
+       una de las dos dejaba el caso más probable —crear o renombrar una caja
+       antes de correr el SQL— saliendo con un mensaje críptico. */
+    const faltaColumna = /medio/i.test(msg)
+      && (cod === "42703" || cod === "PGRST204"
+          || /does not exist|schema cache/i.test(msg));
     return {
-      error: (error as any).code === "42P01"
+      error: cod === "42P01"
         ? "Falta correr db/caja.sql en Supabase."
-        : error.message,
+        : faltaColumna
+          ? "Falta correr db/caja-medio.sql en Supabase."
+        /* Y si la que salta es la guarda de la base, se dice lo que habría
+           dicho el formulario, no el texto del constraint. El aviso se pide
+           con un texto de ejemplo que viola la regla: si algún día las capas
+           divergen, esto dirá «demasiados dígitos» sea cual sea el motivo
+           real, pero seguirá mandando al sitio correcto. */
+        : cod === "23514" && /caja_medio_sin_pan/.test(msg)
+          ? revisarMedio("0".repeat(TOPE_DIGITOS))
+        : cod === "23514" && /caja_nombre_sin_pan/.test(msg)
+          ? "Ese nombre tiene tantos dígitos como un número de tarjeta, y eso no se guarda en CrewHub."
+        : cod === "23514" && /caja_medio_corto/.test(msg)
+          ? `El medio de pago no puede pasar de ${LARGO_MAX} caracteres.`
+        : msg,
     };
   }
   if (!tocadas?.length) return { error: "No se guardó nada. Revisa tus permisos." };

@@ -6531,3 +6531,9 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
 /* El punto lleva el color sólido: el texto va tenue para no competir con el
    saldo, y sin el punto el chip ámbar y el rojo se distinguen mal de lejos. */
 .caja-sueno-pt{width:6px;height:6px;border-radius:50%;flex:none}
+
+/* Con qué se paga desde una caja: «💳 Visa Débito ···8897». Pegado al nombre
+   y en texto normal, no en un tooltip — la pregunta que contesta se hace
+   mirando la pantalla, y un dato que hay que descubrir pasando el ratón no se
+   descubre. */
+.caja-medio{font-size:11px;color:var(--muted);margin-top:2px;letter-spacing:.2px}

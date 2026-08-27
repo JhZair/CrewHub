@@ -57,7 +57,7 @@ export default async function CajaPage({ searchParams }: { searchParams: { m?: s
        la lista esas filas salían con la caja en blanco: un gasto sin decir de
        dónde salió. Quién se pinta y quién no lo decide la pantalla, no la
        consulta. */
-    supabase.from("caja").select("id,nombre,tipo,saldo_inicial,fecha_inicio,activa")
+    supabase.from("caja").select("id,nombre,tipo,saldo_inicial,fecha_inicio,activa,medio")
       .order("activa", { ascending: false }).order("orden").order("nombre"),
     supabase.from("cuenta_caja").select("id,nombre,flujo,activa").order("orden").order("nombre"),
     supabase.from("movimiento_caja")
@@ -92,6 +92,26 @@ export default async function CajaPage({ searchParams }: { searchParams: { m?: s
        alarma falsa que enseña a ignorar las alarmas. */
     supabase.from("caja_ultimo_apunte").select("caja_id,ultimo_apunte"),
   ]);
+
+  /* ── SI FALTA LA COLUMNA `medio`, LA PANTALLA NO SE CAE ──
+     Pedir una columna que no existe hace fallar la consulta ENTERA, y sin la
+     lista de cajas esta pantalla no sirve para nada: ni saldos, ni apuntar, ni
+     ver el mes. Una migración opcional —el número de tarjeta lo es— no puede
+     tumbar el cuaderno del día a día.
+     Se reintenta sin ella, y solo en ese caso: un viaje de más el día que
+     alguien despliegue el código antes de correr el SQL, cero el resto de los
+     días. */
+  let lasCajas = cajas;
+  let eLasCajas = eCajas;
+  const faltaMedio = !!eCajas && /medio/i.test(eCajas.message || "")
+    && (/does not exist|42703/i.test(eCajas.message || "") || (eCajas as any).code === "42703");
+  if (faltaMedio) {
+    const r = await supabase.from("caja")
+      .select("id,nombre,tipo,saldo_inicial,fecha_inicio,activa")
+      .order("activa", { ascending: false }).order("orden").order("nombre");
+    lasCajas = r.data as any;
+    eLasCajas = r.error as any;
+  }
 
   /* ── EL SALDO SE PIDE POR PÁGINAS, NO CON UN LIMIT GRANDE ──
      El saldo no es el del mes: es todo lo acumulado. Y un `.limit(20000)` no
@@ -159,7 +179,7 @@ export default async function CajaPage({ searchParams }: { searchParams: { m?: s
 
   /* El saldo se calcula para todas, incluidas las archivadas: si una se archivó
      con plata dentro, ese dinero existe y hay que poder verlo al reabrirla. */
-  const saldos = (cajas || []).map((c: any) => ({
+  const saldos = (lasCajas || []).map((c: any) => ({
     id: c.id, saldo: saldoDeCaja(c, todos, cs),
   }));
 
@@ -176,7 +196,7 @@ export default async function CajaPage({ searchParams }: { searchParams: { m?: s
   const hoyDeLima = hoyLima();
   const mapaPulso = new Map<string, string>(
     (pulso || []).map((p: any) => [p.caja_id, p.ultimo_apunte]));
-  const pulsos = (cajas || []).map((c: any) => ({
+  const pulsos = (lasCajas || []).map((c: any) => ({
     id: c.id,
     /* `has` y no `?? null`: una caja que la vista no devolvió es «no lo sé»,
        no «no tiene movimientos». Colapsarlas aquí pintaría «sin estrenar»
@@ -190,7 +210,7 @@ export default async function CajaPage({ searchParams }: { searchParams: { m?: s
   /* Si algo de esto falla, el saldo que se pinte NO es el saldo. Se dice antes
      que nada: con `todos` vacío cada tarjeta enseñaría el saldo inicial como si
      fuera el dinero de hoy, que es la lectura más engañosa posible. */
-  const problema = eCajas?.message || eCuentas?.message || eMovs?.message || eSaldo || null;
+  const problema = eLasCajas?.message || eCuentas?.message || eMovs?.message || eSaldo || null;
   const faltaSql = /movimiento_caja|cuenta_caja|relation .* does not exist|42P01/.test(problema || "");
   /* ── EL FALLO DEL PULSO SE DICE APARTE ──
      No toca los saldos —el saldo sale de otra consulta—, así que meterlo en el
@@ -244,6 +264,11 @@ export default async function CajaPage({ searchParams }: { searchParams: { m?: s
       )}
       {/* Solo a quien puede arreglarlo: al resto del equipo, un recado sobre un
           archivo SQL no le dice nada que pueda hacer. */}
+      {faltaMedio && esAdmin && (
+        <div className="empty" style={{ color: "var(--dim)", marginBottom: 10, fontSize: 12 }}>
+          Para guardar con qué tarjeta se paga en cada caja, falta correr <code>db/caja-medio.sql</code> en Supabase.
+        </div>
+      )}
       {faltaPulso && esAdmin && (
         <div className="empty" style={{ color: "var(--dim)", marginBottom: 10, fontSize: 12 }}>
           {faltaPulso === "falta"
@@ -305,7 +330,7 @@ export default async function CajaPage({ searchParams }: { searchParams: { m?: s
           mes en la misma pantalla, una filtrada y otra no, es la clase de
           contradicción que hace desconfiar de las dos.
           Ahora lo pinta CajaPanel con los mismos movimientos que enseña. */}
-      <CajaPanel cajas={(cajas || []) as any} cuentas={cs as any} movs={movsConHilo as any}
+      <CajaPanel cajas={(lasCajas || []) as any} cuentas={cs as any} movs={movsConHilo as any}
         alias={mapaAlias(aliasPers as any)}
         proyectos={(proyectos || []) as any} saldos={saldos} esAdmin={esAdmin}
         userId={user.id} mesNombre={MESES[mes]} pulsos={pulsos} hoy={hoyDeLima} />
