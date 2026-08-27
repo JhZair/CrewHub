@@ -9,6 +9,9 @@ import { fueraDeAgenda, actividadFueraDeAgenda } from "@/lib/estados";
 import { diaLima } from "@/lib/fechas";
 import { techo } from "@/lib/api";
 import { llevaHora } from "@/lib/tipos";
+import { nombresDe } from "@/lib/eventos";
+import { ORDEN_VINCULO, pesoVinculo } from "@/lib/portadaHoy";
+import { tipoCanonico } from "@/lib/secciones";
 
 export const metadata: Metadata = { title: "📅 Agenda" };
 
@@ -155,9 +158,14 @@ export default async function AgendaPage() {
 
   /* Los nombres, por lote y solo de los tipos que agrupan. Cuatro consultas en
      paralelo y nunca una por fila. */
+  /* El orden vive en lib/portadaHoy: la portada recorta los mismos vínculos
+     por el mismo criterio. Estaba escrito dos veces con dos órdenes distintos
+     y la misma reunión enseñaba chips distintos en cada pantalla. */
+  const PRIORIDAD = ORDEN_VINCULO;
+
   const idsDe = (t: string) => [...new Set([...vincDe.values()].flat()
     .filter(v => v.tipo === t).map(v => v.id))];
-  const [proyG, postuG, convG, empG] = await Promise.all([
+  const [proyG, postuG, convG, empG, nombresOtros] = await Promise.all([
     idsDe("proyecto").length
       ? supabase.from("proyectos").select("id,nombre,nombre_corto").in("id", idsDe("proyecto"))
       : Promise.resolve({ data: [] as any[] }),
@@ -178,6 +186,20 @@ export default async function AgendaPage() {
     idsDe("empresa").length
       ? supabase.from("empresas").select("id,nombre").in("id", idsDe("empresa"))
       : Promise.resolve({ data: [] as any[] }),
+    /* ── LOS DEMÁS VÍNCULOS, PARA PODER ENSEÑARLOS TODOS ──
+       Las cuatro consultas de arriba resuelven los tipos que AGRUPAN. Pero un
+       caso cuelga de más cosas —personas, lugares, etiquetas—, y una reunión
+       existe justamente por a quién convoca: enseñar solo el grupo la deja en
+       «Casos sueltos», que es lo único que no informa de ella.
+       Solo los tipos que no cubren las cuatro de arriba, para no pedir dos
+       veces los mismos proyectos. */
+    /* TODOS los vínculos, sin excluir los cuatro que agrupan: `grupoEnt` no
+       siempre los cubre —una postulación que no ganó no entra allí, y un
+       vínculo guardado en plural («proyectos») tampoco casa—, y esos chips
+       desaparecían de la fila sin dejar rastro. Nombrar de más cuesta una
+       consulta por tipo; nombrar de menos borra datos de la pantalla. */
+    nombresDe(supabase, [...vincDe.values()].flat()
+      .map(v => ({ tipo: v.tipo, id: v.id }))),
   ]);
 
   /* El grupo de cada entidad, con el MISMO `id` que arman las actividades
@@ -209,7 +231,6 @@ export default async function AgendaPage() {
      vivía en `postu:<fondo>`: dos bloques de la misma película, uno con el
      cronograma y otro con un caso solo. La prioridad tiene que seguir a dónde
      está el trabajo, no a qué suena más específico. */
-  const PRIORIDAD = ["postulacion", "proyecto", "convocatoria", "empresa"];
   const grupoDeCaso = (id: string) => {
     const vs = vincDe.get(id) || [];
     for (const t of PRIORIDAD) {
@@ -221,6 +242,21 @@ export default async function AgendaPage() {
        por qué están juntos —no comparten nada— en vez de sugerir que son «los
        casos» y los demás otra cosa. */
     return { id: "__casos__", label: "Casos sueltos" };
+  };
+
+  /* ── TODOS LOS VÍNCULOS DE UN CASO, EN ORDEN ──
+     Delante lo que sitúa el trabajo —fondo, proyecto, convocatoria, empresa—,
+     detrás lo demás. La fila enseña los primeros y cuenta el resto: si hay que
+     cortar, se corta por donde menos duele. */
+  const gruposDeCaso = (id: string): string[] => {
+    const vs = vincDe.get(id) || [];
+    return [...vs].sort((a, b) => pesoVinculo(tipoCanonico(a.tipo))
+                                - pesoVinculo(tipoCanonico(b.tipo)))
+      .map(v => {
+        const t = tipoCanonico(v.tipo);
+        return grupoEnt.get(`${t}:${v.id}`)?.label || nombresOtros.get(`${t}:${v.id}`) || "";
+      })
+      .filter(Boolean);
   };
 
   // ── Actividades → items. Grupo = su proyecto/convocatoria/fondo. ──
@@ -264,7 +300,7 @@ export default async function AgendaPage() {
       // Sin categoría (los cronogramas de proyecto) manda el preset de cine,
       // que es justo lo que `etapasDe` devuelve cuando no reconoce nada.
       cat: conv?.categoria || (postu?.conv as any)?.categoria || "",
-      grupo: grupo.label, grupoId: grupo.id, href,
+      grupo: grupo.label, grupoId: grupo.id, grupos: [grupo.label], href,
     };
   });
 
@@ -314,6 +350,7 @@ export default async function AgendaPage() {
     nc: nComs.get(c.id) || 0,
     creado: c.creado_en || "",
     ...(() => { const g = grupoDeCaso(c.id); return { grupo: g.label, grupoId: g.id }; })(),
+    grupos: gruposDeCaso(c.id),
     /* ── LOS CASOS, DEBAJO DEL CRONOGRAMA DE SU GRUPO ──
        Dentro de un grupo se ordena por `orden`, que es la secuencia que una
        persona decidió en el cronograma —primero se alistan los equipos,
@@ -325,6 +362,27 @@ export default async function AgendaPage() {
     orden: Number.MAX_SAFE_INTEGER,
     href: `/caso/${c.id}`,
   }; });
+
+  /* ── UNA COSA, UNA FILA ──
+     El bot materializa las actividades en casos, copiándoles el título y las
+     dos fechas: en el calendario salían DOS renglones idénticos, con el mismo
+     texto y el mismo destino, y la cabecera del día los contaba a los dos.
+     Gana el caso —es donde se comenta, se asigna y se cierra—; la actividad
+     solo queda mientras nadie la haya materializado.
+     Es la misma regla que aplica la portada, y por eso vive donde se ve: si
+     una pantalla deduplica y la otra no, «los dos paneles no enseñan lo
+     mismo» vuelve a ser cierto por otro camino. */
+  const idsConCaso = new Set(itemsCaso.map(c => c.id));
+  /* Por un mapa y no por el índice del arreglo: hoy `itemsAct` sale de un
+     `map` sobre `actsVisibles` y los índices coinciden, pero eso es un
+     accidente del código de arriba y el día que alguien filtre entre medias,
+     esto emparejaría filas equivocadas sin dar error. */
+  const casoDeAct = new Map<string, string>(
+    actsVisibles.filter((a: any) => a.publicacion_id).map((a: any) => [a.id, a.publicacion_id]));
+  const itemsActSolas = itemsAct.filter(a => {
+    const pid = casoDeAct.get(a.id);
+    return !(pid && idsConCaso.has(pid));
+  });
 
   return (
     <div className="shell" style={{ maxWidth: "min(1800px, 98vw)" }}>
@@ -340,7 +398,7 @@ export default async function AgendaPage() {
         <span className="spacer" />
         <span style={{ color: "var(--dim)", fontSize: 12 }}>todo lo que tiene fecha, junto</span>
       </div>
-      <Agenda items={[...itemsAct, ...itemsCaso]} perfiles={sinBot(perfs || [])} miId={user.id} />
+      <Agenda items={[...itemsActSolas, ...itemsCaso]} perfiles={sinBot(perfs || [])} miId={user.id} />
     </div>
   );
 }

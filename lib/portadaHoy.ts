@@ -69,11 +69,18 @@ export function loDeHoy<T extends ConFechas>(items: T[], hoy = hoyLima()): T[] {
  * rodando desde el lunes desaparecería de la portada justo la semana en que
  * más importa.
  */
+/** Un día, N días más allá (o más acá, con N negativo). Mediodía al parsear,
+ *  como en todo el proyecto: a medianoche un cambio de horario resta un día. */
+export function diaMas(dia: string, n: number): string {
+  const d = new Date(`${soloDia(dia)}T12:00:00`);
+  if (isNaN(d.getTime())) return dia;
+  d.setDate(d.getDate() + n);
+  const p = (x: number) => String(x).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 export function ventana(dias = DIAS_RODAJE, hoy = hoyLima()) {
-  const d = new Date(`${hoy}T12:00:00`);
-  d.setDate(d.getDate() + dias);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return { desde: hoy, hasta: `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}` };
+  return { desde: hoy, hasta: diaMas(hoy, dias) };
 }
 
 export function enLosProximos<T extends ConFechas>(
@@ -99,6 +106,55 @@ export function enLosProximos<T extends ConFechas>(
       return c || String((x as any).titulo || "").localeCompare(String((y as any).titulo || ""));
     });
 }
+
+/* ── ¿HAY QUE DECIR EN QUÉ ESTADO ESTÁ? ──
+ *
+ * En una lista del día, lo normal es que lo que sale esté abierto o en marcha:
+ * decirlo sería repetir en cada fila algo que ya se da por hecho, y una lista
+ * donde todas las filas llevan la misma etiqueta es una lista con una columna
+ * de ruido.
+ *
+ * Lo que hay que decir es lo que CONTRADICE esa expectativa: «Rodaje bloque
+ * Zenón» aparece hoy en la agenda y está EN PAUSA — sin ese aviso, alguien se
+ * organiza el día alrededor de algo que nadie va a hacer. Lo mismo con
+ * seguimiento (se espera a un tercero) y con lo ya cerrado.
+ *
+ * Solo aplica a los casos: una actividad de cronograma tiene su propio
+ * vocabulario de estados y no significan lo mismo. */
+export const NORMALES_HOY = ["abierta", "en_progreso"];
+
+/* ── CUÁNTOS VÍNCULOS SE ENSEÑAN ANTES DEL «+N» ──
+ * Seis. Empezó en tres y se quedaba corto justo donde importa: una reunión con
+ * cinco convocados salía como «Haywarikuy · KatyP · MichelM +2», y el «+2»
+ * esconde a las dos personas que uno estaba buscando. Los chips se encogen
+ * antes de desbordar, así que caben; a partir de seis sí empiezan a tapar el
+ * título, que es lo que se lee primero. */
+export const TOPE_GRUPOS = 6;
+
+/* ── EL ORDEN DE LOS VÍNCULOS ──
+ * Delante lo que SITÚA el trabajo, detrás lo demás: si hay que cortar por el
+ * tope, se corta por donde menos duele.
+ *
+ * El fondo va primero y no el proyecto, aunque suene menos concreto: el
+ * cronograma de un fondo en ejecución NO cuelga del proyecto —sus filas tienen
+ * `proyecto_id` en null— sino de la postulación. Es el mismo criterio que
+ * agrupa la agenda, y estaba escrito dos veces con dos órdenes distintos: la
+ * portada ponía `persona` por delante de `postulacion`, así que la misma
+ * reunión recortaba chips distintos en cada pantalla. */
+export const ORDEN_VINCULO = ["postulacion", "proyecto", "convocatoria", "empresa"];
+export const pesoVinculo = (tipoCanon: string) => {
+  const i = ORDEN_VINCULO.indexOf(tipoCanon);
+  return i < 0 ? 99 : i;
+};
+export const hayQueDecirEstado = (kind: string, estado?: string | null) =>
+  kind === "caso" && !!estado && !NORMALES_HOY.includes(estado);
+
+/* Y además de decirlo, se pinta apagado: una fila en pausa sigue estando hoy
+ * —hay que saber que existe— pero no se está haciendo, así que no puede pesar
+ * lo mismo que lo que sí. */
+export const APAGADOS_HOY = ["en_pausa", "seguimiento"];
+export const apagadoHoy = (kind: string, estado?: string | null) =>
+  kind === "caso" && !!estado && APAGADOS_HOY.includes(estado);
 
 /* ── CUÁNDO ES ──
  * «hoy», «mañana», «en 3 días». Lo que se necesita leer de un rodaje próximo

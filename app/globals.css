@@ -2856,8 +2856,14 @@ a.stat-card:hover{border-color:var(--border2)}
    a la misma altura y la lista se lee como una agenda y no como un párrafo. */
 .ag-dia-hora{flex:none;width:44px;color:var(--teal);font-weight:800;font-size:12px}
 .ag-dia-tit{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ag-dia-grupo{flex:none;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  color:var(--dim);font-size:11px}
+/* Varios por fila desde que se enseñan TODOS los vínculos: cada uno con su
+   tope, para que uno largo no empuje a los demás fuera. `min-width` a cero
+   deja que se encojan antes de desbordar. */
+.ag-dia-grupo{flex:0 1 auto;min-width:0;max-width:150px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;color:var(--dim);font-size:11px}
+/* El primero es el que sitúa el trabajo: se le deja tomar el hueco libre para
+   que los de detrás no lo aplasten. */
+.ag-dia-fila > .ag-dia-grupo:first-of-type{margin-left:auto}
 @media(max-width:640px){
   .ag-cal-dia{min-height:64px}
   .ag-cal-chip{font-size:11px}
@@ -6596,3 +6602,32 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
   .port-hoy-grupo{display:none}
   .port-hoy-hora{width:64px}
 }
+
+/* En la portada, lo mismo: el grupo dejó de ser uno. Cada chip con su tope y
+   encogible, y el primero empujado a la derecha para que el título mande. */
+.port-hoy-grupo{flex:0 1 auto;min-width:0}
+.port-hoy-fila > .port-hoy-grupo:first-of-type{margin-left:auto}
+/* La cara, siempre al final y sin encogerse. La clase del componente es `.av`
+   (ver components/Avatar.tsx), no `.avatar`. */
+.port-hoy-fila > .av,.ag-dia-fila > .av{flex:none;margin-left:2px}
+
+/* El estado, solo cuando contradice lo que la lista da por hecho (en pausa, en
+   seguimiento, ya cerrado). Chip pequeño y con el color del estado: se lee sin
+   competir con el título, que es lo primero. Se comparte entre la portada y el
+   pop-up del día — es el mismo dato diciendo lo mismo. */
+.port-hoy-estado{flex:none;font-size:10.5px;padding:2px 7px;border-radius:999px;
+  border:1px solid;background:color-mix(in srgb,currentColor 10%,transparent);
+  white-space:nowrap;font-weight:700}
+
+/* El «+3»: nunca se encoge ni se corta. Es un contador de tres caracteres —si
+   se recortara diría «+» y no contaría nada—, y va pegado al último chip para
+   leerse como parte de la misma lista. */
+.port-hoy-mas{flex:none;min-width:auto;max-width:none;cursor:help;
+  color:var(--muted);font-weight:700}
+/* Con seis chips por fila, cada uno cede antes: el tope de 150px hacía que dos
+   nombres largos empujaran al resto fuera. */
+.port-hoy-grupo,.ag-dia-grupo{max-width:120px}
+
+/* «Apagado» también en el pop-up del día: la clase se comparte con la portada
+   para que las dos pantallas atenúen lo mismo con la misma intensidad. */
+.ag-dia-fila.es-hecho{opacity:.55}

@@ -19,8 +19,9 @@ import { plazoDe } from "@/lib/plazo";
 import { rotuloTipo, colorTipo, icoTipo, llevaHora } from "@/lib/tipos";
 import { urlsDe } from "@/lib/drive";
 import { fechaDia } from "@/lib/fechas";
-import { ESTADOS_VIVOS, actividadFueraDeAgenda, fueraDeAgenda } from "@/lib/estados";
-import { loDeHoy, enLosProximos, ventana, cuandoCae, soloDia, DIAS_RODAJE, ETIQUETA_RODAJE } from "@/lib/portadaHoy";
+import { ESTADOS_VIVOS, actividadFueraDeAgenda, fueraDeAgenda,
+  ESTADO_ICO, ESTADO_TXT, ESTADO_COL } from "@/lib/estados";
+import { loDeHoy, enLosProximos, ventana, cuandoCae, soloDia, diaMas, hayQueDecirEstado, apagadoHoy, pesoVinculo, TOPE_GRUPOS, DIAS_RODAJE, ETIQUETA_RODAJE } from "@/lib/portadaHoy";
 import { sinBot, BOT } from "@/lib/personas";
 import {
   COLS_NOTIF, COLS_NUEVAS, faltaAlguna, columnasQueFaltan, sinEstas,
@@ -258,7 +259,7 @@ export default async function Portada({ searchParams }: {
        dijeran lo mismo, una de las dos estaría mintiendo y no habría forma de
        saber cuál. */
     supabase.from("publicaciones")
-      .select("id,titulo,tipo,estado,fecha_inicio,fecha_limite,hora," +
+      .select("id,titulo,tipo,estado,fecha_inicio,fecha_limite,hora,responsable," +
         "vinculos:publicacion_vinculos(entidad_tipo, entidad_id)")
       .in("estado", ESTADOS_VIVOS)
       .is("archivado_en", null)
@@ -266,36 +267,38 @@ export default async function Portada({ searchParams }: {
       /* Con fecha límite, como en /agenda: un caso sin plazo no está en el
          calendario de ningún día. */
       .not("fecha_limite", "is", null)
-      /* ── LO QUE SE SOLAPA CON HOY, ACOTADO EN LA BASE ──
-         Dos formas de caer hoy, y hay que pedir las dos:
-           · el plazo ES hoy — la mayoría de los casos no tienen `fecha_inicio`,
-             así que su ventana es ese único día;
-           · o la ventana lo contiene: empezó antes y termina hoy o después.
-         La primera versión de esta consulta era `.lte("fecha_inicio", hoy)`, y
-         eso descarta las filas con `fecha_inicio` nulo —NULL no es «menor o
-         igual» que nada—, o sea justo la mayoría. La lista habría salido casi
-         vacía sin que nada fallara.
-         Se acota aquí y se afina con `loDeHoy` en memoria: pedir todos los
-         casos con fecha para quedarse con los de un día sería traerse el año
-         entero en cada carga de la portada. */
-      .or(`fecha_limite.eq.${hoyDeLima},`
-        + `and(fecha_inicio.lte.${hoyDeLima},fecha_limite.gte.${hoyDeLima})`)
-      .limit(200),
+      /* ── UNA VENTANA ANCHA, Y EL DÍA SE AFINA EN MEMORIA ──
+         Hubo dos intentos de acotarlo con precisión en la base y los dos
+         escondieron filas: `.lte("fecha_inicio", hoy)` descartaba las que
+         tienen `fecha_inicio` nulo —NULL no es «menor o igual» que nada, o sea
+         casi todas—, y el `.or()` con `and()` anidado dependía de que la
+         combinación de filtros de PostgREST hiciera exactamente lo que uno
+         cree. Un caso que no sale no da error: se lee como «hoy no hay nada».
+         Ahora se pide una ventana ancha —lo que vence en los tres meses de
+         alrededor— y el día lo decide `loDeHoy`, que es la MISMA función que
+         usa el resto. Son unas decenas de filas y el filtro está donde se
+         puede leer y probar. */
+      .gte("fecha_limite", diaMas(hoyDeLima, -45))
+      .lte("fecha_limite", diaMas(hoyDeLima, 45))
+      .order("fecha_limite")
+      .limit(500),
     /* Las actividades de cronograma que caen hoy. `pub` viaja para respetar el
        archivado del caso: ver `actividadFueraDeAgenda`. */
     supabase.from("cronograma_actividades")
-      .select("id,nombre,fecha_inicio,fecha_fin,etapa,estado,publicacion_id," +
+      .select("id,nombre,fecha_inicio,fecha_fin,etapa,estado,publicacion_id,responsable,equipo," +
         "proy:proyectos(id,nombre,nombre_corto)," +
         "conv:convocatorias(id,codigo,nombre)," +
         "postu:postulaciones(id,codigo,estado,proy:proyectos(nombre,nombre_corto))," +
         "pub:publicaciones!publicacion_id(estado,archivado_en)")
       .neq("estado", "cancelada")
-      /* Una actividad SIEMPRE tiene `fecha_inicio` (es su dato), pero puede no
-         tener `fecha_fin`: entonces dura un día. Las dos formas, igual que
-         arriba. */
-      .or(`fecha_inicio.eq.${hoyDeLima},`
-        + `and(fecha_inicio.lte.${hoyDeLima},fecha_fin.gte.${hoyDeLima})`)
-      .limit(300),
+      /* Igual que los casos: ventana ancha y el día se afina con `loDeHoy`.
+         Una actividad siempre tiene `fecha_inicio`, pero puede durar semanas,
+         así que la ventana se abre por delante lo suficiente para que una que
+         empezó hace mes y medio y sigue corriendo no se pierda. */
+      .gte("fecha_inicio", diaMas(hoyDeLima, -120))
+      .lte("fecha_inicio", hoyDeLima)
+      .order("fecha_inicio")
+      .limit(500),
     /* Los rodajes de los próximos 30 días, por la etiqueta. Una sola llamada:
        sin ella serían tres viajes encadenados —resolver la etiqueta, sus
        vínculos, y los casos—. Ver db/portada-hoy.sql. */
@@ -517,20 +520,32 @@ export default async function Portada({ searchParams }: {
      `caeEnElDia`) para que las dos pantallas no puedan decir cosas distintas
      sobre el mismo día: cuando eso pasa, no hay forma de saber cuál miente.
      ══════════════════════════════════════════════════════════════════ */
-  const CON_GRUPO = ["proyecto", "empresa", "persona", "postulacion", "convocatoria"];
   const hoyCasos = ((casosHoyQ.data || []) as any[])
     /* Un aviso vencido ya no rige; una reunión pasada sí se queda —en un
        calendario el pasado es historial y no deuda—. Misma regla que /agenda. */
     .filter((c: any) => !fueraDeAgenda(c.tipo, c.fecha_limite))
     .map((c: any) => {
-      /* Sin respaldo al primer vínculo cualquiera: un caso cuyo único vínculo
-         sea una etiqueta acabaría enseñando «Rodaje» en la columna que dice de
-         qué proyecto es. Mejor esa columna vacía que con el dato de al lado. */
-      const v = (c.vinculos || []).find((x: any) =>
-        CON_GRUPO.includes(tipoCanonico(x.entidad_tipo)));
+      /* ── TODOS LOS VÍNCULOS, NO EL PRIMERO ──
+         Se enseñaba uno solo, elegido por prioridad, y en una reunión eso es
+         justo lo que no sirve: una reunión existe POR quién y qué convoca —dos
+         fondos, tres personas—, y quedarse con el primero convierte «Reunión
+         sobre entrega de Fondos · PO-002 · PO-005 · Katy» en «· WilfredoP».
+         Se ordenan poniendo delante lo que sitúa el trabajo (fondo, proyecto,
+         convocatoria, empresa) y detrás lo demás: si hay que cortar, se corta
+         por el final. */
+      const vs = (c.vinculos || []) as any[];
+      /* Sin vínculos se dice «Casos sueltos» —igual que /agenda— y no se deja
+         el hueco: el nombre explica por qué está solo, en vez de sugerir que
+         al sistema se le perdió el dato. */
+      const grupos = [...vs]
+        .sort((a, b) => pesoVinculo(tipoCanonico(a.entidad_tipo))
+                      - pesoVinculo(tipoCanonico(b.entidad_tipo)))
+        .map((x: any) => nombresVinc.get(`${tipoCanonico(x.entidad_tipo)}:${x.entidad_id}`))
+        .filter(Boolean) as string[];
       return {
         id: c.id, kind: "caso" as const, titulo: c.titulo, tipo: c.tipo,
-        hora: c.hora || "", href: `/caso/${c.id}`,
+        hora: c.hora || "", href: `/caso/${c.id}`, respId: c.responsable || null,
+        estado: c.estado || "", grupos,
         /* ── LA VENTANA DE UN CASO ──
            Empieza cuando empiece y termina el día del plazo. Con una
            excepción, la misma que hace /agenda: lo que LLEVA HORA —una reunión,
@@ -541,7 +556,6 @@ export default async function Portada({ searchParams }: {
            distintas del mismo caso. */
         ini: llevaHora(c.tipo) ? c.fecha_limite : (c.fecha_inicio || c.fecha_limite),
         fin: c.fecha_limite || c.fecha_inicio,
-        grupo: v ? nombresVinc.get(`${tipoCanonico(v.entidad_tipo)}:${v.entidad_id}`) || "" : "",
       };
     });
 
@@ -558,17 +572,27 @@ export default async function Portada({ searchParams }: {
       return {
         id: a.id, kind: "act" as const, titulo: a.nombre, tipo: "",
         publicacion_id: a.publicacion_id || null,
+        /* ── QUIÉN LA TIENE ──
+           Una actividad de cronograma puede no tener `responsable` y sí
+           `equipo`: se reparte entre varios y nadie firma. «Rodaje de planos de
+           apoyo» salía sin cara por eso. Se cae al primero del equipo — no es
+           «el responsable», pero es alguien a quien preguntar, que es para lo
+           que se mira la cara. */
+        respId: a.responsable || ((a.equipo as string[]) || [])[0] || null, estado: "",
         hora: "", etapa: a.etapa || "",
         ini: a.fecha_inicio, fin: a.fecha_fin || a.fecha_inicio,
         href: a.publicacion_id ? `/caso/${a.publicacion_id}`
           : proy ? `/entidad/proyecto/${proy.id}`
           : postu ? `/fondo/${postu.id}#audiovisual`
           : conv ? `/entidad/convocatoria/${conv.id}` : "/agenda",
-        grupo: proy ? (proy.nombre_corto || proy.nombre)
+        /* Una actividad cuelga de una sola cosa —su cronograma—, así que su
+           lista de grupos tiene un elemento. Misma forma que la del caso para
+           que la fila no tenga que preguntar de qué clase es lo que pinta. */
+        grupos: [proy ? (proy.nombre_corto || proy.nombre)
           : postu ? [`🎬 ${postu.codigo || "Fondo"}`,
                      (postu.proy as any)?.nombre_corto || (postu.proy as any)?.nombre]
                     .filter(Boolean).join(" · ")
-          : conv ? [conv.codigo, conv.nombre].filter(Boolean).join(" · ") : "",
+          : conv ? [conv.codigo, conv.nombre].filter(Boolean).join(" · ") : ""].filter(Boolean),
       };
     });
 
@@ -581,17 +605,21 @@ export default async function Portada({ searchParams }: {
      Gana el caso: es donde se comenta, se asigna y se cierra. La actividad
      solo queda cuando nadie la materializó todavía.
 
-     Y la regla es «tiene caso, no se pinta», sin comprobar si ese caso está en
-     la lista de hoy. Comprobándolo, un caso ya RESUELTO —que no viaja, porque
-     la consulta pide solo estados vivos— dejaba pasar su actividad, y «📅 Hoy»
-     enseñaba como pendiente algo que ya estaba hecho. Si hay caso, el caso
-     manda: si no aparece en la lista, es porque ya no toca. */
-  const actsSinCaso = hoyActs.filter((a: any) => !a.publicacion_id);
+     Gana el caso SI el caso está en la lista. La versión anterior quitaba la
+     actividad por el mero hecho de tener `publicacion_id`, y eso borraba tres
+     filas que /agenda sí enseña: un caso materializado sin `fecha_inicio` solo
+     cae el día de su plazo, mientras que la ACTIVIDAD dura toda su ventana. El
+     caso no estaba en la lista de hoy, la actividad sí, y la portada se quedó
+     sin las dos. Los dos paneles tienen que enseñar lo mismo. */
+  const casosDeHoy = loDeHoy(hoyCasos, hoyDeLima);
+  const idsDeHoy = new Set(casosDeHoy.map((c: any) => c.id));
+  const actsDeHoy = loDeHoy(hoyActs, hoyDeLima)
+    .filter((a: any) => !(a.publicacion_id && idsDeHoy.has(a.publicacion_id)));
 
   /* Juntos y ordenados por hora: lo que tiene hora arriba y en orden —una
      reunión a las 9 antes que una a las 15—, y lo que no la tiene detrás. Un
      día se lee de arriba abajo. */
-  const deHoy = loDeHoy([...hoyCasos, ...actsSinCaso], hoyDeLima)
+  const deHoy = [...casosDeHoy, ...actsDeHoy]
     .sort((a: any, b: any) => {
       if (!!a.hora !== !!b.hora) return a.hora ? -1 : 1;
       return String(a.hora).localeCompare(String(b.hora))
@@ -604,7 +632,7 @@ export default async function Portada({ searchParams }: {
      por eso viaja aparte, y por eso la pantalla puede distinguir «no hay
      rodajes» de «no existe la etiqueta Rodaje». */
   const rodajes = ((rodajesQ.data || []) as any[]).map((r: any) => ({
-    id: r.id, titulo: r.titulo, estado: r.estado,
+    id: r.id, titulo: r.titulo, estado: r.estado, respId: r.responsable || null,
     ini: r.fecha_inicio || r.fecha_limite, fin: r.fecha_limite || r.fecha_inicio,
     hora: r.hora || "", grupo: r.grupo || "", href: `/caso/${r.id}`,
   }));
@@ -612,6 +640,10 @@ export default async function Portada({ searchParams }: {
   /* Quién ve los recados de configuración. Mismo criterio que el resto de la
      pantalla (línea del `esAdmin` de la tira del bot). */
   const esAdminPortada = !!(perfil?.es_admin || (perfil as any)?.es_finanzas);
+  /* Las caras del equipo, por id. `equipo` ya viaja para los filtros de «lo
+     último»: reusarlo es gratis, y pedir los perfiles otra vez para pintar
+     cuatro avatares sería un viaje por nada. */
+  const perfilDe = new Map<string, any>((equipo || []).map((p: any) => [p.id, p]));
   /* ── UN DÍA VACÍO NO ES LO MISMO QUE UN DÍA QUE NO SE PUDO LEER ──
      El bloque se esconde cuando no hay nada, así que un error de consulta
      —falta una migración, se cayó la red— haría que la portada AFIRMARA en
@@ -834,7 +866,11 @@ export default async function Portada({ searchParams }: {
           </div>
           <div className="port-hoy-lista">
             {deHoy.map((it: any) => (
-              <Link key={`${it.kind}:${it.id}`} href={it.href} className="port-hoy-fila"
+              <Link key={`${it.kind}:${it.id}`} href={it.href}
+                /* Apagada, no escondida: sigue estando hoy —hay que saber que
+                   existe— pero no se está haciendo, así que no compite con lo
+                   que sí. Misma idea que el rodaje ya hecho. */
+                className={`port-hoy-fila${apagadoHoy(it.kind, it.estado) ? " es-hecho" : ""}`}
                 style={{ borderLeftColor: it.kind === "caso"
                   ? colorTipo(it.tipo || "") : "var(--teal)" }}>
                 {/* La hora manda a la izquierda: en un día, «12:30» es lo que
@@ -844,9 +880,41 @@ export default async function Portada({ searchParams }: {
                   {it.hora ? it.hora.slice(0, 5) : (it.kind === "caso" ? icoTipo(it.tipo || "") : "▬")}
                 </span>
                 <span className="port-hoy-tit">{it.titulo}</span>
+                {/* ── LO QUE CONTRADICE LA EXPECTATIVA ──
+                    Si sale en «Hoy» se da por hecho que está abierto o en
+                    marcha. Cuando NO es así hay que decirlo: «Rodaje bloque
+                    Zenón» aparece hoy y está en pausa, y sin este chip alguien
+                    organiza el día alrededor de algo que nadie va a hacer. */}
+                {hayQueDecirEstado(it.kind, it.estado) && (
+                  <span className="port-hoy-estado"
+                    style={{ color: ESTADO_COL[it.estado] || "var(--dim)",
+                      borderColor: ESTADO_COL[it.estado] || "var(--dim)" }}>
+                    {ESTADO_ICO[it.estado]} {ESTADO_TXT[it.estado] || it.estado}
+                  </span>
+                )}
                 {/* De qué es. Sin esto, «Rodaje bloque Zenón» no dice de qué
-                    película, y el título solo no basta para decidir si te toca. */}
-                {it.grupo && <span className="port-hoy-grupo">{it.grupo}</span>}
+                    película, y el título solo no basta para decidir si te toca.
+                    Se enseñan los primeros y el resto se cuenta: ver
+                    `TOPE_GRUPOS`. */}
+                {(it.grupos.length ? it.grupos : ["Casos sueltos"])
+                  .slice(0, TOPE_GRUPOS).map((g: string, i: number) => (
+                  <span key={i} className="port-hoy-grupo">{g}</span>
+                ))}
+                {it.grupos.length > TOPE_GRUPOS && (
+                  <span className="port-hoy-grupo port-hoy-mas" title={it.grupos.join(" · ")}>
+                    +{it.grupos.length - TOPE_GRUPOS}
+                  </span>
+                )}
+                {/* Quién lo tiene. Una cara se reconoce de un vistazo y un
+                    nombre hay que leerlo: en una lista del día, lo primero que
+                    se busca es si es tuyo. */}
+                {(() => {
+                  const q = perfilDe.get(it.respId || "");
+                  /* Sin responsable no se pinta un hueco gris: un avatar vacío
+                     se lee como «alguien» y aquí no hay nadie. La fila queda
+                     más corta y eso ya dice lo que hay que saber. */
+                  return q ? <Avatar nombre={q.nombre} color={q.color} src={q.avatar_url} size={22} /> : null;
+                })()}
               </Link>
             ))}
           </div>
@@ -916,6 +984,10 @@ export default async function Portada({ searchParams }: {
                     {soloDia(r.fin) && soloDia(r.fin) !== dia && <> – {fechaDia(soloDia(r.fin))}</>}
                   </span>
                   {r.grupo && <span className="port-hoy-grupo">{r.grupo}</span>}
+                  {(() => {
+                    const q = perfilDe.get(r.respId || "");
+                    return q ? <Avatar nombre={q.nombre} color={q.color} src={q.avatar_url} size={22} /> : null;
+                  })()}
                 </Link>
               );
             })}

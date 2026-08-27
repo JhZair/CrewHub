@@ -1,6 +1,8 @@
 "use client";
 import NavFechas from "@/components/NavFechas";
 import Avatar from "@/components/Avatar";
+import { hayQueDecirEstado, apagadoHoy, TOPE_GRUPOS } from "@/lib/portadaHoy";
+import { ESTADO_ICO, ESTADO_TXT, ESTADO_COL } from "@/lib/estados";
 import { useState, useEffect, type Dispatch, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
 import Link from "@/components/Enlace";
@@ -45,6 +47,10 @@ export type ItemAgenda = {
   nc?: number;             // comentarios del caso (0 o ausente = no se pinta)
   personas: string[];      // responsable + equipo, para el filtro
   grupo: string;           // rótulo del grupo (su proyecto, fondo, empresa…)
+  /** TODOS los vínculos, ya nombrados y ordenados: el que agrupa primero.
+   *  Un caso cuelga de varias cosas y el grupo es solo una — una reunión
+   *  existe por a quién convoca, y con el grupo solo cae en «Casos sueltos». */
+  grupos?: string[];
   grupoId: string;
   href: string;
 };
@@ -142,7 +148,8 @@ export default function Agenda({ items, perfiles, miId }: {
 
       {vista === "tl"
         ? <Timeline vis={vis} shift={shift} setShift={setShift} colorDe={colorDe} icoDe={icoDe} cortoDe={cortoDe} perfilDe={perfilDe} apagado={apagado} />
-        : <Calendario vis={vis} mesOff={mesOff} setMesOff={setMesOff} colorDe={colorDe} icoDe={icoDe} apagado={apagado} />}
+        : <Calendario vis={vis} mesOff={mesOff} setMesOff={setMesOff} colorDe={colorDe}
+            icoDe={icoDe} apagado={apagado} perfilDe={perfilDe} />}
 
       {/* Leyenda de etapas. Muestra las de cine (las comunes); cada categoría
           reusa esta paleta, así que sirve de referencia aunque los nombres
@@ -612,10 +619,14 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, perfilDe, apa
 }
 
 /* ───────────────────────── CALENDARIO ───────────────────────── */
-function Calendario({ vis, mesOff, setMesOff, colorDe, icoDe, apagado }: {
+function Calendario({ vis, mesOff, setMesOff, colorDe, icoDe, apagado, perfilDe }: {
   vis: ItemAgenda[]; mesOff: number; setMesOff: Dispatch<SetStateAction<number>>;
   colorDe: (it: ItemAgenda) => string; icoDe: (it: ItemAgenda) => string;
   apagado: (it: ItemAgenda) => boolean;
+  /** Para pintar la cara de quien lo tiene. Viene de fuera —el padre ya tiene
+   *  la lista de perfiles— en vez de recibir el arreglo entero: aquí solo hace
+   *  falta buscar por id. */
+  perfilDe: (id: string | null) => { nombre: string; avatar_url?: string | null; color?: string | null } | null;
 }) {
   const hoyKey = ymd(new Date());
   const base = new Date();
@@ -723,7 +734,13 @@ function Calendario({ vis, mesOff, setMesOff, colorDe, icoDe, apagado }: {
             </div>
             <div className="ag-dia-lista">
               {itemsDia.map(it => (
-                <Link key={it.id} href={it.href} className={`ag-dia-fila ${apagado(it) ? "ag-ajena" : ""}`}
+                <Link key={it.id} href={it.href}
+                  /* `ag-ajena` es «no es tuyo» (filtro de persona) y `es-hecho`
+                     es «no se está haciendo» (en pausa, en seguimiento). Son
+                     dos razones distintas para bajar el tono y pueden darse a
+                     la vez. */
+                  className={`ag-dia-fila ${apagado(it) ? "ag-ajena" : ""}`
+                    + (apagadoHoy(it.kind, it.estado) ? " es-hecho" : "")}
                   style={{ borderLeft: `3px solid ${colorDe(it)}` }}
                   onClick={() => setDiaAbierto(null)}>
                   {/* La hora manda: es lo que ordena la lista y lo primero que
@@ -731,9 +748,42 @@ function Calendario({ vis, mesOff, setMesOff, colorDe, icoDe, apagado }: {
                       dos clases de fila se distinguen sin leer. */}
                   <span className="ag-dia-hora">{it.hora || icoDe(it)}</span>
                   <span className="ag-dia-tit">{it.titulo}</span>
-                  {/* De qué es: el grupo ya lo sabe la fila, y en un pop-up sin
-                      cabeceras es lo único que da contexto. */}
-                  <span className="ag-dia-grupo">{it.grupo}</span>
+                  {/* Lo que contradice la expectativa: si sale en el día se da
+                      por hecho que está en marcha, así que una pausa o un
+                      seguimiento hay que decirlos — organizarse alrededor de
+                      algo que nadie va a hacer sale caro. */}
+                  {hayQueDecirEstado(it.kind, it.estado) && (
+                    <span className="port-hoy-estado"
+                      style={{ color: ESTADO_COL[it.estado] || "var(--dim)",
+                        borderColor: ESTADO_COL[it.estado] || "var(--dim)" }}>
+                      {ESTADO_ICO[it.estado]} {ESTADO_TXT[it.estado] || it.estado}
+                    </span>
+                  )}
+                  {/* ── DE QUÉ ES: TODOS SUS VÍNCULOS ──
+                      En un pop-up sin cabeceras es lo único que da contexto, y
+                      con UNO solo una reunión caía en «Casos sueltos» — que es
+                      precisamente lo que no informa de ella: una reunión existe
+                      por a quién y a qué convoca.
+                      Los primeros y el resto contado: ver `TOPE_GRUPOS`. */}
+                  {(it.grupos?.length ? it.grupos : [it.grupo]).filter(Boolean)
+                    .slice(0, TOPE_GRUPOS).map((g, i) => (
+                      <span key={i} className="ag-dia-grupo">{g}</span>
+                    ))}
+                  {(it.grupos?.length || 0) > TOPE_GRUPOS && (
+                    <span className="ag-dia-grupo port-hoy-mas" title={it.grupos!.join(" · ")}>
+                      +{it.grupos!.length - TOPE_GRUPOS}
+                    </span>
+                  )}
+                  {/* Quién lo tiene. Una cara se reconoce de un vistazo y un
+                      nombre hay que leerlo: en la lista de un día, lo primero
+                      que se busca es si es tuyo. */}
+                  {(() => {
+                    const q = perfilDe(it.respId);
+                    /* Sin responsable no se pinta un hueco: un avatar vacío se
+                       lee como «alguien», y aquí no hay nadie. */
+                    return q ? <Avatar nombre={q.nombre} color={q.color || undefined}
+                      src={q.avatar_url || undefined} size={20} /> : null;
+                  })()}
                 </Link>
               ))}
             </div>
