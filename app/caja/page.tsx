@@ -5,7 +5,7 @@ import Link from "@/components/Enlace";
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import CajaPanel from "@/components/CajaPanel";
-import { saldoDeCaja, totales, porCuenta, money } from "@/lib/caja";
+import { saldoDeCaja, totales, money } from "@/lib/caja";
 
 export const metadata: Metadata = { title: "💰 Caja" };
 
@@ -151,7 +151,6 @@ export default async function CajaPage({ searchParams }: { searchParams: { m?: s
     id: c.id, saldo: saldoDeCaja(c, todos, cs),
   }));
   const t = totales(delMes, cs);
-  const desglose = porCuenta(delMes, cs);
 
   /* Si algo de esto falla, el saldo que se pinte NO es el saldo. Se dice antes
      que nada: con `todos` vacío cada tarjeta enseñaría el saldo inicial como si
@@ -242,43 +241,18 @@ export default async function CajaPage({ searchParams }: { searchParams: { m?: s
         )}
       </div>
 
+      {/* ── EL DESGLOSE SE FUE DENTRO DEL PANEL ──
+          Vivía aquí, en el servidor, y por eso no podía enterarse del filtro de
+          caja —que es estado del cliente—: con «BCP Oficina» marcado, las
+          barras seguían siendo de las tres cajas juntas. Dos cifras del mismo
+          mes en la misma pantalla, una filtrada y otra no, es la clase de
+          contradicción que hace desconfiar de las dos.
+          Ahora lo pinta CajaPanel con los mismos movimientos que enseña. */}
       <CajaPanel cajas={(cajas || []) as any} cuentas={cs as any} movs={movsConHilo as any}
         alias={mapaAlias(aliasPers as any)}
         proyectos={(proyectos || []) as any} saldos={saldos} esAdmin={esAdmin}
-        userId={user.id} />
+        userId={user.id} mesNombre={MESES[mes]} />
 
-      {/* ── EN QUÉ SE FUE ──
-          La pregunta del mes no es «cuánto gasté» sino «en qué». Va al final
-          porque se consulta al cerrar el mes, no al apuntar. */}
-      {desglose.length > 0 && (
-        <>
-          <h2 style={{ fontSize: 13, color: "var(--dim)", margin: "22px 0 8px", letterSpacing: .5 }}>
-            📊 Por cuenta · {MESES[mes]}
-          </h2>
-          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-            {desglose.map(c => {
-              const tot = c.flujo === "ingreso" ? t.ingresos : t.egresos;
-              const pct = tot > 0 ? Math.round((c.total / tot) * 100) : 0;
-              return (
-                <div key={c.id} className="info-row" style={{ gap: 10, fontSize: 12.5 }}>
-                  <span style={{ color: c.flujo === "ingreso" ? "var(--green)" : "var(--red)" }}>
-                    {c.flujo === "ingreso" ? "↑" : "↓"}
-                  </span>
-                  <span style={{ fontWeight: 600, minWidth: 170 }}>{c.nombre}</span>
-                  <span style={{ flex: 1, height: 5, background: "var(--bg)", borderRadius: 3, overflow: "hidden" }}>
-                    <span style={{ display: "block", width: `${pct}%`, height: "100%",
-                      background: c.flujo === "ingreso" ? "var(--green)" : "var(--red)" }} />
-                  </span>
-                  <span style={{ color: "var(--dim)", fontSize: 11 }}>{pct}%</span>
-                  <span style={{ fontWeight: 700, color: "var(--muted)", minWidth: 90, textAlign: "right" }}>
-                    {money(c.total)}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </>
-      )}
     </div>
   );
 }

@@ -8,7 +8,7 @@ import {
   fijarSaldoInicial, guardarCaja, archivarCaja,
 } from "@/app/actions";
 import { useConfirmar, useAviso } from "@/components/useConfirmar";
-import { money, ICO_CAJA, type CajaMin, type CuentaMin } from "@/lib/caja";
+import { money, ICO_CAJA, porCuenta, totales, type CajaMin, type CuentaMin } from "@/lib/caja";
 import { hoyLima, diaLima } from "@/lib/fechas";
 import CampoAdjunto from "@/components/CampoAdjunto";
 import VerAdjunto from "@/components/VerAdjunto";
@@ -44,7 +44,7 @@ const dmy = (f: string) =>
   new Date(f + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short" });
 
 export default function CajaPanel({
-  cajas, cuentas, movs, proyectos, saldos, esAdmin, userId, alias,
+  cajas, cuentas, movs, proyectos, saldos, esAdmin, userId, alias, mesNombre,
 }: {
   cajas: (CajaMin & { fecha_inicio: string | null; activa: boolean })[];
   cuentas: (CuentaMin & { activa: boolean })[];
@@ -58,6 +58,8 @@ export default function CajaPanel({
    *  una fila y además no es como se llaman entre ellos. Sin alias cargado se
    *  cae al nombre: mejor largo que vacío. */
   alias?: Record<string, string>;
+  /** «agosto». Solo para rotular el desglose; el panel no decide el mes. */
+  mesNombre?: string;
 }) {
   const router = useRouter();
   const { pedir, dialogo } = useConfirmar();
@@ -69,6 +71,13 @@ export default function CajaPanel({
      aquí y no en la URL. */
   const [verCaja, setVerCaja] = useState("");
   const movsVistos = verCaja ? movs.filter(m => m.caja_id === verCaja) : movs;
+  const cajaVista = verCaja ? cajas.find(c => c.id === verCaja) : null;
+  /* El desglose se calcula sobre lo que se está viendo, no sobre el mes entero:
+     si arriba dice «BCP Oficina», las barras tienen que ser de BCP Oficina.
+     Los porcentajes salen de los totales de ESOS mismos movimientos —si no, un
+     gasto pequeño de una caja pequeña se leería como una miseria del total. */
+  const desglose = porCuenta(movsVistos, cuentas);
+  const tv = totales(movsVistos, cuentas);
   const [nuevaCuenta, setNuevaCuenta] = useState({ nombre: "", flujo: "egreso" });
   /* Renombrar una cuenta se hace sobre su propia fila. «Ingresos por Mujeres
      Ande» se escribe mal una vez y queda escrito así en cada movimiento que la
@@ -757,6 +766,53 @@ export default function CajaPanel({
             </div>
           )}
         </div>
+      )}
+      {/* ── EN QUÉ SE FUE ──
+          La pregunta del mes no es «cuánto gasté» sino «en qué». Va al final
+          porque se consulta al cerrar el mes, no al apuntar.
+          Estaba en la página (servidor) y por eso no oía el filtro de caja;
+          ahora vive aquí, junto a los movimientos que enseña. */}
+      {desglose.length > 0 && (
+        <>
+          <h2 style={{ fontSize: 13, color: "var(--dim)", margin: "22px 0 8px", letterSpacing: .5 }}>
+            📊 Por cuenta{mesNombre ? ` · ${mesNombre}` : ""}
+            {/* El rótulo dice de qué es la cifra. Un porcentaje sin decir sobre
+                qué se calculó es la forma más fácil de mentir sin querer. */}
+            {cajaVista && (
+              <span style={{ color: "var(--muted)" }}> · solo {cajaVista.nombre}</span>
+            )}
+          </h2>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            {desglose.map(c => {
+              const tot = c.flujo === "ingreso" ? tv.ingresos : tv.egresos;
+              const pct = tot > 0 ? Math.round((c.total / tot) * 100) : 0;
+              return (
+                <div key={c.id} className="info-row" style={{ gap: 10, fontSize: 12.5 }}>
+                  <span style={{ color: c.flujo === "ingreso" ? "var(--green)" : "var(--red)" }}>
+                    {c.flujo === "ingreso" ? "↑" : "↓"}
+                  </span>
+                  <span style={{ fontWeight: 600, minWidth: 170 }}>{c.nombre}</span>
+                  <span style={{ flex: 1, height: 5, background: "var(--bg)", borderRadius: 3, overflow: "hidden" }}>
+                    <span style={{ display: "block", width: `${pct}%`, height: "100%",
+                      background: c.flujo === "ingreso" ? "var(--green)" : "var(--red)" }} />
+                  </span>
+                  <span style={{ color: "var(--dim)", fontSize: 11 }}>{pct}%</span>
+                  <span style={{ fontWeight: 700, color: "var(--muted)", minWidth: 90, textAlign: "right" }}>
+                    {money(c.total)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          {/* Los totales de la franja de arriba siguen siendo del mes entero, a
+              propósito. Si el filtro está puesto, decirlo evita que alguien
+              compare las dos cifras y crea que una de las dos está mal. */}
+          {cajaVista && (
+            <p style={{ color: "var(--dim)", fontSize: 11.5, margin: "8px 0 0" }}>
+              Estas barras son solo de {cajaVista.nombre}. El resumen de arriba sigue siendo de todas las cajas.
+            </p>
+          )}
+        </>
       )}
     </>
   );
