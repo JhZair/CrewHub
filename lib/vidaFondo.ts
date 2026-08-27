@@ -64,6 +64,11 @@ export type Hito = {
   /** El id de la fila, para poder borrarla. Los derivados no tienen. */
   id?: string | null;
   autor?: string | null;
+  /** La cara de quien lo apuntó. Un nombre en gris se lee; una cara se
+   *  reconoce sin leer, que en una línea de treinta hitos es la diferencia
+   *  entre saber quién anda en esto y tener que fijarse. */
+  autorFoto?: string | null;
+  autorColor?: string | null;
   /** El tipo del hito propio (`envio`, `recepcion`, `llamada`…). Es lo que
    *  dice la DIRECCIÓN: quién le habló a quién. */
   tipo?: string | null;
@@ -85,10 +90,11 @@ export type PostulacionVida = {
   acta_url?: string | null;
 };
 
+type PerfilMin = { nombre?: string | null; avatar_url?: string | null; color?: string | null };
 export type FilaHito = {
   id: string; fecha: string; tipo: string; titulo: string;
   detalle?: string | null; url?: string | null; publicacion_id?: string | null;
-  creado?: { nombre?: string | null } | { nombre?: string | null }[] | null;
+  creado?: PerfilMin | PerfilMin[] | null;
 };
 
 export type FilaCarta = {
@@ -119,8 +125,8 @@ export const nombreTipoHito = (t?: string | null) =>
 /* El primer nombre del autor embebido. Supabase devuelve objeto o array de uno
    según cómo resuelva la relación, y elegir mal deja el nombre en blanco sin
    ningún error. */
-const unNombre = (c: any): string | null =>
-  (Array.isArray(c) ? c[0]?.nombre : c?.nombre) || null;
+const unPerfil = (c: any): PerfilMin | null =>
+  (Array.isArray(c) ? c[0] : c) || null;
 
 /* El día de un `timestamptz`, en Lima. Cortar los diez primeros caracteres da
    el día UTC, y a partir de las 7 de la tarde en Perú eso YA ES EL DÍA
@@ -210,7 +216,9 @@ export function vidaDelFondo(
       clave: `hito:${h.id}`, id: h.id, clase: "propio", fecha: h.fecha,
       ico: icoTipo(h.tipo), tipo: h.tipo, titulo: h.titulo, detalle: h.detalle || null,
       url: h.url || null, casoId: h.publicacion_id || null,
-      autor: unNombre(h.creado),
+      autor: unPerfil(h.creado)?.nombre || null,
+      autorFoto: unPerfil(h.creado)?.avatar_url || null,
+      autorColor: unPerfil(h.creado)?.color || null,
       futuro: h.fecha > hoy,
     });
   }

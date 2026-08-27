@@ -6341,6 +6341,10 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
 .vf-lado-nos .vf-punto{box-shadow:0 0 0 3px var(--card),0 0 0 4.5px rgba(45,212,191,.35)}
 .vf-lado-dafo .vf-punto{box-shadow:0 0 0 3px var(--card),0 0 0 4.5px rgba(59,130,246,.35)}
 .vf-pie{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--dim)}
+/* Quién lo apuntó, con su cara. Un nombre en gris se lee; una cara se reconoce
+   sin leer, y en una línea de treinta hitos eso es la diferencia entre saber
+   quién anda en esto y tener que fijarse. */
+.vf-autor{display:inline-flex;align-items:center;gap:5px}
 .vf-dias{font-size:11px;color:var(--dim)}
 .vf-ok{color:var(--green);font-size:11px}
 /* Cerrada sin contestar: ni verde ni rojo. No es un logro y tampoco una

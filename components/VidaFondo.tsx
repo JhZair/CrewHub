@@ -7,6 +7,7 @@ import { responderCarta, borrarCarta } from "@/app/casilla/acciones";
 import { useAviso, useConfirmar } from "@/components/useConfirmar";
 import CartasLote from "@/components/CartasLote";
 import BuzonPegar from "@/components/BuzonPegar";
+import Avatar from "@/components/Avatar";
 import { fechaCorta, hoyLima } from "@/lib/fechas";
 import {
   vidaDelFondo, conSilencios, duracion, porResponder, cuandoVence, TIPOS_HITO,
@@ -100,13 +101,13 @@ function conFechas(texto: string) {
    se corta— y encima ocupaba casi lo mismo que el mensaje entero. Plegado no
    se ve nada del cuerpo; el titular ya dice de qué va, que para eso está.
 
-   Lo que se dice es CUÁNTO hay detrás, para que abrir sea una decisión y no
-   una sorpresa. */
+   Y el botón dice «ver más», nada más. Llevaba también cuántos renglones
+   había detrás, y era un número que no cambia ninguna decisión: se abre para
+   leerlo, no para saber cuánto mide. */
 const LARGO = 420;
 const RENGLONES = 6;
 function Detalle({ texto }: { texto: string }) {
   const [abierto, setAbierto] = useState(false);
-  const renglones = texto.split("\n").filter(l => l.trim()).length;
   const largo = texto.length > LARGO || texto.split("\n").length > RENGLONES;
   if (!largo) return <span className="vf-det">{conFechas(texto)}</span>;
   return (
@@ -114,9 +115,7 @@ function Detalle({ texto }: { texto: string }) {
       {abierto && <span className="vf-det">{conFechas(texto)}</span>}
       <button type="button" className="vf-mas" onClick={() => setAbierto(!abierto)}
         aria-expanded={abierto}>
-        {abierto
-          ? "ver menos ↑"
-          : `ver más ↓ · ${renglones} renglón${renglones === 1 ? "" : "es"}`}
+        {abierto ? "ver menos ↑" : "ver más ↓"}
       </button>
     </span>
   );
@@ -462,7 +461,12 @@ export default function VidaFondo({
             {fichaDe(h.detalle) && <span className="cl-cod">{fichaDe(h.detalle)}</span>}
             {cuerpoDe(h.detalle) && <Detalle texto={cuerpoDe(h.detalle)} />}
             <span className="vf-pie">
-              {h.autor && <span className="rp-dim">lo apuntó {h.autor}</span>}
+              {h.autor && (
+                <span className="vf-autor" title={`Lo apuntó ${h.autor}`}>
+                  <Avatar nombre={h.autor} src={h.autorFoto} color={h.autorColor} size={17} />
+                  lo apuntó {h.autor}
+                </span>
+              )}
               {h.resuelto && (h.motivoCierre
                 ? <span className="vf-cerrada" title={h.motivoCierre}>
                     cerrada el {fechaCorta(h.resuelto)} sin contestar — {h.motivoCierre}

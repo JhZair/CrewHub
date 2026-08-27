@@ -257,7 +257,7 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
        De las comunicaciones se piden SOLO las de este fondo: la casilla entera
        son cientos de correos y aquí no pinta ninguno que no sea suyo. */
     supabase.from("hito_fondo")
-      .select("id,fecha,tipo,titulo,detalle,url,publicacion_id,creado:perfiles!creado_por(nombre)")
+      .select("id,fecha,tipo,titulo,detalle,url,publicacion_id,creado:perfiles!creado_por(nombre,avatar_url,color)")
       .eq("postulacion_id", params.id).order("fecha", { ascending: false }).limit(300),
     supabase.from("dafo_comunicaciones")
       .select("id,asunto,extracto,recibido_en,origen,doc_numero,doc_url," +
