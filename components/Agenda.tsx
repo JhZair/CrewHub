@@ -674,7 +674,14 @@ function Calendario({ vis, mesOff, setMesOff, colorDe, icoDe, apagado, perfilDe 
   const [diaAbierto, setDiaAbierto] = useState<string | null>(null);
   useEffect(() => {
     if (!diaAbierto) return;
-    const onEsc = (e: KeyboardEvent) => { if (e.key === "Escape") setDiaAbierto(null); };
+    const onEsc = (e: KeyboardEvent) => {
+      /* ── ESC LO CIERRA DE UNO EN UNO ──
+         Dentro de este pop-up se puede abrir la vista rápida de un caso, y con
+         ella abierta un Esc cerraba las DOS: se desmontaba la lista, y con ella
+         el modal de encima y el comentario a medias que hubiera dentro. Justo
+         lo que la guarda de VistaRapida existe para evitar, saltándose por
+         detrás. Si hay otro modal montado, este no se da por aludido. */
+      if (document.querySelectorAll(".modal-fondo").length > 1) return; if (e.key === "Escape") setDiaAbierto(null); };
     window.addEventListener("keydown", onEsc);
     return () => window.removeEventListener("keydown", onEsc);
   }, [diaAbierto]);
@@ -707,7 +714,8 @@ function Calendario({ vis, mesOff, setMesOff, colorDe, icoDe, apagado, perfilDe 
                    calendario, «10:00» es lo primero que se busca de una
                    reunión, y el tooltip solo lo ve quien ya sospecha que hay
                    algo que mirar. */
-                <Link key={it.id} href={it.href} className={`ag-cal-chip ${apagado(it) ? "ag-ajena" : ""}`}
+                <Link key={it.id} href={it.href}
+                  className={`ag-cal-chip ${apagado(it) ? "ag-ajena" : ""}`}
                   title={[it.hora && `${it.hora}`, it.titulo, it.nc && `💬 ${it.nc}`].filter(Boolean).join(" · ")}
                   style={{ borderLeft: `3px solid ${colorDe(it)}` }}>
                   {it.hora ? <b className="ag-cal-hora">{it.hora}</b> : icoDe(it)} {it.titulo}
@@ -741,19 +749,35 @@ function Calendario({ vis, mesOff, setMesOff, colorDe, icoDe, apagado, perfilDe 
             </div>
             <div className="ag-dia-lista">
               {itemsDia.map(it => (
-                <Link key={it.id} href={it.href}
+                <div key={it.id}
                   /* `ag-ajena` es «no es tuyo» (filtro de persona) y `es-hecho`
                      es «no se está haciendo» (en pausa, en seguimiento). Son
                      dos razones distintas para bajar el tono y pueden darse a
                      la vez. */
-                  className={`ag-dia-fila ${apagado(it) ? "ag-ajena" : ""}`
+                  className={`ag-dia-fila fila-cap ${apagado(it) ? "ag-ajena" : ""}`
                     + (apagadoHoy(it.estadoCaso || (it.kind === "caso" ? it.estado : "")) ? " es-hecho" : "")}
-                  style={{ borderLeft: `3px solid ${colorDe(it)}` }}
-                  onClick={() => setDiaAbierto(null)}>
+                  style={{ borderLeft: `3px solid ${colorDe(it)}` }}>
+                  {/* El enlace cubre la fila por debajo en vez de envolverla:
+                      dentro va el ⚡, y un <button> anidado en un <a> es HTML
+                      inválido —rompe la hidratación y los dos clics se pelean—. */}
+                  <Link href={it.href} className="fila-cubre" aria-label={it.titulo}
+                    onClick={() => setDiaAbierto(null)} />
                   {/* La hora manda: es lo que ordena la lista y lo primero que
                       se busca. Lo que no la tiene enseña su ícono, y así las
                       dos clases de fila se distinguen sin leer. */}
                   <span className="ag-dia-hora">{it.hora || icoDe(it)}</span>
+                  {/* De quién es, antes del título: lo primero que se busca en
+                      la lista de un día es si algo es tuyo, y eso se contesta
+                      con una cara al empezar el renglón, no al terminarlo. */}
+                  {(() => {
+                    const q = perfilDe(it.respId);
+                    return q ? (
+                      <span className="port-hoy-resp fila-encima" title={`Responsable: ${q.nombre}`}>
+                        <Avatar nombre={q.nombre} color={q.color || undefined}
+                          src={q.avatar_url || undefined} size={20} />
+                      </span>
+                    ) : <span className="port-hoy-resp-hueco" />;
+                  })()}
                   <span className="ag-dia-tit">{it.titulo}</span>
                   {/* Lo que contradice la expectativa: si sale en el día se da
                       por hecho que está en marcha, así que una pausa o un
@@ -777,7 +801,8 @@ function Calendario({ vis, mesOff, setMesOff, colorDe, icoDe, apagado, perfilDe 
                       <span key={i} className="ag-dia-grupo">{g}</span>
                     ))}
                   {(it.grupos?.length || 0) > TOPE_GRUPOS && (
-                    <span className="ag-dia-grupo port-hoy-mas" title={it.grupos!.join(" · ")}>
+                    <span className="ag-dia-grupo port-hoy-mas fila-encima"
+                      title={it.grupos!.join(" · ")}>
                       +{it.grupos!.length - TOPE_GRUPOS}
                     </span>
                   )}
@@ -786,7 +811,7 @@ function Calendario({ vis, mesOff, setMesOff, colorDe, icoDe, apagado, perfilDe 
                       dos preguntas distintas: con todas las caras iguales no se
                       contesta ninguna. */}
                   {!!it.caras?.length && (
-                    <span className="port-hoy-caras"
+                    <span className="port-hoy-caras fila-encima"
                       title={"Vinculados: " + it.caras.map(c => c.nombre).join(", ")}>
                       {it.caras.slice(0, 5).map((c, i) => (
                         <Avatar key={i} nombre={c.nombre} color={c.color} src={c.avatar_url} size={18} />
@@ -796,18 +821,15 @@ function Calendario({ vis, mesOff, setMesOff, colorDe, icoDe, apagado, perfilDe 
                       )}
                     </span>
                   )}
-                  {(() => {
-                    const q = perfilDe(it.respId);
-                    /* Sin responsable no se pinta un hueco: un avatar vacío se
-                       lee como «alguien», y aquí no hay nadie. */
-                    return q ? (
-                      <span className="port-hoy-resp" title={`Responsable: ${q.nombre}`}>
-                        <Avatar nombre={q.nombre} color={q.color || undefined}
-                          src={q.avatar_url || undefined} size={20} />
-                      </span>
-                    ) : null;
-                  })()}
-                </Link>
+                  {/* Trabajar sin salir: comentar, cambiar el estado o asignar
+                      sin cerrar el calendario. Solo donde hay caso — una
+                      actividad sin materializar no es una publicación. Ya
+                      estaba en la línea de tiempo y faltaba aquí, que es donde
+                      se mira un día concreto. */}
+                  {it.href.startsWith("/caso/") && (
+                    <VistaRapida pubId={it.href.slice("/caso/".length)} />
+                  )}
+                </div>
               ))}
             </div>
           </div>

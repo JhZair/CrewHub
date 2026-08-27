@@ -6,6 +6,7 @@ import NavIconos from "@/components/NavIconos";
 import FranjaAlarmas from "@/components/FranjaAlarmas";
 import MenuUsuario from "@/components/MenuUsuario";
 import Avatar from "@/components/Avatar";
+import VistaRapida from "@/components/VistaRapida";
 import Foto from "@/components/Foto";
 import LinkPreviews from "@/components/LinkPreviews";
 import NotaSocial from "@/components/NotaSocial";
@@ -928,19 +929,43 @@ export default async function Portada({ searchParams }: {
           </div>
           <div className="port-hoy-lista">
             {deHoy.map((it: any) => (
-              <Link key={`${it.kind}:${it.id}`} href={it.href}
+              /* ── LA FILA NO ES UN <a>, ES UNA CAJA CON UN ENLACE ESTIRADO ──
+                 Dentro va el ⚡ de la vista rápida, y un <button> anidado en un
+                 <a> es HTML inválido: rompe la hidratación de React y el clic
+                 se pelea entre los dos. `fila-cap` + `fila-cubre` es el patrón
+                 que ya usan el muro y las tarjetas de material: el enlace cubre
+                 la fila entera por debajo, y lo que tenga que ser clicable por
+                 su cuenta sube con `fila-encima`. */
+              <div key={`${it.kind}:${it.id}`}
                 /* Apagada, no escondida: sigue estando hoy —hay que saber que
                    existe— pero no se está haciendo, así que no compite con lo
                    que sí. Misma idea que el rodaje ya hecho. */
-                className={`port-hoy-fila${apagadoHoy(it.estado) ? " es-hecho" : ""}`}
+                className={`port-hoy-fila fila-cap${apagadoHoy(it.estado) ? " es-hecho" : ""}`}
                 style={{ borderLeftColor: it.kind === "caso"
                   ? colorTipo(it.tipo || "") : "var(--teal)" }}>
+                <Link href={it.href} className="fila-cubre" aria-label={it.titulo} />
                 {/* La hora manda a la izquierda: en un día, «12:30» es lo que
                     ordena. Lo que no tiene hora lleva el ícono de su tipo, que
                     dice de qué clase de cosa se trata sin ocupar más sitio. */}
                 <span className="port-hoy-hora">
                   {it.hora ? it.hora.slice(0, 5) : (it.kind === "caso" ? icoTipo(it.tipo || "") : "▬")}
                 </span>
+                {/* ── DE QUIÉN ES, ANTES DEL TÍTULO ──
+                    Al final de la fila la cara quedaba después de los chips y
+                    de los vinculados, o sea en el sitio donde se mira lo
+                    accesorio. Lo primero que se busca en la lista de un día es
+                    si algo es tuyo, y eso se contesta con una cara al empezar a
+                    leer el renglón, no al terminarlo. */}
+                {(() => {
+                  const q = perfilDe.get(it.respId || "");
+                  /* Sin responsable no se pinta un hueco gris: un avatar vacío
+                     se lee como «alguien» y aquí no hay nadie. */
+                  return q ? (
+                    <span className="port-hoy-resp fila-encima" title={`Responsable: ${q.nombre}`}>
+                      <Avatar nombre={q.nombre} color={q.color} src={q.avatar_url} size={24} />
+                    </span>
+                  ) : <span className="port-hoy-resp-hueco" />;
+                })()}
                 <span className="port-hoy-tit">{it.titulo}</span>
                 {/* ── LO QUE CONTRADICE LA EXPECTATIVA ──
                     Si sale en «Hoy» se da por hecho que está abierto o en
@@ -963,7 +988,8 @@ export default async function Portada({ searchParams }: {
                   <span key={i} className="port-hoy-grupo">{g}</span>
                 ))}
                 {it.grupos.length > TOPE_GRUPOS && (
-                  <span className="port-hoy-grupo port-hoy-mas" title={it.grupos.join(" · ")}>
+                  <span className="port-hoy-grupo port-hoy-mas fila-encima"
+                    title={it.grupos.join(" · ")}>
                     +{it.grupos.length - TOPE_GRUPOS}
                   </span>
                 )}
@@ -974,7 +1000,10 @@ export default async function Portada({ searchParams }: {
                     «quién responde» son dos preguntas distintas, y con todas
                     las caras iguales no se contesta ninguna. */}
                 {it.personas.length > 0 && (
-                  <span className="port-hoy-caras" title={
+                  /* `fila-encima`: si no, la capa del enlace tapa el hover y
+                     el tooltip con los nombres —la única forma de ver quién hay
+                     más allá de la quinta cara— deja de salir. */
+                  <span className="port-hoy-caras fila-encima" title={
                     "Vinculados: " + it.personas
                       .map((pid: string) => caraDePersona.get(pid)?.nombre || "—").join(", ")}>
                     {it.personas.slice(0, 5).map((pid: string) => {
@@ -987,18 +1016,18 @@ export default async function Portada({ searchParams }: {
                     )}
                   </span>
                 )}
-                {(() => {
-                  const q = perfilDe.get(it.respId || "");
-                  /* Sin responsable no se pinta un hueco gris: un avatar vacío
-                     se lee como «alguien» y aquí no hay nadie. La fila queda
-                     más corta y eso ya dice lo que hay que saber. */
-                  return q ? (
-                    <span className="port-hoy-resp" title={`Responsable: ${q.nombre}`}>
-                      <Avatar nombre={q.nombre} color={q.color} src={q.avatar_url} size={24} />
-                    </span>
-                  ) : null;
-                })()}
-              </Link>
+                {/* ── TRABAJAR SIN SALIR ──
+                    Comentar, cambiar el estado o asignar sin perder la portada:
+                    el día se mira de un vistazo y lo que se hace con él son
+                    tres clics, no una navegación de ida y vuelta.
+                    Solo donde hay caso: una actividad de cronograma que nadie
+                    materializó todavía no es una publicación y no tiene hilo.
+                    Se pregunta por el `href` y no por el `kind` —una actividad
+                    ya materializada apunta a /caso/…— , igual que en /agenda. */}
+                {it.href.startsWith("/caso/") && (
+                  <VistaRapida pubId={it.href.slice("/caso/".length)} />
+                )}
+              </div>
             ))}
           </div>
         </section>
@@ -1049,14 +1078,23 @@ export default async function Portada({ searchParams }: {
                  preparar. */
               const hecho = r.estado === "resuelta";
               return (
-                <Link key={r.id} href={r.href}
-                  className={`port-hoy-fila${hecho ? " es-hecho" : ""}`}
+                <div key={r.id}
+                  className={`port-hoy-fila fila-cap${hecho ? " es-hecho" : ""}`}
                   style={{ borderLeftColor: hecho ? "var(--green)" : "var(--yellow)" }}>
+                  <Link href={r.href} className="fila-cubre" aria-label={r.titulo} />
                   {/* La distancia primero: lo que se necesita saber de un rodaje
                       próximo es cuánto falta, no la fecha — «14 sept.» obliga a
                       contar con los dedos. La fecha va al lado igualmente,
                       porque para reservar equipo hace falta el día. */}
                   <span className="port-hoy-hora">{hecho ? "✓" : cuandoCae(dia, hoyDeLima)}</span>
+                  {(() => {
+                    const q = perfilDe.get(r.respId || "");
+                    return q ? (
+                      <span className="port-hoy-resp fila-encima" title={`Responsable: ${q.nombre}`}>
+                        <Avatar nombre={q.nombre} color={q.color} src={q.avatar_url} size={22} />
+                      </span>
+                    ) : <span className="port-hoy-resp-hueco" />;
+                  })()}
                   <span className="port-hoy-tit">{r.titulo}</span>
                   <span className="port-hoy-fecha">
                     {/* La hora de llamado, si la hay: en un rodaje es la mitad
@@ -1067,11 +1105,8 @@ export default async function Portada({ searchParams }: {
                     {soloDia(r.fin) && soloDia(r.fin) !== dia && <> – {fechaDia(soloDia(r.fin))}</>}
                   </span>
                   {r.grupo && <span className="port-hoy-grupo">{r.grupo}</span>}
-                  {(() => {
-                    const q = perfilDe.get(r.respId || "");
-                    return q ? <Avatar nombre={q.nombre} color={q.color} src={q.avatar_url} size={22} /> : null;
-                  })()}
-                </Link>
+                  <VistaRapida pubId={r.id} />
+                </div>
               );
             })}
           </div>

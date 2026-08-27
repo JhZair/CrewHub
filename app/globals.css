@@ -6642,5 +6642,21 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
 /* Solapadas: ocupan menos y se leen como «un grupo», no como una lista. */
 .port-hoy-caras > .av{margin-left:-6px;border:2px solid var(--panel);box-sizing:content-box}
 .port-hoy-caras > .av:first-child{margin-left:0}
-.port-hoy-resp{flex:none;display:inline-flex;align-items:center;cursor:help;
-  padding-left:9px;margin-left:3px;border-left:1px solid var(--border2)}
+/* El responsable va ANTES del título: es lo primero que se busca —«¿es
+   mío?»— y al final de la fila quedaba después de los chips, en el sitio
+   donde se mira lo accesorio. Ya no necesita la línea que lo separaba de los
+   vinculados: ahora están en extremos distintos de la fila. */
+.port-hoy-resp{flex:none;display:inline-flex;align-items:center;cursor:help}
+/* Un hueco del mismo ancho cuando no hay responsable: sin él, los títulos de
+   las filas sin asignar arrancan tres píxeles a la izquierda y la lista se lee
+   dentada. El hueco no pinta nada —un avatar gris se leería como «alguien»—,
+   solo reserva el sitio. */
+.port-hoy-resp-hueco{flex:none;width:24px}
+
+/* El ⚡ de la vista rápida en las filas del día: al final, y solo se resalta al
+   pasar por la fila. Siempre visible sería un botón más compitiendo con el
+   contenido; escondido del todo, nadie lo encontraría. */
+.port-hoy-fila .vr-btn,.ag-dia-fila .vr-btn{flex:none;margin-left:6px;opacity:.45}
+.port-hoy-fila:hover .vr-btn,.ag-dia-fila:hover .vr-btn{opacity:1}
+/* La fila ya no es un <a>: el cursor y el subrayado los ponía el enlace. */
+.port-hoy-fila,.ag-dia-fila{position:relative;cursor:pointer}
