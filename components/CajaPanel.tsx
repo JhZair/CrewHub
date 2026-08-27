@@ -83,6 +83,16 @@ export default function CajaPanel({
      aquí y no en la URL. */
   const [verCaja, setVerCaja] = useState("");
   const movsVistos = verCaja ? movs.filter(m => m.caja_id === verCaja) : movs;
+  /* ── LA COLUMNA DE PROYECTO SOLO EXISTE SI ALGUIEN LA USA ──
+     Reservaba 132 px en TODAS las filas para que lo de su derecha no bailara,
+     y el razonamiento era bueno: los importes se comparan en vertical y tienen
+     que cortar por el mismo sitio. Pero la alineación es un asunto de la LISTA,
+     no de cada fila — si NINGUNA fila del mes tiene proyecto, la columna entera
+     puede desaparecer y todas siguen alineadas entre sí.
+     Y esos 132 px eran justo el hueco en blanco que dejaba «Pago de multa en
+     sunat de Wat…» cortado con media fila libre al lado. La descripción ya se
+     llevaba todo el espacio sobrante; lo que no había era espacio sobrante. */
+  const hayProyecto = movsVistos.some(m => !!m.proy?.nombre);
   const cajaVista = verCaja ? cajas.find(c => c.id === verCaja) : null;
   /* El desglose se calcula sobre lo que se está viendo, no sobre el mes entero:
      si arriba dice «BCP Oficina», las barras tienen que ser de BCP Oficina.
@@ -634,9 +644,27 @@ export default function CajaPanel({
                 <span className="badge" style={{ fontSize: 10.5, background: "#1c1c2c", color: "var(--muted)" }}>
                   {nombreCaja.get(m.caja_id) || "—"}
                 </span>
-                <span style={{ fontWeight: 600, minWidth: 150 }}>
+                {/* ── LA CUENTA, CON ANCHO FIJO Y CORTADA ──
+                    Tenía `minWidth`, o sea que un nombre largo —«Comisiones y
+                    gastos bancarios»— ensanchaba SU fila y solo la suya: cada
+                    renglón empezaba la descripción en un punto distinto y la
+                    lista se leía torcida. El ancho de una columna no puede
+                    decidirlo la fila más larga.
+                    Se corta con «…» y el nombre entero queda en el título: lo
+                    que se necesita de un vistazo es distinguir la cuenta, no
+                    leerla completa — para eso está el pop-up del movimiento. */}
+                <span className="caja-cuenta"
+                  title={traspasoM
+                    ? `Traspaso a ${nombreCaja.get(m.caja_destino || "") || "—"}`
+                    : nombreCuenta.get(m.cuenta_id || "") || "sin cuenta"}>
+                  {/* En un traspaso se enseña «⇄ Banco BCP» y no «⇄ traspaso a
+                      Banco BCP»: con 150 px, las once letras de «traspaso a» se
+                      comían el destino —que es EL dato de un traspaso— y lo
+                      dejaban en «⇄ traspaso a Banc…». La flecha ya dice que es
+                      un traspaso, y el gris también; lo que hay que leer es a
+                      dónde fue la plata. */}
                   {traspasoM
-                    ? <>⇄ traspaso a {nombreCaja.get(m.caja_destino || "") || "—"}</>
+                    ? <>⇄ {nombreCaja.get(m.caja_destino || "") || "—"}</>
                     : nombreCuenta.get(m.cuenta_id || "") || "sin cuenta"}
                 </span>
                 {/* ── LA DESCRIPCIÓN SE QUEDA CON TODO EL HUECO ──
@@ -649,16 +677,20 @@ export default function CajaPanel({
                     Se pinta siempre, vacía o no: sin ella la fila colapsaría
                     hacia la izquierda y las columnas de la derecha dejarían de
                     coincidir entre filas. */}
-                <span style={{ color: "var(--muted)", fontSize: 11.5, flex: 1, minWidth: 0,
-                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <span title={m.descripcion || undefined}
+                  style={{ color: "var(--muted)", fontSize: 11.5, flex: 1, minWidth: 0,
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {m.descripcion || ""}
                 </span>
-                {/* El proyecto, con ancho propio: está vacío en la mayoría de
-                    las filas, y sin ancho fijo lo de su derecha bailaría según
-                    quién tenga proyecto y quién no. */}
-                <span className="caja-proy" title={m.proy?.nombre || undefined}>
-                  {m.proy?.nombre ? <>🎬 {m.proy.nombre}</> : ""}
-                </span>
+                {/* El proyecto, con ancho propio: dentro de una misma lista
+                    tiene que ocupar lo mismo esté lleno o vacío, o lo de su
+                    derecha bailaría según quién tenga proyecto y quién no. Lo
+                    que se decide arriba es si la columna existe. */}
+                {hayProyecto && (
+                  <span className="caja-proy" title={m.proy?.nombre || undefined}>
+                    {m.proy?.nombre ? <>🎬 {m.proy.nombre}</> : ""}
+                  </span>
+                )}
 
                 {/* El signo delante, no solo el color: en una lista larga el
                     color se lee mal y en gris —los traspasos— no dice nada.

@@ -6537,3 +6537,18 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
    mirando la pantalla, y un dato que hay que descubrir pasando el ratón no se
    descubre. */
 .caja-medio{font-size:11px;color:var(--muted);margin-top:2px;letter-spacing:.2px}
+
+/* La cuenta de un movimiento de caja. Ancho FIJO, no mínimo: con `min-width`
+   un nombre largo —«Comisiones y gastos bancarios»— ensanchaba solo su fila y
+   la descripción de cada renglón empezaba en un punto distinto. El ancho de
+   una columna lo decide la columna, no la fila más larga que le toque. */
+.caja-cuenta{flex:none;width:150px;font-weight:600;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:600px){
+  /* Estrecho: la fila ya envuelve y no hay nada a la derecha con lo que
+     alinearse, así que el ancho fijo solo estorba. Sigue cortándose con «…» si
+     el nombre no cabe en el renglón: es lo correcto —una fila que crece hacia
+     abajo por un nombre largo desordena más de lo que informa— y el título
+     tiene el nombre entero. */
+  .caja-cuenta{width:auto;max-width:100%}
+}
