@@ -39,6 +39,10 @@ type Com = {
      no cuelga de ningún fondo nuestro ni pide nada. */
   ajena?: boolean | null;
   destinatario?: string | null;
+  /** `gmail` = lo empujó el Apps Script; `casilla` = lo registró una persona
+   *  desde la Plataforma Virtual, que no avisa a ninguna parte. */
+  origen?: string | null;
+  doc_numero?: string | null;
   post?: { id: string; codigo: string | null; proy?: { nombre?: string | null } | null } | null;
   emp?: { id: string; nombre: string | null } | null;
 };
@@ -462,6 +466,16 @@ export default function CasillaDafo({
           {/* Que no es nuestra se dice EN LA FILA, no en un detalle: si no,
               dentro de un año alguien la lee como un requerimiento propio sin
               contestar y se lleva un susto que no toca. */}
+          {/* ── DE DÓNDE VINO ──
+              Una carta registrada a mano no tiene remitente ni extracto, así
+              que en la fila salía un «—» y parecía un correo roto. No lo es:
+              es de la otra ventanilla, la que no manda nada por correo. */}
+          {(c.origen && c.origen !== "gmail") && (
+            <span className="badge" title="Registrada a mano desde la Plataforma Virtual de Atención a la Ciudadanía: esa casilla no avisa por correo."
+              style={{ color: "var(--violet)", background: "rgba(124,92,255,.12)", fontSize: 10 }}>
+              📄 de la casilla electrónica
+            </span>
+          )}
           {c.ajena && (
             <span className="badge" title={c.destinatario ? `Va dirigida a ${c.destinatario}` : "Nos la notificaron por error"}
               style={{ color: "var(--yellow)", background: "rgba(244,180,0,.12)", fontWeight: 700 }}>

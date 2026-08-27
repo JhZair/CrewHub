@@ -52,7 +52,7 @@ export default async function CasillaPage() {
   ] = await Promise.all([
     supabase.from("dafo_comunicaciones")
       .select("id,gmail_thread_id,buzon,cuenta,remitente,asunto,extracto,recibido_en," +
-              "vinculo_por,pide_accion,leido_en,caso_id,postulacion_id,ajena,destinatario," +
+              "vinculo_por,pide_accion,leido_en,caso_id,postulacion_id,ajena,destinatario,origen,doc_numero," +
               "post:postulaciones(id,codigo,estado,proy:proyectos(nombre),conv:convocatorias(nombre,anio))," +
               "emp:empresas(id,nombre)")
       .order("recibido_en", { ascending: false }).limit(TOPE),

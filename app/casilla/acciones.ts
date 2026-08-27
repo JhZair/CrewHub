@@ -243,6 +243,14 @@ export async function registrarCarta(f: {
        contestado —entonces ya no pide nada, y volver a marcarla la resucitaría
        en la lista de pendientes— o que sea de otro. */
     pide_accion: !f.ajena && !(yaHay as any)?.respondido_en,
+    /* ── QUIEN LA REGISTRA, YA LA LEYÓ ──
+       La tecleó mirándola. Sin esto, cada carta cargada a mano dejaba un «sin
+       leer» permanente en la bandeja —y una burbuja en el menú— sobre algo que
+       la persona que lo puso acababa de leer entero. Una lista de pendientes
+       que incluye lo que uno mismo acaba de hacer es una lista que se deja de
+       mirar. */
+    leido_en: new Date().toISOString(),
+    leido_por: user.id,
   };
   /* ⚠ EL VÍNCULO SOLO SE ESCRIBE SI SE DIJO. Yendo siempre en el payload, un
      `null` viajaba en el `upsert` y volver a registrar la misma carta sin
