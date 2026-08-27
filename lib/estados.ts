@@ -149,12 +149,21 @@ export const fueraDeAgenda = (tipo?: string | null, fechaLimite?: string | null)
  * La regla: si tiene caso, manda el caso. Si no lo tiene —una actividad que
  * nadie materializó todavía—, manda su propio estado, que es lo único que hay.
  *
- * ── ARCHIVADA Y DESCARTADA SÍ; RESUELTA NO ──
- * Archivar es «esto ya no está en juego» y descartar es «no se va a hacer»:
- * las dos sacan la fila del calendario. Pero RESUELTA se queda, por lo mismo
- * que la reunión pasada de aquí arriba: en la agenda el pasado es historial y
- * no deuda, y una actividad hecha en su día es justo lo que se viene a
- * consultar. */
+ * ── CERRADO EL CASO, LA ACTIVIDAD SE VA ──
+ * Archivada, descartada Y RESUELTA. Las tres.
+ *
+ * Resuelta estuvo fuera de la lista, razonando que en un calendario el pasado
+ * es historial y no deuda. El razonamiento es bueno pero se aplicaba a la cosa
+ * equivocada: quien guarda ese historial es el CASO, que sigue apareciendo en
+ * su día con su ✅. La actividad es el trabajo PREVISTO, y su ventana suele
+ * durar semanas — «Registro del tratamiento en Indecopi» iba del 1 al 31 de
+ * agosto—, así que se quedaba ocupando la lista de todos los días del mes
+ * después de que alguien ya la hubiera cerrado. Se resolvió el caso, se cambió
+ * su fecha, y la fila seguía saliendo hoy: el mismo título, sin forma de
+ * quitarlo.
+ *
+ * Cerrar el caso es la manera de decir «esto ya está». Que la actividad siga
+ * en pie después convierte ese gesto en algo que no sirve para nada. */
 export function actividadFueraDeAgenda(a: {
   estado?: string | null;
   publicacion_id?: string | null;
@@ -167,7 +176,7 @@ export function actividadFueraDeAgenda(a: {
      mejor que borrar del pasado algo que sí ocurrió— pero conviene pedirlo. */
   const p = a.pub;
   if (!p) return false;
-  return !!p.archivado_en || p.estado === "descartada";
+  return !!p.archivado_en || p.estado === "descartada" || p.estado === "resuelta";
 }
 
 /* LOS ESTADOS VIVOS — para las consultas de «qué está en curso».
