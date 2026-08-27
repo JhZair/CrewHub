@@ -47,6 +47,13 @@ export type ItemAgenda = {
   nc?: number;             // comentarios del caso (0 o ausente = no se pinta)
   personas: string[];      // responsable + equipo, para el filtro
   grupo: string;           // rótulo del grupo (su proyecto, fondo, empresa…)
+  /** Las personas vinculadas, ya con su cara. Van como avatares y no como
+   *  texto: una cara se reconoce de un vistazo y un nombre hay que leerlo. */
+  caras?: { nombre: string; color?: string; avatar_url?: string }[];
+  /** El estado del CASO, para las actividades materializadas: el `estado` de
+   *  arriba es el de la actividad (en curso, materializada…) y no se puede
+   *  leer con el vocabulario de las publicaciones. */
+  estadoCaso?: string;
   /** TODOS los vínculos, ya nombrados y ordenados: el que agrupa primero.
    *  Un caso cuelga de varias cosas y el grupo es solo una — una reunión
    *  existe por a quién convoca, y con el grupo solo cae en «Casos sueltos». */
@@ -740,7 +747,7 @@ function Calendario({ vis, mesOff, setMesOff, colorDe, icoDe, apagado, perfilDe 
                      dos razones distintas para bajar el tono y pueden darse a
                      la vez. */
                   className={`ag-dia-fila ${apagado(it) ? "ag-ajena" : ""}`
-                    + (apagadoHoy(it.kind, it.estado) ? " es-hecho" : "")}
+                    + (apagadoHoy(it.estadoCaso || (it.kind === "caso" ? it.estado : "")) ? " es-hecho" : "")}
                   style={{ borderLeft: `3px solid ${colorDe(it)}` }}
                   onClick={() => setDiaAbierto(null)}>
                   {/* La hora manda: es lo que ordena la lista y lo primero que
@@ -752,7 +759,7 @@ function Calendario({ vis, mesOff, setMesOff, colorDe, icoDe, apagado, perfilDe 
                       por hecho que está en marcha, así que una pausa o un
                       seguimiento hay que decirlos — organizarse alrededor de
                       algo que nadie va a hacer sale caro. */}
-                  {hayQueDecirEstado(it.kind, it.estado) && (
+                  {hayQueDecirEstado(it.estadoCaso || (it.kind === "caso" ? it.estado : "")) && (
                     <span className="port-hoy-estado"
                       style={{ color: ESTADO_COL[it.estado] || "var(--dim)",
                         borderColor: ESTADO_COL[it.estado] || "var(--dim)" }}>
@@ -774,15 +781,31 @@ function Calendario({ vis, mesOff, setMesOff, colorDe, icoDe, apagado, perfilDe 
                       +{it.grupos!.length - TOPE_GRUPOS}
                     </span>
                   )}
-                  {/* Quién lo tiene. Una cara se reconoce de un vistazo y un
-                      nombre hay que leerlo: en la lista de un día, lo primero
-                      que se busca es si es tuyo. */}
+                  {/* Los vinculados, apiñados y pequeños; el responsable
+                      detrás de una línea. «Quién viene» y «quién responde» son
+                      dos preguntas distintas: con todas las caras iguales no se
+                      contesta ninguna. */}
+                  {!!it.caras?.length && (
+                    <span className="port-hoy-caras"
+                      title={"Vinculados: " + it.caras.map(c => c.nombre).join(", ")}>
+                      {it.caras.slice(0, 5).map((c, i) => (
+                        <Avatar key={i} nombre={c.nombre} color={c.color} src={c.avatar_url} size={18} />
+                      ))}
+                      {it.caras.length > 5 && (
+                        <span className="port-hoy-mas">+{it.caras.length - 5}</span>
+                      )}
+                    </span>
+                  )}
                   {(() => {
                     const q = perfilDe(it.respId);
                     /* Sin responsable no se pinta un hueco: un avatar vacío se
                        lee como «alguien», y aquí no hay nadie. */
-                    return q ? <Avatar nombre={q.nombre} color={q.color || undefined}
-                      src={q.avatar_url || undefined} size={20} /> : null;
+                    return q ? (
+                      <span className="port-hoy-resp" title={`Responsable: ${q.nombre}`}>
+                        <Avatar nombre={q.nombre} color={q.color || undefined}
+                          src={q.avatar_url || undefined} size={20} />
+                      </span>
+                    ) : null;
                   })()}
                 </Link>
               ))}

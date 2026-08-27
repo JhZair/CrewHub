@@ -46,7 +46,7 @@ export default async function AgendaPage() {
            poder respetar su archivado: ver `actividadFueraDeAgenda`. Sin esto,
            archivar el caso lo sacaba de la agenda y dejaba la actividad —que en
            pantalla es la misma fila— tan campante. */
-        "pub:publicaciones!publicacion_id(estado,archivado_en)")
+        "pub:publicaciones!publicacion_id(estado,archivado_en,responsable)")
       .neq("estado", "cancelada").not("fecha_inicio", "is", null),
     supabase.from("publicaciones")
       .select("id,titulo,tipo,estado,fecha_inicio,fecha_limite,hora,responsable,creado_en")
@@ -169,7 +169,7 @@ export default async function AgendaPage() {
      salía con su chip pero caía en «Casos sueltos». */
   const idsDe = (t: string) => [...new Set([...vincDe.values()].flat()
     .filter(v => tipoCanonico(v.tipo) === t).map(v => v.id))];
-  const [proyG, postuG, convG, empG, nombresOtros] = await Promise.all([
+  const [proyG, postuG, convG, empG, nombresOtros, persG] = await Promise.all([
     idsDe("proyecto").length
       ? supabase.from("proyectos").select("id,nombre,nombre_corto").in("id", idsDe("proyecto"))
       : Promise.resolve({ data: [] as any[] }),
@@ -202,6 +202,14 @@ export default async function AgendaPage() {
        consulta por tipo; nombrar de menos borra datos de la pantalla. */
     nombresDe(supabase, [...vincDe.values()].flat()
       .map(v => ({ tipo: v.tipo, id: v.id }))),
+    /* ── LA CUENTA DE CADA PERSONA VINCULADA ──
+       El avatar vive en `perfiles` y el vínculo apunta a `personas`: sin este
+       cruce, los convocados de una reunión solo pueden salir como texto. Es la
+       misma consulta que hace la portada, para que las dos pinten las mismas
+       caras. */
+    idsDe("persona").length
+      ? supabase.from("personas").select("id,nombre,alias,usuario_id").in("id", idsDe("persona"))
+      : Promise.resolve({ data: [] as any[] }),
   ]);
 
   /* El grupo de cada entidad, con el MISMO `id` que arman las actividades
@@ -250,10 +258,30 @@ export default async function AgendaPage() {
      Delante lo que sitúa el trabajo —fondo, proyecto, convocatoria, empresa—,
      detrás lo demás. La fila enseña los primeros y cuenta el resto: si hay que
      cortar, se corta por donde menos duele. */
+  /* persona (la ficha) → cara. Sin cuenta —un colaborador externo— se pinta
+     igual con su inicial y su color, que sigue diciendo quién es. */
+  const perfPorId = new Map<string, any>((perfs || []).map((p: any) => [p.id, p]));
+  const caraDePersona = new Map<string, { nombre: string; color?: string; avatar_url?: string }>(
+    ((persG.data || []) as any[]).map((pe: any) => {
+      const q = pe.usuario_id ? perfPorId.get(pe.usuario_id) : null;
+      return [pe.id, {
+        nombre: q?.nombre || pe.alias || pe.nombre || "—",
+        color: q?.color || undefined, avatar_url: q?.avatar_url || undefined,
+      }];
+    }));
+  /* Las caras de un caso, en el orden estable de sus vínculos. */
+  const carasDeCaso = (id: string) => (vincDe.get(id) || [])
+    .filter(v => tipoCanonico(v.tipo) === "persona")
+    .map(v => caraDePersona.get(v.id))
+    .filter(Boolean) as { nombre: string; color?: string; avatar_url?: string }[];
+
   const gruposDeCaso = (id: string): string[] => {
     const vs = vincDe.get(id) || [];
-    return [...vs].sort((a, b) => pesoVinculo(tipoCanonico(a.tipo))
-                                - pesoVinculo(tipoCanonico(b.tipo)))
+    /* Las personas salen de aquí: van como avatares. Repetirlas también como
+       chip de texto llenaba la fila con el mismo dato dos veces. */
+    return [...vs].filter(v => tipoCanonico(v.tipo) !== "persona")
+      .sort((a, b) => pesoVinculo(tipoCanonico(a.tipo))
+                    - pesoVinculo(tipoCanonico(b.tipo)))
       .map(v => {
         const t = tipoCanonico(v.tipo);
         return grupoEnt.get(`${t}:${v.id}`)?.label || nombresOtros.get(`${t}:${v.id}`) || "";
@@ -295,7 +323,14 @@ export default async function AgendaPage() {
       // dato y no un relleno. Ver `ItemAgenda.ventana`.
       ventana: true,
       estado: a.estado, etapa: a.etapa || "",
-      respId: a.responsable || null,
+      /* El del caso al que se materializó: es el que se lee con el vocabulario
+         de las publicaciones y el que hay que enseñar en la fila. */
+      estadoCaso: (a.pub as any)?.estado || "",
+      /* Por orden de certeza: el de la actividad, el del caso —una actividad
+         materializada suele no tener responsable propio— y el primero del
+         equipo, que no es «el responsable» pero es a quien preguntar. */
+      respId: a.responsable || (a.pub as any)?.responsable
+        || ((a.equipo as string[]) || [])[0] || null,
       personas: [a.responsable, ...((a.equipo as string[]) || [])].filter(Boolean) as string[],
       nc: a.publicacion_id ? nComs.get(a.publicacion_id) || 0 : 0,
       orden: a.orden ?? 0, creado: a.creado_en || "",
@@ -353,6 +388,7 @@ export default async function AgendaPage() {
     creado: c.creado_en || "",
     ...(() => { const g = grupoDeCaso(c.id); return { grupo: g.label, grupoId: g.id }; })(),
     grupos: gruposDeCaso(c.id),
+    caras: carasDeCaso(c.id),
     /* ── LOS CASOS, DEBAJO DEL CRONOGRAMA DE SU GRUPO ──
        Dentro de un grupo se ordena por `orden`, que es la secuencia que una
        persona decidió en el cronograma —primero se alistan los equipos,

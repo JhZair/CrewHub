@@ -147,8 +147,13 @@ export function enLosProximos<T extends ConFechas>(
  * organiza el día alrededor de algo que nadie va a hacer. Lo mismo con
  * seguimiento (se espera a un tercero) y con lo ya cerrado.
  *
- * Solo aplica a los casos: una actividad de cronograma tiene su propio
- * vocabulario de estados y no significan lo mismo. */
+ * ── EL ESTADO ES EL DEL CASO, VENGA LA FILA DE DONDE VENGA ──
+ * Solo se lee el vocabulario de `publicaciones` —abierta, en progreso, en
+ * pausa…—; el de `cronograma_actividades` es otro y no significa lo mismo.
+ * Pero una actividad materializada TIENE caso, y su estado es el de ese caso:
+ * «Rodaje de planos de apoyo» estaba en SEGUIMIENTO y salía sin chip porque la
+ * fila era la actividad y se le miraba un estado que no tiene. Quien pinta le
+ * pasa el estado del caso cuando lo hay, y cadena vacía cuando no. */
 export const NORMALES_HOY = ["abierta", "en_progreso"];
 
 /* ── CUÁNTOS VÍNCULOS SE ENSEÑAN ANTES DEL «+N» ──
@@ -174,15 +179,15 @@ export const pesoVinculo = (tipoCanon: string) => {
   const i = ORDEN_VINCULO.indexOf(tipoCanon);
   return i < 0 ? 99 : i;
 };
-export const hayQueDecirEstado = (kind: string, estado?: string | null) =>
-  kind === "caso" && !!estado && !NORMALES_HOY.includes(estado);
+export const hayQueDecirEstado = (estado?: string | null) =>
+  !!estado && !NORMALES_HOY.includes(estado);
 
 /* Y además de decirlo, se pinta apagado: una fila en pausa sigue estando hoy
  * —hay que saber que existe— pero no se está haciendo, así que no puede pesar
  * lo mismo que lo que sí. */
 export const APAGADOS_HOY = ["en_pausa", "seguimiento"];
-export const apagadoHoy = (kind: string, estado?: string | null) =>
-  kind === "caso" && !!estado && APAGADOS_HOY.includes(estado);
+export const apagadoHoy = (estado?: string | null) =>
+  !!estado && APAGADOS_HOY.includes(estado);
 
 /* ── CUÁNDO ES ──
  * «hoy», «mañana», «en 3 días». Lo que se necesita leer de un rodaje próximo

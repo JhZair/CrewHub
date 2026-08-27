@@ -625,7 +625,11 @@ export default async function Portada({ searchParams }: {
               para lo que se mira una cara. */
         respId: a.responsable || (a.pub as any)?.responsable
           || ((a.equipo as string[]) || [])[0] || null,
-        estado: "", personas: [] as string[],
+        /* El estado que se enseña es el del CASO: la actividad tiene su propio
+           vocabulario (en curso, materializada…) y no significa lo mismo.
+           «Rodaje de planos de apoyo» estaba en SEGUIMIENTO y salía sin chip
+           por mirarle un estado que no tiene. */
+        estado: (a.pub as any)?.estado || "", personas: [] as string[],
         hora: "", etapa: a.etapa || "",
         ini: a.fecha_inicio, fin: a.fecha_fin || a.fecha_inicio,
         href: a.publicacion_id ? `/caso/${a.publicacion_id}`
@@ -928,7 +932,7 @@ export default async function Portada({ searchParams }: {
                 /* Apagada, no escondida: sigue estando hoy —hay que saber que
                    existe— pero no se está haciendo, así que no compite con lo
                    que sí. Misma idea que el rodaje ya hecho. */
-                className={`port-hoy-fila${apagadoHoy(it.kind, it.estado) ? " es-hecho" : ""}`}
+                className={`port-hoy-fila${apagadoHoy(it.estado) ? " es-hecho" : ""}`}
                 style={{ borderLeftColor: it.kind === "caso"
                   ? colorTipo(it.tipo || "") : "var(--teal)" }}>
                 {/* La hora manda a la izquierda: en un día, «12:30» es lo que
@@ -943,7 +947,7 @@ export default async function Portada({ searchParams }: {
                     marcha. Cuando NO es así hay que decirlo: «Rodaje bloque
                     Zenón» aparece hoy y está en pausa, y sin este chip alguien
                     organiza el día alrededor de algo que nadie va a hacer. */}
-                {hayQueDecirEstado(it.kind, it.estado) && (
+                {hayQueDecirEstado(it.estado) && (
                   <span className="port-hoy-estado"
                     style={{ color: ESTADO_COL[it.estado] || "var(--dim)",
                       borderColor: ESTADO_COL[it.estado] || "var(--dim)" }}>
