@@ -6683,3 +6683,20 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
 .port-hoy-fila:hover .vr-btn,.ag-dia-fila:hover .vr-btn{opacity:1}
 /* La fila ya no es un <a>: el cursor y el subrayado los ponía el enlace. */
 .port-hoy-fila,.ag-dia-fila{position:relative;cursor:pointer}
+
+/* La ✕ para soltar un caso de su cláusula. Tenue y solo visible al pasar por
+   el chip: es una corrección, no una acción del día a día, y siempre a la
+   vista sería un aspa junto a cada caso invitando a pulsarla. */
+.acta-caso{position:relative}
+.acta-caso-x{background:none;border:none;color:var(--dim);cursor:pointer;
+  font-size:10px;line-height:1;padding:0 2px;opacity:0;transition:opacity .12s,color .12s}
+.acta-caso:hover .acta-caso-x{opacity:.7}
+.acta-caso-x:hover{color:var(--red);opacity:1}
+/* En pantalla táctil no hay hover: si no se ve nunca, no existe. */
+@media(hover:none){ .acta-caso-x{opacity:.55} }
+
+/* De qué cláusula del acta sale un caso. Va antes de los vínculos y con su
+   propio rótulo: no es un vínculo más —de ahí viene la obligación—, y el
+   número es lo que permite comprobarlo en el PDF. */
+.caso-clausula h4{margin-bottom:6px}
+.caso-clausula .echip{text-decoration:none}

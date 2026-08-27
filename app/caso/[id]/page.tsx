@@ -223,6 +223,21 @@ export default async function Caso({ params }: { params: { id: string } }) {
      el único catálogo que crece sin límite. */
   const objsCat = await catalogoObjetos(supabase);
 
+  /* ── DE QUÉ CLÁUSULA DEL ACTA SALE ──
+     APARTE de la consulta principal, y a propósito. Metido en aquel `select`,
+     un fallo del embebido —la columna sin migrar, el esquema de PostgREST sin
+     recargar— devolvía `data` en null, y detrás hay un `notFound()`: la ficha
+     de TODOS los casos habría dado 404 por un dato decorativo de unos pocos.
+     Es el mismo criterio que ya sigue la pestaña del fondo, que aísla esta
+     misma relación para que el resto siga funcionando sin ella.
+     Solo se pregunta si el caso tiene cláusula: para la inmensa mayoría no hay
+     viaje. */
+  const compActa = (p as any).compromiso_id
+    ? (await supabase.from("compromiso_acta")
+        .select("id,clausula,titulo,postulacion_id")
+        .eq("id", (p as any).compromiso_id).maybeSingle()).data
+    : null;
+
   // Catálogos por tipo para el editor de vínculos + vínculos actuales (no-etiqueta)
   const catEnt: Record<string, { id: string; nombre: string; tipo?: string; sub?: string }[]> = {
     ...ents, objeto: objsCat,
@@ -516,6 +531,30 @@ export default async function Caso({ params }: { params: { id: string } }) {
           tipo, con las demás decisiones sobre el caso; las reacciones entraron
           en la tarjeta de la descripción, que es a lo que se reacciona. La
           fila entera —y sus dos huecos— desaparece. */}
+
+      {/* ── DE QUÉ CLÁUSULA SALE ──
+          La relación con el acta vivía solo en el otro lado: desde la pestaña
+          Entregables se veían sus casos, pero abriendo el caso no había forma
+          de saber que era el 5.4 de un acta —y ese número es lo que permite ir
+          al PDF y comprobar a qué se obligó la productora—. El título lo lleva
+          cuando el caso nació del acta, pero uno atado a mano no, y en un
+          título de doscientos caracteres tampoco se lee.
+          Va ARRIBA de los vínculos porque no es un vínculo más: es de dónde
+          viene la obligación. */}
+      {(() => {
+        if (!compActa) return null;
+        const comp: any = compActa;
+        const cl = comp.clausula ? `${comp.clausula} ` : "";
+        return (
+          <div className="linked caso-clausula">
+            <h4>📦 Del acta</h4>
+            <Link href={`/fondo/${comp.postulacion_id}#entregables`} className="echip"
+              title="Ver esta cláusula en los entregables del fondo">
+              📦 {cl}{comp.titulo}
+            </Link>
+          </div>
+        );
+      })()}
 
       <div className="linked">
         <h4>🔗 Vínculos y etiquetas</h4>

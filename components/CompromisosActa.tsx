@@ -2,7 +2,9 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "@/components/Enlace";
-import { marcarCompromiso, editarDetalleCompromiso, casoDeCompromiso } from "@/app/actions";
+import { marcarCompromiso, editarDetalleCompromiso, casoDeCompromiso,
+  atarCasoACompromiso, soltarCasoDeCompromiso } from "@/app/actions";
+import { EntPicker } from "@/components/Composer";
 import { rotuloEstado, claseEstado } from "@/lib/estados";
 import Avatar from "@/components/Avatar";
 import {
@@ -29,10 +31,14 @@ const dmy = (f?: string | null) => {
 };
 
 export default function CompromisosActa({
-  postulacionId, compromisos, actaUrl, codigoActa, puedeEditar, error,
+  postulacionId, compromisos, actaUrl, codigoActa, puedeEditar, error, casosFondo,
 }: {
   postulacionId: string;
   compromisos: Compromiso[];
+  /** Los casos vinculados a este fondo, para poder atar uno que YA existe.
+   *  Llegan de la página —ya se calculaban para la línea de vida— en vez de
+   *  pedirse aquí: son los mismos y un viaje más por lo mismo sobra. */
+  casosFondo?: { id: string; titulo: string; estado?: string | null }[];
   actaUrl?: string | null;
   codigoActa?: string | null;
   puedeEditar: boolean;
@@ -76,6 +82,44 @@ export default function CompromisosActa({
        porque el trabajo de una cláusula se reparte. Lo que sí protege del
        doble clic es `ocupado`, arriba — sin él, dos toques rápidos abrirían
        dos casos iguales y habría que descartar uno a mano. */
+    router.refresh();
+  };
+
+  /* ── LOS QUE SE PUEDEN ATAR ──
+     Los del fondo que no cuelgan ya de una cláusula. Los que sí, fuera: la
+     relación es de uno a uno por el lado del caso, así que ofrecerlos sería
+     ofrecer robárselos a otra cláusula sin decirlo. Para mover uno se suelta
+     primero, que es un gesto y se ve.
+     `atados` se calcula sobre TODOS los compromisos, no solo los entregables:
+     un caso puede colgar de una obligación o de un plazo. */
+  const atados = useMemo(
+    () => new Set(compromisos.flatMap(c => (c.casos || []).map((k: any) => k.id))),
+    [compromisos]);
+  const sueltos = useMemo(
+    () => (casosFondo || [])
+      .filter(c => !atados.has(c.id))
+      /* El estado como subtítulo: el picker ofrece también los resueltos y los
+         descartados —que siguen siendo casos del fondo— y sin decirlo se ata
+         uno cerrado creyendo que está en marcha. */
+      .map(c => ({ id: c.id, nombre: c.titulo,
+        sub: c.estado ? rotuloEstado(c.estado, "tarea") : undefined })),
+    [casosFondo, atados]);
+
+  const atar = async (compromisoId: string, casoId: string) => {
+    if (ocupado) return;
+    setOcupado(true); setErr("");
+    const r: any = await atarCasoACompromiso(casoId, compromisoId);
+    setOcupado(false);
+    if (r?.error) { setErr(r.error); return; }
+    router.refresh();
+  };
+
+  const soltar = async (casoId: string) => {
+    if (ocupado) return;
+    setOcupado(true); setErr("");
+    const r: any = await soltarCasoDeCompromiso(casoId);
+    setOcupado(false);
+    if (r?.error) { setErr(r.error); return; }
     router.refresh();
   };
 
@@ -133,8 +177,12 @@ export default function CompromisosActa({
               cláusula. En una rendición, lo hecho es justo lo que hay que poder
               enseñar. Ahora cuelgan todos y el ＋ está siempre. */}
           {casos.map(c => (
-            <Link key={c.id} href={`/caso/${c.id}`} className="acta-caso"
+            <span key={c.id} className="acta-caso fila-cap"
               title={`${c.resp?.nombre ? `${c.resp.nombre} — ` : "Sin responsable — "}el caso dice si alguien está trabajando en esto. El estado de la izquierda dice si ya se entregó al Ministerio: son dos cosas distintas.`}>
+              {/* El enlace cubre el chip por debajo en vez de envolverlo: la ✕
+                  es un <button> y un botón dentro de un <a> es HTML inválido —
+                  rompe la hidratación y los dos clics se pelean. */}
+              <Link href={`/caso/${c.id}`} className="fila-cubre" aria-label="Abrir el caso" />
               {/* La cara de quien lo lleva. «¿Quién lo está haciendo?» es la
                   primera pregunta al mirar esta lista, y hasta hoy había que
                   abrir el caso para contestarla. Sin responsable se DICE con un
@@ -151,7 +199,18 @@ export default function CompromisosActa({
                   {rotuloEstado(c.estado, c.tipo || "tarea")}
                 </span>
               )}
-            </Link>
+              {/* ── SOLTARLO DE LA CLÁUSULA ──
+                  No borra el caso ni lo saca del fondo: solo deja de colgar de
+                  aquí. Las cláusulas de un acta se parecen entre sí y el
+                  selector las ofrece todas juntas, así que equivocarse es
+                  fácil — y sin esto, un caso mal atado solo se arreglaba por
+                  SQL. */}
+              {puedeEditar && (
+                <button className="acta-caso-x fila-encima" disabled={ocupado}
+                  title="Soltar este caso de la cláusula (el caso no se borra)"
+                  onClick={e => { e.preventDefault(); e.stopPropagation(); soltar(c.id); }}>✕</button>
+              )}
+            </span>
           ))}
           {puedeEditar && (
             <button className="dato-btn acta-caso-btn" disabled={ocupado}
@@ -159,6 +218,24 @@ export default function CompromisosActa({
                 ? "Abrir OTRO caso para esta cláusula — el trabajo de una cláusula puede repartirse"
                 : "Abrir un caso para atender esta cláusula, con responsable y plazo"}
               onClick={() => abrirCaso(x)}>＋ caso</button>
+          )}
+          {/* ── ATAR UNO QUE YA EXISTE ──
+              El trabajo de una cláusula muchas veces ya está apuntado: alguien
+              abrió «Contratos del personal» antes de mirar el acta. Sin esto
+              había que abrirlo otra vez y dejar el original suelto — dos casos
+              para lo mismo, y el que guarda la conversación es el que se queda
+              fuera de la rendición.
+              El botón solo aparece si hay algo que atar: un desplegable vacío
+              es una promesa incumplida. */}
+          {puedeEditar && sueltos.length > 0 && (
+            /* El picker se monta directamente: se cierra solo con su propio
+               fondo, así que no necesita una puerta de estado por fila. La
+               primera versión ponía un botón que solo cambiaba el botón por
+               otro —la lista no salía hasta el segundo clic, y lo único que se
+               movía era una flechita—. */
+            <EntPicker etiqueta="⇱ atar"
+              titulo={`Atar un caso que ya existe a esta cláusula (${sueltos.length} sin cláusula en este fondo)`}
+              items={sueltos} onPick={(id) => atar(x.id, id)} />
           )}
           {puedeEditar && (
             <button className="dato-btn" title={seTacha ? "Marcar y guardar la prueba" : "Anotar"}

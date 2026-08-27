@@ -272,7 +272,13 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
        está lo que se dijo. */
     supabase.from("publicacion_vinculos")
       .select("pub:publicaciones(id,titulo,tipo,estado,creado_en,archivado_en)")
-      .eq("entidad_tipo", "postulacion").eq("entidad_id", params.id).limit(200),
+      .eq("entidad_tipo", "postulacion").eq("entidad_id", params.id)
+      /* Orden estable y los más recientes primero: si el tope llega a cortar
+         —las bitácoras gastan cupo antes de filtrarse—, que corte por lo más
+         viejo y no por donde le convenga a Postgres. Sin `order`, dos recargas
+         podían ofrecer casos distintos en el selector de cláusulas. */
+      .order("creado_en", { ascending: false })
+      .limit(200),
   ]);
   /* Los nombres salen del catálogo de perfiles que ya viajó (`pf`): la tabla
      de apoyos cuelga de auth.users y no de perfiles, así que PostgREST no
@@ -1109,8 +1115,12 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
               con su cláusula para poder comprobarlo en el PDF.
             </p>
             <div className="card">
+              {/* `casosDelFondo` ya se calculaba para la línea de vida: se
+                  reusa para poder ATAR a una cláusula un caso que ya existe,
+                  en vez de pedir los mismos casos otra vez. */}
               <CompromisosActa postulacionId={params.id} compromisos={compromisos as any}
                 actaUrl={ent.acta_url || null} codigoActa={ent.codigo_acta || null}
+                casosFondo={casosDelFondo}
                 puedeEditar error={cacError} />
             </div>
           </div>,

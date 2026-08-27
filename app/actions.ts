@@ -7297,6 +7297,130 @@ export async function casoDeCompromiso(id: string, postulacionId: string) {
   return { id: pub.id as string };
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   ATAR UN CASO QUE YA EXISTE A UNA CLÁUSULA
+
+   `casoDeCompromiso` abre uno nuevo; esto es lo contrario y hacía falta igual:
+   el trabajo de una cláusula muchas veces YA está apuntado —alguien abrió
+   «Contratos del personal» antes de mirar el acta— y sin esto había que
+   abrirlo otra vez y dejar el original suelto, o arreglarlo por SQL.
+
+   La relación vive en `publicaciones.compromiso_id` (db/compromiso-casos.sql),
+   así que atar es un `update` de una columna. Lo delicado no es el update: es
+   QUIÉN puede hacerlo y sobre qué.
+   ══════════════════════════════════════════════════════════════════════════ */
+export async function atarCasoACompromiso(casoId: string, compromisoId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  /* ── LOS DOS TIENEN QUE SER DEL MISMO FONDO ──
+     Esto llega desde el navegador con dos identificadores, y el navegador es
+     del usuario: sin comprobarlo aquí, cualquiera podría colgar el caso de
+     otro proyecto —o de otra productora— de una cláusula de este acta con solo
+     cambiar un uuid. Y no daría error: quedaría un caso ajeno dentro de una
+     rendición a DAFO, que es de las cosas que solo se descubren cuando alguien
+     se lo enseña al Ministerio.
+     La pertenencia del caso al fondo es su vínculo `postulacion`, el mismo que
+     `casoDeCompromiso` le pone al crearlo. */
+  const [{ data: comp, error: eC }, { data: caso, error: eP }, { data: vinc }] =
+    await Promise.all([
+      supabase.from("compromiso_acta").select("id,postulacion_id,clausula,titulo")
+        .eq("id", compromisoId).maybeSingle(),
+      supabase.from("publicaciones").select("id,titulo,tipo,archivado_en,compromiso_id")
+        .eq("id", casoId).maybeSingle(),
+      supabase.from("publicacion_vinculos").select("entidad_id")
+        .eq("publicacion_id", casoId).eq("entidad_tipo", "postulacion"),
+    ]);
+  if (eC) return { error: eC.message };
+  if (eP) return { error: eP.message };
+  if (!comp) return { error: "Esa cláusula ya no está." };
+  if (!caso) return { error: "Ese caso ya no está." };
+  /* Una nota de muro no es un caso: no se resuelve ni se asigna, y colgarla de
+     una cláusula haría que contara como trabajo hecho. */
+  if ((caso as any).tipo === "bitacora") return { error: "Una nota del muro no puede atarse a una cláusula." };
+
+  const delFondo = ((vinc || []) as any[]).some(v => v.entidad_id === (comp as any).postulacion_id);
+  if (!delFondo) return { error: "Ese caso no es de este fondo." };
+
+  /* Ya estaba atado a esta misma cláusula: no es un error, es un doble clic o
+     dos pestañas abiertas. Se contesta que sí y no se escribe nada. */
+  if ((caso as any).compromiso_id === compromisoId) return { ok: true };
+
+  /* ── NO SE LE ROBA A OTRA CLÁUSULA SIN DECIRLO ──
+     La lista del selector ya excluye los que cuelgan de algo, pero esa lista se
+     calcula en el navegador y envejece: con dos pestañas abiertas —o con un
+     caso vinculado a DOS fondos, que sale como suelto en el segundo— llegaba
+     aquí un caso ya atado y el `update` pisaba su cláusula anterior en
+     silencio. En la bitácora quedaba el «ató» y nunca el «soltó», así que la
+     cláusula de la que salió perdía su caso sin rastro. Se rechaza y se dice
+     qué hacer: soltarlo primero, que es un gesto y se ve. */
+  if ((caso as any).compromiso_id) {
+    return { error: "Ese caso ya cuelga de otra cláusula. Suéltalo de allí primero." };
+  }
+  /* Un caso archivado no se ata: desaparecería del chip de la cláusula —la
+     lista filtra archivados— y quedaría atado sin verse por ningún lado. */
+  if ((caso as any).archivado_en) return { error: "Ese caso está archivado." };
+
+  const { data: tocadas, error } = await supabase.from("publicaciones")
+    .update({ compromiso_id: compromisoId }).eq("id", casoId).select("id");
+  if (error) {
+    return { error: (error as any).code === "42703"
+      ? "Falta correr db/compromiso-casos.sql en Supabase (columna compromiso_id)."
+      : error.message };
+  }
+  if (!tocadas?.length) return { error: "No se pudo atar. Revisa tus permisos." };
+
+  const cl = (comp as any).clausula ? `${(comp as any).clausula} ` : "";
+  await supabase.from("actividad").insert({
+    entidad_tipo: "postulacion", entidad_id: (comp as any).postulacion_id,
+    actor_id: user.id, tipo: "tarea",
+    detalle: { mensaje: `ató «${(caso as any).titulo}» a la cláusula ${cl}«${(comp as any).titulo}»`.trim() },
+  });
+
+  revalidatePath(`/fondo/${(comp as any).postulacion_id}`);
+  revalidatePath(`/caso/${casoId}`);
+  return { ok: true };
+}
+
+/* ── SOLTARLO ──
+   El caso NO se borra ni se desvincula del fondo: solo deja de colgar de esa
+   cláusula. Sin esto, un caso atado por error solo se arreglaba por SQL — y
+   equivocarse aquí es fácil, porque las cláusulas de un acta se parecen entre
+   sí y el selector las ofrece todas juntas. */
+export async function soltarCasoDeCompromiso(casoId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  /* Se lee ANTES de soltar para saber a qué fondo revalidar y qué contar en la
+     bitácora: después del update, la cláusula ya no se puede averiguar desde
+     el caso. */
+  const { data: caso } = await supabase.from("publicaciones")
+    .select("id,titulo,compromiso_id,comp:compromiso_acta!compromiso_id(postulacion_id,clausula,titulo)")
+    .eq("id", casoId).maybeSingle();
+  if (!caso) return { error: "Ese caso ya no está." };
+  if (!(caso as any).compromiso_id) return { ok: true };   // ya estaba suelto
+
+  const { data: tocadas, error } = await supabase.from("publicaciones")
+    .update({ compromiso_id: null }).eq("id", casoId).select("id");
+  if (error) return { error: error.message };
+  if (!tocadas?.length) return { error: "No se pudo soltar. Revisa tus permisos." };
+
+  const comp: any = Array.isArray((caso as any).comp) ? (caso as any).comp[0] : (caso as any).comp;
+  if (comp?.postulacion_id) {
+    const cl = comp.clausula ? `${comp.clausula} ` : "";
+    await supabase.from("actividad").insert({
+      entidad_tipo: "postulacion", entidad_id: comp.postulacion_id,
+      actor_id: user.id, tipo: "tarea",
+      detalle: { mensaje: `soltó «${(caso as any).titulo}» de la cláusula ${cl}«${comp.titulo || ""}»`.trim() },
+    });
+    revalidatePath(`/fondo/${comp.postulacion_id}`);
+  }
+  revalidatePath(`/caso/${casoId}`);
+  return { ok: true };
+}
+
 export async function editarDetalleCompromiso(
   id: string, postulacionId: string, titulo: string, detalle: string, fechaLimite: string | null,
 ) {
