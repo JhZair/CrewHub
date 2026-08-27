@@ -422,6 +422,23 @@ export default function VidaFondo({
           ══════════════════════════════════════════════════════════════ */}
       {tramos.length > 0 && (
         <div className="vf-linea">
+          {/* ── HOY, ARRIBA DEL TODO ──
+              Si lo que se está midiendo son los HUECOS, el primero —el que va
+              desde lo último que pasó hasta ahora— necesita un extremo
+              visible. Sin este nodo, ese silencio empezaba en el aire: decía
+              «7 meses hasta hoy» sin que «hoy» estuviera en ninguna parte de
+              la línea. */}
+          <div className="vf-tramo">
+            <div className="vf-hito vf-ahora">
+              <span className="vf-punto vf-punto-hoy" aria-hidden>●</span>
+              <span className="vf-cuerpo">
+                <span className="vf-cab-hito">
+                  <b className="vf-hoy-txt">HOY</b>
+                  <span className="vf-fecha-hito">{fechaCorta(hoy)}</span>
+                </span>
+              </span>
+            </div>
+          </div>
           {tramos.map((t, i) => {
             if (t.tipo === "silencio") {
               return (

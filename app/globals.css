@@ -6278,6 +6278,15 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
   display:flex;align-items:center;justify-content:center;font-size:13px;
   background:var(--card);border:1.5px solid var(--border2);
   box-shadow:0 0 0 3px var(--card)}
+/* ── EL NODO DE HOY ──
+   El extremo de arriba de la línea. Si lo que se mide son los huecos, el
+   primero necesita un borde visible: sin esto, «7 meses hasta hoy» empezaba en
+   el aire. Va lleno y en verde —es el único punto que no es un hecho del
+   pasado sino el ahora— y no se puede pulsar ni corregir. */
+.vf-ahora{padding-bottom:6px;cursor:default}
+.vf-ahora:hover{background:none}
+.vf-punto-hoy{color:var(--green);font-size:9px;border-color:rgba(46,204,113,.55)}
+.vf-hoy-txt{font-size:10px;font-weight:800;letter-spacing:1.4px;color:var(--green)}
 /* El año, en su propio renglón: separa sin partir la línea. */
 .vf-anio-fila{display:flex;align-items:center;gap:9px;padding:10px 4px 4px 39px;
   font-size:10px;font-weight:800;letter-spacing:1.4px;color:var(--dim)}
