@@ -787,6 +787,27 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
                   : "")
                 + (rheSinPersona >= 1 ? ` · ⚠ ${fmt(rheSinPersona)} en recibos sin persona` : "")
               : "todavía no se gira ningún recibo"} />
+          {/* ── LAS OTRAS DOS FORMAS DE SUSTENTAR ──
+              El estímulo se rinde de tres maneras y solo una estaba arriba: los
+              recibos. Las declaraciones juradas y las facturas vivían tres
+              plegables adentro de Financiera, y son las que deciden si lo
+              gastado está sustentado o no.
+              La DJ lleva su tope al lado porque es la única de las tres que
+              PUEDE PASARSE: por encima del porcentaje del acta, lo de más hay
+              que devolverlo. */}
+          <Celda k="Declaraciones juradas"
+            v={usadoDj ? fmt(usadoDj) : "—"}
+            sub={djError
+              ? "falta correr db/declaraciones-juradas.sql"
+              : usadoDj
+                ? `${gastosDj.length} DJ${saldoDj.tope ? ` · tope ${fmt(saldoDj.tope)}` : ""}`
+                : "todavía ninguna"}
+            alerta={!!saldoDj.tope && usadoDj > saldoDj.tope} />
+          <Celda k="Facturas y boletas"
+            v={totCmp ? fmt(totCmp) : "—"}
+            sub={cmpError
+              ? "falta correr db/facturas.sql"
+              : totCmp ? `${comprobantes.length} comprobante(s)` : "todavía ninguna"} />
           <Celda k="Acta firmada" v={dmy(ent.fecha_firma_acta)} />
           <Celda k="Desembolso" v={ent.fecha_desembolso ? dmy(ent.fecha_desembolso) : "⚠ falta"}
             alerta={!ent.fecha_desembolso} />
