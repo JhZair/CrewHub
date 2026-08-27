@@ -380,7 +380,7 @@ export default async function Portada({ searchParams }: {
       .filter((v: any) => tipoCanonico(v.entidad_tipo) === "persona")
       .map((v: any) => v.entidad_id as string)))];
 
-  const [nombrados, nombresVinc, vincNotifQ, rxNotas, comsNotas, persVinc] = await Promise.all([
+  const [nombrados, nombresVinc, vincNotifQ, rxNotas, comsNotas, persVinc, persCuenta] = await Promise.all([
     /* Sin `conActores`: eso trae la tabla `perfiles` entera para poder nombrar
        a quien no salga en la página, y aquí las caras del filtro ya vienen de
        `equipoQ`. Lo necesita /historial, que pinta un chip por persona. */
@@ -415,9 +415,19 @@ export default async function Portada({ searchParams }: {
           autor:perfiles(nombre,color,avatar_url)`)
         .in("publicacion_id", idsNotas).order("creado_en").order("id")
       : Promise.resolve({ data: [] as any[] }),
+    /* ── DOS SITIOS DONDE VIVE UNA CARA ──
+       `perfiles.avatar_url` es la foto de la CUENTA (la que pone Google al
+       entrar); `personas.foto_url` es la de la FICHA, que sube administración.
+       No todo el mundo tiene las dos: Wilfredo y Zenón salían con sus
+       iniciales teniendo foto, porque solo se miraba la de la cuenta.
+       Se piden las personas VINCULADAS (por id, para los convocados) y las que
+       tienen cuenta (para los responsables, que llegan como id de perfil). Dos
+       consultas en la misma tanda, sin encadenar. */
     idsPersona.length
-      ? supabase.from("personas").select("id,nombre,alias,usuario_id").in("id", idsPersona)
+      ? supabase.from("personas").select("id,nombre,alias,foto_url,usuario_id").in("id", idsPersona)
       : Promise.resolve({ data: [] as any[] }),
+    supabase.from("personas").select("id,nombre,alias,foto_url,usuario_id")
+      .not("usuario_id", "is", null).not("foto_url", "is", null).limit(200),
   ]);
 
   /* ── TANDA 3 (solo si hay respuestas) ── las reacciones DE LOS COMENTARIOS.
@@ -694,7 +704,16 @@ export default async function Portada({ searchParams }: {
   /* Las caras del equipo, por id. `equipo` ya viaja para los filtros de «lo
      último»: reusarlo es gratis, y pedir los perfiles otra vez para pintar
      cuatro avatares sería un viaje por nada. */
-  const perfilDe = new Map<string, any>((equipo || []).map((p: any) => [p.id, p]));
+  /* La foto de la ficha, por cuenta. Se aplica ENCIMA del perfil: si alguien
+     tiene las dos, manda la que subió administración —es la que el equipo
+     reconoce— y si solo tiene una, se usa esa. */
+  const fotoDeCuenta = new Map<string, string>(
+    ((persCuenta.data || []) as any[])
+      .filter((pe: any) => pe.usuario_id && pe.foto_url)
+      .map((pe: any) => [pe.usuario_id as string, pe.foto_url as string]));
+  const perfilDe = new Map<string, any>((equipo || []).map((p: any) => [p.id, {
+    ...p, avatar_url: fotoDeCuenta.get(p.id) || p.avatar_url,
+  }]));
   /* persona (la ficha) → cara y nombre corto. Si esa persona no tiene cuenta
      —un colaborador externo, alguien que aún no entró— se queda sin perfil y se
      pinta igual: el avatar cae a su inicial y su color por defecto, que sigue
@@ -705,7 +724,10 @@ export default async function Portada({ searchParams }: {
       return [pe.id, {
         nombre: q?.nombre || pe.alias || pe.nombre || "—",
         color: q?.color || undefined,
-        avatar_url: q?.avatar_url || undefined,
+        /* La de la ficha primero: es la que sube administración y la que el
+           equipo reconoce. La de la cuenta como respaldo, y si no hay ninguna
+           el avatar cae a la inicial, que sigue diciendo quién es. */
+        avatar_url: pe.foto_url || q?.avatar_url || undefined,
       }];
     }));
   /* ── UN DÍA VACÍO NO ES LO MISMO QUE UN DÍA QUE NO SE PUDO LEER ──

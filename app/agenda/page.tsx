@@ -169,7 +169,7 @@ export default async function AgendaPage() {
      salía con su chip pero caía en «Casos sueltos». */
   const idsDe = (t: string) => [...new Set([...vincDe.values()].flat()
     .filter(v => tipoCanonico(v.tipo) === t).map(v => v.id))];
-  const [proyG, postuG, convG, empG, nombresOtros, persG] = await Promise.all([
+  const [proyG, postuG, convG, empG, nombresOtros, persG, fotosG] = await Promise.all([
     idsDe("proyecto").length
       ? supabase.from("proyectos").select("id,nombre,nombre_corto").in("id", idsDe("proyecto"))
       : Promise.resolve({ data: [] as any[] }),
@@ -208,8 +208,17 @@ export default async function AgendaPage() {
        misma consulta que hace la portada, para que las dos pinten las mismas
        caras. */
     idsDe("persona").length
-      ? supabase.from("personas").select("id,nombre,alias,usuario_id").in("id", idsDe("persona"))
+      ? supabase.from("personas").select("id,nombre,alias,foto_url,usuario_id")
+          .in("id", idsDe("persona"))
       : Promise.resolve({ data: [] as any[] }),
+    /* ── DOS SITIOS DONDE VIVE UNA CARA ──
+       `perfiles.avatar_url` es la foto de la CUENTA; `personas.foto_url` la de
+       la FICHA, que sube administración. No todo el mundo tiene las dos, y
+       mirando solo la de la cuenta hay gente que sale con sus iniciales
+       teniendo foto. Esto trae la de la ficha para los responsables, que
+       llegan como id de perfil. */
+    supabase.from("personas").select("usuario_id,foto_url")
+      .not("usuario_id", "is", null).not("foto_url", "is", null).limit(200),
   ]);
 
   /* El grupo de cada entidad, con el MISMO `id` que arman las actividades
@@ -260,13 +269,20 @@ export default async function AgendaPage() {
      cortar, se corta por donde menos duele. */
   /* persona (la ficha) → cara. Sin cuenta —un colaborador externo— se pinta
      igual con su inicial y su color, que sigue diciendo quién es. */
-  const perfPorId = new Map<string, any>((perfs || []).map((p: any) => [p.id, p]));
+  const fotoDeCuenta = new Map<string, string>(
+    ((fotosG.data || []) as any[]).map((pe: any) => [pe.usuario_id as string, pe.foto_url as string]));
+  const perfPorId = new Map<string, any>((perfs || []).map((p: any) => [p.id, {
+    ...p, avatar_url: fotoDeCuenta.get(p.id) || p.avatar_url,
+  }]));
   const caraDePersona = new Map<string, { nombre: string; color?: string; avatar_url?: string }>(
     ((persG.data || []) as any[]).map((pe: any) => {
       const q = pe.usuario_id ? perfPorId.get(pe.usuario_id) : null;
       return [pe.id, {
         nombre: q?.nombre || pe.alias || pe.nombre || "—",
-        color: q?.color || undefined, avatar_url: q?.avatar_url || undefined,
+        color: q?.color || undefined,
+        /* La de la ficha primero: es la que sube administración y la que el
+           equipo reconoce. */
+        avatar_url: pe.foto_url || q?.avatar_url || undefined,
       }];
     }));
   /* Las caras de un caso, en el orden estable de sus vínculos. */
@@ -439,7 +455,11 @@ export default async function AgendaPage() {
         <span className="spacer" />
         <span style={{ color: "var(--dim)", fontSize: 12 }}>todo lo que tiene fecha, junto</span>
       </div>
-      <Agenda items={[...itemsActSolas, ...itemsCaso]} perfiles={sinBot(perfs || [])} miId={user.id} />
+      <Agenda items={[...itemsActSolas, ...itemsCaso]}
+        /* Con la foto de la ficha ya aplicada: si se pasaran los perfiles
+           crudos, el avatar del responsable saldría con iniciales para quien
+           solo tiene foto en su ficha de persona. */
+        perfiles={sinBot([...perfPorId.values()])} miId={user.id} />
     </div>
   );
 }
