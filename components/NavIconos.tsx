@@ -4,7 +4,7 @@ import { SECCIONES } from "@/lib/secciones";
 import Link from "@/components/Enlace";
 import { useEffect, useState } from "react";
 import type { EstadoNav } from "@/app/nav-acciones";
-import { pedirZocalo } from "@/lib/zocalo";
+import { pedirZocalo, EVENTO_ZOCALO } from "@/lib/zocalo";
 import { etiquetasDelMenu } from "@/app/actions";
 
 /* ── LOS SITIOS QUE NO SON UNA ENTIDAD ──
@@ -112,9 +112,10 @@ export default function NavIconos() {
      misma llamada con el banco de trabajo y la campanita, que preguntaban lo
      suyo en el mismo instante. Cuatro POST encolados —4772 ms medidos— pasan a
      ser uno. Ver lib/zocalo.ts. */
+  const [tic, setTic] = useState(0);
   const [nav, setNav] = useState<EstadoNav>({
     casilla: 0, caja: false, vencidos: 0, porVencer: 0, fondosEc: 0, mesesEc: 0, docsEc: 0,
-    casosMios: 0, casosCurso: 0,
+    casosMios: 0, casosCurso: 0, cajasDormidas: 0,
   });
   useEffect(() => {
     let vivo = true;
@@ -126,7 +127,19 @@ export default function NavIconos() {
       if (vivo) setNav({ ...z.nav, __alarmas: (z as any).alarmas || [] } as any);
     }).catch(() => {});
     return () => { vivo = false; };
-  }, [pathname]);
+  }, [pathname, tic]);
+  /* ── Y SE VUELVE A PEDIR CUANDO ALGO DEL ZÓCALO CAMBIA ──
+     Apuntar en la caja o encender una alarma NO cambia de ruta, así que con
+     `[pathname]` a secas el menú se quedaba con el número de antes hasta
+     navegar: la burbuja marcaba una caja dormida en la misma pantalla donde el
+     chip ya había desaparecido. Quien cambia algo llama a `olvidarZocalo()` y
+     avisa; esto es la otra mitad, y hasta ahora solo la tenía la franja de
+     alarmas (ver components/FranjaAlarmas.tsx). */
+  useEffect(() => {
+    const alCambiar = () => setTic(t => t + 1);
+    window.addEventListener(EVENTO_ZOCALO, alCambiar);
+    return () => window.removeEventListener(EVENTO_ZOCALO, alCambiar);
+  }, []);
   /* ── LAS ALARMAS, EN LA ENTRADA QUE LES TOCA ──
      Una alarma es de una entidad, así que su marca va en la sección donde vive
      esa entidad: un fondo la pone en «fondos en ejecución», una empresa en
@@ -246,6 +259,17 @@ export default function NavIconos() {
       txt: `${nav.docsEc} documento(s) registrados sin su archivo adjunto: recibos, extractos, facturas y DJ` },
   ].filter(Boolean) as { k: string; n: number; tono: Tono; txt: string }[];
 
+  /* ── LAS CAJAS DORMIDAS ──
+     Ámbar y no rojo: nadie ha incumplido nada, solo hace días que en esa caja
+     no se apunta, y el saldo que se ve puede haber dejado de ser cierto. Si
+     gritara como una declaración vencida, en una semana se dejarían de mirar
+     las dos.
+     Sí va en el botón cerrado —a diferencia de los casos propios— porque este
+     número SE TERMINA: se apunta lo que falta y baja a cero. Los que no bajan
+     nunca son los que enseñan a no mirar. */
+  const cajasDormidas = nav.cajasDormidas || 0;
+  const enCaja = pathname === "/caja";
+
   /* Dónde estás. Cuenta la sección entera: la ficha, su historial y sus casos
      también son «estar ahí». */
   const enSeccion = (s: (typeof SECCIONES)[number]) =>
@@ -306,6 +330,10 @@ export default function NavIconos() {
         {pathname !== "/fondos" && fondosAvisos.map(a => (
           <Burbuja key={a.k} n={a.n} tono={a.tono} txt={a.txt} />
         ))}
+        {cajasDormidas > 0 && !enCaja && (
+          <Burbuja n={cajasDormidas} tono="ambar"
+            txt={`${cajasDormidas} caja(s) sin que nadie apunte nada desde hace días`} />
+        )}
         {/* ── LOS CASOS NO SALEN AQUÍ ──
             Estuvieron, y con las dos burbujas: la regla era «si un número se
             enseña, se enseña entero en los dos sitios». La regla sigue valiendo
@@ -414,6 +442,10 @@ export default function NavIconos() {
                     <span className="nav-item-ico">{d.ico}</span>
                     <span>{d.txt}</span>
                     {/* Cada pendiente, en la entrada donde se va a atender. */}
+                    {d.ruta === "/caja" && cajasDormidas > 0 && (
+                      <Burbuja n={cajasDormidas} tono="ambar"
+                        txt={`${cajasDormidas} caja(s) sin que nadie apunte nada desde hace días`} />
+                    )}
                     {d.ruta === "/casilla" && casilla > 0 && (
                       <Burbuja n={casilla} tono="rojo"
                         txt={`${casilla} correo(s) de DAFO sin leer`} />

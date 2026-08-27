@@ -10751,9 +10751,12 @@ export async function enlazarCuentaPersona(cuentaId: string, personaId: string |
 const ZOCALO_VACIO = {
   /* Tipado como `EstadoNav` a propósito: era un objeto suelto, y al añadirle un
      indicador al menú este quedaba sin él —el menú se dibujaba con la forma
-     vieja mientras no llegara la respuesta— sin que nada avisara. */
+     vieja mientras no llegara la respuesta— sin que nada avisara.
+     Y con `satisfies`, no con `as`: `as` deja pasar un objeto al que le FALTAN
+     campos, que es exactamente el descuido del que este comentario avisaba. Se
+     descubrió al añadir `cajasDormidas` — la guarda llevaba tiempo apagada. */
   nav: { casilla: 0, caja: false, vencidos: 0, porVencer: 0, fondosEc: 0, mesesEc: 0, docsEc: 0,
-         casosMios: 0, casosCurso: 0 } as EstadoNav,
+         casosMios: 0, casosCurso: 0, cajasDormidas: 0 } satisfies EstadoNav,
   banco: { error: "sin sesión" } as any,
   muro: { mensajes: [], yo: null } as any,
   notifs: { items: [], sinLeer: 0, sinLeerBot: 0, faltan: [] } as any,

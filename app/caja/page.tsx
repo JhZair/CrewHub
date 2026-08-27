@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import CajaPanel from "@/components/CajaPanel";
 import { saldoDeCaja, totales, money } from "@/lib/caja";
+import { hoyLima } from "@/lib/fechas";
 
 export const metadata: Metadata = { title: "💰 Caja" };
 
@@ -37,8 +38,12 @@ export default async function CajaPage({ searchParams }: { searchParams: { m?: s
   const esAdmin = !!(perfil?.es_admin || perfil?.es_finanzas);
 
   const off = parseInt(searchParams?.m || "0", 10) || 0;
-  const hoy = new Date();
-  const base = new Date(hoy.getFullYear(), hoy.getMonth() + off, 1);
+  /* `ahora`, no `hoy`: en este archivo hay dos nociones de día y confundirlas
+     ya sería fácil. Esta es la del reloj del servidor y decide qué MES se
+     enseña; la de más abajo (`hoyDeLima`) es el día en Lima y decide cuántos
+     días lleva dormida una caja. */
+  const ahora = new Date();
+  const base = new Date(ahora.getFullYear(), ahora.getMonth() + off, 1);
   const anio = base.getFullYear(), mes = base.getMonth();
   const pad = (n: number) => String(n).padStart(2, "0");
   const inicio = `${anio}-${pad(mes + 1)}-01`;
@@ -46,7 +51,7 @@ export default async function CajaPage({ searchParams }: { searchParams: { m?: s
 
   const [{ data: cajas, error: eCajas }, { data: cuentas, error: eCuentas },
          { data: movsMes, error: eMovs }, { data: proyectos },
-         { data: aliasPers }] = await Promise.all([
+         { data: aliasPers }, { data: pulso, error: ePulso }] = await Promise.all([
     /* TODAS, activas y archivadas. Las archivadas no llevan tarjeta de saldo
        —ya no se usan— pero sus movimientos siguen en el libro, y sin ellas en
        la lista esas filas salían con la caja en blanco: un gasto sin decir de
@@ -79,6 +84,13 @@ export default async function CajaPage({ searchParams }: { searchParams: { m?: s
        versión de «cómo se llama corto esta persona». */
     supabase.from("personas").select("usuario_id,alias")
       .not("alias", "is", null).not("usuario_id", "is", null),
+    /* ── CUÁNDO FUE LA ÚLTIMA VEZ QUE ALGUIEN APUNTÓ EN CADA CAJA ──
+       Sirve para el aviso de caja dormida. Se pide a la vista `caja_ultimo_apunte`
+       —tres filas— y NO se saca de `todos`: ese listado está paginado con techo,
+       y si algún día lo topa, las filas que se pierden son justo las últimas.
+       El aviso saldría rojo por un recorte, que es exactamente la clase de
+       alarma falsa que enseña a ignorar las alarmas. */
+    supabase.from("caja_ultimo_apunte").select("caja_id,ultimo_apunte"),
   ]);
 
   /* ── EL SALDO SE PIDE POR PÁGINAS, NO CON UN LIMIT GRANDE ──
@@ -150,6 +162,29 @@ export default async function CajaPage({ searchParams }: { searchParams: { m?: s
   const saldos = (cajas || []).map((c: any) => ({
     id: c.id, saldo: saldoDeCaja(c, todos, cs),
   }));
+
+  /* ── EL PULSO DE CADA CAJA ──
+     `undefined` y `null` NO son lo mismo aquí, y de esa diferencia depende que
+     el aviso sea creíble: `undefined` es «no lo pude averiguar» —falta la
+     migración, se cayó la consulta— y no pinta nada; `null` es «lo averigüé y
+     esta caja no tiene ni un movimiento», que es «sin estrenar». Si se
+     confundieran, un error de red pondría todas las cajas en rojo a la vez. */
+  /* El hoy con el que se cuentan los días, decidido en el SERVIDOR. Si lo
+     calculara el componente, dependería del reloj del navegador —y de que la
+     pestaña no lleve abierta desde ayer—, y entonces el chip y la burbuja del
+     menú podrían discrepar justo en los umbrales. */
+  const hoyDeLima = hoyLima();
+  const mapaPulso = new Map<string, string>(
+    (pulso || []).map((p: any) => [p.caja_id, p.ultimo_apunte]));
+  const pulsos = (cajas || []).map((c: any) => ({
+    id: c.id,
+    /* `has` y no `?? null`: una caja que la vista no devolvió es «no lo sé»,
+       no «no tiene movimientos». Colapsarlas aquí pintaría «sin estrenar»
+       sobre una caja con historial, y la guarda que hay en CajaPanel para
+       exactamente eso quedaría sin poder disparar nunca. */
+    ultimoApunte: ePulso ? undefined
+      : (mapaPulso.has(c.id) ? mapaPulso.get(c.id) : undefined),
+  }));
   const t = totales(delMes, cs);
 
   /* Si algo de esto falla, el saldo que se pinte NO es el saldo. Se dice antes
@@ -157,6 +192,19 @@ export default async function CajaPage({ searchParams }: { searchParams: { m?: s
      fuera el dinero de hoy, que es la lectura más engañosa posible. */
   const problema = eCajas?.message || eCuentas?.message || eMovs?.message || eSaldo || null;
   const faltaSql = /movimiento_caja|cuenta_caja|relation .* does not exist|42P01/.test(problema || "");
+  /* ── EL FALLO DEL PULSO SE DICE APARTE ──
+     No toca los saldos —el saldo sale de otra consulta—, así que meterlo en el
+     aviso de arriba sería asustar de más. Pero tiene que decirse: sin la vista,
+     el aviso de caja dormida queda apagado PARA SIEMPRE, y una vigilancia
+     apagada es indistinguible de «todas las cajas al día». Callarlo sería
+     dejar creer que hay un control que no existe. */
+  const faltaPulso = ePulso
+    /* «permission denied for view caja_ultimo_apunte» lleva el nombre de la
+       vista dentro y se leería como «falta la migración»: el admin la correría,
+       funcionaría, y el recado seguiría ahí. Se descarta primero. */
+    ? (!/permission denied/i.test(ePulso.message || "")
+        && /does not exist|42P01|caja_ultimo_apunte/.test(ePulso.message || "")
+        ? "falta" : "error") : null;
 
   return (
     /* El mismo ancho que /comprobantes y /obligaciones. `shell` a secas se
@@ -192,6 +240,15 @@ export default async function CajaPage({ searchParams }: { searchParams: { m?: s
           {faltaSql
             ? <>Falta correr <code>db/caja.sql</code> en Supabase.</>
             : <>No se pudo leer la caja, así que los saldos de abajo no son fiables: {problema}</>}
+        </div>
+      )}
+      {/* Solo a quien puede arreglarlo: al resto del equipo, un recado sobre un
+          archivo SQL no le dice nada que pueda hacer. */}
+      {faltaPulso && esAdmin && (
+        <div className="empty" style={{ color: "var(--dim)", marginBottom: 10, fontSize: 12 }}>
+          {faltaPulso === "falta"
+            ? <>El aviso de <b>caja dormida</b> está apagado: falta correr <code>db/caja-dormida.sql</code> en Supabase.</>
+            : <>No se pudo comprobar desde cuándo no se apunta en cada caja: {ePulso?.message}</>}
         </div>
       )}
       {truncado && (
@@ -251,7 +308,7 @@ export default async function CajaPage({ searchParams }: { searchParams: { m?: s
       <CajaPanel cajas={(cajas || []) as any} cuentas={cs as any} movs={movsConHilo as any}
         alias={mapaAlias(aliasPers as any)}
         proyectos={(proyectos || []) as any} saldos={saldos} esAdmin={esAdmin}
-        userId={user.id} mesNombre={MESES[mes]} />
+        userId={user.id} mesNombre={MESES[mes]} pulsos={pulsos} hoy={hoyDeLima} />
 
     </div>
   );

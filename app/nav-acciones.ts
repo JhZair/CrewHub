@@ -12,6 +12,7 @@
 import { DIAS_AVISO } from "@/lib/obligaciones";
 import { resumenFaltantes } from "@/lib/estadosCuenta";
 import { sinPruebas } from "@/lib/pruebasFondo";
+import { cuantasDuermen } from "@/lib/cajaDormida";
 
 /* ══════════════════════════════════════════════════════════════════════════
    LO QUE EL MENÚ NECESITA SABER — EN UN SOLO VIAJE
@@ -44,8 +45,12 @@ import { sinPruebas } from "@/lib/pruebasFondo";
    el menú no es un indicador, es una trampa.
    ══════════════════════════════════════════════════════════════════════════ */
 
-const hoyLima = () =>
-  new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 10);
+/* El día en Lima, de `lib/fechas`. Aquí había una copia con la resta de cinco
+   horas puesta a mano — justo la constante contra la que avisa ese archivo—, y
+   ahora el mismo `hoy` alimenta dos contadores del mismo dato: si las dos
+   versiones se separaran alguna vez, el menú y la pantalla discreparían y no
+   habría forma de saber cuál miente. */
+import { hoyLima } from "@/lib/fechas";
 
 export type EstadoNav = {
   /** Correos de DAFO sin leer. */
@@ -77,11 +82,15 @@ export type EstadoNav = {
    *  del decorado. Lo que se puede atender hoy es lo propio. */
   casosMios: number;
   casosCurso: number;
+  /** Cajas activas donde nadie apunta nada desde hace 3 días hábiles o más.
+   *  Solo para quien puede apuntar en ellas: una burbuja sobre trabajo que uno
+   *  no puede hacer es ruido que además enseña a ignorar las burbujas. */
+  cajasDormidas: number;
 };
 
 const VACIO: EstadoNav = {
   casilla: 0, caja: false, vencidos: 0, porVencer: 0, fondosEc: 0, mesesEc: 0, docsEc: 0,
-  casosMios: 0, casosCurso: 0,
+  casosMios: 0, casosCurso: 0, cajasDormidas: 0,
 };
 
 /* Recibe el cliente y el usuario YA resueltos. Antes verificaba la sesión por
@@ -139,7 +148,7 @@ export async function estadoNav(supabase: any, user: { id: string }): Promise<Es
       .is("archivado_en", null)
       .not("tipo", "in", "(aviso,bitacora,reunion)");
 
-    const [perfil, sinLeer, venc, porV, fondos, abiertos, curso] = await Promise.all([
+    const [perfil, sinLeer, venc, porV, fondos, abiertos, curso, pulso] = await Promise.all([
       supabase.from("perfiles").select("es_admin,es_finanzas")
         .eq("id", user.id).maybeSingle(),
       /* La burbuja del menú cuenta lo que LLEGÓ SOLO y nadie ha visto. Una
@@ -175,6 +184,14 @@ export async function estadoNav(supabase: any, user: { id: string }): Promise<Es
         .not("fecha_desembolso", "is", null),  // sin desembolso no hay serie
       misCasos().eq("estado", "abierta"),
       misCasos().eq("estado", "en_progreso"),
+      /* ── EL PULSO DE LAS CAJAS ──
+         Una fila por caja con la última vez que alguien apuntó algo. Son tres
+         o cuatro filas de tres columnas: cabe en la misma tanda sin que se
+         note. Va sin condicionar al permiso porque el permiso se resuelve en
+         ESTA MISMA tanda —esperarlo para decidir si preguntar convertiría una
+         consulta paralela en dos encadenadas, que es justo lo que costó
+         aplanar el zócalo—; el permiso se aplica después, al contar. */
+      supabase.from("caja_ultimo_apunte").select("caja_id,activa,ultimo_apunte"),
     ]);
 
     const caja = !!((perfil.data as any)?.es_admin || (perfil.data as any)?.es_finanzas);
@@ -206,6 +223,22 @@ export async function estadoNav(supabase: any, user: { id: string }): Promise<Es
       }).total, 0);
     }
 
+    /* ── LAS CAJAS DORMIDAS ──
+       Se cuenta con la misma función que pinta el chip en /caja para que el
+       número del menú y lo que se ve al entrar no puedan discrepar: la última
+       vez que un contador del zócalo tuvo su propia copia de la regla, mandaba
+       a una pantalla donde no había nada que hacer.
+       Si la consulta falló —falta la vista, se cayó la red— esto queda en 0 y
+       la burbuja no se pinta: cero no es «todo tranquilo», es «no lo sé», y de
+       las dos lecturas la callada es la única que no hace perder el tiempo. */
+    let dormidas = 0;
+    if (caja && !pulso.error) {
+      dormidas = cuantasDuermen(
+        ((pulso.data || []) as any[]).map(p => ({
+          id: p.caja_id, activa: p.activa, ultimoApunte: p.ultimo_apunte ?? null,
+        })), hoy);
+    }
+
     return {
       casilla: sinLeer.count || 0,
       caja,
@@ -221,6 +254,7 @@ export async function estadoNav(supabase: any, user: { id: string }): Promise<Es
          fallo de red— es «no lo sé», y una burbuja en cero no se pinta. */
       casosMios: abiertos.count || 0,
       casosCurso: curso.count || 0,
+      cajasDormidas: dormidas,
     };
   } catch {
     return VACIO;

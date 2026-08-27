@@ -8,7 +8,9 @@ import {
   fijarSaldoInicial, guardarCaja, archivarCaja,
 } from "@/app/actions";
 import { useConfirmar, useAviso } from "@/components/useConfirmar";
+import { olvidarZocalo } from "@/lib/zocalo";
 import { money, ICO_CAJA, porCuenta, totales, type CajaMin, type CuentaMin } from "@/lib/caja";
+import { suenoDeCaja, COLOR_SUENO } from "@/lib/cajaDormida";
 import { hoyLima, diaLima } from "@/lib/fechas";
 import CampoAdjunto from "@/components/CampoAdjunto";
 import VerAdjunto from "@/components/VerAdjunto";
@@ -44,7 +46,7 @@ const dmy = (f: string) =>
   new Date(f + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short" });
 
 export default function CajaPanel({
-  cajas, cuentas, movs, proyectos, saldos, esAdmin, userId, alias, mesNombre,
+  cajas, cuentas, movs, proyectos, saldos, esAdmin, userId, alias, mesNombre, pulsos, hoy,
 }: {
   cajas: (CajaMin & { fecha_inicio: string | null; activa: boolean })[];
   cuentas: (CuentaMin & { activa: boolean })[];
@@ -60,6 +62,15 @@ export default function CajaPanel({
   alias?: Record<string, string>;
   /** «agosto». Solo para rotular el desglose; el panel no decide el mes. */
   mesNombre?: string;
+  /** Última vez que alguien APUNTÓ en cada caja. `undefined` en `ultimoApunte`
+   *  quiere decir «no se pudo averiguar», y entonces no se pinta ningún aviso:
+   *  ver lib/cajaDormida.ts. */
+  pulsos?: { id: string; ultimoApunte?: string | null }[];
+  /** El día de hoy, según el SERVIDOR. Va como dato y no se calcula aquí: el
+   *  reloj del navegador puede ir desviado, y una pestaña abierta desde ayer
+   *  cruza la medianoche sin enterarse. Con dos relojes distintos, el chip y
+   *  la burbuja del menú discreparían justo en los umbrales de 3 y 6 días. */
+  hoy?: string;
 }) {
   const router = useRouter();
   const { pedir, dialogo } = useConfirmar();
@@ -118,6 +129,10 @@ export default function CajaPanel({
   const flujoCuenta = new Map(cuentas.map(c => [c.id, c.flujo]));
   const nombreCaja = new Map(cajas.map(c => [c.id, c.nombre]));
   const saldoDe = new Map(saldos.map(s => [s.id, s.saldo]));
+  /* Cuándo se apuntó por última vez en cada caja. Si la página no lo mandó
+     —falta la migración de la vista— el mapa está vacío y `suenoDeCaja`
+     recibe `undefined`: no se pinta nada, en vez de pintar todo en rojo. */
+  const pulsoDe = new Map((pulsos || []).map(p => [p.id, p.ultimoApunte]));
 
   const guardar = async () => {
     if (ocupado) return;
@@ -138,6 +153,12 @@ export default function CajaPanel({
        marcado hacía que el siguiente apunte normal fallara pidiendo una caja
        destino que nadie quería poner. */
     setTraspaso(false);
+    /* ── Y QUE EL MENÚ SE ENTERE ──
+       El zócalo está cacheado por ruta, así que sin esto la burbuja de «cajas
+       dormidas» seguiría marcando la caja que se acaba de despertar, en la
+       misma pantalla donde el chip ya desapareció. Dos números del mismo dato
+       discrepando delante de quien acaba de arreglarlo. */
+    olvidarZocalo();
     router.refresh();
   };
 
@@ -176,7 +197,11 @@ export default function CajaPanel({
     avisar(""); setOcupado(true);
     const r: any = await borrarMovCaja(m.id);
     setOcupado(false);
-    if (r?.error) avisar(r.error); else router.refresh();
+    if (r?.error) { avisar(r.error); return; }
+    /* Borrar el último apunte de una caja la devuelve a dormida, así que el
+       menú también se queda viejo por aquí. */
+    olvidarZocalo();
+    router.refresh();
   };
 
   const inp = {
@@ -239,6 +264,9 @@ export default function CajaPanel({
                       const r: any = await archivarCaja(c.id, false);
                       setOcupado(false);
                       if (r?.error) { avisar(r.error); return; }
+                      /* Una caja archivada deja de vigilarse: el contador del
+                         menú cambia aunque no se haya apuntado nada. */
+                      olvidarZocalo();
                       setEditCaja(null); router.refresh();
                     }}>archivar</button>
                   <button className="btn btn-ghost" style={{ fontSize: 12 }}
@@ -272,6 +300,38 @@ export default function CajaPanel({
                     }}>✎</button>
                 )}
               </div>
+              {/* ── ¿ESTÁ DORMIDA? ──
+                  Una caja no se descuadra de golpe: se descuadra porque nadie
+                  apuntó durante dos semanas y luego ya nadie se acuerda de qué
+                  fue ese retiro de S/ 80. El saldo de arriba no lo delata —se
+                  ve perfecto, solo que es mentira—; el silencio sí.
+                  Va debajo del saldo y no encima: primero el número que se
+                  viene a buscar, después la duda sobre él. */}
+              {(() => {
+                /* Una caja que no viene en `pulsos` es «no lo sé», no «no
+                   tiene movimientos»: la vista devuelve una fila por caja, así
+                   que una ausencia es un fallo, y adivinar en la dirección
+                   contraria pintaría «sin estrenar» sobre una caja con
+                   historial. */
+                const z = suenoDeCaja({ id: c.id, activa: c.activa,
+                  ultimoApunte: pulsoDe.has(c.id) ? pulsoDe.get(c.id) : undefined },
+                  hoy || undefined);
+                if (z.situacion === "viva" || z.situacion === "ignorada" || z.situacion === "sin_saber")
+                  return null;
+                const rojo = z.situacion === "roja";
+                const color = COLOR_SUENO[z.situacion];
+                return (
+                  <div className="caja-sueno" style={{ color, borderColor: color }}
+                    title={z.situacion === "sin_estrenar"
+                      ? "Esta caja no tiene ni un movimiento apuntado todavía."
+                      : "Se cuentan días hábiles desde el último apunte. Sábados y domingos no cuentan."}>
+                    <span className="caja-sueno-pt" style={{ background: color }} />
+                    {z.situacion === "sin_estrenar" ? "sin estrenar" : z.motivo}
+                    {rojo && <b> · revísala</b>}
+                  </div>
+                );
+              })()}
+
               {editSaldo === c.id && esAdmin && (
                 <div style={{ display: "flex", gap: 5, marginTop: 7, flexWrap: "wrap" }}>
                   <input value={saldoIni.monto} onChange={e => setSaldoIni({ ...saldoIni, monto: e.target.value })}
@@ -672,7 +732,11 @@ export default function CajaPanel({
                   avisar(""); setOcupado(true);
                   const r: any = await archivarCaja(c.id, true);
                   setOcupado(false);
-                  if (r?.error) avisar(r.error); else router.refresh();
+                  if (r?.error) { avisar(r.error); return; }
+                  /* Devolverla al uso la vuelve a poner bajo vigilancia, y si
+                     lleva meses parada aparece dormida en el acto. */
+                  olvidarZocalo();
+                  router.refresh();
                 }}>devolver</button>
             </span>
           ))}
