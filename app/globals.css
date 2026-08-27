@@ -6294,15 +6294,23 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
    dos hitos que separa. Tenue a propósito: es el hueco entre dos cosas, no una
    tercera cosa — si pesara igual que un hito, la línea se leería como una
    sucesión de alarmas. */
+/* ⚠ NI EL MISMO COLOR NI UN COLOR MÁS: UNA TRAMA.
+   Era un fondo blanco al 2,8% y el hito, al pasar el ratón, otro blanco al 2%:
+   dos cajas del mismo gris, una debajo de otra, y el hueco parecía un hito
+   más. Un rayado diagonal frío dice «aquí no hay nada» sin necesidad de que
+   nadie lo lea — y no compite con ningún contenido, porque no hay contenido
+   que resaltar. */
 .vf-silencio{position:relative;display:flex;align-items:center;
   min-height:42px;padding:6px 12px 6px 39px;margin:1px 0;border-radius:10px;
-  background:rgba(255,255,255,.028)}
+  background:repeating-linear-gradient(135deg,
+    rgba(139,139,163,.10) 0 5px, rgba(139,139,163,.02) 5px 11px)}
 .vf-silencio::before{content:"";position:absolute;left:17px;top:-2px;bottom:-2px;width:2px;
   background:repeating-linear-gradient(180deg,var(--border2) 0 3px,transparent 3px 8px)}
 .vf-sil-txt{font-size:11px;color:var(--dim);letter-spacing:.2px}
 /* El hueco que llega hasta hoy es el que corre mientras el fondo sigue
    abierto: ese sí se dice en ámbar. */
-.vf-silencio-hoy{background:rgba(244,180,0,.06)}
+.vf-silencio-hoy{background:repeating-linear-gradient(135deg,
+  rgba(244,180,0,.13) 0 5px, rgba(244,180,0,.03) 5px 11px)}
 .vf-silencio-hoy .vf-sil-txt{color:var(--yellow);opacity:.9;font-weight:600}
 .vf-silencio-hoy::before{background:repeating-linear-gradient(180deg,
   rgba(244,180,0,.45) 0 3px,transparent 3px 8px)}
