@@ -127,6 +127,13 @@ export default async function CasillaPage() {
   const otrosPorPost = new Map<string, number>();
   coms.forEach(c => {
     if (!c.postulacion_id) return;
+    /* ── LO REGISTRADO A MANO NO ES «SEÑAL» ──
+       Este resumen contesta «¿DAFO dijo algo por su cuenta?», y una carta que
+       bajamos y archivamos nosotros no contesta eso: la trajimos nosotros.
+       Contándola, un expediente en silencio desde hace un año diría «última
+       señal: hoy» — la forma más cara de fallar aquí, porque parece una buena
+       noticia. Su sitio es la línea de tiempo del fondo. */
+    if ((c.origen || "gmail") !== "gmail") return;
     const cl = claseCorreo(c.remitente, c.asunto, c.extracto, c.vinculo_por);
     if (cl !== "dafo") {
       otrosPorPost.set(c.postulacion_id, (otrosPorPost.get(c.postulacion_id) || 0) + 1);

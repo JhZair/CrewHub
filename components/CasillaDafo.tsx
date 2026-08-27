@@ -81,12 +81,29 @@ export default function CasillaDafo({
   const [destello, setDestello] = useState<string | null>(null);
   const { pedir, dialogo } = useConfirmar();
 
+  /* ══════════════════════════════════════════════════════════════════════
+     ESTA BANDEJA ES DE LO QUE LLEGA SOLO
+
+     Un correo aparece aquí porque el Apps Script lo empujó: nadie lo ha visto
+     todavía, y por eso «sin leer» significa algo. Una carta que alguien
+     DESCARGÓ de la Plataforma Virtual y registró a mano es lo contrario: ya la
+     vio, ya la leyó, y la registró justamente para dejar constancia. Meterla
+     en la misma lista —y encima como pendiente— era pedirle que se enterase de
+     lo que acababa de hacer.
+
+     Su sitio es el histórico del fondo (la pestaña «Vida del fondo»). Aquí se
+     quedan en un cajón aparte al final, para que las que no cuelguen de ningún
+     fondo no desaparezcan de la vista.
+     ══════════════════════════════════════════════════════════════════════ */
+  const deCorreo = useMemo(() => items.filter(c => (c.origen || "gmail") === "gmail"), [items]);
+  const aMano = useMemo(() => items.filter(c => (c.origen || "gmail") !== "gmail"), [items]);
+
   /* Sin leer arriba y, dentro, lo que parece pedir algo primero: entre dos
      correos del mismo día, uno que dice «subsanación» no vale lo mismo que un
      acuse de recibo. */
-  const sinLeer = useMemo(() => items.filter(c => !c.leido_en)
-    .sort((a, b) => Number(!!b.pide_accion) - Number(!!a.pide_accion)), [items]);
-  const leidos = useMemo(() => items.filter(c => !!c.leido_en), [items]);
+  const sinLeer = useMemo(() => deCorreo.filter(c => !c.leido_en)
+    .sort((a, b) => Number(!!b.pide_accion) - Number(!!a.pide_accion)), [deCorreo]);
+  const leidos = useMemo(() => deCorreo.filter(c => !!c.leido_en), [deCorreo]);
 
   /* El historial, por postulación. Las que no tienen vínculo van juntas al
      final: son una pregunta pendiente, no un grupo más. */
@@ -785,6 +802,23 @@ export default function CasillaDafo({
             );
           })}
         </>
+      )}
+
+      {/* ── EL CAJÓN DE LAS REGISTRADAS A MANO ──
+          No son correo entrante: son documentos que alguien bajó de la
+          Plataforma y archivó. Van al final, plegadas y sin contarse como
+          pendientes. Se leen en la línea de tiempo de su fondo; aquí están
+          para que las que no tengan fondo no queden invisibles. */}
+      {aMano.length > 0 && (
+        <details className="cas-mano">
+          <summary>
+            📄 Cartas registradas a mano · {aMano.length}
+            <i> — de la Plataforma Virtual; su sitio es la «Vida del fondo»</i>
+          </summary>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+            {aMano.map(fila)}
+          </div>
+        </details>
       )}
 
       {items.length >= tope && (

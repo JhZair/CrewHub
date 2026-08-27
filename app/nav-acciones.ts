@@ -142,8 +142,14 @@ export async function estadoNav(supabase: any, user: { id: string }): Promise<Es
     const [perfil, sinLeer, venc, porV, fondos, abiertos, curso] = await Promise.all([
       supabase.from("perfiles").select("es_admin,es_finanzas")
         .eq("id", user.id).maybeSingle(),
+      /* La burbuja del menú cuenta lo que LLEGÓ SOLO y nadie ha visto. Una
+         carta que alguien bajó de la Plataforma y registró a mano no es eso
+         —la trajo él, mirándola— y encender el menú por ella sería avisar a
+         quien lo hizo de lo que acaba de hacer. Mismo criterio que la lista
+         de /casilla: esta bandeja es del correo entrante. */
       supabase.from("dafo_comunicaciones")
-        .select("id", { count: "exact", head: true }).is("leido_en", null),
+        .select("id", { count: "exact", head: true })
+        .is("leido_en", null).eq("origen", "gmail"),
       periodos().lt("vence", hoy),
       periodos().gte("vence", hoy).lte("vence", tope),
       supabase.from("postulaciones")

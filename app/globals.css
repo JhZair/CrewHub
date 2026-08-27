@@ -6236,6 +6236,13 @@ body{padding-top:var(--alto-franja, 0)}
   .cl-head{display:none}
 }
 
+/* El cajón de las cartas registradas a mano, al final de la casilla: no son
+   correo entrante, así que no compiten con él. */
+.cas-mano{margin-top:24px;border-top:1px solid var(--border);padding-top:12px}
+.cas-mano summary{cursor:pointer;font-size:13px;color:var(--dim);letter-spacing:.5px}
+.cas-mano summary:hover{color:var(--text)}
+.cas-mano summary i{font-style:normal;font-size:11.5px;opacity:.8}
+
 /* ── REGISTRAR UNA CARTA DE LA CASILLA ELECTRÓNICA ──
    Vive arriba de la bandeja, plegado: se usa una vez por semana y no puede
    ocupar el sitio de lo que sí se lee todos los días. */
