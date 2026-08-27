@@ -783,13 +783,24 @@ function Calendario({ vis, mesOff, setMesOff, colorDe, icoDe, apagado, perfilDe 
                       por hecho que está en marcha, así que una pausa o un
                       seguimiento hay que decirlos — organizarse alrededor de
                       algo que nadie va a hacer sale caro. */}
-                  {hayQueDecirEstado(it.estadoCaso || (it.kind === "caso" ? it.estado : "")) && (
-                    <span className="port-hoy-estado"
-                      style={{ color: ESTADO_COL[it.estado] || "var(--dim)",
-                        borderColor: ESTADO_COL[it.estado] || "var(--dim)" }}>
-                      {ESTADO_ICO[it.estado]} {ESTADO_TXT[it.estado] || it.estado}
-                    </span>
-                  )}
+                  {(() => {
+                    /* ── EL MISMO ESTADO EN LAS TRES PREGUNTAS ──
+                       Se decidía SI pintar con el estado del caso y luego se
+                       pintaba `it.estado`, que en una actividad es el suyo:
+                       salía «materializada» en gris, una palabra del vocabulario
+                       interno del cronograma que no significa nada para quien
+                       mira su día. Una sola variable para decidir, colorear y
+                       escribir. */
+                    const e = it.estadoCaso || (it.kind === "caso" ? it.estado : "");
+                    if (!hayQueDecirEstado(e)) return null;
+                    return (
+                      <span className="port-hoy-estado"
+                        style={{ color: ESTADO_COL[e] || "var(--dim)",
+                          borderColor: ESTADO_COL[e] || "var(--dim)" }}>
+                        {ESTADO_ICO[e]} {ESTADO_TXT[e] || e}
+                      </span>
+                    );
+                  })()}
                   {/* ── DE QUÉ ES: TODOS SUS VÍNCULOS ──
                       En un pop-up sin cabeceras es lo único que da contexto, y
                       con UNO solo una reunión caía en «Casos sueltos» — que es

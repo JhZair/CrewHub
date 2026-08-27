@@ -2844,7 +2844,12 @@ a.stat-card:hover{border-color:var(--border2)}
 .ag-cal-mas:hover{color:var(--text);text-decoration:underline}
 
 /* ── EL DÍA COMPLETO ── */
-.ag-dia-caja{max-width:min(560px, 94vw)}
+/* ── ANCHO PARA QUE QUEPA EL DÍA ──
+   560px daban para un título y poco más: con el estado, los vínculos y las
+   caras, «Culminación del proyect…» se cortaba a la mitad y había que abrir el
+   caso para saber cuál era. Un pop-up que obliga a salir de él para entender
+   lo que enseña no está haciendo su trabajo. */
+.ag-dia-caja{max-width:min(940px, 94vw)}
 .ag-dia-n{background:var(--panel);border:1px solid var(--border2);border-radius:20px;
   padding:1px 9px;font-size:11px;font-weight:700;color:var(--muted)}
 .ag-dia-lista{display:flex;flex-direction:column;gap:5px;margin-top:10px;
