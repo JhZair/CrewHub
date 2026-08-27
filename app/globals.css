@@ -6570,10 +6570,16 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
    necesite otra medida, cambiaría la portada sin que nadie lo pidiera.
    ══════════════════════════════════════════════════════════════════ */
 .port-hoy{margin:6px 0 4px}
-.port-hoy-lista{display:flex;flex-direction:column;gap:5px}
-.port-hoy-fila{display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;
+.port-hoy-lista{display:flex;flex-direction:column;gap:3px}
+/* ── FILAS BAJAS ──
+   Ocho renglones a 9px de relleno y avatares de 24 se comían media pantalla
+   antes de llegar al muro. Esto es una lista para BARRER con la vista, no
+   tarjetas: lo que se lee es el título, y el resto acompaña. Con 5px y caras
+   de 20 caben todas de un vistazo, que es la única forma de que una lista del
+   día sirva de algo. */
+.port-hoy-fila{display:flex;align-items:center;gap:9px;padding:5px 11px;border-radius:8px;
   background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--dim);
-  text-decoration:none;color:var(--text);font-size:13px}
+  text-decoration:none;color:var(--text);font-size:13px;min-height:34px}
 .port-hoy-fila:hover{background:#22223a;border-color:var(--border2)}
 /* Apagada, no escondida: un rodaje ya hecho dentro de la ventana sigue siendo
    información —borrarlo haría parecer que se cayó— pero no hay nada que
@@ -6615,7 +6621,7 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
    seguimiento, ya cerrado). Chip pequeño y con el color del estado: se lee sin
    competir con el título, que es lo primero. Se comparte entre la portada y el
    pop-up del día — es el mismo dato diciendo lo mismo. */
-.port-hoy-estado{flex:none;font-size:10.5px;padding:2px 7px;border-radius:999px;
+.port-hoy-estado{flex:none;font-size:10.5px;padding:1px 7px;border-radius:999px;
   border:1px solid;background:color-mix(in srgb,currentColor 10%,transparent);
   white-space:nowrap;font-weight:700}
 
@@ -6651,7 +6657,7 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
    las filas sin asignar arrancan tres píxeles a la izquierda y la lista se lee
    dentada. El hueco no pinta nada —un avatar gris se leería como «alguien»—,
    solo reserva el sitio. */
-.port-hoy-resp-hueco{flex:none;width:24px}
+.port-hoy-resp-hueco{flex:none;width:20px}
 
 /* El ⚡ de la vista rápida en las filas del día: al final, y solo se resalta al
    pasar por la fila. Siempre visible sería un botón más compitiendo con el

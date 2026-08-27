@@ -796,7 +796,11 @@ function Calendario({ vis, mesOff, setMesOff, colorDe, icoDe, apagado, perfilDe 
                       precisamente lo que no informa de ella: una reunión existe
                       por a quién y a qué convoca.
                       Los primeros y el resto contado: ver `TOPE_GRUPOS`. */}
-                  {(it.grupos?.length ? it.grupos : [it.grupo]).filter(Boolean)
+                  {/* Sin vínculos no se pinta «Casos sueltos»: ese es el nombre
+                      del GRUPO en la línea de tiempo —ahí explica por qué esas
+                      filas están juntas—, pero en la lista de un día es una
+                      etiqueta que ocupa sitio para decir que no hay nada. */}
+                  {(it.grupos || []).filter(Boolean)
                     .slice(0, TOPE_GRUPOS).map((g, i) => (
                       <span key={i} className="ag-dia-grupo">{g}</span>
                     ))}

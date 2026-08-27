@@ -563,9 +563,10 @@ export default async function Portada({ searchParams }: {
          convocatoria, empresa) y detrás lo demás: si hay que cortar, se corta
          por el final. */
       const vs = (c.vinculos || []) as any[];
-      /* Sin vínculos se dice «Casos sueltos» —igual que /agenda— y no se deja
-         el hueco: el nombre explica por qué está solo, en vez de sugerir que
-         al sistema se le perdió el dato. */
+      /* Sin vínculos, la columna se queda vacía y ya está. «Casos sueltos» es
+         el nombre de un GRUPO en /agenda —ahí explica por qué esas filas están
+         juntas—, pero en una lista sin grupos no explica nada: es una etiqueta
+         que ocupa sitio para decir que no hay nada que decir. */
       const grupos = [...vs]
         /* Las personas salen de aquí: van como avatares. Repetirlas también
            como chip de texto llenaba la fila con el mismo dato dos veces. */
@@ -962,7 +963,7 @@ export default async function Portada({ searchParams }: {
                      se lee como «alguien» y aquí no hay nadie. */
                   return q ? (
                     <span className="port-hoy-resp fila-encima" title={`Responsable: ${q.nombre}`}>
-                      <Avatar nombre={q.nombre} color={q.color} src={q.avatar_url} size={24} />
+                      <Avatar nombre={q.nombre} color={q.color} src={q.avatar_url} size={20} />
                     </span>
                   ) : <span className="port-hoy-resp-hueco" />;
                 })()}
@@ -983,8 +984,7 @@ export default async function Portada({ searchParams }: {
                     película, y el título solo no basta para decidir si te toca.
                     Se enseñan los primeros y el resto se cuenta: ver
                     `TOPE_GRUPOS`. */}
-                {(it.grupos.length ? it.grupos : ["Casos sueltos"])
-                  .slice(0, TOPE_GRUPOS).map((g: string, i: number) => (
+                {it.grupos.slice(0, TOPE_GRUPOS).map((g: string, i: number) => (
                   <span key={i} className="port-hoy-grupo">{g}</span>
                 ))}
                 {it.grupos.length > TOPE_GRUPOS && (
@@ -1009,7 +1009,7 @@ export default async function Portada({ searchParams }: {
                     {it.personas.slice(0, 5).map((pid: string) => {
                       const c = caraDePersona.get(pid);
                       return <Avatar key={pid} nombre={c?.nombre || "—"} color={c?.color}
-                        src={c?.avatar_url} size={20} />;
+                        src={c?.avatar_url} size={18} />;
                     })}
                     {it.personas.length > 5 && (
                       <span className="port-hoy-mas">+{it.personas.length - 5}</span>
@@ -1091,7 +1091,7 @@ export default async function Portada({ searchParams }: {
                     const q = perfilDe.get(r.respId || "");
                     return q ? (
                       <span className="port-hoy-resp fila-encima" title={`Responsable: ${q.nombre}`}>
-                        <Avatar nombre={q.nombre} color={q.color} src={q.avatar_url} size={22} />
+                        <Avatar nombre={q.nombre} color={q.color} src={q.avatar_url} size={20} />
                       </span>
                     ) : <span className="port-hoy-resp-hueco" />;
                   })()}
