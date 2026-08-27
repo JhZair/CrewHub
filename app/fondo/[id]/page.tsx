@@ -817,11 +817,18 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
         )}
       </div>
 
-      {/* Las tres naturalezas del fondo, en pestañas: cada una va a crecer con
-          su propia información, y apiladas se volverían un scroll interminable.
-          Arranca en Financiera —el dinero es lo que tiene reloj—. */}
+      {/* Las naturalezas del fondo, en pestañas: cada una va a crecer con su
+          propia información, y apiladas se volverían un scroll interminable.
+
+          ── ARRANCA EN «VIDA DEL FONDO» ──
+          Arrancaba en Financiera, con el argumento de que el dinero es lo que
+          tiene reloj. Pero al abrir un fondo la primera pregunta no es cuánto
+          hay: es QUÉ PASÓ —qué nos dijeron, qué contestamos, cuánto llevamos
+          callados— y eso es lo que decide si hay que mirar el dinero hoy o el
+          mes que viene. Las cifras siguen a un clic; la historia, no la tenía
+          nadie. */}
       <TabsPanel
-        labels={["💰 Financiera", "🎥 Audiovisual", `📦 Entregables${compromisos.length ? ` · ${compromisos.length}` : ""}`, `👥 Equipo · ${equipoDelFondo}`, `💼 Por rol${rolesPre.length ? ` · ${rolesPre.length}` : ""}`, `📍 Vida del fondo${lineaVida.length ? ` · ${lineaVida.length}` : ""}`]}
+        labels={[`📍 Vida del fondo${lineaVida.length ? ` · ${lineaVida.length}` : ""}`, "💰 Financiera", "🎥 Audiovisual", `📦 Entregables${compromisos.length ? ` · ${compromisos.length}` : ""}`, `👥 Equipo · ${equipoDelFondo}`, `💼 Por rol${rolesPre.length ? ` · ${rolesPre.length}` : ""}`]}
         /* El rastro rojo: el mismo número en la pestaña, en la cabecera de
            Rendición y en la sub-sección de estados de cuenta. Sin él, lo que
            falta vive a tres clics de distancia dentro de una sección plegada,
@@ -835,13 +842,36 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
            Un requerimiento con plazo vencido no puede estar escondido dentro
            de una pestaña: es lo único de esta ficha que se convierte en una
            sanción por no mirarlo. */
-        avisos={[avisosFin, null, null, null, rolesSinDueno || null, avisoVida]}
+        avisos={[avisoVida, avisosFin, null, null, null, rolesSinDueno || null]}
         /* Nombres de pestaña para poder enlazarlas: `…/fondo/<id>#equipo`.
            Sin esto, un enlace a la pestaña de equipo apunta a un panel que
            está montado pero oculto, y el clic no hace nada — el mismo fallo
            que costó dos rondas en la ficha de postulación. */
-        claves={["financiera", "audiovisual", "entregables", "equipo", "porrol", "vida"]}
+        claves={["vida", "financiera", "audiovisual", "entregables", "equipo", "porrol"]}
         paneles={[
+          /* ── 📍 LA VIDA DEL FONDO ──
+             Dos años de ejecución en una pantalla. No es un adorno: es el
+             expediente con el que se contesta «¿y ustedes qué hicieron?» — y
+             hoy esa respuesta vive en la memoria de quien hizo la llamada. */
+          <div key="vida">
+            <p className="fondo-nat-sub">
+              Lo que ha pasado en este fondo, de la firma del acta al cierre: fechas del acta, cartas
+              de DAFO y lo que hicimos nosotros. Lo que no se apunta, en un año no existió.
+            </p>
+            <div className="card">
+              {faltaVida ? (
+                <p className="rp-vacio" style={{ color: "var(--yellow)" }}>
+                  ⚠ Falta correr <b>db/vida-fondo.sql</b> en Supabase → SQL Editor.
+                  Hasta entonces esta pestaña no puede guardar nada.
+                </p>
+              ) : (
+                <VidaFondo postulacionId={params.id} postulacion={ent as any}
+                  hitos={(hitosQ.data || []) as any} cartas={(cartasQ.data || []) as any}
+                  hoy={hoyDia} etiquetaFondo={titulo} esAdmin={esAdmin}
+                  casos={casosDelFondo} />
+              )}
+            </div>
+          </div>,
           <div key="fin">
             <p className="fondo-nat-sub">La plata que hay que rendir a DAFO: presupuesto real, banco, pagos y rendiciones.</p>
             <div style={{ scrollMarginTop: 12 }}>
@@ -1130,29 +1160,6 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
                   fecha: vigPresu?.creado_en || null,
                   cambios: cambiosPre,
                 }} />
-            </div>
-          </div>,
-          /* ── 📍 LA VIDA DEL FONDO ──
-             Dos años de ejecución en una pantalla. No es un adorno: es el
-             expediente con el que se contesta «¿y ustedes qué hicieron?» — y
-             hoy esa respuesta vive en la memoria de quien hizo la llamada. */
-          <div key="vida">
-            <p className="fondo-nat-sub">
-              Lo que ha pasado en este fondo, de la firma del acta al cierre: fechas del acta, cartas
-              de DAFO y lo que hicimos nosotros. Lo que no se apunta, en un año no existió.
-            </p>
-            <div className="card">
-              {faltaVida ? (
-                <p className="rp-vacio" style={{ color: "var(--yellow)" }}>
-                  ⚠ Falta correr <b>db/vida-fondo.sql</b> en Supabase → SQL Editor.
-                  Hasta entonces esta pestaña no puede guardar nada.
-                </p>
-              ) : (
-                <VidaFondo postulacionId={params.id} postulacion={ent as any}
-                  hitos={(hitosQ.data || []) as any} cartas={(cartasQ.data || []) as any}
-                  hoy={hoyDia} etiquetaFondo={titulo} esAdmin={esAdmin}
-                  casos={casosDelFondo} />
-              )}
             </div>
           </div>,
         ]}

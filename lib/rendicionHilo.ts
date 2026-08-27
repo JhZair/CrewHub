@@ -86,8 +86,19 @@ export type MetaRendicion = {
 /* Las cinco del fondo comparten destino y por eso lo comparten literalmente:
    una sola función, cinco usos. Si el fondo no viene en la fila devuelve null
    —no se cae a `/fondo/undefined`, que es un enlace roto con aspecto de bueno. */
+/* ⚠ EL HASH LLEVA LA PESTAÑA DELANTE: `#financiera/<ancla>`.
+   Las cinco filas viven en la pestaña Financiera, y antes el enlace apuntaba
+   solo al elemento. Funcionaba de casualidad: Financiera era la pestaña que se
+   abría al entrar, así que el navegador encontraba la fila a la vista. El día
+   que otra pasó a ser la primera —«Vida del fondo»—, ese mismo enlace dejaba
+   al lector en una pestaña distinta con su fila montada pero oculta: un aviso
+   que se pulsa y no hace nada.
+   TabsPanel entiende `clave/ancla` desde siempre (ver components/TabsPanel);
+   lo que faltaba era decírselo. */
 const rutaFondo = (tabla: TablaRendicion) => (fila: any, id: string) =>
-  fila?.postulacion_id ? `/fondo/${fila.postulacion_id}#${anclaRendicion(tabla, id)}` : null;
+  fila?.postulacion_id
+    ? `/fondo/${fila.postulacion_id}#financiera/${anclaRendicion(tabla, id)}`
+    : null;
 
 /* ── EL RÓTULO LLEVA SIEMPRE EL MONTO ──
  * Misma lección que en caja: en una bandeja con veinte avisos, «Nuevo
