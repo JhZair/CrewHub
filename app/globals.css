@@ -6631,3 +6631,16 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
 /* «Apagado» también en el pop-up del día: la clase se comparte con la portada
    para que las dos pantallas atenúen lo mismo con la misma intensidad. */
 .ag-dia-fila.es-hecho{opacity:.55}
+
+/* ── QUIÉN ESTÁ EN ESTO ──
+   Dos grupos de caras que contestan preguntas distintas: los VINCULADOS
+   (quién viene, quién está metido) apiñados y pequeños, y el RESPONSABLE
+   (quién responde) al final, más grande y detrás de una línea. Con todas las
+   caras iguales y en fila no se distinguía cuál era cuál — que era justo lo
+   que había que entender de un vistazo. */
+.port-hoy-caras{flex:none;display:inline-flex;align-items:center;cursor:help}
+/* Solapadas: ocupan menos y se leen como «un grupo», no como una lista. */
+.port-hoy-caras > .av{margin-left:-6px;border:2px solid var(--panel);box-sizing:content-box}
+.port-hoy-caras > .av:first-child{margin-left:0}
+.port-hoy-resp{flex:none;display:inline-flex;align-items:center;cursor:help;
+  padding-left:9px;margin-left:3px;border-left:1px solid var(--border2)}

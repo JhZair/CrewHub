@@ -299,7 +299,10 @@ export default async function Portada({ searchParams }: {
         "proy:proyectos(id,nombre,nombre_corto)," +
         "conv:convocatorias(id,codigo,nombre)," +
         "postu:postulaciones(id,codigo,estado,proy:proyectos(nombre,nombre_corto))," +
-        "pub:publicaciones!publicacion_id(estado,archivado_en)")
+        /* `responsable` del caso también: una actividad materializada suele no
+           tener responsable propio —quien la asigna lo hace en el caso— y por
+           eso «Rodaje de planos de apoyo» salía sin cara. */
+        "pub:publicaciones!publicacion_id(estado,archivado_en,responsable)")
       .neq("estado", "cancelada")
       /* Igual que los casos: ventana ancha y el día se afina con `loDeHoy`.
          Una actividad siempre tiene `fecha_inicio`, pero puede durar semanas,
@@ -367,7 +370,16 @@ export default async function Portada({ searchParams }: {
      nombre en un sitio y sin él en el otro. */
   const idsNotif = [...new Set(notifs.map((n: any) => n.publicacion_id).filter(Boolean))];
   const idsNotas = ((muroQ.data || []) as any[]).map((n: any) => n.id);
-  const [nombrados, nombresVinc, vincNotifQ, rxNotas, comsNotas] = await Promise.all([
+  /* ── LA CUENTA DE CADA PERSONA VINCULADA ──
+     El avatar vive en `perfiles` y el vínculo apunta a `personas`: sin este
+     cruce, los convocados de una reunión solo podían salir como texto. Va en
+     la tanda que ya se hace, y solo con los ids que de verdad aparecen. */
+  const idsPersona = [...new Set(((casosHoyQ.data || []) as any[])
+    .flatMap((c: any) => (c.vinculos || [])
+      .filter((v: any) => tipoCanonico(v.entidad_tipo) === "persona")
+      .map((v: any) => v.entidad_id as string)))];
+
+  const [nombrados, nombresVinc, vincNotifQ, rxNotas, comsNotas, persVinc] = await Promise.all([
     /* Sin `conActores`: eso trae la tabla `perfiles` entera para poder nombrar
        a quien no salga en la página, y aquí las caras del filtro ya vienen de
        `equipoQ`. Lo necesita /historial, que pinta un chip por persona. */
@@ -401,6 +413,9 @@ export default async function Portada({ searchParams }: {
         .select(`id,publicacion_id,cuerpo,imagenes,creado_en,editado_en,autor_id,
           autor:perfiles(nombre,color,avatar_url)`)
         .in("publicacion_id", idsNotas).order("creado_en").order("id")
+      : Promise.resolve({ data: [] as any[] }),
+    idsPersona.length
+      ? supabase.from("personas").select("id,nombre,alias,usuario_id").in("id", idsPersona)
       : Promise.resolve({ data: [] as any[] }),
   ]);
 
@@ -551,6 +566,9 @@ export default async function Portada({ searchParams }: {
          el hueco: el nombre explica por qué está solo, en vez de sugerir que
          al sistema se le perdió el dato. */
       const grupos = [...vs]
+        /* Las personas salen de aquí: van como avatares. Repetirlas también
+           como chip de texto llenaba la fila con el mismo dato dos veces. */
+        .filter((x: any) => tipoCanonico(x.entidad_tipo) !== "persona")
         .sort((a, b) => (pesoVinculo(tipoCanonico(a.entidad_tipo))
                        - pesoVinculo(tipoCanonico(b.entidad_tipo)))
           || String(a.creado_en || "").localeCompare(String(b.creado_en || "")))
@@ -559,7 +577,13 @@ export default async function Portada({ searchParams }: {
       return {
         id: c.id, kind: "caso" as const, titulo: c.titulo, tipo: c.tipo,
         hora: c.hora || "", href: `/caso/${c.id}`, respId: c.responsable || null,
-        estado: c.estado || "", grupos,
+        estado: c.estado || "",
+        /* Las personas vinculadas, aparte de los demás chips: una cara se
+           reconoce de un vistazo y un nombre hay que leerlo. En una reunión son
+           los convocados, que es el dato por el que existe la reunión. */
+        personas: vs.filter((x: any) => tipoCanonico(x.entidad_tipo) === "persona")
+          .map((x: any) => x.entidad_id as string),
+        grupos,
         /* ── LA VENTANA DE UN CASO ──
            Empieza cuando empiece y termina el día del plazo. Con una
            excepción, la misma que hace /agenda: lo que LLEVA HORA —una reunión,
@@ -592,7 +616,16 @@ export default async function Portada({ searchParams }: {
            apoyo» salía sin cara por eso. Se cae al primero del equipo — no es
            «el responsable», pero es alguien a quien preguntar, que es para lo
            que se mira la cara. */
-        respId: a.responsable || ((a.equipo as string[]) || [])[0] || null, estado: "",
+        /* ── QUIÉN LA TIENE, POR ORDEN DE CERTEZA ──
+           1. El responsable de la actividad, si alguien lo puso.
+           2. El del CASO al que se materializó: es la misma cosa, y ahí es
+              donde de verdad se asigna el trabajo.
+           3. El primero del equipo: no es «el responsable» —se reparte entre
+              varios y nadie firma—, pero es alguien a quien preguntar, que es
+              para lo que se mira una cara. */
+        respId: a.responsable || (a.pub as any)?.responsable
+          || ((a.equipo as string[]) || [])[0] || null,
+        estado: "", personas: [] as string[],
         hora: "", etapa: a.etapa || "",
         ini: a.fecha_inicio, fin: a.fecha_fin || a.fecha_inicio,
         href: a.publicacion_id ? `/caso/${a.publicacion_id}`
@@ -656,6 +689,19 @@ export default async function Portada({ searchParams }: {
      último»: reusarlo es gratis, y pedir los perfiles otra vez para pintar
      cuatro avatares sería un viaje por nada. */
   const perfilDe = new Map<string, any>((equipo || []).map((p: any) => [p.id, p]));
+  /* persona (la ficha) → cara y nombre corto. Si esa persona no tiene cuenta
+     —un colaborador externo, alguien que aún no entró— se queda sin perfil y se
+     pinta igual: el avatar cae a su inicial y su color por defecto, que sigue
+     diciendo quién es. */
+  const caraDePersona = new Map<string, { nombre: string; color?: string; avatar_url?: string }>(
+    ((persVinc.data || []) as any[]).map((pe: any) => {
+      const q = pe.usuario_id ? perfilDe.get(pe.usuario_id) : null;
+      return [pe.id, {
+        nombre: q?.nombre || pe.alias || pe.nombre || "—",
+        color: q?.color || undefined,
+        avatar_url: q?.avatar_url || undefined,
+      }];
+    }));
   /* ── UN DÍA VACÍO NO ES LO MISMO QUE UN DÍA QUE NO SE PUDO LEER ──
      El bloque se esconde cuando no hay nada, así que un error de consulta
      —falta una migración, se cayó la red— haría que la portada AFIRMARA en
@@ -917,15 +963,36 @@ export default async function Portada({ searchParams }: {
                     +{it.grupos.length - TOPE_GRUPOS}
                   </span>
                 )}
-                {/* Quién lo tiene. Una cara se reconoce de un vistazo y un
-                    nombre hay que leerlo: en una lista del día, lo primero que
-                    se busca es si es tuyo. */}
+                {/* ── QUIÉN ESTÁ EN ESTO ──
+                    Los convocados a la izquierda, apiñados y pequeños; el
+                    RESPONSABLE al final, más grande y separado por una línea.
+                    La distinción tiene que verse sin leer: «quién viene» y
+                    «quién responde» son dos preguntas distintas, y con todas
+                    las caras iguales no se contesta ninguna. */}
+                {it.personas.length > 0 && (
+                  <span className="port-hoy-caras" title={
+                    "Vinculados: " + it.personas
+                      .map((pid: string) => caraDePersona.get(pid)?.nombre || "—").join(", ")}>
+                    {it.personas.slice(0, 5).map((pid: string) => {
+                      const c = caraDePersona.get(pid);
+                      return <Avatar key={pid} nombre={c?.nombre || "—"} color={c?.color}
+                        src={c?.avatar_url} size={20} />;
+                    })}
+                    {it.personas.length > 5 && (
+                      <span className="port-hoy-mas">+{it.personas.length - 5}</span>
+                    )}
+                  </span>
+                )}
                 {(() => {
                   const q = perfilDe.get(it.respId || "");
                   /* Sin responsable no se pinta un hueco gris: un avatar vacío
                      se lee como «alguien» y aquí no hay nadie. La fila queda
                      más corta y eso ya dice lo que hay que saber. */
-                  return q ? <Avatar nombre={q.nombre} color={q.color} src={q.avatar_url} size={22} /> : null;
+                  return q ? (
+                    <span className="port-hoy-resp" title={`Responsable: ${q.nombre}`}>
+                      <Avatar nombre={q.nombre} color={q.color} src={q.avatar_url} size={24} />
+                    </span>
+                  ) : null;
                 })()}
               </Link>
             ))}
