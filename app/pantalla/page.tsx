@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import Realtime from "@/components/Realtime";
 import Reloj from "@/components/Reloj";
 import { redirect } from "next/navigation";
-import { textoEstado, esInformativo } from "@/lib/estados";
+import { textoEstado, esInformativo, actividadFueraDeAgenda } from "@/lib/estados";
 import { plazoDe, diasHasta } from "@/lib/plazo";
 import { BOT, sinBot } from "@/lib/personas";
 import type { Metadata } from "next";
@@ -82,11 +82,22 @@ export default async function Pantalla() {
   const convIds = [...new Set(enJuego.map((p: any) => p.conv?.id).filter(Boolean))];
   const { data: hitosQ } = convIds.length
     ? await supabase.from("cronograma_actividades")
-        .select("id,nombre,fecha_inicio,conv:convocatorias(codigo,nombre,anio)")
+        /* `pub` para respetar el archivado de su caso: una actividad
+           materializada y luego archivada seguía contando atrás en la pared, y
+           una pared se mira de lejos y se cree. Ver `actividadFueraDeAgenda`. */
+        .select("id,nombre,fecha_inicio,estado,publicacion_id," +
+          "conv:convocatorias(codigo,nombre,anio)," +
+          "pub:publicaciones!publicacion_id(estado,archivado_en)")
         .in("convocatoria_id", convIds).eq("clase", "hito_externo")
-        .gte("fecha_inicio", hoyS).order("fecha_inicio").limit(4)
+        /* Y las canceladas fuera: faltaba el filtro que sí tienen la agenda y
+           el cronograma, así que un hito cancelado seguía en la cuenta atrás. */
+        .neq("estado", "cancelada")
+        .gte("fecha_inicio", hoyS).order("fecha_inicio").limit(8)
     : { data: [] };
-  const hitos = hitosQ || [];
+  /* Se piden ocho y se enseñan cuatro: el filtro de vida se aplica DESPUÉS de
+     traerlos —depende del caso, no de una columna—, y pidiendo cuatro justos
+     la pared se habría quedado con dos el día que dos estuvieran archivados. */
+  const hitos = (hitosQ || []).filter((h: any) => !actividadFueraDeAgenda(h)).slice(0, 4);
 
   // ===== PULSO 🫀: carga por persona — para repartir, nunca ranking =====
   /* Aquí el bot llevaba meses saliendo en el pulso del equipo, con su barra de

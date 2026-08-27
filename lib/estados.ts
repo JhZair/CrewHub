@@ -136,6 +136,40 @@ export const avisoVencido = (tipo?: string | null, fechaLimite?: string | null):
 export const fueraDeAgenda = (tipo?: string | null, fechaLimite?: string | null): boolean =>
   !esReunion(tipo) && avisoVencido(tipo, fechaLimite);
 
+/* ── UNA ACTIVIDAD DE CRONOGRAMA CON CASO SIGUE LA VIDA DE SU CASO ──
+ *
+ * La agenda tiene dos mitades. Los CASOS filtraban bien —`.is("archivado_en",
+ * null)` y solo estados vivos—, pero las ACTIVIDADES de cronograma miraban
+ * únicamente su propio `estado <> 'cancelada'`. Y una actividad materializada
+ * TIENE un caso (`publicacion_id`): al archivar ese caso, el caso desaparecía
+ * de la agenda y la actividad se quedaba. En pantalla eran la misma cosa
+ * —«Evaluación de APTOS»—, así que archivarla no servía de nada y encima
+ * enseñaba que archivar no funciona.
+ *
+ * La regla: si tiene caso, manda el caso. Si no lo tiene —una actividad que
+ * nadie materializó todavía—, manda su propio estado, que es lo único que hay.
+ *
+ * ── ARCHIVADA Y DESCARTADA SÍ; RESUELTA NO ──
+ * Archivar es «esto ya no está en juego» y descartar es «no se va a hacer»:
+ * las dos sacan la fila del calendario. Pero RESUELTA se queda, por lo mismo
+ * que la reunión pasada de aquí arriba: en la agenda el pasado es historial y
+ * no deuda, y una actividad hecha en su día es justo lo que se viene a
+ * consultar. */
+export function actividadFueraDeAgenda(a: {
+  estado?: string | null;
+  publicacion_id?: string | null;
+  /** El caso al que se materializó, si lo hay. */
+  pub?: { estado?: string | null; archivado_en?: string | null } | null;
+}): boolean {
+  if (a.estado === "cancelada") return true;
+  /* Con `publicacion_id` pero sin `pub`, quien consultó no pidió el caso: no
+     se sabe si está vivo. Se deja pasar —quedarse corto en un calendario es
+     mejor que borrar del pasado algo que sí ocurrió— pero conviene pedirlo. */
+  const p = a.pub;
+  if (!p) return false;
+  return !!p.archivado_en || p.estado === "descartada";
+}
+
 /* LOS ESTADOS VIVOS — para las consultas de «qué está en curso».
    ⚠ Filtrar por ESTOS ya NO basta para excluir lo archivado. Antes sí:
    `estado='archivada'` sacaba gratis lo archivado de cualquier `.in(estado)`.

@@ -5,7 +5,7 @@ import Volver from "@/components/Volver";
 import Agenda, { type ItemAgenda } from "@/components/Agenda";
 import Realtime from "@/components/Realtime";
 import { sinBot } from "@/lib/personas";
-import { fueraDeAgenda } from "@/lib/estados";
+import { fueraDeAgenda, actividadFueraDeAgenda } from "@/lib/estados";
 import { diaLima } from "@/lib/fechas";
 import { techo } from "@/lib/api";
 import { llevaHora } from "@/lib/tipos";
@@ -38,7 +38,12 @@ export default async function AgendaPage() {
          después de algo de Preproducción. */
       .select("id,nombre,fecha_inicio,fecha_fin,etapa,estado,responsable,equipo,publicacion_id,orden,creado_en," +
         "proy:proyectos(id,nombre,nombre_corto),conv:convocatorias(id,codigo,nombre,categoria)," +
-        "postu:postulaciones(id,codigo,estado,proy:proyectos(nombre,nombre_corto),conv:convocatorias(categoria))")
+        "postu:postulaciones(id,codigo,estado,proy:proyectos(nombre,nombre_corto),conv:convocatorias(categoria))," +
+        /* El caso al que se materializó esta actividad, si lo hay. Viaja para
+           poder respetar su archivado: ver `actividadFueraDeAgenda`. Sin esto,
+           archivar el caso lo sacaba de la agenda y dejaba la actividad —que en
+           pantalla es la misma fila— tan campante. */
+        "pub:publicaciones!publicacion_id(estado,archivado_en)")
       .neq("estado", "cancelada").not("fecha_inicio", "is", null),
     supabase.from("publicaciones")
       .select("id,titulo,tipo,estado,fecha_inicio,fecha_limite,hora,responsable,creado_en")
@@ -74,7 +79,11 @@ export default async function AgendaPage() {
      abre casos. Las dos mitades tienen que acabar diciendo lo mismo. */
   const actsVisibles = (acts || []).filter((a: any) => {
     const postu = a.postu as any;
-    return !postu || postu.estado === "ganadora";
+    if (postu && postu.estado !== "ganadora") return false;
+    /* Y si la actividad ya tiene caso, manda el caso: archivado o descartado,
+       la fila se va del calendario. La regla vive en lib/estados.ts porque la
+       portada pinta la misma lista y las dos tienen que decir lo mismo. */
+    return !actividadFueraDeAgenda(a);
   });
 
   /* Los avisos VENCIDOS ya no rigen y no se pintan (misma regla que

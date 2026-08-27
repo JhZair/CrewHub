@@ -66,7 +66,9 @@ with esperado(clase, obj, para, archivo) as (values
   ('tab', 'cuenta_caja',                 'Categorías de la caja',     'caja.sql'),
   ('tab', 'movimiento_caja',             'Ingresos y egresos',        'caja.sql'),
   ('tab', 'caja_ultimo_apunte',          'Pulso de cada caja (vista)','caja-dormida.sql'),
+  ('fun', 'casos_de_etiqueta',            'Casos de una etiqueta',     'portada-hoy.sql'),
   ('col', 'caja.medio',                   'Con qué se paga (···8897)', 'caja-medio.sql'),
+  ('fun', 'existe_etiqueta',              'Si existe una etiqueta',    'portada-hoy.sql'),
   -- La sexta puerta del motor de comentarios: hablar de un apunte de caja.
   ('col', 'comentarios.movimiento_caja_id',   'Hilo de un movimiento',  'movcaja-comentarios.sql'),
   ('col', 'reacciones.movimiento_caja_id',    'Reaccionar a un movimiento', 'movcaja-comentarios.sql'),

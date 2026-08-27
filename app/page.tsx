@@ -16,8 +16,11 @@ import { nombrarEventos, nombresDe, porDias } from "@/lib/eventos";
 import { ICO_ENT, rutaEntidad, grafiasDe, tipoCanonico } from "@/lib/secciones";
 import { rotuloDia } from "@/lib/periodo";
 import { plazoDe } from "@/lib/plazo";
-import { rotuloTipo, colorTipo } from "@/lib/tipos";
+import { rotuloTipo, colorTipo, icoTipo, llevaHora } from "@/lib/tipos";
 import { urlsDe } from "@/lib/drive";
+import { fechaDia } from "@/lib/fechas";
+import { ESTADOS_VIVOS, actividadFueraDeAgenda, fueraDeAgenda } from "@/lib/estados";
+import { loDeHoy, enLosProximos, ventana, cuandoCae, soloDia, DIAS_RODAJE, ETIQUETA_RODAJE } from "@/lib/portadaHoy";
 import { sinBot, BOT } from "@/lib/personas";
 import {
   COLS_NOTIF, COLS_NUEVAS, faltaAlguna, columnasQueFaltan, sinEstas,
@@ -104,6 +107,11 @@ export default async function Portada({ searchParams }: {
   const hoy = new Date(`${hoyISO}T00:00:00-05:00`);
   const en60ISO = new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10);
   const desde30 = new Date(Date.now() - 30 * 86400000).toISOString();
+  /* El día de hoy en Lima, UNO para toda la página. `hoyISO` ya existía tres
+     líneas más arriba y calcularlo otra vez era pedirle la hora al reloj dos
+     veces: en una carga a las 23:59:59, la consulta podría preguntar por el 27
+     y el filtro por el 28, y la lista saldría vacía sin que nada fallara. */
+  const hoyDeLima = hoyISO;
 
   // Recientes de cada tipo por separado (12 y 12), no 20 mezcladas: así la
   // pestaña "Del Bot" del desplegable tiene contenido aunque lo último sea
@@ -238,6 +246,68 @@ export default async function Portada({ searchParams }: {
       .limit(9),
   ]);
 
+  /* ── LO DE HOY Y LOS RODAJES QUE VIENEN ──
+     Van en su propia tanda, dentro del mismo `Promise.all` de abajo: son
+     independientes de todo lo demás y encadenarlas habría añadido un viaje
+     entero a la portada, que es justo lo que costó siete segundos y se fue a
+     quitar. */
+  const vent = ventana(DIAS_RODAJE, hoyDeLima);
+  const pHoy = Promise.all([
+    /* Los casos cuyo plazo cae hoy. Mismos filtros que /agenda —vivos, con
+       fecha, sin archivar, sin bitácoras—: si esta lista y la agenda no
+       dijeran lo mismo, una de las dos estaría mintiendo y no habría forma de
+       saber cuál. */
+    supabase.from("publicaciones")
+      .select("id,titulo,tipo,estado,fecha_inicio,fecha_limite,hora," +
+        "vinculos:publicacion_vinculos(entidad_tipo, entidad_id)")
+      .in("estado", ESTADOS_VIVOS)
+      .is("archivado_en", null)
+      .neq("tipo", "bitacora")
+      /* Con fecha límite, como en /agenda: un caso sin plazo no está en el
+         calendario de ningún día. */
+      .not("fecha_limite", "is", null)
+      /* ── LO QUE SE SOLAPA CON HOY, ACOTADO EN LA BASE ──
+         Dos formas de caer hoy, y hay que pedir las dos:
+           · el plazo ES hoy — la mayoría de los casos no tienen `fecha_inicio`,
+             así que su ventana es ese único día;
+           · o la ventana lo contiene: empezó antes y termina hoy o después.
+         La primera versión de esta consulta era `.lte("fecha_inicio", hoy)`, y
+         eso descarta las filas con `fecha_inicio` nulo —NULL no es «menor o
+         igual» que nada—, o sea justo la mayoría. La lista habría salido casi
+         vacía sin que nada fallara.
+         Se acota aquí y se afina con `loDeHoy` en memoria: pedir todos los
+         casos con fecha para quedarse con los de un día sería traerse el año
+         entero en cada carga de la portada. */
+      .or(`fecha_limite.eq.${hoyDeLima},`
+        + `and(fecha_inicio.lte.${hoyDeLima},fecha_limite.gte.${hoyDeLima})`)
+      .limit(200),
+    /* Las actividades de cronograma que caen hoy. `pub` viaja para respetar el
+       archivado del caso: ver `actividadFueraDeAgenda`. */
+    supabase.from("cronograma_actividades")
+      .select("id,nombre,fecha_inicio,fecha_fin,etapa,estado,publicacion_id," +
+        "proy:proyectos(id,nombre,nombre_corto)," +
+        "conv:convocatorias(id,codigo,nombre)," +
+        "postu:postulaciones(id,codigo,estado,proy:proyectos(nombre,nombre_corto))," +
+        "pub:publicaciones!publicacion_id(estado,archivado_en)")
+      .neq("estado", "cancelada")
+      /* Una actividad SIEMPRE tiene `fecha_inicio` (es su dato), pero puede no
+         tener `fecha_fin`: entonces dura un día. Las dos formas, igual que
+         arriba. */
+      .or(`fecha_inicio.eq.${hoyDeLima},`
+        + `and(fecha_inicio.lte.${hoyDeLima},fecha_fin.gte.${hoyDeLima})`)
+      .limit(300),
+    /* Los rodajes de los próximos 30 días, por la etiqueta. Una sola llamada:
+       sin ella serían tres viajes encadenados —resolver la etiqueta, sus
+       vínculos, y los casos—. Ver db/portada-hoy.sql. */
+    supabase.rpc("casos_de_etiqueta", {
+      p_nombre: ETIQUETA_RODAJE, p_desde: vent.desde, p_hasta: vent.hasta, p_tope: 40,
+    }),
+    /* Y si existe la etiqueta, que NO es lo mismo que si hay rodajes: sin esta
+       pregunta, una etiqueta renombrada dejaría el bloque vacío pareciendo que
+       nadie rueda nada. */
+    supabase.rpc("existe_etiqueta", { p_nombre: ETIQUETA_RODAJE }),
+  ]);
+
   const [
     [{ data: { session } }, { data: perfil }, { data: yo },
       { count: casosMios }, { count: casosCurso }],
@@ -246,7 +316,8 @@ export default async function Portada({ searchParams }: {
     [{ count: cVencidos }, { count: cSinResp }, { count: cSunat }, { count: cDni },
       { data: nacim }, { data: postAnio }],
     [destQ, actQ, equipoQ, muroQ],
-  ] = await Promise.all([pMio, pCampana, pQhaway, pFeed]);
+    [casosHoyQ, actsHoyQ, rodajesQ, hayEtqQ],
+  ] = await Promise.all([pMio, pCampana, pQhaway, pFeed, pHoy]);
 
   const miPersonaId: string | null = yo?.id || null;
   const equipo = sinBot(equipoQ.data);
@@ -288,7 +359,10 @@ export default async function Portada({ searchParams }: {
     /* Los destacados y las notas del muro, en la MISMA consulta por tabla: son
        vínculos de la misma clase y separarlos era pagar dos veces por nombrar
        el mismo proyecto. */
-    nombresDe(supabase, [...(destQ.data || []), ...(muroQ.data || [])]
+    /* Los casos de hoy se suman a esta misma llamada: son vínculos de la misma
+       clase, y pedirlos aparte sería un viaje más para nombrar proyectos que
+       probablemente ya están en la lista. */
+    nombresDe(supabase, [...(destQ.data || []), ...(muroQ.data || []), ...(casosHoyQ.data || [])]
       .flatMap((p: any) => (p.vinculos || [])
         .map((v: any) => ({ tipo: v.entidad_tipo, id: v.entidad_id })))),
     idsNotif.length
@@ -434,6 +508,130 @@ export default async function Portada({ searchParams }: {
   }
 
   const errHilo: any = (comsNotas as any).error || (rxNotas as any).error || (rxComsQ as any).error;
+  /* ══════════════════════════════════════════════════════════════════
+     LO DE HOY
+
+     Las dos mitades de la agenda —casos y actividades de cronograma—
+     normalizadas a la misma forma y recortadas al día de hoy. Se hace con las
+     MISMAS funciones que /agenda (`fueraDeAgenda`, `actividadFueraDeAgenda`,
+     `caeEnElDia`) para que las dos pantallas no puedan decir cosas distintas
+     sobre el mismo día: cuando eso pasa, no hay forma de saber cuál miente.
+     ══════════════════════════════════════════════════════════════════ */
+  const CON_GRUPO = ["proyecto", "empresa", "persona", "postulacion", "convocatoria"];
+  const hoyCasos = ((casosHoyQ.data || []) as any[])
+    /* Un aviso vencido ya no rige; una reunión pasada sí se queda —en un
+       calendario el pasado es historial y no deuda—. Misma regla que /agenda. */
+    .filter((c: any) => !fueraDeAgenda(c.tipo, c.fecha_limite))
+    .map((c: any) => {
+      /* Sin respaldo al primer vínculo cualquiera: un caso cuyo único vínculo
+         sea una etiqueta acabaría enseñando «Rodaje» en la columna que dice de
+         qué proyecto es. Mejor esa columna vacía que con el dato de al lado. */
+      const v = (c.vinculos || []).find((x: any) =>
+        CON_GRUPO.includes(tipoCanonico(x.entidad_tipo)));
+      return {
+        id: c.id, kind: "caso" as const, titulo: c.titulo, tipo: c.tipo,
+        hora: c.hora || "", href: `/caso/${c.id}`,
+        /* ── LA VENTANA DE UN CASO ──
+           Empieza cuando empiece y termina el día del plazo. Con una
+           excepción, la misma que hace /agenda: lo que LLEVA HORA —una reunión,
+           una cita— ocurre en un instante, no en un tramo. El compositor ofrece
+           el «empieza» para todos los tipos, así que una reunión con
+           `fecha_inicio` puesto habría salido en «Hoy» todos los días del
+           tramo, y en la agenda solo el suyo: dos pantallas contando cosas
+           distintas del mismo caso. */
+        ini: llevaHora(c.tipo) ? c.fecha_limite : (c.fecha_inicio || c.fecha_limite),
+        fin: c.fecha_limite || c.fecha_inicio,
+        grupo: v ? nombresVinc.get(`${tipoCanonico(v.entidad_tipo)}:${v.entidad_id}`) || "" : "",
+      };
+    });
+
+  const hoyActs = ((actsHoyQ.data || []) as any[])
+    .filter((a: any) => {
+      const postu = a.postu as any;
+      /* Las propuestas no van a la agenda: el cronograma de una postulación en
+         concurso es lo que le PROMETES a DAFO, no trabajo que hacer. */
+      if (postu && postu.estado !== "ganadora") return false;
+      return !actividadFueraDeAgenda(a);
+    })
+    .map((a: any) => {
+      const proy = a.proy as any, conv = a.conv as any, postu = a.postu as any;
+      return {
+        id: a.id, kind: "act" as const, titulo: a.nombre, tipo: "",
+        publicacion_id: a.publicacion_id || null,
+        hora: "", etapa: a.etapa || "",
+        ini: a.fecha_inicio, fin: a.fecha_fin || a.fecha_inicio,
+        href: a.publicacion_id ? `/caso/${a.publicacion_id}`
+          : proy ? `/entidad/proyecto/${proy.id}`
+          : postu ? `/fondo/${postu.id}#audiovisual`
+          : conv ? `/entidad/convocatoria/${conv.id}` : "/agenda",
+        grupo: proy ? (proy.nombre_corto || proy.nombre)
+          : postu ? [`🎬 ${postu.codigo || "Fondo"}`,
+                     (postu.proy as any)?.nombre_corto || (postu.proy as any)?.nombre]
+                    .filter(Boolean).join(" · ")
+          : conv ? [conv.codigo, conv.nombre].filter(Boolean).join(" · ") : "",
+      };
+    });
+
+  /* ── UNA COSA, UNA FILA ──
+     El bot materializa las actividades del cronograma en casos: la actividad
+     se queda con `estado='materializada'` y nace un caso con SU MISMO título y
+     sus mismas fechas. En /agenda no se nota —van en carriles distintos, con
+     barras y grupos—, pero en una lista plana salían DOS renglones idénticos,
+     con el mismo texto y el mismo destino.
+     Gana el caso: es donde se comenta, se asigna y se cierra. La actividad
+     solo queda cuando nadie la materializó todavía.
+
+     Y la regla es «tiene caso, no se pinta», sin comprobar si ese caso está en
+     la lista de hoy. Comprobándolo, un caso ya RESUELTO —que no viaja, porque
+     la consulta pide solo estados vivos— dejaba pasar su actividad, y «📅 Hoy»
+     enseñaba como pendiente algo que ya estaba hecho. Si hay caso, el caso
+     manda: si no aparece en la lista, es porque ya no toca. */
+  const actsSinCaso = hoyActs.filter((a: any) => !a.publicacion_id);
+
+  /* Juntos y ordenados por hora: lo que tiene hora arriba y en orden —una
+     reunión a las 9 antes que una a las 15—, y lo que no la tiene detrás. Un
+     día se lee de arriba abajo. */
+  const deHoy = loDeHoy([...hoyCasos, ...actsSinCaso], hoyDeLima)
+    .sort((a: any, b: any) => {
+      if (!!a.hora !== !!b.hora) return a.hora ? -1 : 1;
+      return String(a.hora).localeCompare(String(b.hora))
+        || String(a.titulo).localeCompare(String(b.titulo));
+    });
+
+  /* ── LOS RODAJES QUE VIENEN ──
+     Ya llegan filtrados y ordenados por la base (`casos_de_etiqueta`). El
+     `hay_etiqueta` no se lee de las filas —si no hay filas, no hay ninguna—:
+     por eso viaja aparte, y por eso la pantalla puede distinguir «no hay
+     rodajes» de «no existe la etiqueta Rodaje». */
+  const rodajes = ((rodajesQ.data || []) as any[]).map((r: any) => ({
+    id: r.id, titulo: r.titulo, estado: r.estado,
+    ini: r.fecha_inicio || r.fecha_limite, fin: r.fecha_limite || r.fecha_inicio,
+    hora: r.hora || "", grupo: r.grupo || "", href: `/caso/${r.id}`,
+  }));
+  const hayEtqRodaje = hayEtqQ.data === true;
+  /* Quién ve los recados de configuración. Mismo criterio que el resto de la
+     pantalla (línea del `esAdmin` de la tira del bot). */
+  const esAdminPortada = !!(perfil?.es_admin || (perfil as any)?.es_finanzas);
+  /* ── UN DÍA VACÍO NO ES LO MISMO QUE UN DÍA QUE NO SE PUDO LEER ──
+     El bloque se esconde cuando no hay nada, así que un error de consulta
+     —falta una migración, se cayó la red— haría que la portada AFIRMARA en
+     silencio que hoy no hay nada. Es el mismo cuidado que ya tienen la
+     campanita y el hilo del muro en esta pantalla. */
+  const errHoy = (casosHoyQ as any).error?.message || (actsHoyQ as any).error?.message || null;
+  /* ── POR QUÉ NO HAY BLOQUE DE RODAJES ──
+     Tres causas distintas que en pantalla se ven igual y se arreglan de forma
+     muy distinta: la función no existe (falta la migración), existe pero no
+     tengo permiso, o falló otra cosa. Mandar a correr un SQL ya corrido es
+     peor que no decir nada, así que se mira el CÓDIGO y no solo si hubo error.
+     PGRST202 es «no encuentro esa función»; 42501 es «permiso denegado». */
+  const errRpc = ((rodajesQ.error || hayEtqQ.error) || null) as any;
+  const causaRpc = !errRpc ? null
+    : errRpc.code === "PGRST202" || /could not find the function|does not exist/i.test(errRpc.message || "")
+      ? "falta"
+    : errRpc.code === "42501" || /permission denied/i.test(errRpc.message || "")
+      ? "permiso"
+    : "error";
+
   const notas = ((muroQ.data || []) as any[]).map((n: any) => {
     const uno = (x: any) => (Array.isArray(x) ? x[0] : x);
     /* De qué muro es. Hoy `publicarBitacora` escribe UN solo vínculo, así que
@@ -611,6 +809,118 @@ export default async function Portada({ searchParams }: {
           </span>
           <span className="port-mio-ir">tu tablero →</span>
         </Link>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════
+          LO DE HOY
+
+          Lo primero después de tus números, y antes del muro: el muro y la
+          actividad cuentan lo que YA pasó, y esto es lo que hay que hacer
+          ahora. Una portada que abre con el pasado obliga a bajar para
+          enterarse del día.
+          Si no hay nada hoy, no se pinta: una cabecera «📅 Hoy» sobre un hueco
+          vacío enseña a saltarse esa zona de la pantalla.
+          ══════════════════════════════════════════════════════════════ */}
+      {errHoy && (
+        <p className="port-vacio-chico">
+          No se pudo leer lo de hoy, así que este bloque puede estar incompleto: {errHoy}
+        </p>
+      )}
+      {deHoy.length > 0 && (
+        <section className="port-hoy">
+          <div className="port-cab">
+            <h2 className="port-tit">📅 Hoy</h2>
+            <Link href="/agenda" className="port-cab-ir">la agenda →</Link>
+          </div>
+          <div className="port-hoy-lista">
+            {deHoy.map((it: any) => (
+              <Link key={`${it.kind}:${it.id}`} href={it.href} className="port-hoy-fila"
+                style={{ borderLeftColor: it.kind === "caso"
+                  ? colorTipo(it.tipo || "") : "var(--teal)" }}>
+                {/* La hora manda a la izquierda: en un día, «12:30» es lo que
+                    ordena. Lo que no tiene hora lleva el ícono de su tipo, que
+                    dice de qué clase de cosa se trata sin ocupar más sitio. */}
+                <span className="port-hoy-hora">
+                  {it.hora ? it.hora.slice(0, 5) : (it.kind === "caso" ? icoTipo(it.tipo || "") : "▬")}
+                </span>
+                <span className="port-hoy-tit">{it.titulo}</span>
+                {/* De qué es. Sin esto, «Rodaje bloque Zenón» no dice de qué
+                    película, y el título solo no basta para decidir si te toca. */}
+                {it.grupo && <span className="port-hoy-grupo">{it.grupo}</span>}
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════
+          LOS RODAJES QUE VIENEN
+
+          Treinta días hacia adelante. Es lo único de la portada que mira al
+          futuro, y va aquí porque un rodaje se prepara con semanas: equipo,
+          permisos, gente. Enterarse el día antes es enterarse tarde.
+          ══════════════════════════════════════════════════════════════ */}
+      {causaRpc ? (
+        /* Solo a administración: al resto del equipo, un recado sobre un
+           archivo SQL o sobre permisos no le dice nada que pueda hacer. */
+        esAdminPortada && (
+          <p className="port-vacio-chico">
+            {causaRpc === "falta"
+              ? <>El bloque de rodajes está apagado: falta correr <code>db/portada-hoy.sql</code> en Supabase.</>
+              : causaRpc === "permiso"
+                ? <>El bloque de rodajes está apagado: esta cuenta no tiene permiso para leerlo.</>
+                : <>No se pudieron leer los rodajes: {errRpc?.message}</>}
+          </p>
+        )
+      ) : !hayEtqRodaje ? (
+        /* La etiqueta no existe. Se DICE —«no hay rodajes» y «la etiqueta se
+           llama de otra forma» se ven igual en pantalla y se arreglan muy
+           distinto— pero solo a quien va a ir a crearla. Un cartel de
+           configuración clavado en la portada de todo el equipo, todos los
+           días, es de las cosas que enseñan a no mirar la portada. */
+        esAdminPortada && (
+          <p className="port-vacio-chico">
+            No existe la etiqueta <b>{ETIQUETA_RODAJE}</b>, así que no se pueden listar los rodajes.
+            {" "}<Link href="/etiquetas" className="port-link">ver etiquetas →</Link>
+          </p>
+        )
+      ) : rodajes.length > 0 && (
+        <section className="port-hoy">
+          <div className="port-cab">
+            <h2 className="port-tit">🎬 Rodajes</h2>
+            <span className="port-cab-nota">próximos {DIAS_RODAJE} días</span>
+          </div>
+          <div className="port-hoy-lista">
+            {rodajes.map((r: any) => {
+              const dia = soloDia(r.ini);
+              /* Un rodaje ya resuelto dentro de la ventana no se esconde —haría
+                 parecer que se cayó— pero se pinta apagado: no hay nada que
+                 preparar. */
+              const hecho = r.estado === "resuelta";
+              return (
+                <Link key={r.id} href={r.href}
+                  className={`port-hoy-fila${hecho ? " es-hecho" : ""}`}
+                  style={{ borderLeftColor: hecho ? "var(--green)" : "var(--yellow)" }}>
+                  {/* La distancia primero: lo que se necesita saber de un rodaje
+                      próximo es cuánto falta, no la fecha — «14 sept.» obliga a
+                      contar con los dedos. La fecha va al lado igualmente,
+                      porque para reservar equipo hace falta el día. */}
+                  <span className="port-hoy-hora">{hecho ? "✓" : cuandoCae(dia, hoyDeLima)}</span>
+                  <span className="port-hoy-tit">{r.titulo}</span>
+                  <span className="port-hoy-fecha">
+                    {/* La hora de llamado, si la hay: en un rodaje es la mitad
+                        del dato —«el 14» y «el 14 a las 5 a. m.» se preparan
+                        muy distinto—. */}
+                    {r.hora ? `${String(r.hora).slice(0, 5)} · ` : ""}
+                    {fechaDia(dia)}
+                    {soloDia(r.fin) && soloDia(r.fin) !== dia && <> – {fechaDia(soloDia(r.fin))}</>}
+                  </span>
+                  {r.grupo && <span className="port-hoy-grupo">{r.grupo}</span>}
+                </Link>
+              );
+            })}
+          </div>
+        </section>
       )}
 
       {/* ── EL MURO ──

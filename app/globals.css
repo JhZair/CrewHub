@@ -6552,3 +6552,47 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
      tiene el nombre entero. */
   .caja-cuenta{width:auto;max-width:100%}
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   LO DE HOY Y LOS RODAJES — las dos listas que abren la portada
+
+   Misma forma que las filas del calendario de /agenda (`.ag-dia-fila`): filo
+   de color a la izquierda, hora, título, y de qué es a la derecha. Se
+   escriben aparte y no se reusa aquella clase porque viven en sitios
+   distintos —una dentro de un pop-up estrecho, esta a lo ancho de la
+   portada— y compartirlas ataría el ancho de las dos: el día que el pop-up
+   necesite otra medida, cambiaría la portada sin que nadie lo pidiera.
+   ══════════════════════════════════════════════════════════════════ */
+.port-hoy{margin:6px 0 4px}
+.port-hoy-lista{display:flex;flex-direction:column;gap:5px}
+.port-hoy-fila{display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;
+  background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--dim);
+  text-decoration:none;color:var(--text);font-size:13px}
+.port-hoy-fila:hover{background:#22223a;border-color:var(--border2)}
+/* Apagada, no escondida: un rodaje ya hecho dentro de la ventana sigue siendo
+   información —borrarlo haría parecer que se cayó— pero no hay nada que
+   preparar, así que no compite con los que sí. */
+.port-hoy-fila.es-hecho{opacity:.55}
+/* Ancho fijo: es la columna que ordena el día, y con ancho automático «12:30»
+   y «en 3 días» empezarían el título en puntos distintos en cada renglón. */
+.port-hoy-hora{flex:none;width:78px;color:var(--teal);font-weight:800;font-size:12px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.port-hoy-tit{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-weight:600}
+.port-hoy-fecha{flex:none;font-size:11.5px;color:var(--muted);white-space:nowrap}
+.port-hoy-grupo{flex:none;max-width:190px;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;font-size:11.5px;color:var(--dim)}
+.port-cab-ir{font-size:12px;color:var(--dim);text-decoration:none;white-space:nowrap;
+  margin-left:auto}
+.port-cab-ir:hover{color:var(--violet)}
+.port-cab-nota{font-size:11.5px;color:var(--dim);margin-left:auto}
+/* Un recado de configuración, no una sección. Tenue y de una línea: le importa
+   a quien puede correr el SQL y a nadie más. */
+.port-vacio-chico{font-size:12px;color:var(--dim);margin:12px 2px;line-height:1.5}
+.port-link{color:var(--violet);text-decoration:none}
+@media(max-width:600px){
+  /* Estrecho: el grupo es lo primero que sobra —el título ya se lee— y la
+     fecha exacta cabe menos que la distancia. */
+  .port-hoy-grupo{display:none}
+  .port-hoy-hora{width:64px}
+}
