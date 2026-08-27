@@ -392,21 +392,31 @@ export default async function FondosPage() {
                 aprender dos veces a leer el mismo dato. */
             const su = sustento.get(f.id);
             if (!su) return null;
-            const trozos: { k: string; v: number; n: number; cortado: boolean }[] = [
-              { k: "RHE", v: su.rhe, n: su.nRhe, cortado: sustentoCortado.rhe },
-              { k: "DJ", v: su.dj, n: su.nDj, cortado: sustentoCortado.dj },
-              { k: "facturas", v: su.cmp, n: su.nCmp, cortado: sustentoCortado.cmp },
+            /* ── ESTO NO VA APAGADO ──
+                Es la plata que se ha sustentado, y sigue viva hasta que el
+                fondo cierra: es LA cifra que se viene a mirar aquí. Iba en gris
+                de acompañamiento, como si fuera un pie de foto.
+                Y un guion no dice nada: si un fondo no tiene ni una DJ hay que
+                decirlo con palabras —«sin DJ»—, porque eso no es un hueco de
+                datos, es un hecho del expediente. */
+            const trozos: { k: string; v: number; n: number; cortado: boolean; vacio: string }[] = [
+              { k: "RHE", v: su.rhe, n: su.nRhe, cortado: sustentoCortado.rhe, vacio: "sin recibos" },
+              { k: "DJ", v: su.dj, n: su.nDj, cortado: sustentoCortado.dj, vacio: "sin DJ" },
+              { k: "facturas", v: su.cmp, n: su.nCmp, cortado: sustentoCortado.cmp, vacio: "sin facturas" },
             ];
-            if (!trozos.some(t => t.v || t.cortado)) return null;
             return (
               <div className="fondo-sust">
                 {trozos.map(t => (
-                  <span key={t.k} className="fondo-sust-x"
+                  <span key={t.k}
+                    className={`fondo-sust-x${t.v || t.cortado ? "" : " fondo-sust-no"}`}
                     title={t.cortado
                       ? "Hay más filas de las que caben en una consulta: la suma no se puede dar por buena."
-                      : `${t.n} ${t.k} por ${fmt(t.v)}`}>
-                    <b>{t.cortado ? "—" : t.v ? fmt(t.v) : "—"}</b> {t.k}
-                    {!t.cortado && !!t.n && <i className="fondo-sust-n">{t.n}</i>}
+                      : t.v ? `${t.n} ${t.k} por ${fmt(t.v)}` : `Este fondo no tiene ${t.k}`}>
+                    {t.cortado
+                      ? <><b>—</b> {t.k}</>
+                      : t.v
+                        ? <><b>{fmt(t.v)}</b> {t.k}{!!t.n && <i className="fondo-sust-n">{t.n}</i>}</>
+                        : t.vacio}
                   </span>
                 ))}
               </div>

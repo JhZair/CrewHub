@@ -3159,14 +3159,23 @@ img.av{border:1px solid var(--border2)}
    Recibos · DJ · facturas, la misma terna que la franja de la ficha. En una
    línea y con la cifra en negrita: mirando nueve fondos a la vez, lo que se
    busca es cuál ha movido plata y cuál no ha empezado. */
-.fondo-sust{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:4px;
-  font-size:10.5px;color:var(--dim)}
+/* ⚠ ESTO NO VA APAGADO. Es la plata sustentada y sigue viva hasta que el fondo
+   cierra: es LA cifra que se viene a mirar. Iba en gris de acompañamiento,
+   como un pie de foto, mientras el plazo y los contadores de casos —que son
+   contexto— se llevaban el color. */
+.fondo-sust{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:5px;
+  font-size:11px;color:var(--muted)}
 .fondo-sust-x{display:inline-flex;align-items:baseline;gap:4px}
-.fondo-sust-x b{color:var(--muted);font-size:11.5px;font-variant-numeric:tabular-nums}
+.fondo-sust-x b{color:var(--text);font-size:12.5px;font-weight:700;
+  font-variant-numeric:tabular-nums}
+/* Y el que no tiene ninguna lo DICE —«sin DJ»—, en vez de un guion. Que un
+   fondo no haya girado una sola declaración jurada no es un hueco de datos:
+   es un hecho del expediente, y a media ejecución es de los que preguntan. */
+.fondo-sust-no{color:var(--dim);font-style:italic}
 /* Cuántos documentos hay detrás de esa suma, en una pastilla: «S/ 61,500 RHE»
    con 13 recibos no es lo mismo que con uno solo. */
-.fondo-sust-n{font-style:normal;background:rgba(255,255,255,.06);border-radius:999px;
-  padding:0 5px;font-size:9.5px}
+.fondo-sust-n{font-style:normal;background:rgba(255,255,255,.07);border-radius:999px;
+  padding:0 5px;font-size:9.5px;color:var(--dim)}
 .fondo-minis{position:relative;flex:none;display:inline-flex;line-height:0}
 .fondo-mini{width:44px;height:44px;flex:none;object-fit:cover;border-radius:9px;
   border:1px solid var(--border);background:var(--bg)}
@@ -4836,6 +4845,10 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
 /* El número y su barra, pegados: son el mismo dato dos veces. */
 .acta-av{display:inline-flex;align-items:center;gap:8px}
 .acta-barra i{display:block;height:100%;background:var(--green);transition:width .3s}
+/* En la lista de fondos, la barra acompaña: un verde pleno de 200px a la
+   izquierda de la tarjeta se lleva el ojo antes que ninguna cifra. */
+.fondo-fila .acta-barra i{background:color-mix(in srgb, var(--green) 55%, transparent)}
+.fondo-fila .fondo-ent-av b{font-weight:600}
 .acta-acta{color:var(--blue);font-size:11.5px;white-space:nowrap;text-decoration:none}
 .acta-acta:hover{text-decoration:underline}
 
@@ -4941,6 +4954,16 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
 .acta-est{background:color-mix(in srgb, currentColor 18%, transparent);
   border-color:color-mix(in srgb, currentColor 45%, transparent)}
 .chip-tenue{font-size:10.5px;font-weight:700;white-space:nowrap;padding:1px 8px}
+/* ── EN LA TARJETA DE /fondos, TODO ESTO ES CONTEXTO ──
+   El plazo, «2 en proceso», «1 no aplica»: cuatro pastillas encendidas por
+   tarjeta y nueve tarjetas es una pantalla donde todo grita y por tanto no
+   grita nada. Lo que se viene a mirar es la plata sustentada; esto acompaña.
+   Se apagan aquí y solo aquí: en la ficha del fondo, donde hay UNA, siguen a
+   plena luz. */
+.fondo-fila .chip-tenue,
+.fondo-fila .acta-est{background:color-mix(in srgb, currentColor 8%, transparent);
+  border-color:color-mix(in srgb, currentColor 20%, transparent);
+  opacity:.72;font-weight:600}
 .acta-est-btn:hover{opacity:1}
 /* El elegido, a plena luz: el resto se queda un punto apagado. Cuatro chips
    igual de vivos no dicen cuál está puesto — y esa es la única pregunta que
@@ -5923,6 +5946,9 @@ mark.bq-marca{
   background:var(--card);border:1px solid var(--border);border-top:none;
   border-radius:0 0 9px 9px}
 .fondo-casos:hover{color:var(--text);border-color:var(--border2)}
+/* Lo mismo con «5 sin resolver»: es un dato del tablero, no del expediente
+   económico. En rojo pleno competía con la única cifra que aquí manda. */
+.fondo-casos b{font-weight:600;opacity:.75}
 
 /* ── ARCHIVAR EN TANDA DESDE LA LISTA ── */
 .lc-todos{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;
