@@ -8,6 +8,7 @@ import { useAviso, useConfirmar } from "@/components/useConfirmar";
 import CartasLote from "@/components/CartasLote";
 import BuzonPegar from "@/components/BuzonPegar";
 import Avatar from "@/components/Avatar";
+import LinkPreviews from "@/components/LinkPreviews";
 import { fechaCorta, hoyLima } from "@/lib/fechas";
 import {
   vidaDelFondo, conSilencios, duracion, porResponder, cuandoVence, TIPOS_HITO,
@@ -460,6 +461,15 @@ export default function VidaFondo({
             <b>{h.titulo}</b>
             {fichaDe(h.detalle) && <span className="cl-cod">{fichaDe(h.detalle)}</span>}
             {cuerpoDe(h.detalle) && <Detalle texto={cuerpoDe(h.detalle)} />}
+            {/* ── LA CARA DEL ENLACE ──
+                Se cargaba un enlace en un hito —el documental publicado en
+                YouTube— y en la línea solo aparecía «ver documento →»: el
+                enlace estaba, pero no se veía NADA de lo que hay al otro lado.
+                Ahora sale su tarjeta, la misma del muro.
+                Solo en los hitos APUNTADOS: en una carta, el enlace es su PDF
+                y ya tiene su «ver documento», y treinta tarjetas de PDF en la
+                línea serían treinta cajas iguales sin nada que mirar. */}
+            {h.clase === "propio" && h.url && <LinkPreviews texto={h.url} max={1} />}
             <span className="vf-pie">
               {h.autor && (
                 <span className="vf-autor" title={`Lo apuntó ${h.autor}`}>
@@ -484,7 +494,9 @@ export default function VidaFondo({
                     correr(() => responderCarta(h.id as string, null));
                   }}>volver a abrirla</button>
               )}
-              {h.url && <a className="vf-link" href={h.url} target="_blank" rel="noreferrer">ver documento →</a>}
+              {h.url && h.clase !== "propio" && (
+                <a className="vf-link" href={h.url} target="_blank" rel="noreferrer">ver documento →</a>
+              )}
               {h.casoId && <Link className="vf-link" href={`/caso/${h.casoId}`}>ver el caso →</Link>}
               {/* Solo lo escrito a mano se corrige aquí. Una fecha del acta
                   se edita en el expediente —es un dato del documento, no
