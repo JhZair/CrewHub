@@ -7,15 +7,12 @@ import { faltanEstados, seVigila, cierreDe } from "@/lib/estadosCuenta";
 import { sinPruebas, textoSinPruebas } from "@/lib/pruebasFondo";
 import { hoyLima } from "@/lib/fechas";
 import { mapaAlias } from "@/lib/personas";
-import Volver from "@/components/Volver";
 import Realtime from "@/components/Realtime";
 import Plegable from "@/components/Plegable";
 import TabsPanel from "@/components/TabsPanel";
 import CronogramaPostulacion from "@/components/CronogramaPostulacion";
 import Presupuesto from "@/components/Presupuesto";
 import RendicionFondo from "@/components/RendicionFondo";
-import BotonAlarma from "@/components/BotonAlarma";
-import { alarmasVivas } from "@/app/actions";
 import MovimientosBanco from "@/components/MovimientosBanco";
 import ConciliacionFondo from "@/components/ConciliacionFondo";
 import AuditoriaFondo from "@/components/AuditoriaFondo";
@@ -61,13 +58,6 @@ import { traerFondo, traerPerfilActual, traerMiPersona } from "@/lib/fondoDatos"
    `generateMetadata` y otra desde la página, sin nada que las dedujera. Ahora
    es `traerFondo` en lib/fondoDatos.ts, envuelta en `cache()`: las dos
    llamadas —y la del layout, cuando llegue— comparten un solo viaje. */
-
-export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
-  const f: any = await traerFondo(params.id);
-  if (!f) return { title: "🎬 Fondo" };
-  const t = [f.codigo, f.proy?.nombre, f.conv?.anio].filter(Boolean).join(" · ");
-  return { title: `🎬 ${t || "Fondo"}` };
-}
 
 const fmt = (n: number) => "S/ " + Number(n || 0).toLocaleString("es-PE");
 const dmy = (f?: string | null) => {
@@ -274,11 +264,7 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
      de apoyos cuelga de auth.users y no de perfiles, así que PostgREST no
      puede traerlos embebidos —no hay clave foránea entre las dos— y pedirlos
      aparte sería un viaje más para tres nombres. */
-  /* Las alarmas encendidas: la de este fondo se pinta arriba, y el total se
-     usa para avisar de la escasez antes de encender otra. */
-  const vivasAlarmas = await alarmasVivas(supabase);
-  const miAlarma = vivasAlarmas.find(
-    (a: any) => a.entidad_tipo === "postulacion" && a.entidad_id === params.id) || null;
+  /* (Las alarmas se piden en el layout, que es quien pinta el botón.) */
 
   const apoyoIds: string[] = ((apo.data || []) as any[]).map(a => a.usuario_id);
   /* RUC (o DNI) → persona, para que la carga por lote sepa DE QUIÉN es cada
@@ -733,117 +719,11 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
   const conPct = vigCosto ? Math.round((totRhe / vigCosto) * 100) : 0;
 
   return (
-    <div className="shell" style={{ maxWidth: "min(1200px, 96vw)" }}>
-      <Realtime tablas={["cronograma_actividades", "rhe", "estado_cuenta", "movimiento_banco", "gasto_dj", "comprobante", "auditoria_financiera", "version_fondo", "postulaciones"]}
-        token={session?.access_token} miId={user.id} />
-      <div className="topbar">
-        <Volver />
-        <span className="spacer" />
-        <span style={{ color: "var(--dim)", fontSize: 12 }}>🎬 EJECUCIÓN DEL FONDO</span>
-      </div>
-
-      {/* ── LA ALARMA, ANTES QUE NADA ──
-          Encima del título y de las cifras: si alguien declaró que esto es
-          grave, es lo primero que hay que leer al entrar. Y aquí va con su
-          motivo entero —no el resumen de la franja—, porque esta es la
-          pantalla donde uno viene a entender qué pasa. */}
-      <BotonAlarma entidadTipo="postulacion" entidadId={params.id}
-        tituloSugerido={`${ent.codigo || "Este fondo"}: `}
-        esAdmin={esAdmin} alarma={miAlarma} vivas={vivasAlarmas.length}
-        equipo={(pf.data || []) as any[]} />
-
-      {/* ── Cabecera del fondo ── */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", margin: "4px 0 2px" }}>
-        <h1 className="title-lg" style={{ margin: 0 }}>🎬 {titulo}</h1>
-        <Link href={`/entidad/postulacion/${params.id}`} className="btn btn-ghost"
-          style={{ fontSize: 12, padding: "6px 12px" }}>📄 Ver expediente de postulación →</Link>
-      </div>
-
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-          <span className="badge" style={{ color: estadoEjec.col, background: "rgba(255,255,255,.05)", fontWeight: 700 }}>
-            {estadoEjec.ico} {estadoEjec.txt}
-          </span>
-          {ent.emp?.nombre && <span style={{ color: "var(--dim)", fontSize: 12 }}>🏢 {ent.emp.nombre}</span>}
-          {ent.conv?.nombre && <span style={{ color: "var(--dim)", fontSize: 12 }}>📜 {ent.conv.nombre}</span>}
-        </div>
-        <div className="fondo-cab">
-          <Celda k="Estímulo" v={ent.monto_adjudicado ? fmt(parseFloat(ent.monto_adjudicado)) : "—"} destacado />
-          {/* ── LO GIRADO EN RHE ──
-              La cifra que contesta «¿por dónde vamos?». Vivía dentro de la
-              pestaña Equipo, a dos clics de la pantalla que se abre para
-              saberlo. Va junto al estímulo porque es contra él que se lee: los
-              dos son plata y la comparación es inmediata. */}
-          <Celda k="Girado en RHE"
-            v={resEquipo.montoGirado ? fmt(resEquipo.montoGirado) : "—"}
-            sub={resEquipo.montoGirado
-              ? `a ${resEquipo.girados} persona${resEquipo.girados === 1 ? "" : "s"}`
-                + (ent.monto_adjudicado && parseFloat(ent.monto_adjudicado) > 0
-                  ? ` · ${Math.round(resEquipo.montoGirado / parseFloat(ent.monto_adjudicado) * 100)}% del estímulo`
-                  : "")
-                + (rheSinPersona >= 1 ? ` · ⚠ ${fmt(rheSinPersona)} en recibos sin persona` : "")
-              : "todavía no se gira ningún recibo"} />
-          {/* ── LAS OTRAS DOS FORMAS DE SUSTENTAR ──
-              El estímulo se rinde de tres maneras y solo una estaba arriba: los
-              recibos. Las declaraciones juradas y las facturas vivían tres
-              plegables adentro de Financiera, y son las que deciden si lo
-              gastado está sustentado o no.
-              La DJ lleva su tope al lado porque es la única de las tres que
-              PUEDE PASARSE: por encima del porcentaje del acta, lo de más hay
-              que devolverlo. */}
-          <Celda k="Declaraciones juradas"
-            v={usadoDj ? fmt(usadoDj) : "—"}
-            sub={djError
-              ? "falta correr db/declaraciones-juradas.sql"
-              : usadoDj
-                ? `${gastosDj.length} DJ${saldoDj.tope ? ` · tope ${fmt(saldoDj.tope)}` : ""}`
-                : "todavía ninguna"}
-            alerta={!!saldoDj.tope && usadoDj > saldoDj.tope} />
-          <Celda k="Facturas y boletas"
-            v={totCmp ? fmt(totCmp) : "—"}
-            sub={cmpError
-              ? "falta correr db/facturas.sql"
-              : totCmp ? `${comprobantes.length} comprobante(s)` : "todavía ninguna"} />
-          <Celda k="Acta firmada" v={dmy(ent.fecha_firma_acta)} />
-          <Celda k="Desembolso" v={ent.fecha_desembolso ? dmy(ent.fecha_desembolso) : "⚠ falta"}
-            alerta={!ent.fecha_desembolso} />
-          {/* ── AQUÍ NO VA UN «PLAZO» DERIVADO ──
-              Había un recuadro «Plazo (1 año)» que salía de sumarle 12 meses al
-              desembolso, y debajo el aviso de que no cuadraba con la fecha del
-              acta. Se quitaron los dos porque la premisa era falsa: el plazo NO
-              es el mismo en todas las actas. La 042-2024-DAFO dice un año; la
-              139-2025 y la 178-2024 dicen DOS, verificado en el texto de los
-              PDF. Con el número fijo en el código, cada acta que no fuera de un
-              año producía una alarma permanente sobre una fecha correcta — y
-              una alarma siempre encendida enseña a no mirar los avisos.
-              Lo que queda son los dos HECHOS que vienen del acta y que alguien
-              cargó leyéndola: Desembolso y Rinde. La regla del plazo —con su
-              cláusula, que es lo que permite comprobarla— vive en la pestaña
-              Entregables, como fila de clase `plazo`.
-
-              ⚠ ESTO YA SE QUITÓ UNA VEZ Y VOLVIÓ. El 24/08/2026 se revirtió
-              solo: se editó una copia vieja de este archivo y al guardarla se
-              pisó el cambio. Si vuelve a aparecer, es eso — no una decisión. */}
-          <Celda k="Rinde" v={dmy(plazo)} />
-        </div>
-        {!ent.fecha_desembolso && (
-          <p style={{ color: "var(--yellow)", fontSize: 11.5, margin: "8px 0 0", lineHeight: 1.5 }}>
-            ⚠ Falta la fecha de desembolso — el plazo de ejecución se cuenta desde que el dinero llega a
-            la cuenta, no desde la firma del acta. Se edita en el expediente de postulación.
-          </p>
-        )}
-      </div>
-
-      {/* Las naturalezas del fondo, en pestañas: cada una va a crecer con su
-          propia información, y apiladas se volverían un scroll interminable.
-
-          ── ARRANCA EN «VIDA DEL FONDO» ──
-          Arrancaba en Financiera, con el argumento de que el dinero es lo que
-          tiene reloj. Pero al abrir un fondo la primera pregunta no es cuánto
-          hay: es QUÉ PASÓ —qué nos dijeron, qué contestamos, cuánto llevamos
-          callados— y eso es lo que decide si hay que mirar el dinero hoy o el
-          mes que viene. Las cifras siguen a un clic; la historia, no la tenía
-          nadie. */}
+    /* ── SIN `shell` NI CABECERA ──
+       Las dos viven ahora en app/fondo/[id]/layout.tsx, que se renderiza una
+       sola vez y no se vuelve a montar al cambiar de pestaña. Aquí solo queda
+       el contenido. */
+    <>
       <TabsPanel
         labels={[`📍 Vida del fondo${lineaVida.length ? ` · ${lineaVida.length}` : ""}`, "💰 Financiera", "🎥 Audiovisual", `📦 Entregables${compromisos.length ? ` · ${compromisos.length}` : ""}`, `👥 Equipo · ${equipoDelFondo}`, `💼 Por rol${rolesPre.length ? ` · ${rolesPre.length}` : ""}`]}
         /* El rastro rojo: el mismo número en la pestaña, en la cabecera de
@@ -1185,29 +1065,13 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
           </div>,
         ]}
       />
-    </div>
+    </>
   );
 }
 
-function Celda({ k, v, sub, destacado, alerta }: {
-  k: string; v: string;
-  /** Segunda línea, chica: lo que matiza la cifra («a 5 personas»). Sin ella,
-   *  o cabía en el rótulo o se perdía. */
-  sub?: string;
-  destacado?: boolean; alerta?: boolean;
-}) {
-  return (
-    <div className="fondo-celda">
-      <span className="fondo-celda-k">{k}</span>
-      <span className="fondo-celda-v" style={{
-        color: alerta ? "var(--yellow)" : destacado ? "var(--teal)" : "var(--text)",
-        fontWeight: destacado ? 700 : 600,
-      }}>{v}</span>
-      {sub && <span className="fondo-celda-sub">{sub}</span>}
-    </div>
-  );
-}
-
+/* Una tarjeta de «esto vendrá»: dice qué se va a poder hacer aquí y que
+   todavía no. Un hueco en blanco se lee como un fallo; esto se lee como un
+   plan. */
 function Pronto({ ico, t, d }: { ico: string; t: string; d: string }) {
   return (
     <div className="card fondo-pronto-card">

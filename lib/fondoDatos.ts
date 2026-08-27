@@ -66,9 +66,11 @@ export const traerFondo = cache(async (id: string) => {
    ficha. */
 export const traerTopes = cache(async (id: string) => {
   const supabase = createClient();
-  const { data } = await supabase.from("postulaciones")
-    .select("tope_dj_pct,tope_dj_monto").eq("id", id).maybeSingle();
-  return data as any;
+  const r = await supabase.from("postulaciones")
+    /* El de la convocatoria embebido: el tope puede venir del acta de este
+       fondo o de las bases del concurso, y `pctDe` decide cuál manda. */
+    .select("tope_dj_pct,conv:convocatorias(tope_dj_pct)").eq("id", id).maybeSingle();
+  return r;
 });
 
 /* ── QUIÉN MIRA ──
@@ -209,3 +211,142 @@ export const traerCartas = cache(async (id: string) => {
     .eq("postulacion_id", id).order("recibido_en", { ascending: false }).limit(200);
   return r;
 });
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LA CABECERA, CALCULADA EN UN SOLO SITIO
+
+   Las siete celdas de arriba, las burbujas de las pestañas y sus avisos. Vive
+   aquí y no en el layout por una razón concreta: son los números que el resto
+   de la ficha vuelve a calcular más abajo con datos más gordos, y si cada
+   sitio los deduce por su cuenta acaban discrepando. Aquí se llaman las MISMAS
+   funciones que pintan cada pestaña (`resumenEquipo`, `faltanEstados`,
+   `sinPruebas`, `agruparPorRol`); lo único distinto son las columnas que se
+   les dan de comer.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+import { integrantesDeFondo, resumenEquipo } from "@/lib/equipoFondo";
+import { faltanEstados, seVigila, cierreDe } from "@/lib/estadosCuenta";
+import { sinPruebas, textoSinPruebas } from "@/lib/pruebasFondo";
+import { agruparPorRol, filasPorPersona, itemsDeReferencia } from "@/lib/rolesPresupuesto";
+import { saldoDJ } from "@/lib/dj";
+import { plazoRendicion, rendicionVencida } from "@/lib/fondos";
+import { vidaDelFondo } from "@/lib/vidaFondo";
+import { hoyLima } from "@/lib/fechas";
+
+export type Aviso = { n: number; txt: string; tono?: "rojo" | "ambar" };
+
+/* Todo lo que la cabecera y la barra de pestañas necesitan, en una sola tanda
+   paralela. Se llama desde el layout —o sea en las seis pestañas—, así que
+   cada consulta que entre aquí se paga seis veces: si algo solo lo necesita
+   una pestaña, va en su página y no aquí. */
+export async function datosCabecera(id: string) {
+  const [rhe, personas, dj, cmp, ec, vers, nCompromisos, eq, hitosQ, cartasQ, topes] =
+    await Promise.all([
+      traerRheFlaco(id), traerPersonasIds(), traerGastoDjFlaco(id),
+      traerComprobanteFlaco(id), traerEstadoCuentaFlaco(id), traerVersiones(id),
+      contarCompromisos(id), traerEquipoFlaco(id),
+      traerHitos(id), traerCartas(id), traerTopes(id),
+    ]);
+  return { rhe, personas, dj, cmp, ec, vers, nCompromisos, eq, hitosQ, cartasQ, topes };
+}
+
+/* ── LAS CIFRAS DE LA CABECERA, SIN TOCAR LA BASE ──
+   Función pura: recibe el fondo y lo que trajo `datosCabecera`, y devuelve lo
+   que se pinta. Separada de las consultas para poder probarla con datos a
+   mano — es donde viven los números que el equipo mira primero. */
+export function cifrasCabecera(ent: any, d: Awaited<ReturnType<typeof datosCabecera>>) {
+  const hoy = hoyLima();
+
+  /* ── LO GIRADO ──
+     Ver la nota de `traerRheFlaco`: `montoGirado` y `girados` salen del cruce
+     de recibos con personas, sin necesitar el equipo declarado ni el previsto.
+     Se usa `resumenEquipo` y no una suma escrita aquí para que la cabecera y la
+     pestaña Equipo no puedan contestar distinto. */
+  const integrantes = integrantesDeFondo([], d.rhe as any[], [], d.personas as any);
+  const resEquipo = resumenEquipo(integrantes);
+  const totRhe = (d.rhe as any[]).reduce((s, r) => s + Number(r.monto || 0), 0);
+  /* Los recibos que no dicen de quién son no entran en el cruce: si los hay, la
+     cifra de arriba no es toda la plata girada, y eso se dice en vez de
+     callarlo. */
+  const rheSinPersona = totRhe - resEquipo.montoGirado;
+
+  /* Cuánta gente hay en el fondo, para la burbuja de la pestaña. Aquí SÍ hacen
+     falta el declarado y el previsto: una persona sin recibos no suma plata
+     pero sí es del equipo. */
+  const nEquipo = integrantesDeFondo(
+    d.eq.post as any[], d.rhe as any[], d.eq.previstos as any[], d.personas as any).length;
+
+  const usadoDj = (d.dj as any[]).reduce((s, g) => s + Number(g.importe || 0), 0);
+  const topes: any = (d.topes as any)?.data || null;
+  const djError = ((d.topes as any)?.error?.message || null) as string | null;
+  const convTope = Array.isArray(topes?.conv) ? topes.conv[0] : topes?.conv;
+  const saldoDj = saldoDJ(ent.monto_adjudicado, usadoDj,
+    { tope_dj_pct: topes?.tope_dj_pct }, { tope_dj_pct: convTope?.tope_dj_pct });
+
+  const totCmp = (d.cmp as any[]).reduce((s, c) => s + Number(c.importe || 0), 0);
+
+  /* ── LOS DOS AVISOS DE FINANCIERA ──
+     Rojo: falta el papel del banco, hay que pedírselo. Ámbar: la fila está
+     registrada y falta subir su archivo. Se resuelven en sitios distintos y por
+     gente distinta, así que van aparte y no sumados — un número que las mezcla
+     no dice qué hacer.
+     `seVigila` manda en los dos: a una rendición ya entregada no se le piden
+     más papeles, y sin él la ficha enseñaba avisos que el menú y la tarjeta del
+     fondo no enseñaban. */
+  const faltanEc = faltanEstados(
+    (d.ec as any[]).map(e => e.periodo), ent.fecha_desembolso, hoy, cierreDe(ent));
+  const nFaltaEc = seVigila(ent) ? faltanEc.faltan.length : 0;
+  const avisoEc: Aviso | null = nFaltaEc > 0
+    ? { n: nFaltaEc, txt: `${nFaltaEc} estado(s) de cuenta del banco sin cargar` } : null;
+
+  const docsTodos = sinPruebas({
+    estados: d.ec as any[], rhe: d.rhe as any[],
+    facturas: d.cmp as any[], dj: d.dj as any[],
+  });
+  const docsEc = seVigila(ent) ? docsTodos : { estados: 0, rhe: 0, facturas: 0, dj: 0, total: 0 };
+  const avisoDocs: Aviso | null = docsEc.total > 0
+    ? { n: docsEc.total, txt: textoSinPruebas(docsEc), tono: "ambar" } : null;
+
+  /* ── POR ROL ──
+     Contra la versión VIGENTE, que es la que se envía a DAFO; el presupuesto
+     vivo es el borrador de la siguiente modificación. Las etiquetas (rol y
+     quién cobra) sí salen del vivo, que es donde se escriben. */
+  const vigPresu = (d.vers as any[]).find(v => v.tipo === "presupuesto" && v.vigente) || null;
+  const vigItems = ((vigPresu?.datos as any)?.items || []) as any[];
+  const preItems = ((ent.presupuesto as any)?.items || []) as any[];
+  const rolesPre = agruparPorRol(itemsDeReferencia(vigItems, preItems) as any);
+  const sinDueno = filasPorPersona(rolesPre, () => 0).filter(f => !f.personaId).length;
+  const avisoRoles: Aviso[] | null = sinDueno
+    ? [{ n: sinDueno, tono: "ambar" as const,
+         txt: `${sinDueno} rol(es) sin persona asignada: no se puede saber cuánto les falta cobrar` }]
+    : null;
+
+  /* ── LA VIDA ──
+     El contador sale de `vidaDelFondo`, no de sumar las dos consultas: los
+     correos que no piden nada no entran en la línea, así que sumarlos daría un
+     número que no cuadra con lo que se ve al abrir. */
+  const hitos = ((d.hitosQ as any).data || []) as any[];
+  const cartas = ((d.cartasQ as any).data || []) as any[];
+  const lineaVida = vidaDelFondo(ent, hitos as any, cartas as any, hoy);
+  const porResponder = lineaVida.filter((h: any) => h.porResponder).length;
+  const avisoVida: Aviso[] | null = porResponder
+    ? [{ n: porResponder, txt: `${porResponder} carta(s) de DAFO con plazo sin contestar` }]
+    : null;
+
+  const plazo = plazoRendicion(ent);
+  const estadoEjec = ent.fecha_rendicion_real
+    ? { ico: "✅", txt: "Rendido", col: "var(--green)" }
+    : rendicionVencida(ent)
+      ? { ico: "⏰", txt: "Debe rendición", col: "var(--red)", venceEl: plazo }
+      : { ico: "🎬", txt: "En ejecución", col: "var(--teal)", rindeEl: plazo };
+
+  return {
+    plazo, estadoEjec,
+    girado: resEquipo.montoGirado, girados: resEquipo.girados, rheSinPersona,
+    usadoDj, saldoDj, nDj: (d.dj as any[]).length, djError,
+    totCmp, nCmp: (d.cmp as any[]).length,
+    nEquipo, nVida: lineaVida.length, nCompromisos: d.nCompromisos, nRoles: rolesPre.length,
+    avisosFin: [avisoEc, avisoDocs].filter(Boolean) as Aviso[],
+    avisoVida, avisoRoles,
+  };
+}
