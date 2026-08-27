@@ -6584,7 +6584,17 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
 /* Apagada, no escondida: un rodaje ya hecho dentro de la ventana sigue siendo
    información —borrarlo haría parecer que se cayó— pero no hay nada que
    preparar, así que no compite con los que sí. */
-.port-hoy-fila.es-hecho{opacity:.55}
+/* ── APAGADO DE VERDAD ──
+   .55 todavía competía con las filas vivas: en una lista de ocho, lo que no se
+   va a hacer hoy tiene que quedarse claramente detrás para que la vista pase
+   de largo. Al pasar el ratón vuelve entero — está apagado, no escondido, y si
+   alguien va a por él es porque quiere leerlo. */
+.port-hoy-fila.es-hecho{opacity:.34}
+.port-hoy-fila.es-hecho:hover{opacity:1}
+/* El chip del estado NO se apaga: es justo lo que explica por qué la fila está
+   apagada. Atenuarlo con el resto sería esconder la respuesta a la pregunta
+   que la propia fila plantea. */
+.port-hoy-fila.es-hecho .port-hoy-estado{opacity:1}
 /* Ancho fijo: es la columna que ordena el día, y con ancho automático «12:30»
    y «en 3 días» empezarían el título en puntos distintos en cada renglón. */
 .port-hoy-hora{flex:none;width:78px;color:var(--teal);font-weight:800;font-size:12px;
@@ -6636,7 +6646,9 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
 
 /* «Apagado» también en el pop-up del día: la clase se comparte con la portada
    para que las dos pantallas atenúen lo mismo con la misma intensidad. */
-.ag-dia-fila.es-hecho{opacity:.55}
+.ag-dia-fila.es-hecho{opacity:.34}
+.ag-dia-fila.es-hecho:hover{opacity:1}
+.ag-dia-fila.es-hecho .port-hoy-estado{opacity:1}
 
 /* ── QUIÉN ESTÁ EN ESTO ──
    Dos grupos de caras que contestan preguntas distintas: los VINCULADOS
