@@ -10,7 +10,7 @@ import { diaLima } from "@/lib/fechas";
 import { techo } from "@/lib/api";
 import { llevaHora } from "@/lib/tipos";
 import { nombresDe } from "@/lib/eventos";
-import { ORDEN_VINCULO, pesoVinculo } from "@/lib/portadaHoy";
+import { ORDEN_VINCULO, pesoVinculo, elCasoLaCubre } from "@/lib/portadaHoy";
 import { tipoCanonico } from "@/lib/secciones";
 
 export const metadata: Metadata = { title: "📅 Agenda" };
@@ -163,8 +163,12 @@ export default async function AgendaPage() {
      y la misma reunión enseñaba chips distintos en cada pantalla. */
   const PRIORIDAD = ORDEN_VINCULO;
 
+  /* `tipoCanonico` y no el tipo crudo: el trigger escribe el nombre de la
+     tabla («proyectos») y el código a mano escribe el singular. Comparando en
+     crudo, un vínculo en plural no entraba aquí ni en el agrupado — el caso
+     salía con su chip pero caía en «Casos sueltos». */
   const idsDe = (t: string) => [...new Set([...vincDe.values()].flat()
-    .filter(v => v.tipo === t).map(v => v.id))];
+    .filter(v => tipoCanonico(v.tipo) === t).map(v => v.id))];
   const [proyG, postuG, convG, empG, nombresOtros] = await Promise.all([
     idsDe("proyecto").length
       ? supabase.from("proyectos").select("id,nombre,nombre_corto").in("id", idsDe("proyecto"))
@@ -186,14 +190,12 @@ export default async function AgendaPage() {
     idsDe("empresa").length
       ? supabase.from("empresas").select("id,nombre").in("id", idsDe("empresa"))
       : Promise.resolve({ data: [] as any[] }),
-    /* ── LOS DEMÁS VÍNCULOS, PARA PODER ENSEÑARLOS TODOS ──
+    /* ── TODOS LOS VÍNCULOS, PARA PODER ENSEÑARLOS TODOS ──
        Las cuatro consultas de arriba resuelven los tipos que AGRUPAN. Pero un
        caso cuelga de más cosas —personas, lugares, etiquetas—, y una reunión
        existe justamente por a quién convoca: enseñar solo el grupo la deja en
        «Casos sueltos», que es lo único que no informa de ella.
-       Solo los tipos que no cubren las cuatro de arriba, para no pedir dos
-       veces los mismos proyectos. */
-    /* TODOS los vínculos, sin excluir los cuatro que agrupan: `grupoEnt` no
+       Va sin excluir los cuatro que agrupan: `grupoEnt` no
        siempre los cubre —una postulación que no ganó no entra allí, y un
        vínculo guardado en plural («proyectos») tampoco casa—, y esos chips
        desaparecían de la fila sin dejar rastro. Nombrar de más cuesta una
@@ -234,7 +236,7 @@ export default async function AgendaPage() {
   const grupoDeCaso = (id: string) => {
     const vs = vincDe.get(id) || [];
     for (const t of PRIORIDAD) {
-      const v = vs.find(x => x.tipo === t);
+      const v = vs.find(x => tipoCanonico(x.tipo) === t);
       const g = v && grupoEnt.get(`${t}:${v.id}`);
       if (g) return g;
     }
@@ -372,7 +374,7 @@ export default async function AgendaPage() {
      Es la misma regla que aplica la portada, y por eso vive donde se ve: si
      una pantalla deduplica y la otra no, «los dos paneles no enseñan lo
      mismo» vuelve a ser cierto por otro camino. */
-  const idsConCaso = new Set(itemsCaso.map(c => c.id));
+  const casoPorId = new Map(itemsCaso.map(c => [c.id, c]));
   /* Por un mapa y no por el índice del arreglo: hoy `itemsAct` sale de un
      `map` sobre `actsVisibles` y los índices coinciden, pero eso es un
      accidente del código de arriba y el día que alguien filtre entre medias,
@@ -380,8 +382,11 @@ export default async function AgendaPage() {
   const casoDeAct = new Map<string, string>(
     actsVisibles.filter((a: any) => a.publicacion_id).map((a: any) => [a.id, a.publicacion_id]));
   const itemsActSolas = itemsAct.filter(a => {
-    const pid = casoDeAct.get(a.id);
-    return !(pid && idsConCaso.has(pid));
+    const caso = casoPorId.get(casoDeAct.get(a.id) || "");
+    /* `elCasoLaCubre` y no «tiene caso»: si el caso ocupa menos días que la
+       actividad, quitarla dejaría vacíos los días intermedios. La misma
+       función que usa la portada. */
+    return !(caso && elCasoLaCubre(caso, a));
   });
 
   return (

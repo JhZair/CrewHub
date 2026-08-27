@@ -58,6 +58,34 @@ export function loDeHoy<T extends ConFechas>(items: T[], hoy = hoyLima()): T[] {
   return items.filter(it => caeEnElDia(it, hoy));
 }
 
+/* ── ¿SOBRA ESTA ACTIVIDAD PORQUE SU CASO YA LA CUENTA? ──
+ *
+ * El bot materializa las actividades del cronograma en casos, copiándoles el
+ * título y las dos fechas: en una lista salen dos renglones idénticos, con el
+ * mismo texto y el mismo destino.
+ *
+ * La regla NO puede ser «tiene caso, se va»: un caso materializado sin
+ * `fecha_inicio` ocupa solo el día de su plazo, mientras que la actividad dura
+ * toda su ventana. Quitando la actividad por tener caso, los días intermedios
+ * se quedan sin nada — que es justo la fila que faltaba en la portada.
+ *
+ * Sobra solo si el caso CUBRE la ventana entera de la actividad. Entonces son
+ * la misma cosa dicha dos veces y gana el caso, que es donde se comenta, se
+ * asigna y se cierra. Si el caso cubre menos, se quedan las dos: mejor una
+ * repetición un día que un hueco toda la semana.
+ *
+ * Escrita aquí porque la portada y /agenda tienen que hacer lo mismo: si una
+ * pantalla deduplica y la otra no, «los dos paneles no enseñan lo mismo»
+ * vuelve a ser cierto por otro camino. */
+export function elCasoLaCubre(caso: ConFechas, act: ConFechas): boolean {
+  const ca = soloDia(caso.ini), cb = soloDia(caso.fin) || ca;
+  const aa = soloDia(act.ini), ab = soloDia(act.fin) || aa;
+  if (!ca || !aa) return false;
+  const cIni = ca <= cb ? ca : cb, cFin = ca <= cb ? cb : ca;
+  const aIni = aa <= ab ? aa : ab, aFin = aa <= ab ? ab : aa;
+  return cIni <= aIni && cFin >= aFin;
+}
+
 /* ── LA VENTANA DE RODAJES ──
  *
  * De hoy en adelante, `dias` días. Lo de ayer no se prepara, y un bloque que

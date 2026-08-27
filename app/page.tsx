@@ -21,7 +21,7 @@ import { urlsDe } from "@/lib/drive";
 import { fechaDia } from "@/lib/fechas";
 import { ESTADOS_VIVOS, actividadFueraDeAgenda, fueraDeAgenda,
   ESTADO_ICO, ESTADO_TXT, ESTADO_COL } from "@/lib/estados";
-import { loDeHoy, enLosProximos, ventana, cuandoCae, soloDia, diaMas, hayQueDecirEstado, apagadoHoy, pesoVinculo, TOPE_GRUPOS, DIAS_RODAJE, ETIQUETA_RODAJE } from "@/lib/portadaHoy";
+import { loDeHoy, enLosProximos, ventana, cuandoCae, soloDia, diaMas, hayQueDecirEstado, apagadoHoy, pesoVinculo, elCasoLaCubre, TOPE_GRUPOS, DIAS_RODAJE, ETIQUETA_RODAJE } from "@/lib/portadaHoy";
 import { sinBot, BOT } from "@/lib/personas";
 import {
   COLS_NOTIF, COLS_NUEVAS, faltaAlguna, columnasQueFaltan, sinEstas,
@@ -260,7 +260,11 @@ export default async function Portada({ searchParams }: {
        saber cuál. */
     supabase.from("publicaciones")
       .select("id,titulo,tipo,estado,fecha_inicio,fecha_limite,hora,responsable," +
-        "vinculos:publicacion_vinculos(entidad_tipo, entidad_id)")
+        /* Con `creado_en` para que el orden sea SIEMPRE el mismo: sin él,
+           Postgres devuelve los vínculos como le convenga y los chips de una
+           misma reunión bailan entre recargas — con el tope de seis, el «+N»
+           acabaría escondiendo a personas distintas cada vez. */
+        "vinculos:publicacion_vinculos(entidad_tipo, entidad_id, creado_en)")
       .in("estado", ESTADOS_VIVOS)
       .is("archivado_en", null)
       .neq("tipo", "bitacora")
@@ -278,8 +282,14 @@ export default async function Portada({ searchParams }: {
          alrededor— y el día lo decide `loDeHoy`, que es la MISMA función que
          usa el resto. Son unas decenas de filas y el filtro está donde se
          puede leer y probar. */
-      .gte("fecha_limite", diaMas(hoyDeLima, -45))
-      .lte("fecha_limite", diaMas(hoyDeLima, 45))
+      /* Sin tope por arriba: la ventana de un caso TERMINA en su plazo, así
+         que basta con que el plazo no haya pasado. Con un `.lte(hoy+45)` se
+         perdía un caso empezado y con plazo lejano, que sí cae hoy —y se
+         perdía sin error, otra vez—. El piso de una semana es solo por si
+         alguien invirtió las fechas.
+         Orden ascendente: los primeros son los de hoy, así que si el tope
+         llegara a cortar, cortaría por lo más lejano, que es lo que sobra. */
+      .gte("fecha_limite", diaMas(hoyDeLima, -7))
       .order("fecha_limite")
       .limit(500),
     /* Las actividades de cronograma que caen hoy. `pub` viaja para respetar el
@@ -297,7 +307,10 @@ export default async function Portada({ searchParams }: {
          empezó hace mes y medio y sigue corriendo no se pierda. */
       .gte("fecha_inicio", diaMas(hoyDeLima, -120))
       .lte("fecha_inicio", hoyDeLima)
-      .order("fecha_inicio")
+      /* DESCENDENTE: lo que empieza hoy va primero. Con orden ascendente, el
+         tope recortaba justo por el extremo que interesa —las de hoy son las
+         últimas— y se caían antes que las de hace cuatro meses. */
+      .order("fecha_inicio", { ascending: false })
       .limit(500),
     /* Los rodajes de los próximos 30 días, por la etiqueta. Una sola llamada:
        sin ella serían tres viajes encadenados —resolver la etiqueta, sus
@@ -538,8 +551,9 @@ export default async function Portada({ searchParams }: {
          el hueco: el nombre explica por qué está solo, en vez de sugerir que
          al sistema se le perdió el dato. */
       const grupos = [...vs]
-        .sort((a, b) => pesoVinculo(tipoCanonico(a.entidad_tipo))
-                      - pesoVinculo(tipoCanonico(b.entidad_tipo)))
+        .sort((a, b) => (pesoVinculo(tipoCanonico(a.entidad_tipo))
+                       - pesoVinculo(tipoCanonico(b.entidad_tipo)))
+          || String(a.creado_en || "").localeCompare(String(b.creado_en || "")))
         .map((x: any) => nombresVinc.get(`${tipoCanonico(x.entidad_tipo)}:${x.entidad_id}`))
         .filter(Boolean) as string[];
       return {
@@ -605,16 +619,14 @@ export default async function Portada({ searchParams }: {
      Gana el caso: es donde se comenta, se asigna y se cierra. La actividad
      solo queda cuando nadie la materializó todavía.
 
-     Gana el caso SI el caso está en la lista. La versión anterior quitaba la
-     actividad por el mero hecho de tener `publicacion_id`, y eso borraba tres
-     filas que /agenda sí enseña: un caso materializado sin `fecha_inicio` solo
-     cae el día de su plazo, mientras que la ACTIVIDAD dura toda su ventana. El
-     caso no estaba en la lista de hoy, la actividad sí, y la portada se quedó
-     sin las dos. Los dos paneles tienen que enseñar lo mismo. */
+     La regla es `elCasoLaCubre` y vive en lib/portadaHoy, para que /agenda haga
+     exactamente lo mismo. Ver allí por qué no basta con «tiene caso, se va». */
+  const casoPorId = new Map<string, any>(hoyCasos.map((c: any) => [c.id, c]));
   const casosDeHoy = loDeHoy(hoyCasos, hoyDeLima);
-  const idsDeHoy = new Set(casosDeHoy.map((c: any) => c.id));
-  const actsDeHoy = loDeHoy(hoyActs, hoyDeLima)
-    .filter((a: any) => !(a.publicacion_id && idsDeHoy.has(a.publicacion_id)));
+  const actsDeHoy = loDeHoy(hoyActs, hoyDeLima).filter((a: any) => {
+    const caso = a.publicacion_id ? casoPorId.get(a.publicacion_id) : null;
+    return !(caso && elCasoLaCubre(caso, a));
+  });
 
   /* Juntos y ordenados por hora: lo que tiene hora arriba y en orden —una
      reunión a las 9 antes que una a las 15—, y lo que no la tiene detrás. Un
