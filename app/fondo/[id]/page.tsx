@@ -36,6 +36,7 @@ import { hilosDeFilas } from "@/lib/rendicionHilo";
 import { gastosDelFondo, ayudaRubro } from "@/lib/ejecutado";
 import RolesPresupuesto from "@/components/RolesPresupuesto";
 import { agruparPorRol, filasPorPersona, itemsDeReferencia, comparaConVivo } from "@/lib/rolesPresupuesto";
+import { traerFondo, traerPerfilActual, traerMiPersona } from "@/lib/fondoDatos";
 
 /* ── LA EJECUCIÓN DEL FONDO — la segunda vida de un proyecto ──
  *
@@ -56,23 +57,13 @@ import { agruparPorRol, filasPorPersona, itemsDeReferencia, comparaConVivo } fro
  * entregables del acta. La distribución —la tercera vida— vendrá después.
  */
 
-async function cargarFondo(id: string) {
-  const supabase = createClient();
-  const { data } = await supabase.from("postulaciones")
-    /* Los topes de DJ NO se piden aquí, y es a propósito. Esta consulta decide
-       si la ficha existe: si falla, la página hace `notFound()`. Nombrar una
-       columna que puede no estar todavía —db/declaraciones-juradas.sql sin
-       correr— convertía «falta una migración» en «este fondo no existe», y se
-       llevaba por delante todo el cuidado de degradar con elegancia del bloque
-       de DJ. Van en su propia consulta, que puede fallar sola. */
-    .select("*, proy:proyectos(id,nombre,tipo), emp:empresas(id,nombre), " +
-      "conv:convocatorias(id,nombre,anio,categoria,monto_adjudicado)")
-    .eq("id", id).maybeSingle();
-  return data;
-}
+/* `cargarFondo` vivía aquí y se llamaba DOS veces por render: una desde
+   `generateMetadata` y otra desde la página, sin nada que las dedujera. Ahora
+   es `traerFondo` en lib/fondoDatos.ts, envuelta en `cache()`: las dos
+   llamadas —y la del layout, cuando llegue— comparten un solo viaje. */
 
 export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
-  const f: any = await cargarFondo(params.id);
+  const f: any = await traerFondo(params.id);
   if (!f) return { title: "🎬 Fondo" };
   const t = [f.codigo, f.proy?.nombre, f.conv?.anio].filter(Boolean).join(" · ");
   return { title: `🎬 ${t || "Fondo"}` };
@@ -91,7 +82,7 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
   if (!user) redirect("/login");
   const { data: { session } } = await supabase.auth.getSession();
 
-  const ent: any = await cargarFondo(params.id);
+  const ent: any = await traerFondo(params.id);
   if (!ent) notFound();
 
   /* Esta página es SOLO para fondos ganados. Una postulación que aún está en
@@ -105,9 +96,8 @@ export default async function FondoPage({ params }: { params: { id: string } }) 
      qué FICHA DE PERSONA corresponde su cuenta. La segunda hace falta para
      saber cuáles de los recibos de esta pantalla son suyos —el puente
      `personas.usuario_id` es el mismo que usa /jornadas. */
-  const [{ data: perfilActual }, { data: miPersona }] = await Promise.all([
-    supabase.from("perfiles").select("es_admin,es_finanzas").eq("id", user.id).maybeSingle(),
-    supabase.from("personas").select("id").eq("usuario_id", user.id).maybeSingle(),
+  const [perfilActual, miPersona] = await Promise.all([
+    traerPerfilActual(user.id), traerMiPersona(user.id),
   ]);
   /* «Admin» aquí significa «puede tocar los datos de plata de esta ficha», que
      no es lo mismo que tener /admin entero. El asistente de administración
