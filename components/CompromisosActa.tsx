@@ -144,7 +144,17 @@ export default function CompromisosActa({
          Antes se sostenía con un margen de 61px repetido en cuatro reglas: si
          la cláusula crecía un dígito, el extracto y la fecha se quedaban
          desalineados sin que nada fallara. Ahora la rejilla los alinea sola. */
-      <div key={x.id} className={`acta-fila${hecho && seTacha ? " hecho" : ""}`}>
+      /* ── «NO APLICA» SE APAGA ──
+         No es un pendiente ni un logro: es una cláusula que alguien miró y
+         decidió que no corresponde a este proyecto. Con el mismo peso visual
+         que las demás, en una lista de diecisiete renglones sigue pidiendo
+         atención cada vez que se repasa el acta — y no hay nada que hacer con
+         ella. Apagada se sigue viendo (la decisión queda constancia, que es
+         para lo que se marcó) pero deja de competir.
+         «Entregado» NO se apaga: eso sí es un logro y es lo que hay que poder
+         enseñar en una rendición. */
+      <div key={x.id} className={`acta-fila${hecho && seTacha ? " hecho" : ""}`
+        + (x.estado === "no_aplica" ? " no-aplica" : "")}>
         {/* La cláusula, monoespaciada y primero: es la llave para volver al
             PDF, y en columna se recorre con el dedo. */}
         <span className="acta-cl">{x.clausula || "—"}</span>

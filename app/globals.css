@@ -6700,3 +6700,14 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
    número es lo que permite comprobarlo en el PDF. */
 .caso-clausula h4{margin-bottom:6px}
 .caso-clausula .echip{text-decoration:none}
+
+/* «No aplica»: una cláusula que alguien miró y decidió que no corresponde. Ni
+   pendiente ni logro — no hay nada que hacer con ella, así que deja de pedir
+   atención en cada repaso del acta. Se sigue viendo, porque la decisión es el
+   dato; al pasar el ratón vuelve entera. */
+.acta-fila.no-aplica{opacity:.38}
+.acta-fila.no-aplica:hover{opacity:1}
+/* El chip de estado no se apaga: es lo que explica por qué la fila lo está.
+   Atenuarlo con el resto sería esconder la respuesta a la pregunta que la
+   propia fila plantea — el mismo criterio que en el bloque «Hoy». */
+.acta-fila.no-aplica .acta-est{opacity:1}
