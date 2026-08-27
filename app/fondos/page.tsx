@@ -112,6 +112,57 @@ export default async function FondosPage() {
     }
   }
 
+  /* ══════════════════════════════════════════════════════════════════════
+     LO SUSTENTADO, EN LA TARJETA — recibos, declaraciones juradas y facturas
+
+     La misma terna que la franja de la ficha. Aquí contesta la pregunta con
+     la que se abre esta pantalla mirando nueve fondos a la vez: cuál ha
+     movido plata y cuál no ha empezado.
+
+     ── UNA CONSULTA POR TABLA, NO UNA POR TARJETA ──
+     Y solo dos columnas por fila: el fondo y el importe. Es lo único que hace
+     falta para sumar, y lo que decide si esto cuesta un viaje o cuesta la
+     pantalla entera.
+
+     ⚠ EL TECHO DE POSTGREST CORTA SIN AVISAR. Nueve fondos con cincuenta
+     recibos cada uno rondan el millar, y una suma cortada a la mitad no se ve
+     rota: se ve como un fondo que gastó menos. Por eso el tope se pide
+     EXPLÍCITO y, si se toca, la tarjeta no enseña la cifra — dice que no la
+     sabe. Un número a medias en dinero es peor que ninguno.
+     ══════════════════════════════════════════════════════════════════════ */
+  const TOPE_FILAS = 5000;
+  const sustento = new Map<string, { rhe: number; nRhe: number; dj: number; nDj: number; cmp: number; nCmp: number }>();
+  const sustentoCortado = { rhe: false, dj: false, cmp: false };
+  {
+    const ids = fondos.map(f => f.id);
+    if (ids.length) {
+      const [rheT, djT, cmpT] = await Promise.all([
+        supabase.from("rhe").select("postulacion_id,monto").in("postulacion_id", ids).limit(TOPE_FILAS),
+        supabase.from("gasto_dj").select("postulacion_id,importe").in("postulacion_id", ids).limit(TOPE_FILAS),
+        supabase.from("comprobante").select("postulacion_id,importe").in("postulacion_id", ids).limit(TOPE_FILAS),
+      ]);
+      const sumar = (r: any, campo: string) => {
+        const m = new Map<string, { total: number; n: number }>();
+        /* Si la consulta falla —falta la migración, o RLS— NO se suma nada y
+           la tarjeta dirá «—». Un cero aquí se leería como «no ha gastado». */
+        if (r?.error) return { m, cortado: false };
+        const filas = (r?.data || []) as any[];
+        filas.forEach(x => {
+          const a = m.get(x.postulacion_id) || { total: 0, n: 0 };
+          m.set(x.postulacion_id, { total: a.total + (Number(x[campo]) || 0), n: a.n + 1 });
+        });
+        return { m, cortado: filas.length >= TOPE_FILAS };
+      };
+      const sr = sumar(rheT, "monto"), sd = sumar(djT, "importe"), sc = sumar(cmpT, "importe");
+      sustentoCortado.rhe = sr.cortado; sustentoCortado.dj = sd.cortado; sustentoCortado.cmp = sc.cortado;
+      ids.forEach(id => sustento.set(id, {
+        rhe: sr.m.get(id)?.total || 0, nRhe: sr.m.get(id)?.n || 0,
+        dj: sd.m.get(id)?.total || 0, nDj: sd.m.get(id)?.n || 0,
+        cmp: sc.m.get(id)?.total || 0, nCmp: sc.m.get(id)?.n || 0,
+      }));
+    }
+  }
+
   /* ── LO QUE EL ACTA OBLIGA A ENTREGAR, EN LA TARJETA ──
      El avance de entregables vivía solo dentro de la ficha, en su pestaña. Y
      es la pregunta con la que se abre esta pantalla: de los nueve fondos, ¿a
@@ -334,6 +385,33 @@ export default async function FondosPage() {
           {/* El avance de lo que el acta obliga a entregar. Se dibuja igual que
               en la pestaña del fondo: si aquí tuviera otra forma habría que
               aprender dos veces a leer el mismo dato. */}
+          {(() => {
+            /* ── LO SUSTENTADO, LA MISMA TERNA QUE LA FICHA ──
+                Recibos, declaraciones juradas y facturas. Se dibuja aquí igual
+                que arriba en la ficha: si tuviera otra forma habría que
+                aprender dos veces a leer el mismo dato. */
+            const su = sustento.get(f.id);
+            if (!su) return null;
+            const trozos: { k: string; v: number; n: number; cortado: boolean }[] = [
+              { k: "RHE", v: su.rhe, n: su.nRhe, cortado: sustentoCortado.rhe },
+              { k: "DJ", v: su.dj, n: su.nDj, cortado: sustentoCortado.dj },
+              { k: "facturas", v: su.cmp, n: su.nCmp, cortado: sustentoCortado.cmp },
+            ];
+            if (!trozos.some(t => t.v || t.cortado)) return null;
+            return (
+              <div className="fondo-sust">
+                {trozos.map(t => (
+                  <span key={t.k} className="fondo-sust-x"
+                    title={t.cortado
+                      ? "Hay más filas de las que caben en una consulta: la suma no se puede dar por buena."
+                      : `${t.n} ${t.k} por ${fmt(t.v)}`}>
+                    <b>{t.cortado ? "—" : t.v ? fmt(t.v) : "—"}</b> {t.k}
+                    {!t.cortado && !!t.n && <i className="fondo-sust-n">{t.n}</i>}
+                  </span>
+                ))}
+              </div>
+            );
+          })()}
           {(() => {
             const a = avEnt.get(f.id);
             if (!a || !a.cuentan) return null;
