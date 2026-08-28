@@ -22,6 +22,23 @@
   --grad-buscar: linear-gradient(95deg, var(--teal) 0%, var(--blue) 42%, var(--accent) 78%, var(--violet) 100%);
 }
 *{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',system-ui,sans-serif}
+/* ── EL HUECO DE LA BARRA, SIEMPRE RESERVADO ──
+   Sin esto, abrir un plegable en una pantalla que cabía entera hace aparecer la
+   barra de scroll, el contenido se estrecha ~15px de golpe y TODO salta a la
+   izquierda. Es un tic de un fotograma, pero se nota justo cuando estás
+   mirando dónde vas a pulsar — y se nota más desde que la ficha del fondo se
+   partió en rutas: cada pestaña tiene un alto distinto, así que la barra
+   aparece y desaparece al cambiar.
+   `scrollbar-gutter` reserva el carril esté o no la barra. El precio es una
+   franja vacía de quince píxeles en las pantallas cortas; a cambio, nada se
+   mueve solo. */
+html{scrollbar-gutter:stable}
+/* Para navegadores sin `scrollbar-gutter` (Safari < 16): la barra siempre a la
+   vista. Más fea, pero igual de quieta. Va en `@supports not` para no pintarla
+   en los que ya reservan el hueco. */
+@supports not (scrollbar-gutter: stable){
+  html{overflow-y:scroll}
+}
 body{background:var(--bg);color:var(--text);font-size:14px;min-height:100vh}
 button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
 input,textarea,select{font-family:inherit;color:var(--text)}
