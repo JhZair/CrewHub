@@ -24,6 +24,46 @@ export const metadata: Metadata = { title: "✍ Guion" };
  * película de 47 minutos ocupa 1700 px de scroll horizontal. Eso no cabe
  * al lado del carné del proyecto.
  *
+ * ╔══════════════════════════════════════════════════════════════════════╗
+ * ║  LA VISTA QUE FALTA: LA LÍNEA DE TIEMPO HORIZONTAL                   ║
+ * ╚══════════════════════════════════════════════════════════════════════╝
+ * Referencia de diseño: **prewrite.com** — escribir un tratamiento como se
+ * monta un vídeo, en una banda horizontal, pero de texto.
+ *
+ * ⚠ ESTO SE ANOTA AQUÍ PORQUE YA SE PERDIÓ UNA VEZ. La referencia se
+ * compartió al empezar el módulo, no quedó escrita en ninguna parte, y hubo
+ * que volver a preguntarla meses después. Una decisión de diseño que solo
+ * vive en la cabeza de quien la tomó es una decisión que se toma dos veces.
+ *
+ * ── LO QUE YA EXISTE PARA CONSTRUIRLA ──
+ * El modelo entero está, y no por casualidad: se fue haciendo para esto.
+ *   · el ANCHO de cada bloque  → `minutosDe(s)` en lib/guion.ts, que da los
+ *     minutos del autor o los estimados a 190 palabras/minuto, y dice cuál
+ *     de las dos cosas es (`estimado`). Manda el autor si los puso.
+ *   · las ZONAS de fondo       → `guion_actos`, con su orden.
+ *   · las PISTAS de color      → `guion_hilos.color` + `guion_secuencia_hilos`,
+ *     que son exactamente las capas de un editor de vídeo.
+ *   · las MARCAS de la regla   → `guion_beats.pos`, el % de metraje donde el
+ *     modelo estructural ESPERA cada punto de giro. La distancia entre eso y
+ *     donde cae de verdad es el diagnóstico, y solo existe porque la
+ *     plantilla y el guion son dos cosas separadas (ver lib/guion.ts).
+ *
+ * Lo único que falta es la pantalla: una banda con scroll horizontal, un
+ * bloque por secuencia proporcional a su duración, y el cajón de edición
+ * abriéndose debajo al pulsar uno.
+ *
+ * ── LO QUE HAY QUE DECIDIR ANTES DE DIBUJARLA ──
+ *   · Si la banda SUSTITUYE a la lista vertical o convive con ella (un
+ *     conmutador, como el de /tablero entre tablero y lista).
+ *   · Qué pasa con una secuencia de 20 segundos: a 36 px/min son 12 px, un
+ *     bloque en el que no cabe ni su número. Hace falta un ancho mínimo, y
+ *     entonces la banda deja de ser proporcional — y hay que decir que lo es
+ *     «casi», o el ojo medirá mal.
+ *   · Si se puede arrastrar para reordenar, o el orden se sigue cambiando
+ *     con los ↑↓ que ya existen. Arrastrar en una banda con scroll
+ *     horizontal es difícil de hacer bien y muy fácil de hacer mal.
+ * ────────────────────────────────────────────────────────────────────────
+ *
  * El orden de la pantalla es el orden de trabajo: primero contra qué
  * estructura se escribe (la plantilla), luego qué atraviesa la película
  * (los hilos), luego el tratamiento acto por acto, y al final lo que
