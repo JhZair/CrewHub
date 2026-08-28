@@ -42,7 +42,19 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
   const f: any = await traerFondo(params.id);
   if (!f) return { title: "🎬 Fondo" };
   const t = [f.codigo, f.proy?.nombre, f.conv?.anio].filter(Boolean).join(" · ");
-  return { title: `🎬 ${t || "Fondo"}` };
+  /* ── CON `template`, NO CON `title` A SECAS ──
+     Cada pestaña declara su propio `metadata`, y en App Router el título de la
+     página PISA el del layout: con `title` plano, los seis fondos abiertos se
+     llamaban todos «📍 Vida del fondo» y había que hacer clic para saber cuál
+     era cuál. Es exactamente el fallo que app/layout.tsx documenta haber
+     arreglado para el resto del sistema, reintroducido aquí al partir.
+     Con `template`, la pestaña dice «💰 Financiera · 🎬 PO-001 · Linderaje». */
+  return {
+    title: {
+      default: `🎬 ${t || "Fondo"}`,
+      template: `%s · 🎬 ${f.codigo || "Fondo"}`,
+    },
+  };
 }
 
 const fmt = (n: number) => "S/ " + Number(n || 0).toLocaleString("es-PE");
@@ -85,9 +97,14 @@ export default async function FondoLayout(
 
   return (
     <div className="shell" style={{ maxWidth: "min(1200px, 96vw)" }}>
-      {/* Solo lo que afecta a la CABECERA. Cada pestaña escucha lo suyo, con
-          filtro: antes esta página escuchaba nueve tablas sin filtro, así que
-          un comprobante cargado en otro fondo refrescaba tu pantalla. */}
+      {/* Solo lo que afecta a la CABECERA; cada pestaña escucha lo suyo, con
+          filtro por fondo.
+          ⚠ Antes esta página escuchaba nueve tablas SIN filtro, y parecía que un
+          comprobante de otro fondo refrescaba tu pantalla. No era cierto:
+          ninguna de esas tablas estaba en la publicación de Supabase, así que
+          la suscripción se abría y no llegaba nada. El filtro empieza a hacer
+          falta el día que se corra db/realtime-fondo.sql — que es lo que las
+          publica—, no antes. */}
       <Realtime tablas={[{ tabla: "postulaciones", filtro: `id=eq.${params.id}` }, "alarmas"]}
         token={session?.access_token} miId={user.id} />
       <div className="topbar">
@@ -128,13 +145,14 @@ export default async function FondoLayout(
               pestaña Equipo, a dos clics de la pantalla que se abre para
               saberlo. Va junto al estímulo porque es contra él que se lee. */}
           <CeldaFondo k="Girado en RHE"
-            v={c.girado ? fmt(c.girado) : "—"}
+            v={c.errRhe ? "—" : c.girado ? fmt(c.girado) : "—"}
+            alerta={!!c.errRhe}
             sub={c.girado
               ? `a ${c.girados} persona${c.girados === 1 ? "" : "s"}`
                 + (ent.monto_adjudicado && parseFloat(ent.monto_adjudicado) > 0
                   ? ` · ${Math.round(c.girado / parseFloat(ent.monto_adjudicado) * 100)}% del estímulo` : "")
                 + (c.rheSinPersona >= 1 ? ` · ⚠ ${fmt(c.rheSinPersona)} en recibos sin persona` : "")
-              : "todavía no se gira ningún recibo"} />
+              : c.errRhe ? "no se pudo leer" : "todavía no se gira ningún recibo"} />
           {/* ── LAS OTRAS DOS FORMAS DE SUSTENTAR ──
               El estímulo se rinde de tres maneras y solo una estaba arriba. La
               DJ lleva su tope al lado porque es la única de las tres que PUEDE
@@ -147,10 +165,14 @@ export default async function FondoLayout(
               : c.usadoDj
                 ? `${c.nDj} DJ${c.saldoDj.tope ? ` · tope ${fmt(c.saldoDj.tope)}` : ""}`
                 : "todavía ninguna"}
-            alerta={!!c.saldoDj.tope && c.usadoDj > c.saldoDj.tope} />
+            /* `supero` y no una comparación escrita aquí: con un tope del 0%
+               no hay `tope` que comparar y CUALQUIER declaración jurada ya es
+               un exceso. La cabecera no lo marcaba y la pestaña sí decía «a
+               devolver»: dos respuestas a la misma pregunta. */
+            alerta={c.saldoDj.supero} />
           <CeldaFondo k="Facturas y boletas"
             v={c.totCmp ? fmt(c.totCmp) : "—"}
-            sub={c.totCmp ? `${c.nCmp} comprobante(s)` : "todavía ninguna"} />
+            sub={c.errCmp ? "no se pudo leer" : c.totCmp ? `${c.nCmp} comprobante(s)` : "todavía ninguna"} />
           <CeldaFondo k="Acta firmada" v={dmy(ent.fecha_firma_acta)} />
           <CeldaFondo k="Desembolso" v={ent.fecha_desembolso ? dmy(ent.fecha_desembolso) : "⚠ falta"}
             alerta={!ent.fecha_desembolso} />
@@ -184,7 +206,9 @@ export default async function FondoLayout(
         { href: base, label: "📍 Vida del fondo", n: c.nVida || null, avisos: c.avisoVida },
         { href: `${base}/financiera`, label: "💰 Financiera", avisos: c.avisosFin },
         { href: `${base}/audiovisual`, label: "🎥 Audiovisual" },
-        { href: `${base}/entregables`, label: "📦 Entregables", n: c.nCompromisos },
+        /* `|| null` para que un cero no se pinte: «📦 Entregables · 0» se lee como
+           un dato, y lo que dice es que no hay ninguna cláusula cargada. */
+        { href: `${base}/entregables`, label: "📦 Entregables", n: c.nCompromisos || null },
         { href: `${base}/equipo`, label: "👥 Equipo", n: c.nEquipo },
         { href: `${base}/porrol`, label: "💼 Por rol", n: c.nRoles || null, avisos: c.avisoRoles },
       ]} />

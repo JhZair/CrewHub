@@ -6711,3 +6711,8 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
    Atenuarlo con el resto sería esconder la respuesta a la pregunta que la
    propia fila plantea — el mismo criterio que en el bloque «Hoy». */
 .acta-fila.no-aplica .acta-est{opacity:1}
+
+/* Las pestañas del fondo son ENLACES desde que cada una es su propia ruta.
+   `.vtab` se escribió para <button> y no lleva `text-decoration:none` — se ve
+   en que `.vtab-drive`, que sí es un <a>, tiene que ponerlo. */
+.vtabs-nav a.vtab{text-decoration:none}

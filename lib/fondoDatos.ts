@@ -120,9 +120,12 @@ export const traerPerfiles = cache(async () => {
    lib/equipoFondo.ts, hay que volver aquí. */
 export const traerRheFlaco = cache(async (id: string) => {
   const supabase = createClient();
-  const { data } = await supabase.from("rhe")
+  /* Se devuelve la RESPUESTA entera, no `data || []`. Un array vacío por un
+     error se lee como «no hay ninguno», y en estas tres tablas eso es la
+     lectura más peligrosa: la cabecera diría «—» mientras la pestaña dice «no
+     se pudo leer». Un cero que en realidad es «no lo sé». */
+  return await supabase.from("rhe")
     .select("persona_id,monto,url").eq("postulacion_id", id);
-  return (data || []) as any[];
 });
 
 /** Solo los ids: para saber qué recibos tienen una persona reconocible. */
@@ -134,23 +137,28 @@ export const traerPersonasIds = cache(async () => {
 
 export const traerGastoDjFlaco = cache(async (id: string) => {
   const supabase = createClient();
-  const { data } = await supabase.from("gasto_dj")
+  /* Se devuelve la RESPUESTA entera, no `data || []`. Un array vacío por un
+     error se lee como «no hay ninguno», y en estas tres tablas eso es la
+     lectura más peligrosa: la cabecera diría «—» mientras la pestaña dice «no
+     se pudo leer». Un cero que en realidad es «no lo sé». */
+  return await supabase.from("gasto_dj")
     .select("importe,dj_numero,dj_url").eq("postulacion_id", id);
-  return (data || []) as any[];
 });
 
 export const traerComprobanteFlaco = cache(async (id: string) => {
   const supabase = createClient();
-  const { data } = await supabase.from("comprobante")
+  /* Se devuelve la RESPUESTA entera, no `data || []`. Un array vacío por un
+     error se lee como «no hay ninguno», y en estas tres tablas eso es la
+     lectura más peligrosa: la cabecera diría «—» mientras la pestaña dice «no
+     se pudo leer». Un cero que en realidad es «no lo sé». */
+  return await supabase.from("comprobante")
     .select("importe,url").eq("postulacion_id", id);
-  return (data || []) as any[];
 });
 
 export const traerEstadoCuentaFlaco = cache(async (id: string) => {
   const supabase = createClient();
-  const { data } = await supabase.from("estado_cuenta")
+  return await supabase.from("estado_cuenta")
     .select("periodo,url,imagenes").eq("postulacion_id", id).order("periodo");
-  return (data || []) as any[];
 });
 
 /* La versión VIGENTE del presupuesto: contra ella se rinde y se gira, y es la
@@ -230,7 +238,7 @@ import { sinPruebas, textoSinPruebas } from "@/lib/pruebasFondo";
 import { agruparPorRol, filasPorPersona, itemsDeReferencia } from "@/lib/rolesPresupuesto";
 import { saldoDJ } from "@/lib/dj";
 import { plazoRendicion, rendicionVencida } from "@/lib/fondos";
-import { vidaDelFondo } from "@/lib/vidaFondo";
+import { vidaDelFondo, porResponder } from "@/lib/vidaFondo";
 import { hoyLima } from "@/lib/fechas";
 
 export type Aviso = { n: number; txt: string; tono?: "rojo" | "ambar" };
@@ -262,9 +270,20 @@ export function cifrasCabecera(ent: any, d: Awaited<ReturnType<typeof datosCabec
      de recibos con personas, sin necesitar el equipo declarado ni el previsto.
      Se usa `resumenEquipo` y no una suma escrita aquí para que la cabecera y la
      pestaña Equipo no puedan contestar distinto. */
-  const integrantes = integrantesDeFondo([], d.rhe as any[], [], d.personas as any);
+  /* ⚠ UN CERO POR UN ERROR NO ES UN CERO ──
+     Si la consulta falló, la celda NO dice «—»: dice que no se pudo leer. Un
+     guion se lee como «todavía nada» y esa es justo la lectura que hace cerrar
+     un fondo contra una cifra que el sistema no llegó a mirar. */
+  const rheFilas = ((d.rhe as any).data || []) as any[];
+  const djFilas = ((d.dj as any).data || []) as any[];
+  const cmpFilas = ((d.cmp as any).data || []) as any[];
+  const ecFilas = ((d.ec as any).data || []) as any[];
+  const errRhe = ((d.rhe as any).error?.message || null) as string | null;
+  const errCmp = ((d.cmp as any).error?.message || null) as string | null;
+
+  const integrantes = integrantesDeFondo([], rheFilas, [], d.personas as any);
   const resEquipo = resumenEquipo(integrantes);
-  const totRhe = (d.rhe as any[]).reduce((s, r) => s + Number(r.monto || 0), 0);
+  const totRhe = rheFilas.reduce((s, r) => s + Number(r.monto || 0), 0);
   /* Los recibos que no dicen de quién son no entran en el cruce: si los hay, la
      cifra de arriba no es toda la plata girada, y eso se dice en vez de
      callarlo. */
@@ -274,16 +293,19 @@ export function cifrasCabecera(ent: any, d: Awaited<ReturnType<typeof datosCabec
      falta el declarado y el previsto: una persona sin recibos no suma plata
      pero sí es del equipo. */
   const nEquipo = integrantesDeFondo(
-    d.eq.post as any[], d.rhe as any[], d.eq.previstos as any[], d.personas as any).length;
+    d.eq.post as any[], rheFilas, d.eq.previstos as any[], d.personas as any).length;
 
-  const usadoDj = (d.dj as any[]).reduce((s, g) => s + Number(g.importe || 0), 0);
+  const usadoDj = djFilas.reduce((s, g) => s + Number(g.importe || 0), 0);
   const topes: any = (d.topes as any)?.data || null;
-  const djError = ((d.topes as any)?.error?.message || null) as string | null;
+  /* Los DOS errores, como en la pestaña: sin la tabla de gastos o sin los
+     topes, el saldo que se enseñaría sería «te queda el tope entero», que es
+     la lectura más peligrosa del único número que obliga a devolver plata. */
+  const djError = ((d.dj as any).error?.message || (d.topes as any)?.error?.message || null) as string | null;
   const convTope = Array.isArray(topes?.conv) ? topes.conv[0] : topes?.conv;
   const saldoDj = saldoDJ(ent.monto_adjudicado, usadoDj,
     { tope_dj_pct: topes?.tope_dj_pct }, { tope_dj_pct: convTope?.tope_dj_pct });
 
-  const totCmp = (d.cmp as any[]).reduce((s, c) => s + Number(c.importe || 0), 0);
+  const totCmp = cmpFilas.reduce((s, c) => s + Number(c.importe || 0), 0);
 
   /* ── LOS DOS AVISOS DE FINANCIERA ──
      Rojo: falta el papel del banco, hay que pedírselo. Ámbar: la fila está
@@ -294,14 +316,13 @@ export function cifrasCabecera(ent: any, d: Awaited<ReturnType<typeof datosCabec
      más papeles, y sin él la ficha enseñaba avisos que el menú y la tarjeta del
      fondo no enseñaban. */
   const faltanEc = faltanEstados(
-    (d.ec as any[]).map(e => e.periodo), ent.fecha_desembolso, hoy, cierreDe(ent));
+    ecFilas.map(e => e.periodo), ent.fecha_desembolso, hoy, cierreDe(ent));
   const nFaltaEc = seVigila(ent) ? faltanEc.faltan.length : 0;
   const avisoEc: Aviso | null = nFaltaEc > 0
     ? { n: nFaltaEc, txt: `${nFaltaEc} estado(s) de cuenta del banco sin cargar` } : null;
 
   const docsTodos = sinPruebas({
-    estados: d.ec as any[], rhe: d.rhe as any[],
-    facturas: d.cmp as any[], dj: d.dj as any[],
+    estados: ecFilas, rhe: rheFilas, facturas: cmpFilas, dj: djFilas,
   });
   const docsEc = seVigila(ent) ? docsTodos : { estados: 0, rhe: 0, facturas: 0, dj: 0, total: 0 };
   const avisoDocs: Aviso | null = docsEc.total > 0
@@ -325,13 +346,31 @@ export function cifrasCabecera(ent: any, d: Awaited<ReturnType<typeof datosCabec
      El contador sale de `vidaDelFondo`, no de sumar las dos consultas: los
      correos que no piden nada no entran en la línea, así que sumarlos daría un
      número que no cuadra con lo que se ve al abrir. */
+  /* ⚠ SIN LA MIGRACIÓN, LA LÍNEA NO SE INVENTA ──
+     Con las dos consultas caídas, `vidaDelFondo` seguiría construyendo una
+     línea con las fechas del acta: la pestaña diría «·4» y al abrirla se leería
+     «falta correr db/vida-fondo.sql». Una etiqueta que anuncia contenido que la
+     propia pestaña se niega a enseñar. */
+  const faltaVida = !!((d.hitosQ as any).error || (d.cartasQ as any).error);
   const hitos = ((d.hitosQ as any).data || []) as any[];
   const cartas = ((d.cartasQ as any).data || []) as any[];
-  const lineaVida = vidaDelFondo(ent, hitos as any, cartas as any, hoy);
-  const porResponder = lineaVida.filter((h: any) => h.porResponder).length;
-  const avisoVida: Aviso[] | null = porResponder
-    ? [{ n: porResponder, txt: `${porResponder} carta(s) de DAFO con plazo sin contestar` }]
-    : null;
+  const lineaVida = faltaVida ? [] : vidaDelFondo(ent, hitos as any, cartas as any, hoy);
+  /* ⚠ Con `porResponder` de lib/vidaFondo, NO con un `filter` a mano.
+     Aquí hubo un `lineaVida.filter(h => h.porResponder)` sobre un campo que no
+     existe en `Hito`: siempre daba cero, y el aviso de cartas de DAFO con el
+     plazo vencido —lo único de esta ficha que se convierte en una sanción— no
+     podía encenderse nunca. El `(h: any)` fue lo que impidió que el compilador
+     lo dijera. */
+  const porContestar = porResponder(lineaVida, hoy);
+  const avisoVida: Aviso[] | null = faltaVida
+    ? [{ n: 1, txt: "Falta correr db/vida-fondo.sql", tono: "ambar" as const }]
+    : porContestar.vencidas.length
+      ? [{ n: porContestar.vencidas.length, tono: "rojo" as const,
+           txt: `${porContestar.vencidas.length} carta(s) de DAFO con el plazo de respuesta vencido` }]
+      : porContestar.todas.length
+        ? [{ n: porContestar.todas.length, tono: "ambar" as const,
+             txt: `${porContestar.todas.length} carta(s) de DAFO por contestar` }]
+        : null;
 
   const plazo = plazoRendicion(ent);
   const estadoEjec = ent.fecha_rendicion_real
@@ -343,8 +382,8 @@ export function cifrasCabecera(ent: any, d: Awaited<ReturnType<typeof datosCabec
   return {
     plazo, estadoEjec,
     girado: resEquipo.montoGirado, girados: resEquipo.girados, rheSinPersona,
-    usadoDj, saldoDj, nDj: (d.dj as any[]).length, djError,
-    totCmp, nCmp: (d.cmp as any[]).length,
+    usadoDj, saldoDj, nDj: djFilas.length, djError,
+    totCmp, nCmp: cmpFilas.length, errCmp, errRhe,
     nEquipo, nVida: lineaVida.length, nCompromisos: d.nCompromisos, nRoles: rolesPre.length,
     avisosFin: [avisoEc, avisoDocs].filter(Boolean) as Aviso[],
     avisoVida, avisoRoles,
