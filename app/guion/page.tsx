@@ -50,7 +50,7 @@ export default async function IndiceGuion({
      terminadas» tiene que poder enlazarse y volver con el botón de atrás. */
   const todas = searchParams?.todas === "1";
 
-  const [proys, trats] = await Promise.all([
+  const [proys, trats, posts] = await Promise.all([
     /* Las películas. Flacas: aquí solo se pintan su nombre, su tipo —que decide
        hasta dónde tiene que llegar el documento— y su etapa.
        ⚠ `.in("tipo", TIPOS_CON_GUION)`: sin esto entraban los videojuegos y la
@@ -72,6 +72,17 @@ export default async function IndiceGuion({
       .select("id,proyecto_id,postulacion_id,nombre,version,nivel,estado," +
         "presentado_en,vigente,url,nota,creado_en,secs:guion_secuencias(count)")
       .order("creado_en", { ascending: false }).limit(techo(900) + 1),
+    /* ── LOS FONDOS DE CADA PELÍCULA ──
+       Para poder marcar aquí mismo a cuál se presentó un documento. Estaba
+       fuera «porque es una decisión de expediente», y era una fricción tonta:
+       la decisión se toma escribiendo, mirando el documento, y mandar a otra
+       pantalla para desplegar un selector de tres opciones es la clase de
+       rodeo que hace que el dato no se rellene nunca.
+       Flaca —tres columnas— y ordenada por código: no se pinta ningún fondo
+       aquí, solo se llena un desplegable. */
+    supabase.from("postulaciones")
+      .select("id,codigo,proyecto_id,conv:convocatorias(nombre,codigo)")
+      .order("codigo").limit(techo(600)),
   ]);
 
   /* ⚠ Los dos errores se enseñan y NO se tragan con `|| []`. Sin la lista de
@@ -95,6 +106,21 @@ export default async function IndiceGuion({
   const cuentas: Record<string, number> | null = eTrat
     ? null
     : Object.fromEntries(listaTrats.map(t => [t.id, t._n]));
+
+  /* Los fondos, agrupados por película en un solo recorrido. Un `filter` por
+     cada una sería recorrer la lista tantas veces como proyectos haya.
+     ⚠ Si esta consulta falla NO se rompe nada: el desplegable sale vacío y el
+     resto de la pantalla funciona igual. Es decoración, no diagnóstico. */
+  const fondosDe = new Map<string, { id: string; codigo: string | null; nombre: string }[]>();
+  for (const q of ((posts.data || []) as any[])) {
+    if (!q.proyecto_id) continue;
+    const conv = Array.isArray(q.conv) ? q.conv[0] : q.conv;
+    fondosDe.set(q.proyecto_id, [...(fondosDe.get(q.proyecto_id) || []), {
+      id: q.id,
+      codigo: q.codigo || null,
+      nombre: conv?.nombre || conv?.codigo || "fondo sin código",
+    }]);
+  }
 
   const peliculas = ((proys.data || []) as any[]).slice(0, techo(400))
     .filter(p => todas || peliculaViva(p));
@@ -225,10 +251,10 @@ export default async function IndiceGuion({
                   `fondos` va vacío a propósito: marcar a qué concurso se
                   presentó un documento es una decisión de expediente, y se toma
                   donde está el expediente. */}
-              {/* ⚠ Solo SUS cuentas, no el mapa entero. `Tratamientos` es de
-                  cliente, así que cada película abre una frontera y todo lo que
-                  reciba se serializa en el payload: pasar el mapa completo a
-                  cada una lo repetía N veces.
+              {/* ⚠ Solo SUS cuentas y SUS fondos, no los mapas enteros.
+                  `Tratamientos` es de cliente, así que cada película abre una
+                  frontera y todo lo que reciba se serializa en el payload:
+                  pasar los mapas completos a cada una los repetía N veces.
                   `puedeBorrar={false}`: desde el índice se crea —quien entra a
                   «voy a escribir» y ve una película sin nada tiene que poder
                   empezar ahí— pero no se destruye. Borrar un tratamiento se
@@ -236,6 +262,7 @@ export default async function IndiceGuion({
                   toma con el proyecto delante. */}
               <Tratamientos proyectoId={p.id} tipoProyecto={p.tipo}
                 tratamientos={f.tratamientos} puedeBorrar={false}
+                fondos={fondosDe.get(p.id) || []}
                 cuentas={cuentas
                   ? Object.fromEntries(f.tratamientos.map(t => [t.id, cuentas[t.id] ?? 0]))
                   : null} />
