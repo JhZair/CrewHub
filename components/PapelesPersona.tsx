@@ -49,6 +49,7 @@ const HUECOS: { k: "contrato" | "seguro"; tipoPorDefecto: TipoPapel; txt: string
 
 export default function PapelesPersona({
   postulacionId, personaId, nombre, papeles, hoy, compacto = false, puedeEditar = true,
+  otroVinculo = null,
 }: {
   postulacionId: string;
   personaId: string;
@@ -67,6 +68,14 @@ export default function PapelesPersona({
    *  usan pasan `true`, pero un panel que registra Y BORRA documentos de una
    *  rendición no puede ser la única puerta del fondo que no mira el permiso. */
   puedeEditar?: boolean;
+  /** ── EL OTRO VÍNCULO ──
+   *  Yajaida dirige Y conduce; Roxana produce Y conduce. Su contrato es UNO
+   *  —la clave es (fondo, persona, tipo)— y la misma burbuja se ve en las dos
+   *  pestañas. Eso es correcto, pero no es evidente: quien la vea en el equipo
+   *  artístico sin contrato intentará registrarle uno «de conductora» y
+   *  chocará con «esa persona ya tiene registrado ese documento», que es
+   *  cierto y críptico. Se dice antes de que pase. */
+  otroVinculo?: { esCrew: boolean; que: string | null } | null;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [nuevo, setNuevo] = useState<TipoPapel | null>(null);
@@ -161,6 +170,20 @@ export default function PapelesPersona({
             📎 Documentos de {nombre}
             <span className="pap-panel-cl">cláusula {CLAUSULA_PAPELES} del acta</span>
           </div>
+          {/* Un contrato por persona, no por función: el acta pide
+              documentación del personal vinculado, no un documento por cada
+              cosa que alguien hace. Lo que sí es aparte es la cesión de imagen
+              —el contrato paga el trabajo, la cesión autoriza usar la cara— y
+              por eso vive en el equipo artístico y no aquí. */}
+          {otroVinculo && (
+            <div className="pap-doble">
+              {otroVinculo.esCrew
+                ? <>También está en el <b>equipo</b>{otroVinculo.que ? <> como <b>{otroVinculo.que}</b></> : null}.</>
+                : <>También está en el <b>equipo artístico</b>{otroVinculo.que ? <> como <b>{otroVinculo.que}</b></> : null}.</>}
+              {" "}Este contrato es el mismo en los dos sitios: no hace falta registrar otro.
+              {otroVinculo.esCrew ? "" : " Su cesión de imagen sí va aparte, en el equipo artístico."}
+            </div>
+          )}
           {error && <div className="err-inline" style={{ marginBottom: 6 }}>⚠ {error}</div>}
 
           {papeles.length === 0 && !nuevo && (

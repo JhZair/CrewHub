@@ -14,7 +14,11 @@ import {
   COLOR_CESION, ROTULO_CESION, ROTULO_PROCEDENCIA, ROTULO_SITUACION, CLAUSULA_CESION,
   type FilaReparto, type CesionEstado, type Situacion,
 } from "@/lib/repartoFondo";
-import { fechaDiaLima } from "@/lib/fechas";
+/* `fechaDia` y NO `fechaDiaLima`: `situacion_en` es una columna `date`, y
+   `fechaDiaLima` no pasa por `aFecha` — parsea la cadena como medianoche UTC y
+   en Lima cae el día ANTERIOR. Una candidata descartada el 1 de enero salía
+   «descartada el 31 dic.», del año pasado. */
+import { fechaDia } from "@/lib/fechas";
 import PapelesPersona from "@/components/PapelesPersona";
 import { papelesPorPersona, type Papel } from "@/lib/papeles";
 
@@ -55,7 +59,7 @@ import { papelesPorPersona, type Papel } from "@/lib/papeles";
 
 export default function RepartoFondo({
   postulacionId, proyectoId, filas, personas, tipo, error: errServidor,
-  papeles, hoy, papelesError = null,
+  papeles, hoy, papelesError = null, cargoEnNomina,
 }: {
   postulacionId: string;
   /** El proyecto del fondo, para poder traer su reparto. Si el fondo no cuelga
@@ -84,6 +88,11 @@ export default function RepartoFondo({
    *  zona y pintar vencido un seguro que no lo está. */
   hoy: string;
   papelesError?: string | null;
+  /** Persona → su cargo en la NÓMINA del fondo, para quien está en las dos
+   *  listas. Yajaida es Directora Responsable y además conduce: verla aquí sin
+   *  contrato, sin saber que ya lo tiene como directora, lleva a registrarle
+   *  uno duplicado. */
+  cargoEnNomina?: Map<string, string | null>;
 }) {
   const R = rotuloReparto(tipo);
   const ROLES = rolesReparto(tipo);
@@ -291,6 +300,13 @@ export default function RepartoFondo({
                 </span>
               )}
               {f.especialidad && <span className="badge rep-esp">{f.especialidad}</span>}
+              {/* Hace la película además de salir en ella. Sin esto, ver a la
+                  directora en el reparto se lee como un error de carga. */}
+              {sit === "confirmada" && f.persona_id && cargoEnNomina?.has(f.persona_id) && (
+                <span className="rep-doble" title="También está en el equipo del fondo: hace la película, además de salir en ella. Su contrato es uno solo.">
+                  👥 {cargoEnNomina.get(f.persona_id) || "en el equipo"}
+                </span>
+              )}
               {/* La procedencia solo tiene sentido en quien ya está dentro: de
                   una candidata la pregunta no es «¿venía en el expediente?». */}
               {sit === "confirmada" && (
@@ -302,10 +318,10 @@ export default function RepartoFondo({
                 </span>
               )}
               {sit === "descartada" && f.situacion_en && (
-                /* `fechaDiaLima` y no la cadena cruda: «2026-08-27» obliga a
+                /* Con formato y no la cadena cruda: «2026-08-27» obliga a
                    traducir mentalmente en una lista que se lee de un vistazo, y
                    el resto de la aplicación ya escribe «27 ago.». */
-                <span className="rep-proc" title="Cuándo se descartó">descartada el {fechaDiaLima(f.situacion_en)}</span>
+                <span className="rep-proc" title="Cuándo se descartó">descartada el {fechaDia(f.situacion_en)}</span>
               )}
             </div>
 
@@ -338,7 +354,10 @@ export default function RepartoFondo({
                 despliega EN FLUJO y necesita el ancho de la fila. */}
             {sit === "confirmada" && f.persona_id && !papelesError && (
               <PapelesPersona postulacionId={postulacionId} personaId={f.persona_id}
-                nombre={L.titulo} papeles={papelDe.get(f.persona_id) || []} hoy={hoy} compacto />
+                nombre={L.titulo} papeles={papelDe.get(f.persona_id) || []} hoy={hoy} compacto
+                otroVinculo={cargoEnNomina?.has(f.persona_id)
+                  ? { esCrew: true, que: cargoEnNomina.get(f.persona_id) || null }
+                  : null} />
             )}
           </div>
 

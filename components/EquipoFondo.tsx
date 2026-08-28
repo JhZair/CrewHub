@@ -9,7 +9,8 @@ import HiloRendicion from "@/components/HiloRendicion";
 import VistaRapida from "@/components/VistaRapida";
 import VerAdjunto from "@/components/VerAdjunto";
 import PapelesPersona from "@/components/PapelesPersona";
-import { papelesPorPersona, type Papel } from "@/lib/papeles";
+import { papelesPorPersona, papelArtisticoPorPersona, type Papel } from "@/lib/papeles";
+import { type FilaReparto } from "@/lib/repartoFondo";
 import { ROLES_EQUIPO as ROLES } from "@/lib/rolesEquipo";
 import { claseEstado, rotuloEstado } from "@/lib/estados";
 import {
@@ -42,7 +43,7 @@ const soles = (n: number) => `S/ ${Math.round(n).toLocaleString("es-PE")}`;
 export default function EquipoFondo({
   postulacionId, equipoPost, rhes, previstos, personas,
   personasTabla, vistasPersona, etapas, rubros, casosPorPersona, puedeEditar,
-  papeles, hoy, papelesError = null,
+  papeles, hoy, papelesError = null, reparto = [],
 }: {
   postulacionId: string;
   equipoPost: any[];
@@ -66,6 +67,11 @@ export default function EquipoFondo({
    *  «sin contrato» para todo el mundo, que es una acusación falsa; o peor, si
    *  algún día se pintaran en gris, «no hace falta». */
   papelesError?: string | null;
+  /** El equipo artístico del fondo, SOLO para saber quién está en las dos
+   *  listas. Yajaida dirige y conduce; Roxana produce y conduce. Su contrato es
+   *  uno solo y la misma burbuja se ve en las dos pestañas — decirlo evita que
+   *  alguien intente registrar un segundo «de conductora». */
+  reparto?: FilaReparto[];
   /** Catálogo mínimo para poner cara y nombre a quien salga de un recibo. */
   personas: PersonaMin[];
   /** El directorio ENTERO, con todas sus columnas: es lo que explora el
@@ -99,6 +105,7 @@ export default function EquipoFondo({
     [equipoPost, rhes, previstos, personas]);
   /* Un solo recorrido para las veintitantas filas. */
   const papelDe = useMemo(() => papelesPorPersona(papeles), [papeles]);
+  const papelArtistico = useMemo(() => papelArtisticoPorPersona(reparto), [reparto]);
   const res = useMemo(() => resumenEquipo(todos), [todos]);
 
   /* Las dos secciones que pediste, cortadas por su origen: lo que se declaró
@@ -177,6 +184,15 @@ export default function EquipoFondo({
               </span>
             )}
             <span className="badge eqf-cargo">{x.cargo}</span>
+            {/* Sale en la película además de hacerla. En KAWSAY WARMI las dos
+                realizadoras entran en el relato, y quien lea esta lista para
+                cotejar recibos tiene que poder saber por qué esa persona
+                aparece también en 🎥 Audiovisual. */}
+            {papelArtistico.has(x.persona.id) && (
+              <span className="eqf-doble" title="También está en el equipo artístico: sale en la película, además de hacerla. Su contrato es uno solo; su cesión de imagen va aparte.">
+                🎭 {papelArtistico.get(x.persona.id) || "en el equipo artístico"}
+              </span>
+            )}
             {/* El TIPO no es adorno: distingue al equipo estable del
                 colaborador eventual, y de eso depende qué se le reclama a cada
                 uno. Reclamarle un CV con enfoque a quien hizo un flete es la
@@ -280,7 +296,10 @@ export default function EquipoFondo({
             {!papelesError && (
               <PapelesPersona postulacionId={postulacionId} personaId={x.persona.id}
                 nombre={x.persona.nombre} papeles={papelDe.get(x.persona.id) || []}
-                hoy={hoy} puedeEditar={puedeEditar} />
+                hoy={hoy} puedeEditar={puedeEditar}
+                otroVinculo={papelArtistico.has(x.persona.id)
+                  ? { esCrew: false, que: papelArtistico.get(x.persona.id) || null }
+                  : null} />
             )}
           </div>
 

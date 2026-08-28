@@ -38,7 +38,7 @@ export default async function EquipoPage({ params }: { params: { id: string } })
   const { data: { session } } = await supabase.auth.getSession();
   const { data: { user: quien } } = await supabase.auth.getUser();
 
-  const [ent, rf, eqp, eqf, pc, vtp, s4, cp, cmp, gdj, pap] = await Promise.all([
+  const [ent, rf, eqp, eqf, pc, vtp, s4, cp, cmp, gdj, pap, rep] = await Promise.all([
     /* `traerFondo` está cacheada y el layout ya la llamó en este mismo render:
        esto NO es un viaje extra. Hacen falta el presupuesto vivo —de él salen
        los rubros del fondo y lo que contiene cada uno—, la categoría de la
@@ -123,6 +123,14 @@ export default async function EquipoPage({ params }: { params: { id: string } })
        pero un tope escrito se ve al leerlo; uno heredado, no. */
     supabase.from("postulacion_papel")
       .select("id,persona_id,tipo,estado,url,firmado_en,vigente_desde,vigente_hasta,motivo,nota")
+      .eq("postulacion_id", params.id).limit(techo(500)),
+    /* El equipo artístico, SOLO para marcar a quien está en las dos listas.
+       Yajaida dirige y conduce; Roxana produce y conduce. Su contrato es UNO
+       —la clave es (fondo, persona, tipo)— y la misma burbuja se ve en las dos
+       pestañas: decirlo evita que alguien intente registrarle un segundo «de
+       conductora» y choque con un error que es cierto y críptico.
+       Tres columnas y nada más: aquí no se pinta el reparto, solo se cruza. */
+    supabase.from("postulacion_reparto").select("persona_id,rol,situacion")
       .eq("postulacion_id", params.id).limit(techo(500)),
   ]);
 
@@ -338,6 +346,10 @@ export default async function EquipoPage({ params }: { params: { id: string } })
           papeles={(pap.data || []) as any[]}
           papelesError={(pap as any)?.error?.message || null}
           hoy={hoyLima()}
+          /* Sin `|| []` que trague el error: si esta consulta falla, lo único
+             que se pierde es la marca «también en el equipo artístico», que es
+             informativa. No hay número que pueda mentir por su ausencia. */
+          reparto={(rep.data || []) as any[]}
           equipoPost={(eqp.data || []) as any[]}
           /* Con su hilo, igual que en «Pagos al personal»: los códigos
              de recibo de esta lista abren la MISMA conversación, y sin

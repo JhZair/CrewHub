@@ -10,6 +10,7 @@ import { techo } from "@/lib/api";
 import { hoyLima } from "@/lib/fechas";
 import { traerFondo, traerPerfilActual, traerVersiones } from "@/lib/fondoDatos";
 import { repartir, resumenCesiones, rotuloReparto } from "@/lib/repartoFondo";
+import { cargoDeNominaPorPersona } from "@/lib/papeles";
 
 /* ── 🎥 AUDIOVISUAL ──
  *
@@ -40,7 +41,7 @@ export default async function AudiovisualPage({ params }: { params: { id: string
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [ent, perfilActual, versiones, cp, pl, eqp, rep, per, pap] = await Promise.all([
+  const [ent, perfilActual, versiones, cp, pl, eqp, rep, per, pap, rheN, eqfN] = await Promise.all([
     /* Cacheadas y ya llamadas por el layout en este mismo render: en carga dura
        NO cuestan un viaje. Hacen falta el tipo de proyecto y la categoría de la
        convocatoria —de ellas salen las etapas— y la versión vigente del
@@ -99,6 +100,16 @@ export default async function AudiovisualPage({ params }: { params: { id: string
     supabase.from("postulacion_papel")
       .select("id,persona_id,tipo,estado,url,firmado_en,vigente_desde,vigente_hasta,motivo,nota")
       .eq("postulacion_id", params.id).limit(techo(500)),
+    /* ── LA NÓMINA, FLACA Y SOLO PARA CRUZAR ──
+       Quién de este reparto hace ADEMÁS la película. `postulacion_equipo` ya
+       viene arriba (`eqp`), así que aquí solo faltan los recibos girados y el
+       personal previsto. Una columna cada una: no se pinta nada de esto, se
+       cruza. Sin la marca, ver a la directora en el reparto se lee como un
+       error de carga. */
+    supabase.from("rhe").select("persona_id")
+      .eq("postulacion_id", params.id).limit(techo(1000)),
+    supabase.from("equipo_fondo").select("persona_id,cargo")
+      .eq("postulacion_id", params.id),
   ]);
 
   const esAdmin = !!((perfilActual as any)?.es_admin || (perfilActual as any)?.es_finanzas);
@@ -145,6 +156,15 @@ export default async function AudiovisualPage({ params }: { params: { id: string
   const ces = repError ? null : resumenCesiones(reparto);
   const partido = repError ? null : repartir(reparto);
   const rotulo = rotuloReparto((ent as any)?.proy?.tipo || null);
+
+  /* El cargo de quien está también en la nómina. El DECLARADO manda sobre el
+     apuntado a mano, igual que en lib/equipoFondo.ts: uno está firmado en el
+     expediente y el otro es una nota nuestra. Lo ordena `cargoDeNominaPorPersona`. */
+  const cargoEnNomina = cargoDeNominaPorPersona(
+    (eqp.data || []) as any[],
+    (eqfN.data || []) as any[],
+    (rheN.data || []) as any[],
+  );
 
   // Versiones del cronograma con su autor resuelto.
   const versCrono = (versiones as any[])
@@ -201,7 +221,8 @@ export default async function AudiovisualPage({ params }: { params: { id: string
                datos. */
             papeles={(pap.data || []) as any[]}
             papelesError={(pap as any)?.error?.message || null}
-            hoy={hoyLima()} />
+            hoy={hoyLima()}
+            cargoEnNomina={cargoEnNomina} />
         </Plegable>
       </div>
 

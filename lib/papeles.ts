@@ -280,3 +280,71 @@ export function recuento54(vinculadas: Vinculada[], papeles: Papel[], hoy: strin
 /** La cláusula del acta donde se rinde todo esto. Escrita una vez: la nombran
  *  la pestaña Entregables, la de Equipo y la de Audiovisual. */
 export const CLAUSULA_PAPELES = "5.4";
+
+/* ══════════════ QUIEN ESTÁ EN LAS DOS LISTAS ══════════════
+ *
+ * Yajaida dirige Y conduce. Roxana produce Y conduce. Están en la nómina —con
+ * su RHE de Directora Responsable y de Productora— y en el equipo artístico,
+ * porque en KAWSAY WARMI las realizadoras entran en el relato: viajan, se
+ * encuentran, y ese viaje es el hilo que articula las historias.
+ *
+ * ── UN SOLO CONTRATO, DOS SITIOS DONDE SE VE ──
+ * La clave de `postulacion_papel` es (fondo, persona, tipo), así que su
+ * contrato es UNO: la misma burbuja aparece en 👥 Equipo y en 🎥 Audiovisual, y
+ * en el recuento de la 5.4 cuentan una vez. Eso es lo correcto —el acta pide
+ * documentación del personal vinculado, no un contrato por función— pero NO es
+ * evidente mirando la pantalla: quien vea a Yajaida en el equipo artístico sin
+ * contrato puede intentar registrarle uno «de conductora» y chocar con «esa
+ * persona ya tiene registrado ese documento», que es cierto y críptico.
+ *
+ * Lo que falta no es un modelo distinto: es DECIRLO. Cada fila dice que esa
+ * persona también está en la otra lista, y con qué.
+ *
+ * ⚠ La cesión de imagen SÍ es aparte, y no la toca esto: el contrato paga el
+ * trabajo, la cesión autoriza usar la cara. Roxana necesita las dos, y por eso
+ * viven en tablas distintas.
+ */
+
+/** El otro vínculo de una persona: `cargo` si la fila que se está mirando es la
+ *  artística, `papel` si es la del crew. `null` cuando solo tiene uno. */
+export type OtroVinculo = { esCrew: boolean; que: string | null };
+
+/** Índice persona → su papel en el equipo artístico (solo confirmadas: una
+ *  candidata todavía no es un vínculo). Lo consume la pestaña 👥 Equipo. */
+export function papelArtisticoPorPersona(reparto: FilaReparto[]): Map<string, string | null> {
+  const m = new Map<string, string | null>();
+  for (const f of reparto) {
+    if (situacionDe(f) !== "confirmada") continue;
+    const q = Array.isArray(f.persona ?? f.per) ? (f.persona ?? f.per)[0] : (f.persona ?? f.per);
+    const id = f.persona_id || q?.id;
+    if (!id) continue;
+    /* Si ya estaba, se queda el primero: una persona con dos filas artísticas
+       en el mismo fondo no debería existir —hay un índice único— pero si
+       existiera, cambiar de rótulo según el orden de la consulta sería peor que
+       enseñar uno solo. */
+    if (!m.has(id)) m.set(id, (f.rol || "").trim() || null);
+  }
+  return m;
+}
+
+/** Índice persona → su cargo en la nómina. Lo consume la pestaña 🎥
+ *  Audiovisual. El cargo DECLARADO manda sobre el apuntado a mano, igual que en
+ *  lib/equipoFondo.ts: uno está firmado en el expediente y el otro es una nota
+ *  nuestra. Por eso los declarados se meten al final, pisando. */
+export function cargoDeNominaPorPersona(
+  declarados: { persona_id?: string | null; cargo?: string | null; persona?: any }[],
+  previstos: { persona_id?: string | null; cargo?: string | null }[],
+  conRecibo: { persona_id?: string | null }[],
+): Map<string, string | null> {
+  const m = new Map<string, string | null>();
+  /* Primero quien solo aparece por un recibo: trabajó aquí —manda el hecho—
+     aunque nadie le haya escrito un cargo. */
+  for (const r of conRecibo) if (r.persona_id && !m.has(r.persona_id)) m.set(r.persona_id, null);
+  for (const p of previstos) if (p.persona_id) m.set(p.persona_id, (p.cargo || "").trim() || null);
+  for (const d of declarados) {
+    const q = Array.isArray(d.persona) ? d.persona[0] : d.persona;
+    const id = d.persona_id || q?.id;
+    if (id) m.set(id, (d.cargo || "").trim() || null);
+  }
+  return m;
+}
