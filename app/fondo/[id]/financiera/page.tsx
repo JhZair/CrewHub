@@ -5,6 +5,7 @@ import { sinPruebas, textoSinPruebas } from "@/lib/pruebasFondo";
 import { hoyLima } from "@/lib/fechas";
 import { mapaAlias } from "@/lib/personas";
 import Realtime from "@/components/Realtime";
+import AnclaHash from "@/components/AnclaHash";
 import Plegable from "@/components/Plegable";
 import Presupuesto from "@/components/Presupuesto";
 import RendicionFondo from "@/components/RendicionFondo";
@@ -431,6 +432,16 @@ export default async function FinancieraPage({ params }: { params: { id: string 
           sabe filtrar por columnas. Escucharla entera significaría refrescar
           esta pantalla con cada cambio de plata de cualquier fondo, que es
           justo lo que se vino a quitar. Su bloque se refresca con el resto. */}
+      {/* Del ancla de la fila a la sección que hay que abrir. Ver AnclaHash: el
+          evento existía desde hace meses y no lo escuchaba nadie, porque se
+          gritaba el nombre de la FILA y los plegables esperan el suyo. */}
+      <AnclaHash secciones={{
+        comprobante: [`fondo:${params.id}:rendicion`, `fondo:${params.id}:comprobantes`],
+        gasto_dj: [`fondo:${params.id}:rendicion`, `fondo:${params.id}:dj`],
+        rhe: [`fondo:${params.id}:rendicion`],
+        estado_cuenta: [`fondo:${params.id}:rendicion`],
+        movimiento_banco: [`fondo:${params.id}:movbanco`],
+      }} />
       <Realtime tablas={[
         { tabla: "estado_cuenta", filtro: `postulacion_id=eq.${params.id}` },
         { tabla: "rhe", filtro: `postulacion_id=eq.${params.id}` },
@@ -458,7 +469,7 @@ export default async function FinancieraPage({ params }: { params: { id: string 
         </Plegable>
       </div>
       <div style={{ scrollMarginTop: 12 }}>
-        <Plegable id={`fondo:${params.id}:movbanco`} titulo="🏦 Movimientos del banco" abiertoPorDefecto={false}
+        <Plegable id={`fondo:${params.id}:movbanco`} ancla={`fondo:${params.id}:movbanco`} titulo="🏦 Movimientos del banco" abiertoPorDefecto={false}
           resumen={dim(movBanco.length ? `${movBanco.length} movimientos · comisiones ${fmt(totComision)}` : "sin movimientos")}>
           <MovimientosBanco postulacionId={params.id} esAdmin={esAdmin}
             movimientos={conHilo(movBanco, hMb) as any} userId={user.id} hiloError={hiloError} />
@@ -473,7 +484,7 @@ export default async function FinancieraPage({ params }: { params: { id: string 
             declaraciones y comprobantes— y lo que falta para los
             S/ 200,000. Es la única línea de toda la página que contesta
             «¿cómo vamos?» sin abrir nada. */}
-        <Plegable id={`fondo:${params.id}:rendicion`}
+        <Plegable id={`fondo:${params.id}:rendicion`} ancla={`fondo:${params.id}:rendicion`}
           titulo={<>🧾 Rendición del fondo{burbujas}</>} abiertoPorDefecto={true}
           resumen={(() => {
             const estimulo = (ent as any)?.monto_adjudicado ? parseFloat((ent as any).monto_adjudicado) : 0;
@@ -529,7 +540,7 @@ export default async function FinancieraPage({ params }: { params: { id: string 
               jerarquía visual: el resumen del plegado —«te quedan S/ X»— es
               el dato que hay que ver sin abrir nada, porque se consulta antes
               de subir a rodar y no cuando se rinde. */}
-          <Plegable nivel={2} id={`fondo:${params.id}:dj`} titulo="📝 Declaraciones juradas" abiertoPorDefecto={true}
+          <Plegable nivel={2} id={`fondo:${params.id}:dj`} ancla={`fondo:${params.id}:dj`} titulo="📝 Declaraciones juradas" abiertoPorDefecto={true}
             /* El resumen se pinta esté el panel abierto o cerrado, así que
                tiene que mirar el error igual que el interior. Sin eso, una
                consulta caída enseñaba «quedan S/ 40,000 de S/ 40,000» en la
@@ -556,7 +567,7 @@ export default async function FinancieraPage({ params }: { params: { id: string 
               de la cabecera. El color es lo que le dice a un ojo que
               recorre la columna cuáles son las cifras que se suman entre
               sí, y tenerlas de dos colores obligaba a leer para saberlo. */}
-          <Plegable nivel={2} id={`fondo:${params.id}:comprobantes`} titulo="🧾 Facturas y boletas" abiertoPorDefecto={false}
+          <Plegable nivel={2} id={`fondo:${params.id}:comprobantes`} ancla={`fondo:${params.id}:comprobantes`} titulo="🧾 Facturas y boletas" abiertoPorDefecto={false}
             resumen={cmpError ? dim("⚠ no se pudo leer")
               : comprobantes.length ? (
                 <>
