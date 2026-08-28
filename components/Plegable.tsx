@@ -76,7 +76,25 @@ export default function Plegable({ id, ancla, titulo, resumen, abiertoPorDefecto
       }
     };
     window.addEventListener("plg:todos", onTodos);
-    return () => window.removeEventListener("plg:todos", onTodos);
+    /* ── «ÁBRETE, QUE HAY ALGO DENTRO QUE MIRAR» ──
+       Distinto de `plg:abrir`, que va por la prop `ancla` y lo usa el
+       expediente. Este va por el `id` —que TODOS los plegables tienen, porque
+       es su clave de memoria— y lo dispara quien llega con un ancla de fila:
+       una factura, un recibo. Sin esto, el aviso aterrizaba en una fila que
+       existe en el documento pero vive dentro de un `hidden`, o sea invisible
+       y sin caja: `scrollIntoView` sobre ella no hace nada, en silencio.
+       Solo ABRE. Nunca cierra: quien viene a ver una fila no puede llevarse
+       por delante lo que el otro tenía desplegado. */
+    const onAbrirId = (e: Event) => {
+      if ((e as CustomEvent).detail !== id) return;
+      setAbierto(true);
+      try { localStorage.setItem(llave, "1"); } catch { /* da igual */ }
+    };
+    window.addEventListener("plg:abrir-id", onAbrirId);
+    return () => {
+      window.removeEventListener("plg:todos", onTodos);
+      window.removeEventListener("plg:abrir-id", onAbrirId);
+    };
   }, [id, llave]);
 
   const alternar = () => {
@@ -86,7 +104,13 @@ export default function Plegable({ id, ancla, titulo, resumen, abiertoPorDefecto
   };
 
   return (
-    <section className={`plg n${nivel} ${abierto ? "on" : ""} ${tinte ? "plg--tinte" : ""}`} id={ancla}
+    /* `data-plg` con el id de memoria: es lo que permite a quien llega con un
+       ancla subir por los ancestros y abrir los que estén plegados, sin tener
+       que mantener a mano un mapa de qué fila vive dentro de qué sección — que
+       es lo que se intentó primero y se queda desactualizado al primer cambio
+       (los grupos por persona de la rendición ni siquiera tienen nombre fijo). */
+    <section data-plg={id}
+      className={`plg n${nivel} ${abierto ? "on" : ""} ${tinte ? "plg--tinte" : ""}`} id={ancla}
       style={tinte ? ({ ["--plg-tinte" as any]: tinte }) : undefined}>
       <button className="plg-cab" onClick={alternar}
         title={abierto ? "Plegar" : "Desplegar"} aria-expanded={abierto}>

@@ -280,6 +280,11 @@ export function cifrasCabecera(ent: any, d: Awaited<ReturnType<typeof datosCabec
   const cmpFilas = ((d.cmp as any).data || []) as any[];
   const ecFilas = ((d.ec as any).data || []) as any[];
   const errRhe = ((d.rhe as any).error?.message || null) as string | null;
+  /* El cuarto, que se había quedado fuera: si `estado_cuenta` falla, `ecFilas`
+     queda vacío, `faltanEstados` concluye que faltan TODOS los meses y la
+     pestaña Financiera enciende una burbuja roja con un número inventado. Un
+     aviso que sale de no haber podido preguntar es peor que no avisar. */
+  const errEc = ((d.ec as any).error?.message || null) as string | null;
   const errCmp = ((d.cmp as any).error?.message || null) as string | null;
 
   const integrantes = integrantesDeFondo([], rheFilas, [], d.personas as any);
@@ -293,7 +298,9 @@ export function cifrasCabecera(ent: any, d: Awaited<ReturnType<typeof datosCabec
   /* Cuánta gente hay en el fondo, para la burbuja de la pestaña. Aquí SÍ hacen
      falta el declarado y el previsto: una persona sin recibos no suma plata
      pero sí es del equipo. */
-  const nEquipo = integrantesDeFondo(
+  /* Con los recibos caídos, el equipo saldría corto —los que solo aparecen por
+     un recibo desaparecen— y un número corto se lee como un hecho. Se calla. */
+  const nEquipo = errRhe ? null : integrantesDeFondo(
     d.eq.post as any[], rheFilas, d.eq.previstos as any[], d.personas as any).length;
 
   const usadoDj = djFilas.reduce((s, g) => s + Number(g.importe || 0), 0);
@@ -318,7 +325,8 @@ export function cifrasCabecera(ent: any, d: Awaited<ReturnType<typeof datosCabec
      fondo no enseñaban. */
   const faltanEc = faltanEstados(
     ecFilas.map(e => e.periodo), ent.fecha_desembolso, hoy, cierreDe(ent));
-  const nFaltaEc = seVigila(ent) ? faltanEc.faltan.length : 0;
+  /* Sin poder leer los estados no se cuenta nada: ver `errEc`. */
+  const nFaltaEc = errEc ? 0 : seVigila(ent) ? faltanEc.faltan.length : 0;
   const avisoEc: Aviso | null = nFaltaEc > 0
     ? { n: nFaltaEc, txt: `${nFaltaEc} estado(s) de cuenta del banco sin cargar` } : null;
 

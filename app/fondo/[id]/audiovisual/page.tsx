@@ -33,7 +33,6 @@ export default async function AudiovisualPage({ params }: { params: { id: string
      Sin `miId` se pierde el «no me refresques por lo que escribo yo».
      Las dos son de sesión, no de base: no cuestan un viaje a Supabase. */
   const { data: { session } } = await supabase.auth.getSession();
-  const { data: { user: quien } } = await supabase.auth.getUser();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
@@ -101,7 +100,7 @@ export default async function AudiovisualPage({ params }: { params: { id: string
         { tabla: "cronograma_actividades", filtro: `postulacion_id=eq.${params.id}` },
         { tabla: "version_fondo", filtro: `postulacion_id=eq.${params.id}` },
       ]}
-        token={session?.access_token} miId={quien?.id} />
+        token={session?.access_token} miId={user.id} />
       <p className="fondo-nat-sub">La obra que hay que entregar: el rodaje de dos años y su registro.</p>
       <div style={{ scrollMarginTop: 12 }}>
         <Plegable id={`fondo:${params.id}:crono`} titulo="📅 Cronograma de ejecución" abiertoPorDefecto={true}

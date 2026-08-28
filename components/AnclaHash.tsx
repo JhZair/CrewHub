@@ -7,64 +7,75 @@ import { useEffect } from "react";
    Un aviso sobre un comentario en una factura lleva a
    `/fondo/<id>/financiera#comprobante-<uuid>`. El navegador sabe saltar a un
    ancla él solo — pero solo si el elemento está VISIBLE, y en esta pantalla
-   casi nunca lo está: las filas viven dentro de secciones plegadas, y
-   «Facturas y boletas» arranca cerrada. Un `display:none` no se salta.
+   casi nunca lo está: las filas viven dentro de secciones plegadas, y varias
+   arrancan cerradas. Un elemento dentro de un `hidden` no tiene caja, así que
+   `scrollIntoView` sobre él no hace absolutamente nada, y sin dar error.
 
-   ── EL FALLO QUE ESTO ARREGLA YA EXISTÍA ──
-   `TabsPanel` hacía este trabajo y emitía `plg:abrir` con el ancla de la FILA
-   (`comprobante-<uuid>`), mientras que `Plegable` solo reacciona si el detalle
-   coincide con SU propia prop `ancla`… que ninguno de los plegables de esta
-   ficha recibía. O sea: el evento se emitía, nadie lo escuchaba, y el aviso
-   aterrizaba en una fila oculta dentro de una sección cerrada. No daba error
-   —el elemento existe en el documento— así que nadie lo notó.
+   ── EL FALLO QUE ESTO ARREGLA YA EXISTÍA, Y EL PRIMER ARREGLO TAMPOCO IBA ──
+   `TabsPanel` hacía este trabajo y gritaba `plg:abrir` con el ancla de la
+   FILA, mientras que `Plegable` solo reacciona a SU propia prop `ancla` — que
+   ninguno de los de esta ficha recibía. El evento salía y no lo escuchaba
+   nadie.
+   El primer intento de arreglarlo fue un mapa «prefijo de fila → secciones que
+   abrir». Dos problemas: se queda desactualizado al primer cambio, y no puede
+   nombrar los grupos por persona de la rendición, que son dinámicos. Además
+   gritaba en el efecto de montaje, o sea ANTES de que los plegables hubieran
+   registrado sus oyentes: otra vez el evento sin nadie escuchando.
 
-   Aquí se traduce: del prefijo de la fila se deduce QUÉ sección hay que abrir,
-   y a esa se le grita. Tres cosas que el navegador no hace solo:
-     1. abrir la sección plegada,
-     2. bajar con calma (el salto seco no dice de dónde vienes),
-     3. y resaltar la fila — sin eso, llegar al comentario correcto en un hilo
-        de treinta iguales no se distingue de llegar a otro.
+   ── LO QUE HACE AHORA: SUBIR POR EL DOM ──
+   Encuentra la fila, y desde ella sube abriendo cada sección plegada que se
+   encuentre por el camino. No hay mapa que mantener: la respuesta a «¿dentro
+   de qué está esto?» la tiene el documento, que es donde no puede
+   desactualizarse.
 
-   ⚠ Se escucha también `hashchange`: si el lector YA está en esta pantalla, un
+   ⚠ El primer intento va con un `setTimeout(0)` y no directo: los efectos de
+   React corren de hijo a padre y por orden de árbol, así que gritar dentro del
+   efecto de montaje es gritar antes de que los plegables escuchen. Con la cola
+   de tareas de por medio, ya están todos montados.
+
+   ⚠ Y se escucha `hashchange`: si el lector YA está en esta pantalla, un
    enlace a la misma ruta con otro hash no remonta nada y React no se entera.
-   Sin esto, el aviso de algo que tienes abierto se pulsa y no pasa nada — que
-   es justo el caso más frecuente.
    ══════════════════════════════════════════════════════════════════════════ */
 
-export default function AnclaHash({ secciones }: {
-  /** prefijo de la fila → las secciones que hay que abrir para verla, DE FUERA
-   *  ADENTRO. Son varias porque los plegables anidan: «Facturas y boletas»
-   *  vive dentro de «Rendición», y abrir solo la de dentro deja la fila igual
-   *  de escondida.
-   *  Ej.: `{ comprobante: ["fondo:<id>:rendicion", "fondo:<id>:comprobantes"] }`. */
-  secciones: Record<string, string[]>;
-}) {
+export default function AnclaHash() {
   useEffect(() => {
     const aplica = () => {
       const ancla = decodeURIComponent(String(window.location.hash || "").replace(/^#/, ""));
       if (!ancla) return;
-      /* El prefijo es lo que va antes del primer guion: `comprobante-<uuid>`.
-         Los uuid llevan guiones, así que se corta por el PRIMERO y no se
-         parte por todos. */
-      const prefijo = ancla.split("-")[0];
-      for (const seccion of secciones[prefijo] || []) {
-        window.dispatchEvent(new CustomEvent("plg:abrir", { detail: seccion }));
+      const el = document.getElementById(ancla);
+      if (!el) return;
+
+      /* Abrir de FUERA ADENTRO: los plegables anidan y abrir el de dentro
+         mientras el de fuera sigue cerrado no enseña nada. Se recogen subiendo
+         y se despachan al revés. */
+      const ids: string[] = [];
+      for (let n: HTMLElement | null = el.parentElement; n; n = n.parentElement) {
+        const id = n.getAttribute?.("data-plg");
+        if (id) ids.push(id);
       }
-      /* En el fotograma siguiente: la sección se acaba de abrir en este mismo
-         render y su contenido todavía no está en el documento. */
+      for (const id of ids.reverse()) {
+        window.dispatchEvent(new CustomEvent("plg:abrir-id", { detail: id }));
+      }
+
+      /* En el fotograma siguiente: las secciones se acaban de abrir en este
+         mismo render y el navegador todavía no ha rehecho el layout, así que
+         la fila aún no tiene caja a la que desplazarse. */
       requestAnimationFrame(() => {
-        const el = document.getElementById(ancla);
-        if (!el) return;
         el.scrollIntoView({ behavior: "smooth", block: "center" });
+        /* Un resalte que se apaga solo. Sin él, llegar al comentario correcto
+           en un hilo de treinta iguales no se distingue de llegar a otro. */
         el.classList.add("ancla-hit");
         window.setTimeout(() => el.classList.remove("ancla-hit"), 2600);
       });
     };
-    aplica();
+
+    const t = window.setTimeout(aplica, 0);
     window.addEventListener("hashchange", aplica);
-    return () => window.removeEventListener("hashchange", aplica);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(secciones)]);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener("hashchange", aplica);
+    };
+  }, []);
 
   return null;
 }

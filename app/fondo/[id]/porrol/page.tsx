@@ -33,7 +33,6 @@ export default async function PorRolPage({ params }: { params: { id: string } })
      Sin `miId` se pierde el «no me refresques por lo que escribo yo».
      Las dos son de sesión, no de base: no cuestan un viaje a Supabase. */
   const { data: { session } } = await supabase.auth.getSession();
-  const { data: { user: quien } } = await supabase.auth.getUser();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
@@ -97,7 +96,7 @@ export default async function PorRolPage({ params }: { params: { id: string } })
         { tabla: "rhe", filtro: `postulacion_id=eq.${params.id}` },
         { tabla: "version_fondo", filtro: `postulacion_id=eq.${params.id}` },
       ]}
-        token={session?.access_token} miId={quien?.id} />
+        token={session?.access_token} miId={user.id} />
       <p className="fondo-nat-sub">
         Cuánto suma cada rol en el presupuesto, cuánto se le giró y lo que falta — para saber
         qué RHE toca girar.
@@ -108,7 +107,7 @@ export default async function PorRolPage({ params }: { params: { id: string } })
           al lado tenía su panel. */}
       <div className="card">
         <RolesPresupuesto postulacionId={params.id} items={itemsRol as any}
-          personas={personasCat} rhe={rheFondo as any} esAdmin={esAdmin}
+          personas={personasCat} rhe={(rheFondo.data || []) as any} esAdmin={esAdmin}
           /* Contra qué presupuesto habla, dicho en pantalla: si la
              vigente y el vivo ya no suman lo mismo, hay una modificación
              a medio hacer y las cifras de aquí son las de antes. */
