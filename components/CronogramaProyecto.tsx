@@ -21,6 +21,8 @@ import { sinBot } from "@/lib/personas";
 import { type Etapa, ETAPAS_CINE, nombreEtapa } from "@/lib/etapas";
 import { DIAS_AVISO_DEF } from "@/lib/plazo";
 import { opcionesResp } from "@/lib/personas";
+import { repartirCasos, resumenCasos, casoCerrado, type CasoMin } from "@/lib/casosActividad";
+import { rotuloEstado, claseEstado } from "@/lib/estados";
 /* `nombreEtapa` queda solo de respaldo: ver `nomEtapa` abajo. */
 
 /* Las etapas ya no son fijas: llegan por prop (la categoría de la convocatoria
@@ -450,9 +452,18 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
     router.refresh();
   };
 
-  const soltarCaso = async (actId: string) => {
+  /* Los casos de una fila, normalizados. El embed de PostgREST puede llegar
+     como objeto si la relación se resolviera a uno solo, así que se blinda: un
+     `.map` sobre un objeto revienta la pantalla entera. */
+  const casosDe = (a: any): CasoMin[] =>
+    Array.isArray(a?.casos) ? a.casos : a?.casos ? [a.casos] : [];
+
+  /* Recibe el ID DEL CASO, no el de la actividad: ahora hay varios y cada chip
+     suelta el suyo. */
+  const soltarCaso = async (casoId: string) => {
+    if (ocupado) return;
     setOcupado(true); setError("");
-    const res: any = await soltarCasoDeActividad(actId, dueno, duenoId);
+    const res: any = await soltarCasoDeActividad(casoId, dueno, duenoId);
     setOcupado(false);
     if (fallo(res)) return;
     router.refresh();
@@ -881,18 +892,44 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
                   </div>
                   <span className="badge" style={{ color: col, background: "#1c1c2c", whiteSpace: "nowrap", flexShrink: 0 }}>{txt}</span>
                   <span style={{ display: "flex", gap: 8, flexShrink: 0, alignItems: "center" }}>
-                    {a.publicacion_id && (
-                      <>
-                        <Link href={`/caso/${a.publicacion_id}`} style={{ color: "var(--accent)", fontSize: 12, fontWeight: 600 }}>
-                          caso →
-                        </Link>
-                        {/* Soltar, no borrar: el caso sigue existiendo por su
-                            cuenta y la actividad vuelve a «planificada», o sea
-                            que el bot vuelve a vigilarla. */}
-                        <button title="Soltar el caso de esta actividad (el caso no se borra)"
-                          style={{ color: "var(--dim)", fontSize: 11 }} disabled={ocupado}
-                          onClick={() => soltarCaso(a.id)}>⛓︎✕</button>
-                      </>
+                    {/* ── UN CHIP POR CASO, CON LA CARA DE QUIEN LO LLEVA ──
+                        Una actividad tiene los casos que haga falta: el permiso,
+                        el transporte y el rodaje. Antes cabía uno solo y la fila
+                        decía «caso →» sin más, así que «¿quién está en esto?»
+                        obligaba a abrirlo.
+                        Mismo chip que en Entregables, a propósito: son la misma
+                        relación —trabajo colgando de una fila— y con dos diseños
+                        distintos habría que aprenderlos dos veces.
+                        Los CERRADOS se pintan también, atenuados: en un
+                        cronograma, lo hecho es justo lo que hay que enseñar. */}
+                    {casosDe(a).length > 0 && (
+                      <span className="cr-casos" title={resumenCasos(casosDe(a)).texto}>
+                        {repartirCasos(casosDe(a)).todos.map((c: CasoMin) => (
+                          <span key={c.id}
+                            className={`cr-caso fila-cap${casoCerrado(c) ? " cr-caso-off" : ""}`}
+                            title={`${c.titulo || "Caso"} — ${c.resp?.nombre || "sin responsable"}`}>
+                            {/* El enlace cubre el chip por debajo en vez de
+                                envolverlo: la ✕ es un <button>, y un botón
+                                dentro de un <a> es HTML inválido — rompe la
+                                hidratación y los dos clics se pelean. */}
+                            <Link href={`/caso/${c.id}`} className="fila-cubre" aria-label="Abrir el caso" />
+                            {c.resp?.nombre
+                              ? <Avatar size={15} nombre={c.resp.nombre} src={c.resp.avatar_url} color={c.resp.color} />
+                              : <span className="cr-nadie" title="Sin responsable">·</span>}
+                            {c.estado && (
+                              <span className={`pill st-${claseEstado(c.estado, c.tipo || "tarea")}`}
+                                style={{ fontSize: 9 }}>
+                                {rotuloEstado(c.estado, c.tipo || "tarea")}
+                              </span>
+                            )}
+                            {/* Soltar, no borrar: el caso sigue vivo en el
+                                tablero, solo deja de colgar de aquí. */}
+                            <button title="Soltar este caso de la actividad (no se borra)"
+                              className="cr-caso-x" disabled={ocupado}
+                              onClick={() => soltarCaso(c.id)}>✕</button>
+                          </span>
+                        ))}
+                      </span>
                     )}
                     {/* ── ATAR UNO QUE YA EXISTE ──
                         `materializar` (▶) abre uno nuevo; esto ata el que ya
@@ -909,7 +946,10 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
                         pintan y el formulario no edita el estado. La fila se
                         quedaba inmovilizada para siempre.
                         Atar no fuerza nada: el estado lo deduce el caso. */}
-                    {!a.publicacion_id && a.estado !== "cancelada" && atando !== a.id && (
+                    {/* Sin la condición de «no tiene caso»: ahora caben varios,
+                        y el segundo es justo el que antes obligaba a soltar el
+                        primero. */}
+                    {a.estado !== "cancelada" && atando !== a.id && (
                       <button title="Atar un caso que ya existe en el tablero"
                         style={{ color: "var(--dim)", fontSize: 12 }} disabled={ocupado}
                         onClick={() => abrirAtar(a.id)}>⛓</button>
@@ -984,7 +1024,7 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
                             quieta partiendo el bloque en dos.
                             Solo sin caso atado: con caso, el estado lo manda el
                             caso, y la acción lo dice si alguien lo intenta. */}
-                        {a.estado === "finalizada" && !a.publicacion_id && (
+                        {a.estado === "finalizada" && !casosDe(a).length && (
                           <button title={dueno === "postulacion"
                             ? "Volver a planificarla: aún no está hecha"
                             /* En proyecto y convocatoria el bot de la mañana
@@ -1116,12 +1156,15 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
                   {/* Trabajar el caso al vuelo, sin salir del Gantt. Va DENTRO
                       del rótulo, que tiene ancho fijo: fuera descuadraría el
                       eje temporal. Mismo criterio que en la Agenda. */}
-                  {a.publicacion_id && <VistaRapida pubId={a.publicacion_id} />}
+                  {/* El primer caso vivo, o el primero que haya: en el Gantt no
+                      cabe una fila de chips, y la vista rápida es un vistazo,
+                      no el índice. La lista de arriba los enseña todos. */}
+                  {casosDe(a)[0] && <VistaRapida pubId={repartirCasos(casosDe(a)).todos[0].id} />}
                   <span className="gt-nombre-txt">
                     {a.clase === "continua" ? "🔁 "
                       : a.estado === "finalizada" ? "✅ " : a.estado === "planificada" ? "" : "🟣 "}
-                    {a.publicacion_id
-                      ? <Link href={`/caso/${a.publicacion_id}`} style={{ color: "var(--text)" }}>{a.nombre}</Link>
+                    {casosDe(a).length
+                      ? <Link href={`/caso/${repartirCasos(casosDe(a)).todos[0].id}`} style={{ color: "var(--text)" }}>{a.nombre}</Link>
                       : a.nombre}
                   </span>
                   {/* Solo el avatar: en veinte filas, veinte nombres repetidos

@@ -1,4 +1,19 @@
 -- ============================================================
+--  ⚠⚠ OBSOLETO — NO CORRER. Lo deshace db/crono-casos.sql.
+--
+--  Este archivo creaba `uq_crono_caso` para impedir que dos actividades se
+--  repartieran el mismo caso, sobre `cronograma_actividades.publicacion_id`.
+--  Esa columna dejó de mandar: una actividad tiene VARIOS casos, y la relación
+--  vive ahora en `publicaciones.actividad_id`. La guarda sigue siendo cierta
+--  —un caso pertenece a una actividad— pero la sostiene el modelo, no un
+--  índice: un caso solo tiene una `actividad_id`.
+--
+--  Se conserva el archivo porque el índice llegó a correrse en producción y
+--  db/crono-casos.sql empieza haciéndole `drop index if exists`; borrarlo de
+--  aquí dejaría ese `drop` hablando de algo que no está en ninguna parte.
+--  ============================================================
+
+-- ============================================================
 --  db/crono-caso-unico.sql — UN CASO, UNA ACTIVIDAD
 --
 --  `cronograma_actividades.publicacion_id` apunta al caso de esa actividad.

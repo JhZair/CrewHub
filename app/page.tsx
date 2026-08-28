@@ -30,6 +30,7 @@ import {
 import Link from "@/components/Enlace";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
+import { conCasoPrincipal } from "@/lib/casosActividad";
 
 export const metadata: Metadata = { title: "⬡ CrewHub+" };
 
@@ -296,14 +297,17 @@ export default async function Portada({ searchParams }: {
     /* Las actividades de cronograma que caen hoy. `pub` viaja para respetar el
        archivado del caso: ver `actividadFueraDeAgenda`. */
     supabase.from("cronograma_actividades")
-      .select("id,nombre,fecha_inicio,fecha_fin,etapa,estado,publicacion_id,responsable,equipo," +
+      .select("id,nombre,fecha_inicio,fecha_fin,etapa,estado,responsable,equipo," +
         "proy:proyectos(id,nombre,nombre_corto)," +
         "conv:convocatorias(id,codigo,nombre)," +
         "postu:postulaciones(id,codigo,estado,proy:proyectos(nombre,nombre_corto))," +
         /* `responsable` del caso también: una actividad materializada suele no
            tener responsable propio —quien la asigna lo hace en el caso— y por
            eso «Rodaje de planos de apoyo» salía sin cara. */
-        "pub:publicaciones!publicacion_id(estado,archivado_en,responsable)")
+        /* Por `actividad_id` (ver el mismo cambio en la agenda): con la
+           columna vieja, la portada dejaba de ocultar la actividad cuyo caso ya
+           se resolvió y la pintaba dos veces. */
+        "casos:publicaciones!actividad_id(estado,archivado_en,responsable)")
       .neq("estado", "cancelada")
       /* Igual que los casos: ventana ancha y el día se afina con `loDeHoy`.
          Una actividad siempre tiene `fecha_inicio`, pero puede durar semanas,
@@ -602,7 +606,13 @@ export default async function Portada({ searchParams }: {
       };
     });
 
-  const hoyActs = ((actsHoyQ.data || []) as any[])
+  /* ── EL CASO PRINCIPAL, REHECHO DESDE `casos` ──
+     Esta pantalla habla de `a.publicacion_id` y `a.pub` en una docena de
+     sitios, y el modelo cambió debajo: la relación vive en
+     `publicaciones.actividad_id` y una actividad tiene varios casos.
+     `conCasoPrincipal` rehace esos dos campos aquí, en el punto de carga, y el
+     resto del archivo sigue leyendo lo de siempre. Ver lib/casosActividad. */
+  const hoyActs = conCasoPrincipal((actsHoyQ.data || []) as any[])
     .filter((a: any) => {
       const postu = a.postu as any;
       /* Las propuestas no van a la agenda: el cronograma de una postulación en

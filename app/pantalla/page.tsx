@@ -7,6 +7,7 @@ import { plazoDe, diasHasta } from "@/lib/plazo";
 import { BOT, sinBot } from "@/lib/personas";
 import type { Metadata } from "next";
 import { hoyLima } from "@/lib/fechas";
+import { conCasoPrincipal } from "@/lib/casosActividad";
 
 export const metadata: Metadata = { title: "📺 Pantalla" };
 
@@ -87,7 +88,9 @@ export default async function Pantalla() {
            una pared se mira de lejos y se cree. Ver `actividadFueraDeAgenda`. */
         .select("id,nombre,fecha_inicio,estado,publicacion_id," +
           "conv:convocatorias(codigo,nombre,anio)," +
-          "pub:publicaciones!publicacion_id(estado,archivado_en)")
+          /* Por `actividad_id`: la pared usa `actividadFueraDeAgenda`, que
+             sin el caso da false siempre y deja colgado lo ya terminado. */
+          "casos:publicaciones!actividad_id(estado,archivado_en)")
         .in("convocatoria_id", convIds).eq("clase", "hito_externo")
         /* Y las canceladas fuera: faltaba el filtro que sí tienen la agenda y
            el cronograma, así que un hito cancelado seguía en la cuenta atrás. */
@@ -97,7 +100,11 @@ export default async function Pantalla() {
   /* Se piden ocho y se enseñan cuatro: el filtro de vida se aplica DESPUÉS de
      traerlos —depende del caso, no de una columna—, y pidiendo cuatro justos
      la pared se habría quedado con dos el día que dos estuvieran archivados. */
-  const hitos = (hitosQ || []).filter((h: any) => !actividadFueraDeAgenda(h)).slice(0, 4);
+  /* `conCasoPrincipal` rehace `pub` desde `casos`: `actividadFueraDeAgenda` lo
+     lee, y sin él devolvía false siempre — o sea, la pared se quedaba con lo ya
+     resuelto colgado, que es justo lo que ese filtro vino a evitar. */
+  const hitos = conCasoPrincipal((hitosQ || []) as any[])
+    .filter((h: any) => !actividadFueraDeAgenda(h)).slice(0, 4);
 
   // ===== PULSO 🫀: carga por persona — para repartir, nunca ranking =====
   /* Aquí el bot llevaba meses saliendo en el pulso del equipo, con su barra de

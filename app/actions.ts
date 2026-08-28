@@ -38,6 +38,7 @@ import { hoyLima } from "@/lib/fechas";
 import { etapasDe, nombreEtapa } from "@/lib/etapas";
 import { plazoFondo } from "@/lib/plazoFondo";
 import { planear, motivoVersion, rotuloDias } from "@/lib/correrCronograma";
+import { estadoPorCasos } from "@/lib/casosActividad";
 import { TOPE_API, techo } from "@/lib/api";
 
 /* Crear o actualizar una entidad núcleo (proyecto/empresa/persona).
@@ -6984,6 +6985,19 @@ export async function cancelarActividadCrono(actId: string, dueno: string, dueno
        el índice único `uq_crono_caso` eso pasa de molesto a irreversible.
        El caso no se toca: sigue vivo en el tablero, que es donde se cierra. */
     .update({ estado: "cancelada", publicacion_id: null }).eq("id", actId);
+  /* ── Y SUS CASOS SE SUELTAN, TODOS ──
+     ⚠ Una fila cancelada no se pinta, así que un caso que siguiera colgando de
+     ella quedaría fuera del selector de «atar» para siempre y sin ningún botón
+     que lo liberase. Ya pasó una vez con la relación vieja (`publicacion_id`) y
+     volvería a pasar igual por la nueva si esto faltara.
+     Los casos NO se borran ni se cierran: siguen vivos en el tablero, que es
+     donde se decide qué hacer con ellos. */
+  /* `.select("id")` para saber si de verdad entró: un update bloqueado por RLS
+     no da error, devuelve cero filas — y aquí eso dejaría los casos
+     secuestrados en una fila cancelada e invisible, que es justo lo que este
+     bloque evita. Si no entra, se dice; la cancelación ya ocurrió. */
+  const { data: soltados, error: eSoltar } = await supabase.from("publicaciones")
+    .update({ actividad_id: null }).eq("actividad_id", actId).select("id");
   if (error) return { error: error.message };
   // Log con nombre (el trigger deja un estado genérico que la ficha filtra).
   if (antes) await supabase.from("actividad").insert({
@@ -7053,8 +7067,21 @@ export async function materializarActividad(actId: string, dueno: string, duenoI
     entidad_tipo: "publicacion", entidad_id: pub.id, tipo: "bot",
     detalle: { mensaje: "Caso creado desde el cronograma", regla: "cronograma" },
   });
+  /* ── LA RELACIÓN SE ESCRIBE EN EL CASO, Y SOLO AHÍ ──
+     `cronograma_actividades.publicacion_id` quedó obsoleta con
+     db/crono-casos.sql: una actividad tiene varios casos. NO se escribe, ni
+     siquiera «de paso»: si se escribiera, al soltar el caso quedaría apuntando
+     a uno que ya no cuelga de aquí, y el siguiente que lea esa columna creyendo
+     que sigue viva encontrará un dato falso. Se conserva como rastro de lo
+     atado hasta la migración; nada más.
+     El estado se pone a mano y no con `recalcularEstadoActividad`: el caso
+     acaba de crearse abierto, así que el resultado sería el mismo y esto ahorra
+     un viaje de ida y vuelta. */
+  const { error: eAtar } = await supabase.from("publicaciones")
+    .update({ actividad_id: actId }).eq("id", pub.id).select("id").single();
+  if (eAtar) return { error: `El caso se creó pero no quedó atado a la actividad: ${eAtar.message}` };
   await supabase.from("cronograma_actividades")
-    .update({ estado: "materializada", publicacion_id: pub.id }).eq("id", actId);
+    .update({ estado: "materializada" }).eq("id", actId);
 
   /* Materializar lo dispara una PERSONA (clic en "Materializar"), no el cron.
      Por eso lleva actor_nombre: sin él, la notificación caería como "del Bot" y
@@ -9259,44 +9286,36 @@ export async function cambiarEstado(pubId: string, estado: string) {
   if (error) return { error: error.message };
   if (!filas?.length) return { error: "No se pudo cambiar el estado (sin permiso o el caso ya no existe)." };
 
-  // Cierre de ida y vuelta: caso resuelto → actividad del cronograma finalizada
-  if (estado === "resuelta") {
-    /* ⚠ `.neq("estado","cancelada")` además de la de finalizada: sin ella, una
-       actividad CANCELADA que aún tuviera este caso atado resucitaba como
-       «finalizada» y volvía a la lista. Cancelar ya suelta el caso, así que hoy
-       no debería quedar ninguna; esto es la red por las que quedaran de antes. */
-    await supabase.from("cronograma_actividades")
-      .update({ estado: "finalizada" }).eq("publicacion_id", pubId)
-      .neq("estado", "finalizada").neq("estado", "cancelada");
-  } else {
+  /* ── CIERRE DE IDA Y VUELTA CON EL CRONOGRAMA ──
+     Antes esto escribía «finalizada» directamente sobre la actividad de este
+     caso. Ya no vale: una actividad tiene VARIOS casos, y cerrar uno no la
+     termina —el rodaje no está hecho si falta el permiso—. Así que se recalcula
+     con todos, en `recalcularEstadoActividad`, que es el único sitio donde vive
+     esa regla.
+     Sirve para los dos sentidos: resolver puede finalizarla, y reabrir puede
+     devolverla a `materializada`. Sin `siEra`, porque un caso que existe no
+     deja la actividad sin casos.
+     ⚠ El recálculo excluye las canceladas: una actividad cancelada que aún
+     tuviera este caso resucitaba como «finalizada» y volvía a la lista. */
+  {
+    const { data: laAct } = await supabase.from("publicaciones")
+      .select("actividad_id").eq("id", pubId).maybeSingle();
+    if (laAct?.actividad_id) await recalcularEstadoActividad(supabase, laAct.actividad_id);
+  }
+
+  if (estado !== "resuelta") {
     // Si deja de estar resuelto, reaparece en el feed de quien lo había ocultado
     await supabase.from("feed_ocultos").delete().eq("publicacion_id", pubId);
-    /* ── Y LA VUELTA, QUE FALTABA ──
-       El cierre solo iba en un sentido: resolver el caso finalizaba su
-       actividad, y REABRIRLO la dejaba finalizada. O sea que el cronograma
-       seguía diciendo que ese rodaje está hecho mientras su caso vuelve a estar
-       en curso, y no había ninguna pantalla para desmentirlo: el formulario de
-       la actividad no edita el estado.
-
-       ⚠ SOLO SI EL CASO VUELVE A ESTAR VIVO.
-       Este `else` cubre todo lo que no es `resuelta`, y ahí dentro está
-       `descartada`, que NO es «se reabrió»: es el OTRO final —«ya no aplica»,
-       lo dice lib/estados—. Devolver su actividad a `materializada` escribiría
-       que hay trabajo en marcha justo cuando se ha decidido que no lo hay, y no
-       es cosmético: `materializada` la vuelve a mover en ⏩ Correr fechas y le
-       enciende la barra del Gantt. Un caso descartado deja su actividad como
-       está; quien quiera, la cancela o la replanifica a mano.
-
-       ⚠ Y `.eq("estado","finalizada")` limita el alcance pero NO sabe quién
-       puso ese estado: un hito importado del CSV nace `finalizada` sin caso, y
-       si alguien le ata un caso y luego lo reabre, también pasa por aquí. Es
-       defendible —el caso está vivo, luego hay trabajo— pero conviene no creer
-       que esto solo deshace lo que hizo la rama de arriba. */
-    if (estado !== "descartada") {
-      await supabase.from("cronograma_actividades")
-        .update({ estado: "materializada" }).eq("publicacion_id", pubId)
-        .eq("estado", "finalizada");
-    }
+    /* ⚠ Aquí había un segundo apaño que devolvía la actividad a
+       «materializada» buscándola por `publicacion_id` —la columna obsoleta— y
+       excluyendo a mano el caso `descartada`. Sobra entero desde que el
+       recálculo de arriba corre en los dos sentidos, y estorbaba: escribía por
+       la relación vieja, así que en una actividad con varios casos decidía
+       mirando uno.
+       Y lo hace MEJOR: para `estadoPorCasos` un caso descartado cuenta como
+       cerrado, así que descartar el último termina la actividad y descartar uno
+       de tres la deja en marcha. La regla vieja necesitaba una excepción
+       escrita a mano para no equivocarse; esta no la necesita. */
   }
 
   /* 🔔 Al autor y al responsable. Dar por resuelto el caso de otro sin que se
@@ -11858,7 +11877,14 @@ export async function correrCronograma(f: {
      correrlo. Mejor quedarse quieto y decirlo. */
   const TOPE = techo(TOPE_API);
   const { data: acts } = await supabase.from("cronograma_actividades")
-    .select("id,nombre,etapa,fecha_inicio,fecha_fin,estado,publicacion_id")
+    /* ⚠ Los casos por `actividad_id`, NO por la columna vieja `publicacion_id`.
+       Con ella pasaban las dos cosas malas a la vez: una actividad nueva la
+       tiene NULL y su caso no se movía —volvía el renglón duplicado en la
+       agenda—, y una vieja cuyo caso ya se soltó la conserva rancia, así que
+       correr fechas PISABA el inicio y el límite de un caso que ya no tiene
+       nada que ver con esa actividad, en lote y sin que nadie mirara. */
+    .select("id,nombre,etapa,fecha_inicio,fecha_fin,estado," +
+      "casos:publicaciones!actividad_id(id,fecha_inicio)")
     .eq("postulacion_id", f.postulacionId)
     .limit(TOPE + 1);
   if (!acts?.length) return { error: "Este cronograma no tiene actividades." };
@@ -11924,15 +11950,18 @@ export async function correrCronograma(f: {
        sin que nadie mire. Se arregla donde se rompe.
        ⚠ Un hito no lleva `fecha_inicio` a propósito: es una fecha, no un tramo.
        Si se le pusiera aquí, dejaría de ser un hito al correrlo. */
-    const pubId = porId.get(m.act.id)?.publicacion_id;
-    if (pubId) {
-      const { data: pub } = await supabase.from("publicaciones")
-        .select("fecha_inicio").eq("id", pubId).maybeSingle();
+    /* TODOS sus casos, no «el» caso: una actividad tiene los que haga falta y
+       si el rodaje se corre dieciocho días, se corren los tres.
+       `fecha_inicio` viene en el embed para no pedirla otra vez: un hito no la
+       lleva a propósito —es una fecha, no un tramo— y ponérsela al correrlo lo
+       dejaría de ser. */
+    const suyos: any[] = (porId.get(m.act.id)?.casos as any[]) || [];
+    for (const c of suyos) {
       const { error: ePub } = await supabase.from("publicaciones")
         .update({
-          fecha_inicio: pub?.fecha_inicio ? m.ini : null,
+          fecha_inicio: c.fecha_inicio ? m.ini : null,
           fecha_limite: m.fin,
-        }).eq("id", pubId);
+        }).eq("id", c.id);
       if (ePub) fallos.push(`el caso de «${m.act.nombre}»: ${ePub.message}`);
       else casos++;
     }
@@ -12027,6 +12056,54 @@ export async function correrCronograma(f: {
   };
 }
 
+/* ── EL ESTADO DE UNA ACTIVIDAD SE RECALCULA CON TODOS SUS CASOS ──
+ *
+ * Un solo sitio, porque lo llaman cuatro: atar, soltar, resolver un caso y
+ * reabrirlo. Con la regla copiada en cuatro, el día que cambie se cambia en
+ * tres — y la que se olvide será la que alguien mire.
+ *
+ * La regla vive en lib/casosActividad (`estadoPorCasos`): FINALIZADA solo si
+ * todos están cerrados y hay al menos uno. Aquí solo se leen los casos y se
+ * escribe el resultado.
+ *
+ * ⚠ SIN CASOS NO SE INVENTA NADA. `estadoPorCasos` devuelve null, y entonces la
+ * actividad conserva su estado —puede ser un hito importado que nació
+ * finalizado— salvo que `siEra` diga lo contrario: soltar el último caso sí
+ * debe devolver a `planificada` la que estaba `materializada`, porque ese
+ * estado lo había puesto el atado y ya no hay nada que lo sostenga.
+ */
+async function recalcularEstadoActividad(
+  supabase: any, actId: string,
+  /** Solo para el caso «se quedó sin casos»: desde qué estado se permite
+   *  volver a `planificada`. Sin esto, soltar el último caso de una actividad
+   *  finalizada la reabriría. */
+  siEra?: string | null,
+) {
+  const { data: casos } = await supabase.from("publicaciones")
+    .select("id,estado,archivado_en").eq("actividad_id", actId).limit(techo(200));
+  const nuevo = estadoPorCasos((casos || []) as any);
+  if (nuevo) {
+    /* ⚠ `en_progreso` NO se pisa. `estadoPorCasos` solo sabe devolver
+       `materializada` o `finalizada`, y esto corre ahora en CADA cambio de
+       estado de cualquier caso: sin esta exclusión, una actividad que alguien
+       puso en marcha se degradaba a `materializada` en cuanto se tocara uno de
+       sus casos, perdiendo un dato que nadie volvería a poner.
+       Cuando todos se cierran sí manda el recálculo: `finalizada` es una
+       conclusión, no una preferencia. */
+    let q = supabase.from("cronograma_actividades")
+      .update({ estado: nuevo }).eq("id", actId).neq("estado", "cancelada");
+    if (nuevo === "materializada") q = q.neq("estado", "en_progreso");
+    await q;
+    return nuevo;
+  }
+  if (siEra === "materializada") {
+    await supabase.from("cronograma_actividades")
+      .update({ estado: "planificada" }).eq("id", actId).neq("estado", "cancelada");
+    return "planificada";
+  }
+  return null;
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
    ATAR UN CASO QUE YA EXISTE A UNA ACTIVIDAD DEL CRONOGRAMA
 
@@ -12036,7 +12113,8 @@ export async function correrCronograma(f: {
    quedaban dos objetos hablando del mismo trabajo, uno en cada pantalla, sin
    forma de juntarlos que no fuera SQL.
 
-   La relación ya existe en el modelo: `cronograma_actividades.publicacion_id`.
+   La relación vive en `publicaciones.actividad_id` (db/crono-casos.sql): una
+   actividad tiene los casos que haga falta, y cada caso cuelga de una sola.
    Atar es un `update` de una columna. Lo delicado no es el update: es sobre qué.
 
    ── POR QUÉ LA ACTIVIDAD PASA A «MATERIALIZADA» ──
@@ -12063,7 +12141,8 @@ export async function atarCasoAActividad(
     await Promise.all([
       supabase.from("cronograma_actividades")
         .select(`id,nombre,estado,publicacion_id,${col}`).eq("id", actId).maybeSingle(),
-      supabase.from("publicaciones").select("id,titulo,tipo,estado,archivado_en").eq("id", casoId).maybeSingle(),
+      supabase.from("publicaciones")
+        .select("id,titulo,tipo,estado,archivado_en,actividad_id").eq("id", casoId).maybeSingle(),
       supabase.from("publicacion_vinculos").select("entidad_id")
         .eq("publicacion_id", casoId).eq("entidad_tipo", dueno),
     ]);
@@ -12090,54 +12169,50 @@ export async function atarCasoAActividad(
     const donde = dueno === "postulacion" ? "fondo" : dueno;
     return { error: `Ese caso no está vinculado a este ${donde}. Vincúlalo primero desde el caso.` };
   }
-  if (act.publicacion_id === casoId) return {};
-  if (act.publicacion_id) {
-    return { error: "Esta actividad ya tiene un caso atado. Suéltalo antes de atar otro." };
-  }
+  if (act.estado === "cancelada") return { error: "Esa actividad está cancelada." };
   /* La UI ya no ofrece el botón en una cancelada, pero la acción es la frontera
      y el botón no: una llamada fabricada la resucitaría como «materializada». */
-  if (act.estado === "cancelada") return { error: "Esa actividad está cancelada." };
 
   /* ── UN CASO, UNA ACTIVIDAD ──
      Sin esto, atar el mismo caso a dos actividades dejaría las dos diciendo que
      ese trabajo es suyo, y `correrCronograma` movería sus fechas dos veces —la
      segunda pisando a la primera— sin que nada lo delatara. */
-  const qOtra = supabase.from("cronograma_actividades")
-    .select("id,nombre").eq("publicacion_id", casoId).neq("id", actId);
-  const { data: otra } = await qOtra;
-  if (otra?.length) {
-    return { error: `Ese caso ya está atado a «${otra[0].nombre}». Suéltalo de ahí primero.` };
+  /* ── UN CASO, UNA ACTIVIDAD ──
+     Al revés que antes: una actividad tiene los casos que haga falta, pero un
+     caso cuelga de UNA. Ahora lo sostiene el modelo —`actividad_id` es una sola
+     columna en el caso— así que esto no es una guarda de integridad sino un
+     mensaje que se entienda: sin él, atar un caso ajeno lo movería en silencio
+     de la actividad donde estaba. */
+  if (caso.actividad_id === actId) return {};
+  if (caso.actividad_id) {
+    const { data: otra } = await supabase.from("cronograma_actividades")
+      .select("nombre").eq("id", caso.actividad_id).maybeSingle();
+    return { error: `Ese caso ya cuelga de «${otra?.nombre || "otra actividad"}». Suéltalo de ahí primero.` };
   }
-  /* ⚠ Esta comprobación es un `select`, y un `select` pasa por RLS: si la otra
-     actividad está en un fondo que quien mira no puede leer, `otra` vuelve
-     vacío y el doble atado entra. Tampoco cierra la carrera entre dos pestañas.
-     Quien de verdad lo impide es el índice único `uq_crono_caso`
-     (db/crono-caso-unico.sql); esto está para dar un mensaje que se entienda en
-     vez del error de Postgres. El código 23505 de abajo es la red. */
+  /* ⚠ Ya no hace falta ningún índice para sostener esto: la relación vive en
+     UNA columna del caso, así que un caso no puede colgar de dos actividades
+     por construcción. `uq_crono_caso` existía para la relación vieja y
+     db/crono-casos.sql lo borra. Esto solo da un mensaje que se entienda en vez
+     de mover el caso en silencio de donde estaba. */
 
-  /* ── EL ESTADO LO DICE EL CASO ──
-     `materializada` significa «tiene caso y está en marcha». Atar un caso YA
-     RESUELTO y dejar la actividad en ese estado la deja diciendo que hay
-     trabajo abierto donde no lo hay, y para siempre: lo único que la pasaría a
-     `finalizada` es que el caso TRANSICIONE a resuelta, y esa transición ya
-     ocurrió antes de atar.
-     Es la misma lección que ya está escrita en components/CompromisosActa: un
-     selector que ofrece los resueltos sin decirlo hace que se ate uno cerrado
-     creyendo que está en marcha. Aquí el selector sí lo dice, y además el
-     estado se deduce en vez de fijarse. */
-  const cerrado = ["resuelta", "descartada"].includes(String(caso.estado || ""));
-  const { data: hecho, error } = await supabase.from("cronograma_actividades")
-    .update({ publicacion_id: casoId, estado: cerrado ? "finalizada" : "materializada" })
-    .eq("id", actId).select("id");
-  if (error) {
-    /* 23505 = el índice único saltó: otro lo ató entre la comprobación y ahora. */
-    if ((error as any).code === "23505") {
-      return { error: "Ese caso acaba de atarse a otra actividad. Recarga para ver dónde quedó." };
-    }
-    return { error: error.message };
-  }
+  /* ── SE ESCRIBE EN EL CASO, NO EN LA ACTIVIDAD ──
+     La relación vive en `publicaciones.actividad_id` (db/crono-casos.sql). La
+     columna vieja `cronograma_actividades.publicacion_id` NO se toca: es el
+     rastro de lo atado hasta la migración y escribir en las dos dejaría dos
+     sitios diciendo «el caso de esta actividad», que acaban discrepando. */
+  const { data: hecho, error } = await supabase.from("publicaciones")
+    .update({ actividad_id: actId }).eq("id", casoId).select("id");
+  if (error) return { error: error.message };
   /* RLS: un update bloqueado no da error, afecta cero filas. */
-  if (!hecho?.length) return { error: "No se ató: no tienes permiso para editar esta actividad." };
+  if (!hecho?.length) return { error: "No se ató: no tienes permiso para editar ese caso." };
+
+  /* ── Y EL ESTADO SE RECALCULA CON TODOS SUS CASOS ──
+     No con el que se acaba de atar: con varios casos, «¿está hecha?» es
+     «¿están todos cerrados?». Se releen después de escribir para que el
+     recién atado entre en la cuenta.
+     `estadoPorCasos` devuelve null si no hay ninguno —imposible aquí, acabamos
+     de atar uno— y en ese caso no se toca nada. */
+  await recalcularEstadoActividad(supabase, actId);
 
   await supabase.from("actividad").insert({
     entidad_tipo: "publicacion", entidad_id: casoId, actor_id: user.id, tipo: "editado",
@@ -12156,34 +12231,43 @@ export async function atarCasoAActividad(
  * bot vuelve a vigilarla— y el caso sigue existiendo por su cuenta: soltar no
  * es borrar. Quien quiera cerrarlo lo cierra desde el tablero. */
 export async function soltarCasoDeActividad(
-  actId: string, dueno: DuenoCrono, duenoId: string,
+  /** El ID DEL CASO, no el de la actividad: ahora una actividad tiene varios y
+   *  cada chip suelta el suyo. */
+  casoId: string, dueno: DuenoCrono, duenoId: string,
 ) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
 
   const col = colCrono(dueno);
-  /* Se lee ANTES de soltar: después del update ya no se sabe de qué caso
-     colgaba, y la bitácora tiene que poder decirlo. */
-  const { data: act } = await supabase.from("cronograma_actividades")
-    .select(`id,nombre,estado,publicacion_id,${col}`).eq("id", actId).maybeSingle();
-  if (!act) return { error: "Esa actividad ya no está." };
-  if ((act as any)[col] !== duenoId) return { error: "Esa actividad no es de aquí." };
-  if (!act.publicacion_id) return {};
-  const casoId = act.publicacion_id as string;
+  /* Se lee ANTES de soltar: después del update ya no se sabe de qué actividad
+     colgaba, y ni la bitácora ni el recálculo del estado sabrían a quién
+     referirse. */
+  const { data: caso } = await supabase.from("publicaciones")
+    .select("id,actividad_id").eq("id", casoId).maybeSingle();
+  if (!caso) return { error: "Ese caso ya no está." };
+  if (!caso.actividad_id) return {};
+  const actId = caso.actividad_id as string;
 
-  /* ── SOLTAR NO REABRE LO TERMINADO ──
-     Se vuelve a `planificada` —para que el bot vuelva a vigilarla— SOLO si
-     estaba `materializada`, que es el estado que puso el atado. Una actividad
-     `finalizada` o `en_progreso` conserva el suyo: soltar el caso no deshace el
-     trabajo, y forzar `planificada` borraba ese dato y encima la devolvía a la
-     cola de «ábrele un caso» cuando ya está hecha. */
-  const vuelve = act.estado === "materializada" ? "planificada" : act.estado;
-  const { data: hecho, error } = await supabase.from("cronograma_actividades")
-    .update({ publicacion_id: null, estado: vuelve })
-    .eq("id", actId).select("id");
+  const { data: act } = await supabase.from("cronograma_actividades")
+    .select(`id,nombre,estado,${col}`).eq("id", actId).maybeSingle();
+  if (!act) return { error: "Esa actividad ya no está." };
+  /* La actividad tiene que ser de aquí: el id del caso llega del navegador, y
+     sin esto se podría soltar un caso del cronograma de otro fondo. */
+  if ((act as any)[col] !== duenoId) return { error: "Ese caso no cuelga de una actividad de aquí." };
+
+  const { data: hecho, error } = await supabase.from("publicaciones")
+    .update({ actividad_id: null }).eq("id", casoId).select("id");
   if (error) return { error: error.message };
-  if (!hecho?.length) return { error: "No se soltó: no tienes permiso para editar esta actividad." };
+  if (!hecho?.length) return { error: "No se soltó: no tienes permiso para editar ese caso." };
+
+  /* ── EL ESTADO, CON LOS QUE QUEDAN ──
+     Soltar uno de tres no devuelve la actividad a `planificada`: siguen
+     abiertos los otros dos. Solo cuando se suelta el ÚLTIMO deja de haber
+     nada que deducir, y ahí sí vuelve a planificada — pero únicamente si
+     estaba `materializada`, que es el estado que puso el atado. Una
+     `finalizada` o una `en_progreso` tiene el suyo por otra razón. */
+  await recalcularEstadoActividad(supabase, actId, act.estado);
 
   await supabase.from("actividad").insert({
     entidad_tipo: "publicacion", entidad_id: casoId, actor_id: user.id, tipo: "editado",
@@ -12215,22 +12299,17 @@ export async function casosLibresDelFondo(dueno: DuenoCrono, duenoId: string) {
   const ids = [...new Set((vinc || []).map((v: any) => v.publicacion_id).filter(Boolean))];
   if (!ids.length) return { casos: [] };
 
-  const [{ data: pubs }, { data: atadas }] = await Promise.all([
-    supabase.from("publicaciones")
-      .select("id,titulo,estado,fecha_limite")
-      .in("id", ids).neq("tipo", "bitacora").is("archivado_en", null)
-      .order("fecha_limite", { ascending: true, nullsFirst: false }).limit(techo(500)),
-    /* ⚠ Las atadas se buscan POR CASO, no por dueño.
-       Con `.eq(col, duenoId)` solo se veían las de aquí, así que un caso
-       vinculado a dos fondos y ya atado a una actividad DEL OTRO salía como
-       libre; al elegirlo, el servidor lo rechazaba nombrando una actividad que
-       quien mira quizá ni puede ver. Un callejón sin salida desde la pantalla:
-       la lista ofrece algo que la acción no acepta. */
-    supabase.from("cronograma_actividades").select("publicacion_id")
-      .in("publicacion_id", ids).limit(techo(TOPE_API)),
-  ]);
-  const ocupados = new Set((atadas || []).map((a: any) => a.publicacion_id));
-  return { casos: (pubs || []).filter((p: any) => !ocupados.has(p.id)) };
+  const { data: pubs } = await supabase.from("publicaciones")
+    .select("id,titulo,estado,fecha_limite,actividad_id")
+    .in("id", ids).neq("tipo", "bitacora").is("archivado_en", null)
+    .order("fecha_limite", { ascending: true, nullsFirst: false }).limit(techo(500));
+  /* ── LOS QUE YA CUELGAN DE UNA ACTIVIDAD SE CAEN DE LA LISTA ──
+     Y ahora se sabe leyendo el propio caso (`actividad_id`), sin una segunda
+     consulta al cronograma: la relación vive ahí. Antes había que buscar las
+     actividades atadas y cruzar, y esa consulta miraba solo las de este dueño
+     —así que un caso vinculado a dos fondos, ya atado en el otro, salía como
+     libre y la acción lo rechazaba después. */
+  return { casos: (pubs || []).filter((p: any) => !p.actividad_id) };
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -12269,7 +12348,7 @@ export async function replanificarActividad(
 
   const col = colCrono(dueno);
   const { data: act } = await supabase.from("cronograma_actividades")
-    .select(`id,nombre,estado,publicacion_id,${col}`).eq("id", actId).maybeSingle();
+    .select(`id,nombre,estado,${col}`).eq("id", actId).maybeSingle();
   if (!act) return { error: "Esa actividad ya no está." };
   if ((act as any)[col] !== duenoId) return { error: "Esa actividad no es de aquí." };
   if (act.estado === "planificada") return {};
@@ -12279,13 +12358,21 @@ export async function replanificarActividad(
     return { error: "Esa actividad está cancelada. Crea una nueva si hay que volver a hacerla." };
   }
 
-  /* ── CON CASO ATADO, NO ──
-     Si tiene caso, su estado lo manda el caso: ponerla `planificada` la dejaría
-     diciendo que no tiene trabajo abierto mientras el caso sigue en el tablero,
-     y el propio cierre de ida y vuelta la volvería a mover en cuanto alguien
-     tocara ese caso. Primero se suelta (⛓︎✕) y luego se replanifica. */
-  if (act.publicacion_id) {
-    return { error: "Esta actividad tiene un caso atado: su estado lo decide el caso. Suéltalo primero con ⛓︎✕." };
+  /* ── CON CASOS ATADOS, NO ──
+     Si tiene casos, su estado lo mandan ellos: ponerla `planificada` la dejaría
+     diciendo que no hay trabajo abierto mientras siguen en el tablero, y el
+     propio recálculo la volvería a mover en cuanto alguien tocara uno.
+     ⚠ Se pregunta por `publicaciones.actividad_id`, no por la columna vieja
+     `publicacion_id`. Con ella pasaban las dos cosas malas a la vez: una fila
+     anterior a la migración cuyo caso ya se soltó la conserva rancia, así que
+     el ↩ contestaba «suéltalo primero con ⛓︎✕» señalando un botón que ya no
+     está —la fila quedaba inmovilizada, justo el atasco que ↩ vino a
+     resolver—; y una fila nueva la tiene NULL, así que la guarda no saltaba
+     nunca y se podía replanificar con casos vivos colgando. */
+  const { data: susCasos } = await supabase.from("publicaciones")
+    .select("id").eq("actividad_id", actId).limit(1);
+  if (susCasos?.length) {
+    return { error: "Esta actividad tiene casos atados: su estado lo deciden ellos. Suéltalos primero con la ✕ de cada uno." };
   }
 
   const { data: hecho, error } = await supabase.from("cronograma_actividades")

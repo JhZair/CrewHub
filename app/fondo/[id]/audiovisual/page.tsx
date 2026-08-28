@@ -52,7 +52,14 @@ export default async function AudiovisualPage({ params }: { params: { id: string
     traerFondo(params.id),
     traerPerfilActual(user.id),
     traerVersiones(params.id),
-    supabase.from("cronograma_actividades").select("*, resp:perfiles!responsable(nombre)")
+    /* TODOS los casos de cada actividad, no «el» caso: se traen embebidos por
+       `publicaciones.actividad_id` (db/crono-casos.sql), con la cara de quien
+       lleva cada uno. Los CERRADOS vienen también —en un cronograma, lo hecho
+       es justo lo que hay que poder enseñar— y `casosActividad` los reparte. */
+    supabase.from("cronograma_actividades")
+      .select("*, resp:perfiles!responsable(nombre), " +
+        "casos:publicaciones!actividad_id(id,titulo,estado,tipo,archivado_en," +
+        "resp:perfiles!responsable(id,nombre,avatar_url,color))")
       .eq("postulacion_id", params.id)
       .order("etapa").order("orden").order("fecha_inicio").order("creado_en"),
     supabase.from("plantillas_cronograma")
@@ -164,6 +171,19 @@ export default async function AudiovisualPage({ params }: { params: { id: string
   /* Responsable de actividad de postulación = persona del equipo
      (`responsable_persona`), no cuenta del sistema. Se normaliza a
      `responsable` al leer — ver db/crono-responsable-persona.sql. */
+  /* ⚠ EL ERROR NO SE TRAGA CON `|| []`.
+     Si falta `db/crono-casos.sql`, la columna `publicaciones.actividad_id` no
+     existe y el embed hace fallar la consulta ENTERA (PGRST200). Con `|| []` el
+     cronograma salía VACÍO y sin decir nada — y esa pantalla ofrece «aplicar
+     plantilla», que SUMA en vez de reemplazar: alguien que ve su cronograma en
+     blanco aplica la plantilla y se queda con todo duplicado.
+     Un cero que en realidad es «no se pudo leer» es el error más caro que
+     hemos tenido en este proyecto. */
+  const cronoError = cp.error
+    ? (/actividad_id|PGRST200/i.test(cp.error.message)
+        ? "Falta correr db/crono-casos.sql en Supabase (columna publicaciones.actividad_id). NO apliques una plantilla: el cronograma existe, solo que no se puede leer."
+        : cp.error.message)
+    : "";
   const cronoPost = (cp.data || []).map((a: any) => ({ ...a, responsable: a.responsable_persona || null }));
 
   /* ── LA NÓMINA DEL CRONOGRAMA ──
@@ -281,9 +301,14 @@ export default async function AudiovisualPage({ params }: { params: { id: string
 
       <div style={{ scrollMarginTop: 12 }}>
         <Plegable id={`fondo:${params.id}:crono`} titulo="📅 Cronograma de ejecución" abiertoPorDefecto={true}
-          resumen={dim(cronoPost.filter((a: any) => a.estado !== "cancelada").length
-            ? `${cronoPost.filter((a: any) => a.estado !== "cancelada").length} actividades` : "sin actividades")}>
-          <CronogramaPostulacion key={`crono-${params.id}`} postulacionId={params.id}
+          resumen={cronoError ? <span style={{ color: "var(--red)", fontWeight: 400 }}>⚠ no se pudo leer</span>
+            : dim(cronoPost.filter((a: any) => a.estado !== "cancelada").length
+              ? `${cronoPost.filter((a: any) => a.estado !== "cancelada").length} actividades` : "sin actividades")}>
+          {/* El error ANTES de la lista, y la lista no se pinta: «sin
+              actividades» sobre un cronograma que no se pudo leer es la mentira
+              que lleva a aplicar una plantilla encima. */}
+          {cronoError && <div className="err-inline" style={{ marginBottom: 10 }}>⚠ {cronoError}</div>}
+          {!cronoError && <CronogramaPostulacion key={`crono-${params.id}`} postulacionId={params.id}
             actividades={cronoPost} perfiles={plantelPost}
             plantillas={plantillas} tipoProyecto={(ent as any)?.proy?.tipo || ""}
             etapas={etapasDe(categoria)}
@@ -294,7 +319,7 @@ export default async function AudiovisualPage({ params }: { params: { id: string
                botón y se comería el rechazo después de armar el plan. */
             puedeCorrer={!!(perfilActual as any)?.es_admin}
             postulado={vigCrono?.datos || null}
-            postuladoEn={vigCrono?.creado_en || null} ocultarFijar />
+            postuladoEn={vigCrono?.creado_en || null} ocultarFijar />}
           <Plegable nivel={2} id={`fondo:${params.id}:crono:versiones`} titulo="🕑 Historial de versiones"
             abiertoPorDefecto={false}
             resumen={dim(versCrono.length ? `${versCrono.length} versión(es)` : "sin versiones")}>

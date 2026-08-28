@@ -7223,3 +7223,33 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
 .cr-inp-mini { background: var(--card); color: var(--text); border: 1px solid var(--border);
   border-radius: 8px; padding: 4px 7px; font-size: 11.5px; font-family: inherit;
   max-width: 240px; }
+
+/* ══════ LOS CASOS DE UNA ACTIVIDAD DEL CRONOGRAMA ══════
+   Mismo chip que `.acta-caso` en Entregables, a propósito: son la misma
+   relación —trabajo colgando de una fila— y con dos diseños distintos habría
+   que aprenderlos dos veces. Prefijo propio porque el tamaño y el color de la
+   etapa son de aquí; heredarlo con `.acta-caso` habría atado dos pantallas por
+   la hoja de estilos, que es como se pierde el rastro de qué rompe qué. */
+.cr-casos { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap;
+  max-width: 260px; }
+.cr-caso { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px;
+  color: var(--violet); text-decoration: none; white-space: nowrap; font-weight: 700;
+  background: var(--card); border: 1px solid var(--border); border-radius: 999px;
+  padding: 2px 5px 2px 3px; }
+.cr-caso:hover { border-color: var(--violet); background: rgba(124,92,255,.14); }
+/* Un caso cerrado se sigue viendo —en un cronograma, lo hecho es lo que hay que
+   poder enseñar— pero apagado: lo que pide atención es lo que sigue abierto. */
+.cr-caso-off { opacity: .5; }
+.cr-caso-off:hover { opacity: 1; }
+/* Sin responsable: un punto marcado en el sitio de la cara. Un hueco vacío se
+   lee como que la foto no cargó; esto dice que no hay nadie. */
+.cr-nadie { display: inline-flex; align-items: center; justify-content: center;
+  width: 15px; height: 15px; border-radius: 50%; border: 1px dashed var(--border2);
+  color: var(--dim); font-size: 9px; line-height: 1; }
+/* La ✕ va POR ENCIMA del enlace que cubre el chip: si no, el clic se lo come el
+   enlace y soltar el caso se vuelve imposible. */
+.cr-caso-x { position: relative; z-index: 2; background: none; border: 0;
+  color: var(--dim); font-size: 10px; cursor: pointer; padding: 0 1px;
+  font-family: inherit; line-height: 1; }
+.cr-caso-x:hover { color: var(--red); }
+.cr-caso-x:disabled { cursor: default; opacity: .4; }

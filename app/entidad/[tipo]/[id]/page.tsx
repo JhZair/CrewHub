@@ -777,7 +777,12 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         ? supabase.from("personas").select("id,nombre,alias").eq("id", ent.cliente_id).single()
         : Promise.resolve({ data: null }),
       supabase.from("cronograma_actividades")
-        .select("*, resp:perfiles!responsable(nombre)")
+        /* Con sus casos, igual que el cronograma de una postulación: es el
+           MISMO componente y sin esto no pintaba ningún chip, ni el enlace al
+           caso, ni la ✕ para soltarlo — o sea, ninguna forma de deshacer. */
+        .select("*, resp:perfiles!responsable(nombre), " +
+          "casos:publicaciones!actividad_id(id,titulo,estado,tipo,archivado_en," +
+          "resp:perfiles!responsable(id,nombre,avatar_url,color))")
         /* La fecha manda; `orden` desempata lo que cae el mismo día —un día
            de rodaje tiene secuencia— y `creado_en` desempata el desempate,
            para que dos con el mismo orden no bailen entre recargas. */
@@ -878,7 +883,10 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   if (params.tipo === "convocatoria") {
     const [ca, pf, po, pr, em, mm] = await Promise.all([
       supabase.from("cronograma_actividades")
-        .select("*, resp:perfiles!responsable(nombre)")
+        /* Ídem para el cronograma de una convocatoria. */
+        .select("*, resp:perfiles!responsable(nombre), " +
+          "casos:publicaciones!actividad_id(id,titulo,estado,tipo,archivado_en," +
+          "resp:perfiles!responsable(id,nombre,avatar_url,color))")
         .eq("convocatoria_id", params.id).order("fecha_inicio").order("orden").order("creado_en"),
       supabase.from("perfiles").select("id,nombre,avatar_url,color").eq("activo", true).order("nombre"),
       /* Cada postulación con su proyecto, la empresa que la presentó y su
@@ -1515,7 +1523,13 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
        ejecución ni recibos, así que serían dos viajes para traer nada. */
     const esGanadoraCr = ent.estado === "ganadora";
     const [cp, pl2, pf2, eqfP, rheP] = await Promise.all([
-      supabase.from("cronograma_actividades").select("*, resp:perfiles!responsable(nombre)")
+      /* Con TODOS sus casos embebidos, igual que la pestaña Audiovisual: la
+         misma fila del cronograma se pinta en las dos pantallas y tiene que
+         decir lo mismo. */
+      supabase.from("cronograma_actividades")
+        .select("*, resp:perfiles!responsable(nombre), " +
+          "casos:publicaciones!actividad_id(id,titulo,estado,tipo,archivado_en," +
+          "resp:perfiles!responsable(id,nombre,avatar_url,color))")
         .eq("postulacion_id", params.id)
         .order("etapa").order("orden").order("fecha_inicio").order("creado_en"),
       supabase.from("plantillas_cronograma")

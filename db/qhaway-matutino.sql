@@ -120,7 +120,11 @@ begin
      que uno que no genera casos. */
   select count(*) into huerfanas
     from cronograma_actividades ca
-   where ca.estado = 'planificada' and ca.publicacion_id is null
+   where ca.estado = 'planificada'
+     -- Mismo criterio de «sin caso» que el bucle de abajo: si aquí se
+     -- preguntara por la columna vieja, el recuento y lo que se hace contarían
+     -- cosas distintas y el aviso del bot mentiría.
+     and not exists (select 1 from publicaciones px where px.actividad_id = ca.id)
      and ca.proyecto_id is null and ca.convocatoria_id is null
      and ca.postulacion_id is null;
 
@@ -130,7 +134,15 @@ begin
     from cronograma_actividades ca
     left join proyectos p on p.id = ca.proyecto_id
     left join convocatorias cv on cv.id = ca.convocatoria_id
-    where ca.estado = 'planificada' and ca.publicacion_id is null
+    /* ⚠ «Sin caso» se pregunta a `publicaciones.actividad_id`, NO a la columna
+       vieja `cronograma_actividades.publicacion_id`, que db/crono-casos.sql
+       dejó obsoleta y ya nadie escribe: preguntándole a ella, una actividad
+       materializada desde la pantalla seguía pareciendo libre y el bot le
+       abría un caso DUPLICADO a la mañana siguiente.
+       Con esta forma basta un caso —vivo o cerrado— para que el bot no vuelva
+       a abrir otro. */
+    where ca.estado = 'planificada'
+      and not exists (select 1 from publicaciones px where px.actividad_id = ca.id)
       -- El cronograma de una postulación es una PROPUESTA, no trabajo: no
       -- abre casos ni vigila plazos hasta que se gane el fondo.
       and ca.postulacion_id is null
@@ -236,8 +248,20 @@ begin
       'mensaje', case when es_hito then 'Hito del concurso acercándose — lo puse en el radar'
                       else 'Creé este caso desde el cronograma (' || coalesce(r.dias_anticipacion,3) || ' días antes)' end,
       'regla', 'cronograma'));
-    update cronograma_actividades set estado = 'materializada', publicacion_id = nueva_pub
-    where id = r.id;
+    /* ── LA RELACIÓN VIVE EN EL CASO ──
+       ⚠ Este bloque es el espejo en plpgsql de `materializarActividad`, y
+       db/crono-casos.sql cambió el modelo debajo: una actividad tiene VARIOS
+       casos y la relación es `publicaciones.actividad_id`.
+       Escribiendo solo la columna vieja, los casos que abre el bot —que son la
+       mayoría de los que se abren— nacían invisibles: no salían como chip en
+       ninguna pantalla, no entraban en el recálculo del estado (así que
+       resolverlos ya no finalizaba su actividad) y el selector de «atar» los
+       ofrecía como libres, listos para acabar reclamados por dos actividades a
+       la vez.
+       La columna vieja ya no se escribe: la guarda de arriba pregunta por
+       `publicaciones.actividad_id`, así que no hace falta para nada. */
+    update publicaciones set actividad_id = r.id where id = nueva_pub;
+    update cronograma_actividades set estado = 'materializada' where id = r.id;
     if r.responsable is not null then
       insert into notificaciones (usuario_id, publicacion_id, tipo, mensaje)
       values (r.responsable, nueva_pub, 'asignacion',

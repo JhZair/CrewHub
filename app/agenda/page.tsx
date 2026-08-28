@@ -12,6 +12,7 @@ import { llevaHora } from "@/lib/tipos";
 import { nombresDe } from "@/lib/eventos";
 import { ORDEN_VINCULO, pesoVinculo, elCasoLaCubre } from "@/lib/portadaHoy";
 import { tipoCanonico } from "@/lib/secciones";
+import { conCasoPrincipal } from "@/lib/casosActividad";
 
 export const metadata: Metadata = { title: "📅 Agenda" };
 
@@ -39,14 +40,21 @@ export default async function AgendaPage() {
          orden de las FASES sale del preset de esa categoría, no del calendario:
          un documental empieza por Investigación aunque su primera fecha caiga
          después de algo de Preproducción. */
-      .select("id,nombre,fecha_inicio,fecha_fin,etapa,estado,responsable,equipo,publicacion_id,orden,creado_en," +
+      .select("id,nombre,fecha_inicio,fecha_fin,etapa,estado,responsable,equipo,orden,creado_en," +
         "proy:proyectos(id,nombre,nombre_corto),conv:convocatorias(id,codigo,nombre,categoria)," +
         "postu:postulaciones(id,codigo,estado,proy:proyectos(nombre,nombre_corto),conv:convocatorias(categoria))," +
         /* El caso al que se materializó esta actividad, si lo hay. Viaja para
            poder respetar su archivado: ver `actividadFueraDeAgenda`. Sin esto,
            archivar el caso lo sacaba de la agenda y dejaba la actividad —que en
            pantalla es la misma fila— tan campante. */
-        "pub:publicaciones!publicacion_id(estado,archivado_en,responsable)")
+        /* ⚠ Por `actividad_id`, no por la columna vieja: con ella, toda
+           actividad materializada a partir de la migración traía `pub` en
+           null, y entonces `actividadFueraDeAgenda` devolvía false SIEMPRE —o
+           sea, archivar o resolver el caso dejaba de sacar la actividad de la
+           agenda— y la deduplicación con `elCasoLaCubre` fallaba, pintando dos
+           renglones idénticos.
+           Llegan varios; `casoPrincipal` elige cuál manda. */
+        "casos:publicaciones!actividad_id(estado,archivado_en,responsable)")
       .neq("estado", "cancelada").not("fecha_inicio", "is", null),
     supabase.from("publicaciones")
       .select("id,titulo,tipo,estado,fecha_inicio,fecha_limite,hora,responsable,creado_en")
@@ -80,7 +88,13 @@ export default async function AgendaPage() {
      aquí para la lectura. Ojo: hoy el bot excluye `postulacion_id` ENTERO, así
      que los fondos ganados aparecen en esta agenda pero el bot todavía no les
      abre casos. Las dos mitades tienen que acabar diciendo lo mismo. */
-  const actsVisibles = (acts || []).filter((a: any) => {
+  /* ── EL CASO PRINCIPAL, REHECHO DESDE `casos` ──
+     Esta pantalla habla de `a.publicacion_id` y `a.pub` en una docena de
+     sitios, y el modelo cambió debajo: la relación vive en
+     `publicaciones.actividad_id` y una actividad tiene varios casos.
+     `conCasoPrincipal` rehace esos dos campos aquí, en el punto de carga, y el
+     resto del archivo sigue leyendo lo de siempre. Ver lib/casosActividad. */
+  const actsVisibles = conCasoPrincipal((acts || []) as any[]).filter((a: any) => {
     const postu = a.postu as any;
     if (postu && postu.estado !== "ganadora") return false;
     /* Y si la actividad ya tiene caso, manda el caso: archivado o descartado,

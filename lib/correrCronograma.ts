@@ -424,8 +424,8 @@ export function planear(
           /* Se nombra el camino COMPLETO: con un caso atado el ↩ no está
              pintado —su estado lo manda el caso— y mandar a pulsarlo a secas
              es dar una instrucción imposible de seguir. */
-          ? `«${futuras[0].act.nombre}» está marcada como finalizada pero todavía no ha empezado (${futuras[0].act.fecha_inicio}): se queda donde está y parte el bloque. Si ese estado está mal, replanifícala en la lista —suéltale antes el caso con ⛓︎✕ si lo tiene— o marca arriba «mover también las finalizadas».`
-          : `${futuras.length} actividades están marcadas como finalizadas y todavía no han empezado, así que se quedan donde están: ${futuras.map(q => q.act.nombre).join(", ")}. Si ese estado está mal, replanifícalas en la lista —soltándoles antes el caso con ⛓︎✕ si lo tienen— o marca arriba «mover también las finalizadas».`,
+          ? `«${futuras[0].act.nombre}» está marcada como finalizada pero todavía no ha empezado (${futuras[0].act.fecha_inicio}): se queda donde está y parte el bloque. Si ese estado está mal, replanifícala con ↩ en la lista —soltándole antes sus casos con la ✕ de cada chip— o marca arriba «mover también las finalizadas».`
+          : `${futuras.length} actividades están marcadas como finalizadas y todavía no han empezado, así que se quedan donde están: ${futuras.map(q => q.act.nombre).join(", ")}. Si ese estado está mal, replanifícalas con ↩ en la lista —soltándoles antes sus casos con la ✕ de cada chip— o marca arriba «mover también las finalizadas».`,
       });
     }
   }
