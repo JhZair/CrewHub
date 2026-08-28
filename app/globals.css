@@ -6993,3 +6993,146 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
 .gx-filtro{font-size:11.5px;color:var(--blue);white-space:nowrap;text-decoration:none}
 .gx-filtro:hover{text-decoration:underline}
 .gx-filtro:focus-visible{outline:2px solid var(--blue);outline-offset:2px;border-radius:4px}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ⧉ LA REJILLA DEL TRATAMIENTO (components/GuionTimeline.tsx)
+
+   Columnas = secuencias, de ancho FIJO. Filas = capas. La duración vive en la
+   regla de abajo y no en el ancho: con columnas proporcionales, una secuencia
+   de veinte segundos son doce píxeles y no cabe ni su número.
+   El scroll horizontal está en UN solo contenedor para que la estructura, las
+   columnas, los hilos y la regla se desplacen juntos.
+
+   ⚠ PREFIJO `.rej-` Y NO `.tl-`. `.tl` ya era de la línea de actividad
+   (globals.css:553, con su filete vertical y su sangrado) y `.tl-scroll` de
+   `components/TableroTimeline.tsx`. Al llamar `.tl` a esto, la rejilla nacía
+   con un borde ajeno y —peor— el tablero PERDÍA su fondo, porque a igual
+   especificidad gana la regla posterior. Doce pantallas en producción usan
+   `.tl`. Un prefijo de dos letras parece libre y casi nunca lo está.
+   ══════════════════════════════════════════════════════════════════════════ */
+.rej{margin-top:10px}
+.rej-cab{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:8px;font-size:12px}
+.rej-cab-t{color:var(--dim);font-weight:700;letter-spacing:.4px}
+.rej-est{font-size:10.5px;color:var(--yellow);opacity:.8}
+.rej-suelto{font-size:10.5px;color:var(--yellow);opacity:.85}
+
+.rej-scroll{overflow-x:auto;overflow-y:hidden;border:1px solid var(--border);border-radius:12px;
+  background:rgba(255,255,255,.015)}
+.rej-fila{display:flex;align-items:stretch;border-top:1px solid var(--border)}
+.rej-fila:first-child{border-top:none}
+/* La primera columna, fija al desplazar: sin ella, a la tercera pantalla de
+   scroll nadie sabe si está leyendo el cuerpo o un hilo. */
+.rej-rot{position:sticky;left:0;z-index:2;overflow:hidden;text-overflow:ellipsis;padding:7px 9px;
+  background:#15151f;border-right:1px solid var(--border2);
+  font-size:10px;letter-spacing:.6px;text-transform:uppercase;color:var(--dim);font-weight:700;
+  display:flex;align-items:center;gap:5px}
+.rej-cols{display:grid}
+.rej-cel{padding:6px 8px;border-left:1px solid var(--border);min-width:0}
+
+/* ── ESTRUCTURA ── */
+.rej-estructura{background:rgba(167,139,250,.05)}
+.rej-banda{grid-row:1;margin:4px 3px;padding:3px 9px;border-radius:6px;
+  background:rgba(167,139,250,.16);border:1px solid rgba(167,139,250,.3);
+  font-size:11px;font-weight:700;color:var(--violet);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Un tramo sin acto se rotula en vez de dejarse en blanco: un hueco sin nombre
+   se lee como que falta un dato de la pantalla, y aquí falta de la película. */
+.rej-banda.es-suelta{background:rgba(244,180,0,.12);border-color:rgba(244,180,0,.3);color:var(--yellow)}
+.rej-beats{background:rgba(167,139,250,.03)}
+.rej-cel-beat{display:flex;flex-direction:column;gap:2px;min-height:20px}
+.rej-beat{font-size:10px;color:var(--violet);opacity:.95;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+
+/* ── CABECERA DE COLUMNA ── */
+.rej-cel-cab{display:flex;flex-direction:column;gap:3px}
+.rej-cel-cab.es-abierta{background:rgba(167,139,250,.09)}
+.rej-cab-n{display:flex;align-items:center;gap:3px}
+.rej-n{font-size:11px;font-weight:800;color:var(--dim)}
+.rej-mov,.rej-mas{font-size:11px;color:var(--dim);padding:0 3px;line-height:1}
+.rej-mov:hover,.rej-mas:hover{color:var(--text)}
+.rej-nom{background:transparent;border:none;border-bottom:1px solid transparent;
+  font-size:12.5px;font-weight:600;color:var(--text);padding:1px 0;width:100%}
+.rej-nom:focus{outline:none;border-bottom-color:var(--violet)}
+.rej-min{font-size:10.5px;color:var(--dim);display:flex;align-items:baseline;gap:5px}
+.rej-est-mini{color:var(--yellow);opacity:.8}
+.rej-err{font-size:10.5px;color:var(--red)}
+
+/* ── EL CUERPO: donde se escribe ── */
+.rej-cel-cuerpo{display:flex;flex-direction:column;gap:3px}
+.rej-txt{background:transparent;border:1px solid transparent;border-radius:8px;
+  color:var(--text);font-size:12px;line-height:1.5;padding:5px 6px;resize:vertical;
+  min-height:190px;width:100%;font-family:inherit}
+.rej-txt:focus{outline:none;border-color:var(--border2);background:rgba(255,255,255,.03)}
+.rej-pie{font-size:10px;color:var(--dim);display:flex;gap:6px;align-items:baseline}
+
+/* ── HILOS ── */
+.rej-hilo .rej-rot{font-weight:600;text-transform:none;letter-spacing:0;font-size:11px}
+.rej-punto{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.rej-cero{color:var(--yellow);opacity:.8;font-size:10px}
+.rej-cel-hilo{display:flex;align-items:center;min-height:22px;padding:4px 6px}
+.rej-barra{height:8px;border-radius:999px;width:100%;opacity:.75}
+
+/* ── LA REGLA ──
+   Cada marca va debajo de la columna en la que cae ese minuto. No es
+   proporcional porque las columnas no lo son: una regla proporcional sobre
+   columnas fijas se desalinea de lo que rotula. */
+.rej-regla{background:rgba(255,255,255,.02)}
+.rej-cel-regla{display:flex;gap:8px;align-items:center;min-height:20px}
+.rej-marca{font-size:10px;color:var(--dim);font-variant-numeric:tabular-nums}
+
+/* ── EL CAJÓN ──
+   Debajo de la rejilla y en flujo. `.rej-scroll` tiene overflow, así que un
+   panel absoluto dentro se cortaría en su borde — la misma lección que el
+   panel de papeles de la cláusula 5.4. */
+.rej-cajon{margin-top:10px;padding:10px;border:1px solid var(--border2);border-radius:12px;
+  background:rgba(255,255,255,.025)}
+.rej-cajon-t{display:flex;align-items:center;gap:8px;font-size:12.5px;margin-bottom:8px}
+.rej-cajon-g{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.rej-cajon-g label{display:flex;flex-direction:column;gap:3px}
+.rej-cajon-g label>span{font-size:10px;letter-spacing:.5px;text-transform:uppercase;
+  color:var(--dim);font-weight:700}
+.rej-cajon-g input{background:var(--card);border:1px solid var(--border);border-radius:8px;
+  padding:6px 9px;font-size:12.5px;color:var(--text)}
+.rej-cajon-g small{font-size:10px;color:var(--dim)}
+.rej-cajon-h{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.rej-chip{font-size:11px;padding:2px 9px;border-radius:999px;border:1px solid var(--border);
+  color:var(--dim)}
+.rej-chip.on{font-weight:600}
+
+/* ── LAS CUATRO VISTAS DEL TRATAMIENTO (app/guion/[id]) ──
+   Rejilla · Tarjetas · Documento · Diagnóstico. La elección va en la URL, así
+   que son enlaces: cada vista tiene su dirección y el botón de atrás funciona. */
+.gv-barra{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px}
+.gv-tab{font-size:12px;padding:5px 12px;border-radius:999px;text-decoration:none;
+  border:1px solid var(--border);color:var(--dim);white-space:nowrap}
+.gv-tab:hover{color:var(--text);border-color:var(--border2)}
+.gv-tab.on{color:var(--violet);border-color:rgba(167,139,250,.45);
+  background:rgba(167,139,250,.12);font-weight:600}
+.gv-tab:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+
+/* ── DOCUMENTO ──
+   Para leer y para mandar. `pre-wrap` respeta los saltos que puso el autor:
+   normalizarlos sería reescribirle el texto al enseñárselo. */
+.gv-doc{max-width:70ch}
+.gv-doc-sec{margin-bottom:18px}
+.gv-doc-acto{font-size:12px;letter-spacing:1.2px;text-transform:uppercase;
+  color:var(--violet);margin:22px 0 10px;font-weight:800}
+.gv-doc-sec:first-child .gv-doc-acto{margin-top:0}
+.gv-doc-t{font-size:14px;font-weight:700;margin:0 0 5px;display:flex;
+  align-items:baseline;gap:8px}
+.gv-doc-n{font-size:11px;color:var(--dim);font-weight:800;min-width:18px}
+.gv-doc-min{font-size:11px;color:var(--dim);font-weight:400;margin-left:auto}
+.gv-doc-p{margin:0;font-size:13.5px;line-height:1.65;color:var(--text);white-space:pre-wrap}
+.gv-doc-vacio{margin:0;font-size:12.5px;color:var(--dim);font-style:italic}
+
+/* ── DIAGNÓSTICO ── */
+.gv-st-t{font-size:11px;letter-spacing:1.1px;text-transform:uppercase;
+  color:var(--dim);font-weight:700}
+.gv-st-barras{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+.gv-st-fila{display:flex;align-items:center;gap:10px;font-size:12px}
+.gv-st-nom{min-width:130px;color:var(--muted)}
+.gv-st-b{flex:1;height:9px;border-radius:999px;background:rgba(255,255,255,.06);overflow:hidden}
+.gv-st-b>span{display:block;height:100%;background:var(--violet);opacity:.75}
+.gv-st-n{min-width:110px;text-align:right;color:var(--dim);font-variant-numeric:tabular-nums}
+.gv-st-tot{margin-top:8px;font-size:11.5px;color:var(--dim)}
+.gv-st-av{margin:8px 0 0;padding-left:2px;list-style:none;font-size:12.5px;line-height:1.6}
