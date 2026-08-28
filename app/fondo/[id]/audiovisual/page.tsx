@@ -13,6 +13,7 @@ import { hoyLima } from "@/lib/fechas";
 import { traerFondo, traerPerfilActual, traerVersiones } from "@/lib/fondoDatos";
 import { repartir, resumenCesiones, rotuloReparto } from "@/lib/repartoFondo";
 import { cargoDeNominaPorPersona } from "@/lib/papeles";
+import { nominaCronograma } from "@/lib/equipoFondo";
 
 /* ── 🎥 AUDIOVISUAL ──
  *
@@ -56,9 +57,12 @@ export default async function AudiovisualPage({ params }: { params: { id: string
       .order("etapa").order("orden").order("fecha_inicio").order("creado_en"),
     supabase.from("plantillas_cronograma")
       .select("id,nombre,tipo_proyecto,acts:plantilla_actividades(count)").order("nombre"),
-    /* El equipo que se presentó: es la nómina del cronograma de esta
-       postulación, aquí igual que en la ficha. Sin esto, la misma actividad
-       ofrecería responsables distintos según por qué pantalla se entre.
+    /* El equipo que se presentó al concurso. Es UNA de las tres listas de las
+       que sale la nómina del cronograma —las otras dos son `equipo_fondo` y
+       los recibos girados, más abajo—; el cruce lo hace `nominaCronograma`.
+       ⚠ Aquí decía «es la nómina del cronograma, aquí igual que en la ficha», y
+       era verdad mientras la nómina fuera solo esta tabla. En un fondo en
+       ejecución no lo es: dejaba fuera a casi todo el mundo.
        Del bloque de persona solo se piden las cuatro columnas que arman el
        desplegable. La ficha vieja traía además domicilio, RUC y la suspensión
        de 4ta porque la MISMA fila alimentaba la pestaña Equipo; partidas, ese
@@ -108,9 +112,25 @@ export default async function AudiovisualPage({ params }: { params: { id: string
        personal previsto. Una columna cada una: no se pinta nada de esto, se
        cruza. Sin la marca, ver a la directora en el reparto se lee como un
        error de carga. */
-    supabase.from("rhe").select("persona_id")
+    /* ⚠ Traen la PERSONA embebida, no solo su id.
+       Antes solo se cruzaban ids —bastaba para marcar quién está en las dos
+       listas—, pero ahora de aquí sale también la nómina del cronograma, y una
+       nómina necesita nombres y caras.
+       El nombre NO se busca en el catálogo `per`: son consultas de decenas de
+       filas contra una de dos mil, y `per` ni siquiera trae `foto_url`.
+       Pedirle una columna más a dos mil filas para pintar veinte avatares es
+       cargar el peso donde no está el trabajo. */
+    /* `monto` no decora: `ordenarIntegrantes` desempata «a igual rango, primero
+       quien más ha cobrado». Sin pedirlo, el total sale 0 para todos y ese
+       criterio nunca llega a aplicarse — o sea, el orden que el código
+       documenta no es el que se obtiene. Es una columna en unas decenas de
+       filas.
+       ⚠ Si este embed fallara, `rheN.data` cae a [] y la nómina volvería a ser
+       la vieja SIN DECIRLO. No pasa hoy —`personas` y la FK existen siempre—,
+       pero es el modo de fallo a mirar si algún día vuelve a faltar gente. */
+    supabase.from("rhe").select("id,persona_id,monto,persona:personas(id,nombre,alias,foto_url)")
       .eq("postulacion_id", params.id).limit(techo(1000)),
-    supabase.from("equipo_fondo").select("persona_id,cargo")
+    supabase.from("equipo_fondo").select("id,persona_id,cargo,nota,persona:personas(id,nombre,alias,foto_url)")
       .eq("postulacion_id", params.id),
     /* ── LOS TRATAMIENTOS PRESENTADOS A ESTE FONDO ──
        El documento es de la PELÍCULA, no del fondo: si colgara del fondo, la
@@ -146,19 +166,18 @@ export default async function AudiovisualPage({ params }: { params: { id: string
      `responsable` al leer — ver db/crono-responsable-persona.sql. */
   const cronoPost = (cp.data || []).map((a: any) => ({ ...a, responsable: a.responsable_persona || null }));
 
-  const cargosF = new Map<string, string[]>();
-  const nombresF = new Map<string, string>();
-  const fotosF = new Map<string, string | null>();
-  for (const m of (eqp.data || []) as any[]) {
-    const p = Array.isArray(m?.persona) ? m.persona[0] : m?.persona; if (!p?.id) continue;
-    nombresF.set(p.id, p.alias || p.nombre || "—");
-    fotosF.set(p.id, p.foto_url || null);
-    cargosF.set(p.id, [...(cargosF.get(p.id) || []), m.cargo].filter(Boolean));
-  }
-  const plantelPost = [...nombresF].map(([id, n]) => ({
-    id, nombre: (cargosF.get(id) || []).length ? `${n} · ${(cargosF.get(id) || []).join(" / ")}` : n,
-    foto: fotosF.get(id) || null,
-  }));
+  /* ── LA NÓMINA DEL CRONOGRAMA ──
+     Quién puede ser responsable de una actividad o entrar en su equipo de
+     apoyo: las TRES listas del fondo, no solo el equipo del expediente.
+     La regla vive en lib/equipoFondo (`nominaCronograma`) porque la ficha de
+     la postulación monta el mismo cronograma: con el armado copiado aquí, la
+     misma actividad ofrecería gente distinta según por dónde se entrara. */
+  const plantelPost = nominaCronograma(
+    (eqp.data || []) as any[],
+    (rheN.data || []) as any[],
+    (eqfN.data || []) as any[],
+  );
+
   const plantillas = (pl.data || []).map((x: any) => ({
     id: x.id, nombre: x.nombre, tipo_proyecto: x.tipo_proyecto, n: x.acts?.[0]?.count ?? 0,
   }));

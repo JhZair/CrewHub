@@ -451,3 +451,112 @@ export function resumenEquipo(xs: Integrante[]) {
     }, 0),
   };
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LA NÓMINA DEL CRONOGRAMA — quién puede llevar una actividad
+
+   El desplegable de «Responsable» y «Equipo de apoyo» del cronograma de un
+   fondo. Aquí y no en la página porque hay DOS pantallas que montan el mismo
+   cronograma —la pestaña 🎥 Audiovisual del fondo y la ficha de la
+   postulación—, y con el armado copiado la misma actividad ofrecería gente
+   distinta según por dónde se entrara.
+
+   ── EL FALLO QUE ARREGLA ──
+   La lista salía SOLO de `postulacion_equipo`: el equipo que se presentó al
+   concurso. En Mujeres del Ande eso son cinco personas, en un fondo donde
+   trabajan veintitantas. Toda la gente que entra durante los dos años de
+   ejecución —el sonidista de una semana, la traductora, el chofer del viaje a
+   Pomacanchi— no se podía asignar a ninguna actividad del cronograma que
+   ejecuta ella misma.
+
+   ── EL RÓTULO DICE DE DÓNDE VIENE CADA UNO ──
+   Con su cargo cuando lo tiene declarado o apuntado. A quien solo trajo la
+   contabilidad —tiene recibo girado y ningún cargo en ninguna lista— se le
+   dice «con recibo girado», en vez de dejarlo como un nombre suelto entre
+   cargos, que se lee como un dato a medio cargar.
+   ⚠ `cargo` vale "—" cuando no hay ninguno (es el relleno de
+   `integrantesDeFondo`); pintarlo tal cual daría «Nombre · —».
+   ══════════════════════════════════════════════════════════════════════════ */
+
+export type FilaNomina = { id: string; nombre: string; foto: string | null };
+
+export function nominaCronograma(
+  equipoPost: FilaEquipoPost[],
+  /** Vacío en una postulación que aún no es fondo: no hay recibos. */
+  rhes: FilaRhe[],
+  /** Vacío en una postulación que aún no es fondo: no hay personal previsto. */
+  previstos: FilaPrevista[],
+): FilaNomina[] {
+  /* El catálogo se arma con las personas embebidas de las tres listas, no con
+     el directorio general: cubre exactamente a quien puede salir, y evita
+     pedirle una columna más a dos mil filas para pintar veinte avatares. */
+  const cat = new Map<string, PersonaMin>();
+  for (const f of [...equipoPost, ...previstos, ...rhes] as any[]) {
+    const p = un1(f?.persona) as PersonaMin | null;
+    if (p?.id) cat.set(p.id, p);
+  }
+
+  /* ══════════════ UNA PERSONA CON DOS CARGOS ══════════════
+   * `postulacion_equipo` tiene `unique (postulacion_id, persona_id, cargo)`: la
+   * misma persona en dos filas, con dos cargos, es un caso previsto y normal
+   * —la directora que además escribe el guion—.
+   *
+   * ⚠ `integrantesDeFondo` deduplica por persona y se queda con LA PRIMERA FILA
+   * QUE LLEGA. Sin `.order()` en la consulta, cuál llega primero depende del
+   * orden físico de Postgres, que cambia con cualquier `UPDATE` de la tabla: la
+   * misma persona salía unas veces «· Director/a» y otras «· Guionista», y con
+   * ella cambiaba su sitio en la lista, porque el rango sale del cargo.
+   * Y la ficha de la postulación sí pide `.order("cargo")`, así que las dos
+   * pantallas se contradecían — justo lo que esta función vino a evitar.
+   *
+   * Se resuelve aquí y no en la consulta porque hay que separar dos cosas:
+   *  · el cargo que ORDENA: el de mayor jerarquía, para que la directora salga
+   *    arriba aunque su otra fila diga «Guionista»;
+   *  · el texto que se PINTA: todos sus cargos, como hacía la lista de antes.
+   * Unirlos en un solo campo no vale: `rangoRol` compara por igualdad exacta,
+   * así que «Director/a / Guionista» no está en el catálogo de roles y caería
+   * al final de la lista.
+   */
+  const cargosDe = new Map<string, string[]>();
+  for (const f of equipoPost as any[]) {
+    const p = un1(f?.persona) as PersonaMin | null;
+    const c = (f?.cargo || "").trim();
+    if (!p?.id || !c) continue;
+    const ya = cargosDe.get(p.id) || [];
+    if (!ya.includes(c)) cargosDe.set(p.id, [...ya, c]);
+  }
+  /* Jerarquía primero y alfabético para desempatar: el mismo par de cargos da
+     siempre el mismo texto, venga en el orden que venga de la base. */
+  for (const [id, cs] of cargosDe) {
+    cargosDe.set(id, [...cs].sort((a, b) => (rangoRol(a) - rangoRol(b)) || a.localeCompare(b, "es")));
+  }
+  /* Una sola fila por persona, ya con su cargo de mayor jerarquía. Así lo que
+     recibe `integrantesDeFondo` no tiene ambigüedad que resolver. */
+  const equipoUnico: FilaEquipoPost[] = [];
+  const vistas = new Set<string>();
+  for (const f of equipoPost as any[]) {
+    const p = un1(f?.persona) as PersonaMin | null;
+    if (!p?.id || vistas.has(p.id)) continue;
+    vistas.add(p.id);
+    equipoUnico.push({ ...f, persona: p, cargo: cargosDe.get(p.id)?.[0] ?? f.cargo });
+  }
+
+  return ordenarIntegrantes(integrantesDeFondo(equipoUnico, rhes, previstos, [...cat.values()]))
+    .map(x => {
+      /* Todos sus cargos del expediente si los tiene; si no, el que trajera
+         `integrantesDeFondo` —el de `equipo_fondo`—; y si tampoco, de dónde
+         sale esta persona. */
+      const delExpediente = cargosDe.get(x.persona.id);
+      const cargo = (x.cargo || "").trim();
+      const cola = delExpediente?.length ? delExpediente.join(" / ")
+        : cargo && cargo !== "—" ? cargo
+          : x.situacion === "girado_no_declarado" ? "con recibo girado"
+            : x.situacion === "previsto" ? "previsto" : "";
+      const base = nombreCorto(x.persona);
+      return {
+        id: x.persona.id,
+        nombre: cola ? `${base} · ${cola}` : base,
+        foto: x.persona.foto_url || null,
+      };
+    });
+}

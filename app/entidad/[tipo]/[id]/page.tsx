@@ -78,6 +78,7 @@ import EquipoPorcentajes from "@/components/EquipoPorcentajes";
 import Precontratos from "@/components/Precontratos";
 import { etapasDe } from "@/lib/etapas";
 import { plazoFondo } from "@/lib/plazoFondo";
+import { nominaCronograma } from "@/lib/equipoFondo";
 import { rubrosDe, topeEstimuloDe } from "@/lib/rubros";
 import { TABLAS_EXP, materialTablaDe, plantillaConExtras, esVideojuego } from "@/lib/tablas-expediente";
 import TabsPanel from "@/components/TabsPanel";
@@ -1502,13 +1503,32 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
 
     /* Cronograma PROPIO de la postulación (independiente del plan del
        proyecto) + plantillas por tipo + perfiles, para su pestaña. */
-    const [cp, pl2, pf2] = await Promise.all([
+    /* ── LAS DOS LISTAS DEL FONDO, SOLO SI YA ES FONDO ──
+       Una postulación GANADORA sigue teniendo su cronograma vivo aquí mientras
+       no se le fije una versión, y ese cronograma es el mismo que se edita en
+       🎥 Audiovisual. Sin estas dos listas, el desplegable de allí ofrece a
+       veinticinco personas y el de aquí a cinco: al asignar en Audiovisual a
+       alguien de `equipo_fondo`, esta pantalla lo pintaba en rojo con
+       «⚠ de baja» y su equipo de apoyo con «👤 ⚠» — un aviso falso sobre un
+       dato correcto, que es justo lo que este código evita en todas partes.
+       Condicionadas a `ganadora`: mientras se postula no hay ni personal de
+       ejecución ni recibos, así que serían dos viajes para traer nada. */
+    const esGanadoraCr = ent.estado === "ganadora";
+    const [cp, pl2, pf2, eqfP, rheP] = await Promise.all([
       supabase.from("cronograma_actividades").select("*, resp:perfiles!responsable(nombre)")
         .eq("postulacion_id", params.id)
         .order("etapa").order("orden").order("fecha_inicio").order("creado_en"),
       supabase.from("plantillas_cronograma")
         .select("id,nombre,tipo_proyecto,acts:plantilla_actividades(count)").order("nombre"),
       supabase.from("perfiles").select("id,nombre,avatar_url,color").eq("activo", true).order("nombre"),
+      esGanadoraCr
+        ? supabase.from("equipo_fondo").select("id,persona_id,cargo,nota,persona:personas(id,nombre,alias,foto_url)")
+          .eq("postulacion_id", params.id)
+        : Promise.resolve({ data: [] as any[] }),
+      esGanadoraCr
+        ? supabase.from("rhe").select("id,persona_id,monto,persona:personas(id,nombre,alias,foto_url)")
+          .eq("postulacion_id", params.id).limit(techo(1000))
+        : Promise.resolve({ data: [] as any[] }),
     ]);
     /* El responsable de una actividad de POSTULACIÓN vive en
        `responsable_persona` (el equipo que se presenta), no en `responsable`
@@ -1533,19 +1553,17 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
        Si el equipo está vacío no hay a quién asignar, y eso es correcto: se
        agrega gente al equipo primero. Caer de vuelta a los perfiles guardaría
        un id de cuenta en una columna que apunta a personas. */
-    const cargos = new Map<string, string[]>();
-    const nombres = new Map<string, string>();
-    const fotos = new Map<string, string | null>();
-    for (const m of equipoPost as any[]) {
-      const p = m?.persona; if (!p?.id) continue;
-      nombres.set(p.id, p.alias || p.nombre || "—");
-      fotos.set(p.id, p.foto_url || null);
-      cargos.set(p.id, [...(cargos.get(p.id) || []), m.cargo].filter(Boolean));
-    }
-    plantelPost = [...nombres].map(([id, n]) => ({
-      id, nombre: (cargos.get(id) || []).length ? `${n} · ${(cargos.get(id) || []).join(" / ")}` : n,
-      foto: fotos.get(id) || null,
-    }));
+    /* ── LA MISMA FUNCIÓN QUE EL FONDO, CON LOS MISMOS DATOS ──
+       `nominaCronograma` cruza el equipo del expediente con el personal sumado
+       en ejecución y los recibos girados. Mientras se postula, las dos últimas
+       listas llegan vacías y el resultado es exactamente el de siempre: los del
+       expediente, con su cargo al lado —y una persona con dos cargos sale una
+       vez con los dos, como antes—.
+       Ganada, llegan llenas y las dos pantallas ofrecen la misma gente. Que
+       esto sea UNA función y no dos bloques copiados es lo que impide que
+       vuelvan a divergir. */
+    plantelPost = nominaCronograma(
+      equipoPost as any, (rheP.data || []) as any[], (eqfP.data || []) as any[]);
     plantillas = (pl2.data || []).map((x: any) => ({
       id: x.id, nombre: x.nombre, tipo_proyecto: x.tipo_proyecto, n: x.acts?.[0]?.count ?? 0,
     }));
