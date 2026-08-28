@@ -2,13 +2,22 @@ import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import GuionEstructura from "@/components/GuionEstructura";
 import { modoGuion, VOZ, plantillaDe, explicar } from "@/lib/guion";
+import { tituloDe, nivelDe, metaNivel, nivelDestino, llegoAlDestino,
+  estadoDe as estadoTrat, META_ESTADO_TRAT } from "@/lib/tratamiento";
 import Link from "@/components/Enlace";
 import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "✍ Guion" };
 
-/* LA LÍNEA DE TIEMPO NARRATIVA — vuelta 1: el tratamiento.
+/* LA LÍNEA DE TIEMPO NARRATIVA — un TRATAMIENTO concreto.
+ *
+ * ⚠ El `[id]` de esta ruta es el del TRATAMIENTO, no el del proyecto. Una
+ * película tiene varios documentos —el presentado al concurso, el reescrito con
+ * las notas del jurado, el de rodaje— y hasta que existió la cabecera solo
+ * cabía uno. Está razonado en db/tratamiento.sql.
+ * Se entra desde la lista de tratamientos de la ficha del proyecto o desde la
+ * pestaña Audiovisual del fondo.
  *
  * Página propia y no pestaña de la ficha porque lo que viene después es
  * ancho: la línea de tiempo del prototipo son 36 px por minuto, y una
@@ -26,23 +35,33 @@ export default async function Guion({ params }: { params: { id: string } }) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: proy } = await supabase.from("proyectos")
-    .select("id,nombre,nombre_corto,tipo,etapa,guion_plantilla").eq("id", params.id).maybeSingle();
+  /* El documento y su película en una sola consulta. Sin el embebido harían
+     falta dos viajes encadenados —el tratamiento primero para saber de qué
+     proyecto es— y eso es latencia pura antes de pintar nada. */
+  const { data: trat } = await supabase.from("tratamiento")
+    .select("id,nombre,version,nivel,estado,plantilla,vigente,url,nota,postulacion_id," +
+      "proy:proyectos(id,nombre,nombre_corto,tipo,etapa)")
+    .eq("id", params.id).maybeSingle();
+  if (!trat) notFound();
+  const proy: any = Array.isArray((trat as any).proy) ? (trat as any).proy[0] : (trat as any).proy;
+  /* Un tratamiento sin proyecto no debería existir —la FK es `not null`— pero
+     si el embebido fallara, la página entera se apoyaría en `proy.tipo` y
+     reventaría con un error que no dice nada. */
   if (!proy) notFound();
 
   const [{ data: actos, error: eActos }, { data: secs, error: eSecs },
     { data: hilos, error: eHilos }, { data: beats, error: eBeats }] = await Promise.all([
     supabase.from("guion_actos").select("id,clave,nombre,orden")
-      .eq("proyecto_id", params.id).order("orden"),
+      .eq("tratamiento_id", params.id).order("orden"),
     supabase.from("guion_secuencias").select("id,nombre,texto,minutos,acto_id,orden")
-      .eq("proyecto_id", params.id).order("orden"),
+      .eq("tratamiento_id", params.id).order("orden"),
     supabase.from("guion_hilos").select("id,nombre,color,orden")
-      .eq("proyecto_id", params.id).order("orden"),
+      .eq("tratamiento_id", params.id).order("orden"),
     /* La espina: los puntos de giro y de inflexión en su orden. Es lo que
        convierte «Save the Cat» en una guía y no en una etiqueta. */
     supabase.from("guion_beats")
       .select("id,nombre,que,tipo,pos,nota,acto_id,secuencia_id,orden")
-      .eq("proyecto_id", params.id).order("orden"),
+      .eq("tratamiento_id", params.id).order("orden"),
   ]);
 
   /* Las marcas van en una segunda ronda porque hay que acotarlas a ESTAS
@@ -73,19 +92,39 @@ export default async function Guion({ params }: { params: { id: string } }) {
   const secuencias = (secs || []).map((s: any) => ({ ...s, hilos: hilosDe.get(s.id) || [] }));
   const modo = modoGuion(proy.tipo);
   const V = VOZ[modo];
-  const P = plantillaDe(proy.guion_plantilla);
+  const P = plantillaDe((trat as any).plantilla);
+  const T = trat as any;
 
   return (
     <main className="wrap">
       <Volver />
 
+      {/* El título es el del DOCUMENTO, no el de la película: con varios
+          tratamientos abiertos en pestañas distintas, «✍ Tratamiento · KAWSAY
+          WARMI» tres veces no distingue cuál se está editando. */}
       <h1 className="title-lg">
-        ✍ {V.tratamiento} ·{" "}
+        ✍ {tituloDe(T)} ·{" "}
         <Link href={`/entidad/proyecto/${proy.id}`} style={{ color: "var(--violet)" }}>
           {proy.nombre_corto || proy.nombre} →
         </Link>
       </h1>
-      <div style={{ color: "var(--dim)", fontSize: 12.5, margin: "-6px 0 14px" }}>
+      <div style={{ color: "var(--dim)", fontSize: 12.5, margin: "-6px 0 14px", lineHeight: 1.6 }}>
+        <span style={{ color: META_ESTADO_TRAT[estadoTrat(T)].col }}>
+          {META_ESTADO_TRAT[estadoTrat(T)].ico} {META_ESTADO_TRAT[estadoTrat(T)].txt}
+        </span>
+        {T.vigente && <> · <b style={{ color: "var(--green)" }}>vigente</b></>}
+        {" · "}{metaNivel(nivelDe(T)).ico} {metaNivel(nivelDe(T)).txt}
+        {/* Hasta dónde tiene que llegar esta película. En documental el
+            secuenciado ES el destino; en ficción y animación es el paso previo
+            al guion, y decirlo evita que alguien dé por cerrado un documento
+            que todavía tiene que crecer. */}
+        {!llegoAlDestino(T, proy.tipo) && (
+          <> · <span style={{ color: "var(--yellow)" }}>
+            falta llegar a {metaNivel(nivelDestino(proy.tipo)).txt.toLowerCase()}
+          </span></>
+        )}
+        {T.url && <> · <a href={T.url} target="_blank" rel="noreferrer" style={{ color: "var(--blue)" }}>↗ el documento original</a></>}
+        <br />
         {modo === "documental"
           ? "Lo que esperas que ocurra, secuencia por secuencia. En documental el tratamiento se prevé, no se dicta."
           : "Qué pasa, secuencia por secuencia y en prosa. De aquí sale después el guion en escenas."}
@@ -113,7 +152,7 @@ export default async function Guion({ params }: { params: { id: string } }) {
         </div>
       )}
 
-      <GuionEstructura proyectoId={proy.id} modo={modo} plantilla={proy.guion_plantilla}
+      <GuionEstructura tratamientoId={T.id} modo={modo} plantilla={T.plantilla}
         actos={(actos as any) || []} secs={secuencias as any} hilos={(hilos as any) || []}
         beats={(beats as any) || []} />
     </main>

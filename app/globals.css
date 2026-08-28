@@ -6930,3 +6930,52 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
 .pap-doble{font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:8px;
   padding:6px 8px;border-radius:8px;background:rgba(167,139,250,.09);
   border:1px solid rgba(167,139,250,.22)}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ✍ LOS TRATAMIENTOS DE UNA PELÍCULA (components/Tratamientos.tsx)
+
+   Una película no tiene un guion: tiene una sucesión de documentos. Y la mitad
+   de los reales viven en Drive, así que «🔗 Enlazar uno» va al mismo nivel que
+   «＋ Nuevo» — un documento puede existir aquí siendo solo su enlace.
+   ══════════════════════════════════════════════════════════════════════════ */
+.trt{margin-top:12px}
+.trt-cab{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:10px}
+.trt-cab-t{font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim);font-weight:700}
+.trt-btn{padding:5px 12px;font-size:12px}
+.trt-aviso{font-size:12px;color:var(--muted);background:rgba(255,255,255,.04);
+  border:1px solid var(--border);border-radius:8px;padding:6px 10px;margin-bottom:8px}
+
+.trt-fila{padding:9px 0;border-top:1px solid var(--border)}
+.trt-fila:first-of-type{border-top:none}
+/* Descartado ≠ borrado: sigue siendo el que vio un jurado, y en dos años nadie
+   recordará por qué se abandonó si no está donde se puede leer. Apagado, no
+   escondido. */
+.trt-fila.es-desc{opacity:.5}
+.trt-nom{color:var(--text);font-weight:600;font-size:13.5px}
+.trt-vig{font-size:10px;letter-spacing:.5px;text-transform:uppercase;font-weight:700;
+  color:var(--green);background:rgba(46,204,113,.14);border-radius:999px;padding:1px 8px}
+.trt-niv{font-size:11px;color:var(--violet);opacity:.9}
+.trt-falta{font-size:10.5px;color:var(--yellow);opacity:.85;white-space:nowrap}
+.trt-pie{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-top:3px;
+  font-size:11.5px;color:var(--dim)}
+.trt-fondo{color:var(--blue);opacity:.9;white-space:nowrap}
+.trt-doc{color:var(--blue);text-decoration:none;white-space:nowrap}
+.trt-nota{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.45}
+.trt-acc{font-size:11px;padding:2px 9px;border-radius:999px;border:1px solid var(--border);
+  color:var(--dim);background:rgba(255,255,255,.03);white-space:nowrap}
+.trt-acc:disabled{opacity:.5}
+
+.trt-nuevo,.trt-ed{margin-top:8px;padding:10px;border:1px solid var(--border2);
+  border-radius:12px;background:rgba(255,255,255,.02)}
+.trt-nuevo-t{font-size:11.5px;color:var(--muted);line-height:1.5;margin-bottom:8px}
+.trt-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:8px}
+.trt-grid label{display:flex;flex-direction:column;gap:3px}
+.trt-grid label>span{font-size:10px;letter-spacing:.5px;text-transform:uppercase;
+  color:var(--dim);font-weight:700}
+.trt-ancho{grid-column:1/-1}
+
+/* La confirmación de borrado dice QUÉ se va: es lo único irreversible del
+   módulo —el `cascade` se lleva actos, secuencias, hilos y espina—. */
+.trt-conf{margin-top:10px;padding:10px;border-radius:12px;font-size:12.5px;
+  border:1px solid rgba(255,77,94,.4);background:rgba(255,77,94,.09)}
+.trt-vacio{font-size:12.5px;color:var(--dim);line-height:1.55;padding:4px 0}

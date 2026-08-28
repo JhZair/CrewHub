@@ -5,6 +5,7 @@ import Plegable from "@/components/Plegable";
 import CronogramaPostulacion from "@/components/CronogramaPostulacion";
 import VersionesFondo from "@/components/VersionesFondo";
 import RepartoFondo from "@/components/RepartoFondo";
+import Tratamientos from "@/components/Tratamientos";
 import { etapasDe } from "@/lib/etapas";
 import { techo } from "@/lib/api";
 import { hoyLima } from "@/lib/fechas";
@@ -41,7 +42,7 @@ export default async function AudiovisualPage({ params }: { params: { id: string
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [ent, perfilActual, versiones, cp, pl, eqp, rep, per, pap, rheN, eqfN] = await Promise.all([
+  const [ent, perfilActual, versiones, cp, pl, eqp, rep, per, pap, rheN, eqfN, trt] = await Promise.all([
     /* Cacheadas y ya llamadas por el layout en este mismo render: en carga dura
        NO cuestan un viaje. Hacen falta el tipo de proyecto y la categoría de la
        convocatoria —de ellas salen las etapas— y la versión vigente del
@@ -110,6 +111,17 @@ export default async function AudiovisualPage({ params }: { params: { id: string
       .eq("postulacion_id", params.id).limit(techo(1000)),
     supabase.from("equipo_fondo").select("persona_id,cargo")
       .eq("postulacion_id", params.id),
+    /* ── LOS TRATAMIENTOS PRESENTADOS A ESTE FONDO ──
+       El documento es de la PELÍCULA, no del fondo: si colgara del fondo, la
+       misma película con tres fondos tendría tres copias del mismo texto
+       divergiendo. Lo que sí es del fondo es la MARCA de cuál se le presentó, y
+       eso es lo que se filtra aquí.
+       El recuento de secuencias viene embebido, igual que en la ficha del
+       proyecto: aquí no se pinta ninguna secuencia, solo su número. */
+    supabase.from("tratamiento")
+      .select("id,nombre,version,nivel,estado,presentado_en,vigente,url,nota," +
+        "postulacion_id,creado_en,secs:guion_secuencias(count)")
+      .eq("postulacion_id", params.id).order("creado_en", { ascending: false }).limit(techo(100)),
   ]);
 
   const esAdmin = !!((perfilActual as any)?.es_admin || (perfilActual as any)?.es_finanzas);
@@ -157,6 +169,13 @@ export default async function AudiovisualPage({ params }: { params: { id: string
   const partido = repError ? null : repartir(reparto);
   const rotulo = rotuloReparto((ent as any)?.proy?.tipo || null);
 
+  /* Se aplana el recuento embebido —PostgREST devuelve `secs: [{count: n}]`— y
+     el error viaja entero: una lista vacía por fallo se lee como «no se
+     presentó ningún tratamiento», que sobre un expediente es una afirmación
+     falsa. */
+  const trats = ((trt.data || []) as any[]).map(t => ({ ...t, _n: t.secs?.[0]?.count ?? 0 }));
+  const tratsError = (trt as any)?.error?.message || null;
+
   /* El cargo de quien está también en la nómina. El DECLARADO manda sobre el
      apuntado a mano, igual que en lib/equipoFondo.ts: uno está firmado en el
      expediente y el otro es una nota nuestra. Lo ordena `cargoDeNominaPorPersona`. */
@@ -185,6 +204,7 @@ export default async function AudiovisualPage({ params }: { params: { id: string
            evento. La migración la publica. */
         { tabla: "postulacion_reparto", filtro: `postulacion_id=eq.${params.id}` },
         { tabla: "postulacion_papel", filtro: `postulacion_id=eq.${params.id}` },
+        { tabla: "tratamiento", filtro: `postulacion_id=eq.${params.id}` },
       ]}
         token={session?.access_token} miId={user.id} />
       <p className="fondo-nat-sub">La obra que hay que entregar: el rodaje de dos años y su registro.</p>
@@ -243,6 +263,30 @@ export default async function AudiovisualPage({ params }: { params: { id: string
           </Plegable>
         </Plegable>
       </div>
+      {/* ── ✍ LOS TRATAMIENTOS QUE SE PRESENTARON A ESTE FONDO ──
+          Va después del equipo artístico y antes del cronograma: el orden de
+          la pestaña es a quién cuenta la película, cómo la cuenta y cuándo se
+          rueda.
+          Solo lectura: los documentos son de la PELÍCULA y se gestionan en la
+          ficha del proyecto. Aquí se ven y se abren — poner los botones de
+          crear y borrar en dos sitios acaba con dos formas distintas de hacer
+          lo mismo. */}
+      <div style={{ scrollMarginTop: 12 }}>
+        <Plegable id={`fondo:${params.id}:trats`} titulo="✍ Tratamientos presentados"
+          abiertoPorDefecto={trats.length > 0}
+          resumen={tratsError ? dim("no se pudo leer")
+            : dim(trats.length
+              ? `${trats.length} documento${trats.length === 1 ? "" : "s"}`
+              : "ninguno marcado")}>
+          <Tratamientos proyectoId={(ent as any)?.proy?.id || ""}
+            tipoProyecto={(ent as any)?.proy?.tipo || null}
+            tratamientos={trats} error={tratsError}
+            cuentas={tratsError ? null
+              : Object.fromEntries(trats.map((t: any) => [t.id, t._n]))}
+            soloDelFondo={params.id} puedeEditar={false} />
+        </Plegable>
+      </div>
+
       {/* Lo que el plan tiene mapeado pero aún no se construye: se anuncia
           para que se sepa dónde va a vivir, no para simular que ya está. */}
       <div className="fondo-pronto">

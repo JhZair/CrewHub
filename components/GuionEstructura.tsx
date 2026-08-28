@@ -26,8 +26,8 @@ type Hilo = { id: string; nombre: string; color: string };
 
 const COLORES = ["#a78bfa", "#2dd4bf", "#f4b400", "#ff4d5e", "#84cc16", "#06b6d4", "#ec4899"];
 
-export default function GuionEstructura({ proyectoId, modo, plantilla, actos, secs, hilos, beats }: {
-  proyectoId: string; modo: ModoGuion; plantilla?: string | null;
+export default function GuionEstructura({ tratamientoId, modo, plantilla, actos, secs, hilos, beats }: {
+  tratamientoId: string; modo: ModoGuion; plantilla?: string | null;
   actos: Acto[]; secs: Sec[]; hilos: Hilo[];
   beats: (BeatFila & { acto_id?: string | null })[];
 }) {
@@ -89,7 +89,7 @@ export default function GuionEstructura({ proyectoId, modo, plantilla, actos, se
      Es una función que devuelve una lista, no un componente: se llama, no
      se monta, y el estado de cada `Tratamiento` sobrevive. */
   const filasDe = (lista: Sec[]) => lista.map((s, i) => (
-    <Tratamiento key={s.id} sec={s} proyectoId={proyectoId} hilos={hilos} modo={modo}
+    <Tratamiento key={s.id} sec={s} tratamientoId={tratamientoId} hilos={hilos} modo={modo}
       n={nDe.get(s.id) || 0} beats={beatDe.get(s.id) || []}
       primera={i === 0} ultima={i === lista.length - 1} />
   ));
@@ -102,7 +102,7 @@ export default function GuionEstructura({ proyectoId, modo, plantilla, actos, se
     return (
       <div className="es-bloque">
         {suyos.map(b => (
-          <Espina key={b.id} beat={b} proyectoId={proyectoId} secs={opciones}
+          <Espina key={b.id} beat={b} tratamientoId={tratamientoId} secs={opciones}
             pctReal={b.secuencia_id ? pctDe.get(b.secuencia_id) ?? null : null} />
         ))}
       </div>
@@ -116,7 +116,7 @@ export default function GuionEstructura({ proyectoId, modo, plantilla, actos, se
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <span style={{ fontSize: 12, color: "var(--muted)" }}>Modelo estructural:</span>
           <select className="hf-sel" value={P.clave}
-            onChange={async e => ok(await elegirPlantilla(proyectoId, e.target.value))}>
+            onChange={async e => ok(await elegirPlantilla(tratamientoId, e.target.value))}>
             {PLANTILLAS.map(p => <option key={p.clave} value={p.clave}>{p.nombre} · {p.fuente}</option>)}
           </select>
           {/* Se dice qué hace y qué no hace elegir plantilla: si no, cambiarla
@@ -130,7 +130,7 @@ export default function GuionEstructura({ proyectoId, modo, plantilla, actos, se
           {beats.length < P.beats.length && (
             <button className="btn btn-ghost" style={{ padding: "4px 10px", fontSize: 11.5 }}
               onClick={async () => {
-                const r: any = await sembrarBeats(proyectoId, P.clave);
+                const r: any = await sembrarBeats(tratamientoId, P.clave);
                 if (r?.error) { setErr(explicar(r.error)); return; }
                 setErr(r?.nuevos ? "" : "Ya estaban todos los puntos de esta plantilla.");
                 router.refresh();
@@ -182,7 +182,7 @@ export default function GuionEstructura({ proyectoId, modo, plantilla, actos, se
               {h.nombre}
               {panelHilos && (
                 <button style={{ marginLeft: 6, color: "var(--dim)" }} title="Quitar"
-                  onClick={async () => ok(await borrarHilo(h.id, proyectoId))}>✕</button>
+                  onClick={async () => ok(await borrarHilo(h.id, tratamientoId))}>✕</button>
               )}
             </span>
           ))}
@@ -194,7 +194,7 @@ export default function GuionEstructura({ proyectoId, modo, plantilla, actos, se
           <form className="gu-form" onSubmit={async e => {
             e.preventDefault();
             const f = new FormData(e.currentTarget as HTMLFormElement);
-            const r = await crearHilo(proyectoId, String(f.get("n") || ""), COLORES[hilos.length % COLORES.length]);
+            const r = await crearHilo(tratamientoId, String(f.get("n") || ""), COLORES[hilos.length % COLORES.length]);
             if (ok(r)) (e.target as HTMLFormElement).reset();
           }}>
             <input name="n" className="gu-inp" placeholder="Nuevo hilo — «La deuda del agua»" />
@@ -235,7 +235,7 @@ export default function GuionEstructura({ proyectoId, modo, plantilla, actos, se
                 <form className="gu-form" onSubmit={async e => {
                   e.preventDefault();
                   const fd = new FormData(e.currentTarget as HTMLFormElement);
-                  if (ok(await guardarActo(a.id, proyectoId, String(fd.get("n") || ""), String(fd.get("c") || "")))) setEditActo(null);
+                  if (ok(await guardarActo(a.id, tratamientoId, String(fd.get("n") || ""), String(fd.get("c") || "")))) setEditActo(null);
                 }}>
                   <input name="c" className="gu-inp" defaultValue={a.clave || ""} placeholder="I" style={{ width: 60 }} />
                   <input name="n" className="gu-inp" defaultValue={a.nombre} placeholder="Nombre del acto" />
@@ -254,7 +254,7 @@ export default function GuionEstructura({ proyectoId, modo, plantilla, actos, se
                   <button className="dato-btn" title="Editar" onClick={() => setEditActo(a.id)}>✎</button>
                   <button className="dato-btn" style={{ color: "var(--dim)" }} title="Quitar el acto (sus secuencias no se borran)"
                     onClick={async () => {
-                      const r: any = await borrarActo(a.id, proyectoId);
+                      const r: any = await borrarActo(a.id, tratamientoId);
                       if (r?.error) { setErr(r.error); return; }
                       if (r?.sueltas) setErr(`Acto quitado. Sus ${r.sueltas} secuencia(s) quedaron arriba, en «sin acto» — el tratamiento no se borra.`);
                       router.refresh();
@@ -268,11 +268,11 @@ export default function GuionEstructura({ proyectoId, modo, plantilla, actos, se
 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button className="btn btn-ghost gu-mas"
-                onClick={async () => ok(await crearSecuencia(proyectoId, a.id, ""))}>
+                onClick={async () => ok(await crearSecuencia(tratamientoId, a.id, ""))}>
                 ＋ {V.sec}
               </button>
               <button className="btn btn-ghost gu-mas"
-                onClick={async () => ok(await crearBeat(proyectoId, a.id, "Punto sin nombre"))}>
+                onClick={async () => ok(await crearBeat(tratamientoId, a.id, "Punto sin nombre"))}>
                 ＋ Punto de giro
               </button>
             </div>
@@ -285,7 +285,7 @@ export default function GuionEstructura({ proyectoId, modo, plantilla, actos, se
         <form className="card gu-form" onSubmit={async e => {
           e.preventDefault();
           const f = new FormData(e.currentTarget as HTMLFormElement);
-          if (ok(await crearActo(proyectoId, String(f.get("n") || ""), String(f.get("c") || "")))) setNuevoActo(false);
+          if (ok(await crearActo(tratamientoId, String(f.get("n") || ""), String(f.get("c") || "")))) setNuevoActo(false);
         }}>
           <input name="c" className="gu-inp" placeholder="IV" style={{ width: 70 }} />
           <input name="n" className="gu-inp" placeholder="Nombre del acto" autoFocus />

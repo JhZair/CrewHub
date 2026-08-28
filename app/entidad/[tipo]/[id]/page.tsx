@@ -12,6 +12,8 @@ import Credenciales from "@/components/Credenciales";
 import ClienteProyecto from "@/components/ClienteProyecto";
 import EquipoProyecto from "@/components/EquipoProyecto";
 import ActoresProyecto from "@/components/ActoresProyecto";
+import { techo } from "@/lib/api";
+import Tratamientos from "@/components/Tratamientos";
 import Pasos from "@/components/Pasos";
 import Postulaciones from "@/components/Postulaciones";
 import EmpresaPostulacion from "@/components/EmpresaPostulacion";
@@ -757,7 +759,10 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
      sección dijo «· 0» con dos personajes dentro— y no había forma de notarlo
      desde la pantalla. El error viaja y se muestra. */
   let actoresError = "";
-  let nSecuencias = 0;
+  /* Los documentos de la película y el error de su consulta. `tratsError` va
+     entero al componente: una lista vacía por fallo se lee como «no hay
+     ninguno», que es justo lo contrario de lo que pasa. */
+  let trats: any[] = [], tratsError = "", nSecuencias = 0;
   let muroPosts: any[] = [], muroEtqs: any[] = [];
   // Interacción de cada postulación (💬 comentarios + 😊 reacciones), para
   // mostrar el resumen en las tarjetas de las tres fichas. Se llena abajo, una
@@ -795,11 +800,22 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
           rasgos,quiere,quiere_como,necesita,necesita_como,notas,
           persona:personas(id,nombre,alias,foto_url)`)
         .eq("proyecto_id", params.id).order("orden").order("creado_en"),
-      /* Cuántas secuencias de guion tiene, para el botón «✍ Guion». Va en
-         esta ronda y no después: una consulta suelta detrás de un
+      /* ── LOS TRATAMIENTOS DE LA PELÍCULA ──
+         Ya no es un contador para un botón: es la lista de documentos. Una
+         película tiene varios —el presentado al concurso, el reescrito con las
+         notas del jurado, el de rodaje— y hasta que existió la cabecera solo
+         cabía uno. Razonado en db/tratamiento.sql.
+         Va en esta ronda y no después: una consulta suelta detrás de un
          `Promise.all` es un viaje de ida y vuelta en serie en cada carga. */
-      supabase.from("guion_secuencias")
-        .select("id", { count: "exact", head: true }).eq("proyecto_id", params.id),
+      supabase.from("tratamiento")
+        /* El recuento de secuencias viene EMBEBIDO, no en una segunda
+           consulta: los ids de los tratamientos no se conocen hasta que esta
+           vuelve, así que un `.in()` habría obligado a encadenar dos viajes
+           —y aquí no se pinta ninguna secuencia, solo su número—. Mismo patrón
+           que `acts:plantilla_actividades(count)` en el cronograma. */
+        .select("id,nombre,version,nivel,estado,presentado_en,plantilla,vigente,url,nota," +
+          "postulacion_id,creado_en,secs:guion_secuencias(count)")
+        .eq("proyecto_id", params.id).order("creado_en", { ascending: false }).limit(techo(200)),
     ]);
     personasCat = (pc.data || []).map((x: any) => ({ ...x, nombre: x.alias ? `${x.nombre} · ${x.alias}` : x.nombre }));
     const _cl = (cl as any).data; clienteDe = _cl ? { id: _cl.id, nombre: _cl.alias || _cl.nombre } : null;
@@ -841,7 +857,12 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     /* Solo la cuenta: el botón dice si hay tratamiento escrito dentro. Un
        botón que se ve igual con y sin contenido no invita a entrar.
        `head: true` no trae filas, solo el número. */
-    nSecuencias = gu.count || 0;
+  /* Se aplana el recuento embebido: PostgREST devuelve `secs: [{count: n}]`.
+     `nSecuencias` es el total de la película —lo usa el enlace del carné—; el
+     de cada documento va dentro de su fila. */
+    trats = ((gu.data || []) as any[]).map(t => ({ ...t, _n: t.secs?.[0]?.count ?? 0 }));
+    tratsError = (gu as any)?.error?.message || "";
+    nSecuencias = trats.reduce((n, t) => n + (t._n || 0), 0);
     actoresError = (ac as any).error?.message || "";
 
     /* 🧱 MURO — reutiliza el helper compartido (mismo muro que empresa). */
@@ -2396,14 +2417,26 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
           <Pasos tipo="proyecto" id={params.id} estado={ent.etapa} subtipo={ent.tipo} />
         )}
         {/* El guion vive en su propia pantalla: la línea de tiempo narrativa
-            es ancha —36 px por minuto— y no cabe junto al carné. Desde aquí
-            se entra; el botón dice si ya hay algo escrito dentro. */}
-        {params.tipo === "proyecto" && (
-          <Link href={`/guion/${params.id}`} className="btn btn-ghost"
-            style={{ padding: "6px 12px", fontSize: 12, whiteSpace: "nowrap" }}>
-            ✍ Guion{nSecuencias ? ` · ${nSecuencias} sec` : ""}
-          </Link>
-        )}
+            es ancha —36 px por minuto— y no cabe junto al carné.
+            ⚠ El atajo lleva al tratamiento VIGENTE, no a «el guion»: una
+            película tiene varios documentos y hay que decir a cuál se entra.
+            Sin vigente no se pinta: mandar a un id que no existe da un 404 que
+            se lee como que el módulo está roto. La lista entera está abajo, en
+            Trayectoria. */}
+        {params.tipo === "proyecto" && (() => {
+          const vig = trats.find((t: any) => t.vigente);
+          if (!vig) return null;
+          /* ⚠ El contador es el del VIGENTE, no la suma de todos. Con «47 sec»
+             en un botón que abre un documento de 12, el número se lee como una
+             promesa de lo que hay al otro lado. */
+          return (
+            <Link href={`/guion/${vig.id}`} className="btn btn-ghost"
+              style={{ padding: "6px 12px", fontSize: 12, whiteSpace: "nowrap" }}
+              title="El tratamiento vigente. Los demás están en la pestaña Trayectoria.">
+              ✍ Tratamiento vigente{vig._n ? ` · ${vig._n} sec` : ""}
+            </Link>
+          );
+        })()}
         {/* ── EDITAR, ARRIBA, EN LA ETIQUETA ──
             Vive en el carné y la etiqueta ya no tiene carné. Renombrarla o
             cambiarle el color siguen haciendo falta —son sus dos únicos
@@ -4994,6 +5027,28 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                       y animación son personajes, con o sin intérprete. */}
                   <ActoresProyecto proyectoId={params.id} actores={actoresProy}
                     personas={personasCat} tipo={ent.tipo} error={actoresError} />
+                  {/* ── LOS TRATAMIENTOS ──
+                      Junto al reparto porque son la misma pregunta desde dos
+                      lados: a quién cuenta la película y cómo la cuenta.
+                      `fondos` sale de las postulaciones de este proyecto, para
+                      poder marcar a cuál se presentó cada documento. */}
+                  <Tratamientos proyectoId={params.id} tipoProyecto={ent.tipo}
+                    tratamientos={trats} error={tratsError || null}
+                    /* Un mapa id→número, no la lista de secuencias: el
+                       componente es de cliente y un array de objetos falsos se
+                       serializaría entero en el payload para transportar un
+                       entero. `null` cuando la consulta falló — «no se sabe» no
+                       es «cero». */
+                    cuentas={tratsError ? null
+                      : Object.fromEntries(trats.map((t: any) => [t.id, t._n]))}
+                    fondos={postusProy.map((p: any) => ({
+                      id: p.id,
+                      /* El código («PO-001») es como se le llama al fondo aquí;
+                         el nombre de la convocatoria es el respaldo para los que
+                         todavía no lo tienen. */
+                      codigo: p.codigo || null,
+                      nombre: p.conv?.nombre || p.conv?.codigo || "fondo sin código",
+                    }))} />
                   {postusCard}
                   <ClienteProyecto proyectoId={params.id} cliente={clienteDe} personas={personasCat} />
                 </>

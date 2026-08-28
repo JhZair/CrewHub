@@ -30,8 +30,8 @@ export type BeatFila = {
 };
 type SecOp = { id: string; nombre: string; n: number };
 
-export default function Espina({ beat, proyectoId, secs, pctReal }: {
-  beat: BeatFila; proyectoId: string; secs: SecOp[];
+export default function Espina({ beat, tratamientoId, secs, pctReal }: {
+  beat: BeatFila; tratamientoId: string; secs: SecOp[];
   /** Dónde cae de verdad la secuencia que lo carga, en % de metraje. */
   pctReal?: number | null;
 }) {
@@ -61,7 +61,7 @@ export default function Espina({ beat, proyectoId, secs, pctReal }: {
     const campos = cola.current; cola.current = {};
     setEstado("guardando");
     const tarea = (async () => {
-      const r: any = await guardarBeat(beat.id, proyectoId, campos);
+      const r: any = await guardarBeat(beat.id, tratamientoId, campos);
       if (r?.error) { cola.current = { ...campos, ...cola.current }; setEstado("error"); setErr(r.error); return false; }
       setEstado("guardado"); return true;
     })();
@@ -73,12 +73,12 @@ export default function Espina({ beat, proyectoId, secs, pctReal }: {
 
   async function cambiar(campos: Record<string, any>) {
     if (!(await volcar())) return;
-    const r: any = await guardarBeat(beat.id, proyectoId, campos);
+    const r: any = await guardarBeat(beat.id, tratamientoId, campos);
     if (r?.error) setErr(r.error); else router.refresh();
   }
 
   async function borrar(confirmado = false) {
-    const r: any = await borrarBeat(beat.id, proyectoId, confirmado);
+    const r: any = await borrarBeat(beat.id, tratamientoId, confirmado);
     if (r?.confirmar) { setPide(r.nota); return; }
     if (r?.error) { setErr(r.error); return; }
     cola.current = {}; setPide(null); router.refresh();

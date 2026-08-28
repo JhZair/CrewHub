@@ -148,15 +148,10 @@ export function ordenarTratamientos<T extends Tratamiento>(ts: T[]): T[] {
   });
 }
 
-/** Cuántas secuencias tiene cada tratamiento, indexado. Un solo recorrido: la
- *  lista pinta N filas y hacer un `filter` por fila sería recorrerla N veces. */
-export function secuenciasPorTratamiento(
-  secs: { tratamiento_id?: string | null }[],
-): Map<string, number> {
-  const m = new Map<string, number>();
-  for (const s of secs) {
-    if (!s.tratamiento_id) continue;
-    m.set(s.tratamiento_id, (m.get(s.tratamiento_id) || 0) + 1);
-  }
-  return m;
-}
+/* (Aquí vivía `secuenciasPorTratamiento`, que contaba secuencias agrupándolas
+   por documento. No lo usa nadie: el recuento viene EMBEBIDO de PostgREST
+   —`secs:guion_secuencias(count)`— y llega ya calculado. Existía para consumir
+   un array de secuencias falsas que se construía solo para transportar un
+   número, y que en un componente de cliente se serializaba entero en el
+   payload. Un export que nadie importa es una segunda forma de contar lo mismo
+   esperando a discrepar con la primera.) */

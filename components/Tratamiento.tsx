@@ -41,8 +41,8 @@ type Sec = {
 type Hilo = { id: string; nombre: string; color: string };
 type Estado = "limpio" | "sucio" | "guardando" | "guardado" | "error";
 
-export default function Tratamiento({ sec, proyectoId, hilos, modo, n, beats = [], primera, ultima }: {
-  sec: Sec; proyectoId: string; hilos: Hilo[]; modo: ModoGuion;
+export default function Tratamiento({ sec, tratamientoId, hilos, modo, n, beats = [], primera, ultima }: {
+  sec: Sec; tratamientoId: string; hilos: Hilo[]; modo: ModoGuion;
   /** Número visible (SEC 01) y si es la primera/última DE SU ACTO. */
   n: number; primera: boolean; ultima: boolean;
   /** Los puntos de la estructura que esta secuencia carga. */
@@ -92,7 +92,7 @@ export default function Tratamiento({ sec, proyectoId, hilos, modo, n, beats = [
     cola.current = {};
     setEstado("guardando");
     const tarea = (async () => {
-      const r: any = await guardarSecuencia(sec.id, proyectoId, campos);
+      const r: any = await guardarSecuencia(sec.id, tratamientoId, campos);
       if (r?.error) {
         /* Vuelve a la cola lo que no entró, pero SIN pisar lo que se haya
            escrito mientras tanto: lo nuevo manda sobre lo reencolado. */
@@ -126,12 +126,12 @@ export default function Tratamiento({ sec, proyectoId, hilos, modo, n, beats = [
 
   async function mover(dir: -1 | 1) {
     if (!(await volcar())) return;      // no se mueve nada con texto en el aire
-    const r: any = await moverSecuencia(sec.id, proyectoId, dir);
+    const r: any = await moverSecuencia(sec.id, tratamientoId, dir);
     if (r?.error) setErr(r.error); else router.refresh();
   }
 
   async function borrar(confirmado = false) {
-    const r: any = await borrarSecuencia(sec.id, proyectoId, confirmado);
+    const r: any = await borrarSecuencia(sec.id, tratamientoId, confirmado);
     if (r?.confirmar) { setPide({ palabras: r.palabras }); return; }
     if (r?.error) { setErr(r.error); return; }
     cola.current = {};                  // ya no hay a dónde guardarlo
@@ -140,7 +140,7 @@ export default function Tratamiento({ sec, proyectoId, hilos, modo, n, beats = [
 
   async function alternarHilo(h: Hilo, on: boolean) {
     if (!(await volcar())) return;
-    const r: any = await marcarHilo(sec.id, h.id, proyectoId, !on);
+    const r: any = await marcarHilo(sec.id, h.id, tratamientoId, !on);
     if (r?.error) setErr(r.error); else router.refresh();
   }
 

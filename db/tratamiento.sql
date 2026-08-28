@@ -33,6 +33,11 @@
 --  Postgres un check no puede consultar otra tabla— así que lo valida la
 --  acción, igual que `traerRepartoDelProyecto`. Se dice aquí para que nadie
 --  dé por hecha una guarda que la base no tiene.
+--  ⚠ DEUDA CONOCIDA: la validación ocurre al crear y al editar el tratamiento.
+--  Si alguien MUEVE la postulación a otro proyecto después, el tratamiento
+--  queda apuntando a un fondo ajeno y ninguna acción lo vuelve a mirar. Lo
+--  cerraría un trigger `before insert or update`; hoy no lo hay, y mover
+--  postulaciones entre proyectos no es algo que se haga.
 --
 --  ── LO ESCRITO ESTÁ EN DRIVE, NO AQUÍ ──
 --  Los tratamientos reales de esta productora viven en Drive. Por eso
