@@ -358,9 +358,9 @@ function Timeline({ vis, shift, setShift, colorDe, icoDe, cortoDe, perfilDe, apa
                así que el enlace va a su ejecución y no al expediente: el
                cronograma que se está viendo es el del fondo, y el expediente
                enseña la foto de lo postulado, que es otra cosa.
-               `#audiovisual` abre la pestaña donde vive ese cronograma; sin el
+               `/audiovisual` es la ruta donde vive ese cronograma; sin ella
                ancla se aterriza en Financiera y hay que buscarlo. */
-            const hrefGrupo = gid.startsWith("postu:") ? `/fondo/${gid.slice(6)}#audiovisual`
+            const hrefGrupo = gid.startsWith("postu:") ? `/fondo/${gid.slice(6)}/audiovisual`
               : gid.startsWith("p:") ? `/entidad/proyecto/${gid.slice(2)}`
               : gid.startsWith("c:") ? `/entidad/convocatoria/${gid.slice(2)}`
               : gid.startsWith("e:") ? `/entidad/empresa/${gid.slice(2)}` : null;

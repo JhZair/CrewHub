@@ -43,6 +43,7 @@
    ══════════════════════════════════════════════════════════════════════════ */
 
 import { cache } from "react";
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 
 /* ── EL FONDO ──
@@ -388,4 +389,28 @@ export function cifrasCabecera(ent: any, d: Awaited<ReturnType<typeof datosCabec
     avisosFin: [avisoEc, avisoDocs].filter(Boolean) as Aviso[],
     avisoVida, avisoRoles,
   };
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   INVALIDAR LA FICHA ENTERA, NO SOLO UNA PESTAÑA
+
+   `revalidatePath("/fondo/<id>")` invalidaba la página del fondo, y eso valía
+   cuando la ficha era UNA página con seis pestañas. Desde que cada pestaña es
+   su propia ruta, esa llamada solo alcanza a la raíz —Vida del fondo—: se
+   registraba un recibo desde Financiera y la ruta que se invalidaba no era la
+   que se estaba mirando.
+
+   Con el segundo argumento `"layout"`, Next invalida ese segmento Y TODO lo
+   que cuelga de él, o sea las seis. Se envuelve en una función para que las
+   treinta y nueve llamadas repartidas por `app/actions.ts` y
+   `app/casilla/acciones.ts` no tengan que acordarse del segundo argumento —y
+   sobre todo para que la próxima pestaña que se añada no obligue a revisarlas
+   otra vez.
+
+   ⚠ Si algún día `"layout"` deja de comportarse así, esto es el único sitio
+   donde hay que enterarse: la alternativa es listar las seis rutas aquí
+   dentro. */
+export function revalidarFondo(id: string) {
+  if (!id) return;
+  revalidatePath(`/fondo/${id}`, "layout");
 }

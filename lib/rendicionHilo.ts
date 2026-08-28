@@ -86,18 +86,22 @@ export type MetaRendicion = {
 /* Las cinco del fondo comparten destino y por eso lo comparten literalmente:
    una sola función, cinco usos. Si el fondo no viene en la fila devuelve null
    —no se cae a `/fondo/undefined`, que es un enlace roto con aspecto de bueno. */
-/* ⚠ EL HASH LLEVA LA PESTAÑA DELANTE: `#financiera/<ancla>`.
-   Las cinco filas viven en la pestaña Financiera, y antes el enlace apuntaba
-   solo al elemento. Funcionaba de casualidad: Financiera era la pestaña que se
-   abría al entrar, así que el navegador encontraba la fila a la vista. El día
-   que otra pasó a ser la primera —«Vida del fondo»—, ese mismo enlace dejaba
-   al lector en una pestaña distinta con su fila montada pero oculta: un aviso
-   que se pulsa y no hace nada.
-   TabsPanel entiende `clave/ancla` desde siempre (ver components/TabsPanel);
-   lo que faltaba era decírselo. */
+/* ⚠ LA PESTAÑA VA EN LA RUTA, NO EN EL HASH.
+   Las cinco filas viven en Financiera. Este enlace ha cambiado dos veces por la
+   misma razón, y conviene que la tercera no haga falta:
+   1. Al principio apuntaba solo al elemento (`#comprobante-<id>`). Funcionaba
+      de casualidad: Financiera era la pestaña que se abría al entrar. El día
+      que «Vida del fondo» pasó a ser la primera, el aviso dejaba al lector en
+      otra pestaña con su fila montada pero oculta — se pulsaba y no pasaba
+      nada.
+   2. Entonces se metió la pestaña DENTRO del hash (`#financiera/<ancla>`),
+      porque las pestañas eran de cliente y `TabsPanel` sabía leer eso.
+   Desde que cada pestaña es una ruta de verdad, la pestaña es parte de la
+   dirección y el hash vuelve a ser lo que siempre fue: el elemento. El
+   navegador salta solo, sin que nadie tenga que interpretarlo. */
 const rutaFondo = (tabla: TablaRendicion) => (fila: any, id: string) =>
   fila?.postulacion_id
-    ? `/fondo/${fila.postulacion_id}#financiera/${anclaRendicion(tabla, id)}`
+    ? `/fondo/${fila.postulacion_id}/financiera#${anclaRendicion(tabla, id)}`
     : null;
 
 /* ── EL RÓTULO LLEVA SIEMPRE EL MONTO ──

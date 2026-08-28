@@ -639,7 +639,7 @@ export default async function Portada({ searchParams }: {
         ini: a.fecha_inicio, fin: a.fecha_fin || a.fecha_inicio,
         href: a.publicacion_id ? `/caso/${a.publicacion_id}`
           : proy ? `/entidad/proyecto/${proy.id}`
-          : postu ? `/fondo/${postu.id}#audiovisual`
+          : postu ? `/fondo/${postu.id}/audiovisual`
           : conv ? `/entidad/convocatoria/${conv.id}` : "/agenda",
         /* Una actividad cuelga de una sola cosa —su cronograma—, así que su
            lista de grupos tiene un elemento. Misma forma que la del caso para

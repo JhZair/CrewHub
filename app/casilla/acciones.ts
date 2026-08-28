@@ -1,6 +1,7 @@
 "use server";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { revalidarFondo } from "@/lib/fondoDatos";
 
 /* ── Las tres cosas que se le hacen a un correo de la casilla ──
    Viven aquí y no en app/actions.ts porque son la mecánica de esta pantalla y
@@ -285,7 +286,7 @@ export async function registrarCarta(f: {
       tipo: "editado",
       detalle: { mensaje: `registró la carta «${numero}» de la casilla electrónica` },
     });
-    revalidatePath(`/fondo/${f.postulacionId}`);
+    revalidarFondo(f.postulacionId);
     revalidatePath(`/entidad/postulacion/${f.postulacionId}`);
   }
   revalidatePath("/casilla");
@@ -322,7 +323,7 @@ export async function borrarCarta(id: string) {
       entidad_tipo: "postulacion", entidad_id: pid, actor_id: user.id, tipo: "editado",
       detalle: { mensaje: `borró la carta «${(prev as any).doc_numero || "sin número"}» de la casilla` },
     });
-    revalidatePath(`/fondo/${pid}`);
+    revalidarFondo(pid);
   }
   revalidatePath("/casilla");
   return {};
@@ -365,6 +366,6 @@ export async function responderCarta(
 
   revalidatePath("/casilla");
   const pid = (data[0] as any)?.postulacion_id;
-  if (pid) revalidatePath(`/fondo/${pid}`);
+  if (pid) revalidarFondo(pid);
   return {};
 }

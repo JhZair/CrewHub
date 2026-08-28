@@ -319,7 +319,7 @@ export default async function AgendaPage() {
       : proy ? `/entidad/proyecto/${proy.id}`
       /* Mismo destino que el título del grupo: la pestaña donde está el
          cronograma, no la portada del fondo. */
-      : postu ? `/fondo/${postu.id}#audiovisual`
+      : postu ? `/fondo/${postu.id}/audiovisual`
       : conv ? `/entidad/convocatoria/${conv.id}` : "#";
     return {
       id: a.id, kind: "act", titulo: a.nombre,

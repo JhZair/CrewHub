@@ -548,7 +548,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
         return (
           <div className="linked caso-clausula">
             <h4>📦 Del acta</h4>
-            <Link href={`/fondo/${comp.postulacion_id}#entregables`} className="echip"
+            <Link href={`/fondo/${comp.postulacion_id}/entregables`} className="echip"
               title="Ver esta cláusula en los entregables del fondo">
               📦 {cl}{comp.titulo}
             </Link>

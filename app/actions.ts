@@ -24,6 +24,7 @@ import { CAMPOS_TABLA } from "@/lib/tablas-expediente";
 import { esCampoDelTrigger } from "@/lib/actividad";
 import { rotuloEstado } from "@/lib/estados";
 import { revisarMedio, medioLimpio, pareceNumeroDeTarjeta, TOPE_DIGITOS, LARGO_MAX } from "@/lib/medioPago";
+import { revalidarFondo } from "@/lib/fondoDatos";
 import { EMOJIS as EMOJIS_REACCION } from "@/lib/reacciones";
 import { SECCIONES, grafiasDe, tipoCanonico, ICO_ENT } from "@/lib/secciones";
 import { vinculosDePublicaciones, conNombre } from "@/lib/vinculosPub";
@@ -1054,7 +1055,7 @@ export async function comentarRendicion(
      que trae la propia fila, no por uno que nos pasen: si el que llama se
      equivoca de fondo, la pantalla correcta se queda sin refrescar y el
      comentario «no aparece» hasta recargar a mano. */
-  if (post) revalidatePath(`/fondo/${post}`);
+  if (post) revalidarFondo(post);
   return {};
 }
 
@@ -1157,7 +1158,7 @@ export async function casoDeRendicion(tabla: string, filaId: string) {
   const { error: eLink } = await supabase.from(tabla).update({ caso_id: pub.id }).eq("id", filaId);
 
   revalidatePath("/");
-  if (postId) revalidatePath(`/fondo/${postId}`);
+  if (postId) revalidarFondo(postId);
   if (eLink) return { id: pub.id as string, error: "Caso creado, pero no quedó anotado en la fila: " + eLink.message };
   return { id: pub.id as string };
 }
@@ -2669,7 +2670,7 @@ export async function guardarGastoDj(f: {
     entidad_tipo: "postulacion", entidad_id: f.postulacionId, actor_id: user.id, tipo: "dato",
     detalle: { mensaje: `${f.id ? "corrigió" : "registró"} un gasto con DJ de S/ ${importe.toLocaleString("es-PE")} — ${desc.slice(0, 80)}` },
   });
-  revalidatePath(`/fondo/${f.postulacionId}`);
+  revalidarFondo(f.postulacionId);
   return {};
 }
 
@@ -2689,7 +2690,7 @@ export async function borrarGastoDj(id: string, postulacionId: string) {
     entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "dato",
     detalle: { mensaje: `borró un gasto con DJ de S/ ${Number(prev?.importe || 0).toLocaleString("es-PE")} — ${String(prev?.descripcion || "").slice(0, 80)}` },
   });
-  revalidatePath(`/fondo/${postulacionId}`);
+  revalidarFondo(postulacionId);
   return {};
 }
 
@@ -2731,7 +2732,7 @@ export async function fijarTopeDj(postulacionId: string, pct: string) {
     entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "dato",
     detalle: { mensaje: n ? `fijó el tope de DJ de este fondo en ${n}% (lo que dice su acta)` : "quitó el tope de DJ propio: vuelve a mandar el de las bases" },
   });
-  revalidatePath(`/fondo/${postulacionId}`);
+  revalidarFondo(postulacionId);
   return {};
 }
 
@@ -3140,7 +3141,7 @@ export async function guardarComprobante(f: {
   });
   revalidatePath("/comprobantes");
   revalidatePath("/obligaciones");
-  if (f.postulacionId) revalidatePath(`/fondo/${f.postulacionId}`);
+  if (f.postulacionId) revalidarFondo(f.postulacionId);
   return {};
 }
 
@@ -3165,7 +3166,7 @@ export async function borrarComprobante(id: string, postulacionId?: string | nul
   revalidatePath("/comprobantes");
   revalidatePath("/obligaciones");
   const fondo = postulacionId || (prev as any)?.postulacion_id;
-  if (fondo) revalidatePath(`/fondo/${fondo}`);
+  if (fondo) revalidarFondo(fondo);
   return {};
 }
 
@@ -3282,7 +3283,7 @@ export async function fijarEjesRhe(id: string, ejes: {
   if (error) return { error: error.message };
   if (ejes.postulacionId) {
     revalidatePath(`/entidad/postulacion/${ejes.postulacionId}`);
-    revalidatePath(`/fondo/${ejes.postulacionId}`);
+    revalidarFondo(ejes.postulacionId);
   }
   return {};
 }
@@ -3432,7 +3433,7 @@ export async function fijarComprobanteRhe(id: string, postulacionId: string, url
   });
   if (error) return { error: mensajeRpc(error) };
   if (data) return { error: String(data) };
-  revalidatePath(`/fondo/${postulacionId}`);
+  revalidarFondo(postulacionId);
   revalidatePath(`/entidad/postulacion/${postulacionId}`);
   return {};
 }
@@ -3486,7 +3487,7 @@ export async function adjuntarComprobantesRhe(
       hechos++;
     }
   }
-  revalidatePath(`/fondo/${postulacionId}`);
+  revalidarFondo(postulacionId);
   revalidatePath(`/entidad/postulacion/${postulacionId}`);
   return { hechos, fallos };
 }
@@ -3601,7 +3602,7 @@ export async function crearRhesDeLote(postulacionId: string, items: {
       detalle: { mensaje: `registró ${hechos.length} recibo(s) por honorarios desde sus PDF` },
     });
   }
-  revalidatePath(`/fondo/${postulacionId}`);
+  revalidarFondo(postulacionId);
   revalidatePath(`/entidad/postulacion/${postulacionId}`);
   return { hechos, fallos };
 }
@@ -3639,7 +3640,7 @@ export async function fijarCierreCuenta(postulacionId: string, fecha: string) {
     return { error: error.message };
   }
   if (!data?.length) return { error: "No se pudo guardar: el permiso de la base lo rechazó." };
-  revalidatePath(`/fondo/${postulacionId}`);
+  revalidarFondo(postulacionId);
   revalidatePath("/fondos");
   return {};
 }
@@ -3700,7 +3701,7 @@ export async function fijarApoyoFondo(
      devuelve cero filas y NINGÚN error, así que sin esto «se guardaría» y
      desaparecería al recargar. */
   if (!data?.length) return { error: "No se pudo guardar: el permiso de la base lo rechazó. Solo administración nombra apoyos." };
-  revalidatePath(`/fondo/${postulacionId}`);
+  revalidarFondo(postulacionId);
   return {};
 }
 
@@ -3744,7 +3745,7 @@ export async function fijarEjesRendicion(tabla: string, id: string, ejes: {
   const { data, error } = await supabase.from(tabla).update(patch).eq("id", id).select("id");
   if (error) return { error: error.message };
   if (!data?.length) return { error: "No se pudo guardar: el permiso de la base lo rechazó." };
-  revalidatePath(`/fondo/${ejes.postulacionId}`);
+  revalidarFondo(ejes.postulacionId);
   return {};
 }
 
@@ -3768,7 +3769,7 @@ export async function fijarEjesRheLote(ids: string[], ejes: {
   if (!Object.keys(patch).length) return {};
   const { error } = await supabase.from("rhe").update(patch).in("id", limpios);
   if (error) return { error: error.message };
-  revalidatePath(`/fondo/${postulacionId}`);
+  revalidarFondo(postulacionId);
   return {};
 }
 
@@ -3829,7 +3830,7 @@ export async function imagenesEstadoCuenta(id: string, imagenes: string[], postu
     : { comprobante_en: null, comprobante_por: null };
   const { error } = await supabase.from("estado_cuenta").update({ imagenes: limpio, ...sello }).eq("id", id);
   if (error) return { error: error.message };
-  revalidatePath(`/fondo/${postulacionId}`);
+  revalidarFondo(postulacionId);
   return {};
 }
 
@@ -3842,7 +3843,7 @@ export async function borrarEstadoCuenta(id: string, postulacionId: string) {
   const { error } = await supabase.from("estado_cuenta").delete().eq("id", id);
   if (error) return { error: error.message };
   revalidatePath(`/entidad/postulacion/${postulacionId}`);
-  revalidatePath(`/fondo/${postulacionId}`);
+  revalidarFondo(postulacionId);
   return {};
 }
 
@@ -3880,7 +3881,7 @@ export async function guardarMovimiento(f: {
       return { error: "Ese movimiento (misma fecha, glosa y monto) ya está cargado." };
     return { error: error.message };
   }
-  revalidatePath(`/fondo/${f.postulacionId}`);
+  revalidarFondo(f.postulacionId);
   return {};
 }
 
@@ -3892,7 +3893,7 @@ export async function borrarMovimiento(id: string, postulacionId: string) {
   if (!perfil?.es_admin) return { error: "Solo administración puede borrar movimientos." };
   const { error } = await supabase.from("movimiento_banco").delete().eq("id", id);
   if (error) return { error: error.message };
-  revalidatePath(`/fondo/${postulacionId}`);
+  revalidarFondo(postulacionId);
   return {};
 }
 
@@ -4846,7 +4847,7 @@ export async function etiquetarPartidas(
     },
   });
 
-  revalidatePath(`/fondo/${postulacionId}`);
+  revalidarFondo(postulacionId);
   revalidatePath(`/entidad/postulacion/${postulacionId}`);
   return {
     ok: tocados,
@@ -4989,7 +4990,7 @@ export async function editarComentario(comentarioId: string, pubId: string, cuer
        ["rhe_id","rhe"],["gasto_dj_id","gasto_dj"],["movimiento_banco_id","movimiento_banco"]] as const) {
     if (!c[col]) continue;
     const { data: fila } = await supabase.from(tabla).select("postulacion_id").eq("id", c[col]).maybeSingle();
-    if ((fila as any)?.postulacion_id) revalidatePath(`/fondo/${(fila as any).postulacion_id}`);
+    if ((fila as any)?.postulacion_id) revalidarFondo((fila as any).postulacion_id);
   }
   return {};
 }
@@ -6765,7 +6766,7 @@ export async function guardarVersionFondo(f: {
       .eq("postulacion_id", f.postulacionId).eq("tipo", f.tipo);
     await supabase.from("version_fondo").update({ vigente: true }).eq("id", ins.id);
   }
-  revalidatePath(`/fondo/${f.postulacionId}`);
+  revalidarFondo(f.postulacionId);
   return {};
 }
 
@@ -6784,7 +6785,7 @@ export async function marcarVersionVigente(id: string, postulacionId: string, ti
     .eq("postulacion_id", postulacionId).eq("tipo", tipo);
   const { error } = await supabase.from("version_fondo").update({ vigente: true }).eq("id", id);
   if (error) return { error: error.message };
-  revalidatePath(`/fondo/${postulacionId}`);
+  revalidarFondo(postulacionId);
   return {};
 }
 
@@ -6805,7 +6806,7 @@ export async function borrarVersionFondo(id: string, postulacionId: string) {
       .order("creado_en", { ascending: false }).limit(1).maybeSingle();
     if (sig?.id) await supabase.from("version_fondo").update({ vigente: true }).eq("id", sig.id);
   }
-  revalidatePath(`/fondo/${postulacionId}`);
+  revalidarFondo(postulacionId);
   return {};
 }
 
@@ -7200,7 +7201,7 @@ export async function marcarCompromiso(
       detalle: { mensaje: `acta ${prev.clausula || ""} «${prev.titulo}»: ${prev.estado} → ${estado}`.trim() },
     });
   }
-  revalidatePath(`/fondo/${postulacionId}`);
+  revalidarFondo(postulacionId);
   return {};
 }
 
@@ -7291,7 +7292,7 @@ export async function casoDeCompromiso(id: string, postulacionId: string) {
      (`compromiso_id`) y punto. Dos sitios que dicen «el caso de esta cláusula»
      acaban diciendo cosas distintas, y el que se mira nunca es el que se
      actualizó. Ver db/compromiso-casos.sql. */
-  revalidatePath(`/fondo/${postulacionId}`);
+  revalidarFondo(postulacionId);
   revalidatePath("/");
   revalidatePath(`/entidad/postulacion/${postulacionId}`);
   return { id: pub.id as string };
@@ -7378,7 +7379,7 @@ export async function atarCasoACompromiso(casoId: string, compromisoId: string) 
     detalle: { mensaje: `ató «${(caso as any).titulo}» a la cláusula ${cl}«${(comp as any).titulo}»`.trim() },
   });
 
-  revalidatePath(`/fondo/${(comp as any).postulacion_id}`);
+  revalidarFondo((comp as any).postulacion_id);
   revalidatePath(`/caso/${casoId}`);
   return { ok: true };
 }
@@ -7415,7 +7416,7 @@ export async function soltarCasoDeCompromiso(casoId: string) {
       actor_id: user.id, tipo: "tarea",
       detalle: { mensaje: `soltó «${(caso as any).titulo}» de la cláusula ${cl}«${comp.titulo || ""}»`.trim() },
     });
-    revalidatePath(`/fondo/${comp.postulacion_id}`);
+    revalidarFondo(comp.postulacion_id);
   }
   revalidatePath(`/caso/${casoId}`);
   return { ok: true };
@@ -7437,7 +7438,7 @@ export async function editarDetalleCompromiso(
   }).eq("id", id).select("id");
   if (error) return { error: error.message };
   if (!hechas?.length) return { error: "No se guardó: no tienes permiso, o la fila ya no está." };
-  revalidatePath(`/fondo/${postulacionId}`);
+  revalidarFondo(postulacionId);
   return {};
 }
 
@@ -7482,7 +7483,7 @@ export async function sumarPersonalFondo(
     entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "miembro",
     detalle: { mensaje: `sumó a ${per?.alias || per?.nombre || "alguien"} al personal del fondo${cargo?.trim() ? ` como ${cargo.trim()}` : ""}` },
   });
-  revalidatePath(`/fondo/${postulacionId}`);
+  revalidarFondo(postulacionId);
   return {};
 }
 
@@ -7501,7 +7502,7 @@ export async function editarPersonalFondo(
     .eq("id", id).select("id");
   if (error) return { error: error.message };
   if (!hechas?.length) return { error: "No se guardó: no tienes permiso, o la fila ya no está." };
-  revalidatePath(`/fondo/${postulacionId}`);
+  revalidarFondo(postulacionId);
   return {};
 }
 
@@ -7528,7 +7529,7 @@ export async function quitarPersonalFondo(id: string, postulacionId: string) {
        sería sembrar una duda que costaría media auditoría aclarar. */
     detalle: { mensaje: `quitó a ${quien} del personal previsto del fondo${prev?.cargo ? ` (${prev.cargo})` : ""} — sus recibos, si los tiene, siguen` },
   });
-  revalidatePath(`/fondo/${postulacionId}`);
+  revalidarFondo(postulacionId);
   return {};
 }
 
@@ -7608,7 +7609,7 @@ export async function guardarHitoFondo(f: {
     entidad_tipo: "postulacion", entidad_id: f.postulacionId, actor_id: user.id, tipo: "editado",
     detalle: { mensaje: `${f.id ? "corrigió" : "apuntó"} un hito del fondo: «${titulo}»` },
   });
-  revalidatePath(`/fondo/${f.postulacionId}`);
+  revalidarFondo(f.postulacionId);
   revalidatePath(`/entidad/postulacion/${f.postulacionId}`);
   return { id: (data[0] as any).id as string };
 }
@@ -7683,7 +7684,7 @@ export async function apuntarBuzon(postulacionId: string, mensajes: {
       entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "editado",
       detalle: { mensaje: `cargó ${ok} mensaje(s) del buzón de comunicaciones` },
     });
-    revalidatePath(`/fondo/${postulacionId}`);
+    revalidarFondo(postulacionId);
   }
   return {
     ok,
@@ -7712,7 +7713,7 @@ export async function borrarHitoFondo(id: string, postulacionId: string) {
     entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "editado",
     detalle: { mensaje: `borró el hito «${(prev as any)?.titulo || "sin título"}» de la vida del fondo` },
   });
-  revalidatePath(`/fondo/${postulacionId}`);
+  revalidarFondo(postulacionId);
   return {};
 }
 
@@ -8982,7 +8983,7 @@ export async function toggleReaccion(
        refrescar y la reacción «no aparece» hasta recargar a mano. */
     const { data: fila } = await supabase.from(rendicion!.tabla)
       .select("postulacion_id").eq("id", rendicion!.id).maybeSingle();
-    if ((fila as any)?.postulacion_id) revalidatePath(`/fondo/${(fila as any).postulacion_id}`);
+    if ((fila as any)?.postulacion_id) revalidarFondo((fila as any).postulacion_id);
   }
   else if (pubId) revalidatePath(`/caso/${pubId}`);
   return {};
