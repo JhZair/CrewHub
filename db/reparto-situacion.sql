@@ -29,8 +29,8 @@
 --  ── LAS DESCARTADAS NO SE BORRAN ──
 --  Saber a quién descartaste —y por qué, en la nota— evita volver a proponer a
 --  la misma persona dentro de seis meses, y en un documental de encuentro
---  pasa: alguien que no encajaba para un bloque encaja para otro. Se guardan,
---  apagadas y plegadas.
+--  pasa: alguien que no encajaba para un bloque encaja para otro. Se guardan y
+--  se enseñan apagadas, en su propia sección al final de la lista.
 --
 --  Idempotente y sin transacción (pgBouncer). Verifica al final.
 --  ⚠ Requiere db/postulacion-reparto.sql corrido antes.

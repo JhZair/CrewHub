@@ -35,9 +35,9 @@ import { papelesPorPersona, type Papel } from "@/lib/papeles";
    ── TRES SITUACIONES, TRES ZONAS ──
    Un documental de personajes reales no se escribe: se busca. Arriba, quienes
    ya están dentro. Debajo, las CANDIDATAS a las que todavía hay que ir a ver,
-   cada una con el papel al que aspira. Al final, plegadas y apagadas, las
-   DESCARTADAS: no se borran porque saber a quién descartaste —y por qué, en la
-   nota— evita volver a proponer a la misma persona en seis meses.
+   cada una con el papel al que aspira. Al final, apagadas, las DESCARTADAS: no
+   se borran porque saber a quién descartaste —y por qué, en la nota— evita
+   volver a proponer a la misma persona en seis meses.
    Confirmar a una candidata es un clic: no se reescribe nada, salta a su grupo.
 
    ── LA COLUMNA QUE IMPORTA ES LA DE LA DERECHA ──
@@ -110,7 +110,16 @@ export default function RepartoFondo({
   const [abierto, setAbierto] = useState<string | null>(null);
   const [ed, setEd] = useState<Record<string, any>>({});
   const [quitando, setQuitando] = useState<string | null>(null);
-  const [verDescartadas, setVerDescartadas] = useState(false);
+  /* ABIERTA de entrada. Empezó plegada para que las descartadas no compitieran
+     por la atención con quienes sí están, pero eso las volvía invisibles: la
+     lista existe justamente para no volver a proponer a la misma persona
+     dentro de seis meses, y una lista que hay que acordarse de abrir no cumple
+     esa función — se mira cuando ya se propuso.
+     Siguen apagadas al 45% y con el nombre tachado, que es lo que evita el
+     ruido; lo que se quita es el clic de más. Y sigue plegándose a mano: en un
+     fondo con veinte descartadas, quien está trabajando con las confirmadas
+     puede cerrarla. */
+  const [verDescartadas, setVerDescartadas] = useState(true);
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState("");
   const [aviso, setAviso] = useState("");
@@ -222,8 +231,8 @@ export default function RepartoFondo({
   };
 
   /** Cualquier error. Si habla de alguien descartada, se abre esa sección: el
-   *  mensaje dice «mira en Descartadas» y esa sección va plegada, así que sin
-   *  esto se le pide al lector que mire donde no puede ver. */
+   *  mensaje dice «mira en Descartadas» y esa sección puede estar cerrada a
+   *  mano, así que sin esto se le pediría mirar donde no puede ver. */
   const fallo = (msg: string) => {
     setError(msg);
     if (/descartad/i.test(msg)) setVerDescartadas(true);
@@ -653,10 +662,13 @@ export default function RepartoFondo({
       )}
 
       {/* ── LAS QUE NO ENTRARON ──
-          Plegadas y apagadas. No se borran: saber a quién descartaste, y por
-          qué, evita volver a proponer a la misma persona dentro de seis meses
-          — y en un documental de encuentro alguien que no encajaba para un
-          bloque encaja para otro. */}
+          A la vista, pero apagadas. No se borran: saber a quién descartaste, y
+          por qué, evita volver a proponer a la misma persona dentro de seis
+          meses — y en un documental de encuentro alguien que no encajaba para
+          un bloque encaja para otro.
+          Empezaron plegadas y no funcionaba: una lista que hay que acordarse de
+          abrir se mira cuando ya volviste a proponer a la misma persona, o sea
+          tarde. El ruido lo quita el 45% de opacidad, no el clic. */}
       {rep.descartadas.length > 0 && (
         <div className="rep-grupo rep-desc">
           <button type="button" className="rep-desc-t" aria-expanded={verDescartadas}
