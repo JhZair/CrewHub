@@ -7192,3 +7192,34 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
   color: var(--green); font-size: 12.5px; padding: 8px 10px; border-radius: 0 8px 8px 0; }
 .crr-pie { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   border-top: 1px solid var(--border); padding-top: 10px; }
+
+/* ══════ REORDENAR EL CRONOGRAMA ARRASTRANDO ══════
+   Prefijo `.cr-`, el del cronograma: esto NO es un componente nuevo, son dos
+   estados más de `.cr-item`. */
+/* La fila que va en la mano se atenúa —para verse que salió de su sitio, sin
+   desaparecer— pero eso NO se hace aquí: `.cr-item` lleva un `style` en línea
+   con su opacidad, y un inline gana a cualquier clase. Está en el componente,
+   en el mismo sitio que decide el resto de esa opacidad. Aquí solo el cursor. */
+/* Dónde va a caer. Una línea arriba y no un recuadro: el recuadro dice
+   «dentro de esta fila», que aquí no significa nada; la línea dice «aquí». */
+.cr-item.cr-sobre { box-shadow: inset 0 3px 0 -1px var(--accent); border-color: var(--accent); }
+.cr-item[draggable="true"] { cursor: grab; }
+.cr-item.cr-arr[draggable="true"] { cursor: grabbing; }
+
+/* «↧ por fecha», en la cabecera de cada etapa. Apagado hasta que se pasa por
+   encima del grupo: es una acción de mantenimiento, no algo que se busque
+   cada día, y encendido compite con el nombre de la etapa. */
+.cr-etapa-btn { background: none; border: 0; color: var(--dim); font-size: 11px;
+  font-family: inherit; cursor: pointer; padding: 2px 6px; border-radius: 6px;
+  opacity: 0; transition: opacity .12s; letter-spacing: 0; text-transform: none; }
+.cr-grupo:hover .cr-etapa-btn { opacity: 1; }
+.cr-etapa-btn:hover { color: var(--text); background: var(--card); }
+.cr-etapa-btn:disabled { cursor: default; opacity: .4; }
+/* En táctil no hay hover: si dependiera de él, el botón no existiría en un
+   móvil — que es justo donde arrastrar tampoco funciona bien. */
+@media (hover: none) { .cr-etapa-btn { opacity: 1; } }
+
+/* El selector de «atar caso», estrecho para que quepa en la fila. */
+.cr-inp-mini { background: var(--card); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 4px 7px; font-size: 11.5px; font-family: inherit;
+  max-width: 240px; }

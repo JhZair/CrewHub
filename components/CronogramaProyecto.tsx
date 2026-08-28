@@ -4,6 +4,8 @@ import {
   cancelarActividadCrono, materializarActividad,
   guardarComoPlantilla, aplicarPlantilla,
   asignarResponsableActividad, cambiarFechaActividad, fijarEquipoActividad,
+  reordenarEtapa, ordenarEtapaPorFecha,
+  atarCasoAActividad, soltarCasoDeActividad, casosLibresDelFondo,
 } from "@/app/actions";
 import { useRouter } from "next/navigation";
 import Link from "@/components/Enlace";
@@ -256,6 +258,26 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
   /* CAMBIOS AL VUELO (responsable / fecha), como en sub-casos: repartir sin
      abrir el editor entero. Candado POR FILA —lista, no un booleano global—:
      tocar la fila B mientras la A guarda no se come el clic en silencio. */
+  /* ── ARRASTRAR PARA REORDENAR ──
+   * Las flechas ▲▼ suben un escalón por clic, y cada clic es un viaje más un
+   * repintado: la fila se mueve, la lista se redibuja y hay que volver a
+   * buscarla con el ratón antes del siguiente. Subir tres puestos son tres
+   * rondas de eso. Se quedan —sirven para el ajuste de uno y funcionan con
+   * teclado y en el móvil, donde arrastrar es un suplicio— pero ya no son la
+   * única forma.
+   * `orden` local: la lista se recoloca AL SOLTAR, sin esperar al servidor. Sin
+   * eso, la fila vuelve a su sitio y salta al de destino medio segundo después,
+   * y el ojo no sabe si funcionó.
+   * `arrastrando` guarda id + etapa: se compara la etapa al soltar para no
+   * dejar caer una actividad de rodaje dentro de postproducción, que aquí no
+   * significaría reordenar sino cambiarle la etapa sin decirlo. */
+  const [arrastrando, setArrastrando] = useState<{ id: string; etapa: string } | null>(null);
+  const [sobreFila, setSobreFila] = useState<string | null>(null);
+  const [ordenLocal, setOrdenLocal] = useState<Record<string, string[]>>({});
+  /* Los casos del fondo aún sin actividad, pedidos al abrir el selector y no en
+     cada carga: son dos consultas para un desplegable que casi nunca se abre. */
+  const [atando, setAtando] = useState<string | null>(null);
+  const [casosLibres, setCasosLibres] = useState<any[] | null>(null);
   const [guardandoFila, setGuardandoFila] = useState<string[]>([]);
   const alVuelo = async (id: string, fn: () => Promise<any>) => {
     if (guardandoFila.includes(id)) return;
@@ -338,6 +360,94 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
      —Sincronización → Color → Logging→…— la decide una persona, no la fecha;
      dentro de la etapa manda el orden manual y la fecha es solo el desempate
      por defecto. (La acción renumera la etapa; ver moverActividadCrono.) */
+  /* Suelta: recoloca en local y manda la lista entera. Una sola escritura para
+     cualquier distancia, en vez de una por escalón. */
+  const soltarEn = async (etapaClave: string, destinoId: string, actual: string[]) => {
+    const arr = arrastrando;
+    setArrastrando(null); setSobreFila(null);
+    if (!arr || arr.id === destinoId) return;
+    /* Como todo lo demás del componente: no se encadena sobre otra escritura en
+       vuelo. Sin esto se podía arrastrar mientras la anterior aún no había
+       vuelto, y la segunda se calculaba sobre una lista que ya iba a cambiar. */
+    if (ocupado) return;
+    /* Entre etapas NO: soltar «Rodaje Nelly» en postproducción no es
+       reordenar, es cambiarle la etapa, y eso se hace con ✎ para que quede
+       claro lo que se está tocando. */
+    if (arr.etapa !== etapaClave) {
+      setError("Para pasarla a otra etapa, edítala con ✎ — arrastrar solo reordena dentro de la suya.");
+      return;
+    }
+    const desde = actual.indexOf(arr.id);
+    const hasta = actual.indexOf(destinoId);
+    if (desde < 0 || hasta < 0) return;
+    const nuevo = [...actual];
+    nuevo.splice(hasta, 0, ...nuevo.splice(desde, 1));
+    setOrdenLocal(o => ({ ...o, [etapaClave]: nuevo }));
+    setError(""); setOcupado(true);
+    /* `try/finally` y no un `await` pelado: si la acción LANZA —corte de red, o
+       un despliegue que invalida el identificador de la acción—, sin esto no
+       corren ni `setOcupado(false)` ni la limpieza de abajo. El componente
+       entero se queda bloqueado (todo lo suyo es `disabled={ocupado}`) y encima
+       enseñando un orden optimista que la base no tiene. */
+    let res: any = null;
+    try {
+      res = await reordenarEtapa(dueno, duenoId, etapaClave || null, nuevo);
+    } catch (e: any) {
+      res = { error: `No hubo respuesta al reordenar: ${e?.message || "se cortó"}. Recarga para ver cómo quedó.` };
+    } finally {
+      setOcupado(false);
+    }
+    if (res?.error) setError(res.error);
+    /* ── EL ORDEN LOCAL SE TIRA SIEMPRE, HAYA IDO BIEN O MAL ──
+       Si falló, porque el de la base es el que manda y dejarlo pintado enseña
+       un orden que no existe.
+       Y si fue bien TAMBIÉN, que es lo que se me pasaba: la clave se quedaba
+       para siempre, así que cualquier cambio posterior por otra vía —▲▼, otro
+       usuario, ⏩ Correr fechas— seguía ordenándose por la lista vieja. La
+       pantalla enseñaba una cosa y el siguiente arrastre mandaba otra.
+       `router.refresh()` trae el orden real; el optimista ya cumplió su papel,
+       que era tapar el medio segundo de espera. */
+    setOrdenLocal(o => { const { [etapaClave]: _, ...resto } = o; return resto; });
+    router.refresh();
+  };
+
+  const porFecha = async (etapaClave: string) => {
+    if (ocupado) return;
+    setOcupado(true); setError("");
+    const res: any = await ordenarEtapaPorFecha(dueno, duenoId, etapaClave || null);
+    setOcupado(false);
+    /* El orden local se tira y se refresca PASE LO QUE PASE. «El orden quedó a
+       medias: 3 de 7» es un error, pero la base sí cambió: quedarse sin
+       refrescar deja la lista enseñando el orden viejo junto al aviso. */
+    setOrdenLocal({});
+    router.refresh();
+    if (fallo(res)) return;
+    if (!res?.n) { setOk("Esta etapa ya estaba en orden de fecha."); setTimeout(() => setOk(""), 4000); }
+  };
+
+  const abrirAtar = async (actId: string) => {
+    setAtando(actId); setCasosLibres(null); setError("");
+    const r: any = await casosLibresDelFondo(dueno, duenoId);
+    if (r?.error) { setError(r.error); setAtando(null); return; }
+    setCasosLibres(r.casos || []);
+  };
+  const atar = async (actId: string, casoId: string) => {
+    if (!casoId) return;
+    setOcupado(true); setError("");
+    const res: any = await atarCasoAActividad(actId, casoId, dueno, duenoId);
+    setOcupado(false);
+    setAtando(null); setCasosLibres(null);
+    if (fallo(res)) return;
+    router.refresh();
+  };
+  const soltarCaso = async (actId: string) => {
+    setOcupado(true); setError("");
+    const res: any = await soltarCasoDeActividad(actId, dueno, duenoId);
+    setOcupado(false);
+    if (fallo(res)) return;
+    router.refresh();
+  };
+
   const mover = async (id: string, dir: "sube" | "baja") => {
     if (ocupado) return;
     setOcupado(true);
@@ -591,6 +701,21 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
           .filter(et => !ETAPA_ORDEN.includes(et))].map(et => {
         const grupo = ordenadas.filter((a: any) => (a.etapa || "") === et);
         if (!grupo.length) return null;
+        /* ── EL ORDEN OPTIMISTA ──
+           Tras soltar una fila, la lista se recoloca aquí mismo sin esperar al
+           servidor: si no, la fila vuelve a su sitio y salta al de destino medio
+           segundo después, y el ojo no sabe si funcionó.
+           Las que no estén en la lista guardada —una creada mientras tanto— van
+           al final en vez de desaparecer, y las borradas no resucitan porque se
+           ordena `grupo`, que es lo que existe de verdad. */
+        const guardado = ordenLocal[et];
+        const grupoOrden = guardado
+          ? [...grupo].sort((x: any, y: any) => {
+              const i = guardado.indexOf(x.id), j = guardado.indexOf(y.id);
+              return (i < 0 ? 1e9 : i) - (j < 0 ? 1e9 : j);
+            })
+          : grupo;
+        const idsOrden = grupoOrden.map((x: any) => x.id);
         return (
           /* ── CADA ETAPA, UNA SECCIÓN ──
              El color no se inventa aquí: es el MISMO que ya lleva el filo
@@ -607,15 +732,28 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
                   no dice si la postproducción son dos o nueve, que es lo que se
                   mira al repartir el trabajo. */}
               <span className="cr-etapa-n">{grupo.length}</span>
+              <span style={{ flex: 1 }} />
+              {/* ── ORDENAR POR FECHA ──
+                  El caso que resuelve casi todos los arrastres —un cronograma
+                  se lee por fechas— de un solo clic. Desde dos: con una sola
+                  actividad no hay nada que ordenar.
+                  ⚠ Dice «ordenar», no «mover»: NO toca ninguna fecha, cambia el
+                  orden en que se listan. Es justo al revés que ⏩ Correr fechas,
+                  y confundir los dos saldría caro. */}
+              {grupo.length > 1 && (
+                <button className="cr-etapa-btn" disabled={ocupado}
+                  title="Dejar esta etapa en orden cronológico. No cambia ninguna fecha: solo el orden de la lista."
+                  onClick={() => porFecha(et)}>↧ por fecha</button>
+              )}
             </div>
-            {grupo.map(a => {
+            {grupoOrden.map(a => {
               const [txt, col] = CHIP[a.estado] || CHIP.planificada;
               /* Se reordena dentro de toda la ETAPA (a cualquier fecha), no ya
                  solo entre las del mismo día. `grupo` ya viene en el orden de
                  pantalla; la posición aquí es la misma que usa la acción. */
-              const pos = grupo.findIndex(x => x.id === a.id);
+              const pos = grupoOrden.findIndex((x: any) => x.id === a.id);
               const puedeSubir = pos > 0;
-              const puedeBajar = pos >= 0 && pos < grupo.length - 1;
+              const puedeBajar = pos >= 0 && pos < grupoOrden.length - 1;
               if (editando === a.id) {
                 return (
                   <FormAct key={a.id} f={ef} setF={setEf} perfiles={perfiles} etapas={etapas} ocupado={ocupado} editar
@@ -623,10 +761,48 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
                 );
               }
               return (
-                <div key={a.id} className="cr-item" style={{
-                  opacity: a.estado === "finalizada" ? .6 : 1,
-                  borderLeft: `3px solid ${ETAPA_COLOR[a.etapa] || "var(--border)"}`,
-                }}>
+                <div key={a.id}
+                  /* El resaltado de destino SOLO si el arrastre viene de esta
+                     misma etapa. Pintándolo en cualquier fila, la pantalla decía
+                     «aquí cae» sobre una etapa ajena y al soltar salía un error:
+                     invitar a hacer algo y luego negarlo es peor que no
+                     invitar. */
+                  className={`cr-item${arrastrando?.id === a.id ? " cr-arr" : ""}${sobreFila === a.id && arrastrando && arrastrando.id !== a.id && arrastrando.etapa === et ? " cr-sobre" : ""}`}
+                  /* ⚠ La opacidad va AQUÍ y no en `.cr-arr`: un `style` en
+                     línea gana a cualquier clase, así que `.cr-arr{opacity:.35}`
+                     nunca llegaba a verse y la fila arrastrada no se atenuaba.
+                     Dos sitios decidiendo el mismo píxel: gana el que no se ve
+                     en la hoja de estilos. */
+                  style={{
+                    opacity: arrastrando?.id === a.id ? .35 : a.estado === "finalizada" ? .6 : 1,
+                    borderLeft: `3px solid ${ETAPA_COLOR[a.etapa] || "var(--border)"}`,
+                  }}
+                  /* ── ARRASTRAR PARA REORDENAR ──
+                     `draggable` en la fila entera y no en un tirador: la fila
+                     ya se agarra con el ratón donde caiga, y un tirador de doce
+                     píxeles obliga a apuntar. Los <input> y <select> de dentro
+                     siguen funcionando porque el navegador no inicia arrastre
+                     desde un campo de formulario.
+                     Solo desde dos: con una sola actividad no hay a dónde. */
+                  draggable={grupoOrden.length > 1}
+                  onDragStart={e => {
+                    /* Firefox no arranca el arrastre sin datos en el evento. */
+                    try { e.dataTransfer.setData("text/plain", a.id); } catch {}
+                    e.dataTransfer.effectAllowed = "move";
+                    setArrastrando({ id: a.id, etapa: et });
+                  }}
+                  onDragEnd={() => { setArrastrando(null); setSobreFila(null); }}
+                  onDragOver={e => {
+                    /* Sin `preventDefault` la zona no acepta el soltar, que es
+                       justo lo que se quiere en una etapa ajena: el cursor dice
+                       «no» y no hay que explicar nada después. */
+                    if (!arrastrando || arrastrando.etapa !== et) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                    setSobreFila(a.id);
+                  }}
+                  onDragLeave={() => setSobreFila(f => (f === a.id ? null : f))}
+                  onDrop={e => { e.preventDefault(); soltarEn(et, a.id, idsOrden); }}>
                   <span style={{ width: 18, textAlign: "center", flexShrink: 0 }}>
                     {a.clase === "hito_externo" ? "🏛" : a.clase === "continua" ? "🔁"
                       : a.estado === "finalizada" ? "✅" : a.estado === "planificada" ? "⚪" : "🟣"}
@@ -696,9 +872,71 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
                   <span className="badge" style={{ color: col, background: "#1c1c2c", whiteSpace: "nowrap", flexShrink: 0 }}>{txt}</span>
                   <span style={{ display: "flex", gap: 8, flexShrink: 0, alignItems: "center" }}>
                     {a.publicacion_id && (
-                      <Link href={`/caso/${a.publicacion_id}`} style={{ color: "var(--accent)", fontSize: 12, fontWeight: 600 }}>
-                        caso →
-                      </Link>
+                      <>
+                        <Link href={`/caso/${a.publicacion_id}`} style={{ color: "var(--accent)", fontSize: 12, fontWeight: 600 }}>
+                          caso →
+                        </Link>
+                        {/* Soltar, no borrar: el caso sigue existiendo por su
+                            cuenta y la actividad vuelve a «planificada», o sea
+                            que el bot vuelve a vigilarla. */}
+                        <button title="Soltar el caso de esta actividad (el caso no se borra)"
+                          style={{ color: "var(--dim)", fontSize: 11 }} disabled={ocupado}
+                          onClick={() => soltarCaso(a.id)}>⛓︎✕</button>
+                      </>
+                    )}
+                    {/* ── ATAR UNO QUE YA EXISTE ──
+                        `materializar` (▶) abre uno nuevo; esto ata el que ya
+                        está en el tablero. Sin esto quedaban dos objetos
+                        hablando del mismo trabajo —«Rodaje Nelly» apuntado a
+                        mano y la actividad del cronograma— sin forma de
+                        juntarlos.
+                        Solo si no tiene caso ya, y no en las canceladas. */}
+                    {/* ⚠ En CUALQUIER estado menos cancelada, y no solo en
+                        `planificada`. Con el filtro estricto había un callejón
+                        sin salida real y corto: atar un caso → se resuelve → la
+                        actividad pasa a `finalizada` → soltar el caso la deja
+                        `finalizada` y SIN caso, y a partir de ahí ni ⛓ ni ▶ se
+                        pintan y el formulario no edita el estado. La fila se
+                        quedaba inmovilizada para siempre.
+                        Atar no fuerza nada: el estado lo deduce el caso. */}
+                    {!a.publicacion_id && a.estado !== "cancelada" && atando !== a.id && (
+                      <button title="Atar un caso que ya existe en el tablero"
+                        style={{ color: "var(--dim)", fontSize: 12 }} disabled={ocupado}
+                        onClick={() => abrirAtar(a.id)}>⛓</button>
+                    )}
+                    {atando === a.id && (
+                      <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        {casosLibres === null
+                          ? <span style={{ color: "var(--dim)", fontSize: 11.5 }}>buscando…</span>
+                          : !casosLibres.length
+                            /* Se distingue «no hay» de «no cargó»: un
+                               desplegable vacío se lee como que el fondo no
+                               tiene casos, y casi siempre lo que pasa es que
+                               todos están ya atados. */
+                            ? <span style={{ color: "var(--dim)", fontSize: 11.5 }}>
+                                No hay casos libres de este fondo — los que hay ya están atados a otra actividad.
+                              </span>
+                            : (
+                              <select className="cr-inp-mini" defaultValue="" disabled={ocupado}
+                                onChange={e => atar(a.id, e.target.value)}>
+                                <option value="">— elegir caso —</option>
+                                {casosLibres.map((c: any) => (
+                                  /* El ESTADO del caso, dicho en la opción. Un
+                                     selector que ofrece los resueltos sin
+                                     distinguirlos hace que se ate uno cerrado
+                                     creyendo que está en marcha — pasó ya con
+                                     el picker de las cláusulas del acta. */
+                                  <option key={c.id} value={c.id}>
+                                    {c.titulo}
+                                    {["resuelta", "descartada"].includes(c.estado) ? " · ✅ cerrado" : ""}
+                                    {c.fecha_limite ? ` · ${fmt(c.fecha_limite)}` : ""}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                        <button style={{ color: "var(--dim)", fontSize: 11 }}
+                          onClick={() => { setAtando(null); setCasosLibres(null); }}>✕</button>
+                      </span>
                     )}
                     {a.estado === "planificada" && confirmando?.id === a.id && (
                       <span style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 11.5 }}>
