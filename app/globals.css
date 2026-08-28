@@ -6819,3 +6819,36 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
   border:1px solid var(--border);color:var(--dim);background:transparent}
 .rep-procsel-b.on{color:var(--text);border-color:var(--violet);
   background:rgba(167,139,250,.14);font-weight:600}
+
+/* ── LAS TRES ZONAS: dentro, en exploración, descartadas ── */
+
+/* Un documental de personajes reales no se escribe: se busca. La zona de
+   candidatas va con su propio marco punteado —lo punteado se lee como «esto
+   todavía no está fijado»— para que nadie confunda una pista con un reparto. */
+.rep-explora{margin-top:16px;border:1px dashed var(--border2);border-radius:12px;
+  padding:8px 12px 4px;background:rgba(255,255,255,.015)}
+.rep-explora .rep-grupo-t{color:var(--teal);opacity:.9;border-bottom-color:var(--border2)}
+
+/* El aviso del formulario de alta de una candidata: dice que se puede apuntar
+   sin ficha de persona, que es la duda que frena a quien lo usa por primera
+   vez. */
+.rep-nuevo-cand{border:1px dashed var(--border2)}
+.rep-nuevo-t{font-size:11.5px;color:var(--teal);opacity:.85;line-height:1.5}
+
+/* Confirmar o descartar, sin abrir el editor: son los gestos que se hacen de a
+   uno y muchas veces. */
+.rep-dec{font-size:11px;white-space:nowrap;padding:2px 9px;border-radius:999px;
+  border:1px solid var(--border);color:var(--dim);background:rgba(255,255,255,.03)}
+.rep-dec:disabled{opacity:.5}
+.rep-dec-si{color:var(--green);border-color:rgba(46,204,113,.35)}
+
+/* ── LAS DESCARTADAS ──
+   Plegadas y muy apagadas. Se guardan porque saber a quién descartaste evita
+   volver a proponerla en seis meses, pero no pueden competir por la atención
+   con quienes sí están: al 45% y sin el nombre en blanco. */
+.rep-desc{margin-top:14px}
+.rep-desc-t{font-size:10.5px;letter-spacing:1px;text-transform:uppercase;
+  color:var(--dim);font-weight:700;opacity:.6;padding:2px 0}
+.rep-desc-t:hover{opacity:.9}
+.rep-fila.es-descartada{opacity:.45}
+.rep-fila.es-descartada b,.rep-fila.es-descartada a{text-decoration:line-through}

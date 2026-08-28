@@ -10996,6 +10996,21 @@ function faltaLaTabla(msg?: string | null): string | null {
     : msg;
 }
 
+/** «Ya está en el equipo artístico» es falso —y desconcertante— cuando la fila
+ *  que estorba está DESCARTADA: esa sección va plegada, así que quien lo lee ve
+ *  una lista donde esa persona no aparece por ningún lado y un mensaje que dice
+ *  que sí. Se le dice dónde está y qué hacer. */
+function yaEstaba(situacion?: string | null): string {
+  const s = (situacion || "").trim().toLowerCase();
+  if (s === "descartada") {
+    return "Esa persona ya está en este fondo, pero DESCARTADA. Ábrela en «Descartadas», al final de la lista, y pulsa «↩ retomar».";
+  }
+  if (s === "explorando") {
+    return "Esa persona ya está en este fondo, como candidata en «En exploración».";
+  }
+  return "Esa persona ya está en el equipo artístico de este fondo.";
+}
+
 /** El nombre con el que aparece en el historial: el personaje manda, porque de
  *  un personaje sin intérprete «quitó a alguien» no lo reconstruye nadie. */
 function nombreReparto(fila: any): string {
@@ -11006,7 +11021,12 @@ function nombreReparto(fila: any): string {
 export async function agregarAlReparto(
   postulacionId: string,
   d: { personaId?: string | null; personaje?: string; rol?: string; especialidad?: string;
-       procedencia?: string; nota?: string; proyectoActorId?: string | null }
+       procedencia?: string; nota?: string; proyectoActorId?: string | null;
+       /** `explorando` para dar de alta a una candidata a la que todavía hay
+        *  que ir a ver. Por defecto entra confirmada: es lo que hace el botón
+        *  «＋ Agregar» de toda la vida, y el alta como candidata se pide
+        *  explícitamente desde su propio botón. */
+       situacion?: string }
 ) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -11026,11 +11046,13 @@ export async function agregarAlReparto(
      42P10—. Lección de la tabla de comprobantes. */
   if (personaId) {
     const { data: ya } = await supabase.from("postulacion_reparto")
-      .select("id").eq("postulacion_id", postulacionId).eq("persona_id", personaId).maybeSingle();
-    if (ya?.id) return { error: "Esa persona ya está en el equipo artístico de este fondo." };
+      .select("id,situacion").eq("postulacion_id", postulacionId).eq("persona_id", personaId).maybeSingle();
+    if (ya?.id) return { error: yaEstaba(ya.situacion) };
   }
 
   const proc = d.procedencia === "postulacion" ? "postulacion" : "ejecucion";
+  const sit = (d.situacion === "explorando" || d.situacion === "descartada")
+    ? d.situacion : "confirmada";
   const { error } = await supabase.from("postulacion_reparto").insert({
     postulacion_id: postulacionId,
     persona_id: personaId,
@@ -11039,6 +11061,16 @@ export async function agregarAlReparto(
     rol: (d.rol || "").trim() || null,
     especialidad: (d.especialidad || "").trim() || null,
     procedencia: proc,
+    situacion: sit,
+    /* La fecha solo cuando el alta YA es una decisión —candidata o
+       descartada—. Para una confirmada de entrada no significa nada: sería la
+       fecha de creación de la fila con otro nombre, y `creado_en` ya la tiene. */
+    /* `hoyLima` y no `new Date().toISOString().slice(0,10)`: cortar los diez
+       primeros caracteres de un instante UTC hace que a partir de las siete de
+       la tarde en Perú ya sea el día siguiente. Está contado en lib/fechas.ts.
+       Descartar a alguien un martes a las 20:30 lo apuntaría como miércoles: no
+       falla, guarda una fecha válida y equivocada. */
+    situacion_en: sit === "confirmada" ? null : hoyLima(),
     nota: (d.nota || "").trim() || null,
     creado_por: user.id,
   });
@@ -11053,7 +11085,12 @@ export async function agregarAlReparto(
   }
   await supabase.from("actividad").insert({
     entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "miembro",
-    detalle: { mensaje: `sumó a ${quien || "alguien"} al equipo artístico${(d.rol || "").trim() ? ` (${(d.rol || "").trim()})` : ""}` },
+    /* «apuntó como candidata» y no «sumó»: en el historial, dar de alta a
+       alguien a quien todavía hay que ir a ver no es lo mismo que meterlo en
+       la película, y con el mismo verbo las dos cosas se leen igual. */
+    detalle: { mensaje: `${sit === "explorando" ? "apuntó a" : "sumó a"} ${quien || "alguien"}`
+      + ` ${sit === "explorando" ? "como candidata del equipo artístico" : "al equipo artístico"}`
+      + `${(d.rol || "").trim() ? ` (${(d.rol || "").trim()})` : ""}` },
   });
   revalidarFondo(postulacionId);
   return {};
@@ -11063,7 +11100,7 @@ export async function agregarAlReparto(
    columna que quiera —incluida `postulacion_id`, que movería la fila a otro
    fondo—. Misma guarda que `CAMPOS_ACTOR`. */
 const CAMPOS_REPARTO = [
-  "personaje", "rol", "especialidad", "procedencia", "nota",
+  "personaje", "rol", "especialidad", "procedencia", "nota", "situacion",
   "cesion_estado", "cesion_url", "cesion_fecha",
 ] as const;
 
@@ -11093,6 +11130,34 @@ export async function editarReparto(
     const e = String(patch.cesion_estado || "").toLowerCase();
     patch.cesion_estado = (e === "firmada" || e === "no_aplica") ? e : "pendiente";
   }
+  /* ── LA SITUACIÓN, Y LA FECHA EN QUE SE DECIDIÓ ──
+     Cae a `confirmada` si viene rara, igual que en la lectura: tratar como
+     candidata a alguien que ya está dentro lo saca del equipo artístico y lo
+     manda a la lista de exploración, y eso no puede pasar por un dato mal
+     escrito.
+     `situacion_en` se sella AQUÍ y no está en `CAMPOS_REPARTO` a propósito: es
+     un hecho del sistema, no un campo del formulario. ⚠ No la añadas a la
+     lista blanca — el sellado va después del bucle justamente para que el
+     cliente no pueda escribir esa fecha.
+     ⚠ Y solo si la situación CAMBIA de verdad. Se comprueba contra lo que hay
+     en la base y no contra la presencia de la clave: quien guarda desde el
+     editor podría mandar los ocho campos, y entonces corregir una tilde de la
+     nota de alguien descartada en marzo la habría vuelto a fechar hoy. La
+     columna que existe para distinguir «no encajaba» de «no quiso» habría
+     pasado a decir «cuándo se editó por última vez», sin error y sin vuelta
+     atrás. */
+  if ("situacion" in patch) {
+    const s = String(patch.situacion || "").toLowerCase();
+    patch.situacion = (s === "explorando" || s === "descartada") ? s : "confirmada";
+    const { data: ant } = await supabase.from("postulacion_reparto")
+      .select("situacion").eq("id", id).eq("postulacion_id", postulacionId).maybeSingle();
+    if ((ant?.situacion || "confirmada") === patch.situacion) {
+      /* No cambió: fuera del patch, para que tampoco ensucie el historial. */
+      delete patch.situacion;
+    } else {
+      patch.situacion_en = hoyLima();
+    }
+  }
   if (!Object.keys(patch).length) return { error: "No hay nada que guardar." };
 
   /* El CHECK impide dejar la fila sin nadie, pero su error no le dice nada a
@@ -11120,7 +11185,13 @@ export async function editarReparto(
      año, «marcó la cesión de Braulia Puma como firmada» es el apunte que
      contesta por qué ese material se pudo usar. */
   let que = "los datos";
-  if ("cesion_estado" in patch) {
+  /* La situación manda sobre lo demás en el historial: pasar de candidata a
+     confirmada es la decisión de la que cuelga todo el resto. */
+  if ("situacion" in patch) {
+    que = patch.situacion === "confirmada" ? "que entra en la película"
+      : patch.situacion === "descartada" ? "que se descarta"
+      : "que sigue en exploración";
+  } else if ("cesion_estado" in patch) {
     que = patch.cesion_estado === "firmada" ? "la cesión como firmada"
       : patch.cesion_estado === "no_aplica" ? "la cesión como no aplicable"
       : "la cesión como pendiente";
@@ -11151,8 +11222,8 @@ export async function repartirEnFondo(id: string, postulacionId: string, persona
   }
   if (personaId) {
     const { data: ya } = await supabase.from("postulacion_reparto")
-      .select("id").eq("postulacion_id", postulacionId).eq("persona_id", personaId).maybeSingle();
-    if (ya?.id && ya.id !== id) return { error: "Esa persona ya está en el equipo artístico de este fondo." };
+      .select("id,situacion").eq("postulacion_id", postulacionId).eq("persona_id", personaId).maybeSingle();
+    if (ya?.id && ya.id !== id) return { error: yaEstaba(ya.situacion) };
   }
 
   const { data, error } = await supabase.from("postulacion_reparto")
@@ -11249,7 +11320,7 @@ export async function traerRepartoDelProyecto(postulacionId: string, proyectoId:
   }
 
   const { data: yaHay, error: eYa } = await supabase.from("postulacion_reparto")
-    .select("persona_id,personaje,proyecto_actor_id").eq("postulacion_id", postulacionId);
+    .select("persona_id,personaje,proyecto_actor_id,situacion").eq("postulacion_id", postulacionId);
   if (eYa) return { error: faltaLaTabla(eYa.message) };
 
   /* Tres formas de reconocer a alguien que ya está, porque una sola no basta:
@@ -11277,11 +11348,26 @@ export async function traerRepartoDelProyecto(postulacionId: string, proyectoId:
       proyecto_actor_id: a.id,
       rol: (a.rol || "").trim() || null,
       procedencia: "postulacion",
+      /* Explícito aunque coincida con el default: quien lee esto tiene que ver
+         que el reparto del proyecto entra CONFIRMADO —es gente ya elegida, no
+         candidatos— sin ir a mirar la migración. */
+      situacion: "confirmada",
       orden: a.orden ?? 0,
       creado_por: user.id,
     }));
 
-  if (!nuevas.length) return { copiados: 0, saltados: origen.length };
+  /* Cuántas de las que se saltan están DESCARTADAS. Sin decirlo, traer el
+     reparto del proyecto nunca las recupera y el aviso solo dice «saltados 3
+     que ya estaban» — así que quien lo lee busca a esa persona en la lista, no
+     la encuentra (la sección va plegada) y concluye que la copia falló. */
+  const descSaltadas = (yaHay || []).filter(x => x.situacion === "descartada").length;
+  const nota = descSaltadas
+    ? ` ${descSaltadas} de las que ya estaban están descartadas: mira al final de la lista.`
+    : "";
+
+  if (!nuevas.length) {
+    return { copiados: 0, saltados: origen.length, aviso: `No había nadie nuevo que traer: ya estaban todos.${nota}` };
+  }
 
   const { error } = await supabase.from("postulacion_reparto").insert(nuevas);
   if (error) return { error: faltaLaTabla(error.message) };
@@ -11291,5 +11377,7 @@ export async function traerRepartoDelProyecto(postulacionId: string, proyectoId:
     detalle: { mensaje: `trajo ${nuevas.length} del reparto del proyecto al equipo artístico del fondo` },
   });
   revalidarFondo(postulacionId);
-  return { copiados: nuevas.length, saltados: origen.length - nuevas.length };
+  const saltados = origen.length - nuevas.length;
+  return { copiados: nuevas.length, saltados,
+    aviso: `Traídos ${nuevas.length}${saltados ? `, saltados ${saltados} que ya estaban` : ""}.${nota}` };
 }

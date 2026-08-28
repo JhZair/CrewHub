@@ -8,7 +8,7 @@ import RepartoFondo from "@/components/RepartoFondo";
 import { etapasDe } from "@/lib/etapas";
 import { techo } from "@/lib/api";
 import { traerFondo, traerPerfilActual, traerVersiones } from "@/lib/fondoDatos";
-import { resumenCesiones, rotuloReparto } from "@/lib/repartoFondo";
+import { repartir, resumenCesiones, rotuloReparto } from "@/lib/repartoFondo";
 
 /* ── 🎥 AUDIOVISUAL ──
  *
@@ -73,7 +73,7 @@ export default async function AudiovisualPage({ params }: { params: { id: string
        leerlo; uno heredado, no. */
     supabase.from("postulacion_reparto")
       .select("id,persona_id,personaje,proyecto_actor_id,rol,especialidad,procedencia," +
-        "cesion_estado,cesion_url,cesion_fecha,nota,orden," +
+        "situacion,situacion_en,cesion_estado,cesion_url,cesion_fecha,nota,orden," +
         "persona:personas(id,nombre,alias,foto_url)")
       .eq("postulacion_id", params.id).order("orden").limit(300),
     /* El catálogo para elegir persona. Las mismas cuatro columnas que usa la
@@ -128,8 +128,13 @@ export default async function AudiovisualPage({ params }: { params: { id: string
     .map(x => ({ ...x, nombre: x.alias ? `${x.nombre} · ${x.alias}` : x.nombre }));
 
   /* El resumen para el título del plegable. No se pinta si la consulta falló:
-     `resumenCesiones([])` diría «0 pendientes», o sea «está todo firmado». */
+     `resumenCesiones([])` diría «0 pendientes», o sea «está todo firmado».
+     ⚠ Sale de `repartir`/`resumenCesiones`, las MISMAS funciones que usa el
+     componente. Un titular calculado aparte del contenido que resume es el que
+     acaba discrepando: aquí diría «8 personas» y abajo se verían cinco, porque
+     tres son candidatas. */
   const ces = repError ? null : resumenCesiones(reparto);
+  const partido = repError ? null : repartir(reparto);
   const rotulo = rotuloReparto((ent as any)?.proy?.tipo || null);
 
   // Versiones del cronograma con su autor resuelto.
@@ -166,10 +171,15 @@ export default async function AudiovisualPage({ params }: { params: { id: string
             título escrito en dos sitios acaba diciendo dos cosas. */}
         <Plegable id={`fondo:${params.id}:reparto`} abiertoPorDefecto={true}
           titulo={`${rotulo.ico} ${rotulo.titulo}`}
-          resumen={ces
-            ? dim(ces.total
-              ? `${ces.total} ${ces.total === 1 ? "persona" : "personas"}${ces.pendientes ? ` · ${ces.pendientes} sin cesión` : ""}`
-              : "sin equipo artístico")
+          /* Las candidatas se dicen aparte y no se suman al total: «8 personas»
+             contando a tres a las que todavía hay que ir a ver sería el número
+             más visible de la pestaña y el más falso. */
+          resumen={ces && partido
+            ? dim([
+              partido.confirmadas ? `${partido.confirmadas} ${partido.confirmadas === 1 ? "persona" : "personas"}` : "sin equipo artístico",
+              partido.explorando.length ? `${partido.explorando.length} en exploración` : "",
+              ces.pendientes ? `${ces.pendientes} sin cesión` : "",
+            ].filter(Boolean).join(" · "))
             : dim("no se pudo leer")}>
           <RepartoFondo postulacionId={params.id}
             proyectoId={(ent as any)?.proy?.id || null}

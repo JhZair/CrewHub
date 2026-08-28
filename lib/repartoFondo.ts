@@ -19,6 +19,9 @@ import { esDocumental } from "@/lib/actores";
 
 export type Procedencia = "postulacion" | "ejecucion";
 export type CesionEstado = "no_aplica" | "pendiente" | "firmada";
+/** Si ya está dentro de la película, o todavía se la está yendo a ver.
+ *  Es un eje DISTINTO del papel: se es candidata *a protagonista*. */
+export type Situacion = "explorando" | "confirmada" | "descartada";
 
 /** La fila tal como sale de `postulacion_reparto`, con lo que decoramos. */
 export type FilaReparto = {
@@ -29,6 +32,8 @@ export type FilaReparto = {
   rol?: string | null;
   especialidad?: string | null;
   procedencia?: string | null;
+  situacion?: string | null;
+  situacion_en?: string | null;
   cesion_estado?: string | null;
   cesion_url?: string | null;
   cesion_fecha?: string | null;
@@ -112,10 +117,85 @@ export function grupoDeRol(rol?: string | null): string {
    Un export que nadie importa es una segunda definición del orden esperando a
    discrepar con la primera.) */
 
+/* ══════════════ LA SITUACIÓN ══════════════
+ *
+ * Un documental de personajes reales no se escribe: se busca. Antes de que
+ * Braulia fuera la protagonista hubo una lista de mujeres de las que alguien
+ * oyó hablar, a las que hubo que ir a ver, y de las que la mayoría no entró.
+ *
+ * La situación es un eje DISTINTO del papel y por eso no es un grupo más: se
+ * es candidata *a protagonista social*, y ese «a qué» es justo lo que se está
+ * explorando. Si «candidata» fuera un valor del campo `rol`, el papel previsto
+ * no cabría en ninguna parte y confirmar a alguien obligaría a reescribírselo
+ * a mano —que es cuando se pierde—.
+ */
+
+/** La situación, normalizada. Cualquier cosa que no sean los tres valores
+ *  conocidos cuenta como CONFIRMADA, no como candidata: las filas que se
+ *  cargaron antes de que existiera esta columna son gente que ya está dentro,
+ *  y tratarlas como candidatas vaciaría el equipo artístico de golpe. */
+export function situacionDe(f: FilaReparto): Situacion {
+  const s = limpia(f.situacion);
+  return s === "explorando" || s === "descartada" ? s : "confirmada";
+}
+
+export const ROTULO_SITUACION: Record<Situacion, string> = {
+  explorando: "en exploración",
+  confirmada: "confirmada",
+  descartada: "descartada",
+};
+
+/** El reparto partido en las tres situaciones. Una sola pasada, y en un solo
+ *  sitio, porque la pantalla, el contador de la cabecera y el resumen del
+ *  plegable tienen que estar contando exactamente lo mismo. */
+export type Reparto = {
+  /** Quienes ya están dentro, agrupadas por papel. */
+  grupos: { grupo: Grupo; filas: FilaReparto[] }[];
+  /** A quienes se está yendo a ver, con el papel al que aspiran. */
+  explorando: FilaReparto[];
+  /** Las que no entraron. No se borran: saber a quién descartaste —y por qué,
+   *  en la nota— evita volver a proponer a la misma persona en seis meses. */
+  descartadas: FilaReparto[];
+  /** Cuántas hay dentro. NO incluye candidatas ni descartadas: si el titular
+   *  dijera «12 personas» contando a nueve que aún no se sabe si estarán, el
+   *  número más visible de la pestaña sería el más falso. */
+  confirmadas: number;
+};
+
+export function repartir(filas: FilaReparto[]): Reparto {
+  const dentro: FilaReparto[] = [], explorando: FilaReparto[] = [], descartadas: FilaReparto[] = [];
+  for (const f of filas) {
+    const s = situacionDe(f);
+    (s === "explorando" ? explorando : s === "descartada" ? descartadas : dentro).push(f);
+  }
+  return {
+    grupos: agrupar(dentro),
+    explorando: ordenarPorPapel(explorando),
+    descartadas: ordenarPorPapel(descartadas),
+    confirmadas: dentro.length,
+  };
+}
+
+/** Las candidatas van en una lista plana —son pocas y lo que importa es a qué
+ *  aspiran, que se lee en su badge—, pero ordenadas por el papel previsto para
+ *  que las que compiten por el mismo hueco queden juntas. Comparar candidatas
+ *  entre sí es la única cosa que se hace en esta lista. */
+function ordenarPorPapel(filas: FilaReparto[]): FilaReparto[] {
+  const rango = (f: FilaReparto) => {
+    const i = GRUPOS.findIndex(g => g.k === grupoDeRol(f.rol));
+    return i < 0 ? GRUPOS.length : i;
+  };
+  return [...filas].sort((a, b) =>
+    rango(a) - rango(b) || tituloDe(a).localeCompare(tituloDe(b), "es"));
+}
+
 /** Las filas repartidas en sus grupos, en el orden de `GRUPOS`, y sin los
  *  grupos vacíos: una cabecera «Testimonios y voces expertas» sobre la nada
  *  se lee como que se perdieron. */
-export function agrupar(filas: FilaReparto[]): { grupo: Grupo; filas: FilaReparto[] }[] {
+/* Sin `export`: solo la usa `repartir`, aquí al lado. Exportarla dejaría una
+   segunda puerta a los grupos que se salta el filtro por situación, y por ahí
+   volverían a colarse las candidatas en el equipo artístico. */
+function agrupar(filas: FilaReparto[]): { grupo: Grupo; filas: FilaReparto[] }[] {
   const cajones = new Map<string, FilaReparto[]>();
   for (const f of filas) {
     const k = grupoDeRol(f.rol);
@@ -192,15 +272,26 @@ export type ResumenCesiones = {
   total: number; firmadas: number; pendientes: number; noAplica: number;
 };
 
+/** ⚠ SOLO LAS CONFIRMADAS. No se le pide un papel firmado a quien todavía se
+ *  está yendo a ver, ni a quien no entró: con las candidatas dentro, el aviso
+ *  «⚠ 9 sin cesión» estaría contando a gente que a lo mejor nunca aparece en
+ *  la película, y un aviso que casi siempre exagera es un aviso que se deja de
+ *  mirar — justo el que no se puede dejar de mirar.
+ *  El filtro va AQUÍ dentro y no en quien llama, para que la pantalla, el
+ *  titular del plegable y cualquier pantalla futura cuenten lo mismo. Un
+ *  número de cabecera que no sale de lo que hay debajo es el que acaba
+ *  discrepando. */
 export function resumenCesiones(filas: FilaReparto[]): ResumenCesiones {
-  let firmadas = 0, pendientes = 0, noAplica = 0;
+  let firmadas = 0, pendientes = 0, noAplica = 0, total = 0;
   for (const f of filas) {
+    if (situacionDe(f) !== "confirmada") continue;
+    total++;
     const e = estadoCesion(f);
     if (e === "firmada") firmadas++;
     else if (e === "no_aplica") noAplica++;
     else pendientes++;
   }
-  return { total: filas.length, firmadas, pendientes, noAplica };
+  return { total, firmadas, pendientes, noAplica };
 }
 
 /** El estado, normalizado. Cualquier cosa que no sean los tres valores
