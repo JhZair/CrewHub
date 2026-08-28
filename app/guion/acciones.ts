@@ -29,6 +29,7 @@ import { techo } from "@/lib/api";
  * un viaje por tecla. */
 const revalidar = (tratamientoId: string) => {
   revalidatePath(`/guion/${tratamientoId}`);
+  revalidatePath("/guion");
   /* ⚠ `/entidad/[tipo]/[id]`, que es la ruta del ARCHIVO. Con
      «/entidad/proyecto/[id]» Next construye un tag que no coincide con
      ninguna ruta existente: no da error, simplemente no revalida nada. */
@@ -462,6 +463,10 @@ export async function marcarHilo(secuenciaId: string, hiloId: string, tratamient
    ══════════════════════════════════════════════════════════════════════════ */
 
 const revalidarTrat = (proyectoId: string, tratamientoId?: string) => {
+  /* El índice también. Crear o borrar desde la ficha del proyecto y navegar a
+     `/guion` con `<Link>` sirve el Router Cache del cliente —treinta segundos
+     en Next 14.2 para rutas dinámicas— y la lista sale desactualizada. */
+  revalidatePath("/guion");
   revalidatePath(`/entidad/proyecto/${proyectoId}`);
   revalidatePath("/entidad/[tipo]/[id]", "page");
   revalidatePath("/fondo/[id]/audiovisual", "page");
@@ -581,6 +586,13 @@ export async function editarTratamiento(
     if (error) return { error };
     patch.url = url;
   }
+  /* ⚠ DESCARTAR APAGA EL VIGENTE. Nada en la base lo impedía —el índice único
+     es parcial sobre `vigente` y no mira el estado— así que un documento podía
+     quedar `vigente = true` y `estado = 'descartado'` a la vez. El diagnóstico
+     lo deja fuera (se hace sobre los vivos) y dice «sin vigente», mientras la
+     fila de al lado sigue luciendo su insignia «vigente»: dos afirmaciones
+     contrarias en la misma pantalla. Se corrige el dato, que es donde nace. */
+  if (patch.estado === "descartado") patch.vigente = false;
   if (!Object.keys(patch).length) return { error: "No hay nada que guardar." };
   patch.editado_en = new Date().toISOString();
 
@@ -610,15 +622,27 @@ export async function marcarVigente(id: string, proyectoId: string) {
     .update({ vigente: false }).eq("proyecto_id", proyectoId).eq("vigente", true).neq("id", id);
   if (e1) return { error: e1.message };
 
+  /* ⚠ Poner como vigente uno DESCARTADO lo reabre. Es la misma decisión dicha
+     de otra manera —«este es el que vale»— y dejarlo descartado y vigente a la
+     vez es el estado contradictorio que se cierra en `editarTratamiento`: el
+     diagnóstico lo daría por muerto y la fila luciría su insignia «vigente».
+     Una lectura previa para saberlo; es una acción puntual, no un
+     autoguardado. */
+  const { data: antes } = await supabase.from("tratamiento")
+    .select("estado").eq("id", id).eq("proyecto_id", proyectoId).maybeSingle();
+  const patch: Record<string, any> = { vigente: true };
+  if (antes?.estado === "descartado") patch.estado = "borrador";
+
   const { data, error } = await supabase.from("tratamiento")
-    .update({ vigente: true }).eq("id", id).eq("proyecto_id", proyectoId).select("id,nombre,version");
+    .update(patch).eq("id", id).eq("proyecto_id", proyectoId).select("id,nombre,version");
   if (error) return { error: error.message };
   if (!data?.length) return { error: "Ese tratamiento ya no está en este proyecto." };
 
   await supabase.from("actividad").insert({
     entidad_tipo: "proyecto", entidad_id: proyectoId, actor_id: user.id, tipo: "edicion",
     detalle: { mensaje: `puso como vigente el tratamiento «${data[0].nombre}»`
-      + (data[0].version ? ` · ${data[0].version}` : "") },
+      + (data[0].version ? ` · ${data[0].version}` : "")
+      + (antes?.estado === "descartado" ? " (estaba descartado; vuelve a borrador)" : "") },
   });
   revalidarTrat(proyectoId, id);
   return {};

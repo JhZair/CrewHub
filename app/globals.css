@@ -6979,3 +6979,17 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
 .trt-conf{margin-top:10px;padding:10px;border-radius:12px;font-size:12.5px;
   border:1px solid rgba(255,77,94,.4);background:rgba(255,77,94,.09)}
 .trt-vacio{font-size:12.5px;color:var(--dim);line-height:1.55;padding:4px 0}
+
+/* ── ✍ EL ÍNDICE DE GUION (app/guion) ──
+   La puerta de una actividad: quien va a escribir no piensa «voy a la ficha
+   del proyecto», piensa «voy a escribir». El diagnóstico arriba contesta lo
+   que hoy exigía abrir proyecto por proyecto. */
+.gx-diag{margin-bottom:12px}
+.gx-nums{display:flex;gap:14px;align-items:baseline;flex-wrap:wrap;font-size:12.5px}
+.gx-n{white-space:nowrap}
+/* Es un ENLACE, no texto gris: sin subrayado al pasar por encima ni anillo de
+   foco, nadie sabe que se puede pulsar y quien navega con teclado no lo
+   encuentra. */
+.gx-filtro{font-size:11.5px;color:var(--blue);white-space:nowrap;text-decoration:none}
+.gx-filtro:hover{text-decoration:underline}
+.gx-filtro:focus-visible{outline:2px solid var(--blue);outline-offset:2px;border-radius:4px}

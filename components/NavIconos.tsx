@@ -46,6 +46,15 @@ const DESTINOS: Destino[] = [
      «¿cuándo?» y el tablero «¿qué hay que hacer?», que es la pregunta con la
      que se abre el día. */
   { ruta: "/tablero", ico: "🗂", txt: "tablero de casos", grupo: "dia" },
+  /* ── EL GUION, EN EL MENÚ ──
+     Era el único módulo grande sin puerta: se entraba desde la ficha de cada
+     proyecto, y `/guion` a secas daba 404. Escribir es trabajo cotidiano —de
+     ahí «el día a día» y no «la plata», aunque el tratamiento sea lo que se
+     presenta a los concursos—.
+     `activo` reconoce también `/guion/<id>`: estando dentro de un tratamiento,
+     el botón tiene que seguir diciendo dónde estás. */
+  { ruta: "/guion", ico: "✍", txt: "guion y tratamientos", grupo: "dia",
+    activo: p => p === "/guion" || p.startsWith("/guion/") },
   { ruta: "/agenda", ico: "📆", txt: "agenda", grupo: "dia" },
   { ruta: "/pulso", ico: "📊", txt: "pulso del equipo", grupo: "dia" },
   { ruta: "/llaves", ico: "🔑", txt: "llaves", grupo: "dia" },

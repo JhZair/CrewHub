@@ -36,7 +36,7 @@ import {
 
 export default function Tratamientos({
   proyectoId, tipoProyecto, tratamientos, cuentas = null, fondos = [],
-  soloDelFondo = null, error: errServidor = null, puedeEditar = true,
+  soloDelFondo = null, error: errServidor = null, puedeEditar = true, puedeBorrar = true,
 }: {
   proyectoId: string;
   /** Decide hasta dónde tiene que llegar el documento: el documental para en
@@ -62,6 +62,14 @@ export default function Tratamientos({
   soloDelFondo?: string | null;
   error?: string | null;
   puedeEditar?: boolean;
+  /** ── BORRAR ES OTRA COSA QUE EDITAR ──
+   *  En el índice `/guion` se puede CREAR —quien entra a «voy a escribir» y ve
+   *  una película sin nada tiene que poder empezar ahí— pero no destruir:
+   *  borrar un tratamiento se lleva por `cascade` sus actos, sus secuencias con
+   *  todo el texto, sus hilos y su espina, y en una lista transversal de
+   *  quince películas plegadas la ✕ queda a un clic y sin el contexto del
+   *  proyecto. Con `puedeEditar={false}` no valía: eso también quita «＋ Nuevo». */
+  puedeBorrar?: boolean;
 }) {
   const [creando, setCreando] = useState<"nuevo" | "enlace" | null>(null);
   const [f, setF] = useState<Record<string, any>>({});
@@ -146,9 +154,15 @@ export default function Tratamientos({
   const set = (k: string, v: any) => setEd(e => ({ ...e, [k]: v }));
   const setNuevo = (k: string, v: any) => setF(e => ({ ...e, [k]: v }));
 
+  /* ⚠ Cae a «un fondo» y no a `null` cuando la lista de fondos no llega. En el
+     índice `/guion` no se pasan —marcar a qué concurso se presentó un documento
+     es una decisión de expediente y se toma con el expediente delante— pero eso
+     no es razón para ESCONDER que el documento sí tiene uno. Con `null`, el
+     mismo tratamiento se leía distinto en dos pantallas. */
   const nombreFondo = (id?: string | null) => {
+    if (!id) return null;
     const x = fondos.find(y => y.id === id);
-    return x ? (x.codigo || x.nombre || "un fondo") : null;
+    return x ? (x.codigo || x.nombre || "un fondo") : "un fondo";
   };
 
   return (
@@ -299,8 +313,10 @@ export default function Tratamientos({
                     title="Copiar el documento entero —actos, secuencias, hilos y espina— para trabajar una versión nueva sin tocar esta.">⧉ duplicar</button>
                   <button type="button" style={{ color: abierta ? "var(--violet)" : "var(--dim)", fontSize: 11.5 }}
                     onClick={() => abrirEd(t)}>{abierta ? "▾ editar" : "▸ editar"}</button>
-                  <button type="button" style={{ color: "var(--dim)" }} title="Borrar el documento entero"
-                    onClick={() => borrar(t.id)}>✕</button>
+                  {puedeBorrar && (
+                    <button type="button" style={{ color: "var(--dim)" }} title="Borrar el documento entero"
+                      onClick={() => borrar(t.id)}>✕</button>
+                  )}
                 </div>
               )}
             </div>
