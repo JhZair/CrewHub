@@ -24,7 +24,7 @@ const fmt = (s: string | null) => s
 
 export default function CronogramaPostulacion({
   postulacionId, actividades, perfiles, plantillas, tipoProyecto, etapas = ETAPAS_CINE, postulado, postuladoEn, ocultarFijar = false,
-  soloFoto = false, hrefEjecucion,
+  soloFoto = false, hrefEjecucion, limite, limiteNombre, puedeCorrer = false,
 }: {
   postulacionId: string;
   actividades: any[];
@@ -53,6 +53,14 @@ export default function CronogramaPostulacion({
   soloFoto?: boolean;
   /** A dónde ir por el cronograma vivo. Solo se usa con `soloFoto`. */
   hrefEjecucion?: string;
+  /* De paso al cronograma vivo, para el aviso de «esto termina fuera de plazo»
+     al correr las fechas. Salen de `plazoFondo()` en la página; aquí no se
+     calculan para que esta pantalla y la ficha no puedan discrepar. */
+  limite?: string | null;
+  /** Sin artículo: «plazo del acta». */
+  limiteNombre?: string;
+  /** Estrictamente `es_admin`: el mismo listón que la acción de correr. */
+  puedeCorrer?: boolean;
 }) {
   const refNombre = ocultarFijar ? "la versión vigente" : "lo postulado";
   const ETAPA_ORDEN = etapas.map(e => e.clave);
@@ -228,7 +236,8 @@ export default function CronogramaPostulacion({
       ) : (
         <CronogramaProyecto dueno="postulacion" duenoId={postulacionId}
           actividades={actividades} perfiles={perfiles}
-          plantillas={plantillas} tipoProyecto={tipoProyecto} etapas={etapas} />
+          plantillas={plantillas} tipoProyecto={tipoProyecto} etapas={etapas}
+          limite={limite} limiteNombre={limiteNombre} puedeCorrer={puedeCorrer} />
       )}
     </div>
   );

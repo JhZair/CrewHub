@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import Link from "@/components/Enlace";
 import { Fragment, useEffect, useState } from "react";
 import MiniSelect from "@/components/MiniSelect";
+import CorrerCronograma from "@/components/CorrerCronograma";
 import NavFechas from "@/components/NavFechas";
 import Avatar from "@/components/Avatar";
 import VistaRapida from "@/components/VistaRapida";
@@ -170,10 +171,29 @@ function FormAct({ f, setF, perfiles, etapas, onSave, onCancel, ocupado, editar 
   );
 }
 
-export default function CronogramaProyecto({ dueno = "proyecto", duenoId, actividades, perfiles, plantillas = [], tipoProyecto = "", etapas = ETAPAS_CINE }: {
+export default function CronogramaProyecto({ dueno = "proyecto", duenoId, actividades, perfiles, plantillas = [], tipoProyecto = "", etapas = ETAPAS_CINE, limite, limiteNombre, puedeCorrer = false }: {
   dueno?: "proyecto" | "convocatoria" | "postulacion";
   duenoId: string;
   actividades: any[];
+  /* ── EL PLAZO, PARA «CORRER FECHAS» ──
+     Opcionales y solo con sentido en una postulación: los usa la
+     previsualización para avisar si el cronograma corrido termina después del
+     plazo. Quien no los mande no ve ese aviso —y no ve uno falso, que es lo
+     importante—: el resto del cuadro funciona igual.
+     Salen de `plazoFondo()`, que ya decide cuál de las tres fechas manda
+     (prórroga > acta > desembolso + 1 año). Calcularlo aquí habría hecho que
+     esta pantalla y la ficha del fondo dijeran plazos distintos. */
+  limite?: string | null;
+  /** Sin artículo: «plazo del acta». Las frases lo contraen («del plazo…»). */
+  limiteNombre?: string;
+  /* ── QUIÉN VE «CORRER FECHAS» ──
+     Estrictamente `es_admin`, el MISMO listón que la acción — que es el de
+     `guardarVersionFondo`, porque correr sella versiones. Sin esto, cualquiera
+     veía el botón, armaba el plan entero, elegía fecha, escribía el motivo y
+     recibía «Solo administración corre el cronograma» al pulsar.
+     ⚠ NO es el `esAdmin` de la ficha del fondo, que incluye `es_finanzas`: dos
+     listones para la misma tabla es cómo se llega a un botón que miente. */
+  puedeCorrer?: boolean;
   /* `foto`/`color` son opcionales: solo se usan para el avatar del Gantt, y
      quien no los mande verá las iniciales sobre su color por defecto. */
   perfiles: { id: string; nombre: string; foto?: string | null; avatar_url?: string | null; foto_url?: string | null; color?: string | null }[];
@@ -217,7 +237,7 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
   const [ef, setEf] = useState<Campos>(VACIO);
   // Plantillas: el panel se declara aquí y no junto a sus funciones porque el
   // Escape de más abajo lo lee, y un `const` no existe antes de su línea.
-  const [panel, setPanel] = useState<"" | "guardar" | "aplicar">("");
+  const [panel, setPanel] = useState<"" | "guardar" | "aplicar" | "correr">("");
   const [nomPl, setNomPl] = useState("");
   const [plSel, setPlSel] = useState("");
   const [desde, setDesde] = useState("");
@@ -479,6 +499,16 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
             title="Guardar este cronograma para reusarlo en el próximo proyecto"
             onClick={() => setPanel("guardar")}>📋 Guardar como plantilla</button>
         )}
+        {/* ── CORRER, SOLO EN UN FONDO ──
+            Correr las fechas sella una versión del cronograma, y las versiones
+            (`version_fondo`) cuelgan de una POSTULACIÓN. En un proyecto o una
+            convocatoria el botón movería las fechas sin dejar rastro de las
+            viejas, que es exactamente lo que este trabajo vino a evitar. */}
+        {dueno === "postulacion" && puedeCorrer && visibles.length > 0 && !panel && (
+          <button className="btn btn-ghost" style={{ padding: "5px 12px", fontSize: 12, color: "var(--accent)" }}
+            title="Desplazar una etapa —y lo que viene detrás— a una fecha nueva"
+            onClick={() => setPanel("correr")}>⏩ Correr fechas</button>
+        )}
         {!agregando && <button className="btn btn-ghost" style={{ padding: "5px 12px", fontSize: 12 }}
           onClick={() => setAgregando(true)}>＋ Actividad</button>}
       </div>
@@ -531,6 +561,17 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
           <button className="btn btn-ghost" style={{ padding: "7px 10px", fontSize: 12 }}
             onClick={() => setPanel("")}>Cancelar</button>
         </div>
+      )}
+
+      {panel === "correr" && (
+        /* Se le pasan TODAS las actividades, no `visibles`: la previsualización
+           tiene que poder decir «3 canceladas y 2 sin fecha se quedan». Con la
+           lista filtrada, esas filas no saldrían ni en la cuenta de lo que no
+           se mueve — que es justo donde alguien las echaría en falta. */
+        <CorrerCronograma
+          postulacionId={duenoId} actividades={actividades as any} etapas={etapas}
+          limite={limite} limiteNombre={limiteNombre}
+          onCerrar={() => setPanel("")} />
       )}
 
       {agregando && (

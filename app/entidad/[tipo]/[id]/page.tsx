@@ -77,6 +77,7 @@ import TablaSimple from "@/components/TablaSimple";
 import EquipoPorcentajes from "@/components/EquipoPorcentajes";
 import Precontratos from "@/components/Precontratos";
 import { etapasDe } from "@/lib/etapas";
+import { plazoFondo } from "@/lib/plazoFondo";
 import { rubrosDe, topeEstimuloDe } from "@/lib/rubros";
 import { TABLAS_EXP, materialTablaDe, plantillaConExtras, esVideojuego } from "@/lib/tablas-expediente";
 import TabsPanel from "@/components/TabsPanel";
@@ -3626,6 +3627,11 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
               // (La línea de tiempo del concurso se calcula arriba —hitosConc— y
               //  se muestra en la columna pequeña.)
               const esGanadora = ent.estado === "ganadora";
+              /* El plazo que manda (prórroga > acta > desembolso + 1 año), para
+                 el aviso de «Correr fechas». Se calcula con `plazoFondo` y no a
+                 mano para que esta pantalla y la ficha del fondo no puedan
+                 discrepar sobre cuál es la fecha límite. */
+              const plazoEnt = plazoFondo(ent as any);
               const conPlantilla = !!(postCtx?.conv as any)?.plantilla_formulario;
               const nMat = ((ent.material_archivo as any) || []).length;
               const nBen = ((ent.beneficiarios as any) || []).length;
@@ -3692,6 +3698,16 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                            cronograma» cuando sí lo hay sería peor que enseñar
                            el de ejecución mal rotulado. */
                         soloFoto={esGanadora && !!(ent.cronograma_postulado as any)?.length}
+                        /* El plazo, para que «Correr fechas» pueda avisar de que
+                           el cronograma corrido termina fuera de él. Sin esto la
+                           previsualización callaba justo aquí, mientras el
+                           servidor sí lo calculaba: la advertencia que más
+                           importa era la única que no se veía. */
+                        limite={plazoEnt.limite}
+                        limiteNombre={plazoEnt.fuente === "prorroga" ? "plazo con prórroga"
+                          : plazoEnt.fuente === "acta" ? "plazo del acta"
+                            : "plazo calculado (desembolso + 1 año)"}
+                        puedeCorrer={!!(perfilAl as any)?.es_admin}
                         hrefEjecucion={`/fondo/${params.id}`} />
                     </Plegable>
                   </div>

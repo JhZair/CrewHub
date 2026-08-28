@@ -35,6 +35,10 @@ import { resolverNombres } from "@/lib/nombres";
 import { COL_DAFO, sinColumna, faltaAlguna, columnasQueFaltan, sinEstas, COLS_NUEVAS, COLS_NOTIF, TIPOS_DAFO } from "@/lib/notificaciones";
 import { DIAS_AVISO_DEF } from "@/lib/plazo";
 import { hoyLima } from "@/lib/fechas";
+import { etapasDe, nombreEtapa } from "@/lib/etapas";
+import { plazoFondo } from "@/lib/plazoFondo";
+import { planear, motivoVersion, rotuloDias } from "@/lib/correrCronograma";
+import { TOPE_API, techo } from "@/lib/api";
 
 /* Crear o actualizar una entidad núcleo (proyecto/empresa/persona).
    La config compartida actúa como whitelist de tabla y campos. */
@@ -6725,14 +6729,26 @@ async function fotoVivaDelFondo(supabase: any, postulacionId: string, tipo: stri
     if (!pre?.items?.length) return { error: "El presupuesto está vacío — arma al menos un ítem antes de guardar una versión." };
     return { datos: pre };
   }
-  // cronograma: se captura de las filas vivas (mismo shape que la foto vieja)
+  /* cronograma: se captura de las filas vivas (mismo shape que la foto vieja).
+     ⚠ EL RESPONSABLE SALE DE `responsable_persona`, NO DE `perfiles`.
+     El cronograma de una POSTULACIÓN lo ejecuta el equipo que se presenta al
+     concurso, que vive en `personas` y en buena parte no tiene cuenta (ver
+     db/crono-responsable-persona.sql y `colResp` arriba). Con el select viejo
+     —`resp:perfiles!responsable`— esta foto guardaba `responsable: null` en
+     TODAS las actividades, y una foto sin responsables no sirve como prueba de
+     nada.
+     Es EXACTAMENTE el mismo fallo que ya se arregló en
+     `fijarCronogramaPostulado`, y que aquí sobrevivió porque nadie miró las dos
+     funciones a la vez. Ahora que `correrCronograma` sella dos versiones por
+     ejecución, se notaba veinte veces más rápido. */
   const { data: acts } = await supabase.from("cronograma_actividades")
-    .select("nombre,etapa,fecha_inicio,fecha_fin,descripcion,resp:perfiles!responsable(nombre)")
+    .select("nombre,etapa,fecha_inicio,fecha_fin,descripcion,respP:personas!responsable_persona(nombre,alias)")
     .eq("postulacion_id", postulacionId).neq("estado", "cancelada").not("fecha_inicio", "is", null)
     .order("etapa").order("orden").order("fecha_inicio").order("creado_en");
   const foto = (acts || []).map((a: any) => ({
     nombre: a.nombre, etapa: a.etapa, fecha_inicio: a.fecha_inicio, fecha_fin: a.fecha_fin,
-    responsable: (a.resp as any)?.nombre || null, descripcion: a.descripcion || null,
+    responsable: (a.respP as any)?.alias || (a.respP as any)?.nombre || null,
+    descripcion: a.descripcion || null,
   }));
   if (!foto.length) return { error: "El cronograma está vacío — arma al menos una actividad antes de guardar una versión." };
   return { datos: foto };
@@ -11589,4 +11605,242 @@ export async function quitarPapel(id: string, postulacionId: string) {
   });
   revalidarFondo(postulacionId);
   return {};
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   CORRER EL CRONOGRAMA
+
+   «El rodaje empieza el 7 de septiembre y no el 20 de agosto»: dieciocho días
+   de diferencia y veintitantas actividades que reescribir una por una.
+
+   Esto ya se hizo TRES VECES a mano en SQL —db/crono-correr-po003.sql,
+   db/crono-mover-po001.sql, db/crono-arreglar-po003.sql—, cada una con su
+   verificación previa, su seguro de idempotencia y su párrafo de «lo que esto
+   deja fuera de plazo, dicho aquí». Esta acción es esos tres archivos.
+
+   ── EL PLAN SE RECALCULA AQUÍ ──
+   El cliente enseña una previsualización, pero lo que se aplica se vuelve a
+   calcular EN EL SERVIDOR con las filas de la base. Entre que alguien mira la
+   previsualización y pulsa el botón puede pasar cualquier cosa —otro miembro
+   del equipo mueve una actividad, la marca finalizada—, y aplicar un plan
+   calculado sobre datos viejos escribiría fechas que nadie vio.
+
+   ── IDEMPOTENTE POR CONSTRUCCIÓN ──
+   El seguro que en crono-correr-po003 hubo que escribir a mano («exigir que el
+   inicio siga siendo el 01/09/2024, si no se corre veinte días») aquí sale
+   solo: el desplazamiento se calcula como «destino − inicio actual del ancla».
+   Aplicado una vez, el ancla YA empieza en el destino, así que la segunda
+   pasada da cero días y `planear` responde que no hay nada que correr.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+export async function correrCronograma(f: {
+  postulacionId: string;
+  /** "todo" | "desde-etapa" | "solo-etapa" */
+  modo: string;
+  etapa?: string;
+  fecha: string;
+  moverHechas?: boolean;
+  /** Lo que escribió quien lo corre. Se guarda en la versión, delante del
+   *  resumen automático: dentro de un año, «se atrasó el rodaje por la lluvia»
+   *  explica lo que ninguna cuenta explica. */
+  nota?: string;
+}) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  /* Mismo listón que guardarVersionFondo: esto MUEVE decenas de fechas de un
+     expediente y sella una versión. Si una cosa exige admin, la otra también. */
+  const { data: perfil } = await supabase.from("perfiles").select("es_admin").eq("id", user.id).single();
+  if (!perfil?.es_admin) return { error: "Solo administración corre el cronograma." };
+
+  const modo = f.modo;
+  if (!["todo", "desde-etapa", "solo-etapa"].includes(modo)) return { error: "Alcance inválido." };
+  if (modo !== "todo" && !f.etapa) return { error: "Elige desde qué etapa." };
+
+  /* ── DE QUÉ CATEGORÍA SON LAS ETAPAS ──
+     El corte «desde rodaje» arrastra etapas distintas según la categoría de la
+     convocatoria (en cine `produccion` es la tercera; en Video y Cine Indígena
+     la cuarta). Sacarlo del preset por defecto habría movido bloques distintos
+     de los que la pantalla enseñó. */
+  const { data: post } = await supabase.from("postulaciones")
+    .select("id,codigo,fecha_desembolso,fecha_limite_rendicion,fecha_prorroga,convocatoria:convocatorias(categoria)")
+    .eq("id", f.postulacionId).maybeSingle();
+  if (!post) return { error: "No se encontró el fondo." };
+  const etapas = etapasDe((post.convocatoria as any)?.categoria || null);
+
+  /* ── LA SONDA DEL TECHO, COMO MANDA lib/api.ts ──
+     Se piden `techo+1` y se mira si volvieron DE MÁS. Usar `techo` a la vez
+     como límite y como umbral rechazaría un cronograma de exactamente 999
+     actividades para siempre, sin que hubiera ninguna de más.
+     Y hay que cortar, no truncar: un cronograma que no cabe en una lectura se
+     correría A MEDIAS —unas filas movidas y otras no—, que es peor que no
+     correrlo. Mejor quedarse quieto y decirlo. */
+  const TOPE = techo(TOPE_API);
+  const { data: acts } = await supabase.from("cronograma_actividades")
+    .select("id,nombre,etapa,fecha_inicio,fecha_fin,estado,publicacion_id")
+    .eq("postulacion_id", f.postulacionId)
+    .limit(TOPE + 1);
+  if (!acts?.length) return { error: "Este cronograma no tiene actividades." };
+  if (acts.length > TOPE) {
+    return { error: `El cronograma pasa de ${TOPE} actividades y no cabe en una sola lectura. No se corre nada: hacerlo a medias dejaría la mitad movida.` };
+  }
+
+  const pf = plazoFondo(post as any);
+  const plan = planear(
+    acts as any, etapas,
+    modo === "todo" ? { modo: "todo" } : { modo: modo as any, etapa: f.etapa! },
+    f.fecha,
+    {
+      limite: pf.limite,
+      limiteNombre: pf.fuente === "prorroga" ? "plazo con prórroga"
+        : pf.fuente === "acta" ? "plazo del acta" : "plazo calculado",
+      moverHechas: !!f.moverHechas,
+    },
+  );
+  if (!plan.viable) {
+    return { error: plan.avisos.find(a => a.nivel === "alto")?.texto || "No hay nada que correr." };
+  }
+
+  /* ── LA FOTO DE LO VIEJO, ANTES DE MOVER NADA ──
+     ⚠ El orden importa y no es intercambiable. La versión vigente de ahora
+     retrata las fechas VIEJAS, que es justo lo que hay que conservar; si se
+     capturara después de escribir, se guardaría lo nuevo dos veces y las viejas
+     no quedarían en ninguna parte.
+     Es el mismo razonamiento del apartado «QUÉ PASA CON LAS VERSIONES» de
+     crono-correr-po003, donde había que hacerlo en la misma sentencia. */
+  const fotoVieja: any = await fotoVivaDelFondo(supabase, f.postulacionId, "cronograma");
+
+  /* ── ESCRIBIR ──
+     De una en una y no en lote: `upsert` con las filas completas exigiría
+     traerlas enteras y devolverlas, y cualquier columna que no viajara se
+     borraría. Aquí solo se tocan las dos fechas.
+     Se cuentan los fallos en vez de abortar a la primera: parar a mitad deja el
+     cronograma partido igual, pero además sin saber por dónde. */
+  const fallos: string[] = [];
+  const porId = new Map((acts as any[]).map(a => [a.id, a]));
+  let casos = 0;
+  for (const m of plan.mueve) {
+    /* `.select("id")` para saber si de verdad entró. Un `update` que no encaja
+       ninguna fila —porque alguien la borró entre la lectura y ahora— NO
+       devuelve error: devuelve cero filas y se contaría como movida. La versión
+       se sellaría afirmando N cambios de los que uno nunca ocurrió. Es la
+       convención del archivo. */
+    const { data: tocada, error } = await supabase.from("cronograma_actividades")
+      .update({ fecha_inicio: m.ini, fecha_fin: m.fin })
+      .eq("id", m.act.id).select("id");
+    if (error) { fallos.push(`${m.act.nombre}: ${error.message}`); continue; }
+    if (!tocada?.length) { fallos.push(`${m.act.nombre}: ya no existe`); continue; }
+
+    /* ── EL CASO SE MUEVE CON SU ACTIVIDAD ──
+       Una actividad materializada tiene un caso en `publicaciones` con COPIA de
+       las dos fechas (ver `materializarActividad`). Moviendo solo el cronograma,
+       la agenda pinta las dos: el caso en agosto y la actividad en septiembre.
+       `itemsActSolas` oculta la actividad únicamente mientras el caso la cubre,
+       y corrida 18 días deja de cubrirla.
+       Es un hueco que ya existía —`cambiarFechaActividad` tampoco sincroniza—
+       pero esta es la única operación que lo dispara en veinte filas de golpe y
+       sin que nadie mire. Se arregla donde se rompe.
+       ⚠ Un hito no lleva `fecha_inicio` a propósito: es una fecha, no un tramo.
+       Si se le pusiera aquí, dejaría de ser un hito al correrlo. */
+    const pubId = porId.get(m.act.id)?.publicacion_id;
+    if (pubId) {
+      const { data: pub } = await supabase.from("publicaciones")
+        .select("fecha_inicio").eq("id", pubId).maybeSingle();
+      const { error: ePub } = await supabase.from("publicaciones")
+        .update({
+          fecha_inicio: pub?.fecha_inicio ? m.ini : null,
+          fecha_limite: m.fin,
+        }).eq("id", pubId);
+      if (ePub) fallos.push(`el caso de «${m.act.nombre}»: ${ePub.message}`);
+      else casos++;
+    }
+  }
+  const movidas = plan.mueve.filter(m => !fallos.some(x => x.startsWith(`${m.act.nombre}:`))).length;
+
+  /* Si no entró ninguna, no se sella ninguna versión: una foto de un cambio que
+     no ocurrió es peor que no tener foto. */
+  if (!movidas) {
+    return { error: `No se movió ninguna actividad. ${fallos[0] || ""}`.trim() };
+  }
+
+  /* El nombre sale del preset de ESTA categoría, no del mapa global de
+     lib/etapas: ese es por clave y gana el último, así que dos categorías que
+     comparten clave con distinto nombre —`desarrollo` es «Desarrollo» en cine y
+     «Desarrollo (arte, layout)» en Desarrollo de proyecto— dejarían escrito en
+     la versión el rótulo de la otra. `nombreEtapa` queda de red por si la clave
+     no está en el preset. */
+  const nomEtapa = (c: string) => etapas.find(e => e.clave === c)?.nombre || nombreEtapa(c);
+  const alcanceTxt = modo === "todo" ? "El cronograma entero"
+    : modo === "solo-etapa" ? `La etapa «${nomEtapa(f.etapa!)}»`
+      : `Desde «${nomEtapa(f.etapa!)}»`;
+  const resumen = motivoVersion(plan, alcanceTxt, f.fecha);
+  /* El corte también en el servidor: el `maxLength` del campo es del navegador
+     y una acción es una puerta abierta. 200 es lo que cabe en la fila de una
+     versión sin desbordarla. */
+  const motivo = [f.nota?.trim().slice(0, 200), resumen].filter(Boolean).join(" — ");
+
+  /* ── LAS DOS VERSIONES ──
+     La vigente de ahora baja a histórico y entra una nueva ya con las fechas
+     corridas. No se pisa ninguna: quedan las dos y se puede leer qué cambió.
+     Se inserta SIEMPRE como no vigente y solo después se promueve, igual que
+     `guardarVersionFondo`: así nunca choca con `uq_version_vigente` y, si el
+     insert falla, la anterior no queda demovida a la nada. */
+  let avisoVersion = "";
+  if (!fotoVieja.error) {
+    const { data: vieja, error: eVieja } = await supabase.from("version_fondo").insert({
+      postulacion_id: f.postulacionId, tipo: "cronograma", etiqueta: "Reformulado",
+      motivo: `Fechas ANTES de correr. ${motivo}`,
+      datos: fotoVieja.datos, vigente: false, creado_por: user.id,
+    }).select("id").maybeSingle();
+    if (eVieja || !vieja?.id) avisoVersion = "Las fechas se movieron, pero no se pudo guardar la foto anterior.";
+  } else {
+    avisoVersion = `Las fechas se movieron, pero no se guardó la foto anterior: ${fotoVieja.error}`;
+  }
+
+  const fotoNueva: any = await fotoVivaDelFondo(supabase, f.postulacionId, "cronograma");
+  if (!fotoNueva.error) {
+    const { data: ins } = await supabase.from("version_fondo").insert({
+      postulacion_id: f.postulacionId, tipo: "cronograma", etiqueta: "Reformulado",
+      motivo, datos: fotoNueva.datos, vigente: false, creado_por: user.id,
+    }).select("id").maybeSingle();
+    if (ins?.id) {
+      await supabase.from("version_fondo").update({ vigente: false })
+        .eq("postulacion_id", f.postulacionId).eq("tipo", "cronograma");
+      await supabase.from("version_fondo").update({ vigente: true }).eq("id", ins.id);
+    } else if (!avisoVersion) {
+      avisoVersion = "Las fechas se movieron, pero no se pudo sellar la versión nueva.";
+    }
+  } else if (!avisoVersion) {
+    /* ⚠ Sin este `else`, el caso se iba en silencio: las fechas ya movidas, sin
+       versión nueva, y la VIGENTE siendo todavía la de las fechas viejas — o
+       sea, el panel jurando que el cronograma es uno que ya no existe. Y el
+       cliente cerrando el cuadro con un «listo».
+       `fotoVivaDelFondo` devuelve `error` tanto si el cronograma está vacío
+       como si la consulta falló, así que aquí se cubren los dos. */
+    avisoVersion = `Las fechas se movieron, pero la versión vigente sigue siendo la ANTERIOR: ${fotoNueva.error}`;
+  }
+
+  await supabase.from("actividad").insert({
+    entidad_tipo: "postulacion", entidad_id: f.postulacionId, actor_id: user.id, tipo: "editado",
+    detalle: { mensaje: `corrió el cronograma: ${alcanceTxt.toLowerCase()} ${rotuloDias(plan.dias)} · ${movidas} actividades${casos ? ` y ${casos} caso${casos === 1 ? "" : "s"}` : ""}` },
+  });
+
+  revalidarFondo(f.postulacionId);
+  revalidatePath(`/entidad/postulacion/${f.postulacionId}`);
+  revalidatePath("/agenda");
+
+  return {
+    movidas, casos, dias: plan.dias,
+    /* Los avisos del plan viajan al cliente. La previsualización los enseña
+       antes, pero en `/entidad/postulacion/[id]` no llega el plazo del fondo, y
+       ahí el del acta solo lo sabe el servidor: descartarlo en silencio sería
+       calcular la única advertencia que importa y tirarla. */
+    avisos: plan.avisos.map(a => a.texto),
+    /* Los fallos NO se esconden detrás de un «listo». Si tres filas no entraron,
+       el cronograma está corrido a medias y hay que saberlo ahora. */
+    aviso: [
+      fallos.length ? `${fallos.length} no se pudieron mover: ${fallos.slice(0, 3).join("; ")}` : "",
+      avisoVersion,
+    ].filter(Boolean).join(" · "),
+  };
 }

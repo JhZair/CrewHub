@@ -7,6 +7,7 @@ import VersionesFondo from "@/components/VersionesFondo";
 import RepartoFondo from "@/components/RepartoFondo";
 import Tratamientos from "@/components/Tratamientos";
 import { etapasDe } from "@/lib/etapas";
+import { plazoFondo, type PlazoFondo } from "@/lib/plazoFondo";
 import { techo } from "@/lib/api";
 import { hoyLima } from "@/lib/fechas";
 import { traerFondo, traerPerfilActual, traerVersiones } from "@/lib/fondoDatos";
@@ -126,6 +127,19 @@ export default async function AudiovisualPage({ params }: { params: { id: string
 
   const esAdmin = !!((perfilActual as any)?.es_admin || (perfilActual as any)?.es_finanzas);
   const categoria = (ent as any)?.conv?.categoria || null;
+
+  /* ── EL PLAZO QUE MANDA, PARA «CORRER FECHAS» ──
+     Sale de `plazoFondo`, que ya elige entre prórroga, acta y desembolso + 1
+     año. Correr un cronograma puede llevar el final más allá del plazo, y ese
+     aviso tiene que salir ANTES de mover nada — es lo que en
+     db/crono-correr-po003.sql hubo que escribir a mano en la cabecera. */
+  const plazo: PlazoFondo = plazoFondo(ent as any);
+  /* Sin artículo: las frases del aviso lo contraen («después del plazo del
+     acta»). Con el artículo dentro salía «después de el plazo del acta». */
+  const NOMBRE_PLAZO: Record<string, string> = {
+    prorroga: "plazo con prórroga", acta: "plazo del acta",
+    calculado: "plazo calculado (desembolso + 1 año)",
+  };
 
   /* Responsable de actividad de postulación = persona del equipo
      (`responsable_persona`), no cuenta del sistema. Se normaliza a
@@ -254,6 +268,12 @@ export default async function AudiovisualPage({ params }: { params: { id: string
             actividades={cronoPost} perfiles={plantelPost}
             plantillas={plantillas} tipoProyecto={(ent as any)?.proy?.tipo || ""}
             etapas={etapasDe(categoria)}
+            limite={plazo.limite} limiteNombre={NOMBRE_PLAZO[plazo.fuente || "calculado"]}
+            /* ⚠ `es_admin` a secas, NO el `esAdmin` de arriba: ese incluye
+               `es_finanzas` y la acción de correr exige solo administración,
+               igual que `guardarVersionFondo`. Con el otro, finanzas vería el
+               botón y se comería el rechazo después de armar el plan. */
+            puedeCorrer={!!(perfilActual as any)?.es_admin}
             postulado={vigCrono?.datos || null}
             postuladoEn={vigCrono?.creado_en || null} ocultarFijar />
           <Plegable nivel={2} id={`fondo:${params.id}:crono:versiones`} titulo="🕑 Historial de versiones"

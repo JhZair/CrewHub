@@ -7136,3 +7136,59 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
 .gv-st-n{min-width:110px;text-align:right;color:var(--dim);font-variant-numeric:tabular-nums}
 .gv-st-tot{margin-top:8px;font-size:11.5px;color:var(--dim)}
 .gv-st-av{margin:8px 0 0;padding-left:2px;list-style:none;font-size:12.5px;line-height:1.6}
+
+/* ══════ ⏩ CORRER EL CRONOGRAMA (CorrerCronograma) ══════
+   Prefijo `.crr-` y no `.cr-`: ese ya es del cronograma (`.cr-etapa-h`,
+   `.cr-etapa-n`), y compartir prefijo entre dos componentes es cómo el tablero
+   perdió su fondo cuando la rejilla estrenó `.tl-`. */
+.crr { background: var(--bg); border: 1px solid var(--border2); border-radius: 12px;
+  padding: 12px 14px; margin: 12px 0; display: flex; flex-direction: column; gap: 10px; }
+.crr-cab { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
+.crr-fila { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.crr-rot { color: var(--dim); font-size: 11.5px; min-width: 62px; }
+.crr-inp { background: var(--card); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 6px 9px; font-size: 12.5px; font-family: inherit; }
+.crr-nota { color: var(--dim); font-size: 11.5px; }
+.crr-check { display: flex; align-items: flex-start; gap: 8px; font-size: 12.5px;
+  color: var(--muted); line-height: 1.5; cursor: pointer; }
+.crr-check input { margin-top: 3px; }
+
+.crr-vacio { color: var(--dim); font-size: 12.5px; padding: 10px 0; }
+.crr-titular { font-size: 14px; color: var(--text); }
+.crr-rango { display: flex; align-items: center; gap: 10px; font-size: 12.5px;
+  color: var(--muted); background: var(--card); border-radius: 8px; padding: 8px 10px; }
+.crr-flecha { color: var(--dim); }
+
+.crr-aviso { background: rgba(244,180,0,.10); border-left: 2px solid var(--yellow);
+  color: var(--yellow); font-size: 12px; line-height: 1.55; padding: 7px 10px; border-radius: 0 8px 8px 0; }
+.crr-alto { background: rgba(255,77,94,.10); border-left: 2px solid var(--red);
+  color: var(--red); font-size: 12.5px; line-height: 1.55; padding: 8px 10px; border-radius: 0 8px 8px 0; }
+
+/* La lista se limita en alto y hace scroll: un cronograma de cuarenta filas
+   empujaría los botones fuera de la pantalla, y el botón que confirma no puede
+   quedar donde no se ve. */
+.crr-lista { max-height: 300px; overflow-y: auto; scrollbar-gutter: stable;
+  display: flex; flex-direction: column; gap: 1px; }
+.crr-mov { display: flex; align-items: center; gap: 8px; font-size: 12px;
+  padding: 5px 8px; border-radius: 6px; }
+/* El cebreado solo dentro de la lista de movidas. Con `.crr-mov:nth-child(odd)`
+   a secas también aplicaba dentro de `.crr-quietas`, donde el primer hijo es el
+   botón «▸ N se quedan» y no una fila: el rayado salía invertido. */
+.crr-lista .crr-mov:nth-child(odd) { background: var(--card); }
+.crr-pt { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.crr-nom { flex: 1; min-width: 110px; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crr-vieja { color: var(--dim); text-decoration: line-through; }
+.crr-nueva { color: var(--green); }
+.crr-fin { color: var(--dim); font-size: 11px; }
+.crr-quietas { display: flex; flex-direction: column; gap: 1px; }
+.crr-quieta { opacity: .65; }
+.crr-motivo { color: var(--dim); font-size: 11px; }
+.crr-mas { background: none; border: 0; color: var(--muted); font-size: 12px;
+  cursor: pointer; padding: 4px 0; text-align: left; font-family: inherit; }
+.crr-mas:hover { color: var(--text); }
+
+.crr-hecho { background: rgba(46,204,113,.10); border-left: 2px solid var(--green);
+  color: var(--green); font-size: 12.5px; padding: 8px 10px; border-radius: 0 8px 8px 0; }
+.crr-pie { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  border-top: 1px solid var(--border); padding-top: 10px; }
