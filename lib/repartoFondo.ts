@@ -46,12 +46,43 @@ export type FilaReparto = {
  * tolerar «protagonistas», «PROTAGONISTA», «conductora», «voces expertas»: el
  * campo es texto libre a propósito, así que aquí hay que ser generoso o el
  * agrupado no agrupa nada.
- * El orden del array ES el orden en que se pintan. */
+ * El orden del array ES el orden en que se pintan Y el orden en que se
+ * reclaman: el primero que reconoce el papel se lo lleva. Eso no es un detalle
+ * de implementación, es la regla que separa las dos capas de abajo.
+ *
+ * ── POR QUÉ CONDUCCIÓN Y PROTAGONISMO SOCIAL SON DOS COSAS ──
+ * En KAWSAY WARMI la directora y la productora dejan de estar detrás de cámara
+ * y entran en el relato: viajan, se encuentran, conversan, y ese viaje es el
+ * hilo que articula las historias. Las tres mujeres a las que visitan no dan un
+ * testimonio sentadas frente a una cámara: la cámara las acompaña en su vida.
+ * Son dos papeles distintos —quien LLEVA el relato y quien ES el relato— y
+ * meterlos en un cajón llamado «protagonismo y conducción» aplanaba justo la
+ * distinción que sostiene la película: se veía «5 personas» donde hay dos capas.
+ *
+ * ⚠ CONDUCCIÓN VA PRIMERO Y NO ES CASUAL. «Protagonista narrativa» contiene la
+ * raíz «protagon», así que si el grupo social se reclamara antes, las
+ * conductoras caerían con las protagonistas y la separación no existiría. El
+ * orden del array ES la desambiguación.
+ */
 export type Grupo = { k: string; titulo: string; raices: string[] };
 
 export const GRUPOS: Grupo[] = [
-  { k: "principal", titulo: "Protagonismo y conducción",
-    raices: ["protagon", "conduct", "presentad", "anfitrion", "anfitrión", "heroe", "héroe"] },
+  /* Quienes llevan al espectador de un lugar a otro. Aquí caben las
+     realizadoras que entran en cuadro, la conductora, la narradora — y, en
+     ficción, quien haga de hilo. */
+  /* ⚠ NO están «directora» ni «realizadora», a propósito. Este campo dice qué
+     es alguien EN LA PELÍCULA, no qué cargo tiene: el cargo vive en la pestaña
+     👥 Equipo. Que Yajaida dirija no la convierte en conductora del relato —lo
+     que la convierte es entrar en cuadro, y eso se escribe—. Si aceptáramos el
+     cargo aquí, cualquiera del crew apuntado por error caería en el grupo más
+     destacado de la lista. Caen en «Otros papeles», que es lo honesto. */
+  { k: "conduccion", titulo: "Conducción — quienes llevan el relato",
+    raices: ["conduct", "presentad", "anfitrion", "anfitrión", "narrador", "narradora",
+             "protagonista narrativ", "protagonistas narrativ"] },
+  /* A quienes la película va a buscar. En un documental de encuentro, estas son
+     las historias; en ficción, el o la protagonista de la trama. */
+  { k: "protagonista", titulo: "Protagonistas — de quiénes es la historia",
+    raices: ["protagon", "heroe", "héroe"] },
   { k: "secundario", titulo: "Personajes secundarios",
     raices: ["secundar", "antagon", "reparto", "extra", "figurac"] },
   { k: "testimonio", titulo: "Testimonios y voces expertas",
@@ -64,7 +95,9 @@ export const GRUPOS: Grupo[] = [
 const limpia = (s?: string | null) => (s || "").trim().toLowerCase();
 
 /** A qué grupo cae un rol. `sinrol` si está vacío; `otros` si está escrito
- *  pero no lo reclama ninguno — que NO es lo mismo, y por eso son dos. */
+ *  pero no lo reclama ninguno — que NO es lo mismo, y por eso son dos.
+ *  Recorre `GRUPOS` en orden y devuelve el PRIMERO que lo reconoce: ver arriba
+ *  por qué conducción tiene que ir antes que protagonismo. */
 export function grupoDeRol(rol?: string | null): string {
   const r = limpia(rol);
   if (!r) return "sinrol";
@@ -204,13 +237,19 @@ export const ROTULO_CESION: Record<CesionEstado, string> = {
 /* ── ROLES SUGERIDOS ──
  * El combo es un `datalist`: se puede escribir cualquier cosa. Esto cubre el
  * caso normal sin cerrar la puerta al raro. */
+/* Las dos primeras son las dos capas: quien lleva el relato y quien lo es. Van
+   escritas con su apellido —«protagonista narrativa», «social»— porque a
+   secas las dos se llaman «protagonista» y quien rellena el combo no tiene por
+   qué saber cuál de las dos le toca. `Conductora` a secas se queda porque es
+   lo que ya está escrito en los fondos vivos y sigue cayendo donde debe. */
 const ROLES_DOC = [
-  "Protagonista", "Conductora", "Personaje secundario",
-  "Testimonio", "Voz experta", "Reparto",
+  "Conductora (protagonista narrativa)", "Conductora",
+  "Protagonista social", "Protagonista",
+  "Personaje secundario", "Testimonio", "Voz experta", "Reparto",
 ];
 const ROLES_FIC = [
   "Protagonista", "Personaje secundario", "Antagonista",
-  "Reparto", "Voz", "Extra",
+  "Narradora", "Reparto", "Voz", "Extra",
 ];
 
 export const rolesReparto = (tipoProyecto?: string | null) =>

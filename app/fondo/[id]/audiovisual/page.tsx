@@ -8,7 +8,7 @@ import RepartoFondo from "@/components/RepartoFondo";
 import { etapasDe } from "@/lib/etapas";
 import { techo } from "@/lib/api";
 import { traerFondo, traerPerfilActual, traerVersiones } from "@/lib/fondoDatos";
-import { resumenCesiones } from "@/lib/repartoFondo";
+import { resumenCesiones, rotuloReparto } from "@/lib/repartoFondo";
 
 /* ── 🎥 AUDIOVISUAL ──
  *
@@ -130,6 +130,7 @@ export default async function AudiovisualPage({ params }: { params: { id: string
   /* El resumen para el título del plegable. No se pinta si la consulta falló:
      `resumenCesiones([])` diría «0 pendientes», o sea «está todo firmado». */
   const ces = repError ? null : resumenCesiones(reparto);
+  const rotulo = rotuloReparto((ent as any)?.proy?.tipo || null);
 
   // Versiones del cronograma con su autor resuelto.
   const versCrono = (versiones as any[])
@@ -160,7 +161,11 @@ export default async function AudiovisualPage({ params }: { params: { id: string
           firmar—, y un aviso al final de la página es un aviso que se lee
           cuando ya no sirve. */}
       <div style={{ scrollMarginTop: 12 }}>
-        <Plegable id={`fondo:${params.id}:reparto`} titulo="🎭 Equipo artístico" abiertoPorDefecto={true}
+        {/* El rótulo sale de `rotuloReparto` y no se escribe aquí a mano: en un
+            documental la sección se llama distinto que en una ficción, y un
+            título escrito en dos sitios acaba diciendo dos cosas. */}
+        <Plegable id={`fondo:${params.id}:reparto`} abiertoPorDefecto={true}
+          titulo={`${rotulo.ico} ${rotulo.titulo}`}
           resumen={ces
             ? dim(ces.total
               ? `${ces.total} ${ces.total === 1 ? "persona" : "personas"}${ces.pendientes ? ` · ${ces.pendientes} sin cesión` : ""}`

@@ -163,15 +163,17 @@ export default function RepartoFondo({
 
   return (
     <div className="rep-wrap">
-      {/* ── LA CABECERA: cuántos son y cuántos papeles faltan ──
-          El contador de cesiones NO se pinta cuando la consulta falló: con la
-          lista vacía diría «0 pendientes», que se lee como «está todo firmado»
-          y es lo contrario de la verdad. */}
+      {/* ── LA CABECERA ──
+          SIN repetir «Equipo artístico · 5»: eso ya lo dice el título del
+          plegable y su resumen, justo encima. Un rótulo repetido dos veces con
+          dos íconos distintos se lee como dos secciones, y el ojo pierde un
+          segundo en comprobar que son la misma.
+          Lo que sí va aquí es el DESGLOSE de cesiones, que el resumen del
+          plegable no da: cuántas firmadas y cuántas no aplican.
+          ⚠ Y no se pinta cuando la consulta falló: con la lista vacía diría «0
+          pendientes», que se lee como «está todo firmado» — lo contrario de la
+          verdad, y sobre el único papel que si falta impide usar el material. */}
       <div className="rep-cab">
-        {/* El contador tampoco se pinta con la consulta rota: «Equipo artístico
-            · 0» junto al aviso rojo es el mismo cero que en realidad es «no lo
-            sé», y el ojo se queda con el número. */}
-        <span className="rep-cab-t">{R.ico} {R.titulo}{errServidor ? "" : ` · ${filas.length}`}</span>
         {!errServidor && filas.length > 0 && (
           <span className="rep-cesiones" title={`Cesión de derechos de imagen y voz — se rinde en la cláusula ${CLAUSULA_CESION} del acta`}>
             {res.pendientes > 0

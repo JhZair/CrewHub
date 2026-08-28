@@ -6752,8 +6752,10 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
    el proyecto no tiene: los grupos, la procedencia y la cesión.
    ══════════════════════════════════════════════════════════════════════════ */
 .rep-wrap{margin-top:12px}
+/* Sin rótulo propio: el título de la sección lo pone el plegable de arriba.
+   (Aquí vivía `.rep-cab-t`, que lo repetía con otro ícono y hacía que la misma
+   sección pareciera dos.) */
 .rep-cab{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
-.rep-cab-t{font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim);font-weight:700}
 .rep-btn{padding:5px 12px;font-size:12px}
 
 /* El contador de cesiones. Va en la cabecera y no dentro de cada ficha porque
