@@ -4,8 +4,11 @@ import Realtime from "@/components/Realtime";
 import Plegable from "@/components/Plegable";
 import CronogramaPostulacion from "@/components/CronogramaPostulacion";
 import VersionesFondo from "@/components/VersionesFondo";
+import RepartoFondo from "@/components/RepartoFondo";
 import { etapasDe } from "@/lib/etapas";
+import { techo } from "@/lib/api";
 import { traerFondo, traerPerfilActual, traerVersiones } from "@/lib/fondoDatos";
+import { resumenCesiones } from "@/lib/repartoFondo";
 
 /* ── 🎥 AUDIOVISUAL ──
  *
@@ -36,7 +39,7 @@ export default async function AudiovisualPage({ params }: { params: { id: string
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [ent, perfilActual, versiones, cp, pl, eqp] = await Promise.all([
+  const [ent, perfilActual, versiones, cp, pl, eqp, rep, per] = await Promise.all([
     /* Cacheadas y ya llamadas por el layout en este mismo render: en carga dura
        NO cuestan un viaje. Hacen falta el tipo de proyecto y la categoría de la
        convocatoria —de ellas salen las etapas— y la versión vigente del
@@ -59,6 +62,34 @@ export default async function AudiovisualPage({ params }: { params: { id: string
     supabase.from("postulacion_equipo")
       .select("cargo,persona:personas(id,nombre,alias,foto_url)")
       .eq("postulacion_id", params.id),
+    /* ── EL EQUIPO ARTÍSTICO ──
+       Quién SALE en la película. Lista propia del fondo, no un puntero a la
+       del proyecto: el fondo tiene que poder contestar quién estaba en el
+       expediente que ganó y quién apareció rodando, y eso el proyecto no lo
+       sabe. Razonado en db/postulacion-reparto.sql.
+       `.limit(300)` explícito: el techo por defecto de PostgREST son 1000
+       filas y CORTA SIN AVISAR. Trescientos personajes en un fondo no pasa —el
+       mayor que tenemos ronda los veinte— pero un tope escrito se ve al
+       leerlo; uno heredado, no. */
+    supabase.from("postulacion_reparto")
+      .select("id,persona_id,personaje,proyecto_actor_id,rol,especialidad,procedencia," +
+        "cesion_estado,cesion_url,cesion_fecha,nota,orden," +
+        "persona:personas(id,nombre,alias,foto_url)")
+      .eq("postulacion_id", params.id).order("orden").limit(300),
+    /* El catálogo para elegir persona. Las mismas cuatro columnas que usa la
+       ficha del proyecto, para que el desplegable se lea igual en los dos
+       sitios.
+       ⚠ `techo()` y no un número a mano: el tope real de PostgREST en este
+       proyecto son 1000 filas y escribir `.limit(2000)` no lo sube, lo TAPA
+       —está contado en lib/api.ts, donde se corrigieron veinte límites
+       escritos de buena fe con números que describían un techo inexistente—.
+       Pasado el millar, la persona que falta simplemente no sale en el
+       desplegable y quien la busca concluye que no tiene ficha.
+       ⚠ Y se paga en CADA carga de la pestaña, abra o no alguien el selector.
+       Es la única consulta de aquí que no pinta nada por sí sola; va en el
+       mismo `Promise.all`, así que no encadena espera, pero es peso. Si algún
+       día molesta, lo que hay que mover es esto. */
+    supabase.from("personas").select("id,nombre,alias,tipo").order("nombre").limit(techo(2000)),
   ]);
 
   const esAdmin = !!((perfilActual as any)?.es_admin || (perfilActual as any)?.es_finanzas);
@@ -86,6 +117,20 @@ export default async function AudiovisualPage({ params }: { params: { id: string
     id: x.id, nombre: x.nombre, tipo_proyecto: x.tipo_proyecto, n: x.acts?.[0]?.count ?? 0,
   }));
 
+  /* ⚠ El error se pasa entero al componente y NO se traga con `|| []`. Una
+     lista vacía por fallo se lee como «no hay equipo artístico» y, peor, como
+     «no falta ninguna cesión» — que es justo el papel que si falta impide usar
+     el material. Cuatro loaders del fondo hacían `data || []` y la cabecera
+     decía «todavía ninguna» cuando lo que pasaba era que no se podía leer. */
+  const reparto = (rep.data || []) as any[];
+  const repError = (rep as any)?.error?.message || null;
+  const personasCat = ((per.data || []) as any[])
+    .map(x => ({ ...x, nombre: x.alias ? `${x.nombre} · ${x.alias}` : x.nombre }));
+
+  /* El resumen para el título del plegable. No se pinta si la consulta falló:
+     `resumenCesiones([])` diría «0 pendientes», o sea «está todo firmado». */
+  const ces = repError ? null : resumenCesiones(reparto);
+
   // Versiones del cronograma con su autor resuelto.
   const versCrono = (versiones as any[])
     .filter((v: any) => v.tipo === "cronograma")
@@ -99,9 +144,35 @@ export default async function AudiovisualPage({ params }: { params: { id: string
       <Realtime tablas={[
         { tabla: "cronograma_actividades", filtro: `postulacion_id=eq.${params.id}` },
         { tabla: "version_fondo", filtro: `postulacion_id=eq.${params.id}` },
+        /* ⚠ Hasta correr db/postulacion-reparto.sql, esta suscripción se abre,
+           dice SUBSCRIBED y no emite nada: una tabla no publicada en
+           `supabase_realtime` no da error, simplemente no llega nunca un
+           evento. La migración la publica. */
+        { tabla: "postulacion_reparto", filtro: `postulacion_id=eq.${params.id}` },
       ]}
         token={session?.access_token} miId={user.id} />
       <p className="fondo-nat-sub">La obra que hay que entregar: el rodaje de dos años y su registro.</p>
+
+      {/* ── 🎭 QUIÉN SALE ──
+          Va antes del cronograma porque contesta la pregunta anterior: el
+          cronograma dice cuándo se rueda, esto dice a quién. Y porque lleva
+          dentro el único aviso de esta pestaña que caduca —las cesiones sin
+          firmar—, y un aviso al final de la página es un aviso que se lee
+          cuando ya no sirve. */}
+      <div style={{ scrollMarginTop: 12 }}>
+        <Plegable id={`fondo:${params.id}:reparto`} titulo="🎭 Equipo artístico" abiertoPorDefecto={true}
+          resumen={ces
+            ? dim(ces.total
+              ? `${ces.total} ${ces.total === 1 ? "persona" : "personas"}${ces.pendientes ? ` · ${ces.pendientes} sin cesión` : ""}`
+              : "sin equipo artístico")
+            : dim("no se pudo leer")}>
+          <RepartoFondo postulacionId={params.id}
+            proyectoId={(ent as any)?.proy?.id || null}
+            filas={reparto} personas={personasCat}
+            tipo={(ent as any)?.proy?.tipo || null} error={repError} />
+        </Plegable>
+      </div>
+
       <div style={{ scrollMarginTop: 12 }}>
         <Plegable id={`fondo:${params.id}:crono`} titulo="📅 Cronograma de ejecución" abiertoPorDefecto={true}
           resumen={dim(cronoPost.filter((a: any) => a.estado !== "cancelada").length
@@ -123,7 +194,12 @@ export default async function AudiovisualPage({ params }: { params: { id: string
           para que se sepa dónde va a vivir, no para simular que ya está. */}
       <div className="fondo-pronto">
         <Pronto ico="📝" t="Contratos oficiales" d="Los contratos de personal de la ejecución (distintos de los precontratos de la postulación)." />
-        <Pronto ico="©️" t="Derechos de autor" d="Cesiones y licencias de la obra y su material." />
+        {/* Ojo con el rótulo: las cesiones de imagen de quienes SALEN ya no son
+            «pronto», están arriba en el equipo artístico. Lo que falta aquí es
+            lo de la OBRA —la licencia de comunicación pública del 5.3.8, la
+            música, el archivo de terceros—, que es otra cosa. Dejarlo como
+            «cesiones» a secas haría que nadie encontrara las que sí existen. */}
+        <Pronto ico="©️" t="Derechos de la obra" d="Licencia de comunicación pública (cl. 5.3.8), música y material de archivo de terceros. Las cesiones de imagen de quienes salen están en el equipo artístico." />
         <Pronto ico="🎞️" t="Material de archivo (producción)" d="El registro que se genera durante el rodaje." />
         <Pronto ico="📖" t="Informes de ejecución" d="El informe narrativo por etapa — lo alimentan los casos del proyecto." />
       </div>

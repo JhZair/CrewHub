@@ -10971,3 +10971,325 @@ export async function estadoGlobal() {
     alarmas: ok(alarmas, ZOCALO_VACIO.alarmas),
   };
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   EL EQUIPO ARTÍSTICO DE UN FONDO — `postulacion_reparto`
+
+   Quién SALE en la película que este fondo financia. La lista es propia del
+   fondo y no un puntero a la del proyecto, porque el fondo tiene que poder
+   contestar algo que el proyecto no sabe: quién estaba en el expediente que
+   ganó, y quién apareció después. Está razonado en db/postulacion-reparto.sql.
+
+   Las cinco acciones comparten forma con las de `proyecto_actores` a
+   propósito: quien ya sabe editar el reparto de un proyecto no tiene que
+   aprender otra cosa aquí.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** Cuando la tabla no existe todavía, PostgREST no dice «falta la tabla»: para
+ *  un insert devuelve PGRST205/PGRST204 hablando de la caché del esquema, que
+ *  no significa nada para quien está intentando apuntar a una antropóloga. Se
+ *  traduce una sola vez, aquí, y no en cada pantalla. */
+function faltaLaTabla(msg?: string | null): string | null {
+  if (!msg) return null;
+  return /schema cache|does not exist|PGRST20[45]|relation .* does not exist/i.test(msg)
+    ? `${msg} — falta correr db/postulacion-reparto.sql en Supabase.`
+    : msg;
+}
+
+/** El nombre con el que aparece en el historial: el personaje manda, porque de
+ *  un personaje sin intérprete «quitó a alguien» no lo reconstruye nadie. */
+function nombreReparto(fila: any): string {
+  const per = Array.isArray(fila?.per) ? fila.per[0] : fila?.per;
+  return (fila?.personaje || "").trim() || per?.alias || per?.nombre || "alguien";
+}
+
+export async function agregarAlReparto(
+  postulacionId: string,
+  d: { personaId?: string | null; personaje?: string; rol?: string; especialidad?: string;
+       procedencia?: string; nota?: string; proyectoActorId?: string | null }
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!postulacionId) return { error: "Falta el fondo." };
+
+  const pj = (d.personaje || "").trim();
+  const personaId = d.personaId || null;
+  if (!personaId && !pj) return { error: "Elige a la persona o escribe el nombre del personaje." };
+
+  /* La misma persona dos veces en el mismo fondo rompe el contador de cesiones
+     —«1 de 2 firmadas» con todo firmado—. Hay un índice único que lo impide,
+     pero su error es «duplicate key value violates unique constraint», que no
+     le dice a nadie qué hacer. Se comprueba antes, con palabras.
+     ⚠ Y se comprueba aquí y no con un upsert: el índice es PARCIAL (solo donde
+     hay persona) y PostgREST no acepta índices parciales en `on conflict` —da
+     42P10—. Lección de la tabla de comprobantes. */
+  if (personaId) {
+    const { data: ya } = await supabase.from("postulacion_reparto")
+      .select("id").eq("postulacion_id", postulacionId).eq("persona_id", personaId).maybeSingle();
+    if (ya?.id) return { error: "Esa persona ya está en el equipo artístico de este fondo." };
+  }
+
+  const proc = d.procedencia === "postulacion" ? "postulacion" : "ejecucion";
+  const { error } = await supabase.from("postulacion_reparto").insert({
+    postulacion_id: postulacionId,
+    persona_id: personaId,
+    personaje: pj || null,
+    proyecto_actor_id: d.proyectoActorId || null,
+    rol: (d.rol || "").trim() || null,
+    especialidad: (d.especialidad || "").trim() || null,
+    procedencia: proc,
+    nota: (d.nota || "").trim() || null,
+    creado_por: user.id,
+  });
+  if (error) return { error: faltaLaTabla(error.message) };
+
+  let quien = pj;
+  if (personaId) {
+    const { data: per } = await supabase.from("personas")
+      .select("nombre,alias").eq("id", personaId).maybeSingle();
+    const nom = per?.alias || per?.nombre || "alguien";
+    quien = pj ? `${pj} (${nom})` : nom;
+  }
+  await supabase.from("actividad").insert({
+    entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "miembro",
+    detalle: { mensaje: `sumó a ${quien || "alguien"} al equipo artístico${(d.rol || "").trim() ? ` (${(d.rol || "").trim()})` : ""}` },
+  });
+  revalidarFondo(postulacionId);
+  return {};
+}
+
+/* Lista blanca de columnas. Sin ella, quien llame a esta acción escribe la
+   columna que quiera —incluida `postulacion_id`, que movería la fila a otro
+   fondo—. Misma guarda que `CAMPOS_ACTOR`. */
+const CAMPOS_REPARTO = [
+  "personaje", "rol", "especialidad", "procedencia", "nota",
+  "cesion_estado", "cesion_url", "cesion_fecha",
+] as const;
+
+export async function editarReparto(
+  id: string, postulacionId: string, campos: Record<string, any>
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!id) return { error: "Falta la fila." };
+
+  const patch: Record<string, any> = {};
+  for (const k of CAMPOS_REPARTO) {
+    if (!(k in campos)) continue;
+    const v = campos[k];
+    patch[k] = typeof v === "string" ? (v.trim() || null) : (v ?? null);
+  }
+  /* Los dos vocabularios cerrados se normalizan aquí y no se confía en el
+     formulario: el CHECK de la base los rechazaría, pero con un mensaje sobre
+     una constraint que quien escribe no ha visto nunca.
+     `null` es distinto de «un valor raro»: si no venían en `campos`, ni se
+     tocan; si venían con algo que no reconocemos, se cae al valor seguro. */
+  if ("procedencia" in patch) {
+    patch.procedencia = patch.procedencia === "postulacion" ? "postulacion" : "ejecucion";
+  }
+  if ("cesion_estado" in patch) {
+    const e = String(patch.cesion_estado || "").toLowerCase();
+    patch.cesion_estado = (e === "firmada" || e === "no_aplica") ? e : "pendiente";
+  }
+  if (!Object.keys(patch).length) return { error: "No hay nada que guardar." };
+
+  /* El CHECK impide dejar la fila sin nadie, pero su error no le dice nada a
+     quien acaba de borrar el nombre del personaje de una fila sin persona. */
+  if ("personaje" in patch && !patch.personaje) {
+    const { data: prev } = await supabase.from("postulacion_reparto")
+      /* Con el fondo también, no solo el id: el `update` de abajo sí lo lleva,
+         pero sin él aquí un id ajeno convertiría esta lectura en un oráculo
+         sobre filas de otro fondo —«¿esa fila tiene persona?»— contestado con
+         un mensaje distinto según la respuesta. */
+      .select("persona_id").eq("id", id).eq("postulacion_id", postulacionId).maybeSingle();
+    if (!prev?.persona_id) return { error: "Sin persona vinculada, el personaje necesita un nombre." };
+  }
+
+  /* `.eq("postulacion_id")` además del id: sin él, un id de otro fondo se
+     editaría desde aquí. RLS deja leer y escribir todo al equipo, así que la
+     única barrera es esta. */
+  const { data, error } = await supabase.from("postulacion_reparto")
+    .update(patch).eq("id", id).eq("postulacion_id", postulacionId)
+    .select("id,personaje,per:personas(nombre,alias)");
+  if (error) return { error: faltaLaTabla(error.message) };
+  if (!data?.length) return { error: "No se guardó: no tienes permiso, o ya no existe." };
+
+  /* El historial nombra lo que cambió, no «actualizó una fila»: dentro de un
+     año, «marcó la cesión de Braulia Puma como firmada» es el apunte que
+     contesta por qué ese material se pudo usar. */
+  let que = "los datos";
+  if ("cesion_estado" in patch) {
+    que = patch.cesion_estado === "firmada" ? "la cesión como firmada"
+      : patch.cesion_estado === "no_aplica" ? "la cesión como no aplicable"
+      : "la cesión como pendiente";
+  } else if ("procedencia" in patch) {
+    que = patch.procedencia === "postulacion" ? "que venía en la postulación" : "que se sumó en la ejecución";
+  } else if ("rol" in patch) que = "el papel";
+
+  await supabase.from("actividad").insert({
+    entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "miembro",
+    detalle: { mensaje: `marcó ${que} de ${nombreReparto(data[0])}` },
+  });
+  revalidarFondo(postulacionId);
+  return {};
+}
+
+/** Vincular (o desvincular) a la persona que interpreta un personaje. Su
+ *  propia acción porque es su propio momento: el casting llega después. */
+export async function repartirEnFondo(id: string, postulacionId: string, personaId: string | null) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  const { data: prev } = await supabase.from("postulacion_reparto")
+    .select("personaje").eq("id", id).eq("postulacion_id", postulacionId).maybeSingle();
+  if (!prev) return { error: "Esa fila ya no está en este fondo." };
+  if (!personaId && !(prev.personaje || "").trim()) {
+    return { error: "No se puede quitar al intérprete: la fila se quedaría sin nadie. Ponle nombre al personaje primero." };
+  }
+  if (personaId) {
+    const { data: ya } = await supabase.from("postulacion_reparto")
+      .select("id").eq("postulacion_id", postulacionId).eq("persona_id", personaId).maybeSingle();
+    if (ya?.id && ya.id !== id) return { error: "Esa persona ya está en el equipo artístico de este fondo." };
+  }
+
+  const { data, error } = await supabase.from("postulacion_reparto")
+    .update({ persona_id: personaId || null }).eq("id", id).eq("postulacion_id", postulacionId).select("id");
+  if (error) return { error: faltaLaTabla(error.message) };
+  if (!data?.length) return { error: "No se guardó: no tienes permiso." };
+
+  let nom = "nadie";
+  if (personaId) {
+    const { data: per } = await supabase.from("personas")
+      .select("nombre,alias").eq("id", personaId).maybeSingle();
+    nom = per?.alias || per?.nombre || "alguien";
+  }
+  await supabase.from("actividad").insert({
+    entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "miembro",
+    detalle: { mensaje: personaId
+      ? `repartió a ${prev.personaje || "un personaje"}: lo interpreta ${nom}`
+      : `dejó sin repartir a ${prev.personaje || "un personaje"}` },
+  });
+  revalidarFondo(postulacionId);
+  return {};
+}
+
+export async function quitarDelReparto(id: string, postulacionId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  const { data: prev } = await supabase.from("postulacion_reparto")
+    .select("personaje,procedencia,per:personas(nombre,alias)")
+    .eq("id", id).eq("postulacion_id", postulacionId).maybeSingle();
+  const { data: fuera, error } = await supabase.from("postulacion_reparto")
+    .delete().eq("id", id).eq("postulacion_id", postulacionId).select("id");
+  if (error) return { error: faltaLaTabla(error.message) };
+  if (!fuera?.length) return { error: "No se quitó: no tienes permiso, o ya no estaba." };
+
+  /* Se deja dicho si venía de la postulación. Sacar del fondo a alguien que
+     estaba en el expediente presentado al Estado no es lo mismo que sacar a un
+     testimonio que se apuntó en marzo, y dentro de un año la diferencia
+     importa. */
+  const deExpediente = prev?.procedencia === "postulacion";
+  await supabase.from("actividad").insert({
+    entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "miembro",
+    detalle: { mensaje: `quitó a ${nombreReparto(prev)} del equipo artístico${deExpediente ? " (venía en la postulación)" : ""}` },
+  });
+  revalidarFondo(postulacionId);
+  return {};
+}
+
+/* ── TRAER EL REPARTO DEL PROYECTO ──
+ *
+ * El fondo y el proyecto no tienen por qué coincidir, pero el día que se crea
+ * el fondo SÍ coinciden: el equipo artístico que se presentó es el que estaba
+ * en el proyecto. Copiarlo a mano, uno a uno, es lo que hace que nadie lo
+ * rellene y la pestaña se quede vacía para siempre.
+ *
+ * COPIA, no referencia: a partir de aquí las dos listas viven su vida. Lo que
+ * sí queda es `proyecto_actor_id`, para poder abrir la ficha larga —qué quiere,
+ * qué necesita, el arte— sin duplicarla.
+ *
+ * ⚠ NO PISA LO QUE YA HAY. Si alguien ya está en el fondo, se salta. Un
+ * segundo clic no puede reescribir un rol corregido a mano ni devolver a
+ * `pendiente` una cesión que ya se marcó firmada — que es justo el dato que
+ * más cuesta reunir.
+ *
+ * ⚠ Se marcan como `postulacion` porque eso es lo que son: el plantel del
+ * expediente. Quien entre después, rodando, se añade a mano y queda como
+ * `ejecucion`.
+ */
+export async function traerRepartoDelProyecto(postulacionId: string, proyectoId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!postulacionId || !proyectoId) return { error: "Falta el fondo o el proyecto." };
+
+  /* Que el proyecto sea EL de este fondo. Sin esto, un id de proyecto ajeno
+     traería a gente de otra película. */
+  const { data: post, error: ePost } = await supabase.from("postulaciones")
+    .select("proyecto_id").eq("id", postulacionId).maybeSingle();
+  if (ePost) return { error: ePost.message };
+  if (!post) return { error: "Ese fondo ya no existe." };
+  if (post.proyecto_id !== proyectoId) {
+    return { error: "Ese proyecto no es el de este fondo." };
+  }
+
+  const { data: origen, error: eOri } = await supabase.from("proyecto_actores")
+    .select("id,persona_id,personaje,rol,orden").eq("proyecto_id", proyectoId).order("orden");
+  if (eOri) return { error: eOri.message };
+  /* Un proyecto sin reparto NO es un fallo, y devolverlo como `error` lo pinta
+     en la franja roja con su ⚠ — que es como se avisa de que algo se rompió.
+     Aviso neutro, igual que «ya estaban todos». */
+  if (!origen?.length) {
+    return { copiados: 0, saltados: 0, aviso: "El proyecto todavía no tiene reparto que traer." };
+  }
+
+  const { data: yaHay, error: eYa } = await supabase.from("postulacion_reparto")
+    .select("persona_id,personaje,proyecto_actor_id").eq("postulacion_id", postulacionId);
+  if (eYa) return { error: faltaLaTabla(eYa.message) };
+
+  /* Tres formas de reconocer a alguien que ya está, porque una sola no basta:
+     por la ficha de origen (lo normal en la segunda pasada), por persona (si
+     lo añadieron a mano antes de traer) y por nombre de personaje en minúscula
+     (un personaje sin intérprete no tiene ninguna de las dos primeras). */
+  const porFicha = new Set((yaHay || []).map(x => x.proyecto_actor_id).filter(Boolean));
+  const porPersona = new Set((yaHay || []).map(x => x.persona_id).filter(Boolean));
+  const porNombre = new Set((yaHay || [])
+    .map(x => (x.personaje || "").trim().toLowerCase()).filter(Boolean));
+
+  const nuevas = origen
+    .filter(a => !porFicha.has(a.id))
+    .filter(a => !(a.persona_id && porPersona.has(a.persona_id)))
+    .filter(a => !(!a.persona_id && porNombre.has((a.personaje || "").trim().toLowerCase())))
+    /* Dos filas del proyecto con la misma persona harían saltar el índice
+       único y abortarían el lote entero. No debería pasar, pero el índice de
+       `proyecto_actores` no lo impide, así que aquí se descarta el duplicado
+       en vez de perder la copia completa por una fila. */
+    .filter((a, i, arr) => !a.persona_id || arr.findIndex(b => b.persona_id === a.persona_id) === i)
+    .map(a => ({
+      postulacion_id: postulacionId,
+      persona_id: a.persona_id || null,
+      personaje: (a.personaje || "").trim() || null,
+      proyecto_actor_id: a.id,
+      rol: (a.rol || "").trim() || null,
+      procedencia: "postulacion",
+      orden: a.orden ?? 0,
+      creado_por: user.id,
+    }));
+
+  if (!nuevas.length) return { copiados: 0, saltados: origen.length };
+
+  const { error } = await supabase.from("postulacion_reparto").insert(nuevas);
+  if (error) return { error: faltaLaTabla(error.message) };
+
+  await supabase.from("actividad").insert({
+    entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "miembro",
+    detalle: { mensaje: `trajo ${nuevas.length} del reparto del proyecto al equipo artístico del fondo` },
+  });
+  revalidarFondo(postulacionId);
+  return { copiados: nuevas.length, saltados: origen.length - nuevas.length };
+}
