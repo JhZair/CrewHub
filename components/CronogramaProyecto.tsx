@@ -6,6 +6,7 @@ import {
   asignarResponsableActividad, cambiarFechaActividad, fijarEquipoActividad,
   reordenarEtapa, ordenarEtapaPorFecha,
   atarCasoAActividad, soltarCasoDeActividad, casosLibresDelFondo,
+  replanificarActividad,
 } from "@/app/actions";
 import { useRouter } from "next/navigation";
 import Link from "@/components/Enlace";
@@ -440,6 +441,15 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
     if (fallo(res)) return;
     router.refresh();
   };
+  const replanificar = async (actId: string) => {
+    if (ocupado) return;
+    setOcupado(true); setError("");
+    const res: any = await replanificarActividad(actId, dueno, duenoId);
+    setOcupado(false);
+    if (fallo(res)) return;
+    router.refresh();
+  };
+
   const soltarCaso = async (actId: string) => {
     setOcupado(true); setError("");
     const res: any = await soltarCasoDeActividad(actId, dueno, duenoId);
@@ -964,6 +974,27 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
                               style={{ color: puedeBajar ? "var(--dim)" : "transparent", fontSize: 9, padding: 0 }}
                               onClick={() => mover(a.id, "baja")}>▼</button>
                           </span>
+                        )}
+                        {/* ── VOLVER A PLANIFICAR ──
+                            El estado solo se movía hacia adelante, y ninguna
+                            pantalla escribía `planificada` sobre una fila que ya
+                            existía: una actividad marcada por error —se cerró el
+                            caso equivocado, o el trabajo hay que repetirlo— se
+                            quedaba así para siempre, y ⏩ Correr fechas la dejaba
+                            quieta partiendo el bloque en dos.
+                            Solo sin caso atado: con caso, el estado lo manda el
+                            caso, y la acción lo dice si alguien lo intenta. */}
+                        {a.estado === "finalizada" && !a.publicacion_id && (
+                          <button title={dueno === "postulacion"
+                            ? "Volver a planificarla: aún no está hecha"
+                            /* En proyecto y convocatoria el bot de la mañana
+                               materializa las planificadas cuya fecha ya entró
+                               en la ventana de aviso. Replanificar una pasada
+                               significa que mañana tendrá un caso nuevo, y eso
+                               se dice ANTES de pulsar. */
+                            : "Volver a planificarla: aún no está hecha. Ojo: si su fecha ya pasó, el bot le abrirá un caso mañana por la mañana."}
+                            style={{ color: "var(--dim)" }} disabled={ocupado}
+                            onClick={() => replanificar(a.id)}>↩</button>
                         )}
                         {/* Editar vale SIEMPRE, no solo mientras está
                             planificada: una fecha mal puesta en algo ya

@@ -157,6 +157,10 @@ export function planear(
      *  no es un plan, es el registro de lo que ya ocurrió, y sus fechas cuadran
      *  con los RHE y los comprobantes. */
     moverHechas?: boolean;
+    /** Hoy, en Lima. Solo lo usa el aviso de «finalizada que aún no ha
+     *  llegado». Se PASA en vez de leer el reloj aquí para que este archivo
+     *  siga siendo aritmética pura y se pueda probar con cualquier fecha. */
+    hoy?: string;
   } = {},
 ): Plan {
   const vacio = (avisos: Aviso[]): Plan => ({
@@ -389,7 +393,44 @@ export function planear(
     });
   }
 
-  /* 6 · MOVER LO YA HECHO.
+  /* 6 · UNA «FINALIZADA» QUE TODAVÍA NO HA LLEGADO.
+   * Una actividad terminada cuya fecha de inicio es POSTERIOR al destino casi
+   * siempre tiene ese estado por error: se cerró el caso equivocado, o se dio
+   * por hecho algo que aún no empieza. Y como las finalizadas se quedan
+   * quietas a propósito, correr el bloque las deja atrás y lo parte en dos —el
+   * rodaje en septiembre y dos rodajes en octubre y noviembre— sin decir nada.
+   * El argumento para no moverlas es que sus fechas cuadran con los RHE y los
+   * comprobantes; en el futuro no hay ni RHE ni comprobantes que cuadrar.
+   * Se dice, no se decide: quien mira sabe si eso está bien. */
+  /* ⚠ SE COMPARA CONTRA HOY, NO CONTRA LA FECHA DESTINO.
+     Con `> fechaDestino` el aviso decía dos mentiras opuestas:
+      · Corrigiendo un cronograma HACIA ATRÁS —el ancla mal puesta en septiembre,
+        el destino real en junio— todas las finalizadas legítimas de julio y
+        agosto, con sus RHE y sus comprobantes, cumplían la condición, y el
+        aviso invitaba a replanificar trabajo que sí se hizo.
+      · Y al revés: una finalizada por error en octubre, con el destino en
+        enero, NO saltaba — que es exactamente el caso que este bloque vino a
+        cubrir.
+     Lo que hace sospechosa a una fila no es dónde cae respecto del destino,
+     sino que esté terminada sin haber empezado todavía. Eso se mide contra hoy.
+     Sin `hoy` no se avisa: mejor callar que acusar por una fecha inventada. */
+  if (!opciones.moverHechas && opciones.hoy && ES_FECHA.test(opciones.hoy)) {
+    const futuras = quietas.filter(q =>
+      q.motivo === "finalizada" && (q.act.fecha_inicio || "") > opciones.hoy!);
+    if (futuras.length) {
+      avisos.push({
+        nivel: "medio",
+        texto: futuras.length === 1
+          /* Se nombra el camino COMPLETO: con un caso atado el ↩ no está
+             pintado —su estado lo manda el caso— y mandar a pulsarlo a secas
+             es dar una instrucción imposible de seguir. */
+          ? `«${futuras[0].act.nombre}» está marcada como finalizada pero todavía no ha empezado (${futuras[0].act.fecha_inicio}): se queda donde está y parte el bloque. Si ese estado está mal, replanifícala en la lista —suéltale antes el caso con ⛓︎✕ si lo tiene— o marca arriba «mover también las finalizadas».`
+          : `${futuras.length} actividades están marcadas como finalizadas y todavía no han empezado, así que se quedan donde están: ${futuras.map(q => q.act.nombre).join(", ")}. Si ese estado está mal, replanifícalas en la lista —soltándoles antes el caso con ⛓︎✕ si lo tienen— o marca arriba «mover también las finalizadas».`,
+      });
+    }
+  }
+
+  /* 7 · MOVER LO YA HECHO.
    * El párrafo que crono-correr-po003 tituló «Y lo otro que hay que saber»: las
    * fechas de los RHE, los comprobantes y los movimientos del banco NO se mueven
    * con esto, así que a partir de aquí el cronograma y los papeles cuentan la

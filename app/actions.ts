@@ -9271,6 +9271,32 @@ export async function cambiarEstado(pubId: string, estado: string) {
   } else {
     // Si deja de estar resuelto, reaparece en el feed de quien lo había ocultado
     await supabase.from("feed_ocultos").delete().eq("publicacion_id", pubId);
+    /* ── Y LA VUELTA, QUE FALTABA ──
+       El cierre solo iba en un sentido: resolver el caso finalizaba su
+       actividad, y REABRIRLO la dejaba finalizada. O sea que el cronograma
+       seguía diciendo que ese rodaje está hecho mientras su caso vuelve a estar
+       en curso, y no había ninguna pantalla para desmentirlo: el formulario de
+       la actividad no edita el estado.
+
+       ⚠ SOLO SI EL CASO VUELVE A ESTAR VIVO.
+       Este `else` cubre todo lo que no es `resuelta`, y ahí dentro está
+       `descartada`, que NO es «se reabrió»: es el OTRO final —«ya no aplica»,
+       lo dice lib/estados—. Devolver su actividad a `materializada` escribiría
+       que hay trabajo en marcha justo cuando se ha decidido que no lo hay, y no
+       es cosmético: `materializada` la vuelve a mover en ⏩ Correr fechas y le
+       enciende la barra del Gantt. Un caso descartado deja su actividad como
+       está; quien quiera, la cancela o la replanifica a mano.
+
+       ⚠ Y `.eq("estado","finalizada")` limita el alcance pero NO sabe quién
+       puso ese estado: un hito importado del CSV nace `finalizada` sin caso, y
+       si alguien le ata un caso y luego lo reabre, también pasa por aquí. Es
+       defendible —el caso está vivo, luego hay trabajo— pero conviene no creer
+       que esto solo deshace lo que hizo la rama de arriba. */
+    if (estado !== "descartada") {
+      await supabase.from("cronograma_actividades")
+        .update({ estado: "materializada" }).eq("publicacion_id", pubId)
+        .eq("estado", "finalizada");
+    }
   }
 
   /* 🔔 Al autor y al responsable. Dar por resuelto el caso de otro sin que se
@@ -11850,6 +11876,7 @@ export async function correrCronograma(f: {
       limiteNombre: pf.fuente === "prorroga" ? "plazo con prórroga"
         : pf.fuente === "acta" ? "plazo del acta" : "plazo calculado",
       moverHechas: !!f.moverHechas,
+      hoy: hoyLima(),
     },
   );
   if (!plan.viable) {
@@ -12204,4 +12231,77 @@ export async function casosLibresDelFondo(dueno: DuenoCrono, duenoId: string) {
   ]);
   const ocupados = new Set((atadas || []).map((a: any) => a.publicacion_id));
   return { casos: (pubs || []).filter((p: any) => !ocupados.has(p.id)) };
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   VOLVER A PLANIFICAR UNA ACTIVIDAD
+
+   El estado de una actividad de cronograma solo se movía HACIA ADELANTE:
+   `planificada` al nacer, `materializada` al abrirle un caso, `finalizada`
+   cuando ese caso se resuelve. Ninguna pantalla escribía `planificada` sobre
+   una fila que ya existía —el formulario de edición no toca el estado— así que
+   una actividad marcada por error se quedaba así para siempre.
+
+   Y no es una rareza: pasa cada vez que se cierra el caso equivocado, o cuando
+   el trabajo se da por hecho y luego hay que repetirlo. En un cronograma de dos
+   años, con veinticinco actividades, pasa.
+
+   Se nota además en «⏩ Correr fechas»: las finalizadas se quedan quietas a
+   propósito —sus fechas cuadran con los RHE y los comprobantes— así que una
+   marcada por error parte el bloque en dos al correrlo.
+
+   ── ⚠ EN UN PROYECTO, ESTO LA DEVUELVE A LA COLA DEL BOT ──
+   `qhaway_matutino()` materializa a las 7:30 toda actividad `planificada`, sin
+   caso y con la fecha dentro de su ventana de aviso. Una que se replanifica ya
+   pasó, así que entra: a la mañana siguiente le abre un caso NUEVO, con la
+   fecha límite vencida y notificando al responsable.
+   NO pasa en el cronograma de una POSTULACIÓN —el bot lo excluye entero
+   (`and ca.postulacion_id is null`), porque un cronograma de postulación es una
+   propuesta y no trabajo—, que es el caso de los fondos. Sí pasa en proyectos y
+   convocatorias, y por eso el botón lo dice ahí.
+   ══════════════════════════════════════════════════════════════════════════ */
+export async function replanificarActividad(
+  actId: string, dueno: DuenoCrono, duenoId: string,
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  const col = colCrono(dueno);
+  const { data: act } = await supabase.from("cronograma_actividades")
+    .select(`id,nombre,estado,publicacion_id,${col}`).eq("id", actId).maybeSingle();
+  if (!act) return { error: "Esa actividad ya no está." };
+  if ((act as any)[col] !== duenoId) return { error: "Esa actividad no es de aquí." };
+  if (act.estado === "planificada") return {};
+  /* Una cancelada no se «replanifica»: se creó y se anuló, y devolverla a la
+     lista por este camino escondería que alguien la había descartado. */
+  if (act.estado === "cancelada") {
+    return { error: "Esa actividad está cancelada. Crea una nueva si hay que volver a hacerla." };
+  }
+
+  /* ── CON CASO ATADO, NO ──
+     Si tiene caso, su estado lo manda el caso: ponerla `planificada` la dejaría
+     diciendo que no tiene trabajo abierto mientras el caso sigue en el tablero,
+     y el propio cierre de ida y vuelta la volvería a mover en cuanto alguien
+     tocara ese caso. Primero se suelta (⛓︎✕) y luego se replanifica. */
+  if (act.publicacion_id) {
+    return { error: "Esta actividad tiene un caso atado: su estado lo decide el caso. Suéltalo primero con ⛓︎✕." };
+  }
+
+  const { data: hecho, error } = await supabase.from("cronograma_actividades")
+    .update({ estado: "planificada" }).eq("id", actId).select("id");
+  if (error) return { error: error.message };
+  /* RLS: un update bloqueado no da error, afecta cero filas. */
+  if (!hecho?.length) return { error: "No se replanificó: no tienes permiso para editar esta actividad." };
+
+  await supabase.from("actividad").insert({
+    entidad_tipo: dueno, entidad_id: duenoId, actor_id: user.id, tipo: "editado",
+    detalle: { mensaje: `volvió a planificar «${act.nombre}» (estaba ${act.estado})` },
+  });
+
+  revalidatePath(`/entidad/${dueno}/${duenoId}`);
+  revalidatePath("/agenda");
+  revalidatePath("/");
+  if (dueno === "postulacion") revalidarFondo(duenoId);
+  return {};
 }

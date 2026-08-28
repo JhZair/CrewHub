@@ -14,7 +14,7 @@ import {
    cuando cambia hay que verlo.
    `fechaCorta` y no `fechaDiaLima`: son columnas `date`, y `fechaDiaLima` las
    parsea como medianoche UTC y en Lima las devuelve un día antes. */
-import { fechaCorta } from "@/lib/fechas";
+import { fechaCorta, hoyLima } from "@/lib/fechas";
 
 /* ══════════════════════════════════════════════════════════════════════════
    ⏩ CORRER EL CRONOGRAMA — la previsualización manda
@@ -78,12 +78,14 @@ export default function CorrerCronograma({
      array de decenas de filas: no hace falta memorizar nada, y memorizarlo
      escondería que depende de `moverHechas`. */
   const plan: Plan = planear(actividades, etapas, alcance, fecha,
-    { limite, limiteNombre, moverHechas });
+    { limite, limiteNombre, moverHechas, hoy: hoyLima() });
 
   /* La fecha actual del ancla, para el «de … a …». Se enseña ANTES de que
      alguien elija fecha: sin ella, la caja de fecha está vacía y no se sabe
      desde dónde se está moviendo. */
   const anclaActual = useMemo(() => {
+    /* Sin `hoy`: esta llamada solo saca el ancla y el aviso de las finalizadas
+       futuras no pinta nada aquí. */
     const p = planear(actividades, etapas, alcance, "2099-12-31", { moverHechas });
     return p.ancla;
   }, [actividades, etapas, modo, etapa, moverHechas]);
