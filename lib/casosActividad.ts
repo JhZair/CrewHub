@@ -50,16 +50,26 @@ export function repartirCasos(casos: CasoMin[]) {
 
 /* ══════════════ EL ESTADO DE LA ACTIVIDAD ══════════════
  *
- * Se DEDUCE de sus casos, no se escribe a mano. Hasta ahora la actividad tenía
- * un solo caso y la regla era trivial; con varios hay que elegir, y la elección
- * es la que significa algo:
+ * Se DEDUCE de sus casos, no se escribe a mano. Dos preguntas distintas, y
+ * confundirlas fue el error:
  *
- *   FINALIZADA solo cuando TODOS están cerrados y hay al menos uno.
+ *   1. ¿QUEDA TRABAJO ABIERTO?  → mientras viva un caso, `materializada`.
+ *      El rodaje no está hecho si falta el permiso: darla por terminada al
+ *      cerrar el primero —que suele ser el más pequeño, el del transporte—
+ *      pondría el cronograma a decir que la semana de rodaje ya pasó mientras
+ *      el trabajo sigue abierto en el tablero.
  *
- * Porque el rodaje no está hecho si falta el permiso. Darla por terminada al
- * cerrar el primero —que suele ser el más pequeño, el del transporte— pondría
- * el cronograma a decir que la semana de rodaje ya pasó mientras el trabajo
- * sigue abierto en el tablero. Con un solo caso se comporta igual que antes.
+ *   2. Y SI NO QUEDA NINGUNO, ¿SE HIZO?  → solo si alguno está RESUELTA.
+ *      ⚠ Aquí estaba el fallo. `resuelta` y `descartada` cuentan igual para la
+ *      primera pregunta —las dos cierran el caso— y NO para la segunda:
+ *      descartada significa «ya no aplica», no «se hizo». Con las dos en el
+ *      mismo saco, descartar el único caso de «Rodaje de planos de apoyo» la
+ *      marcaba FINALIZADA ✅, y el cronograma afirmaba que se rodó algo que se
+ *      decidió no rodar. Eso acaba en una rendición.
+ *      Sin ninguna resuelta, la actividad vuelve a `planificada`: el trabajo
+ *      sigue pendiente. Si de verdad no va a hacerse nunca, se cancela con ✕,
+ *      que es la palabra para eso y la decide una persona.
+ *      Archivado tampoco cuenta como hecho: archivar es quitar de la vista.
  *
  * ⚠ DEVUELVE `null` CUANDO NO HAY NADA QUE DEDUCIR.
  * Sin casos, esto no sabe si la actividad está planificada, en marcha o hecha:
@@ -72,7 +82,12 @@ export type EstadoActividad = "planificada" | "materializada" | "finalizada";
 
 export function estadoPorCasos(casos: CasoMin[]): EstadoActividad | null {
   if (!casos.length) return null;
-  return casos.every(casoCerrado) ? "finalizada" : "materializada";
+  if (casos.some(c => !casoCerrado(c))) return "materializada";
+  /* Todos cerrados. ¿Alguno se HIZO? Se mira el estado en crudo y no
+     `casoCerrado`, que es justo el que mete descartada en el mismo saco. */
+  return casos.some(c => String(c.estado || "") === "resuelta")
+    ? "finalizada"
+    : "planificada";
 }
 
 /** El resumen de una fila: cuántos hay y cuántos siguen abiertos. Se usa para

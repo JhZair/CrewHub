@@ -12092,7 +12092,11 @@ async function recalcularEstadoActividad(
        conclusión, no una preferencia. */
     let q = supabase.from("cronograma_actividades")
       .update({ estado: nuevo }).eq("id", actId).neq("estado", "cancelada");
-    if (nuevo === "materializada") q = q.neq("estado", "en_progreso");
+    /* `en_progreso` solo se pisa para FINALIZAR. Es una conclusión —todos los
+       casos cerrados y alguno resuelto— y manda sobre cualquier estado previo.
+       En cambio degradar a `materializada` o a `planificada` borraría un dato
+       que alguien puso a propósito y que nadie volvería a poner. */
+    if (nuevo !== "finalizada") q = q.neq("estado", "en_progreso");
     await q;
     return nuevo;
   }
