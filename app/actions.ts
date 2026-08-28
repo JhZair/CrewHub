@@ -11381,3 +11381,212 @@ export async function traerRepartoDelProyecto(postulacionId: string, proyectoId:
   return { copiados: nuevas.length, saltados,
     aviso: `Traídos ${nuevas.length}${saltados ? `, saltados ${saltados} que ya estaban` : ""}.${nota}` };
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LOS PAPELES DEL PERSONAL VINCULADO — `postulacion_papel`
+
+   La cláusula 5.4 del acta pide la documentación de contratos, convenios de
+   prácticas o prestación de servicios de TODO el personal vinculado, más los
+   seguros contra accidentes de quienes participen. Se cumple persona a
+   persona; hasta ahora era una casilla. Razonado en db/postulacion-papel.sql.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** Cuando la tabla no existe todavía, PostgREST habla de la caché del esquema,
+ *  que no significa nada para quien está intentando adjuntar un contrato. */
+function faltaLaTablaPapel(msg?: string | null): string | null {
+  if (!msg) return null;
+  return /schema cache|does not exist|PGRST20[45]|relation .* does not exist/i.test(msg)
+    ? `${msg} — falta correr db/postulacion-papel.sql en Supabase.`
+    : msg;
+}
+
+const TIPOS_PAPEL = ["contrato", "convenio", "locacion", "seguro", "otro"] as const;
+const ESTADOS_PAPEL = ["pendiente", "firmado", "no_aplica"] as const;
+
+/* Los vocabularios se normalizan aquí y no se confía en el formulario: el
+   CHECK de la base los rechazaría, pero con un mensaje sobre una constraint
+   que quien escribe no ha visto nunca. Lo que no reconocemos cae al valor
+   seguro —`otro` y `pendiente`—, nunca a `no_aplica`: un dato que no
+   entendemos no puede dar por cumplida una obligación del acta. */
+const tipoPapel = (v: any) => {
+  const t = String(v || "").trim().toLowerCase();
+  return (TIPOS_PAPEL as readonly string[]).includes(t) ? t : "otro";
+};
+const estadoPapel = (v: any) => {
+  const e = String(v || "").trim().toLowerCase();
+  return (ESTADOS_PAPEL as readonly string[]).includes(e) ? e : "pendiente";
+};
+
+/** El nombre de una persona, para el historial. «registró un contrato» sin
+ *  decir de quién no lo reconstruye nadie dentro de un año. */
+async function nombreDePersona(supabase: any, personaId: string): Promise<string> {
+  const { data } = await supabase.from("personas")
+    .select("nombre,alias").eq("id", personaId).maybeSingle();
+  return data?.alias || data?.nombre || "alguien";
+}
+
+export async function registrarPapel(
+  postulacionId: string,
+  d: { personaId: string; tipo?: string; estado?: string; url?: string;
+       firmadoEn?: string; vigenteDesde?: string; vigenteHasta?: string;
+       motivo?: string; nota?: string }
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!postulacionId) return { error: "Falta el fondo." };
+  if (!d.personaId) return { error: "Falta la persona." };
+
+  const tipo = tipoPapel(d.tipo);
+  const estado = estadoPapel(d.estado);
+  const motivo = (d.motivo || "").trim();
+  /* «No aplica» sin motivo es indistinguible de «alguien lo marcó para que
+     dejara de salir en rojo». El CHECK de la base lo impide, pero su error no
+     le dice a nadie qué escribir. */
+  if (estado === "no_aplica" && !motivo) {
+    return { error: "Para marcar «no aplica» hay que decir por qué: es lo que distingue una excepción de un descuido." };
+  }
+
+  /* Un papel de cada tipo por persona y fondo. Hay un índice único que lo
+     impide, pero su error es «duplicate key value violates unique
+     constraint», que no le dice a nadie qué hacer.
+     ⚠ SALVO EL SEGURO. Dos pólizas encadenadas —una por etapa de rodaje— son
+     lo normal, y `estadoDePersona` está escrito para varias: con la primera
+     caducada la persona sigue cubierta por la segunda. El índice de la base es
+     parcial por eso mismo (`where tipo <> 'seguro'`), así que aquí hay que
+     saltarse la comprobación o se prohibiría justo el caso que el resto del
+     código da por bueno. */
+  if (tipo !== "seguro") {
+    const { data: ya } = await supabase.from("postulacion_papel")
+      .select("id").eq("postulacion_id", postulacionId)
+      .eq("persona_id", d.personaId).eq("tipo", tipo).maybeSingle();
+    if (ya?.id) {
+      return { error: "Esa persona ya tiene registrado ese documento en este fondo. Edítalo en vez de añadir otro." };
+    }
+  }
+
+  const { error } = await supabase.from("postulacion_papel").insert({
+    postulacion_id: postulacionId,
+    persona_id: d.personaId,
+    tipo, estado,
+    url: (d.url || "").trim() || null,
+    firmado_en: (d.firmadoEn || "").trim() || null,
+    /* Las dos fechas de vigencia solo tienen sentido en el seguro —un contrato
+       firmado lo está para siempre—. Se limpian en el resto para que no quede
+       una ventana suelta que la pantalla no enseña y nadie puede corregir. */
+    vigente_desde: tipo === "seguro" ? ((d.vigenteDesde || "").trim() || null) : null,
+    vigente_hasta: tipo === "seguro" ? ((d.vigenteHasta || "").trim() || null) : null,
+    motivo: motivo || null,
+    nota: (d.nota || "").trim() || null,
+    creado_por: user.id,
+  });
+  if (error) return { error: faltaLaTablaPapel(error.message) };
+
+  await supabase.from("actividad").insert({
+    entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "dato",
+    detalle: { mensaje: `registró ${tipo === "seguro" ? "el seguro" : `el ${tipo}`}`
+      + ` de ${await nombreDePersona(supabase, d.personaId)}`
+      + ` (${estado === "firmado" ? "firmado" : estado === "no_aplica" ? "no aplica" : "pendiente"})` },
+  });
+  revalidarFondo(postulacionId);
+  return {};
+}
+
+/* Lista blanca de columnas. Sin ella, quien llame a esta acción escribe la
+   columna que quiera —incluidas `postulacion_id` y `persona_id`, que moverían
+   el papel a otra persona o a otro fondo—. */
+const CAMPOS_PAPEL = [
+  "estado", "url", "firmado_en", "vigente_desde", "vigente_hasta", "motivo", "nota",
+] as const;
+
+export async function editarPapel(
+  id: string, postulacionId: string, campos: Record<string, any>
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  /* Los dos, y no solo el id: `.eq("id","")` sobre una columna uuid devuelve
+     «invalid input syntax for type uuid», que sale crudo en la franja roja. */
+  if (!id || !postulacionId) return { error: "Falta el documento o el fondo." };
+
+  const patch: Record<string, any> = {};
+  for (const k of CAMPOS_PAPEL) {
+    if (!(k in campos)) continue;
+    const v = campos[k];
+    patch[k] = typeof v === "string" ? (v.trim() || null) : (v ?? null);
+  }
+  if ("estado" in patch) patch.estado = estadoPapel(patch.estado);
+  if (!Object.keys(patch).length) return { error: "No hay nada que guardar." };
+
+  /* ⚠ El motivo se comprueba contra lo que QUEDARÁ, no contra lo que llega.
+     Marcar «no aplica» sin tocar el motivo, o borrar el motivo de un papel que
+     ya era «no aplica», son dos formas de dejar la fila sin explicación, y
+     ninguna de las dos manda las dos claves a la vez. Hace falta leer la fila.
+     `.eq("postulacion_id")` además del id: sin él, un id de otro fondo se
+     leería y editaría desde aquí. RLS deja escribir todo al equipo, así que la
+     única barrera es esta. */
+  const { data: ant } = await supabase.from("postulacion_papel")
+    .select("estado,motivo,tipo,persona_id").eq("id", id).eq("postulacion_id", postulacionId).maybeSingle();
+  if (!ant) return { error: "Ese documento ya no está en este fondo." };
+
+  const estadoFinal = "estado" in patch ? patch.estado : estadoPapel(ant.estado);
+  const motivoFinal = "motivo" in patch ? (patch.motivo || "") : (ant.motivo || "");
+  if (estadoFinal === "no_aplica" && !String(motivoFinal).trim()) {
+    return { error: "Para marcar «no aplica» hay que decir por qué: es lo que distingue una excepción de un descuido." };
+  }
+  /* Y al revés: al SALIR de «no aplica», el motivo se va con él. Sin esto, el
+     botón rápido que lleva un papel de «no aplica» a «firmado» dejaba el
+     «Proveedor con factura» colgando al lado de un chip verde, con su tooltip
+     «Por qué no aplica» sobre algo que ya aplica. Se limpia igual que la
+     vigencia. */
+  if (estadoFinal !== "no_aplica") patch.motivo = null;
+  /* La vigencia solo vive en el seguro. Si el papel no lo es, se limpia en vez
+     de guardar una ventana que ninguna pantalla enseña. */
+  if (ant.tipo !== "seguro") {
+    if ("vigente_desde" in patch) patch.vigente_desde = null;
+    if ("vigente_hasta" in patch) patch.vigente_hasta = null;
+  }
+
+  const { data, error } = await supabase.from("postulacion_papel")
+    .update(patch).eq("id", id).eq("postulacion_id", postulacionId).select("id,tipo,persona_id");
+  if (error) return { error: faltaLaTablaPapel(error.message) };
+  if (!data?.length) return { error: "No se guardó: no tienes permiso, o ya no existe." };
+
+  /* El historial nombra lo que cambió y no «actualizó una fila»: dentro de un
+     año, «marcó el contrato de Zenón Huamán como firmado» es el apunte que
+     contesta por qué esa cláusula se pudo cerrar. */
+  const quien = await nombreDePersona(supabase, data[0].persona_id);
+  const cosa = data[0].tipo === "seguro" ? "el seguro" : `el ${data[0].tipo}`;
+  const que = "estado" in patch
+    ? `${cosa} de ${quien} como ${patch.estado === "firmado" ? "firmado"
+        : patch.estado === "no_aplica" ? "no aplicable" : "pendiente"}`
+    : `los datos ${cosa === "el seguro" ? "del seguro" : `del ${data[0].tipo}`} de ${quien}`;
+  await supabase.from("actividad").insert({
+    entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "dato",
+    detalle: { mensaje: `marcó ${que}` },
+  });
+  revalidarFondo(postulacionId);
+  return {};
+}
+
+export async function quitarPapel(id: string, postulacionId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!id || !postulacionId) return { error: "Falta el documento o el fondo." };
+
+  const { data: prev } = await supabase.from("postulacion_papel")
+    .select("tipo,persona_id").eq("id", id).eq("postulacion_id", postulacionId).maybeSingle();
+  const { data: fuera, error } = await supabase.from("postulacion_papel")
+    .delete().eq("id", id).eq("postulacion_id", postulacionId).select("id");
+  if (error) return { error: faltaLaTablaPapel(error.message) };
+  if (!fuera?.length) return { error: "No se quitó: no tienes permiso, o ya no estaba." };
+
+  const quien = prev?.persona_id ? await nombreDePersona(supabase, prev.persona_id) : "alguien";
+  await supabase.from("actividad").insert({
+    entidad_tipo: "postulacion", entidad_id: postulacionId, actor_id: user.id, tipo: "dato",
+    detalle: { mensaje: `quitó ${prev?.tipo === "seguro" ? "el seguro" : `el ${prev?.tipo || "documento"}`} de ${quien}` },
+  });
+  revalidarFondo(postulacionId);
+  return {};
+}

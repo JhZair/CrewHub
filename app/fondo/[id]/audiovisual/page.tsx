@@ -7,6 +7,7 @@ import VersionesFondo from "@/components/VersionesFondo";
 import RepartoFondo from "@/components/RepartoFondo";
 import { etapasDe } from "@/lib/etapas";
 import { techo } from "@/lib/api";
+import { hoyLima } from "@/lib/fechas";
 import { traerFondo, traerPerfilActual, traerVersiones } from "@/lib/fondoDatos";
 import { repartir, resumenCesiones, rotuloReparto } from "@/lib/repartoFondo";
 
@@ -39,7 +40,7 @@ export default async function AudiovisualPage({ params }: { params: { id: string
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [ent, perfilActual, versiones, cp, pl, eqp, rep, per] = await Promise.all([
+  const [ent, perfilActual, versiones, cp, pl, eqp, rep, per, pap] = await Promise.all([
     /* Cacheadas y ya llamadas por el layout en este mismo render: en carga dura
        NO cuestan un viaje. Hacen falta el tipo de proyecto y la categoría de la
        convocatoria —de ellas salen las etapas— y la versión vigente del
@@ -90,6 +91,14 @@ export default async function AudiovisualPage({ params }: { params: { id: string
        mismo `Promise.all`, así que no encadena espera, pero es peso. Si algún
        día molesta, lo que hay que mover es esto. */
     supabase.from("personas").select("id,nombre,alias,tipo").order("nombre").limit(techo(2000)),
+    /* Los papeles de la cláusula 5.4 —contratos y seguros— del personal
+       vinculado. Se piden aquí también porque el equipo artístico ES personal
+       vinculado: una protagonista social firma su contrato igual que el
+       sonidista. Tolerante: sin db/postulacion-papel.sql corrida, el bloque lo
+       dice y no pinta las burbujas. */
+    supabase.from("postulacion_papel")
+      .select("id,persona_id,tipo,estado,url,firmado_en,vigente_desde,vigente_hasta,motivo,nota")
+      .eq("postulacion_id", params.id).limit(techo(500)),
   ]);
 
   const esAdmin = !!((perfilActual as any)?.es_admin || (perfilActual as any)?.es_finanzas);
@@ -155,6 +164,7 @@ export default async function AudiovisualPage({ params }: { params: { id: string
            `supabase_realtime` no da error, simplemente no llega nunca un
            evento. La migración la publica. */
         { tabla: "postulacion_reparto", filtro: `postulacion_id=eq.${params.id}` },
+        { tabla: "postulacion_papel", filtro: `postulacion_id=eq.${params.id}` },
       ]}
         token={session?.access_token} miId={user.id} />
       <p className="fondo-nat-sub">La obra que hay que entregar: el rodaje de dos años y su registro.</p>
@@ -184,7 +194,14 @@ export default async function AudiovisualPage({ params }: { params: { id: string
           <RepartoFondo postulacionId={params.id}
             proyectoId={(ent as any)?.proy?.id || null}
             filas={reparto} personas={personasCat}
-            tipo={(ent as any)?.proy?.tipo || null} error={repError} />
+            tipo={(ent as any)?.proy?.tipo || null} error={repError}
+            /* La fecha se calcula en el SERVIDOR: el reloj del navegador puede
+               estar en otra zona —o mal— y entonces un seguro vigente se
+               pintaría vencido en una pantalla y no en otra con los mismos
+               datos. */
+            papeles={(pap.data || []) as any[]}
+            papelesError={(pap as any)?.error?.message || null}
+            hoy={hoyLima()} />
         </Plegable>
       </div>
 

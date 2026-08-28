@@ -8,6 +8,8 @@ import SumarPersonalFondo from "@/components/SumarPersonalFondo";
 import HiloRendicion from "@/components/HiloRendicion";
 import VistaRapida from "@/components/VistaRapida";
 import VerAdjunto from "@/components/VerAdjunto";
+import PapelesPersona from "@/components/PapelesPersona";
+import { papelesPorPersona, type Papel } from "@/lib/papeles";
 import { ROLES_EQUIPO as ROLES } from "@/lib/rolesEquipo";
 import { claseEstado, rotuloEstado } from "@/lib/estados";
 import {
@@ -40,11 +42,30 @@ const soles = (n: number) => `S/ ${Math.round(n).toLocaleString("es-PE")}`;
 export default function EquipoFondo({
   postulacionId, equipoPost, rhes, previstos, personas,
   personasTabla, vistasPersona, etapas, rubros, casosPorPersona, puedeEditar,
+  papeles, hoy, papelesError = null,
 }: {
   postulacionId: string;
   equipoPost: any[];
   rhes: any[];
   previstos: any[];
+  /** Los documentos de la cláusula 5.4 de TODO el fondo. Se reparten por
+   *  persona aquí abajo, en un solo recorrido: filtrar la lista dentro de cada
+   *  una de las veintitantas filas sería recorrerla veintitantas veces.
+   *
+   *  ⚠ OBLIGATORIO, igual que `hoy`: con los dos opcionales, un llamante que
+   *  se olvidara pintaría «sin contrato» a veintitantas personas —acusación
+   *  falsa— o haría desaparecer la columna sin decir nada. Así son un error de
+   *  compilación. */
+  papeles: Papel[];
+  /** El día de hoy en Lima, del servidor. ⚠ No `new Date()` en el cliente: el
+   *  reloj del navegador puede estar en otra zona, y entonces un seguro
+   *  vigente se pintaría vencido en la pantalla de una persona y no en la de
+   *  otra con los mismos datos. */
+  hoy: string;
+  /** Si la consulta de papeles falló, POR QUÉ. Sin esto las burbujas dirían
+   *  «sin contrato» para todo el mundo, que es una acusación falsa; o peor, si
+   *  algún día se pintaran en gris, «no hace falta». */
+  papelesError?: string | null;
   /** Catálogo mínimo para poner cara y nombre a quien salga de un recibo. */
   personas: PersonaMin[];
   /** El directorio ENTERO, con todas sus columnas: es lo que explora el
@@ -76,6 +97,8 @@ export default function EquipoFondo({
   const todos = useMemo(
     () => ordenarIntegrantes(integrantesDeFondo(equipoPost, rhes, previstos, personas)),
     [equipoPost, rhes, previstos, personas]);
+  /* Un solo recorrido para las veintitantas filas. */
+  const papelDe = useMemo(() => papelesPorPersona(papeles), [papeles]);
   const res = useMemo(() => resumenEquipo(todos), [todos]);
 
   /* Las dos secciones que pediste, cortadas por su origen: lo que se declaró
@@ -243,6 +266,22 @@ export default function EquipoFondo({
                 </>
               );
             })()}
+
+            {/* ── LA CLÁUSULA 5.4, EN LA FILA DE CADA PERSONA ──
+                «Documentación de contratos, convenios de prácticas o
+                prestación de servicios de todo el personal vinculado», más los
+                seguros contra accidentes de quien participa. Era UNA casilla en
+                Entregables: se marcaba «entregado» y nadie sabía si eran
+                veintiún contratos o tres. Aquí es una obligación por persona,
+                al lado del recibo que la hace vinculada.
+                ⚠ Con la consulta rota NO se pinta: diría «sin contrato» para
+                todo el mundo, que es una acusación falsa sobre veintitantas
+                personas. El error se enseña arriba, una vez. */}
+            {!papelesError && (
+              <PapelesPersona postulacionId={postulacionId} personaId={x.persona.id}
+                nombre={x.persona.nombre} papeles={papelDe.get(x.persona.id) || []}
+                hoy={hoy} puedeEditar={puedeEditar} />
+            )}
           </div>
 
           {x.nota && <div className="eqf-nota">{x.nota}</div>}
@@ -486,6 +525,19 @@ export default function EquipoFondo({
       </div>
 
       {error && <div className="err-inline">⚠ {error}</div>}
+      {/* Una vez arriba, no veintitantas veces en las filas. Y las burbujas de
+          contrato y seguro no se pintan: sin datos dirían «sin contrato» para
+          todo el mundo, que es una acusación falsa. */}
+      {papelesError && (
+        <div className="err-inline" style={{ lineHeight: 1.5 }}>
+          ⚠ No se pudieron leer los contratos y seguros (cláusula 5.4), así que esas burbujas no
+          se pintan: en blanco dirían «sin contrato» para todo el mundo.
+          <br /><code style={{ fontSize: 11, opacity: .85 }}>{papelesError}</code>
+          {/column|does not exist|schema cache|PGRST20/i.test(papelesError) && (
+            <><br /><b>Falta correr <code>db/postulacion-papel.sql</code> en Supabase.</b></>
+          )}
+        </div>
+      )}
 
       {/* ── TRES FORMAS DE LEER LA MISMA LISTA ──
           No son tres pantallas: son la misma gente y los mismos recibos

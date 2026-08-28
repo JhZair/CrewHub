@@ -7,6 +7,8 @@ import { rubrosDe, nombreRubro } from "@/lib/rubros";
 import { gastosDelFondo, ayudaRubro } from "@/lib/ejecutado";
 import { hilosDeFilas } from "@/lib/rendicionHilo";
 import { traerFondo } from "@/lib/fondoDatos";
+import { techo } from "@/lib/api";
+import { hoyLima } from "@/lib/fechas";
 
 /* ── 👥 QUIÉN ──
  *
@@ -36,7 +38,7 @@ export default async function EquipoPage({ params }: { params: { id: string } })
   const { data: { session } } = await supabase.auth.getSession();
   const { data: { user: quien } } = await supabase.auth.getUser();
 
-  const [ent, rf, eqp, eqf, pc, vtp, s4, cp, cmp, gdj] = await Promise.all([
+  const [ent, rf, eqp, eqf, pc, vtp, s4, cp, cmp, gdj, pap] = await Promise.all([
     /* `traerFondo` está cacheada y el layout ya la llamó en este mismo render:
        esto NO es un viaje extra. Hacen falta el presupuesto vivo —de él salen
        los rubros del fondo y lo que contiene cada uno—, la categoría de la
@@ -110,6 +112,18 @@ export default async function EquipoPage({ params }: { params: { id: string } })
       .eq("postulacion_id", params.id),
     supabase.from("gasto_dj").select("importe,etapa,rubro_item")
       .eq("postulacion_id", params.id),
+    /* ── LOS PAPELES DE LA CLÁUSULA 5.4 ──
+       Contratos, convenios, locaciones y seguros de todo el personal
+       vinculado. En su propia consulta y tolerante: sin
+       db/postulacion-papel.sql corrida, `error` viene con la queja, la pestaña
+       lo dice UNA vez arriba y no pinta las burbujas —en blanco dirían «sin
+       contrato» para veintitantas personas, que es una acusación falsa—.
+       `.limit` explícito: el techo real son 1000 filas y corta sin avisar.
+       Dos papeles por persona y veintitantas personas no llega ni de lejos,
+       pero un tope escrito se ve al leerlo; uno heredado, no. */
+    supabase.from("postulacion_papel")
+      .select("id,persona_id,tipo,estado,url,firmado_en,vigente_desde,vigente_hasta,motivo,nota")
+      .eq("postulacion_id", params.id).limit(techo(500)),
   ]);
 
   const categoria = (ent as any)?.conv?.categoria || null;
@@ -297,6 +311,11 @@ export default async function EquipoPage({ params }: { params: { id: string } })
         { tabla: "rhe", filtro: `postulacion_id=eq.${params.id}` },
         { tabla: "equipo_fondo", filtro: `postulacion_id=eq.${params.id}` },
         { tabla: "postulacion_equipo", filtro: `postulacion_id=eq.${params.id}` },
+        /* ⚠ Hasta correr db/postulacion-papel.sql, esta suscripción se abre,
+           dice SUBSCRIBED y no emite nada: una tabla no publicada en
+           `supabase_realtime` no da error, simplemente no llega nunca un
+           evento. La migración la publica. */
+        { tabla: "postulacion_papel", filtro: `postulacion_id=eq.${params.id}` },
       ]}
         token={session?.access_token} miId={quien?.id} />
       <p className="fondo-nat-sub">
@@ -311,6 +330,14 @@ export default async function EquipoPage({ params }: { params: { id: string } })
       )}
       <div className="card">
         <EquipoFondo postulacionId={params.id}
+          /* Los papeles de la cláusula 5.4 y el día de hoy EN LIMA. La fecha
+             se calcula aquí y no en el navegador: el reloj del cliente puede
+             estar en otra zona —o mal— y entonces un seguro vigente se
+             pintaría vencido en la pantalla de una persona y no en la de otra
+             con exactamente los mismos datos. */
+          papeles={(pap.data || []) as any[]}
+          papelesError={(pap as any)?.error?.message || null}
+          hoy={hoyLima()}
           equipoPost={(eqp.data || []) as any[]}
           /* Con su hilo, igual que en «Pagos al personal»: los códigos
              de recibo de esta lista abren la MISMA conversación, y sin

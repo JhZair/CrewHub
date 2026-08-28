@@ -15,6 +15,8 @@ import {
   type FilaReparto, type CesionEstado, type Situacion,
 } from "@/lib/repartoFondo";
 import { fechaDiaLima } from "@/lib/fechas";
+import PapelesPersona from "@/components/PapelesPersona";
+import { papelesPorPersona, type Papel } from "@/lib/papeles";
 
 /* ══════════════════════════════════════════════════════════════════════════
    🎭 EL EQUIPO ARTÍSTICO DEL FONDO
@@ -53,6 +55,7 @@ import { fechaDiaLima } from "@/lib/fechas";
 
 export default function RepartoFondo({
   postulacionId, proyectoId, filas, personas, tipo, error: errServidor,
+  papeles, hoy, papelesError = null,
 }: {
   postulacionId: string;
   /** El proyecto del fondo, para poder traer su reparto. Si el fondo no cuelga
@@ -65,6 +68,22 @@ export default function RepartoFondo({
    *  como «no hay nadie», que es justo lo contrario de lo que pasa — y aquí
    *  además se leería como «no falta ninguna cesión». */
   error?: string | null;
+  /* ── LA CLÁUSULA 5.4 TAMBIÉN AQUÍ ──
+     «Todo el personal vinculado» incluye a quien sale en la película: una
+     protagonista social firma su contrato o su convenio igual que el
+     sonidista. Es el MISMO componente que en 👥 Equipo — dos copias de la
+     misma obligación se habrían separado a la primera corrección.
+
+     ⚠ Los dos OBLIGATORIOS. Con `papeles` opcional, un llamante que se
+     olvidara pintaría «sin contrato» a todo el mundo —la acusación falsa que
+     el resto del código se esfuerza en evitar—; con `hoy` opcional, la columna
+     entera DESAPARECÍA sin decir nada. Obligatorios, las dos son un error de
+     compilación. */
+  papeles: Papel[];
+  /** Hoy en Lima, del servidor: el reloj del navegador puede estar en otra
+   *  zona y pintar vencido un seguro que no lo está. */
+  hoy: string;
+  papelesError?: string | null;
 }) {
   const R = rotuloReparto(tipo);
   const ROLES = rolesReparto(tipo);
@@ -95,6 +114,8 @@ export default function RepartoFondo({
 
   const rep = repartir(filas);
   const res = resumenCesiones(filas);
+  /* Un solo recorrido para todas las filas. */
+  const papelDe = papelesPorPersona(papeles);
 
   /* En documental se pide la persona —Braulia ES el personaje—; en ficción
      basta el nombre, porque el casting llega después.
@@ -305,6 +326,19 @@ export default function RepartoFondo({
             )}
             {f.nota && !desplegada && (
               <div style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 3, lineHeight: 1.45 }}>{f.nota}</div>
+            )}
+
+            {/* ── CONTRATO Y SEGURO (cláusula 5.4) ──
+                Solo en quien está CONFIRMADA y tiene ficha de persona: a una
+                candidata no se le pide un contrato —todavía se la está yendo a
+                ver— y a «una tejedora de Pitumarca» sin ficha no hay a quién
+                contratar. Con la consulta rota no se pinta: en blanco diría
+                «sin contrato» para todos, que es una acusación falsa.
+                Va en esta columna y no en la de botones porque su panel se
+                despliega EN FLUJO y necesita el ancho de la fila. */}
+            {sit === "confirmada" && f.persona_id && !papelesError && (
+              <PapelesPersona postulacionId={postulacionId} personaId={f.persona_id}
+                nombre={L.titulo} papeles={papelDe.get(f.persona_id) || []} hoy={hoy} compacto />
             )}
           </div>
 
