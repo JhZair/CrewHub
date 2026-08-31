@@ -138,7 +138,12 @@ export type CampoFicha = {
 };
 
 export const CAMPOS_FICHA: CampoFicha[] = [
-  { k: "descripcion", label: "Sinopsis", hint: "¿Qué hay que saber de este personaje?", area: true },
+  /* ⚠ «Descripción» y no «Sinopsis». La columna es `descripcion`, el formulario
+     de alta ya pide «Descripción del personaje», y una sinopsis es otra cosa —la
+     de la PELÍCULA, que vive en el proyecto y en los tratamientos—. Con las dos
+     palabras en pantalla, quien escribe no sabe si le están pidiendo el resumen
+     del documental o quién es esta persona, y acaba escribiendo lo que no es. */
+  { k: "descripcion", label: "Descripción", hint: "¿Qué hay que saber de este personaje?", area: true },
   { k: "quiere", label: "Quiere", hint: "¿Qué quiere tu personaje?" },
   { k: "quiere_como", label: "y lo intenta así", hint: "¿Cómo intentará conseguirlo?", par: true },
   { k: "necesita", label: "Necesita", hint: "¿Qué necesita de verdad?" },
@@ -147,7 +152,7 @@ export const CAMPOS_FICHA: CampoFicha[] = [
 ];
 
 /** Los cuatro datos de cabecera, en una fila. Cortos a propósito: si piden
- *  párrafo, van en la sinopsis. */
+ *  párrafo, van en la descripción. */
 export const CAMPOS_DETALLE: CampoFicha[] = [
   { k: "edad", label: "Edad", hint: "«16», «adulta», «de 40 a 70»" },
   { k: "genero", label: "Género", hint: "" },
