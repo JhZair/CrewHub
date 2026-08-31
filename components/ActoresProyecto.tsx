@@ -1,5 +1,7 @@
 "use client";
 import { situacionActorProyecto } from "@/app/actions";
+import CesionesPersona from "@/components/CesionesPersona";
+import { cesionesPorPersona, recuento, resumen, type FilaCesion } from "@/lib/cesiones";
 import {
   repartirPorSituacion, situacionDe, type Situacion,
 } from "@/lib/situacionReparto";
@@ -31,7 +33,10 @@ import { useRef, useState } from "react";
  * tratamiento de un documental pide lo mismo y el jurado DAFO lee justamente
  * eso. Cambia el rótulo según el tipo de proyecto; el modelo es uno solo.
  */
-export default function ActoresProyecto({ proyectoId, actores, personas, tipo, error: errServidor }: {
+export default function ActoresProyecto({
+  proyectoId, actores, personas, tipo, error: errServidor,
+  cesiones = [], cesionesError = "",
+}: {
   proyectoId: string;
   actores: any[];
   personas: CatalogoItem[];
@@ -40,7 +45,32 @@ export default function ActoresProyecto({ proyectoId, actores, personas, tipo, e
   /** Si la consulta falló, POR QUÉ. Sin esto la lista se pinta vacía y eso se
    *  lee como «no hay personajes», que es justo lo contrario de lo que pasa. */
   error?: string;
+  /** Las cesiones de TODO el reparto; se reparten por persona aquí. Quién
+   *  autorizó que se le grabe, y quién que su música suene. */
+  cesiones?: FilaCesion[];
+  /** Mismo criterio que `error`: un cero que en realidad es «no se pudo leer»
+   *  se lee como «no falta ninguna autorización». */
+  cesionesError?: string;
 }) {
+  /* Las cesiones, repartidas una vez y no una por fila. Y el recuento de lo
+     que falta, que va en la cabecera del bloque: es la pregunta que se hace
+     antes de estrenar. */
+  const cesDe = cesionesPorPersona(cesiones);
+  /* ⚠ CUENTA LO MISMO QUE SE PUEDE ARREGLAR.
+     Las burbujas solo se pintan en el reparto CONFIRMADO —pedirle la cesión a
+     una candidata es pedir un papel por un trabajo que quizá no ocurra—, así
+     que contar a todo el mundo dejaba un «⚠ 3 sin cesión de imagen» que ningún
+     clic podía apagar. Un aviso que no se puede resolver se deja de leer, y
+     con él se deja de leer el resto.
+     ⚠ Y con `personaDe`, no con `a.persona?.id`: PostgREST devuelve la
+     relación con el alias que le pida cada consulta, y una lectura que solo
+     mire uno de los dos deja el recuento en cero SIN error — el cero que en
+     realidad es «no se pudo leer», por la puerta de atrás. */
+  const rCes = recuento(
+    actores.filter((a: any) => situacionDe(a) === "confirmada")
+      .map((a: any) => personaDe(a)?.id).filter(Boolean),
+    cesiones,
+  );
   const R = rotuloActores(tipo);
   const ROLES = rolesDe(tipo);
   const doc = esDocumental(tipo);
@@ -255,6 +285,19 @@ export default function ActoresProyecto({ proyectoId, actores, personas, tipo, e
                           conserva con su nota. Se separan a propósito: la nota
                           de por qué alguien no encajó es justo lo que evita
                           volver a proponerlo en seis meses. */}
+                      {/* ── QUIÉN AUTORIZÓ QUÉ ──
+                          Solo con persona vinculada: la cesión la firma alguien
+                          real, y un personaje de ficción sin intérprete no
+                          tiene a quién pedírsela.
+                          Y solo en el reparto CONFIRMADO: pedirle la cesión a
+                          una candidata que aún se está viendo es pedir un papel
+                          por un trabajo que quizá no ocurra. */}
+                      {sit === "confirmada" && per?.id && !cesionesError && (
+                        <CesionesPersona
+                          proyectoId={proyectoId} personaId={per.id}
+                          nombre={L.titulo || per.nombre || "esta persona"}
+                          cesiones={cesDe.get(per.id) || []} />
+                      )}
                       {sit !== "confirmada" && (
                         <button title="Confirmar: entra en el proyecto"
                           style={{ color: "var(--green)" }} disabled={!!cambiando}
@@ -385,6 +428,17 @@ export default function ActoresProyecto({ proyectoId, actores, personas, tipo, e
               {" "}+ {zonas.explorando.length} en exploración
             </span>
           )}
+          {/* ── QUÉ FALTA AUTORIZAR ──
+              La pregunta que se hace antes de estrenar, y que hoy no se hacía
+              en ninguna parte para los proyectos sin fondo DAFO.
+              ⚠ Si la consulta de cesiones falló NO se pinta el recuento: un
+              «todo autorizado» calculado sobre una lista vacía por error es la
+              mentira más cara que puede decir esta pantalla. */}
+          {!cesionesError && resumen(rCes) && (
+            <span className={rCes.sinImagen || rCes.sinPrueba ? "act-ces-falta" : "act-ces-ok"}>
+              {rCes.sinImagen || rCes.sinPrueba ? "⚠ " : "✓ "}{resumen(rCes)}
+            </span>
+          )}
         </h4>
         <span style={{ flex: 1 }} />
         {!agregando && (
@@ -490,6 +544,10 @@ export default function ActoresProyecto({ proyectoId, actores, personas, tipo, e
           </button>
           {verDescartados && zonas.descartadas.map(a => pintarFila(a))}
         </div>
+      )}
+
+      {cesionesError && (
+        <div className="err-inline" style={{ marginBottom: 8 }}>⚠ {cesionesError}</div>
       )}
 
       {!actores.length && !agregando && !errServidor && (

@@ -753,6 +753,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   let cronoActs: any[] = [], perfilesCat: any[] = [], cronoPost: any[] = [], plantelPost: any[] = [];
   let postusProy: any[] = [], equipoProy: any[] = [], plantillas: any[] = [], actoresProy: any[] = [];
   let actoresCarne: any[] = [];
+  let cesionesProy: any[] = [], cesionesError = "";
   /* Cuántas actividades tiene el cronograma de cada postulación de este
      proyecto. Ver el comentario de `cronoDeFondos`, más abajo. */
   let cronoPorPostu = new Map<string, number>();
@@ -773,7 +774,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   // vez cargadas las postulaciones de la rama que corresponda.
   let contadoresPost: Record<string, { c: number; r: number }> = {};
   if (params.tipo === "proyecto") {
-    const [pc, cl, ca, pf, pp, eq, pl, ac, gu] = await Promise.all([
+    const [pc, cl, ca, pf, pp, eq, pl, ac, ces, gu] = await Promise.all([
       supabase.from("personas").select("id,nombre,alias,tipo").order("nombre"),
       ent.cliente_id
         ? supabase.from("personas").select("id,nombre,alias").eq("id", ent.cliente_id).single()
@@ -810,6 +811,17 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
           situacion,situacion_en,
           persona:personas(id,nombre,alias,foto_url)`)
         .eq("proyecto_id", params.id).order("orden").order("creado_en"),
+      /* ── QUIÉN AUTORIZÓ QUÉ ──
+         Las cesiones de todo el reparto, en una sola consulta: se reparten por
+         persona en el cliente —son unas pocas, no miles— en vez de una consulta
+         por fila.
+         ⚠ TOLERANTE: sin db/proyecto-cesiones.sql corrida esto falla, y el
+         error se PASA al componente en vez de tragarse con `|| []`. Una lista
+         vacía por fallo se lee como «no falta ninguna cesión», que es lo
+         contrario de la verdad sobre los papeles cuya ausencia impide estrenar. */
+      supabase.from("proyecto_cesion")
+        .select("id,persona_id,tipo,estado,url,firmado_en,obra,motivo,nota")
+        .eq("proyecto_id", params.id).limit(techo(500)),
       /* ── LOS TRATAMIENTOS DE LA PELÍCULA ──
          Ya no es un contador para un botón: es la lista de documentos. Una
          película tiene varios —el presentado al concurso, el reescrito con las
@@ -864,6 +876,16 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     equipoProy = eq.data || [];
     // Protagonistas primero, luego secundarios, luego los demás.
     actoresProy = ordenarActores(ac.data || []);
+    /* ⚠ El error NO se traga con `|| []`. Sin db/proyecto-cesiones.sql corrida
+       la consulta falla, y una lista vacía se leería como «no falta ninguna
+       cesión» — lo contrario de la verdad sobre los papeles cuya ausencia
+       impide estrenar. La pantalla lo dice en vez de callarse. */
+    cesionesProy = (ces.data || []) as any[];
+    cesionesError = (ces as any).error
+      ? (/proyecto_cesion|PGRST/i.test(String((ces as any).error.message))
+          ? "Falta correr db/proyecto-cesiones.sql en Supabase: no se puede saber qué está autorizado."
+          : String((ces as any).error.message))
+      : "";
     /* ── EL CARNÉ ENSEÑA SOLO A LOS CONFIRMADOS ──
        Es el rostro grande del corazón del proyecto: quien está DENTRO. Un
        candidato que aún se está viendo, o alguien ya descartado, ahí arriba se
@@ -5090,7 +5112,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                       actores sociales —la persona ES el personaje—; en ficción
                       y animación son personajes, con o sin intérprete. */}
                   <ActoresProyecto proyectoId={params.id} actores={actoresProy}
-                    personas={personasCat} tipo={ent.tipo} error={actoresError} />
+                    personas={personasCat} tipo={ent.tipo} error={actoresError}
+                    cesiones={cesionesProy} cesionesError={cesionesError} />
                   {/* ── LOS TRATAMIENTOS ──
                       Junto al reparto porque son la misma pregunta desde dos
                       lados: a quién cuenta la película y cómo la cuenta.
