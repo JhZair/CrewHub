@@ -38,6 +38,18 @@ const desdeTxt = (f?: string | null) => {
    mano la va a buscar. */
 const CARGOS = [
   "Directora", "Director", "Codirección",
+  /* ── CONDUCCIÓN ──
+     Quien lleva el relato ante la cámara: presenta, pregunta, acompaña. En un
+     documental de encuentro es la figura que hace avanzar la película, y en una
+     cobertura es quien la conduce de principio a fin.
+     Va con dirección y no al final entre los oficios porque conducir es trabajo
+     de RELATO, no de gestión ni de técnica; y por encima de producción por el
+     mismo motivo que el orden entero: sigue el rodaje, no el organigrama.
+     ⚠ Es un cargo del EQUIPO —quien trabaja— y no hay que confundirlo con el
+     grupo `conduccion` de lib/repartoFondo, que es del REPARTO: quién sale.
+     Las conductoras de Mujeres del Ande están en las dos listas, y eso es
+     correcto: dirigen la película y además aparecen en ella. */
+  "Conductora", "Conductor",
   "Productora", "Productor", "Producción ejecutiva", "Jefatura de producción",
   "Guion", "Investigación",
   /* El dron va con la cámara y no al final: es una cámara más, y quien busca
