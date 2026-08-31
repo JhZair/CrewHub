@@ -16,12 +16,15 @@
    ══════════════════════════════════════════════════════════════════════════ */
 
 import { esDocumental } from "@/lib/actores";
+import {
+  situacionDe, ROTULO_SITUACION, repartirPorSituacion, type Situacion,
+} from "@/lib/situacionReparto";
 
 export type Procedencia = "postulacion" | "ejecucion";
 export type CesionEstado = "no_aplica" | "pendiente" | "firmada";
 /** Si ya está dentro de la película, o todavía se la está yendo a ver.
  *  Es un eje DISTINTO del papel: se es candidata *a protagonista*. */
-export type Situacion = "explorando" | "confirmada" | "descartada";
+export type { Situacion };
 
 /** La fila tal como sale de `postulacion_reparto`, con lo que decoramos. */
 export type FilaReparto = {
@@ -130,20 +133,11 @@ export function grupoDeRol(rol?: string | null): string {
  * a mano —que es cuando se pierde—.
  */
 
-/** La situación, normalizada. Cualquier cosa que no sean los tres valores
- *  conocidos cuenta como CONFIRMADA, no como candidata: las filas que se
- *  cargaron antes de que existiera esta columna son gente que ya está dentro,
- *  y tratarlas como candidatas vaciaría el equipo artístico de golpe. */
-export function situacionDe(f: FilaReparto): Situacion {
-  const s = limpia(f.situacion);
-  return s === "explorando" || s === "descartada" ? s : "confirmada";
-}
-
-export const ROTULO_SITUACION: Record<Situacion, string> = {
-  explorando: "en exploración",
-  confirmada: "confirmada",
-  descartada: "descartada",
-};
+/* ── LA SITUACIÓN VIVE EN lib/situacionReparto ──
+   Es la misma pregunta que en el reparto de un PROYECTO, y hasta hoy estaba
+   escrita dos veces. Se reexporta para no tocar a los diez sitios que ya la
+   importan desde aquí: quien lee `repartoFondo` sigue encontrándola. */
+export { situacionDe, ROTULO_SITUACION };
 
 /** El reparto partido en las tres situaciones. Una sola pasada, y en un solo
  *  sitio, porque la pantalla, el contador de la cabecera y el resumen del
@@ -163,11 +157,10 @@ export type Reparto = {
 };
 
 export function repartir(filas: FilaReparto[]): Reparto {
-  const dentro: FilaReparto[] = [], explorando: FilaReparto[] = [], descartadas: FilaReparto[] = [];
-  for (const f of filas) {
-    const s = situacionDe(f);
-    (s === "explorando" ? explorando : s === "descartada" ? descartadas : dentro).push(f);
-  }
+  /* El reparto en tres zonas lo hace `repartirPorSituacion`, compartido con el
+     de PROYECTO. Lo que es propio de aquí —agrupar a los de dentro por papel
+     narrativo— se hace después. */
+  const { dentro, explorando, descartadas } = repartirPorSituacion(filas);
   return {
     grupos: agrupar(dentro),
     explorando: ordenarPorPapel(explorando),

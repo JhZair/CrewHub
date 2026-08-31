@@ -91,9 +91,16 @@ export default async function Personas({ searchParams }: {
        solo en qué obra salió. Y `not.is.null` sobre la persona porque desde que
        un personaje puede no tener intérprete, esas filas viajarían hasta aquí
        para no pintarse nunca —y de paso gastan el tope de PostgREST—. */
+      /* ── SOLO EL REPARTO CONFIRMADO ──
+         Un candidato que aún se está viendo, o alguien ya descartado, NO ha
+         salido en esa película: afirmarlo en su ficha es decir algo que no
+         pasó. `is null` además de `= confirmada` porque las filas anteriores a
+         db/proyecto-actores-situacion.sql no la tienen y son gente que ya
+         estaba dentro. */
     supabase.from("proyecto_actores")
-      .select("persona_id,rol,personaje,proy:proyectos(id,nombre,nombre_corto,color,etapa)")
-      .not("persona_id", "is", null),
+      .select("persona_id,rol,personaje,situacion,proy:proyectos(id,nombre,nombre_corto,color,etapa)")
+      .not("persona_id", "is", null)
+      .or("situacion.eq.confirmada,situacion.is.null"),
   ]);
 
   const todas = pers || [];

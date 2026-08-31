@@ -79,6 +79,7 @@ import Precontratos from "@/components/Precontratos";
 import { etapasDe } from "@/lib/etapas";
 import { plazoFondo } from "@/lib/plazoFondo";
 import { nominaCronograma } from "@/lib/equipoFondo";
+import { situacionDe } from "@/lib/situacionReparto";
 import { rubrosDe, topeEstimuloDe } from "@/lib/rubros";
 import { TABLAS_EXP, materialTablaDe, plantillaConExtras, esVideojuego } from "@/lib/tablas-expediente";
 import TabsPanel from "@/components/TabsPanel";
@@ -751,6 +752,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   let clienteDe: { id: string; nombre: string } | null = null;
   let cronoActs: any[] = [], perfilesCat: any[] = [], cronoPost: any[] = [], plantelPost: any[] = [];
   let postusProy: any[] = [], equipoProy: any[] = [], plantillas: any[] = [], actoresProy: any[] = [];
+  let actoresCarne: any[] = [];
   /* Cuántas actividades tiene el cronograma de cada postulación de este
      proyecto. Ver el comentario de `cronoDeFondos`, más abajo. */
   let cronoPorPostu = new Map<string, number>();
@@ -805,6 +807,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       supabase.from("proyecto_actores")
         .select(`id,rol,descripcion,orden,personaje,imagen_url,imagenes,arquetipo,edad,genero,
           rasgos,quiere,quiere_como,necesita,necesita_como,notas,
+          situacion,situacion_en,
           persona:personas(id,nombre,alias,foto_url)`)
         .eq("proyecto_id", params.id).order("orden").order("creado_en"),
       /* ── LOS TRATAMIENTOS DE LA PELÍCULA ──
@@ -861,6 +864,12 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     equipoProy = eq.data || [];
     // Protagonistas primero, luego secundarios, luego los demás.
     actoresProy = ordenarActores(ac.data || []);
+    /* ── EL CARNÉ ENSEÑA SOLO A LOS CONFIRMADOS ──
+       Es el rostro grande del corazón del proyecto: quien está DENTRO. Un
+       candidato que aún se está viendo, o alguien ya descartado, ahí arriba se
+       lee como que la película es suya. La lista completa —con sus tres
+       zonas— vive en la pestaña, que es donde esa distinción se ve. */
+    actoresCarne = actoresProy.filter((a: any) => situacionDe(a) === "confirmada");
     /* Solo la cuenta: el botón dice si hay tratamiento escrito dentro. Un
        botón que se ve igual con y sin contenido no invita a entrar.
        `head: true` no trae filas, solo el número. */
@@ -1822,9 +1831,16 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       /* Y las obras donde figura como ACTOR SOCIAL (protagonista, comunero): la
          relación vive en `proyecto_actores`. Se mostraba del lado del proyecto
          pero no en la trayectoria de la persona —donde también es «lo suyo»—. */
+      /* ── SOLO EL REPARTO CONFIRMADO ──
+         Un candidato que aún se está viendo, o alguien ya descartado, NO ha
+         salido en esa película: ponerlo en su trayectoria es afirmar algo que
+         no pasó, y bajo un título («🎭 Como actor social») que se lee como un
+         hecho. `is null` además, por las filas anteriores a
+         db/proyecto-actores-situacion.sql. */
       supabase.from("proyecto_actores")
-        .select("id,rol,descripcion,personaje,proy:proyectos(id,nombre,nombre_corto,tipo,etapa,estado_actividad)")
-        .eq("persona_id", params.id),
+        .select("id,rol,descripcion,personaje,situacion,proy:proyectos(id,nombre,nombre_corto,tipo,etapa,estado_actividad)")
+        .eq("persona_id", params.id)
+        .or("situacion.eq.confirmada,situacion.is.null"),
       /* Quién la subió y cuándo. Es plata: una constancia sin autor es una
          constancia que nadie puede explicar el día que la observan, y la
          bitácora que sí lo guarda está en otra pestaña y en otro idioma. */
@@ -2576,19 +2592,19 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
             {/* 🎭 Actor(es) social(es): los personajes reales del documental —el
                 corazón humano del proyecto—. Van al TOPE del carné, con su
                 rostro grande. Normalmente uno; a veces dos, lado a lado. */}
-            {params.tipo === "proyecto" && actoresProy.length > 0 && (
+            {params.tipo === "proyecto" && actoresCarne.length > 0 && (
               <div className="carne-actores" style={{ marginTop: 0, paddingTop: 0, borderTop: "none", marginBottom: 4 }}>
                 {/* El rótulo lo decide el tipo, igual que en la pestaña: si aquí
                     dijera «actores sociales» y allá «personajes», serían dos
                     nombres para la misma lista en la misma pantalla. */}
                 <div className="ca-titulo">
                   {rotuloActores(ent.tipo).ico}{" "}
-                  {actoresProy.length > 1
-                    ? `${rotuloActores(ent.tipo).titulo} · ${actoresProy.length}`
+                  {actoresCarne.length > 1
+                    ? `${rotuloActores(ent.tipo).titulo} · ${actoresCarne.length}`
                     : rotuloActores(ent.tipo).titulo}
                 </div>
                 <div className="ca-lista">
-                  {actoresProy.map((a: any) => {
+                  {actoresCarne.map((a: any) => {
                     const L = leerActor(a);
                     const q = personaDe(a);
                     /* Sin persona NO hay enlace. Con `href` a un id inexistente

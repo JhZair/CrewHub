@@ -39,6 +39,7 @@ import { etapasDe, nombreEtapa } from "@/lib/etapas";
 import { plazoFondo } from "@/lib/plazoFondo";
 import { planear, motivoVersion, rotuloDias } from "@/lib/correrCronograma";
 import { estadoPorCasos } from "@/lib/casosActividad";
+import { esSituacion } from "@/lib/situacionReparto";
 import { TOPE_API, techo } from "@/lib/api";
 
 /* Crear o actualizar una entidad núcleo (proyecto/empresa/persona).
@@ -5839,7 +5840,11 @@ export async function cambiarEtapaProyecto(id: string, etapa: string) {
  * personaje —el jurado DAFO valora a quién se retrata. */
 export async function agregarActorProyecto(
   proyectoId: string, personaId: string, rol: string, descripcion: string,
-  personaje?: string, imagenUrl?: string | null
+  personaje?: string, imagenUrl?: string | null,
+  /** Alta como CANDIDATO en vez de como confirmado. Por defecto entra dentro,
+   *  que es lo que se hacía hasta hoy y lo que se espera al pulsar «agregar»;
+   *  la exploración se pide marcando la casilla. */
+  comoCandidato?: boolean,
 ) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -5856,6 +5861,11 @@ export async function agregarActorProyecto(
     proyecto_id: proyectoId, persona_id: personaId || null,
     personaje: pj || null, imagen_url: imagenUrl || null,
     rol: rol.trim() || null, descripcion: descripcion.trim() || null,
+    /* `situacion_en` solo si nace candidato: para quien entra confirmado, la
+       fecha diría «cuándo se dio de alta», que ya es `creado_en`. La columna
+       existe para fechar una DECISIÓN sobre alguien que estaba en el aire. */
+    situacion: comoCandidato ? "explorando" : "confirmada",
+    situacion_en: comoCandidato ? hoyLima() : null,
   });
   if (error) return { error: error.message };
 
@@ -5868,7 +5878,9 @@ export async function agregarActorProyecto(
   }
   await supabase.from("actividad").insert({
     entidad_tipo: "proyecto", entidad_id: proyectoId, actor_id: user.id, tipo: "miembro",
-    detalle: { mensaje: `sumó a ${quien || "alguien"} al reparto${rol.trim() ? ` (${rol.trim()})` : ""}` },
+    detalle: { mensaje: comoCandidato
+      ? `apuntó a ${quien || "alguien"} como candidato${rol.trim() ? ` a ${rol.trim()}` : ""}`
+      : `sumó a ${quien || "alguien"} al reparto${rol.trim() ? ` (${rol.trim()})` : ""}` },
   });
   revalidatePath(`/entidad/proyecto/${proyectoId}`);
   return {};
@@ -5925,6 +5937,63 @@ export async function guardarFichaActor(id: string, proyectoId: string, campos: 
   await supabase.from("actividad").insert({
     entidad_tipo: "proyecto", entidad_id: proyectoId, actor_id: user.id, tipo: "miembro",
     detalle: { mensaje: `escribió la ficha de ${quien}` },
+  });
+  revalidatePath(`/entidad/proyecto/${proyectoId}`);
+  return {};
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   CONFIRMAR, DESCARTAR O VOLVER A EXPLORAR — en el reparto de un PROYECTO
+
+   Es la hermana de la del fondo, y la misma decisión: un documental de
+   personajes reales no se escribe, se busca. La diferencia es que aquí hace
+   más falta, no menos — hay proyectos que nunca van a tener fondo (los de
+   encargo, los autofinanciados) y entonces esta lista no es el borrador de
+   nada: es la única que existe.
+
+   Acción propia y no un campo más del editor de la ficha, por el mismo motivo
+   que en el fondo: confirmar a alguien es un momento, no un dato. Se hace con
+   un botón desde la lista, y lo que cambia queda fechado.
+   ══════════════════════════════════════════════════════════════════════════ */
+export async function situacionActorProyecto(
+  id: string, proyectoId: string, situacion: string,
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  /* El vocabulario cerrado sale de lib/situacionReparto, que es el mismo que el
+     `check` de la tabla: una cuarta palabra la rechazaría Postgres con un error
+     que no le dice nada a nadie. */
+  if (!esSituacion(situacion)) return { error: "Esa situación no existe." };
+
+  /* ── LA FECHA SOLO SI CAMBIA DE VERDAD ──
+     Se comprueba contra lo que hay en la base. Volver a pulsar «confirmar»
+     sobre alguien ya confirmado no puede re-fechar nada: `situacion_en` existe
+     para distinguir «no encajaba» de «no quiso», y si se resellara en cada
+     pulsación pasaría a decir «cuándo se tocó por última vez» — sin error y sin
+     vuelta atrás. Es la misma guarda que en el reparto del fondo, donde el
+     editor mandaba los ocho campos y corregir una tilde volvía a fechar. */
+  const { data: ant } = await supabase.from("proyecto_actores")
+    .select("situacion,personaje,per:personas(nombre,alias)")
+    .eq("id", id).eq("proyecto_id", proyectoId).maybeSingle();
+  if (!ant) return { error: "Esa fila ya no está." };
+  if ((ant.situacion || "confirmada") === situacion) return {};
+
+  const { data, error } = await supabase.from("proyecto_actores")
+    .update({ situacion, situacion_en: hoyLima() })
+    .eq("id", id).eq("proyecto_id", proyectoId).select("id");
+  if (error) return { error: error.message };
+  /* RLS: un update bloqueado no da error, afecta cero filas. */
+  if (!data?.length) return { error: "No se guardó: no tienes permiso, o ya no existe." };
+
+  const per: any = Array.isArray(ant.per) ? ant.per[0] : ant.per;
+  const quien = ant.personaje || per?.alias || per?.nombre || "alguien";
+  const dicho = situacion === "explorando" ? "volvió a exploración"
+    : situacion === "descartada" ? "descartó" : "confirmó";
+  await supabase.from("actividad").insert({
+    entidad_tipo: "proyecto", entidad_id: proyectoId, actor_id: user.id, tipo: "miembro",
+    detalle: { mensaje: `${dicho} a ${quien} en el reparto` },
   });
   revalidatePath(`/entidad/proyecto/${proyectoId}`);
   return {};
@@ -8144,9 +8213,13 @@ export async function cargarPersonaRapida(personaId: string) {
     supabase.from("proyecto_equipo")
       .select("cargo,desde,hasta,proyecto:proyectos(id,nombre,nombre_corto,etapa)")
       .eq("persona_id", personaId).order("desde", { ascending: false, nullsFirst: false }).limit(60),
+    /* Solo el reparto CONFIRMADO: un descartado no ha salido en esa película
+       y su pop-up no puede decir que sí. */
     supabase.from("proyecto_actores")
-      .select("rol,orden,personaje,proyecto:proyectos(id,nombre,nombre_corto)")
-      .eq("persona_id", personaId).order("orden").limit(40),
+      .select("rol,orden,personaje,situacion,proyecto:proyectos(id,nombre,nombre_corto)")
+      .eq("persona_id", personaId)
+      .or("situacion.eq.confirmada,situacion.is.null")
+      .order("orden").limit(40),
     // Solo lo que TIENE ahora: un préstamo cerrado no es responsabilidad viva.
     supabase.from("equipo_prestamos")
       .select("id,desde,equipo:equipamiento(id,folio,nombre)")
@@ -11525,8 +11598,19 @@ export async function traerRepartoDelProyecto(postulacionId: string, proyectoId:
     return { error: "Ese proyecto no es el de este fondo." };
   }
 
+  /* ── SOLO LAS CONFIRMADAS ──
+     El proyecto ahora explora candidatos, y una candidata que aún se está
+     viendo no tiene por qué aparecer en un expediente que va al Ministerio: si
+     luego se descarta, se queda copiada ahí sin que nadie lo note. El fondo
+     conserva su propia exploración para lo suyo.
+     `is null` además de `= confirmada`: las filas anteriores a
+     db/proyecto-actores-situacion.sql pueden no tenerla, y son gente que ya
+     estaba dentro — excluirlas vaciaría este botón. */
   const { data: origen, error: eOri } = await supabase.from("proyecto_actores")
-    .select("id,persona_id,personaje,rol,orden").eq("proyecto_id", proyectoId).order("orden");
+    .select("id,persona_id,personaje,rol,orden,situacion")
+    .eq("proyecto_id", proyectoId)
+    .or("situacion.eq.confirmada,situacion.is.null")
+    .order("orden");
   if (eOri) return { error: eOri.message };
   /* Un proyecto sin reparto NO es un fallo, y devolverlo como `error` lo pinta
      en la franja roja con su ⚠ — que es como se avisa de que algo se rompió.

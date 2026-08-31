@@ -7253,3 +7253,31 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
   font-family: inherit; line-height: 1; }
 .cr-caso-x:hover { color: var(--red); }
 .cr-caso-x:disabled { cursor: default; opacity: .4; }
+
+/* ══════ LAS TRES ZONAS DEL REPARTO DE UN PROYECTO ══════
+   Dentro, en exploración y descartados. Prefijo `.pj-`, el de los personajes.
+   Deliberadamente parecido al del reparto de un fondo: es la misma pregunta en
+   dos pantallas y con dos diseños habría que aprenderlas dos veces. */
+.pj-zona { margin-top: 14px; }
+.pj-zona-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--muted); padding: 6px 0; border-top: 1px solid var(--border);
+  width: 100%; }
+.pj-zona-n { background: var(--card); border: 1px solid var(--border);
+  border-radius: 999px; padding: 0 7px; font-size: 10.5px; color: var(--text); }
+/* El porqué, en minúscula y sin gritar: la cabecera dice qué zona es y esto
+   dice qué se espera que hagas ahí. Un rótulo suelto no lo dice. */
+.pj-zona-nota { font-weight: 400; letter-spacing: 0; text-transform: none;
+  color: var(--dim); font-size: 11px; }
+.pj-zona-btn { background: none; border: 0; border-top: 1px solid var(--border);
+  cursor: pointer; text-align: left; font-family: inherit; }
+.pj-zona-btn:hover { color: var(--text); }
+/* Los descartados, apagados: siguen ahí —saber a quién descartaste evita
+   volver a proponerlo— pero no compiten con lo que está en juego. */
+.pj-zona-off .pj-fila { opacity: .55; }
+.pj-zona-off .pj-fila:hover { opacity: 1; }
+
+/* La casilla de «es un candidato», en el formulario de alta. */
+.pj-cand { display: flex; align-items: center; gap: 7px; font-size: 12px;
+  color: var(--muted); cursor: pointer; margin: 2px 0 4px; }
+.pj-cand b { color: var(--text); }

@@ -1,4 +1,8 @@
 "use client";
+import { situacionActorProyecto } from "@/app/actions";
+import {
+  repartirPorSituacion, situacionDe, type Situacion,
+} from "@/lib/situacionReparto";
 import { agregarActorProyecto, quitarActorProyecto,
   guardarFichaActor, repartirActor } from "@/app/actions";
 import { EntPicker, type CatalogoItem } from "@/components/Composer";
@@ -57,7 +61,29 @@ export default function ActoresProyecto({ proyectoId, actores, personas, tipo, e
      tipo es lo que guarda. */
   const [gal, setGal] = useState<string[]>([]);
   const [error, setError] = useState("");
+  /* Los descartados empiezan ABIERTOS, como en el reparto del fondo: en un
+     documental de encuentro, a quién NO se grabó es parte de lo que se
+     aprendió, y plegarlo de entrada lo esconde justo cuando aún se recuerda
+     por qué. Se puede cerrar. */
+  const [verDescartados, setVerDescartados] = useState(true);
+  const [cambiando, setCambiando] = useState<string | null>(null);
+  /* Alta como CANDIDATO en vez de como confirmado. Una casilla del formulario
+     y no dos botones distintos: el alta es la misma, lo que cambia es en qué
+     zona cae. */
+  const [comoCandidato, setComoCandidato] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  /* Confirmar, descartar o devolver a exploración. Candado POR FILA y no un
+     booleano global: tocar a otro mientras el primero guarda no puede comerse
+     el clic en silencio. */
+  const cambiarSituacion = async (id: string, s: Situacion) => {
+    if (cambiando) return;
+    setCambiando(id); setError("");
+    const r: any = await situacionActorProyecto(id, proyectoId, s);
+    setCambiando(null);
+    if (r?.error) { setError(r.error); return; }
+    router.refresh();
+  };
   const router = useRouter();
 
   const inputStyle = {
@@ -82,10 +108,15 @@ export default function ActoresProyecto({ proyectoId, actores, personas, tipo, e
   const guardar = async () => {
     if (!puedeGuardar || guardando) return;
     setGuardando(true); setError("");
-    const r: any = await agregarActorProyecto(proyectoId, sel?.id || "", rol, desc, nom, img || null);
+    const r: any = await agregarActorProyecto(
+      proyectoId, sel?.id || "", rol, desc, nom, img || null, comoCandidato);
     setGuardando(false);
     if (r?.error) { setError(r.error); return; }
-    setSel(null); setNom(""); setRol(""); setDesc(""); setImg(""); setAgregando(false);
+    setSel(null); setNom(""); setRol(""); setDesc(""); setImg("");
+    /* `comoCandidato` NO se reinicia: quien está armando una lista de
+       candidatos apunta varios seguidos, y volver a marcar la casilla cada vez
+       es exactamente la fricción que hace que se deje de usar. */
+    setAgregando(false);
     router.refresh();
   };
 
@@ -121,11 +152,239 @@ export default function ActoresProyecto({ proyectoId, actores, personas, tipo, e
 
   const set = (k: string, v: string) => setFicha(f => ({ ...f, [k]: v }));
 
+
+  /* ── UNA FILA ──
+     ⚠ FUNCIÓN, no componente. Definido dentro del render, React lo vería como
+     un tipo distinto en cada pasada y desmontaría la ficha desplegada —con lo
+     que se esté escribiendo dentro— en cuanto alguien confirmara a otro. Es la
+     misma lección que ya está escrita en RepartoFondo. */
+  const pintarFila = (a: any) => {
+          const sit = situacionDe(a);
+          const L = leerActor(a);
+          const per = personaDe(a);
+          const desplegada = abierto === a.id;
+          return (
+            <div key={a.id} className="pj-fila">
+              <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                {/* La cara del personaje manda sobre la del intérprete: en la
+                    lista se busca a Robomac, no a quien le pone la voz. */}
+                {a.imagen_url
+                  // eslint-disable-next-line @next/next/no-img-element
+                  ? <img src={a.imagen_url} alt="" className="pj-cara" />
+                  : <Avatar nombre={per?.nombre || L.titulo} src={per?.foto_url} size={38} />}
+
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    {L.esPersona && per?.id
+                      ? <Link href={`/entidad/persona/${per.id}`} style={{ color: "var(--text)", fontWeight: 600, fontSize: 14 }}>
+                          {L.titulo} →
+                        </Link>
+                      : <b style={{ fontSize: 14 }}>{L.titulo}</b>}
+                    {a.rol && (
+                      <span className="badge" style={{ color: "var(--violet)", background: "rgba(167,139,250,.14)", textTransform: "none", letterSpacing: 0, fontWeight: 700 }}>
+                        {a.rol}
+                      </span>
+                    )}
+                    {a.arquetipo && <span className="badge pj-arq">{a.arquetipo}</span>}
+                  </div>
+
+                  {/* Quién lo interpreta, o que todavía no lo interpreta nadie.
+                      Un hueco en blanco se lee como un olvido; «sin repartir» se
+                      lee como lo que es: el guion va por delante del casting. */}
+                  {L.pie && per?.id && (
+                    <div className="pj-pie">
+                      <Link href={`/entidad/persona/${per.id}`}>👤 {L.pie}</Link>
+                      <button title="Quitar al intérprete" onClick={() => repartir(a.id, null)}>✕</button>
+                    </div>
+                  )}
+                  {L.sinRepartir && (
+                    <div className="pj-pie">
+                      <span className="pj-sinrepartir">sin repartir</span>
+                      <EntPicker etiqueta="＋ intérprete" items={personas}
+                        onPick={pid => repartir(a.id, pid)} />
+                    </div>
+                  )}
+
+                  {a.descripcion && !desplegada && (
+                    <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 4, lineHeight: 1.45 }}>
+                      {a.descripcion}
+                    </div>
+                  )}
+
+                  {/* Lo que la ficha ya tiene escrito, sin abrirla. Si no hay
+                      nada, no se pinta una cabecera vacía. */}
+                  {!desplegada && (a.quiere || a.necesita) && (
+                    <div className="pj-deseo">
+                      {a.quiere && <div><b>Quiere</b> {a.quiere}</div>}
+                      {a.necesita && <div><b>Necesita</b> {a.necesita}</div>}
+                    </div>
+                  )}
+
+                  {/* El arte se ve SIN abrir la ficha. Una galería que solo
+                      aparece en modo edición es una galería que no existe: nadie
+                      entra a editar para mirar. Clic para abrirla a tamaño real
+                      —una hoja de modelo en miniatura no se lee—. */}
+                  {!desplegada && (a.imagenes || []).length > 0 && (
+                    <div className="pj-tira">
+                      {(a.imagenes as string[]).map((u, i) => (
+                        <Foto key={i} src={u} maxHeight={96} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: "flex", gap: 8, flexShrink: 0, alignItems: "center" }}>
+                  {quitando === a.id ? (
+                    <span style={{ fontSize: 11.5, whiteSpace: "nowrap" }}>
+                      ¿quitar? <button style={{ color: "var(--red)", fontWeight: 700 }} onClick={() => quitar(a.id)}>sí</button>
+                      {" / "}<button style={{ color: "var(--dim)" }} onClick={() => setQuitando(null)}>no</button>
+                    </span>
+                  ) : (
+                    <>
+                      <button style={{ color: desplegada ? "var(--violet)" : "var(--dim)", fontSize: 11.5 }}
+                        title="Ficha del personaje" onClick={() => abrirFicha(a)}>
+                        {desplegada ? "▾ ficha" : TIENE_FICHA(a) ? "▸ ficha" : "▸ ficha…"}
+                      </button>
+                      {/* ── LA SITUACIÓN, DESDE LA PROPIA FILA ──
+                          Cada botón es el que FALTA en esa zona: al confirmado
+                          se le ofrece descartar, al candidato confirmar o
+                          descartar, y al descartado volver a exploración. Los
+                          tres siempre habría que leerlos para saber cuál es el
+                          de ahora.
+                          ⚠ «Quitar» (✕ gris) BORRA la fila; «descartar» (🚫) la
+                          conserva con su nota. Se separan a propósito: la nota
+                          de por qué alguien no encajó es justo lo que evita
+                          volver a proponerlo en seis meses. */}
+                      {sit !== "confirmada" && (
+                        <button title="Confirmar: entra en el proyecto"
+                          style={{ color: "var(--green)" }} disabled={!!cambiando}
+                          onClick={() => cambiarSituacion(a.id, "confirmada")}>✓</button>
+                      )}
+                      {sit !== "descartada" && (
+                        <button title="Descartar: no entra, pero queda apuntado con su nota"
+                          style={{ color: "var(--dim)" }} disabled={!!cambiando}
+                          onClick={() => cambiarSituacion(a.id, "descartada")}>🚫</button>
+                      )}
+                      {sit !== "explorando" && (
+                        <button title="Volver a exploración: todavía se está viendo"
+                          style={{ color: "var(--dim)" }} disabled={!!cambiando}
+                          onClick={() => cambiarSituacion(a.id, "explorando")}>🔎</button>
+                      )}
+                      <button title="Quitar del proyecto (BORRA la fila; para no perderla, descarta con 🚫)"
+                        style={{ color: "var(--dim)" }} onClick={() => setQuitando(a.id)}>✕</button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {desplegada && (
+                <div className="pj-ficha">
+                  <div className="pj-detalles">
+                    <label>
+                      <span>Personaje</span>
+                      <input value={ficha.personaje || ""} onChange={e => set("personaje", e.target.value)}
+                        placeholder={doc ? "(es la persona)" : "Robomac"} style={inputStyle} />
+                    </label>
+                    <label>
+                      <span>Rol</span>
+                      <input list="roles-actor" value={ficha.rol || ""} onChange={e => set("rol", e.target.value)} style={inputStyle} />
+                    </label>
+                    <label>
+                      <span>Arquetipo</span>
+                      <input list="arquetipos" value={ficha.arquetipo || ""} onChange={e => set("arquetipo", e.target.value)}
+                        placeholder="Héroe, Mentor…" style={inputStyle} />
+                      <datalist id="arquetipos">{ARQUETIPOS.map(x => <option key={x} value={x} />)}</datalist>
+                    </label>
+                    {CAMPOS_DETALLE.map(c => (
+                      <label key={c.k}>
+                        <span>{c.label}</span>
+                        <input value={ficha[c.k] || ""} onChange={e => set(c.k, e.target.value)}
+                          placeholder={c.hint} style={inputStyle} />
+                      </label>
+                    ))}
+                  </div>
+
+                  {CAMPOS_FICHA.map(c => (
+                    <label key={c.k} className={`pj-campo${c.par ? " par" : ""}`}>
+                      <span>{c.label}</span>
+                      {c.area
+                        ? <textarea value={ficha[c.k] || ""} onChange={e => set(c.k, e.target.value)}
+                            placeholder={c.hint} rows={2} style={{ ...inputStyle, resize: "vertical" }} />
+                        : <input value={ficha[c.k] || ""} onChange={e => set(c.k, e.target.value)}
+                            placeholder={c.hint} style={inputStyle} />}
+                    </label>
+                  ))}
+
+                  {/* ARTE — hoja de modelo, ortogonales, paleta, ciclos de poses.
+                      Todo esto es material de postulación: el diseño de personaje
+                      se adjunta al expediente DAFO. Con una sola imagen no cabía,
+                      y acababa en una carpeta de Drive que no sabe de qué
+                      personaje es. Ctrl+V pega directo, como en el muro. */}
+                  <div className="pj-arte"
+                    onPaste={e => {
+                      const files = imagenesDePaste(e);
+                      if (!files.length) return;
+                      e.preventDefault();
+                      (async () => {
+                        const urls: string[] = [];
+                        for (const f of files) {
+                          const r = await subirImagen(f);
+                          if (r.error) { setError(r.error); break; }
+                          if (r.url) urls.push(r.url);
+                        }
+                        if (urls.length) setGal(g => [...g, ...urls]);
+                      })();
+                    }}>
+                    <span className="pj-arte-t">Arte del personaje · {gal.length}</span>
+                    <EditorImagenes imgs={gal} setImgs={setGal} max={12} onError={setError} />
+                    <span className="pj-arte-h">Hoja de modelo, ortogonales, paleta, poses… (o pega con Ctrl+V)</span>
+                  </div>
+
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 4 }}>
+                    <button className="btn" style={{ padding: "6px 14px", fontSize: 12 }}
+                      disabled={guardando} onClick={() => guardarFicha(a.id)}>
+                      {guardando ? "…" : "Guardar ficha"}
+                    </button>
+                    <button className="btn btn-ghost" style={{ padding: "6px 10px", fontSize: 12 }}
+                      onClick={() => setAbierto(null)}>Cancelar</button>
+                    <span style={{ flex: 1 }} />
+                    <SubirCara actual={ficha.imagen_url} onSube={u => set("imagen_url", u)} onError={setError} />
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+  };
+
+  /* Las tres zonas, en una sola pasada y con la MISMA regla que el reparto de
+     un fondo (lib/situacionReparto): son la misma pregunta. Se ordena dentro de
+     cada zona, no antes: mezclar el orden de papel con el de situación dejaba a
+     un candidato a protagonista por delante de la protagonista confirmada. */
+  const zonas = (() => {
+    const z = repartirPorSituacion(actores as any[]);
+    return {
+      dentro: ordenarActores(z.dentro),
+      explorando: ordenarActores(z.explorando),
+      descartadas: ordenarActores(z.descartadas),
+    };
+  })();
+
   return (
     <div className="linked" style={{ marginTop: 14 }}>
       <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>
         <h4 style={{ margin: 0, fontSize: 11, letterSpacing: 1.2, textTransform: "uppercase", color: "var(--dim)" }}>
-          {R.ico} {R.titulo} · {actores.length}
+          {/* ⚠ El titular cuenta los CONFIRMADOS, no las filas.
+              Sumando candidatos y descartados, «ACTORES SOCIALES · 6» diría
+              seis contando a cuatro de los que aún no se sabe si estarán y a
+              uno que ya se descartó: el número más visible del bloque sería el
+              más falso. Los otros dos se cuentan en su propia zona, donde la
+              cifra significa algo distinto. */}
+          {R.ico} {R.titulo} · {zonas.dentro.length}
+          {zonas.explorando.length > 0 && (
+            <span style={{ color: "var(--muted)", fontWeight: 400, letterSpacing: 0, textTransform: "none" }}>
+              {" "}+ {zonas.explorando.length} en exploración
+            </span>
+          )}
         </h4>
         <span style={{ flex: 1 }} />
         {!agregando && (
@@ -140,7 +399,10 @@ export default function ActoresProyecto({ proyectoId, actores, personas, tipo, e
           ⚠ No se pudo leer el reparto, así que esta lista está vacía por un fallo, no porque no haya nadie.
           <br /><code style={{ fontSize: 11, opacity: .85 }}>{errServidor}</code>
           {/^column|does not exist|schema cache/i.test(errServidor) && (
-            <><br /><b>Falta correr <code>db/proyecto-personajes.sql</code> en Supabase.</b></>
+            /* Los DOS que puede faltar, no solo el primero: `situacion` y
+               `situacion_en` llegaron después, y el aviso mandaba a correr un
+               archivo que ya estaba corrido mientras la lista salía vacía. */
+            <><br /><b>Falta correr <code>db/proyecto-personajes.sql</code> o <code>db/proyecto-actores-situacion.sql</code> en Supabase.</b></>
           )}
         </div>
       )}
@@ -169,11 +431,21 @@ export default function ActoresProyecto({ proyectoId, actores, personas, tipo, e
           <textarea value={desc} onChange={e => setDesc(e.target.value)}
             placeholder={R.pideNombre ? "¿Qué hay que saber de este personaje?" : "Descripción del personaje (opcional)"}
             rows={2} style={{ ...inputStyle, resize: "vertical" }} />
+          {/* ── ¿ENTRA, O TODAVÍA SE ESTÁ VIENDO? ──
+              Una casilla y no dos botones distintos: el alta es la misma, lo
+              único que cambia es en qué zona cae. Por defecto entra dentro,
+              que es lo que se hacía hasta hoy y lo que uno espera al pulsar
+              «agregar»; la exploración se pide marcando. */}
+          <label className="pj-cand" title="Todavía no está decidido: cae en «En exploración» y se confirma o se descarta desde su fila.">
+            <input type="checkbox" checked={comoCandidato}
+              onChange={e => setComoCandidato(e.target.checked)} />
+            <span>Es un <b>candidato</b> — todavía se está viendo</span>
+          </label>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <button className="btn" style={{ padding: "7px 14px", fontSize: 12 }}
               title={puedeGuardar ? "Guardar" : doc ? "Elige la persona" : "Escribe el nombre del personaje o elige al intérprete"}
               disabled={!puedeGuardar || guardando} onClick={guardar}>
-              {guardando ? "…" : "Guardar"}
+              {guardando ? "…" : comoCandidato ? "Guardar candidato" : "Guardar"}
             </button>
             <button className="btn btn-ghost" style={{ padding: "7px 10px", fontSize: 12 }}
               onClick={() => { setAgregando(false); setSel(null); setNom(""); setRol(""); setDesc(""); setImg(""); }}>Cancelar</button>
@@ -188,176 +460,37 @@ export default function ActoresProyecto({ proyectoId, actores, personas, tipo, e
         </div>
       )}
 
-      {ordenarActores(actores).map(a => {
-        const L = leerActor(a);
-        const per = personaDe(a);
-        const desplegada = abierto === a.id;
-        return (
-          <div key={a.id} className="pj-fila">
-            <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-              {/* La cara del personaje manda sobre la del intérprete: en la
-                  lista se busca a Robomac, no a quien le pone la voz. */}
-              {a.imagen_url
-                // eslint-disable-next-line @next/next/no-img-element
-                ? <img src={a.imagen_url} alt="" className="pj-cara" />
-                : <Avatar nombre={per?.nombre || L.titulo} src={per?.foto_url} size={38} />}
+      {/* ── LAS TRES ZONAS ──
+          Dentro, en exploración y descartados. Misma pantalla que el reparto de
+          un fondo, a propósito. */}
+      {zonas.dentro.map(a => pintarFila(a))}
 
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                  {L.esPersona && per?.id
-                    ? <Link href={`/entidad/persona/${per.id}`} style={{ color: "var(--text)", fontWeight: 600, fontSize: 14 }}>
-                        {L.titulo} →
-                      </Link>
-                    : <b style={{ fontSize: 14 }}>{L.titulo}</b>}
-                  {a.rol && (
-                    <span className="badge" style={{ color: "var(--violet)", background: "rgba(167,139,250,.14)", textTransform: "none", letterSpacing: 0, fontWeight: 700 }}>
-                      {a.rol}
-                    </span>
-                  )}
-                  {a.arquetipo && <span className="badge pj-arq">{a.arquetipo}</span>}
-                </div>
-
-                {/* Quién lo interpreta, o que todavía no lo interpreta nadie.
-                    Un hueco en blanco se lee como un olvido; «sin repartir» se
-                    lee como lo que es: el guion va por delante del casting. */}
-                {L.pie && per?.id && (
-                  <div className="pj-pie">
-                    <Link href={`/entidad/persona/${per.id}`}>👤 {L.pie}</Link>
-                    <button title="Quitar al intérprete" onClick={() => repartir(a.id, null)}>✕</button>
-                  </div>
-                )}
-                {L.sinRepartir && (
-                  <div className="pj-pie">
-                    <span className="pj-sinrepartir">sin repartir</span>
-                    <EntPicker etiqueta="＋ intérprete" items={personas}
-                      onPick={pid => repartir(a.id, pid)} />
-                  </div>
-                )}
-
-                {a.descripcion && !desplegada && (
-                  <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 4, lineHeight: 1.45 }}>
-                    {a.descripcion}
-                  </div>
-                )}
-
-                {/* Lo que la ficha ya tiene escrito, sin abrirla. Si no hay
-                    nada, no se pinta una cabecera vacía. */}
-                {!desplegada && (a.quiere || a.necesita) && (
-                  <div className="pj-deseo">
-                    {a.quiere && <div><b>Quiere</b> {a.quiere}</div>}
-                    {a.necesita && <div><b>Necesita</b> {a.necesita}</div>}
-                  </div>
-                )}
-
-                {/* El arte se ve SIN abrir la ficha. Una galería que solo
-                    aparece en modo edición es una galería que no existe: nadie
-                    entra a editar para mirar. Clic para abrirla a tamaño real
-                    —una hoja de modelo en miniatura no se lee—. */}
-                {!desplegada && (a.imagenes || []).length > 0 && (
-                  <div className="pj-tira">
-                    {(a.imagenes as string[]).map((u, i) => (
-                      <Foto key={i} src={u} maxHeight={96} />
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div style={{ display: "flex", gap: 8, flexShrink: 0, alignItems: "center" }}>
-                {quitando === a.id ? (
-                  <span style={{ fontSize: 11.5, whiteSpace: "nowrap" }}>
-                    ¿quitar? <button style={{ color: "var(--red)", fontWeight: 700 }} onClick={() => quitar(a.id)}>sí</button>
-                    {" / "}<button style={{ color: "var(--dim)" }} onClick={() => setQuitando(null)}>no</button>
-                  </span>
-                ) : (
-                  <>
-                    <button style={{ color: desplegada ? "var(--violet)" : "var(--dim)", fontSize: 11.5 }}
-                      title="Ficha del personaje" onClick={() => abrirFicha(a)}>
-                      {desplegada ? "▾ ficha" : TIENE_FICHA(a) ? "▸ ficha" : "▸ ficha…"}
-                    </button>
-                    <button title="Quitar" style={{ color: "var(--dim)" }} onClick={() => setQuitando(a.id)}>✕</button>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {desplegada && (
-              <div className="pj-ficha">
-                <div className="pj-detalles">
-                  <label>
-                    <span>Personaje</span>
-                    <input value={ficha.personaje || ""} onChange={e => set("personaje", e.target.value)}
-                      placeholder={doc ? "(es la persona)" : "Robomac"} style={inputStyle} />
-                  </label>
-                  <label>
-                    <span>Rol</span>
-                    <input list="roles-actor" value={ficha.rol || ""} onChange={e => set("rol", e.target.value)} style={inputStyle} />
-                  </label>
-                  <label>
-                    <span>Arquetipo</span>
-                    <input list="arquetipos" value={ficha.arquetipo || ""} onChange={e => set("arquetipo", e.target.value)}
-                      placeholder="Héroe, Mentor…" style={inputStyle} />
-                    <datalist id="arquetipos">{ARQUETIPOS.map(x => <option key={x} value={x} />)}</datalist>
-                  </label>
-                  {CAMPOS_DETALLE.map(c => (
-                    <label key={c.k}>
-                      <span>{c.label}</span>
-                      <input value={ficha[c.k] || ""} onChange={e => set(c.k, e.target.value)}
-                        placeholder={c.hint} style={inputStyle} />
-                    </label>
-                  ))}
-                </div>
-
-                {CAMPOS_FICHA.map(c => (
-                  <label key={c.k} className={`pj-campo${c.par ? " par" : ""}`}>
-                    <span>{c.label}</span>
-                    {c.area
-                      ? <textarea value={ficha[c.k] || ""} onChange={e => set(c.k, e.target.value)}
-                          placeholder={c.hint} rows={2} style={{ ...inputStyle, resize: "vertical" }} />
-                      : <input value={ficha[c.k] || ""} onChange={e => set(c.k, e.target.value)}
-                          placeholder={c.hint} style={inputStyle} />}
-                  </label>
-                ))}
-
-                {/* ARTE — hoja de modelo, ortogonales, paleta, ciclos de poses.
-                    Todo esto es material de postulación: el diseño de personaje
-                    se adjunta al expediente DAFO. Con una sola imagen no cabía,
-                    y acababa en una carpeta de Drive que no sabe de qué
-                    personaje es. Ctrl+V pega directo, como en el muro. */}
-                <div className="pj-arte"
-                  onPaste={e => {
-                    const files = imagenesDePaste(e);
-                    if (!files.length) return;
-                    e.preventDefault();
-                    (async () => {
-                      const urls: string[] = [];
-                      for (const f of files) {
-                        const r = await subirImagen(f);
-                        if (r.error) { setError(r.error); break; }
-                        if (r.url) urls.push(r.url);
-                      }
-                      if (urls.length) setGal(g => [...g, ...urls]);
-                    })();
-                  }}>
-                  <span className="pj-arte-t">Arte del personaje · {gal.length}</span>
-                  <EditorImagenes imgs={gal} setImgs={setGal} max={12} onError={setError} />
-                  <span className="pj-arte-h">Hoja de modelo, ortogonales, paleta, poses… (o pega con Ctrl+V)</span>
-                </div>
-
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 4 }}>
-                  <button className="btn" style={{ padding: "6px 14px", fontSize: 12 }}
-                    disabled={guardando} onClick={() => guardarFicha(a.id)}>
-                    {guardando ? "…" : "Guardar ficha"}
-                  </button>
-                  <button className="btn btn-ghost" style={{ padding: "6px 10px", fontSize: 12 }}
-                    onClick={() => setAbierto(null)}>Cancelar</button>
-                  <span style={{ flex: 1 }} />
-                  <SubirCara actual={ficha.imagen_url} onSube={u => set("imagen_url", u)} onError={setError} />
-                </div>
-              </div>
-            )}
+      {zonas.explorando.length > 0 && (
+        <div className="pj-zona">
+          <div className="pj-zona-h">
+            🔎 En exploración
+            <span className="pj-zona-n">{zonas.explorando.length}</span>
+            <span className="pj-zona-nota">
+              todavía no está decidido — confirma con ✓ o descarta con 🚫
+            </span>
           </div>
-        );
-      })}
+          {zonas.explorando.map(a => pintarFila(a))}
+        </div>
+      )}
+
+      {zonas.descartadas.length > 0 && (
+        <div className="pj-zona pj-zona-off">
+          <button type="button" className="pj-zona-h pj-zona-btn"
+            onClick={() => setVerDescartados(v => !v)}>
+            {verDescartados ? "▾" : "▸"} 🚫 Descartados
+            <span className="pj-zona-n">{zonas.descartadas.length}</span>
+            <span className="pj-zona-nota">
+              no se borran: saber a quién descartaste evita volver a proponerlo dentro de seis meses
+            </span>
+          </button>
+          {verDescartados && zonas.descartadas.map(a => pintarFila(a))}
+        </div>
+      )}
 
       {!actores.length && !agregando && !errServidor && (
         <div style={{ color: "var(--dim)", fontSize: 12.5, padding: "4px 0" }}>{R.vacio}</div>
