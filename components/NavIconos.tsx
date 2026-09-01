@@ -61,6 +61,12 @@ const DESTINOS: Destino[] = [
      Va en «el día a día» y no en «la plata» aunque acabe en un formulario de
      DAFO: buscar un tema en el catálogo es trabajo de rodaje y montaje. */
   { ruta: "/musica", ico: "🎵", txt: "música y derechos", grupo: "dia" },
+  /* ── EL CLEARANCE, JUNTO A LA MÚSICA ──
+     Contesta una sola pregunta —«¿puedo publicar esto hoy?»— y es la que hay
+     que poder hacerse en cualquier momento, no la víspera del estreno. Va en
+     «el día a día» porque conseguir firmas es trabajo de rodaje: el día que se
+     convierte en trabajo de despacho, ya es tarde y la gente no está. */
+  { ruta: "/clearance", ico: "⚖", txt: "clearance: ¿puedo publicar?", grupo: "dia" },
   { ruta: "/agenda", ico: "📆", txt: "agenda", grupo: "dia" },
   { ruta: "/pulso", ico: "📊", txt: "pulso del equipo", grupo: "dia" },
   { ruta: "/llaves", ico: "🔑", txt: "llaves", grupo: "dia" },
