@@ -55,6 +55,12 @@ const DESTINOS: Destino[] = [
      el botón tiene que seguir diciendo dónde estás. */
   { ruta: "/guion", ico: "✍", txt: "guion y tratamientos", grupo: "dia",
     activo: p => p === "/guion" || p.startsWith("/guion/") },
+  /* ── LA MÚSICA, AL LADO DEL GUION ──
+     Junto a él a propósito: son las dos cosas de una película que hay que
+     tener resueltas antes de estrenar y que no se ven mirando el material.
+     Va en «el día a día» y no en «la plata» aunque acabe en un formulario de
+     DAFO: buscar un tema en el catálogo es trabajo de rodaje y montaje. */
+  { ruta: "/musica", ico: "🎵", txt: "música y derechos", grupo: "dia" },
   { ruta: "/agenda", ico: "📆", txt: "agenda", grupo: "dia" },
   { ruta: "/pulso", ico: "📊", txt: "pulso del equipo", grupo: "dia" },
   { ruta: "/llaves", ico: "🔑", txt: "llaves", grupo: "dia" },

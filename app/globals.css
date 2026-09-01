@@ -7341,3 +7341,26 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
   text-transform: none; font-size: 11px; margin-left: 8px; }
 .act-ces-falta { color: var(--yellow); }
 .act-ces-ok { color: var(--dim); }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   components/ObrasProyecto.tsx — la música de una película
+   Casi todo se reutiliza de `.trt-*` (las filas) y `.ces-*` (el panel). Aquí
+   solo va lo que no existía: el panel a ancho completo, el chip del origen y
+   la línea de cada pega.
+   ══════════════════════════════════════════════════════════════════════════ */
+.mus { margin-top: 4px; }
+/* ⚠ `.ces-panel` viene con `max-width:440px` porque nació dentro de una fila
+   estrecha del reparto. Aquí el panel es la pantalla entera, así que se suelta. */
+.mus-form { max-width: none; }
+/* `.ces-panel` estila sus input y select, pero no había textarea: la música
+   pide párrafos —el prompt, qué decía la ficha del catálogo— y sin esto salen
+   con el estilo del navegador, blancos sobre el fondo oscuro. */
+.mus-form textarea { background: var(--card); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px;
+  font-size: 12px; font-family: inherit; width: 100%; resize: vertical; }
+.mus-top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.mus-org { font-size: 10.5px; color: var(--muted); background: var(--panel);
+  border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px;
+  white-space: nowrap; }
+.mus-marca { font-size: 10.5px; font-weight: 700; white-space: nowrap; }
+.mus-pega { font-size: 11.5px; line-height: 1.5; margin-top: 3px; }
