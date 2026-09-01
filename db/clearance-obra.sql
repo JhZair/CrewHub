@@ -285,8 +285,8 @@ select
     el update encontraba dos candidatas y Postgres elegía una arbitrariamente,
     sin error. El catálogo global quedaba duplicado y el puente apuntando a
     cualquiera de las dos. El comentario decía que era reanudable; no lo era. */
-   and not exists (select 1 from obra o where o._origen_po = po.id)
- where po.obra_id is null;
+ where po.obra_id is null
+   and not exists (select 1 from obra o where o._origen_po = po.id);
 
 update proyecto_obra po
    set obra_id = o.id
