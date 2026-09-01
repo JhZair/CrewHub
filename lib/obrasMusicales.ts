@@ -301,6 +301,24 @@ export function pegasDe(o: FilaObra, hoy?: string, ces?: MapaCesiones | null): P
       }
       if (!hay(o.consultado_en))
         ps.push({ gravedad: "falta", txt: "falta comprobar de quién es la composición" });
+      /* ── CONSULTADO NO ES LO MISMO QUE IDENTIFICADO ──
+         ⚠ Aquí el ISWC NO lo excusa la nota, al revés que en `dominio_publico`.
+         Y la diferencia es real, no una manía:
+           · en dominio público, «buscado y no figura en el catálogo» RESUELVE:
+             si no hay registro no hay titular a quien pedirle nada;
+           · aquí, «hay quince Fatal Destino y no sé cuál es» NO resuelve nada.
+             La composición tiene dueño —uno de los quince— y no sabemos quién.
+         El primer borrador daba esta fila por verde en cuanto se ponía la fecha,
+         y eso convertía «lo busqué» en «está aclarado», que es justo el salto
+         que este archivo entero existe para no dar.
+         Se apaga encontrando el código, que es el trabajo que hay que hacer: en
+         el catálogo la columna de artistas desempata —solo cinco de los quince
+         la tienen— y quien lo sabe es quien toca el tema. */
+      else if (!hay(o.iswc))
+        ps.push({
+          gravedad: "falta",
+          txt: "consultada pero sin identificar cuál de los registros es: la composición tiene dueño y no sabemos quién",
+        });
       break;
 
     case "licenciada":
