@@ -376,11 +376,7 @@ begin
     ('autorizacion','aut_ck_riesgo','riesgo_manual',
      $q$riesgo_manual is null or riesgo_manual in ('bajo','medio','alto','critico')$q$),
     ('autorizacion','aut_ck_prioridad','prioridad',
-     $q$prioridad in ('urgente','alta','media','baja')$q$),
-    ('gestion_contacto','ges_ck_canal','canal',
-     $q$canal in ('llamada','whatsapp','correo','presencial','carta','intermediario')$q$),
-    ('gestion_contacto','ges_ck_resultado','resultado',
-     $q$resultado in ('sin_respuesta','respondio','acepto','rechazo','no_ubicable')$q$)
+     $q$prioridad in ('urgente','alta','media','baja')$q$)
   ) as v(tabla, nombre, col, expr) loop
     execute format('alter table %I drop constraint if exists %I', d.tabla, d.nombre);
     execute format('alter table %I add constraint %I check (%s)', d.tabla, d.nombre, d.expr);
@@ -423,6 +419,27 @@ create table if not exists gestion_contacto (
   creado_por uuid references perfiles(id)
 );
 create index if not exists idx_gestion_aut on gestion_contacto(autorizacion_id);
+
+/* ── LOS VOCABULARIOS DE ESTA TABLA, REPUESTOS AQUÍ Y NO ARRIBA ──
+   ⚠ Estaban en el bloque `do $$` de §3, que corre ANTES de este `create table`.
+   Postgres lo rechaza con «relation "gestion_contacto" does not exist» y mata el
+   archivo a mitad — con `autorizacion` ya creada y el backfill sin hacer.
+   El `execute format` no avisa en tiempo de escritura: la tabla se nombra dentro
+   de una cadena, así que nada lo ve hasta que se ejecuta.
+   Un `alter` va después del `create` de su tabla. Siempre. */
+do $$
+declare d record;
+begin
+  for d in select * from (values
+    ('ges_ck_canal',
+     $q$canal in ('llamada','whatsapp','correo','presencial','carta','intermediario')$q$),
+    ('ges_ck_resultado',
+     $q$resultado in ('sin_respuesta','respondio','acepto','rechazo','no_ubicable')$q$)
+  ) as v(nombre, expr) loop
+    execute format('alter table gestion_contacto drop constraint if exists %I', d.nombre);
+    execute format('alter table gestion_contacto add constraint %I check (%s)', d.nombre, d.expr);
+  end loop;
+end $$;
 
 -- ------------------------------------------------------------
 -- 5 · BACKFILL — las cesiones de ayer, sin perder ninguna

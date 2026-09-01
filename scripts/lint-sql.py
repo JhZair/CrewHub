@@ -21,6 +21,21 @@ Quita comentarios, cadenas y bloques $$…$$ para no despistarse, parte por `;`
 de nivel superior y mira si aparece un `and`/`or` a profundidad 0 antes del
 primer `where`/`set`/`on`/`having`. Tolera el `and` de `between` y el de `case`.
 
+COMPRUEBA DOS COSAS, y las dos son errores que de hecho cometimos:
+
+  1. Un `and`/`or` de nivel superior ANTES del primer `where`/`set`/`on`.
+     Postgres: «syntax error at or near "and"».
+
+  2. Un `alter table X` que aparece ANTES del `create table … X` del mismo
+     archivo. Postgres: «relation "X" does not exist».
+     ⚠ Este pica sobre todo dentro de `execute format('alter table %I …')`:
+     la tabla se nombra dentro de una CADENA, así que ni el editor ni ningún
+     `grep` ingenuo lo ven — solo se descubre al ejecutar, a mitad de una
+     migración que ya escribió media base.
+
+No pretende ser un analizador de SQL: comprueba las clases de error que ya nos
+costaron una migración a medias, y nada más.
+
     python3 scripts/lint-sql.py     → 0 si todo bien, 1 si hay algo mal formado
 """
 import re, glob, sys
@@ -67,9 +82,32 @@ def nivel_sup(s):
         elif prof == 0: toks.append((tk, m.start()))
     return toks
 
+def tablas_fuera_de_orden(f, crudo):
+    """Un `alter table X` antes del `create table … X` del mismo archivo.
+
+    Se mira sobre el texto CRUDO —sin quitar cadenas— justamente porque el caso
+    que nos picó vivía dentro de un `execute format('alter table %I …')`, y al
+    limpiar las cadenas desaparecía."""
+    creadas = {}
+    for m in re.finditer(r'create\s+table\s+(?:if\s+not\s+exists\s+)?"?(\w+)"?', crudo, re.I):
+        creadas.setdefault(m.group(1).lower(), m.start())
+    fallos = []
+    # `alter table X` literal, y también el que va dentro de una cadena de format()
+    for m in re.finditer(r"alter\s+table\s+(?:if\s+exists\s+)?\"?(\w+)\"?", crudo, re.I):
+        t = m.group(1).lower()
+        if t in ("only",): continue
+        if t in creadas and m.start() < creadas[t]:
+            fallos.append((t, crudo[:m.start()].count("\n") + 1,
+                           crudo[:creadas[t]].count("\n") + 1))
+    return fallos
+
 malos = 0
 for f in sorted(glob.glob("db/*.sql")):
-    limpio = sin_comentarios(open(f, encoding="utf-8").read())
+    crudo = open(f, encoding="utf-8").read()
+    for t, ln_alter, ln_create in tablas_fuera_de_orden(f, crudo):
+        print(f"  ❌ {f}:{ln_alter}: `alter table {t}` antes de su `create table` (línea {ln_create})")
+        malos += 1
+    limpio = sin_comentarios(crudo)
     for s in sentencias(limpio):
         st = s.strip().lower()
         if not st.startswith(("select","insert","update","delete","with")): continue
