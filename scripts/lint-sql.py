@@ -1,65 +1,145 @@
 #!/usr/bin/env python3
 """
-COMPROBADOR DE ORDEN DE CLÁUSULAS EN db/*.sql
+COMPROBADOR DE db/*.sql
 
-⚠ POR QUÉ EXISTE. Un `and` de nivel superior colocado ANTES del `where`:
+⚠ POR QUÉ EXISTE, Y POR QUÉ ESTÁ ESCRITO ASÍ.
 
-      from proyecto_obra po
-       and not exists (...)      ← aquí
-     where po.obra_id is null;
+Estas migraciones se corren a mano, en producción, una por una. Un error de
+sintaxis no se descubre hasta que se ejecuta — y para entonces las anteriores de
+la serie ya escribieron media base. Pasó tres veces seguidas con `clearance-*`:
 
-Postgres lo rechaza con «syntax error at or near "and"», pero eso solo se
-descubre AL CORRERLO — y estas migraciones se corren a mano, en producción, una
-por una. El error paró db/clearance-obra.sql a mitad de la serie después de que
-la primera ya hubiera pasado.
+    1. `and not exists (…)` colocado entre el `from` y el `where`
+       → syntax error at or near "and"
+    2. `alter table gestion_contacto` dentro de un `execute format`, ANTES del
+       `create table` de esa tabla
+       → relation "gestion_contacto" does not exist
+    3. un `/*` sin su `*/`
+       → unterminated /* comment
 
-Nada más lo veía: `tsc` no mira SQL, y en el sandbox no hay Postgres ni parser
-para comprobarlo de verdad. Así que esto comprueba la ÚNICA clase de error que
-de hecho cometimos, y no pretende ser un analizador de SQL.
+`tsc` no mira SQL y en el sandbox no hay Postgres ni parser. Así que hay que
+comprobarlo aquí.
 
-Quita comentarios, cadenas y bloques $$…$$ para no despistarse, parte por `;`
-de nivel superior y mira si aparece un `and`/`or` a profundidad 0 antes del
-primer `where`/`set`/`on`/`having`. Tolera el `and` de `between` y el de `case`.
+── LA LECCIÓN QUE CAMBIÓ EL DISEÑO ──
+Las dos primeras versiones de este archivo eran UNA REGLA POR INCIDENTE: se
+añadía la comprobación del error que acababa de picar. Y al día siguiente picaba
+otro que no estaba en la lista — el tercero se coló por un comprobador escrito
+justamente para que no se colara nada.
 
-COMPRUEBA DOS COSAS, y las dos son errores que de hecho cometimos:
-
-  1. Un `and`/`or` de nivel superior ANTES del primer `where`/`set`/`on`.
-     Postgres: «syntax error at or near "and"».
-
-  2. Un `alter table X` que aparece ANTES del `create table … X` del mismo
-     archivo. Postgres: «relation "X" does not exist».
-     ⚠ Este pica sobre todo dentro de `execute format('alter table %I …')`:
-     la tabla se nombra dentro de una CADENA, así que ni el editor ni ningún
-     `grep` ingenuo lo ven — solo se descubre al ejecutar, a mitad de una
-     migración que ya escribió media base.
-
-No pretende ser un analizador de SQL: comprueba las clases de error que ya nos
-costaron una migración a medias, y nada más.
+Una regla por incidente solo protege del pasado. Así que ahora lo primero que se
+hace es una comprobación ESTRUCTURAL: recorrer el archivo como un lexer y
+verificar que todo lo que abre, cierra —comentarios, cadenas, dólares,
+paréntesis—. Eso cubre de golpe una familia entera de errores, incluidos los que
+todavía no hemos cometido. Las dos reglas concretas se quedan debajo porque no
+son problemas de delimitadores y no las cubre lo anterior.
 
     python3 scripts/lint-sql.py     → 0 si todo bien, 1 si hay algo mal formado
 """
+
 import re, glob, sys
 
-def sin_comentarios(t):
-    """Quita comentarios y cadenas para que no despisten al analizador."""
-    out, i, n = [], 0, len(t)
+
+# ══════════════════════════════════════════════════════════════════════════
+#  1 · ESTRUCTURA — que todo lo que abre, cierre
+#      Un solo recorrido que es a la vez el lexer que usan las demás reglas.
+# ══════════════════════════════════════════════════════════════════════════
+
+def lexer(t):
+    """Devuelve (texto sin comentarios ni cadenas, lista de fallos de cierre).
+
+    Recorre carácter a carácter respetando el anidamiento real de SQL. Devolver
+    el texto limpio ADEMÁS de los fallos es lo que evita tener dos recorridos
+    que puedan discrepar sobre dónde empieza una cadena.
+    """
+    out, fallos = [], []
+    i, n = 0, len(t)
+    linea = lambda k: t[:k].count("\n") + 1
+
     while i < n:
+        # ── comentario de bloque ──
         if t.startswith("/*", i):
-            j = t.find("*/", i+2); i = (j+2) if j>=0 else n; out.append(" ")
+            ini = i
+            # ⚠ Los /* */ de Postgres ANIDAN, a diferencia de los de C. Un
+            # comentario que contenga otro y cierre una sola vez sigue abierto.
+            prof, j = 1, i + 2
+            while j < n and prof:
+                if t.startswith("/*", j): prof += 1; j += 2
+                elif t.startswith("*/", j): prof -= 1; j += 2
+                else: j += 1
+            if prof:
+                fallos.append((linea(ini), "un `/*` sin su `*/`",
+                               t[ini:ini+70].replace("\n", " ")))
+                break
+            i = j; out.append(" ")
+
+        # ── comentario de línea ──
         elif t.startswith("--", i):
-            j = t.find("\n", i); i = (j) if j>=0 else n
+            j = t.find("\n", i)
+            i = j if j >= 0 else n
+
+        # ── cadena ──
         elif t[i] == "'":
-            j = i+1
+            ini, j = i, i + 1
+            cerrada = False
             while j < n:
-                if t[j] == "'" and (j+1>=n or t[j+1] != "'"): break
-                j += 2 if (t[j]=="'" and j+1<n and t[j+1]=="'") else 1
-            out.append("''"); i = j+1
-        elif t.startswith("$$", i) or t.startswith("$q$", i) or t.startswith("$c$", i):
-            tag = t[i:i+3] if t.startswith(("$q$","$c$"), i) else "$$"
-            j = t.find(tag, i+len(tag)); i = (j+len(tag)) if j>=0 else n; out.append(" ")
+                if t[j] == "'":
+                    if j + 1 < n and t[j+1] == "'": j += 2; continue
+                    cerrada = True; j += 1; break
+                j += 1
+            if not cerrada:
+                fallos.append((linea(ini), "una comilla `'` sin cerrar",
+                               t[ini:ini+70].replace("\n", " ")))
+                break
+            out.append("''"); i = j
+
+        # ── identificador entrecomillado ──
+        elif t[i] == '"':
+            ini = i
+            j = t.find('"', i + 1)
+            if j < 0:
+                fallos.append((linea(ini), 'una comilla doble `"` sin cerrar',
+                               t[ini:ini+70].replace("\n", " ")))
+                break
+            out.append('"x"'); i = j + 1
+
+        # ── dólar: $$ … $$ y $tag$ … $tag$ ──
+        elif t[i] == "$":
+            m = re.match(r'\$(\w*)\$', t[i:])
+            if m:
+                tag, ini = m.group(0), i
+                j = t.find(tag, i + len(tag))
+                if j < 0:
+                    fallos.append((linea(ini), f"un bloque `{tag}` sin cerrar",
+                                   t[ini:ini+70].replace("\n", " ")))
+                    break
+                out.append(" "); i = j + len(tag)
+            else:
+                out.append(t[i]); i += 1
+
         else:
             out.append(t[i]); i += 1
-    return "".join(out)
+
+    limpio = "".join(out)
+
+    # ── paréntesis, ya sin cadenas ni comentarios que despisten ──
+    prof, abierto_en = 0, []
+    for k, ch in enumerate(limpio):
+        if ch == "(": prof += 1; abierto_en.append(k)
+        elif ch == ")":
+            prof -= 1
+            if abierto_en: abierto_en.pop()
+            if prof < 0:
+                fallos.append((limpio[:k].count("\n") + 1, "un `)` de más", ""))
+                prof = 0
+    if prof:
+        fallos.append((limpio[:abierto_en[0]].count("\n") + 1,
+                       f"{prof} paréntesis sin cerrar", ""))
+
+    return limpio, fallos
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  2 · ORDEN DE CLÁUSULAS — un `and`/`or` antes del `where`
+# ══════════════════════════════════════════════════════════════════════════
 
 def sentencias(t):
     """Parte por `;` de nivel superior (fuera de paréntesis)."""
@@ -68,63 +148,89 @@ def sentencias(t):
         if ch == "(": prof += 1
         elif ch == ")": prof -= 1
         elif ch == ";" and prof == 0:
-            res.append(t[ini:k]); ini = k+1
+            res.append(t[ini:k]); ini = k + 1
     if t[ini:].strip(): res.append(t[ini:])
     return res
+
 
 def nivel_sup(s):
     """Los tokens de cláusula que están a profundidad 0."""
     prof, toks = 0, []
-    for m in re.finditer(r'[()]|\b(select|from|where|and|or|set|values|group|order|having|returning|when|then|else|case|end|insert|update|delete|join|on|using|as|not|exists|into|do|if|loop|declare|begin)\b', s, re.I):
+    pat = (r'[()]|\b(select|from|where|and|or|set|values|group|order|having|'
+           r'returning|when|then|else|case|end|insert|update|delete|join|on|'
+           r'using|as|not|exists|into|do|if|loop|declare|begin)\b')
+    for m in re.finditer(pat, s, re.I):
         tk = m.group(0).lower()
         if tk == "(": prof += 1
         elif tk == ")": prof -= 1
-        elif prof == 0: toks.append((tk, m.start()))
+        elif prof == 0: toks.append(tk)
     return toks
 
-def tablas_fuera_de_orden(f, crudo):
-    """Un `alter table X` antes del `create table … X` del mismo archivo.
 
-    Se mira sobre el texto CRUDO —sin quitar cadenas— justamente porque el caso
-    que nos picó vivía dentro de un `execute format('alter table %I …')`, y al
-    limpiar las cadenas desaparecía."""
+def clausulas_fuera_de_orden(limpio):
+    fallos = []
+    for s in sentencias(limpio):
+        st = s.strip().lower()
+        if not st.startswith(("select", "insert", "update", "delete", "with")):
+            continue
+        toks = nivel_sup(s)
+        try:
+            iw = min(toks.index(x) for x in ("where", "set", "on", "having") if x in toks)
+        except ValueError:
+            iw = 10**9
+        for j, tk in enumerate(toks):
+            if tk in ("and", "or") and j < iw:
+                # el `and` de `between` y el de `case … when` son legítimos
+                if {"case", "when", "then"} & set(toks[max(0, j-4):j]):
+                    continue
+                fallos.append((0, f"un `{tk}` de nivel superior ANTES del `where`",
+                               " ".join(toks[:j+2])))
+                break
+    return fallos
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  3 · ORDEN DE TABLAS — un `alter` antes de su `create`
+#      Sobre el texto CRUDO, sin quitar cadenas: el caso que picó vivía dentro
+#      de un `execute format('alter table %I …')`.
+# ══════════════════════════════════════════════════════════════════════════
+
+def tablas_fuera_de_orden(crudo):
     creadas = {}
     for m in re.finditer(r'create\s+table\s+(?:if\s+not\s+exists\s+)?"?(\w+)"?', crudo, re.I):
         creadas.setdefault(m.group(1).lower(), m.start())
     fallos = []
-    # `alter table X` literal, y también el que va dentro de una cadena de format()
-    for m in re.finditer(r"alter\s+table\s+(?:if\s+exists\s+)?\"?(\w+)\"?", crudo, re.I):
+    for m in re.finditer(r'alter\s+table\s+(?:if\s+exists\s+)?"?(\w+)"?', crudo, re.I):
         t = m.group(1).lower()
-        if t in ("only",): continue
+        if t == "only": continue
         if t in creadas and m.start() < creadas[t]:
-            fallos.append((t, crudo[:m.start()].count("\n") + 1,
-                           crudo[:creadas[t]].count("\n") + 1))
+            fallos.append((crudo[:m.start()].count("\n") + 1,
+                           f"`alter table {t}` antes de su `create table`",
+                           f"el create está en la línea {crudo[:creadas[t]].count(chr(10)) + 1}"))
     return fallos
 
-malos = 0
-for f in sorted(glob.glob("db/*.sql")):
-    crudo = open(f, encoding="utf-8").read()
-    for t, ln_alter, ln_create in tablas_fuera_de_orden(f, crudo):
-        print(f"  ❌ {f}:{ln_alter}: `alter table {t}` antes de su `create table` (línea {ln_create})")
-        malos += 1
-    limpio = sin_comentarios(crudo)
-    for s in sentencias(limpio):
-        st = s.strip().lower()
-        if not st.startswith(("select","insert","update","delete","with")): continue
-        if " do " in st[:6] or st.startswith("do"): continue
-        toks = [t for t,_ in nivel_sup(s)]
-        # EL ERROR: un `and`/`or` de nivel superior ANTES del primer `where`/`set`/`on`
-        try: iw = min([toks.index(x) for x in ("where","set","on","having") if x in toks])
-        except ValueError: iw = 10**9
-        for j, t in enumerate(toks):
-            if t in ("and","or") and j < iw:
-                # `and` dentro de un `between`/`case` de nivel 0 es legítimo
-                antes = toks[max(0,j-4):j]
-                if "case" in antes or "when" in antes or "then" in antes: continue
-                linea = limpio[:s and limpio.index(s)].count("\n") + s[:[m.start() for m in re.finditer(r'\b(and|or)\b', s, re.I)][0]].count("\n") + 1
-                print(f"  ❌ {f}: un `{t}` de nivel superior ANTES del `where`")
-                print(f"     {' '.join(toks[:j+2])}")
-                malos += 1
-                break
-print(f"\n  {'✅ ninguna cláusula fuera de orden' if not malos else f'❌ {malos} sentencias mal formadas'}")
-sys.exit(1 if malos else 0)
+
+# ══════════════════════════════════════════════════════════════════════════
+
+def main():
+    malos = 0
+    for f in sorted(glob.glob("db/*.sql")):
+        crudo = open(f, encoding="utf-8").read()
+        limpio, fallos = lexer(crudo)
+        # ⚠ Si la estructura está rota, las otras dos reglas leerían basura: el
+        # texto «limpio» se cortó donde falló el cierre. Se avisa y se pasa.
+        if not fallos:
+            fallos = clausulas_fuera_de_orden(limpio)
+        fallos += tablas_fuera_de_orden(crudo)
+        for ln, que, detalle in fallos:
+            donde = f"{f}:{ln}" if ln else f
+            print(f"  ❌ {donde}: {que}")
+            if detalle: print(f"     {detalle}")
+            malos += 1
+
+    print(f"\n  {'✅ los ' + str(len(glob.glob('db/*.sql'))) + ' archivos de db/ están bien formados' if not malos else f'❌ {malos} problemas'}")
+    return 1 if malos else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

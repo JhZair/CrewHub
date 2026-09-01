@@ -164,7 +164,7 @@ create index if not exists idx_material_proy on material_aportado(proyecto_id);
    ceder la imagen de quienes salen en ella— pero sin pantalla que la llene, la
    tabla vacía diría que nadie sale en ninguna foto. Cuando se levante, cada
    persona retratada tendrá que generar su propia `autorizacion` de
-   imagen_voz_testimonio, que es lo que de verdad falta.
+   imagen_voz_testimonio, que es lo que de verdad falta. */
 
 alter table material_aportado drop constraint if exists material_aportado_tipo;
 alter table material_aportado add constraint material_aportado_tipo
