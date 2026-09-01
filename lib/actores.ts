@@ -159,6 +159,25 @@ export const CAMPOS_DETALLE: CampoFicha[] = [
   { k: "rasgos", label: "Rasgos", hint: "cómo es y cómo se ve" },
 ];
 
+/** Los detalles que se piden EN LA FICHA, según el tipo de proyecto.
+ *
+ *  ⚠ En un documental, el género NO se pregunta aquí. La persona ya está dada
+ *  de alta en `personas` con su género, y esta ficha describe a un personaje
+ *  que ES esa persona: preguntarlo otra vez es pedir dos veces el mismo dato y
+ *  crear un segundo sitio donde puede decir algo distinto. El día que alguien
+ *  corrija la ficha de la persona, esta copia se quedaría mintiendo.
+ *  En ficción y animación sí se pregunta, porque ahí el personaje es inventado
+ *  y su género no sale de ninguna parte — Robomac no está en `personas`.
+ *
+ *  La edad y los rasgos se quedan en los dos: la edad del personaje puede no
+ *  ser la de quien lo interpreta ni la que tiene hoy la persona real —se rodó
+ *  hace dos años—, y los rasgos describen cómo se ve EN LA PELÍCULA. */
+export function detallesDe(tipo?: string | null): CampoFicha[] {
+  return esDocumental(tipo)
+    ? CAMPOS_DETALLE.filter(c => c.k !== "genero")
+    : CAMPOS_DETALLE;
+}
+
 /* Arquetipos del viaje del héroe. Sugerencias, no lista cerrada: el combo es
    editable y un proyecto puede nombrarlos a su manera. */
 export const ARQUETIPOS = [

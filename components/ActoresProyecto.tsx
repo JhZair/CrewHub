@@ -13,7 +13,7 @@ import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
 import EditorImagenes from "@/components/EditorImagenes";
 import Foto from "@/components/Foto";
 import { rotuloActores, rolesDe, ordenarActores, leerActor, personaDe, esDocumental,
-  CAMPOS_FICHA, CAMPOS_DETALLE, ARQUETIPOS, TIENE_FICHA } from "@/lib/actores";
+  CAMPOS_FICHA, CAMPOS_DETALLE, detallesDe, ARQUETIPOS, TIENE_FICHA } from "@/lib/actores";
 import { useRouter } from "next/navigation";
 import Link from "@/components/Enlace";
 import { useRef, useState } from "react";
@@ -159,6 +159,10 @@ export default function ActoresProyecto({
   const abrirFicha = (a: any) => {
     if (abierto === a.id) { setAbierto(null); return; }
     const f: Record<string, string> = {};
+    /* ⚠ Aquí se cargan TODOS los detalles, no solo los que pinta `detallesDe`.
+       Si en un documental no se carga `genero`, el guardado lo mandaría vacío y
+       borraría en silencio lo que alguien escribió antes de que este campo se
+       ocultara. Cargado y no pintado, se guarda igual que estaba. */
     [...CAMPOS_FICHA, ...CAMPOS_DETALLE].forEach(c => { f[c.k] = a[c.k] || ""; });
     f.personaje = a.personaje || ""; f.rol = a.rol || "";
     f.arquetipo = a.arquetipo || ""; f.imagen_url = a.imagen_url || "";
@@ -338,7 +342,7 @@ export default function ActoresProyecto({
                         placeholder="Héroe, Mentor…" style={inputStyle} />
                       <datalist id="arquetipos">{ARQUETIPOS.map(x => <option key={x} value={x} />)}</datalist>
                     </label>
-                    {CAMPOS_DETALLE.map(c => (
+                    {detallesDe(tipo).map(c => (
                       <label key={c.k}>
                         <span>{c.label}</span>
                         <input value={ficha[c.k] || ""} onChange={e => set(c.k, e.target.value)}
@@ -414,6 +418,13 @@ export default function ActoresProyecto({
 
   return (
     <div className="linked" style={{ marginTop: 14 }}>
+      {/* ── EL DESPLEGABLE DE ROLES, EN LA RAÍZ ──
+          ⚠ Vivía DENTRO del formulario de alta, que solo se renderiza con el
+          formulario abierto. Resultado: al editar la ficha de alguien ya dado
+          de alta, el `list="roles-actor"` apuntaba a un datalist que no existía
+          y el campo Rol salía como una caja de texto vacía, sin sugerencias y
+          sin dar ningún error. Aquí está siempre, y lo usan los dos sitios. */}
+      <datalist id="roles-actor">{ROLES.map(r => <option key={r} value={r} />)}</datalist>
       <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>
         <h4 style={{ margin: 0, fontSize: 11, letterSpacing: 1.2, textTransform: "uppercase", color: "var(--dim)" }}>
           {/* ⚠ El titular cuenta los CONFIRMADOS, no las filas.
@@ -480,7 +491,6 @@ export default function ActoresProyecto({
             <input list="roles-actor" value={rol} onChange={e => setRol(e.target.value)}
               placeholder="Rol (protagonista, secundario…)"
               style={{ ...inputStyle, flex: 1, minWidth: 160, width: "auto" }} />
-            <datalist id="roles-actor">{ROLES.map(r => <option key={r} value={r} />)}</datalist>
           </div>
           <textarea value={desc} onChange={e => setDesc(e.target.value)}
             placeholder={R.pideNombre ? "¿Qué hay que saber de este personaje?" : "Descripción del personaje (opcional)"}
