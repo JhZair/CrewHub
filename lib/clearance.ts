@@ -72,7 +72,8 @@ export const META_TIPO_AUT: Record<TipoAutorizacion, {
   ico: string; corto: string; largo: string;
   /** Sobre qué recae. Es lo que impide registrar la composición contra la
    *  persona que solo la interpretó (R2). */
-  objeto: "persona" | "obra" | "grabacion" | "agrupacion" | "libre";
+  objeto: "persona" | "obra" | "grabacion" | "agrupacion"
+        | "locacion" | "actividad" | "material" | "libre";
   /** Lo razonable por defecto, que la acción pone si nadie dice otra cosa. */
   naturaleza: Naturaleza;
 }> = {
@@ -105,16 +106,16 @@ export const META_TIPO_AUT: Record<TipoAutorizacion, {
     largo: "El registro sonoro concreto, que es del productor fonográfico. ⚠ Una canción en dominio público puede tener una grabación de 2019 plenamente protegida: son dos permisos.",
   },
   material_aportado: {
-    ico: "📦", corto: "material de archivo", objeto: "obra",
+    ico: "📦", corto: "material de archivo", objeto: "material",
     naturaleza: "licencia",
     largo: "Una foto o un vídeo que alguien presta. ⚠ Tener el material no es tener sus derechos: quien lo presta y quien lo hizo suelen ser personas distintas.",
   },
   locacion: {
-    ico: "🏛", corto: "locación", objeto: "libre", naturaleza: "licencia",
+    ico: "🏛", corto: "locación", objeto: "locacion", naturaleza: "licencia",
     largo: "Permiso de filmación de un lugar, de su propietario o administrador.",
   },
   actividad_organizada: {
-    ico: "🎪", corto: "actividad", objeto: "libre", naturaleza: "licencia",
+    ico: "🎪", corto: "actividad", objeto: "actividad", naturaleza: "licencia",
     largo: "La procesión, la misa, la corrida, el concurso. Lo da quien la organiza — y cubre la actividad, NO a cada persona que participa en ella.",
   },
   aporte_de_equipo: {
@@ -213,6 +214,9 @@ export type FilaAutorizacion = {
   objeto_obra_id?: string | null;
   objeto_grabacion_id?: string | null;
   objeto_agrupacion_id?: string | null;
+  objeto_locacion_id?: string | null;
+  objeto_actividad_id?: string | null;
+  objeto_material_id?: string | null;
   medios?: string[] | null;
   permite_uso_promocional?: boolean | null;
   incluye_explotacion_comercial_futura?: boolean | null;
@@ -538,6 +542,172 @@ export function resumenCobertura(c: CoberturaAgrupacion): string {
     : base;
 }
 
+/* ══════════════ LA BITÁCORA DE MONTAJE ══════════════
+ *
+ * No son autorizaciones: son DECISIONES documentadas sobre el corte. Una
+ * autorización dice «esta persona firmó»; una aparición incidental dice «esta
+ * persona sale, NO firmó, y esto es lo que decidimos hacer». Meter lo segundo
+ * en `autorizacion` con estado `no_aplica` lo convertiría en un permiso que no
+ * existe y perdería lo único que importa: qué se hizo.
+ *
+ * El caso que las pidió: al cargo del Patrón San Esteban acudió mucha gente, y
+ * en la procesión y la misa sale un montón de personas de las que no tenemos ni
+ * los nombres. No se les puede pedir un release —no se sabe quiénes son— y
+ * tampoco se puede fingir que no salen.
+ */
+
+export type DecisionIncidental =
+  | "pendiente" | "usar" | "reencuadrar" | "desenfocar" | "quitar_audio"
+  | "sustituir_plano" | "pedir_release" | "descartar";
+
+export type DecisionMusical =
+  | "pendiente" | "licenciar" | "atenuar" | "sustituir" | "cambiar_toma" | "mantener";
+
+export type ModoAparicionMusical =
+  | "ejecucion_en_vivo_registrada" | "ambiental_de_local_o_altavoz"
+  | "reproducida_por_organizador" | "radio_o_television_en_escena"
+  | "musica_original_encargada" | "libreria_licenciada" | "generada_con_ia";
+
+export const DECISIONES_INCIDENTAL: DecisionIncidental[] = [
+  "pendiente", "usar", "reencuadrar", "desenfocar", "quitar_audio",
+  "sustituir_plano", "pedir_release", "descartar",
+];
+export const ROTULO_DECISION_INC: Record<DecisionIncidental, string> = {
+  pendiente: "sin decidir", usar: "usar tal cual", reencuadrar: "reencuadrar",
+  desenfocar: "desenfocar", quitar_audio: "quitar el audio",
+  sustituir_plano: "sustituir el plano", pedir_release: "pedirle que firme",
+  descartar: "descartar",
+};
+
+export const DECISIONES_MUSICAL: DecisionMusical[] = [
+  "pendiente", "licenciar", "atenuar", "sustituir", "cambiar_toma", "mantener",
+];
+export const ROTULO_DECISION_MUS: Record<DecisionMusical, string> = {
+  pendiente: "sin decidir", licenciar: "licenciarla", atenuar: "atenuar en la mezcla",
+  sustituir: "sustituir por otra", cambiar_toma: "cambiar de toma",
+  mantener: "mantener tal cual",
+};
+
+export const MODOS_MUSICAL: ModoAparicionMusical[] = [
+  "ejecucion_en_vivo_registrada", "ambiental_de_local_o_altavoz",
+  "reproducida_por_organizador", "radio_o_television_en_escena",
+  "musica_original_encargada", "libreria_licenciada", "generada_con_ia",
+];
+export const META_MODO_MUSICAL: Record<ModoAparicionMusical, { txt: string; ayuda: string }> = {
+  ejecucion_en_vivo_registrada: {
+    txt: "tocada en vivo y grabada por nosotros",
+    ayuda: "La banda estaba ahí y la grabamos. Pide la interpretación de cada músico y, aparte, la composición.",
+  },
+  ambiental_de_local_o_altavoz: {
+    txt: "sonaba en el lugar",
+    ayuda: "⚠ Casi siempre es una grabación comercial: la radio del comedor, el altavoz de la plaza. Es lo único que puede bloquear el vídeo sin que nadie reclame.",
+  },
+  reproducida_por_organizador: {
+    txt: "la puso el organizador",
+    ayuda: "⚠ También suele ser comercial. Que la pusiera otro no cambia que suene en tu película.",
+  },
+  radio_o_television_en_escena: {
+    txt: "de una radio o tele en escena",
+    ayuda: "⚠ Comercial casi con seguridad, y además con el fonograma de un tercero.",
+  },
+  musica_original_encargada: {
+    txt: "compuesta para la pieza",
+    ayuda: "La encargamos a alguien. Es la única que se declara como música original.",
+  },
+  libreria_licenciada: {
+    txt: "de una biblioteca",
+    ayuda: "Artlist, Epidemic y similares. Guarda el enlace de la licencia y su plazo.",
+  },
+  generada_con_ia: {
+    txt: "generada con IA",
+    ayuda: "No tiene autor —Indecopi no la registra—, pero el PLAN con el que se generó decide si puedes usarla comercialmente.",
+  },
+};
+
+/** ⚠ Los modos que casi siempre son una grabación comercial de un tercero. Son
+ *  el único elemento del proyecto que puede bloquear un vídeo SOLO, sin que
+ *  ninguna persona presente un reclamo: lo hace un sistema de identificación.
+ *  Por eso el semáforo los trata aparte y la pantalla los filtra. */
+const MODOS_DE_TERCERO: ModoAparicionMusical[] = [
+  "ambiental_de_local_o_altavoz", "reproducida_por_organizador",
+  "radio_o_television_en_escena",
+];
+export const esModoDeTercero = (m?: string | null) =>
+  MODOS_DE_TERCERO.includes(baja(m) as ModoAparicionMusical);
+
+export type FilaIncidental = {
+  id: string;
+  proyecto_id?: string | null;
+  escena_o_plano?: string | null;
+  descripcion_persona?: string | null;
+  es_identificable?: boolean | null;
+  tiene_protagonismo?: boolean | null;
+  es_menor?: string | null;
+  contexto_sensible?: boolean | null;
+  aviso_filmacion_colocado?: boolean | null;
+  decision_montaje?: string | null;
+  resuelto?: boolean | null;
+  nota?: string | null;
+};
+
+export type FilaUsoMusical = {
+  id: string;
+  proyecto_id?: string | null;
+  timecode_inicio?: string | null;
+  timecode_fin?: string | null;
+  escena?: string | null;
+  obra_id?: string | null;
+  grabacion_id?: string | null;
+  agrupacion_id?: string | null;
+  modo_aparicion?: string | null;
+  decision_montaje?: string | null;
+  autorizacion_id?: string | null;
+  resuelto?: boolean | null;
+  nota?: string | null;
+};
+
+/** El riesgo de una aparición incidental. R7 del modelo, aplicado al montaje.
+ *
+ *  El art. 15 del Código Civil admite excepciones al consentimiento cuando la
+ *  imagen se capta en un lugar público y la persona no es el objeto principal
+ *  del plano. Por eso lo que decide aquí no es «¿sale?» sino identificable +
+ *  protagonismo — y por eso el menor y el contexto sensible van aparte: ahí no
+ *  hay excepción que valga. */
+export function riesgoIncidental(i: FilaIncidental): { nivel: NivelRiesgo; txt: string } | null {
+  if (i.resuelto) return null;
+  const menor = baja(i.es_menor);
+  const ident = i.es_identificable !== false;
+
+  if (menor === "si" && ident)
+    return { nivel: "critico", txt: "menor identificable sin autorización: solo cabe desenfocar o descartar" };
+  if (menor === "por_revisar" && ident)
+    return { nivel: "alto", txt: "puede ser menor y está sin revisar" };
+  if (i.contexto_sensible && ident)
+    return { nivel: "alto", txt: "contexto sensible: el lugar público no excusa el honor ni la intimidad" };
+  if (ident && i.tiene_protagonismo)
+    return { nivel: "alto", txt: "identificable y con protagonismo: no es incidental, necesita firma" };
+  if (!ident)
+    return { nivel: "bajo", txt: "no es identificable" };
+  /* Identificable, sin protagonismo, en actividad pública. Es el caso que la
+     excepción cubre — y baja más si además había cartel de filmación. */
+  return i.aviso_filmacion_colocado
+    ? { nivel: "bajo", txt: "incidental en actividad pública, con aviso de filmación colocado" }
+    : { nivel: "medio", txt: "identificable en plano, sin aviso de filmación colocado" };
+}
+
+/** El riesgo de una música del corte. */
+export function riesgoUsoMusical(u: FilaUsoMusical): { nivel: NivelRiesgo; txt: string } | null {
+  if (u.resuelto) return null;
+  if (esModoDeTercero(u.modo_aparicion))
+    return {
+      nivel: "critico",
+      txt: `${META_MODO_MUSICAL[baja(u.modo_aparicion) as ModoAparicionMusical]?.txt || "de un tercero"}: grabación comercial que puede bloquear el vídeo sola`,
+    };
+  if (!u.obra_id && !u.agrupacion_id && !u.grabacion_id)
+    return { nivel: "alto", txt: "suena algo sin identificar: no se sabe de quién es" };
+  return { nivel: "medio", txt: "sin resolver en el corte" };
+}
+
 /* ══════════════ R8 · EL SEMÁFORO DE PUBLICACIÓN ══════════════
  *
  * La única métrica que importa, y la que va permanentemente en la cabecera:
@@ -549,8 +719,13 @@ export type Semaforo = {
   /** No hay ni una autorización. ⚠ No es «todo en regla»: o nadie ha empezado o
    *  la consulta falló, y las dos cosas se ven igual desde aquí. */
   sinDatos: boolean;
-  /** Lo que lo impide, de peor a mejor. Vacío si se puede publicar. */
-  bloqueos: { id: string; nivel: NivelRiesgo; txt: string }[];
+  /** Lo que lo impide, de peor a mejor. Vacío si se puede publicar.
+   *  `origen` dice de qué tabla sale: la pantalla rotulaba «permiso» todo lo
+   *  que salía de aquí, buscando el id entre las autorizaciones — y un
+   *  incidental o una música NUNCA está ahí. Llamar «permiso» a una decisión de
+   *  montaje borra justo la distinción que las dos tablas existen para
+   *  mantener. */
+  bloqueos: { id: string; nivel: NivelRiesgo; origen: "permiso" | "incidental" | "musica"; txt: string }[];
   criticos: number;
   altos: number;
   abiertas: number;
@@ -560,17 +735,29 @@ export type Semaforo = {
 export function semaforo(
   autorizaciones: FilaAutorizacion[],
   ctxDe: (a: FilaAutorizacion) => ContextoRiesgo = () => ({}),
+  /* ── R8 COMPLETA ──
+     ⚠ La definición de la regla dice «y ninguna AparicionIncidental o
+     UsoMusicalEnCorte sin resolver». Sin estas dos listas el semáforo daba
+     verde con la procesión entera de gente sin decidir y con la radio del
+     comedor sonando de fondo — que son, respectivamente, el hueco que John
+     nombró y lo único capaz de bloquear un vídeo sin que nadie reclame.
+     Opcionales para no romper a quien ya llamaba con un argumento. */
+  montaje: { incidentales?: FilaIncidental[]; usosMusicales?: FilaUsoMusical[] } = {},
 ): Semaforo {
   const bloqueos: Semaforo["bloqueos"] = [];
   let criticos = 0, altos = 0, abiertas = 0;
 
+  /* ⚠ `criticos` y `altos` cuentan lo que BLOQUEA, no todas las filas de ese
+     nivel. Contándolas todas, un permiso FIRMADO con el plazo vencido daba
+     `criticos: 1` con `publicable: true` — y como la pantalla ordena las
+     películas por críticos, esa subía a lo alto de la lista en verde. Los
+     contadores y `bloqueos` medían dos cosas distintas y se leían como si
+     midieran la misma. Ahora `criticos + altos === bloqueos.length`. */
   for (const a of autorizaciones) {
     const ctx = ctxDe(a);
     const r = riesgoDe(a, ctx);
     const abierta = estaAbierta(a.estado);
     if (abierta) abiertas++;
-    if (r === "critico") criticos++;
-    else if (r === "alto") altos++;
 
     /* ── QUÉ BLOQUEA, EXACTAMENTE ──
        Riesgo alto o crítico Y el permiso todavía sin resolver. Una firmada de
@@ -586,17 +773,51 @@ export function semaforo(
     const marcada = !!baja(a.riesgo_manual);
     const cuenta = abierta || baja(a.estado) === "rechazada" || marcada;
     if (cuenta && (r === "alto" || r === "critico")) {
+      if (r === "critico") criticos++; else altos++;
       /* El motivo de SU nivel; si el nivel viene de una marca manual no habrá
          ninguno calculado que coincida, y entonces se dice eso — y no
          «pendiente», que era el texto que salía y no explica nada.
          Un rojo sin motivo se deja de mirar, con todos los demás detrás. */
       const m = motivosRiesgo(a, ctx).filter(x => x.nivel === r)[0];
       bloqueos.push({
-        id: a.id, nivel: r,
+        id: a.id, nivel: r, origen: "permiso",
         txt: m?.txt || (marcada
           ? `marcada como ${r} a mano por el equipo${hay(a.notas) ? `: ${limpia(a.notas).slice(0, 120)}` : ""}`
           : "pendiente"),
       });
+    }
+  }
+
+  /* ── LO DEL MONTAJE, QUE TAMBIÉN BLOQUEA ──
+     Una decisión tomada y no aplicada sigue siendo una persona sin desenfocar
+     en la película: por eso lo que se mira es `resuelto`, no la decisión. */
+  const incidentales = montaje.incidentales || [];
+  const usos = montaje.usosMusicales || [];
+  for (const i of incidentales) {
+    const r = riesgoIncidental(i);
+    if (!r) continue;
+    /* ⚠ `abiertas` FUERA del `if` de bloqueo. Dentro, solo se incrementaba para
+       lo que además bloquea — y cuando algo bloquea, `resumenSemaforo` ni mira
+       este número. Resultado: una persona identificable sin cartel de filmación,
+       sin resolver, daba «se puede publicar · todo resuelto», con la fila
+       pintada como pendiente tres líneas más abajo. */
+    abiertas++;
+    if (r.nivel === "alto" || r.nivel === "critico") {
+      if (r.nivel === "critico") criticos++; else altos++;
+      bloqueos.push({
+        id: i.id, nivel: r.nivel, origen: "incidental",
+        txt: `${i.escena_o_plano || "un plano"} · ${i.descripcion_persona || "alguien"}: ${r.txt}`,
+      });
+    }
+  }
+  for (const u of usos) {
+    const r = riesgoUsoMusical(u);
+    if (!r) continue;
+    abiertas++;
+    if (r.nivel === "alto" || r.nivel === "critico") {
+      if (r.nivel === "critico") criticos++; else altos++;
+      const donde = u.timecode_inicio || u.escena || "en el corte";
+      bloqueos.push({ id: u.id, nivel: r.nivel, origen: "musica", txt: `${donde}: ${r.txt}` });
     }
   }
 
@@ -606,17 +827,25 @@ export function semaforo(
      proyecto donde nadie ha empezado como una consulta que falló. Es el error
      que la cabecera de este archivo jura no cometer, cometido en el booleano
      más importante que exporta. */
+  /* ⚠ SOBRE LOS PERMISOS, y no sobre todo lo que haya.
+     Con `&& !incidentales.length && !usos.length`, una película con CERO
+     permisos y un solo incidental ya resuelto salía «✓ se puede publicar» en
+     verde: `sinDatos` era false, no había bloqueos, y el veredicto era que sí.
+     Es el mismo error que la cabecera de este archivo jura no cometer, colado
+     por una vía nueva tres líneas más abajo. Sin ni un permiso registrado no se
+     puede decir que se pueda publicar nada. */
   const sinDatos = !autorizaciones.length;
   return {
     publicable: !sinDatos && bloqueos.length === 0,
     sinDatos,
-    bloqueos, criticos, altos, abiertas, total: autorizaciones.length,
+    bloqueos, criticos, altos, abiertas,
+    total: autorizaciones.length + incidentales.length + usos.length,
   };
 }
 
 /** El titular del semáforo, en palabras. */
 export function resumenSemaforo(s: Semaforo): string {
-  if (!s.total) return "todavía no hay ningún permiso registrado";
+  if (!s.total) return "todavía no hay nada registrado";
   if (s.publicable)
     return s.abiertas
       ? `se puede publicar · quedan ${s.abiertas} sin cerrar, ninguno bloqueante`

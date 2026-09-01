@@ -269,13 +269,27 @@ alter table autorizacion add constraint autorizacion_un_otorgante check (
 /* ── Y EXACTAMENTE UN OBJETO ──
    Una autorización sin objeto no dice sobre qué se firmó; con dos, no se sabe
    cuál cuenta. */
-alter table autorizacion drop constraint if exists autorizacion_un_objeto;
-alter table autorizacion add constraint autorizacion_un_objeto check (
-  (case when objeto_persona_id    is not null then 1 else 0 end
- + case when objeto_obra_id       is not null then 1 else 0 end
- + case when objeto_grabacion_id  is not null then 1 else 0 end
- + case when objeto_agrupacion_id is not null then 1 else 0 end) = 1
-);
+/* ⚠ SOLO SI clearance-lugares.sql NO SE HA CORRIDO TODAVÍA.
+   Aquel archivo amplía este mismo check a SIETE objetos. Re-correr esta tanda
+   después de aquella lo devolvía a cuatro —y una autorización con locación Y
+   persona volvía a pasar la validación—; o peor, si ya había filas con los
+   objetos nuevos, el `add` fallaba con el `drop` ya hecho y la tabla se quedaba
+   SIN NINGÚN check de «un solo objeto», en silencio y sin transacción.
+   Los cinco archivos se anuncian re-ejecutables, y este era el único que no lo
+   era de verdad. */
+do $$
+begin
+  if not exists (select 1 from information_schema.columns
+                  where table_schema='public' and table_name='autorizacion'
+                    and column_name='objeto_material_id') then
+    execute 'alter table autorizacion drop constraint if exists autorizacion_un_objeto';
+    execute $c$alter table autorizacion add constraint autorizacion_un_objeto check (
+      (case when objeto_persona_id    is not null then 1 else 0 end
+     + case when objeto_obra_id       is not null then 1 else 0 end
+     + case when objeto_grabacion_id  is not null then 1 else 0 end
+     + case when objeto_agrupacion_id is not null then 1 else 0 end) = 1)$c$;
+  end if;
+end $$;
 
 /* ── R2 EN LA BASE: LA OBRA NO CUELGA DEL INTÉRPRETE ──
    Quien toca una canción no tiene derechos sobre la composición. Una

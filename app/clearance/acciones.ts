@@ -175,6 +175,9 @@ export type DatosAutorizacion = {
   objetoObraId?: string | null;
   objetoGrabacionId?: string | null;
   objetoAgrupacionId?: string | null;
+  objetoLocacionId?: string | null;
+  objetoActividadId?: string | null;
+  objetoMaterialId?: string | null;
   estado?: string;
   firmadoEl?: string;
   documentoId?: string | null;
@@ -222,6 +225,9 @@ export async function guardarAutorizacion(proyectoId: string, d: DatosAutorizaci
   const objObra = (d.objetoObraId || "").trim() || null;
   const objGrab = (d.objetoGrabacionId || "").trim() || null;
   const objAgrup = (d.objetoAgrupacionId || "").trim() || null;
+  const objLoc = (d.objetoLocacionId || "").trim() || null;
+  const objAct = (d.objetoActividadId || "").trim() || null;
+  const objMat = (d.objetoMaterialId || "").trim() || null;
 
   /* ── R2 · LA OBRA NO CUELGA DEL INTÉRPRETE ──
      Quien toca una canción no tiene derechos sobre la composición. Es el error
@@ -238,8 +244,16 @@ export async function guardarAutorizacion(proyectoId: string, d: DatosAutorizaci
     return { error: "Di sobre qué recae: la agrupación que toca, o la persona si es solista." };
   if (meta.objeto === "persona" && !objPersona)
     return { error: `«${meta.corto}» va sobre una persona. Elige a quién.` };
+  /* Los tres que hasta ayer no tenían dónde colgarse. Cada uno con su frase:
+     un mensaje sobre una constraint no dice qué hacer. */
+  if (tipo === "locacion" && !objLoc)
+    return { error: "Un permiso de filmación va sobre un lugar. Da de alta la locación primero." };
+  if (tipo === "actividad_organizada" && !objAct)
+    return { error: "Un permiso de actividad va sobre la actividad. Dala de alta primero — y recuerda que cubre la actividad, no a cada persona que participa." };
+  if (tipo === "material_aportado" && !objMat)
+    return { error: "Va sobre el material concreto. Dalo de alta primero: quien lo presta y quien lo creó suelen ser personas distintas." };
 
-  const cuantos = [objPersona, objObra, objGrab, objAgrup].filter(Boolean).length;
+  const cuantos = [objPersona, objObra, objGrab, objAgrup, objLoc, objAct, objMat].filter(Boolean).length;
   if (cuantos !== 1)
     return { error: cuantos ? "Solo puede recaer sobre una cosa." : "Falta decir sobre qué recae." };
 
@@ -315,6 +329,9 @@ export async function guardarAutorizacion(proyectoId: string, d: DatosAutorizaci
     objeto_obra_id: objObra,
     objeto_grabacion_id: objGrab,
     objeto_agrupacion_id: objAgrup,
+    objeto_locacion_id: objLoc,
+    objeto_actividad_id: objAct,
+    objeto_material_id: objMat,
     estado,
     firmado_el: firmadoEl,
     documento_id: (d.documentoId || "").trim() || null,
@@ -530,4 +547,333 @@ async function bitacora(supabase: any, actorId: string, proyectoId: string, mens
     entidad_tipo: "proyecto", entidad_id: proyectoId, actor_id: actorId,
     tipo: "edicion", detalle: { mensaje },
   });
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LOS LUGARES: LOCACIÓN, ACTIVIDAD Y MATERIAL APORTADO
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const TIPOS_LOC = ["espacio_publico", "espacio_privado", "privado_abierto_al_publico",
+  "institucion_publica", "templo_religioso", "patrimonio_cultural"];
+
+export async function guardarLocacion(d: {
+  id?: string; nombre?: string; tipo?: string; responsableId?: string | null;
+  entidadResponsable?: string; esPatrimonio?: string; direccion?: string; nota?: string;
+}) {
+  const { supabase, user } = await sesion();
+  if (!user) return { error: "Sesión no encontrada." };
+  const nombre = texto(d.nombre, 200);
+  if (!nombre) return { error: "Ponle nombre a la locación." };
+
+  const fila = {
+    nombre,
+    tipo: TIPOS_LOC.includes(String(d.tipo || "")) ? String(d.tipo) : "espacio_publico",
+    responsable_id: (d.responsableId || "").trim() || null,
+    entidad_responsable: texto(d.entidadResponsable, 200),
+    es_patrimonio_declarado: ["si", "no", "por_verificar"].includes(String(d.esPatrimonio || ""))
+      ? String(d.esPatrimonio) : "por_verificar",
+    direccion: texto(d.direccion, 300),
+    nota: texto(d.nota, 1000),
+  };
+
+  if (d.id) {
+    const { data, error } = await supabase.from("locacion").update(fila).eq("id", d.id).select("id");
+    if (error) return { error: faltaSql(error.message, "clearance-lugares.sql") };
+    if (!data?.length) return { error: "No se guardó: no tienes permiso, o ya no está." };
+    revalidar(); return { id: d.id };
+  }
+  const { data, error } = await supabase.from("locacion")
+    .insert({ ...fila, creado_por: user.id }).select("id").single();
+  if (error) return { error: faltaSql(error.message, "clearance-lugares.sql") };
+  revalidar();
+  return { id: data.id as string };
+}
+
+export async function guardarActividad(proyectoId: string, d: {
+  id?: string; nombre?: string; fechaInicio?: string; fechaFin?: string;
+  locacionId?: string | null; organizadorPersonaId?: string | null;
+  organizadorEntidad?: string; esInstitucional?: boolean;
+  contenidoSensible?: boolean; nota?: string;
+}) {
+  const { supabase, user } = await sesion();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!proyectoId) return { error: "Falta el proyecto." };
+  const nombre = texto(d.nombre, 200);
+  if (!nombre) return { error: "Ponle nombre a la actividad." };
+
+  const { f: ini, error: e1 } = fecha(d.fechaInicio, "Empieza");
+  if (e1) return { error: e1 };
+  const { f: fin, error: e2 } = fecha(d.fechaFin, "Termina");
+  if (e2) return { error: e2 };
+  /* Una actividad que termina antes de empezar es un error de tecleo, y sin
+     esto se guarda y luego nadie entiende por qué el orden sale raro. */
+  if (ini && fin && fin < ini) return { error: "La actividad no puede terminar antes de empezar." };
+
+  const fila = {
+    proyecto_id: proyectoId, nombre,
+    fecha_inicio: ini, fecha_fin: fin,
+    locacion_id: (d.locacionId || "").trim() || null,
+    organizador_persona_id: (d.organizadorPersonaId || "").trim() || null,
+    organizador_entidad: texto(d.organizadorEntidad, 200),
+    es_institucional: !!d.esInstitucional,
+    contenido_sensible: !!d.contenidoSensible,
+    nota: texto(d.nota, 1000),
+  };
+
+  if (d.id) {
+    const { proyecto_id: _p, ...editable } = fila;
+    const { data, error } = await supabase.from("actividad_rodaje")
+      .update(editable).eq("id", d.id).eq("proyecto_id", proyectoId).select("id");
+    if (error) return { error: faltaSql(error.message, "clearance-lugares.sql") };
+    if (!data?.length) return { error: "No se guardó: no tienes permiso, o ya no está aquí." };
+    revalidar(proyectoId); return { id: d.id };
+  }
+  const { data, error } = await supabase.from("actividad_rodaje")
+    .insert({ ...fila, creado_por: user.id }).select("id").single();
+  if (error) return { error: faltaSql(error.message, "clearance-lugares.sql") };
+  revalidar(proyectoId);
+  return { id: data.id as string };
+}
+
+export async function guardarMaterial(proyectoId: string, d: {
+  id?: string; descripcion?: string; tipo?: string;
+  entregadoPorPersonaId?: string | null; autorConocido?: boolean; autorNombre?: string;
+  anioAproximado?: number | null; origen?: string; devuelto?: boolean; nota?: string;
+}) {
+  const { supabase, user } = await sesion();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!proyectoId) return { error: "Falta el proyecto." };
+  const descripcion = texto(d.descripcion, 300);
+  if (!descripcion) return { error: "Describe qué material es." };
+
+  const anio = Number(d.anioAproximado);
+  const fila = {
+    proyecto_id: proyectoId, descripcion,
+    tipo: ["fotografia", "video", "documento", "audio", "otro"].includes(String(d.tipo || ""))
+      ? String(d.tipo) : "fotografia",
+    entregado_por_persona_id: (d.entregadoPorPersonaId || "").trim() || null,
+    /* ⚠ `autor_conocido` sale del NOMBRE, no de la casilla. Marcarla sin
+       escribir a quién deja la fila diciendo que se sabe de quién es sin
+       decirlo, y el aviso de «autor desconocido» se apaga sin que nadie lo
+       haya averiguado. */
+    autor_conocido: !!texto(d.autorNombre, 200),
+    autor_nombre: texto(d.autorNombre, 200),
+    anio_aproximado: Number.isFinite(anio) && anio > 1800 && anio < 2200 ? Math.floor(anio) : null,
+    origen: ["archivo_familiar", "internet", "institucional", "prensa", "desconocido"]
+      .includes(String(d.origen || "")) ? String(d.origen) : "desconocido",
+    devuelto: !!d.devuelto,
+    nota: texto(d.nota, 1000),
+  };
+
+  if (d.id) {
+    const { proyecto_id: _p, ...editable } = fila;
+    const { data, error } = await supabase.from("material_aportado")
+      .update(editable).eq("id", d.id).eq("proyecto_id", proyectoId).select("id");
+    if (error) return { error: faltaSql(error.message, "clearance-lugares.sql") };
+    if (!data?.length) return { error: "No se guardó: no tienes permiso, o ya no está aquí." };
+    revalidar(proyectoId); return { id: d.id };
+  }
+  const { data, error } = await supabase.from("material_aportado")
+    .insert({ ...fila, creado_por: user.id }).select("id").single();
+  if (error) return { error: faltaSql(error.message, "clearance-lugares.sql") };
+  revalidar(proyectoId);
+  return { id: data.id as string };
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LA BITÁCORA DE MONTAJE
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const DEC_INC = ["pendiente", "usar", "reencuadrar", "desenfocar", "quitar_audio",
+  "sustituir_plano", "pedir_release", "descartar"];
+const DEC_MUS = ["pendiente", "licenciar", "atenuar", "sustituir", "cambiar_toma", "mantener"];
+const MODOS_MUS = ["ejecucion_en_vivo_registrada", "ambiental_de_local_o_altavoz",
+  "reproducida_por_organizador", "radio_o_television_en_escena",
+  "musica_original_encargada", "libreria_licenciada", "generada_con_ia"];
+
+export async function guardarIncidental(proyectoId: string, d: {
+  id?: string; escenaOPlano?: string; descripcionPersona?: string;
+  actividadId?: string | null; esIdentificable?: boolean; tieneProtagonismo?: boolean;
+  esMenor?: string; contextoSensible?: boolean; avisoFilmacionColocado?: boolean;
+  decisionMontaje?: string; resuelto?: boolean; nota?: string;
+}) {
+  const { supabase, user } = await sesion();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!proyectoId) return { error: "Falta el proyecto." };
+
+  const donde = texto(d.escenaOPlano, 200);
+  if (!donde) return { error: "Di en qué plano o escena sale, aunque sea a tu manera." };
+  const quien = texto(d.descripcionPersona, 300);
+  if (!quien) return { error: "Describe a la persona lo justo para encontrarla en el plano." };
+
+  const decision = DEC_INC.includes(String(d.decisionMontaje || ""))
+    ? String(d.decisionMontaje) : "pendiente";
+  const esMenor = ["si", "no", "por_revisar"].includes(String(d.esMenor || ""))
+    ? String(d.esMenor) : "por_revisar";
+
+  /* ⚠ NO SE PUEDE DAR POR RESUELTO SIN DECIDIR NADA. `resuelto` con la decisión
+     en `pendiente` sería sacar del semáforo a alguien de quien no se decidió
+     nada, que es exactamente lo que esta tabla existe para impedir. */
+  const resuelto = !!d.resuelto;
+  if (resuelto && decision === "pendiente")
+    return { error: "Para darlo por resuelto hay que decir qué se hizo con ese plano." };
+
+  /* ── R5 OTRA VEZ, AQUÍ ──
+     Un menor identificable solo se resuelve quitándolo de en medio. `usar` no
+     vale, y `pedir_release` tampoco lo RESUELVE: pedirla no es tenerla, y
+     mientras no esté firmada por su representante legal el plano sigue dentro.
+     Se enumeran las salidas válidas en positivo — la primera versión de esta
+     guarda eran dos condiciones solapadas que se contradecían entre sí. */
+  const SALIDAS_MENOR = ["desenfocar", "reencuadrar", "sustituir_plano", "descartar"];
+  /* ⚠ `por_revisar` cuenta igual que `si`. `riesgoIncidental` lo trata como
+     grave PRECISAMENTE porque no se sabe, y la guarda lo trataba como «no»: se
+     podía dar por resuelto con «usar tal cual» sin que nadie hubiera revisado
+     nada. Si de verdad no es menor, se marca «no» y la guarda se aparta. */
+  if (resuelto && (esMenor === "si" || esMenor === "por_revisar")
+      && d.esIdentificable !== false && !SALIDAS_MENOR.includes(decision))
+    return {
+      error: esMenor === "por_revisar"
+        ? "Está sin revisar si es menor. Revísalo y márcalo «sí» o «no» antes de "
+          + "darlo por resuelto: dar por bueno lo que no se ha mirado es el error "
+          + "que esta bitácora existe para impedir."
+        : "Un menor identificable no se puede dar por resuelto con esa decisión: "
+          + "sin la firma de su representante legal, solo cabe desenfocar, reencuadrar, "
+          + "sustituir el plano o descartarlo.",
+    };
+
+  const fila = {
+    proyecto_id: proyectoId,
+    escena_o_plano: donde,
+    descripcion_persona: quien,
+    actividad_id: (d.actividadId || "").trim() || null,
+    es_identificable: d.esIdentificable !== false,
+    tiene_protagonismo: !!d.tieneProtagonismo,
+    es_menor: esMenor,
+    contexto_sensible: !!d.contextoSensible,
+    aviso_filmacion_colocado: !!d.avisoFilmacionColocado,
+    decision_montaje: decision,
+    resuelto,
+    nota: texto(d.nota, 1000),
+  };
+
+  if (d.id) {
+    const { proyecto_id: _p, ...editable } = fila;
+    const { data, error } = await supabase.from("aparicion_incidental")
+      .update(editable).eq("id", d.id).eq("proyecto_id", proyectoId).select("id");
+    if (error) return { error: faltaSql(error.message, "clearance-montaje.sql") };
+    if (!data?.length) return { error: "No se guardó: no tienes permiso, o ya no está aquí." };
+    revalidar(proyectoId); return { id: d.id };
+  }
+  const { data, error } = await supabase.from("aparicion_incidental")
+    .insert({ ...fila, creado_por: user.id }).select("id").single();
+  if (error) return { error: faltaSql(error.message, "clearance-montaje.sql") };
+  revalidar(proyectoId);
+  return { id: data.id as string };
+}
+
+export async function quitarIncidental(id: string, proyectoId: string) {
+  const { supabase, user } = await sesion();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data, error } = await supabase.from("aparicion_incidental")
+    .delete().eq("id", id).eq("proyecto_id", proyectoId).select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "No se quitó: no tienes permiso, o ya no estaba." };
+  revalidar(proyectoId);
+  return {};
+}
+
+export async function guardarUsoMusical(proyectoId: string, d: {
+  id?: string; timecodeInicio?: string; timecodeFin?: string; escena?: string;
+  obraId?: string | null; grabacionId?: string | null; agrupacionId?: string | null;
+  modoAparicion?: string; decisionMontaje?: string; resuelto?: boolean;
+  autorizacionId?: string | null; nota?: string;
+}) {
+  const { supabase, user } = await sesion();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!proyectoId) return { error: "Falta el proyecto." };
+
+  const tcIni = texto(d.timecodeInicio, 40);
+  const escena = texto(d.escena, 200);
+  /* Uno de los dos, al menos: sin ninguno, la fila dice que suena algo pero no
+     dónde, y entonces no se puede ir a mirarlo. */
+  if (!tcIni && !escena)
+    return { error: "Di al menos dónde suena: un timecode o el nombre de la escena." };
+
+  const decision = DEC_MUS.includes(String(d.decisionMontaje || ""))
+    ? String(d.decisionMontaje) : "pendiente";
+  const resuelto = !!d.resuelto;
+  if (resuelto && decision === "pendiente")
+    return { error: "Para darlo por resuelto hay que decir qué se hizo con esa música." };
+
+  /* ── LA GUARDA SIMÉTRICA A LA DE LOS MENORES ──
+     ⚠ Lo ambiental, lo que pone el organizador y lo que suena de una radio en
+     escena son casi siempre grabaciones comerciales, y son lo ÚNICO del
+     proyecto que puede bloquear un vídeo sin que ninguna persona reclame: lo
+     hace un sistema de identificación. Sin esta guarda se silenciaban con dos
+     clics —`mantener` + resuelto— sin licencia, sin documento y sin nada.
+     `licenciar` sí vale, pero entonces tiene que existir el papel: pedirla no
+     es tenerla, igual que en las incidentales. */
+  const modo = MODOS_MUS.includes(String(d.modoAparicion || ""))
+    ? String(d.modoAparicion) : "ejecucion_en_vivo_registrada";
+  const DE_TERCERO = ["ambiental_de_local_o_altavoz", "reproducida_por_organizador",
+    "radio_o_television_en_escena"];
+  const autId = (d.autorizacionId || "").trim() || null;
+  if (resuelto && DE_TERCERO.includes(modo)) {
+    if (decision === "mantener")
+      return {
+        error: "Esa música es de un tercero y suena tal cual: no se resuelve manteniéndola. "
+          + "Atenúala, sustitúyela, cambia de toma — o licénciala y ata aquí la licencia.",
+      };
+    if (decision === "licenciar" && !autId)
+      return {
+        error: "Para darla por licenciada hay que atar la licencia de fonograma. "
+          + "Pedirla no es tenerla, y esto es lo único que puede bloquear el vídeo solo.",
+      };
+  }
+  if (autId) {
+    const { data: aut } = await supabase.from("autorizacion")
+      .select("id,proyecto_id,tipo,estado").eq("id", autId).maybeSingle();
+    if (!aut) return { error: "Esa licencia ya no existe." };
+    if (aut.proyecto_id !== proyectoId) return { error: "Esa licencia no es de este proyecto." };
+    if (resuelto && aut.estado !== "firmada")
+      return { error: "La licencia que atas todavía no está firmada, así que esto no está resuelto." };
+  }
+
+  const fila = {
+    proyecto_id: proyectoId,
+    autorizacion_id: autId,
+    timecode_inicio: tcIni, timecode_fin: texto(d.timecodeFin, 40), escena,
+    obra_id: (d.obraId || "").trim() || null,
+    grabacion_id: (d.grabacionId || "").trim() || null,
+    agrupacion_id: (d.agrupacionId || "").trim() || null,
+    modo_aparicion: modo,
+    decision_montaje: decision,
+    resuelto,
+    nota: texto(d.nota, 1000),
+  };
+
+  if (d.id) {
+    const { proyecto_id: _p, ...editable } = fila;
+    const { data, error } = await supabase.from("uso_musical_corte")
+      .update(editable).eq("id", d.id).eq("proyecto_id", proyectoId).select("id");
+    if (error) return { error: faltaSql(error.message, "clearance-montaje.sql") };
+    if (!data?.length) return { error: "No se guardó: no tienes permiso, o ya no está aquí." };
+    revalidar(proyectoId); return { id: d.id };
+  }
+  const { data, error } = await supabase.from("uso_musical_corte")
+    .insert({ ...fila, creado_por: user.id }).select("id").single();
+  if (error) return { error: faltaSql(error.message, "clearance-montaje.sql") };
+  revalidar(proyectoId);
+  return { id: data.id as string };
+}
+
+export async function quitarUsoMusical(id: string, proyectoId: string) {
+  const { supabase, user } = await sesion();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data, error } = await supabase.from("uso_musical_corte")
+    .delete().eq("id", id).eq("proyecto_id", proyectoId).select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "No se quitó: no tienes permiso, o ya no estaba." };
+  revalidar(proyectoId);
+  return {};
 }

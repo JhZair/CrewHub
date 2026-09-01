@@ -5,6 +5,7 @@ import { EntPicker, type CatalogoItem } from "@/components/Composer";
 import {
   guardarAgrupacion, guardarAutorizacion, cambiarEstadoAutorizacion,
   corregirAutorizacion, quitarAutorizacion, apuntarGestion,
+  guardarLocacion, guardarActividad, guardarMaterial,
 } from "@/app/clearance/acciones";
 import {
   TIPOS_AUT, META_TIPO_AUT, ROTULO_CALIDAD, ROTULO_ESTADO_AUT, COLOR_RIESGO,
@@ -57,6 +58,7 @@ type Nuevo = {
   otorgantePersonaId: string; otorganteAgrupacionId: string; otorganteEntidadNombre: string;
   calidad: CalidadFirmante;
   objetoPersonaId: string; objetoObraId: string; objetoGrabacionId: string; objetoAgrupacionId: string;
+  objetoLocacionId: string; objetoActividadId: string; objetoMaterialId: string;
   estado: EstadoAutorizacion; firmadoEl: string;
   permiteUsoPromocional: boolean; incluyeComercialFutura: boolean;
   notas: string;
@@ -67,12 +69,14 @@ const VACIO: Nuevo = {
   otorgantePersonaId: "", otorganteAgrupacionId: "", otorganteEntidadNombre: "",
   calidad: "titular",
   objetoPersonaId: "", objetoObraId: "", objetoGrabacionId: "", objetoAgrupacionId: "",
+  objetoLocacionId: "", objetoActividadId: "", objetoMaterialId: "",
   estado: "no_iniciada", firmadoEl: "",
   permiteUsoPromocional: true, incluyeComercialFutura: false, notas: "",
 };
 
 export default function PermisosProyecto({
-  proyectoId, autorizaciones, personas, agrupaciones, obras, grabaciones, riesgos, hoy,
+  proyectoId, autorizaciones, personas, agrupaciones, obras, grabaciones,
+  locaciones = [], actividades = [], materiales = [], riesgos, hoy,
 }: {
   proyectoId: string;
   autorizaciones: FilaAutorizacion[];
@@ -80,6 +84,12 @@ export default function PermisosProyecto({
   agrupaciones: OpcionCatalogo[];
   obras: OpcionCatalogo[];
   grabaciones: OpcionCatalogo[];
+  /** Los tres objetos que hasta ayer no existían y obligaban a la pantalla a
+   *  pedir «elige al responsable y explica el resto en la nota», que es el
+   *  dato-en-texto que este modelo entero existe para no tener. */
+  locaciones?: OpcionCatalogo[];
+  actividades?: OpcionCatalogo[];
+  materiales?: OpcionCatalogo[];
   /** El riesgo de cada permiso por su id, CALCULADO EN EL SERVIDOR.
    *  ⚠ Aquí llegaba la función que lo calcula, y un closure no se puede
    *  serializar a un componente cliente: Next lanza «Functions cannot be passed
@@ -90,7 +100,24 @@ export default function PermisosProyecto({
   const router = useRouter();
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState("");
-  const [panel, setPanel] = useState<"" | "permiso" | "banda">("");
+  const [panel, setPanel] = useState<"" | "permiso" | "banda" | "lugar">("");
+  /* El alta de los tres objetos que no son personas ni obras. Un solo panel con
+     un selector: son formularios de tres campos y separarlos en tres botones
+     llena la barra de ＋ que nadie distingue. */
+  const [lug, setLug] = useState({
+    que: "locacion" as "locacion" | "actividad" | "material",
+    nombre: "", tipo: "espacio_publico", extra: "",
+    /* ⚠ Los campos que la migración crea y ningún formulario escribía. Media
+       tabla nacía muerta: `es_patrimonio_declarado` se quedaba en «por
+       verificar» para siempre —con su aviso sobre el Ministerio de Cultura sin
+       llegar a ninguna pantalla—, `contenido_sensible` estaba documentado como
+       «se decide una vez y se ve siempre» y no se veía nunca, y `devuelto`, el
+       campo cuya razón es «no devolverlo rompe una relación que cuesta años»,
+       no se podía marcar. Una columna que nadie escribe es una promesa falsa. */
+    patrimonio: "por_verificar", entidad: "",
+    sensible: false, institucional: false,
+    entregadoPor: "", devuelto: false, origenMat: "archivo_familiar",
+  });
   const [n, setN] = useState<Nuevo>({ ...VACIO });
   const [ban, setBan] = useState({ nombre: "", tipo: "banda_musicos", procedencia: "", declarado: "" });
   const [moviendo, setMoviendo] = useState<string | null>(null);
@@ -144,6 +171,9 @@ export default function PermisosProyecto({
     objetoObraId: n.objetoObraId || null,
     objetoGrabacionId: n.objetoGrabacionId || null,
     objetoAgrupacionId: n.objetoAgrupacionId || null,
+    objetoLocacionId: n.objetoLocacionId || null,
+    objetoActividadId: n.objetoActividadId || null,
+    objetoMaterialId: n.objetoMaterialId || null,
     estado: n.estado, firmadoEl: n.firmadoEl,
     permiteUsoPromocional: n.permiteUsoPromocional,
     incluyeExplotacionComercialFutura: n.incluyeComercialFutura,
@@ -157,10 +187,17 @@ export default function PermisosProyecto({
     const quien = nombreDe(personas as any, a.otorgante_persona_id)
       || nombreDe(agrupaciones, a.otorgante_agrupacion_id)
       || a.otorgante_entidad_nombre || "—";
+    /* ⚠ Los SIETE objetos. Con solo los cuatro primeros, un permiso de locación
+       se pintaba «🏛 locación · Parroquia de San Esteban» sin decir de qué
+       templo — el dato salía de la nota y entraba en su columna, y la pantalla
+       seguía sin enseñarlo. Que es la mitad exacta de para qué se hizo. */
     const sobre = nombreDe(personas as any, a.objeto_persona_id)
       || nombreDe(obras, a.objeto_obra_id)
       || nombreDe(grabaciones, a.objeto_grabacion_id)
-      || nombreDe(agrupaciones, a.objeto_agrupacion_id);
+      || nombreDe(agrupaciones, a.objeto_agrupacion_id)
+      || nombreDe(locaciones, a.objeto_locacion_id)
+      || nombreDe(actividades, a.objeto_actividad_id)
+      || nombreDe(materiales, a.objeto_material_id);
     return (
       <div key={a.id} className="clr-fila">
         <span className="clr-ico">{META_TIPO_AUT[t]?.ico || "📄"}</span>
@@ -341,7 +378,183 @@ export default function PermisosProyecto({
             setPanel(panel === "banda" ? "" : "banda"); }}>
           ＋ agrupación
         </button>
+        <button type="button" className="cesl-mas" disabled={ocupado}
+          title="Un lugar, una actividad de la fiesta o un material que alguien presta. Sin darlos de alta no se puede decir sobre qué recae su permiso."
+          onClick={() => { setError(""); setMoviendo(null); setGestion(null); setQuitando(null);
+            setPanel(panel === "lugar" ? "" : "lugar"); }}>
+          ＋ lugar, actividad o material
+        </button>
       </div>
+
+      {panel === "lugar" && (
+        <div className="ces-panel mus-form">
+          <div className="ces-panel-h">
+            <b>Dar de alta {lug.que === "locacion" ? "una locación"
+              : lug.que === "actividad" ? "una actividad" : "un material"}</b>
+            <span style={{ flex: 1 }} />
+            <button type="button" className="ces-x" onClick={() => setPanel("")}>✕</button>
+          </div>
+          <label className="ces-l">
+            <span>Qué doy de alta</span>
+            <select value={lug.que} onChange={e => setLug(l => ({
+              ...l, que: e.target.value as typeof lug.que,
+              tipo: e.target.value === "locacion" ? "espacio_publico"
+                : e.target.value === "material" ? "fotografia" : "",
+              extra: "" }))}>
+              <option value="locacion">🏛 una locación — un lugar donde se rueda</option>
+              <option value="actividad">🎪 una actividad — la procesión, la misa, la corrida</option>
+              <option value="material">📦 un material — una foto o un vídeo que alguien presta</option>
+            </select>
+          </label>
+          <div className="ces-ayuda">
+            {lug.que === "locacion"
+              ? "Va al catálogo GLOBAL: quién administra un templo no cambia con el documental."
+              : lug.que === "actividad"
+              ? "Del proyecto: la procesión de este año no es la del que viene. ⚠ El permiso de quien la organiza cubre la actividad, NO a cada persona que participa."
+              : "Del proyecto. ⚠ Tener el material no es tener sus derechos: quien lo presta y quien lo hizo suelen ser personas distintas, y quien sale retratado tiene además lo suyo."}
+          </div>
+
+          <label className="ces-l">
+            <span>{lug.que === "material" ? "Qué material es" : "Cómo se llama"}</span>
+            <input value={lug.nombre} maxLength={300}
+              placeholder={lug.que === "locacion" ? "Templo de San Esteban"
+                : lug.que === "actividad" ? "Procesión del Patrón, 2026"
+                : "Álbum de fotos de la familia Huamani"}
+              onChange={e => setLug(l => ({ ...l, nombre: e.target.value }))} />
+          </label>
+
+          {lug.que === "locacion" && (
+            <>
+            <label className="ces-l">
+              <span>Qué clase de lugar — decide a quién se le pide</span>
+              <select value={lug.tipo} onChange={e => setLug(l => ({ ...l, tipo: e.target.value }))}>
+                <option value="espacio_publico">plaza o calle — suele bastar el permiso municipal</option>
+                <option value="espacio_privado">casa o chacra — su propietario</option>
+                <option value="privado_abierto_al_publico">mercado, restaurante — su administrador</option>
+                <option value="institucion_publica">institución — trámite escrito</option>
+                <option value="templo_religioso">templo — la parroquia o la hermandad, no el municipio</option>
+                <option value="patrimonio_cultural">patrimonio — ⚠ puede pedir además al Ministerio de Cultura</option>
+              </select>
+            </label>
+            <div className="ces-campos">
+              <label>
+                <span>Quién lo administra, si es una entidad</span>
+                <input value={lug.entidad} maxLength={200} placeholder="Parroquia de San Esteban"
+                  onChange={e => setLug(l => ({ ...l, entidad: e.target.value }))} />
+              </label>
+              <label>
+                <span>¿Es patrimonio declarado?</span>
+                <select value={lug.patrimonio}
+                  onChange={e => setLug(l => ({ ...l, patrimonio: e.target.value }))}>
+                  <option value="por_verificar">está sin verificar</option>
+                  <option value="no">no</option>
+                  <option value="si">sí</option>
+                </select>
+              </label>
+            </div>
+            {lug.patrimonio === "si" && (
+              <div className="ces-aviso">
+                ⚠ Si es patrimonio declarado, además del propietario puede hacer falta
+                autorización del Ministerio de Cultura. Es otro trámite y otro plazo:
+                cuéntalo desde ahora, no la semana del rodaje.
+              </div>
+            )}
+            </>
+          )}
+          {lug.que === "actividad" && (
+            <>
+            <label className="ces-l">
+              <span>Cuándo empieza</span>
+              <input type="date" value={lug.extra}
+                onChange={e => setLug(l => ({ ...l, extra: e.target.value }))} />
+            </label>
+            <label className="clr-check">
+              <input type="checkbox" checked={lug.institucional}
+                onChange={e => setLug(l => ({ ...l, institucional: e.target.checked }))} />
+              <span>La organiza una <b>institución</b> —parroquia, municipio— y no una
+                persona o familia. Cambia a quién se dirige el permiso</span>
+            </label>
+            <label className="clr-check">
+              <input type="checkbox" checked={lug.sensible}
+                onChange={e => setLug(l => ({ ...l, sensible: e.target.checked }))} />
+              <span>Contenido <b>sensible</b> — una corrida, un rito con animales, algo
+                que una plataforma o un festival puedan restringir. Se decide una vez y
+                se ve siempre, en vez de descubrirlo cuando lo rechazan</span>
+            </label>
+            </>
+          )}
+          {lug.que === "material" && (
+            <>
+              <label className="ces-l">
+                <span>Qué es</span>
+                <select value={lug.tipo} onChange={e => setLug(l => ({ ...l, tipo: e.target.value }))}>
+                  <option value="fotografia">fotografía</option>
+                  <option value="video">vídeo</option>
+                  <option value="documento">documento</option>
+                  <option value="audio">audio</option>
+                  <option value="otro">otro</option>
+                </select>
+              </label>
+              <label className="ces-l">
+                <span>Quién lo CREÓ — no quien lo presta</span>
+                <input value={lug.extra} maxLength={200}
+                  placeholder="déjalo vacío si no se sabe: el vacío es el dato"
+                  onChange={e => setLug(l => ({ ...l, extra: e.target.value }))} />
+              </label>
+              <div className="ces-campos">
+                <label>
+                  <span>De dónde salió</span>
+                  <select value={lug.origenMat}
+                    onChange={e => setLug(l => ({ ...l, origenMat: e.target.value }))}>
+                    <option value="archivo_familiar">archivo familiar</option>
+                    <option value="institucional">institucional</option>
+                    <option value="prensa">prensa</option>
+                    <option value="internet">internet</option>
+                    <option value="desconocido">no se sabe</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Quién lo prestó</span>
+                  <select value={lug.entregadoPor}
+                    onChange={e => setLug(l => ({ ...l, entregadoPor: e.target.value }))}>
+                    <option value="">— sin registrar —</option>
+                    {personas.map((p: any) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                  </select>
+                </label>
+              </div>
+              <label className="clr-check">
+                <input type="checkbox" checked={lug.devuelto}
+                  onChange={e => setLug(l => ({ ...l, devuelto: e.target.checked }))} />
+                <span><b>Ya se devolvió</b> — un álbum familiar prestado hay que
+                  devolverlo, y no hacerlo rompe una relación que cuesta años construir</span>
+              </label>
+            </>
+          )}
+
+          {error && <div className="err-inline">⚠ {error}</div>}
+          <div className="ces-pie">
+            <span style={{ flex: 1 }} />
+            <button className="btn" style={{ padding: "6px 14px", fontSize: 12 }} disabled={ocupado}
+              onClick={() => correr(() =>
+                lug.que === "locacion"
+                  ? guardarLocacion({ nombre: lug.nombre, tipo: lug.tipo,
+                      entidadResponsable: lug.entidad, esPatrimonio: lug.patrimonio })
+                  : lug.que === "actividad"
+                  ? guardarActividad(proyectoId, { nombre: lug.nombre, fechaInicio: lug.extra,
+                      esInstitucional: lug.institucional, contenidoSensible: lug.sensible })
+                  : guardarMaterial(proyectoId, {
+                      descripcion: lug.nombre, tipo: lug.tipo, autorNombre: lug.extra,
+                      entregadoPorPersonaId: lug.entregadoPor || null,
+                      origen: lug.origenMat, devuelto: lug.devuelto }),
+                /* Se limpia lo escrito y se conserva la CLASE: quien acaba de
+                   dar de alta una locación probablemente vaya a dar de alta
+                   otra, y volver a elegir «locación» cada vez es fricción. */
+                () => { setLug(l => ({ ...l, nombre: "", extra: "", entidad: "",
+                  entregadoPor: "", devuelto: false })); setPanel(""); })}>
+              {ocupado ? "…" : "Crear"}</button>
+          </div>
+        </div>
+      )}
 
       {panel === "banda" && (
         <div className="ces-panel mus-form">
@@ -408,7 +621,8 @@ export default function PermisosProyecto({
                  sobre una constraint que quien escribe no ha visto nunca. */
               const t = e.target.value as TipoAutorizacion;
               setN(x => ({ ...x, tipo: t, objetoPersonaId: "", objetoObraId: "",
-                objetoGrabacionId: "", objetoAgrupacionId: "" }));
+                objetoGrabacionId: "", objetoAgrupacionId: "",
+                objetoLocacionId: "", objetoActividadId: "", objetoMaterialId: "" }));
             }}>
               {TIPOS_AUT.map(t => (
                 <option key={t} value={t}>{META_TIPO_AUT[t].ico} {META_TIPO_AUT[t].corto}</option>
@@ -508,17 +722,50 @@ export default function PermisosProyecto({
                 items={personas} onPick={id => set("objetoPersonaId", id)} />
             </div>
           )}
-          {meta.objeto === "libre" && !pideAgrupacionOPersona && (
+          {meta.objeto === "locacion" && (
+            <label className="ces-l">
+              <span>Qué lugar</span>
+              <select value={n.objetoLocacionId} onChange={e => set("objetoLocacionId", e.target.value)}>
+                <option value="">— elige la locación —</option>
+                {locaciones.map(l => <option key={l.id} value={l.id}>{l.nombre}</option>)}
+              </select>
+            </label>
+          )}
+          {meta.objeto === "actividad" && (
+            <label className="ces-l">
+              <span>Qué actividad</span>
+              <select value={n.objetoActividadId} onChange={e => set("objetoActividadId", e.target.value)}>
+                <option value="">— elige la actividad —</option>
+                {actividades.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+              </select>
+            </label>
+          )}
+          {meta.objeto === "material" && (
+            <label className="ces-l">
+              <span>Qué material</span>
+              <select value={n.objetoMaterialId} onChange={e => set("objetoMaterialId", e.target.value)}>
+                <option value="">— elige el material —</option>
+                {materiales.map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+              </select>
+            </label>
+          )}
+          {/* ⚠ Cuando el catálogo correspondiente está vacío, se dice qué hay que
+              crear primero en vez de dejar un desplegable con una sola opción
+              que no se puede elegir. */}
+          {((meta.objeto === "locacion" && !locaciones.length)
+            || (meta.objeto === "actividad" && !actividades.length)
+            || (meta.objeto === "material" && !materiales.length)) && (
             <div className="ces-aviso">
-              ⚠ Las locaciones y las actividades todavía no tienen tabla propia. Elige
-              a la persona responsable como objeto y explica cuál es el lugar o la
-              actividad en la nota, hasta que se levanten.
+              ⚠ No hay ninguna {meta.objeto === "locacion" ? "locación" :
+                meta.objeto === "actividad" ? "actividad" : "material"} dada de alta
+              todavía. Créala primero: sin ella no se puede decir sobre qué recae este
+              permiso, y apuntarlo en la nota lo deja fuera de cualquier recuento.
             </div>
           )}
           {meta.objeto === "libre" && !pideAgrupacionOPersona && (
             <div className="cob-pie" style={{ border: 0, paddingTop: 0 }}>
               <EntPicker etiqueta={n.objetoPersonaId
-                ? `🎯 ${nombreDe(personas as any, n.objetoPersonaId)}` : "🎯 responsable"}
+                ? `🎯 ${nombreDe(personas as any, n.objetoPersonaId)}` : "🎯 sobre quién recae"}
                 items={personas} onPick={id => set("objetoPersonaId", id)} />
             </div>
           )}
