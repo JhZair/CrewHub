@@ -127,7 +127,17 @@ export type RecuentoCesiones = {
    *  las cesiones: si es 0 es que no hay nadie, no que falte leer algo. */
   personas: number;
   conImagen: number;
+  /** Personas SIN NINGUNA fila de cesión de imagen. No hay papel ni intención
+   *  de papel: nadie ha empezado. */
   sinImagen: number;
+  /** Personas con la cesión REGISTRADA pero todavía en `pendiente`.
+   *
+   *  ⚠ Se cuenta aparte de `sinImagen`, y no es una sutileza. Antes iban en el
+   *  mismo saco y el titular decía «10 sin cesión de imagen» sobre diez
+   *  personas de las que una YA tenía su cesión creada: John la registró, miró
+   *  el número y creyó que no se había guardado. Registrar y firmar son dos
+   *  pasos distintos, y el trabajo hecho tiene que notarse. */
+  imagenPendiente: number;
   imagenNoAplica: number;
   /** Personas con al menos una cesión de música registrada. */
   conMusica: number;
@@ -150,15 +160,22 @@ export function recuento(
      archivo existe para tener en un solo sitio. */
   const ids = [...new Set(personasIds.filter(Boolean))];
   const porP = cesionesPorPersona(cesiones);
-  let conImagen = 0, sinImagen = 0, imagenNoAplica = 0, conMusica = 0, sinPrueba = 0;
+  let conImagen = 0, sinImagen = 0, imagenPendiente = 0, imagenNoAplica = 0,
+      conMusica = 0, sinPrueba = 0;
 
   for (const id of ids) {
     const suyas = porP.get(id) || [];
     const img = deTipo(suyas, "imagen")[0];
-    const e = img ? estadoDe(img) : "pendiente";
-    if (!img || e === "pendiente") sinImagen++;
-    else if (e === "no_aplica") imagenNoAplica++;
-    else conImagen++;
+    /* ⚠ No hay fila y hay fila pendiente NO son lo mismo. El `!img || e ===
+       "pendiente"` de la primera versión los juntaba, y entonces registrar una
+       cesión no cambiaba ningún número: el trabajo hecho era invisible. */
+    if (!img) sinImagen++;
+    else {
+      const e = estadoDe(img);
+      if (e === "pendiente") imagenPendiente++;
+      else if (e === "no_aplica") imagenNoAplica++;
+      else conImagen++;
+    }
     if (deTipo(suyas, "musica").length) conMusica++;
   }
   /* Las sin prueba, de cualquier tipo pero SOLO de quien sigue en el reparto.
@@ -168,7 +185,8 @@ export function recuento(
   const enReparto = new Set(ids);
   for (const c of cesiones) if (enReparto.has(c.persona_id) && firmadaSinPrueba(c)) sinPrueba++;
 
-  return { personas: ids.length, conImagen, sinImagen, imagenNoAplica, conMusica, sinPrueba };
+  return { personas: ids.length, conImagen, sinImagen, imagenPendiente,
+           imagenNoAplica, conMusica, sinPrueba };
 }
 
 /** El titular del bloque, en palabras. Devuelve cadena vacía cuando no hay
@@ -178,6 +196,11 @@ export function resumen(r: RecuentoCesiones): string {
   if (!r.personas) return "";
   const partes: string[] = [];
   if (r.sinImagen) partes.push(`${r.sinImagen} sin cesión de imagen`);
+  /* «Pendiente de firma» y no «sin cesión»: el papel está registrado y lo que
+     falta es que alguien lo firme. Decirlo con las mismas palabras que el caso
+     anterior borra el trabajo de quien ya lo dio de alta. */
+  if (r.imagenPendiente)
+    partes.push(`${r.imagenPendiente} pendiente${r.imagenPendiente === 1 ? "" : "s"} de firma`);
   if (r.sinPrueba) partes.push(`${r.sinPrueba} firmada${r.sinPrueba === 1 ? "" : "s"} sin el documento`);
   if (!partes.length) {
     return r.conMusica

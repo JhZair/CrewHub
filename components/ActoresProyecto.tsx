@@ -245,6 +245,29 @@ export default function ActoresProyecto({
                     </div>
                   )}
 
+                  {/* ── QUIÉN AUTORIZÓ QUÉ ──
+                      ⚠ Aquí, DEBAJO DEL NOMBRE, y no en la tira de botones de
+                      la derecha donde estaba. Allí eran dos iconos de doce
+                      píxeles entre la ficha, el ＋, el 🚫 y la ✕, con el estado
+                      metido en un solo carácter: John registró la cesión de
+                      imagen de Lino, volvió a la lista y no pudo saber si se
+                      había guardado, porque el icono se veía igual antes y
+                      después. Un dato que hay que descifrar es un dato que no
+                      está.
+
+                      Solo con persona vinculada: la cesión la firma alguien
+                      real, y un personaje de ficción sin intérprete no tiene a
+                      quién pedírsela.
+                      Y solo en el reparto CONFIRMADO: pedirle la cesión a una
+                      candidata que aún se está viendo es pedir un papel por un
+                      trabajo que quizá no ocurra. */}
+                  {sit === "confirmada" && per?.id && !cesionesError && !desplegada && (
+                    <CesionesPersona
+                      proyectoId={proyectoId} personaId={per.id}
+                      nombre={L.titulo || per.nombre || "esta persona"}
+                      cesiones={cesDe.get(per.id) || []} />
+                  )}
+
                   {/* Lo que la ficha ya tiene escrito, sin abrirla. Si no hay
                       nada, no se pinta una cabecera vacía. */}
                   {!desplegada && (a.quiere || a.necesita) && (
@@ -289,19 +312,6 @@ export default function ActoresProyecto({
                           conserva con su nota. Se separan a propósito: la nota
                           de por qué alguien no encajó es justo lo que evita
                           volver a proponerlo en seis meses. */}
-                      {/* ── QUIÉN AUTORIZÓ QUÉ ──
-                          Solo con persona vinculada: la cesión la firma alguien
-                          real, y un personaje de ficción sin intérprete no
-                          tiene a quién pedírsela.
-                          Y solo en el reparto CONFIRMADO: pedirle la cesión a
-                          una candidata que aún se está viendo es pedir un papel
-                          por un trabajo que quizá no ocurra. */}
-                      {sit === "confirmada" && per?.id && !cesionesError && (
-                        <CesionesPersona
-                          proyectoId={proyectoId} personaId={per.id}
-                          nombre={L.titulo || per.nombre || "esta persona"}
-                          cesiones={cesDe.get(per.id) || []} />
-                      )}
                       {sit !== "confirmada" && (
                         <button title="Confirmar: entra en el proyecto"
                           style={{ color: "var(--green)" }} disabled={!!cambiando}
@@ -446,8 +456,11 @@ export default function ActoresProyecto({
               «todo autorizado» calculado sobre una lista vacía por error es la
               mentira más cara que puede decir esta pantalla. */}
           {!cesionesError && resumen(rCes) && (
-            <span className={rCes.sinImagen || rCes.sinPrueba ? "act-ces-falta" : "act-ces-ok"}>
-              {rCes.sinImagen || rCes.sinPrueba ? "⚠ " : "✓ "}{resumen(rCes)}
+            /* El ámbar lo enciende cualquiera de los tres huecos, incluida la
+               pendiente de firma: registrada no es autorizada. Pero `resumen`
+               las nombra distinto, que era lo que faltaba. */
+            <span className={rCes.sinImagen || rCes.imagenPendiente || rCes.sinPrueba ? "act-ces-falta" : "act-ces-ok"}>
+              {rCes.sinImagen || rCes.imagenPendiente || rCes.sinPrueba ? "⚠ " : "✓ "}{resumen(rCes)}
             </span>
           )}
         </h4>

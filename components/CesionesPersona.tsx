@@ -9,29 +9,41 @@ import {
 } from "@/lib/cesiones";
 
 /* ══════════════════════════════════════════════════════════════════════════
-   QUIÉN AUTORIZÓ QUÉ — las burbujas de una fila del reparto
+   QUIÉN AUTORIZÓ QUÉ — la lista de cesiones de una persona
 
    El caso que lo pidió: Jennifer Pachaqutec sale en cámara Y suena su banda.
-   Son dos permisos distintos que nadie firma en el mismo papel, así que son
-   dos burbujas: 📷 y 🎵.
+   Son dos permisos distintos que nadie firma en el mismo papel.
 
-   ── POR QUÉ BURBUJAS Y NO UNA COLUMNA ──
-   Porque la mayoría de las filas solo tienen imagen, y una columna «música»
-   vacía en veinte filas para tres que la usan convierte la lista en un
-   formulario. La burbuja aparece cuando hay algo que decir.
+   ── POR QUÉ UNA LISTA Y NO UNAS BURBUJAS ──
+   ⚠ La primera versión eran dos burbujas de 📷 y 🎵 metidas en la tira de
+   botones de la derecha, junto a la ficha, el ＋, el 🚫 y la ✕. Y no se podía
+   leer: John registró la cesión de imagen de Lino, volvió a la lista y no supo
+   si estaba —el icono se veía igual antes y después, porque el estado se
+   contaba en un carácter (·, ✓, ⚠) perdido entre seis botones grises—.
+   Un dato que hay que descifrar es un dato que no está.
+
+   Así que ahora es una LISTA, debajo del nombre, con el estado escrito con
+   todas sus letras. Ocupa más y se lee de un vistazo, que es de lo que se
+   trataba: la pregunta «¿tengo el papel de esta persona?» se contesta mirando,
+   no pasando el ratón por encima de un emoji.
+
+   ── LA DE IMAGEN SE PINTA SIEMPRE ──
+   Aunque no exista. Toda persona del reparto confirmado necesita una —se la va
+   a grabar— así que su ausencia es un dato, no un hueco. La de música solo
+   aparece si existe: no se puede deducir quién aporta una obra, y acusar a
+   veinte personas de que les falta un papel que quizá no corresponde llena la
+   pantalla de un ámbar que nadie puede apagar.
 
    ── EL PANEL VA EN FLUJO, NO FLOTANDO ──
    ⚠ Con `position:absolute` el panel DESAPARECÍA dentro de un contenedor con
-   `overflow:hidden`, y eso ya pasó una vez con los papeles de la cláusula 5.4:
-   se abría, no se veía nada, y parecía que el botón estaba roto. Aquí el panel
-   empuja la fila hacia abajo, que es feo durante medio segundo y funciona
-   siempre.
+   `overflow:hidden`, y eso ya pasó con los papeles de la cláusula 5.4: se
+   abría, no se veía nada, y parecía que el botón estaba roto.
    ══════════════════════════════════════════════════════════════════════════ */
 
 const ESTADOS: EstadoCesion[] = ["pendiente", "firmada", "no_aplica"];
 
 export default function CesionesPersona({
-  proyectoId, personaId, nombre, cesiones, puedeEditar = true,
+  proyectoId, personaId, nombre, cesiones,
 }: {
   proyectoId: string;
   personaId: string;
@@ -39,7 +51,6 @@ export default function CesionesPersona({
   /** SOLO las de esta persona. Vienen ya repartidas desde el servidor para no
    *  filtrar la lista entera una vez por fila. */
   cesiones: FilaCesion[];
-  puedeEditar?: boolean;
 }) {
   const router = useRouter();
   const [abierto, setAbierto] = useState(false);
@@ -110,52 +121,63 @@ export default function CesionesPersona({
     router.refresh();
   };
 
-  /* Una burbuja por tipo QUE TENGA ALGO, más el ＋ para añadir. La de imagen se
-     pinta siempre —toda persona del reparto necesita una— y en ámbar cuando
-     falta: es la única que se puede echar en falta sin saber nada más de la
-     película. La de música solo aparece si existe, porque no se puede deducir
-     quién aporta una obra. */
   const img = deTipo(cesiones, "imagen")[0];
-  const musicas = deTipo(cesiones, "musica");
-  const otras = deTipo(cesiones, "otro");
+  const otras = [...deTipo(cesiones, "musica"), ...deTipo(cesiones, "otro")];
 
-  const burbuja = (c: FilaCesion) => {
+  /* ── UNA FILA DE LA LISTA ──
+     Función y NO componente: un componente definido dentro del render es un
+     tipo nuevo en cada pasada, React lo desmonta y lo vuelve a montar, y el
+     panel abierto se cerraría solo al escribir. Ya costó una tanda. */
+  const linea = (c: FilaCesion) => {
     const t = tipoDe(c), e = estadoDe(c);
     const dudosa = firmadaSinPrueba(c);
+    /* El color lo manda la duda por encima del estado: «firmada sin documento»
+       no puede salir del mismo verde que una firmada con su PDF, o el verde
+       deja de significar nada. */
+    const col = dudosa ? "var(--yellow)" : COLOR_ESTADO[e];
     return (
-      <button key={c.id} type="button" className="ces-b"
-        style={{ color: dudosa ? "var(--yellow)" : COLOR_ESTADO[e] }}
-        title={`${META_TIPO[t].corto}: ${ROTULO_ESTADO[e]}${c.obra ? ` — ${c.obra}` : ""}`
-          + (dudosa ? " ⚠ dice que está firmada pero no hay documento" : "")
-          + `\n${META_TIPO[t].largo}`}
-        onClick={() => (puedeEditar ? editar(c) : setAbierto(a => !a))}>
-        {META_TIPO[t].ico}
-        {e === "firmada" ? (dudosa ? "⚠" : "✓") : e === "no_aplica" ? "—" : "…"}
+      <button key={c.id} type="button" className="cesl-fila" onClick={() => editar(c)}
+        title={`${META_TIPO[t].largo}\n\nClic para editarla.`}>
+        <span className="cesl-ico">{META_TIPO[t].ico}</span>
+        <span className="cesl-que">{META_TIPO[t].corto}</span>
+        <span className="cesl-est" style={{ color: col }}>
+          {dudosa ? "firmada, falta el documento" : ROTULO_ESTADO[e]}
+        </span>
+        {/* Lo que se autorizó, cuando el tipo lo nombra: «Las Patronas — huayno
+            del cargo». En la de imagen no hay nada que nombrar: es la persona. */}
+        {c.obra && <span className="cesl-obra">{c.obra}</span>}
+        {e === "no_aplica" && c.motivo && <span className="cesl-obra">{c.motivo}</span>}
+        {c.firmado_en && <span className="cesl-fecha">{c.firmado_en}</span>}
+        {c.url && <span className="cesl-doc">📎 documento</span>}
       </button>
     );
   };
 
   return (
-    <span className="ces">
-      <span className="ces-fila">
-        {img ? burbuja(img) : (
-          <button type="button" className="ces-b ces-falta"
-            title={`Sin cesión de imagen.\n${META_TIPO.imagen.largo}`}
-            onClick={() => (puedeEditar ? nueva("imagen") : setAbierto(a => !a))}>
-            📷…
-          </button>
-        )}
-        {musicas.map(burbuja)}
-        {otras.map(burbuja)}
-        {puedeEditar && (
-          <button type="button" className="ces-mas" title="Registrar otra autorización (música, archivo…)"
-            onClick={() => nueva(musicas.length ? "otro" : "musica")}>＋</button>
-        )}
-      </span>
+    <div className="cesl">
+      {img ? linea(img) : (
+        /* No existe, y eso se dice con palabras. Antes era un «📷…» que se
+           confundía con el «📷·» de una registrada pero pendiente, y por eso
+           no se sabía si la de Lino se había guardado. */
+        <button type="button" className="cesl-fila cesl-falta"
+          onClick={() => nueva("imagen")}
+          title={`${META_TIPO.imagen.largo}\n\nClic para registrarla.`}>
+          <span className="cesl-ico">📷</span>
+          <span className="cesl-que">imagen</span>
+          <span className="cesl-est">sin registrar</span>
+        </button>
+      )}
+      {otras.map(linea)}
+
+      <button type="button" className="cesl-mas"
+        title="Registrar otra autorización: música, material de archivo…"
+        onClick={() => nueva(deTipo(cesiones, "musica").length ? "otro" : "musica")}>
+        ＋ autorización
+      </button>
 
       {abierto && (
         /* En FLUJO, no flotando: ver la nota de la cabecera. */
-        <div className="ces-panel">
+        <div className="ces-panel mus-form">
           <div className="ces-panel-h">
             <b>{editando ? "Editar" : "Nueva"} cesión · {nombre}</b>
             <span style={{ flex: 1 }} />
@@ -209,7 +231,7 @@ export default function CesionesPersona({
             /* Se avisa ANTES de guardar, no después: sin el papel esto es
                alguien diciendo que hay una firma. Se deja guardar igual —el
                escaneo puede llegar mañana— pero el recuento no lo dará por
-               bueno y la burbuja saldrá en ámbar. */
+               bueno y la línea lo dirá en ámbar. */
             <div className="ces-aviso">
               ⚠ Firmada sin documento: se guarda, pero cuenta como pendiente de prueba hasta que esté el PDF.
             </div>
@@ -255,6 +277,6 @@ export default function CesionesPersona({
           </div>
         </div>
       )}
-    </span>
+    </div>
   );
 }
