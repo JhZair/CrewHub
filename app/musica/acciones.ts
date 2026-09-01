@@ -149,7 +149,7 @@ export async function guardarObraMusical(proyectoId: string, d: DatosObra) {
        de que existan los dos. Sin esta comprobación, atar la de imagen dejaba la
        obra en verde diciendo que la música está autorizada. */
     if (String(ces.tipo || "") !== "musica")
-      return { error: "Esa cesión es de imagen, no de música: autoriza que se le grabe, no que suene su tema." };
+      return { error: "Esa cesión es de imagen, voz y testimonio, no de música: autoriza que se le grabe y que hable, no que suene su tema." };
   }
 
   const fila = {

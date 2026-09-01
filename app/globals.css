@@ -7370,8 +7370,13 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
 .cesl-fila:hover .cesl-que { color: var(--text); }
 .cesl-ico { font-size: 12.5px; }
 /* El qué, en versalitas: es la etiqueta de la fila, no el dato. */
+/* `min-width` para que los estados de las tres filas queden alineados en
+   columna. Sube a 150px con «imagen, voz y testimonio»: con 54 el 📷 empujaba
+   su estado muy a la derecha y el 🎵 lo dejaba pegado al icono, y dos estados
+   sin alinear no se comparan de un vistazo — que es para lo que existe la
+   lista. `white-space: nowrap` evita que el rótulo se parta en dos renglones. */
 .cesl-que { font-size: 10.5px; letter-spacing: .6px; text-transform: uppercase;
-  color: var(--dim); min-width: 54px; }
+  color: var(--dim); min-width: 150px; white-space: nowrap; }
 /* El estado, con todas sus letras y su color. Es lo que se viene a leer. */
 .cesl-est { font-weight: 700; font-size: 12px; }
 .cesl-falta .cesl-est { color: var(--yellow); }

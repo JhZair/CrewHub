@@ -8,7 +8,7 @@
 --
 -- Así que Jennifer necesita DOS autorizaciones distintas, que nadie firma en
 -- el mismo papel:
---    · que se le grabe y salga en la pieza          → imagen
+--    · que se le grabe, hable y salga en la pieza    → imagen, voz y testimonio
 --    · que su tema suene dentro de la pieza          → música
 --
 -- ── POR QUÉ UNA TABLA Y NO TRES COLUMNAS ──
@@ -50,7 +50,13 @@ create table if not exists proyecto_cesion (
   persona_id  uuid not null references personas(id) on delete cascade,
 
   /* ── QUÉ AUTORIZA ──
-     `imagen`  → que se le grabe y aparezca en la pieza
+     `imagen`  → que se le grabe, que su voz suene y que su testimonio aparezca
+                 en la pieza. Se rotula «imagen, voz y testimonio» porque es el
+                 nombre del papel que de verdad se firma, y las tres cosas van
+                 en el mismo documento: quien sale en cámara también habla, y lo
+                 que cuenta es suyo aparte de su cara. UN tipo y no tres — el
+                 mundo real firma un papel, y partirlo dejaría a todos con dos
+                 tercios de cesión para siempre.
      `musica`  → que una obra suya suene dentro de la pieza
      `otro`    → lo que no cabe en las dos y hay que poder guardar igual:
                  una foto de archivo, un texto leído, un dibujo.

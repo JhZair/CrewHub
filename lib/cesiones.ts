@@ -45,9 +45,19 @@ export const TIPOS: TipoCesion[] = ["imagen", "musica", "otro"];
  *  «música» no dice si es la que compuso o la que suena, y esa diferencia es
  *  justamente la que hizo falta el día que apareció Jennifer. */
 export const META_TIPO: Record<TipoCesion, { ico: string; corto: string; largo: string }> = {
+  /* ── «IMAGEN, VOZ Y TESTIMONIO» Y NO «IMAGEN» A SECAS ──
+     Es el nombre del papel que de verdad se firma en un documental, y las tres
+     cosas van juntas en él a propósito: quien sale en cámara también habla, y
+     lo que cuenta —su testimonio— es suyo aparte de su cara. Con el rótulo
+     corto, alguien podía firmar «cesión de imagen» creyendo que autorizaba
+     salir en un plano y encontrarse su entrevista entera en la pieza.
+     ⚠ Sigue siendo UN tipo y no tres: el valor en la base es `imagen`, no hace
+     falta migrar nada, y sobre todo es un solo documento. Partirlo en tres
+     filas obligaría a firmar tres papeles donde el mundo real firma uno, y
+     dejaría a todo el mundo con dos tercios de cesión para siempre. */
   imagen: {
-    ico: "📷", corto: "imagen",
-    largo: "Autoriza que se le grabe y que aparezca en la pieza.",
+    ico: "📷", corto: "imagen, voz y testimonio",
+    largo: "Autoriza que se le grabe, que su voz suene y que lo que cuenta aparezca en la pieza. Es el papel que se firma una vez y cubre las tres cosas.",
   },
   musica: {
     ico: "🎵", corto: "música",
@@ -195,7 +205,7 @@ export function recuento(
 export function resumen(r: RecuentoCesiones): string {
   if (!r.personas) return "";
   const partes: string[] = [];
-  if (r.sinImagen) partes.push(`${r.sinImagen} sin cesión de imagen`);
+  if (r.sinImagen) partes.push(`${r.sinImagen} sin cesión de imagen, voz y testimonio`);
   /* «Pendiente de firma» y no «sin cesión»: el papel está registrado y lo que
      falta es que alguien lo firme. Decirlo con las mismas palabras que el caso
      anterior borra el trabajo de quien ya lo dio de alta. */

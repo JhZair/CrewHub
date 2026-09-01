@@ -162,8 +162,11 @@ export default function CesionesPersona({
         <button type="button" className="cesl-fila cesl-falta"
           onClick={() => nueva("imagen")}
           title={`${META_TIPO.imagen.largo}\n\nClic para registrarla.`}>
-          <span className="cesl-ico">📷</span>
-          <span className="cesl-que">imagen</span>
+          <span className="cesl-ico">{META_TIPO.imagen.ico}</span>
+          {/* Del mismo sitio que las demás: escrito a mano aquí, el día que el
+              rótulo cambie —y acaba de cambiar— la fila de «no hay ninguna»
+              diría algo distinto de las que sí existen. */}
+          <span className="cesl-que">{META_TIPO.imagen.corto}</span>
           <span className="cesl-est">sin registrar</span>
         </button>
       )}
