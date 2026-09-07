@@ -7518,3 +7518,8 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
    rótulo de un campo; aplicado a la frase de una casilla la deja ilegible.
    Misma especificidad, pero esta va después. */
 .clr-check > span { color: var(--muted); font-size: 11.5px; }
+/* Los nueve medios, en columnas que se adaptan. En una sola columna eran diez
+   líneas que empujan el resto del formulario fuera de la pantalla; en fila
+   suelta, se cortan por donde no toca. */
+.med-rej { display: grid; gap: 3px 12px; margin-top: 3px;
+  grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); }

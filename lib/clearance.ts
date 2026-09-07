@@ -206,6 +206,95 @@ export const esPapelDeLaPersona = (a: FilaAutorizacion): boolean => {
 };
 
 /* ══════════════════════════════════════════════════════════════════════════
+   PARA QUÉ MEDIOS VALE EL PERMISO
+
+   ── POR QUÉ ESTA LISTA VIVE AQUÍ ──
+   `autorizacion.medios` es un `text[]` SIN check en la base, a propósito: un
+   vocabulario cerrado en Postgres obliga a una migración cada vez que aparece
+   un soporte nuevo, y aparecen. Así que la lista vive en código, y este es su
+   único sitio.
+
+   ── DE DÓNDE SALEN ESTOS NOMBRES ──
+   De la cláusula TERCERA del release de PUKLLAYCHA FILMS, que es el papel que
+   se firma de verdad: «salas de cine y proyecciones públicas; televisión
+   abierta y por cable; plataformas digitales de video y audio, incluidos
+   canales de YouTube y redes sociales, con o sin monetización publicitaria;
+   internet en general; soportes físicos; muestras, festivales y usos
+   educativos, culturales y de archivo del proyecto».
+
+   No se inventaron categorías: se copiaron. Un vocabulario que no coincide con
+   el papel obliga a traducir en la cabeza cada vez que se rellena, y entonces
+   se rellena mal o no se rellena.
+
+   ── POR QUÉ IMPORTA QUE ESTÉ ──
+   `motivosRiesgo` marca «firmada sin decir para qué medios vale» como riesgo
+   MEDIO. Ninguna pantalla escribía este campo, así que ese ámbar se encendía
+   en cada permiso firmado y no había clic capaz de apagarlo — un aviso que no
+   se puede resolver se deja de leer, y detrás se van los que sí importan.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ⚠ NUEVE, los que la cláusula enumera. `promocion` estuvo aquí un rato y se
+   quitó por dos razones que apuntan al mismo sitio:
+     · la cláusula TERCERA NO la menciona — el tráiler y el afiche los concede
+       la SEGUNDA, que es otro párrafo—, así que un botón «los del release» que
+       la marcara escribiría, en nombre de un papel firmado, una concesión que
+       ese papel no contiene;
+     · y `permite_uso_promocional` ya existe y es la columna que mira R6. Con
+       las dos, el mismo panel dejaba marcar «promoción» entre los medios y
+       desmarcar «autoriza tráiler y afiche» a diez líneas de distancia: dos
+       pantallas del mismo expediente afirmando lo contrario.
+   Un dato en dos sitios que pueden discrepar es lo que este módulo entero
+   evita. Su único hogar es el booleano. */
+export const MEDIOS = [
+  "salas", "television", "plataformas", "redes", "internet",
+  "soportes_fisicos", "festivales", "educativo", "archivo",
+] as const;
+export type Medio = typeof MEDIOS[number];
+
+export const ROTULO_MEDIO: Record<Medio, { corto: string; largo: string }> = {
+  salas: { corto: "salas y proyecciones",
+    largo: "Salas de cine y proyecciones públicas." },
+  television: { corto: "televisión",
+    largo: "Televisión abierta y por cable." },
+  plataformas: { corto: "plataformas",
+    largo: "Plataformas digitales de video y audio, incluidos canales de YouTube. Es donde acaba la película, y el medio que más se olvida de nombrar." },
+  redes: { corto: "redes sociales",
+    largo: "Redes sociales, con o sin monetización publicitaria. Lo de «con monetización» no es un detalle: es lo que separa difundir de explotar." },
+  internet: { corto: "internet en general",
+    largo: "Internet sin restricción de soporte — la web del proyecto, prensa digital, lo que venga." },
+  soportes_fisicos: { corto: "soportes físicos",
+    largo: "DVD, disco duro, copias en mano." },
+  festivales: { corto: "muestras y festivales",
+    largo: "Muestras, festivales y catálogos. Suele ser lo primero que ocurre, y lo que hace falta tener firmado antes de inscribirse." },
+  educativo: { corto: "uso educativo",
+    largo: "Usos educativos y culturales: aulas, cineclubes, talleres." },
+  archivo: { corto: "archivo del proyecto",
+    largo: "Conservar el material en el archivo del proyecto. Sin esto, guardar los brutos después del estreno no está cubierto." },
+};
+
+/** Lo que concede el release estándar de PUKLLAYCHA: su cláusula TERCERA los
+ *  nombra los nueve. Se ofrece como un clic —«los del release»— porque marcar
+ *  nueve casillas una por una en cada persona es lo que hace que no se marque
+ *  ninguna. Quien firme un papel recortado desmarca lo que sobre.
+ *  El tráiler y el afiche NO van aquí: los concede la cláusula SEGUNDA y viven
+ *  en `permite_uso_promocional`, que es lo que mira R6. */
+export const MEDIOS_RELEASE_ESTANDAR: Medio[] = [...MEDIOS];
+
+export const esMedio = (v: unknown): v is Medio =>
+  MEDIOS.includes(String(v) as Medio);
+
+export type TipoPlazo = "indefinido" | "anios" | "hasta_fecha";
+
+/** ⚠ `Record<TipoPlazo, …>` y no `Record<string, …>`: el `<select>` se
+ *  construye recorriendo este objeto, así que una clave de más aquí produciría
+ *  una opción que la acción descarta en silencio a «indefinido». */
+export const ROTULO_PLAZO: Record<TipoPlazo, string> = {
+  indefinido: "indefinido — por el máximo que permita la ley",
+  anios: "por un número de años desde la firma",
+  hasta_fecha: "hasta una fecha concreta",
+};
+
+/* ══════════════════════════════════════════════════════════════════════════
    EL PAPEL QUE SE FIRMA
 
    `documento_firmado.modelo` dice QUÉ papel es. No es decorativo: el expediente

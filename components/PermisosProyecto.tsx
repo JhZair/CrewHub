@@ -12,9 +12,10 @@ import {
 import {
   TIPOS_AUT, META_TIPO_AUT, ROTULO_CALIDAD, ROTULO_ESTADO_AUT, COLOR_RIESGO,
   MODELOS_DOC, ROTULO_MODELO, modeloSugerido, permisoResuelto, personaDeAutorizacion,
+  MEDIOS, ROTULO_MEDIO, MEDIOS_RELEASE_ESTANDAR, ROTULO_PLAZO, esMedio,
   estaAbierta,
   type FilaAutorizacion, type TipoAutorizacion, type CalidadFirmante,
-  type EstadoAutorizacion, type NivelRiesgo,
+  type EstadoAutorizacion, type NivelRiesgo, type Medio, type TipoPlazo,
 } from "@/lib/clearance";
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -63,6 +64,13 @@ type Nuevo = {
   objetoPersonaId: string; objetoObraId: string; objetoGrabacionId: string; objetoAgrupacionId: string;
   objetoLocacionId: string; objetoActividadId: string; objetoMaterialId: string;
   estado: EstadoAutorizacion; firmadoEl: string;
+  /** ⚠ Para qué medios vale. La columna existe, `motivosRiesgo` la mira, y
+   *  ningún formulario la escribía: cada permiso firmado se quedaba con
+   *  «firmada sin decir para qué medios vale» en ámbar, sin clic que lo
+   *  apagara. */
+  medios: Medio[];
+  tipoPlazo: "indefinido" | "anios" | "hasta_fecha";
+  plazoAnios: string; plazoHasta: string;
   permiteUsoPromocional: boolean; incluyeComercialFutura: boolean;
   notas: string;
 };
@@ -74,6 +82,12 @@ const VACIO: Nuevo = {
   objetoPersonaId: "", objetoObraId: "", objetoGrabacionId: "", objetoAgrupacionId: "",
   objetoLocacionId: "", objetoActividadId: "", objetoMaterialId: "",
   estado: "no_iniciada", firmadoEl: "",
+  /* ⚠ Vacío, no el paquete entero. Un permiso nace sin saber para qué vale, y
+     rellenarlo por defecto convertiría «nadie lo dijo» en una afirmación —el
+     mismo cero que no es un cero, por la puerta de un valor inicial. El botón
+     «los del release» está a un clic para quien firma el modelo de siempre. */
+  medios: [],
+  tipoPlazo: "indefinido", plazoAnios: "", plazoHasta: "",
   permiteUsoPromocional: true, incluyeComercialFutura: false, notas: "",
 };
 
@@ -102,6 +116,7 @@ export default function PermisosProyecto({
   documentos?: Record<string, {
     id: string; modelo?: string | null; archivo_url?: string | null;
     hash_archivo?: string | null; firmado_el?: string | null;
+    es_original_digital?: boolean | null; ubicacion_original?: string | null;
     lugar_firma?: string | null; tiene_huella_digital?: boolean | null;
     consentimiento_grabado_url?: string | null;
     testigos?: string | null; nota?: string | null;
@@ -138,8 +153,11 @@ export default function PermisosProyecto({
   const [ban, setBan] = useState({ nombre: "", tipo: "banda_musicos", procedencia: "", declarado: "" });
   const [moviendo, setMoviendo] = useState<string | null>(null);
   const [mov, setMov] = useState({ estado: "en_gestion", firmadoEl: "", notas: "" });
-  const [corr, setCorr] = useState<{ calidad: CalidadFirmante; promo: boolean }>(
-    { calidad: "titular", promo: true });
+  const [corr, setCorr] = useState<{
+    calidad: CalidadFirmante; promo: boolean; comercial: boolean; medios: Medio[];
+    tipoPlazo: TipoPlazo; plazoAnios: string; plazoHasta: string;
+  }>({ calidad: "titular", promo: true, comercial: false, medios: [],
+    tipoPlazo: "indefinido", plazoAnios: "", plazoHasta: "" });
   const [gestion, setGestion] = useState<string | null>(null);
   const [ges, setGes] = useState({ canal: "llamada", resultado: "sin_respuesta", detalle: "" });
   const [quitando, setQuitando] = useState<string | null>(null);
@@ -149,6 +167,7 @@ export default function PermisosProyecto({
   const [doc, setDoc] = useState({
     modelo: "otro", archivoUrl: "", firmadoEl: "", lugarFirma: "",
     huella: false, grabadoUrl: "", testigos: "", nota: "", hash: "",
+    esOriginal: false, ubicacion: "",
   });
   const [subiendo, setSubiendo] = useState(false);
   /** El id del papel que se está editando, si ya existía. */
@@ -202,6 +221,14 @@ export default function PermisosProyecto({
     objetoActividadId: n.objetoActividadId || null,
     objetoMaterialId: n.objetoMaterialId || null,
     estado: n.estado, firmadoEl: n.firmadoEl,
+    /* ⚠ Los tres que la base guardaba y el formulario no mandaba. Sin ellos,
+       `guardarAutorizacion` escribía `medios: []` y `tipo_plazo: 'indefinido'`
+       por defecto — o sea, la columna existía, se rellenaba con el silencio, y
+       la regla de riesgo leía ese silencio como una afirmación. */
+    medios: n.medios,
+    tipoPlazo: n.tipoPlazo,
+    plazoAnios: n.plazoAnios ? Number(n.plazoAnios) : null,
+    plazoHasta: n.plazoHasta,
     permiteUsoPromocional: n.permiteUsoPromocional,
     incluyeExplotacionComercialFutura: n.incluyeComercialFutura,
     notas: n.notas,
@@ -243,8 +270,15 @@ export default function PermisosProyecto({
             setGestion(null); setQuitando(null); setError(""); setPanel("");
             setMoviendo(moviendo === a.id ? null : a.id);
             setMov({ estado: String(a.estado || "en_gestion"), firmadoEl: a.firmado_el || "", notas: "" });
-            setCorr({ calidad: (a.calidad_firmante as CalidadFirmante) || "titular",
-              promo: a.permite_uso_promocional !== false });
+            setCorr({
+              calidad: (a.calidad_firmante as CalidadFirmante) || "titular",
+              promo: a.permite_uso_promocional !== false,
+              comercial: !!a.incluye_explotacion_comercial_futura,
+              medios: (a.medios || []).filter(esMedio),
+              tipoPlazo: (a.tipo_plazo as TipoPlazo) || "indefinido",
+              plazoAnios: a.plazo_anios ? String(a.plazo_anios) : "",
+              plazoHasta: a.plazo_hasta || "",
+            });
           }}>estado</button>
         {/* ── EL PAPEL ──
             ⚠ En TODAS las filas, firmadas o no. La que dice «firmada» sin
@@ -275,6 +309,8 @@ export default function PermisosProyecto({
               firmadoEl: y.firmado_el || a.firmado_el || "",
               lugarFirma: y.lugar_firma || "",
               huella: !!y.tiene_huella_digital, hash: y.hash_archivo || "",
+              esOriginal: !!y.es_original_digital,
+              ubicacion: y.ubicacion_original || "",
               grabadoUrl: y.consentimiento_grabado_url || "",
               testigos: y.testigos || "",
               nota: y.nota || "",
@@ -283,6 +319,7 @@ export default function PermisosProyecto({
                 !!(a.objeto_agrupacion_id || a.otorgante_agrupacion_id)),
               archivoUrl: "", firmadoEl: a.firmado_el || "", lugarFirma: "",
               huella: false, grabadoUrl: "", testigos: "", nota: "", hash: "",
+              esOriginal: false, ubicacion: "",
             });
             setDocId(y?.id || "");
             setPapel(a.id);
@@ -387,6 +424,50 @@ export default function PermisosProyecto({
               <span>Firmó con huella digital — en campo pasa tanto como con firma, y conviene que conste</span>
             </label>
 
+            {/* ── DÓNDE ESTÁ EL PAPEL DE VERDAD ──
+                ⚠ Lo que se sube es casi siempre una FOTO hecha con el móvil en
+                la casa donde se firmó. Vale como prueba, pero no es el
+                documento: el original con la huella y el DNI escritos está en
+                un archivador. El día que hay una disputa piden ese, y si nadie
+                apuntó dónde está hay que buscarlo por la oficina meses después
+                — puede que quien lo archivó ya no esté.
+                Hasta hoy solo cabía en la nota, que es texto libre: no se puede
+                listar «qué originales me faltan archivar». */}
+            <label className="clr-check">
+              <input type="checkbox" checked={doc.esOriginal}
+                onChange={e => setDoc(d2 => ({ ...d2, esOriginal: e.target.checked }))} />
+              <span>Lo subido <b>es</b> el documento — firmado digitalmente, o el
+                escaneo que hace de ejemplar. Si es una foto o una copia, déjalo
+                sin marcar y di abajo dónde está el original</span>
+            </label>
+            {/* ⚠ El campo se ENSEÑA SIEMPRE, marcada o no la casilla. Antes se
+                escondía al marcarla, y como el servidor borra la ubicación
+                cuando lo subido es el original, un clic por error hacía
+                desaparecer de la vista —y luego de la base— un dato que costó
+                una llamada a la oficina. Sin aviso y sin rastro: la bitácora
+                solo dice «adjuntó el papel firmado». Lo que se ve tiene que ser
+                lo que se guarda. */}
+            <label className="ces-l">
+              <span>Dónde está el original</span>
+              <input value={doc.ubicacion} maxLength={200} disabled={doc.esOriginal}
+                placeholder="archivador PACHA APUS · carpeta En busca del oro"
+                onChange={e => setDoc(d2 => ({ ...d2, ubicacion: e.target.value }))} />
+            </label>
+            {doc.esOriginal && doc.ubicacion.trim() && (
+              <div className="ces-aviso">
+                ⚠ Al guardar se borrará «{doc.ubicacion.trim()}», porque has
+                dicho que lo subido <b>es</b> el documento. Si es una foto,
+                desmarca la casilla de arriba.
+              </div>
+            )}
+            {!doc.esOriginal && !doc.ubicacion.trim() && doc.archivoUrl && (
+              <div className="ces-ayuda">
+                Se puede guardar sin esto —en campo se firma de noche y ya se
+                apuntará—, pero el papel quedará en la lista de originales sin
+                archivar.
+              </div>
+            )}
+
             {/* ── EL CONSENTIMIENTO GRABADO ──
                 El «¿me autoriza a grabarlo?» dicho a cámara. No sustituye al
                 papel, pero en un documental de campo es a veces la única prueba
@@ -448,6 +529,8 @@ export default function PermisosProyecto({
                     consentimientoGrabadoUrl: doc.grabadoUrl,
                     testigos: doc.testigos,
                     nota: doc.nota,
+                    esOriginalDigital: doc.esOriginal,
+                    ubicacionOriginal: doc.ubicacion,
                   }),
                   () => setPapel(null),
                 )}>Guardar el papel y dar por firmado</button>
@@ -510,6 +593,85 @@ export default function PermisosProyecto({
                 de R1 —es EL campo del módulo— y un promocional desmarcado por
                 error dejaba el aviso «no pueden ir en tráiler» encendido para
                 siempre, porque una firmada tampoco se puede borrar. */}
+            {/* ── LOS MEDIOS, TAMBIÉN AQUÍ ──
+                ⚠ Los permisos registrados antes de hoy nacieron con la lista
+                vacía porque nadie los preguntaba. Sin este camino habría que
+                borrarlos y rehacerlos para apagar su ámbar — y una firmada no
+                se puede borrar, con razón: es la prueba de que alguien
+                autorizó. */}
+            <div className="ces-l">
+              <span style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                Para qué medios vale
+                <button type="button" className="cesl-mas"
+                  title="Los nueve que concede la cláusula TERCERA del release estándar. El tráiler y el afiche van aparte."
+                  onClick={() => setCorr(c => ({ ...c, medios: [...MEDIOS_RELEASE_ESTANDAR] }))}>
+                  los del release →
+                </button>
+                {corr.medios.length > 0 && (
+                  <button type="button" className="cesl-mas"
+                    onClick={() => setCorr(c => ({ ...c, medios: [] }))}>ninguno</button>
+                )}
+              </span>
+              <div className="med-rej">
+                {MEDIOS.map(m => (
+                  <label key={m} className="clr-check" title={ROTULO_MEDIO[m].largo}>
+                    <input type="checkbox" checked={corr.medios.includes(m)}
+                      onChange={e => setCorr(c => ({ ...c, medios: e.target.checked
+                        ? [...c.medios, m] : c.medios.filter(x => x !== m) }))} />
+                    <span>{ROTULO_MEDIO[m].corto}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            {mov.estado === "firmada" && !corr.medios.length && (
+              <div className="ces-aviso">
+                ⚠ Sin medios, este permiso se queda en ámbar y no hay clic que lo
+                apague. El papel los dice — cópialos.
+              </div>
+            )}
+
+            {/* ── EL PLAZO, TAMBIÉN CORREGIBLE ──
+                ⚠ `tipo_plazo` nace en «indefinido» por defecto en la base, así
+                que TODAS las filas migradas afirman «por el máximo que permita
+                la ley» sin que nadie lo dijera. Y hasta hoy no había ningún
+                camino para arreglarlo salvo entrando a la base — que es el
+                argumento con el que existe este panel. */}
+            <div className="ces-campos">
+              <label>
+                <span>Hasta cuándo vale</span>
+                <select value={corr.tipoPlazo} onChange={e => setCorr(c => ({
+                  ...c, tipoPlazo: e.target.value as TipoPlazo,
+                  plazoAnios: "", plazoHasta: "",
+                }))}>
+                  {Object.entries(ROTULO_PLAZO).map(([k, v]) => (
+                    <option key={k} value={k}>{v}</option>
+                  ))}
+                </select>
+              </label>
+              {corr.tipoPlazo === "anios" && (
+                <label>
+                  <span>Cuántos años</span>
+                  <input type="number" min={1} max={99} value={corr.plazoAnios}
+                    onChange={e => setCorr(c => ({ ...c, plazoAnios: e.target.value }))} />
+                </label>
+              )}
+              {corr.tipoPlazo === "hasta_fecha" && (
+                <label>
+                  <span>Hasta el</span>
+                  <input type="date" value={corr.plazoHasta}
+                    onChange={e => setCorr(c => ({ ...c, plazoHasta: e.target.value }))} />
+                </label>
+              )}
+            </div>
+
+            <label className="clr-check">
+              <input type="checkbox" checked={corr.comercial}
+                onChange={e => setCorr(c => ({ ...c, comercial: e.target.checked }))} />
+              <span>Cubre la <b>explotación comercial futura</b> — aunque hoy no se
+                monetice. Sin esto hay que volver a firmar el día que la película
+                se venda, y para entonces la gente ya no está localizable</span>
+            </label>
+
             <label className="ces-l">
               <span>En qué calidad firma</span>
               <select value={corr.calidad}
@@ -532,9 +694,22 @@ export default function PermisosProyecto({
                      con id escribe la fila ENTERA y borraría el plazo, los medios
                      y el documento de cualquier fila migrada que sí los tenía. */
                   const c1 = await corregirAutorizacion(a.id, proyectoId, {
-                    calidadFirmante: corr.calidad, permiteUsoPromocional: corr.promo });
+                    calidadFirmante: corr.calidad, permiteUsoPromocional: corr.promo,
+                    incluyeExplotacionComercialFutura: corr.comercial,
+                    medios: corr.medios, tipoPlazo: corr.tipoPlazo,
+                    plazoAnios: corr.plazoAnios ? Number(corr.plazoAnios) : null,
+                    plazoHasta: corr.plazoHasta });
                   if ((c1 as any)?.error) return c1;
-                  return cambiarEstadoAutorizacion(a.id, proyectoId, mov.estado, mov.firmadoEl, mov.notas);
+                  const c2 = await cambiarEstadoAutorizacion(
+                    a.id, proyectoId, mov.estado, mov.firmadoEl, mov.notas);
+                  /* ⚠ Si la primera fue bien y la segunda falla —pasar a
+                     «firmada» sin fecha es frecuente—, el mensaje tiene que
+                     decir que el alcance SÍ se guardó. Callarlo hace pensar que
+                     no se guardó nada, y se vuelve a intentar sobre una fila
+                     que ya cambió. Mismo criterio que en el panel del papel. */
+                  if ((c2 as any)?.error)
+                    return { error: `El alcance del permiso SÍ se guardó. El estado no: ${(c2 as any).error}` };
+                  return c2;
                 }, () => setMoviendo(null))}>{ocupado ? "…" : "Guardar"}</button>
             </div>
           </div>
@@ -1099,6 +1274,81 @@ export default function PermisosProyecto({
               <span>Firmado el</span>
               <input type="date" value={n.firmadoEl} onChange={e => set("firmadoEl", e.target.value)} />
             </label>
+          </div>
+
+          {/* ── PARA QUÉ MEDIOS VALE ──
+              ⚠ Esto no estaba, y era el ámbar que no se podía apagar. Los
+              nombres salen de la cláusula TERCERA del release, no de una lista
+              inventada: un vocabulario que no coincide con el papel obliga a
+              traducir en la cabeza cada vez, y entonces se rellena mal. */}
+          <div className="ces-l" style={{ marginTop: 4 }}>
+            <span style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+              Para qué medios vale
+              <button type="button" className="cesl-mas"
+                title="Marca los nueve que concede la cláusula TERCERA del release estándar. El tráiler y el afiche van aparte, en la casilla de abajo. Quien firme un papel recortado desmarca lo que sobre."
+                onClick={() => set("medios", [...MEDIOS_RELEASE_ESTANDAR])}>
+                los del release →
+              </button>
+              {n.medios.length > 0 && (
+                <button type="button" className="cesl-mas"
+                  onClick={() => set("medios", [])}>ninguno</button>
+              )}
+            </span>
+            <div className="med-rej">
+              {MEDIOS.map(m => (
+                <label key={m} className="clr-check" title={ROTULO_MEDIO[m].largo}>
+                  <input type="checkbox" checked={n.medios.includes(m)}
+                    onChange={e => set("medios", e.target.checked
+                      ? [...n.medios, m]
+                      : n.medios.filter(x => x !== m))} />
+                  <span>{ROTULO_MEDIO[m].corto}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          {/* ⚠ Solo cuando está firmada. En una que aún no lo está, la lista
+              vacía es lo normal —nadie ha firmado nada todavía— y acusar por
+              eso llena la pantalla de avisos que no se pueden resolver. */}
+          {n.estado === "firmada" && !n.medios.length && (
+            <div className="ces-aviso">
+              ⚠ Sin medios, este permiso sale en ámbar y no hay clic que lo
+              apague: no se sabrá si vale para el festival al que ya se
+              inscribió la película. El papel los dice — cópialos.
+            </div>
+          )}
+
+          {/* ── HASTA CUÁNDO ──
+              El release estándar dice «indefinido, por el máximo tiempo
+              permitido». Una licencia a plazo es lo raro, pero cuando la hay,
+              olvidarla significa descubrir que caducó al ir a estrenar. */}
+          <div className="ces-campos">
+            <label>
+              <span>Hasta cuándo vale</span>
+              <select value={n.tipoPlazo} onChange={e => setN(x => ({
+                ...x, tipoPlazo: e.target.value as TipoPlazo,
+                /* Se limpia lo del otro modo: con «indefinido» y una fecha
+                   puesta, la fila diría dos cosas a la vez. */
+                plazoAnios: "", plazoHasta: "",
+              }))}>
+                {Object.entries(ROTULO_PLAZO).map(([k, v]) => (
+                  <option key={k} value={k}>{v}</option>
+                ))}
+              </select>
+            </label>
+            {n.tipoPlazo === "anios" && (
+              <label>
+                <span>Cuántos años</span>
+                <input type="number" min={1} max={99} value={n.plazoAnios}
+                  onChange={e => set("plazoAnios", e.target.value)} />
+              </label>
+            )}
+            {n.tipoPlazo === "hasta_fecha" && (
+              <label>
+                <span>Hasta el</span>
+                <input type="date" value={n.plazoHasta}
+                  onChange={e => set("plazoHasta", e.target.value)} />
+              </label>
+            )}
           </div>
 
           {/* ── EL ALCANCE MÍNIMO ──

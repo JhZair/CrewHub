@@ -89,8 +89,7 @@ export default async function ClearanceDePelicula({
          después a un fondo o a una aseguradora, y ese era justo el paso que
          faltaba: se guardaba y no se recuperaba. */
       supabase.from("documento_firmado")
-        .select("id,modelo,archivo_url,hash_archivo,firmado_el,lugar_firma," +
-          "tiene_huella_digital,consentimiento_grabado_url,testigos,nota")
+        .select("id,modelo,archivo_url,hash_archivo,firmado_el,lugar_firma,tiene_huella_digital,consentimiento_grabado_url,testigos,nota,es_original_digital,ubicacion_original")
         .eq("proyecto_id", params.id).limit(techo(900) + 1),
       supabase.from("agrupacion")
         .select("id,nombre,tipo,procedencia,representante_id,numero_integrantes_declarado")
@@ -209,6 +208,10 @@ export default async function ClearanceDePelicula({
      formulario y pinta el enlace al archivo. Objetos planos, nada de Maps —
      `PermisosProyecto` es cliente. */
   const documentos: Record<string, any> = Object.fromEntries(lDocs.map(x => [x.id, x]));
+  /* Los que son una copia y no dicen dónde vive el papel. No es un fallo: es la
+     lista de trabajo, y el motivo por el que esto es una columna. */
+  const sinArchivar = lDocs.filter(x =>
+    x.es_original_digital !== true && !String(x.ubicacion_original || "").trim());
 
   /* ── EL REPARTO, CON SU NOMBRE Y SI ES MENOR ──
      ⚠ Sin repetir a nadie: la misma persona puede tener DOS filas en el
@@ -369,6 +372,23 @@ export default async function ClearanceDePelicula({
               ? "interpretacion_musical" : "interpretacion_danza"} />
         );
       })}
+
+      {/* ── LOS ORIGINALES QUE NADIE HA DICHO DÓNDE ESTÁN ──
+          ⚠ La migración justifica que `ubicacion_original` sea una COLUMNA y no
+          una frase dentro de la nota con esto: «así se puede listar qué
+          originales faltan por archivar». Sin esta lista, esa frase era falsa —
+          para saberlo habría que abrir el panel de cada papel uno por uno, que
+          es exactamente igual de imposible que con la nota. Una columna que
+          nadie lee es la otra mitad de una columna que nadie escribe. */}
+      {!fallo && sinArchivar.length > 0 && (
+        <div className="ces-aviso" style={{ marginTop: 10 }}>
+          ⚠ {sinArchivar.length} papel{sinArchivar.length === 1 ? "" : "es"} subido
+          {sinArchivar.length === 1 ? "" : "s"} sin decir dónde está su original.
+          Lo que se subió es una foto; el papel firmado a mano está en algún
+          sitio, y el día que haya una disputa lo piden. Ábrelo{sinArchivar.length === 1 ? "" : "s"} en
+          📎 y apunta la carpeta.
+        </div>
+      )}
 
       {/* ── R6 · QUIÉN NO PUEDE IR EN PROMOCIÓN ──
           El tráiler y el afiche se publican antes que la película, a veces años

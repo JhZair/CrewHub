@@ -2,7 +2,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import {
-  META_TIPO_AUT, TIPOS_AUT, esMenor, MODELOS_DOC,
+  META_TIPO_AUT, TIPOS_AUT, esMenor, MODELOS_DOC, esMedio,
   type TipoAutorizacion, type CalidadFirmante, type EstadoAutorizacion,
   type ModeloDoc,
 } from "@/lib/clearance";
@@ -61,9 +61,75 @@ function fecha(v: string | null | undefined, campo: string): { f: string | null;
   return { f: s };
 }
 
-const faltaSql = (m: string, archivo: string) =>
-  /schema cache|does not exist|PGRST20[45]/i.test(m)
-    ? `${m} — falta correr db/${archivo} en Supabase.` : m;
+/* ── QUÉ MIGRACIÓN FALTA, Y NO SIEMPRE LA MISMA ──
+   ⚠ El archivo que se nombra sale de la COLUMNA que Postgres dice no conocer,
+   no de dónde esté escrita la llamada. Con el nombre fijo, un error sobre
+   `ubicacion_original` mandaba a correr `clearance-autorizacion.sql`, que ya
+   estaba corrido: se pierde la tarde mirando donde no es, y un mensaje que
+   manda al sitio equivocado se deja de leer igual que uno que no se puede
+   apagar. Ya nos pasó en app/musica/acciones.ts. */
+const COLUMNA_DE: [RegExp, string][] = [
+  [/ubicacion_original|es_original_digital/i, "clearance-original.sql"],
+  [/hash_archivo|documento_firmado/i, "clearance-autorizacion.sql"],
+  /* ⚠ Las COLUMNAS de `autorizacion` que llevan «agrupacion» dentro, ANTES de
+     la regla de la tabla. `objeto_agrupacion_id` y `otorgante_agrupacion_id`
+     los crea clearance-autorizacion.sql, no clearance-agrupacion.sql: sin esta
+     línea, un error sobre ellas mandaba a correr una migración que YA estaba
+     puesta —si no lo estuviera, la clave foránea no existiría—. La tarde
+     perdida que el párrafo de arriba dice evitar, reintroducida por la regla
+     escrita para evitarla. */
+  [/otorgante_agrupacion_id|objeto_agrupacion_id/i, "clearance-autorizacion.sql"],
+  [/aparicion_incidental|uso_musical_corte/i, "clearance-montaje.sql"],
+  [/locacion|actividad_rodaje|material_aportado/i, "clearance-lugares.sql"],
+  [/agrupacion_integrante|\bagrupacion\b/i, "clearance-agrupacion.sql"],
+];
+
+/**
+ * Los medios, comprobados. `null` = no me los mandaron (conserva lo que había);
+ * `[]` = este papel no concede ninguno.
+ *
+ * ⚠ `MEDIOS` es la lista y `autorizacion.medios` es un `text[]` SIN check en la
+ * base, a propósito. Sin filtrar aquí, una server action —que es un endpoint—
+ * aceptaría cualquier cadena; y lo grave no es el vandalismo: `motivosRiesgo`
+ * solo mira la LONGITUD del array, así que un `[""]` apaga el aviso «firmada
+ * sin decir para qué medios vale» con un valor que no significa nada. El mismo
+ * cero que no es un cero, por la puerta del alcance.
+ * `Set` porque `text[]` no tiene unicidad: veinte «festivales» entrarían tal cual.
+ */
+function mediosLimpios(v: unknown): string[] | null {
+  if (!Array.isArray(v)) return null;
+  return [...new Set(v.filter(esMedio))];
+}
+
+/**
+ * El plazo, comprobado. Devuelve el trío listo, o el error con palabras.
+ *
+ * ⚠ En una función y no dos copias: el alta lo validaba y la corrección no
+ * podía tocarlo. Ahora las dos llaman aquí — dos copias de una comprobación se
+ * separan a la primera, y la que se queda atrás es la que no se lee.
+ * El tope de 99 años vive AQUÍ y no en el `max` del `<input>`: sin `<form>` no
+ * se valida nada, y ese atributo era decoración.
+ */
+function plazoLimpio(tipo: unknown, anios: unknown, hasta: unknown):
+  { tipoPlazo: string; plazoAnios: number | null; plazoHasta: string | null }
+  | { error: string } {
+  const t = ["indefinido", "anios", "hasta_fecha"].includes(String(tipo || ""))
+    ? String(tipo) : "indefinido";
+  const n = Number(anios);
+  const a = t === "anios" && Number.isFinite(n) && n > 0 && n <= 99 ? Math.floor(n) : null;
+  if (t === "anios" && !a)
+    return { error: "Di a cuántos años es el plazo, entre 1 y 99." };
+  const { f: h, error: eH } = fecha(hasta as string, "Vale hasta");
+  if (eH) return { error: eH };
+  if (t === "hasta_fecha" && !h) return { error: "Di hasta qué fecha vale." };
+  return { tipoPlazo: t, plazoAnios: a, plazoHasta: t === "hasta_fecha" ? h : null };
+}
+
+const faltaSql = (m: string, archivo: string) => {
+  if (!/schema cache|does not exist|PGRST20[45]/i.test(m)) return m;
+  const cual = COLUMNA_DE.find(([re]) => re.test(m))?.[1] || archivo;
+  return `${m} — falta correr db/${cual} en Supabase.`;
+};
 
 /* ══════════════════════════════════════════════════════════════════════════
    LA AGRUPACIÓN Y SUS INTEGRANTES — catálogo global, sin proyecto
@@ -318,12 +384,11 @@ export async function guardarAutorizacion(proyectoId: string, d: DatosAutorizaci
       error: "«No aplica» necesita el motivo escrito: sin él es indistinguible de un olvido.",
     };
 
-  const tipoPlazo = ["indefinido", "anios", "hasta_fecha"].includes(String(d.tipoPlazo || ""))
-    ? String(d.tipoPlazo) : "indefinido";
-  const nA = Number(d.plazoAnios);
-  const plazoAnios = tipoPlazo === "anios" && Number.isFinite(nA) && nA > 0 ? Math.floor(nA) : null;
-  if (tipoPlazo === "anios" && !plazoAnios) return { error: "Di a cuántos años es el plazo." };
-  if (tipoPlazo === "hasta_fecha" && !plazoHasta) return { error: "Di hasta qué fecha vale." };
+  /* La MISMA función que usa `corregirAutorizacion`. Era una copia a mano, y
+     dos copias de una comprobación se separan a la primera. */
+  const plzAlta = plazoLimpio(d.tipoPlazo, d.plazoAnios, d.plazoHasta);
+  if ("error" in plzAlta) return { error: plzAlta.error };
+  const { tipoPlazo, plazoAnios } = plzAlta;
 
   const fila = {
     proyecto_id: proyectoId,
@@ -345,12 +410,12 @@ export async function guardarAutorizacion(proyectoId: string, d: DatosAutorizaci
     estado,
     firmado_el: firmadoEl,
     documento_id: (d.documentoId || "").trim() || null,
-    medios: Array.isArray(d.medios) ? d.medios.slice(0, 20) : [],
+    medios: mediosLimpios(d.medios) ?? [],
     permite_uso_promocional: d.permiteUsoPromocional !== false,
     incluye_explotacion_comercial_futura: !!d.incluyeExplotacionComercialFutura,
     tipo_plazo: tipoPlazo,
     plazo_anios: plazoAnios,
-    plazo_hasta: tipoPlazo === "hasta_fecha" ? plazoHasta : null,
+    plazo_hasta: plzAlta.plazoHasta,
     riesgo_manual: ["bajo", "medio", "alto", "critico"].includes(String(d.riesgoManual || ""))
       ? String(d.riesgoManual) : null,
     prioridad: ["urgente", "alta", "media", "baja"].includes(String(d.prioridad || ""))
@@ -411,7 +476,9 @@ export async function cambiarEstadoAutorizacion(
   const { data, error } = await supabase.from("autorizacion")
     .update({ estado, firmado_el: fin, notas: nota })
     .eq("id", id).eq("proyecto_id", proyectoId).select("id");
-  if (error) return { error: error.message };
+  /* Por `faltaSql`: esta acción escribe `estado` y `firmado_el`, y un error
+     de esquema aquí tiene que decir qué migración falta como en las demás. */
+  if (error) return { error: faltaSql(error.message, "clearance-autorizacion.sql") };
   if (!data?.length) return { error: "No se guardó: no tienes permiso, o ya no está aquí." };
 
   await bitacora(supabase, user.id, proyectoId,
@@ -441,18 +508,43 @@ export async function cambiarEstadoAutorizacion(
  */
 export async function corregirAutorizacion(
   id: string, proyectoId: string,
-  d: { calidadFirmante?: string; permiteUsoPromocional?: boolean },
+  d: {
+    calidadFirmante?: string;
+    permiteUsoPromocional?: boolean;
+    /** ⚠ Para qué medios vale. Se corrige AQUÍ y no solo en el alta: los
+     *  permisos que ya estaban registrados nacieron con la lista vacía —nadie
+     *  los preguntaba— y sin este camino habría que borrarlos y rehacerlos
+     *  para apagar su ámbar. Borrar una firmada no se puede, y con razón. */
+    medios?: string[];
+    incluyeExplotacionComercialFutura?: boolean;
+    /** ⚠ El plazo también. `tipo_plazo` nace en «indefinido» por defecto en la
+     *  base, así que TODAS las filas migradas afirman «por el máximo que
+     *  permita la ley» sin que nadie lo dijera — el mismo silencio convertido
+     *  en afirmación que esta tanda arregla para los medios. Y hasta ahora no
+     *  había ningún camino para corregirlo salvo entrando a la base, que es el
+     *  argumento literal con el que existe esta función. */
+    tipoPlazo?: string;
+    plazoAnios?: number | null;
+    plazoHasta?: string;
+  },
 ) {
   const { supabase, user } = await sesion();
   if (!user) return { error: "Sesión no encontrada." };
 
   const { data: prev } = await supabase.from("autorizacion")
-    .select("id,calidad_firmante,permite_uso_promocional,objeto_persona_id,tipo")
+    .select("id,calidad_firmante,permite_uso_promocional,medios,incluye_explotacion_comercial_futura,tipo_plazo,plazo_anios,plazo_hasta,objeto_persona_id,tipo")
     .eq("id", id).eq("proyecto_id", proyectoId).maybeSingle();
   if (!prev) return { error: "Esa autorización ya no está en este proyecto." };
 
   const calidad = CALIDADES.includes(String(d.calidadFirmante || "") as CalidadFirmante)
     ? String(d.calidadFirmante) : prev.calidad_firmante;
+
+  /* El plazo, con la MISMA validación que el alta: la función vive en un solo
+     sitio porque dos copias de una comprobación se separan a la primera. */
+  const plzBruto = d.tipoPlazo === undefined
+    ? null : plazoLimpio(d.tipoPlazo, d.plazoAnios, d.plazoHasta);
+  if (plzBruto && "error" in plzBruto) return { error: plzBruto.error };
+  const plz = plzBruto as { tipoPlazo: string; plazoAnios: number | null; plazoHasta: string | null } | null;
 
   /* R5 otra vez: bajar la calidad de `representante_legal_menor` a `titular`
      sobre un menor deja la fila diciendo que el menor firmó por sí mismo, que
@@ -475,13 +567,56 @@ export async function corregirAutorizacion(
       calidad_firmante: calidad,
       permite_uso_promocional: typeof d.permiteUsoPromocional === "boolean"
         ? d.permiteUsoPromocional : prev.permite_uso_promocional,
+      /* ⚠ `undefined` conserva lo que había; una lista VACÍA sí borra. Son
+         cosas distintas: «no me mandes los medios, no los toco» y «este papel
+         no concede ninguno». Con `|| prev.medios` no habría forma de vaciarla.
+         ⚠ Y lo que la lista de HOY no reconoce se CONSERVA. El vocabulario vive
+         en código justamente para poder crecer sin migración; con solo filtrar,
+         un despliegue que añada «podcast», un rollback, y abrir este panel para
+         cambiar el estado borraría ese valor de la base sin enseñarlo nunca ni
+         dejar rastro. Un vocabulario cerrado en código que destruye en vez de
+         rechazar es lo peor de las dos opciones. */
+      medios: mediosLimpios(d.medios) === null ? prev.medios
+        : [...new Set([
+            ...(mediosLimpios(d.medios) || []),
+            ...(prev.medios || []).filter((m: string) => !esMedio(m)),
+          ])],
+      incluye_explotacion_comercial_futura:
+        typeof d.incluyeExplotacionComercialFutura === "boolean"
+          ? d.incluyeExplotacionComercialFutura
+          : prev.incluye_explotacion_comercial_futura,
+      ...(plz ? {
+        tipo_plazo: plz.tipoPlazo,
+        plazo_anios: plz.plazoAnios,
+        plazo_hasta: plz.plazoHasta,
+      } : {}),
     })
     .eq("id", id).eq("proyecto_id", proyectoId).select("id");
-  if (error) return { error: error.message };
+  if (error) return { error: faltaSql(error.message, "clearance-autorizacion.sql") };
   if (!data?.length) return { error: "No se guardó: no tienes permiso, o ya no está aquí." };
 
-  await bitacora(supabase, user.id, proyectoId,
-    `corrigió la calidad del firmante de una autorización a «${calidad}»`);
+  /* ── 9 · LA BITÁCORA DICE QUÉ CAMBIÓ, NO UN CAMPO FIJO ──
+     ⚠ Esta función tocaba solo la calidad y el rótulo se escribió entonces.
+     Ahora cambia también el alcance de un permiso YA FIRMADO, que es de lo más
+     delicado del módulo —el expediente se enseña meses después—, y la única
+     traza nombraba un campo que a lo mejor ni se tocó. */
+  const cambios = [
+    calidad !== prev.calidad_firmante ? `la calidad a «${calidad}»` : "",
+    mediosLimpios(d.medios) !== null
+      && (mediosLimpios(d.medios) || []).join(",") !== (prev.medios || []).join(",")
+      ? `los medios a ${(mediosLimpios(d.medios) || []).join(", ") || "ninguno"}` : "",
+    typeof d.permiteUsoPromocional === "boolean"
+      && d.permiteUsoPromocional !== prev.permite_uso_promocional
+      ? `el uso promocional a ${d.permiteUsoPromocional ? "sí" : "no"}` : "",
+    typeof d.incluyeExplotacionComercialFutura === "boolean"
+      && d.incluyeExplotacionComercialFutura !== prev.incluye_explotacion_comercial_futura
+      ? `la explotación comercial futura a ${d.incluyeExplotacionComercialFutura ? "sí" : "no"}` : "",
+  ].filter(Boolean);
+  /* Si no cambió nada, no se apunta: cada apertura del panel y un clic en
+     Guardar dejaba una entrada aunque no se hubiera movido una coma. */
+  if (cambios.length)
+    await bitacora(supabase, user.id, proyectoId,
+      `corrigió ${cambios.join(" · ")} de una autorización`);
   revalidar();
   return {};
 }
@@ -926,6 +1061,11 @@ export type DatosDocumento = {
   consentimientoGrabadoUrl?: string;
   testigos?: string;
   nota?: string;
+  /** true = lo subido ES el documento. `undefined` cuando nadie lo ha dicho —
+   *  que no es lo mismo que «es una copia». */
+  esOriginalDigital?: boolean;
+  /** Dónde está el papel firmado a mano, si lo subido es una foto. */
+  ubicacionOriginal?: string;
 };
 
 /** Solo http(s). Sin esto, un `javascript:` pegado a mano se pinta como
@@ -1016,6 +1156,11 @@ export async function guardarDocumentoFirmado(proyectoId: string, d: DatosDocume
     consentimiento_grabado_url: grabadoUrl,
     testigos: texto(d.testigos, 200),
     nota: texto(d.nota, 500),
+    es_original_digital: !!d.esOriginalDigital,
+    /* ⚠ Se limpia si lo subido ES el original: guardar «archivador tal» junto a
+       «esto es el documento» deja la fila diciendo dos cosas, y quien la lea
+       después no sabrá cuál vale. */
+    ubicacion_original: d.esOriginalDigital ? null : texto(d.ubicacionOriginal, 200),
   };
 
   /* ── EDITAR EL QUE YA HAY, NO CREAR OTRO ──
