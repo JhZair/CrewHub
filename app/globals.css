@@ -7406,6 +7406,35 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
 /* El motivo, y no solo el color: un rojo sin motivo se deja de mirar. */
 .clr-mot { font-size: 11.5px; line-height: 1.45; }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   LAS FILAS DEL ÍNDICE DE CLEARANCE — `clx-`
+
+   ⚠ PREFIJO PROPIO, Y NO `clr-fila`. Esa clase ya existe unas líneas más abajo
+   y es la fila de UN PERMISO dentro de PermisosProyecto y MontajeProyecto:
+   `border-top` fino, 12px, sin fondo. Reusarla para la fila de una PELÍCULA
+   habría hecho que tocar el estilo de una cambiara la otra sin que nadie lo
+   viera venir — dos cosas distintas con el mismo nombre.
+   ══════════════════════════════════════════════════════════════════════════ */
+.clx { display: block; text-decoration: none; color: inherit;
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 12px; margin-bottom: 6px;
+  /* La barra de color a la izquierda es lo que se lee de un vistazo bajando la
+     lista: el veredicto antes que el nombre. */
+  border-left: 3px solid var(--border);
+  transition: border-color .12s, background .12s; }
+/* ⚠ `--panel` y no un `--card-hover` inventado: esa variable no existe, y una
+   variable CSS que no está no da error — el navegador se queda con el valor
+   anterior y el hover simplemente no pasa nada, en silencio. */
+.clx:hover { background: var(--panel); border-left-color: var(--accent); }
+.clx-t { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.clx-n { font-weight: 600; font-size: 13.5px; letter-spacing: .2px; }
+.clx-r { font-size: 11.5px; color: var(--dim); }
+/* Los bloqueos, uno por línea: en fila se cortaban y el motivo —que es lo que
+   hace que un rojo se mire— era lo primero que desaparecía. */
+.clx-b { display: flex; flex-direction: column; gap: 2px; margin-top: 6px;
+  padding-left: 2px; }
+.clx-m { font-size: 11.5px; line-height: 1.45; }
+
 .clr-lista { display: flex; flex-direction: column; gap: 1px; }
 .clr-fila { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
   padding: 3px 0; border-top: 1px solid var(--border); font-size: 12px; }

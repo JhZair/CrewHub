@@ -746,6 +746,16 @@ export function riesgoUsoMusical(u: FilaUsoMusical): { nivel: NivelRiesgo; txt: 
  * ¿puedo publicar esto hoy?
  */
 
+/** Un bloqueo, con SU ORIGEN. La tabla de la que sale cambia cómo se nombra —un
+ *  incidental no es un permiso— y sin este campo el rótulo llamaba «permiso» a
+ *  una decisión de montaje. */
+export type Bloqueo = {
+  id: string;
+  nivel: NivelRiesgo;
+  origen: "permiso" | "incidental" | "musica";
+  txt: string;
+};
+
 export type Semaforo = {
   publicable: boolean;
   /** No hay ni una autorización. ⚠ No es «todo en regla»: o nadie ha empezado o
@@ -757,7 +767,7 @@ export type Semaforo = {
    *  incidental o una música NUNCA está ahí. Llamar «permiso» a una decisión de
    *  montaje borra justo la distinción que las dos tablas existen para
    *  mantener. */
-  bloqueos: { id: string; nivel: NivelRiesgo; origen: "permiso" | "incidental" | "musica"; txt: string }[];
+  bloqueos: Bloqueo[];
   criticos: number;
   altos: number;
   abiertas: number;

@@ -66,7 +66,11 @@ const DESTINOS: Destino[] = [
      que poder hacerse en cualquier momento, no la víspera del estreno. Va en
      «el día a día» porque conseguir firmas es trabajo de rodaje: el día que se
      convierte en trabajo de despacho, ya es tarde y la gente no está. */
-  { ruta: "/clearance", ico: "⚖", txt: "clearance: ¿puedo publicar?", grupo: "dia" },
+  { ruta: "/clearance", ico: "⚖", txt: "clearance: ¿puedo publicar?", grupo: "dia",
+    /* ⚠ Igual que /guion cuatro líneas más arriba: dentro de
+       `/clearance/<id>` el ⚖ salía apagado, como si se estuviera en otra
+       sección. Se copió el reparto de rutas y no esta línea. */
+    activo: (p: string) => p === "/clearance" || p.startsWith("/clearance/") },
   { ruta: "/agenda", ico: "📆", txt: "agenda", grupo: "dia" },
   { ruta: "/pulso", ico: "📊", txt: "pulso del equipo", grupo: "dia" },
   { ruta: "/llaves", ico: "🔑", txt: "llaves", grupo: "dia" },

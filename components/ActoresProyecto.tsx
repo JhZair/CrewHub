@@ -320,6 +320,7 @@ export default function ActoresProyecto({
                       trabajo que quizá no ocurra. */}
                   {sit === "confirmada" && per?.id && !cesionesError && !desplegada && (
                     <PermisosDeActor
+                      proyectoId={proyectoId}
                       autorizaciones={autsDe.get(per.id) || []}
                       riesgos={riesgos} />
                   )}

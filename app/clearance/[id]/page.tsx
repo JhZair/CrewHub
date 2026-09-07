@@ -1,0 +1,361 @@
+import type { Metadata } from "next";
+import { notFound, redirect } from "next/navigation";
+import Link from "@/components/Enlace";
+import Volver from "@/components/Volver";
+import Realtime from "@/components/Realtime";
+import CoberturaAgrupacion, { type AgrupacionVista } from "@/components/CoberturaAgrupacion";
+import PermisosProyecto from "@/components/PermisosProyecto";
+import MontajeProyecto from "@/components/MontajeProyecto";
+import { createClient } from "@/lib/supabase/server";
+import { techo } from "@/lib/api";
+import { hoyLima } from "@/lib/fechas";
+import {
+  resumenSemaforo, sinUsoPromocional, semaforo, COLOR_RIESGO,
+  type FilaAutorizacion, type FilaIncidental, type FilaUsoMusical,
+} from "@/lib/clearance";
+import {
+  catalogosDeRiesgo, contextoDe, nombrePersonaDe, riesgosDe, nombrePeli,
+  rotuloBloqueo, catalogoDePersonas, catalogoDeObras, catalogoDeGrabaciones,
+  CAMPOS_AUT_FICHA, CAMPOS_INCIDENTAL, CAMPOS_USO_MUSICAL,
+} from "@/lib/clearanceDatos";
+import { TIPOS_CON_GUION } from "@/lib/tratamiento";
+
+/** ⚠ Por película y no fijo: con dos fichas abiertas, dos pestañas idénticas. */
+export async function generateMetadata(
+  { params }: { params: { id: string } },
+): Promise<Metadata> {
+  const supabase = createClient();
+  const { data } = await supabase.from("proyectos")
+    .select("nombre,nombre_corto").eq("id", params.id).maybeSingle();
+  return { title: data ? `⚖ ${nombrePeli(data)}` : "⚖ Clearance" };
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ⚖ CLEARANCE DE UNA PELÍCULA
+
+   Todo lo que antes vivía dentro de un plegable en la lista general: qué la
+   bloquea, la cobertura de cada agrupación, los permisos —que aquí se
+   registran— y la bitácora de montaje.
+
+   ── POR QUÉ AQUÍ SÍ SE ESCRIBE, Y EN EL ÍNDICE NO ──
+   Una pantalla que dice qué falta pero no deja hacer nada obliga a ir a otra
+   parte a arreglarlo, y entonces no se arregla. Pero el registro necesita seis
+   catálogos de desplegable, y traerlos para quince películas a la vez era el
+   motivo de que la lista pesara. Aquí se traen una vez, para una.
+
+   ── LAS CONSULTAS VAN FILTRADAS POR PELÍCULA ──
+   `.eq("proyecto_id", …)` donde la tabla lo tiene. Lo que sigue siendo global
+   es lo que de verdad lo es: una obra, una persona, una banda y una locación
+   no pertenecen a una película — la casa de Braulia sale en dos documentales.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+export default async function ClearanceDePelicula({
+  params,
+}: { params: { id: string } }) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+  const { data: { session } } = await supabase.auth.getSession();
+
+  const hoy = hoyLima();
+
+  /* ⚠ LA FORMA DEL ID, ANTES DE CONSULTAR. Con `/clearance/pepe`, Postgres
+     responde «invalid input syntax for type uuid», y eso pone `peli.error`: la
+     guarda de abajo NO llama a `notFound()` y la pantalla pinta «no se pudieron
+     leer los permisos» sobre una película que nunca existió. Un 404 dice la
+     verdad; un error rojo manda a buscar un fallo que no está. */
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(params.id))
+    notFound();
+
+  /* ⚠ Las obras y las grabaciones NO se piden aquí. Salen de
+     `catalogosDeRiesgo`, que ya las trae: pedirlas dos veces eran dos viajes
+     tirados y, pasado el techo, DOS LISTAS DISTINTAS — el desplegable ofrecería
+     obras que el mapa de riesgo no tiene, y esas filas se calcularían con
+     `ctx.obra = undefined`, más bajo de lo real y en silencio. */
+  const [peli, auts, incs, usos, agrs, ints, locs, acts, mats, cat] =
+    await Promise.all([
+      supabase.from("proyectos").select("id,nombre,nombre_corto,tipo,etapa")
+        .eq("id", params.id).maybeSingle(),
+      supabase.from("autorizacion").select(CAMPOS_AUT_FICHA)
+        .eq("proyecto_id", params.id).limit(techo(900) + 1),
+      supabase.from("aparicion_incidental").select(CAMPOS_INCIDENTAL)
+        .eq("proyecto_id", params.id).limit(techo(900) + 1),
+      supabase.from("uso_musical_corte").select(CAMPOS_USO_MUSICAL)
+        .eq("proyecto_id", params.id).order("timecode_inicio").limit(techo(900) + 1),
+      supabase.from("agrupacion")
+        .select("id,nombre,tipo,procedencia,representante_id,numero_integrantes_declarado")
+        .order("nombre").limit(techo(300) + 1),
+      supabase.from("agrupacion_integrante")
+        .select("agrupacion_id,persona_id,instrumento_rol,orden")
+        .order("orden").limit(techo(900) + 1),
+      supabase.from("locacion").select("id,nombre,direccion,tipo")
+        .order("nombre").limit(techo(300) + 1),
+      supabase.from("actividad_rodaje").select("id,proyecto_id,nombre,fecha_inicio")
+        .eq("proyecto_id", params.id).order("fecha_inicio").limit(techo(400) + 1),
+      supabase.from("material_aportado").select("id,proyecto_id,descripcion,tipo")
+        .eq("proyecto_id", params.id).limit(techo(400) + 1),
+      catalogosDeRiesgo(),
+    ]);
+
+  /* ⚠ `notFound` y no una pantalla en blanco: un id que no existe tiene que
+     decirlo, no enseñar un clearance vacío que se lee como «esta película no
+     tiene nada pendiente». */
+  if (!(peli as any)?.error && !peli.data) notFound();
+  /* ⚠ Y que sea una PELÍCULA. El índice filtra por `TIPOS_CON_GUION`; sin esto,
+     `/clearance/<id-de-un-fondo>` pintaba un clearance entero, con panel de
+     registro, para algo que no aparece en ninguna lista — permisos que nadie
+     volvería a ver. */
+  if (peli.data && !TIPOS_CON_GUION.includes((peli.data as any).tipo)) notFound();
+  const p = (peli.data || { id: params.id }) as any;
+  const nombre = nombrePeli(p);
+
+  const eProy = (peli as any)?.error?.message || null;
+  const eAut = (auts as any)?.error?.message || null;
+  const eMontaje = (incs as any)?.error?.message || (usos as any)?.error?.message || null;
+  const fallo = eProy || eAut || eMontaje;
+  const eCatalogo = [agrs, ints, locs, acts, mats]
+    .map(r => (r as any)?.error?.message).find(Boolean) || null;
+  const ciego = !!cat.error;
+
+  const cortado = [
+    [(auts.data || []).length, techo(900), "permisos"],
+    [(incs.data || []).length, techo(900), "apariciones incidentales"],
+    [(usos.data || []).length, techo(900), "músicas del corte"],
+    [(agrs.data || []).length, techo(300), "agrupaciones"],
+    [(ints.data || []).length, techo(900), "integrantes"],
+    [(locs.data || []).length, techo(300), "locaciones"],
+    [(acts.data || []).length, techo(400), "actividades"],
+    [(mats.data || []).length, techo(400), "materiales"],
+  ].filter(([n, t]) => (n as number) > (t as number)).map(([, , q]) => q as string)
+    .concat(cat.cortado);
+
+  /* ⚠ TODAS RECORTADAS, no solo las tres grandes. La fila de sonda que se pide
+     de más tiene que salir antes de contar nada: con 901 integrantes, el «5 de
+     11» de una agrupación pasaba a decir «5 de 12», y un número equivocado no
+     da error — se lee y se cree. */
+  const suyas = ((auts.data || []) as any[]).slice(0, techo(900)) as FilaAutorizacion[];
+  const mIncs = ((incs.data || []) as any[]).slice(0, techo(900)) as FilaIncidental[];
+  const mUsos = ((usos.data || []) as any[]).slice(0, techo(900)) as FilaUsoMusical[];
+  const lAgrs = ((agrs.data || []) as any[]).slice(0, techo(300));
+  const lInts = ((ints.data || []) as any[]).slice(0, techo(900));
+  const lLocs = ((locs.data || []) as any[]).slice(0, techo(300));
+  const lActs = ((acts.data || []) as any[]).slice(0, techo(400));
+  const lMats = ((mats.data || []) as any[]).slice(0, techo(400));
+
+  const ctxDe = contextoDe(cat, hoy);
+  /* ⚠ El MISMO `semaforo` con el MISMO contexto que el índice, por lib/
+     clearanceDatos. Si esta pantalla calculara el veredicto a su manera, la
+     lista podría decir «se puede publicar» y la ficha «no», y no habría forma
+     de saber cuál miente. */
+  const s = semaforo(suyas, ctxDe, { incidentales: mIncs, usosMusicales: mUsos });
+  const riesgos = riesgosDe(suyas, ctxDe);
+  const sinPromo = sinUsoPromocional(suyas);
+
+  const agrDe = new Map(lAgrs.map(a => [a.id, a]));
+  const intsDe = new Map<string, { personaId: string; nombre: string; instrumento?: string | null }[]>();
+  for (const i of lInts) {
+    intsDe.set(i.agrupacion_id, [...(intsDe.get(i.agrupacion_id) || []), {
+      personaId: i.persona_id,
+      nombre: nombrePersonaDe(cat, i.persona_id) || "(persona no encontrada)",
+      instrumento: i.instrumento_rol,
+    }]);
+  }
+
+  /* Los tres del catálogo de riesgo, derivados de las MISMAS filas con que se
+     calculó el veredicto. Ver lib/clearanceDatos.ts. */
+  const catalogoPersonas = catalogoDePersonas(cat);
+  const catalogoObras = catalogoDeObras(cat);
+  const catalogoGrabaciones = catalogoDeGrabaciones(cat);
+  const catalogoAgrupaciones = lAgrs
+    .map(a => ({ id: a.id, nombre: a.procedencia ? `${a.nombre} · ${a.procedencia}` : a.nombre }));
+  /* La dirección desambigua: hay una plaza de armas en cada pueblo. */
+  const catalogoLocaciones = lLocs
+    .map(l => ({ id: l.id, nombre: l.direccion ? `${l.nombre} · ${l.direccion}` : l.nombre }));
+
+  const nombreDe = (l: { id: string; nombre: string }[], id?: string | null) =>
+    l.find(x => x.id === id)?.nombre || null;
+
+  /* Las bandas que tienen algún permiso en ESTA película. La lista global de
+     agrupaciones en cada documental sería ruido. */
+  const agrIds = [...new Set(suyas
+    .map(a => a.objeto_agrupacion_id || a.otorgante_agrupacion_id)
+    .filter(Boolean) as string[])];
+
+  return (
+    <div className="shell">
+      <Realtime tablas={["autorizacion", "agrupacion_integrante", "documento_firmado",
+          "aparicion_incidental", "uso_musical_corte"]}
+        token={session?.access_token} miId={user.id} />
+      <div className="topbar"><Volver /></div>
+
+      <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
+        <h1 className="title-lg" style={{ margin: 0 }}>⚖ {nombre}</h1>
+        {!fallo && (
+          <span className="clr-sem" style={{
+            color: s.sinDatos || (ciego && s.publicable) ? "var(--dim)"
+              : s.publicable ? "var(--green)" : "var(--red)",
+          }}>
+            {s.sinDatos ? "sin datos"
+              : ciego && s.publicable ? "no se puede decir"
+              : s.publicable ? "✓ se puede publicar" : "🚫 NO se puede publicar"}
+          </span>
+        )}
+      </div>
+      <div style={{ color: "var(--dim)", fontSize: 12.5, margin: "4px 0 14px", lineHeight: 1.6 }}>
+        {!fallo && <>{resumenSemaforo(s)} · </>}
+        <Link href="/clearance" className="gx-filtro">← todas las películas</Link>
+        {" · "}
+        <Link href={`/entidad/proyecto/${p.id}`} className="gx-filtro">ficha de {nombre} →</Link>
+      </div>
+
+      {fallo && (
+        <div className="err-inline" style={{ marginBottom: 12 }}>
+          ⚠ No se pudieron leer los permisos: <code>{fallo}</code>
+          {/column|does not exist|schema cache|PGRST20/i.test(fallo) && (
+            <> <b>Faltan las migraciones <code>db/clearance-*.sql</code> en Supabase,
+              en su orden: agrupacion → obra → autorizacion → lugares → montaje →
+              obra-cesion.</b></>
+          )}
+          <div style={{ marginTop: 4 }}>
+            El semáforo <b>no</b> se pinta: un «se puede publicar» calculado sobre una
+            lista vacía por error es la mentira más cara que puede decir esta pantalla.
+          </div>
+        </div>
+      )}
+
+      {cat.error && (
+        <div className="err-inline" style={{ marginBottom: 12 }}>
+          ⚠ No se pudo leer el catálogo de riesgo: <code>{cat.error}</code>
+          <div style={{ marginTop: 4 }}>
+            Los permisos se leen igual, pero el riesgo se calcula <b>a ciegas</b>
+            —sin saber si una obra está verificada o si alguien es menor— así que
+            el veredicto se degrada a «no se puede decir».
+          </div>
+        </div>
+      )}
+
+      {eCatalogo && (
+        <div className="err-inline" style={{ marginBottom: 12 }}>
+          ⚠ No se pudieron leer los desplegables: <code>{eCatalogo}</code>
+          <div style={{ marginTop: 4 }}>
+            Faltan las agrupaciones, lugares, actividades o materiales, así que no se
+            pueden registrar permisos sobre ellos. El semáforo <b>no</b> se ve
+            afectado: esas tablas no entran en el cálculo del riesgo.
+          </div>
+        </div>
+      )}
+
+      {!!cortado.length && (
+        <div className="err-inline" style={{ marginBottom: 12 }}>
+          ⚠ Se cortó en el tope de la API ({cortado.join(", ")}). El semáforo habla
+          solo de lo que se leyó, así que puede faltar más de lo que dice.
+        </div>
+      )}
+
+      {/* ── QUÉ ME FALTA PARA PUBLICAR ──
+          Ordenado por riesgo, que es el orden en que hay que atacarlo. Con el
+          motivo escrito: un rojo sin motivo se deja de mirar. */}
+      {/* ⚠ Sin `card`: `.clr-bloq` va después en globals.css y con el mismo
+          peso, así que le ganaba el `border-radius` y el `padding` — salía una
+          tarjeta con dos esquinas cuadradas y el borde rojo pisado. */}
+      {!fallo && s.bloqueos.length > 0 && (
+        <div className="clr-bloq" style={{ marginBottom: 12 }}>
+          <div className="trt-cab-t">qué lo impide</div>
+          {s.bloqueos.map(b => {
+            /* El mismo rótulo que el índice, por lib/clearanceDatos: dos
+               cadenas de respaldo distintas describían el mismo bloqueo de dos
+               maneras, y la de la lista se dejaba el nombre de la agrupación. */
+            const { que, quien } = rotuloBloqueo(b, suyas, cat,
+              id => (id ? agrDe.get(id)?.nombre : null) || null);
+            return (
+              <div key={b.id} className="clr-bl">
+                <span className="clr-pt" style={{ color: COLOR_RIESGO[b.nivel] }}>
+                  {b.nivel === "critico" ? "🚫" : "🔶"}
+                </span>
+                <span className="clr-que">{que}{quien ? ` · ${quien}` : ""}</span>
+                <span className="clr-mot" style={{ color: COLOR_RIESGO[b.nivel] }}>{b.txt}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Igual que arriba: `.trt-vacio` tiene `padding: 4px 0` y con `card`
+          dejaba el texto pegado al borde. */}
+      {!fallo && s.sinDatos && (
+        <div className="trt-vacio" style={{ marginBottom: 12 }}>
+          Ningún permiso registrado en esta película. <b>No es «todo en regla»</b>:
+          es que nadie ha empezado, o que la consulta no trajo nada. Un cero aquí
+          no significa que se pueda publicar.
+        </div>
+      )}
+
+      {/* ── LA COBERTURA DE CADA AGRUPACIÓN — R1 ── */}
+      {!fallo && agrIds.map(id => {
+        const a = agrDe.get(id);
+        if (!a) return null;
+        const vista: AgrupacionVista = {
+          id: a.id, nombre: a.nombre, tipo: a.tipo, procedencia: a.procedencia,
+          representanteId: a.representante_id,
+          representanteNombre: nombrePersonaDe(cat, a.representante_id),
+          numeroDeclarado: a.numero_integrantes_declarado,
+          integrantes: intsDe.get(a.id) || [],
+        };
+        return (
+          <CoberturaAgrupacion key={id} proyectoId={p.id} agrupacion={vista}
+            autorizaciones={suyas} personas={catalogoPersonas}
+            /* Cuadrilla y hermandad danzan tanto como el conjunto de danza —la
+               cuadrilla del cargo de Lino es de danzantes—, así que el permiso
+               se tipa igual. Solo `banda_musicos` es interpretación musical con
+               seguridad. */
+            tipoInterpretacion={a.tipo === "banda_musicos"
+              ? "interpretacion_musical" : "interpretacion_danza"} />
+        );
+      })}
+
+      {/* ── R6 · QUIÉN NO PUEDE IR EN PROMOCIÓN ──
+          El tráiler y el afiche se publican antes que la película, a veces años
+          antes. Un permiso que autoriza salir en la pieza y no en su promoción
+          es frecuente, y si no se puede listar se incumple sin querer. */}
+      {!fallo && sinPromo.length > 0 && (
+        <div className="ces-aviso" style={{ marginTop: 10 }}>
+          ⚠ No pueden aparecer en tráiler, afiche ni miniatura:{" "}
+          {sinPromo.map(a => nombrePersonaDe(cat, a.objeto_persona_id) || "alguien").join(", ")}.
+          Firmaron para la película, no para su promoción.
+        </div>
+      )}
+
+      {/* ── LO REGISTRADO, Y DONDE SE REGISTRA ── */}
+      {!fallo && (
+        <PermisosProyecto
+          proyectoId={p.id} autorizaciones={suyas}
+          personas={catalogoPersonas}
+          agrupaciones={catalogoAgrupaciones}
+          obras={catalogoObras} grabaciones={catalogoGrabaciones}
+          locaciones={catalogoLocaciones}
+          actividades={lActs.map(a => ({ id: a.id, nombre: a.nombre }))}
+          materiales={lMats.map(m => ({ id: m.id, nombre: m.descripcion }))}
+          riesgos={riesgos} hoy={hoy} />
+      )}
+
+      {/* ── LA BITÁCORA DE MONTAJE ──
+          Quién sale sin firmar y qué suena en cada minuto. No son permisos, son
+          decisiones — pero R8 las cuenta igual: una persona sin desenfocar en
+          el corte impide publicar lo mismo que un papel que falta. */}
+      {!fallo && (
+        <MontajeProyecto
+          proyectoId={p.id} incidentales={mIncs} usos={mUsos}
+          obras={catalogoObras} grabaciones={catalogoGrabaciones}
+          agrupaciones={catalogoAgrupaciones}
+          /* Solo las licencias de fonograma FIRMADAS de ESTA película: es lo
+             único que puede dar por resuelta una música de tercero. */
+          licencias={suyas
+            .filter(a => a.tipo === "fonograma" && a.estado === "firmada")
+            .map(a => ({
+              id: a.id,
+              nombre: `${nombreDe(catalogoGrabaciones, a.objeto_grabacion_id) || "fonograma"} · firmada ${a.firmado_el || ""}`,
+            }))} />
+      )}
+    </div>
+  );
+}

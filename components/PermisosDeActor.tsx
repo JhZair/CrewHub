@@ -39,8 +39,12 @@ import {
    ══════════════════════════════════════════════════════════════════════════ */
 
 export default function PermisosDeActor({
-  autorizaciones, riesgos,
+  proyectoId, autorizaciones, riesgos,
 }: {
+  /** Para llevar al clearance DE ESTA PELÍCULA y no a la lista de todas: el
+   *  enlace existe para acortar el camino, y aterrizar en el índice obliga a
+   *  buscar de nuevo la película que ya se estaba mirando. */
+  proyectoId: string;
   /** SOLO las de esta persona, ya repartidas en el servidor. */
   autorizaciones: FilaAutorizacion[];
   /** El riesgo de cada una, ya calculado por quien llama.
@@ -105,7 +109,7 @@ export default function PermisosDeActor({
       {/* ── EL ÚNICO SITIO DONDE SE REGISTRA ──
           Un enlace y no un botón: llevar a la pantalla que escribe es lo que
           garantiza que solo haya una que escriba. */}
-      <Link href="/clearance" className="cesl-mas"
+      <Link href={`/clearance/${proyectoId}`} className="cesl-mas"
         title="Los permisos se registran en un solo sitio, para que la ficha y el semáforo no puedan decir cosas distintas.">
         registrar o cambiar en ⚖ clearance →
       </Link>

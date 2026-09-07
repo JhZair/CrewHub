@@ -24,14 +24,23 @@ async function sesion() {
   return { supabase, user };
 }
 
-const revalidar = (proyectoId?: string) => {
+/* ⚠ SIN PARÁMETRO. Lo tenía, y desde que la ficha es una ruta con patrón ya no
+   se usa: `revalidatePath("/clearance/[id]", "page")` revalida TODAS las fichas
+   de una vez, que es lo correcto y lo único que Next permite aquí. Un parámetro
+   que no hace nada es peor que ninguno — el siguiente lo vuelve a cablear
+   creyendo que dirige el revalidado a una película. */
+const revalidar = () => {
   revalidatePath("/clearance");
   revalidatePath("/musica");
   /* ⚠ El PATRÓN de ruta, no la ruta construida: con `/entidad/proyecto/<id>`
      Next arma un tag que no coincide con ninguna página y no revalida nada, sin
      dar error. Está contado en app/guion/acciones.ts. */
   revalidatePath("/entidad/[tipo]/[id]", "page");
-  if (proyectoId) revalidatePath(`/clearance/${proyectoId}`);
+  /* ⚠ EL PATRÓN, no la ruta construida. Con `/clearance/<uuid>` Next arma un
+     tag que no coincide con ninguna página y no revalida nada, sin dar error:
+     registras un permiso, vuelves y la ficha sigue enseñando lo de antes. Ya
+     nos pasó en app/guion/acciones.ts. */
+  revalidatePath("/clearance/[id]", "page");
 };
 
 const texto = (v: string | null | undefined, max = 300) => {
@@ -358,7 +367,7 @@ export async function guardarAutorizacion(proyectoId: string, d: DatosAutorizaci
     if (error) return { error: faltaSql(error.message, "clearance-autorizacion.sql") };
     if (!data?.length) return { error: "No se guardó: no tienes permiso, o ya no está aquí." };
     await bitacora(supabase, user.id, proyectoId, `editó una autorización de ${meta.corto}`);
-    revalidar(proyectoId);
+    revalidar();
     return { id: d.id };
   }
 
@@ -366,7 +375,7 @@ export async function guardarAutorizacion(proyectoId: string, d: DatosAutorizaci
     .insert({ ...fila, creado_por: user.id }).select("id").single();
   if (error) return { error: faltaSql(error.message, "clearance-autorizacion.sql") };
   await bitacora(supabase, user.id, proyectoId, `registró una autorización de ${meta.corto}`);
-  revalidar(proyectoId);
+  revalidar();
   return { id: data.id as string };
 }
 
@@ -406,7 +415,7 @@ export async function cambiarEstadoAutorizacion(
 
   await bitacora(supabase, user.id, proyectoId,
     `cambió una autorización de «${prev.estado}» a «${estado}»`);
-  revalidar(proyectoId);
+  revalidar();
   return {};
 }
 
@@ -472,7 +481,7 @@ export async function corregirAutorizacion(
 
   await bitacora(supabase, user.id, proyectoId,
     `corrigió la calidad del firmante de una autorización a «${calidad}»`);
-  revalidar(proyectoId);
+  revalidar();
   return {};
 }
 
@@ -513,7 +522,7 @@ export async function apuntarGestion(
   if (error) return { error: faltaSql(error.message, "clearance-autorizacion.sql") };
   /* Misma razón que en `sumarIntegrante`: RLS devuelve cero filas sin error. */
   if (!data?.length) return { error: "No se apuntó: no tienes permiso." };
-  revalidar(proyectoId);
+  revalidar();
   return {};
 }
 
@@ -538,7 +547,7 @@ export async function quitarAutorizacion(id: string, proyectoId: string) {
   if (error) return { error: error.message };
   if (!data?.length) return { error: "No se quitó: no tienes permiso, o ya no estaba." };
   await bitacora(supabase, user.id, proyectoId, "quitó una autorización sin firmar");
-  revalidar(proyectoId);
+  revalidar();
   return {};
 }
 
@@ -626,12 +635,12 @@ export async function guardarActividad(proyectoId: string, d: {
       .update(editable).eq("id", d.id).eq("proyecto_id", proyectoId).select("id");
     if (error) return { error: faltaSql(error.message, "clearance-lugares.sql") };
     if (!data?.length) return { error: "No se guardó: no tienes permiso, o ya no está aquí." };
-    revalidar(proyectoId); return { id: d.id };
+    revalidar(); return { id: d.id };
   }
   const { data, error } = await supabase.from("actividad_rodaje")
     .insert({ ...fila, creado_por: user.id }).select("id").single();
   if (error) return { error: faltaSql(error.message, "clearance-lugares.sql") };
-  revalidar(proyectoId);
+  revalidar();
   return { id: data.id as string };
 }
 
@@ -671,12 +680,12 @@ export async function guardarMaterial(proyectoId: string, d: {
       .update(editable).eq("id", d.id).eq("proyecto_id", proyectoId).select("id");
     if (error) return { error: faltaSql(error.message, "clearance-lugares.sql") };
     if (!data?.length) return { error: "No se guardó: no tienes permiso, o ya no está aquí." };
-    revalidar(proyectoId); return { id: d.id };
+    revalidar(); return { id: d.id };
   }
   const { data, error } = await supabase.from("material_aportado")
     .insert({ ...fila, creado_por: user.id }).select("id").single();
   if (error) return { error: faltaSql(error.message, "clearance-lugares.sql") };
-  revalidar(proyectoId);
+  revalidar();
   return { id: data.id as string };
 }
 
@@ -762,12 +771,12 @@ export async function guardarIncidental(proyectoId: string, d: {
       .update(editable).eq("id", d.id).eq("proyecto_id", proyectoId).select("id");
     if (error) return { error: faltaSql(error.message, "clearance-montaje.sql") };
     if (!data?.length) return { error: "No se guardó: no tienes permiso, o ya no está aquí." };
-    revalidar(proyectoId); return { id: d.id };
+    revalidar(); return { id: d.id };
   }
   const { data, error } = await supabase.from("aparicion_incidental")
     .insert({ ...fila, creado_por: user.id }).select("id").single();
   if (error) return { error: faltaSql(error.message, "clearance-montaje.sql") };
-  revalidar(proyectoId);
+  revalidar();
   return { id: data.id as string };
 }
 
@@ -778,7 +787,7 @@ export async function quitarIncidental(id: string, proyectoId: string) {
     .delete().eq("id", id).eq("proyecto_id", proyectoId).select("id");
   if (error) return { error: error.message };
   if (!data?.length) return { error: "No se quitó: no tienes permiso, o ya no estaba." };
-  revalidar(proyectoId);
+  revalidar();
   return {};
 }
 
@@ -858,12 +867,12 @@ export async function guardarUsoMusical(proyectoId: string, d: {
       .update(editable).eq("id", d.id).eq("proyecto_id", proyectoId).select("id");
     if (error) return { error: faltaSql(error.message, "clearance-montaje.sql") };
     if (!data?.length) return { error: "No se guardó: no tienes permiso, o ya no está aquí." };
-    revalidar(proyectoId); return { id: d.id };
+    revalidar(); return { id: d.id };
   }
   const { data, error } = await supabase.from("uso_musical_corte")
     .insert({ ...fila, creado_por: user.id }).select("id").single();
   if (error) return { error: faltaSql(error.message, "clearance-montaje.sql") };
-  revalidar(proyectoId);
+  revalidar();
   return { id: data.id as string };
 }
 
@@ -874,6 +883,6 @@ export async function quitarUsoMusical(id: string, proyectoId: string) {
     .delete().eq("id", id).eq("proyecto_id", proyectoId).select("id");
   if (error) return { error: error.message };
   if (!data?.length) return { error: "No se quitó: no tienes permiso, o ya no estaba." };
-  revalidar(proyectoId);
+  revalidar();
   return {};
 }
