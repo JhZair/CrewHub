@@ -6,6 +6,11 @@ import Avatar from "@/components/Avatar";
 import { useRouter } from "next/navigation";
 import Link from "@/components/Enlace";
 import { useState } from "react";
+import {
+  META_TIPO_AUT, ROTULO_ESTADO_AUT, colorEstadoAut, permisoResuelto,
+  personaDeAutorizacion,
+  type FilaAutorizacion, type NivelRiesgo, type EstadoAutorizacion,
+} from "@/lib/clearance";
 
 /* «desde ene 2024» — el mes y el año en que se sumó al proyecto. Da contexto
    sin ocupar una fila: cuánto lleva alguien es parte de saber quién es en la
@@ -66,10 +71,30 @@ const CARGOS = [
   "Dirección de arte", "Asistencia de dirección", "Asistencia de producción",
 ];
 
-export default function EquipoProyecto({ proyectoId, equipo, personas }: {
+export default function EquipoProyecto({
+  proyectoId, equipo, personas, cesiones = [], riesgos = {}, cesionesError = "",
+}: {
   proyectoId: string;
   equipo: any[];
   personas: CatalogoItem[];
+  /* ── LA CESIÓN DE DERECHOS DE QUIEN HACE LA PELÍCULA ──
+     ⚠ `aporte_de_equipo` existía en el vocabulario desde el primer día —«el
+     aporte creativo de quien hace la película; aquí sí suele ser una cesión de
+     verdad: la productora pasa a ser titular»— y NINGUNA pantalla lo enseñaba.
+     El reparto sí tenía su estado bajo el nombre; el equipo, nada.
+     Y es más grave que en el reparto: sin la cesión de la montajista o del
+     director de fotografía, la productora no es titular de la obra que va a
+     presentar a un fondo. Eso no lo arregla una llamada. */
+  cesiones?: FilaAutorizacion[];
+  /** El riesgo de cada una, calculado en el servidor. Cadenas, no funciones. */
+  riesgos?: Record<string, NivelRiesgo>;
+  /** ⚠ Si la consulta de permisos falló. Sin esto, una lista vacía POR ERROR
+   *  hacía que este bloque afirmara «⚠ 6 sin cesión de derechos» y pintara «sin
+   *  registrar» bajo cada nombre — un cero que no es un cero, por el lado
+   *  contrario: no dice «todo bien», dice «falta todo», y manda a registrar
+   *  duplicados de papeles que quizá ya existen. `ActoresProyecto` lo tenía
+   *  desde el principio y esto se copió sin él. */
+  cesionesError?: string;
 }) {
   const [agregando, setAgregando] = useState(false);
   const [sel, setSel] = useState<{ id: string; nombre: string } | null>(null);
@@ -80,6 +105,29 @@ export default function EquipoProyecto({ proyectoId, equipo, personas }: {
   const router = useRouter();
 
   const OPC = CARGOS.map(c => [c, c]) as [string, string][];
+
+  /* La cesión de cada quien, por persona. `personaDeAutorizacion` y no un `||`
+     escrito aquí: es la función que existe para que no haya dos criterios, y
+     esta habría sido la cuarta copia. El primero si hay dos, igual que en el
+     reparto — dos pantallas eligiendo filas distintas para la misma persona es
+     el fallo que ya cometimos. */
+  const cesionDe = new Map<string, FilaAutorizacion>();
+  for (const a of cesiones) {
+    if (a.tipo !== "aporte_de_equipo") continue;
+    const k = personaDeAutorizacion(a);
+    if (k && !cesionDe.has(k)) cesionDe.set(k, a);
+  }
+  /* ⚠ PERSONAS, no filas. `proyecto_equipo` es `unique (proyecto, persona,
+     cargo)`: la misma persona puede ser Directora Y Guionista, y contando filas
+     el titular decía «⚠ 2 sin cesión» habiendo una sola a quien pedírsela. Y
+     /clearance sí deduplica, así que las dos pantallas daban números distintos
+     sobre lo mismo. */
+  const personasEquipo = [...new Set(
+    equipo.map((m: any) => m.persona?.id).filter(Boolean) as string[])];
+  const sinCeder = personasEquipo.filter(id => {
+    const c = cesionDe.get(id);
+    return !c || !permisoResuelto(c, riesgos[c.id]);
+  }).length;
 
   /* ── EL ORDEN DEL RODAJE, NO EL DEL ABECEDARIO ──
      La consulta pide `.order("cargo")`, así que llegaba alfabético: «Dirección
@@ -129,6 +177,24 @@ export default function EquipoProyecto({ proyectoId, equipo, personas }: {
       <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>
         <h4 style={{ margin: 0, fontSize: 11, letterSpacing: 1.2, textTransform: "uppercase", color: "var(--dim)" }}>
           🎬 Equipo del proyecto · {equipo.length}
+          {/* ⚠ El mismo titular que el reparto: quién falta, no cuántos hay.
+              Sin la cesión de la montajista o del director de fotografía, la
+              productora no es titular de la obra que va a presentar — y eso no
+              lo arregla una llamada. */}
+          {/* ⚠ Con la consulta caída no se afirma NADA: ni que falten ni que
+              estén. El error se enseña abajo, en el bloque del reparto. */}
+          {!!personasEquipo.length && !cesionesError && (
+            sinCeder ? (
+              <span className="act-ces-falta">
+                {" "}⚠ {sinCeder} sin cesión de derechos
+              </span>
+            ) : (
+              <span className="act-ces-ok">
+                {" "}✓ {personasEquipo.length === 1
+                  ? "con su cesión" : `las ${personasEquipo.length} con su cesión`}
+              </span>
+            )
+          )}
         </h4>
         <span style={{ flex: 1 }} />
         {!agregando && (
@@ -184,6 +250,29 @@ export default function EquipoProyecto({ proyectoId, equipo, personas }: {
                   {[m.persona?.tipo, desdeTxt(m.desde)].filter(Boolean).join(" · ")}
                 </span>
               )}
+              {/* ── SU CESIÓN DE DERECHOS ──
+                  Debajo del nombre y no en una columna: es un dato de la
+                  persona, no una casilla del cargo. Y sin botón: se registra en
+                  ⚖ clearance, que es el único sitio que escribe permisos. */}
+              {m.persona?.id && !cesionesError && (() => {
+                const c = cesionDe.get(m.persona.id);
+                const rg = c ? riesgos[c.id] : null;
+                return (
+                  <span className="eq-ces">
+                    {META_TIPO_AUT.aporte_de_equipo.ico} cesión de derechos{" "}
+                    {/* ⚠ El «sin registrar» en ÁMBAR, igual que en la ficha del
+                        reparto. En gris se confundía con `no_iniciada`, que es
+                        otra cosa: ahí hay un papel empezado y aquí no hay
+                        ninguno. Dos cosas distintas, dos colores. */}
+                    <b style={{ color: c ? colorEstadoAut(c, rg) : "var(--yellow)" }}>
+                      {!c ? "sin registrar"
+                        : c.estado === "firmada" && !c.documento_id
+                          ? "firmada, falta el papel"
+                          : ROTULO_ESTADO_AUT[c.estado as EstadoAutorizacion] || String(c.estado)}
+                    </b>
+                  </span>
+                );
+              })()}
             </div>
           </div>
           {/* ── CORREGIR A QUIÉN, SIN BORRAR LA FILA ──

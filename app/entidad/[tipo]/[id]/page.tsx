@@ -26,6 +26,10 @@ import Alerta from "@/components/Alerta";
 import { urlPlataforma, conPlataforma, PLAT } from "@/lib/plataformas";
 import { hoyLima, fechaDia } from "@/lib/fechas";
 import {
+  riesgoDe, personaDeAutorizacion,
+  type FilaAutorizacion, type NivelRiesgo,
+} from "@/lib/clearance";
+import {
   rendicionVencida, plazoRendicion, compromisoDe, empresaLibre,
   trabasEmpresa, trabasMiembro, dudasMiembro, SIN_COMPROMISO,
   reservaEmpresa, reservaMiembro, reservaCompleta, EN_JUEGO, enJuego,
@@ -754,6 +758,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
   let postusProy: any[] = [], equipoProy: any[] = [], plantillas: any[] = [], actoresProy: any[] = [];
   let actoresCarne: any[] = [];
   let cesionesProy: any[] = [], cesionesError = "";
+  let riesgosProy: Record<string, NivelRiesgo> = {};
   /* Cuántas actividades tiene el cronograma de cada postulación de este
      proyecto. Ver el comentario de `cronoDeFondos`, más abajo. */
   let cronoPorPostu = new Map<string, number>();
@@ -911,6 +916,32 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       : filasCes.length > techo(500)
         ? `Hay más de ${techo(500)} permisos en este proyecto y solo se leyeron los primeros: el recuento de abajo se queda corto. Míralos en ⚖ clearance.`
         : "";
+    /* ── EL RIESGO DE CADA PERMISO, UNA SOLA VEZ Y AQUÍ ──
+       ⚠ Lo calculaba `ActoresProyecto` por su cuenta, y ahora el bloque de
+       EQUIPO necesita lo mismo. Dos componentes calculando el mismo veredicto
+       con su propio contexto acaban discrepando —es el fallo que este módulo
+       entero existe para impedir— así que sube al servidor y baja como cadenas.
+       ⚠ Y las personas salen de las DOS listas. Sin la del equipo, R5 no podría
+       dispararse sobre un miembro menor de edad: pasa —una asistente de 17 en
+       prácticas— y su cesión saldría en verde. Lo que sigue sin poder decirse
+       aquí es lo que necesita el catálogo de obras y grabaciones; para un
+       release y una cesión de equipo, con esto basta. */
+    const personasFicha = new Map<string, any>();
+    for (const a of actoresProy) {
+      const p: any = Array.isArray(a.persona) ? a.persona[0] : a.persona;
+      if (p?.id) personasFicha.set(p.id, p);
+    }
+    for (const m of equipoProy) {
+      const p: any = Array.isArray(m.persona) ? m.persona[0] : m.persona;
+      if (p?.id && !personasFicha.has(p.id)) personasFicha.set(p.id, p);
+    }
+    riesgosProy = Object.fromEntries(
+      (cesionesProy as FilaAutorizacion[]).map(a => [a.id, riesgoDe(a, {
+        hoy: hoyLima(),
+        persona: personasFicha.get(personaDeAutorizacion(a) || "") || null,
+      })]),
+    );
+
     /* ── EL CARNÉ ENSEÑA SOLO A LOS CONFIRMADOS ──
        Es el rostro grande del corazón del proyecto: quien está DENTRO. Un
        candidato que aún se está viendo, o alguien ya descartado, ahí arriba se
@@ -5130,7 +5161,16 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                  cliente, que solo existe si el proyecto es un encargo. */
               const trayectoriaProy = (
                 <>
-                  <EquipoProyecto proyectoId={params.id} equipo={equipoProy} personas={personasCat} />
+                  {/* ⚠ Las cesiones también aquí: `aporte_de_equipo` existía en
+                      el vocabulario y ninguna pantalla lo enseñaba. El reparto
+                      tenía su estado bajo el nombre desde el primer día; el
+                      equipo, nada — y su cesión es la que hace a la productora
+                      titular de la obra. Se pasa la lista ENTERA y el
+                      componente filtra por tipo: mandarle solo las de equipo
+                      obligaría a repetir aquí ese filtro, que es un criterio. */}
+                  <EquipoProyecto proyectoId={params.id} equipo={equipoProy} personas={personasCat}
+                    cesiones={cesionesProy} riesgos={riesgosProy}
+                    cesionesError={cesionesError} />
                   {/* Los actores sociales van junto al equipo: ambos son las
                       personas del proyecto —quienes lo hacen y a quiénes retrata. */}
                   {/* El tipo decide cómo se llama esto: en documental son
@@ -5139,7 +5179,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                   <ActoresProyecto proyectoId={params.id} actores={actoresProy}
                     personas={personasCat} tipo={ent.tipo} error={actoresError}
                     cesiones={cesionesProy} cesionesError={cesionesError}
-                    hoy={hoyLima()} />
+                    riesgos={riesgosProy} />
                   {/* ── LOS TRATAMIENTOS ──
                       Junto al reparto porque son la misma pregunta desde dos
                       lados: a quién cuenta la película y cómo la cuenta.

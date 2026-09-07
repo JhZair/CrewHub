@@ -2,8 +2,8 @@
 import { situacionActorProyecto } from "@/app/actions";
 import PermisosDeActor from "@/components/PermisosDeActor";
 import {
-  META_TIPO_AUT, riesgoDe, esPapelDeLaPersona, personaDeAutorizacion, permisoResuelto,
-  type FilaAutorizacion, type NivelRiesgo, type FilaPersonaMin,
+  META_TIPO_AUT, esPapelDeLaPersona, personaDeAutorizacion, permisoResuelto,
+  type FilaAutorizacion, type NivelRiesgo,
 } from "@/lib/clearance";
 import {
   repartirPorSituacion, situacionDe, type Situacion,
@@ -38,7 +38,7 @@ import { useRef, useState } from "react";
  */
 export default function ActoresProyecto({
   proyectoId, actores, personas, tipo, error: errServidor,
-  cesiones = [], cesionesError = "", hoy,
+  cesiones = [], cesionesError = "", riesgos = {},
 }: {
   proyectoId: string;
   actores: any[];
@@ -51,13 +51,14 @@ export default function ActoresProyecto({
   /** Las cesiones de TODO el reparto; se reparten por persona aquí. Quién
    *  autorizó que se le grabe, y quién que su música suene. */
   cesiones?: FilaAutorizacion[];
-  /** El día de hoy en Lima, calculado en el servidor. ⚠ No se usa `new Date()`
-   *  aquí: a partir de las 7 de la tarde en Perú ya sería mañana, y un plazo se
-   *  daría por vencido un día antes. */
-  hoy?: string;
+
   /** Mismo criterio que `error`: un cero que en realidad es «no se pudo leer»
    *  se lee como «no falta ninguna autorización». */
   cesionesError?: string;
+  /** El riesgo de cada permiso, ya calculado EN EL SERVIDOR y como cadenas.
+   *  ⚠ Se calculaba aquí; subió cuando el bloque de equipo necesitó el mismo,
+   *  porque dos componentes calculando el mismo veredicto acaban discrepando. */
+  riesgos?: Record<string, NivelRiesgo>;
 }) {
   /* ── LOS PERMISOS, REPARTIDOS UNA VEZ ──
      ⚠ De `autorizacion`. Esta pantalla leía y ESCRIBÍA `proyecto_cesion`, la
@@ -79,26 +80,13 @@ export default function ActoresProyecto({
     autsDe.set(k, [...(autsDe.get(k) || []), a]);
   }
 
-  /* ── EL RIESGO, CON LA PERSONA DELANTE ──
-     ⚠ `persona` no es opcional de verdad: sin ella, R5 —«es menor y no firma su
-     representante legal», el motivo CRÍTICO— no puede dispararse nunca. Una
-     actriz de quince años con su release firmado y su PDF salía aquí en verde
-     mientras ⚖ clearance la pintaba en rojo. Volvía a haber dos pantallas
-     diciendo cosas distintas del mismo papel, que es lo único que este cambio
-     venía a matar: cerrada la puerta de la escritura, se había quedado abierta
-     la del veredicto.
-     Lo que sigue sin poder decirse aquí es lo que necesita el catálogo de obras
-     y grabaciones; para un release de imagen, con esto basta. */
-  const personasReparto = new Map<string, FilaPersonaMin>();
-  for (const a of actores) {
-    const p: any = personaDe(a);
-    if (p?.id) personasReparto.set(p.id, p as FilaPersonaMin);
-  }
-  const riesgos: Record<string, NivelRiesgo> = Object.fromEntries(
-    suyas.map(a => [a.id, riesgoDe(a, {
-      hoy, persona: personasReparto.get(personaDeAutorizacion(a) || "") || null,
-    })]),
-  );
+  /* ⚠ EL RIESGO YA VIENE CALCULADO, del servidor. Lo hacía aquí, y en cuanto
+     el bloque de EQUIPO necesitó lo mismo habrían sido dos componentes
+     calculando el mismo veredicto con su propio contexto — que es literalmente
+     el fallo que este módulo existe para impedir, y que ya cometimos una vez
+     con la ficha y el semáforo.
+     Sube al servidor porque allí están las personas de las DOS listas: sin la
+     del equipo, R5 no podría dispararse sobre un miembro menor de edad. */
 
   /* El titular: cuántos confirmados no tienen su release firmado con papel.
      ⚠ Solo entre los CONFIRMADOS, que son los únicos a los que se les pide —
@@ -125,8 +113,11 @@ export default function ActoresProyecto({
   const conPapelDudoso = confirmados.filter(id => {
     const img = releaseDe(id);
     if (!img || img.estado !== "firmada" || !img.documento_id) return false;
-    const r = riesgos[img.id];
-    return r === "critico" || r === "alto";
+    /* ⚠ `permisoResuelto` y no la condición escrita a mano —que estaba dos
+       líneas debajo de su propio import—. Es la cuarta vez que aparece esta
+       regla copiada: una definición de «resuelto» por pantalla es lo que hacía
+       que la ficha y el semáforo discreparan. */
+    return !permisoResuelto(img, riesgos[img.id]);
   }).length;
 
   const R = rotuloActores(tipo);

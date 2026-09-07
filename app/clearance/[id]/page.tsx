@@ -73,7 +73,7 @@ export default async function ClearanceDePelicula({
      tirados y, pasado el techo, DOS LISTAS DISTINTAS — el desplegable ofrecería
      obras que el mapa de riesgo no tiene, y esas filas se calcularían con
      `ctx.obra = undefined`, más bajo de lo real y en silencio. */
-  const [peli, auts, incs, usos, docs, agrs, ints, locs, acts, mats, actores, cat] =
+  const [peli, auts, incs, usos, docs, agrs, ints, locs, acts, mats, tecnicos, actores, cat] =
     await Promise.all([
       supabase.from("proyectos").select("id,nombre,nombre_corto,tipo,etapa")
         .eq("id", params.id).maybeSingle(),
@@ -114,6 +114,16 @@ export default async function ClearanceDePelicula({
          pide un papel por un trabajo que quizá no ocurra. Mismo filtro que
          /musica, y `situacion` puede ser NULL en las filas anteriores a
          db/proyecto-actores-situacion.sql — esas son gente que ya estaba. */
+      /* ── Y EL EQUIPO TÉCNICO ──
+         ⚠ `aporte_de_equipo` existía en el vocabulario y ninguna pantalla lo
+         enseñaba. Su cesión es la que hace a la productora titular de la obra:
+         sin la de la montajista o la del director de fotografía, lo que se
+         presenta a un fondo no es suyo. */
+      supabase.from("proyecto_equipo")
+        .select("persona_id,cargo")
+        .eq("proyecto_id", params.id)
+        .not("persona_id", "is", null)
+        .order("cargo").limit(techo(400) + 1),
       supabase.from("proyecto_actores")
         .select("persona_id,rol,personaje,situacion")
         .eq("proyecto_id", params.id)
@@ -139,7 +149,7 @@ export default async function ClearanceDePelicula({
   const eAut = (auts as any)?.error?.message || null;
   const eMontaje = (incs as any)?.error?.message || (usos as any)?.error?.message || null;
   const fallo = eProy || eAut || eMontaje;
-  const eCatalogo = [docs, agrs, ints, locs, acts, mats, actores]
+  const eCatalogo = [docs, agrs, ints, locs, acts, mats, tecnicos, actores]
     .map(r => (r as any)?.error?.message).find(Boolean) || null;
   const ciego = !!cat.error;
 
@@ -154,6 +164,7 @@ export default async function ClearanceDePelicula({
     [(acts.data || []).length, techo(400), "actividades"],
     [(mats.data || []).length, techo(400), "materiales"],
     [(actores.data || []).length, techo(400), "actores sociales"],
+    [(tecnicos.data || []).length, techo(400), "equipo técnico"],
   ].filter(([n, t]) => (n as number) > (t as number)).map(([, , q]) => q as string)
     .concat(cat.cortado);
 
@@ -171,6 +182,7 @@ export default async function ClearanceDePelicula({
   const lActs = ((acts.data || []) as any[]).slice(0, techo(400));
   const lMats = ((mats.data || []) as any[]).slice(0, techo(400));
   const lActores = ((actores.data || []) as any[]).slice(0, techo(400));
+  const lTecnicos = ((tecnicos.data || []) as any[]).slice(0, techo(400));
 
   const ctxDe = contextoDe(cat, hoy);
   /* ⚠ El MISMO `semaforo` con el MISMO contexto que el índice, por lib/
@@ -234,6 +246,31 @@ export default async function ClearanceDePelicula({
       nombre: nombrePersonaDe(cat, a.persona_id) || "(persona no encontrada)",
       papel: (a.personaje || a.rol || null) as string | null,
       menor: esMenor(cat.persDe.get(a.persona_id), hoy),
+    });
+  }
+
+  /* ── EL EQUIPO TÉCNICO, PARA SU CESIÓN ──
+     ⚠ NO se excluye a quien ya está en el reparto, y la primera versión sí lo
+     hacía. Son dos papeles DISTINTOS: a la directora que además sale a cámara
+     se le pide su release de imagen Y su cesión de aporte creativo. Al
+     excluirla, se quedaba con un solo botón —el del release— y su cesión no
+     tenía ningún atajo: había que ir a `＋ permiso` y buscarla en el
+     desplegable de todas las personas del sistema. Y es de quien más falta
+     hace, porque es la que hace a la productora titular.
+     `filaPersona` está clavada por tipo y su `key` es `id|tipo`, así que las
+     dos filas conviven sin chocar.
+     Se deduplica DENTRO de esta lista y con su propio `Set`: el compartido con
+     el reparto era lo que la borraba. */
+  const vistosTec = new Set<string>();
+  const equipoVista: { id: string; nombre: string; papel: string | null; menor: boolean }[] = [];
+  for (const m of lTecnicos) {
+    if (!m.persona_id || vistosTec.has(m.persona_id)) continue;
+    vistosTec.add(m.persona_id);
+    equipoVista.push({
+      id: m.persona_id as string,
+      nombre: nombrePersonaDe(cat, m.persona_id) || "(persona no encontrada)",
+      papel: (m.cargo || null) as string | null,
+      menor: esMenor(cat.persDe.get(m.persona_id), hoy),
     });
   }
 
@@ -423,7 +460,7 @@ export default async function ClearanceDePelicula({
           locaciones={catalogoLocaciones}
           actividades={lActs.map(a => ({ id: a.id, nombre: a.nombre }))}
           materiales={lMats.map(m => ({ id: m.id, nombre: m.descripcion }))}
-          reparto={repartoVista} documentos={documentos}
+          reparto={repartoVista} equipo={equipoVista} documentos={documentos}
           riesgos={riesgos} motivos={motivos} hoy={hoy} />
       )}
 

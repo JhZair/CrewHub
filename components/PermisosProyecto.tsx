@@ -13,6 +13,7 @@ import {
 import {
   TIPOS_AUT, META_TIPO_AUT, ROTULO_CALIDAD, ROTULO_ESTADO_AUT, COLOR_RIESGO,
   MODELOS_DOC, ROTULO_MODELO, modeloSugerido, permisoResuelto, personaDeAutorizacion,
+  colorEstadoAut,
   MEDIOS, ROTULO_MEDIO, MEDIOS_RELEASE_ESTANDAR, ROTULO_PLAZO, esMedio,
   estaAbierta,
   type FilaAutorizacion, type TipoAutorizacion, type CalidadFirmante,
@@ -94,7 +95,7 @@ const VACIO: Nuevo = {
 
 export default function PermisosProyecto({
   proyectoId, autorizaciones, personas, agrupaciones, obras, grabaciones,
-  locaciones = [], actividades = [], materiales = [], reparto = [],
+  locaciones = [], actividades = [], materiales = [], reparto = [], equipo = [],
   documentos = {}, riesgos, motivos = {}, hoy,
 }: {
   proyectoId: string;
@@ -112,6 +113,9 @@ export default function PermisosProyecto({
   /** Los actores sociales CONFIRMADOS de esta película, para no obligar a
    *  buscarlos en un desplegable de todas las personas del sistema. */
   reparto?: { id: string; nombre: string; papel?: string | null; menor?: boolean }[];
+  /** El equipo técnico, para su cesión de derechos. Misma forma que el reparto
+   *  a propósito: las dos filas se pintan con la misma función. */
+  equipo?: { id: string; nombre: string; papel?: string | null; menor?: boolean }[];
   /** Los papeles firmados por su id, para verlos y editarlos en vez de subir
    *  otro encima. Objetos planos: esto es un componente cliente. */
   documentos?: Record<string, {
@@ -319,7 +323,8 @@ export default function PermisosProyecto({
         {cal && cal !== "titular" && (
           <span className="clr-cal" title={ROTULO_CALIDAD[cal]?.cubre}>{ROTULO_CALIDAD[cal]?.txt}</span>
         )}
-        <span className="clr-est" style={{ color: COLOR_RIESGO[r] }}>
+        {/* El color es el ESTADO; el motivo de al lado lleva el del riesgo. */}
+        <span className="clr-est" style={{ color: colorEstadoAut(a, r) }}>
           {ROTULO_ESTADO_AUT[a.estado as EstadoAutorizacion] || a.estado}
         </span>
         {a.firmado_el && <span className="cesl-fecha">{a.firmado_el}</span>}
@@ -720,8 +725,9 @@ export default function PermisosProyecto({
             </div>
             {mov.estado === "firmada" && !corr.medios.length && (
               <div className="ces-aviso">
-                ⚠ Sin medios, este permiso se queda en ámbar y no hay clic que lo
-                apague. El papel los dice — cópialos.
+                ⚠ Sin medios no se sabrá si este permiso vale para el festival
+                al que ya se inscribió. El motivo se queda al lado y no hay clic
+                que lo apague. El papel los dice — cópialos.
               </div>
             )}
 
@@ -862,11 +868,11 @@ export default function PermisosProyecto({
      ⚠ Si es menor, la calidad arranca en `representante_legal_menor`: R5 dice
      que su firma no vale, y arrancar en «titular» es ofrecer el camino
      equivocado por defecto. */
-  const altaPara = (r: { id: string; menor?: boolean }) => {
+  const altaPara = (r: { id: string; menor?: boolean }, tipo: TipoAutorizacion) => {
     setError(""); setMoviendo(null); setGestion(null); setQuitando(null);
     setN({
       ...VACIO,
-      tipo: "imagen_voz_testimonio",
+      tipo,
       otorganteTipo: "persona",
       /* Si es menor, quien firma es su representante y hay que elegirlo: el
          campo se deja vacío a propósito para que se vea que falta. */
@@ -880,9 +886,12 @@ export default function PermisosProyecto({
 
   /* Qué tiene ya cada persona del reparto. Un solo recorrido: un `find` por
      fila sería recorrer los permisos una vez por actor. */
+  /* El permiso de cada persona POR TIPO: el release del reparto y la cesión del
+     equipo son cosas distintas y se piden a gente distinta. Una sola clave
+     `persona|tipo` en vez de dos mapas — dos mapas se separan. */
   const releaseDe = new Map<string, FilaAutorizacion>();
   for (const a of autorizaciones) {
-    if (a.tipo !== "imagen_voz_testimonio") continue;
+    if (a.tipo !== "imagen_voz_testimonio" && a.tipo !== "aporte_de_equipo") continue;
     /* ⚠ `personaDeAutorizacion` y no un `||` escrito aquí: es la función que
        existe justamente para que no haya dos criterios, y esto era la tercera
        copia. Y `set` solo si no hay: con DOS releases de la misma persona,
@@ -890,8 +899,54 @@ export default function PermisosProyecto({
        primero. Uno rechazado y otro firmado, y cada pantalla pintaba un color.
        El primero en las dos. */
     const k = personaDeAutorizacion(a);
-    if (k && !releaseDe.has(k)) releaseDe.set(k, a);
+    const clave = k ? `${k}|${a.tipo}` : "";
+    if (clave && !releaseDe.has(clave)) releaseDe.set(clave, a);
   }
+
+  /* ── UNA FILA DE PERSONA, PARA LAS DOS LISTAS ──
+     ⚠ Una función y no dos bloques copiados. El reparto y el equipo se pintan
+     igual y solo cambia QUÉ papel se les pide; con dos copias, el día que se
+     arregle el color de una la otra se queda como estaba — y entonces la misma
+     persona sale de un color en su fila de actriz y de otro en la de montajista.
+     Es una función y no un componente: uno definido dentro del render remonta
+     en cada tecleo y pierde el foco. Ya pasó en este proyecto. */
+  const filaPersona = (
+    r: { id: string; nombre: string; papel?: string | null; menor?: boolean },
+    tipo: TipoAutorizacion,
+  ) => {
+    const a = releaseDe.get(`${r.id}|${tipo}`);
+    const rg = a ? riesgos[a.id] : null;
+    /* Una sola definición de «resuelto», en lib/clearance: había tres copiadas
+       a mano en tres pantallas, y una cuarta distinta en `estaResuelta` que sí
+       cuenta `no_aplica`. Un permiso bien marcado «no aplica» salía en ámbar
+       para siempre. */
+    const bien = !!a && permisoResuelto(a, rg);
+    return (
+      <div key={`${r.id}|${tipo}`} className="clr-fila">
+        <span className="clr-ico">{bien ? "✅" : a ? "🔶" : "▫"}</span>
+        <span className="clr-que">{r.nombre}</span>
+        {r.papel && <span className="clr-quien">{r.papel}</span>}
+        {r.menor && (
+          <span className="clr-cal" title="R5: su firma no vale; firma su representante legal">
+            menor de edad
+          </span>
+        )}
+        <span style={{ flex: 1 }} />
+        {a ? (
+          <span className="clr-est" style={{ color: colorEstadoAut(a, rg) }}>
+            {a.estado === "firmada" && !a.documento_id
+              ? "firmada, falta el papel"
+              : ROTULO_ESTADO_AUT[a.estado as EstadoAutorizacion] || String(a.estado)}
+          </span>
+        ) : (
+          <button type="button" className="cesl-mas" disabled={ocupado}
+            onClick={() => altaPara(r, tipo)}>
+            registrar su {META_TIPO_AUT[tipo].corto} →
+          </button>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="clr-lista">
@@ -905,38 +960,22 @@ export default function PermisosProyecto({
           <div className="trt-cab-t" style={{ marginTop: 12 }}>
             el reparto de esta película · {reparto.length}
           </div>
-          {reparto.map(r => {
-            const a = releaseDe.get(r.id);
-            const rg = a ? riesgos[a.id] : null;
-            /* Una sola definición de «resuelto», en lib/clearance: había tres
-               copiadas a mano en tres pantallas, y una cuarta distinta en
-               `estaResuelta` que sí cuenta `no_aplica`. Un permiso bien marcado
-               «no aplica» salía en ámbar para siempre. */
-            const bien = !!a && permisoResuelto(a, rg);
-            return (
-              <div key={r.id} className="clr-fila">
-                <span className="clr-ico">{bien ? "✅" : a ? "🔶" : "▫"}</span>
-                <span className="clr-que">{r.nombre}</span>
-                {r.papel && <span className="clr-quien">{r.papel}</span>}
-                {r.menor && <span className="clr-cal" title="R5: su firma no vale; firma su representante legal">menor de edad</span>}
-                <span style={{ flex: 1 }} />
-                {a ? (
-                  <span className="clr-est" style={{
-                    color: bien ? "var(--green)" : rg ? COLOR_RIESGO[rg] : "var(--yellow)",
-                  }}>
-                    {a.estado === "firmada" && !a.documento_id
-                      ? "firmada, falta el papel"
-                      : ROTULO_ESTADO_AUT[a.estado as EstadoAutorizacion] || String(a.estado)}
-                  </span>
-                ) : (
-                  <button type="button" className="cesl-mas" disabled={ocupado}
-                    onClick={() => altaPara(r)}>
-                    registrar su imagen, voz y testimonio →
-                  </button>
-                )}
-              </div>
-            );
-          })}
+          {reparto.map(r => filaPersona(r, "imagen_voz_testimonio"))}
+        </>
+      )}
+
+      {/* ── EL EQUIPO TÉCNICO ──
+          ⚠ Su cesión es de OTRO tipo —`aporte_de_equipo`— y por eso va en su
+          propia lista y no mezclada con el reparto: lo que se le pide a la
+          montajista no es que autorice que se le grabe, es que ceda su aporte
+          creativo. Con las dos juntas, el botón de una registraría el papel de
+          la otra. */}
+      {equipo.length > 0 && (
+        <>
+          <div className="trt-cab-t" style={{ marginTop: 12 }}>
+            el equipo técnico · {equipo.length}
+          </div>
+          {equipo.map(r => filaPersona(r, "aporte_de_equipo"))}
         </>
       )}
 

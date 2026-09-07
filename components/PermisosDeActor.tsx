@@ -1,6 +1,6 @@
 import Link from "@/components/Enlace";
 import {
-  META_TIPO_AUT, ROTULO_ESTADO_AUT, ROTULO_CALIDAD, COLOR_RIESGO, permisoResuelto,
+  META_TIPO_AUT, ROTULO_ESTADO_AUT, ROTULO_CALIDAD, colorEstadoAut,
   type FilaAutorizacion, type TipoAutorizacion,
   type EstadoAutorizacion, type CalidadFirmante, type NivelRiesgo,
 } from "@/lib/clearance";
@@ -63,18 +63,16 @@ export default function PermisosDeActor({
     const e = a.estado as EstadoAutorizacion;
     const cal = a.calidad_firmante as CalidadFirmante;
     const r = riesgos?.[a.id];
-    /* ⚠ `permisoResuelto` de lib/clearance, no la regla escrita aquí. Era una
-       de TRES copias a mano en tres pantallas, y ninguna contaba `no_aplica`:
-       un permiso bien marcado «no aplica» —una decisión analizada, con su nota
-       obligatoria— salía en ámbar para siempre y ningún clic lo apagaba. */
-    const bien = permisoResuelto(a, r);
     return (
       <div key={a.id} className="cesl-fila" style={{ cursor: "default" }}>
         <span className="cesl-ico">{META_TIPO_AUT[t]?.ico || "📄"}</span>
         <span className="cesl-que">{META_TIPO_AUT[t]?.corto || a.tipo}</span>
-        <span className="cesl-est" style={{
-          color: bien ? "var(--green)" : r ? COLOR_RIESGO[r] : "var(--yellow)",
-        }}>
+        {/* ⚠ El color del ESTADO, no el del riesgo. Con el del riesgo, «en
+            gestión», «sin registrar» y «solicitada» salían del mismo ámbar:
+            nueve filas idénticas de las que no se lee cuál está en marcha.
+            `colorEstadoAut` conserva la excepción que importa — una firmada que
+            no está resuelta de verdad no se pinta de verde. */}
+        <span className="cesl-est" style={{ color: colorEstadoAut(a, r) }}>
           {e === "firmada" && !a.documento_id
             ? "firmada, falta el documento"
             : ROTULO_ESTADO_AUT[e] || String(a.estado)}

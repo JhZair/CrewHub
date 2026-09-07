@@ -417,6 +417,80 @@ export function permisoResuelto(a: FilaAutorizacion, riesgo?: NivelRiesgo | null
   return riesgo !== "critico" && riesgo !== "alto";
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   EL COLOR DE UN ESTADO
+
+   ── POR QUÉ NO BASTABA CON EL DEL RIESGO ──
+   Hasta hoy el color de un estado era el de su RIESGO, y en la ficha del
+   proyecto salían «en gestión», «sin registrar» y «solicitada» del mismo ámbar:
+   nueve filas idénticas de las que no se podía leer cuál está en marcha y cuál
+   no ha empezado. Un color que no distingue no es información, es decoración.
+
+   ── Y POR QUÉ NO ES SOLO EL ESTADO ──
+   ⚠ Una excepción, y es la que sostiene todo el módulo: `firmada` sale en verde
+   SOLO si el permiso está resuelto de verdad. Una firmada sin documento es
+   alguien diciendo que hay una firma; una de una menor sin representante
+   registrado no cubre nada. Pintarlas del mismo verde que una completa
+   devolvería exactamente la mentira que este módulo existe para impedir, ahora
+   por la puerta de la paleta.
+   Cuando eso pasa, el color vuelve a ser el del riesgo — y el rótulo de la
+   pantalla ya dice «firmada, falta el papel».
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const COLOR_ESTADO: Record<EstadoAutorizacion, string> = {
+  /* Nadie lo ha tocado. Apagado a propósito: no es malo, es que no empezó. */
+  no_iniciada: "var(--dim)",
+  /* En marcha. Azul y no ámbar: hay alguien detrás de esto. */
+  en_gestion: "var(--blue)",
+  /* ⚠ Violeta y NO `--teal`. El teal (#2dd4bf) está en la familia del verde
+     (#2ecc71), y una columna de «solicitada» en verde-agua se lee de un vistazo
+     como resuelta. La única distinción que no puede difuminarse nunca es hecho
+     / no hecho. */
+  solicitada: "var(--accent)",
+  /* Resuelto. El verde se gana en `colorEstadoAut`, no aquí. */
+  firmada: "var(--green)",
+  /* Nadie va a firmar. Rojo: no es «pendiente», es que dijeron que no. */
+  rechazada: "var(--red)",
+  /* No se le encuentra. Naranja: se puede seguir intentando, y hay que apuntar
+     los intentos — la prueba del intento razonable es parte de la defensa. */
+  no_ubicable: "var(--orange)",
+  /* Decidido y anotado. Violeta claro y no verde: no es que esté firmado, es
+     que se analizó y no hacía falta. Son dos cosas distintas. */
+  no_aplica: "var(--violet)",
+};
+
+/**
+ * El color con que se pinta el estado de un permiso.
+ *
+ * ⚠ Una sola función para las tres pantallas. El color de una fila es lo
+ * primero que se lee y lo último que alguien comprueba: tres paletas escritas a
+ * mano se separan sin que nada avise, y entonces el mismo permiso se ve de un
+ * color en la ficha del proyecto y de otro en ⚖ clearance.
+ *
+ * ── EL RIESGO GRAVE MANDA SOBRE EL ESTADO, EN CUALQUIER ESTADO ──
+ * ⚠ La primera versión solo degradaba las `firmada`, y eso BORRÓ una alarma que
+ * antes se veía: una actriz menor sin representante legal, con su release en
+ * `no_iniciada`, da riesgo CRÍTICO — y salía pintada del gris apagado de «nadie
+ * lo ha tocado». La fila más grave de la lista era la más silenciosa, y en las
+ * tres pantallas donde no hay un motivo escrito al lado que la rescate.
+ * El `medio` sí se queda con el color de su estado: ese ámbar indistinguible
+ * era justo lo que este cambio venía a matar, y su motivo sí se lee al lado.
+ */
+export function colorEstadoAut(
+  a: FilaAutorizacion, riesgo?: NivelRiesgo | null,
+): string {
+  const e = baja(a.estado) as EstadoAutorizacion;
+  /* Lo grave se ve siempre, salvo que ya esté resuelto —un `no_aplica` con su
+     nota es una decisión, no una alarma—. */
+  if ((riesgo === "alto" || riesgo === "critico") && !permisoResuelto(a, riesgo))
+    return COLOR_RIESGO[riesgo];
+  /* ⚠ Y una firmada sin documento NUNCA es verde, lo mire quien lo mire: sin
+     papel es alguien diciendo que hay una firma. Va después de la guarda de
+     arriba para no pisar un rojo con un ámbar. */
+  if (e === "firmada" && !a.documento_id) return "var(--yellow)";
+  return COLOR_ESTADO[e] || "var(--dim)";
+}
+
 export const COLOR_RIESGO: Record<NivelRiesgo, string> = {
   bajo: "var(--dim)", medio: "var(--yellow)",
   alto: "var(--orange)", critico: "var(--red)",
