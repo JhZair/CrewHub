@@ -480,14 +480,26 @@ export function colorEstadoAut(
   a: FilaAutorizacion, riesgo?: NivelRiesgo | null,
 ): string {
   const e = baja(a.estado) as EstadoAutorizacion;
-  /* Lo grave se ve siempre, salvo que ya esté resuelto —un `no_aplica` con su
-     nota es una decisión, no una alarma—. */
-  if ((riesgo === "alto" || riesgo === "critico") && !permisoResuelto(a, riesgo))
-    return COLOR_RIESGO[riesgo];
-  /* ⚠ Y una firmada sin documento NUNCA es verde, lo mire quien lo mire: sin
-     papel es alguien diciendo que hay una firma. Va después de la guarda de
-     arriba para no pisar un rojo con un ámbar. */
-  if (e === "firmada" && !a.documento_id) return "var(--yellow)";
+
+  /* ── EL CRÍTICO MANDA SOBRE CUALQUIER ESTADO ──
+     Es la ÚNICA anomalía de verdad: una menor sin representante, un plazo
+     vencido. Se ve en rojo esté como esté el papel. */
+  if (riesgo === "critico" && !permisoResuelto(a, riesgo)) return COLOR_RIESGO.critico;
+
+  /* ── PERO «ALTO» NO, Y ESTO SE APRENDIÓ MIRANDO LA PANTALLA ──
+     ⚠ La versión anterior degradaba también el `alto`, y el resultado fue que
+     TODO seguía saliendo del mismo naranja. El motivo: `riesgoDe` da `alto` a
+     cualquier permiso que no esté resuelto —«sin empezar», «en gestión»,
+     «solicitada» y «no ubicable», todos—. O sea que `alto` no es una anomalía
+     en un estado abierto: es EXACTAMENTE lo que ese estado ya dice, y pintarlo
+     encima borraba la distinción que la paleta venía a crear.
+     Un color que sale igual en el 90% de las filas no informa de nada.
+
+     En una FIRMADA sí es anomalía: dice estar hecha y no lo está. Ahí se
+     degrada, y de eso se encarga `permisoResuelto` en la línea de abajo. */
+  if (e === "firmada" && !permisoResuelto(a, riesgo))
+    return riesgo && riesgo !== "bajo" ? COLOR_RIESGO[riesgo] : "var(--yellow)";
+
   return COLOR_ESTADO[e] || "var(--dim)";
 }
 
