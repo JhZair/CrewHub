@@ -1,7 +1,10 @@
 "use client";
 import { situacionActorProyecto } from "@/app/actions";
-import CesionesPersona from "@/components/CesionesPersona";
-import { cesionesPorPersona, recuento, resumen, type FilaCesion } from "@/lib/cesiones";
+import PermisosDeActor from "@/components/PermisosDeActor";
+import {
+  META_TIPO_AUT, riesgoDe, esPapelDeLaPersona, personaDeAutorizacion,
+  type FilaAutorizacion, type NivelRiesgo, type FilaPersonaMin,
+} from "@/lib/clearance";
 import {
   repartirPorSituacion, situacionDe, type Situacion,
 } from "@/lib/situacionReparto";
@@ -35,7 +38,7 @@ import { useRef, useState } from "react";
  */
 export default function ActoresProyecto({
   proyectoId, actores, personas, tipo, error: errServidor,
-  cesiones = [], cesionesError = "",
+  cesiones = [], cesionesError = "", hoy,
 }: {
   proyectoId: string;
   actores: any[];
@@ -47,30 +50,84 @@ export default function ActoresProyecto({
   error?: string;
   /** Las cesiones de TODO el reparto; se reparten por persona aquí. Quién
    *  autorizó que se le grabe, y quién que su música suene. */
-  cesiones?: FilaCesion[];
+  cesiones?: FilaAutorizacion[];
+  /** El día de hoy en Lima, calculado en el servidor. ⚠ No se usa `new Date()`
+   *  aquí: a partir de las 7 de la tarde en Perú ya sería mañana, y un plazo se
+   *  daría por vencido un día antes. */
+  hoy?: string;
   /** Mismo criterio que `error`: un cero que en realidad es «no se pudo leer»
    *  se lee como «no falta ninguna autorización». */
   cesionesError?: string;
 }) {
-  /* Las cesiones, repartidas una vez y no una por fila. Y el recuento de lo
-     que falta, que va en la cabecera del bloque: es la pregunta que se hace
-     antes de estrenar. */
-  const cesDe = cesionesPorPersona(cesiones);
-  /* ⚠ CUENTA LO MISMO QUE SE PUEDE ARREGLAR.
-     Las burbujas solo se pintan en el reparto CONFIRMADO —pedirle la cesión a
-     una candidata es pedir un papel por un trabajo que quizá no ocurra—, así
-     que contar a todo el mundo dejaba un «⚠ 3 sin cesión de imagen» que ningún
-     clic podía apagar. Un aviso que no se puede resolver se deja de leer, y
-     con él se deja de leer el resto.
-     ⚠ Y con `personaDe`, no con `a.persona?.id`: PostgREST devuelve la
-     relación con el alias que le pida cada consulta, y una lectura que solo
-     mire uno de los dos deja el recuento en cero SIN error — el cero que en
-     realidad es «no se pudo leer», por la puerta de atrás. */
-  const rCes = recuento(
-    actores.filter((a: any) => situacionDe(a) === "confirmada")
-      .map((a: any) => personaDe(a)?.id).filter(Boolean),
-    cesiones,
+  /* ── LOS PERMISOS, REPARTIDOS UNA VEZ ──
+     ⚠ De `autorizacion`. Esta pantalla leía y ESCRIBÍA `proyecto_cesion`, la
+     tabla que la migración del clearance dejó obsoleta — así que lo que se
+     registraba aquí no salía en el semáforo, y al revés. Dos sitios diciendo
+     cosas distintas sobre la misma firma.
+     Ahora solo lee, y quien escribe es ⚖ clearance. */
+  /* ⚠ Solo los papeles QUE HABLAN DE ELLA, y las dos funciones vienen de
+     `lib/clearance` — no se decide aquí. Indexar por otorgante en una pantalla
+     y por objeto en otra hacía que el mismo papel cayera bajo personas
+     distintas en cada sitio; y sin el filtro, el permiso de la CASA que Braulia
+     firmó como propietaria colgaba de su fila del reparto como si fuera un
+     papel suyo de actriz. */
+  const suyas = (cesiones as FilaAutorizacion[]).filter(esPapelDeLaPersona);
+  const autsDe = new Map<string, FilaAutorizacion[]>();
+  for (const a of suyas) {
+    const k = personaDeAutorizacion(a);
+    if (!k) continue;
+    autsDe.set(k, [...(autsDe.get(k) || []), a]);
+  }
+
+  /* ── EL RIESGO, CON LA PERSONA DELANTE ──
+     ⚠ `persona` no es opcional de verdad: sin ella, R5 —«es menor y no firma su
+     representante legal», el motivo CRÍTICO— no puede dispararse nunca. Una
+     actriz de quince años con su release firmado y su PDF salía aquí en verde
+     mientras ⚖ clearance la pintaba en rojo. Volvía a haber dos pantallas
+     diciendo cosas distintas del mismo papel, que es lo único que este cambio
+     venía a matar: cerrada la puerta de la escritura, se había quedado abierta
+     la del veredicto.
+     Lo que sigue sin poder decirse aquí es lo que necesita el catálogo de obras
+     y grabaciones; para un release de imagen, con esto basta. */
+  const personasReparto = new Map<string, FilaPersonaMin>();
+  for (const a of actores) {
+    const p: any = personaDe(a);
+    if (p?.id) personasReparto.set(p.id, p as FilaPersonaMin);
+  }
+  const riesgos: Record<string, NivelRiesgo> = Object.fromEntries(
+    suyas.map(a => [a.id, riesgoDe(a, {
+      hoy, persona: personasReparto.get(personaDeAutorizacion(a) || "") || null,
+    })]),
   );
+
+  /* El titular: cuántos confirmados no tienen su release firmado con papel.
+     ⚠ Solo entre los CONFIRMADOS, que son los únicos a los que se les pide —
+     contar a los candidatos dejaba un ⚠ que ningún clic podía apagar. */
+  const confirmados = actores
+    .filter((a: any) => situacionDe(a) === "confirmada")
+    .map((a: any) => personaDe(a)?.id).filter(Boolean) as string[];
+  const releaseDe = (id: string) =>
+    (autsDe.get(id) || []).find(a => a.tipo === "imagen_voz_testimonio");
+  const sinPapel = confirmados.filter(id => {
+    const img = releaseDe(id);
+    return !img || img.estado !== "firmada" || !img.documento_id;
+  }).length;
+  /* ── Y LOS QUE TIENEN EL PAPEL PERO NO SIRVE ──
+     ⚠ Cuenta aparte, y no sumado al de arriba, porque no es lo mismo y el
+     rótulo tiene que poder decir cuál es: «sin firmar» manda a buscar una firma
+     y «firmada con un problema grave» manda a ⚖ clearance a ver cuál. Meterlos
+     en el mismo número obligaba a elegir una de las dos frases, y la que
+     saliera sería falsa para la mitad.
+     El caso real: una actriz de quince años con su release firmado y su PDF. La
+     firma es de su madre, pero nadie registró que la madre la representa. En
+     verde salía como resuelta; ⚖ clearance la pintaba en rojo. */
+  const conPapelDudoso = confirmados.filter(id => {
+    const img = releaseDe(id);
+    if (!img || img.estado !== "firmada" || !img.documento_id) return false;
+    const r = riesgos[img.id];
+    return r === "critico" || r === "alto";
+  }).length;
+
   const R = rotuloActores(tipo);
   const ROLES = rolesDe(tipo);
   const doc = esDocumental(tipo);
@@ -262,10 +319,9 @@ export default function ActoresProyecto({
                       candidata que aún se está viendo es pedir un papel por un
                       trabajo que quizá no ocurra. */}
                   {sit === "confirmada" && per?.id && !cesionesError && !desplegada && (
-                    <CesionesPersona
-                      proyectoId={proyectoId} personaId={per.id}
-                      nombre={L.titulo || per.nombre || "esta persona"}
-                      cesiones={cesDe.get(per.id) || []} />
+                    <PermisosDeActor
+                      autorizaciones={autsDe.get(per.id) || []}
+                      riesgos={riesgos} />
                   )}
 
                   {/* Lo que la ficha ya tiene escrito, sin abrirla. Si no hay
@@ -455,12 +511,18 @@ export default function ActoresProyecto({
               ⚠ Si la consulta de cesiones falló NO se pinta el recuento: un
               «todo autorizado» calculado sobre una lista vacía por error es la
               mentira más cara que puede decir esta pantalla. */}
-          {!cesionesError && resumen(rCes) && (
-            /* El ámbar lo enciende cualquiera de los tres huecos, incluida la
-               pendiente de firma: registrada no es autorizada. Pero `resumen`
-               las nombra distinto, que era lo que faltaba. */
-            <span className={rCes.sinImagen || rCes.imagenPendiente || rCes.sinPrueba ? "act-ces-falta" : "act-ces-ok"}>
-              {rCes.sinImagen || rCes.imagenPendiente || rCes.sinPrueba ? "⚠ " : "✓ "}{resumen(rCes)}
+          {!cesionesError && confirmados.length > 0 && (
+            <span className={sinPapel || conPapelDudoso ? "act-ces-falta" : "act-ces-ok"}>
+              {sinPapel
+                ? `⚠ ${sinPapel} sin ${META_TIPO_AUT.imagen_voz_testimonio.corto} firmada`
+                : conPapelDudoso
+                  ? `⚠ ${conPapelDudoso} con la firma puesta en duda`
+                  : `✓ los ${confirmados.length} con su ${META_TIPO_AUT.imagen_voz_testimonio.corto}`}
+              {/* Los dos números a la vez: el rótulo enseña el primero y este
+                  añade el segundo, para que ninguno se quede sin decir. */}
+              {/* ⚠ `> 0` y no `sinPapel &&`: con cero, `0 && x` vale `0` y React
+                  pinta un «0» suelto al lado del rótulo. */}
+              {sinPapel > 0 && conPapelDudoso > 0 ? ` · y ${conPapelDudoso} en duda` : ""}
             </span>
           )}
         </h4>

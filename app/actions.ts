@@ -40,7 +40,6 @@ import { plazoFondo } from "@/lib/plazoFondo";
 import { planear, motivoVersion, rotuloDias } from "@/lib/correrCronograma";
 import { estadoPorCasos } from "@/lib/casosActividad";
 import { esSituacion } from "@/lib/situacionReparto";
-import { tipoDe as tipoDeCesion, estadoDe as estadoDeCesion } from "@/lib/cesiones";
 import { TOPE_API, techo } from "@/lib/api";
 
 /* Crear o actualizar una entidad núcleo (proyecto/empresa/persona).
@@ -11599,16 +11598,19 @@ export async function traerRepartoDelProyecto(postulacionId: string, proyectoId:
     return { error: "Ese proyecto no es el de este fondo." };
   }
 
-  /* ⚠ LAS CESIONES DEL PROYECTO NO VIAJAN.
-     `proyecto_cesion` (db/proyecto-cesiones.sql) guarda quién autorizó su
-     imagen y su música en el PROYECTO; el fondo tiene lo suyo en
-     `postulacion_reparto.cesion_estado`, que solo cubre imagen. Traerlas
-     exigiría decidir qué pasa con la de música —que en el fondo no tiene dónde
-     caer— y pisar lo que el fondo ya tenga, así que hoy NO se copian: quien
-     mire el fondo verá «pendiente» aunque en el proyecto esté firmada.
+  /* ⚠ LOS PERMISOS DEL PROYECTO NO VIAJAN.
+     La tabla del proyecto es `autorizacion` (db/clearance-autorizacion.sql), no
+     ya `proyecto_cesion`, que quedó como rastro de la migración. Guarda quién
+     autorizó su imagen, su interpretación, la locación, el material… El fondo
+     tiene lo suyo en `postulacion_reparto.cesion_estado`, que solo cubre imagen
+     y todavía habla el vocabulario viejo (`pendiente`, que en `autorizacion` no
+     existe).
+     Traerlas exigiría decidir qué pasa con todo lo que en el fondo no tiene
+     dónde caer, y pisar lo que el fondo ya tenga, así que hoy NO se copian:
+     quien mire el fondo verá «pendiente» aunque en el proyecto esté firmada.
      Está dicho aquí para que el día que alguien lo note sepa que es una
-     decisión y no un olvido. Lo correcto a la larga es que el fondo lea la
-     tabla del proyecto en vez de tener su propia columna. */
+     decisión y no un olvido. Lo correcto a la larga es que el fondo LEA
+     `autorizacion` en vez de tener su propia columna. */
 
   /* ── SOLO LAS CONFIRMADAS ──
      El proyecto ahora explora candidatos, y una candidata que aún se está
@@ -12494,140 +12496,36 @@ export async function replanificarActividad(
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   LAS CESIONES DEL REPARTO DE UN PROYECTO
+   ⚠ AQUÍ ESTABAN `guardarCesionProyecto` Y `quitarCesionProyecto`, Y SE FUERON.
 
-   Quién autoriza qué. El caso que lo pidió: Jennifer Pachaqutec lidera «Las
-   Patronas», la banda que toca en el cargo de Lino. Su música NO se compuso
-   para el documental y aun así entra en la pieza; además la entrevistamos y su
-   banda tiene una secuencia. Son DOS permisos que nadie firma en el mismo
-   papel: que se le grabe, y que su tema suene.
+   Escribían en `proyecto_cesion`, que db/clearance-autorizacion.sql dejó
+   obsoleta y copió entera a `autorizacion`. Mientras las dos vivieron, el
+   sistema tenía DOS SITIOS registrando el mismo papel en dos tablas distintas:
+   lo que se apuntaba en la ficha del proyecto no salía en el semáforo de
+   clearance, y lo que se apuntaba allí no salía en la ficha — sin que ninguno
+   avisara del otro.
 
-   Hermanas de `registrarPapel` (la cláusula 5.4 de un fondo) y escritas con la
-   misma forma a propósito: son la misma clase de dato —un papel que alguien
-   firma o no— y el día que haya que tocar las dos, se parecen lo suficiente
-   para acordarse de la segunda.
+   Es exactamente la clase de fallo que todo el módulo de clearance existe para
+   impedir —dos sitios diciendo cosas distintas sobre la misma firma— y
+   sobrevivió un día por dejar viva la pantalla que ya no mandaba. Migrar los
+   datos no basta: hay que apagar la puerta vieja el mismo día.
+
+   Ahora los permisos DEL PROYECTO se registran en `app/clearance/acciones.ts` y
+   en ningún otro sitio. La ficha del proyecto ENSEÑA
+   (components/PermisosDeActor.tsx) y enlaza allí. `proyecto_cesion` se conserva
+   como rastro de la migración; nadie la escribe, ni en TS ni en SQL.
+
+   ── LO QUE TODAVÍA NO ESTÁ CERRADO, DICHO AQUÍ PARA QUE NO SORPRENDA ──
+   Queda un segundo sitio que guarda el estado de una cesión de imagen:
+   `postulacion_reparto.cesion_estado / cesion_url / cesion_fecha`, del
+   EXPEDIENTE DEL FONDO (se escribe unas mil líneas más arriba, en
+   `guardarCesionReparto`). Es otro ámbito —lo que se le enseña al Ministerio—
+   pero es el mismo papel de la misma persona, y encima con el vocabulario
+   viejo: allí una cesión sigue naciendo `pendiente`, palabra que ya no existe
+   en `autorizacion`.
+   No se toca hoy porque cambiarlo es mudar el expediente entero, no un panel.
+   Pero mientras siga así, «un solo sitio» es cierto del proyecto y no del
+   fondo, y decir lo contrario aquí sería el mismo mapa falso que este bloque
+   denuncia. Lo correcto a la larga: que el fondo LEA `autorizacion` en vez de
+   tener su propia columna.
    ══════════════════════════════════════════════════════════════════════════ */
-export async function guardarCesionProyecto(
-  proyectoId: string,
-  d: { id?: string; personaId: string; tipo?: string; estado?: string;
-       url?: string; firmadoEn?: string; obra?: string; motivo?: string; nota?: string },
-) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: "Sesión no encontrada." };
-  if (!proyectoId) return { error: "Falta el proyecto." };
-  if (!d.personaId) return { error: "Falta la persona." };
-
-  const tipo = tipoDeCesion({ id: "", persona_id: "", tipo: d.tipo });
-  const estado = estadoDeCesion({ id: "", persona_id: "", estado: d.estado });
-  const motivo = (d.motivo || "").trim();
-  const obra = (d.obra || "").trim();
-
-  /* «No aplica» sin motivo es indistinguible de «alguien lo marcó para que
-     dejara de salir en ámbar». Lo mismo que en los papeles del fondo. */
-  if (estado === "no_aplica" && !motivo) {
-    return { error: "Para marcar «no aplica» hay que decir por qué: es lo que distingue una excepción de un descuido." };
-  }
-  /* Una cesión de música sin decir QUÉ obra no sirve de nada: dos temas de la
-     misma banda serían indistinguibles, y el día que uno se revoque no se
-     sabría cuál. La de imagen no lo necesita — lo que se cede es la persona. */
-  if (tipo === "musica" && !obra) {
-    return { error: "Di qué obra se autoriza («Las Patronas — huayno de la fiesta»): sin eso, dos permisos de la misma persona son indistinguibles." };
-  }
-
-  /* La persona tiene que estar en el reparto de ESTE proyecto. El id llega del
-     navegador; sin esto se podría colgar una cesión de cualquiera en cualquier
-     proyecto, y quedaría en el expediente como si alguien hubiera firmado. */
-  const { data: enReparto } = await supabase.from("proyecto_actores")
-    .select("id").eq("proyecto_id", proyectoId).eq("persona_id", d.personaId).limit(1);
-  if (!enReparto?.length) {
-    return { error: "Esa persona no está en el reparto de este proyecto. Agrégala primero." };
-  }
-
-  const fila = {
-    proyecto_id: proyectoId, persona_id: d.personaId,
-    tipo, estado,
-    url: (d.url || "").trim() || null,
-    firmado_en: (d.firmadoEn || "").trim() || null,
-    obra: obra || null,
-    motivo: motivo || null,
-    nota: (d.nota || "").trim() || null,
-  };
-
-  if (d.id) {
-    /* ── LISTA BLANCA: NI `persona_id` NI `tipo` ──
-       Editar cambia el CONTENIDO del papel, no de quién es ni qué autoriza.
-       Sin esto, abrir la cesión de música de Jennifer y cambiar el desplegable
-       a «imagen» chocaba contra el índice único y devolvía «duplicate key
-       value violates unique constraint», que no le dice nada a nadie; y mover
-       `persona_id` habría trasladado una firma de una persona a otra sin que
-       la bitácora lo dijera.
-       Es la misma lista blanca que `CAMPOS_PAPEL` en la cláusula 5.4, y por el
-       mismo motivo. Para cambiar el tipo se quita y se crea de nuevo, que es
-       lo que de verdad ocurrió. */
-    const { persona_id: _p, tipo: _t, proyecto_id: _pr, ...editable } = fila;
-    const { data, error } = await supabase.from("proyecto_cesion")
-      .update(editable).eq("id", d.id).eq("proyecto_id", proyectoId).select("id");
-    if (error) return { error: error.message };
-    /* RLS: un update bloqueado no da error, afecta cero filas. */
-    if (!data?.length) return { error: "No se guardó: no tienes permiso, o ya no existe." };
-  } else {
-    /* ── UNA POR PERSONA Y TIPO, SALVO LA MÚSICA ──
-       El índice único de la base lo impide, pero su error es «duplicate key
-       value violates unique constraint», que no le dice a nadie qué hacer.
-       ⚠ Solo la IMAGEN. La música y `otro` son varias por naturaleza —dos
-       temas de la misma banda, o una foto y un texto— y el índice de la base
-       es parcial por eso mismo (`where tipo = 'imagen'`). Comprobarlas aquí
-       prohibiría justo los casos que el modelo da por buenos. */
-    if (tipo === "imagen") {
-      const { data: ya } = await supabase.from("proyecto_cesion")
-        .select("id").eq("proyecto_id", proyectoId)
-        .eq("persona_id", d.personaId).eq("tipo", tipo).limit(1);
-      if (ya?.length) {
-        return { error: `Ya hay una cesión de ${tipo} para esa persona. Edítala en vez de crear otra: con dos, nadie sabe cuál vale.` };
-      }
-    }
-    const { error } = await supabase.from("proyecto_cesion")
-      .insert({ ...fila, creado_por: user.id });
-    if (error) return { error: error.message };
-  }
-
-  const { data: per } = await supabase.from("personas")
-    .select("nombre,alias").eq("id", d.personaId).maybeSingle();
-  const quien = per?.alias || per?.nombre || "alguien";
-  await supabase.from("actividad").insert({
-    entidad_tipo: "proyecto", entidad_id: proyectoId, actor_id: user.id, tipo: "dato",
-    detalle: { mensaje: `cesión de ${tipo} de ${quien}: ${estado}${obra ? ` — ${obra}` : ""}` },
-  });
-  revalidatePath(`/entidad/proyecto/${proyectoId}`);
-  return {};
-}
-
-/** Quitar una cesión. Borra el registro, no el papel: si el documento está
- *  subido, sigue en su sitio. Se usa para deshacer un alta equivocada — una
- *  cesión que se revoca se marca `no_aplica` con su motivo, que deja rastro. */
-export async function quitarCesionProyecto(id: string, proyectoId: string) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: "Sesión no encontrada." };
-
-  /* Se lee ANTES de borrar: después ya no se sabe de quién era, y la bitácora
-     tiene que poder decirlo. */
-  const { data: prev } = await supabase.from("proyecto_cesion")
-    .select("tipo,obra,per:personas(nombre,alias)")
-    .eq("id", id).eq("proyecto_id", proyectoId).maybeSingle();
-  if (!prev) return { error: "Esa cesión ya no está." };
-
-  const { data, error } = await supabase.from("proyecto_cesion")
-    .delete().eq("id", id).eq("proyecto_id", proyectoId).select("id");
-  if (error) return { error: error.message };
-  if (!data?.length) return { error: "No se quitó: no tienes permiso." };
-
-  const p: any = Array.isArray(prev.per) ? prev.per[0] : prev.per;
-  await supabase.from("actividad").insert({
-    entidad_tipo: "proyecto", entidad_id: proyectoId, actor_id: user.id, tipo: "dato",
-    detalle: { mensaje: `quitó la cesión de ${prev.tipo} de ${p?.alias || p?.nombre || "alguien"}` },
-  });
-  revalidatePath(`/entidad/proyecto/${proyectoId}`);
-  return {};
-}

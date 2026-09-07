@@ -33,6 +33,8 @@
    el día siguiente, y una licencia vencería un día antes de tiempo.
    ══════════════════════════════════════════════════════════════════════════ */
 
+import { ROTULO_ESTADO_AUT, type EstadoAutorizacion } from "@/lib/clearance";
+
 export type Origen =
   | "dominio_publico" | "preexistente_cedida" | "licenciada" | "ia_generada"
   | "original_encargada" | "biblioteca" | "ambiente";
@@ -45,7 +47,7 @@ export type FilaObra = {
   titulo?: string | null;
   origen?: string | null;
   persona_id?: string | null;
-  cesion_id?: string | null;
+  autorizacion_id?: string | null;
   autor?: string | null;
   iswc?: string | null;
   consultado_en?: string | null;
@@ -224,22 +226,30 @@ export type Pega = {
   txt: string;
 };
 
-/** Lo que hace falta saber de la cesión atada. No se pasa la fila entera de
- *  `proyecto_cesion` para no atar este archivo a aquella tabla: lo único que
+/** Lo que hace falta saber del permiso atado. No se pasa la fila entera de
+ *  `autorizacion` para no atar este archivo a aquella tabla: lo único que
  *  cambia la respuesta es si está firmada y si hay papel. */
-export type CesionAtada = { estado?: string | null; url?: string | null };
+export type PermisoAtado = {
+  estado?: string | null;
+  /** ⚠ `documentoId` y no `url`: en `autorizacion` la prueba dejó de ser un
+   *  enlace suelto y pasó a ser una fila de `documento_firmado`, así que esto
+   *  es un uuid. Con el nombre viejo, el siguiente que pase lo mete en un
+   *  `<a href>` y pinta un enlace roto. Solo se mira si HAY o no. */
+  documentoId?: string | null;
+};
 
-/** Las cesiones DE MÚSICA por su id. Se pasa el mapa entero y no una fila suelta
- *  por dos razones:
+/** Los permisos DE INTERPRETACIÓN por su id. ⚠ De `autorizacion`, no de la
+ *  `proyecto_cesion` obsoleta: ver db/clearance-obra-cesion.sql.
+ *  Se pasa el mapa entero y no una fila suelta por dos razones:
  *    · el recuento recorre muchas obras, y un `find` por cada una sería recorrer
- *      la lista de cesiones una vez por obra;
+ *      la lista de permisos una vez por obra;
  *    · y sobre todo porque así se distingue «no me diste el mapa» de «el mapa
- *      está y ese id no aparece». Lo segundo significa que la cesión se borró o
+ *      está y ese id no aparece». Lo segundo significa que el permiso se borró o
  *      que le cambiaron el tipo a `imagen`, y entonces la obra apunta a un papel
  *      que ya no autoriza la música — un agujero por el que salía en verde. */
-export type MapaCesiones = Map<string, CesionAtada>;
+export type MapaPermisos = Map<string, PermisoAtado>;
 
-export function pegasDe(o: FilaObra, hoy?: string, ces?: MapaCesiones | null): Pega[] {
+export function pegasDe(o: FilaObra, hoy?: string, ces?: MapaPermisos | null): Pega[] {
   const org = origenDe(o);
   const ps: Pega[] = [];
 
@@ -270,8 +280,8 @@ export function pegasDe(o: FilaObra, hoy?: string, ces?: MapaCesiones | null): P
          cede su interpretación, pero si el tema es un cover la composición
          sigue siendo de otro. Con solo pedir el papel, una fila con la cesión
          firmada saldría en verde ocultando la mitad del problema. */
-      if (!hay(o.cesion_id) && !hay(o.prueba_url))
-        ps.push({ gravedad: "falta", txt: "sin cesión de quien la interpreta" });
+      if (!hay(o.autorizacion_id) && !hay(o.prueba_url))
+        ps.push({ gravedad: "falta", txt: "sin permiso de quien la interpreta" });
       /* ── LA CESIÓN ATADA, MIRADA DE VERDAD ──
          ⚠ Que el vínculo EXISTA no dice nada: una cesión nace `pendiente`, y
          antes de esto bastaba con atarla para que la obra saliera en verde
@@ -280,22 +290,31 @@ export function pegasDe(o: FilaObra, hoy?: string, ces?: MapaCesiones | null): P
          venía a evitar, así que aquí se pregunta por el estado.
          `ces` puede no llegar —quien llama no siempre tiene las cesiones a
          mano— y entonces no se inventa nada: no se dice ni que sí ni que no. */
-      else if (hay(o.cesion_id) && ces) {
-        const c = ces.get(o.cesion_id!);
+      else if (hay(o.autorizacion_id) && ces) {
+        const c = ces.get(o.autorizacion_id!);
         if (!c)
           /* El id está puesto y el mapa —que trae TODAS las cesiones de música—
              no lo tiene. O se borró, o le cambiaron el tipo a `imagen`, que
              autoriza que se le grabe y no que su tema suene. En los dos casos
              la obra está apuntando a un papel que no dice lo que hace falta. */
-          ps.push({ gravedad: "falta", txt: "la cesión atada ya no existe o dejó de ser de música" });
+          ps.push({ gravedad: "falta", txt: "el permiso atado ya no existe o dejó de ser de interpretación" });
         else {
           const e = baja(c.estado);
-          if (e === "firmada" && !hay(c.url))
-            ps.push({ gravedad: "falta", txt: "su cesión dice «firmada» pero no está el documento" });
+          if (e === "firmada" && !hay(c.documentoId))
+            ps.push({ gravedad: "falta", txt: "su permiso dice «firmada» pero no está el documento" });
           else if (e !== "firmada")
+            /* ⚠ El rótulo sale de `ROTULO_ESTADO_AUT` y no de un `if` aquí.
+               Antes esto decía «pendiente de firma» para todo lo que no fuera
+               firmada, y con el vocabulario nuevo eso convierte «rechazada» y
+               «no ubicable» en «ya llegará»: son justo los dos casos en que NO
+               va a llegar y hay que buscar otro tema. Dos listas de estados en
+               dos archivos se separan; una sola, no. */
             ps.push({
               gravedad: "falta",
-              txt: `su cesión está ${e === "no_aplica" ? "marcada «no aplica»" : "pendiente de firma"}`,
+              /* «figura como» y no «está»: los rótulos son femeninos —venían de «la
+                 autorización»— y «su permiso está rechazada» se lee como un error
+                 del sistema, no como un dato. */
+              txt: `su permiso figura como «${ROTULO_ESTADO_AUT[e as EstadoAutorizacion] || e}»`,
             });
         }
       }
@@ -376,7 +395,7 @@ export function pegasDe(o: FilaObra, hoy?: string, ces?: MapaCesiones | null): P
 }
 
 /** La gravedad de una obra: la peor de sus pegas, o null si no tiene. */
-export function gravedadDe(o: FilaObra, hoy?: string, ces?: MapaCesiones | null): Gravedad | null {
+export function gravedadDe(o: FilaObra, hoy?: string, ces?: MapaPermisos | null): Gravedad | null {
   const ps = pegasDe(o, hoy, ces);
   if (ps.some(p => p.gravedad === "bloqueo")) return "bloqueo";
   return ps.length ? "falta" : null;
@@ -403,7 +422,7 @@ export type RecuentoObras = {
   porOrigen: Record<Origen, number>;
 };
 
-export function recuento(obras: FilaObra[], hoy?: string, ces?: MapaCesiones | null): RecuentoObras {
+export function recuento(obras: FilaObra[], hoy?: string, ces?: MapaPermisos | null): RecuentoObras {
   const porOrigen = Object.fromEntries(ORIGENES.map(o => [o, 0])) as Record<Origen, number>;
   let resueltas = 0, conFalta = 0, bloqueadas = 0;
   for (const o of obras) {
@@ -455,7 +474,7 @@ export type FilaPeliObras = {
 };
 
 export function diagnosticar(
-  peli: PeliMin, obras: FilaObra[], hoy?: string, ces?: MapaCesiones | null,
+  peli: PeliMin, obras: FilaObra[], hoy?: string, ces?: MapaPermisos | null,
 ): FilaPeliObras {
   const suyas = obras.filter(o => o.proyecto_id === peli.id);
   const rec = recuento(suyas, hoy, ces);

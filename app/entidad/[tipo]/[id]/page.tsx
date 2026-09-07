@@ -809,19 +809,37 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
         .select(`id,rol,descripcion,orden,personaje,imagen_url,imagenes,arquetipo,edad,genero,
           rasgos,quiere,quiere_como,necesita,necesita_como,notas,
           situacion,situacion_en,
-          persona:personas(id,nombre,alias,foto_url)`)
+          persona:personas(id,nombre,alias,foto_url,
+            es_menor_de_edad,fecha_nacimiento,representante_legal_id)`)
         .eq("proyecto_id", params.id).order("orden").order("creado_en"),
       /* ── QUIÉN AUTORIZÓ QUÉ ──
-         Las cesiones de todo el reparto, en una sola consulta: se reparten por
-         persona en el cliente —son unas pocas, no miles— en vez de una consulta
-         por fila.
-         ⚠ TOLERANTE: sin db/proyecto-cesiones.sql corrida esto falla, y el
-         error se PASA al componente en vez de tragarse con `|| []`. Una lista
-         vacía por fallo se lee como «no falta ninguna cesión», que es lo
-         contrario de la verdad sobre los papeles cuya ausencia impide estrenar. */
-      supabase.from("proyecto_cesion")
-        .select("id,persona_id,tipo,estado,url,firmado_en,obra,motivo,nota")
-        .eq("proyecto_id", params.id).limit(techo(500)),
+         ⚠ DE `autorizacion`, Y NO DE `proyecto_cesion`.
+         Esta pantalla leía —y escribía— la tabla que la migración del clearance
+         dejó obsoleta. Durante un día hubo DOS sitios registrando el mismo
+         papel en dos tablas distintas: lo apuntado aquí no salía en el semáforo
+         y lo apuntado en ⚖ clearance no salía aquí, sin que ninguno avisara del
+         otro. Es la clase de fallo que todo ese módulo existe para impedir.
+         Ahora la ficha ENSEÑA y ENLAZA; escribir se hace en un solo sitio.
+
+         ⚠ TOLERANTE: sin las migraciones corridas esto falla, y el error se
+         PASA al componente en vez de tragarse con `|| []`. Una lista vacía por
+         fallo se lee como «no falta ningún permiso», que es lo contrario de la
+         verdad sobre unos papeles cuya ausencia impide estrenar. */
+      /* ⚠ LA SONDA DEL TOPE, `+ 1`, Y SE COMPARA ABAJO.
+         Antes esto leía `proyecto_cesion`, que solo guardaba las cesiones del
+         reparto: unas decenas, y 500 era holgura de sobra. `autorizacion`
+         guarda TODOS los permisos del proyecto —imagen, interpretación, obra,
+         fonograma, locación, actividad, material— y 500 deja de serlo. Si se
+         corta, el recuento de abajo diría «✓ los 12 con su imagen, voz y
+         testimonio» habiendo perdido papeles: el mismo cero falso que el
+         comentario de arriba jura no cometer, por otra puerta.
+         `objeto_obra_id` y `objeto_grabacion_id` no se piden: nadie los mira
+         aquí, y no se puede construir su contexto sin las tablas del catálogo. */
+      supabase.from("autorizacion")
+        .select("id,tipo,estado,calidad_firmante,otorgante_persona_id," +
+          "objeto_persona_id,documento_id,firmado_el,plazo_hasta,tipo_plazo," +
+          "plazo_anios,riesgo_manual,medios,permite_uso_promocional,notas")
+        .eq("proyecto_id", params.id).limit(techo(500) + 1),
       /* ── LOS TRATAMIENTOS DE LA PELÍCULA ──
          Ya no es un contador para un botón: es la lista de documentos. Una
          película tiene varios —el presentado al concurso, el reescrito con las
@@ -880,12 +898,19 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
        la consulta falla, y una lista vacía se leería como «no falta ninguna
        cesión» — lo contrario de la verdad sobre los papeles cuya ausencia
        impide estrenar. La pantalla lo dice en vez de callarse. */
-    cesionesProy = (ces.data || []) as any[];
+    const filasCes = (ces.data || []) as any[];
+    cesionesProy = filasCes.slice(0, techo(500));
     cesionesError = (ces as any).error
-      ? (/proyecto_cesion|PGRST/i.test(String((ces as any).error.message))
-          ? "Falta correr db/proyecto-cesiones.sql en Supabase: no se puede saber qué está autorizado."
+      ? (/does not exist|schema cache|PGRST20/i.test(String((ces as any).error.message))
+          ? "Faltan las migraciones db/clearance-*.sql en Supabase: no se puede saber qué está autorizado."
           : String((ces as any).error.message))
-      : "";
+      /* ⚠ Un truncado se trata COMO UN ERROR, y no como un aviso aparte, porque
+         produce exactamente el mismo daño: un recuento sobre una lista
+         incompleta que dice que no falta nada. Pagar la fila de sonda para no
+         mirarla ya nos pasó en /buscar, con un aviso que no podía encenderse. */
+      : filasCes.length > techo(500)
+        ? `Hay más de ${techo(500)} permisos en este proyecto y solo se leyeron los primeros: el recuento de abajo se queda corto. Míralos en ⚖ clearance.`
+        : "";
     /* ── EL CARNÉ ENSEÑA SOLO A LOS CONFIRMADOS ──
        Es el rostro grande del corazón del proyecto: quien está DENTRO. Un
        candidato que aún se está viendo, o alguien ya descartado, ahí arriba se
@@ -5113,7 +5138,8 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                       y animación son personajes, con o sin intérprete. */}
                   <ActoresProyecto proyectoId={params.id} actores={actoresProy}
                     personas={personasCat} tipo={ent.tipo} error={actoresError}
-                    cesiones={cesionesProy} cesionesError={cesionesError} />
+                    cesiones={cesionesProy} cesionesError={cesionesError}
+                    hoy={hoyLima()} />
                   {/* ── LOS TRATAMIENTOS ──
                       Junto al reparto porque son la misma pregunta desde dos
                       lados: a quién cuenta la película y cómo la cuenta.

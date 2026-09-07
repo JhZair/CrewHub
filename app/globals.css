@@ -7380,7 +7380,6 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
 /* El estado, con todas sus letras y su color. Es lo que se viene a leer. */
 .cesl-est { font-weight: 700; font-size: 12px; }
 .cesl-falta .cesl-est { color: var(--yellow); }
-.cesl-obra { color: var(--muted); font-size: 11.5px; font-style: italic; }
 .cesl-fecha { color: var(--dim); font-size: 11px; }
 .cesl-doc { color: var(--blue); font-size: 11px; }
 .cesl-mas { background: none; border: 0; padding: 2px 0; font-family: inherit;

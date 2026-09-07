@@ -2,10 +2,11 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { guardarObraMusical, quitarObraMusical } from "@/app/musica/acciones";
+import { ROTULO_ESTADO_AUT, type EstadoAutorizacion } from "@/lib/clearance";
 import {
   ORIGENES, META_ORIGEN, ROTULO_CAMPO, MAX_CAMPO, PLANES, ROTULO_PLAN,
   origenDe, pegasDe, gravedadDe, llevaPersona, COLOR_GRAVEDAD,
-  type FilaObra, type Origen, type PlanIA, type MapaCesiones,
+  type FilaObra, type Origen, type PlanIA, type MapaPermisos,
 } from "@/lib/obrasMusicales";
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -29,20 +30,20 @@ import {
    lo escrito y el foco. Ya costó una tanda averiguarlo.
    ══════════════════════════════════════════════════════════════════════════ */
 
-/** Lo que la pantalla sabe del reparto: quién está y qué cesiones de música
+/** Lo que la pantalla sabe del reparto: quién está y qué permisos de música
  *  tiene, para poder atar la obra al papel que ya existe. */
 export type PersonaReparto = {
   id: string;
   nombre: string;
-  /** Solo las cesiones de música de esa persona. La de imagen no autoriza que
+  /** Solo los permisos de música de esa persona. La de imagen no autoriza que
    *  suene su tema, y ofrecerla aquí invitaría a atar el papel equivocado. */
-  cesiones: { id: string; obra?: string | null; estado?: string | null }[];
+  permisos: { id: string; obra?: string | null; estado?: string | null }[];
 };
 
 type Borrador = {
   id?: string;
   titulo: string; origen: Origen;
-  personaId: string; cesionId: string;
+  personaId: string; autorizacionId: string;
   autor: string; iswc: string;
   consultadoEn: string; consultadoNota: string;
   pruebaUrl: string; vigenteHasta: string;
@@ -52,7 +53,7 @@ type Borrador = {
 
 const VACIO: Borrador = {
   titulo: "", origen: "dominio_publico",
-  personaId: "", cesionId: "",
+  personaId: "", autorizacionId: "",
   autor: "", iswc: "", consultadoEn: "", consultadoNota: "",
   pruebaUrl: "", vigenteHasta: "",
   herramienta: "", planIa: "", prompt: "", aporteHumano: "",
@@ -62,7 +63,7 @@ const VACIO: Borrador = {
 const deFila = (o: FilaObra): Borrador => ({
   id: o.id,
   titulo: o.titulo || "", origen: origenDe(o),
-  personaId: o.persona_id || "", cesionId: o.cesion_id || "",
+  personaId: o.persona_id || "", autorizacionId: o.autorizacion_id || "",
   autor: o.autor || "", iswc: o.iswc || "",
   consultadoEn: o.consultado_en || "", consultadoNota: o.consultado_nota || "",
   pruebaUrl: o.prueba_url || "", vigenteHasta: o.vigente_hasta || "",
@@ -87,18 +88,18 @@ const CAMPO: Record<string, keyof Borrador> = {
 };
 
 export default function ObrasProyecto({
-  proyectoId, obras, reparto = [], cesiones, cesionesFallaron = false, hoy,
+  proyectoId, obras, reparto = [], permisos, permisosFallaron = false, hoy,
 }: {
   proyectoId: string;
   obras: FilaObra[];
   reparto?: PersonaReparto[];
-  /** Las cesiones por id, para poder mirar su ESTADO. Que el vínculo exista no
-   *  dice nada: una cesión nace pendiente, y una obra atada a una cesión sin
+  /** Los permisos por id, para poder mirar su ESTADO. Que el vínculo exista no
+   *  dice nada: un permiso nace «sin empezar», y una obra atada a un permiso sin
    *  firmar no está resuelta por mucho que el id esté puesto. */
-  cesiones?: MapaCesiones | null;
-  /** Si la consulta de cesiones falló. Entonces se calla en vez de acusar: una
+  permisos?: MapaPermisos | null;
+  /** Si la consulta de permisos falló. Entonces se calla en vez de acusar: una
    *  lista vacía por fallo diría que nadie ha firmado nada. */
-  cesionesFallaron?: boolean;
+  permisosFallaron?: boolean;
   /** El día de hoy en Lima, calculado en el servidor. ⚠ No se usa `new Date()`
    *  aquí: a partir de las 7 de la tarde en Perú ya sería mañana, y una
    *  licencia se daría por vencida un día antes. */
@@ -131,7 +132,7 @@ export default function ObrasProyecto({
     try {
       r = await guardarObraMusical(proyectoId, {
         id: b.id, titulo: b.titulo, origen: b.origen,
-        personaId: b.personaId || null, cesionId: b.cesionId || null,
+        personaId: b.personaId || null, autorizacionId: b.autorizacionId || null,
         autor: b.autor, iswc: b.iswc,
         consultadoEn: b.consultadoEn, consultadoNota: b.consultadoNota,
         pruebaUrl: b.pruebaUrl, vigenteHasta: b.vigenteHasta,
@@ -166,9 +167,9 @@ export default function ObrasProyecto({
   /* ── LAS FILAS, ORDENADAS POR LO QUE LES FALTA ──
      Lo que no se puede usar arriba. Es a lo que se entra. */
   const PESO = { bloqueo: 0, falta: 1 } as Record<string, number>;
-  /* Si las cesiones no se pudieron leer se pasa `null`, y la regla entonces no
+  /* Si los permisos no se pudieron leer se pasa `null`, y la regla entonces no
      dice ni que sí ni que no sobre el papel. Callar es mejor que acusar. */
-  const mapaCes = cesionesFallaron ? null : cesiones;
+  const mapaCes = permisosFallaron ? null : permisos;
   const ordenadas = [...obras].sort((x, y) => {
     const gx = gravedadDe(x, hoy, mapaCes), gy = gravedadDe(y, hoy, mapaCes);
     return (gx ? PESO[gx] : 2) - (gy ? PESO[gy] : 2)
@@ -210,7 +211,7 @@ export default function ObrasProyecto({
             <a href={o.prueba_url} target="_blank" rel="noopener noreferrer"
               className="trt-doc">📎 el papel</a>
           )}
-          {o.cesion_id && <span className="chip-tenue">🔗 atada a su cesión</span>}
+          {o.autorizacion_id && <span className="chip-tenue">🔗 atada a su permiso</span>}
           {o.consultado_en && <span>consultado el {o.consultado_en}</span>}
           {/* ⚠ La licencia se enseña SIEMPRE, no solo cuando ya venció. Antes
               solo aparecía como pega el día después de caducar, y una que
@@ -345,16 +346,16 @@ export default function ObrasProyecto({
               «biblioteca» se rellenen indistintamente. */}
           <div className="ces-ayuda">{META_ORIGEN[b.origen].largo}</div>
 
-          {/* ⚠ Cambiar el origen a uno sin persona BORRA el vínculo a la cesión,
+          {/* ⚠ Cambiar el origen a uno sin persona BORRA el vínculo al permiso,
               y el selector desaparece en cuanto lo cambias: sin este aviso se
               pierde el papel firmado por tocar un desplegable, sin ver lo que
               se está a punto de perder. Se avisa antes de guardar, que es
               cuando todavía se puede volver atrás. */}
-          {b.id && !llevaPersona(b.origen) && (b.personaId || b.cesionId) && (
+          {b.id && !llevaPersona(b.origen) && (b.personaId || b.autorizacionId) && (
             <div className="ces-aviso">
               ⚠ Este origen no lleva persona detrás: al guardar se soltará
-              {b.cesionId ? " el vínculo con su cesión y" : ""} quién la aporta.
-              El papel no se borra —sigue en la ficha del proyecto— pero esta obra
+              {b.autorizacionId ? " el vínculo con su permiso y" : ""} quién la aporta.
+              El papel no se borra —sigue en ⚖ clearance— pero esta obra
               dejará de apuntar a él.
             </div>
           )}
@@ -368,11 +369,11 @@ export default function ObrasProyecto({
                 <span>Quién la aporta — tiene que estar en el reparto</span>
                 <select value={b.personaId}
                   onChange={e => {
-                    /* Al cambiar de persona, la cesión atada deja de valer:
+                    /* Al cambiar de persona, el permiso atado deja de valer:
                        era de la otra. Sin esto se guardaría el papel de alguien
                        distinto y la acción lo rechazaría con un error que la
                        pantalla podía haber evitado. */
-                    set("cesionId", "");
+                    set("autorizacionId", "");
                     set("personaId", e.target.value);
                   }}>
                   <option value="">— nadie del reparto —</option>
@@ -381,31 +382,32 @@ export default function ObrasProyecto({
               </label>
 
               {yo && (
-                /* Si la consulta de cesiones falló, NO se dice que no tiene
+                /* Si la consulta de permisos falló, NO se dice que no tiene
                    ninguna: sería acusarla de aportar música sin autorizar por
                    un fallo del servidor, y no habría clic que lo apagara. */
-                cesionesFallaron ? (
+                permisosFallaron ? (
                   <div className="ces-ayuda">
-                    No se pudieron leer las cesiones, así que no se puede ofrecer
-                    ninguna para atar. Recarga cuando el aviso de arriba se vaya.
+                    No se pudieron leer los permisos, así que no se puede ofrecer
+                    ninguno para atar. Recarga cuando el aviso de arriba se vaya.
                   </div>
-                ) : yo.cesiones.length ? (
+                ) : yo.permisos.length ? (
                   <label className="ces-l">
-                    <span>Su cesión de música — así las dos pantallas dicen lo mismo</span>
-                    <select value={b.cesionId} onChange={e => set("cesionId", e.target.value)}>
+                    <span>Su permiso de interpretación — así las dos pantallas dicen lo mismo</span>
+                    <select value={b.autorizacionId} onChange={e => set("autorizacionId", e.target.value)}>
                       <option value="">— sin atar —</option>
-                      {yo.cesiones.map(c => (
+                      {yo.permisos.map(c => (
                         <option key={c.id} value={c.id}>
-                          {c.obra || "cesión de música"}{c.estado ? ` · ${c.estado}` : ""}
+                          {c.obra || "permiso de interpretación"}
+                          {c.estado ? ` · ${ROTULO_ESTADO_AUT[c.estado as EstadoAutorizacion] || c.estado}` : ""}
                         </option>
                       ))}
                     </select>
                   </label>
                 ) : (
                   <div className="ces-aviso">
-                    ⚠ {yo.nombre} no tiene ninguna cesión de música registrada. Regístrasela
-                    en su fila del reparto: sin ella, esto dice que aporta música que no ha
-                    autorizado.
+                    ⚠ {yo.nombre} no tiene ningún permiso de interpretación registrado.
+                    Regístraselo en ⚖ clearance —que es el único sitio donde se registran—:
+                    sin él, esto dice que aporta música que no ha autorizado.
                   </div>
                 )
               )}

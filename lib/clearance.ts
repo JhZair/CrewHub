@@ -173,6 +173,38 @@ export const ROTULO_ESTADO_AUT: Record<EstadoAutorizacion, string> = {
   no_aplica: "no aplica",
 };
 
+/** ── DE QUIÉN HABLA UNA AUTORIZACIÓN ──
+ *  El OBJETO manda sobre el otorgante, y el orden importa: cuando los dos son
+ *  distintos —una menor cuyo permiso firma su madre, un heredero que cede lo
+ *  del fallecido— la fila habla de la menor y del fallecido, no de quien puso
+ *  la firma. Al revés, el permiso de la menor cuelga de la ficha de la madre y
+ *  la fila de la menor en el reparto dice «sin registrar» sobre alguien que sí
+ *  lo tiene.
+ *  ⚠ Vive aquí y no en cada pantalla porque ya pasó: /musica indexaba por
+ *  otorgante y la ficha del proyecto por objeto, así que el MISMO papel caía
+ *  bajo personas distintas en cada sitio. Dos criterios se separan; uno, no. */
+export const personaDeAutorizacion = (a: FilaAutorizacion): string | null =>
+  a.objeto_persona_id || a.otorgante_persona_id || null;
+
+/** ── QUÉ CUELGA DE LA FILA DE UNA PERSONA EN EL REPARTO ──
+ *  Los papeles que hablan de ELLA: que se le grabe, y lo que ella interpreta.
+ *
+ *  ⚠ No basta con `objeto === "persona"`. La interpretación tiene por objeto la
+ *  `agrupacion` —lo que se registra es la ejecución— pero el derecho es
+ *  personal y lo cede cada músico: la cesión de Jennifer es suya y tiene que
+ *  verse en su fila. Dejarla fuera sería esconder justo el papel del caso que
+ *  levantó todo este módulo.
+ *
+ *  ⚠ Y hay que excluir lo demás, que antes entraba: el permiso de la CASA lo
+ *  firma Braulia como propietaria, así que su id está en `otorgante_persona_id`
+ *  y colgaba de su fila del reparto como si fuera un papel suyo de actriz.
+ *  Recae sobre la casa; ella solo pone la firma. Igual con el material de
+ *  archivo que alguien aporta y con la composición de una obra. */
+export const esPapelDeLaPersona = (a: FilaAutorizacion): boolean => {
+  const o = META_TIPO_AUT[baja(a.tipo) as TipoAutorizacion]?.objeto;
+  return o === "persona" || o === "agrupacion";
+};
+
 /** Los estados en que el permiso TODAVÍA NO ESTÁ. Se usa en el semáforo, y por
  *  eso vive aquí y no en la pantalla: dos listas se separan. */
 const ESTADOS_ABIERTOS: EstadoAutorizacion[] =

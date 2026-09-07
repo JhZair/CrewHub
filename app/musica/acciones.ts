@@ -63,7 +63,7 @@ export type DatosObra = {
   titulo?: string;
   origen?: string;
   personaId?: string | null;
-  cesionId?: string | null;
+  autorizacionId?: string | null;
   autor?: string;
   iswc?: string;
   consultadoEn?: string;
@@ -131,25 +131,29 @@ export async function guardarObraMusical(proyectoId: string, d: DatosObra) {
       return { error: "Esa persona no está en el reparto de este proyecto. Añádela primero." };
   }
 
-  /* ── Y LA CESIÓN TIENE QUE SER DE ESA PERSONA Y DE ESTE PROYECTO ──
+  /* ── Y EL PERMISO TIENE QUE SER DE ESA PERSONA Y DE ESTE PROYECTO ──
      Es el puente entre las dos tablas y el único sitio donde se puede
-     comprobar. Sin esto, la obra podría apuntar a la cesión de otra persona y
+     comprobar. Sin esto, la obra podría apuntar al permiso de otra persona y
      las dos pantallas dirían cosas distintas sobre el mismo papel — que es
      justamente lo que atarlas venía a evitar. */
-  const cesionId = llevaPersona(origen) ? ((d.cesionId || "").trim() || null) : null;
-  if (cesionId) {
-    if (!personaId) return { error: "Para atar una cesión hay que decir de quién es la obra." };
-    const { data: ces } = await supabase.from("proyecto_cesion")
-      .select("id,proyecto_id,persona_id,tipo").eq("id", cesionId).maybeSingle();
-    if (!ces) return { error: "Esa cesión ya no existe." };
-    if (ces.proyecto_id !== proyectoId) return { error: "Esa cesión no es de este proyecto." };
-    if (ces.persona_id !== personaId) return { error: "Esa cesión es de otra persona." };
-    /* ⚠ Y tiene que ser DE MÚSICA. La cesión de imagen autoriza que se le grabe,
-       no que su tema suene: son dos papeles distintos y ese es el motivo entero
-       de que existan los dos. Sin esta comprobación, atar la de imagen dejaba la
-       obra en verde diciendo que la música está autorizada. */
-    if (String(ces.tipo || "") !== "musica")
-      return { error: "Esa cesión es de imagen, voz y testimonio, no de música: autoriza que se le grabe y que hable, no que suene su tema." };
+  const autorizacionId = llevaPersona(origen) ? ((d.autorizacionId || "").trim() || null) : null;
+  if (autorizacionId) {
+    if (!personaId) return { error: "Para atar un permiso hay que decir de quién es la obra." };
+    /* ⚠ De `autorizacion`, no de la `proyecto_cesion` obsoleta. */
+    const { data: ces } = await supabase.from("autorizacion")
+      .select("id,proyecto_id,otorgante_persona_id,objeto_persona_id,tipo")
+      .eq("id", autorizacionId).maybeSingle();
+    if (!ces) return { error: "Ese permiso ya no existe." };
+    if (ces.proyecto_id !== proyectoId) return { error: "Ese permiso no es de este proyecto." };
+    if (ces.otorgante_persona_id !== personaId && ces.objeto_persona_id !== personaId)
+      return { error: "Ese permiso es de otra persona." };
+    /* ⚠ Y tiene que ser DE INTERPRETACIÓN. El de imagen, voz y testimonio
+       autoriza que se le grabe y que hable, no que su tema suene: son dos
+       papeles distintos y ese es el motivo entero de que existan los dos. Sin
+       esta comprobación, atar el de imagen dejaba la obra en verde diciendo que
+       la música está autorizada. */
+    if (!["interpretacion_musical", "interpretacion_danza"].includes(String(ces.tipo || "")))
+      return { error: "Ese permiso es de imagen, voz y testimonio, no de interpretación: autoriza que se le grabe y que hable, no que suene su tema." };
   }
 
   const fila = {
@@ -157,7 +161,7 @@ export async function guardarObraMusical(proyectoId: string, d: DatosObra) {
     titulo,
     origen,
     persona_id: personaId,
-    cesion_id: cesionId,
+    autorizacion_id: autorizacionId,
     autor: texto(d.autor, "autor"),
     iswc: texto(d.iswc, "iswc"),
     consultado_en: consultadoEn,
@@ -177,15 +181,23 @@ export async function guardarObraMusical(proyectoId: string, d: DatosObra) {
      relation "proyecto_obra" violates check constraint», y entonces la pantalla
      mandaba a correr una migración que ya estaba puesta. Las tres que quedan
      son las que de verdad significan «falta la tabla». */
+  /* ⚠ Y CUÁL falta, que no es siempre la misma. Si el error habla de
+     `autorizacion_id`, la que falta es la que crea esa columna —
+     db/clearance-obra-cesion.sql—, no la que creó la tabla. Mandar a correr la
+     de siempre es el mismo fallo que el párrafo de arriba presume de haber
+     arreglado, cometido por el otro lado: un mensaje que manda a mirar donde no
+     es se deja de leer igual que uno que no se puede apagar. */
   const faltaSql = (m: string) =>
     /schema cache|does not exist|PGRST20[45]/i.test(m)
-      ? `${m} — falta correr db/proyecto-obra.sql en Supabase.` : m;
+      ? `${m} — falta correr ${/autorizacion_id/i.test(m)
+          ? "db/clearance-obra-cesion.sql" : "db/proyecto-obra.sql"} en Supabase.`
+      : m;
 
   if (d.id) {
     /* ── LISTA BLANCA EN EL UPDATE ──
        `proyecto_id` no se manda: cambiarlo movería la obra a otra película
        saltándose todas las comprobaciones de arriba, que hablan del proyecto
-       que llegó por parámetro. Misma guarda que en las cesiones. */
+       que llegó por parámetro. Misma guarda que en los permisos. */
     const { proyecto_id: _p, ...editable } = fila;
     const { data, error } = await supabase.from("proyecto_obra")
       .update(editable).eq("id", d.id).eq("proyecto_id", proyectoId).select("id");
