@@ -7523,3 +7523,11 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
    suelta, se cortan por donde no toca. */
 .med-rej { display: grid; gap: 3px 12px; margin-top: 3px;
   grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); }
+
+/* La zona del papel: se puede elegir, pegar o soltar. El borde discontinuo es
+   lo que dice «aquí se puede soltar» sin tener que leerlo. */
+.papel-soltar { border: 1px dashed var(--border); border-radius: 10px;
+  padding: 8px 10px; display: flex; flex-direction: column; gap: 5px;
+  transition: border-color .12s, background .12s; }
+.papel-soltar.encima { border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent); }

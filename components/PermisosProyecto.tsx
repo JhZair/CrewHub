@@ -1,7 +1,8 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { subirAdjunto, esPdfUrl, huellaDe } from "@/lib/subirImagen";
+import { subirAdjunto, esPdfUrl, huellaDe, archivosDe } from "@/lib/subirImagen";
+import { destinoPaste } from "@/lib/destinoPaste";
 import { EntPicker, type CatalogoItem } from "@/components/Composer";
 import {
   guardarAgrupacion, guardarAutorizacion, cambiarEstadoAutorizacion,
@@ -173,6 +174,60 @@ export default function PermisosProyecto({
   /** El id del papel que se está editando, si ya existía. */
   const [docId, setDocId] = useState("");
   const [soltando, setSoltando] = useState(false);
+  const [encima, setEncima] = useState(false);
+
+  /* ── SUBIR EL PAPEL: UNA SOLA FUNCIÓN PARA LAS TRES PUERTAS ──
+     Elegir el archivo, pegarlo con Ctrl+V y soltarlo encima acaban aquí. Con
+     tres copias, la que se arregla es la que se usó ese día y las otras dos se
+     quedan atrás — y la que se queda atrás es la que no calcula la huella. */
+  const subirPapel = async (f: File, aviso = "") => {
+    /* ⚠ `aviso` entra POR PARÁMETRO y no se pone antes de llamar: este
+       `setError("")` limpiaría el mensaje de quien lo hubiera puesto justo
+       antes —React agrupa los dos cambios y gana el último—, así que «soltaste
+       tres archivos» desaparecía sin llegar a verse. */
+    setError(aviso); setSubiendo(true);
+    /* La huella, del MISMO objeto que se sube: calcularla de otra lectura del
+       disco sería poder firmar una y guardar otra. */
+    /* 15MB también para las fotos: esto es la foto de un papel firmado, no un
+       pantallazo, y la cámara de un móvil de hoy pasa de 5 con facilidad. */
+    const [r, hash] = await Promise.all([subirAdjunto(f, 15), huellaDe(f)]);
+    setSubiendo(false);
+    /* ⚠ El error se ENSEÑA. Un archivo que no subió con una caja que se queda
+       igual se lee como que sí subió, y el permiso acabaría en verde sin papel. */
+    if (r.error) { setError(r.error); return; }
+    setDoc(d2 => ({ ...d2, archivoUrl: r.url || "", hash: hash || "" }));
+  };
+
+  /* ── PEGAR CON Ctrl+V, EN TODO EL PANEL ──
+     ⚠ Un listener de `window` y no un `onPaste` en una caja. La foto del papel
+     llega por WhatsApp: se copia de la conversación y se pega. Obligar a
+     acertar primero el foco en un recuadro concreto es el paso que hace que no
+     se pegue — y no hay ninguna caja obvia donde hacer clic, porque un
+     `<input type="file">` no acepta pegar.
+     Solo mientras el panel está abierto, y solo si el portapapeles trae un
+     ARCHIVO: pegar texto en el campo de la ubicación tiene que seguir
+     funcionando. */
+  useEffect(() => {
+    if (!papel) return;
+    const alPegar = (e: ClipboardEvent) => {
+      /* ⚠ El semáforo de lib/destinoPaste. Cuando el ratón está sobre un
+         destino que RECLAMA el pegado —la foto de una persona—, ese destino
+         manda y los oyentes generales ceden. Hoy ninguno de esos vive en esta
+         pantalla, pero un oyente de `window` que no mira la bandera es el que
+         rompe al siguiente que la use, y romperlo desde otra pantalla es
+         imposible de encontrar. */
+      if (destinoPaste.reclamado) return;
+      const fs = archivosDe(e.clipboardData);
+      if (!fs.length) return;
+      e.preventDefault();
+      void subirPapel(fs[0]);
+    };
+    window.addEventListener("paste", alPegar);
+    return () => window.removeEventListener("paste", alPegar);
+    /* `papel` y nada más: `subirPapel` se recrea en cada render y meterla en las
+       dependencias volvería a colgar y descolgar el listener sin parar. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [papel]);
 
   const set = (k: keyof Nuevo, v: any) => setN(x => ({ ...x, [k]: v }));
 
@@ -362,30 +417,37 @@ export default function PermisosProyecto({
                 sustituye — el anterior no se borra del almacén.
               </div>
             )}
-            <label className="ces-l">
-              <span>El archivo — PDF o foto del papel</span>
-              <input type="file" accept="application/pdf,image/*" disabled={subiendo || ocupado}
-                onChange={async e => {
-                  const f = e.target.files?.[0];
-                  if (!f) return;
-                  setError(""); setSubiendo(true);
-                  /* La huella, del MISMO objeto que se sube: calcularla de
-                     otra lectura del disco sería poder firmar una y guardar
-                     otra. */
-                  const [r, hash] = await Promise.all([subirAdjunto(f), huellaDe(f)]);
-                  setSubiendo(false);
-                  /* ⚠ Se limpia el input SIEMPRE. Sin esto, si la subida falla
-                     —15MB, un corte— y eliges EL MISMO archivo otra vez, el
-                     evento `change` no se dispara y no pasa nada: te quedas
-                     atascado sin ninguna explicación. */
-                  e.target.value = "";
-                  /* ⚠ Y el error se ENSEÑA. Un archivo que no subió con una caja
-                     que se queda igual se lee como que sí subió, y el permiso
-                     acabaría en verde sin papel. */
-                  if (r.error) { setError(r.error); return; }
-                  setDoc(d2 => ({ ...d2, archivoUrl: r.url || "", hash: hash || "" }));
-                }} />
-            </label>
+            <div className={encima ? "papel-soltar encima" : "papel-soltar"}
+              onDragOver={e => { e.preventDefault(); setEncima(true); }}
+              onDragLeave={() => setEncima(false)}
+              onDrop={e => {
+                e.preventDefault(); setEncima(false);
+                const fs = archivosDe(e.dataTransfer);
+                if (!fs.length) return;
+                /* ⚠ Uno solo, y se dice. Soltar tres y ver que sube uno sin
+                   ninguna explicación se lee como que subieron los tres. */
+                void subirPapel(fs[0], fs.length > 1
+                  ? `Soltaste ${fs.length} archivos y este permiso lleva un papel: se subió «${fs[0].name}». Los demás, de uno en uno o en otro permiso.`
+                  : "");
+              }}>
+              <label className="ces-l">
+                <span>El archivo — PDF o foto del papel</span>
+                <input type="file" accept="application/pdf,image/*" disabled={subiendo || ocupado}
+                  onChange={e => {
+                    const f = e.target.files?.[0];
+                    /* ⚠ Se limpia el input SIEMPRE, y ANTES de subir. Sin esto,
+                       si la subida falla —15MB, un corte— y eliges EL MISMO
+                       archivo otra vez, el evento `change` no se dispara y no
+                       pasa nada: te quedas atascado sin explicación. */
+                    e.target.value = "";
+                    if (f) void subirPapel(f);
+                  }} />
+              </label>
+              <div className="ces-ayuda">
+                O <b>pega la foto con Ctrl+V</b> —la que te mandaron por
+                WhatsApp, copiada de la conversación— o suéltala aquí encima.
+              </div>
+            </div>
             {subiendo && <div className="ces-ayuda">subiendo…</div>}
             {doc.archivoUrl && (
               <div className="ces-ayuda">
