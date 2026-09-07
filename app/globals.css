@@ -7415,6 +7415,26 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
    habría hecho que tocar el estilo de una cambiara la otra sin que nadie lo
    viera venir — dos cosas distintas con el mismo nombre.
    ══════════════════════════════════════════════════════════════════════════ */
+/* La caja que filtra las películas. Con 86 sin empezar, el plegable de abajo
+   es un muro: esconder algo detrás de un clic no lo hace encontrable. */
+.clx-buscar { display: flex; align-items: center; gap: 8px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  padding: 7px 11px; margin-bottom: 10px; }
+.clx-buscar:focus-within { border-color: var(--accent); }
+.clx-lupa { flex-shrink: 0; opacity: .6; font-size: 13px; }
+/* Sin `color` ni `font-family`: la regla global de `input` de este mismo
+   archivo ya los pone, y repetirlos es tener el mismo valor en dos sitios. */
+.clx-input { flex: 1; background: none; border: 0; outline: none;
+  font-size: 13px; min-width: 0; }
+.clx-input::placeholder { color: var(--dim); }
+.clx-x { background: none; border: 0; cursor: pointer; color: var(--dim);
+  font-size: 13px; padding: 0 2px; line-height: 1; }
+.clx-x:hover { color: var(--text); }
+.clx-cuenta { color: var(--dim); font-size: 11.5px; line-height: 1.5;
+  margin: 0 2px 8px; }
+/* El nombre largo, solo cuando la coincidencia está ahí y no en el corto. */
+.clx-largo { color: var(--muted); font-size: 11.5px; font-style: italic; }
+
 .clx { display: block; text-decoration: none; color: inherit;
   background: var(--card); border: 1px solid var(--border); border-radius: 10px;
   padding: 10px 12px; margin-bottom: 6px;

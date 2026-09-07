@@ -26,3 +26,59 @@ export const TXT = {
   micro: 13,
   chip: 12,
 } as const;
+
+/* ══════════════════════════════════════════════════════════════════════════
+   COMPARAR COMO LO ESCRIBE LA GENTE
+
+   ── POR QUÉ ESTO VIVE EN lib/ ──
+   ⚠ `normalizar` nació dentro de `components/ListaClearance.tsx`, que empieza
+   con `"use client"`, y la llamaba también la página de servidor. Eso no
+   compila mal: compila PERFECTO y revienta en runtime.
+
+   `"use client"` no marca componentes, marca EL MÓDULO. Cuando un componente
+   de servidor importa algo de ahí, Next no le entrega la función: le entrega
+   una referencia de cliente, que solo sabe hacer una cosa —lanzar—:
+
+       «Attempted to call normalizar() from the server but normalizar is on the
+        client. It's not possible to invoke a client function from the server.»
+
+   Es la frontera de siempre cruzada en el sentido contrario al de costumbre.
+   Nos cuidamos mucho de que un closure no viaje del servidor al cliente, y se
+   nos coló una función viajando del cliente al servidor. `tsc` no ve ninguno de
+   los dos: los tipos son impecables en ambos casos.
+
+   La regla, entonces: una función pura que usen los dos lados vive aquí. Un
+   módulo `"use client"` solo puede exportar componentes y tipos hacia el
+   servidor.
+
+   ── Y HAY DOCE COPIAS DE `normalizar` EN EL REPO ──
+   `lib/casilla.ts`, `lib/rubros.ts`, `lib/tabla.ts`, `components/PanelCombos`,
+   `Menciones`, `Ensamblado`, `EntregaLote`, `PrestamoEquipo`, `AsignarACompra`,
+   `PanelKits`, `Composer` (dos veces) y `app/actions.ts` tienen cada uno la
+   suya. Doce copias de una regla son doce sitios donde arreglarla. Este es a
+   donde deberían venir; se empieza por aquí.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** Minúsculas y sin tildes, para comparar como se teclea: «Ñahui» se encuentra
+ *  escribiendo «nahui», y «heroína» escribiendo «heroina». */
+export const normalizar = (s: string) =>
+  (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+/**
+ * ¿El campo contiene TODAS las palabras de la consulta, en cualquier orden?
+ *
+ * ⚠ Palabra a palabra y no subcadena. Con `includes` a secas, buscar
+ * «mujeres ande» no encontraba «MUJERESANDE · Mujeres del Ande»: hay un «del»
+ * en medio. Y teclear dos palabras que se recuerdan a medias es exactamente lo
+ * que se hace cuando no se recuerda el título — el caso de uso entero de un
+ * buscador.
+ *
+ * `campo` tiene que venir YA normalizado: se compara muchas veces contra la
+ * misma fila y normalizarlo en cada tecleo sería rehacer el trabajo. La
+ * consulta se normaliza aquí.
+ */
+export function coincide(campo: string, consulta: string): boolean {
+  const palabras = normalizar(consulta).split(/\s+/).filter(Boolean);
+  if (!palabras.length) return true;
+  return palabras.every(p => campo.includes(p));
+}

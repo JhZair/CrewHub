@@ -2,8 +2,13 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "@/components/Enlace";
 import Volver from "@/components/Volver";
-import Plegable from "@/components/Plegable";
 import Realtime from "@/components/Realtime";
+import ListaClearance, { type FilaVista } from "@/components/ListaClearance";
+/* ⚠ `normalizar` de `lib/texto` y NO de `ListaClearance`: ese módulo es
+   `"use client"`, y una función importada de ahí y llamada AQUÍ —en el
+   servidor— no da error de tipos, da un error en runtime que tumba la
+   pantalla entera. Está contado en lib/texto.ts. */
+import { normalizar } from "@/lib/texto";
 import { createClient } from "@/lib/supabase/server";
 import { techo } from "@/lib/api";
 import { hoyLima } from "@/lib/fechas";
@@ -54,7 +59,7 @@ export const metadata: Metadata = { title: "⚖ Clearance" };
 
 export default async function Clearance({
   searchParams,
-}: { searchParams?: { todas?: string } }) {
+}: { searchParams?: { todas?: string; q?: string } }) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
@@ -148,46 +153,39 @@ export default async function Clearance({
   const listas = ciego ? 0 : conDatos.filter(f => f.s.publicable).length;
   const ocultas = Math.min(((proys.data || []) as any[]).length, techo(400)) - peliculas.length;
 
-  /* ── UNA LÍNEA POR PELÍCULA ──
-     Con lo que la bloquea, hasta tres. Sin motivo, un rojo se deja de mirar; y
-     con los quince, la lista vuelve a ser la pantalla vieja. */
-  const linea = (f: FilaSemaforo) => {
-    const nombre = nombrePeli(f.p);
-    const color = f.s.sinDatos || (ciego && f.s.publicable) ? "var(--dim)"
-      : f.s.publicable ? "var(--green)" : "var(--red)";
-    const veredicto = f.s.sinDatos ? "sin datos"
+  /* ── UNA LÍNEA POR PELÍCULA, COMO DATO ──
+     ⚠ Se construyen aquí y las pinta `ListaClearance`, que es cliente porque
+     tiene la caja de búsqueda. Lo que cruza son CADENAS ya resueltas: el
+     color, el rótulo, el nombre de quien firma. Ni el catálogo ni `ctxDe`
+     viajan — un closure a un componente cliente revienta en runtime y tsc no
+     lo ve.
+     Los tres peores bloqueos y cuántos quedan detrás: sin motivo, un rojo se
+     deja de mirar; con los quince, la lista vuelve a ser la pantalla vieja. */
+  const vista = (f: FilaSemaforo): FilaVista => ({
+    id: f.p.id,
+    nombre: nombrePeli(f.p),
+    nombreLargo: String(f.p.nombre || ""),
+    /* ⚠ El corto Y el largo. Se busca «mujeres» y la fila se llama
+       «MUJERESANDE»; se busca «Mujeres del Ande» y también tiene que salir. */
+    busca: normalizar([f.p.nombre_corto, f.p.nombre].filter(Boolean).join(" ")),
+    sinDatos: f.s.sinDatos,
+    color: f.s.sinDatos || (ciego && f.s.publicable) ? "var(--dim)"
+      : f.s.publicable ? "var(--green)" : "var(--red)",
+    veredicto: f.s.sinDatos ? "sin datos"
       : ciego && f.s.publicable ? "no se puede decir"
-      : f.s.publicable ? "✓ se puede publicar" : "🚫 NO se puede publicar";
-    return (
-      <Link key={f.p.id} href={`/clearance/${f.p.id}`} className="clx">
-        <div className="clx-t">
-          <span className="clx-n">{nombre}</span>
-          <span className="clr-sem" style={{ color }}>{veredicto}</span>
-          <span style={{ flex: 1 }} />
-          <span className="clx-r">{resumenSemaforo(f.s)}</span>
-        </div>
-        {/* Los tres peores, y cuántos quedan detrás. */}
-        {f.s.bloqueos.length > 0 && (
-          <div className="clx-b">
-            {f.s.bloqueos.slice(0, 3).map(b => {
-              const { que, quien } = rotuloBloqueo(b, f.suyas, cat, nombreAgrupacion);
-              return (
-                <span key={b.id} className="clx-m" style={{ color: COLOR_RIESGO[b.nivel] }}>
-                  {b.nivel === "critico" ? "🚫" : "🔶"} {que}
-                  {quien ? ` · ${quien}` : ""} — {b.txt}
-                </span>
-              );
-            })}
-            {f.s.bloqueos.length > 3 && (
-              <span className="clx-m" style={{ color: "var(--dim)" }}>
-                y {f.s.bloqueos.length - 3} más →
-              </span>
-            )}
-          </div>
-        )}
-      </Link>
-    );
-  };
+      : f.s.publicable ? "✓ se puede publicar" : "🚫 NO se puede publicar",
+    resumen: resumenSemaforo(f.s),
+    bloqueos: f.s.bloqueos.slice(0, 3).map(b => {
+      const { que, quien } = rotuloBloqueo(b, f.suyas, cat, nombreAgrupacion);
+      return {
+        id: b.id,
+        ico: b.nivel === "critico" ? "🚫" : "🔶",
+        color: COLOR_RIESGO[b.nivel],
+        txt: `${que}${quien ? ` · ${quien}` : ""} — ${b.txt}`,
+      };
+    }),
+    masBloqueos: Math.max(0, f.s.bloqueos.length - 3),
+  });
 
   return (
     <div className="shell">
@@ -266,24 +264,9 @@ export default async function Clearance({
         </div>
       )}
 
-      {!fallo && conDatos.map(linea)}
-
-      {!fallo && vacias.length > 0 && (
-        <Plegable
-          id="clearance:vacias"
-          /* Cerrado: son las que no tienen nada que atender HOY. Pero el número
-             está en el título, así que no desaparecen de la cabeza. */
-          abiertoPorDefecto={false}
-          titulo={
-            <span style={{ fontWeight: 600 }}>
-              {vacias.length} película{vacias.length === 1 ? "" : "s"} sin ningún permiso registrado
-            </span>
-          }
-          resumen={<span style={{ fontSize: 11.5, color: "var(--dim)" }}>
-            no es «todo en regla»: es que nadie ha empezado
-          </span>}>
-          {vacias.map(linea)}
-        </Plegable>
+      {!fallo && (
+        <ListaClearance filas={conDatos.map(vista)} vacias={vacias.map(vista)}
+          inicial={searchParams?.q} ocultas={todas ? 0 : ocultas} />
       )}
 
       {!fallo && !filas.length && (
