@@ -44,3 +44,28 @@ export function imagenesDePaste(e: React.ClipboardEvent): File[] {
     .map(i => i.getAsFile())
     .filter(Boolean) as File[];
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LA HUELLA DEL ARCHIVO
+
+   ⚠ Para poder decir, meses después y ante una aseguradora o un fondo, que el
+   PDF que se enseña es EL MISMO que se firmó. `documento_firmado.hash_archivo`
+   existe con ese comentario en la migración y nadie lo escribía: una columna
+   que nadie llena no prueba nada.
+
+   `crypto.subtle` solo existe en contexto seguro (https o localhost). Si no
+   está, se devuelve null en vez de reventar: la huella es una mejora, no un
+   requisito — y hacer que no se pueda guardar un papel por no poder calcularla
+   sería cambiar una promesa incumplida por una puerta cerrada.
+   ══════════════════════════════════════════════════════════════════════════ */
+export async function huellaDe(file: File): Promise<string | null> {
+  try {
+    if (!globalThis.crypto?.subtle) return null;
+    const buf = await file.arrayBuffer();
+    const h = await crypto.subtle.digest("SHA-256", buf);
+    return Array.from(new Uint8Array(h))
+      .map(b => b.toString(16).padStart(2, "0")).join("");
+  } catch {
+    return null;
+  }
+}

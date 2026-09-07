@@ -10,7 +10,7 @@ import { createClient } from "@/lib/supabase/server";
 import { techo } from "@/lib/api";
 import { hoyLima } from "@/lib/fechas";
 import {
-  resumenSemaforo, sinUsoPromocional, semaforo, COLOR_RIESGO,
+  resumenSemaforo, sinUsoPromocional, semaforo, esMenor, COLOR_RIESGO,
   type FilaAutorizacion, type FilaIncidental, type FilaUsoMusical,
 } from "@/lib/clearance";
 import {
@@ -72,7 +72,7 @@ export default async function ClearanceDePelicula({
      tirados y, pasado el techo, DOS LISTAS DISTINTAS — el desplegable ofrecería
      obras que el mapa de riesgo no tiene, y esas filas se calcularían con
      `ctx.obra = undefined`, más bajo de lo real y en silencio. */
-  const [peli, auts, incs, usos, agrs, ints, locs, acts, mats, cat] =
+  const [peli, auts, incs, usos, docs, agrs, ints, locs, acts, mats, actores, cat] =
     await Promise.all([
       supabase.from("proyectos").select("id,nombre,nombre_corto,tipo,etapa")
         .eq("id", params.id).maybeSingle(),
@@ -82,6 +82,16 @@ export default async function ClearanceDePelicula({
         .eq("proyecto_id", params.id).limit(techo(900) + 1),
       supabase.from("uso_musical_corte").select(CAMPOS_USO_MUSICAL)
         .eq("proyecto_id", params.id).order("timecode_inicio").limit(techo(900) + 1),
+      /* ── LOS PAPELES FIRMADOS ──
+         ⚠ Sin esto, el papel se podía subir y NO SE PODÍA VOLVER A VER. El
+         botón decía «ver o cambiar» y abría un panel vacío, y `📎` era un emoji
+         sin enlace. Todo este módulo existe para enseñar el expediente meses
+         después a un fondo o a una aseguradora, y ese era justo el paso que
+         faltaba: se guardaba y no se recuperaba. */
+      supabase.from("documento_firmado")
+        .select("id,modelo,archivo_url,hash_archivo,firmado_el,lugar_firma," +
+          "tiene_huella_digital,consentimiento_grabado_url,testigos,nota")
+        .eq("proyecto_id", params.id).limit(techo(900) + 1),
       supabase.from("agrupacion")
         .select("id,nombre,tipo,procedencia,representante_id,numero_integrantes_declarado")
         .order("nombre").limit(techo(300) + 1),
@@ -94,6 +104,22 @@ export default async function ClearanceDePelicula({
         .eq("proyecto_id", params.id).order("fecha_inicio").limit(techo(400) + 1),
       supabase.from("material_aportado").select("id,proyecto_id,descripcion,tipo")
         .eq("proyecto_id", params.id).limit(techo(400) + 1),
+      /* ── EL REPARTO DE ESTA PELÍCULA ──
+         ⚠ Sin esto, la pantalla decía «todavía no hay ningún permiso» sobre una
+         película con cinco actores sociales listados en su ficha, y para
+         registrar el primero había que buscar a la persona en un desplegable
+         con TODAS las del sistema. Cierto y a la vez inútil: lo que hace falta
+         saber es a quién le falta.
+         Solo los CONFIRMADOS: a una candidata que aún se está viendo no se le
+         pide un papel por un trabajo que quizá no ocurra. Mismo filtro que
+         /musica, y `situacion` puede ser NULL en las filas anteriores a
+         db/proyecto-actores-situacion.sql — esas son gente que ya estaba. */
+      supabase.from("proyecto_actores")
+        .select("persona_id,rol,personaje,situacion")
+        .eq("proyecto_id", params.id)
+        .or("situacion.eq.confirmada,situacion.is.null")
+        .not("persona_id", "is", null)
+        .order("orden").limit(techo(400) + 1),
       catalogosDeRiesgo(),
     ]);
 
@@ -113,7 +139,7 @@ export default async function ClearanceDePelicula({
   const eAut = (auts as any)?.error?.message || null;
   const eMontaje = (incs as any)?.error?.message || (usos as any)?.error?.message || null;
   const fallo = eProy || eAut || eMontaje;
-  const eCatalogo = [agrs, ints, locs, acts, mats]
+  const eCatalogo = [docs, agrs, ints, locs, acts, mats, actores]
     .map(r => (r as any)?.error?.message).find(Boolean) || null;
   const ciego = !!cat.error;
 
@@ -121,11 +147,13 @@ export default async function ClearanceDePelicula({
     [(auts.data || []).length, techo(900), "permisos"],
     [(incs.data || []).length, techo(900), "apariciones incidentales"],
     [(usos.data || []).length, techo(900), "músicas del corte"],
+    [(docs.data || []).length, techo(900), "papeles firmados"],
     [(agrs.data || []).length, techo(300), "agrupaciones"],
     [(ints.data || []).length, techo(900), "integrantes"],
     [(locs.data || []).length, techo(300), "locaciones"],
     [(acts.data || []).length, techo(400), "actividades"],
     [(mats.data || []).length, techo(400), "materiales"],
+    [(actores.data || []).length, techo(400), "actores sociales"],
   ].filter(([n, t]) => (n as number) > (t as number)).map(([, , q]) => q as string)
     .concat(cat.cortado);
 
@@ -136,11 +164,13 @@ export default async function ClearanceDePelicula({
   const suyas = ((auts.data || []) as any[]).slice(0, techo(900)) as FilaAutorizacion[];
   const mIncs = ((incs.data || []) as any[]).slice(0, techo(900)) as FilaIncidental[];
   const mUsos = ((usos.data || []) as any[]).slice(0, techo(900)) as FilaUsoMusical[];
+  const lDocs = ((docs.data || []) as any[]).slice(0, techo(900));
   const lAgrs = ((agrs.data || []) as any[]).slice(0, techo(300));
   const lInts = ((ints.data || []) as any[]).slice(0, techo(900));
   const lLocs = ((locs.data || []) as any[]).slice(0, techo(300));
   const lActs = ((acts.data || []) as any[]).slice(0, techo(400));
   const lMats = ((mats.data || []) as any[]).slice(0, techo(400));
+  const lActores = ((actores.data || []) as any[]).slice(0, techo(400));
 
   const ctxDe = contextoDe(cat, hoy);
   /* ⚠ El MISMO `semaforo` con el MISMO contexto que el índice, por lib/
@@ -174,6 +204,33 @@ export default async function ClearanceDePelicula({
 
   const nombreDe = (l: { id: string; nombre: string }[], id?: string | null) =>
     l.find(x => x.id === id)?.nombre || null;
+
+  /* Los papeles por su id, tal cual: el componente los precarga en el
+     formulario y pinta el enlace al archivo. Objetos planos, nada de Maps —
+     `PermisosProyecto` es cliente. */
+  const documentos: Record<string, any> = Object.fromEntries(lDocs.map(x => [x.id, x]));
+
+  /* ── EL REPARTO, CON SU NOMBRE Y SI ES MENOR ──
+     ⚠ Sin repetir a nadie: la misma persona puede tener DOS filas en el
+     reparto —como ella misma y como «la cantante»— y saldría dos veces, con
+     dos botones de registrar el mismo papel.
+     `esMenor` sale de `lib/clearance` y no de un `if` aquí: es la regla R5, y
+     la fecha de nacimiento manda sobre el booleano porque quien cumple
+     dieciocho deja de ser menor sin que nadie lo desmarque. */
+  const vistos = new Set<string>();
+  const repartoVista: { id: string; nombre: string; papel: string | null; menor: boolean }[] = [];
+  for (const a of lActores) {
+    /* Un bucle y no un `filter` con `Set.add` dentro: un efecto escondido en un
+       filtro funciona hasta que alguien reordena la cadena. */
+    if (!a.persona_id || vistos.has(a.persona_id)) continue;
+    vistos.add(a.persona_id);
+    repartoVista.push({
+      id: a.persona_id as string,
+      nombre: nombrePersonaDe(cat, a.persona_id) || "(persona no encontrada)",
+      papel: (a.personaje || a.rol || null) as string | null,
+      menor: esMenor(cat.persDe.get(a.persona_id), hoy),
+    });
+  }
 
   /* Las bandas que tienen algún permiso en ESTA película. La lista global de
      agrupaciones en cada documental sería ruido. */
@@ -335,6 +392,7 @@ export default async function ClearanceDePelicula({
           locaciones={catalogoLocaciones}
           actividades={lActs.map(a => ({ id: a.id, nombre: a.nombre }))}
           materiales={lMats.map(m => ({ id: m.id, nombre: m.descripcion }))}
+          reparto={repartoVista} documentos={documentos}
           riesgos={riesgos} hoy={hoy} />
       )}
 

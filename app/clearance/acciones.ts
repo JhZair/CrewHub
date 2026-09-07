@@ -2,8 +2,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import {
-  META_TIPO_AUT, TIPOS_AUT, esMenor,
+  META_TIPO_AUT, TIPOS_AUT, esMenor, MODELOS_DOC,
   type TipoAutorizacion, type CalidadFirmante, type EstadoAutorizacion,
+  type ModeloDoc,
 } from "@/lib/clearance";
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -883,6 +884,213 @@ export async function quitarUsoMusical(id: string, proyectoId: string) {
     .delete().eq("id", id).eq("proyecto_id", proyectoId).select("id");
   if (error) return { error: error.message };
   if (!data?.length) return { error: "No se quitó: no tienes permiso, o ya no estaba." };
+  revalidar();
+  return {};
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   EL PAPEL FIRMADO
+
+   ⚠ POR QUÉ ESTO NO EXISTÍA Y TENÍA QUE EXISTIR.
+
+   `documento_firmado` se creó con la migración del clearance y NADIE la
+   escribía. Ni una acción, ni un formulario. Era una tabla vacía que nadie
+   llenaba — y eso no es una función a medias: es una promesa.
+
+   Y no era inofensiva. Todo el módulo decide el verde con «firmada Y hay
+   documento», porque una fila que dice «firmada» sin papel es alguien
+   afirmando que existe una firma. Sin sitio donde subir el papel, ese verde
+   era INALCANZABLE: podías registrar los cinco permisos de tu película,
+   marcarlos todos firmados, y el semáforo seguiría en rojo para siempre sin
+   decirte por qué. Un aviso que no se puede resolver se deja de leer, y detrás
+   se van los que sí importan.
+
+   ── EL ARCHIVO SE SUBE EN EL NAVEGADOR, NO AQUÍ ──
+   `lib/subirImagen.ts` ya sube al bucket `adjuntos` (PDF hasta 15MB, imágenes
+   hasta 5). Aquí llega la URL. Mandar el archivo entero a una server action
+   sería pasarlo dos veces por la red.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+export type DatosDocumento = {
+  id?: string;
+  /** El permiso que este papel prueba. */
+  autorizacionId: string;
+  modelo?: string;
+  archivoUrl?: string;
+  /** SHA-256 del archivo, calculado en el navegador. Para poder decir, meses
+   *  después y ante una aseguradora, que es el mismo PDF que se firmó. */
+  hashArchivo?: string;
+  firmadoEl?: string;
+  lugarFirma?: string;
+  tieneHuellaDigital?: boolean;
+  consentimientoGrabadoUrl?: string;
+  testigos?: string;
+  nota?: string;
+};
+
+/** Solo http(s). Sin esto, un `javascript:` pegado a mano se pinta como
+ *  `<a href>` clicable. Misma guarda que en el guion y en la música. */
+function urlLimpia(v?: string | null): { url: string | null; error?: string } {
+  const u = (v || "").trim();
+  if (!u) return { url: null };
+  if (!/^https?:\/\//i.test(u))
+    return { url: null, error: "El enlace tiene que empezar por http:// o https://" };
+  return { url: u };
+}
+
+/**
+ * Guardar el papel firmado de un permiso, y atarlo.
+ *
+ * Hace TRES cosas en una, y a propósito: crea el documento, lo ata a la
+ * autorización y pone esta en `firmada`. Separarlas dejaría estados
+ * intermedios que nadie querría —un papel huérfano, o un permiso con documento
+ * pero en «en gestión»— y obligaría a acordarse de dar tres pasos para que la
+ * fila se ponga verde. Acordarse es lo que no pasa.
+ */
+export async function guardarDocumentoFirmado(proyectoId: string, d: DatosDocumento) {
+  const { supabase, user } = await sesion();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!proyectoId) return { error: "Falta el proyecto." };
+  if (!d.autorizacionId) return { error: "Falta a qué permiso pertenece este papel." };
+
+  const modelo = MODELOS_DOC.includes(String(d.modelo || "") as ModeloDoc)
+    ? String(d.modelo) : "otro";
+
+  const { url: archivoUrl, error: eUrl } = urlLimpia(d.archivoUrl);
+  if (eUrl) return { error: eUrl };
+  const { url: grabadoUrl, error: eGrab } = urlLimpia(d.consentimientoGrabadoUrl);
+  if (eGrab) return { error: eGrab };
+
+  /* ⚠ Un documento sin archivo NI consentimiento grabado no prueba nada, y
+     atarlo pondría el permiso en verde sobre la nada — exactamente el fallo
+     que el `documento_id` viene a impedir. El grabado vale: en campo es a
+     veces la única prueba que hay, y es consentimiento informado. */
+  if (!archivoUrl && !grabadoUrl)
+    return { error: "Sube el papel, o al menos el enlace al consentimiento grabado: sin uno de los dos, esto no prueba nada y el permiso no puede darse por bueno." };
+
+  const { f: firmadoEl, error: eF } = fecha(d.firmadoEl, "Firmado el");
+  if (eF) return { error: eF };
+
+  /* ── EL PERMISO TIENE QUE SER DE ESTE PROYECTO ──
+     El id llega del navegador. Sin esto se podría colgar un papel del permiso
+     de otra película, y un `check` no puede consultar otra tabla. */
+  const { data: aut } = await supabase.from("autorizacion")
+    .select("id,proyecto_id,estado,firmado_el,documento_id,tipo")
+    .eq("id", d.autorizacionId).maybeSingle();
+  if (!aut) return { error: "Ese permiso ya no existe." };
+  if (aut.proyecto_id !== proyectoId) return { error: "Ese permiso no es de este proyecto." };
+
+  /* ── UN PAPEL NO RESUCITA UN RECHAZO ──
+     ⚠ `aut.estado` se leía y se tiraba, y el update forzaba `firmada` viniera
+     de donde viniera. Con eso, subir cualquier PDF a un permiso RECHAZADO lo
+     sacaba de los bloqueos y el semáforo pasaba a verde: el estado que
+     `semaforo` cuenta precisamente porque «nadie va a firmar y el material
+     sigue dentro». Y desde `no_aplica` destruía una decisión analizada,
+     dejando su nota justificando una fila que ahora decía «firmada». */
+  const previo = String(aut.estado || "").toLowerCase();
+  if (previo === "rechazada")
+    return { error: "Este permiso está rechazado: quien tenía que firmar dijo que no. Un papel no lo revive — si la situación cambió, mueve antes el estado a mano y di por qué." };
+  if (previo === "no_aplica")
+    return { error: "Este permiso está marcado «no aplica», que es una decisión analizada y anotada. Si ahora sí hace falta, cámbiale el estado antes de colgarle un papel." };
+
+  /* ── LA FECHA, COMPROBADA ANTES DE ESCRIBIR NADA ──
+     ⚠ La base tiene un check —`autorizacion_firmada_con_fecha`— y sin esta
+     guarda el orden era: se creaba el documento, se subía el archivo, y ENTONCES
+     el update reventaba con «violates check constraint». Quedaba una fila
+     huérfana, un archivo suelto en el almacén y un mensaje de Postgres que no
+     dice ni qué pasó ni que algo sí se guardó. La base es la red de abajo;
+     estas frases son lo que se lee. `cambiarEstadoAutorizacion` ya lo hacía
+     bien y aquí se olvidó. */
+  const fechaFinal = firmadoEl || (aut.firmado_el as string | null) || null;
+  if (!fechaFinal)
+    return { error: "Pon la fecha de firma. Una autorización firmada sin fecha es alguien diciendo que hay un papel, y el expediente se enseña meses después: «cuándo» es de lo primero que se pregunta." };
+
+  const fila = {
+    proyecto_id: proyectoId,
+    modelo,
+    archivo_url: archivoUrl,
+    hash_archivo: texto(d.hashArchivo, 128),
+    firmado_el: fechaFinal,
+    lugar_firma: texto(d.lugarFirma, 120),
+    tiene_huella_digital: !!d.tieneHuellaDigital,
+    consentimiento_grabado_url: grabadoUrl,
+    testigos: texto(d.testigos, 200),
+    nota: texto(d.nota, 500),
+  };
+
+  /* ── EDITAR EL QUE YA HAY, NO CREAR OTRO ──
+     ⚠ `d.id` viene del formulario, pero si el permiso YA tiene documento hay
+     que editar ese aunque no llegue. Sin esta línea, cada pulsación de guardar
+     insertaba una fila nueva y repuntaba `documento_id`, dejando la anterior
+     huérfana y sin borrar — y cada reintento tras un error creaba otra. Es la
+     tabla del expediente probatorio: llenarla de huérfanos indistinguibles de
+     los buenos es peor que dejarla vacía. */
+  let docId = d.id || (aut.documento_id as string | null) || "";
+  if (docId) {
+    const { data, error } = await supabase.from("documento_firmado")
+      .update(fila).eq("id", docId).eq("proyecto_id", proyectoId).select("id");
+    if (error) return { error: faltaSql(error.message, "clearance-autorizacion.sql") };
+    /* ⚠ Un UPDATE bloqueado por RLS NO da error: devuelve cero filas. */
+    if (!data?.length) return { error: "No se guardó: no tienes permiso, o ese papel ya no está." };
+  } else {
+    const { data, error } = await supabase.from("documento_firmado")
+      .insert({ ...fila, creado_por: user.id }).select("id").single();
+    if (error) return { error: faltaSql(error.message, "clearance-autorizacion.sql") };
+    docId = data.id as string;
+  }
+
+  /* ── ATARLO, Y DAR EL PERMISO POR FIRMADO ──
+     `firmado_el` sale del papel: son la misma fecha, y tenerla en dos sitios
+     que puedan discrepar es lo que este módulo entero evita. */
+  const { data: at, error: eAt } = await supabase.from("autorizacion")
+    .update({ documento_id: docId, estado: "firmada", firmado_el: fechaFinal })
+    .eq("id", d.autorizacionId).eq("proyecto_id", proyectoId).select("id");
+  /* ⚠ Los dos caminos de fallo dicen que el papel SÍ se guardó. Callarlo
+     mandaría a subirlo otra vez, y entonces sí habría dos. */
+  if (eAt)
+    return { error: `El papel se guardó, pero no se pudo atar al permiso: ${faltaSql(eAt.message, "clearance-autorizacion.sql")}` };
+  if (!at?.length)
+    return { error: "El papel se guardó, pero no se pudo atar al permiso: no tienes permiso para cambiarlo." };
+
+  await bitacora(supabase, user.id, proyectoId,
+    `adjuntó el papel firmado de ${META_TIPO_AUT[aut.tipo as TipoAutorizacion]?.corto || "un permiso"}`);
+  revalidar();
+  return { id: docId };
+}
+
+/** Soltar el papel de un permiso. No borra el archivo del almacén: el
+ *  expediente se enseña meses después y un borrado no se deshace. */
+export async function quitarDocumentoFirmado(id: string, proyectoId: string, autorizacionId: string) {
+  const { supabase, user } = await sesion();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  /* ⚠ Primero se desata y DESPUÉS se borra. Al revés, el `on delete set null`
+     de la FK haría el mismo trabajo pero dejaría el permiso en «firmada» sin
+     documento, que es el estado que este módulo llama mentira.
+     ⚠ Y con `.select("id")`: un UPDATE bloqueado por RLS devuelve cero filas
+     SIN error. Sin comprobarlo, el borrado de abajo sí se ejecutaba —otra
+     política—, la FK ponía `documento_id` a null y el permiso se quedaba
+     «firmada» sin papel. En silencio, y por la puerta que este mismo párrafo
+     dice estar cerrando.
+     ⚠ Se limpia también `firmado_el`: un `en_gestion` que conserva la fecha
+     hace que `vencimiento()` calcule caducidad sobre algo que ya no está
+     firmado. */
+  const { data: at, error: eAt } = await supabase.from("autorizacion")
+    .update({ documento_id: null, estado: "en_gestion", firmado_el: null })
+    .eq("id", autorizacionId).eq("proyecto_id", proyectoId).select("id");
+  if (eAt) return { error: eAt.message };
+  if (!at?.length)
+    return { error: "No se quitó: no tienes permiso para cambiar ese permiso, o ya no está aquí." };
+
+  const { data, error } = await supabase.from("documento_firmado")
+    .delete().eq("id", id).eq("proyecto_id", proyectoId).select("id");
+  if (error) return { error: error.message };
+  /* ⚠ Aquí NO se dice «no se quitó»: el permiso ya se desató arriba. Decir que
+     no pasó nada sería mentir sobre un cambio que sí ocurrió. */
+  if (!data?.length)
+    return { error: "El permiso se desató y volvió a «en gestión», pero el papel no se pudo borrar: no tienes permiso, o ya no estaba." };
+
+  await bitacora(supabase, user.id, proyectoId, "quitó el papel firmado de un permiso");
   revalidar();
   return {};
 }

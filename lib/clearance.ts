@@ -205,6 +205,78 @@ export const esPapelDeLaPersona = (a: FilaAutorizacion): boolean => {
   return o === "persona" || o === "agrupacion";
 };
 
+/* ══════════════════════════════════════════════════════════════════════════
+   EL PAPEL QUE SE FIRMA
+
+   `documento_firmado.modelo` dice QUÉ papel es. No es decorativo: el expediente
+   de clearance se enseña meses después a un fondo o a una aseguradora, y
+   entonces «un PDF» no vale — hay que poder decir que ese PDF es el release de
+   imagen de Fulano y no la licencia de un fonograma.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+export const MODELOS_DOC = [
+  "release_individual", "release_simplificado", "autorizacion_representante_menor",
+  "autorizacion_agrupacion", "anexo_integrantes",
+  "autorizacion_actividad_comunidad", "autorizacion_locacion",
+  "entrega_material_terceros", "licencia_obra", "licencia_fonograma",
+  "contrato_equipo", "otro",
+] as const;
+export type ModeloDoc = typeof MODELOS_DOC[number];
+
+export const ROTULO_MODELO: Record<ModeloDoc, string> = {
+  release_individual: "release individual",
+  release_simplificado: "release simplificado",
+  autorizacion_representante_menor: "autorización del representante de la menor",
+  autorizacion_agrupacion: "autorización de la agrupación",
+  anexo_integrantes: "anexo de integrantes",
+  autorizacion_actividad_comunidad: "autorización de la actividad",
+  autorizacion_locacion: "autorización de la locación",
+  entrega_material_terceros: "entrega de material de terceros",
+  licencia_obra: "licencia de la obra",
+  licencia_fonograma: "licencia del fonograma",
+  contrato_equipo: "contrato de equipo",
+  otro: "otro",
+};
+
+/**
+ * El modelo que le toca por defecto a un permiso, por su tipo y quién firma.
+ *
+ * ⚠ Una SUGERENCIA, no una imposición: el formulario lo deja cambiar. Pero
+ * ponerlo bien de entrada es lo que hace que el campo se rellene en vez de
+ * quedarse en «otro» —que es lo que pasa con todo desplegable que arranca
+ * vacío, y entonces la columna existe y no dice nada.
+ *
+ * ⚠ La minoría de edad manda sobre el tipo: si firma el representante legal, el
+ * papel es el suyo, no el release de ella. Es la distinción entera de R5.
+ */
+export function modeloSugerido(
+  tipo?: string | null, calidad?: string | null, hayAgrupacion = true,
+): ModeloDoc {
+  if (baja(calidad) === "representante_legal_menor")
+    return "autorizacion_representante_menor";
+  switch (baja(tipo)) {
+    case "imagen_voz_testimonio":    return "release_individual";
+    case "interpretacion_musical":
+    case "interpretacion_danza":
+      /* ⚠ El solista no firma una «autorización de agrupación». El derecho de
+         intérprete es personal —lo cede cada músico— y una banda es solo el
+         caso frecuente, no el único: el modelo tiene que seguir a quién firma,
+         no al tipo. Con el valor equivocado puesto por defecto es peor que con
+         «otro»: `modelo` se guarda y luego se lee como una afirmación. */
+      return hayAgrupacion ? "autorizacion_agrupacion" : "release_individual";
+    case "obra_musical":
+    /* `obra_no_musical` caía en «otro» teniendo su modelo: es una obra, y lo
+       que se firma sobre una obra es su licencia. */
+    case "obra_no_musical":          return "licencia_obra";
+    case "fonograma":                return "licencia_fonograma";
+    case "locacion":                 return "autorizacion_locacion";
+    case "actividad_organizada":     return "autorizacion_actividad_comunidad";
+    case "material_aportado":        return "entrega_material_terceros";
+    case "aporte_de_equipo":         return "contrato_equipo";
+    default:                         return "otro";
+  }
+}
+
 /** Los estados en que el permiso TODAVÍA NO ESTÁ. Se usa en el semáforo, y por
  *  eso vive aquí y no en la pantalla: dos listas se separan. */
 const ESTADOS_ABIERTOS: EstadoAutorizacion[] =
@@ -217,6 +289,33 @@ export const estaAbierta = (e?: string | null) =>
  *  que quitar el material o reencuadrar. Es su propio caso. */
 export const estaResuelta = (e?: string | null) =>
   baja(e) === "firmada" || baja(e) === "no_aplica";
+
+/**
+ * ¿Este permiso está RESUELTO, tal como lo pinta una pantalla?
+ *
+ * ⚠ UNA SOLA DEFINICIÓN. Había tres copiadas a mano —en `PermisosDeActor`, en
+ * `ActoresProyecto` y en el bloque del reparto de `PermisosProyecto`— y una
+ * cuarta distinta en `estaResuelta`, que sí cuenta `no_aplica`. Tres pantallas
+ * decidiendo por su cuenta cuándo algo está verde es la misma familia de fallo
+ * que este módulo entero existe para impedir, y ya se manifestó: un permiso
+ * bien marcado «no aplica» salía en ámbar para siempre y ningún clic lo
+ * apagaba.
+ *
+ * Las tres condiciones, y por qué cada una:
+ *   · `no_aplica` cuenta como resuelto. Es una decisión analizada y anotada
+ *     —el check de la base exige la nota—, no un hueco.
+ *   · `firmada` exige DOCUMENTO. Sin papel es alguien diciendo que hay una
+ *     firma, y eso no se enseña a una aseguradora.
+ *   · y exige que el riesgo no sea grave. Una menor con su release firmado y
+ *     su PDF, pero sin representante registrado, no está cubierta: pintarla en
+ *     verde es la definición de un verde que miente.
+ */
+export function permisoResuelto(a: FilaAutorizacion, riesgo?: NivelRiesgo | null): boolean {
+  const e = baja(a.estado);
+  if (e === "no_aplica") return true;
+  if (e !== "firmada" || !a.documento_id) return false;
+  return riesgo !== "critico" && riesgo !== "alto";
+}
 
 export const COLOR_RIESGO: Record<NivelRiesgo, string> = {
   bajo: "var(--dim)", medio: "var(--yellow)",

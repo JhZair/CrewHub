@@ -1,6 +1,6 @@
 import Link from "@/components/Enlace";
 import {
-  META_TIPO_AUT, ROTULO_ESTADO_AUT, ROTULO_CALIDAD, COLOR_RIESGO,
+  META_TIPO_AUT, ROTULO_ESTADO_AUT, ROTULO_CALIDAD, COLOR_RIESGO, permisoResuelto,
   type FilaAutorizacion, type TipoAutorizacion,
   type EstadoAutorizacion, type CalidadFirmante, type NivelRiesgo,
 } from "@/lib/clearance";
@@ -63,13 +63,11 @@ export default function PermisosDeActor({
     const e = a.estado as EstadoAutorizacion;
     const cal = a.calidad_firmante as CalidadFirmante;
     const r = riesgos?.[a.id];
-    /* Verde solo cuando está firmada, HAY papel Y el riesgo no es grave.
-       «Firmada» sin documento es alguien diciendo que hay una firma. Y firmada
-       con documento pero de una menor sin representante registrado tampoco
-       cubre nada: el verde tiene que significar «esto está resuelto», y si el
-       semáforo la pinta en rojo, aquí no puede estar en verde. */
-    const bien = e === "firmada" && !!a.documento_id
-      && r !== "critico" && r !== "alto";
+    /* ⚠ `permisoResuelto` de lib/clearance, no la regla escrita aquí. Era una
+       de TRES copias a mano en tres pantallas, y ninguna contaba `no_aplica`:
+       un permiso bien marcado «no aplica» —una decisión analizada, con su nota
+       obligatoria— salía en ámbar para siempre y ningún clic lo apagaba. */
+    const bien = permisoResuelto(a, r);
     return (
       <div key={a.id} className="cesl-fila" style={{ cursor: "default" }}>
         <span className="cesl-ico">{META_TIPO_AUT[t]?.ico || "📄"}</span>

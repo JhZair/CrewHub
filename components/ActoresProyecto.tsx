@@ -2,7 +2,7 @@
 import { situacionActorProyecto } from "@/app/actions";
 import PermisosDeActor from "@/components/PermisosDeActor";
 import {
-  META_TIPO_AUT, riesgoDe, esPapelDeLaPersona, personaDeAutorizacion,
+  META_TIPO_AUT, riesgoDe, esPapelDeLaPersona, personaDeAutorizacion, permisoResuelto,
   type FilaAutorizacion, type NivelRiesgo, type FilaPersonaMin,
 } from "@/lib/clearance";
 import {
@@ -110,7 +110,8 @@ export default function ActoresProyecto({
     (autsDe.get(id) || []).find(a => a.tipo === "imagen_voz_testimonio");
   const sinPapel = confirmados.filter(id => {
     const img = releaseDe(id);
-    return !img || img.estado !== "firmada" || !img.documento_id;
+    return !img || (img.estado !== "firmada" && img.estado !== "no_aplica")
+      || (img.estado === "firmada" && !img.documento_id);
   }).length;
   /* ── Y LOS QUE TIENEN EL PAPEL PERO NO SIRVE ──
      ⚠ Cuenta aparte, y no sumado al de arriba, porque no es lo mismo y el
