@@ -7307,9 +7307,23 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
 .ces-campos label, .ces-l { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 120px; }
 .ces-l { width: 100%; }
 .ces-panel span { color: var(--dim); font-size: 10.5px; }
-.ces-panel input, .ces-panel select { background: var(--card); color: var(--text);
+/* ⚠ `:not([type="checkbox"])`. Esta regla pone `width:100%` a TODO input del
+   panel, y una casilla estirada al ancho entero se come la línea y empuja su
+   texto fuera de la tarjeta: el aviso sobre tráiler y afiche salía en una
+   columna de diez píxeles al margen derecho. Y no daba error — la casilla se
+   veía, solo que sola. Igual con el `padding` y el `border`, que en una
+   casilla nativa no pintan nada bueno.
+   Se arregla aquí y no con un `style` en cada uno: hay siete `.clr-check` en
+   este componente y más en los vecinos; un parche por sitio se queda corto al
+   octavo. */
+.ces-panel input:not([type="checkbox"]):not([type="radio"]),
+.ces-panel select { background: var(--card); color: var(--text);
   border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px;
   font-size: 12px; font-family: inherit; width: 100%; }
+/* La casilla, de su tamaño y sin encogerse. `.clr-check input` ya lo dice para
+   las suyas; esto cubre cualquier otra que caiga dentro de un panel. */
+.ces-panel input[type="checkbox"], .ces-panel input[type="radio"] {
+  width: auto; flex-shrink: 0; accent-color: var(--accent); }
 /* Qué autoriza ese tipo, dicho entero: «música» a secas no distingue la que se
    compuso de la que ya existía. */
 .ces-ayuda { color: var(--muted); font-size: 11px; line-height: 1.5; }
@@ -7497,4 +7511,10 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
    antes que la película, y esa frase es la que hace que alguien la marque bien. */
 .clr-check { display: flex; align-items: flex-start; gap: 7px; font-size: 11.5px;
   color: var(--muted); line-height: 1.45; cursor: pointer; }
-.clr-check input { margin-top: 2px; flex-shrink: 0; accent-color: var(--accent); }
+.clr-check input { margin-top: 2px; flex-shrink: 0; width: auto;
+  accent-color: var(--accent); }
+/* ⚠ El texto de la casilla conserva SU tamaño dentro de un panel. `.ces-panel
+   span` —diez líneas más arriba— vale 10.5px y apagado porque describe el
+   rótulo de un campo; aplicado a la frase de una casilla la deja ilegible.
+   Misma especificidad, pero esta va después. */
+.clr-check > span { color: var(--muted); font-size: 11.5px; }
