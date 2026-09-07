@@ -20,6 +20,7 @@ import {
   CAMPOS_AUT_FICHA, CAMPOS_INCIDENTAL, CAMPOS_USO_MUSICAL,
 } from "@/lib/clearanceDatos";
 import { TIPOS_CON_GUION } from "@/lib/tratamiento";
+import { ordenarPorCargo } from "@/lib/cargosPelicula";
 
 /** ⚠ Por película y no fijo: con dos fichas abiertas, dos pestañas idénticas. */
 export async function generateMetadata(
@@ -123,7 +124,11 @@ export default async function ClearanceDePelicula({
         .select("persona_id,cargo")
         .eq("proyecto_id", params.id)
         .not("persona_id", "is", null)
-        .order("cargo").limit(techo(400) + 1),
+        /* ⚠ Sin `.order("cargo")`: eso es alfabético y dejaba a la directora
+           en medio, entre «Conductora» y «Edición». El orden de los cargos
+           —que sigue el rodaje, no el abecedario— vive en lib/cargosPelicula y
+           se aplica abajo, con la misma función que usa la ficha. */
+        .limit(techo(400) + 1),
       supabase.from("proyecto_actores")
         .select("persona_id,rol,personaje,situacion")
         .eq("proyecto_id", params.id)
@@ -273,6 +278,10 @@ export default async function ClearanceDePelicula({
       menor: esMenor(cat.persDe.get(m.persona_id), hoy),
     });
   }
+  /* Dirección arriba, luego producción, luego los oficios. La MISMA función que
+     ordena el bloque de la ficha del proyecto. */
+  const equipoOrdenado = ordenarPorCargo(
+    equipoVista, r => r.papel, r => r.nombre);
 
   /* Las bandas que tienen algún permiso en ESTA película. La lista global de
      agrupaciones en cada documental sería ruido. */
@@ -460,7 +469,7 @@ export default async function ClearanceDePelicula({
           locaciones={catalogoLocaciones}
           actividades={lActs.map(a => ({ id: a.id, nombre: a.nombre }))}
           materiales={lMats.map(m => ({ id: m.id, nombre: m.descripcion }))}
-          reparto={repartoVista} equipo={equipoVista} documentos={documentos}
+          reparto={repartoVista} equipo={equipoOrdenado} documentos={documentos}
           riesgos={riesgos} motivos={motivos} hoy={hoy} />
       )}
 

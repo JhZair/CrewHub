@@ -6,6 +6,7 @@ import Avatar from "@/components/Avatar";
 import { useRouter } from "next/navigation";
 import Link from "@/components/Enlace";
 import { useState } from "react";
+import { CARGOS, ordenarPorCargo } from "@/lib/cargosPelicula";
 import {
   META_TIPO_AUT, ROTULO_ESTADO_AUT, colorEstadoAut, permisoResuelto,
   personaDeAutorizacion,
@@ -37,39 +38,6 @@ const desdeTxt = (f?: string | null) => {
  *     figura en SUNARP.
  */
 
-/* El orden no es alfabético: sigue el rodaje. Dirección arriba, después
-   producción, después los oficios — y dentro de los oficios, la cámara junta.
-   Buscar «segunda cámara» debajo de «dirección de fotografía» es donde la
-   mano la va a buscar. */
-const CARGOS = [
-  "Directora", "Director", "Codirección",
-  /* ── CONDUCCIÓN ──
-     Quien lleva el relato ante la cámara: presenta, pregunta, acompaña. En un
-     documental de encuentro es la figura que hace avanzar la película, y en una
-     cobertura es quien la conduce de principio a fin.
-     Va con dirección y no al final entre los oficios porque conducir es trabajo
-     de RELATO, no de gestión ni de técnica; y por encima de producción por el
-     mismo motivo que el orden entero: sigue el rodaje, no el organigrama.
-     ⚠ Es un cargo del EQUIPO —quien trabaja— y no hay que confundirlo con el
-     grupo `conduccion` de lib/repartoFondo, que es del REPARTO: quién sale.
-     Las conductoras de Mujeres del Ande están en las dos listas, y eso es
-     correcto: dirigen la película y además aparecen en ella. */
-  "Conductora", "Conductor",
-  "Productora", "Productor", "Producción ejecutiva", "Jefatura de producción",
-  "Guion", "Investigación",
-  /* El dron va con la cámara y no al final: es una cámara más, y quien busca
-     «quién vuela» baja por el bloque de imagen. */
-  "Dirección de fotografía", "Segunda cámara (cámara B)", "Operador de dron",
-  // Un solo cargo, no dos: la misma persona hace la foto fija y el BTS
-  "Foto fija y detrás de cámaras (BTS)",
-  /* «Montaje» y «Edición» conviven a propósito y pegados: el equipo usa las dos
-     palabras para el mismo oficio y ya hay filas guardadas como «Montaje».
-     Ponerlas juntas hace visible la elección; unificarlas habría reescrito
-     datos que alguien puso a conciencia. Si un día se decide una sola, es un
-     UPDATE de una línea — y esta nota dice por qué había dos. */
-  "Sonido", "Montaje", "Edición", "Música original",
-  "Dirección de arte", "Asistencia de dirección", "Asistencia de producción",
-];
 
 export default function EquipoProyecto({
   proyectoId, equipo, personas, cesiones = [], riesgos = {}, cesionesError = "",
@@ -138,15 +106,13 @@ export default function EquipoProyecto({
      criterio que pueda separarse de él. Un cargo que no esté en la lista
      —escrito a mano antes de que existiera este catálogo— va al final en vez de
      desaparecer o colarse arriba. */
-  const equipoOrdenado = [...equipo].sort((a, b) => {
-    const i = (m: any) => {
-      const k = CARGOS.indexOf(m.cargo || "");
-      return k === -1 ? CARGOS.length : k;
-    };
-    return i(a) - i(b)
-      || String(a.persona?.alias || a.persona?.nombre || "")
-          .localeCompare(String(b.persona?.alias || b.persona?.nombre || ""));
-  });
+  /* El orden vive en lib/cargosPelicula: era este `indexOf` escrito aquí, y en
+     cuanto ⚖ clearance tuvo que ordenar el mismo equipo la opción fácil era
+     copiarlo. Dos ordenaciones que se separan dejan a la directora en un sitio
+     distinto en cada pantalla. */
+  const equipoOrdenado = ordenarPorCargo(
+    equipo, (m: any) => m.cargo,
+    (m: any) => String(m.persona?.alias || m.persona?.nombre || ""));
 
   const guardar = async () => {
     if (!sel || !cargo || guardando) return;
