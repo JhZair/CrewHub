@@ -7531,3 +7531,15 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
   transition: border-color .12s, background .12s; }
 .papel-soltar.encima { border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 8%, transparent); }
+
+/* La ayuda de clearance. Prosa, no fichas: se lee dos veces y luego se pliega,
+   así que lo que importa es que se pueda LEER, no que quepa. */
+.ayu { font-size: 12.5px; line-height: 1.6; color: var(--muted); max-width: 78ch; }
+.ayu-p { margin: 0 0 8px; }
+.ayu-t { color: var(--text); font-weight: 700; font-size: 11px;
+  letter-spacing: .6px; text-transform: uppercase; margin: 14px 0 6px; }
+.ayu-lista { display: flex; flex-direction: column; gap: 6px; margin-bottom: 4px; }
+.ayu-fila { display: flex; gap: 8px; align-items: baseline; }
+.ayu-ico { flex-shrink: 0; width: 18px; text-align: center; }
+.ayu-pie { margin-top: 14px; padding-top: 8px; font-size: 11.5px;
+  color: var(--dim); border-top: 1px solid var(--border); }

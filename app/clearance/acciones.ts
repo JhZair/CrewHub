@@ -2,7 +2,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import {
-  META_TIPO_AUT, TIPOS_AUT, esMenor, MODELOS_DOC, esMedio,
+  META_TIPO_AUT, TIPOS_AUT, CALIDADES, esMenor, MODELOS_DOC, esMedio,
   type TipoAutorizacion, type CalidadFirmante, type EstadoAutorizacion,
   type ModeloDoc,
 } from "@/lib/clearance";
@@ -228,11 +228,6 @@ export async function quitarIntegrante(agrupacionId: string, personaId: string) 
    LA AUTORIZACIÓN
    ══════════════════════════════════════════════════════════════════════════ */
 
-const CALIDADES: CalidadFirmante[] = [
-  "titular", "representante_agrupacion", "representante_legal_menor",
-  "heredero_o_causahabiente", "propietario_administrador",
-  "organizador_actividad", "autoridad_comunal", "representante_entidad",
-];
 const ESTADOS: EstadoAutorizacion[] = [
   "no_iniciada", "en_gestion", "solicitada", "firmada",
   "rechazada", "no_ubicable", "no_aplica",

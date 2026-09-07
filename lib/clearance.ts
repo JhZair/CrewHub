@@ -158,6 +158,17 @@ export const ROTULO_CALIDAD: Record<CalidadFirmante, { txt: string; cubre: strin
   },
 };
 
+/** Las calidades, en orden de uso — DERIVADAS del rótulo de arriba.
+ *
+ *  ⚠ `Object.keys` y no una lista escrita a mano. `app/clearance/acciones.ts`
+ *  tenía su propia copia; moverla aquí quitaba una de las dos, pero seguía sin
+ *  arreglar el fallo de fondo: añadir un valor al tipo `CalidadFirmante` rompe
+ *  el `Record` —TypeScript exige que sea total— y NO rompe un array, así que la
+ *  calidad nueva se habría quedado fuera de la validación y del desplegable sin
+ *  que nada avisara. Derivada, eso es imposible: hay un solo sitio donde
+ *  añadirla, y es el que ya te obliga a escribir su explicación. */
+export const CALIDADES = Object.keys(ROTULO_CALIDAD) as CalidadFirmante[];
+
 /** Las calidades que representan a OTROS. Es la lista de la que sale R1: nunca
  *  cubren al representado, solo lo comprometen como colectivo. */
 const CALIDADES_DE_REPRESENTACION: CalidadFirmante[] = [

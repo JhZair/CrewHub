@@ -6,6 +6,7 @@ import Realtime from "@/components/Realtime";
 import CoberturaAgrupacion, { type AgrupacionVista } from "@/components/CoberturaAgrupacion";
 import PermisosProyecto from "@/components/PermisosProyecto";
 import MontajeProyecto from "@/components/MontajeProyecto";
+import QueEsUnPermiso from "@/components/QueEsUnPermiso";
 import { createClient } from "@/lib/supabase/server";
 import { techo } from "@/lib/api";
 import { hoyLima } from "@/lib/fechas";
@@ -316,6 +317,15 @@ export default async function ClearanceDePelicula({
       {/* ── QUÉ ME FALTA PARA PUBLICAR ──
           Ordenado por riesgo, que es el orden en que hay que atacarlo. Con el
           motivo escrito: un rojo sin motivo se deja de mirar. */}
+      {/* ── LA AYUDA ──
+          ⚠ DESPUÉS de los avisos y dentro de `!fallo`. Estaba justo bajo la
+          cabecera, y una tarjeta plegada de cincuenta píxeles empujaba hacia
+          abajo lo que urge. Peor con `fallo` puesto: la pantalla se queda sin
+          semáforo, sin bloqueos y sin panel de registro, y lo único entre el
+          título y el error rojo era una invitación a leer sobre los once tipos
+          de permiso en una pantalla que no ha podido leer ni uno. */}
+      {!fallo && <QueEsUnPermiso />}
+
       {/* ⚠ Sin `card`: `.clr-bloq` va después en globals.css y con el mismo
           peso, así que le ganaba el `border-radius` y el `padding` — salía una
           tarjeta con dos esquinas cuadradas y el borde rojo pisado. */}
