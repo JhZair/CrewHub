@@ -15,7 +15,7 @@ import {
 } from "@/lib/clearance";
 import {
   catalogosDeRiesgo, contextoDe, nombrePersonaDe, riesgosDe, nombrePeli,
-  rotuloBloqueo, catalogoDePersonas, catalogoDeObras, catalogoDeGrabaciones,
+  rotuloBloqueo, catalogoDePersonas, catalogoDeObras, catalogoDeGrabaciones, motivosDe,
   CAMPOS_AUT_FICHA, CAMPOS_INCIDENTAL, CAMPOS_USO_MUSICAL,
 } from "@/lib/clearanceDatos";
 import { TIPOS_CON_GUION } from "@/lib/tratamiento";
@@ -178,6 +178,7 @@ export default async function ClearanceDePelicula({
      de saber cuál miente. */
   const s = semaforo(suyas, ctxDe, { incidentales: mIncs, usosMusicales: mUsos });
   const riesgos = riesgosDe(suyas, ctxDe);
+  const motivos = motivosDe(suyas, ctxDe);
   const sinPromo = sinUsoPromocional(suyas);
 
   const agrDe = new Map(lAgrs.map(a => [a.id, a]));
@@ -413,7 +414,7 @@ export default async function ClearanceDePelicula({
           actividades={lActs.map(a => ({ id: a.id, nombre: a.nombre }))}
           materiales={lMats.map(m => ({ id: m.id, nombre: m.descripcion }))}
           reparto={repartoVista} documentos={documentos}
-          riesgos={riesgos} hoy={hoy} />
+          riesgos={riesgos} motivos={motivos} hoy={hoy} />
       )}
 
       {/* ── LA BITÁCORA DE MONTAJE ──

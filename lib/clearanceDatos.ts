@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { techo } from "@/lib/api";
 import {
-  riesgoDe, semaforo, META_TIPO_AUT,
+  riesgoDe, semaforo, motivosRiesgo, META_TIPO_AUT,
   type FilaAutorizacion, type FilaIncidental, type FilaUsoMusical,
   type ContextoRiesgo, type NivelRiesgo, type Semaforo,
   type Bloqueo, type TipoAutorizacion,
@@ -237,6 +237,29 @@ export function rotuloBloqueo(
       || nombrePersonaDe(cat, a.objeto_persona_id))
     : null;
   return { que, quien: quien || null };
+}
+
+/**
+ * POR QUÉ cada permiso tiene el color que tiene.
+ *
+ * ⚠ El color de una fila es su RIESGO y el texto es su ESTADO: dos permisos que
+ * ponen «firmada» salían uno en ámbar y otro no, sin nada que explicara la
+ * diferencia. Hubo que preguntarlo — y esa pregunta es la prueba del fallo. Un
+ * color sin motivo es un aviso que no se puede resolver, y esos se dejan de
+ * mirar con todos los demás detrás.
+ *
+ * Se calcula AQUÍ porque los motivos necesitan el catálogo —si la obra está
+ * verificada, si la persona es menor— que solo el servidor tiene. Lo que cruza
+ * son CADENAS ya resueltas: ni el catálogo ni `ctxDe` viajan.
+ */
+export function motivosDe(
+  auts: FilaAutorizacion[],
+  ctxDe: (a: FilaAutorizacion) => ContextoRiesgo,
+): Record<string, { nivel: NivelRiesgo; txt: string }[]> {
+  return Object.fromEntries(auts.map(a => [
+    a.id,
+    motivosRiesgo(a, ctxDe(a)).map(m => ({ nivel: m.nivel, txt: m.txt })),
+  ]));
 }
 
 /** El nombre corto de una película, con respaldo. Se repite en las dos

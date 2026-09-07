@@ -95,7 +95,7 @@ const VACIO: Nuevo = {
 export default function PermisosProyecto({
   proyectoId, autorizaciones, personas, agrupaciones, obras, grabaciones,
   locaciones = [], actividades = [], materiales = [], reparto = [],
-  documentos = {}, riesgos, hoy,
+  documentos = {}, riesgos, motivos = {}, hoy,
 }: {
   proyectoId: string;
   autorizaciones: FilaAutorizacion[];
@@ -127,6 +127,10 @@ export default function PermisosProyecto({
    *  serializar a un componente cliente: Next lanza «Functions cannot be passed
    *  directly to Client Components» al renderizar. `tsc` no lo veía. */
   riesgos: Record<string, NivelRiesgo>;
+  /** ⚠ POR QUÉ tiene ese color. Sin esto, dos filas que ponen «firmada» salían
+   *  una en ámbar y otra no, y no había forma de saber cuál era la diferencia
+   *  sin abrir el panel a adivinar. Cadenas ya resueltas en el servidor. */
+  motivos?: Record<string, { nivel: NivelRiesgo; txt: string }[]>;
   hoy: string;
 }) {
   const router = useRouter();
@@ -319,6 +323,17 @@ export default function PermisosProyecto({
           {ROTULO_ESTADO_AUT[a.estado as EstadoAutorizacion] || a.estado}
         </span>
         {a.firmado_el && <span className="cesl-fecha">{a.firmado_el}</span>}
+        {/* ── EL MOTIVO, AL LADO DEL COLOR ──
+            ⚠ El primero, que es el peor: con los cuatro, la lista vuelve a ser
+            un muro. Los demás están en el panel de estado, a un clic. */}
+        {(motivos[a.id] || [])[0] && (
+          <span className="clr-mot" style={{ color: COLOR_RIESGO[(motivos[a.id] || [])[0].nivel] }}
+            title={(motivos[a.id] || []).map(m => m.txt).join(" · ")}>
+            — {(motivos[a.id] || [])[0].txt}
+            {(motivos[a.id] || []).length > 1
+              ? ` (+${(motivos[a.id] || []).length - 1})` : ""}
+          </span>
+        )}
         <span style={{ flex: 1 }} />
         <button type="button" className="trt-acc" disabled={ocupado}
           onClick={() => {
@@ -625,6 +640,24 @@ export default function PermisosProyecto({
 
         {moviendo === a.id && (
           <div className="ces-panel mus-form" style={{ width: "100%", marginTop: 6 }}>
+            {/* ── TODO LO QUE LE FALTA A ESTE PERMISO ──
+                ⚠ Arriba del formulario y no debajo: se abre este panel PARA
+                arreglar algo, y lo primero que hay que leer es qué. Con la
+                lista al final, se corrige el estado y se sale sin haber visto
+                que además faltaban los medios. */}
+            {(motivos[a.id] || []).length > 0 && (
+              <div className="clr-bloq">
+                <div className="trt-cab-t">por qué está en ese color</div>
+                {(motivos[a.id] || []).map((m, i) => (
+                  <div key={i} className="clr-bl">
+                    <span className="clr-pt" style={{ color: COLOR_RIESGO[m.nivel] }}>
+                      {m.nivel === "critico" ? "🚫" : m.nivel === "alto" ? "🔶" : "▪"}
+                    </span>
+                    <span className="clr-mot" style={{ color: COLOR_RIESGO[m.nivel] }}>{m.txt}</span>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="ces-campos">
               <label>
                 <span>Estado</span>
