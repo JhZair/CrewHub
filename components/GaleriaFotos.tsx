@@ -5,6 +5,7 @@ import VisorFotos from "@/components/VisorFotos";
 import { agregarFotos, ponerPieFoto, quitarFoto, moverFoto, guardarImagenEntidad } from "@/app/actions";
 import { subirImagen } from "@/lib/subirImagen";
 import { prepararImagen, MEDIDAS } from "@/lib/prepararImagen";
+import { ATRIBUTO, meToca } from "@/lib/destinoPaste";
 
 /* ══════════════════════════════════════════════════════════════════════════
    📷 LA GALERÍA DE UNA COSA
@@ -75,13 +76,22 @@ export default function GaleriaFotos({ tipo, entidadId, fotos, abrirEn }: {
   };
   const [ocupado, setOcupado] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const [sobre, setSobre] = useState(false);
+  /** Qué foto está preguntando si de verdad se quita. `null` = ninguna. */
+  const [borrando, setBorrando] = useState<string | null>(null);
   const zona = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
 
   async function sumar(files: FileList | File[] | null) {
-    const lista = [...(files || [])].filter(f => f.type.startsWith("image/"));
-    if (!lista.length) return;
+    const todos = [...(files || [])];
+    const lista = todos.filter(f => f.type.startsWith("image/"));
+    /* Lo que ni siquiera era una imagen se DICE. Arrastrar un PDF a la tira no
+       hacía nada y no avisaba de nada: se salía en silencio y quien lo soltó
+       se queda mirando una lista que no cambió. */
+    const noImagen = todos.filter(f => !f.type.startsWith("image/")).map(f => f.name);
+    if (!lista.length) {
+      setMsg(noImagen.length ? `⚠ Aquí solo entran imágenes — ${noImagen.join(", ")}` : null);
+      return;
+    }
     setOcupado(true); setMsg(null);
     const urls: string[] = [];
     const fallos: string[] = [];
@@ -95,22 +105,41 @@ export default function GaleriaFotos({ tipo, entidadId, fotos, abrirEn }: {
     }
     if (urls.length) {
       const g: any = await agregarFotos(tipo, entidadId, urls);
-      if (g?.error) { setOcupado(false); setMsg(`⚠ ${g.error}`); return; }
+      if (g?.error) {
+        setOcupado(false);
+        /* Los nombres de las que no subieron se van CON el error, no se
+           pierden: es el único sitio donde estaban. */
+        setMsg(`⚠ ${g.error}${fallos.length ? ` · además no subieron: ${fallos.join(" · ")}` : ""}`);
+        return;
+      }
     }
     setOcupado(false);
     /* Lo que NO entró se dice con nombre. Subir ocho y que aparezcan siete es
        el fallo que se descubre semanas después, buscando la que falta. */
-    setMsg(fallos.length
-      ? `⚠ ${urls.length} de ${lista.length} · no entraron: ${fallos.join(" · ")}`
+    const sobras = [...fallos, ...noImagen.map(n => `${n}: no es una imagen`)];
+    setMsg(sobras.length
+      ? `⚠ ${urls.length} de ${todos.length} · no entraron: ${sobras.join(" · ")}`
       : null);
     if (urls.length) router.refresh();
   }
 
-  /* Ctrl+V, solo con el ratón sobre la tira. Sin ese guardia, pegar cualquier
-     cosa mientras esta ficha está abierta le mete una foto al equipo. */
+  /* ⚠ EL PEGADO SE REPARTE, y hay que decir que este es un destino. Sin la
+     marca `data-paste-destino`, la cabecera de la ficha se llevaba el Ctrl+V
+     ADEMÁS de la galería: la misma foto entraba aquí y encima se ponía de
+     banner o de cartel. Dos escrituras que nadie pidió, y una cambiaba la cara
+     de la ficha. Quién se lo lleva se decide MIRANDO quién está bajo el ratón
+     en ese instante (lib/destinoPaste), no con una bandera que alguien tenga
+     que acordarse de bajar.
+     Y no se mira `sobre`: ese estado puede quedarse pegado si el `mouseleave`
+     nunca llega —el diálogo de archivos del sistema, el visor abriéndose
+     encima— y entonces la galería se quedaría con pegados de otros sitios. */
   useEffect(() => {
     const pegar = (e: ClipboardEvent) => {
-      if (!sobre || ocupado) return;
+      if (ocupado || !meToca("galeria")) return;
+      /* Si el foco está en una caja de texto, ese pegado es del texto. Lo
+         hacen los otros tres destinos y faltaba aquí. */
+      const el = document.activeElement as HTMLElement | null;
+      if (el && (el.tagName === "TEXTAREA" || el.tagName === "INPUT" || el.isContentEditable)) return;
       const fs = [...(e.clipboardData?.files || [])].filter(f => f.type.startsWith("image/"));
       if (!fs.length) return;
       e.preventDefault();
@@ -119,7 +148,7 @@ export default function GaleriaFotos({ tipo, entidadId, fotos, abrirEn }: {
     window.addEventListener("paste", pegar);
     return () => window.removeEventListener("paste", pegar);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sobre, ocupado, tipo, entidadId]);
+  }, [ocupado, tipo, entidadId]);
 
   async function conRefresco(fn: () => Promise<any>) {
     setOcupado(true); setMsg(null);
@@ -133,7 +162,11 @@ export default function GaleriaFotos({ tipo, entidadId, fotos, abrirEn }: {
 
   return (
     <div className="gal" id="fotos" ref={zona}
-      onMouseEnter={() => setSobre(true)} onMouseLeave={() => setSobre(false)}
+      {...{ [ATRIBUTO]: "galeria" }}
+      /* Al salir se cierra la pregunta de borrar: era la única de las dos que
+         no se reiniciaba nunca —se quedaba tapando la miniatura hasta que
+         alguien la pulsara, sobreviviendo a un refresco—. */
+      onMouseLeave={() => setBorrando(null)}
       onDragOver={e => { e.preventDefault(); }}
       /* `ocupado` también aquí. El botón ya estaba protegido, pero arrastrar y
          pegar no: soltar un segundo lote mientras sube el primero lanzaba dos
@@ -162,14 +195,45 @@ export default function GaleriaFotos({ tipo, entidadId, fotos, abrirEn }: {
       {hay && (
         <div className="gal-tira">
           {fotos.map((f, i) => (
-            <button key={f.id} type="button" className="gal-mini"
-              title={f.pie || "Ver"} onClick={() => setViendo(i)}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={f.url} alt={f.pie || ""} loading="lazy" decoding="async" />
-              {/* El pie, encima y recortado. Con doce fotos parecidas es lo
-                  único que las distingue sin abrirlas una por una. */}
-              {f.pie && <span className="gal-pie">{f.pie}</span>}
-            </button>
+            /* Un `div` y no un `button`: la ✕ es un botón y un botón dentro de
+               otro es HTML inválido que el navegador reordena al parsear. */
+            <div key={f.id} className="gal-mini">
+              <button type="button" className="gal-abrir"
+                title={f.pie || "Ver"} onClick={() => setViendo(i)}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={f.url} alt={f.pie || ""} loading="lazy" decoding="async" />
+                {/* El pie, encima y recortado. Con doce fotos parecidas es lo
+                    único que las distingue sin abrirlas una por una. */}
+                {f.pie && <span className="gal-pie">{f.pie}</span>}
+              </button>
+              {/* ── QUITAR, DESDE LA MINIATURA ──
+                  Estaba solo dentro del visor, y ahí hay que saber que existe:
+                  abrir la foto, mirar abajo, encontrar la barra. Quien quiere
+                  borrar una foto la busca en la tira y espera una ✕ ahí.
+                  Con confirmación, porque no hay deshacer: la foto se va y
+                  volver a ponerla es volver a subirla. */}
+              {borrando === f.id ? (
+                /* El MISMO vocabulario que la barra del visor: «¿quitar?» y
+                   sí/no. La misma acción se llamaba «quitar» aquí y «sí» a
+                   cuatro centímetros, en la otra puerta de lo mismo. */
+                <span className="gal-conf" role="alertdialog" aria-label="¿Quitar esta foto?">
+                  <b>¿quitar?</b>
+                  <span>
+                    <button type="button" disabled={ocupado}
+                      onClick={() => conRefresco(async () => {
+                        const r = await quitarFoto(f.id);
+                        if (!(r as any)?.error) setBorrando(null);
+                        return r;
+                      })}>sí</button>
+                    {" / "}
+                    <button type="button" onClick={() => setBorrando(null)}>no</button>
+                  </span>
+                </span>
+              ) : (
+                <button type="button" className="gal-x" title="Quitar esta foto"
+                  aria-label="Quitar esta foto" onClick={() => setBorrando(f.id)}>✕</button>
+              )}
+            </div>
           ))}
         </div>
       )}

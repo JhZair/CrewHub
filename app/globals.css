@@ -7837,3 +7837,32 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
 /* El ancla del cartel aterriza aquí. Sin margen, la tira queda pegada al borde
    de arriba y la cabecera de la ficha se pierde: no se sabe a dónde se ha ido. */
 .gal{scroll-margin-top:16px}
+/* La miniatura es un contenedor: dentro van el botón que abre y la ✕. Un botón
+   dentro de otro es HTML inválido, así que no puede ser un botón. */
+.gal-abrir{display:block;width:100%;height:100%;padding:0;border:0;background:none}
+/* La ✕ solo al pasar el cursor: en reposo, doce miniaturas con doce cruces son
+   doce invitaciones a borrar. En táctil no hay hover, así que ahí se queda
+   siempre visible — más vale una cruz de más que una función inalcanzable. */
+.gal-x{position:absolute;top:4px;right:4px;width:20px;height:20px;padding:0;
+  border-radius:6px;border:1px solid rgba(255,255,255,.2);
+  background:rgba(10,10,16,.78);color:#e8e8f2;font-size:11px;line-height:1;
+  cursor:pointer;opacity:0;pointer-events:none;transition:opacity .12s}
+.gal-mini:hover .gal-x{opacity:1;pointer-events:auto}
+/* ⚠ `pointer-events:none` mientras es invisible, y `:focus-visible` para que se
+   VEA al llegar con el teclado. Es lo mismo que ya hace `.nf-visto` y su
+   comentario lo explica: con `opacity:0` el botón sigue siendo enfocable y
+   pulsable — o sea que quien tabula por la tira aterriza en un botón de borrar
+   que no ve, y lo activa con Espacio sin haber sabido nunca qué pulsaba. */
+.gal-x:focus-visible{opacity:1;pointer-events:auto;outline:2px solid var(--accent)}
+.gal-x:hover{background:var(--red);border-color:var(--red);color:#fff}
+@media (hover:none){.gal-x{opacity:.9;pointer-events:auto}}
+/* La pregunta ocupa la miniatura entera: en la esquina, sí y no se pulsan por
+   accidente el uno por el otro. Los objetivos siguen siendo pequeños —lo
+   grande es el velo—, así que van separados y en dos líneas. */
+.gal-conf{position:absolute;inset:0;display:flex;flex-direction:column;gap:4px;
+  align-items:center;justify-content:center;background:rgba(10,10,16,.88);
+  border-radius:9px;font-size:11.5px}
+.gal-conf b{color:#e8e8f2;font-weight:700}
+.gal-conf button{background:none;border:0;cursor:pointer;font-size:12.5px;padding:3px 9px}
+.gal-conf button:first-of-type{color:var(--red);font-weight:700}
+.gal-conf button:last-of-type{color:var(--dim)}

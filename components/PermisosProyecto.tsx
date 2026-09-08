@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { subirAdjunto, esPdfUrl, huellaDe, archivosDe } from "@/lib/subirImagen";
-import { destinoPaste } from "@/lib/destinoPaste";
+import { meToca } from "@/lib/destinoPaste";
 import { EntPicker, type CatalogoItem } from "@/components/Composer";
 import {
   guardarAgrupacion, guardarAutorizacion, cambiarEstadoAutorizacion,
@@ -218,13 +218,15 @@ export default function PermisosProyecto({
   useEffect(() => {
     if (!papel) return;
     const alPegar = (e: ClipboardEvent) => {
-      /* ⚠ El semáforo de lib/destinoPaste. Cuando el ratón está sobre un
-         destino que RECLAMA el pegado —la foto de una persona—, ese destino
-         manda y los oyentes generales ceden. Hoy ninguno de esos vive en esta
-         pantalla, pero un oyente de `window` que no mira la bandera es el que
-         rompe al siguiente que la use, y romperlo desde otra pantalla es
-         imposible de encontrar. */
-      if (destinoPaste.reclamado) return;
+      /* ⚠ El reparto del pegado (lib/destinoPaste). Cuando el ratón está sobre
+         un destino marcado —la foto de una persona, la galería, la cabecera—,
+         ese destino manda y los oyentes generales ceden. Hoy ninguno de esos
+         vive en esta pantalla, pero un oyente de `window` que no lo comprueba
+         es el que rompe al siguiente que llegue, y romperlo desde otra
+         pantalla es imposible de encontrar.
+         `siNadie: true`: este panel se queda con los pegados que no caen sobre
+         ningún destino marcado, que es como se comportaba. */
+      if (!meToca("permisos", true)) return;
       const fs = archivosDe(e.clipboardData);
       if (!fs.length) return;
       e.preventDefault();

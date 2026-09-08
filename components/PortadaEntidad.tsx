@@ -3,7 +3,7 @@ import Link from "@/components/Enlace";
 import { guardarImagenEntidad } from "@/app/actions";
 import { subirImagen } from "@/lib/subirImagen";
 import { prepararImagen, MEDIDAS } from "@/lib/prepararImagen";
-import { destinoPaste } from "@/lib/destinoPaste";
+import { ATRIBUTO, meToca } from "@/lib/destinoPaste";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -39,8 +39,16 @@ export default function PortadaEntidad({ tipo, id, portada, cartel, nombre, colo
   useEffect(() => {
     if (!editable) return;
     const h = (e: ClipboardEvent) => {
-      // Si otro destino (la foto de la persona) reclamó el pegado, se respeta
-      if (destinoPaste.reclamado) return;
+      /* ⚠ SOLO si el ratón está sobre ESTA cabecera. Antes se llevaba
+         CUALQUIER Ctrl+V de imagen de toda la ficha, estuviera el ratón donde
+         estuviera, y lo metía en la zona que hubiera guardado —«portada» por
+         defecto—. O sea: pegar una imagen en cualquier punto de la pantalla,
+         para lo que fuera, cambiaba el banner del equipo. El comentario de
+         arriba ya decía «cae en la zona donde esté el mouse»; solo que no era
+         verdad cuando el ratón no estaba en ninguna.
+         `meToca` mira quién está `:hover` en el momento del pegado, así que
+         tampoco hay bandera que pueda quedarse izada. */
+      if (!meToca("portada-entidad")) return;
       const el = document.activeElement as HTMLElement | null;
       if (el && (el.tagName === "TEXTAREA" || el.tagName === "INPUT" || el.isContentEditable)) return;
       const f = Array.from(e.clipboardData?.items || [])
@@ -99,6 +107,7 @@ export default function PortadaEntidad({ tipo, id, portada, cartel, nombre, colo
 
   return (
     <div className={`ent-hero ${conCartel ? "con-cartel" : ""} ${tipo === "equipamiento" ? "ent-hero--alto" : ""}`}
+      {...{ [ATRIBUTO]: "portada-entidad" }}
       style={color ? ({ ["--ent-c" as any]: color }) : undefined}>
       <div className="ent-hero-banner"
         onMouseEnter={() => setZona("portada")}

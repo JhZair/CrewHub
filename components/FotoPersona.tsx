@@ -2,10 +2,10 @@
 import { guardarFotoPersona } from "@/app/actions";
 import { subirImagen } from "@/lib/subirImagen";
 import { prepararImagen, MEDIDAS } from "@/lib/prepararImagen";
-import { destinoPaste } from "@/lib/destinoPaste";
+import { ATRIBUTO, meToca } from "@/lib/destinoPaste";
 import Avatar from "@/components/Avatar";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 /* La foto del perfil: se sube con un clic sobre el avatar. Si no hay,
    Avatar cae de vuelta a las iniciales, así que nunca se ve un hueco.
@@ -18,15 +18,19 @@ export default function FotoPersona({ personaId, nombre, foto, propia, size = 56
   const [subiendo, setSubiendo] = useState(false);
   const [encima, setEncima] = useState(false);   // mouse sobre el avatar
   const [error, setError] = useState("");
-  const encimaRef = useRef(false);
-  encimaRef.current = encima;
   const router = useRouter();
 
-  /* Ctrl+V con el mouse SOBRE el avatar: pega la foto directo (copiada de
-     la web o pantallazo). Solo si el foco no está en un campo de texto. */
+  /* Ctrl+V con el mouse SOBRE el avatar: pega la foto directo (copiada de la
+     web o pantallazo). Solo si el foco no está en un campo de texto.
+     Quién se lleva el pegado lo decide `meToca` mirando quién está bajo el
+     ratón EN ESE INSTANTE, y no un estado de hover guardado: `encima` puede
+     quedarse pegado si el `mouseleave` nunca llega —el diálogo de archivos
+     del sistema, una capa que se abre encima— y entonces este avatar se
+     quedaría con pegados de toda la pantalla. Está contado en
+     lib/destinoPaste. `encima` sigue existiendo, pero solo para pintar. */
   useEffect(() => {
     const h = (e: ClipboardEvent) => {
-      if (!encimaRef.current) return;
+      if (!meToca("foto-persona")) return;
       const el = document.activeElement as HTMLElement | null;
       if (el && (el.tagName === "TEXTAREA" || el.tagName === "INPUT" || el.isContentEditable)) return;
       const f = Array.from(e.clipboardData?.items || [])
@@ -34,10 +38,7 @@ export default function FotoPersona({ personaId, nombre, foto, propia, size = 56
       if (f) { e.preventDefault(); subir(f); }
     };
     document.addEventListener("paste", h);
-    return () => {
-      document.removeEventListener("paste", h);
-      destinoPaste.reclamado = false;  // no dejar la bandera izada al salir
-    };
+    return () => document.removeEventListener("paste", h);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -63,8 +64,9 @@ export default function FotoPersona({ personaId, nombre, foto, propia, size = 56
 
   return (
     <span style={{ position: "relative", display: "inline-flex", flex: "none" }} className="foto-p"
-      onMouseEnter={() => { setEncima(true); destinoPaste.reclamado = true; }}
-      onMouseLeave={() => { setEncima(false); destinoPaste.reclamado = false; }}
+      {...{ [ATRIBUTO]: "foto-persona" }}
+      onMouseEnter={() => setEncima(true)}
+      onMouseLeave={() => setEncima(false)}
       onDragOver={e => e.preventDefault()}
       onDrop={e => {
         e.preventDefault();
