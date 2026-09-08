@@ -884,7 +884,16 @@ a{color:inherit;text-decoration:none}
 /* Envuelve en vez de hacer scroll: cuando no caben, saltan de línea —nada de
    barra horizontal—. Pestañas con SUBRAYADO (no píldora), para leerse como
    navegación y no como chips de filtro. */
-.vtabs-nav{gap:2px 4px;flex-wrap:wrap;overflow:visible;border-bottom:1px solid var(--border);align-items:flex-end;padding:0}
+/* ⚠ EL AIRE DE ABAJO VA AQUÍ, no en quien la usa. `.vtabs` lo trae, pero
+   `components/Pestanas` pinta solo `vtabs-nav` —no las dos clases—, así que
+   esta barra salía pegada al primer bloque de la pantalla: en 🎥 equipos la
+   tarjeta de arriba arrancaba a un pixel de la línea de las pestañas.
+   `components/TabsPanel` no lo notaba porque escribía `vtabs vtabs-nav` Y
+   además un `marginBottom:14` en línea, o sea el mismo valor dicho dos veces
+   y ninguna de las dos donde se podía compartir. Está aquí una vez.
+   Va DESPUÉS de `.vtabs` (línea ~672) a propósito: misma especificidad, así
+   que manda el orden. */
+.vtabs-nav{gap:2px 4px;flex-wrap:wrap;overflow:visible;border-bottom:1px solid var(--border);align-items:flex-end;padding:0;margin-bottom:14px}
 /* Cada pestaña con un fondo TENUE (se lee como menú, cajita por cajita); al
    pasar el cursor el fondo se aviva; la activa lleva el subrayado de acento. */
 .vtabs-nav .vtab{background:rgba(255,255,255,.03);border:1px solid var(--border);border-bottom:2px solid transparent;

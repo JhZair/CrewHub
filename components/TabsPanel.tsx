@@ -164,7 +164,11 @@ export default function TabsPanel({ labels, paneles, inicial = 0, iconoSolo = []
   const actNom = parte(labels[i]);
   return (
     <div ref={raiz}>
-      <div className="vtabs vtabs-nav" style={{ marginBottom: 14 }}>
+      {/* Sin `marginBottom` en línea: ese aire lo pone ya `.vtabs-nav`, y lo
+          tenía repetido aquí con el mismo valor. Mientras estuvo escrito en
+          los dos sitios, la barra de 🎥 equipos —que solo usa `vtabs-nav`— se
+          quedó sin él y nadie lo relacionó. */}
+      <div className="vtabs vtabs-nav">
         {labels.map((_, k) => (enMas.includes(k) ? null : tabBtn(k)))}
         {/* El extra (Drive) va después de las pestañas, antes del «⋯ Más». */}
         {extra}
