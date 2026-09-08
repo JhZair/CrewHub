@@ -86,7 +86,15 @@ export default function FilasDatos({ campos, valores }: { campos: CampoDef[]; va
         <div className="ficha-row" key={c.key}>
           <span className="fk">{nombreCorto(c)}</span>
           <span className="fv">
-            <Copiar valor={crudoVal(valores[c.key])} etiqueta={nombreCorto(c).toLowerCase()}>
+            {/* ⚠ `soloIcono` cuando es un ENLACE. `Copiar` hace
+                `preventDefault` en su clic —para que copiar dentro de una fila
+                que es un enlace no navegue—, y eso le cancelaba también la
+                navegación al `<a>` de dentro: un enlace azul con su ↗ que al
+                pulsarlo copiaba y no abría nada. Con esto el enlace queda
+                fuera del botón: se abre pulsándolo, y la URL entera se copia
+                con el ⧉ de al lado. */}
+            <Copiar valor={crudoVal(valores[c.key])} etiqueta={nombreCorto(c).toLowerCase()}
+              soloIcono={esUrl(valores[c.key])}>
               {esUrl(valores[c.key])
                 ? <a href={String(valores[c.key])} target="_blank" rel="noopener noreferrer"
                     className="fv-link" title={String(valores[c.key])}>

@@ -7875,3 +7875,10 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
 .gal-conf button{background:none;border:0;cursor:pointer;font-size:12.5px;padding:3px 9px}
 .gal-conf button:first-of-type{color:var(--red);font-weight:700}
 .gal-conf button:last-of-type{color:var(--dim)}
+
+/* ── COPIAR CUANDO EL VALOR YA ES PULSABLE ──
+   Un enlace no puede vivir dentro del botón de copiar: `Copiar` cancela el
+   clic por defecto y el enlace deja de abrir. Aquí el valor va fuera y solo
+   el ⧉ copia. El razonamiento largo está en components/Copiar.tsx. */
+.copiable-par{display:inline-flex;align-items:center;gap:4px;min-width:0;max-width:100%}
+.copiable-solo{background:none;border:0;padding:0 4px;flex:none}

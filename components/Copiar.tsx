@@ -21,11 +21,26 @@ import { useState } from "react";
  *    venció hace 3 d» porque eso es lo útil de mirar; pegar eso en un
  *    formulario es pegar basura. Se copia el hecho pelado, y el tooltip
  *    muestra exactamente qué va a caer en el portapapeles — sin sorpresas.
+ *
+ * ── LA EXCEPCIÓN: CUANDO EL VALOR YA ES PULSABLE ──
+ * La decisión 2 tiene un límite, y costó descubrirlo. Si el valor es un
+ * ENLACE, envolverlo entero en este botón lo mata: el `preventDefault` de aquí
+ * abajo —que existe para que copiar dentro de una fila-enlace no navegue— le
+ * cancela también su navegación. El resultado era un enlace azul con su ↗ que
+ * al pulsarlo copiaba y no abría nada. Nada fallaba; simplemente no llevaba a
+ * ninguna parte, que es la única cosa que un enlace tiene que hacer.
+ * Con `soloIcono`, lo que se ve queda FUERA del botón y solo el ⧉ copia. El
+ * argumento de la decisión 2 —«si el problema es la precisión al copiar, la
+ * solución no puede pedir precisión»— era sobre un RUC que se teclea a mano;
+ * una URL no se retranscribe, se abre o se pega.
  */
-export default function Copiar({ valor, children, etiqueta }: {
+export default function Copiar({ valor, children, etiqueta, soloIcono = false }: {
   valor: string;                    // lo que se copia, tal cual
   children?: React.ReactNode;       // lo que se ve (puede venir formateado)
   etiqueta?: string;                // "RUC", "Domicilio fiscal"… para el aviso
+  /** El valor NO es el botón: lo que se ve queda fuera y solo copia el ⧉.
+   *  Para valores que ya hacen algo al pulsarlos — un enlace. */
+  soloIcono?: boolean;
 }) {
   const [copiado, setCopiado] = useState(false);
   const [falló, setFalló] = useState(false);
@@ -56,6 +71,22 @@ export default function Copiar({ valor, children, etiqueta }: {
       setTimeout(() => setFalló(false), 6000);
     }
   };
+
+  if (soloIcono) {
+    return (
+      <span className="copiable-par">
+        {children ?? v}
+        <button type="button" onClick={copiar}
+          className={`copiable copiable-solo${copiado ? " copiado" : ""}`}
+          title={falló ? "No pude copiar solo — usa Ctrl+C"
+            : `Clic para copiar${etiqueta ? ` ${etiqueta}` : ""}:\n${v}`}
+          aria-label={`Copiar${etiqueta ? ` ${etiqueta}` : ""}`}>
+          <span className="copiable-ico" aria-hidden>{copiado ? "✔" : falló ? "⌨" : "⧉"}</span>
+          {copiado && <span className="copiable-ok">copiado</span>}
+        </button>
+      </span>
+    );
+  }
 
   return (
     <span
