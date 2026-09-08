@@ -79,12 +79,28 @@ export function FechaSelect({ pubId, fecha, cual = "limite", tope }: {
   /** La otra punta, si la hay: acota el calendario. */
   tope?: string | null;
 }) {
-  const router = useRouter();
+  /* ── SIN `router.refresh()`, Y ESTO ES LO QUE MÁS SE NOTA ──
+     ⚠ Las dos acciones terminan en `revalidatePath("/caso/<id>")`. En el App
+     Router, una Server Action que revalida la ruta en la que estás devuelve el
+     árbol ya re-renderizado DENTRO de su propia respuesta: la bitácora, las
+     barras y el semáforo se actualizan con lo que ya vino.
+     Pedir además `router.refresh()` es encargar un SEGUNDO render completo de
+     la misma página —otro viaje a Vercel, otras catorce consultas a Supabase—
+     para pintar lo que el navegador ya tenía. Cambiar la fecha costaba el
+     doble de todo, y desde Cusco eso se siente.
+
+     ⚠ Si algún día la bitácora deja de actualizarse sola al cambiar la fecha,
+     el arreglo es devolver aquí el `router.refresh()`: es una línea. Pero
+     entonces lo que falla es el `revalidatePath` de la acción, y es ahí donde
+     hay que mirar.
+     El mismo razonamiento vale para `EstadoSelect`, `RespSelect` y el editor
+     de vínculos, que siguen refrescando a mano. No se han tocado a la vez a
+     propósito: primero se mide en uno. */
   const cambiar = async (v: string) => {
     const res = cual === "inicio"
       ? await cambiarFechaInicio(pubId, v)
       : await cambiarFechaLimite(pubId, v);
-    if (res?.error) alert(res.error); else router.refresh();
+    if (res?.error) alert(res.error);
     return res;   // el campo necesita saber si se guardó, para no mentir
   };
   /* ⚠ NO se guarda en `onChange`. Un campo de fecha emite un cambio válido por
@@ -113,10 +129,11 @@ export function FechaSelect({ pubId, fecha, cual = "limite", tope }: {
 /* La hora de una reunión. Mismo gesto que las fechas y por eso el mismo
    patrón: se guarda al cambiar y se refresca. */
 export function HoraSelect({ pubId, hora }: { pubId: string; hora: string | null }) {
-  const router = useRouter();
+  /* Sin `router.refresh()`, por lo mismo que `FechaSelect`: `cambiarHora`
+     revalida esta ruta y su respuesta ya trae el árbol nuevo. */
   const cambiar = async (v: string) => {
     const res = await cambiarHora(pubId, v);
-    if (res?.error) alert(res.error); else router.refresh();
+    if (res?.error) alert(res.error);
     return res;
   };
   /* Un campo de hora emite un cambio en cuanto se completa el segmento de las

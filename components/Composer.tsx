@@ -66,8 +66,10 @@ type Sel = Vinculo & { nombre: string };
 /* Buscador desplegable para entidades: filtra mientras escribes */
 /* Como EntPicker pero de selección MÚLTIPLE: checkboxes + un botón que confirma
    todos los elegidos de una vez (para vincular una tanda al caso). */
-export function MultiPicker({ etiqueta, items, onConfirm, ocupado }: {
+export function MultiPicker({ etiqueta, items, onConfirm, ocupado, cargando }: {
   etiqueta: string; items: CatalogoItem[]; onConfirm: (ids: string[]) => void; ocupado?: boolean;
+  /** Ver `EntPicker`: se dice dentro del menú, no fuera. */
+  cargando?: boolean;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [filtro, setFiltro] = useState("");
@@ -105,8 +107,9 @@ export function MultiPicker({ etiqueta, items, onConfirm, ocupado }: {
                   {i.tipo && <span className="cbx-tag">{i.tipo.replace(/_/g, " ")}</span>}
                 </button>
               ))}
-              {!lista.length && !filtro && <div className="cbx-vacio">Escribe para buscar</div>}
-              {!lista.length && filtro && <div className="cbx-vacio">Sin resultados</div>}
+              {cargando && !lista.length && <div className="cbx-vacio">Cargando la lista…</div>}
+              {!cargando && !lista.length && !filtro && <div className="cbx-vacio">Escribe para buscar</div>}
+              {!cargando && !lista.length && filtro && <div className="cbx-vacio">Sin resultados</div>}
               {lista.length > 80 && <div className="cbx-vacio">+{lista.length - 80} más — afina la búsqueda</div>}
             </div>
             <div className="cbx-pie">
@@ -123,11 +126,15 @@ export function MultiPicker({ etiqueta, items, onConfirm, ocupado }: {
   );
 }
 
-export function EntPicker({ etiqueta, items, onPick, onCrear, titulo }: {
+export function EntPicker({ etiqueta, items, onPick, onCrear, titulo, cargando }: {
   etiqueta: string; items: CatalogoItem[];
   onPick: (id: string) => void; onCrear?: (nombre: string) => void;
   /** Nombre completo para el tooltip, cuando el botón va solo con ícono. */
   titulo?: string;
+  /** La lista todavía viene de camino. Se dice DENTRO del menú, que es donde
+   *  mira quien acaba de abrirlo: un «cargando» en el botón de al lado no lo
+   *  ve nadie, y una lista vacía sin explicación se lee como «no hay nada». */
+  cargando?: boolean;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [filtro, setFiltro] = useState("");
@@ -178,8 +185,9 @@ export function EntPicker({ etiqueta, items, onPick, onCrear, titulo }: {
                   {i.tipo && <span className="cbx-tag">{i.tipo.replace(/_/g, " ")}</span>}
                 </button>
               ))}
-              {!lista.length && !filtro && <div className="cbx-vacio">Escribe para buscar</div>}
-              {!lista.length && filtro && !onCrear && <div className="cbx-vacio">Sin resultados</div>}
+              {cargando && !lista.length && <div className="cbx-vacio">Cargando la lista…</div>}
+              {!cargando && !lista.length && !filtro && <div className="cbx-vacio">Escribe para buscar</div>}
+              {!cargando && !lista.length && filtro && !onCrear && <div className="cbx-vacio">Sin resultados</div>}
               {lista.length > 40 && <div className="cbx-vacio">+{lista.length - 40} más — afina la búsqueda</div>}
             </div>
           </div>

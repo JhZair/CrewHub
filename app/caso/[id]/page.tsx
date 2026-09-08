@@ -29,8 +29,8 @@ import { BOT, sinBot } from "@/lib/personas";
 import { CERRADOS } from "@/lib/familia";
 import { rotuloTipo, colorTipo, icoTipo, llevaHora } from "@/lib/tipos";
 import { TXT } from "@/lib/texto";
-import { catalogoObjetos, filasEntidades, catalogosDeFilas,
-  nombresDeFilas, aliasPorCuenta } from "@/lib/catalogos";
+import { nombresDeVinculos } from "@/lib/catalogos";
+import { mapaAlias } from "@/lib/personas";
 
 /* EV_ICO es de aquí: son los eventos de la bitácora de un caso, no los tipos
    de publicación. Los que SÍ eran copias —el mapa de tipos y el de entidades—
@@ -116,7 +116,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
      Lo que SÍ tiene que esperar es lo que depende del CONTENIDO de `p`: su
      padre, sus vínculos, su cláusula. Eso es una segunda tanda, y ya. */
   const [p, { data: eventos }, { data: comentarios }, { data: perfiles },
-         { data: miPerfil }, filasEnt, etiq,
+         { data: miPerfil }, { data: persAlias }, etiq,
          { data: reaccs }, { data: hijos }] = await Promise.all([
     // Memorizado por petición: si `generateMetadata` ya lo pidió, no viaja.
     traerCaso(params.id),
@@ -132,15 +132,22 @@ export default async function Caso({ params }: { params: { id: string } }) {
       .order("creado_en"),
     supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
     supabase.from("perfiles").select("es_admin").eq("id", user.id).single(),
-    /* ⚠ UNA lectura de las siete tablas, no dos.
-       Aquí había ocho consultas: `catalogosEntidades` —los desplegables de
-       «vincular»— y siete más a las MISMAS tablas para los rótulos de los
-       chips, porque el formato es distinto: el desplegable desempata
-       («E-003 · PACHA APUS SAC · SAC · propia») y el chip no lo necesita
-       («PACHA APUS SAC»). El formato distinto no obliga a leer dos veces.
-       `filasEntidades` trae las filas; abajo se les da las dos formas. */
-    filasEntidades(supabase),
-    // Las etiquetas no están en `filasEntidades`: no se «vinculan», se ponen.
+    /* ⚠ AQUÍ YA NO SE PIDEN LOS CATÁLOGOS.
+       Llegó a haber ocho consultas de tabla completa —más las de los objetos
+       del repositorio— para llenar los desplegables de «vincular», y encima
+       viajaban al navegador en el payload de CADA render, porque el editor es
+       un componente de cliente. Ahora los pide él, la primera vez que alguien
+       toca la bandeja (`catalogosParaVincular`).
+       Lo único que la página seguía necesitando de esas tablas eran los
+       RÓTULOS de los vínculos ya puestos, y esos se piden por id más abajo:
+       dos o tres filas, no siete tablas.
+
+       Las personas con cuenta sí se quedan: son el cruce que da el nombre
+       corto de un compañero —«MichelM», no «Michel Oros»— y hace falta para
+       CADA renglón de la bitácora, no para un desplegable. */
+    supabase.from("personas").select("usuario_id,alias")
+      .not("alias", "is", null).not("usuario_id", "is", null),
+    // Las etiquetas: pocas, y se pintan como chips además de elegirse.
     supabase.from("etiquetas").select("id,nombre"),
     // Reacciones de la publicación y sus comentarios
     supabase.from("reacciones")
@@ -186,13 +193,6 @@ export default async function Caso({ params }: { params: { id: string } }) {
      Su padre, sus vínculos y su cláusula: cosas que no se saben hasta tener
      el caso delante. Eran cinco viajes encadenados; van juntas. */
 
-  /* Los OBJETOS del repositorio se resuelven aparte y solo los vinculados a
-     este caso: el catálogo puede tener miles y no hay razón de traerlos todos
-     —a diferencia de proyectos o empresas, un objeto no se elige de una lista.
-     Sin esto el vínculo existía en la base pero el chip se filtraba por no
-     tener nombre: el caso decía estar vinculado a nada. */
-  const idsObj = (p.vinculos || [])
-    .filter((v: any) => v.entidad_tipo === "objeto").map((v: any) => v.entidad_id);
   /* Los carteles de los proyectos y empresas vinculados: no hacen falta los
      NOMBRES para pedirlos, solo los ids — así que esto tampoco tenía por qué
      esperar a que se resolvieran los chips, como esperaba. */
@@ -227,15 +227,12 @@ export default async function Caso({ params }: { params: { id: string } }) {
         .filter(Boolean).sort().slice(-1)[0] || new Date().toISOString())
     : new Date().toISOString();
 
-  const [{ data: padre }, { data: objs }, compActaRes, { data: mediaVinc }, { data: rel },
-         objsCat] = await Promise.all([
+  const [{ data: padre }, compActaRes, { data: mediaVinc }, { data: rel },
+         nombresVinc] = await Promise.all([
       // Familia: el padre, si soy sub-caso. Los hijos ya vinieron en la tanda 1.
       p.padre_id
         ? supabase.from("publicaciones").select("id,titulo").eq("id", p.padre_id).single()
         : Promise.resolve({ data: null as any }),
-      idsObj.length
-        ? supabase.from("objetos").select("id,titulo,tipo").in("id", idsObj)
-        : Promise.resolve({ data: [] as any[] }),
       /* ── DE QUÉ CLÁUSULA DEL ACTA SALE ──
          APARTE de la consulta principal, y a propósito. Metido en aquel
          `select`, un fallo del embebido —la columna sin migrar, el esquema de
@@ -265,17 +262,14 @@ export default async function Caso({ params }: { params: { id: string } }) {
             // ruido SUNAT (que se filtra abajo) sin filtros json frágiles.
             .order("creado_en", { ascending: false }).limit(300)
         : Promise.resolve({ data: [] as any[] }),
-      /* Los objetos del repositorio también se pueden vincular desde aquí: un
-         caso puede tratar sobre un material concreto. Los más recientes, con
-         techo —es el único catálogo que crece sin límite—.
-         ⚠ Va en la SEGUNDA tanda aunque no dependa de nada, y es deliberado:
-         por dentro son dos niveles de red (los objetos, y luego los nombres de
-         sus dueños), o sea hasta nueve consultas. En la primera tanda alargaba
-         la única espera que TODA visita paga, y encima se cobraban también las
-         visitas que acaban en `notFound()` o en el redirigido de una nota del
-         muro, que salen antes de llegar aquí. Aquí sus dos niveles caben
-         dentro de una espera que ya existía. */
-      catalogoObjetos(supabase),
+      /* Los rótulos de los vínculos ya puestos: una consulta por TIPO
+         presente, con `.in(ids)`. Un caso con un proyecto y dos personas son
+         dos consultas de tres filas. Antes esto costaba las siete tablas. */
+      /* ⚠ Sin las etiquetas: su lista entera ya viene en la tanda 1 —el editor
+         de etiquetas la necesita completa para elegir— y dejarlas aquí sería
+         pedir la misma tabla dos veces en el mismo render. */
+      nombresDeVinculos(supabase,
+        (p.vinculos || []).filter((v: any) => v.entidad_tipo !== "etiqueta")),
     ]);
   const compActa = (compActaRes as any)?.data ?? null;
 
@@ -290,14 +284,14 @@ export default async function Caso({ params }: { params: { id: string } }) {
     l.push(conNombre(r)); rxCom.set(r.comentario_id, l);
   });
 
-  /* Las dos formas de las MISMAS filas: cómo se elige y cómo se nombra.
-     Ninguna de las dos viaja: son puro formato. */
-  const ents = catalogosDeFilas(filasEnt);
-  const nombres = nombresDeFilas(filasEnt);
-  // Estos dos no salen de `filasEntidades`, y por eso se añaden aparte.
-  (objs || []).forEach((x: any) => nombres.set(`objeto:${x.id}`, x.titulo));
+  /* Los rótulos ya vienen resueltos por id —incluidos los objetos del
+     repositorio, que antes tenían consulta propia aquí—. Las etiquetas se
+     añaden encima porque su lista COMPLETA hace falta igual para el editor de
+     etiquetas, y pedirlas dos veces por el mismo render era el fallo que este
+     mismo archivo lleva tres tandas persiguiendo. */
+  const nombres = nombresVinc;
   (etiq.data || []).forEach((x: any) => nombres.set(`etiqueta:${x.id}`, x.nombre));
-  const perfilNombre = new Map((perfiles || []).map((x: any) => [x.id, x.nombre]));
+
 
   /* EL NOMBRE CORTO DE UN COMPAÑERO — «MichelM», no «Michel Oros».
      Vive en `personas.alias`, y `perfiles` (la cuenta) solo guarda el nombre
@@ -308,7 +302,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
      mismo, y ninguna es la que el equipo usa de verdad.
      El cruce vive ahora en `lib/catalogos`, sobre las mismas filas que ya
      alimentan los desplegables: era la octava consulta a `personas`. */
-  const aliasDe = aliasPorCuenta(filasEnt);
+  const aliasDe = mapaAlias(persAlias);
   const perfilesCortos = (perfiles || []).map((x: any) => ({
     ...x,
     // Sin alias cargado, el primer nombre: mejor «Michel» que «Michel Oros»
@@ -329,10 +323,6 @@ export default async function Caso({ params }: { params: { id: string } }) {
     .filter((v: any) => v.entidad_tipo === "etiqueta")
     .map((v: any) => ({ id: v.entidad_id, nombre: etqMap.get(v.entidad_id) || "etiqueta" }));
 
-  // Catálogos por tipo para el editor de vínculos + vínculos actuales (no-etiqueta)
-  const catEnt: Record<string, { id: string; nombre: string; tipo?: string; sub?: string }[]> = {
-    ...ents, objeto: objsCat,
-  };
   /* Cartel (póster/logo) de los proyectos y empresas vinculados, para que su
      chip muestre la imagen en vez del ícono genérico. */
   const cartelVinc = new Map<string, string>();
@@ -440,7 +430,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
     if (e.tipo === "estado") {
       const campo = e.detalle?.campo || "estado";
       if (campo === "responsable") {
-        const a = e.detalle?.a ? (perfilNombre.get(e.detalle.a) || "alguien") : "sin asignar";
+        const a = e.detalle?.a ? (nombrePerfil.get(e.detalle.a) || "alguien") : "sin asignar";
         return `${quien} cambió el responsable → ${a}`;
       }
       /* El historial de un aviso también habla su idioma: «Vigente →
@@ -629,7 +619,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
 
       <div className="linked">
         <h4>🔗 Vínculos y etiquetas</h4>
-        <VinculosEditor pubId={p.id} actuales={actualesVinc} catalogos={catEnt} />
+        <VinculosEditor pubId={p.id} actuales={actualesVinc} />
         <div style={{ marginTop: 8 }}>
           <EtiquetasEditor pubId={p.id} actuales={etiquetasActuales} todas={etqTodas} />
         </div>

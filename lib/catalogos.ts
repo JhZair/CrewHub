@@ -81,7 +81,8 @@ export type ItemCat = { id: string; nombre: string; tipo?: string; sub?: string 
 
    Ahora se leen una vez y cada pantalla les da su forma:
      `catalogosDeFilas`  → cómo se ELIGE una entidad (con desempate).
-     `nombresDeFilas`    → cómo se NOMBRA una ya elegida (a secas).
+     `nombresDeVinculos` → cómo se NOMBRA una ya elegida (a secas). Ésa no usa
+                           estas filas: pide por id, que es mucho menos.
 
    `catalogosEntidades` sigue existiendo con la misma firma y el mismo
    resultado: quien solo quiere los desplegables no se entera de nada. */
@@ -164,44 +165,82 @@ export function catalogosDeFilas(
   };
 }
 
-/* ── CÓMO SE NOMBRA UNA ENTIDAD YA ELEGIDA ──
-   Un chip puesto no desempata nada: ya se sabe cuál es. Por eso aquí los
-   rótulos son más cortos que los del desplegable —«PACHA APUS SAC» y no
-   «E-003 · PACHA APUS SAC · SAC · propia»—, y por eso son dos funciones y no
-   una sobre las mismas filas.
+/* ── LOS MISMOS RÓTULOS, PERO SOLO DE LO QUE SE PIDE ──
+   ⚠ Hasta hoy esto se resolvía leyendo las SIETE TABLAS ENTERAS y quedándose
+   con dos o tres filas. La ficha lo hacía porque de todas formas las tenía
+   cargadas para los desplegables; desde que los desplegables se piden al
+   abrirlos, ya no había ninguna razón.
 
-   ⚠ Los formatos son LOS QUE YA HABÍA en la ficha del caso, copiados tal cual
-   al mudarlos aquí. Cambiarlos habría renombrado los chips de todos los casos
-   de golpe, que no es lo que se pedía: lo que se pedía era dejar de leer las
-   mismas siete tablas dos veces.
+   Aquí se piden solo los ids que hacen falta, una consulta por TIPO presente
+   (no por vínculo). Un caso con un proyecto y dos personas son dos consultas
+   de tres filas, no siete de tabla completa.
 
-   ⚠⚠ Y CONVIENE SABER QUE ESTO NO ES EL RESOLVEDOR CANÓNICO.
-   `lib/nombres.ts` dice de sí mismo ser «cómo se llama cualquier cosa, en un
-   solo sitio», y no coincide con esto en tres tipos:
+   ⚠ Un chip puesto no desempata nada —ya se sabe cuál es—, así que estos
+   rótulos son más cortos que los del desplegable: «PACHA APUS SAC», no
+   «E-003 · PACHA APUS SAC · SAC · propia». Por eso son dos cosas y no una
+   sobre las mismas filas.
 
-       tipo          lib/nombres            aquí
+   ⚠⚠ Y ESTO NO ES EL RESOLVEDOR CANÓNICO. `lib/nombres.ts` dice de sí mismo
+   ser «cómo se llama cualquier cosa, en un solo sitio», y no coincide con esto
+   en tres tipos:
+
+       tipo          lib/nombres             aquí
        proyecto      nombre_corto || nombre  nombre
        persona       alias || nombre         nombre
        postulacion   «PO-040 · X · 2026»     «PO-040 · X»
 
    O sea que el mismo proyecto vinculado a un caso y a un objeto se lee con dos
-   nombres distintos. La divergencia YA EXISTÍA —esto es la copia que vivía en
-   la ficha del caso, mudada sin tocarla—, pero al ponerla en `lib/` al lado de
-   la canónica deja de parecer un descuido y empieza a parecer una decisión, y
-   no lo es. Converger es un cambio visible en los chips de todos los casos y
-   se decide aparte; mientras tanto, queda escrito cuál de las dos manda. */
-export function nombresDeFilas(f: FilasEntidades): Map<string, string> {
+   nombres distintos. La divergencia YA EXISTÍA —estos formatos son los que
+   vivían escritos a mano en la ficha del caso, mudados sin tocarlos—, pero al
+   ponerla en `lib/` al lado de la canónica deja de parecer un descuido y
+   empieza a parecer una decisión, y no lo es. Converger es un cambio visible
+   en los chips de todos los casos y se decide aparte; mientras tanto, queda
+   escrito cuál de las dos manda. */
+type Rotulador = {
+  tabla: string;
+  cols: string;
+  rotulo: (x: any) => string;
+};
+
+const ROTULO_VINCULO: Record<string, Rotulador> = {
+  proyecto:     { tabla: "proyectos",     cols: "id,nombre",       rotulo: x => x.nombre },
+  empresa:      { tabla: "empresas",      cols: "id,nombre",       rotulo: x => x.nombre },
+  persona:      { tabla: "personas",      cols: "id,nombre",       rotulo: x => x.nombre },
+  lugar:        { tabla: "lugares",       cols: "id,nombre",       rotulo: x => x.nombre },
+  convocatoria: { tabla: "convocatorias", cols: "id,codigo,nombre,anio",
+    rotulo: x => (x.nombre ? `${x.nombre} ${x.anio || ""}`.trim() : x.codigo) },
+  equipamiento: { tabla: "equipamiento",  cols: "id,nombre,folio",
+    rotulo: x => (x.folio ? `${x.folio} · ${x.nombre}` : x.nombre) },
+  postulacion:  { tabla: "postulaciones",
+    cols: "id,codigo,proy:proyectos(nombre),conv:convocatorias(codigo,anio)",
+    rotulo: x => `${x.codigo || x.conv?.codigo || "🎯"} · ${x.proy?.nombre || "postulación"}` },
+  objeto:       { tabla: "objetos",       cols: "id,titulo",       rotulo: x => x.titulo },
+  /* ⚠ La etiqueta está por completitud y hoy no la ejecuta nadie: su único
+     llamador la filtra antes, porque la lista ENTERA de etiquetas ya viene
+     pedida para el editor de etiquetas y sería la misma tabla dos veces. Se
+     deja porque el día que otra pantalla pinte un chip de etiqueta sin esa
+     lista, la respuesta tiene que estar aquí y no inventarse allá. */
+  etiqueta:     { tabla: "etiquetas",     cols: "id,nombre",       rotulo: x => x.nombre },
+};
+
+/** Los rótulos de una lista de vínculos, pidiendo solo esas filas. */
+export async function nombresDeVinculos(
+  supabase: any,
+  vinculos: { entidad_tipo?: string | null; entidad_id?: string | null }[] | null | undefined,
+): Promise<Map<string, string>> {
+  const porTipo = new Map<string, Set<string>>();
+  (vinculos || []).forEach(v => {
+    const t = (v.entidad_tipo || "").trim();
+    if (!t || !v.entidad_id || !ROTULO_VINCULO[t]) return;
+    const s = porTipo.get(t) || new Set<string>();
+    s.add(v.entidad_id); porTipo.set(t, s);
+  });
   const m = new Map<string, string>();
-  (f.proy.data || []).forEach((x: any) => m.set(`proyecto:${x.id}`, x.nombre));
-  (f.emp.data || []).forEach((x: any) => m.set(`empresa:${x.id}`, x.nombre));
-  (f.pers.data || []).forEach((x: any) => m.set(`persona:${x.id}`, x.nombre));
-  (f.conv.data || []).forEach((x: any) =>
-    m.set(`convocatoria:${x.id}`, x.nombre ? `${x.nombre} ${x.anio || ""}`.trim() : x.codigo));
-  (f.equi.data || []).forEach((x: any) =>
-    m.set(`equipamiento:${x.id}`, x.folio ? `${x.folio} · ${x.nombre}` : x.nombre));
-  (f.luga.data || []).forEach((x: any) => m.set(`lugar:${x.id}`, x.nombre));
-  (f.postu.data || []).forEach((x: any) =>
-    m.set(`postulacion:${x.id}`, `${x.codigo || x.conv?.codigo || "🎯"} · ${x.proy?.nombre || "postulación"}`));
+  await Promise.all([...porTipo.entries()].map(async ([tipo, ids]) => {
+    const r = ROTULO_VINCULO[tipo];
+    const { data } = await supabase.from(r.tabla).select(r.cols).in("id", [...ids]);
+    (data || []).forEach((x: any) => m.set(`${tipo}:${x.id}`, r.rotulo(x)));
+  }));
   return m;
 }
 

@@ -30,7 +30,7 @@ import { SECCIONES, grafiasDe, tipoCanonico, ICO_ENT } from "@/lib/secciones";
 import { vinculosDePublicaciones, conNombre } from "@/lib/vinculosPub";
 import { fraccionValida, montoJornada } from "@/lib/jornadas";
 import { TIPOS_OBJETO } from "@/lib/objetos";
-import { catalogoObjetos, catalogosEntidades } from "@/lib/catalogos";
+import { catalogoObjetos, catalogosEntidades, filasEntidades, catalogosDeFilas } from "@/lib/catalogos";
 import { resolverNombres } from "@/lib/nombres";
 import { COL_DAFO, sinColumna, faltaAlguna, columnasQueFaltan, sinEstas, COLS_NUEVAS, COLS_NOTIF, TIPOS_DAFO } from "@/lib/notificaciones";
 import { DIAS_AVISO_DEF } from "@/lib/plazo";
@@ -380,7 +380,10 @@ async function avisarCambioCaso(supabase: any, opts: {
   /* Solo cuentas ACTIVAS, como en el resto de avisos: quien dejó el equipo
      sigue figurando como autor de sus casos viejos y mandarle correo es llenar
      una bandeja que ya nadie abre. */
-  const { data: activos } = await supabase.from("perfiles").select("id").eq("activo", true);
+  /* ⚠ `.in("id", destinatarios)` y no la tabla entera. Son dos o tres ids; se
+     pedían TODOS los perfiles para quedarse con esos. */
+  const { data: activos } = await supabase.from("perfiles")
+    .select("id").eq("activo", true).in("id", destinatarios);
   const vivos = new Set<string>((activos || []).map((p: any) => p.id));
   const finales = destinatarios.filter(id => vivos.has(id));
   if (!finales.length) return;
@@ -9804,8 +9807,13 @@ export async function cambiarFechaLimite(pubId: string, fecha: string) {
      y cada uno se nota desde Cusco. */
   const [{ data: { user } }, { data: antes }] = await Promise.all([
     supabase.auth.getUser(),
+    /* ⚠ Las siete columnas de una vez. Cuatro de ellas —`titulo`, `tipo`,
+       `autor_id`, `responsable`— las pedía `casoYActor` más abajo, en OTRO
+       viaje a la misma fila de la misma tabla. Leer dos veces lo mismo dentro
+       de la misma acción es el viaje más fácil de quitar que hay. */
     supabase.from("publicaciones")
-      .select("fecha_limite,fecha_inicio,hora").eq("id", pubId).single(),
+      .select("fecha_limite,fecha_inicio,hora,titulo,tipo,autor_id,responsable")
+      .eq("id", pubId).single(),
   ]);
   if (!user) return { error: "Sesión no encontrada." };
   // La otra punta de la ventana: adelantar el vencimiento por detrás del
@@ -9831,9 +9839,11 @@ export async function cambiarFechaLimite(pubId: string, fecha: string) {
   if ((antes?.fecha_limite || null) !== val) {
     const fmt = (d: string) => new Date(d + "T12:00:00")
       .toLocaleDateString("es-PE", { day: "numeric", month: "short", timeZone: "America/Lima" });
-    /* ⏱ El apunte de la bitácora y los datos del aviso, a la vez. El apunte no
-       depende de quién hay que avisar, y esperarlo era otro viaje en fila. */
-    const [, { pub, actorNombre }] = await Promise.all([
+    /* ⏱ El apunte de la bitácora y el nombre de quien lo hizo, a la vez. El
+       apunte no depende de cómo se llama nadie. Y `pub` ya no se pide: sus
+       cuatro columnas vinieron arriba, en la misma lectura que el estado
+       anterior. */
+    const [, { data: miP }] = await Promise.all([
       supabase.from("actividad").insert({
         entidad_tipo: "publicacion", entidad_id: pubId, actor_id: user.id, tipo: "edicion",
         detalle: { mensaje: val ? `puso la fecha límite en ${fmt(val)}`
@@ -9841,11 +9851,13 @@ export async function cambiarFechaLimite(pubId: string, fecha: string) {
               : soltarVentana ? " (y con ella el inicio)"
               : antes?.hora ? " (y con ella la hora)" : ""}` },
       }),
-      /* 🔔 Solo si CAMBIÓ —está dentro del mismo `if`—: guardar la misma fecha
-         otra vez no es un hecho y no debe sonar. Mover el plazo sin decírselo a
-         quien tiene que cumplirlo es la mitad de un plazo. */
-      casoYActor(supabase, pubId, user.id),
+      supabase.from("perfiles").select("nombre").eq("id", user.id).maybeSingle(),
     ]);
+    const actorNombre = (miP as any)?.nombre || "Alguien";
+    const pub = antes as any;
+    /* 🔔 Solo si CAMBIÓ —está dentro del mismo `if`—: guardar la misma fecha
+       otra vez no es un hecho y no debe sonar. Mover el plazo sin decírselo a
+       quien tiene que cumplirlo es la mitad de un plazo. */
     if (pub) await avisarCambioCaso(supabase, {
       pubId, actorId: user.id, actorNombre, tipo: "cambio_plazo",
       mensaje: val
@@ -10193,6 +10205,38 @@ export async function datosNuevoCaso() {
   ]);
   const catalogos = { ...ents, etiqueta: etiq.data || [], objeto: objs };
   return { userId: user.id, catalogos, perfiles: perfs.data || [] };
+}
+
+/* ── LOS CATÁLOGOS PARA VINCULAR, BAJO DEMANDA ──
+   ⚠ La ficha de un caso los mandaba TODOS en el payload de cada render: ocho
+   tablas completas más trescientos objetos del repositorio, serializados y
+   bajados al navegador cada vez que se abre el caso, cada vez que se comenta y
+   cada vez que se toca la fecha —porque `router.refresh()` vuelve a montar la
+   página—. Todo eso para llenar nueve desplegables que la mayoría de las
+   visitas no abre.
+
+   Ahora se piden al abrir la bandeja de «vincular», una sola vez por visita.
+   Es lo que ya hacía el «+» flotante con `datosNuevoCaso`, y por lo mismo.
+
+   Mismos catálogos y misma función que el feed y el «+»: si aquí la persona
+   sale como «Nombre · Alias» y allá con el alias apagado, el equipo ve dos
+   formularios distintos para la misma tarea. */
+export async function catalogosParaVincular() {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const [filas, objs] = await Promise.all([
+    filasEntidades(supabase),
+    catalogoObjetos(supabase),
+  ]);
+  /* ⚠ El error se MIRA. `catalogosEntidades` se traga el de cada consulta con
+     `(x.data || [])`, así que un fallo de RLS o una columna sin migrar
+     devolvían listas vacías SIN error — y entonces el aviso del editor («esto
+     no quiere decir que no haya nada») no se podía encender nunca, que es
+     tener un aviso decorativo sobre el único caso que importa. */
+  const fallo = Object.values(filas).map((r: any) => r?.error?.message).find(Boolean);
+  if (fallo) return { error: fallo as string };
+  return { catalogos: { ...catalogosDeFilas(filas), objeto: objs } as Record<string, any[]> };
 }
 
 export async function cambiarTipo(pubId: string, tipo: string) {
