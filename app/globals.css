@@ -7441,6 +7441,14 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
 .clx-buscar { display: flex; align-items: center; gap: 8px;
   background: var(--card); border: 1px solid var(--border); border-radius: 10px;
   padding: 7px 11px; margin-bottom: 10px; }
+/* ⚠ DENTRO DE UNA TARJETA, EL FONDO ES EL DE LA PÁGINA.
+   `.clx-buscar` nació para la lista de ⚖ clearance, que se pinta a nivel de
+   página sobre `--bg`: ahí su `--card` la despega del fondo. El buscador de
+   «en uso ahora» vive DENTRO de una `.card`, que ya es `--card`, así que la
+   caja se fundía con su contenedor y solo la separaba un borde del mismo
+   color. Es el mismo criterio que ya siguen `.muro-caja-input` y `.etq-pop
+   input`: una caja de texto dentro de una tarjeta va sobre `--bg`. */
+.card > .clx-buscar{background:var(--bg)}
 .clx-buscar:focus-within { border-color: var(--accent); }
 .clx-lupa { flex-shrink: 0; opacity: .6; font-size: 13px; }
 /* Sin `color` ni `font-family`: la regla global de `input` de este mismo

@@ -5,6 +5,7 @@ import BotonDevolver from "@/components/BotonDevolver";
 import DevolverLote from "@/components/DevolverLote";
 import ChipPiezas, { type PiezaMontada } from "@/components/ChipPiezas";
 import HojaEquipos from "@/components/HojaEquipos";
+import { buscadorDe, pal } from "@/lib/buscar";
 
 /* EN USO AHORA — quién tiene qué, y cómo se devuelve rápido.
  *
@@ -150,24 +151,73 @@ export default function EnUsoAhora({ items }: { items: UsoItem[] }) {
      Ctrl+P posterior, encima de lo que se quisiera imprimir de verdad. */
   const [imprimiendo, setImprimiendo] = useState<string | null>(null);
 
+  /* ══════════════════════════════════════════════════════════════════════
+     EL BUSCADOR RÁPIDO
+
+     Las personas arrancan PLEGADAS y con veintiséis equipos fuera repartidos
+     entre cuatro personas, encontrar «¿dónde está la A-172?» es abrir grupo
+     por grupo. Y la pregunta del día no siempre es «qué tiene Katy»: a veces
+     es «esto que tengo en la mano, ¿de quién es?».
+
+     Busca por PERSONA y también por equipo —folio, nombre, categoría—, por
+     proyecto y por kit: una sola caja, porque quien está recibiendo material
+     en la puerta no va a elegir primero en qué campo buscar.
+
+     ⚠ Usa `buscadorDe` de lib/buscar, y no `coincide` de lib/texto. Los dos
+     buscan sin tildes y por palabras sueltas, pero `buscadorDe` es el que usan
+     la pestaña de INVENTARIO —la de al lado— y el buscador global, y trae dos
+     cosas más: convierte los guiones bajos en espacios («no_aparece» se
+     encuentra escribiendo «no aparece») y añade el esqueleto fonético quechua,
+     con el que «mujunacuy» encuentra «Mujunakuy».
+     Dos pestañas de la misma sección con dos ideas distintas de «parecido» es
+     exactamente cómo se acaba con una que encuentra un equipo y otra que no.
+     ══════════════════════════════════════════════════════════════════════ */
+  const [q, setQ] = useState("");
+  const hayFiltro = !!q.trim();
+
+  /* El pajar de cada fila, armado una vez y no en cada tecla. `pal` es el
+     mismo que usa el inventario: quita los nulos —que en una plantilla se
+     convierten en el texto «undefined» y se quedan dentro— y cambia los
+     guiones bajos por espacios. */
+  const pajares = useMemo(() => new Map(items.map(i =>
+    [i.id, pal(i.per, i.folio, i.nombre, i.categoria, i.subcategoria, i.proy, i.kit)])), [items]);
+  const coincide = useMemo(() => buscadorDe(q), [q]);
+
   /* Agrupado por PERSONA y no plano: la pregunta que se hace de verdad no es
      «dónde está la A-090», es «qué se llevó Michel» —y a la vuelta, qué tiene
      que devolver—. Doce filas sueltas obligan a leerlas todas para
-     reconstruir eso a ojo. */
+     reconstruir eso a ojo.
+     ⚠ Cada grupo lleva DOS listas: `items` es todo lo que esa persona tiene
+     —lo que se imprime, que no puede depender de lo que haya escrito en una
+     caja de búsqueda— y `visibles` es lo que pasa el filtro, que es lo que se
+     pinta y lo que marca la casilla de la cabecera. */
   const grupos = useMemo(() => {
-    const m = new Map<string, { perId: string; per: string; foto?: string | null; items: UsoItem[] }>();
+    const m = new Map<string, { perId: string; per: string; foto?: string | null; items: UsoItem[]; visibles: UsoItem[] }>();
     items.forEach(it => {
-      const g = m.get(it.perId) || { perId: it.perId, per: it.per, foto: it.foto, items: [] };
-      g.items.push(it); m.set(it.perId, g);
+      const g = m.get(it.perId) || { perId: it.perId, per: it.per, foto: it.foto, items: [], visibles: [] };
+      g.items.push(it);
+      if (!hayFiltro || coincide(pajares.get(it.id) || "")) g.visibles.push(it);
+      m.set(it.perId, g);
     });
-    return [...m.values()];
-  }, [items]);
+    /* Con filtro, quien no tiene nada que enseñar no ocupa sitio. Sin filtro
+       no se cae nadie: un grupo vacío no existe. */
+    return [...m.values()].filter(g => g.visibles.length > 0);
+  }, [items, hayFiltro, coincide, pajares]);
+
+  const nVisibles = useMemo(() => grupos.reduce((a, g) => a + g.visibles.length, 0), [grupos]);
+  /** Los ids que el filtro deja ver. Sirve para decir cuántos de los marcados
+   *  quedaron fuera de la pantalla. */
+  const idsVisibles = useMemo(
+    () => new Set(grupos.flatMap(g => g.visibles.map(i => i.id))), [grupos]);
 
   /* La selección se lee contra lo que EXISTE. Después de devolver, el servidor
      manda la lista sin esos préstamos; si la selección se guardara tal cual, la
      barra seguiría ofreciendo devolver algo que ya volvió. */
   const vivos = useMemo(() => new Set(items.map(i => i.id)), [items]);
   const sel = useMemo(() => [...marcados].filter(id => vivos.has(id)), [marcados, vivos]);
+  const ocultosMarcados = useMemo(
+    () => (hayFiltro ? sel.filter(id => !idsVisibles.has(id)).length : 0),
+    [hayFiltro, sel, idsVisibles]);
   const marcado = (id: string) => marcados.has(id);
 
   const alterna = (id: string) =>
@@ -184,12 +234,66 @@ export default function EnUsoAhora({ items }: { items: UsoItem[] }) {
     <div className="card">
       <div className="panel-h" style={{ color: "var(--yellow)" }}>🤝 En uso ahora — quién tiene qué</div>
 
+      {/* ⚠ Con menos de diez fuera no hay caja: se ven todas de un vistazo y
+          una caja que dice «busca entre las 4» es ruido. Con cero sería peor —
+          «busca entre las 0» encima de «no hay nada fuera» se lee como avería.
+          ⚠⚠ PERO SIEMPRE QUE HAYA FILTRO, cueste lo que cueste. Sin el
+          `|| hayFiltro` se llegaba a un encierro: doce fuera, buscas «Katy»,
+          devuelves los siete suyos, y al refrescar quedan cinco → la caja se
+          desmonta CON EL TEXTO DENTRO, `q` sigue valiendo «Katy», el filtro
+          sigue aplicándose y el panel esconde los cinco que quedan diciendo
+          «nada coincide». Sin input, sin ✕ y sin Escape —vive en el input— no
+          se salía sin recargar. Una caja que se lleva su propio botón de
+          apagado es peor que no tenerla. */}
+      {(items.length >= 10 || hayFiltro) && (
+        <div className="clx-buscar" role="search">
+          <span className="clx-lupa" aria-hidden="true">🔍</span>
+          <input
+            value={q}
+            onChange={e => setQ(e.target.value)}
+            /* Sin `autoFocus`: este panel está a media pantalla y el navegador
+               saltaría hasta él al cargar, moviendo lo que se estaba mirando.
+               Escape la vacía, que es lo que se busca al equivocarse. */
+            onKeyDown={e => { if (e.key === "Escape") { setQ(""); e.currentTarget.blur(); } }}
+            placeholder={`Busca entre los ${items.length} que están fuera: persona, folio, equipo, proyecto…`}
+            aria-label="Buscar entre los equipos que están fuera"
+            className="clx-input" />
+          {!!q && (
+            <button type="button" className="clx-x" onClick={() => setQ("")}
+              aria-label="Limpiar la búsqueda" title="Limpiar">✕</button>
+          )}
+        </div>
+      )}
+
+      {/* El recuento SIEMPRE que haya filtro, también cuando es cero: «nada se
+          llama así» es una respuesta; un panel en blanco es un fallo aparente. */}
+      {hayFiltro && (
+        <div className="clx-cuenta" aria-live="polite">
+          {nVisibles === 0
+            ? <>Nada de lo que está fuera coincide con «{q.trim()}». Se busca por
+                <b> persona, folio, equipo, categoría, proyecto o kit</b> — no por
+                estado ni por fecha.</>
+            : <>{nVisibles} de {items.length} · en {grupos.length} persona{grupos.length === 1 ? "" : "s"}</>}
+        </div>
+      )}
+
       {/* La barra solo aparece con algo marcado: una barra vacía permanente
           ocupa sitio y enseña a no mirarla. */}
       {sel.length > 0 && (
         <div className="eq-uso-barra">
           <b style={{ fontSize: 12.5 }}>✔ {sel.length} marcado{sel.length === 1 ? "" : "s"}</b>
-          <span style={{ color: "var(--dim)", fontSize: 11.5 }}>de {items.length} en manos de alguien</span>
+          {/* ⚠ CUÁNTOS DE ELLOS NO SE VEN. La selección sobrevive al filtro a
+              propósito —se marca a Katy, se busca a Piero y se devuelve todo
+              junto en la puerta— pero entonces «Devolver los 5» cierra dos
+              préstamos que no están en pantalla. Y en el caso peor —filtro sin
+              resultados— la pantalla decía «nada coincide» y encima ofrecía
+              devolver cinco de un clic. Eso no es memoria, es una trampa: se
+              dice, y en ámbar. */}
+          {ocultosMarcados > 0
+            ? <span style={{ color: "var(--yellow)", fontSize: 11.5 }}>
+                · {ocultosMarcados} fuera de la búsqueda
+              </span>
+            : <span style={{ color: "var(--dim)", fontSize: 11.5 }}>de {items.length} en manos de alguien</span>}
           <span style={{ flex: 1 }} />
           <DevolverLote prestamoIds={sel} min={1}
             etiqueta={`↩ Devolver ${sel.length === 1 ? "el marcado" : `los ${sel.length} marcados`}`}
@@ -200,11 +304,16 @@ export default function EnUsoAhora({ items }: { items: UsoItem[] }) {
       )}
 
       {grupos.map(g => {
-        const ids = g.items.map(i => i.id);
+        const ids = g.visibles.map(i => i.id);
         const nMarc = ids.filter(id => marcados.has(id)).length;
         const todos = nMarc === ids.length;
-        const abierto = abiertos.has(g.perId);
-        const proys = [...new Set(g.items.map(i => i.proy).filter(Boolean))] as string[];
+        /* ⚠ CON FILTRO, ABIERTO. Si al buscar se respetara el plegado, teclear
+           «A-172» dejaría el resultado ESCONDIDO dentro de una cabecera
+           cerrada y la pantalla parecería decir que no hay nada. Es la misma
+           regla que `ListaPeliculas`: cuando hay filtro no hay grupos, hay
+           coincidencias. */
+        const abierto = hayFiltro || abiertos.has(g.perId);
+        const proys = [...new Set(g.visibles.map(i => i.proy).filter(Boolean))] as string[];
         return (
           <div key={g.perId} className="eq-uso-grupo">
             <div className="eq-uso-h">
@@ -215,15 +324,27 @@ export default function EnUsoAhora({ items }: { items: UsoItem[] }) {
                   fila lleva dentro un enlace a la persona y una casilla, y
                   hacerla toda pulsable convertiría cada intento de marcar en
                   un despliegue. */}
-              <button className="dato-btn eq-uso-plegar" onClick={() => alternarGrupo(g.perId)}
-                title={abierto ? "Plegar" : `Ver los ${ids.length} de ${g.per}`}>
+              {/* ⚠ Con filtro está DESACTIVADO, no solo inerte. Antes seguía
+                  llamando a `alternarGrupo`: el clic no hacía nada visible —el
+                  `hayFiltro ||` gana— pero apuntaba el grupo en `abiertos`, y
+                  al borrar el filtro aparecía abierto. O sea que el botón no
+                  obedecía cuando se le pedía y obedecía cuando ya no. */}
+              <button className="dato-btn eq-uso-plegar" disabled={hayFiltro}
+                onClick={() => { if (!hayFiltro) alternarGrupo(g.perId); }}
+                title={hayFiltro ? "Con la búsqueda puesta, los grupos van abiertos"
+                  : abierto ? "Plegar" : `Ver los ${ids.length} de ${g.per}`}>
                 {abierto ? "▾" : "▸"}
               </button>
               <Link href={`/entidad/persona/${g.perId}`} className="eq-uso-per">
                 {avatar(g.foto)} {g.per}
               </Link>
               <span style={{ color: "var(--dim)", fontSize: 11.5 }}>
-                {ids.length} equipo{ids.length === 1 ? "" : "s"}
+                {/* Con filtro, «3 de 24»: decir «3 equipos» de quien tiene
+                    veinticuatro es falso, y encima se lee como que devolvió
+                    los otros veintiuno. */}
+                {hayFiltro && g.visibles.length < g.items.length
+                  ? <>{g.visibles.length} de {g.items.length}</>
+                  : <>{ids.length} equipo{ids.length === 1 ? "" : "s"}</>}
                 {nMarc > 0 && <span style={{ color: "var(--accent)" }}> · {nMarc} marcado{nMarc === 1 ? "" : "s"}</span>}
               </span>
               {/* Con el grupo plegado, PARA QUÉ los tiene. Es lo que convierte
@@ -243,7 +364,11 @@ export default function EnUsoAhora({ items }: { items: UsoItem[] }) {
                   PLEGADO —imprime `g.items`, no lo que se vea—, porque si
                   obligara a desplegar primero sería un paso que se olvida el
                   día que hay prisa, que es justo el día que se sale a rodar. */}
-              <button className="dato-btn eq-uso-print" title={`Imprimir la lista de los ${ids.length} de ${g.per}`}
+              {/* ⚠ Imprime `g.items`: los de la persona, no los que el filtro
+                  deje ver. El papel se lleva a una zona sin señal y allá no
+                  hay caja de búsqueda que explique por qué faltan veintiuno. */}
+              <button className="dato-btn eq-uso-print"
+                title={`Imprimir la lista de los ${g.items.length} de ${g.per}`}
                 onClick={() => setImprimiendo(g.perId)}>🖨</button>
             </div>
 
@@ -342,7 +467,7 @@ export default function EnUsoAhora({ items }: { items: UsoItem[] }) {
                  y los tres eran el mismo kit; la lista los daba como tres cosas
                  sin relación, así que a la vuelta había que acordarse de que
                  iban juntos. */
-              return subgrupos(g.items).map(sg => {
+              return subgrupos(g.visibles).map(sg => {
                 /* Fragment con clave: sin ella React trata este array anidado
                    como un hijo sin `key` y llena la consola de avisos. */
                 if (!sg.kitId) return <Fragment key="_sueltos">{tramo(sg.items)}</Fragment>;
@@ -354,7 +479,17 @@ export default function EnUsoAhora({ items }: { items: UsoItem[] }) {
                    pasa a «3 de 6» hacia atrás. Es a propósito —lo que importa
                    al recibir es qué falta ahora—, pero conviene saberlo. */
                 const total = sg.items[0]?.kitTotal || sg.items.length;
-                const cojo = sg.items.length < total;
+                /* ⚠ «Cojo» se mide contra lo que esa persona TIENE FUERA, no
+                   contra lo que el filtro deja ver. Con `sg.items.length` a
+                   secas, buscar un folio dejaba una pieza visible de un kit de
+                   dieciocho y la cabecera gritaba «1 de 18 piezas» en ámbar:
+                   quien recibe en la puerta sale a buscar diecisiete que nunca
+                   salieron. El aviso es accionable y por eso no puede
+                   dispararse por teclear. */
+                const salieron = sg.kitId
+                  ? g.items.filter(i => i.kitId === sg.kitId).length
+                  : sg.items.length;
+                const cojo = salieron < total;
                 return (
                   <div key={sg.kitId} className="eq-uso-kit">
                     <div className="eq-uso-kit-h">
@@ -365,8 +500,16 @@ export default function EnUsoAhora({ items }: { items: UsoItem[] }) {
                       {/* Un kit que salió cojo lo dice: si no, al devolverlo
                           nadie se entera de que hay otra pieza que cerrar. */}
                       <span style={{ fontSize: 11, color: cojo ? "var(--yellow)" : "var(--green)" }}>
-                        {cojo ? `${sg.items.length} de ${total} piezas` : `completo · ${total} piezas`}
+                        {cojo ? `${salieron} de ${total} piezas` : `completo · ${total} piezas`}
                       </span>
+                      {/* Y si el filtro esconde piezas del kit, se dice aparte:
+                          el número de arriba habla del kit, éste de la
+                          pantalla. Mezclarlos era el fallo. */}
+                      {hayFiltro && sg.items.length < salieron && (
+                        <span style={{ fontSize: 11, color: "var(--dim)" }}>
+                          · viendo {sg.items.length}
+                        </span>
+                      )}
                     </div>
                     {tramo(sg.items)}
                   </div>
