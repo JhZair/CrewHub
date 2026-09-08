@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "@/components/Enlace";
 import Avatar from "@/components/Avatar";
 import { quitarAsignacion } from "@/app/actions";
+import CajaBuscar from "@/components/CajaBuscar";
 import { buscadorDe, pal } from "@/lib/buscar";
 import { META_MOTIVO, MOTIVOS_ELEGIBLES, type MotivoFin } from "@/lib/asignaciones";
 
@@ -106,13 +107,9 @@ export default function Asignados({ items }: { items: AsigItem[] }) {
           quedaba vacía, sin input, sin ✕ y sin forma de salir salvo recargar.
           Es el mismo encierro que hubo en «En uso ahora». */}
       {(items.length >= 8 || hayFiltro) && (
-        <div className="clx-buscar" style={{ marginBottom: 10 }}>
-          <input value={q} onChange={e => setQ(e.target.value)}
-            placeholder="🔎 Buscar por persona, folio, nombre, categoría o nota…" />
-          {hayFiltro && (
-            <button type="button" onClick={() => setQ("")} title="Limpiar (Esc)">✕</button>
-          )}
-        </div>
+        <CajaBuscar valor={q} alCambiar={setQ}
+          placeholder={`Busca entre los ${items.length} que están a cargo de alguien: persona, folio, equipo, nota…`}
+          etiqueta="Buscar entre los equipos asignados" />
       )}
 
       {grupos.length === 0 && (

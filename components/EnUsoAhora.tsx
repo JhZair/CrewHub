@@ -5,6 +5,7 @@ import BotonDevolver from "@/components/BotonDevolver";
 import DevolverLote from "@/components/DevolverLote";
 import ChipPiezas, { type PiezaMontada } from "@/components/ChipPiezas";
 import HojaEquipos from "@/components/HojaEquipos";
+import CajaBuscar from "@/components/CajaBuscar";
 import { buscadorDe, pal } from "@/lib/buscar";
 
 /* EN USO AHORA — quién tiene qué, y cómo se devuelve rápido.
@@ -246,23 +247,9 @@ export default function EnUsoAhora({ items }: { items: UsoItem[] }) {
           se salía sin recargar. Una caja que se lleva su propio botón de
           apagado es peor que no tenerla. */}
       {(items.length >= 10 || hayFiltro) && (
-        <div className="clx-buscar" role="search">
-          <span className="clx-lupa" aria-hidden="true">🔍</span>
-          <input
-            value={q}
-            onChange={e => setQ(e.target.value)}
-            /* Sin `autoFocus`: este panel está a media pantalla y el navegador
-               saltaría hasta él al cargar, moviendo lo que se estaba mirando.
-               Escape la vacía, que es lo que se busca al equivocarse. */
-            onKeyDown={e => { if (e.key === "Escape") { setQ(""); e.currentTarget.blur(); } }}
-            placeholder={`Busca entre los ${items.length} que están fuera: persona, folio, equipo, proyecto…`}
-            aria-label="Buscar entre los equipos que están fuera"
-            className="clx-input" />
-          {!!q && (
-            <button type="button" className="clx-x" onClick={() => setQ("")}
-              aria-label="Limpiar la búsqueda" title="Limpiar">✕</button>
-          )}
-        </div>
+        <CajaBuscar valor={q} alCambiar={setQ}
+          placeholder={`Busca entre los ${items.length} que están fuera: persona, folio, equipo, proyecto…`}
+          etiqueta="Buscar entre los equipos que están fuera" />
       )}
 
       {/* El recuento SIEMPRE que haya filtro, también cuando es cero: «nada se

@@ -1,5 +1,6 @@
 "use client";
-import { useMemo, useRef, useState } from "react";
+import CajaBuscar from "@/components/CajaBuscar";
+import { useMemo, useState } from "react";
 import Link from "@/components/Enlace";
 import Plegable from "@/components/Plegable";
 import { coincide, normalizar } from "@/lib/texto";
@@ -111,7 +112,6 @@ export default function ListaPeliculas({
   rotulos: RotulosLista;
 }) {
   const [q, setQ] = useState(inicial || "");
-  const caja = useRef<HTMLInputElement>(null);
   const hayFiltro = !!q.trim();
 
   const todas = useMemo(() => [...filas, ...vacias], [filas, vacias]);
@@ -178,24 +178,9 @@ export default function ListaPeliculas({
 
   return (
     <>
-      <div className="clx-buscar" role="search">
-        <span className="clx-lupa" aria-hidden="true">🔍</span>
-        <input
-          ref={caja}
-          value={q}
-          onChange={e => recordar(e.target.value)}
-          /* ⚠ Sin `autoFocus`: esta caja está a media pantalla y el navegador
-             saltaría hasta ella al cargar, moviendo lo que se estaba mirando.
-             Escape la vacía, que es lo que se busca al equivocarse. */
-          onKeyDown={e => { if (e.key === "Escape") { recordar(""); e.currentTarget.blur(); } }}
-          placeholder={`Busca entre las ${todas.length} ${rotulos.queBusca} por nombre…`}
-          aria-label="Buscar película por nombre"
-          className="clx-input" />
-        {!!q && (
-          <button type="button" className="clx-x" onClick={() => { recordar(""); caja.current?.focus(); }}
-            aria-label="Limpiar la búsqueda" title="Limpiar">✕</button>
-        )}
-      </div>
+      <CajaBuscar valor={q} alCambiar={recordar}
+        placeholder={`Busca entre las ${todas.length} ${rotulos.queBusca} por nombre…`}
+        etiqueta="Buscar película por nombre" />
 
       {hayFiltro ? (
         <>
