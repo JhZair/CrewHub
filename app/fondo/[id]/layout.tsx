@@ -6,7 +6,7 @@ import Volver from "@/components/Volver";
 import Realtime from "@/components/Realtime";
 import BotonAlarma from "@/components/BotonAlarma";
 import CeldaFondo from "@/components/CeldaFondo";
-import PestanasFondo from "@/components/PestanasFondo";
+import Pestanas from "@/components/Pestanas";
 import { alarmasVivas } from "@/app/actions";
 import {
   traerFondo, traerPerfilActual, traerPerfiles, datosCabecera, cifrasCabecera,
@@ -202,7 +202,7 @@ export default async function FondoLayout(
           primera pregunta no es cuánto hay, es QUÉ PASÓ —qué nos dijeron, qué
           contestamos, cuánto llevamos callados—, y eso es lo que decide si hay
           que mirar el dinero hoy o el mes que viene. */}
-      <PestanasFondo items={[
+      <Pestanas items={[
         { href: base, label: "📍 Vida del fondo", n: c.nVida || null, avisos: c.avisoVida },
         { href: `${base}/financiera`, label: "💰 Financiera", avisos: c.avisosFin },
         { href: `${base}/audiovisual`, label: "🎥 Audiovisual" },

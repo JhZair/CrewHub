@@ -444,7 +444,7 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
                       la abre con el kit ya elegido. */}
                   {e.libres.length > 0 && (
                     <Link className="btn btn-ghost" style={{ padding: "3px 10px", fontSize: 11.5 }}
-                      href={`/equipamiento?kit=${k.id}#entregar`}>🤝 Entregar</Link>
+                      href={`/equipamiento/entrega?kit=${k.id}`}>🤝 Entregar</Link>
                   )}
                   <button className="dato-btn" title="Editar el kit"
                     onClick={() => setEditando(editandoEste ? null : k.id)}>✎</button>

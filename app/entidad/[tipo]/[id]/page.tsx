@@ -3362,7 +3362,7 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                 return (
                   <div key={k.id} style={{ padding: "6px 0", borderTop: "1px solid var(--border)" }}>
                     <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
-                      <Link href={`/equipamiento?kit=${k.id}#entregar`} style={{ fontSize: TXT.micro, fontWeight: 700, color: "var(--violet)" }}>
+                      <Link href={`/equipamiento/entrega?kit=${k.id}`} style={{ fontSize: TXT.micro, fontWeight: 700, color: "var(--violet)" }}>
                         📦 {k.nombre}
                       </Link>
                       {k.uso && <span className="badge kit-uso">{k.uso}</span>}

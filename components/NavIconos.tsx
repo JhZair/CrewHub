@@ -301,6 +301,15 @@ export default function NavIconos() {
      también son «estar ahí». */
   const enSeccion = (s: (typeof SECCIONES)[number]) =>
     pathname === s.ruta
+    /* ⚠ Y sus rutas hermanas. 🎥 equipos se partió en pestañas —inventario,
+       entrega, combos y kits— y con la comparación exacta el icono se apagaba
+       en dos de las tres: el botón «dónde estoy» volvía a decir «Secciones»
+       estando dentro de la sección.
+       Es el mismo despiste que este archivo ya tiene apuntado dos veces: al
+       repartir /guion y /clearance en rutas se copió el reparto y no esta
+       línea. Con el prefijo, cualquier sección que se parta queda cubierta
+       sola. */
+    || pathname.startsWith(`${s.ruta}/`)
     || pathname.startsWith(`/entidad/${s.tipo}/`)
     // El repositorio es la única sección cuya ficha no vive en /entidad
     || (s.tipo === "objeto" && pathname.startsWith("/objeto/"))

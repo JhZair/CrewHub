@@ -17,11 +17,20 @@ import { siguientesFolios } from "@/lib/compras";
  */
 
 const revalidar = (_compraId?: string) => {
-  /* Los combos viven dentro de /equipamiento: no hay listado propio que
+  /* Los combos viven dentro de 🎥 equipos: no hay listado propio que
      revalidar. Lo tuvo media hora y sobraba —nadie piensa «voy a compras»,
      piensa «¿de dónde salió esta radio?», y eso se pregunta desde los
-     equipos—. */
+     equipos—.
+     ⚠ Las DOS pestañas: los combos se pintan en «Combos y kits», pero cambiar
+     el total de una compra mueve el valor del inventario, que se pinta en la
+     otra. Revalidar solo una dejaba la cifra vieja al volver. */
   revalidatePath("/equipamiento");
+  revalidatePath("/equipamiento/combos");
+  /* Y la de entrega: `altaEnLote` crea equipos DISPONIBLES y `asignarACompra`
+     los mueve de combo. Las dos cosas cambian lo que se ofrece al entregar, y
+     sin esta línea dar de alta un lote y saltar a Entrega enseñaba la lista sin
+     las unidades nuevas. */
+  revalidatePath("/equipamiento/entrega");
   /* Ya no hay ficha de compra que revalidar: el combo se mira con una vista
      al vuelo, que pide sus datos al abrirse. */
 };

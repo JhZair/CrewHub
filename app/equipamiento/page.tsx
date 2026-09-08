@@ -1,16 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
-import Volver from "@/components/Volver";
+import { equiposGordos, enManosAhora, cartelesEquipo, kitsCrudos, comprasCombo,
+  cartelPorEquipo, quienTieneEquipo, contextoKits, un1 } from "@/lib/equipamientoDatos";
 import BotonComprobar from "@/components/BotonComprobar";
-import EntregaLote from "@/components/EntregaLote";
-import PanelKits from "@/components/PanelKits";
-import PanelCombos from "@/components/PanelCombos";
 import FilasEquipo from "@/components/FilasEquipo";
 import PonerSubcategoria from "@/components/PonerSubcategoria";
 import { fechaDiaLima } from "@/lib/fechas";
 import { valorInventario, soles } from "@/lib/compras";
 import { ESTADOS_EQUIPO, NECESITA_ATENCION, FUERA_DE_INVENTARIO, metaEstado, txtEstadoEq, tocaRonda, enRonda, DIAS_RONDA } from "@/lib/estadosEquipo";
-import type { KitVista } from "@/lib/kits";
-import EnUsoAhora, { type UsoItem } from "@/components/EnUsoAhora";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import { buscadorDe, pal } from "@/lib/buscar";
 import { completitud, AYUDA_CATEGORIA, CATEGORIAS_EQUIPO, SUBCATS_EQUIPO } from "@/lib/entidades";
@@ -72,7 +68,9 @@ const TOPE = 200;
 const ABIERTOS = ["abierta", "en_progreso", "seguimiento"];
 
 export default async function Equipamiento({ searchParams }: {
-  searchParams: { q?: string; e?: string; c?: string; sc?: string; f?: string; ronda?: string; kit?: string; act?: string };
+  /* ⚠ Sin `kit`: «🤝 Entregar» de un kit ahora aterriza en
+     /equipamiento/entrega?kit=…, que es donde vive el panel que lo entiende. */
+  searchParams: { q?: string; e?: string; c?: string; sc?: string; f?: string; ronda?: string; act?: string };
 }) {
   const q = (searchParams?.q || "").trim();
   const e = searchParams?.e || "";
@@ -80,7 +78,6 @@ export default async function Equipamiento({ searchParams }: {
   const f = searchParams?.f || "";
   const sc = searchParams?.sc || "";   // subcategoría
   const ronda = searchParams?.ronda === "1";
-  const kitPre = searchParams?.kit || "";   // llegó desde «🤝 Entregar» de un kit
   const listar = !!(q || e || c || sc || f || ronda);
 
   /* CUÁNTA ACTIVIDAD SE TRAE. Por defecto lo de ahora —ocho equipos, cinco
@@ -98,12 +95,15 @@ export default async function Equipamiento({ searchParams }: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: eqs }, { data: enManos, error: eManos }, { data: vincs }, { data: media }, comsBita, comsUso, usosRec, { data: comBita }, { data: prestAll }, personasRaw, proyectosRaw, { data: kitsRaw, error: eKits }, { data: kitEqs }, { data: comprasRaw }, usosFin] = await Promise.all([
-    // `*`: para calcular la completitud de la ficha de cada equipo.
-    supabase.from("equipamiento").select("*").order("folio"),
-    supabase.from("equipo_prestamos")
-      .select("id,desde,kit_id,tipo,equipo:equipamiento(id,folio,nombre,categoria,subcategoria,valor_compra,compra_id),persona:personas(id,nombre,alias,foto_url),proy:proyectos(id,nombre),entrego:perfiles!equipo_prestamos_entregado_por_fkey(id,nombre,avatar_url)")
-      .is("hasta", null).order("desde", { ascending: false }),
+  /* ⚠ Los cinco primeros salen de `lib/equipamientoDatos`, que los comparte
+     con el layout y con las otras dos pestañas y los cachea por render. Aquí
+     estaban escritos a mano, así que la misma tabla se pedía en cada pestaña
+     con un `select` ligeramente distinto — y eso es como acaban dos pantallas
+     contando cosas distintas sobre las mismas filas. */
+  const [{ data: eqs }, manos, media, kitsRaw, { data: comprasRaw },
+         { data: vincs }, comsBita, comsUso, usosRec, { data: comBita },
+         { data: prestAll }, usosFin] = await Promise.all([
+    equiposGordos(), enManosAhora(), cartelesEquipo(), kitsCrudos(), comprasCombo(),
     supabase.from("publicacion_vinculos")
       /* ⚠ EL CONTADOR 💬 YA NO SE CUENTA A MANO.
        Aquí había una consulta que se traía la tabla `comentarios` ENTERA —solo
@@ -115,8 +115,6 @@ export default async function Equipamiento({ searchParams }: {
        `comentarios(count)` es un agregado: lo cuenta Postgres y vuelve un
        número por fila. Ni techo que sortear, ni una consulta más. */
       .select("entidad_id,publicacion_id,pub:publicaciones(estado,comentarios(count))").eq("entidad_tipo", "equipamiento"),
-    // Carteles (miniatura) de cada equipo, para las listas y las tarjetas.
-    supabase.from("entidad_media").select("entidad_id,cartel_url").eq("entidad_tipo", "equipamiento"),
     // Última actividad — tres fuentes que se fusionan y ordenan por fecha:
     //  (a) comentarios de la bitácora general (equipamiento_id),
     //  (b) comentarios de un uso concreto (prestamo_id),
@@ -139,20 +137,6 @@ export default async function Equipamiento({ searchParams }: {
     supabase.from("comentarios").select("equipamiento_id,prestamo_id")
       .or("equipamiento_id.not.is.null,prestamo_id.not.is.null"),
     supabase.from("equipo_prestamos").select("id,equipamiento_id"),
-    /* Catálogos para la entrega en lote: a quién y para qué proyecto. Personas
-       —no perfiles—: quien se lleva una cámara puede no tener cuenta. */
-    supabase.from("personas").select("id,nombre,alias,tipo").order("nombre"),
-    supabase.from("proyectos").select("id,nombre").order("nombre"),
-    /* Los kits: qué sale junto. Dos tablas que llevaban un año en el schema
-       sin una sola línea que las nombrara (ver db/kits.sql). */
-    supabase.from("kits")
-      .select("id,nombre,uso,descripcion,retirado_en,portada_equipo_id,autor:perfiles(nombre,avatar_url,color)")
-      .order("nombre"),
-    supabase.from("kit_equipos").select("kit_id,equipamiento_id"),
-    /* Los combos de compra: donde vive el precio de lo que se compró junto.
-       Es lo que hace que el valor del inventario deje de ir corto. */
-    supabase.from("compras").select("id,codigo,nombre,proveedor,total,moneda,fecha,comprobante_url,link,nota")
-      .order("fecha", { ascending: false, nullsFirst: false }),
     /* LO ÚLTIMO QUE VOLVIÓ. Va en una consulta aparte de `usosRec` porque un
        préstamo tiene DOS fechas y una consulta solo puede ordenarse por una:
        ordenando por `desde` se traen las salidas más recientes, y una cámara
@@ -166,136 +150,54 @@ export default async function Equipamiento({ searchParams }: {
       .select("id,desde,hasta,equipo:equipamiento(id,folio,nombre),persona:personas(id,nombre,alias)")
       .not("hasta", "is", null).order("hasta", { ascending: false }).limit(ACT_TRAE),
   ]);
-  const personasCat = ((personasRaw as any)?.data || []).map((x: any) =>
-    ({ ...x, nombre: x.alias ? `${x.nombre} · ${x.alias}` : x.nombre }));
-  const proyectosCat = (proyectosRaw as any)?.data || [];
-  const un1 = (v: any) => (Array.isArray(v) ? v[0] : v);
-  const cartelPorEq = new Map<string, string>();
-  (media || []).forEach((m: any) => { if (m.cartel_url) cartelPorEq.set(m.entidad_id, m.cartel_url); });
+  /* ⚠ Los dos errores se MIRAN, y esto se dejó fuera al partir la pantalla.
+     El aviso de «no se pudo leer quién tiene qué» se mudó entero a la pestaña
+     de entrega… y la CIFRA que depende de él se quedó aquí: con la consulta
+     caída, esta pantalla decía «0 · en manos de alguien ahora» sin una palabra
+     de aviso, y de paso todas las filas perdían el «· KatyP» de su estado.
+     Un cero sobre un inventario que está en la calle es la mentira que más
+     caro sale — lo dice el layout tres centímetros más arriba. */
+  const eManos = (manos as any)?.error?.message || null;
+  const eKits = (kitsRaw.kits as any)?.error?.message || null;
+  const enManos = manos.data || [];
+  const cartelPorEq = cartelPorEquipo(media);
 
-  /* ── KITS ──
-     `equipoIds` en el orden en que se armó el kit, no el de la tabla puente:
-     un kit se lee como una lista de empaque y el orden es parte de lo que
-     alguien decidió. */
-  const eqsDeKit = new Map<string, string[]>();
-  (kitEqs || []).forEach((r: any) =>
-    eqsDeKit.set(r.kit_id, [...(eqsDeKit.get(r.kit_id) || []), r.equipamiento_id]));
-  const kits: KitVista[] = (kitsRaw || []).map((k: any) => ({
-    id: k.id, nombre: k.nombre, uso: k.uso, descripcion: k.descripcion,
-    retirado: !!k.retirado_en, equipoIds: eqsDeKit.get(k.id) || [],
-    portadaId: k.portada_equipo_id || null,
-    /* Objeto o arreglo según cómo PostgREST resuelva la relación. Leer solo
-       una de las dos formas deja el autor en blanco sin que nada falle. */
-    autor: un1(k.autor) || null,
-  }));
-  const kitPorId = new Map(kits.map(k => [k.id, k]));
+  /* Los kits y en qué kits está cada equipo: la misma función que usan la
+     pestaña de combos y kits y el layout. La fila del inventario solo pinta
+     sus nombres, pero quién está en qué kit no puede decidirse dos veces. */
+  const { kitsPorEq } = contextoKits(kitsRaw);
 
-  /* Quién tiene cada equipo AHORA. Sin esto, el panel de kits solo puede
-     decir «no disponible», que no sirve para nada: lo que hace falta saber
-     es a quién llamar. */
-  const quienTiene = new Map<string, string>();
-  (enManos || []).forEach((p: any) => {
-    const eq = un1(p.equipo), per = un1(p.persona);
-    if (eq?.id) quienTiene.set(eq.id, per?.alias || per?.nombre || "alguien");
-  });
-  /* Cada combo con lo que trajo. Se cuenta aquí, sobre `eqs`, que ya está en
-     memoria: una consulta por combo serían N viajes para un número. */
-  const porCombo = new Map<string, any[]>();
-  (eqs || []).forEach((e: any) => {
-    if (e.compra_id) porCombo.set(e.compra_id, [...(porCombo.get(e.compra_id) || []), e]);
-  });
-  const combos = ((comprasRaw as any) || []).map((c: any) => {
-    const us = porCombo.get(c.id) || [];
-    return {
-      ...c,
-      nUnidades: us.length,
-      /* De qué es lo que trajo, sin repetir. Se calcula aquí sobre `eqs`, que
-         ya está en memoria: una consulta por combo serían N viajes para tres
-         palabras. */
-      categorias: [...new Set(us.map((u: any) => (u.categoria || "").trim()).filter(Boolean))],
-      /* La foto de la primera unidad que tenga una. Un combo no tiene imagen
-         propia —no es una cosa, es una compra— pero SÍ tiene cara: la del
-         aparato que se compró. «C-004 DJI Air 3S Fly More» se reconoce por el
-         drone mucho antes que por el código. */
-      cartel: us.map((u: any) => cartelPorEq.get(u.id)).find(Boolean) || null,
-      nVivas: us.filter((u: any) => !FUERA_DE_INVENTARIO.includes(u.estado)).length,
-      nProblema: us.filter((u: any) => NECESITA_ATENCION.includes(u.estado) || u.estado === "de_baja").length,
-    };
-  });
+  /* Quién tiene cada equipo AHORA: la fila lo dice al lado del estado. */
+  const quienTiene = quienTieneEquipo(manos);
 
-  /* De qué combo y de qué kits es cada equipo, para la lista. Se arma sobre
-     lo que ya está en memoria —`combos` y `eqsDeKit`—: una consulta por fila
-     serían doscientos viajes para dos etiquetas. */
-  /* CUÁNTO LE TOCA A CADA PIEZA de un combo. Se calcula una vez por combo,
-     aquí, donde se conocen TODAS sus unidades: el total de la boleta menos lo
-     que ya está valorado pieza a pieza, repartido entre las que no tienen
-     precio propio. Una pieza sola no puede calcularlo —no conoce a sus
-     hermanas— y por eso viaja ya resuelto. */
-  const porPiezaDeCombo = new Map<string, number>();
-  combos.forEach((c: any) => {
-    const us = porCombo.get(c.id) || [];
-    const total = Number(c.total) || 0;
-    if (!total || !us.length) return;
-    const yaValorado = us.reduce((a: number, u: any) => a + (Number(u.valor_compra) || 0), 0);
-    const sinPrecio = us.filter((u: any) => !(Number(u.valor_compra) > 0)).length;
-    if (!sinPrecio) return;
-    porPiezaDeCombo.set(c.id, Math.max(0, total - yaValorado) / sinPrecio);
-  });
-
+  /* ── DE QUÉ COMPRA VINO CADA EQUIPO ──
+     Lo único que esta lista necesita del combo: su código, su nombre y su
+     total, para la etiqueta 🧾 de la fila.
+     ⚠ Aquí se armaban además `nUnidades`, `categorias`, `cartel`, `nVivas` y
+     `nProblema`. Los leía `PanelCombos`, que ahora vive en su pestaña y los
+     calcula allí sobre las mismas filas. Dejarlos aquí sería recorrer
+     quinientos equipos en cada visita para cinco campos que nadie mira. */
   const comboPorEq = new Map<string, any>();
-  (eqs || []).forEach((x: any) => {
-    if (x.compra_id) {
-      const cb = combos.find((k: any) => k.id === x.compra_id);
+  {
+    const porId = new Map(((comprasRaw as any) || []).map((c: any) => [c.id, c]));
+    (eqs || []).forEach((x: any) => {
+      if (!x.compra_id) return;
+      const cb = porId.get(x.compra_id);
       if (cb) comboPorEq.set(x.id, cb);
-    }
-  });
-  /* Con el id, no solo el nombre: el nombre basta para pintar el chip, pero
-     para agrupar hace falta poder EXCLUIR el kit que se está mirando, y dos
-     kits pueden llamarse parecido. */
-  const kitsPorEq = new Map<string, { id: string; nombre: string }[]>();
-  kits.filter(k => !k.retirado).forEach(k =>
-    k.equipoIds.forEach(id => kitsPorEq.set(id, [...(kitsPorEq.get(id) || []), { id: k.id, nombre: k.nombre }])));
+    });
+  }
 
-  /* Cuántas piezas lleva montadas cada equipo. Se cuenta sobre `eqs`, que ya
-     está entero en memoria —`select("*")`—: una consulta por equipo serían
-     doscientos viajes para un número. */
-  const piezasDe = new Map<string, any[]>();
-  (eqs || []).forEach((e: any) => {
-    if (!e.ensamblado_en) return;
-    /* Solo lo justo para la lista del pop-up. Mandar el equipo entero sería
-       repetir sus veinte columnas dentro de cada fila que lo menciona. */
-    /* Con su precio —propio o el que le toca de su combo—: el total de un kit
-       tiene que incluir lo que va atornillado dentro de sus piezas, y sin este
-       dato no había forma de sumarlo. Es el mismo par de campos que ya viaja
-       en las piezas sueltas, para que `valorPieza` sirva igual con las dos. */
-    const cbm = comboPorEq.get(e.id);
-    piezasDe.set(e.ensamblado_en, [...(piezasDe.get(e.ensamblado_en) || []), {
-      id: e.id, folio: e.folio, nombre: e.nombre, estado: e.estado,
-      cartel: cartelPorEq.get(e.id) || null,
-      valor: e.valor_compra ? Number(e.valor_compra) : null,
-      combo: cbm ? { codigo: cbm.codigo, nombre: cbm.nombre,
-        total: cbm.total != null ? Number(cbm.total) : null,
-        porPieza: porPiezaDeCombo.get(cbm.id) ?? null } : null,
-    }]);
-  });
+  /* ⚠ Lo que le toca a cada pieza de un combo, y las piezas montadas dentro
+     de un equipo, se calculaban aquí y solo los leían la entrega y los kits.
+     Se fueron con ellos a `lib/equipamientoDatos`. El total del inventario que
+     se pinta arriba NO los usa: `valorInventario` reparte el precio de un
+     combo por su cuenta, sobre las mismas unidades. */
 
-  const eqsConDueno = (eqs || []).map((e: any) => {
-    const cb = comboPorEq.get(e.id);
-    return {
-      ...e, quien: quienTiene.get(e.id) || null, cartel: cartelPorEq.get(e.id) || null,
-      /* Solo lo justo para nombrarlo. El combo entero trae total, moneda,
-         comprobante y proveedor; mandarlo repetido en doscientas filas sería
-         mover el mismo objeto doscientas veces para pintar dos palabras. */
-      combo: cb ? { codigo: cb.codigo, nombre: cb.nombre, nUnidades: cb.nUnidades,
-        total: cb.total != null ? Number(cb.total) : null,
-        porPieza: porPiezaDeCombo.get(cb.id) ?? null } : null,
-      kits: kitsPorEq.get(e.id) || [],
-      /* Va con piezas dentro. Al entregar hay que decirlo: quien lo recibe
-         firma por un monopod, no por un monopod y tres piezas sueltas — y a
-         la vuelta es lo que hay que contar. */
-      piezas: piezasDe.get(e.id) || [],
-    };
-  });
+  /* ⚠ `eqsConDueno` —el inventario entero con dueño, combo, kits y piezas—
+     vivía aquí y cruzaba a `EntregaLote` y a `PanelKits` en cada visita. Se
+     fue con ellos a `lib/equipamientoDatos`, que lo arma en versión flaca para
+     las pestañas que lo pintan de verdad. Esta lista no lo necesita: la fila
+     de un equipo saca su combo y sus kits de los mapas de arriba. */
 
   /* Interacción en la bitácora de cada equipo: comentarios sueltos
      (equipamiento_id) + comentarios de sus usos (prestamo_id → equipo). */
@@ -489,14 +391,10 @@ export default async function Equipamiento({ searchParams }: {
         : <span>🎥</span>}
     </span>
   );
-  const avatarPersona = (url: string | undefined, size = 24) => (
-    <span style={{ width: size, height: size, borderRadius: "50%", flexShrink: 0, background: "var(--bg)", border: "1px solid var(--border2)", display: "inline-flex", alignItems: "center", justifyContent: "center", overflow: "hidden", verticalAlign: "middle" }}>
-      {url
-        ? // eslint-disable-next-line @next/next/no-img-element
-          <img src={url} alt="" referrerPolicy="no-referrer" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-        : <span style={{ fontSize: size * 0.5 }}>👤</span>}
-    </span>
-  );
+  /* (Aquí había un `avatarPersona` que no llamaba nadie. Llevaba muerto desde
+     antes de este reparto —lo confirma el diff contra HEAD— y se va ahora que
+     el archivo está abierto: una función que no se usa se lee como si hiciera
+     falta, y el siguiente la mantiene.) */
 
   // Resaltado tenue por estado: el que lo tenga definido en lib/estadosEquipo.
   const RES_EST: Record<string, [string, string]> = Object.fromEntries(
@@ -625,18 +523,12 @@ export default async function Equipamiento({ searchParams }: {
   };
 
   return (
-    <div className="shell">
-      <div className="topbar">
-        <Volver />
-        <span className="spacer" />
-        <Link href="/casos/equipamiento" className="btn btn-ghost"
-          title="Todos los casos, agrupados por equipo">🗂 Casos</Link>
-        <Link href="/historial/equipamiento" className="btn btn-ghost"
-          title="Todo lo que se movió en los equipos, por periodo">🕐 Historial</Link>
-        <Link href="/entidad/equipamiento/nuevo" className="btn">＋ Nuevo equipo</Link>
-      </div>
-      <h1 className="title-lg">🎥 Equipos audiovisuales</h1>
-
+    /* ⚠ Sin `.shell`, sin barra superior y sin título: los pinta el layout, que
+       es lo único que las tres pestañas comparten. Repetirlos aquí los pondría
+       dos veces en pantalla.
+       El buscador y los filtros SÍ se quedan: filtran esta lista y solo ésta, y
+       llevan su estado en la URL para poder enlazarse. */
+    <>
       <form className="card" style={{ display: "flex", gap: 10, padding: 12 }}>
         {e && <input type="hidden" name="e" value={e} />}
         {c && <input type="hidden" name="c" value={c} />}
@@ -765,108 +657,45 @@ export default async function Equipamiento({ searchParams }: {
               </span>
             </span>
             <span className="stat-card" style={{ display: "block" }}>
-              <span className="stat-n" style={{ color: "var(--yellow)", display: "block" }}>{(enManos || []).length}</span>
+              {/* Sin el dato NO se pinta un cero: se dice que no se sabe. */}
+              <span className="stat-n" style={{ color: eManos ? "var(--red)" : "var(--yellow)", display: "block" }}>
+                {eManos ? "—" : (enManos || []).length}
+              </span>
               <span className="stat-l">🤝 en manos de alguien ahora</span>
             </span>
           </div>
-
-          {/* La salida a rodaje: una persona, un proyecto, N equipos, un botón.
-              Va ANTES del panel de «en uso» porque el orden de la página sigue
-              el orden del día: primero se entrega, después se mira quién tiene
-              qué. */}
-          {/* `key` CON EL KIT DENTRO. «🤝 Entregar» de un kit navega a
-              ?kit=…#entregar, y el panel se abre solo si `kitInicial` llega
-              en el PRIMER pintado — es el valor inicial de un useState.
-              Sin la key, Next reusa el componente ya montado al cambiar de
-              parametro: llegaba el kit, el estado seguía cerrado, y el boton
-              del kit acababa en un segundo clic sobre «Entregar equipos a
-              alguien». No fallaba nada; simplemente no pasaba nada. */}
-          <EntregaLote key={kitPre || "_"} equipos={eqsConDueno as any}
-            personas={personasCat} proyectos={proyectosCat}
-            kits={kits} kitInicial={kitPre} />
-
-          {/* Los combos, junto a los kits, porque son las dos caras de la
-              misma pregunta: el kit dice qué SALE junto, el combo qué ENTRÓ
-              junto. Verlos en la misma pantalla es lo que hace evidente que
-              no son lo mismo. */}
-          <PanelCombos combos={combos} categorias={[...porCat.keys()].filter(c => c !== "sin categoría")}
-            inventario={(eqs || []).map((e: any) => ({
-              id: e.id, folio: e.folio, nombre: e.nombre, categoria: e.categoria,
-              estado: e.estado, compra_id: e.compra_id,
-              compra: e.compra_id ? (combos.find((c: any) => c.id === e.compra_id)?.nombre || null) : null,
-            }))} />
-
-          {/* Los kits van DESPUÉS de la entrega: primero se entrega —es lo del
-              día— y armar el kit es mantenimiento, se hace de vez en cuando. */}
-          {/* Un `select` con un embed que el servidor no resuelve devuelve
-              data:null y error, y `|| []` lo convierte en «no hay kits»: el
-              panel entero desaparece y parece que nadie ha armado ninguno.
-              Es la misma forma de fallar que dejó el panel de préstamos en
-              blanco, así que se dice en voz alta. */}
-          {eKits && (
-            <div className="card" style={{ borderLeft: "3px solid var(--red)" }}>
-              <b style={{ color: "var(--red)", fontSize: 13 }}>⚠ No se pudieron leer los kits</b>
-              <div style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 5, lineHeight: 1.55 }}>
-                {/(perfiles|autor|creado_por)/.test(eKits.message)
-                  ? <>Falta correr <code>db/kits.sql</code> en Supabase: sin <code>kits.creado_por</code> no se puede leer quién armó cada kit. Los kits existen — lo que no se puede es pintarlos.</>
-                  : eKits.message}
-              </div>
-            </div>
-          )}
-          <PanelKits kits={kits} equipos={eqsConDueno as any} />
-
-          {/* Quién tiene qué —y la devolución a media vuelta de rodaje—.
-              El panel entero es cliente porque las casillas son estado, así
-              que aquí solo se aplana lo que la consulta ya trajo: nada de
-              funciones cruzando la frontera, que es donde esto se rompe. */}
-          {/* Si la consulta falla, se DICE. Sin esto, un error de PostgREST
-              —por ejemplo, que falte correr db/prestamo-entregado-por.sql—
-              devuelve `data: null`, el `|| []` lo convierte en «no hay nada»
-              y el panel entero desaparece: la aplicación juraría que no hay
-              ningún equipo prestado con doce en la calle. Es el mismo fallo
-              que dejó sin personajes a los proyectos. */}
           {eManos && (
             <div className="card" style={{ borderLeft: "3px solid var(--red)" }}>
               <b style={{ color: "var(--red)", fontSize: 13 }}>⚠ No se pudo leer quién tiene qué</b>
               <div style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 5, lineHeight: 1.55 }}>
-                {/(entregado_por|entrego)/.test(eManos.message)
-                  ? <>Falta correr <code>db/prestamo-entregado-por.sql</code> en Supabase. Hasta entonces este panel no puede pintarse — y hay equipos prestados, no es que no haya.</>
-                  : eManos.message}
+                {/(entregado_por|entrego)/.test(eManos)
+                  ? <>Falta correr <code>db/prestamo-entregado-por.sql</code> en Supabase.</>
+                  : eManos}
+                <br />Ni la cifra de arriba ni el «· quién lo tiene» de cada fila se pueden
+                pintar — y eso <b>no</b> quiere decir que no haya nada fuera.
+              </div>
+            </div>
+          )}
+          {eKits && (
+            <div className="card" style={{ borderLeft: "3px solid var(--red)" }}>
+              <b style={{ color: "var(--red)", fontSize: 13 }}>⚠ No se pudieron leer los kits</b>
+              <div style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 5, lineHeight: 1.55 }}>
+                {/(does not exist|schema cache|PGRST20)/i.test(eKits)
+                  ? <>Falta correr <code>db/kits.sql</code> en Supabase.</>
+                  : eKits}
+                <br />Las filas saldrán sin sus etiquetas 📦, y no es que no estén en ningún kit.
               </div>
             </div>
           )}
 
-          {/* «EN USO AHORA» ES LA LISTA DE LO QUE TIENE QUE VOLVER.
-              Una asignación no vuelve —la laptop es de Michel— y meterla aquí
-              haría crecer para siempre una lista que se mira para reclamar:
-              con veinte asignaciones dentro, las tres salidas de rodaje que sí
-              hay que perseguir quedan enterradas. Las asignaciones se ven en
-              la ficha de su equipo y filtrando por «📌 Asignados». */}
-          {(enManos || []).filter((p: any) => p.tipo !== "asignacion").length > 0 && (
-            <EnUsoAhora items={(enManos || []).filter((p: any) => p.tipo !== "asignacion").map((p: any): UsoItem => {
-              const eq = un1(p.equipo), per = un1(p.persona), pr = un1(p.proy), ent = un1(p.entrego);
-              return {
-                id: p.id, desde: p.desde,
-                entrego: ent?.nombre || null, entregoFoto: ent?.avatar_url || null,
-                categoria: eq?.categoria || null, subcategoria: eq?.subcategoria || null,
-                valor: eq?.valor_compra ? Number(eq.valor_compra) : null,
-                /* Solo el código, no el combo entero: la fila necesita dos
-                   palabras, no un objeto con total, moneda y comprobante
-                   repetido en cada préstamo. */
-                comboCodigo: eq?.compra_id ? (comboPorEq.get(eq.id)?.codigo || null) : null,
-                piezas: piezasDe.get(eq?.id) || [],
-                eqId: eq?.id, folio: eq?.folio, nombre: eq?.nombre || "sin nombre",
-                cartel: cartelPorEq.get(eq?.id) || null,
-                perId: per?.id || "_", per: per?.alias || per?.nombre || "sin registrar",
-                foto: per?.foto_url || null,
-                proyId: pr?.id || null, proy: pr?.nombre || null,
-                kitId: p.kit_id || null,
-                kit: p.kit_id ? kitPorId.get(p.kit_id)?.nombre || null : null,
-                kitTotal: p.kit_id ? kitPorId.get(p.kit_id)?.equipoIds.length || 0 : 0,
-              };
-            })} />
-          )}
-
+          {/* ⚠ AQUÍ VIVÍAN LA ENTREGA, LOS COMBOS Y LOS KITS.
+              Se fueron a `/equipamiento/entrega` y `/equipamiento/combos`, y
+              lo que se ganó no es scroll: los tres paneles son de CLIENTE y
+              los tres recibían el inventario entero como prop, así que la
+              tabla de equipos cruzaba al navegador tres veces en cada visita
+              —para llenar dos paneles que además nacen plegados—.
+              El razonamiento de cada uno viajó con ellos; aquí no queda copia,
+              que es como se acaban teniendo dos versiones de una decisión. */}
           {gruposAct.length > 0 && (
             <div className="card" id="actividad">
               <div className="panel-h">
@@ -1096,6 +925,6 @@ export default async function Equipamiento({ searchParams }: {
           )}
         </>
       )}
-    </div>
+    </>
   );
 }

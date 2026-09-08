@@ -2,6 +2,19 @@
 import { createClient } from "@/lib/supabase/server";
 import { estadoNav, type EstadoNav } from "@/app/nav-acciones";
 import { revalidatePath } from "next/cache";
+
+/* ── LAS TRES PESTAÑAS DE 🎥 EQUIPOS SE REVALIDAN JUNTAS ──
+   `/equipamiento` se partió en inventario · entrega · combos y kits, y las
+   tres miran las MISMAS tablas: entregar un equipo cambia el inventario, y
+   armar un kit cambia lo que se ofrece al entregar. Había veinte llamadas
+   sueltas a `revalidatePath("/equipamiento")` y ninguna sabía de las otras
+   dos rutas: al volver, una pestaña habría enseñado el estado de antes.
+   Una función, y quien añada una pestaña la añade aquí. */
+function revalidarEquipos() {
+  revalidatePath("/equipamiento");
+  revalidatePath("/equipamiento/entrega");
+  revalidatePath("/equipamiento/combos");
+}
 import { entregableEq, porQueNoEq, enRonda, txtEstadoEq } from "@/lib/estadosEquipo";
 import { ESTADOS_COMP } from "@/lib/compromisos";
 import { META_RENDICION, esTablaRendicion, anclaRendicion, duenoDe, type TablaRendicion } from "@/lib/rendicionHilo";
@@ -8039,7 +8052,7 @@ export async function fijarSubcategoria(equipoId: string, sub: string) {
         : `puso la subcategoría: «${s}»`,
     },
   });
-  revalidatePath("/equipamiento");
+  revalidarEquipos();
   revalidatePath(`/entidad/equipamiento/${equipoId}`);
   return {};
 }
@@ -8075,7 +8088,7 @@ export async function comprobarEquipo(equipoId: string) {
     entidad_tipo: "equipamiento", entidad_id: equipoId, tipo: "edicion", actor_id: user.id,
     detalle: { mensaje: "comprobación física: el equipo existe y está conforme ✔" },
   });
-  revalidatePath("/equipamiento");
+  revalidarEquipos();
   revalidatePath(`/entidad/equipamiento/${equipoId}`);
   return {};
 }
@@ -8130,7 +8143,7 @@ export async function prestarEquipo(
     .update({ estado: tipo === "asignacion" ? "asignado" : "en_uso" }).eq("id", equipoId);
   if (e2) return { error: "Registrado, pero el estado no se actualizó: " + e2.message };
   revalidatePath(`/entidad/equipamiento/${equipoId}`);
-  revalidatePath("/equipamiento");
+  revalidarEquipos();
   return {};
 }
 
@@ -8345,7 +8358,7 @@ export async function crearKit(nombre: string, uso: string, descripcion: string,
     if (rp?.error) return { id: kit.id, n: (equipoIds || []).length, aviso: `El kit se creó, pero la portada no: ${rp.error}` };
   }
 
-  revalidatePath("/equipamiento");
+  revalidarEquipos();
   return { id: kit.id, n: (equipoIds || []).length };
 }
 
@@ -8390,7 +8403,7 @@ export async function fijarPortadaKit(kitId: string, equipoId: string | null) {
   }
   if (!hechas?.length) return { error: "No se guardó: no tienes permiso sobre este kit." };
 
-  revalidatePath("/equipamiento");
+  revalidarEquipos();
   return { ok: true };
 }
 
@@ -8406,7 +8419,7 @@ export async function guardarKit(kitId: string, nombre: string, uso: string, des
     descripcion: (descripcion || "").trim() || null,
   }).eq("id", kitId);
   if (error) return { error: error.message };
-  revalidatePath("/equipamiento");
+  revalidarEquipos();
   return { ok: true };
 }
 
@@ -8440,7 +8453,7 @@ export async function setKitEquipos(kitId: string, equipoIds: string[]) {
       .insert(meter.map(id => ({ kit_id: kitId, equipamiento_id: id })));
     if (error) return { error: error.message };
   }
-  revalidatePath("/equipamiento");
+  revalidarEquipos();
   return { meter: meter.length, sacar: sacar.length };
 }
 
@@ -8461,12 +8474,12 @@ export async function borrarKit(kitId: string) {
     const { error } = await supabase.from("kits")
       .update({ retirado_en: new Date().toISOString() }).eq("id", kitId);
     if (error) return { error: error.message };
-    revalidatePath("/equipamiento");
+    revalidarEquipos();
     return { retirado: true, usos: count };
   }
   const { error } = await supabase.from("kits").delete().eq("id", kitId);
   if (error) return { error: error.message };
-  revalidatePath("/equipamiento");
+  revalidarEquipos();
   return { borrado: true };
 }
 
@@ -8476,7 +8489,7 @@ export async function revivirKit(kitId: string) {
   if (!user) return { error: "Sesión no encontrada." };
   const { error } = await supabase.from("kits").update({ retirado_en: null }).eq("id", kitId);
   if (error) return { error: error.message };
-  revalidatePath("/equipamiento");
+  revalidarEquipos();
   return { ok: true };
 }
 
@@ -8535,7 +8548,7 @@ export async function ensamblar(padreId: string, piezaIds: string[]) {
   });
   revalidatePath(`/entidad/equipamiento/${padreId}`);
   buenos.forEach(id => revalidatePath(`/entidad/equipamiento/${id}`));
-  revalidatePath("/equipamiento");
+  revalidarEquipos();
   return { ok: true, montadas: data.length };
 }
 
@@ -8576,7 +8589,7 @@ export async function desensamblar(piezaIds: string[]) {
     revalidatePath(`/entidad/equipamiento/${p}`);
   }
   ids.forEach(id => revalidatePath(`/entidad/equipamiento/${id}`));
-  revalidatePath("/equipamiento");
+  revalidarEquipos();
   return { ok: true, sueltas: ids.length };
 }
 
@@ -8648,7 +8661,7 @@ export async function prestarEquipos(
     });
   }
   buenos.forEach(id => revalidatePath(`/entidad/equipamiento/${id}`));
-  revalidatePath("/equipamiento");
+  revalidarEquipos();
   return { entregados: buenos.length, omitidos };
 }
 
@@ -8681,7 +8694,7 @@ export async function devolverEquipos(prestamoIds: string[]) {
   if (e2) return { error: `Se cerraron ${pres.length}, pero el estado no se actualizó: ${e2.message}` };
 
   eqIds.forEach((id: string) => revalidatePath(`/entidad/equipamiento/${id}`));
-  revalidatePath("/equipamiento");
+  revalidarEquipos();
   return { devueltos: pres.length };
 }
 
@@ -8697,7 +8710,7 @@ export async function devolverEquipo(prestamoId: string, equipoId: string) {
     .update({ estado: "disponible" }).eq("id", equipoId);
   if (e2) return { error: "Devolución registrada, pero el estado no se actualizó: " + e2.message };
   revalidatePath(`/entidad/equipamiento/${equipoId}`);
-  revalidatePath("/equipamiento");
+  revalidarEquipos();
   return {};
 }
 

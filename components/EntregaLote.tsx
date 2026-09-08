@@ -28,7 +28,7 @@ import ChipPiezas, { type PiezaMontada } from "@/components/ChipPiezas";
 
 type Eq = { id: string; folio?: string | null; nombre: string; categoria?: string | null;
   estado?: string | null; quien?: string | null;
-  /* La foto. `/equipamiento` ya la mandaba dentro de `eqsConDueno`; el tipo
+  /* La foto. La pestaña de entrega ya la manda dentro de cada equipo; el tipo
      no la declaraba, así que llegaba y se tiraba. Entregar es el momento en
      que se comparan filas contra cosas que están sobre la mesa, y ahí un
      nombre como «Osmo Action 3 1.5m Extension Rod Kit» no se reconoce: la
@@ -347,7 +347,7 @@ export default function EntregaLote({ equipos, personas, proyectos, kits = [], k
             panel no se vuelve a abrir. */}
         <button className="btn btn-ghost" onClick={() => {
           setSel(new Set()); setMsg(null); setKitsSel(new Set()); setAbierto(false);
-          if (kitInicial) router.replace("/equipamiento#entregar", { scroll: false });
+          if (kitInicial) router.replace("/equipamiento/entrega", { scroll: false });
         }}>
           Cerrar
         </button>

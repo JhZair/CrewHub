@@ -2,7 +2,13 @@
 import { usePathname } from "next/navigation";
 import Link from "@/components/Enlace";
 
-/* ── LAS PESTAÑAS DEL FONDO, AHORA COMO ENLACES ──
+/* ── UNA BARRA DE PESTAÑAS QUE SON ENLACES ──
+ *
+ * Se llamaba `Pestanas` y ya no: la usan la ficha del fondo y 🎥 equipos,
+ * y nunca supo nada de fondos —recibe `items` y pinta enlaces—. Un nombre que
+ * dice «fondo» sobre algo genérico es lo que hace que el siguiente escriba su
+ * propia barra en vez de reusar ésta, y entonces una aprende a marcar la
+ * pestaña activa y la otra no.
  *
  * Eran pestañas de cliente: los seis paneles se renderizaban enteros y se
  * ocultaban con `display:none`. Eso conservaba el filtro y el scroll al ir y
@@ -29,14 +35,19 @@ export type Pestana = {
   avisos?: Aviso[] | null;
 };
 
-export default function PestanasFondo({ items }: { items: Pestana[] }) {
+export default function Pestanas({ items }: { items: Pestana[] }) {
   const pathname = usePathname();
   return (
     <div className="vtabs-nav" role="tablist">
       {items.map(t => {
-        /* La primera pestaña vive en la raíz del fondo, así que su `href` es
-           prefijo de todos los demás: comparar con `startsWith` la dejaría
-           encendida siempre. Se compara exacto. */
+        /* La primera pestaña vive en la RAÍZ de la sección, así que su `href`
+           es prefijo de todos los demás: comparar con `startsWith` la dejaría
+           encendida siempre. Se compara exacto.
+           ⚠ Y por eso la raíz no puede llevar parámetros en su `href`: en 🎥
+           equipos la pestaña de inventario es «/equipamiento» a secas, y al
+           filtrar la URL pasa a «/equipamiento?e=disponible». Con la
+           comparación exacta se apagaría justo mientras se está usando. Por
+           eso se compara contra el `pathname`, que no incluye la query. */
         const on = pathname === t.href;
         return (
           <Link key={t.href} href={t.href}
