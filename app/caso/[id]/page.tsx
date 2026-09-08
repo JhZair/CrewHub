@@ -22,13 +22,15 @@ import Realtime from "@/components/Realtime";
 import Link from "@/components/Enlace";
 import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
+import { cache } from "react";
 import { claseEstado, rotuloEstado, selloDeCaso, llevaEnterado } from "@/lib/estados";
 import SelloResultado from "@/components/SelloResultado";
 import { BOT, sinBot } from "@/lib/personas";
 import { CERRADOS } from "@/lib/familia";
 import { rotuloTipo, colorTipo, icoTipo, llevaHora } from "@/lib/tipos";
 import { TXT } from "@/lib/texto";
-import { catalogoObjetos, catalogosEntidades } from "@/lib/catalogos";
+import { catalogoObjetos, filasEntidades, catalogosDeFilas,
+  nombresDeFilas, aliasPorCuenta } from "@/lib/catalogos";
 
 /* EV_ICO es de aquí: son los eventos de la bitácora de un caso, no los tipos
    de publicación. Los que SÍ eran copias —el mapa de tipos y el de entidades—
@@ -52,10 +54,35 @@ const EV_ICO: Record<string, string> = {
 
    Cuesta una consulta de dos campos. Vale la pena: es el único sitio del
    sistema que se lee sin abrirlo. */
-export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
+/* ── EL CASO SE PIDE UNA VEZ, NO DOS ──
+   ⚠ `generateMetadata` y la página corren en la MISMA petición y las dos
+   necesitan la misma fila. Iban por su cuenta: dos viajes a `publicaciones`
+   para pintar una pantalla. `cache()` de React memoriza por petición, así que
+   la segunda llamada devuelve la promesa de la primera y no toca la red. Es el
+   mismo mecanismo —y por la misma razón— que `lib/fondoDatos.ts`, que además
+   deja escritos sus dos avisos: no deduplica dentro de una Server Action, y en
+   navegación suave puede no haber nada que deduplicar. Aquí no aplica ninguno
+   de los dos: metadata y página van siempre juntas en el mismo pase.
+
+   El precio es que el título ahora arrastra el `select("*")` con sus tres
+   embebidos en vez de dos columnas. Sale a cuenta: esa consulta hay que
+   hacerla igual, y así se hace una sola vez en vez de dos. */
+const traerCaso = cache(async (id: string) => {
   const supabase = createClient();
-  const { data } = await supabase.from("publicaciones")
-    .select("titulo,tipo").eq("id", params.id).single();
+  const { data } = await supabase
+    .from("publicaciones")
+    .select(`
+      *,
+      autor:perfiles!publicaciones_autor_id_fkey(nombre, color, avatar_url),
+      resp:perfiles!publicaciones_responsable_fkey(nombre, color),
+      vinculos:publicacion_vinculos(entidad_tipo, entidad_id)
+    `)
+    .eq("id", id).single();
+  return data;
+});
+
+export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
+  const data = await traerCaso(params.id);
   // Sin sesión o con un id inventado, `data` es null: no reventar por un título
   return { title: data ? `${icoTipo(data.tipo)} ${data.titulo}` : "Caso" };
 }
@@ -69,15 +96,69 @@ export default async function Caso({ params }: { params: { id: string } }) {
   if (!user) redirect("/login");
   const { data: { session } } = await supabase.auth.getSession();
 
-  const { data: p } = await supabase
-    .from("publicaciones")
-    .select(`
-      *,
-      autor:perfiles!publicaciones_autor_id_fkey(nombre, color, avatar_url),
-      resp:perfiles!publicaciones_responsable_fkey(nombre, color),
-      vinculos:publicacion_vinculos(entidad_tipo, entidad_id)
-    `)
-    .eq("id", params.id).single();
+  /* ══════════════════════════════════════════════════════════════════
+     ⏱ POR QUÉ TODO ESTO VA EN UNA SOLA TANDA
+
+     Esta pantalla se sentía lenta, y lo era: pedía sus datos en NUEVE tandas
+     encadenadas —el caso, luego los catálogos, luego el padre y los hijos,
+     luego las reacciones, luego los objetos, luego su catálogo, luego la
+     cláusula, luego los carteles—. Cada eslabón es un viaje entero a Supabase,
+     y desde Cusco eso son un par de décimas cada uno: sumaban dos segundos
+     largos ANTES de pintar la primera letra. Y no se paga solo al entrar:
+     cambiar la fecha límite hace `router.refresh()`, que vuelve a montar la
+     página entera, así que el cambio tardaba en verse lo que tarda todo esto.
+
+     La cadena era falsa casi entera. Lo que la sostenía era pedir por `p.id`
+     —había que tener `p` para saber su id—, y `p.id` ES `params.id`, que se
+     conoce antes de preguntar nada. Todo lo que filtra por el id del caso
+     puede salir a la vez que el caso.
+
+     Lo que SÍ tiene que esperar es lo que depende del CONTENIDO de `p`: su
+     padre, sus vínculos, su cláusula. Eso es una segunda tanda, y ya. */
+  const [p, { data: eventos }, { data: comentarios }, { data: perfiles },
+         { data: miPerfil }, filasEnt, etiq,
+         { data: reaccs }, { data: hijos }] = await Promise.all([
+    // Memorizado por petición: si `generateMetadata` ya lo pidió, no viaja.
+    traerCaso(params.id),
+    supabase.from("actividad")
+      .select("*, actor:perfiles(nombre)")
+      /* Igual que en la ficha de entidad: «publicacion» a mano, «publicaciones»
+         del trigger. Sin las dos, el caso no muestra ni su propia creación. */
+      .in("entidad_tipo", grafiasDe("publicacion")).eq("entidad_id", params.id)
+      .order("creado_en"),
+    supabase.from("comentarios")
+      .select("*, autor:perfiles(nombre, color, avatar_url)")
+      .eq("publicacion_id", params.id)
+      .order("creado_en"),
+    supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
+    supabase.from("perfiles").select("es_admin").eq("id", user.id).single(),
+    /* ⚠ UNA lectura de las siete tablas, no dos.
+       Aquí había ocho consultas: `catalogosEntidades` —los desplegables de
+       «vincular»— y siete más a las MISMAS tablas para los rótulos de los
+       chips, porque el formato es distinto: el desplegable desempata
+       («E-003 · PACHA APUS SAC · SAC · propia») y el chip no lo necesita
+       («PACHA APUS SAC»). El formato distinto no obliga a leer dos veces.
+       `filasEntidades` trae las filas; abajo se les da las dos formas. */
+    filasEntidades(supabase),
+    // Las etiquetas no están en `filasEntidades`: no se «vinculan», se ponen.
+    supabase.from("etiquetas").select("id,nombre"),
+    // Reacciones de la publicación y sus comentarios
+    supabase.from("reacciones")
+      .select("publicacion_id,comentario_id,emoji,usuario_id")
+      .eq("publicacion_id", params.id),
+    // Los hijos cuelgan del id, que ya se conoce. El PADRE no: hace falta
+    // `p.padre_id`, y por eso baja a la segunda tanda.
+    supabase.from("publicaciones")
+      /* `tipo` va aquí porque SubCasos rotula el estado, y sin el tipo un
+         sub-aviso volvería a decir "Sin Resolver": el campo que no se pide
+         llega undefined y se lee como "no es aviso". Mismo agujero que el
+         `region` que faltaba en los miembros.
+         `responsable` y `fecha_limite` en crudo: la fila ya no solo los
+         muestra, los EDITA. Sin el id del responsable el combo no sabe qué
+         tiene puesto, y `resp:perfiles(nombre)` solo trae el nombre. */
+      .select("id,titulo,estado,tipo,archivado_en,responsable,fecha_limite,resp:perfiles!publicaciones_responsable_fkey(nombre)")
+      .eq("padre_id", params.id).order("creado_en"),
+  ]);
 
   if (!p) notFound();
 
@@ -100,59 +181,104 @@ export default async function Caso({ params }: { params: { id: string } }) {
     }
   }
 
-  const [{ data: eventos }, { data: comentarios }, { data: perfiles }, { data: miPerfil },
-         ents, proy, emp, pers, conv, equi, luga, etiq, postu] = await Promise.all([
-    supabase.from("actividad")
-      .select("*, actor:perfiles(nombre)")
-      /* Igual que en la ficha de entidad: «publicacion» a mano, «publicaciones»
-         del trigger. Sin las dos, el caso no muestra ni su propia creación. */
-      .in("entidad_tipo", grafiasDe("publicacion")).eq("entidad_id", p.id)
-      .order("creado_en"),
-    supabase.from("comentarios")
-      .select("*, autor:perfiles(nombre, color, avatar_url)")
-      .eq("publicacion_id", p.id)
-      .order("creado_en"),
-    supabase.from("perfiles").select("id,nombre").eq("activo", true).order("nombre"),
-    supabase.from("perfiles").select("es_admin").eq("id", user.id).single(),
-    /* Los catálogos de los desplegables se arman en lib/catalogos, igual que
-       en el feed y en el «+». Las consultas sueltas de abajo siguen porque
-       resuelven otra cosa: los NOMBRES de los chips (formato corto) y el
-       cruce alias↔cuenta. Elegir y etiquetar no piden lo mismo. */
-    catalogosEntidades(supabase),
-    supabase.from("proyectos").select("id,nombre"),
-    supabase.from("empresas").select("id,nombre"),
-    /* `usuario_id,alias` además del catálogo: es el único cruce que da el
-       nombre corto de quien tiene cuenta. Ver `perfilesCortos` más abajo. */
-    supabase.from("personas").select("id,nombre,usuario_id,alias"),
-    supabase.from("convocatorias").select("id,codigo,nombre,anio")
-      .order("anio", { ascending: false }).order("codigo"),
-    supabase.from("equipamiento").select("id,nombre,folio"),
-    supabase.from("lugares").select("id,nombre"),
-    supabase.from("etiquetas").select("id,nombre"),
-    supabase.from("postulaciones").select("id,codigo,proy:proyectos(nombre),conv:convocatorias(codigo,anio)"),
-  ]);
+  /* ══════════════════════════════════════════════════════════════════
+     ⏱ LA SEGUNDA Y ÚLTIMA TANDA — lo que depende del CONTENIDO de `p`
+     Su padre, sus vínculos y su cláusula: cosas que no se saben hasta tener
+     el caso delante. Eran cinco viajes encadenados; van juntas. */
 
-  // Familia: el padre (si soy sub-caso) y los hijos (si soy caso largo)
-  const [{ data: padre }, { data: hijos }] = await Promise.all([
-    p.padre_id
-      ? supabase.from("publicaciones").select("id,titulo").eq("id", p.padre_id).single()
-      : Promise.resolve({ data: null }),
-    supabase.from("publicaciones")
-      /* `tipo` va aquí porque SubCasos rotula el estado, y sin el tipo un
-         sub-aviso volvería a decir "Sin Resolver": el campo que no se pide
-         llega undefined y se lee como "no es aviso". Mismo agujero que el
-         `region` que faltaba en los miembros. */
-      /* `responsable` y `fecha_limite` en crudo: la fila ya no solo los
-         muestra, los EDITA. Sin el id del responsable el combo no sabe qué
-         tiene puesto, y `resp:perfiles(nombre)` solo trae el nombre. */
-      .select("id,titulo,estado,tipo,archivado_en,responsable,fecha_limite,resp:perfiles!publicaciones_responsable_fkey(nombre)")
-      .eq("padre_id", p.id).order("creado_en"),
-  ]);
+  /* Los OBJETOS del repositorio se resuelven aparte y solo los vinculados a
+     este caso: el catálogo puede tener miles y no hay razón de traerlos todos
+     —a diferencia de proyectos o empresas, un objeto no se elige de una lista.
+     Sin esto el vínculo existía en la base pero el chip se filtraba por no
+     tener nombre: el caso decía estar vinculado a nada. */
+  const idsObj = (p.vinculos || [])
+    .filter((v: any) => v.entidad_tipo === "objeto").map((v: any) => v.entidad_id);
+  /* Los carteles de los proyectos y empresas vinculados: no hacen falta los
+     NOMBRES para pedirlos, solo los ids — así que esto tampoco tenía por qué
+     esperar a que se resolvieran los chips, como esperaba. */
+  const idsMedia = (p.vinculos || [])
+    .filter((v: any) => v.entidad_tipo === "proyecto" || v.entidad_tipo === "empresa")
+    .map((v: any) => v.entidad_id);
+  /* ⚠ DOS LISTAS, Y NO ES REDUNDANCIA.
+     `idsVinc` es la VENTANA de la consulta: por qué entidades preguntar. Sale
+     de `p.vinculos` en crudo, para no perder el trabajo hecho sobre un vínculo
+     cuyo nombre no se resolvió —un catálogo cortado en mil filas, un tipo que
+     el mapa de nombres no cubre—. En la fila saldrá sin nombre, que es mejor
+     que no salir.
+     El DENOMINADOR del progreso («1 de 3 vinculadas») sigue saliendo de los
+     chips, más abajo. Se separaron porque juntarlos cambiaba números que el
+     usuario ve: un caso con cuatro vínculos de los que uno no resuelve pasaba
+     de «1 de 3» a «1 de 4», y uno donde NINGUNO resolvía pasaba de heredar el
+     porcentaje de su estado a un 0 % rotundo — cincuenta puntos de caída sobre
+     un caso que nadie había tocado. Un arreglo de latencia no puede mover una
+     barra de progreso. */
+  const idsVinc = [...new Set((p.vinculos || [])
+    .filter((v: any) => v.entidad_tipo !== "etiqueta")
+    .map((v: any) => v.entidad_id))] as string[];
 
-  // Reacciones de la publicación y sus comentarios
-  const { data: reaccs } = await supabase.from("reacciones")
-    .select("publicacion_id,comentario_id,emoji,usuario_id")
-    .eq("publicacion_id", p.id);
+  /* 🧰 La ventana del trabajo relacionado. Solo se cierra si el caso está
+     cerrado AHORA: uno reabierto y vivo sigue hasta hoy —tomar su cierre viejo
+     perdía todo el trabajo del periodo reabierto—. */
+  const finVentana = CERRADOS.includes(p.estado)
+    ? ([...(eventos || [])
+        .filter((e: any) => e.tipo === "estado" && e.detalle?.campo === "estado"
+          && ["resuelta", "descartada"].includes(e.detalle?.a))
+        .map((e: any) => e.creado_en as string), p.archivado_en]
+        .filter(Boolean).sort().slice(-1)[0] || new Date().toISOString())
+    : new Date().toISOString();
+
+  const [{ data: padre }, { data: objs }, compActaRes, { data: mediaVinc }, { data: rel },
+         objsCat] = await Promise.all([
+      // Familia: el padre, si soy sub-caso. Los hijos ya vinieron en la tanda 1.
+      p.padre_id
+        ? supabase.from("publicaciones").select("id,titulo").eq("id", p.padre_id).single()
+        : Promise.resolve({ data: null as any }),
+      idsObj.length
+        ? supabase.from("objetos").select("id,titulo,tipo").in("id", idsObj)
+        : Promise.resolve({ data: [] as any[] }),
+      /* ── DE QUÉ CLÁUSULA DEL ACTA SALE ──
+         APARTE de la consulta principal, y a propósito. Metido en aquel
+         `select`, un fallo del embebido —la columna sin migrar, el esquema de
+         PostgREST sin recargar— devolvía `data` en null, y detrás hay un
+         `notFound()`: la ficha de TODOS los casos habría dado 404 por un dato
+         decorativo de unos pocos. Es el mismo criterio que ya sigue la pestaña
+         del fondo. Solo se pregunta si el caso tiene cláusula. */
+      (p as any).compromiso_id
+        ? supabase.from("compromiso_acta")
+            .select("id,clausula,titulo,postulacion_id")
+            .eq("id", (p as any).compromiso_id).maybeSingle()
+        : Promise.resolve({ data: null as any }),
+      idsMedia.length
+        ? supabase.from("entidad_media")
+            .select("entidad_tipo,entidad_id,cartel_url").in("entidad_id", idsMedia)
+        : Promise.resolve({ data: [] as any[] }),
+      /* 🧰 TRABAJO RELACIONADO — lo que se editó en las entidades vinculadas
+         mientras este caso estuvo abierto. Reúne bajo la orden de trabajo las
+         ediciones que igual se guardaron en cada ficha (firma, DNI…), que sin
+         esto quedaban desperdigadas y el caso salía «sin actividad». */
+      idsVinc.length
+        ? supabase.from("actividad")
+            .select("tipo,detalle,creado_en,entidad_tipo,entidad_id,actor_id,actor:perfiles(nombre)")
+            .in("entidad_id", idsVinc)
+            .gte("creado_en", p.creado_en).lte("creado_en", finVentana)
+            // La ventana ya acota la actividad; 300 da margen de sobra para el
+            // ruido SUNAT (que se filtra abajo) sin filtros json frágiles.
+            .order("creado_en", { ascending: false }).limit(300)
+        : Promise.resolve({ data: [] as any[] }),
+      /* Los objetos del repositorio también se pueden vincular desde aquí: un
+         caso puede tratar sobre un material concreto. Los más recientes, con
+         techo —es el único catálogo que crece sin límite—.
+         ⚠ Va en la SEGUNDA tanda aunque no dependa de nada, y es deliberado:
+         por dentro son dos niveles de red (los objetos, y luego los nombres de
+         sus dueños), o sea hasta nueve consultas. En la primera tanda alargaba
+         la única espera que TODA visita paga, y encima se cobraban también las
+         visitas que acaban en `notFound()` o en el redirigido de una nota del
+         muro, que salen antes de llegar aquí. Aquí sus dos niveles caben
+         dentro de una espera que ya existía. */
+      catalogoObjetos(supabase),
+    ]);
+  const compActa = (compActaRes as any)?.data ?? null;
+
   // Nombre de quién reaccionó (acuse en el tooltip), del catálogo ya cargado.
   const nombrePerfil = new Map((perfiles || []).map((x: any) => [x.id, x.nombre]));
   const conNombre = (r: any) => ({ emoji: r.emoji, usuario_id: r.usuario_id, comentario_id: r.comentario_id, nombre: nombrePerfil.get(r.usuario_id) });
@@ -164,31 +290,13 @@ export default async function Caso({ params }: { params: { id: string } }) {
     l.push(conNombre(r)); rxCom.set(r.comentario_id, l);
   });
 
-  /* Los OBJETOS del repositorio se resuelven aparte y solo los vinculados a
-     este caso: el catálogo puede tener miles y no hay razón de traerlos todos
-     —a diferencia de proyectos o empresas, un objeto no se elige de una lista.
-     Sin esto el vínculo existía en la base pero el chip se filtraba por no
-     tener nombre: el caso decía estar vinculado a nada. */
-  const idsObj = (p.vinculos || [])
-    .filter((v: any) => v.entidad_tipo === "objeto").map((v: any) => v.entidad_id);
-  const { data: objs } = idsObj.length
-    ? await supabase.from("objetos").select("id,titulo,tipo").in("id", idsObj)
-    : { data: [] as any[] };
-
-  // Resolver nombres de entidades vinculadas y de perfiles
-  const nombres = new Map<string, string>();
+  /* Las dos formas de las MISMAS filas: cómo se elige y cómo se nombra.
+     Ninguna de las dos viaja: son puro formato. */
+  const ents = catalogosDeFilas(filasEnt);
+  const nombres = nombresDeFilas(filasEnt);
+  // Estos dos no salen de `filasEntidades`, y por eso se añaden aparte.
   (objs || []).forEach((x: any) => nombres.set(`objeto:${x.id}`, x.titulo));
-  (proy.data || []).forEach((x: any) => nombres.set(`proyecto:${x.id}`, x.nombre));
-  (emp.data || []).forEach((x: any) => nombres.set(`empresa:${x.id}`, x.nombre));
-  (pers.data || []).forEach((x: any) => nombres.set(`persona:${x.id}`, x.nombre));
-  (conv.data || []).forEach((x: any) =>
-    nombres.set(`convocatoria:${x.id}`, x.nombre ? `${x.nombre} ${x.anio || ""}`.trim() : x.codigo));
-  (equi.data || []).forEach((x: any) =>
-    nombres.set(`equipamiento:${x.id}`, x.folio ? `${x.folio} · ${x.nombre}` : x.nombre));
-  (luga.data || []).forEach((x: any) => nombres.set(`lugar:${x.id}`, x.nombre));
   (etiq.data || []).forEach((x: any) => nombres.set(`etiqueta:${x.id}`, x.nombre));
-  (postu.data || []).forEach((x: any) =>
-    nombres.set(`postulacion:${x.id}`, `${x.codigo || x.conv?.codigo || "🎯"} · ${x.proy?.nombre || "postulación"}`));
   const perfilNombre = new Map((perfiles || []).map((x: any) => [x.id, x.nombre]));
 
   /* EL NOMBRE CORTO DE UN COMPAÑERO — «MichelM», no «Michel Oros».
@@ -198,45 +306,28 @@ export default async function Caso({ params }: { params: { id: string } }) {
      comentario dice «los perfiles no tienen alias» dando el alias por
      inexistente— y el feed muestra el primer nombre. Tres formas de decir lo
      mismo, y ninguna es la que el equipo usa de verdad.
-     Aquí se cruza. `usuario_id` es la única llave entre cuenta y persona. */
-  const aliasDe = new Map((pers.data || [])
-    .filter((x: any) => x.usuario_id && x.alias)
-    .map((x: any) => [x.usuario_id, x.alias]));
+     El cruce vive ahora en `lib/catalogos`, sobre las mismas filas que ya
+     alimentan los desplegables: era la octava consulta a `personas`. */
+  const aliasDe = aliasPorCuenta(filasEnt);
   const perfilesCortos = (perfiles || []).map((x: any) => ({
     ...x,
     // Sin alias cargado, el primer nombre: mejor «Michel» que «Michel Oros»
-    corto: aliasDe.get(x.id) || String(x.nombre || "").split(" ")[0],
+    corto: aliasDe[x.id] || String(x.nombre || "").split(" ")[0],
   }));
 
   const chips = (p.vinculos || [])
     .filter((v: any) => v.entidad_tipo !== "etiqueta")
     .map((v: any) => ({ ...v, nombre: nombres.get(`${v.entidad_tipo}:${v.entidad_id}`) }))
     .filter((v: any) => v.nombre);
+  /* El denominador de «N de M vinculadas»: lo que la ficha ENSEÑA. Es el
+     conjunto que se usaba antes de aplanar las consultas, y se conserva a
+     propósito — ver la nota de `idsVinc`. */
+  const idsVincContables = [...new Set(chips.map((v: any) => v.entidad_id))] as string[];
   const etqTodas = (etiq.data || []) as { id: string; nombre: string }[];
   const etqMap = new Map(etqTodas.map(x => [x.id, x.nombre]));
   const etiquetasActuales = (p.vinculos || [])
     .filter((v: any) => v.entidad_tipo === "etiqueta")
     .map((v: any) => ({ id: v.entidad_id, nombre: etqMap.get(v.entidad_id) || "etiqueta" }));
-
-  /* Los objetos del repositorio también se pueden vincular desde aquí: un caso
-     puede tratar sobre un material concreto. Los más recientes, con techo —es
-     el único catálogo que crece sin límite. */
-  const objsCat = await catalogoObjetos(supabase);
-
-  /* ── DE QUÉ CLÁUSULA DEL ACTA SALE ──
-     APARTE de la consulta principal, y a propósito. Metido en aquel `select`,
-     un fallo del embebido —la columna sin migrar, el esquema de PostgREST sin
-     recargar— devolvía `data` en null, y detrás hay un `notFound()`: la ficha
-     de TODOS los casos habría dado 404 por un dato decorativo de unos pocos.
-     Es el mismo criterio que ya sigue la pestaña del fondo, que aísla esta
-     misma relación para que el resto siga funcionando sin ella.
-     Solo se pregunta si el caso tiene cláusula: para la inmensa mayoría no hay
-     viaje. */
-  const compActa = (p as any).compromiso_id
-    ? (await supabase.from("compromiso_acta")
-        .select("id,clausula,titulo,postulacion_id")
-        .eq("id", (p as any).compromiso_id).maybeSingle()).data
-    : null;
 
   // Catálogos por tipo para el editor de vínculos + vínculos actuales (no-etiqueta)
   const catEnt: Record<string, { id: string; nombre: string; tipo?: string; sub?: string }[]> = {
@@ -245,18 +336,9 @@ export default async function Caso({ params }: { params: { id: string } }) {
   /* Cartel (póster/logo) de los proyectos y empresas vinculados, para que su
      chip muestre la imagen en vez del ícono genérico. */
   const cartelVinc = new Map<string, string>();
-  {
-    const idsMedia = chips
-      .filter((v: any) => v.entidad_tipo === "proyecto" || v.entidad_tipo === "empresa")
-      .map((v: any) => v.entidad_id);
-    if (idsMedia.length) {
-      const { data: mm } = await supabase.from("entidad_media")
-        .select("entidad_tipo,entidad_id,cartel_url").in("entidad_id", idsMedia);
-      (mm || []).forEach((m: any) => {
-        if (m.cartel_url) cartelVinc.set(`${m.entidad_tipo}:${m.entidad_id}`, m.cartel_url);
-      });
-    }
-  }
+  (mediaVinc || []).forEach((m: any) => {
+    if (m.cartel_url) cartelVinc.set(`${m.entidad_tipo}:${m.entidad_id}`, m.cartel_url);
+  });
   const actualesVinc = chips.map((v: any) => ({
     tipo: v.entidad_tipo, id: v.entidad_id, nombre: v.nombre,
     cartel: cartelVinc.get(`${v.entidad_tipo}:${v.entidad_id}`) || null,
@@ -267,40 +349,26 @@ export default async function Caso({ params }: { params: { id: string } }) {
      ediciones que igual se guardaron en cada ficha (firma, DNI…), que sin esto
      quedaban desperdigadas y el caso salía «sin actividad». Ventana =
      [creado_en, cierre/archivo, o ahora si sigue vivo]. */
-  const idsVinc = [...new Set(chips.map((v: any) => v.entidad_id))] as string[];
-  let trabajoRel: any[] = [];
-  if (idsVinc.length) {
-    /* Fin de ventana: solo se cierra si el caso está cerrado AHORA. Un caso
-       reabierto y vivo sigue hasta hoy —tomar su cierre viejo perdía todo el
-       trabajo del periodo reabierto—. */
-    const cerrado = (eventos || [])
-      .filter((e: any) => e.tipo === "estado" && e.detalle?.campo === "estado" && ["resuelta", "descartada"].includes(e.detalle?.a))
-      .map((e: any) => e.creado_en as string);
-    const fin = CERRADOS.includes(p.estado)
-      ? ([...cerrado, p.archivado_en].filter(Boolean).sort().slice(-1)[0] || new Date().toISOString())
-      : new Date().toISOString();
-    const { data: rel } = await supabase.from("actividad")
-      .select("tipo,detalle,creado_en,entidad_tipo,entidad_id,actor_id,actor:perfiles(nombre)")
-      .in("entidad_id", idsVinc)
-      .gte("creado_en", p.creado_en).lte("creado_en", fin)
-      // La ventana ya acota la actividad; 300 da margen de sobra para el ruido
-      // SUNAT (que se filtra abajo) sin recurrir a filtros json frágiles.
-      .order("creado_en", { ascending: false }).limit(300);
-    trabajoRel = (rel || [])
-      /* Solo trabajo HUMANO: fuera el ruido de la verificación SUNAT y todo lo
-         que escribe el bot. Si contara, la ronda automática mantendría vivo
-         cualquier caso con una empresa vinculada y nada parecería detenido. */
-      .filter((e: any) => esMovimientoReal(e.tipo)
-        && !(e.tipo === "estado" && ["estado_sunat", "condicion_sunat"].includes(e.detalle?.campo)))
-      .map((e: any) => ({
-        ...e,
-        /* `tipoCanonico`: el trigger escribe el nombre de la TABLA («personas»)
-           y el mapa de nombres está en singular («persona»). Sin esto, toda
-           fila de trigger salía sin nombre de entidad. */
-        entidadNombre: nombres.get(`${tipoCanonico(e.entidad_tipo)}:${e.entidad_id}`),
-        actor: e.actor ? { ...e.actor, alias: aliasDe.get(e.actor_id) } : e.actor,
-      }));
-  }
+  /* ⚠ `idsVinc` se calcula ARRIBA, sobre `p.vinculos`, y no aquí sobre
+     `chips`. Es el mismo conjunto —`chips` es `p.vinculos` sin las etiquetas y
+     sin los que no tienen nombre— con una diferencia: un vínculo cuyo nombre
+     no se resolvió (un proyecto borrado, un catálogo que falló) se cae de
+     `chips` y antes se caía también de esta ventana. Ahora entra: su nombre
+     saldrá vacío en la fila, que es mejor que perder el trabajo que se hizo. */
+  const trabajoRel: any[] = (rel || [])
+    /* Solo trabajo HUMANO: fuera el ruido de la verificación SUNAT y todo lo
+       que escribe el bot. Si contara, la ronda automática mantendría vivo
+       cualquier caso con una empresa vinculada y nada parecería detenido. */
+    .filter((e: any) => esMovimientoReal(e.tipo)
+      && !(e.tipo === "estado" && ["estado_sunat", "condicion_sunat"].includes(e.detalle?.campo)))
+    .map((e: any) => ({
+      ...e,
+      /* `tipoCanonico`: el trigger escribe el nombre de la TABLA («personas»)
+         y el mapa de nombres está en singular («persona»). Sin esto, toda
+         fila de trigger salía sin nombre de entidad. */
+      entidadNombre: nombres.get(`${tipoCanonico(e.entidad_tipo)}:${e.entidad_id}`),
+      actor: e.actor ? { ...e.actor, alias: aliasDe[e.actor_id] } : e.actor,
+    }));
 
   /* ¿QUÉ DE ESO ES TRABAJO DE ESTE CASO?
      Coincidir en el tiempo y en la entidad no es lo mismo que trabajar para el
@@ -333,9 +401,12 @@ export default async function Caso({ params }: { params: { id: string } }) {
     hijos: totalHijos
       ? { ok: (hijos || []).filter((h: any) => CERRADOS.includes(h.estado) || h.archivado_en).length, total: totalHijos }
       : null,
-    // Solo lo atribuible al caso cuenta como «vinculada trabajada».
-    vinculadas: idsVinc.length
-      ? { conTrabajo: new Set(relDelCaso.map((e: any) => e.entidad_id)).size, total: idsVinc.length }
+    /* Solo lo atribuible al caso cuenta como «vinculada trabajada».
+       ⚠ El total sale de los CHIPS —los vínculos que se ven en pantalla—, no
+       de `idsVinc`. Contar en el denominador algo que la ficha no enseña es
+       pedir un trabajo invisible: «1 de 4» con tres chips delante. */
+    vinculadas: idsVincContables.length
+      ? { conTrabajo: new Set(relDelCaso.map((e: any) => e.entidad_id)).size, total: idsVincContables.length }
       : null,
     // Último movimiento REAL: del propio caso o el trabajo suyo sobre las vinculadas.
     ultimoMovimiento: [
@@ -363,7 +434,7 @@ export default async function Caso({ params }: { params: { id: string } }) {
     // `aliasDe` (usuario_id → alias) es la única llave fiable: la cuenta y la
     // ficha pueden llamarse distinto. Mapear por nombre dejaba a Wilfredo sin
     // alias («Wilfredo pediáz» la cuenta, «Wilfredo Perez Diaz» la ficha).
-    const quien = aliasDe.get(e.actor_id) || e.actor?.nombre || BOT;
+    const quien = aliasDe[e.actor_id] || e.actor?.nombre || BOT;
     if (e.tipo === "bot") return `Bot Qhaway: "${e.detalle?.mensaje || "evento automático"}"`;
     if (e.tipo === "creado") return `${quien} creó la publicación`;
     if (e.tipo === "estado") {

@@ -41,6 +41,7 @@ import { planear, motivoVersion, rotuloDias } from "@/lib/correrCronograma";
 import { estadoPorCasos } from "@/lib/casosActividad";
 import { esSituacion } from "@/lib/situacionReparto";
 import { TOPE_API, techo } from "@/lib/api";
+import { esUuid } from "@/lib/texto";
 
 /* Crear o actualizar una entidad núcleo (proyecto/empresa/persona).
    La config compartida actúa como whitelist de tabla y campos. */
@@ -4157,7 +4158,7 @@ export async function guardarObjeto(a: {
      formulario y no la ruta: conviene comprobarla aquí. */
   const dueno = SECCIONES.find(s => s.tipo === a.entidadTipo && s.tipo !== "objeto");
   if (!dueno) return { error: "Elige de quién es el objeto." };
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(a.entidadId || ""))
+  if (!esUuid(a.entidadId))
     return { error: "No se reconoce a quién pertenece." };
   // Y que exista: un uuid con forma válida pero inventado creaba un objeto
   // sin ficha donde aparecer.
@@ -4244,7 +4245,7 @@ export async function moverObjeto(id: string, entidadTipo: string, entidadId: st
 
   const dueno = SECCIONES.find(s => s.tipo === entidadTipo && s.tipo !== "objeto");
   if (!dueno) return { error: "Ese tipo de ficha no puede tener repositorio." };
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(entidadId || ""))
+  if (!esUuid(entidadId))
     return { error: "No se reconoce la ficha de destino." };
 
   const { data: o } = await supabase.from("objetos")
@@ -9795,12 +9796,18 @@ export async function cambiarHora(pubId: string, hora: string) {
 
 export async function cambiarFechaLimite(pubId: string, fecha: string) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: "Sesión no encontrada." };
   // Acepta 'YYYY-MM-DD'; vacío = quitar la fecha
   const val = /^\d{4}-\d{2}-\d{2}$/.test(fecha) ? fecha : null;
-  const { data: antes } = await supabase.from("publicaciones")
-    .select("fecha_limite,fecha_inicio,hora").eq("id", pubId).single();
+  /* ⏱ La sesión y el estado anterior, a la vez. No dependen el uno del otro
+     —quién eres lo dice la cookie, y lo que RLS deja leer también—, e iban en
+     fila: dos viajes a Supabase donde cabe uno. Esta acción encadenaba siete,
+     y cada uno se nota desde Cusco. */
+  const [{ data: { user } }, { data: antes }] = await Promise.all([
+    supabase.auth.getUser(),
+    supabase.from("publicaciones")
+      .select("fecha_limite,fecha_inicio,hora").eq("id", pubId).single(),
+  ]);
+  if (!user) return { error: "Sesión no encontrada." };
   // La otra punta de la ventana: adelantar el vencimiento por detrás del
   // inicio es el error que no se ve, porque se toca esta fecha mirando otra.
   if (val && antes?.fecha_inicio && val < antes.fecha_inicio) {
@@ -9824,17 +9831,21 @@ export async function cambiarFechaLimite(pubId: string, fecha: string) {
   if ((antes?.fecha_limite || null) !== val) {
     const fmt = (d: string) => new Date(d + "T12:00:00")
       .toLocaleDateString("es-PE", { day: "numeric", month: "short", timeZone: "America/Lima" });
-    await supabase.from("actividad").insert({
-      entidad_tipo: "publicacion", entidad_id: pubId, actor_id: user.id, tipo: "edicion",
-      detalle: { mensaje: val ? `puso la fecha límite en ${fmt(val)}`
-        : `quitó la fecha límite${soltarVentana && antes?.hora ? " (y con ella el inicio y la hora)"
-            : soltarVentana ? " (y con ella el inicio)"
-            : antes?.hora ? " (y con ella la hora)" : ""}` },
-    });
-    /* 🔔 Solo si CAMBIÓ —está dentro del mismo `if`—: guardar la misma fecha
-       otra vez no es un hecho y no debe sonar. Mover el plazo sin decírselo a
-       quien tiene que cumplirlo es la mitad de un plazo. */
-    const { pub, actorNombre } = await casoYActor(supabase, pubId, user.id);
+    /* ⏱ El apunte de la bitácora y los datos del aviso, a la vez. El apunte no
+       depende de quién hay que avisar, y esperarlo era otro viaje en fila. */
+    const [, { pub, actorNombre }] = await Promise.all([
+      supabase.from("actividad").insert({
+        entidad_tipo: "publicacion", entidad_id: pubId, actor_id: user.id, tipo: "edicion",
+        detalle: { mensaje: val ? `puso la fecha límite en ${fmt(val)}`
+          : `quitó la fecha límite${soltarVentana && antes?.hora ? " (y con ella el inicio y la hora)"
+              : soltarVentana ? " (y con ella el inicio)"
+              : antes?.hora ? " (y con ella la hora)" : ""}` },
+      }),
+      /* 🔔 Solo si CAMBIÓ —está dentro del mismo `if`—: guardar la misma fecha
+         otra vez no es un hecho y no debe sonar. Mover el plazo sin decírselo a
+         quien tiene que cumplirlo es la mitad de un plazo. */
+      casoYActor(supabase, pubId, user.id),
+    ]);
     if (pub) await avisarCambioCaso(supabase, {
       pubId, actorId: user.id, actorNombre, tipo: "cambio_plazo",
       mensaje: val

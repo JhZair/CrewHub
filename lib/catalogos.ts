@@ -1,4 +1,5 @@
 import { SECCIONES, nombreDe } from "@/lib/secciones";
+import { mapaAlias } from "@/lib/personas";
 
 /* QUIÉNES PUEDEN SER DUEÑOS DE UN OBJETO, y sus catálogos para elegir.
 
@@ -67,11 +68,35 @@ export type ItemCat = { id: string; nombre: string; tipo?: string; sub?: string 
 
    La regla es la misma en todas: `nombre` identifica, `sub` desempata en
    apagado, `tipo` clasifica como etiqueta. */
-export async function catalogosEntidades(supabase: any): Promise<Record<string, ItemCat[]>> {
+/* ── LAS FILAS EN CRUDO, QUE ES LO QUE DE VERDAD CUESTA ──
+   ⚠ Esta función se separó de `catalogosEntidades` para que las mismas filas
+   sirvan para DOS cosas distintas sin pedirlas dos veces.
+
+   La ficha del caso necesitaba las dos: los desplegables de «vincular» —que
+   dicen «PACHA APUS SAC · productora», con coletilla— y los rótulos de los
+   chips ya puestos —que dicen solo «PACHA APUS SAC»—. Como los formatos son
+   distintos, pedía `catalogosEntidades` Y, en la misma tanda, otras siete
+   consultas a las MISMAS siete tablas. Catorce lecturas de tabla completa por
+   visita para pintar una ficha, la mitad tiradas.
+
+   Ahora se leen una vez y cada pantalla les da su forma:
+     `catalogosDeFilas`  → cómo se ELIGE una entidad (con desempate).
+     `nombresDeFilas`    → cómo se NOMBRA una ya elegida (a secas).
+
+   `catalogosEntidades` sigue existiendo con la misma firma y el mismo
+   resultado: quien solo quiere los desplegables no se entera de nada. */
+export type FilasEntidades = Awaited<ReturnType<typeof filasEntidades>>;
+
+export async function filasEntidades(supabase: any) {
   const [proy, emp, pers, conv, postu, equi, luga, comp] = await Promise.all([
     supabase.from("proyectos").select("id,nombre,nombre_corto,tipo").order("nombre"),
     supabase.from("empresas").select("id,nombre,codigo,tipo,relacion").order("codigo"),
-    supabase.from("personas").select("id,nombre,alias,tipo").order("nombre"),
+    /* ⚠ `usuario_id` además del resto. No lo pide ningún desplegable: lo pide
+       el cruce cuenta↔persona que da el nombre corto de un compañero
+       («MichelM», no «Michel Oros»). Estaba en una octava consulta a esta
+       misma tabla solo por este campo. Un campo de más en un `select` es
+       gratis; una consulta entera, no. */
+    supabase.from("personas").select("id,nombre,alias,tipo,usuario_id").order("nombre"),
     supabase.from("convocatorias").select("id,codigo,nombre,anio")
       .order("anio", { ascending: false }).order("codigo"),
     // `order` explícito: sin él Postgres devuelve el orden que le convenga, y
@@ -84,6 +109,23 @@ export async function catalogosEntidades(supabase: any): Promise<Record<string, 
     supabase.from("compras").select("id,codigo,nombre,proveedor")
       .order("fecha", { ascending: false, nullsFirst: false }),
   ]);
+  /* ⚠ `comp` (compras) sale aquí porque lo pide el SELECTOR de vínculos del
+     repositorio, no la ficha del caso: allí no hay ningún chip «compra:» y esa
+     consulta es peso muerto. Se deja porque separar «qué tabla necesita cada
+     pantalla» convertiría esta función en un mosaico de banderas, y una
+     consulta de más en paralelo cuesta menos que eso. Queda dicho para que
+     nadie la busque en los rótulos y no la encuentre. */
+  return { proy, emp, pers, conv, postu, equi, luga, comp };
+}
+
+export async function catalogosEntidades(supabase: any): Promise<Record<string, ItemCat[]>> {
+  return catalogosDeFilas(await filasEntidades(supabase));
+}
+
+/** Cómo se ELIGE cada entidad en un desplegable. Sin red: solo da forma. */
+export function catalogosDeFilas(
+  { proy, emp, pers, conv, postu, equi, luga, comp }: FilasEntidades,
+): Record<string, ItemCat[]> {
   return {
     // Qué clase de proyecto: un documental y un videojuego se llaman parecido.
     // Nombre completo + el corto apagado: el equipo lo llama por el corto.
@@ -121,6 +163,57 @@ export async function catalogosEntidades(supabase: any): Promise<Record<string, 
     })),
   };
 }
+
+/* ── CÓMO SE NOMBRA UNA ENTIDAD YA ELEGIDA ──
+   Un chip puesto no desempata nada: ya se sabe cuál es. Por eso aquí los
+   rótulos son más cortos que los del desplegable —«PACHA APUS SAC» y no
+   «E-003 · PACHA APUS SAC · SAC · propia»—, y por eso son dos funciones y no
+   una sobre las mismas filas.
+
+   ⚠ Los formatos son LOS QUE YA HABÍA en la ficha del caso, copiados tal cual
+   al mudarlos aquí. Cambiarlos habría renombrado los chips de todos los casos
+   de golpe, que no es lo que se pedía: lo que se pedía era dejar de leer las
+   mismas siete tablas dos veces.
+
+   ⚠⚠ Y CONVIENE SABER QUE ESTO NO ES EL RESOLVEDOR CANÓNICO.
+   `lib/nombres.ts` dice de sí mismo ser «cómo se llama cualquier cosa, en un
+   solo sitio», y no coincide con esto en tres tipos:
+
+       tipo          lib/nombres            aquí
+       proyecto      nombre_corto || nombre  nombre
+       persona       alias || nombre         nombre
+       postulacion   «PO-040 · X · 2026»     «PO-040 · X»
+
+   O sea que el mismo proyecto vinculado a un caso y a un objeto se lee con dos
+   nombres distintos. La divergencia YA EXISTÍA —esto es la copia que vivía en
+   la ficha del caso, mudada sin tocarla—, pero al ponerla en `lib/` al lado de
+   la canónica deja de parecer un descuido y empieza a parecer una decisión, y
+   no lo es. Converger es un cambio visible en los chips de todos los casos y
+   se decide aparte; mientras tanto, queda escrito cuál de las dos manda. */
+export function nombresDeFilas(f: FilasEntidades): Map<string, string> {
+  const m = new Map<string, string>();
+  (f.proy.data || []).forEach((x: any) => m.set(`proyecto:${x.id}`, x.nombre));
+  (f.emp.data || []).forEach((x: any) => m.set(`empresa:${x.id}`, x.nombre));
+  (f.pers.data || []).forEach((x: any) => m.set(`persona:${x.id}`, x.nombre));
+  (f.conv.data || []).forEach((x: any) =>
+    m.set(`convocatoria:${x.id}`, x.nombre ? `${x.nombre} ${x.anio || ""}`.trim() : x.codigo));
+  (f.equi.data || []).forEach((x: any) =>
+    m.set(`equipamiento:${x.id}`, x.folio ? `${x.folio} · ${x.nombre}` : x.nombre));
+  (f.luga.data || []).forEach((x: any) => m.set(`lugar:${x.id}`, x.nombre));
+  (f.postu.data || []).forEach((x: any) =>
+    m.set(`postulacion:${x.id}`, `${x.codigo || x.conv?.codigo || "🎯"} · ${x.proy?.nombre || "postulación"}`));
+  return m;
+}
+
+/** El nombre corto de quien tiene cuenta: «MichelM», no «Michel Oros».
+ *  ⚠ NO reimplementa el cruce: lo hace `mapaAlias`, que ya tiene siete
+ *  llamadores. La primera versión de esta función lo copiaba —el mismo filtro,
+ *  el mismo `usuario_id && alias`, con `Map` en vez de `Record`— y eso es un
+ *  refactor que predica «en un solo sitio» creando un segundo sitio.
+ *  Lo único que hace aquí es evitarle a la ficha una consulta a `personas` que
+ *  ya viene en esta misma tanda. */
+export const aliasPorCuenta = (f: FilasEntidades): Record<string, string> =>
+  mapaAlias(f.pers.data);
 
 export async function catalogosDuenos(supabase: any): Promise<CatalogosDuenos> {
   const todos = await catalogosEntidades(supabase);

@@ -14,9 +14,9 @@ import Reacciones from "@/components/Reacciones";
 import RespuestaBox from "@/components/RespuestaBox";
 import Realtime from "@/components/Realtime";
 import { agruparEventos } from "@/lib/agrupar";
-import { catalogosEntidades } from "@/lib/catalogos";
+import { filasEntidades, catalogosDeFilas, aliasPorCuenta } from "@/lib/catalogos";
 import { resolverNombres } from "@/lib/nombres";
-import { mapaAlias, conAlias } from "@/lib/personas";
+import { conAlias } from "@/lib/personas";
 import { icoObjeto, lblObjeto } from "@/lib/objetos";
 import { ICO_ENT, SECCIONES, rutaEntidad } from "@/lib/secciones";
 import { claseEstado, rotuloEstado } from "@/lib/estados";
@@ -56,7 +56,12 @@ export default async function ObjetoPage({ params }: { params: { id: string } })
   const { data: o } = await supabase.from("objetos").select("*").eq("id", params.id).single();
   if (!o) notFound();
 
-  const [{ data: vincs }, { data: casosVinc }, { data: eventos }, { data: verifs }, { data: aliasPers },
+  /* ⏱ Aquí se piden TODAS las filas de golpe, incluidos los catálogos.
+     `catalogosEntidades` estaba más abajo, en un `await` suelto: una tercera
+     ola de ocho consultas después de otras dos olas, esperando por nada —no
+     depende de este objeto ni de sus vínculos—. Y `personas` se leía por su
+     cuenta solo para los alias, cuando ya viene aquí dentro. */
+  const [{ data: vincs }, { data: casosVinc }, { data: eventos }, { data: verifs }, filasEnt,
          { data: coments }, { data: perfilesCat }] =
     await Promise.all([
       supabase.from("objeto_vinculos").select("entidad_tipo,entidad_id").eq("objeto_id", params.id),
@@ -75,8 +80,10 @@ export default async function ObjetoPage({ params }: { params: { id: string } })
         .select("campo,url,correcto,verificado_en,por:perfiles(nombre)")
         .eq("entidad_tipo", o.entidad_tipo).eq("entidad_id", o.entidad_id)
         .eq("campo", `objeto:${params.id}`),
-      supabase.from("personas").select("usuario_id,alias")
-        .not("alias", "is", null).not("usuario_id", "is", null),
+      /* Las filas de las entidades: alimentan a la vez el selector de vincular,
+         el de cambiarle el dueño al objeto y el cruce cuenta↔alias. Antes eran
+         tres lecturas de `personas` por visita. */
+      filasEntidades(supabase),
       /* Los comentarios del objeto: misma tabla que los de un caso. */
       supabase.from("comentarios")
         .select("id,cuerpo,imagenes,creado_en,editado_en,autor_id,responde_a,autor:perfiles(nombre,color,avatar_url)")
@@ -119,7 +126,7 @@ export default async function ObjetoPage({ params }: { params: { id: string } })
 
   const v0: any = (verifs || [])[0];
   const verif = v0 ? { url: v0.url, por: v0.por?.nombre, en: v0.verificado_en, correcto: v0.correcto } : undefined;
-  const alias = mapaAlias(aliasPers);
+  const alias = aliasPorCuenta(filasEnt);
   const evs = conAlias((eventos || []) as any[], alias);
   // Nombre corto de quien comenta, igual que en el resto del sistema
   const aliasDe = new Map(Object.entries(alias));
@@ -153,10 +160,11 @@ export default async function ObjetoPage({ params }: { params: { id: string } })
   const quienTrajo = (o.creado_por && alias[o.creado_por]) || null;
 
   /* Catálogos para vincular a proyectos, empresas, etc., y para CAMBIARLE EL
-     DUEÑO al objeto. Misma función que el feed, el «+» y la ficha del caso:
+     DUEÑO al objeto. Mismo formato que el feed, el «+» y la ficha del caso:
      ésta era la quinta puerta que armaba su propia lista, y era la que peor
-     mostraba a las personas. */
-  const catalogos = await catalogosEntidades(supabase);
+     mostraba a las personas.
+     Sin `await`: las filas ya vinieron arriba y esto solo les da forma. */
+  const catalogos = catalogosDeFilas(filasEnt);
   // Cómo se llama cada tipo en el botón del selector, sin escribirlo a mano.
   const ETIQ_ENT: Record<string, string> = Object.fromEntries(
     SECCIONES.map(s => [s.tipo, s.singular || s.plural]));
