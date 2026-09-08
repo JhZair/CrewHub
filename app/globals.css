@@ -4749,7 +4749,18 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
 .act-foto-mas{display:inline-flex;align-items:center;justify-content:center;
   min-width:26px;height:52px;padding:0 6px;border-radius:7px;
   border:1px dashed var(--border2);color:var(--dim);font-size:10.5px;font-weight:700}
-.ug-img{flex:none}
+/* ── LA MINIATURA DE LA CABECERA ES MÁS CHICA QUE LA DE UNA FILA ──
+   Al mismo tamaño (60 px), la franja que agrupa se leía como una unidad más:
+   la misma foto, el mismo nombre, y encima justo encima de sus propias filas
+   con la misma cara. Se buscaba «cable», salían tres tarjetas idénticas y no se
+   sabía cuál era el grupo y cuáles las unidades — sobre todo con el grupo
+   plegado, que es cuando la franja está sola.
+   A 38 px sigue cumpliendo su trabajo —reconocer el producto MIRANDO, que es
+   como se recorre esta lista— y ya no compite: se lee como el rótulo de lo que
+   hay debajo. `--mini` se pisa aquí y no se escribe el número suelto porque la
+   caja, el radio y el tamaño del emoji de respaldo se calculan a partir de él
+   en `.mini-eq`. */
+.ug-img{flex:none;--mini:38px}
 .ug-nom{font-size:13.5px}
 .ug-n{font-size:11px;color:var(--dim)}
 .ug-est{font-size:11px;font-weight:600;white-space:nowrap}

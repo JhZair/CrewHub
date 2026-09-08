@@ -58,11 +58,13 @@ export default function FilasEquipo({ unidades, filas }: {
           <div key={gr.k} className="ug-caja">
             <button className="ug-h" onClick={() => alternar(gr.k)}>
               <span className="ug-flecha">{abierto ? "▾" : "▸"}</span>
-              {/* Con foto, como cualquier otra fila de la lista. Plegadas, las
-                  tres Aputure eran la unica linea sin imagen entre veinte que
-                  si la tienen, y en una lista que se recorre MIRANDO —asi se
-                  reconoce un equipo, no por el folio— el grupo desaparecia.
-                  Da igual cual de las tres: son el mismo producto. */}
+              {/* Con foto, porque esta lista se recorre MIRANDO —así se reconoce
+                  un equipo, no por el folio—: plegadas, las tres Aputure eran la
+                  única línea sin imagen entre veinte que sí la tienen y el grupo
+                  desaparecía. Da igual cuál de las tres: son el mismo producto.
+                  Pero MÁS CHICA que la de una fila (`.ug-img` pisa `--mini`): al
+                  mismo tamaño esta franja se leía como una unidad más, justo
+                  encima de sus propias filas y con la misma cara. */}
               <span className="mini-eq ug-img">
                 {gr.cartel
                   // eslint-disable-next-line @next/next/no-img-element
