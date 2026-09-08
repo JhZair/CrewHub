@@ -3,8 +3,8 @@ import { redirect } from "next/navigation";
 import Link from "@/components/Enlace";
 import Volver from "@/components/Volver";
 import Realtime from "@/components/Realtime";
-import ListaClearance, { type FilaVista } from "@/components/ListaClearance";
-/* ⚠ `normalizar` de `lib/texto` y NO de `ListaClearance`: ese módulo es
+import ListaPeliculas, { type FilaVista } from "@/components/ListaPeliculas";
+/* ⚠ `normalizar` de `lib/texto` y NO de `ListaPeliculas`: ese módulo es
    `"use client"`, y una función importada de ahí y llamada AQUÍ —en el
    servidor— no da error de tipos, da un error en runtime que tumba la
    pantalla entera. Está contado en lib/texto.ts. */
@@ -154,7 +154,7 @@ export default async function Clearance({
   const ocultas = Math.min(((proys.data || []) as any[]).length, techo(400)) - peliculas.length;
 
   /* ── UNA LÍNEA POR PELÍCULA, COMO DATO ──
-     ⚠ Se construyen aquí y las pinta `ListaClearance`, que es cliente porque
+     ⚠ Se construyen aquí y las pinta `ListaPeliculas`, que es cliente porque
      tiene la caja de búsqueda. Lo que cruza son CADENAS ya resueltas: el
      color, el rótulo, el nombre de quien firma. Ni el catálogo ni `ctxDe`
      viajan — un closure a un componente cliente revienta en runtime y tsc no
@@ -265,8 +265,17 @@ export default async function Clearance({
       )}
 
       {!fallo && (
-        <ListaClearance filas={conDatos.map(vista)} vacias={vacias.map(vista)}
-          inicial={searchParams?.q} ocultas={todas ? 0 : ocultas} />
+        <ListaPeliculas filas={conDatos.map(vista)} vacias={vacias.map(vista)}
+          inicial={searchParams?.q} ocultas={todas ? 0 : ocultas}
+          rotulos={{
+            base: "/clearance",
+            indice: "/clearance",
+            queBusca: "películas",
+            noBusca: "no por quién firma ni por lo que falta",
+            vaciasTitulo: `${vacias.length} película${vacias.length === 1 ? "" : "s"} sin ningún permiso registrado`,
+            vaciasResumen: "no es «todo en regla»: es que nadie ha empezado",
+            incluyeVacias: "incluye las que nadie ha empezado",
+          }} />
       )}
 
       {!fallo && !filas.length && (

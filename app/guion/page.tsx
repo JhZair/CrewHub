@@ -3,13 +3,19 @@ import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import Link from "@/components/Enlace";
 import Volver from "@/components/Volver";
-import Plegable from "@/components/Plegable";
-import Tratamientos from "@/components/Tratamientos";
+import ListaPeliculas, { type FilaVista } from "@/components/ListaPeliculas";
+import QueEsUnTratamiento from "@/components/QueEsUnTratamiento";
+/* ⚠ `normalizar` de `lib/texto` y NO de `ListaPeliculas`: ese módulo es
+   `"use client"`, y una función importada de ahí y llamada AQUÍ —en el
+   servidor— no da error de tipos, da un error en runtime que tumba la
+   pantalla entera. Está contado en lib/texto.ts. */
+import { normalizar } from "@/lib/texto";
 import { techo } from "@/lib/api";
 import { modoGuion } from "@/lib/guion";
 import {
   diagnosticar, resumirDiagnostico, ordenarPeliculas, peliculaViva,
-  tituloDe, metaNivel, nivelDe, nivelDestino, META_FALTA, TIPOS_CON_GUION,
+  motivoFalta, resumenPelicula, META_FALTA, TIPOS_CON_GUION,
+  type FilaPelicula,
 } from "@/lib/tratamiento";
 
 export const metadata: Metadata = { title: "✍ Guion" };
@@ -18,29 +24,45 @@ export const metadata: Metadata = { title: "✍ Guion" };
    ✍ EL ÍNDICE DE GUION
 
    La puerta de una actividad. Quien va a escribir no piensa «voy a la ficha
-   del proyecto ROBOTRASH»: piensa «voy a escribir». Era el único módulo grande
-   del sistema sin índice —`/fondos`, `/personas`, `/caja`, `/casilla`,
-   `/tablero` y `/obligaciones` lo tienen todos— y encima `/guion` daba 404:
-   quien borrara el id de la URL, o llegara por un enlace roto, caía en una
-   página de error.
+   del proyecto ROBOTRASH»: piensa «voy a escribir».
+
+   ── ES UN ÍNDICE, NO UN ESCRITORIO ──
+   ⚠ Lo era hasta hoy, y es el cambio de esta pantalla. Cada película llevaba
+   DENTRO el editor entero de tratamientos —`Tratamientos`, que es de cliente—,
+   así que abrir «cómo va todo» cargaba quince editores con sus formularios,
+   sus desplegables de fondos y sus mapas de secuencias, para que se usara como
+   mucho uno.
+
+   Es exactamente lo que le pasaba a ⚖ clearance y se arregló igual: el índice
+   dice UNA línea por película y el trabajo se hace en `/guion/pelicula/[id]`.
+   La lista y el buscador son el MISMO componente que allí —`ListaPeliculas`—
+   para que los dos no aprendan por separado a buscar sin tildes.
+
+   ⚠ LO QUE SE PIERDE, ENTERO. Una primera versión de este comentario declaró
+   una sola pérdida —«ya no se puede crear»— y era quedarse corto: el editor
+   iba con `puedeEditar` por defecto, así que desde aquí también se editaba la
+   cabecera, se duplicaba, se marcaba vigente y se saltaba a la rejilla de
+   escritura de cualquier documento en un clic. Todo eso está ahora a un clic
+   más, dentro de la película. Y con el editor se fueron el enlace a la ficha
+   del proyecto y la línea «destino: …» de cada fila, que viven en la ficha.
+   Lo único que se conserva por fila —porque es lo que explica el veredicto—
+   es el 🫂 / 🎭: si la película termina en el secuenciado o sigue al guion.
+   A cambio, la pantalla que se mira todos los días deja de cargar quince
+   editores de cliente y seiscientas postulaciones para llenar un desplegable
+   que nadie abre.
 
    ── AGRUPADO POR PELÍCULA, NO POR DOCUMENTO ──
    La pregunta es «¿cómo va el guion de X?». Cuarenta documentos de quince
-   películas ordenados por fecha no la contestan: obligan a leer la lista
-   entera para reconstruir mentalmente qué pertenece a qué.
+   películas ordenados por fecha no la contestan.
 
    ── Y EL DIAGNÓSTICO ARRIBA ──
-   Qué películas no tienen nada escrito, cuáles tienen documentos pero ninguno
-   vigente, cuáles están solo enlazadas a Drive y cuáles de ficción se quedaron
-   en el secuenciado. Eso hoy exige abrir proyecto por proyecto, o sea que no
-   se mira nunca.
    ⚠ El recuento sale de LAS MISMAS filas que se pintan debajo. Un titular
    calculado aparte del contenido que resume es el que acaba discrepando.
    ══════════════════════════════════════════════════════════════════════════ */
 
 export default async function IndiceGuion({
   searchParams,
-}: { searchParams?: { todas?: string } }) {
+}: { searchParams?: { todas?: string; q?: string } }) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
@@ -50,7 +72,7 @@ export default async function IndiceGuion({
      terminadas» tiene que poder enlazarse y volver con el botón de atrás. */
   const todas = searchParams?.todas === "1";
 
-  const [proys, trats, posts] = await Promise.all([
+  const [proys, trats] = await Promise.all([
     /* Las películas. Flacas: aquí solo se pintan su nombre, su tipo —que decide
        hasta dónde tiene que llegar el documento— y su etapa.
        ⚠ `.in("tipo", TIPOS_CON_GUION)`: sin esto entraban los videojuegos y la
@@ -69,21 +91,15 @@ export default async function IndiceGuion({
        películas del final saldrían «sin tratamiento» — una acusación falsa
        sobre trabajo que sí existe. */
     supabase.from("tratamiento")
-      .select("id,proyecto_id,postulacion_id,nombre,version,nivel,estado," +
-        "presentado_en,vigente,url,nota,creado_en,secs:guion_secuencias(count)")
+      .select("id,proyecto_id,nombre,version,nivel,estado,vigente,url,creado_en," +
+        "secs:guion_secuencias(count)")
       .order("creado_en", { ascending: false }).limit(techo(900) + 1),
-    /* ── LOS FONDOS DE CADA PELÍCULA ──
-       Para poder marcar aquí mismo a cuál se presentó un documento. Estaba
-       fuera «porque es una decisión de expediente», y era una fricción tonta:
-       la decisión se toma escribiendo, mirando el documento, y mandar a otra
-       pantalla para desplegar un selector de tres opciones es la clase de
-       rodeo que hace que el dato no se rellene nunca.
-       Flaca —tres columnas— y ordenada por código: no se pinta ningún fondo
-       aquí, solo se llena un desplegable. */
-    supabase.from("postulaciones")
-      .select("id,codigo,proyecto_id,conv:convocatorias(nombre,codigo)")
-      .order("codigo").limit(techo(600)),
   ]);
+  /* ⚠ Las `postulaciones` ya NO se piden. Solo servían para llenar el
+     desplegable de «a qué fondo se presentó» dentro de cada editor, y el
+     editor ya no está aquí: eran seiscientas filas cargadas en cada visita
+     para alimentar un control que nadie ve. Se piden en la ficha, filtradas
+     por película. */
 
   /* ⚠ Los dos errores se enseñan y NO se tragan con `|| []`. Sin la lista de
      tratamientos, todas las películas saldrían «sin tratamiento»: el
@@ -93,10 +109,8 @@ export default async function IndiceGuion({
   const fallo = eProy || eTrat;
 
   /* ── ¿SE CORTÓ? ──
-     El comentario de arriba describía el fallo —«las películas del final
-     saldrían sin tratamiento, una acusación falsa»— y no lo detectaba. Se pide
-     una fila de más y se mira si volvió: es lo que lib/api.ts llama la sonda.
-     El corte va por `creado_en desc`, así que lo que se pierde son los
+     Se pide una fila de más y se mira si volvió: es lo que lib/api.ts llama la
+     sonda. El corte va por `creado_en desc`, así que lo que se pierde son los
      documentos MÁS ANTIGUOS: justo los de las películas viejas. */
   const cortadoTrat = (trats.data || []).length > techo(900);
   const cortadoProy = (proys.data || []).length > techo(400);
@@ -107,21 +121,6 @@ export default async function IndiceGuion({
     ? null
     : Object.fromEntries(listaTrats.map(t => [t.id, t._n]));
 
-  /* Los fondos, agrupados por película en un solo recorrido. Un `filter` por
-     cada una sería recorrer la lista tantas veces como proyectos haya.
-     ⚠ Si esta consulta falla NO se rompe nada: el desplegable sale vacío y el
-     resto de la pantalla funciona igual. Es decoración, no diagnóstico. */
-  const fondosDe = new Map<string, { id: string; codigo: string | null; nombre: string }[]>();
-  for (const q of ((posts.data || []) as any[])) {
-    if (!q.proyecto_id) continue;
-    const conv = Array.isArray(q.conv) ? q.conv[0] : q.conv;
-    fondosDe.set(q.proyecto_id, [...(fondosDe.get(q.proyecto_id) || []), {
-      id: q.id,
-      codigo: q.codigo || null,
-      nombre: conv?.nombre || conv?.codigo || "fondo sin código",
-    }]);
-  }
-
   const peliculas = ((proys.data || []) as any[]).slice(0, techo(400))
     .filter(p => todas || peliculaViva(p));
   const filas = ordenarPeliculas(
@@ -129,10 +128,57 @@ export default async function IndiceGuion({
   const res = resumirDiagnostico(filas);
   const ocultas = Math.min(((proys.data || []) as any[]).length, techo(400)) - peliculas.length;
 
+  /* ── UNA LÍNEA POR PELÍCULA, COMO DATO ──
+     ⚠ Se construyen aquí y las pinta `ListaPeliculas`, que es cliente porque
+     tiene la caja de búsqueda. Lo que cruza son CADENAS ya resueltas. Ni
+     `cuentas` ni `diagnosticar` viajan — una función a un componente cliente
+     revienta en runtime y tsc no lo ve. */
+  const vista = (f: FilaPelicula): FilaVista => {
+    const p = f.peli as any;
+    const nombre = p.nombre_corto || p.nombre || "(sin nombre)";
+    const motivo = motivoFalta(f);
+    return {
+      id: p.id,
+      nombre,
+      /* 🫂 termina en el tratamiento secuenciado, 🎭 sigue hasta el guion. En
+         TODAS las filas: es lo que explica por qué dos películas con el mismo
+         nivel tienen veredictos distintos. */
+      ico: modoGuion(p.tipo) === "documental" ? "🫂" : "🎭",
+      nombreLargo: String(p.nombre || ""),
+      /* ⚠ El corto Y el largo. Se busca «mujeres» y la fila se llama
+         «MUJERESANDE»; se busca «Mujeres del Ande» y también tiene que salir. */
+      busca: normalizar([p.nombre_corto, p.nombre].filter(Boolean).join(" ")),
+      color: f.falta ? META_FALTA[f.falta].col : "var(--green)",
+      veredicto: f.falta ? META_FALTA[f.falta].txt : "al día",
+      resumen: resumenPelicula(f),
+      /* ⚠ NINGÚN documento, ni vivo ni descartado — y NO `falta === "sin-nada"`,
+         que era el criterio y era falso. Una película cuyos dos documentos se
+         abandonaron sale «sin tratamiento» (correcto: no hay nada vigente que
+         escribir) pero caía dentro del plegable «sin ningún documento, ni
+         siquiera el enlace al de Drive», que es una frase falsa sobre trabajo
+         que existe y sigue guardado. Ahora se queda en la lista de arriba,
+         diciendo «2 documentos, todos descartados». */
+      sinDatos: !f.tratamientos.length,
+      /* Una sola razón, la del veredicto. No es una lista de bloqueos como en
+         ⚖ clearance —aquí solo se dice UNA cosa, la peor— pero el hueco es el
+         mismo: la línea de debajo que explica el color. */
+      bloqueos: motivo
+        ? [{ id: `${p.id}:motivo`, ico: "↳",
+             txt: motivo, color: META_FALTA[f.falta!].col }]
+        : [],
+      masBloqueos: 0,
+    };
+  };
+
+  /* El MISMO criterio que `vista().sinDatos`, y por eso se lee de la fila y no
+     de la falta: si aquí se dijera `f.falta === "sin-nada"` y allí otra cosa,
+     una película iría al plegable con el rótulo equivocado. */
+  const conDatos = filas.filter(f => f.tratamientos.length > 0);
+  const vacias = filas.filter(f => !f.tratamientos.length);
+
   return (
     /* `.shell` + `.topbar`, como el resto de las pantallas: `.wrap` no existe
-       en app/globals.css —la página salía a sangre completa, sin ancho máximo
-       ni padding, y el «volver» fuera de su barra—. */
+       en app/globals.css. */
     <div className="shell">
       <div className="topbar"><Volver /></div>
       <h1 className="title-lg">✍ Guion</h1>
@@ -173,9 +219,9 @@ export default async function IndiceGuion({
               <b>{res.peliculas}</b> película{res.peliculas === 1 ? "" : "s"}
               {" · "}<b>{res.documentos}</b> documento{res.documentos === 1 ? "" : "s"}
             </span>
-            {res.sinNada > 0 && (
-              <span className="gx-n" style={{ color: META_FALTA["sin-nada"].col }}
-                title={META_FALTA["sin-nada"].ayuda}>⚠ {res.sinNada} sin tratamiento</span>
+            {res.vacios > 0 && (
+              <span className="gx-n" style={{ color: META_FALTA["vacio"].col }}
+                title={META_FALTA["vacio"].ayuda}>⚠ {res.vacios} con el vigente vacío</span>
             )}
             {res.sinVigente > 0 && (
               <span className="gx-n" style={{ color: META_FALTA["sin-vigente"].col }}
@@ -189,7 +235,11 @@ export default async function IndiceGuion({
               <span className="gx-n" style={{ color: META_FALTA["solo-enlazado"].col }}
                 title={META_FALTA["solo-enlazado"].ayuda}>{res.soloEnlazado} solo enlazado{res.soloEnlazado === 1 ? "" : "s"}</span>
             )}
-            {res.sinNada === 0 && res.sinVigente === 0 && res.peliculas > 0 && (
+            {res.sinNada > 0 && (
+              <span className="gx-n" style={{ color: META_FALTA["sin-nada"].col }}
+                title={META_FALTA["sin-nada"].ayuda}>{res.sinNada} sin empezar</span>
+            )}
+            {res.sinNada === 0 && res.sinVigente === 0 && res.vacios === 0 && res.peliculas > 0 && (
               <span className="gx-n" style={{ color: "var(--green)" }}>✔ todas tienen su documento vigente</span>
             )}
             <span style={{ flex: 1 }} />
@@ -204,72 +254,19 @@ export default async function IndiceGuion({
         </div>
       )}
 
-      {!fallo && filas.map(f => {
-        const p = f.peli;
-        const nombre = p.nombre_corto || p.nombre || "(sin nombre)";
-        const doc = modoGuion(p.tipo) === "documental";
-        return (
-          <div key={p.id} style={{ scrollMarginTop: 12 }}>
-            <Plegable id={`guion:peli:${p.id}`}
-              /* Las que necesitan atención se abren solas; las que están al día
-                 quedan plegadas. Con quince películas abiertas, la que le falta
-                 algo está a tres pantallas de scroll.
-                 ⚠ `Plegable` solo lee esto AL MONTAR y guarda en localStorage
-                 lo que el lector alterna a mano. Así que si alguien pliega una
-                 película una vez, queda plegada para siempre y ya no volverá a
-                 abrirse sola el día que le empiece a faltar algo. Es una
-                 pérdida aceptable —el diagnóstico de arriba sigue contándola—
-                 pero conviene saberla antes de confiar en que esto avisa. */
-              abiertoPorDefecto={!!f.falta}
-              titulo={<>
-                <span style={{ color: "var(--violet)" }}>{doc ? "🫂" : "🎭"}</span>{" "}
-                {nombre}
-              </>}
-              resumen={<span style={{ fontWeight: 400, fontSize: 12 }}>
-                {f.falta
-                  ? <span style={{ color: META_FALTA[f.falta].col }} title={META_FALTA[f.falta].ayuda}>
-                      {META_FALTA[f.falta].txt}
-                    </span>
-                  : <span style={{ color: "var(--dim)" }}>
-                      {f.vigente ? tituloDe(f.vigente) : ""}
-                      {f.vigente && ` · ${metaNivel(nivelDe(f.vigente)).txt.toLowerCase()}`}
-                    </span>}
-                {f.tratamientos.length > 1 && (
-                  <span style={{ color: "var(--dim)" }}> · {f.tratamientos.length} documentos</span>
-                )}
-              </span>}>
-              <div style={{ color: "var(--dim)", fontSize: 11.5, marginBottom: 4 }}>
-                <Link href={`/entidad/proyecto/${p.id}`} style={{ color: "var(--blue)" }}>
-                  la ficha del proyecto →
-                </Link>
-                {" · destino: "}{metaNivel(nivelDestino(p.tipo)).txt.toLowerCase()}
-                {doc && " (en documental, el secuenciado es el final del camino)"}
-              </div>
-              {/* El mismo componente que en la ficha del proyecto: quien entra
-                  a «voy a escribir» y ve una película sin nada tiene que poder
-                  empezar ahí, sin el rodeo por la ficha.
-                  `fondos` va vacío a propósito: marcar a qué concurso se
-                  presentó un documento es una decisión de expediente, y se toma
-                  donde está el expediente. */}
-              {/* ⚠ Solo SUS cuentas y SUS fondos, no los mapas enteros.
-                  `Tratamientos` es de cliente, así que cada película abre una
-                  frontera y todo lo que reciba se serializa en el payload:
-                  pasar los mapas completos a cada una los repetía N veces.
-                  `puedeBorrar={false}`: desde el índice se crea —quien entra a
-                  «voy a escribir» y ve una película sin nada tiene que poder
-                  empezar ahí— pero no se destruye. Borrar un tratamiento se
-                  lleva sus actos, secuencias, hilos y espina; esa decisión se
-                  toma con el proyecto delante. */}
-              <Tratamientos proyectoId={p.id} tipoProyecto={p.tipo}
-                tratamientos={f.tratamientos} puedeBorrar={false}
-                fondos={fondosDe.get(p.id) || []}
-                cuentas={cuentas
-                  ? Object.fromEntries(f.tratamientos.map(t => [t.id, cuentas[t.id] ?? 0]))
-                  : null} />
-            </Plegable>
-          </div>
-        );
-      })}
+      {!fallo && (
+        <ListaPeliculas filas={conDatos.map(vista)} vacias={vacias.map(vista)}
+          inicial={searchParams?.q} ocultas={todas ? 0 : ocultas}
+          rotulos={{
+            base: "/guion/pelicula",
+            indice: "/guion",
+            queBusca: "películas",
+            noBusca: "no por el texto de los tratamientos",
+            vaciasTitulo: `${vacias.length} película${vacias.length === 1 ? "" : "s"} sin ningún documento`,
+            vaciasResumen: "ni siquiera el enlace al de Drive: nadie ha empezado",
+            incluyeVacias: "incluye las que nadie ha empezado",
+          }} />
+      )}
 
       {!fallo && !filas.length && (
         <div className="card" style={{ color: "var(--dim)", fontSize: 12.5, lineHeight: 1.55 }}>
@@ -279,6 +276,8 @@ export default async function IndiceGuion({
                 Ver también las terminadas</Link>.</>}
         </div>
       )}
+
+      {!fallo && <QueEsUnTratamiento />}
     </div>
   );
 }

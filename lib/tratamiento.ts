@@ -92,6 +92,12 @@ export const META_ESTADO_TRAT: Record<EstadoTrat, { ico: string; txt: string; co
   descartado: { ico: "✕", txt: "descartado", col: "var(--dim)" },
 };
 
+/** Los tres estados, DERIVADOS del Record y no escritos otra vez. Un `Record`
+ *  obliga a declarar todas las claves, así que añadir un cuarto estado rompe la
+ *  compilación en `META_ESTADO_TRAT` — y la lista de la ayuda lo recoge sola.
+ *  Una lista escrita a mano compilaría y lo omitiría en silencio. */
+export const ESTADOS_TRAT = Object.keys(META_ESTADO_TRAT) as EstadoTrat[];
+
 export function estadoDe(t: Tratamiento): EstadoTrat {
   const e = limpia(t.estado);
   return (e === "presentado" || e === "descartado") ? e : "borrador";
@@ -205,17 +211,54 @@ export const peliculaViva = (p: PeliMin) => (p.etapa || "") !== "finalizado";
  *  no debe pintar ningún diagnóstico. */
 export type Falta = "sin-nada" | "sin-vigente" | "vacio" | "corto" | "solo-enlazado" | null;
 
+/* ── UN COLOR POR FALTA ──
+   ⚠ Tres de las cinco eran `var(--yellow)`: `sin-nada`, `sin-vigente` y
+   `vacio`. Un color que se repite no es un color, es un adorno: la línea de
+   arriba salía amarilla entera y no se podía distinguir de un vistazo entre
+   «no hay nada escrito» y «hay tres documentos y nadie sabe cuál manda», que
+   son problemas distintos y se atienden de forma distinta.
+   Es el mismo fallo que se acababa de corregir en ⚖ clearance, y se corrige
+   con el mismo criterio: el color dice la GRAVEDAD, no la categoría.
+
+     rojo    — el sistema está mintiendo. Un vigente vacío se cuenta en
+               «tiene su documento» y por dentro no hay ni una palabra.
+     naranja — hay trabajo hecho pero no se puede usar: nadie sabe cuál leer.
+     gris    — no es un fallo. O nadie ha empezado, o vive en Drive y aquí
+               solo está el enlace, que es lo normal.
+
+   ⚠ `sin-nada` en GRIS y no en amarillo, a propósito, y esto sorprende: no
+   tener nada escrito parece lo más grave. No lo es en esta pantalla. Es el
+   estado de partida de toda película nueva, es el más numeroso, y pintarlo de
+   alerta convierte el índice en un muro de avisos que se deja de leer. En el
+   índice van agrupadas y plegadas aparte, con su número a la vista.
+   ⚠ `corto` en gris es la decisión MÁS discutible de las cinco, y la primera
+   versión de este comentario la justificó con algo falso: dijo que `corto` ya
+   estaba documentada «como no es un error». No lo estaba — solo explicaba la
+   regla del destino. Que una ficción se haya quedado en el secuenciado es
+   exactamente lo que esta pantalla persigue.
+   Va en gris porque es el estado NORMAL de una película que se está
+   escribiendo: entre el secuenciado y el guion pasan meses, y pintarlo de
+   alerta encendería a la mitad del catálogo todo el rato. Sigue contándose en
+   el titular, con su número. Si algún día se quiere perseguir, el sitio de
+   cambiarlo es esta línea. */
 export const META_FALTA: Record<Exclude<Falta, null>, { txt: string; ayuda: string; col: string }> = {
-  "sin-nada": { txt: "sin tratamiento", col: "var(--yellow)",
-    ayuda: "No hay ningún documento registrado para esta película, ni siquiera el enlace al de Drive." },
-  "sin-vigente": { txt: "sin vigente", col: "var(--yellow)",
+  "sin-nada": { txt: "sin tratamiento", col: "var(--dim)",
+    ayuda: "No hay ningún documento registrado para esta película, ni siquiera el enlace al de Drive. No es un fallo: es donde empieza todo lo que todavía no se ha escrito." },
+  "sin-vigente": { txt: "sin vigente", col: "var(--orange)",
     ayuda: "Hay documentos, pero ninguno marcado como el que manda hoy: al entrar, nadie sabe cuál leer." },
-  "vacio": { txt: "documento vacío", col: "var(--yellow)",
-    ayuda: "El documento vigente no tiene secuencias NI enlace: está creado y sin nada dentro. `cargaDe` ya nombraba este estado; el diagnóstico era el único sitio que lo daba por bueno." },
+  "vacio": { txt: "documento vacío", col: "var(--red)",
+    ayuda: "El documento vigente no tiene secuencias NI enlace: está creado y sin nada dentro. Es el peor de los cinco porque MIENTE: la película se cuenta entre las que tienen su documento vigente." },
   "solo-enlazado": { txt: "solo enlazado", col: "var(--dim)",
     ayuda: "El documento está registrado con su enlace pero no se ha troceado en secuencias aquí dentro. No es un error: es lo normal mientras vive en Drive." },
+  /* ⚠ La ayuda NO nombra tipos de película, y es una corrección. Decía «en
+     ficción y animación el destino es el guion»: son CINCO los tipos con guion
+     y `nivelDestino` manda al guion también a `experimental`, mientras que
+     `cobertura` para en el secuenciado igual que un documental. A una película
+     experimental corta se le enseñaba una explicación que empezaba
+     describiendo un tipo que ella no es.
+     Quién va a dónde se pinta desde `nivelDestino`, en la ayuda de pantalla. */
   "corto": { txt: "no llegó al guion", col: "var(--dim)",
-    ayuda: "En ficción y animación el destino es el guion, y este documento se quedó en el tratamiento secuenciado. En documental el secuenciado ES el destino y esto no aparece." },
+    ayuda: "El documento que manda hoy se quedó por debajo del destino de esta película: hay un escalón más que escribir. En las que terminan en el tratamiento secuenciado esto no aparece nunca." },
 };
 
 export type FilaPelicula = {
@@ -247,12 +290,17 @@ export function diagnosticar(
   const vivos = suyos.filter(t => estadoDe(t) !== "descartado");
   const vigente = vivos.find(t => t.vigente) || null;
 
-  /* ⚠ El orden ES el de gravedad, y tiene que coincidir con el de
-     `ordenarPeliculas`. En la primera versión no coincidía: aquí se miraba
-     `solo-enlazado` antes que `corto`, y allí `corto` pesaba más. Una ficción
-     cuyo vigente era una sinopsis enlazada salía en gris y por debajo de
-     películas más adelantadas, cuando el hecho que importa es que ni siquiera
-     llegó al secuenciado. */
+  /* ── ESTA CADENA ES DE PRECEDENCIA, NO DE GRAVEDAD ──
+     ⚠ Y hasta hoy se decía que eran lo mismo, que es lo que hacía frágil el
+     conjunto. Lo que este `if/else` decide es cuál de VARIAS faltas ciertas a
+     la vez se dice; el orden en que se PINTAN lo decide `ORDEN_FALTA`.
+     Solo dos pares pueden darse a la vez, y en los dos manda la peor:
+       · `vacio` antes que `corto`  — una ficción con la sinopsis vigente,
+         sin secuencias y sin enlace, es un documento vacío antes que corto.
+       · `corto` antes que `solo-enlazado` — lo que importa de una ficción
+         secuenciada y enlazada es que no llegó al guion, no dónde vive.
+     Los otros tres se excluyen entre sí (sin documentos, sin vigente, y todo
+     lo que exige un vigente), así que su sitio aquí da igual. */
   let falta: Falta = null;
   const sinSecuencias = !!cuentas && vigente && (cuentas[vigente.id] ?? 0) === 0;
   if (!vivos.length) falta = "sin-nada";
@@ -273,6 +321,12 @@ export type Diagnostico = {
   peliculas: number;
   sinNada: number;
   sinVigente: number;
+  /** ⚠ `vacio` no se contaba en ninguna parte. La falta existía, se pintaba en
+   *  su fila y no entraba en el titular — y como el «✔ todas tienen su
+   *  documento vigente» solo miraba `sinNada` y `sinVigente`, una película con
+   *  el vigente COMPLETAMENTE VACÍO dejaba encendido el visto verde. Un
+   *  diagnóstico que no se suma es un diagnóstico que no existe. */
+  vacios: number;
   soloEnlazado: number;
   cortos: number;
   /** Cuántos documentos hay en total, para que el titular no hable solo de
@@ -281,31 +335,125 @@ export type Diagnostico = {
 };
 
 export function resumirDiagnostico(filas: FilaPelicula[]): Diagnostico {
-  const r: Diagnostico = { peliculas: filas.length, sinNada: 0, sinVigente: 0, soloEnlazado: 0, cortos: 0, documentos: 0 };
+  const r: Diagnostico = { peliculas: filas.length, sinNada: 0, sinVigente: 0,
+    vacios: 0, soloEnlazado: 0, cortos: 0, documentos: 0 };
   for (const f of filas) {
     /* Los VIVOS, no todos: ver el comentario de `FilaPelicula.vivos`. */
     r.documentos += f.vivos.length;
     if (f.falta === "sin-nada") r.sinNada++;
     else if (f.falta === "sin-vigente") r.sinVigente++;
+    else if (f.falta === "vacio") r.vacios++;
     else if (f.falta === "solo-enlazado") r.soloEnlazado++;
     else if (f.falta === "corto") r.cortos++;
   }
   return r;
 }
 
+/** ── EL ORDEN DE GRAVEDAD, EN UN SOLO SITIO ──
+ *  De peor a mejor, y es el MISMO que el de los colores de `META_FALTA`: rojo,
+ *  naranja, y luego los grises. Lo usan el orden del índice y la ayuda de la
+ *  pantalla, que antes lo repetía a mano.
+ *
+ *  ⚠ `sin-nada` va AL FINAL, no al principio, y es un cambio: no tener nada
+ *  escrito es el estado de partida de toda película nueva y es el más
+ *  numeroso. Arriba convertía el índice en un muro. En `/guion` van agrupadas
+ *  y plegadas aparte, con su número a la vista. */
+/* ⚠ Un `Record` y no un array, y se derivan las claves. Con
+   `ORDEN_FALTA: Falta[] = [...]` escrito a mano, añadir una sexta falta
+   compilaba: la nueva desaparecía de la ayuda y caía al final del orden sin
+   que nadie se enterara. Un `Record` obliga a darle su sitio. */
+const RANGO_FALTA: Record<Exclude<Falta, null>, number> = {
+  "vacio": 0, "sin-vigente": 1, "corto": 2, "solo-enlazado": 3, "sin-nada": 4,
+};
+export const ORDEN_FALTA = (Object.keys(RANGO_FALTA) as Exclude<Falta, null>[])
+  .sort((a, b) => RANGO_FALTA[a] - RANGO_FALTA[b]);
+
 /** El orden del índice: primero lo que le falta algo —es a lo que se entra— y
  *  dentro de cada grupo, por nombre. Las que están al día abajo: se consultan,
  *  no se atienden. */
 export function ordenarPeliculas(filas: FilaPelicula[]): FilaPelicula[] {
-  /* El MISMO orden que el de `diagnosticar`. Sale del array de `Falta`, para
-     que no puedan volver a discrepar: quien añada un caso lo añade una vez. */
-  const ORDEN: Falta[] = ["sin-nada", "sin-vigente", "vacio", "corto", "solo-enlazado"];
   const peso = (f: FilaPelicula) => {
-    const i = ORDEN.indexOf(f.falta);
-    return i < 0 ? ORDEN.length : i;
+    return f.falta ? RANGO_FALTA[f.falta] : ORDEN_FALTA.length;
   };
   return [...filas].sort((a, b) =>
     peso(a) - peso(b)
     || (a.peli.nombre_corto || a.peli.nombre || "").localeCompare(
        b.peli.nombre_corto || b.peli.nombre || "", "es"));
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LAS DOS FRASES DE UNA FILA DEL ÍNDICE
+
+   El índice de ✍ guion pinta una línea por película y nada más: quien quiera
+   escribir entra en la película. Para que esa línea sirva tiene que decir dos
+   cosas distintas, y por eso son dos funciones y no una:
+
+     `resumenPelicula` — QUÉ HAY. El documento que manda hoy y su nivel.
+     `motivoFalta`     — POR QUÉ está en rojo. El hecho concreto.
+
+   ⚠ Devuelven CADENAS ya compuestas porque el índice las manda a un componente
+   de cliente. Una función cruzando esa frontera revienta en runtime y tsc no
+   lo ve; está contado en components/ListaPeliculas.tsx.
+
+   ⚠ Y las dos salen de la MISMA `FilaPelicula` que ya decidió `falta`. Un
+   motivo calculado aparte del diagnóstico que explica es el que acaba diciendo
+   «sin vigente» junto a un documento vigente.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** Qué hay escrito, en una línea. Vacío cuando no hay nada: una fila que dice
+ *  «0 documentos» ocupa lo mismo que decirlo y no añade nada. */
+export function resumenPelicula(f: FilaPelicula): string {
+  /* ⚠ Los descartados SÍ se nombran, y esto era un fallo de verdad. Una
+     película cuyos dos documentos se abandonaron sale «sin tratamiento» —que
+     es correcto a efectos de escritura— pero la fila salía además con el
+     resumen vacío y agrupada bajo «sin ningún documento, ni siquiera el enlace
+     al de Drive». Eso es falso sobre trabajo que existe y que sigue guardado.
+     `vivos` decide el diagnóstico; `tratamientos` decide lo que se cuenta. */
+  if (!f.vivos.length) {
+    const d = f.tratamientos.length;
+    return d ? `${d} documento${d === 1 ? "" : "s"}, todos descartados` : "";
+  }
+  const partes: string[] = [];
+  if (f.vigente) {
+    partes.push(tituloDe(f.vigente));
+    partes.push(metaNivel(nivelDe(f.vigente)).txt.toLowerCase());
+  }
+  /* El recuento solo cuando hay más de uno: «1 documento» al lado del nombre
+     de ese documento es la misma información dos veces. */
+  if (f.vivos.length > 1) partes.push(`${f.vivos.length} documentos`);
+  return partes.join(" · ");
+}
+
+/** El hecho concreto detrás del veredicto. Cadena vacía cuando no hay nada que
+ *  explicar — o cuando la explicación sería repetir el veredicto.
+ *
+ *  ⚠ `sin-nada` devuelve vacío A PROPÓSITO. Son la mayoría de las películas,
+ *  van agrupadas y plegadas aparte, y repetir «no hay ningún documento» ochenta
+ *  veces debajo de ochenta filas que ya lo dicen es ruido. */
+export function motivoFalta(f: FilaPelicula): string {
+  /* Lo único que hay que explicar de un «sin tratamiento» es cuando NO es
+     verdad del todo: que sí hubo documentos y se abandonaron. */
+  if (f.falta === "sin-nada") {
+    return f.tratamientos.length
+      ? "hubo documentos y están todos descartados: a efectos de escritura, no hay nada vigente"
+      : "";
+  }
+  switch (f.falta) {
+    case "sin-vigente":
+      return `${f.vivos.length} documento${f.vivos.length === 1 ? "" : "s"}`
+        + " y ninguno marcado como el que manda hoy";
+    case "vacio":
+      return f.vigente
+        ? `«${tituloDe(f.vigente)}» manda hoy y no tiene ni secuencias ni enlace`
+        : "";
+    case "corto": {
+      const hay = f.vigente ? metaNivel(nivelDe(f.vigente)).txt.toLowerCase() : "";
+      const destino = metaNivel(nivelDestino(f.peli.tipo)).txt.toLowerCase();
+      return hay ? `se quedó en ${hay}; el destino de esta película es el ${destino}` : "";
+    }
+    case "solo-enlazado":
+      return "está registrado con su enlace, sin trocear en secuencias aquí";
+    default:
+      return "";
+  }
 }

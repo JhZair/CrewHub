@@ -36,7 +36,7 @@ import {
 
 export default function Tratamientos({
   proyectoId, tipoProyecto, tratamientos, cuentas = null, fondos = [],
-  soloDelFondo = null, error: errServidor = null, puedeEditar = true, puedeBorrar = true,
+  soloDelFondo = null, error: errServidor = null, puedeEditar = true,
 }: {
   proyectoId: string;
   /** Decide hasta dónde tiene que llegar el documento: el documental para en
@@ -62,14 +62,17 @@ export default function Tratamientos({
   soloDelFondo?: string | null;
   error?: string | null;
   puedeEditar?: boolean;
-  /** ── BORRAR ES OTRA COSA QUE EDITAR ──
-   *  En el índice `/guion` se puede CREAR —quien entra a «voy a escribir» y ve
-   *  una película sin nada tiene que poder empezar ahí— pero no destruir:
-   *  borrar un tratamiento se lleva por `cascade` sus actos, sus secuencias con
-   *  todo el texto, sus hilos y su espina, y en una lista transversal de
-   *  quince películas plegadas la ✕ queda a un clic y sin el contexto del
-   *  proyecto. Con `puedeEditar={false}` no valía: eso también quita «＋ Nuevo». */
-  puedeBorrar?: boolean;
+  /* ── AQUÍ HABÍA UN `puedeBorrar` Y SE FUE ──
+     Existía para el índice `/guion`, que montaba este editor dentro de cada
+     película plegada: allí la ✕ quedaba a un clic y sin el contexto del
+     proyecto, y borrar un tratamiento se lleva por `cascade` sus actos, sus
+     secuencias con todo el texto, sus hilos y su espina.
+     Ese índice ya no monta este componente —es una lista de enlaces—, así que
+     los tres sitios que quedan (la ficha del proyecto, la de ✍ guion y la
+     pestaña Audiovisual del fondo) lo montaban todos con el valor por defecto.
+     Una opción que nadie ejerce, con una justificación que describe una
+     pantalla que ya no existe, es peor que no tenerla: el siguiente que la lea
+     contará con una protección imaginaria. Si vuelve a hacer falta, vuelve. */
 }) {
   const [creando, setCreando] = useState<"nuevo" | "enlace" | null>(null);
   const [f, setF] = useState<Record<string, any>>({});
@@ -154,9 +157,9 @@ export default function Tratamientos({
   const set = (k: string, v: any) => setEd(e => ({ ...e, [k]: v }));
   const setNuevo = (k: string, v: any) => setF(e => ({ ...e, [k]: v }));
 
-  /* ⚠ Cae a «un fondo» y no a `null` cuando la lista de fondos no llega. En el
-     índice `/guion` no se pasan —marcar a qué concurso se presentó un documento
-     es una decisión de expediente y se toma con el expediente delante— pero eso
+  /* ⚠ Cae a «un fondo» y no a `null` cuando la lista de fondos no llega. Hubo
+     una pantalla que la pasaba vacía a propósito, y aunque ya no existe el caso
+     sigue siendo posible —una consulta de `postulaciones` caída basta—, y eso
      no es razón para ESCONDER que el documento sí tiene uno. Con `null`, el
      mismo tratamiento se leía distinto en dos pantallas. */
   const nombreFondo = (id?: string | null) => {
@@ -313,10 +316,8 @@ export default function Tratamientos({
                     title="Copiar el documento entero —actos, secuencias, hilos y espina— para trabajar una versión nueva sin tocar esta.">⧉ duplicar</button>
                   <button type="button" style={{ color: abierta ? "var(--violet)" : "var(--dim)", fontSize: 11.5 }}
                     onClick={() => abrirEd(t)}>{abierta ? "▾ editar" : "▸ editar"}</button>
-                  {puedeBorrar && (
-                    <button type="button" style={{ color: "var(--dim)" }} title="Borrar el documento entero"
-                      onClick={() => borrar(t.id)}>✕</button>
-                  )}
+                  <button type="button" style={{ color: "var(--dim)" }} title="Borrar el documento entero"
+                    onClick={() => borrar(t.id)}>✕</button>
                 </div>
               )}
             </div>

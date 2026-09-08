@@ -467,6 +467,11 @@ const revalidarTrat = (proyectoId: string, tratamientoId?: string) => {
      `/guion` con `<Link>` sirve el Router Cache del cliente —treinta segundos
      en Next 14.2 para rutas dinámicas— y la lista sale desactualizada. */
   revalidatePath("/guion");
+  /* ⚠ Y la ficha por película, que es donde vive el editor desde que `/guion`
+     pasó a ser un índice ligero. Con el PATRÓN de la ruta —no la ruta
+     construida— porque es dinámica: `revalidatePath("/guion/pelicula/<uuid>")`
+     no invalida nada en Next 14. */
+  revalidatePath("/guion/pelicula/[id]", "page");
   revalidatePath(`/entidad/proyecto/${proyectoId}`);
   revalidatePath("/entidad/[tipo]/[id]", "page");
   revalidatePath("/fondo/[id]/audiovisual", "page");

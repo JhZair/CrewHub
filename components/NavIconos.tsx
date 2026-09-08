@@ -48,11 +48,13 @@ const DESTINOS: Destino[] = [
   { ruta: "/tablero", ico: "🗂", txt: "tablero de casos", grupo: "dia" },
   /* ── EL GUION, EN EL MENÚ ──
      Era el único módulo grande sin puerta: se entraba desde la ficha de cada
-     proyecto, y `/guion` a secas daba 404. Escribir es trabajo cotidiano —de
+     proyecto. Escribir es trabajo cotidiano —de
      ahí «el día a día» y no «la plata», aunque el tratamiento sea lo que se
      presenta a los concursos—.
-     `activo` reconoce también `/guion/<id>`: estando dentro de un tratamiento,
-     el botón tiene que seguir diciendo dónde estás. */
+     `activo` reconoce también todo lo que cuelga de `/guion/`: la rejilla de
+     un tratamiento (`/guion/<id>`) y la ficha de una película
+     (`/guion/pelicula/<id>`). Estando dentro de cualquiera de las dos, el
+     botón tiene que seguir diciendo dónde estás. */
   { ruta: "/guion", ico: "✍", txt: "guion y tratamientos", grupo: "dia",
     activo: p => p === "/guion" || p.startsWith("/guion/") },
   /* ── LA MÚSICA, AL LADO DEL GUION ──

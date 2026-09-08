@@ -5,9 +5,18 @@ import Plegable from "@/components/Plegable";
 import { coincide, normalizar } from "@/lib/texto";
 
 /* ══════════════════════════════════════════════════════════════════════════
-   LA LISTA DE PELÍCULAS DEL CLEARANCE, CON SU BUSCADOR
+   UNA LISTA DE PELÍCULAS CON SU BUSCADOR — para ⚖ clearance y para ✍ guion
 
-   ── POR QUÉ HACÍA FALTA ──
+   ── POR QUÉ ES UNO SOLO Y NO DOS ──
+   Nació para ⚖ clearance y ✍ guion tenía el mismo problema y la misma forma:
+   una línea por película, un diagnóstico por fila, y un muro de las que nadie
+   ha empezado al final. Copiarlo habría sido dos buscadores que se separan a la
+   primera —uno aprende a buscar sin tildes y el otro no— y ya hemos pagado eso
+   con `normalizar`, con la paleta de estados y con el orden de los cargos.
+   Lo que cambia entre las dos pantallas son PALABRAS, y las palabras entran por
+   `rotulos`. Lo que no cambia es el comportamiento.
+
+   ── EL PROBLEMA QUE RESUELVE ──
    Hay 86 películas sin ningún permiso registrado. Plegarlas quitó el ruido de
    la lista principal, pero el plegable de abajo es ahora un muro de 86 líneas:
    encontrar «En busca del oro» ahí es bajar y leer una por una, que es
@@ -15,8 +24,8 @@ import { coincide, normalizar } from "@/lib/texto";
    encontrable; solo lo hace invisible.
 
    El Ctrl+K que ya existe no sirve aquí: manda a /buscar, que busca en todo el
-   sistema y devuelve la ficha del proyecto, no su clearance. Esto es otra cosa
-   —filtrar la lista que ya tienes delante— y por eso vive aquí y no allí.
+   sistema y devuelve la ficha del proyecto, no lo que esta pantalla mira. Esto
+   es otra cosa —filtrar la lista que ya tienes delante— y por eso vive aquí.
 
    ── FILTRA EN EL NAVEGADOR, SIN VIAJES ──
    Las películas ya vinieron todas en la carga: filtrarlas es recorrer un array
@@ -33,6 +42,13 @@ import { coincide, normalizar } from "@/lib/texto";
 export type FilaVista = {
   id: string;
   nombre: string;
+  /** Un emoji delante del nombre, si la pantalla lo usa. ✍ guion pinta 🫂 o 🎭
+   *  para decir si la película termina en el secuenciado o en el guion — que
+   *  es lo que decide su veredicto, así que tiene que verse en TODAS las
+   *  filas, también en las que no tienen falta.
+   *  ⚠ Estuvo un rato metido dentro de `bloqueos[0].ico`, y eso lo escondía en
+   *  las películas al día y lo dejaba leyéndose «🎭 se quedó en sinopsis». */
+  ico?: string;
   /** Todo por lo que se puede buscar, ya junto y en minúsculas sin tildes: el
    *  nombre corto Y el largo. Se busca «mujeres» y la fila se llama
    *  «MUJERESANDE»; se busca «Mujeres del Ande» y también. */
@@ -51,8 +67,36 @@ export type FilaVista = {
   masBloqueos: number;
 };
 
-export default function ListaClearance({
-  filas, vacias, inicial, ocultas = 0,
+/** Las palabras que cambian de una pantalla a otra. Cadenas, no funciones: un
+ *  closure aquí revienta en runtime y tsc no lo ve. */
+export type RotulosLista = {
+  /** A dónde lleva cada fila: `/clearance`, `/guion/pelicula`. */
+  base: string;
+  /** La URL de ESTA lista: `/clearance`, `/guion`.
+   *  ⚠ Separado de `base`, y no por gusto. En ⚖ clearance coinciden —la ficha
+   *  es `/clearance/[id]`— y estuvieron unidos hasta que ✍ guion los separó:
+   *  allí el `[id]` de `/guion/[id]` ya está cogido por un TRATAMIENTO, así
+   *  que la ficha por película vive en `/guion/pelicula/[id]`. Con un solo
+   *  campo, el enlace «buscar también entre las terminadas» apuntaba a
+   *  `/guion/pelicula?todas=1`, que no es ninguna página. */
+  indice: string;
+  /** «películas por nombre…» del placeholder, y el «Ninguna de estas N». */
+  queBusca: string;
+  /** Lo que NO busca, dicho para que nadie lo intente: «no por quién firma». */
+  noBusca: string;
+  /** El título del plegable de las que nadie ha empezado, YA COMPUESTO con su
+   *  número: el servidor conoce `vacias.length` antes de pintar nada.
+   *  ⚠ Esto fue `(n: number) => string` durante diez minutos y compilaba. Una
+   *  función no cruza a un componente cliente: revienta en runtime y tsc no lo
+   *  ve. Si un rótulo necesita un número, se compone donde está el número. */
+  vaciasTitulo: string;
+  vaciasResumen: string;
+  /** La coletilla del recuento cuando hay alguna vacía entre los resultados. */
+  incluyeVacias: string;
+};
+
+export default function ListaPeliculas({
+  filas, vacias, inicial, ocultas = 0, rotulos,
 }: {
   /** Las que tienen algo registrado, ya ordenadas por urgencia. */
   filas: FilaVista[];
@@ -64,6 +108,7 @@ export default function ListaClearance({
    *  buscar una terminada decía «ninguna película se llama así» — que es
    *  mentira, y encima manda a dudar del nombre. */
   ocultas?: number;
+  rotulos: RotulosLista;
 }) {
   const [q, setQ] = useState(inicial || "");
   const caja = useRef<HTMLInputElement>(null);
@@ -95,9 +140,9 @@ export default function ListaClearance({
     const porElLargo = hayFiltro && !coincide(normalizar(f.nombre), q)
       && f.nombreLargo && f.nombreLargo !== f.nombre;
     return (
-    <Link key={f.id} href={`/clearance/${f.id}`} className="clx">
+    <Link key={f.id} href={`${rotulos.base}/${f.id}`} className="clx">
       <div className="clx-t">
-        <span className="clx-n">{f.nombre}</span>
+        <span className="clx-n">{f.ico ? `${f.ico} ` : ""}{f.nombre}</span>
         {porElLargo && <span className="clx-largo">{f.nombreLargo}</span>}
         <span className="clr-sem" style={{ color: f.color }}>{f.veredicto}</span>
         <span style={{ flex: 1 }} />
@@ -143,7 +188,7 @@ export default function ListaClearance({
              saltaría hasta ella al cargar, moviendo lo que se estaba mirando.
              Escape la vacía, que es lo que se busca al equivocarse. */
           onKeyDown={e => { if (e.key === "Escape") { recordar(""); e.currentTarget.blur(); } }}
-          placeholder={`Busca entre las ${todas.length} películas por nombre…`}
+          placeholder={`Busca entre las ${todas.length} ${rotulos.queBusca} por nombre…`}
           aria-label="Buscar película por nombre"
           className="clx-input" />
         {!!q && (
@@ -160,19 +205,19 @@ export default function ListaClearance({
           <div className="clx-cuenta" aria-live="polite">
             {encontradas.length === 0
               ? <>Ninguna de estas {todas.length} se llama así. Esto busca por
-                  <b> nombre</b>, no por quién firma ni por lo que falta.
+                  <b> nombre</b>, {rotulos.noBusca}.
                   {/* ⚠ Y decir que hay más fuera. Sin esto, buscar una película
                       terminada respondía «ninguna se llama así» —que es falso—
                       y encima mandaba a dudar del nombre. */}
                   {ocultas > 0 && (
                     <> Quedan <b>{ocultas}</b> terminada{ocultas === 1 ? "" : "s"} fuera
                       de esta lista:{" "}
-                      <a href={`/clearance?todas=1&q=${encodeURIComponent(q.trim())}`}
+                      <a href={`${rotulos.indice}?todas=1&q=${encodeURIComponent(q.trim())}`}
                         className="gx-filtro">buscar también entre ellas →</a></>
                   )}</>
               : <>{encontradas.length} de {todas.length}
                   {encontradas.some(f => f.sinDatos) && (
-                    <> · incluye las que nadie ha empezado</>
+                    <> · {rotulos.incluyeVacias}</>
                   )}</>}
           </div>
           {encontradas.map(fila)}
@@ -182,18 +227,20 @@ export default function ListaClearance({
           {filas.map(fila)}
           {vacias.length > 0 && (
             <Plegable
-              id="clearance:vacias"
+              /* ⚠ Del ÍNDICE y con `replace`: la clave que recuerda si está
+                 abierto ya existe guardada como «clearance:vacias». Con la
+                 barra delante, o con `base`, sería otra clave y el plegable
+                 amanecería cerrado el día que se publique esto. */
+              id={`${rotulos.indice.replace(/^\//, "")}:vacias`}
               /* Cerrado: son las que no tienen nada que atender HOY. Pero el
                  número está en el título, así que no desaparecen de la cabeza —
                  y la caja de arriba las alcanza sin abrirlo. */
               abiertoPorDefecto={false}
               titulo={
-                <span style={{ fontWeight: 600 }}>
-                  {vacias.length} película{vacias.length === 1 ? "" : "s"} sin ningún permiso registrado
-                </span>
+                <span style={{ fontWeight: 600 }}>{rotulos.vaciasTitulo}</span>
               }
               resumen={<span style={{ fontSize: 11.5, color: "var(--dim)" }}>
-                no es «todo en regla»: es que nadie ha empezado
+                {rotulos.vaciasResumen}
               </span>}>
               {vacias.map(fila)}
             </Plegable>
