@@ -155,7 +155,7 @@ export const META_SIT: Record<SituacionPeriodo, {
 /** Hoy en Lima, como 'YYYY-MM-DD'. La comparación de vencimientos se hace en
  *  hora peruana: con la del servidor, un plazo se daba por vencido cinco horas
  *  antes de tiempo. */
-const hoy = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Lima" });
+export const hoy = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Lima" });
 
 /* ── LO QUE LA OBLIGACIÓN APORTA A LA SITUACIÓN DE SUS MESES ──
  *

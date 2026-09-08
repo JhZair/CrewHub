@@ -5689,6 +5689,10 @@ mark.bq-marca{
    📅 OBLIGACIONES PERIÓDICAS
    ══════════════════════════════════════════════════════════════════ */
 .obl-barra{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:2px 0 12px}
+/* Lo que contestó «⟳ Generar periodos». Sin esto, «ya están todos» y «el botón
+   no funciona» se veían igual — y quien viene buscando el mes en curso, que
+   todavía no debe existir, se lleva la segunda lectura. */
+.obl-generado{font-size:12px;color:var(--muted);line-height:1.45}
 
 /* La caja de una obligación: cerrada es una línea con su semáforo; abierta,
    la lista de meses. Mismo lenguaje que los plegables de nivel 2 —caja tenue,

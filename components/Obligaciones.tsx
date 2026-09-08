@@ -15,7 +15,7 @@ import type { RepLegal } from "@/lib/repLegal";
 import {
   CLASES, claseDe, icoClase, nombreClase, rotuloPeriodo, situacionPeriodo,
   declaradoTarde, declaradoSinPlazo, resumenPeriodos, RESULTADOS, rotuloResultado,
-  digitoRuc, META_SIT, igvDelPeriodo, resultadoDe, motivoNoDeclara, MESES,
+  digitoRuc, META_SIT, igvDelPeriodo, resultadoDe, motivoNoDeclara, MESES, hoy,
 } from "@/lib/obligaciones";
 
 /* ── 📅 LAS TAREAS QUE VUELVEN SOLAS ──
@@ -149,18 +149,32 @@ export default function Obligaciones({ empresas, logos, repLegal, obligaciones, 
   const [abierta, setAbierta] = useState<Record<string, boolean>>({});
   const [editando, setEditando] = useState<string | null>(null);
 
+  /** Lo que contestó «⟳ Generar periodos» la última vez. */
+  const [generado, setGenerado] = useState<string | null>(null);
+
   /* ⚠ Devuelve una promesa con el resultado. `startTransition` no espera a lo
      que hay dentro, así que quien necesite saber si se guardó —los campos de
      fecha, para no quedarse enseñando algo que la base rechazó— no podía
-     enterarse. La transición sigue envolviendo el refresco. */
+     enterarse. La transición sigue envolviendo el refresco.
+
+     ⚠ Y `try/catch`: una acción de servidor no solo devuelve `{error}`, RECHAZA
+     si se cae la red. Sin esto la promesa no se resolvía NUNCA, así que quien
+     la esperaba se quedaba colgado sin decir nada — el botón volvía a su sitio
+     como si no hubieras pulsado. */
   const correr = (fn: () => Promise<any>) => {
     setErr("");
     return new Promise<any>(listo => {
       startTransition(async () => {
-        const r: any = await fn();
-        if (r?.error) { setErr(r.error); listo(r); return; }
-        router.refresh();
-        listo(r);
+        try {
+          const r: any = await fn();
+          if (r?.error) { setErr(r.error); listo(r); return; }
+          router.refresh();
+          listo(r);
+        } catch (e: any) {
+          const msj = e?.message || "se cortó la conexión";
+          setErr(`No se pudo guardar: ${msj}`);
+          listo({ error: msj });
+        }
       });
     });
   };
@@ -880,9 +894,33 @@ export default function Obligaciones({ empresas, logos, repLegal, obligaciones, 
       <div className="obl-barra">
         <button className="vtab" disabled={ocupado}
           title="Crear los meses que falten de todas las obligaciones. Se puede pulsar las veces que haga falta: no duplica nada."
-          onClick={() => correr(() => generarPeriodos(null))}>
+          onClick={async () => {
+            const r: any = await correr(() => generarPeriodos(null));
+            if (r?.error) { setGenerado(null); return; }
+            /* ── LO QUE HIZO SE DICE, Y SOBRE TODO CUANDO NO HIZO NADA ──
+               Este botón no cambiaba nada visible cuando no había nada que
+               crear, así que «ya están todos» y «el botón no funciona» se veían
+               igual. Y el caso que trae aquí a la gente es justo ese: buscar
+               septiembre estando en septiembre. Por eso el mensaje NOMBRA el mes
+               en curso y dice por qué todavía no está.
+               ⚠ El mes se calcula AL PULSAR y no una vez al montar: una pestaña
+               abierta desde ayer nombraría el mes de ayer. Y con `hoy()` de
+               lib/obligaciones —Lima— que es el mismo reloj que usa el resto de
+               esta pantalla; el corte de la base es su `current_date`, así que
+               la última noche del mes los dos pueden discrepar en un mes
+               durante unas horas. No se finge lo contrario: por eso el mensaje
+               habla del mes en curso, que es lo que se vino a buscar, y no de
+               hasta dónde llegó exactamente el generador. */
+            const n = Number(r?.creados || 0);
+            const [a, m] = hoy().split("-").map(Number);
+            setGenerado(n > 0
+              ? `✔ ${n} periodo${n === 1 ? "" : "s"} nuevo${n === 1 ? "" : "s"}.`
+              : `No falta ningún mes cerrado. ${rotuloPeriodo(a, m)} se declara `
+                + `el mes que viene, así que todavía no existe — y no debe.`);
+          }}>
           {ocupado ? "⏳ generando…" : "⟳ Generar periodos"}
         </button>
+        {generado && <span className="obl-generado">{generado}</span>}
       </div>
 
       {declaran.map(bloqueEmpresa)}

@@ -36,8 +36,35 @@
 
    ── NO CONSULTA A SUNAT ──
    No hace falta: el cronograma ya está cargado como dato (ver
-   db/sunat-2026.sql y hermanos) y `vence` está escrito en cada periodo. Esto
-   solo lee la base.
+   db/sunat-2026.sql y hermanos) y `vence` está escrito en cada periodo.
+
+   ── PRIMERO GENERA LOS PERIODOS QUE FALTEN ──
+   No es un extra: esta ronda parte de las filas de `obligacion_periodo`, así
+   que UN MES QUE NO EXISTE NO VENCE, NO ALERTA Y NO SE ECHA DE MENOS. Es
+   literalmente la frase con la que db/obligaciones.sql justifica haber salido
+   de la hoja de cálculo, y estaba reintroducida por la puerta de atrás: los
+   periodos solo se creaban cuando alguien entraba a /obligaciones y pulsaba
+   «⟳ Generar periodos». El 8 de septiembre de 2026 nadie lo había pulsado y
+   agosto no existía: su declaración vence el 22, todavía había margen, pero ni
+   el semáforo, ni la burbuja del menú, ni este cron podían verlo — para los
+   tres el mes no estaba. Lo que se perdió no fue un plazo: fue la vigilancia.
+
+   `obligaciones_generar_todas` es idempotente —`unique (obligacion, año, mes)`—
+   así que correrla a diario no duplica nada, y solo llega hasta el mes anterior
+   al actual: el periodo en curso todavía no se declara.
+
+   ⚠ Y ESCRIBE DOS COSAS, no una. Además de crear los meses que faltan, esa
+   función rellena el `vence` de los periodos que quedaron sin fecha (ver
+   db/obligaciones.sql, al final). Antes eso corría cuando alguien pulsaba el
+   botón; ahora, cada día. Es lo que hace que un periodo creado antes de cargar
+   su año de calendario deje de estar mudo en cuanto el calendario entra.
+
+   ⚠ LO QUE NO FILTRA: genera para toda obligación `activa`, sin mirar el estado
+   de la empresa. Una empresa cerrada con su obligación encendida sumará una
+   fila al mes indefinidamente — y ahora sin que nadie pulse nada. La pantalla
+   las manda al bloque «Hoy no declaran», pero el freno de verdad es apagar la
+   obligación con su ⏸, o ponerle `hasta`. Se deja igual a propósito: cambiar a
+   quién se le generan periodos es una decisión fiscal, no una de este cron.
    ══════════════════════════════════════════════════════════════════════════ */
 
 import { nombreClase, rotuloPeriodo, DIAS_AVISO } from "@/lib/obligaciones";
@@ -66,6 +93,9 @@ export type ResultadoRonda = {
   abiertos: { periodo: string; empresa: string; vence: string; caso: string }[];
   revisados: number;
   topeAlcanzado: boolean;
+  /** Cuántos periodos se crearon antes de mirar. `null` = no se pudo generar,
+   *  y entonces lo que sigue puede ir corto. */
+  periodosCreados: number | null;
   fallas: string[];
 };
 
@@ -75,13 +105,35 @@ export async function correrRondaObligaciones(
   const fallas: string[] = [];
   const abiertos: ResultadoRonda["abiertos"] = [];
 
+  /* ⚠ GENERAR VA ANTES DEL GUARDIA DEL BOT, y no después.
+     Estuvo después, y eso anulaba el arreglo justo en el modo de fallo que
+     existe para cubrir: si alguien renombra el perfil del bot —se ha hecho, ver
+     db/rename-bot-qhaway.sql— la ronda sale por arriba, no se genera nada, y al
+     mes siguiente vuelve a faltar el mes sin que nadie se entere. Crear los
+     periodos es el único paso de esta ronda que no firma nada: no necesita
+     autor. Lo que necesita bot es abrir casos, y eso viene después.
+     Y si no se pudo, se sigue: lo que ya existe hay que revisarlo igual —hoy
+     podría vencer algo— pero el resultado va corto, y eso se apunta. */
+  let periodosCreados: number | null = null;
+  {
+    const { data, error } = await db.rpc("obligaciones_generar_todas");
+    if (error) {
+      /* El MISMO vocabulario que el botón de la pantalla para la misma avería.
+         Escrito distinto, el cron escupía el texto crudo de PostgREST y la
+         pantalla decía qué archivo correr: dos idiomas para un solo problema. */
+      fallas.push(/(does not exist|schema cache|PGRST20)/i.test(error.message)
+        ? "Falta correr db/obligaciones.sql en Supabase: no se pudieron generar los periodos."
+        : `No se pudieron generar los periodos que faltaban: ${error.message}`);
+    } else periodosCreados = Number(data ?? 0);
+  }
+
   if (!botId) {
     /* Sin el bot no hay autor con quien firmar, y `publicaciones.autor_id` no
        admite nulo. Se dice en vez de fallar en silencio: un cron que devuelve
        «0 casos» cuando en realidad no pudo abrir ninguno es indistinguible de
        un día tranquilo. */
-    return { abiertos, revisados: 0, topeAlcanzado: false,
-      fallas: ["No existe el perfil del bot: no hay con quién firmar los casos."] };
+    return { abiertos, revisados: 0, topeAlcanzado: false, periodosCreados,
+      fallas: [...fallas, "No existe el perfil del bot: no hay con quién firmar los casos."] };
   }
 
   const hoy = hoyLima();
@@ -94,7 +146,7 @@ export async function correrRondaObligaciones(
   const { data: obls, error: eO } = await db.from("obligacion")
     .select("id,clase,responsable,dias_aviso,activa,entidad_tipo,entidad_id")
     .eq("activa", true);
-  if (eO) return { abiertos, revisados: 0, topeAlcanzado: false, fallas: [eO.message] };
+  if (eO) return { abiertos, revisados: 0, topeAlcanzado: false, periodosCreados, fallas: [...fallas, eO.message] };
 
   const idsEmp = [...new Set((obls || [])
     .filter((o: any) => o.entidad_tipo === "empresa")
@@ -146,7 +198,7 @@ export async function correrRondaObligaciones(
     if (topeAlcanzado) break;
   }
 
-  return { abiertos, revisados, topeAlcanzado, fallas };
+  return { abiertos, revisados, topeAlcanzado, periodosCreados, fallas };
 }
 
 /* ── UN PERIODO, UN CASO ──
