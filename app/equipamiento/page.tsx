@@ -1,10 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
 import { equiposGordos, enManosAhora, cartelesEquipo, kitsCrudos, comprasCombo,
   cartelPorEquipo, quienTieneEquipo, contextoKits, repartoPorPieza, piezasMontadas,
-  un1 } from "@/lib/equipamientoDatos";
+  un1, TOPE_EQUIPOS } from "@/lib/equipamientoDatos";
 import ChipPiezas from "@/components/ChipPiezas";
 import ChipFotos from "@/components/ChipFotos";
 import ChipGrupo from "@/components/ChipGrupo";
+import ChipAnfitrion, { type Anfitrion } from "@/components/ChipAnfitrion";
 import BotonComprobar from "@/components/BotonComprobar";
 import FilasEquipo from "@/components/FilasEquipo";
 import PonerSubcategoria from "@/components/PonerSubcategoria";
@@ -206,6 +207,25 @@ export default async function Equipamiento({ searchParams }: {
       if (cb) comboPorEq.set(x.id, cb);
     });
   }
+
+  /* ── ¿LLEGÓ EL INVENTARIO ENTERO? ──
+     `equiposGordos` pide uno más del tope justo para poder contestar esto. Si
+     volvió el de sonda, TODO lo de esta pantalla va corto: los contadores de
+     los filtros, el valor del inventario y —lo que menos se ve— el mapa de
+     abajo, que decidiría que una pieza «apunta a un equipo que no está» cuando
+     el equipo está y lo que faltó fue la fila. */
+  const inventarioCortado = (eqs || []).length > TOPE_EQUIPOS;
+
+  /* ── Y DENTRO DE QUÉ VA CADA PIEZA ──
+     La misma relación que las piezas montadas, leída del otro lado. Estaba
+     resuelta solo en un sentido: la fila del anfitrión decía «🔩 2 piezas» y la
+     de la pieza solo «Ensamblado» — dos cables idénticos, los dos ensamblados,
+     y ninguno decía dentro de qué.
+     Se arma aquí y no en `lib/equipamientoDatos` porque es un `Map` de una
+     línea sobre filas que ya están en memoria: `ensamblado_en` viene en el
+     `select("*")` y `eqs` ya está cargado. Un cargador más para esto sería una
+     función que no ahorra nada. */
+  const porIdEq = new Map<string, any>((eqs || []).map((x: any) => [x.id, x]));
 
   /* ── LAS PIEZAS MONTADAS DENTRO DE CADA EQUIPO ──
      El chip «🔩 N piezas» estaba en la entrega y en los kits, y faltaba justo
@@ -462,6 +482,29 @@ export default async function Equipamiento({ searchParams }: {
        lea rápido se llevará la que no era. */
     const totalCombo = !(propio > 0) && cb && Number(cb.total) > 0 ? Number(cb.total) : 0;
 
+    /* ── ¿ES UNA PIEZA DE ALGO? ──
+       Se pregunta por el ESTADO y no solo por `ensamblado_en`, a propósito: un
+       equipo que se declara ensamblado y no apunta a nadie es el que desaparece
+       de los dos sitios a la vez —no está disponible porque dice que está
+       montado, y no está dentro de nada porque no señala a nadie—, y el único
+       momento en que alguien puede verlo es este. Con `anfitrion` a null, el
+       chip lo dice en vez de callarse.
+       Los dos campos no van siempre juntos, y está bien: `desensamblar` deja
+       «en reparación» a la pieza que se rompió dentro del rig, con su
+       `ensamblado_en` todavía puesto. Ahí el chip es el normal.
+       ⚠ SEÑALAR A ALGUIEN QUE NO ESTÁ casi nunca es un puntero roto: la clave
+       ajena de db/ensamblado.sql es `on delete set null`, así que borrar el
+       anfitrión deja esta fila SIN señalar —o sea en el otro caso—. Lo que sí
+       lo produce es que el inventario haya llegado cortado, y por eso el chip
+       recibe `cortado`: sin él acusaría a la base de una avería que no tiene. */
+    const anf = x.ensamblado_en ? porIdEq.get(x.ensamblado_en) : null;
+    const esPieza = !!x.ensamblado_en || x.estado === "ensamblado";
+    const anfitrion: Anfitrion | null = anf ? {
+      id: anf.id, folio: anf.folio, nombre: anf.nombre || "sin nombre",
+      estado: anf.estado, cartel: cartelPorEq.get(anf.id) || null,
+      quien: quienTiene.get(anf.id) || null,
+    } : null;
+
     return (
       <Link key={x.id} href={`/entidad/equipamiento/${x.id}`}>
         <div className="card link eqx-card" style={res ? { borderLeft: `3px solid ${res[0]}`, background: res[1] } : undefined}>
@@ -537,22 +580,24 @@ export default async function Equipamiento({ searchParams }: {
                 {a.coments > 0 && <span style={{ color: "var(--muted)", fontSize: TXT.chip }} title="Comentarios en casos">💬 {a.coments}</span>}
               </div>
 
-              {/* ── TERCERA LÍNEA: LOS CUATRO CHIPS QUE ABREN ──
+              {/* ── TERCERA LÍNEA: LOS CHIPS QUE ABREN ──
                   Estaban repartidos por la segunda, entre la subcategoría y el
                   precio, y ahí competían con ellos: en una fila estrecha el
                   nombre de un kit empujaba el precio a otro renglón y la línea
                   cambiaba de forma según el equipo. Juntos y en su propia línea
-                  se leen como lo que son — cuatro puertas a lo mismo: qué más
-                  hay que saber de esta unidad sin abrir su ficha.
+                  se leen como lo que son — puertas a lo mismo: qué más hay que
+                  saber de esta unidad sin abrir su ficha.
 
                   El ORDEN va de lo más cercano a lo más lejano: la foto es esta
-                  unidad; las piezas, lo que lleva atornillado dentro; el kit,
-                  con qué SALE; el combo, con qué ENTRÓ. Los dos últimos son los
-                  dos ejes de un equipo y no se pueden deducir mirándolo.
+                  unidad; las piezas, lo que lleva atornillado dentro; el
+                  anfitrión, dentro de qué va ella —la misma relación por el otro
+                  lado, por eso pegada a las piezas—; el kit, con qué SALE; el
+                  combo, con qué ENTRÓ. Los dos últimos son los dos ejes de un
+                  equipo y no se pueden deducir mirándolo.
 
                   Si no hay ninguno la línea no se pinta: un renglón vacío bajo
                   cada fila son quinientos renglones de nada. */}
-              {(nFotos?.get(x.id) || piezasDe.get(x.id)?.length || misKits.length || cb) ? (
+              {(nFotos?.get(x.id) || piezasDe.get(x.id)?.length || esPieza || misKits.length || cb) ? (
                 <div className="eqx-l3">
                   {/* Buscas «maleta», te salen ocho, y para saber cuál es cuál
                       había que abrir ocho fichas y volver ocho veces perdiendo
@@ -562,6 +607,12 @@ export default async function Equipamiento({ searchParams }: {
                   {/* Dos «Soporte De Pecho Para Cámara» se leen idénticos, y uno
                       va con su correa montada. */}
                   <ChipPiezas piezas={piezasDe.get(x.id) || []} />
+                  {/* Y dos cables idénticos, los dos «Ensamblado», no decían
+                      dentro de qué. El estado contestaba media pregunta. */}
+                  {esPieza && (
+                    <ChipAnfitrion anfitrion={anfitrion}
+                      apunta={!!x.ensamblado_en} cortado={inventarioCortado} />
+                  )}
                   {misKits.map((k: any) => (
                     <ChipGrupo key={k.id} que="kit" id={k.id} nombre={k.nombre}
                       titulo={`Sale en el kit «${k.nombre}» — ver qué más va dentro`} />
@@ -615,6 +666,24 @@ export default async function Equipamiento({ searchParams }: {
        El buscador y los filtros SÍ se quedan: filtran esta lista y solo ésta, y
        llevan su estado en la URL para poder enlazarse. */
     <>
+      {/* ── EL TECHO DE LA API, DICHO ──
+          Va ARRIBA del todo y no junto a la lista: si el inventario llegó
+          cortado no es la lista lo que engaña, es TODO lo de esta pantalla —los
+          contadores de cada filtro, el valor del inventario, quién lleva qué
+          dentro—. Un aviso al pie de la lista se leería como «hay más filas que
+          ver», y el problema es otro: los números de arriba están mal. */}
+      {inventarioCortado && (
+        <div className="card" style={{ borderLeft: "3px solid var(--red)" }}>
+          <b style={{ color: "var(--red)", fontSize: 13 }}>⚠ El inventario llegó al tope y falta parte</b>
+          <div style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 5, lineHeight: 1.55 }}>
+            La API devuelve <b>{TOPE_EQUIPOS + 1}</b> filas como mucho y se
+            alcanzaron. Todo lo que esta pantalla cuenta encima va corto: los
+            números de los filtros, el valor del inventario y dentro de qué va
+            cada pieza. No es que falten equipos — es que no llegaron.
+          </div>
+        </div>
+      )}
+
       <form className="card" style={{ display: "flex", gap: 10, padding: 12 }}>
         {e && <input type="hidden" name="e" value={e} />}
         {c && <input type="hidden" name="c" value={c} />}

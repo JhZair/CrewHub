@@ -4270,8 +4270,9 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
    entregar y cuanto se cuenta al volver. Un kit de trece con cuatro
    ensamblados son veintitres cosas fisicas, y eso hay que verlo sin buscarlo.
    Azul y no violeta ni verde azulado: en esa misma linea de chips el violeta
-   ya dice «kit», el ambar «combo» y el verde azulado «fotos». Cuatro colores
-   para cuatro preguntas distintas, cada uno con un solo significado.
+   ya dice «kit», el ambar «combo» y el verde azulado «fotos». Un color por
+   pregunta. El azul contesta las DOS caras de la misma —que lleva dentro y
+   dentro de que va— y por eso comparten color: el segundo va hueco.
    Tenue —fondo al 12 %— porque resalta, no alarma: que un equipo vaya armado
    es un dato suyo, no un problema. */
 .ens-marca{color:#7ba8f5;background:rgba(59,130,246,.12);border-radius:20px;
@@ -7939,11 +7940,30 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
 .chip-fotos:hover{color:#7fe3d4;border-color:var(--teal);background:rgba(45,212,191,.2)}
 .chip-fotos-err{color:var(--yellow);font-size:11px;cursor:pointer}
 
-/* ── LOS CUATRO CHIPS DE LA TERCERA LÍNEA, CADA UNO DE SU COLOR ──
-   Azul = piezas (`.ens-marca`), verde azulado = fotos, violeta = kit, ámbar =
-   combo. Los dos últimos CONSERVAN el color que ya tenían de etiquetas mudas
-   —violeta como el panel de kits, ámbar como el de compras— para que el ojo no
-   tenga que reaprender nada: lo único que cambia es que ahora se pulsan. */
+/* ── LOS CHIPS DE LA TERCERA LÍNEA, CADA UNO DE SU COLOR ──
+   Azul relleno = piezas (`.ens-marca`), azul HUECO = dentro de qué va, verde
+   azulado = fotos, violeta = kit, ámbar = combo. El kit y el combo CONSERVAN el
+   color que ya tenían de etiquetas mudas —violeta como el panel de kits, ámbar
+   como el de compras— para que el ojo no tenga que reaprender nada: lo único
+   que cambia es que ahora se pulsan. */
+/* 🔧 dentro de qué va: el MISMO azul que 🔩 las piezas, pero hueco. No es otro
+   significado —es el mismo visto por el otro lado, «lleva dentro» / «va dentro
+   de»— y un quinto color diría que son dos cosas distintas. Hueco y no relleno
+   porque los dos SÍ pueden salir juntos: el anidamiento está permitido a
+   propósito (`ensamblar` solo veta los ciclos), así que un rig montado dentro
+   de una maleta y con tres piezas dentro pinta los dos chips pegados. Con el
+   mismo relleno se leerían como uno partido en dos.
+   El emoji va delante y el hueco detrás, para que se lea de un vistazo hacia
+   dónde apunta la relación. */
+.chip-anfitrion{background:transparent}
+/* Y cuando no se puede contestar dónde va: amarillo, que aquí es «hay algo que
+   mirar», no «se rompió». Sigue siendo un botón —abre su explicación— porque un
+   `<span>` con `title` dentro de una fila que es un enlace se pulsa y NAVEGA, y
+   en táctil no hay `title` que leer. */
+.chip-huerfano{color:var(--yellow);background:rgba(244,180,0,.12);
+  border-color:rgba(244,180,0,.28)}
+.chip-huerfano:hover{color:#ffd45e;border-color:var(--yellow);
+  background:rgba(244,180,0,.2)}
 .chip-kit{color:var(--violet);background:rgba(167,139,250,.12);border-color:rgba(167,139,250,.24)}
 .chip-kit:hover{color:#c4b1fd;border-color:var(--violet);background:rgba(167,139,250,.2)}
 .chip-combo{color:#d99a3f;background:rgba(217,154,63,.14);border-color:rgba(217,154,63,.26)}

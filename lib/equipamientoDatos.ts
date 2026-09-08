@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { FUERA_DE_INVENTARIO, NECESITA_ATENCION } from "@/lib/estadosEquipo";
+import { TOPE_API } from "@/lib/api";
 import type { KitVista, EqBase } from "@/lib/kits";
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -42,11 +43,23 @@ const CAMPOS_FLACO =
 
 /* ── LAS FILAS EN CRUDO ────────────────────────────────────────────────── */
 
-/** Los equipos con TODAS sus columnas: solo el inventario las necesita. */
+/** Cuántos equipos se pueden traer de verdad. `TOPE_API - 1` deja sitio a la
+ *  fila de sonda: se pide uno más y, si vuelve, es que se cortó. Sin eso, mil
+ *  filas y «hay exactamente mil» se ven igual — y todo lo que la pantalla
+ *  calcula encima (los contadores de los filtros, el valor del inventario,
+ *  dentro de qué va cada pieza) se quedaría corto en silencio. */
+export const TOPE_EQUIPOS = TOPE_API - 1;
+
+/** Los equipos con TODAS sus columnas: solo el inventario las necesita.
+ *  ⚠ CON límite y sonda. Estaba sin `.limit()`, que no es «sin techo»: es el
+ *  techo de PostgREST —mil— sin forma de saber que se tocó. Hoy son ~500, pero
+ *  el día que se pasen, la pantalla habría seguido pintando totales y chips
+ *  como si nada faltara. Quien lee esto mira `data.length > TOPE_EQUIPOS`. */
 export const equiposGordos = cache(async () => {
   const supabase = createClient();
   // `*`: para calcular la completitud de la ficha de cada equipo.
-  return supabase.from("equipamiento").select("*").order("folio");
+  return supabase.from("equipamiento").select("*").order("folio")
+    .limit(TOPE_EQUIPOS + 1);
 });
 
 /** Los equipos con lo justo para nombrarlos, valorarlos y agruparlos. */
