@@ -7,14 +7,18 @@ import Portal from "@/components/Portal";
 
    ── EL VISOR SE CUELGA DE <body> ──
    Es `fixed` a pantalla completa, pero `fixed` no basta: la tarjeta de un caso
-   RESUELTO lleva `.card-apagada{opacity:.55;filter:saturate(.75)}`, y ese
-   `filter` convierte a la tarjeta en el bloque contenedor de todo `fixed` que
-   haya dentro. El visor se encogía a la tarjeta —dejaba de ser una capa sobre
-   la pantalla y pasaba a ser un recuadro dentro de una tarjeta— y salía al
-   55 %. Lo bonito del fallo es que se escondía solo: la tarjeta se enciende
-   con `:hover`, y al abrir el visor el ratón está justo encima. En cuanto lo
+   RESUELTO se apagaba con `opacity` y un `filter` al lado, y ese `filter`
+   convertía a la tarjeta en el bloque contenedor de todo `fixed` que hubiera
+   dentro. El visor se encogía a la tarjeta —dejaba de ser una capa sobre la
+   pantalla y pasaba a ser un recuadro dentro de una tarjeta— y salía al 55 %.
+   Lo bonito del fallo es que se escondía solo: la tarjeta se enciende con
+   `:hover`, y al abrir el visor el ratón está justo encima. En cuanto lo
    movías para mirar la foto, el visor se apagaba y se recogía.
-   El visor no está anclado a nada, así que el portal lo arregla entero. */
+   Aquellas reglas ya no llevan `filter` y apagan con un velo encima en vez de
+   con opacidad (está contado en la regla `.card-apagada` de globals.css), así
+   que hoy el portal no es lo único que lo sostiene — pero sigue siendo lo que
+   hace que no dependa de eso. El visor no está anclado a nada; el portal lo
+   resuelve entero y para siempre. */
 export default function Foto({ src, maxHeight = 260 }: { src: string; maxHeight?: number }) {
   const [abierto, setAbierto] = useState(false);
 

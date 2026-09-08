@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import Anclado from "@/components/Anclado";
 import { EMOJIS, LABEL } from "@/lib/reacciones";
 
 /* ============================================================
@@ -25,7 +26,12 @@ import { EMOJIS, LABEL } from "@/lib/reacciones";
  *
  *  ── POR QUÉ HAY DOS COLOCACIONES ──
  *  `flotante` (por defecto) la pone encima, sobre el resto: es lo correcto
- *  en una tarjeta del muro, donde nada la recorta.
+ *  en una tarjeta del muro, donde nada la recorta. Va por `Anclado`, o sea
+ *  medida contra el botón y colgada de <body>: dentro de una tarjeta la
+ *  levanta un `.fila-encima{position:relative;z-index:2}`, y eso encierra el
+ *  `z-index:41` de la paleta —pasa a valer 2— hasta el punto de que la tarjeta
+ *  siguiente de la lista se le pinta encima. Con la tarjeta apagada, además,
+ *  salía translúcida.
  *  Dentro de un contenedor que hace scroll —`.vo-cuerpo` y `.vr-coms` tienen
  *  `overflow-y:auto`— un elemento absoluto que sale por arriba se CORTA por
  *  el borde del contenedor, y el comentario más alto de la lista es
@@ -50,15 +56,19 @@ export default function PaletaRx({
 }) {
   const [abierto, setAbierto] = useState(false);
   const cajaRef = useRef<HTMLSpanElement | null>(null);
+  const masRef = useRef<HTMLButtonElement | null>(null);
 
   /* ── ESC CIERRA LA PALETA, NO EL MODAL ──
      Los pop-up que la contienen escuchan Escape en `window` para cerrarse, y
      al cerrarse BORRAN el comentario a medio escribir. Sin esto, abrir la
      paleta y arrepentirse te costaba el borrador. Se escucha en captura y se
      corta ahí mismo: `stopImmediatePropagation` es lo único que frena a otro
-     oyente del MISMO nodo (window), que es justo el del modal. */
+     oyente del MISMO nodo (window), que es justo el del modal.
+     ⚠ Solo en el modo EN FLUJO. El flotante ya lo hace `Anclado`, igual y por
+     lo mismo; ponerlo aquí también sería que el primero en oír gane, que es
+     una carrera sin motivo. */
   useEffect(() => {
-    if (!abierto) return;
+    if (!abierto || flotante) return;
     const alPulsar = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       e.stopImmediatePropagation();
@@ -66,7 +76,7 @@ export default function PaletaRx({
     };
     window.addEventListener("keydown", alPulsar, true);
     return () => window.removeEventListener("keydown", alPulsar, true);
-  }, [abierto]);
+  }, [abierto, flotante]);
 
   /* En flujo, abrir AÑADE alto: si el ＋ estaba al final de una lista que ya
      hace scroll, la paleta nace por debajo del pliegue y parece que el botón
@@ -85,18 +95,48 @@ export default function PaletaRx({
 
   return (
     <span ref={cajaRef} className="rx-pal"
-      style={flotante ? { position: "relative", display: "inline-flex", flex: "none" } : undefined}>
+      /* Sin `position:relative`: la paleta flotante ya no cuelga de aquí —la
+         coloca `Anclado` contra la ventana—, y dejarlo escrito sugiere un
+         anclaje que no existe. `flex:none` sí hace falta: esto es un item flex
+         dentro de la línea de reacciones. */
+      style={flotante ? { display: "inline-flex", flex: "none" } : undefined}>
       {rapido && (
         <button type="button" className="rx-rapido" disabled={ocupado}
           title={LABEL[rapido] || "Reaccionar"} aria-label={LABEL[rapido] || rapido}
           onClick={e => elegir(e, rapido)}>{rapido}</button>
       )}
-      <button type="button" className="rx-mas" disabled={ocupado}
+      <button ref={masRef} type="button" className="rx-mas" disabled={ocupado}
         title={titulo || "Reaccionar"} aria-label={titulo || "Reaccionar"} aria-expanded={abierto}
         onClick={e => { e.preventDefault(); e.stopPropagation(); setAbierto(v => !v); }}>
         {hayReacciones ? "＋" : "☺＋"}
       </button>
-      {abierto && (
+      {abierto && (flotante ? (
+        /* `lado="arriba"` y no «el que tenga más sitio»: la paleta SIEMPRE se
+           abrió hacia arriba —así lo decía `bottom:calc(100% + 6px)`— y esa
+           costumbre vale más que el hueco. El ＋ suele estar al pie de una
+           tarjeta, con el cuerpo del mensaje arriba y la siguiente tarjeta
+           justo debajo: abriéndose hacia abajo taparía lo que viene.
+
+           `anchoMin` SALE DE LA LISTA, no de un número escrito a mano. Son
+           ONCE emojis, no seis: unos 360 px. Sin decirlo, `Anclado` reserva su
+           defecto de 170 y coloca la paleta pensando que cabe donde no cabe —
+           con el ＋ hacia la derecha de la pantalla, los últimos emojis se
+           salían y no se podían tocar. Ya pasó una vez: había una regla,
+           `.rx-compacto .rx-paleta{right:0}`, puesta justo para eso, y con la
+           paleta colgada de <body> dejó de alcanzarla (era un selector de
+           descendencia). Calculado desde `EMOJIS.length`, el día que entre un
+           duodécimo sigue saliendo la cuenta. */
+        <Anclado ancla={masRef} alCerrar={() => setAbierto(false)} lado="arriba"
+          anchoMin={EMOJIS.length * 32 + 16}>
+          <span className="rx-paleta">
+            {EMOJIS.map(e => (
+              <button key={e} type="button" disabled={ocupado}
+                title={LABEL[e] || ""} aria-label={LABEL[e] || e}
+                onClick={ev => elegir(ev, e)}>{e}</button>
+            ))}
+          </span>
+        </Anclado>
+      ) : (
         <>
           {/* Tocar fuera cierra. También en flujo: sin esto, bajar por una
               lista larga dejaba media docena de paletas abiertas y la primera
@@ -105,7 +145,7 @@ export default function PaletaRx({
               cortarlo se colaría a la fila o al modal de debajo. */}
           <span className="rx-fondo"
             onClick={e => { e.preventDefault(); e.stopPropagation(); setAbierto(false); }} />
-          <span className={flotante ? "rx-paleta" : "rx-paleta rx-paleta-flujo"}>
+          <span className="rx-paleta rx-paleta-flujo">
             {EMOJIS.map(e => (
               <button key={e} type="button" disabled={ocupado}
                 title={LABEL[e] || ""} aria-label={LABEL[e] || e}
@@ -113,7 +153,7 @@ export default function PaletaRx({
             ))}
           </span>
         </>
-      )}
+      ))}
     </span>
   );
 }

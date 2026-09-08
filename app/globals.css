@@ -1001,7 +1001,8 @@ a{color:inherit;text-decoration:none}
 @media(max-width:640px){.cn-lane{grid-template-columns:1fr auto;gap:6px}.cn-race{grid-column:1/-1;order:3}}
 /* Desplegable propio de tipo/estado en las tarjetas (reemplaza al select nativo) */
 .combo-menu{position:absolute;top:calc(100% + 5px);left:0;z-index:50;background:var(--panel);border:1px solid var(--border2);border-radius:11px;padding:5px;min-width:150px;max-height:260px;overflow-y:auto;box-shadow:0 12px 30px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:2px;text-transform:none;letter-spacing:normal}
-.combo-menu.arriba{top:auto;bottom:calc(100% + 5px)}
+/* (Ya no hay `.combo-menu.arriba`: quién va arriba y quién abajo lo decide
+   components/Anclado.tsx midiendo el hueco, no una clase.) */
 /* Fila apagada: está ahí si la buscas, pero no compite por tu atención.
    Al pasar el cursor se enciende. (Ej: candidatas a las que solo les
    falta un trámite.) */
@@ -1376,13 +1377,57 @@ a{color:inherit;text-decoration:none}
 .mini-ind{font-size:12px;color:var(--dim);white-space:nowrap}
 .btn-ocultar:hover{color:var(--text)}
 /* Casos resueltos en el feed: atenuados; al pasar el mouse vuelven a plena */
-  /* sin `filter`: crearia bloque contenedor para los `fixed` de dentro; ver la regla del sello y components/Portal.tsx */
-.card-apagada{opacity:.55}
-.card-apagada:hover{opacity:1}
-/* "Mis asuntos": lo que no es mi responsabilidad va apagado (igual que el
-   kanban); prendido = lo que sí trabajo yo. Al pasar el mouse vuelve a plena. */
-.card-ajena{opacity:.5;transition:opacity .16s ease}
-.card-ajena:hover{opacity:1}
+/* ══════════════════════════════════════════════════════════════════════
+   🌑 APAGAR CON UN VELO, NO BAJANDO LA OPACIDAD
+
+   Una tarjeta apagada —caso resuelto, postulacion cerrada, caso que responde
+   otro— se pintaba con `opacity`. Es la forma obvia y tiene un coste que no
+   se ve hasta que rompe algo: `opacity < 1` crea CONTEXTO DE APILAMIENTO, y
+   entonces todo lo que flota dentro de la tarjeta deja de competir con la
+   pagina. El menu de un MiniSelect (z-index 50) y su telon (40) quedaban
+   encerrados en la tarjeta y la tarjeta SIGUIENTE de la lista se les pintaba
+   encima.
+   Y se escondia solo, que es lo peor: el menu se abre con el raton sobre la
+   tarjeta, donde el `:hover` la pone a opacidad 1 y el contexto desaparece.
+   En cuanto bajabas el raton hacia la opcion que ibas a elegir, salias de la
+   tarjeta, volvia el contexto y el menu se metia debajo de la de abajo. Elegir
+   era perseguir una lista que se escondia.
+
+   El velo hace lo MISMO a la vista y nada de eso: una capa del color del
+   fondo, encima, sin capturar clics. La cuenta es la misma —mezclar la tarjeta
+   con el fondo al 45% da igual por los dos caminos—, solo que aqui la mezcla
+   la hace una capa hermana en vez de una propiedad del contenedor.
+
+   · El velo MUERDE hacia fuera para tapar tambien el BORDE: una caja absoluta
+     se mide contra la caja de RELLENO, asi que con `inset:0` el borde queda
+     encendido alrededor de una tarjeta apagada. 1px por tres lados y
+     `--velo-izq` por la izquierda, que es donde va el filete de color del
+     estado (`.card.est-*` y el `borderLeft` en linea de postulaciones): 3px.
+     Con 1px quedaban dos pixeles de verde a plena intensidad en un caso
+     resuelto — la marca mas visible de la tarjeta, sin apagar.
+   · `border-radius:inherit` o el velo sale con las esquinas cuadradas.
+   · `z-index:2` lo pone por encima de `.fila-cubre` (1) y de `.fila-encima`
+     (2, gana el velo por orden: un ::after va el ultimo). Y por DEBAJO de
+     cualquier menu abierto (40 y 50), que es todo el asunto.
+   · `pointer-events:none`: lo de debajo se sigue pudiendo pulsar, igual que
+     con opacidad.
+   Cada sitio solo dice CUANTO apaga, con `--velo`. Las variables propias se
+   heredan al pseudo-elemento, asi que el `:hover` cambia `--velo` en el
+   elemento y no hace falta repetir el selector del ::after. */
+.card-apagada,.post-apagada,.conv-post-off,.caso-apagado>.card{position:relative}
+.card-apagada::after,.post-apagada::after,.conv-post-off::after,.caso-apagado>.card::after{
+  content:"";position:absolute;top:-1px;right:-1px;bottom:-1px;
+  left:calc(-1 * var(--velo-izq,3px));border-radius:inherit;pointer-events:none;
+  z-index:2;background:var(--velo-col,var(--bg));opacity:var(--velo,.45);
+  transition:opacity .16s ease}
+/* Caso resuelto en el feed. .55 de opacidad = .45 de velo. */
+.card-apagada{--velo:.45}
+.card-apagada:hover{--velo:0}
+/* (Aqui vivia `.card-ajena`, «lo que no es mi responsabilidad va apagado».
+   Se borra: no la usa ni un solo componente —el apagado de «mis asuntos» lo
+   hace `.caso-apagado`, en CasosLista—, y el comentario la presentaba como
+   viva. Una regla muerta con un porque escrito al lado es peor que ninguna:
+   se lee como una decision y se copia.) */
 
 /* Identidad de color por estado (tono tenue) en las tarjetas del feed */
 .card.est-abierta{border-left:3px solid rgba(255,77,94,.55);background-image:linear-gradient(90deg,rgba(255,77,94,.03),transparent 55%)}
@@ -2293,9 +2338,9 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(.65);cursor:
 .edic-ant-eq{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:7px}
 /* Postulación cerrada sin ganar: se apaga en el listado (historia, no compite).
    Al pasar el cursor recupera algo de presencia para poder leerla. */
-  /* sin `filter`: crearia bloque contenedor para los `fixed` de dentro; ver la regla del sello y components/Portal.tsx */
-.post-apagada{opacity:.5}
-.post-apagada:hover{opacity:.82}
+/* Velo, no opacidad: el porque, en la regla de .card-apagada. */
+.post-apagada{--velo:.5}
+.post-apagada:hover{--velo:.18}
 /* Tercera fila de una postulación: la línea de tiempo del concurso (riel de
    hitos de su convocatoria), separada del trío. */
 .post-riel{margin-top:11px;padding-top:9px;border-top:1px solid var(--border)}
@@ -2322,9 +2367,18 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(.65);cursor:
    cual, luego cual de ellos. Un pelo de letter-spacing porque en mayusculas
    las letras se rozan. */
 .conv-nombre{color:var(--text);font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}
-/* sin `filter`: crearia bloque contenedor para los `fixed` de dentro; ver la regla del sello y components/Portal.tsx */
-.conv-post-off{opacity:.5;transition:opacity .15s ease}
-.card.link:hover .conv-post-off{opacity:1}
+/* Velo, no opacidad: el porque, en la regla de .card-apagada. `--velo-col`
+   porque esta fila NO esta sobre el fondo de la pagina sino DENTRO de la
+   tarjeta de su convocatoria: un velo del color del fondo la dejaria mas
+   oscura que apagada, como un agujero en mitad de la tarjeta. */
+.conv-post-off{--velo:.5;--velo-col:var(--card);--velo-izq:1px}
+/* ⚠ CAMBIA UNA CONDUCTA, y conviene saberlo: con `opacity` esta fila era un
+   contexto de apilamiento y sus enlaces internos —el chip del proyecto, el de
+   la empresa— quedaban DEBAJO del `.fila-cubre` de la tarjeta, que se llevaba
+   el clic a la convocatoria. Sin ella, esos enlaces se pulsan y llevan a lo
+   suyo, igual que en las filas no apagadas. Es lo coherente; era una
+   diferencia que nadie habia decidido. */
+.card.link:hover .conv-post-off{--velo:0}
 /* Equipo que postula: fila de solo-avatares (nombre al hover vía title). */
 .post-equipo{display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-top:9px}
 .post-eq-av{display:inline-flex;border-radius:50%;cursor:help;
@@ -3389,16 +3443,14 @@ img.av{border:1px solid var(--border2)}
 /* «Mis asuntos» en la lista de casos: apagado = me incumbe pero responde otro. */
 /* sin `filter`: crearia bloque contenedor para los `fixed` de dentro; ver la regla del sello y components/Portal.tsx */
 /* ⚠ Envuelve la TARJETA entera de un caso, y dentro va <Reacciones> con su
-   telon a pantalla completa. Con el `filter` el telon se ENCOGIA a la tarjeta
-   y solo se podia cerrar la paleta pulsando dentro de ella. Eso ya no pasa.
-   Lo que SIGUE pasando: `opacity` tambien crea contexto de apilamiento —solo
-   que no bloque contenedor—, asi que el telon recupera su tamaño pero no su
-   sitio en la pila: una tarjeta POSTERIOR en la lista se le pinta encima y se
-   queda con el clic. Se arregla portalizando el telon y la paleta, no aqui.
-   Se esconde solo, ojo: al abrir la paleta el raton esta sobre la tarjeta, el
-   :hover la pone a opacity 1 y el contexto desaparece. Vuelve al apartarlo. */
-.caso-apagado{opacity:.45;transition:opacity .12s}
-.caso-apagado:hover{opacity:1}
+   telon a pantalla completa. Con `filter` el telon se ENCOGIA a la tarjeta y
+   con `opacity` quedaba APILADO dentro de ella, debajo de la tarjeta de mas
+   abajo. Por eso apaga con velo: el porque completo, en .card-apagada.
+   ⚠ El velo va en la TARJETA de dentro, no en este envoltorio. Este div no
+   tiene fondo ni radio propios y el margen de la tarjeta cae fuera de su caja:
+   un velo aqui saldria cuadrado y con una franja de mas por abajo. */
+.caso-apagado>.card{--velo:.55}
+.caso-apagado:hover>.card{--velo:0}
 .cf-mis{background:var(--card);border:1px solid var(--border);color:var(--muted);font-size:12.5px;font-weight:700;padding:6px 12px;border-radius:8px;cursor:pointer;white-space:nowrap;transition:border-color .12s,color .12s,background .12s}
 .cf-mis:hover{color:var(--text);border-color:var(--border2)}
 .cf-mis.on{background:rgba(45,212,191,.12);border-color:rgba(45,212,191,.4);color:var(--teal)}
@@ -4898,10 +4950,14 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
 }
 .rx-compacto .rx-mas{opacity:.35;transition:opacity .12s;
   padding:1px 6px;font-size:11px;flex:none}
-/* La paleta se abre hacia la IZQUIERDA. En la caja, el ＋ está pegado al borde
-   derecho de la fila: con el anclaje de siempre (`left:0`) los once emojis se
-   iban fuera de la pantalla y solo se alcanzaban los dos primeros. */
-.rx-compacto .rx-paleta{left:auto;right:0}
+/* (Aqui vivia `.rx-compacto .rx-paleta{left:auto;right:0}`, para que en la
+   caja —donde el ＋ va pegado al borde derecho de la fila— los once emojis no
+   se salieran de la pantalla. Se borra porque ya NO PUEDE aplicar: la paleta
+   flotante se pinta colgada de <body> y `.rx-compacto` ha dejado de ser su
+   antepasado. Lo que hace el mismo trabajo ahora es el `anchoMin` que
+   PaletaRx le pasa a Anclado, calculado desde la lista de emojis: con eso el
+   sitio se empuja hacia dentro y la paleta cabe entera. Una regla muerta que
+   describe un problema vivo es la peor clase de comentario.) */
 .rx-compacto:hover .rx-mas,
 .rx-compacto:focus-within .rx-mas{opacity:1}
 /* Los chips, más apretados que en un caso: aquí conviven con ocho datos más. */
@@ -7620,3 +7676,40 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
    de equipo. Mismo peso que el «desde» de al lado: es contexto de la persona,
    no una columna del cargo. */
 .eq-ces { color: var(--dim); font-size: 11px; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   📌 ANCLADO — el envoltorio de un menú que cuelga de su botón
+
+   El sitio lo calcula components/Anclado.tsx midiendo el botón; aquí solo va
+   lo que no depende de la medida.
+   ⚠ `z-index` POR ENCIMA de los modales (80), no por debajo. MiniSelect vive
+   dentro de EntidadForm, FormObjeto y el cronograma, que son modales: a 61 su
+   menú se abría DETRÁS del formulario que lo pedía. Al revés no hay riesgo —
+   abrir un modal empieza por un clic, y ese clic cae en el telón y cierra el
+   menú antes—. Sigue por debajo del visor de fotos (300) y de la confirmación
+   (400), que es donde tiene que estar: una pregunta de «¿seguro?» manda.
+   `display:flex` + `min-height:0` en el hijo es lo que hace que el menú se
+   ENCOJA solo cuando no cabe, en vez de desbordar: su propio `overflow-y:auto`
+   hace el resto. Así no hay que medir el contenido. */
+.anc-fondo{position:fixed;inset:0;z-index:90}
+.anc{position:fixed;z-index:91;display:flex;flex-direction:column}
+/* Los menús traen su colocación escrita —`absolute`, `top`, `left`— porque
+   nacieron colgando de un `.cbx`/`.rx-pal` con `position:relative`. Dentro del
+   ancla el sitio ya lo pone el envoltorio, así que se anula. Lista explícita y
+   no un `*`: si mañana entra aquí algo que SÍ necesita colocarse solo, quiero
+   que falle a la vista y no en silencio. */
+.anc > .combo-menu,.anc > .rx-paleta{
+  position:static;top:auto;bottom:auto;left:auto;right:auto;
+  min-height:0;box-shadow:0 12px 34px rgba(0,0,0,.55)}
+/* La paleta ENVUELVE. Son once emojis y en una ventana estrecha no caben en
+   una linea; sin esto se desbordaban del panel redondeado en vez de pasar a
+   una segunda fila. El `anchoMin` de PaletaRx evita que haga falta casi
+   siempre; esto es la red por debajo. */
+.anc > .rx-paleta{flex-wrap:wrap;justify-content:flex-start}
+/* Y el menu no encadena la rueda a la pagina: dentro de un modal —que hace
+   scroll— un roce de trackpad sobre el menu movia el modal, y mover la pagina
+   CIERRA el menu. Se elegia una opcion y se cerraba antes de llegar. */
+.combo-menu{overscroll-behavior:contain}
+/* El `max-height:260px` del menú SE QUEDA: el envoltorio acota por el sitio
+   que hay y esta regla por lo que es cómodo leer. Manda el menor de los dos,
+   que es justo lo que se quiere. */

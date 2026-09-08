@@ -1,9 +1,22 @@
 "use client";
 import { useRef, useState } from "react";
+import Anclado from "@/components/Anclado";
 
 /* Desplegable propio (reemplaza al <select> nativo, cuyo menú no se puede
    estilizar y muestra un resaltado celeste ajeno a la paleta). Mantiene el
-   look de badge/pill del disparador y abre un menú con la identidad del app. */
+   look de badge/pill del disparador y abre un menú con la identidad del app.
+
+   ── EL MENÚ SE PINTA FUERA DE LA FILA ──
+   Vive dentro de tarjetas y de filas, y ahí `absolute` no aguanta: basta un
+   `.fila-encima{position:relative;z-index:2}` —que es como este sistema levanta
+   lo interactivo por encima del enlace estirado— para encerrarlo. El `z-50`
+   del menú pasaba a valer 2 y la tarjeta SIGUIENTE de la lista se le pintaba
+   encima; con la tarjeta además apagada, el menú salía translúcido. Lo peor
+   era que se escondía solo: el menú se abre con el ratón sobre la tarjeta,
+   donde el `:hover` la enciende, y se metía debajo justo al bajar el ratón
+   hacia la opción. `Anclado` lo mide y lo cuelga de <body>. El cálculo de si
+   va arriba o abajo también se fue allí — aquí se estimaba a 34 px por fila,
+   que es adivinar el alto de un texto. */
 export default function MiniSelect({ value, options, onSelect, buttonClass, buttonStyle, block, error, etiqueta }: {
   value: string;
   options: string[][];
@@ -20,19 +33,10 @@ export default function MiniSelect({ value, options, onSelect, buttonClass, butt
   etiqueta?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const [arriba, setArriba] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
   const label = etiqueta ?? (options.find(o => o[0] === value)?.[1] || value);
 
-  const toggle = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!open && btnRef.current) {
-      const r = btnRef.current.getBoundingClientRect();
-      const alto = Math.min(options.length * 34 + 12, 280);
-      setArriba(window.innerHeight - r.bottom < alto && r.top > alto);
-    }
-    setOpen(o => !o);
-  };
+  const toggle = (e: React.MouseEvent) => { e.stopPropagation(); setOpen(o => !o); };
 
   const estiloCampo: React.CSSProperties = block
     ? { width: "100%", justifyContent: "space-between", background: "var(--bg)",
@@ -43,7 +47,10 @@ export default function MiniSelect({ value, options, onSelect, buttonClass, butt
     : {};
 
   return (
-    <span style={{ position: "relative", display: block ? "flex" : "inline-flex", width: block ? "100%" : undefined,
+    /* Sin `position:relative`: el menú ya no cuelga de aquí —lo coloca
+       `Anclado` contra la ventana— y dejarlo escrito sugiere un anclaje que no
+       existe. El `display` y el `width` sí siguen haciendo falta. */
+    <span style={{ display: block ? "flex" : "inline-flex", width: block ? "100%" : undefined,
       ...(block ? { textTransform: "none" as const, letterSpacing: "normal", fontSize: 14 } : {}) }}
       onClick={e => e.stopPropagation()}>
       <button ref={btnRef} className={buttonClass} type="button"
@@ -56,17 +63,20 @@ export default function MiniSelect({ value, options, onSelect, buttonClass, butt
         {label} <span style={{ fontSize: 9, opacity: .75 }}>▾</span>
       </button>
       {open && (
-        <>
-          <span className="rx-fondo" onClick={e => { e.stopPropagation(); setOpen(false); }} />
-          <div className={`combo-menu${arriba ? " arriba" : ""}${block ? " block" : ""}`}>
+        /* `block` es el desplegable con look de campo de formulario: su menú
+           tiene que medir lo que mide el campo, no lo que mida el texto más
+           largo. Antes lo conseguía con `left:0;right:0`; ahora se le pide el
+           ancho del ancla, que es lo mismo dicho donde se puede medir. */
+        <Anclado ancla={btnRef} alCerrar={() => setOpen(false)} ancho={block ? "ancla" : undefined}>
+          <div className={`combo-menu${block ? " block" : ""}`}>
             {options.map(o => (
-              <button key={o[0]} className={`combo-item ${o[0] === value ? "on" : ""}`}
+              <button key={o[0]} type="button" className={`combo-item ${o[0] === value ? "on" : ""}`}
                 onClick={e => { e.stopPropagation(); setOpen(false); if (o[0] !== value) onSelect(o[0]); }}>
                 {o[1]}
               </button>
             ))}
           </div>
-        </>
+        </Anclado>
       )}
     </span>
   );
