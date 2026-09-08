@@ -42,24 +42,41 @@ export default function FotoPersona({ personaId, nombre, foto, propia, size = 56
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /* ⚠ `try/finally` en las dos. `guardarFotoPersona` es una acción de servidor
+     y RECHAZA si se cae la red: sin esto la excepción salía de aquí, `subiendo`
+     se quedaba en true y el avatar se quedaba a media opacidad, sin aceptar
+     otro intento, hasta recargar — y sin decir por qué. */
   const subir = async (f?: File) => {
     if (!f || subiendo) return;
     setSubiendo(true); setError("");
-    const lista = await prepararImagen(f, MEDIDAS.foto);
-    const r = await subirImagen(lista);
-    if (r.error || !r.url) { setError(r.error || "No se pudo subir"); setSubiendo(false); return; }
-    const res: any = await guardarFotoPersona(personaId, r.url);
-    setSubiendo(false);
-    if (res?.error) { setError(res.error); return; }
-    router.refresh();
+    try {
+      const lista = await prepararImagen(f, MEDIDAS.foto);
+      const r = await subirImagen(lista);
+      if (r.error || !r.url) { setError(r.error || "No se pudo subir"); return; }
+      const res: any = await guardarFotoPersona(personaId, r.url);
+      if (res?.error) { setError(res.error); return; }
+      router.refresh();
+    } catch (e: any) {
+      setError(e?.message || "Se cortó la conexión");
+    } finally {
+      setSubiendo(false);
+    }
   };
 
   const quitar = async () => {
     if (subiendo) return;
-    setSubiendo(true);
-    await guardarFotoPersona(personaId, null);
-    setSubiendo(false);
-    router.refresh();
+    setSubiendo(true); setError("");
+    try {
+      const res: any = await guardarFotoPersona(personaId, null);
+      /* El error se DICE. Se descartaba: quitar la foto podía fallar por
+         permisos y la pantalla se quedaba igual, como si no hubieras pulsado. */
+      if (res?.error) { setError(res.error); return; }
+      router.refresh();
+    } catch (e: any) {
+      setError(e?.message || "Se cortó la conexión");
+    } finally {
+      setSubiendo(false);
+    }
   };
 
   return (

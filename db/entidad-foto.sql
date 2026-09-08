@@ -24,9 +24,10 @@
 --  Y con `creado_por` y `creado_en`: el día que aparece una foto que
 --  contradice a otra, la pregunta es quién y cuándo.
 --
---  Polimórfica como `entidad_media`, `objetos` y `publicacion_vinculos`: hoy
---  solo la usa 🎥 equipos, pero nada de aquí es de equipos. El día que un
---  lugar o una empresa necesiten fotos, ya está.
+--  Polimórfica como `entidad_media`, `objetos` y `publicacion_vinculos`: hoy la
+--  usan 🎥 equipos y 👤 personas —quién la pinta lo dice `CON_GALERIA` en la
+--  ficha—, pero nada de aquí es de un tipo concreto. El día que un lugar o una
+--  empresa necesiten fotos, ya está: la tabla no hay que tocarla.
 --
 --  Idempotente y sin transacción (pgBouncer). Al final verifica.
 -- ============================================================

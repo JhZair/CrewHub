@@ -200,6 +200,18 @@ const CAMPOS_SECUNDARIOS: Record<string, string[]> = {
    Ver el comentario del «⬇ Los otros N» más abajo. */
 const TOPE_TARJETAS = 20;
 
+/* ── QUIÉN TIENE GALERÍA DE FOTOS ──
+   En un solo sitio, porque se pregunta DOS veces y con dos consecuencias
+   distintas: si se lanza la consulta y si se pinta la tira. Separadas, encender
+   un tipo nuevo en un sitio y no en el otro da una de dos pantallas mudas —una
+   consulta que nadie mira, o una galería que sale siempre vacía—, y las dos
+   compilan.
+   `entidad_foto` es polimórfica y no sabe de tipos (ver db/entidad-foto.sql):
+   añadir uno aquí es todo lo que hace falta en la base. Lo que sí hay que
+   añadirle es su voz en `components/GaleriaFotos` — cómo se llama ahí ponerla
+   de cara y a qué medida. */
+const CON_GALERIA = new Set(["equipamiento", "persona"]);
+
 const fecha = (d: string) =>
   new Date(d).toLocaleString("es-PE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "America/Lima" });
 
@@ -427,7 +439,7 @@ export default async function Entidad({ params, searchParams }: {
      Y ordena por `orden` Y LUEGO por `creado_en`: dos fotos subidas a la vez
      pueden empatar en `orden` —está contado en `agregarFotos`— y sin el
      desempate la lista cambiaría de sitio entre dos visitas. */
-  const pFotos = params.tipo === "equipamiento"
+  const pFotos = CON_GALERIA.has(params.tipo)
     ? supabase.from("entidad_foto")
         .select("id,url,pie,orden")
         .eq("entidad_tipo", params.tipo).eq("entidad_id", params.id)
@@ -2420,12 +2432,12 @@ export default async function Entidad({ params, searchParams }: {
      personas solo se usa el banner: su avatar sigue en `personas.foto_url`. */
   const { data: media } = await pMedia;   // lanzada arriba
   const conCartel = params.tipo !== "persona";
-  /* Las fotos, y el error si la tabla no está. Hoy solo se pinta la galería en
-     🎥 equipos —es donde se pidió y donde una foto contesta una pregunta que
-     el nombre no contesta—, pero nada de esto es de equipos: el día que un
-     lugar o una empresa las necesiten, se añade el tipo a la lista. */
+  /* Las fotos, y el error si la tabla no está. Quién las tiene lo dice
+     `CON_GALERIA`, arriba: hoy 🎥 equipos y 👤 personas. Nada de esto es de
+     equipos —el día que un lugar o una empresa las necesiten, se añade el tipo
+     a esa lista y a la voz de `GaleriaFotos`, y ya está. */
   const { data: fotosRaw, error: eFotos } = await pFotos;
-  const conGaleria = params.tipo === "equipamiento";
+  const conGaleria = CON_GALERIA.has(params.tipo);
 
   /* Drive como «pestaña»: la carpeta Drive es un repositorio de contenido amplio,
      la misma lógica en toda entidad. Va en la fila de pestañas, justo antes del
@@ -2649,10 +2661,11 @@ export default async function Entidad({ params, searchParams }: {
 
             {/* ── LAS FOTOS, LO PRIMERO DEL CARNÉ ──
                 Estaban bajo la cabecera, a lo ancho de la pantalla. Aquí valen
-                más: esta columna es la ficha del PRODUCTO —qué es, en qué
-                estado, cuánto costó— y la foto es el primer dato de esa lista,
-                no un adorno de la cabecera. Quien abre un «Maletín de Hombro
-                para Cámaras» viene a mirar cuál de los tres maletines es.
+                más: esta columna es la ficha de la cosa —qué es, en qué estado,
+                cuánto costó; quién es, qué hace, cómo se le escribe— y la foto
+                es el primer dato de esa lista, no un adorno de la cabecera.
+                Quien abre un «Maletín de Hombro para Cámaras» viene a mirar
+                cuál de los tres maletines es.
                 Y el ancla `#fotos` del cartel sigue funcionando: viaja con el
                 bloque. */}
             {conGaleria && (eFotos ? (

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Portal from "@/components/Portal";
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -29,7 +29,17 @@ export type FotoVista = { url: string; pie?: string | null };
 
 export default function VisorFotos({ fotos, desde = 0, alCerrar, alCambiar, barra }: {
   fotos: FotoVista[];
-  /** Por cuál se abre. Si se va de rango se abre por la primera. */
+  /** Por cuál se abre — y por cuál se pasa a ver si CAMBIA estando abierto.
+   *
+   *  ⚠ No es solo el valor inicial, aunque lo fue y ahí estaba el fallo: quien
+   *  pone el visor a veces necesita mover el índice desde fuera. El caso real
+   *  es «◀ mover esta foto un puesto»: la lista se reordena y la foto que se
+   *  está mirando cambia de sitio, así que hay que seguirla. Como el índice
+   *  vivía SOLO aquí, el visor seguía pintando la posición vieja: en pantalla
+   *  se veía una foto y la barra de abajo —el pie, «hacer cara», la ✕— actuaba
+   *  sobre OTRA. Borrar la que no estás mirando, y encima cerrarse sin decirlo.
+   *
+   *  Si se va de rango, se ignora. */
   desde?: number;
   alCerrar: () => void;
   /** Por cuál se está mirando ahora. Sin esto, quien pone el visor no puede
@@ -50,6 +60,23 @@ export default function VisorFotos({ fotos, desde = 0, alCerrar, alCambiar, barr
      efecto: un efecto corrige DESPUÉS de pintar, o sea después de haber
      reventado. */
   const idx = Math.min(i, n - 1);
+
+  /* ⚠ Solo cuando `desde` CAMBIA de verdad, y por eso el ref. Sin él, este
+     efecto correría también cuando el índice lo movió el propio visor —
+     `alCambiar` avisa, quien nos usa guarda el número y nos lo devuelve por
+     `desde`— y no pasaría nada, pero tampoco se distinguiría una orden de
+     fuera de un eco de dentro. Con el ref, `setI` solo se llama cuando alguien
+     de fuera pidió otra foto.
+     Y no hay bucle: el efecto de abajo solo corre si `idx` cambia, y en el
+     render en que llega la orden `idx` todavía es el viejo, así que no
+     contesta con el número que estamos a punto de tirar. */
+  const desdeRef = useRef(desde);
+  useEffect(() => {
+    if (desdeRef.current === desde) return;
+    desdeRef.current = desde;
+    if (desde >= 0 && desde < n) setI(desde);
+  }, [desde, n]);
+
   useEffect(() => { alCambiar?.(idx); }, [idx, alCambiar]);
 
   useEffect(() => {
