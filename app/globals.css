@@ -122,7 +122,16 @@ a{color:inherit;text-decoration:none}
    no informa nada: se apaga a un filo neutro y fino para no competir con el
    cartel real. */
 .ent-hero-cartel.tiene-img{border:1px solid rgba(255,255,255,.14)}
-.ent-hero-cartel>img{width:100%;height:100%;object-fit:cover}
+/* ⚠ EL SELECTOR ES `>` A PROPÓSITO —para no alcanzar los iconos de los
+   controles— y por eso hay que nombrar TAMBIÉN el caso del enlace. Cuando el
+   cartel lleva a la galería, la imagen va envuelta en un <a>: dejó de ser hija
+   directa, la regla no la alcanzaba, y sin `width/height:100%` ni
+   `object-fit:cover` se pintaba a su tamaño real y el `overflow:hidden` de la
+   caja la recortaba — se veía una esquina ampliada en vez del equipo entero.
+   El enlace tiene que llenar la caja o el porcentaje de la imagen se mide
+   contra nada. */
+.ent-hero-cartel>a{display:block;width:100%;height:100%;line-height:0}
+.ent-hero-cartel>img,.ent-hero-cartel>a>img{width:100%;height:100%;object-fit:cover}
 .ent-hero-ini{font-size:26px;font-weight:800;color:var(--muted)}
 /* Controles ✎ / × sobre cada imagen, discretos hasta el hover */
 .ent-hero-ctrl{position:absolute;top:8px;right:8px;display:flex;gap:5px;opacity:0;transition:opacity .12s}
