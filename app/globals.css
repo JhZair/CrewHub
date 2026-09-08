@@ -7882,3 +7882,9 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
    el ⧉ copia. El razonamiento largo está en components/Copiar.tsx. */
 .copiable-par{display:inline-flex;align-items:center;gap:4px;min-width:0;max-width:100%}
 .copiable-solo{background:none;border:0;padding:0 4px;flex:none}
+/* El chip de fotos de una fila del inventario. Hereda de `.ens-marca` —el de
+   piezas montadas— para que los dos se lean como lo que son: dos cifras que
+   se pueden abrir. En verde azulado y no en azul, para no confundirse con él. */
+.chip-fotos{color:var(--teal);background:rgba(45,212,191,.12);border-color:rgba(45,212,191,.22)}
+.chip-fotos:hover{color:#7fe3d4;border-color:var(--teal);background:rgba(45,212,191,.2)}
+.chip-fotos-err{color:var(--yellow);font-size:11px;cursor:pointer}

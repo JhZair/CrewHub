@@ -4262,6 +4262,29 @@ export async function moverFoto(fotoId: string, hacia: "antes" | "despues") {
   return { ok: true, movida: true };
 }
 
+/** Las fotos de UNA cosa, pedidas al abrirlas.
+ *
+ *  El listado del inventario sabe CUÁNTAS tiene cada equipo —una cifra por
+ *  fila, que es barato— pero no sus URLs: quinientas filas × tres fotos son
+ *  doscientos kilobytes de direcciones que casi nadie llega a mirar. Se piden
+ *  al pulsar el chip, que es el mismo criterio que ya siguen los catálogos de
+ *  `VinculosEditor`: lo que solo hace falta al abrir algo, se pide al abrirlo.
+ */
+export async function fotosDeEntidad(tipo: string, id: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data, error } = await supabase.from("entidad_foto")
+    .select("id,url,pie")
+    .eq("entidad_tipo", tipo).eq("entidad_id", id)
+    .order("orden").order("creado_en");
+  if (error) {
+    return { error: /(does not exist|schema cache|PGRST20)/i.test(error.message)
+      ? "Falta correr db/entidad-foto.sql en Supabase." : error.message };
+  }
+  return { fotos: data || [] };
+}
+
 /* --- CVs por enfoque: uno por rol al que postula la persona --- */
 export async function guardarCv(personaId: string, enfoque: string, url: string, id?: string | null) {
   const supabase = createClient();

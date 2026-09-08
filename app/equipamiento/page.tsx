@@ -3,6 +3,7 @@ import { equiposGordos, enManosAhora, cartelesEquipo, kitsCrudos, comprasCombo,
   cartelPorEquipo, quienTieneEquipo, contextoKits, repartoPorPieza, piezasMontadas,
   un1 } from "@/lib/equipamientoDatos";
 import ChipPiezas from "@/components/ChipPiezas";
+import ChipFotos from "@/components/ChipFotos";
 import BotonComprobar from "@/components/BotonComprobar";
 import FilasEquipo from "@/components/FilasEquipo";
 import PonerSubcategoria from "@/components/PonerSubcategoria";
@@ -102,9 +103,15 @@ export default async function Equipamiento({ searchParams }: {
      estaban escritos a mano, así que la misma tabla se pedía en cada pestaña
      con un `select` ligeramente distinto — y eso es como acaban dos pantallas
      contando cosas distintas sobre las mismas filas. */
+  /* El techo de la cuenta de fotos. Alto a propósito —hoy hay decenas— pero
+     escrito: un `select` sin límite trae lo que Supabase quiera darle («Max
+     rows», mil por defecto) y ahí el corte es invisible. Con el número aquí,
+     el día que se alcance la pantalla deja de prometer una cifra. */
+  const TOPE_FOTOS = 4000;
+
   const [{ data: eqs }, manos, media, kitsRaw, { data: comprasRaw },
          { data: vincs }, comsBita, comsUso, usosRec, { data: comBita },
-         { data: prestAll }, usosFin] = await Promise.all([
+         { data: prestAll }, usosFin, fotosRaw] = await Promise.all([
     equiposGordos(), enManosAhora(), cartelesEquipo(), kitsCrudos(), comprasCombo(),
     supabase.from("publicacion_vinculos")
       /* ⚠ EL CONTADOR 💬 YA NO SE CUENTA A MANO.
@@ -151,6 +158,16 @@ export default async function Equipamiento({ searchParams }: {
     supabase.from("equipo_prestamos")
       .select("id,desde,hasta,equipo:equipamiento(id,folio,nombre),persona:personas(id,nombre,alias)")
       .not("hasta", "is", null).order("hasta", { ascending: false }).limit(ACT_TRAE),
+    /* ── CUÁNTAS FOTOS TIENE CADA EQUIPO ──
+       SOLO el `entidad_id`, o sea una columna. Lo que la fila necesita es una
+       cifra —«📷 3»—, y las URLs se piden al pulsar el chip: quinientas filas
+       por tres fotos son doscientos kilobytes de direcciones para algo que
+       casi nadie llega a abrir. Es el criterio de `VinculosEditor` con sus
+       catálogos, y está contado en components/ChipFotos.
+       AL FINAL, como avisa el comentario de arriba: esto se destructura POR
+       POSICIÓN y meter una consulta en medio ya desalineó seis tablas una vez. */
+    supabase.from("entidad_foto").select("entidad_id")
+      .eq("entidad_tipo", "equipamiento").limit(TOPE_FOTOS),
   ]);
   /* ⚠ Los dos errores se MIRAN, y esto se dejó fuera al partir la pantalla.
      El aviso de «no se pudo leer quién tiene qué» se mudó entero a la pestaña
@@ -201,6 +218,25 @@ export default async function Equipamiento({ searchParams }: {
      pinta — los mismos que se sacaron de aquí en su día.
      El total del inventario de arriba NO usa nada de esto: `valorInventario`
      reparte el precio de un combo por su cuenta, sobre las mismas unidades. */
+  /* ⚠ `null` cuando la consulta falla, no un mapa vacío. Un mapa vacío pinta
+     cero chips y se lee como «ningún equipo tiene fotos», que sobre un
+     inventario con fotos es la respuesta equivocada a algo que nadie preguntó.
+     Con `null`, el chip no se pinta porque no se sabe — y eso es lo honesto:
+     la fila no promete nada. */
+  const nFotos = (() => {
+    if ((fotosRaw as any)?.error) return null;
+    const filas = ((fotosRaw as any)?.data || []) as any[];
+    /* ⚠ SI LLEGAMOS AL TECHO, NO SE SABE. Contar filas traídas es exacto solo
+       mientras vengan TODAS: al tope, la cuenta de los últimos equipos sale
+       corta y nada lo dice. Es el fallo de los seis contadores de 💬 que este
+       repositorio ya pagó una vez —cada uno enseñando un número menor que el
+       de verdad, ninguno dando error—. Antes que un número falso, ninguno. */
+    if (filas.length >= TOPE_FOTOS) return null;
+    const m = new Map<string, number>();
+    filas.forEach(f => { if (f.entidad_id) m.set(f.entidad_id, (m.get(f.entidad_id) || 0) + 1); });
+    return m;
+  })();
+
   const piezasDe = piezasMontadas(
     (eqs || []) as any[], cartelPorEq, comboPorEq,
     repartoPorPieza((eqs || []) as any[], comprasRaw ? { data: comprasRaw } : null),
@@ -480,6 +516,12 @@ export default async function Equipamiento({ searchParams }: {
                     saberlo es abrir la ficha. Al pulsarlo dice CUÁLES, con foto
                     y precio, sin salir de la lista. */}
                 <ChipPiezas piezas={piezasDe.get(x.id) || []} />
+                {/* Las fotos, desde el listado. Buscas «maleta», te salen
+                    ocho, y para saber cuál es cuál había que abrir ocho fichas
+                    y volver ocho veces perdiendo el filtro cada vez. La
+                    miniatura de la fila no basta: es la misma foto de 40 px
+                    que ya no distingue dos maletines negros. */}
+                <ChipFotos tipo="equipamiento" id={x.id} n={nFotos?.get(x.id) || 0} />
 
                 {/* Los dos ejes: lo que ENTRÓ junto y lo que SALE junto. No se
                     pueden deducir mirando la cámara. */}
