@@ -17,9 +17,11 @@ export default function PortadaEntidad({ tipo, id, portada, cartel, nombre, colo
   tipo: string; id: string;
   portada?: string | null; cartel?: string | null;
   nombre?: string | null;
-  /** A dónde lleva pulsar el CARTEL, si lleva a algún sitio. Lo usa 🎥 equipos
-   *  para abrir la galería de fotos por la primera: el cartel es la imagen más
-   *  grande de la ficha y el primer sitio donde alguien pulsa buscando ver más.
+  /** A dónde lleva pulsar el CARTEL, si lleva a algún sitio. Lo usan los tipos
+   *  con galería que además pintan cartel —🎥 equipos y 🎬 proyectos— para
+   *  bajar a la tira de fotos: el cartel es la imagen más grande de la ficha y
+   *  el primer sitio donde alguien pulsa buscando ver más. (Una persona tiene
+   *  galería pero no cartel, así que ahí no aplica.)
    *  ⚠ Es una URL y no una función: una función cruzando a un componente de
    *  cliente compila, pasa el linter y explota al ejecutarse. Con una URL
    *  además el resultado se puede compartir. */

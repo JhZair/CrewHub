@@ -82,6 +82,27 @@ const VOZ: Record<string, Voz> = {
     caraMedida: MEDIDAS.cartel,
     caraDonde: "cartel",
   },
+  /* Un proyecto tiene fotos ANTES de tener nada: la referencia visual que
+     explica el tono mejor que un párrafo, dónde ocurre, cómo se ve, el afiche.
+     ⚠ Y NO se habla de rodaje ni de película: `lib/entidades` admite siete
+     tipos de proyecto y tres de ellos —videojuego, gestión cultural,
+     cobertura— no ruedan nada. Meter el vocabulario de un subtipo en la
+     entrada de todo el tipo es el mismo fallo que `VOZ` vino a arreglar, un
+     piso más abajo.
+     Su cara sí es un cartel —`entidad_media`—, al revés que la de una persona. */
+  proyecto: {
+    pista: "Referencias visuales, cómo se ve, dónde ocurre, el afiche.",
+    piePista: "¿Qué enseña esta foto? «la casa de Ollantaytambo, tarde»",
+    /* ⚠ «en la búsqueda y en las fichas», no «en las listas»: /proyectos, que
+       es LA lista de proyectos, no lee `entidad_media` — sus filas son texto y
+       etiquetas. Prometer que se verá ahí sería mandar a alguien a mirar un
+       sitio donde no está. */
+    caraTit: "Ponerla como cartel: la imagen con la que este proyecto sale en la búsqueda y en las fichas que lo mencionan",
+    hecho: "Ya es el cartel de este proyecto",
+    caraMedida: MEDIDAS.cartel,
+    cara: "🖼 Hacer cartel",
+    caraDonde: "cartel",
+  },
   persona: {
     pista: "Un retrato para producción, la de rodaje, la de prensa.",
     piePista: "¿Qué enseña esta foto? «rodaje de Mujeres Ande, 2025»",

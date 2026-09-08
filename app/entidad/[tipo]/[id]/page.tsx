@@ -210,7 +210,7 @@ const TOPE_TARJETAS = 20;
    añadir uno aquí es todo lo que hace falta en la base. Lo que sí hay que
    añadirle es su voz en `components/GaleriaFotos` — cómo se llama ahí ponerla
    de cara y a qué medida. */
-const CON_GALERIA = new Set(["equipamiento", "persona"]);
+const CON_GALERIA = new Set(["equipamiento", "persona", "proyecto"]);
 
 const fecha = (d: string) =>
   new Date(d).toLocaleString("es-PE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "America/Lima" });
@@ -435,7 +435,8 @@ export default async function Entidad({ params, searchParams }: {
      correr— hay que poder decirlo, y un array vacío se lee como «no tiene
      fotos», que es la respuesta equivocada a una pregunta que nadie hizo. */
   /* ⚠ Solo donde se pinta. Lanzarla siempre le cobraba un viaje a la ficha de
-     una persona, un proyecto o una empresa para un dato que nunca miran.
+     una empresa, una convocatoria o una postulación para un dato que ahí no se
+     enseña. Quién la pinta lo dice `CON_GALERIA`, arriba.
      Y ordena por `orden` Y LUEGO por `creado_en`: dos fotos subidas a la vez
      pueden empatar en `orden` —está contado en `agregarFotos`— y sin el
      desempate la lista cambiaría de sitio entre dos visitas. */
@@ -2433,9 +2434,9 @@ export default async function Entidad({ params, searchParams }: {
   const { data: media } = await pMedia;   // lanzada arriba
   const conCartel = params.tipo !== "persona";
   /* Las fotos, y el error si la tabla no está. Quién las tiene lo dice
-     `CON_GALERIA`, arriba: hoy 🎥 equipos y 👤 personas. Nada de esto es de
-     equipos —el día que un lugar o una empresa las necesiten, se añade el tipo
-     a esa lista y a la voz de `GaleriaFotos`, y ya está. */
+     `CON_GALERIA`, arriba: hoy 🎥 equipos, 👤 personas y 🎬 proyectos. Nada de
+     esto es de un tipo concreto — el día que un lugar o una empresa las
+     necesiten, se añade el tipo a esa lista y su voz a `GaleriaFotos`. */
   const { data: fotosRaw, error: eFotos } = await pFotos;
   const conGaleria = CON_GALERIA.has(params.tipo);
 
@@ -2769,10 +2770,18 @@ export default async function Entidad({ params, searchParams }: {
               );
             })()}
             {/* 🎭 Actor(es) social(es): los personajes reales del documental —el
-                corazón humano del proyecto—. Van al TOPE del carné, con su
-                rostro grande. Normalmente uno; a veces dos, lado a lado. */}
+                corazón humano del proyecto—. Van arriba del carné, con su
+                rostro grande. Normalmente uno; a veces dos, lado a lado.
+                ⚠ El `borderTop:none` era porque este bloque abría la tarjeta.
+                Con la galería encima ya no la abre, y sin la línea de
+                `.carne-actores` las dos cosas se leen como una sola: la tira de
+                fotos y el retrato pegados, sin frontera. Así que la separación
+                se quita SOLO si de verdad va primero. */}
             {params.tipo === "proyecto" && actoresCarne.length > 0 && (
-              <div className="carne-actores" style={{ marginTop: 0, paddingTop: 0, borderTop: "none", marginBottom: 4 }}>
+              <div className="carne-actores"
+                style={conGaleria
+                  ? { marginTop: 0, marginBottom: 4 }
+                  : { marginTop: 0, paddingTop: 0, borderTop: "none", marginBottom: 4 }}>
                 {/* El rótulo lo decide el tipo, igual que en la pestaña: si aquí
                     dijera «actores sociales» y allá «personajes», serían dos
                     nombres para la misma lista en la misma pantalla. */}
