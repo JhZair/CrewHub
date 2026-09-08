@@ -1,7 +1,6 @@
 "use client";
-import Link from "@/components/Enlace";
 import ChipPop from "@/components/ChipPop";
-import { txtEstadoEq, colorEstadoEq } from "@/lib/estadosEquipo";
+import FilaPop from "@/components/FilaPop";
 /* El mismo `soles` que el resto del inventario, no una copia. La había, y era
    la tercera del repositorio: la misma cifra podía salir con dos formatos
    distintos en dos chips de la misma línea. */
@@ -83,42 +82,26 @@ export default function ChipPiezas({ piezas, titulo = "Va armado: lleva piezas m
           )}
         </>
       }>
-      {piezas.map(p => (
-        <Link key={p.id} href={`/entidad/equipamiento/${p.id}`} className="ens-pop-fila">
-          <span className="kit-pz-img">
-            {p.cartel
-              // eslint-disable-next-line @next/next/no-img-element
-              ? <img src={p.cartel} alt="" referrerPolicy="no-referrer" />
-              : <span>🎥</span>}
-          </span>
-          {p.folio && <span className="kit-pz-folio">{p.folio}</span>}
-          <span className="ens-pop-n">{p.nombre}</span>
-          {/* El estado solo cuando NO es «ensamblado»: dentro de su ensamblado
-              eso es lo normal y decirlo en cada fila es repetir el título del
-              pop-up tres veces. Lo que sí importa es la pieza que está rota o
-              no aparece estando montada. */}
-          {p.estado && p.estado !== "ensamblado" && (
-            <span style={{ fontSize: 10, color: colorEstadoEq(p.estado), whiteSpace: "nowrap" }}>
-              {txtEstadoEq(p.estado)}
-            </span>
-          )}
-          {/* El precio al final de la fila, no pegado al nombre: la columna de
-              cifras se suma con la vista, y con el precio entremedio del texto
-              hay que buscarlo nueve veces. */}
-          {(() => {
-            const { v, esti } = valeM(p);
-            if (v > 0) return (
-              <span className={`ens-pop-val${esti ? " esti" : ""}`}
-                title={esti ? `Sin precio propio: le toca esta parte de ${p.combo?.codigo || "su boleta"}.` : undefined}>
-                {esti ? "~" : ""}{soles(v)}
-              </span>
-            );
+      {piezas.map(p => {
+        const { v, esti } = valeM(p);
+        return (
+          <FilaPop key={p.id} id={p.id} folio={p.folio} nombre={p.nombre} cartel={p.cartel}
+            /* El estado solo cuando NO es «ensamblado»: dentro de su ensamblado
+               eso es lo normal y decirlo en cada fila es repetir el título del
+               pop-up tres veces. Lo que sí importa es la pieza que está rota o
+               no aparece estando montada. */
+            estado={p.estado && p.estado !== "ensamblado" ? p.estado : null}
+            precio={v > 0 ? {
+              valor: v, esti,
+              titulo: esti
+                ? `Sin precio propio: le toca esta parte de ${p.combo?.codigo || "su boleta"}.`
+                : undefined,
+            } : null}
             /* Sin precio NO se calla: una pieza sin valorar es la que hace que
                el total del kit vaya corto, y el hueco solo se arregla si se ve. */
-            return <span className="ens-pop-sinval" title="Sin precio propio ni combo: no suma al valor del kit.">⚠</span>;
-          })()}
-        </Link>
-      ))}
+            sinPrecio="Sin precio propio ni combo: no suma al valor del kit." />
+        );
+      })}
     </ChipPop>
   );
 }

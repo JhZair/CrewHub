@@ -1,9 +1,8 @@
 "use client";
 import { useState } from "react";
-import Link from "@/components/Enlace";
 import ChipPop from "@/components/ChipPop";
+import FilaPop from "@/components/FilaPop";
 import { contenidoDeGrupo, type MiembroGrupo } from "@/app/actions";
-import { txtEstadoEq, colorEstadoEq } from "@/lib/estadosEquipo";
 /* ⚠ El MISMO `soles` que pinta el sufijo del chip en la fila, no una copia
    local con «S/» fijo. La había, y con una boleta en dólares el chip decía
    «$ 1,200» y su propio pop-up «S/ 1,200» a dos centímetros: la misma cifra
@@ -115,41 +114,17 @@ export default function ChipGrupo({ que, id, nombre, total: totalBoleta, enChip,
         </span>
       )}
       {(miembros || []).map(m => (
-        <Link key={m.id} href={`/entidad/equipamiento/${m.id}`} className="ens-pop-fila">
-          <span className="kit-pz-img">
-            {m.cartel
-              // eslint-disable-next-line @next/next/no-img-element
-              ? <img src={m.cartel} alt="" referrerPolicy="no-referrer" />
-              : <span>🎥</span>}
-          </span>
-          {m.folio && <span className="kit-pz-folio">{m.folio}</span>}
-          {/* ⚠ Dos renglones, y por eso `ens-pop-n-dos` en vez de meter un hijo
-              de bloque dentro de `.ens-pop-n`: esa clase recorta con «…», y un
-              hijo `display:block` dentro convierte el nombre en una caja
-              anónima donde `text-overflow` no se hereda — el nombre se cortaba
-              a hachazo en las filas prestadas y con puntos suspensivos en las
-              demás, en la misma lista. */}
-          <span className="ens-pop-n ens-pop-n-dos">
-            <span className="chip-gr-nom">{m.nombre}</span>
-            {/* Debajo del nombre y no al lado: en una caja de 340 px, «lo tiene
-                Katy Pachacutec» junto a un nombre largo empuja el precio fuera. */}
-            {m.quien && <span className="chip-gr-quien">lo tiene {m.quien}</span>}
-          </span>
-          {m.estado && m.estado !== "disponible" && (
-            <span style={{ fontSize: 10, color: colorEstadoEq(m.estado), whiteSpace: "nowrap" }}>
-              {txtEstadoEq(m.estado)}
-            </span>
-          )}
-          {/* El precio propio va SIEMPRE en soles: es `equipamiento.valor_compra`,
-              que no tiene moneda. La del combo es de la boleta, no de la
-              unidad. */}
-          {Number(m.valor) > 0
-            ? <span className="ens-pop-val">{soles(Number(m.valor))}</span>
-            : <span className="ens-pop-sinval"
-                title={esKit
-                  ? "Sin precio propio: no suma al total de arriba."
-                  : "Sin precio propio: su parte va dentro del total de la boleta."}>⚠</span>}
-        </Link>
+        <FilaPop key={m.id} id={m.id} folio={m.folio} nombre={m.nombre} cartel={m.cartel}
+          /* Dentro de un kit o de una boleta, «disponible» es lo normal: lo que
+             hace falta ver es el que está roto, prestado o no aparece. */
+          estado={m.estado && m.estado !== "disponible" ? m.estado : null}
+          quien={m.quien}
+          /* El precio propio va SIEMPRE en soles: es `equipamiento.valor_compra`,
+             que no tiene moneda. La del combo es de la boleta, no de la unidad. */
+          precio={Number(m.valor) > 0 ? { valor: Number(m.valor) } : null}
+          sinPrecio={esKit
+            ? "Sin precio propio: no suma al total de arriba."
+            : "Sin precio propio: su parte va dentro del total de la boleta."} />
       ))}
     </ChipPop>
   );

@@ -146,7 +146,12 @@ export default function ChipPop({
   useLayoutEffect(() => {
     if (!hueco || !pop || !lista) return;
     const marco = pop.offsetHeight - lista.clientHeight;
-    setAlto(Math.min(lista.scrollHeight + marco, hueco.dispo));
+    /* ⚠ `+1`: `scrollHeight` y `clientHeight` devuelven ENTEROS redondeados, y
+       las filas tienen alturas fraccionarias —un nombre a dos renglones son
+       16,2 px cada uno—. Redondeando hacia abajo el pop-up se queda un píxel
+       corto y saca una barra de desplazamiento en una lista que cabía, que es
+       justo lo único que este cálculo existe para evitar. */
+    setAlto(Math.min(lista.scrollHeight + marco + 1, hueco.dispo));
   }, [hueco, cargando, err, pop, lista]);
 
   /* Cerrar al mover la página o cambiar su tamaño: el pop-up está anclado a una

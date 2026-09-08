@@ -1,7 +1,6 @@
 "use client";
-import Link from "@/components/Enlace";
 import ChipPop from "@/components/ChipPop";
-import { txtEstadoEq, colorEstadoEq } from "@/lib/estadosEquipo";
+import FilaPop from "@/components/FilaPop";
 
 /* ══════════════════════════════════════════════════════════════════════════
    🔧 DENTRO DE QUÉ VA ESTA PIEZA
@@ -104,27 +103,12 @@ export default function ChipAnfitrion({ anfitrion, apunta, cortado }: {
         </>
       }
       cabecera={<span className="chip-gr-h">🔧 Va montado dentro de</span>}>
-      <Link href={`/entidad/equipamiento/${a.id}`} className="ens-pop-fila">
-        <span className="kit-pz-img">
-          {a.cartel
-            // eslint-disable-next-line @next/next/no-img-element
-            ? <img src={a.cartel} alt="" referrerPolicy="no-referrer" />
-            : <span>🎥</span>}
-        </span>
-        {a.folio && <span className="kit-pz-folio">{a.folio}</span>}
-        <span className="ens-pop-n ens-pop-n-dos">
-          <span className="chip-gr-nom">{a.nombre}</span>
-          {/* ⚠ Quién tiene el ANFITRIÓN, que es quien tiene esta pieza. La fila
-              de la pieza dice «ensamblado» y ahí se acaba: no dice que además
-              está en Puno. */}
-          {a.quien && <span className="chip-gr-quien">lo tiene {a.quien}</span>}
-        </span>
-        {a.estado && a.estado !== "disponible" && (
-          <span style={{ fontSize: 10, color: colorEstadoEq(a.estado), whiteSpace: "nowrap" }}>
-            {txtEstadoEq(a.estado)}
-          </span>
-        )}
-      </Link>
+      {/* ⚠ `quien` es quien tiene el ANFITRIÓN, que es quien tiene esta pieza.
+          La fila de la pieza dice «ensamblado» y ahí se acaba: no dice que
+          además está en Puno. */}
+      <FilaPop id={a.id} folio={a.folio} nombre={a.nombre} cartel={a.cartel}
+        estado={a.estado && a.estado !== "disponible" ? a.estado : null}
+        quien={a.quien} />
     </ChipPop>
   );
 }

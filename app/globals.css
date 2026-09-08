@@ -4368,25 +4368,51 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
 .ens-pop-x:hover{color:var(--text)}
 /* `flex:none` — la fila es hija de un flex en columna con la altura acotada,
    y ahi lo normal es que los hijos SE APLASTEN antes que desbordar. Hoy no
-   pasa porque la miniatura de 34px fija un minimo, pero el dia que se quite
-   las nueve filas se comprimirian para caber: contenido recortado y SIN barra
-   de desplazamiento, o sea sin ninguna señal de que falta algo. */
-.ens-pop-fila{display:flex;flex:none;gap:8px;align-items:center;padding:4px;border-radius:8px;
-  text-decoration:none;min-width:0}
+   pasa porque la miniatura fija un minimo —`--mini`, 60px—, pero el dia que se
+   quite las nueve filas se comprimirian para caber: contenido recortado y SIN
+   barra de desplazamiento, o sea sin ninguna señal de que falta algo.
+
+   `align-items:flex-start` y no `center`: con el nombre a dos renglones, una
+   miniatura centrada deja la foto flotando a media altura del texto y, peor,
+   mueve el folio —que es por donde se lee la lista— a una altura distinta en
+   cada fila. Un pixel mas de `padding` arriba y abajo por lo mismo: tres
+   renglones pegados al borde se leen como un bloque. */
+.ens-pop-fila{display:flex;flex:none;gap:8px;align-items:flex-start;padding:5px 4px;
+  border-radius:8px;text-decoration:none;min-width:0}
 .ens-pop-fila:hover{background:rgba(255,255,255,.045)}
-.ens-pop-n{flex:1;min-width:0;font-size:12px;color:var(--text);
+/* ── LA FILA, EN TRES RENGLONES ──
+   En una sola linea, dentro de una caja de 340 px, al nombre le quedaban unos
+   veinte caracteres despues del folio, el estado y el precio — y esos veinte son
+   justo el trozo que todos los cables comparten: seis filas identicas. Repartido
+   en tres, el nombre se lleva el ancho entero. El porque largo esta en
+   components/FilaPop. */
+.fpop-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+/* `margin-left:auto` en la cifra: cuando sube a este renglon —filas sin
+   prestatario— tiene que irse al final igual que abajo, o la columna de precios
+   deja de poder sumarse con la vista. */
+.fpop-l1{display:flex;gap:6px;align-items:center;flex-wrap:wrap;min-width:0}
+.fpop-l1 .ens-pop-val,.fpop-l1 .ens-pop-sinval{margin-left:auto}
+/* `600` y no el peso del texto: el estado es una palabra corta compitiendo con
+   un folio en pildora y una cifra, y en regular se perdia entre las dos. */
+.fpop-estado{font-size:10px;font-weight:600;white-space:nowrap}
+/* Hasta DOS renglones. Mas y una lista de nueve piezas no cabe en un portatil;
+   menos y volvemos a cortar por donde todos se parecen. `-webkit-line-clamp`
+   con `-webkit-box` es lo que ya usa `.gal-pie` en este mismo archivo. */
+.fpop-nom{font-size:12px;color:var(--text);line-height:1.35;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+  overflow:hidden;word-break:break-word}
+/* `center` y no `baseline`: `.fpop-quien` lleva `overflow:hidden`, y varios
+   navegadores sintetizan la linea base de un item flex asi desde su borde
+   inferior — el precio caia dos pixeles respecto del nombre de al lado. */
+.fpop-l3{display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-width:0}
+/* Quien lo tiene ocupa lo que haga falta y empuja el precio al final: los dos
+   caben porque ya no compiten con el nombre. */
+.fpop-quien{flex:1;min-width:0;font-size:10px;color:var(--yellow);opacity:.9;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* Dos renglones en la fila del pop: el nombre arriba y quién lo tiene debajo.
-   ⚠ VA DESPUÉS de `.ens-pop-n` a propósito: misma especificidad —una clase
-   cada una— así que quien gana es la última del archivo. Escrita antes, las
-   tres declaraciones de abajo no se aplicaban y el comentario mentía.
-   `.ens-pop-n` recorta con «…», y un hijo de bloque dentro le rompe eso: el
-   nombre pasa a una caja anónima, que no hereda `text-overflow`, y se cortaba
-   a hachazo solo en las filas con prestatario. Aquí se apaga el recorte del
-   padre y se pone en el hijo que toca. */
-.ens-pop-n-dos{display:flex;flex-direction:column;gap:1px;
-  white-space:normal;overflow:visible;text-overflow:clip}
-.chip-gr-nom{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* `margin-left:auto` para cuando NO hay prestatario: sin el, el precio se queda
+   pegado a la izquierda y la columna de cifras deja de poder sumarse con la
+   vista, que es para lo que esta al final. */
+.fpop-l3 .ens-pop-val,.fpop-l3 .ens-pop-sinval{margin-left:auto}
 .ens-h{margin:0 0 8px;font-size:11.5px;letter-spacing:1.2px;text-transform:uppercase;
   color:var(--dim);display:flex;gap:9px;align-items:center;flex-wrap:wrap}
 .ens-res{color:var(--muted);text-transform:none;letter-spacing:0;font-size:11.5px}
@@ -7973,8 +7999,3 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
    y empuja al combo a otro renglón él solo. */
 .chip-gr-n{display:inline-block;max-width:150px;overflow:hidden;text-overflow:ellipsis;
   white-space:nowrap;vertical-align:bottom}
-/* Quién lo tiene, bajo el nombre dentro del pop-up. Debajo y no al lado: en una
-   caja de 340 px, «lo tiene Katy Pachacutec» junto a un nombre largo empuja el
-   precio fuera de la fila. */
-.chip-gr-quien{display:block;font-size:10px;color:var(--yellow);opacity:.9;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
