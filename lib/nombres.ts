@@ -1,4 +1,5 @@
 import { nombreDe } from "@/lib/secciones";
+import { esUuid } from "@/lib/texto";
 
 /* CÓMO SE LLAMA CUALQUIER COSA, en un solo sitio.
 
@@ -68,11 +69,11 @@ export function etiquetaPostulacion(r: any): string {
  * el historial salía «responsable: 24930c21-… → 3bdfbacb-…»: 72 caracteres que
  * no dicen nada. Esto junta esos UUID y los cambia por el nombre (de perfiles;
  * personas como respaldo, con su alias). */
-const RE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 
 export async function nombresDeEventos(supabase: any, eventos: any[]): Promise<Map<string, string>> {
   const ids = new Set<string>();
-  const mira = (v: any) => { const s = String(v ?? "").trim(); if (RE_UUID.test(s)) ids.add(s); };
+  const mira = (v: any) => { const s = String(v ?? "").trim(); if (esUuid(s)) ids.add(s); };
   (eventos || []).forEach((e: any) => {
     mira(e?.detalle?.de); mira(e?.detalle?.a);
     (e?.detalle?.cambios || []).forEach((c: any) => { mira(c?.de); mira(c?.a); });

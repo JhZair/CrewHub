@@ -7,6 +7,7 @@ import CoberturaAgrupacion, { type AgrupacionVista } from "@/components/Cobertur
 import PermisosProyecto from "@/components/PermisosProyecto";
 import MontajeProyecto from "@/components/MontajeProyecto";
 import QueEsUnPermiso from "@/components/QueEsUnPermiso";
+import { esUuid } from "@/lib/texto";
 import { createClient } from "@/lib/supabase/server";
 import { techo } from "@/lib/api";
 import { hoyLima } from "@/lib/fechas";
@@ -66,7 +67,7 @@ export default async function ClearanceDePelicula({
      guarda de abajo NO llama a `notFound()` y la pantalla pinta «no se pudieron
      leer los permisos» sobre una película que nunca existió. Un 404 dice la
      verdad; un error rojo manda a buscar un fallo que no está. */
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(params.id))
+  if (!esUuid(params.id))
     notFound();
 
   /* ⚠ Las obras y las grabaciones NO se piden aquí. Salen de

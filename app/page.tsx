@@ -31,6 +31,7 @@ import Link from "@/components/Enlace";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { conCasoPrincipal } from "@/lib/casosActividad";
+import { esUuid } from "@/lib/texto";
 
 export const metadata: Metadata = { title: "⬡ CrewHub+" };
 
@@ -82,7 +83,8 @@ const CUANTOS = 60;
 const SOBRE_QUE = ["publicacion", "postulacion", "proyecto", "empresa", "persona", "objeto", "equipamiento"];
 
 /** Un uuid, para no mandar a la base lo que venga escrito en la barra. */
-const ES_UUID = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+/* La forma de un UUID vive en lib/texto.ts, con su porqué. */
+const ES_UUID = esUuid;
 
 export default async function Portada({ searchParams }: {
   searchParams: { t?: string; a?: string };

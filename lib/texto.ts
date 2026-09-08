@@ -82,3 +82,18 @@ export function coincide(campo: string, consulta: string): boolean {
   if (!palabras.length) return true;
   return palabras.every(p => campo.includes(p));
 }
+
+/* ── LA FORMA DE UN UUID, EN UN SOLO SITIO ──
+ * ⚠ Estaba escrita SEIS veces: dos en `app/actions.ts`, una en la ficha de
+ * ⚖ clearance, una en la portada, una en `lib/nombres.ts` y otra recién puesta
+ * en la ficha de ✍ guion. Ninguna importaba de las otras.
+ * No es que fueran a divergir en el patrón —un UUID es un UUID—: es que cada
+ * copia venía sin la razón de estar ahí, y la razón sí importa. Sin esta
+ * comprobación, una ruta como `/guion/pelicula/undefined` —que es lo que
+ * produce un enlace mal construido— llega a Postgres y vuelve como un 22P02
+ * crudo en pantalla en vez de una página de «no existe».
+ * Vive aquí, con `normalizar` y `coincide`, porque `lib/texto.ts` es lo que
+ * pueden importar tanto el servidor como el cliente. */
+const RE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export const esUuid = (v: unknown): boolean => RE_UUID.test(String(v ?? "").trim());
