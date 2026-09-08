@@ -4117,6 +4117,151 @@ export async function guardarImagenEntidad(
   return {};
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   📷 LAS FOTOS DE UNA COSA — sumar, describir, ordenar, quitar
+
+   No son el cartel. El cartel es UNA imagen y un sitio de la pantalla; esto es
+   una lista que explica algo: cómo se monta, qué trae la caja, dónde está el
+   número de serie. Está razonado en db/entidad-foto.sql.
+
+   Cuatro acciones y no una que lo haga todo: cada gesto de la pantalla es uno
+   de estos, y una acción «guardar la galería entera» obliga a mandar la lista
+   completa cada vez — con dos personas subiendo fotos a la vez, la última en
+   guardar borra lo que hizo la otra sin que nada lo diga.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** Suma fotos al final. Devuelve cuántas entraron. */
+export async function agregarFotos(tipo: string, id: string, urls: string[]) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const lista = (urls || []).filter(Boolean);
+  if (!lista.length) return { error: "No hay ninguna imagen que guardar." };
+
+  /* El orden arranca DESPUÉS de la última que haya.
+     ⚠ Esto ESTRECHA la ventana, no la cierra: dos subidas a la vez leen el
+     mismo máximo y escriben el mismo número. No se pone una restricción de
+     unicidad a propósito —haría fallar la segunda subida entera por un
+     desempate que a nadie le importa—, así que el empate se resuelve al LEER:
+     la consulta ordena por `orden` y luego por `creado_en`, y `moverFoto`
+     intercambia los dos números, que sigue funcionando aunque estuvieran
+     empatados. Lo que no puede pasar es que se pierda una foto, y no pasa. */
+  const { data: ultima } = await supabase.from("entidad_foto")
+    .select("orden").eq("entidad_tipo", tipo).eq("entidad_id", id)
+    .order("orden", { ascending: false }).limit(1).maybeSingle();
+  const base = Number((ultima as any)?.orden ?? -1) + 1;
+
+  const { error } = await supabase.from("entidad_foto").insert(
+    lista.map((url, i) => ({
+      entidad_tipo: tipo, entidad_id: id, url, orden: base + i, creado_por: user.id,
+    })));
+  if (error) {
+    return {
+      error: /* ⚠ SIN `entidad_foto` en el patrón. El mensaje de una violación de RLS
+         también lleva el nombre de la tabla dentro —«new row violates
+         row-level security policy for table "entidad_foto"»—, así que un fallo
+         de permisos se anunciaba como «falta correr la migración»: un aviso
+         que quien lo lee no puede resolver haciendo lo que dice. Solo lo que
+         de verdad significa «la tabla no está». */
+      /(does not exist|schema cache|PGRST20)/i.test(error.message)
+        ? "Falta correr db/entidad-foto.sql en Supabase."
+        : error.message,
+    };
+  }
+  await supabase.from("actividad").insert({
+    entidad_tipo: tipo, entidad_id: id, actor_id: user.id, tipo: "dato",
+    detalle: { mensaje: `📷 sumó ${lista.length} foto${lista.length === 1 ? "" : "s"}` },
+  });
+  revalidatePath(`/entidad/${tipo}/${id}`);
+  return { ok: true, sumadas: lista.length };
+}
+
+/** El pie: qué enseña la foto. Es lo que la convierte en información. */
+export async function ponerPieFoto(fotoId: string, pie: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  /* La entidad sale de la propia fila, no del navegador: así no hay forma de
+     revalidar una ficha y editar la foto de otra. */
+  const { data: f, error: e0 } = await supabase.from("entidad_foto")
+    .select("entidad_tipo,entidad_id").eq("id", fotoId).maybeSingle();
+  if (e0) return { error: e0.message };
+  if (!f) return { error: "Esa foto ya no está." };
+  const { error } = await supabase.from("entidad_foto")
+    .update({ pie: (pie || "").trim() || null }).eq("id", fotoId);
+  if (error) return { error: error.message };
+  revalidatePath(`/entidad/${(f as any).entidad_tipo}/${(f as any).entidad_id}`);
+  return { ok: true };
+}
+
+export async function quitarFoto(fotoId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: f, error: eL } = await supabase.from("entidad_foto")
+    .select("entidad_tipo,entidad_id,url").eq("id", fotoId).maybeSingle();
+  /* El error de la LECTURA se dice. Tragándoselo, sin la migración corrida
+     esto contestaba «Esa foto ya no está» — una frase tranquilizadora sobre un
+     fallo que no tiene nada de tranquilizador. */
+  if (eL) {
+    return { error: /(does not exist|schema cache|PGRST20)/i.test(eL.message)
+      ? "Falta correr db/entidad-foto.sql en Supabase." : eL.message };
+  }
+  if (!f) return { error: "Esa foto ya no está." };
+  const { error } = await supabase.from("entidad_foto").delete().eq("id", fotoId);
+  if (error) return { error: error.message };
+  /* ⚠ El ARCHIVO no se borra del bucket, a propósito. La misma URL puede estar
+     puesta como cartel de la ficha, pegada en un comentario o en una hoja ya
+     impresa; borrarla dejaría huecos en sitios que esta acción no conoce. Lo
+     que se quita es la foto de ESTA galería. */
+  await supabase.from("actividad").insert({
+    entidad_tipo: (f as any).entidad_tipo, entidad_id: (f as any).entidad_id,
+    actor_id: user.id, tipo: "dato", detalle: { mensaje: "📷 quitó una foto" },
+  });
+  revalidatePath(`/entidad/${(f as any).entidad_tipo}/${(f as any).entidad_id}`);
+  return { ok: true };
+}
+
+/** Mover una foto un puesto. Se intercambian los dos `orden`: reescribir la
+ *  lista entera haría que dos personas ordenando a la vez se pisaran. */
+export async function moverFoto(fotoId: string, hacia: "antes" | "despues") {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data: f, error: eL } = await supabase.from("entidad_foto")
+    .select("id,entidad_tipo,entidad_id,orden").eq("id", fotoId).maybeSingle();
+  if (eL) {
+    return { error: /(does not exist|schema cache|PGRST20)/i.test(eL.message)
+      ? "Falta correr db/entidad-foto.sql en Supabase." : eL.message };
+  }
+  if (!f) return { error: "Esa foto ya no está." };
+
+  const antes = hacia === "antes";
+  const { data: vecina } = await supabase.from("entidad_foto")
+    .select("id,orden")
+    .eq("entidad_tipo", (f as any).entidad_tipo).eq("entidad_id", (f as any).entidad_id)
+    [antes ? "lt" : "gt"]("orden", (f as any).orden)
+    .order("orden", { ascending: !antes }).limit(1).maybeSingle();
+  // Ya está en la punta. No es un error: es que no hay a dónde moverla.
+  if (!vecina) return { ok: true, movida: false };
+
+  /* Los DOS resultados se leen. Descartándolos, si el segundo fallaba las dos
+     fotos quedaban con el mismo `orden` y la pantalla decía que se había
+     movido. No es transaccional —son dos llamadas— así que al menos se
+     deshace la primera y se dice que no se pudo. */
+  const { error: e1 } = await supabase.from("entidad_foto")
+    .update({ orden: (vecina as any).orden }).eq("id", (f as any).id);
+  if (e1) return { error: `No se pudo mover: ${e1.message}` };
+  const { error: e2 } = await supabase.from("entidad_foto")
+    .update({ orden: (f as any).orden }).eq("id", (vecina as any).id);
+  if (e2) {
+    await supabase.from("entidad_foto").update({ orden: (f as any).orden }).eq("id", (f as any).id);
+    return { error: `No se pudo mover: ${e2.message}` };
+  }
+  revalidatePath(`/entidad/${(f as any).entidad_tipo}/${(f as any).entidad_id}`);
+  return { ok: true, movida: true };
+}
+
 /* --- CVs por enfoque: uno por rol al que postula la persona --- */
 export async function guardarCv(personaId: string, enfoque: string, url: string, id?: string | null) {
   const supabase = createClient();

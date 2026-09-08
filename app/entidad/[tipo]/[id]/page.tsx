@@ -104,6 +104,7 @@ import { estadoKit, resumenKit, type PiezaKit } from "@/lib/kits";
 import { ordenarActores, rotuloActores, leerActor, personaDe } from "@/lib/actores";
 import { metaEstado, colorEstadoEq, txtEstadoEq, selloEquipo, entregableEq, porQueNoEq } from "@/lib/estadosEquipo";
 import PiezasKit from "@/components/PiezasKit";
+import GaleriaFotos from "@/components/GaleriaFotos";
 import Ensamblado from "@/components/Ensamblado";
 import ComboDelEquipo from "@/components/ComboDelEquipo";
 
@@ -296,7 +297,13 @@ export async function generateMetadata({ params }: { params: { tipo: string; id:
   return { title: `${ICO_ENT[params.tipo] || "📄"} ${nombre || "Ficha"}` };
 }
 
-export default async function Entidad({ params }: { params: { tipo: string; id: string } }) {
+export default async function Entidad({ params, searchParams }: {
+  params: { tipo: string; id: string };
+  /* `?foto=N` abre el visor de la galería por esa foto. Es lo que hace que
+     pulsar el cartel funcione sin cruzar una función a un componente de
+     cliente — y de paso, que la URL se pueda mandar por chat. */
+  searchParams?: { foto?: string };
+}) {
   const conf = CONF[params.tipo];
   if (!conf) notFound();
 
@@ -407,6 +414,25 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
     .select("portada_url,cartel_url")
     .eq("entidad_tipo", params.tipo).eq("entidad_id", params.id).maybeSingle()
     .then((r: any) => r);
+  /* ── LAS FOTOS DE LA COSA ──
+     Aparte de `entidad_media`, que son DOS RANURAS —portada y cartel— y no una
+     lista. El porqué está en db/entidad-foto.sql.
+     Se pide con la misma tanda y sin `await` suelto: encadenar una consulta
+     más detrás de las otras sumaría su viaje entero al tiempo de la ficha.
+     ⚠ Sin `|| []` al leerla: si la tabla no existe todavía —la migración sin
+     correr— hay que poder decirlo, y un array vacío se lee como «no tiene
+     fotos», que es la respuesta equivocada a una pregunta que nadie hizo. */
+  /* ⚠ Solo donde se pinta. Lanzarla siempre le cobraba un viaje a la ficha de
+     una persona, un proyecto o una empresa para un dato que nunca miran.
+     Y ordena por `orden` Y LUEGO por `creado_en`: dos fotos subidas a la vez
+     pueden empatar en `orden` —está contado en `agregarFotos`— y sin el
+     desempate la lista cambiaría de sitio entre dos visitas. */
+  const pFotos = params.tipo === "equipamiento"
+    ? supabase.from("entidad_foto")
+        .select("id,url,pie,orden")
+        .eq("entidad_tipo", params.tipo).eq("entidad_id", params.id)
+        .order("orden").order("creado_en").then((r: any) => r)
+    : Promise.resolve({ data: [] as any[], error: null } as any);
   /* ── QUÉ PASÓ EN ESTE PROYECTO, no solo en su ficha ──
      Hasta aquí el historial contaba únicamente los eventos dirigidos al
      proyecto mismo. Pero abrir un caso de «A-roll», resolverlo, mover una
@@ -2394,6 +2420,12 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
      personas solo se usa el banner: su avatar sigue en `personas.foto_url`. */
   const { data: media } = await pMedia;   // lanzada arriba
   const conCartel = params.tipo !== "persona";
+  /* Las fotos, y el error si la tabla no está. Hoy solo se pinta la galería en
+     🎥 equipos —es donde se pidió y donde una foto contesta una pregunta que
+     el nombre no contesta—, pero nada de esto es de equipos: el día que un
+     lugar o una empresa las necesiten, se añade el tipo a la lista. */
+  const { data: fotosRaw, error: eFotos } = await pFotos;
+  const conGaleria = params.tipo === "equipamiento";
 
   /* Drive como «pestaña»: la carpeta Drive es un repositorio de contenido amplio,
      la misma lógica en toda entidad. Va en la fila de pestañas, justo antes del
@@ -2459,7 +2491,53 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
       <PortadaEntidad tipo={params.tipo} id={params.id} nombre={nombre}
         portada={media?.portada_url} cartel={media?.cartel_url}
         color={COLOR_ENTIDAD[params.tipo] || "var(--violet)"}
-        editable conCartel={conCartel} />
+        editable conCartel={conCartel}
+        /* Pulsar el cartel LLEVA a la galería. Es la imagen más grande de la
+           ficha y el primer sitio donde alguien pulsa buscando ver más.
+           ⚠ Un ancla `#fotos` y NO `?foto=0`. Se intentó con el query: en App
+           Router, navegar a la MISMA ruta cambiando solo los search params no
+           remonta el subárbol —la clave de caché no los incluye—, así que el
+           componente conserva su estado, `abrirEn` no se vuelve a leer y el
+           visor no llegaba a abrirse. Solo funcionaba recargando la página.
+           El ancla no tiene ese problema y no cuesta ningún viaje.
+           `?foto=N` sigue sirviendo para los enlaces que se comparten, que
+           llegan como carga fresca — que es justo cuando sí se lee.
+           Solo si hay fotos: un enlace a una galería vacía es peor que
+           ninguno. */
+        cartelHref={conGaleria && (fotosRaw || []).length ? "#fotos" : undefined} />
+
+      {/* ── LA GALERÍA, JUSTO BAJO LA CABECERA ──
+          Se ve sin buscarla. Estas fotos las mira quien está delante del equipo
+          con una duda —cómo se monta, qué trae la caja, cuál de los dos cables
+          es el bueno—, no quien viene a explorar la ficha; una pestaña más que
+          hay que saber que existe es una pestaña que nadie abre.
+          Va DEBAJO de la cabecera y no dentro: el cartel es la identidad de la
+          ficha y sale del hueco del banner, y meter ahí una tira que crece
+          desplazaría el nombre según cuántas fotos haya. */}
+      {conGaleria && (eFotos ? (
+        /* El fallo se DICE, y con qué hacer. Sin esto la galería sale vacía y
+           se lee como «este equipo no tiene fotos», que es lo contrario de lo
+           que pasa: no se pudieron leer. */
+        <div className="card" style={{ borderLeft: "3px solid var(--yellow)" }}>
+          <b style={{ color: "var(--yellow)", fontSize: 13 }}>⚠ No se pudieron leer las fotos</b>
+          <div style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 5, lineHeight: 1.55 }}>
+            {/(entidad_foto|does not exist|schema cache|PGRST20)/i.test(eFotos.message)
+              ? <>Falta correr <code>db/entidad-foto.sql</code> en Supabase.</>
+              : eFotos.message}
+          </div>
+        </div>
+      ) : (
+        <GaleriaFotos tipo={params.tipo} entidadId={params.id}
+          fotos={(fotosRaw || []).map((f: any) => ({ id: f.id, url: f.url, pie: f.pie }))}
+          /* `?foto=N` abre el visor por esa foto. Así el cartel puede abrirla
+             con un enlace —sin cruzar una función a un componente de cliente,
+             que es donde esto se rompe— y de paso la URL se puede mandar por
+             chat: «mira la foto 3 del A-540». */
+          abrirEn={(() => {
+            const n = Number((searchParams as any)?.foto);
+            return Number.isInteger(n) && n >= 0 && n < (fotosRaw || []).length ? n : null;
+          })()} />
+      ))}
 
       {/* El nombre arranca a la derecha del cartel que sobresale. Pero cuando
           hay stepper (postulación/convocatoria/proyecto) el título arranca desde

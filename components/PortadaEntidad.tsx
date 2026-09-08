@@ -1,4 +1,5 @@
 "use client";
+import Link from "@/components/Enlace";
 import { guardarImagenEntidad } from "@/app/actions";
 import { subirImagen } from "@/lib/subirImagen";
 import { prepararImagen, MEDIDAS } from "@/lib/prepararImagen";
@@ -12,10 +13,17 @@ import { useEffect, useState } from "react";
    monta encima, a la izquierda, sobresaliendo por abajo. Si no hay imagen, la
    portada muestra un degradado y el cartel las iniciales: nunca un hueco roto.
    `conCartel=false` deja solo el banner (las personas ya tienen su avatar). */
-export default function PortadaEntidad({ tipo, id, portada, cartel, nombre, color, editable = false, conCartel = true }: {
+export default function PortadaEntidad({ tipo, id, portada, cartel, nombre, color, editable = false, conCartel = true, cartelHref }: {
   tipo: string; id: string;
   portada?: string | null; cartel?: string | null;
   nombre?: string | null;
+  /** A dónde lleva pulsar el CARTEL, si lleva a algún sitio. Lo usa 🎥 equipos
+   *  para abrir la galería de fotos por la primera: el cartel es la imagen más
+   *  grande de la ficha y el primer sitio donde alguien pulsa buscando ver más.
+   *  ⚠ Es una URL y no una función: una función cruzando a un componente de
+   *  cliente compila, pasa el linter y explota al ejecutarse. Con una URL
+   *  además el resultado se puede compartir. */
+  cartelHref?: string;
   /** Color del tipo de entidad, para distinguirlas (borde del cartel, tinte). */
   color?: string | null;
   editable?: boolean; conCartel?: boolean;
@@ -108,9 +116,16 @@ export default function PortadaEntidad({ tipo, id, portada, cartel, nombre, colo
           onMouseLeave={() => setZona("portada")}
           onDragOver={e => editable && e.preventDefault()}
           onDrop={enDrop("cartel")}>
+          {/* El enlace envuelve SOLO la imagen, no los controles: si envolviera
+              la caja entera, pulsar ✎ o × navegaría además de editar. */}
           {cartel
-            ? // eslint-disable-next-line @next/next/no-img-element
-              <img src={cartel} alt={nombre || ""} referrerPolicy="no-referrer" />
+            ? (cartelHref
+              ? <Link href={cartelHref} title="Ver las fotos" aria-label="Ver las fotos">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={cartel} alt={nombre || ""} referrerPolicy="no-referrer" />
+                </Link>
+              // eslint-disable-next-line @next/next/no-img-element
+              : <img src={cartel} alt={nombre || ""} referrerPolicy="no-referrer" />)
             : <span className="ent-hero-ini">{ini}</span>}
           {controles("cartel", !!cartel)}
         </div>

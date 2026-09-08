@@ -18,6 +18,10 @@ export const MEDIDAS = {
   cartel:  { maxAncho: 800,  maxAlto: 1000 },  // póster / cuadro de la entidad
   foto:    { maxAncho: 512,  maxAlto: 512, cuadrado: true },  // avatar: siempre cuadrado
   adjunto: { maxAncho: 1920, maxAlto: 1920 },  // pantallazos de casos
+  /* Las fotos de una cosa: cómo se monta, qué trae la caja, dónde está el
+     número de serie. 1600 porque se miran a pantalla completa y hay que poder
+     leer un número grabado; más que eso es peso que nadie ve. */
+  galeria: { maxAncho: 1600, maxAlto: 1600 },
 } as const;
 
 export async function prepararImagen(f: File, medida: MedidaImagen): Promise<File> {

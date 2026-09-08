@@ -7722,3 +7722,118 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
 /* El `max-height:260px` del menú SE QUEDA: el envoltorio acota por el sitio
    que hay y esta regla por lo que es cómodo leer. Manda el menor de los dos,
    que es justo lo que se quiere. */
+
+/* ══════════════════════════════════════════════════════════════════════════
+   🖼 EL VISOR DE FOTOS — components/VisorFotos
+
+   `z-index:300` es el que tenía el visor cuando vivía dentro de `Foto`, y se
+   respeta: por encima de los modales (80) y del ancla de un menú (91), por
+   debajo de la confirmación (400). Una pregunta de «¿seguro?» manda sobre una
+   foto abierta.
+   ══════════════════════════════════════════════════════════════════════════ */
+.vis-fondo{position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.86);
+  backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;
+  padding:24px;cursor:zoom-out}
+/* La imagen y su pie como UNA cosa: el pie tiene que quedar debajo de la foto,
+   no en una esquina de la pantalla, o se lee como un rótulo del visor y no
+   como lo que explica lo que se está mirando. */
+.vis-centro{display:flex;flex-direction:column;align-items:center;gap:10px;
+  max-width:96vw;max-height:94vh;cursor:default;min-height:0}
+/* ⚠ `max-height:94vh` y NO un valor menor «para dejar sitio al pie». Con 78vh
+   toda foto de un comentario, un caso o el muro se veía un 17% más pequeña que
+   antes, y sin pie ni tira que justificaran el hueco: el visor viejo daba 94vh
+   y `Foto` delega en este. Quien deja sitio al pie es el flex —`min-height:0`
+   arriba y abajo—, que encoge la imagen SOLO cuando hay pie que poner. */
+.vis-img{max-width:96vw;max-height:94vh;border-radius:10px;min-height:0;
+  box-shadow:0 12px 48px rgba(0,0,0,.6);object-fit:contain}
+/* El pie: ancho acotado para que no se estire de borde a borde. Una línea de
+   texto de mil pixeles no se lee. */
+.vis-pie{max-width:min(680px,92vw);text-align:center;color:#e8e8f2;font-size:13px;
+  line-height:1.5;background:rgba(10,10,16,.72);border:1px solid rgba(255,255,255,.14);
+  border-radius:10px;padding:8px 14px}
+/* Botones sobre foto: siempre claros sobre un velo oscuro propio. Sobre una
+   imagen cualquiera no se puede confiar en el contraste — una foto de un
+   equipo negro y una de un papel blanco necesitan lo mismo. */
+.vis-flecha,.vis-x{position:fixed;background:rgba(255,255,255,.12);
+  border:1px solid rgba(255,255,255,.28);color:#fff;cursor:pointer;line-height:1;
+  border-radius:9px;transition:background .12s}
+.vis-flecha:hover,.vis-x:hover{background:rgba(255,255,255,.24)}
+.vis-x{top:16px;right:20px;width:36px;height:36px;font-size:16px}
+.vis-flecha{top:50%;transform:translateY(-50%);width:44px;height:64px;font-size:30px}
+.vis-flecha.izq{left:14px}
+.vis-flecha.der{right:14px}
+.vis-cuenta{position:fixed;top:20px;left:20px;color:#c9c9d6;font-size:12.5px;
+  background:rgba(10,10,16,.6);border-radius:8px;padding:4px 10px;letter-spacing:.5px}
+/* La tira, abajo y con scroll: para SALTAR a la novena, no para pasar ocho
+   veces. `flex:none` en cada una o se aplastan hasta desaparecer cuando hay
+   veinte. */
+/* ⚠ `safe center`, no `center` a secas. Cuando el contenido DESBORDA, el
+   centrado empuja el sobrante también por el borde IZQUIERDO, y esa parte no
+   se alcanza con scroll: con treinta miniaturas las primeras fotos quedaban
+   fuera de la pantalla y sin manera de llegar. `safe` centra mientras cabe y
+   se alinea al principio cuando no. La línea de `center` va antes como
+   respaldo: un navegador que no entienda `safe` descarta esa declaración
+   entera y se queda con la anterior. */
+.vis-tira{position:fixed;left:0;right:0;bottom:12px;display:flex;gap:6px;
+  justify-content:center;overflow-x:auto;padding:6px 14px;cursor:default;
+  scrollbar-width:thin}
+.vis-tira{justify-content:safe center}
+/* La barra de acciones, dentro del velo. Sube por encima de la tira cuando la
+   hay para no taparla. */
+.vis-barra{position:fixed;left:0;right:0;bottom:12px;display:flex;
+  justify-content:center;padding:0 14px;cursor:default}
+.vis-barra.con-tira{bottom:70px}
+.vis-barra > *{max-width:min(900px,94vw);width:100%}
+.vis-mini{flex:none;width:56px;height:44px;border-radius:8px;overflow:hidden;
+  border:2px solid transparent;background:rgba(255,255,255,.06);cursor:pointer;
+  padding:0;opacity:.55;transition:opacity .12s,border-color .12s}
+.vis-mini:hover{opacity:.85}
+.vis-mini.on{opacity:1;border-color:var(--accent)}
+.vis-mini img{width:100%;height:100%;object-fit:cover;display:block}
+@media (max-width:640px){
+  /* En un teléfono las flechas de los lados tapan la foto y el pulgar llega
+     antes a la tira. Se encogen y el pie baja de tamaño. */
+  .vis-flecha{width:34px;height:52px;font-size:24px}
+  .vis-flecha.izq{left:4px}
+  .vis-flecha.der{right:4px}
+  .vis-img{max-height:88vh}
+  .vis-pie{font-size:12.5px;padding:7px 11px}
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   📷 LA GALERÍA — components/GaleriaFotos
+
+   Una tira con scroll horizontal bajo la cabecera, no una rejilla: la rejilla
+   empuja el resto de la ficha hacia abajo según cuántas fotos haya, y lo que
+   está debajo —los datos del equipo— es lo que más se mira.
+   ══════════════════════════════════════════════════════════════════════════ */
+.gal{margin:10px 0 14px}
+.gal-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:7px}
+.gal-t{font-size:10.5px;text-transform:uppercase;letter-spacing:1.1px;
+  color:var(--dim);font-weight:700}
+/* El vacío dice PARA QUÉ sirve, con un ejemplo. «Sin fotos» a secas es un
+   hueco; esto es una invitación. */
+.gal-vacio{color:var(--dim);font-size:12px;line-height:1.5}
+.gal-msg{color:var(--red);font-size:12px;line-height:1.5}
+.gal-tira{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin}
+/* `flex:none` o con doce fotos se aplastan hasta desaparecer. */
+.gal-mini{flex:none;position:relative;width:118px;height:88px;padding:0;
+  border:1px solid var(--border);border-radius:10px;overflow:hidden;
+  background:var(--card);cursor:zoom-in;transition:border-color .12s}
+.gal-mini:hover{border-color:var(--accent)}
+.gal-mini img{width:100%;height:100%;object-fit:cover;display:block}
+/* El pie encima de la miniatura, recortado a dos líneas: con doce fotos
+   parecidas de un arnés negro es lo único que las distingue sin abrirlas. */
+.gal-pie{position:absolute;left:0;right:0;bottom:0;padding:4px 6px;
+  background:linear-gradient(transparent,rgba(6,6,12,.92) 45%);
+  color:#e8e8f2;font-size:10.5px;line-height:1.35;text-align:left;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+/* La barra de la foto abierta. Va bajo la tira y NO dentro del visor: el visor
+   es de mirar, y meterle botones de editar lo convierte en un formulario a
+   pantalla completa. */
+.gal-barra{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px;
+  padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:10px}
+.gal-barra .ent-lote-inp{flex:1;min-width:200px}
+/* El ancla del cartel aterriza aquí. Sin margen, la tira queda pegada al borde
+   de arriba y la cabecera de la ficha se pierde: no se sabe a dónde se ha ido. */
+.gal{scroll-margin-top:16px}

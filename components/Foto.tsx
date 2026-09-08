@@ -1,46 +1,34 @@
 "use client";
-import { useEffect, useState } from "react";
-import Portal from "@/components/Portal";
+import { useState } from "react";
+import VisorFotos from "@/components/VisorFotos";
 
-/* Imagen con visor: al hacer clic se abre a tamaño real en una capa
-   sobre el caso (lightbox). Clic fuera o Esc para cerrar.
+/* Imagen con visor: al hacer clic se abre a tamaño real en una capa sobre lo
+   que haya (lightbox). Clic fuera o Esc para cerrar.
 
-   ── EL VISOR SE CUELGA DE <body> ──
-   Es `fixed` a pantalla completa, pero `fixed` no basta: la tarjeta de un caso
-   RESUELTO se apagaba con `opacity` y un `filter` al lado, y ese `filter`
-   convertía a la tarjeta en el bloque contenedor de todo `fixed` que hubiera
-   dentro. El visor se encogía a la tarjeta —dejaba de ser una capa sobre la
-   pantalla y pasaba a ser un recuadro dentro de una tarjeta— y salía al 55 %.
-   Lo bonito del fallo es que se escondía solo: la tarjeta se enciende con
-   `:hover`, y al abrir el visor el ratón está justo encima. En cuanto lo
-   movías para mirar la foto, el visor se apagaba y se recogía.
-   Aquellas reglas ya no llevan `filter` y apagan con un velo encima en vez de
-   con opacidad (está contado en la regla `.card-apagada` de globals.css), así
-   que hoy el portal no es lo único que lo sostiene — pero sigue siendo lo que
-   hace que no dependa de eso. El visor no está anclado a nada; el portal lo
-   resuelve entero y para siempre. */
-export default function Foto({ src, maxHeight = 260 }: { src: string; maxHeight?: number }) {
+   ── EL VISOR VIVE EN `components/VisorFotos` ──
+   Estaba escrito aquí dentro y solo sabía abrir UNA imagen: sin flechas, sin
+   contador, sin miniaturas. Al aparecer la galería de un equipo hacía falta
+   uno que supiera pasar de una a otra, y tener DOS lightbox distintos en la
+   misma aplicación es cómo se acaba con dos que se cierran de forma distinta,
+   uno que respeta el Escape de la capa de detrás y otro que no.
+   Así que el visor se fue a su fichero y aquí queda lo que este componente
+   siempre fue: una miniatura que lo abre. Con una sola foto no se pinta ni la
+   flecha ni el contador ni la tira, así que los ocho sitios que ya usan `Foto`
+   no cambian ni de API ni de aspecto.
+
+   Lo que sí se hereda de allí, y conviene no perder de vista: el visor se
+   cuelga de <body> con un portal —`fixed` no basta cuando un antepasado tiene
+   `filter`, que lo convierte en su bloque contenedor— y su Escape se corta en
+   captura, para no cerrar además el modal que hubiera debajo llevándose el
+   comentario a medio escribir. Está contado en VisorFotos. */
+export default function Foto({ src, alt, maxHeight = 260 }: {
+  src: string;
+  /** Qué se ve, para quien no ve la imagen. Sin esto el lector de pantalla
+   *  anuncia «imagen» y nada más. */
+  alt?: string;
+  maxHeight?: number;
+}) {
   const [abierto, setAbierto] = useState(false);
-
-  /* ── ESC CIERRA EL VISOR, NO LO QUE HAY DETRÁS ──
-     Una foto se abre a menudo DENTRO de otra cosa que también escucha Escape
-     en `window`: la vista rápida de un caso, el hilo de un comentario. Sin
-     cortar aquí, un solo Esc cerraba las dos capas — y el modal, al cerrarse,
-     se lleva el comentario a medio escribir. Se escucha en CAPTURA y se corta
-     ahí mismo: `stopImmediatePropagation` es lo único que frena a otro oyente
-     del MISMO nodo, que es justo el del modal. Es el mismo arreglo que ya
-     lleva PaletaRx, por lo mismo. */
-  useEffect(() => {
-    if (!abierto) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      e.stopImmediatePropagation();
-      setAbierto(false);
-    };
-    window.addEventListener("keydown", onKey, true);
-    document.body.style.overflow = "hidden";
-    return () => { window.removeEventListener("keydown", onKey, true); document.body.style.overflow = ""; };
-  }, [abierto]);
 
   return (
     <>
@@ -48,18 +36,11 @@ export default function Foto({ src, maxHeight = 260 }: { src: string; maxHeight?
           y respuestas, y todas se descargaban de golpe al abrir la pantalla —la
           primera de la mañana—. La del visor no lleva `lazy`: cuando se abre,
           se quiere YA. */}
-      <img src={src} alt="" onClick={() => setAbierto(true)} loading="lazy" decoding="async"
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={src} alt={alt || ""} onClick={() => setAbierto(true)} loading="lazy" decoding="async"
         style={{ maxHeight, maxWidth: "100%", borderRadius: 10, border: "1px solid var(--border)", cursor: "zoom-in", display: "block" }} />
       {abierto && (
-        <Portal>
-        <div onClick={() => setAbierto(false)}
-          style={{ position: "fixed", inset: 0, zIndex: 300, background: "rgba(0,0,0,.86)", backdropFilter: "blur(2px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, cursor: "zoom-out" }}>
-          <img src={src} alt="" onClick={e => e.stopPropagation()}
-            style={{ maxWidth: "96vw", maxHeight: "94vh", borderRadius: 10, boxShadow: "0 12px 48px rgba(0,0,0,.6)", cursor: "default" }} />
-          <button onClick={() => setAbierto(false)} title="Cerrar (Esc)"
-            style={{ position: "fixed", top: 16, right: 20, background: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.28)", color: "#fff", borderRadius: 9, width: 36, height: 36, fontSize: 16, cursor: "pointer", lineHeight: 1 }}>✕</button>
-        </div>
-        </Portal>
+        <VisorFotos fotos={[{ url: src, pie: alt || null }]} alCerrar={() => setAbierto(false)} />
       )}
     </>
   );
