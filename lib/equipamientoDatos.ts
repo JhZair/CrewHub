@@ -102,8 +102,14 @@ const CAMPOS_CUSTODIA =
 
 export const enManosAhora = cache(async () => {
   const supabase = createClient();
+  /* ⚠ `creado_en` desempata. `desde` es una FECHA suelta —db/prestamo-creado-en
+     .sql— y las dos custodias abiertas de un equipo apartado se crean el MISMO
+     día: empatan, y Postgres las devuelve en el orden que quiera. Quién sale
+     como «lo tiene» cambiaba entre dos visitas sin que nada se hubiera tocado. */
   return supabase.from("equipo_prestamos").select(CAMPOS_CUSTODIA)
-    .is("hasta", null).order("desde", { ascending: false });
+    .is("hasta", null)
+    .order("desde", { ascending: false })
+    .order("creado_en", { ascending: false, nullsFirst: false });
 });
 
 /** Las asignaciones que un préstamo abierto tiene APARTADAS. Segunda consulta
@@ -151,11 +157,22 @@ export function cartelPorEquipo(media: any): Map<string, string> {
   return m;
 }
 
+/* ⚠ EL PRIMERO GANA, no el último.
+   `enManosAhora` viene ordenada por `desde` DESCENDENTE, así que la primera
+   fila de un equipo es su custodia más reciente. Esto hacía `m.set` en cada
+   vuelta y se quedaba con la ÚLTIMA de una lista descendente — o sea con la
+   más ANTIGUA. No debería haber dos custodias abiertas del mismo equipo, pero
+   las hay: una asignación apartada por un préstamo es exactamente eso, y en
+   esos equipos la fila decía el nombre de quien lo tenía antes.
+   Y no se puede arreglar dando la vuelta al orden de la consulta: `desde` es
+   una fecha suelta —lo dice db/prestamo-creado-en.sql— y las dos filas empatan
+   el mismo día. Con `if (!m.has(...))` gana la primera, que con este orden es
+   la buena, y el empate lo rompe `creado_en` en la propia consulta. */
 export function quienTieneEquipo(enManos: any): Map<string, string> {
   const m = new Map<string, string>();
   (enManos?.data || []).forEach((p: any) => {
     const eq = un1(p.equipo), per = un1(p.persona);
-    if (eq?.id) m.set(eq.id, per?.alias || per?.nombre || "alguien");
+    if (eq?.id && !m.has(eq.id)) m.set(eq.id, per?.alias || per?.nombre || "alguien");
   });
   return m;
 }

@@ -4285,6 +4285,121 @@ export async function fotosDeEntidad(tipo: string, id: string) {
   return { fotos: data || [] };
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   📦 QUÉ HAY DENTRO DE UN KIT · 🧾 QUÉ TRAJO UN COMBO
+
+   Los dos ejes de un equipo: lo que ENTRÓ junto (una boleta) y lo que SALE
+   junto (un kit). En el inventario eran dos etiquetas mudas —«📦 Bolso Kit de
+   Grabación P…», «🧾 C-009»— y la pregunta que sigue a leerlas es siempre la
+   misma: ¿y qué más va ahí?
+
+   ── SE PIDE AL PULSAR, AL REVÉS QUE LAS PIEZAS ──
+   Las piezas montadas viajan con su fila porque son suyas y no se repiten. El
+   contenido de un kit sí se repite: un kit de doce equipos sale en DOCE filas
+   del listado, y mandarlo con cada una es mover lo mismo doce veces para
+   pintar dos palabras. `lib/equipamientoDatos` ya lo dice donde arma las filas
+   de los paneles. Así que aquí, al abrir, como las fotos.
+
+   ── UNA SOLA ACCIÓN PARA LOS DOS ──
+   Cambia de dónde sale la lista de ids; lo que se pinta con ellos —foto, folio,
+   nombre, estado, precio y quién lo tiene— es idéntico. Separadas, arreglar el
+   «quién lo tiene» en una y no en la otra es cuestión de tiempo.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+export type MiembroGrupo = {
+  id: string; folio: string | null; nombre: string;
+  estado: string | null; cartel: string | null;
+  valor: number | null;
+  /** Quién lo tiene AHORA, si lo tiene alguien. Es la mitad de la respuesta:
+   *  saber que el kit lleva un trípode no sirve si el trípode está en Puno. */
+  quien: string | null;
+};
+
+/** Cuántos se piden como mucho. Ni un kit ni una boleta llegan a esto; el tope
+ *  está para que una consulta rota no se traiga el inventario entero. */
+const TOPE_GRUPO = 500;
+
+export async function contenidoDeGrupo(que: "kit" | "combo", id: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  /* Los ids. En el kit hay que pasar por la tabla puente; en el combo, la
+     propia fila del equipo apunta a su compra.
+     ⚠ Se pide UNO MÁS del tope, que es la convención de `lib/api`: contando las
+     filas que llegan no se distingue «hay 500» de «había más y se cortó», y un
+     recuento que va corto sin decirlo ya se pagó una vez aquí. Si llega el de
+     más, se recorta a mano y se avisa con `recorte`. */
+  let ids: string[] = [];
+  let recorte = false;
+  if (que === "kit") {
+    const { data, error } = await supabase.from("kit_equipos")
+      .select("equipamiento_id").eq("kit_id", id).limit(techo(TOPE_GRUPO + 1));
+    if (error) return { error: error.message };
+    /* El recorte se mira sobre las FILAS que llegaron, no sobre los ids ya
+       deduplicados: 501 filas del puente que deduplican a 400 equipos habían
+       cortado igual, y contando los ids el aviso no se encendía. */
+    if ((data || []).length > TOPE_GRUPO) recorte = true;
+    /* Un mismo equipo puede estar dos veces en el puente. Se deduplica, así que
+       el número que sale luego es el de equipos DISTINTOS, que es la respuesta
+       a «qué llevo si me llevo el kit». */
+    ids = [...new Set((data || []).map((r: any) => r.equipamiento_id).filter(Boolean))];
+    if (ids.length > TOPE_GRUPO) ids = ids.slice(0, TOPE_GRUPO);
+    if (!ids.length) return { miembros: [] as MiembroGrupo[], recorte };
+  }
+
+  const q = supabase.from("equipamiento")
+    .select("id,folio,nombre,estado,valor_compra")
+    .order("folio").limit(techo(TOPE_GRUPO + 1));
+  const { data: eqs, error: eE } = que === "kit"
+    ? await q.in("id", ids)
+    : await q.eq("compra_id", id);
+  if (eE) return { error: eE.message };
+  let filas = eqs || [];
+  if (filas.length > TOPE_GRUPO) { recorte = true; filas = filas.slice(0, TOPE_GRUPO); }
+  if (!filas.length) return { miembros: [] as MiembroGrupo[], recorte };
+
+  const vivos = filas.map((e: any) => e.id);
+  /* Las dos decoraciones, en paralelo. Si alguna falla NO se cae la lista: sin
+     foto o sin saber quién lo tiene la respuesta sigue sirviendo, y quedarse
+     sin lista por no poder pintar una miniatura sería cambiar la respuesta
+     entera por nada. */
+  const [media, manos] = await Promise.all([
+    supabase.from("entidad_media").select("entidad_id,cartel_url")
+      .eq("entidad_tipo", "equipamiento").in("entidad_id", vivos),
+    /* ⚠ El MISMO orden que `enManosAhora` en lib/equipamientoDatos, y por el
+       mismo motivo: no debería haber dos custodias abiertas del mismo equipo,
+       pero las hay —una asignación apartada por un préstamo es justamente eso—.
+       Descendente y quedándose con la PRIMERA de cada equipo gana la más
+       reciente. Y desempata `creado_en`, porque `desde` es una fecha suelta y
+       las dos filas se crean el mismo día.
+       Escrito distinto aquí y allá, la fila del inventario diría un nombre y
+       este pop-up otro, dos centímetros más abajo. */
+    supabase.from("equipo_prestamos")
+      .select("equipamiento_id,persona:personas(nombre,alias)")
+      .in("equipamiento_id", vivos).is("hasta", null)
+      .order("desde", { ascending: false })
+      .order("creado_en", { ascending: false, nullsFirst: false }),
+  ]);
+  const cartel = new Map<string, string>();
+  ((media.data as any[]) || []).forEach(m => { if (m.cartel_url) cartel.set(m.entidad_id, m.cartel_url); });
+  const quien = new Map<string, string>();
+  ((manos.data as any[]) || []).forEach(p => {
+    if (quien.has(p.equipamiento_id)) return;   // la primera es la más reciente
+    const per: any = Array.isArray(p.persona) ? p.persona[0] : p.persona;
+    quien.set(p.equipamiento_id, per?.alias || per?.nombre || "alguien");
+  });
+
+  const miembros: MiembroGrupo[] = filas.map((e: any) => ({
+    id: e.id, folio: e.folio || null, nombre: e.nombre || "sin nombre",
+    estado: e.estado || null,
+    cartel: cartel.get(e.id) || null,
+    valor: e.valor_compra != null ? Number(e.valor_compra) : null,
+    quien: quien.get(e.id) || null,
+  }));
+  return { miembros, recorte };
+}
+
 /* --- CVs por enfoque: uno por rol al que postula la persona --- */
 export async function guardarCv(personaId: string, enfoque: string, url: string, id?: string | null) {
   const supabase = createClient();

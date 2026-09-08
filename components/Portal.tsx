@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
    🪟 PORTAL — LA CAPA QUE SE CUELGA DE <body>
 
    Ocho componentes escribían la misma línea a mano (Agenda, DiaContexto,
-   HojaEquipos, LinkPreview, VisorArchivo, VistaRapida, VistaHilo, ChipPiezas).
+   HojaEquipos, LinkPreview, VisorArchivo, VistaRapida, VistaHilo, ChipPop).
    Aquí está una vez, con el porqué al lado — que es lo que no cabía en cada
    copia y lo que hace falta para saber cuándo usarla.
 
@@ -43,7 +43,7 @@ import { createPortal } from "react-dom";
    ── CUÁNDO NO USARLO ──
    Si la capa está ANCLADA a algo —un menú `absolute` colgado de su botón—,
    sacarla de ahí la manda a la esquina de la página. Esas hay que medirlas y
-   pintarlas con coordenadas de pantalla, como hace `ChipPiezas`. Y ojo: no
+   pintarlas con coordenadas de pantalla, como hace `ChipPop`. Y ojo: no
    sirve portalizar SOLO el telón de un menú anclado. El telón se iría a la
    raíz por encima de todo y el menú se quedaría dentro del contexto de la
    tarjeta, o sea DEBAJO del telón: dejaría de poder pulsarse. Es todo o nada.

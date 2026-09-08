@@ -32,7 +32,7 @@ import Portal from "@/components/Portal";
    El alto no se calcula: se acota. Se le da al envoltorio el sitio que hay y
    se deja que el menú, que es un hijo flex con `min-height:0` y su propio
    `overflow-y:auto`, se encoja solo si no cabe. Intentar medir el contenido
-   —que es lo que hace ChipPiezas, y le costó dos intentos— aquí no hace falta
+   —que es lo que hace ChipPop, y le costó dos intentos— aquí no hace falta
    porque estos menús ya saben desplazarse.
 
    ── SE CIERRA AL MOVER LA PÁGINA ──

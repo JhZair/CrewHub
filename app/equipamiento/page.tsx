@@ -4,6 +4,7 @@ import { equiposGordos, enManosAhora, cartelesEquipo, kitsCrudos, comprasCombo,
   un1 } from "@/lib/equipamientoDatos";
 import ChipPiezas from "@/components/ChipPiezas";
 import ChipFotos from "@/components/ChipFotos";
+import ChipGrupo from "@/components/ChipGrupo";
 import BotonComprobar from "@/components/BotonComprobar";
 import FilasEquipo from "@/components/FilasEquipo";
 import PonerSubcategoria from "@/components/PonerSubcategoria";
@@ -467,10 +468,11 @@ export default async function Equipamiento({ searchParams }: {
           <div className="eqx-fila">
             {miniEquipo(cartelPorEq.get(x.id))}
 
-            {/* DOS LÍNEAS. Arriba, QUÉ es —folio y nombre, que es lo que se
-                busca—. Abajo, todo lo que lo describe. En una sola línea, el
-                nombre competía con seis etiquetas y era lo primero que se
-                recortaba, justo lo único que no se puede recortar. */}
+            {/* TRES LÍNEAS. Arriba, QUÉ es —folio y nombre, que es lo que se
+                busca—. En medio, lo que lo describe. Abajo, los chips que se
+                pulsan. En una sola línea el nombre competía con seis etiquetas
+                y era lo primero que se recortaba, justo lo único que no se
+                puede recortar. */}
             <div className="eqx-txt">
               <div className="eqx-l1">
                 {x.folio
@@ -508,33 +510,6 @@ export default async function Equipamiento({ searchParams }: {
                   </span>
                 )}
 
-                {/* ── LO QUE LLEVA ATORNILLADO DENTRO ──
-                    Va ANTES del combo y de los kits, y no al final de la línea:
-                    es lo único de la fila que cambia lo que tienes en la mano.
-                    Dos «Soporte De Pecho Para Cámara» se leen idénticos, y uno
-                    va con su correa montada: sin este chip la única forma de
-                    saberlo es abrir la ficha. Al pulsarlo dice CUÁLES, con foto
-                    y precio, sin salir de la lista. */}
-                <ChipPiezas piezas={piezasDe.get(x.id) || []} />
-                {/* Las fotos, desde el listado. Buscas «maleta», te salen
-                    ocho, y para saber cuál es cuál había que abrir ocho fichas
-                    y volver ocho veces perdiendo el filtro cada vez. La
-                    miniatura de la fila no basta: es la misma foto de 40 px
-                    que ya no distingue dos maletines negros. */}
-                <ChipFotos tipo="equipamiento" id={x.id} n={nFotos?.get(x.id) || 0} />
-
-                {/* Los dos ejes: lo que ENTRÓ junto y lo que SALE junto. No se
-                    pueden deducir mirando la cámara. */}
-                {cb && (
-                  <span className="badge cmp-cod" title={`Vino en ${cb.codigo || ""} ${cb.nombre}`.trim()}>
-                    🧾 {cb.codigo || cb.nombre}
-                    {totalCombo > 0 && <span style={{ opacity: .75, fontWeight: 400 }}> · {soles(totalCombo, cb.moneda)}</span>}
-                  </span>
-                )}
-                {misKits.map((k: any) => (
-                  <span key={k.id} className="badge eq-kit-chip" title={`Sale en el kit «${k.nombre}»`}>📦 {k.nombre}</span>
-                ))}
-
                 {/* El precio propio. Si no lo tiene pero vino en un combo, no
                     se repite el código —ya está en el chip de al lado, y
                     «🧾 C-006 · en C-006» decía dos veces lo mismo—: lo que se
@@ -561,6 +536,53 @@ export default async function Equipamiento({ searchParams }: {
                 {nBita > 0 && <span style={{ color: "var(--muted)", fontSize: TXT.chip }} title="Notas y comentarios en su bitácora">🗒 {nBita}</span>}
                 {a.coments > 0 && <span style={{ color: "var(--muted)", fontSize: TXT.chip }} title="Comentarios en casos">💬 {a.coments}</span>}
               </div>
+
+              {/* ── TERCERA LÍNEA: LOS CUATRO CHIPS QUE ABREN ──
+                  Estaban repartidos por la segunda, entre la subcategoría y el
+                  precio, y ahí competían con ellos: en una fila estrecha el
+                  nombre de un kit empujaba el precio a otro renglón y la línea
+                  cambiaba de forma según el equipo. Juntos y en su propia línea
+                  se leen como lo que son — cuatro puertas a lo mismo: qué más
+                  hay que saber de esta unidad sin abrir su ficha.
+
+                  El ORDEN va de lo más cercano a lo más lejano: la foto es esta
+                  unidad; las piezas, lo que lleva atornillado dentro; el kit,
+                  con qué SALE; el combo, con qué ENTRÓ. Los dos últimos son los
+                  dos ejes de un equipo y no se pueden deducir mirándolo.
+
+                  Si no hay ninguno la línea no se pinta: un renglón vacío bajo
+                  cada fila son quinientos renglones de nada. */}
+              {(nFotos?.get(x.id) || piezasDe.get(x.id)?.length || misKits.length || cb) ? (
+                <div className="eqx-l3">
+                  {/* Buscas «maleta», te salen ocho, y para saber cuál es cuál
+                      había que abrir ocho fichas y volver ocho veces perdiendo
+                      el filtro cada vez. La miniatura de la fila no basta: es la
+                      misma foto de 40 px que ya no distingue dos maletines. */}
+                  <ChipFotos tipo="equipamiento" id={x.id} n={nFotos?.get(x.id) || 0} />
+                  {/* Dos «Soporte De Pecho Para Cámara» se leen idénticos, y uno
+                      va con su correa montada. */}
+                  <ChipPiezas piezas={piezasDe.get(x.id) || []} />
+                  {misKits.map((k: any) => (
+                    <ChipGrupo key={k.id} que="kit" id={k.id} nombre={k.nombre}
+                      titulo={`Sale en el kit «${k.nombre}» — ver qué más va dentro`} />
+                  ))}
+                  {cb && (
+                    /* El total y la moneda van CRUDOS, no ya formateados: el
+                       chip y su pop-up los pintan con el mismo `soles`, y una
+                       cadena ya hecha aquí y otra allá era la misma boleta con
+                       dos monedas a dos centímetros. */
+                    /* ⚠ `cb.total`, no `totalCombo`. `totalCombo` es 0 cuando el
+                       equipo tiene precio propio —para no enseñar dos cifras en
+                       la MISMA fila—, pero esa regla es del chip, no del pop-up:
+                       con ella, el mismo combo abierto desde una unidad decía
+                       «S/ 4,500» y desde su hermana no decía nada. Lo que se
+                       calla en el chip lo dice `enChip`. */
+                    <ChipGrupo que="combo" id={cb.id} nombre={cb.codigo || cb.nombre}
+                      total={Number(cb.total) || 0} enChip={totalCombo > 0} moneda={cb.moneda}
+                      titulo={`Vino en ${cb.codigo || ""} ${cb.nombre}`.trim() + " — ver qué más trajo"} />
+                  )}
+                </div>
+              ) : null}
             </div>
 
             <BotonComprobar equipoId={x.id} ultima={x.ultima_comprobacion}

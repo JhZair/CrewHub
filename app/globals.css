@@ -4269,9 +4269,9 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
    que la subcategoria, y es lo contrario: es lo que cambia cuanto se firma al
    entregar y cuanto se cuenta al volver. Un kit de trece con cuatro
    ensamblados son veintitres cosas fisicas, y eso hay que verlo sin buscarlo.
-   Azul y no violeta ni verde azulado: el violeta ya dice «kit» y el verde
-   azulado ya dice «precio» en esa misma segunda linea. Tres colores para tres
-   preguntas distintas, cada uno con un solo significado.
+   Azul y no violeta ni verde azulado: en esa misma linea de chips el violeta
+   ya dice «kit», el ambar «combo» y el verde azulado «fotos». Cuatro colores
+   para cuatro preguntas distintas, cada uno con un solo significado.
    Tenue —fondo al 12 %— porque resalta, no alarma: que un equipo vaya armado
    es un dato suyo, no un problema. */
 .ens-marca{color:#7ba8f5;background:rgba(59,130,246,.12);border-radius:20px;
@@ -4295,7 +4295,8 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
    —nunca `relative`—, y ahora ademas se pinta en un portal colgado de <body>.
    Dejarlo escrito sugiere que el pop-up se ancla aqui, que es justo lo que
    hay que NO creerse al tocar esto. `inline-flex` y `flex:none` si hacen
-   falta: el chip es item flex de .kit-pz-l2, .eq-uso-l1 y .ent-lote-fila. */
+   falta: el chip es item flex de .kit-pz-l2, .eq-uso-l1, .ent-lote-fila y
+   .eqx-l3. */
 .ens-chip-wrap{display:inline-flex;flex:none}
 .ens-tapa{position:fixed;inset:0;z-index:40}
 /* `fixed`, no `absolute`: las listas que lo contienen tienen overflow-y:auto
@@ -4318,13 +4319,28 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
    rueda encadenaba a la PAGINA, la pagina se movia, y el pop-up se cierra
    cuando la pagina se mueve: se cerraba solo justo al llegar a la ultima
    pieza, que es la que se venia a ver. Ojo, esto NO es lo que arreglaba el
-   fallo de «no se puede desplazar» —eso estaba en el oyente de ChipPiezas—;
+   fallo de «no se puede desplazar» —eso esta en el oyente de ChipPop—;
    es que la pagina de detras no se mueva mientras se lee el pop-up.
    A cambio, sobre un pop-up de dos piezas que no desborda la rueda no hace
    nada. Es lo que hace cualquier menu, y de ahi se sale con Escape, con la ✕
    o pulsando fuera. */
 .ens-pop-lista{display:flex;flex-direction:column;overflow-y:auto;min-height:0;
   overscroll-behavior:contain}
+/* El aspecto de las tres frases que ocupan el sitio de la lista: «Buscando…»,
+   «no tiene nada dentro» y el motivo de un fallo. Quien decide CUÁL se dice es
+   ChipPop; esto solo hace que no se lea como una fila más.
+   El error, además, es un botón: se reintenta desde ahí, sin cerrar y volver a
+   abrir — que es lo que nadie deduce delante de un aviso rojo. */
+.ens-pop-aviso{flex:none;padding:8px 6px;font-size:12px;color:var(--muted);
+  line-height:1.5;text-align:left}
+.ens-pop-reintentar{background:none;border:0;color:var(--yellow);cursor:pointer;
+  font:inherit;font-size:12px}
+.ens-pop-reintentar:hover{text-decoration:underline}
+/* El nombre del grupo en la cabecera del pop-up. `min-width:0` porque sin él un
+   hijo flex no baja de su contenido: «Bolso Kit de Grabación Profesional para
+   Exteriores» en versalitas partía la cabecera en tres renglones y se comía el
+   alto de la lista. */
+.chip-gr-h{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* El total de lo montado, junto al título y antes de la ✕. `margin-left:auto`
    lo empuja a la derecha y deja la ✕ pegada a él en el borde — que es donde
    el dedo la busca. Sin `text-transform` heredado: «S/ 2,895» en versalitas
@@ -4359,6 +4375,17 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
 .ens-pop-fila:hover{background:rgba(255,255,255,.045)}
 .ens-pop-n{flex:1;min-width:0;font-size:12px;color:var(--text);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Dos renglones en la fila del pop: el nombre arriba y quién lo tiene debajo.
+   ⚠ VA DESPUÉS de `.ens-pop-n` a propósito: misma especificidad —una clase
+   cada una— así que quien gana es la última del archivo. Escrita antes, las
+   tres declaraciones de abajo no se aplicaban y el comentario mentía.
+   `.ens-pop-n` recorta con «…», y un hijo de bloque dentro le rompe eso: el
+   nombre pasa a una caja anónima, que no hereda `text-overflow`, y se cortaba
+   a hachazo solo en las filas con prestatario. Aquí se apaga el recorte del
+   padre y se pone en el hijo que toca. */
+.ens-pop-n-dos{display:flex;flex-direction:column;gap:1px;
+  white-space:normal;overflow:visible;text-overflow:clip}
+.chip-gr-nom{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ens-h{margin:0 0 8px;font-size:11.5px;letter-spacing:1.2px;text-transform:uppercase;
   color:var(--dim);display:flex;gap:9px;align-items:center;flex-wrap:wrap}
 .ens-res{color:var(--muted);text-transform:none;letter-spacing:0;font-size:11.5px}
@@ -4791,15 +4818,20 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
    en información. «KatyP · 9 equipos» no dice nada que no se supiera. */
 .eq-uso-proys{color:var(--violet);font-size:11px;opacity:.85;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap;min-width:0;margin-left:auto}
-/* En la lista de equipos: de qué kit sale. Violeta como el panel de kits,
-   para que el ojo los relacione sin leer. */
+/* De qué kit sale, en /buscar. Violeta como el panel de kits, para que el ojo
+   los relacione sin leer. En el inventario esto era la misma etiqueta muda y
+   ahora es `.chip-kit`, que además abre y dice qué más va dentro. */
 .eq-kit-chip{color:var(--violet);background:rgba(167,139,250,.12);font-size:10.5px;
   max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-/* ── FILA DE EQUIPO, EN DOS LÍNEAS ──
-   Arriba QUÉ es (folio y nombre, que es lo que se busca); abajo todo lo que
-   lo describe. En una sola línea el nombre competía con seis etiquetas y era
-   lo primero que se recortaba —justo lo único que no se puede recortar—. */
+/* ── FILA DE EQUIPO, EN TRES LÍNEAS ──
+   Arriba QUÉ es (folio y nombre, que es lo que se busca); en medio lo que lo
+   describe —subcategoría, precio, contadores—; abajo los cuatro chips que
+   ABREN: fotos, piezas, kit y combo. En una sola línea el nombre competía con
+   seis etiquetas y era lo primero que se recortaba —justo lo único que no se
+   puede recortar—; y con los chips mezclados en la segunda, el nombre de un
+   kit empujaba el precio a otro renglón y la línea cambiaba de forma según el
+   equipo. Lo que se pulsa, junto y en su sitio. */
 .eqx-card{cursor:pointer;padding:11px 15px}
 .eqx-fila{display:flex;gap:12px;align-items:center}
 .eqx-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
@@ -4807,6 +4839,9 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
 .eqx-folio{color:var(--muted);background:#1c1c2c;flex:none}
 .eqx-nom{font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .eqx-l2{display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-width:0;font-size:11.5px}
+/* La línea de los chips. `wrap` porque un equipo puede estar en dos kits y
+   además venir de un combo, y en una pantalla estrecha eso no cabe de una. */
+.eqx-l3{display:flex;gap:6px;align-items:center;flex-wrap:wrap;min-width:0}
 .eqx-sub{color:var(--dim)}
 /* El valor que el desplegable no ofrece. En verde agua y no en amarillo: no
    es un aviso de que algo este mal —a veces es la unica forma de decir lo que
@@ -7903,3 +7938,23 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
 .chip-fotos{color:var(--teal);background:rgba(45,212,191,.12);border-color:rgba(45,212,191,.22)}
 .chip-fotos:hover{color:#7fe3d4;border-color:var(--teal);background:rgba(45,212,191,.2)}
 .chip-fotos-err{color:var(--yellow);font-size:11px;cursor:pointer}
+
+/* ── LOS CUATRO CHIPS DE LA TERCERA LÍNEA, CADA UNO DE SU COLOR ──
+   Azul = piezas (`.ens-marca`), verde azulado = fotos, violeta = kit, ámbar =
+   combo. Los dos últimos CONSERVAN el color que ya tenían de etiquetas mudas
+   —violeta como el panel de kits, ámbar como el de compras— para que el ojo no
+   tenga que reaprender nada: lo único que cambia es que ahora se pulsan. */
+.chip-kit{color:var(--violet);background:rgba(167,139,250,.12);border-color:rgba(167,139,250,.24)}
+.chip-kit:hover{color:#c4b1fd;border-color:var(--violet);background:rgba(167,139,250,.2)}
+.chip-combo{color:#d99a3f;background:rgba(217,154,63,.14);border-color:rgba(217,154,63,.26)}
+.chip-combo:hover{color:#e8b76b;border-color:#d99a3f;background:rgba(217,154,63,.22)}
+/* El nombre del kit se recorta; el resto del chip (emoji, total) no. Sin tope,
+   «Bolso Kit de Grabación Profesional para Exteriores» se lleva la línea entera
+   y empuja al combo a otro renglón él solo. */
+.chip-gr-n{display:inline-block;max-width:150px;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;vertical-align:bottom}
+/* Quién lo tiene, bajo el nombre dentro del pop-up. Debajo y no al lado: en una
+   caja de 340 px, «lo tiene Katy Pachacutec» junto a un nombre largo empuja el
+   precio fuera de la fila. */
+.chip-gr-quien{display:block;font-size:10px;color:var(--yellow);opacity:.9;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
