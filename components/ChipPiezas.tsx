@@ -102,10 +102,25 @@ export default function ChipPiezas({ piezas, titulo = "Va armado: lleva piezas m
   /* Cerrar al mover la página o cambiar su tamaño: el pop-up está anclado a
      una coordenada de PANTALLA, y en cuanto algo se mueve esa coordenada deja
      de ser la del botón. `capture` porque el scroll de un contenedor interno
-     no burbujea hasta window. Y Escape, que es lo que uno pulsa. */
+     no burbujea hasta window. Y Escape, que es lo que uno pulsa.
+
+     ⚠ MENOS EL SUYO PROPIO. La lista de dentro también se desplaza —para eso
+     se mide y se le pone un tope—, y ese scroll llegaba a este mismo oyente:
+     el drone con nueve baterías abría su pop-up, aparecía la barra, y al
+     tocarla se cerraba. La lista era visiblemente más larga que la caja y
+     las últimas piezas no había forma de verlas. El pop-up NO se mueve cuando
+     lo que se desplaza es su interior, así que ahí no hay nada que cerrar. */
   useEffect(() => {
     if (!abierto) return;
-    const fuera = () => cerrar();
+    const fuera = (ev: Event) => {
+      /* `instanceof Node` y no un cast: `contains()` LANZA si le dan algo que
+         no es un nodo —`window`, por ejemplo—, y esa excepción salta antes de
+         `cerrar()`. El pop-up se quedaría clavado en pantalla apuntando a una
+         fila que ya no está ahí, que es justo lo que este oyente evita. */
+      if (ev.type === "scroll" && ev.target instanceof Node
+        && pop.current?.contains(ev.target)) return;
+      cerrar();
+    };
     const tecla = (ev: KeyboardEvent) => { if (ev.key === "Escape") cerrar(); };
     window.addEventListener("scroll", fuera, true);
     window.addEventListener("resize", fuera);

@@ -4211,7 +4211,17 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
    ✕ y con nueve piezas se iba de la vista justo cuando hace falta.
    `min-height:0` porque un hijo flex no baja de su tamaño de contenido sin
    el, y sin el la lista no se desplaza: crece y desborda la caja. */
-.ens-pop-lista{display:flex;flex-direction:column;overflow-y:auto;min-height:0}
+/* `overscroll-behavior:contain` — llegado al final de las nueve baterias la
+   rueda encadenaba a la PAGINA, la pagina se movia, y el pop-up se cierra
+   cuando la pagina se mueve: se cerraba solo justo al llegar a la ultima
+   pieza, que es la que se venia a ver. Ojo, esto NO es lo que arreglaba el
+   fallo de «no se puede desplazar» —eso estaba en el oyente de ChipPiezas—;
+   es que la pagina de detras no se mueva mientras se lee el pop-up.
+   A cambio, sobre un pop-up de dos piezas que no desborda la rueda no hace
+   nada. Es lo que hace cualquier menu, y de ahi se sale con Escape, con la ✕
+   o pulsando fuera. */
+.ens-pop-lista{display:flex;flex-direction:column;overflow-y:auto;min-height:0;
+  overscroll-behavior:contain}
 /* El total de lo montado, junto al título y antes de la ✕. `margin-left:auto`
    lo empuja a la derecha y deja la ✕ pegada a él en el borde — que es donde
    el dedo la busca. Sin `text-transform` heredado: «S/ 2,895» en versalitas
@@ -4236,7 +4246,12 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
    kit vaya corto, y eso solo se arregla si se ve. */
 .ens-pop-sinval{flex:none;font-size:11px;color:var(--yellow);cursor:help}
 .ens-pop-x:hover{color:var(--text)}
-.ens-pop-fila{display:flex;gap:8px;align-items:center;padding:4px;border-radius:8px;
+/* `flex:none` — la fila es hija de un flex en columna con la altura acotada,
+   y ahi lo normal es que los hijos SE APLASTEN antes que desbordar. Hoy no
+   pasa porque la miniatura de 34px fija un minimo, pero el dia que se quite
+   las nueve filas se comprimirian para caber: contenido recortado y SIN barra
+   de desplazamiento, o sea sin ninguna señal de que falta algo. */
+.ens-pop-fila{display:flex;flex:none;gap:8px;align-items:center;padding:4px;border-radius:8px;
   text-decoration:none;min-width:0}
 .ens-pop-fila:hover{background:rgba(255,255,255,.045)}
 .ens-pop-n{flex:1;min-width:0;font-size:12px;color:var(--text);
