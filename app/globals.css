@@ -351,8 +351,19 @@ a{color:inherit;text-decoration:none}
    resultado se estampa grande al centro, como un sello sobre el expediente.
    El sello no captura clics (pointer-events:none): los enlaces siguen vivos. */
 .post-resultado-wrap{position:relative}
+/* ⚠ APAGAR CON `opacity`, NUNCA CON `filter`. Aqui y en las otras cinco reglas
+   que atenuan un contenedor entero (.grid-meta, .pl-fila, .card con sello,
+   .card-apagada, .post-apagada) habia un `filter:saturate(.55)` al lado.
+   `filter` —a diferencia de `opacity`— crea BLOQUE CONTENEDOR para todo
+   `position:fixed` que haya dentro: el telon a pantalla completa que cierra
+   un menu al pulsar fuera se encogia a la tarjeta, y un modal se centraba
+   DENTRO de ella. Se perdio la desaturacion, que al 30% de opacidad casi no
+   se veia; lo que se gana es que los menus, los visores y los modales de
+   dentro vuelvan a medirse contra la ventana.
+   El porque completo —que hereda, que contiene y que apila— esta escrito en
+   components/Portal.tsx. */
 .post-resultado-wrap.con-resultado>.post-duo,
-.post-resultado-wrap.con-resultado>.post-cancha{opacity:.3;filter:saturate(.55)}
+.post-resultado-wrap.con-resultado>.post-cancha{opacity:.3}
 .post-resultado{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   pointer-events:none;border-radius:14px}
 .pr-sello{display:flex;flex-direction:column;align-items:center;gap:1px;
@@ -369,7 +380,8 @@ a{color:inherit;text-decoration:none}
    `inset:0` se mediría contra la página entera y el sello acabaría estampado
    sobre toda la pantalla. */
 .grid-meta{position:relative}
-.grid-meta:has(> .post-resultado)>:not(.post-resultado){opacity:.3;filter:saturate(.55)}
+  /* sin `filter`: crearia bloque contenedor para los `fixed` de dentro; ver la regla del sello y components/Portal.tsx */
+.grid-meta:has(> .post-resultado)>:not(.post-resultado){opacity:.3}
 .post-resultado.sr-ficha .pr-sello{padding:6px 22px;transform:rotate(-5deg)}
 .post-resultado.sr-ficha .pr-ico{font-size:19px;margin-bottom:0}
 .post-resultado.sr-ficha .pr-tit{font-size:26px;letter-spacing:2px}
@@ -437,7 +449,8 @@ a{color:inherit;text-decoration:none}
 /* Fila SELLADA: su contenido se atenúa MIENTRAS el sello está presente. Con
    `:has` el atenuado se ata al sello real: al cerrarlo (✕), el sello se
    desmonta y la fila recupera su opacidad al instante, sin recargar. */
-.pl-fila:has(> .post-resultado)>:not(.post-resultado){opacity:.3;filter:saturate(.55)}
+  /* sin `filter`: crearia bloque contenedor para los `fixed` de dentro; ver la regla del sello y components/Portal.tsx */
+.pl-fila:has(> .post-resultado)>:not(.post-resultado){opacity:.3}
 .post-resultado.sr-fila{border-radius:0 9px 9px 0}
 .post-resultado.sr-fila .pr-sello{padding:7px 20px;transform:rotate(-5deg)}
 .post-resultado.sr-fila .pr-ico{font-size:20px;margin-bottom:0}
@@ -455,10 +468,11 @@ a{color:inherit;text-decoration:none}
 .card.con-sello{position:relative}
 /* `:has` ata el atenuado al sello real: cerrar la ✕ lo desmonta y el carné
    recupera su opacidad al instante (antes quedaba apagado hasta recargar). */
-.card:has(> .post-resultado)>:not(.post-resultado){opacity:.32;filter:saturate(.55)}
+  /* sin `filter`: crearia bloque contenedor para los `fixed` de dentro; ver la regla del sello y components/Portal.tsx */
+.card:has(> .post-resultado)>:not(.post-resultado){opacity:.32}
 /* La fila de acciones (Editar…) NO se atenúa y va POR ENCIMA del sello: aunque
    el concurso cerró, la ficha se sigue pudiendo editar. */
-.card.con-sello>.carne-acciones{opacity:1;filter:none;position:relative;z-index:3}
+.card.con-sello>.carne-acciones{opacity:1;position:relative;z-index:3}
 .post-resultado.sr-carne{align-items:flex-start;padding-top:44px}
 .post-resultado.sr-carne .pr-sello{transform:rotate(-6deg)}
 .post-resultado.sr-carne .pr-tit{font-size:30px;letter-spacing:2px}
@@ -1362,11 +1376,12 @@ a{color:inherit;text-decoration:none}
 .mini-ind{font-size:12px;color:var(--dim);white-space:nowrap}
 .btn-ocultar:hover{color:var(--text)}
 /* Casos resueltos en el feed: atenuados; al pasar el mouse vuelven a plena */
-.card-apagada{opacity:.55;filter:saturate(.75)}
-.card-apagada:hover{opacity:1;filter:none}
+  /* sin `filter`: crearia bloque contenedor para los `fixed` de dentro; ver la regla del sello y components/Portal.tsx */
+.card-apagada{opacity:.55}
+.card-apagada:hover{opacity:1}
 /* "Mis asuntos": lo que no es mi responsabilidad va apagado (igual que el
    kanban); prendido = lo que sí trabajo yo. Al pasar el mouse vuelve a plena. */
-.card-ajena{opacity:.5;transition:opacity .16s ease,filter .16s ease}
+.card-ajena{opacity:.5;transition:opacity .16s ease}
 .card-ajena:hover{opacity:1}
 
 /* Identidad de color por estado (tono tenue) en las tarjetas del feed */
@@ -2278,8 +2293,9 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(.65);cursor:
 .edic-ant-eq{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:7px}
 /* Postulación cerrada sin ganar: se apaga en el listado (historia, no compite).
    Al pasar el cursor recupera algo de presencia para poder leerla. */
-.post-apagada{opacity:.5;filter:saturate(.55)}
-.post-apagada:hover{opacity:.82;filter:saturate(.8)}
+  /* sin `filter`: crearia bloque contenedor para los `fixed` de dentro; ver la regla del sello y components/Portal.tsx */
+.post-apagada{opacity:.5}
+.post-apagada:hover{opacity:.82}
 /* Tercera fila de una postulación: la línea de tiempo del concurso (riel de
    hitos de su convocatoria), separada del trío. */
 .post-riel{margin-top:11px;padding-top:9px;border-top:1px solid var(--border)}
@@ -2306,8 +2322,9 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(.65);cursor:
    cual, luego cual de ellos. Un pelo de letter-spacing porque en mayusculas
    las letras se rozan. */
 .conv-nombre{color:var(--text);font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}
-.conv-post-off{opacity:.5;filter:saturate(.55);transition:opacity .15s ease,filter .15s ease}
-.card.link:hover .conv-post-off{opacity:1;filter:none}
+/* sin `filter`: crearia bloque contenedor para los `fixed` de dentro; ver la regla del sello y components/Portal.tsx */
+.conv-post-off{opacity:.5;transition:opacity .15s ease}
+.card.link:hover .conv-post-off{opacity:1}
 /* Equipo que postula: fila de solo-avatares (nombre al hover vía title). */
 .post-equipo{display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-top:9px}
 .post-eq-av{display:inline-flex;border-radius:50%;cursor:help;
@@ -3370,8 +3387,18 @@ img.av{border:1px solid var(--border2)}
 .cf-clear:hover{text-decoration:underline}
 
 /* «Mis asuntos» en la lista de casos: apagado = me incumbe pero responde otro. */
-.caso-apagado{opacity:.45;transition:opacity .12s;filter:saturate(.7)}
-.caso-apagado:hover{opacity:1;filter:none}
+/* sin `filter`: crearia bloque contenedor para los `fixed` de dentro; ver la regla del sello y components/Portal.tsx */
+/* ⚠ Envuelve la TARJETA entera de un caso, y dentro va <Reacciones> con su
+   telon a pantalla completa. Con el `filter` el telon se ENCOGIA a la tarjeta
+   y solo se podia cerrar la paleta pulsando dentro de ella. Eso ya no pasa.
+   Lo que SIGUE pasando: `opacity` tambien crea contexto de apilamiento —solo
+   que no bloque contenedor—, asi que el telon recupera su tamaño pero no su
+   sitio en la pila: una tarjeta POSTERIOR en la lista se le pinta encima y se
+   queda con el clic. Se arregla portalizando el telon y la paleta, no aqui.
+   Se esconde solo, ojo: al abrir la paleta el raton esta sobre la tarjeta, el
+   :hover la pone a opacity 1 y el contexto desaparece. Vuelve al apartarlo. */
+.caso-apagado{opacity:.45;transition:opacity .12s}
+.caso-apagado:hover{opacity:1}
 .cf-mis{background:var(--card);border:1px solid var(--border);color:var(--muted);font-size:12.5px;font-weight:700;padding:6px 12px;border-radius:8px;cursor:pointer;white-space:nowrap;transition:border-color .12s,color .12s,background .12s}
 .cf-mis:hover{color:var(--text);border-color:var(--border2)}
 .cf-mis.on{background:rgba(45,212,191,.12);border-color:rgba(45,212,191,.4);color:var(--teal)}
