@@ -1627,6 +1627,13 @@ button.sc-est:hover{border-color:var(--border2);background:var(--bg)}
 .sc-fecha{position:relative;display:inline-flex}
 .sc-fecha-inp{position:absolute;left:0;bottom:0;width:0;height:0;padding:0;margin:0;
   border:none;opacity:0;pointer-events:none}
+/* ⚠ QUE SE VEA QUE EL CAMPO ESTÁ ABIERTO.
+   El input mide 0×0 y es invisible, así que desde que la fecha se guarda al
+   SALIR del campo existe un estado —«esto es un borrador, todavía no se ha
+   mandado»— que no se veía por ninguna parte. Un borrador invisible es la
+   única pérdida silenciosa que quedaba. El botón se marca mientras el input
+   de al lado tiene el foco. */
+.sc-fecha:focus-within .sc-btn{outline:1px solid var(--violet);outline-offset:1px}
 .modal-cab{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid rgba(124,92,255,.22)}
 .modal-cab b{font-size:15px;color:var(--text)}
 .modal-x{background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer}

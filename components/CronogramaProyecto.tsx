@@ -283,12 +283,15 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
   const [casosLibres, setCasosLibres] = useState<any[] | null>(null);
   const [guardandoFila, setGuardandoFila] = useState<string[]>([]);
   const alVuelo = async (id: string, fn: () => Promise<any>) => {
-    if (guardandoFila.includes(id)) return;
+    /* Devuelve el resultado —también cuando el candado se lo come— para que
+       quien pintó algo optimista pueda deshacerlo. */
+    if (guardandoFila.includes(id)) return { error: "Esta fila se está guardando; inténtalo otra vez." };
     setGuardandoFila(g => [...g, id]); setError("");
     const res: any = await fn();
     setGuardandoFila(g => g.filter(x => x !== id));
-    if (res?.error) { setError(res.error); return; }
+    if (res?.error) { setError(res.error); return res; }
     router.refresh();
+    return res;
   };
   /* El menú lleva el nombre largo —ahí se elige, hay que reconocer a quién—; el
      botón, el corto (primer nombre). `perfiles` viene filtrado por activo: uno
@@ -839,6 +842,10 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
                         La FechaMini toca el INICIO; el fin fino, con ✎. */}
                     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 3, fontSize: 11, color: "var(--dim)" }}>
                       <FechaMini valor={a.fecha_inicio || null} ocupado={guardandoFila.includes(a.id)}
+                        /* La acción rechaza el vacío («Falta la fecha.»), así
+                           que se pregunta antes en vez de mandar algo que se
+                           sabe que va a volver con error. */
+                        avisoAlBorrar="Esta actividad necesita una fecha de inicio: no se puede dejar vacía. ¿Descartar lo que has escrito?"
                         tituloVacio="Poner fecha de inicio"
                         onCambia={v => alVuelo(a.id, () => cambiarFechaActividad(a.id, dueno, duenoId, v))} />
                       {a.fecha_fin && a.fecha_fin !== a.fecha_inicio && <span>→ {fmt(a.fecha_fin)}</span>}

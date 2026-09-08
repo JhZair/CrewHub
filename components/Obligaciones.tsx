@@ -6,6 +6,7 @@ import {
   fijarResultadoPeriodo, activarObligacion, fijarDesdeObligacion, quitarPeriodo,
 } from "@/app/actions";
 import { useConfirmar } from "@/components/useConfirmar";
+import { useFechaDiferida } from "@/lib/fechaDiferida";
 import Copiar from "@/components/Copiar";
 import Avatar from "@/components/Avatar";
 import ImportarSol from "@/components/ImportarSol";
@@ -69,6 +70,39 @@ type Obl = {
 };
 type Per = Record<string, any> & { id: string; obligacion_id: string; anio: number; mes: number };
 
+/* ⚠ Componente propio y no un `<input>` suelto: `useFechaDiferida` es un hook
+   y la fila donde vive esto se pinta detrás de un `&&`. Un hook detrás de una
+   condición cambia el número de hooks entre renders y React lo rechaza. */
+function CampoDeclarado({ id, valor, correr }: {
+  id: string; valor: string | null; correr: (fn: () => Promise<any>) => Promise<any>;
+}) {
+  const f = useFechaDiferida(valor, v => correr(() => marcarDeclarado(id, v || null)),
+    { avisoAlBorrar: "¿Vaciar la fecha? El periodo queda otra vez sin declarar." });
+  return (
+    <input type="date" value={f.valor}
+      onFocus={f.alEntrar} onKeyDown={f.alTecla}
+      onChange={e => f.alTeclear(e.target.value)}
+      onBlur={e => f.alSalir(e.target.value)} />
+  );
+}
+
+/* Hermano de `CampoDeclarado`, y por el mismo motivo: un hook no puede vivir
+   detrás de la condición que pinta esta fila. */
+function CampoDesde({ id, valor, correr, min, title, ocupado }: {
+  id: string; valor: string | null; correr: (fn: () => Promise<any>) => void;
+  min?: string; title?: string; ocupado?: boolean;
+}) {
+  const f = useFechaDiferida(valor, v => correr(() => fijarDesdeObligacion(id, v || null)),
+    { avisoAlBorrar: "¿Vaciar el «sigue desde»? Sin fecha se generan periodos "
+      + "desde la constitución de la empresa." });
+  return (
+    <input type="date" value={f.valor} min={min} title={title} disabled={ocupado}
+      onFocus={f.alEntrar} onKeyDown={f.alTecla}
+      onChange={ev => f.alTeclear(ev.target.value)}
+      onBlur={ev => f.alSalir(ev.target.value)} />
+  );
+}
+
 export default function Obligaciones({ empresas, logos, repLegal, obligaciones, periodos, perfiles, comprobantes, urlSol, error, userId, hiloError }: {
   empresas: Emp[];
   /** El logo de cada empresa (`entidad_media`), por id. */
@@ -115,12 +149,19 @@ export default function Obligaciones({ empresas, logos, repLegal, obligaciones, 
   const [abierta, setAbierta] = useState<Record<string, boolean>>({});
   const [editando, setEditando] = useState<string | null>(null);
 
+  /* ⚠ Devuelve una promesa con el resultado. `startTransition` no espera a lo
+     que hay dentro, así que quien necesite saber si se guardó —los campos de
+     fecha, para no quedarse enseñando algo que la base rechazó— no podía
+     enterarse. La transición sigue envolviendo el refresco. */
   const correr = (fn: () => Promise<any>) => {
     setErr("");
-    startTransition(async () => {
-      const r: any = await fn();
-      if (r?.error) { setErr(r.error); return; }
-      router.refresh();
+    return new Promise<any>(listo => {
+      startTransition(async () => {
+        const r: any = await fn();
+        if (r?.error) { setErr(r.error); listo(r); return; }
+        router.refresh();
+        listo(r);
+      });
     });
   };
 
@@ -508,8 +549,13 @@ export default function Obligaciones({ empresas, logos, repLegal, obligaciones, 
                 que el ↺. */}
             <label className="obl-ed-campo">
               <span>Declarado el</span>
-              <input type="date" defaultValue={p.declarado_en || ""}
-                onChange={e => correr(() => marcarDeclarado(p.id, e.target.value || null))} />
+              {/* ⚠ Diferido, no en cada `change`: un campo de fecha emite un
+                  cambio válido por cada casilla que se toca, así que cambiar
+                  una fecha ya puesta guardaba de paso las intermedias. Y
+                  vaciarla DESMARCA el periodo, que es lo que puede pasar sin
+                  querer con una casilla a medias: por eso se pregunta.
+                  Está contado en lib/fechaDiferida.ts. */}
+              <CampoDeclarado id={p.id} valor={p.declarado_en || null} correr={correr} />
             </label>
           </div>
         )}
@@ -627,13 +673,22 @@ export default function Obligaciones({ empresas, logos, repLegal, obligaciones, 
                     es un error del sistema. */}
                 <label className="obl-desde">
                   Sigue desde
-                  <input type="date" value={o.desde || ""}
-                    min={e.fecha_constitucion || undefined}
-                    disabled={ocupado}
+                  {/* ⚠ ESTE ERA EL PEOR DE TODOS, y se me pasó en la primera
+                      pasada. Guardaba en cada `change`, y `fijarDesdeObligacion`
+                      no escribe un dato: llama a `generarPeriodos`, o sea CREA
+                      FILAS. Mover el «desde» de 2025 a 2024 pasa por una fecha
+                      válida al tocar cada casilla, y cada una generaba su
+                      tanda de periodos; y si el campo queda vacío un instante,
+                      vacío significa «desde la constitución de la empresa» y
+                      genera hasta 2021. Deshacerlo es borrar los sobrantes de
+                      uno en uno, confirmando cada uno.
+                      Ahora se guarda al salir del campo, como las demás.
+                      Contado en lib/fechaDiferida.ts. */}
+                  <CampoDesde id={o.id} valor={o.desde || null} correr={correr}
+                    min={e.fecha_constitucion || undefined} ocupado={ocupado}
                     title={e.fecha_constitucion
                       ? `No puede ser anterior al ${dmy(e.fecha_constitucion)}, cuando se constituyó la empresa`
-                      : "La empresa no tiene fecha de constitución cargada; sin ella, vacío significa «hace un año»"}
-                    onChange={ev => correr(() => fijarDesdeObligacion(o.id, ev.target.value || null))} />
+                      : "La empresa no tiene fecha de constitución cargada; sin ella, vacío significa «hace un año»"} />
                   {/* ── LA CONSTITUCIÓN SE VE SIEMPRE, NO SOLO CUANDO EL CAMPO
                          ESTÁ VACÍO ──
                       Esto solo se pintaba con `!o.desde`, así que en cuanto

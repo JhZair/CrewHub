@@ -1,4 +1,5 @@
 "use client";
+import { AVISO_BORRAR_PLAZO } from "@/lib/fechaDiferida";
 import { crearSubCaso, asignarResponsable, cambiarFechaLimite, cambiarEstado } from "@/app/actions";
 import { useRouter } from "next/navigation";
 import Link from "@/components/Enlace";
@@ -91,7 +92,10 @@ export default function SubCasos({ padreId, hijos, perfiles = [] }: {
      no enseña el valor viejo mientras tanto: el trabajo se ve hecho y el
      sistema termina de confirmarlo por detrás. */
   const alVuelo = async (id: string, campo: string, valor: any, fn: () => Promise<any>) => {
-    if (guardando.includes(id)) return;   // solo su propia fila, no todas
+    /* ⚠ Devuelve `{error}` en vez de nada cuando la fila está ocupada: un
+       guardado descartado en silencio deja al que lo mandó creyendo que entró.
+       Es lo mismo que el comentario de arriba reprocha al candado global. */
+    if (guardando.includes(id)) return { error: "Esta fila se está guardando; inténtalo otra vez." };   // solo su propia fila, no todas
     const k = clave(id, campo);
     setLocal(l => ({ ...l, [k]: valor }));
     setGuardando(g => [...g, id]); setError("");
@@ -103,13 +107,14 @@ export default function SubCasos({ padreId, hijos, perfiles = [] }: {
          sería enseñar dos cosas contrarias a la vez. */
       setLocal(l => { const n = { ...l }; delete n[k]; return n; });
       setError(res.error);
-      return;
+      return res;
     }
     /* El refresco trae el valor de verdad; cuando llegue, `local` sobra. Se
        limpia DESPUÉS —no antes— para que no parpadee al valor viejo en el
        hueco entre una cosa y la otra. */
     router.refresh();
     setTimeout(() => setLocal(l => { const n = { ...l }; delete n[k]; return n; }), 1500);
+    return res;
   };
 
   return (
@@ -154,6 +159,7 @@ export default function SubCasos({ padreId, hijos, perfiles = [] }: {
               aparece al pasar el cursor no se puede recorrer. */}
           <FechaMini valor={valorDe(h, "fecha_limite") || null} ocupado={guardando.includes(h.id)}
             tituloVacio="Poner fecha límite"
+            avisoAlBorrar={AVISO_BORRAR_PLAZO}
             /* El color de plazo se calcula AQUÍ y se pasa: con el estado, para
                que un sub-caso cerrado no pinte «vencido» en rojo. */
             color={plazoDe(valorDe(h, "fecha_limite") || null, valorDe(h, "estado"))?.color ?? null}

@@ -1,4 +1,5 @@
 "use client";
+import { useFechaDiferida, AVISO_BORRAR_PLAZO } from "@/lib/fechaDiferida";
 import { comentar, cambiarEstado, asignarResponsable, cambiarFechaLimite, cambiarFechaInicio, cambiarHora, archivar } from "@/app/actions";
 import { celebrarResuelto } from "@/lib/celebra";
 import { opcionesEstado } from "@/lib/estados";
@@ -84,12 +85,28 @@ export function FechaSelect({ pubId, fecha, cual = "limite", tope }: {
       ? await cambiarFechaInicio(pubId, v)
       : await cambiarFechaLimite(pubId, v);
     if (res?.error) alert(res.error); else router.refresh();
+    return res;   // el campo necesita saber si se guardó, para no mentir
   };
+  /* ⚠ NO se guarda en `onChange`. Un campo de fecha emite un cambio válido por
+     cada casilla que se toca, así que mover el 3 de agosto al 12 de septiembre
+     guardaba antes un 3 de septiembre que nadie eligió — y una casilla a
+     medias manda el vacío, que aquí borra el plazo, el inicio y la hora.
+     Está contado entero en lib/fechaDiferida.ts. */
+  const f = useFechaDiferida(fecha, cambiar, {
+    /* ⚠ También el inicio, aunque quitarlo no arrastre nada. El fallo no era
+       el arrastre: era que una casilla a medias manda el vacío y el vacío
+       borra. O el vacío se pregunta siempre, o no es una regla. */
+    avisoAlBorrar: cual === "limite" ? AVISO_BORRAR_PLAZO
+      : "¿Quitar la fecha de inicio del caso?",
+  });
   return (
-    <input type="date" defaultValue={fecha || ""}
+    <input type="date" value={f.valor}
       max={cual === "inicio" ? (tope || undefined) : undefined}
       min={cual === "limite" ? (tope || undefined) : undefined}
-      onChange={e => cambiar(e.target.value)} />
+      onFocus={f.alEntrar}
+      onKeyDown={f.alTecla}
+      onChange={e => f.alTeclear(e.target.value)}
+      onBlur={e => f.alSalir(e.target.value)} />
   );
 }
 
@@ -100,15 +117,23 @@ export function HoraSelect({ pubId, hora }: { pubId: string; hora: string | null
   const cambiar = async (v: string) => {
     const res = await cambiarHora(pubId, v);
     if (res?.error) alert(res.error); else router.refresh();
+    return res;
   };
-  /* `onBlur` y no `onChange`: un campo de hora emite un cambio en cuanto se
-     completa el segmento de las horas, con el valor VACÍO porque los minutos
-     aún no están. Con onChange, teclear «10:30» guardaba primero un null
-     —«quitó la hora» en la bitácora— y luego la hora buena. Se guarda al
-     salir del campo, que es cuando el valor está entero. */
+  /* Un campo de hora emite un cambio en cuanto se completa el segmento de las
+     horas, con el valor VACÍO porque los minutos aún no están: con `onChange`
+     a secas, teclear «10:30» guardaba primero un null —«quitó la hora» en la
+     bitácora— y luego la hora buena.
+     Esto se resolvió aquí antes que en las fechas, y con `onBlur` a secas.
+     Ahora pasa por la misma regla que ellas: salir del campo con los minutos a
+     medias también manda el vacío, y eso tampoco lo pidió nadie. */
+  const f = useFechaDiferida(String(hora || "").slice(0, 5) || null, cambiar,
+    { avisoAlBorrar: "¿Quitar la hora del caso?" });
   return (
-    <input type="time" defaultValue={String(hora || "").slice(0, 5)}
-      onBlur={e => cambiar(e.target.value)} />
+    <input type="time" value={f.valor}
+      onFocus={f.alEntrar}
+      onKeyDown={f.alTecla}
+      onChange={e => f.alTeclear(e.target.value)}
+      onBlur={e => f.alSalir(e.target.value)} />
   );
 }
 

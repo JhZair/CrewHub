@@ -9,6 +9,7 @@ import {
 import { opcionesEstado, llevaEnterado, claseEstado } from "@/lib/estados";
 import { icoTipo, llevaHora } from "@/lib/tipos";
 import { TXT } from "@/lib/texto";
+import { useFechaDiferida, AVISO_BORRAR_PLAZO } from "@/lib/fechaDiferida";
 import { ICO_ENT } from "@/lib/secciones";
 import { opcionesResp } from "@/lib/personas";
 import LinkPreviews from "@/components/LinkPreviews";
@@ -73,7 +74,21 @@ export default function VistaRapida({ pubId }: { pubId: string }) {
     setData(r);
   };
 
-  const cerrar = () => { setAbierto(false); setData(null); setError(""); setCargando(false); };
+  /* ── CERRAR TIENE QUE SOLTAR LOS CAMPOS DE FECHA ──
+     ⚠ Se guardan al salir del campo, y aquí puede no haber salida: el fondo
+     cierra en `mousedown`, antes de que el navegador mueva el foco, así que el
+     `blur` no llega nunca. Y cerrar no desmonta este componente —solo el
+     portal—, así que tampoco hay limpieza que aproveche.
+     El ref se rellena en un efecto de más abajo, cuando los hooks ya existen:
+     `cerrar` se declara aquí porque lo usan el Esc y el fondo, que están antes. */
+  const soltarFechas = useRef<() => Promise<void>>(async () => {});
+  const cerrar = () => {
+    /* Sin `await`: cerrar no puede esperar a la red. Si el guardado falla, el
+       aviso no se verá —el panel ya no está—, pero el campo se corrige solo y
+       al reabrir se ve la verdad, que es lo que importa. */
+    void soltarFechas.current();
+    setAbierto(false); setData(null); setError(""); setCargando(false);
+  };
 
   useEffect(() => {
     if (!abierto) return;
@@ -100,16 +115,24 @@ export default function VistaRapida({ pubId }: { pubId: string }) {
      —comentar, reaccionar, estado, responsable, enterado— para que dos cambios
      rápidos no disparen refetches en carrera. try/catch por si una acción
      rechaza en vez de devolver {error}. */
+  /* ⚠ Devuelve el resultado. No lo hacía, y con eso los campos de fecha no
+     podían saber si su guardado había salido: se quedaban enseñando una fecha
+     que la base había rechazado. Los demás controles lo siguen ignorando. */
   const correr = async (accion: () => Promise<any>, alTerminar?: () => void) => {
-    if (ocupado) return;
+    /* Y el candado tampoco devolvía nada: un guardado que se come el candado
+       se descartaba en silencio. Ahora al menos quien lo mandó se entera y
+       puede deshacer lo que pintó. */
+    if (ocupado) return { error: "Hay otra cosa guardándose; inténtalo otra vez." };
     setOcupado(true); setError("");
     try {
       const r: any = await accion();
-      if (r?.error) { setError(r.error); return; }
+      if (r?.error) { setError(r.error); return r; }
       await trasAccion();
       alTerminar?.();
+      return r;
     } catch {
       if (montado.current) setError("No se pudo completar la acción.");
+      return { error: "No se pudo completar la acción." };
     } finally {
       if (montado.current) setOcupado(false);
     }
@@ -124,6 +147,39 @@ export default function VistaRapida({ pubId }: { pubId: string }) {
   const perfiles: { id: string; nombre: string }[] = data?.perfiles || [];
   const userId: string = data?.userId || "";
   const esAv = caso ? llevaEnterado(caso.tipo) : false;
+  /* La fecha límite se guarda cuando se termina de escribir, no en cada
+     casilla. El hook va aquí arriba —y no dentro del JSX— porque un hook no
+     puede vivir detrás de un `&&`: el pop-up pinta el bloque solo cuando hay
+     caso, y llamarlo ahí cambiaría el número de hooks entre renders. */
+  const fl = useFechaDiferida(
+    caso?.fecha_limite ? String(caso.fecha_limite).slice(0, 10) : null,
+    (v: string) => correr(() => cambiarFechaLimite(pubId, v)),
+    { avisoAlBorrar: AVISO_BORRAR_PLAZO });
+  /* El inicio, igual. Sin aviso al borrar: quitarlo no arrastra nada. */
+  const fi = useFechaDiferida(
+    caso?.fecha_inicio ? String(caso.fecha_inicio).slice(0, 10) : null,
+    (v: string) => correr(() => cambiarFechaInicio(pubId, v)),
+    { avisoAlBorrar: "¿Quitar la fecha de inicio del caso?" });
+  /* Y la hora. Estaba en `onBlur`, que ya evitaba guardar el «10:» de en
+     medio; pero salir del campo con los minutos a medias sigue mandando el
+     vacío —«quitó la hora»— y eso no lo pidió nadie. La misma regla para los
+     tres campos: se guarda al terminar, y el vacío se pregunta. */
+  const fh = useFechaDiferida(
+    caso?.hora ? String(caso.hora).slice(0, 5) : null,
+    (v: string) => correr(() => cambiarHora(pubId, v)),
+    { avisoAlBorrar: "¿Quitar la hora del caso?" });
+  /* Sin `deps`: se reescribe en cada render para que `cerrar` llame siempre a
+     los cierres de ESTE render y no a los de uno viejo. */
+  /* ⚠ De uno en uno, esperando. Los tres comparten el candado `ocupado`, pero
+     los tres leen el de ESTE render —que es `false`—, así que lanzarlos a la
+     vez serían tres escrituras concurrentes sobre el mismo caso: y si una de
+     ellas vacía la fecha límite, la acción borra además el inicio y la hora,
+     de modo que el orden de llegada decidiría qué sobrevive. */
+  useEffect(() => {
+    soltarFechas.current = async () => {
+      await fl.soltarYa(); await fi.soltarYa(); await fh.soltarYa();
+    };
+  });
   const reaccionar = (emoji: string) => correr(() => toggleReaccion(pubId, null, emoji, null));
   const marcarEnterado = () => correr(() => toggleEnterado(pubId));
 
@@ -216,9 +272,12 @@ export default function VistaRapida({ pubId }: { pubId: string }) {
                     <span className="k">Empieza</span>
                     <input type="date" disabled={ocupado}
                       title="Cuándo empieza. Vacío si el caso no dura."
-                      value={caso.fecha_inicio ? String(caso.fecha_inicio).slice(0, 10) : ""}
+                      value={fi.valor}
                       max={caso.fecha_limite ? String(caso.fecha_limite).slice(0, 10) : undefined}
-                      onChange={e => { const v = e.target.value; correr(() => cambiarFechaInicio(pubId, v)); }} />
+                      onFocus={fi.alEntrar}
+                      onKeyDown={fi.alTecla}
+                      onChange={e => fi.alTeclear(e.target.value)}
+                      onBlur={e => fi.alSalir(e.target.value)} />
                   </div>
                   {/* En una reunión la fecha es cuándo OCURRE, no un plazo:
                       el rótulo lo dice, igual que en la ficha. Y la hora se
@@ -227,17 +286,27 @@ export default function VistaRapida({ pubId }: { pubId: string }) {
                   {llevaHora(caso.tipo) && (
                     <div className="gm">
                       <span className="k">Hora</span>
-                      <input type="time" disabled={ocupado}
-                        defaultValue={String(caso.hora || "").slice(0, 5)}
-                        onBlur={e => { const v = e.target.value; correr(() => cambiarHora(pubId, v)); }} />
+                      <input type="time" disabled={ocupado} value={fh.valor}
+                        onFocus={fh.alEntrar}
+                        onKeyDown={fh.alTecla}
+                        onChange={e => fh.alTeclear(e.target.value)}
+                        onBlur={e => fh.alSalir(e.target.value)} />
                     </div>
                   )}
                   <div className="gm">
                     <span className="k">{llevaHora(caso.tipo) ? "Cuándo es" : "Fecha límite"}</span>
+                    {/* ⚠ Diferido: un campo de fecha emite un cambio por cada
+                        casilla, así que en `onChange` se guardaban las fechas
+                        intermedias —y una casilla a medias manda el vacío, que
+                        aquí borra el plazo, el inicio y la hora—. Está contado
+                        en lib/fechaDiferida.ts. */}
                     <input type="date" disabled={ocupado}
-                      value={caso.fecha_limite ? String(caso.fecha_limite).slice(0, 10) : ""}
+                      value={fl.valor}
                       min={caso.fecha_inicio ? String(caso.fecha_inicio).slice(0, 10) : undefined}
-                      onChange={e => { const v = e.target.value; correr(() => cambiarFechaLimite(pubId, v)); }} />
+                      onFocus={fl.alEntrar}
+                      onKeyDown={fl.alTecla}
+                      onChange={e => fl.alTeclear(e.target.value)}
+                      onBlur={e => fl.alSalir(e.target.value)} />
                   </div>
                   <div className="gm">
                     <span className="k">Creado</span>
