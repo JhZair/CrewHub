@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { equiposGordos, enManosAhora, cartelesEquipo, kitsCrudos, comprasCombo,
-  cartelPorEquipo, quienTieneEquipo, contextoKits, un1 } from "@/lib/equipamientoDatos";
+  cartelPorEquipo, quienTieneEquipo, contextoKits, repartoPorPieza, piezasMontadas,
+  un1 } from "@/lib/equipamientoDatos";
+import ChipPiezas from "@/components/ChipPiezas";
 import BotonComprobar from "@/components/BotonComprobar";
 import FilasEquipo from "@/components/FilasEquipo";
 import PonerSubcategoria from "@/components/PonerSubcategoria";
@@ -187,11 +189,22 @@ export default async function Equipamiento({ searchParams }: {
     });
   }
 
-  /* ⚠ Lo que le toca a cada pieza de un combo, y las piezas montadas dentro
-     de un equipo, se calculaban aquí y solo los leían la entrega y los kits.
-     Se fueron con ellos a `lib/equipamientoDatos`. El total del inventario que
-     se pinta arriba NO los usa: `valorInventario` reparte el precio de un
-     combo por su cuenta, sobre las mismas unidades. */
+  /* ── LAS PIEZAS MONTADAS DENTRO DE CADA EQUIPO ──
+     El chip «🔩 N piezas» estaba en la entrega y en los kits, y faltaba justo
+     donde más se busca: la lista del inventario. Buscas «soporte de pecho»,
+     te salen dos, y la que va con su correa montada dentro se lee igual que la
+     que está suelta — así que se elige la equivocada, o se abre ficha por ficha
+     para averiguarlo.
+     `repartoPorPieza` y no `contextoCombos`: lo único que hace falta de allí es
+     cuánto le toca a cada pieza sin precio propio, y la versión completa
+     recorre quinientos equipos para armar cinco campos que esta pantalla no
+     pinta — los mismos que se sacaron de aquí en su día.
+     El total del inventario de arriba NO usa nada de esto: `valorInventario`
+     reparte el precio de un combo por su cuenta, sobre las mismas unidades. */
+  const piezasDe = piezasMontadas(
+    (eqs || []) as any[], cartelPorEq, comboPorEq,
+    repartoPorPieza((eqs || []) as any[], comprasRaw ? { data: comprasRaw } : null),
+  );
 
   /* ⚠ `eqsConDueno` —el inventario entero con dueño, combo, kits y piezas—
      vivía aquí y cruzaba a `EntregaLote` y a `PanelKits` en cada visita. Se
@@ -458,6 +471,15 @@ export default async function Equipamiento({ searchParams }: {
                     ✍ {catDe(x)}
                   </span>
                 )}
+
+                {/* ── LO QUE LLEVA ATORNILLADO DENTRO ──
+                    Va ANTES del combo y de los kits, y no al final de la línea:
+                    es lo único de la fila que cambia lo que tienes en la mano.
+                    Dos «Soporte De Pecho Para Cámara» se leen idénticos, y uno
+                    va con su correa montada: sin este chip la única forma de
+                    saberlo es abrir la ficha. Al pulsarlo dice CUÁLES, con foto
+                    y precio, sin salir de la lista. */}
+                <ChipPiezas piezas={piezasDe.get(x.id) || []} />
 
                 {/* Los dos ejes: lo que ENTRÓ junto y lo que SALE junto. No se
                     pueden deducir mirando la cámara. */}

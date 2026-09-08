@@ -3,6 +3,7 @@ import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { EntPicker, type CatalogoItem } from "@/components/Composer";
 import { prestarEquipos } from "@/app/actions";
+import ChipPiezas, { type PiezaMontada } from "@/components/ChipPiezas";
 import { buscadorDe, pal } from "@/lib/buscar";
 
 /* 📌 ASIGNAR — dar de alta la dotación de alguien de una vez.
@@ -34,6 +35,11 @@ type Eq = {
   id: string; folio?: string | null; nombre: string;
   categoria?: string | null; subcategoria?: string | null;
   estado?: string | null; cartel?: string | null;
+  /** Piezas montadas dentro. Un ensamblado se asigna como UNA cosa, pero lo
+   *  que queda a cargo de alguien es el equipo Y lo que lleva atornillado: la
+   *  laptop con su cargador dentro no es la misma laptop. Y el día que se le
+   *  quita, hay que contar contra esa lista. */
+  piezas?: PiezaMontada[];
 };
 
 const mini = (url?: string | null) => (
@@ -161,6 +167,7 @@ export default function AsignarLote({ equipos, personas }: {
                 {mini(e.cartel)}
                 {e.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c", fontSize: 10.5 }}>{e.folio}</span>}
                 <span style={{ flex: 1, fontSize: 13.5 }}>{e.nombre}</span>
+                <ChipPiezas piezas={e.piezas || []} />
                 {e.categoria && <span style={{ color: "var(--dim)", fontSize: 11.5 }}>{e.categoria}</span>}
               </label>
             ))}
@@ -188,6 +195,7 @@ export default function AsignarLote({ equipos, personas }: {
                   {mini(e.cartel)}
                   {e.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c", fontSize: 10.5 }}>{e.folio}</span>}
                   <span style={{ flex: 1, fontSize: 13.5 }}>{e.nombre}</span>
+                  <ChipPiezas piezas={e.piezas || []} />
                   {/* Quitar desde AQUÍ: si sobra uno, se ve mirando esta lista,
                       y volver a buscarlo en la de la izquierda para desmarcarlo
                       es el paso que sobra. */}

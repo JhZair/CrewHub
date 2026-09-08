@@ -44,7 +44,7 @@ export default async function AsignadosEquipos() {
   if (!user) redirect("/login");
 
   const [inv, cat] = await Promise.all([inventarioDePaneles(), catalogosEntrega()]);
-  const { equipos, enManos, eEquipos, eManos, cartelPorEq } = inv;
+  const { equipos, enManos, eEquipos, eManos, cartelPorEq, piezasDe } = inv;
 
   const apartadas = await asignacionesApartadas(enManos as any[]);
   const vivas = asignacionesVivas(enManos as any[], (apartadas.data || []) as any[]);
@@ -66,6 +66,7 @@ export default async function AsignadosEquipos() {
       perId: per?.id || "_", per: per?.alias || per?.nombre || "sin registrar",
       foto: per?.foto_url || null,
       entrego: ent?.nombre || null,
+      piezas: piezasDe.get(eq?.id) || [],
       fuera: !!prestada, fueraEn: pr?.nombre || null,
     };
   });
@@ -90,6 +91,9 @@ export default async function AsignadosEquipos() {
           id: e.id, folio: e.folio, nombre: e.nombre,
           categoria: e.categoria, subcategoria: e.subcategoria,
           estado: e.estado, cartel: cartelPorEq.get(e.id) || null,
+          /* Lo que lleva montado dentro. Ya viene resuelto de
+             `inventarioDePaneles`: nada de funciones cruzando la frontera. */
+          piezas: piezasDe.get(e.id) || [],
         }))}
         personas={cat.personas} />
 

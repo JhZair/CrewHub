@@ -5,6 +5,7 @@ import Link from "@/components/Enlace";
 import Avatar from "@/components/Avatar";
 import { quitarAsignacion } from "@/app/actions";
 import CajaBuscar from "@/components/CajaBuscar";
+import ChipPiezas, { type PiezaMontada } from "@/components/ChipPiezas";
 import { buscadorDe, pal } from "@/lib/buscar";
 import { META_MOTIVO, MOTIVOS_ELEGIBLES, type MotivoFin } from "@/lib/asignaciones";
 
@@ -42,6 +43,11 @@ export type AsigItem = {
   fueraEn?: string | null;
   /** `true` aunque no se sepa el proyecto. */
   fuera?: boolean;
+  /** Lo que lleva atornillado dentro. Aquí es donde más falta hace: el día que
+   *  alguien deja el colectivo, lo que hay que recuperar no son ocho fichas,
+   *  son ocho fichas MÁS lo que va montado dentro de ellas — y eso no se ve
+   *  mirando el equipo. */
+  piezas?: PiezaMontada[];
 };
 
 const soles = (n: number) => `S/ ${Math.round(n).toLocaleString("es-PE")}`;
@@ -185,6 +191,8 @@ function Fila({ it, alHecho }: { it: AsigItem; alHecho: () => void }) {
           <div className="eq-uso-l1">
             {it.folio && <span className="badge eq-uso-folio">{it.folio}</span>}
             <Link href={`/entidad/equipamiento/${it.eqId}`} className="eq-uso-nom">{it.nombre}</Link>
+            <ChipPiezas piezas={it.piezas || []}
+              titulo="Va armado: pulsa para ver qué piezas lleva dentro" />
             {/* Sigue siendo suyo, pero hoy no lo tiene encima. Se dice en la
                 fila y no escondiéndola: quien busca «¿de quién es esto?» tiene
                 que encontrarlo igual. */}

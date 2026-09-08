@@ -187,6 +187,41 @@ export function contextoKits(crudos: { kits: any; puente: any }) {
 }
 
 /** Los combos con lo que trajo cada uno, y cuánto le toca a cada pieza. */
+/**
+ * CUÁNTO LE TOCA A CADA PIEZA de un combo: el total de la boleta menos lo que
+ * ya está valorado pieza a pieza, repartido entre las que no tienen precio
+ * propio. Una pieza sola no puede calcularlo —no conoce a sus hermanas— y por
+ * eso viaja ya resuelto.
+ *
+ * Aparte de `contextoCombos` a propósito: el inventario necesita ESTO para
+ * pintar el precio de las piezas montadas, y no necesita nada más de allí.
+ * Llamar a `contextoCombos` entero le costaría recorrer quinientos equipos
+ * para armar `nUnidades`, `categorias`, `cartel`, `nVivas` y `nProblema` —los
+ * cinco campos que se sacaron de esa pantalla justamente por eso—.
+ */
+export function repartoPorPieza(
+  eqs: any[], compras: any, porCombo?: Map<string, any[]>,
+): Map<string, number> {
+  const grupos = porCombo ?? (() => {
+    const m = new Map<string, any[]>();
+    (eqs || []).forEach((e: any) => {
+      if (e.compra_id) m.set(e.compra_id, [...(m.get(e.compra_id) || []), e]);
+    });
+    return m;
+  })();
+  const r = new Map<string, number>();
+  ((compras?.data || []) as any[]).forEach((c: any) => {
+    const us = grupos.get(c.id) || [];
+    const total = Number(c.total) || 0;
+    if (!total || !us.length) return;
+    const yaValorado = us.reduce((a: number, u: any) => a + (Number(u.valor_compra) || 0), 0);
+    const sinPrecio = us.filter((u: any) => !(Number(u.valor_compra) > 0)).length;
+    if (!sinPrecio) return;
+    r.set(c.id, Math.max(0, total - yaValorado) / sinPrecio);
+  });
+  return r;
+}
+
 export function contextoCombos(eqs: any[], compras: any, cartelPorEq: Map<string, string>) {
   /* Cada combo con sus unidades. Se cuenta aquí, sobre `eqs`, que ya está en
      memoria: una consulta por combo serían N viajes para un número. */
@@ -210,20 +245,7 @@ export function contextoCombos(eqs: any[], compras: any, cartelPorEq: Map<string
     };
   });
 
-  /* CUÁNTO LE TOCA A CADA PIEZA: el total de la boleta menos lo que ya está
-     valorado pieza a pieza, repartido entre las que no tienen precio propio.
-     Una pieza sola no puede calcularlo —no conoce a sus hermanas— y por eso
-     viaja ya resuelto. */
-  const porPiezaDeCombo = new Map<string, number>();
-  combos.forEach((c: any) => {
-    const us = porCombo.get(c.id) || [];
-    const total = Number(c.total) || 0;
-    if (!total || !us.length) return;
-    const yaValorado = us.reduce((a: number, u: any) => a + (Number(u.valor_compra) || 0), 0);
-    const sinPrecio = us.filter((u: any) => !(Number(u.valor_compra) > 0)).length;
-    if (!sinPrecio) return;
-    porPiezaDeCombo.set(c.id, Math.max(0, total - yaValorado) / sinPrecio);
-  });
+  const porPiezaDeCombo = repartoPorPieza(eqs, compras, porCombo);
 
   const comboPorEq = new Map<string, any>();
   (eqs || []).forEach((x: any) => {
