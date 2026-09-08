@@ -2506,38 +2506,6 @@ export default async function Entidad({ params, searchParams }: {
            ninguno. */
         cartelHref={conGaleria && (fotosRaw || []).length ? "#fotos" : undefined} />
 
-      {/* ── LA GALERÍA, JUSTO BAJO LA CABECERA ──
-          Se ve sin buscarla. Estas fotos las mira quien está delante del equipo
-          con una duda —cómo se monta, qué trae la caja, cuál de los dos cables
-          es el bueno—, no quien viene a explorar la ficha; una pestaña más que
-          hay que saber que existe es una pestaña que nadie abre.
-          Va DEBAJO de la cabecera y no dentro: el cartel es la identidad de la
-          ficha y sale del hueco del banner, y meter ahí una tira que crece
-          desplazaría el nombre según cuántas fotos haya. */}
-      {conGaleria && (eFotos ? (
-        /* El fallo se DICE, y con qué hacer. Sin esto la galería sale vacía y
-           se lee como «este equipo no tiene fotos», que es lo contrario de lo
-           que pasa: no se pudieron leer. */
-        <div className="card" style={{ borderLeft: "3px solid var(--yellow)" }}>
-          <b style={{ color: "var(--yellow)", fontSize: 13 }}>⚠ No se pudieron leer las fotos</b>
-          <div style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 5, lineHeight: 1.55 }}>
-            {/(entidad_foto|does not exist|schema cache|PGRST20)/i.test(eFotos.message)
-              ? <>Falta correr <code>db/entidad-foto.sql</code> en Supabase.</>
-              : eFotos.message}
-          </div>
-        </div>
-      ) : (
-        <GaleriaFotos tipo={params.tipo} entidadId={params.id}
-          fotos={(fotosRaw || []).map((f: any) => ({ id: f.id, url: f.url, pie: f.pie }))}
-          /* `?foto=N` abre el visor por esa foto. Así el cartel puede abrirla
-             con un enlace —sin cruzar una función a un componente de cliente,
-             que es donde esto se rompe— y de paso la URL se puede mandar por
-             chat: «mira la foto 3 del A-540». */
-          abrirEn={(() => {
-            const n = Number((searchParams as any)?.foto);
-            return Number.isInteger(n) && n >= 0 && n < (fotosRaw || []).length ? n : null;
-          })()} />
-      ))}
 
       {/* El nombre arranca a la derecha del cartel que sobresale. Pero cuando
           hay stepper (postulación/convocatoria/proyecto) el título arranca desde
@@ -2678,6 +2646,39 @@ export default async function Entidad({ params, searchParams }: {
               resultado se estampa sobre la ficha (con «✕» para cerrarlo). */}
           <div className={`card${resCarne ? " con-sello" : ""}`} style={resCarne ? { position: "relative" } : undefined}>
             {resCarne && <SelloResultado {...resCarne} variante="carne" />}
+
+            {/* ── LAS FOTOS, LO PRIMERO DEL CARNÉ ──
+                Estaban bajo la cabecera, a lo ancho de la pantalla. Aquí valen
+                más: esta columna es la ficha del PRODUCTO —qué es, en qué
+                estado, cuánto costó— y la foto es el primer dato de esa lista,
+                no un adorno de la cabecera. Quien abre un «Maletín de Hombro
+                para Cámaras» viene a mirar cuál de los tres maletines es.
+                Y el ancla `#fotos` del cartel sigue funcionando: viaja con el
+                bloque. */}
+            {conGaleria && (eFotos ? (
+              /* El fallo se DICE, y con qué hacer. Sin esto la galería sale
+                 vacía y se lee como «este equipo no tiene fotos», que es lo
+                 contrario de lo que pasa: no se pudieron leer. */
+              <div style={{ borderLeft: "3px solid var(--yellow)", paddingLeft: 10, marginBottom: 12 }}>
+                <b style={{ color: "var(--yellow)", fontSize: 12.5 }}>⚠ No se pudieron leer las fotos</b>
+                <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 4, lineHeight: 1.5 }}>
+                  {/(entidad_foto|does not exist|schema cache|PGRST20)/i.test(eFotos.message)
+                    ? <>Falta correr <code>db/entidad-foto.sql</code> en Supabase.</>
+                    : eFotos.message}
+                </div>
+              </div>
+            ) : (
+              <GaleriaFotos tipo={params.tipo} entidadId={params.id}
+                fotos={(fotosRaw || []).map((f: any) => ({ id: f.id, url: f.url, pie: f.pie }))}
+                /* `?foto=N` abre el visor por esa foto. Así el cartel puede
+                   abrirla con un enlace —sin cruzar una función a un componente
+                   de cliente, que es donde esto se rompe— y de paso la URL se
+                   puede mandar por chat: «mira la foto 3 del A-540». */
+                abrirEn={(() => {
+                  const n = Number((searchParams as any)?.foto);
+                  return Number.isInteger(n) && n >= 0 && n < (fotosRaw || []).length ? n : null;
+                })()} />
+            ))}
             {/* Cabecera del carné: QUIÉN compite. El banner del proyecto (con su
                 cartel y nombre) al tope, para que a simple vista se lea de qué
                 proyecto es esta postulación —no solo el sello del concurso. */}

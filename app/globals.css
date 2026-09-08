@@ -7816,7 +7816,9 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
    empuja el resto de la ficha hacia abajo según cuántas fotos haya, y lo que
    está debajo —los datos del equipo— es lo que más se mira.
    ══════════════════════════════════════════════════════════════════════════ */
-.gal{margin:10px 0 14px}
+/* Vive DENTRO del carné, que es una columna estrecha: sin margen lateral y
+   con el de abajo justo, para que la primera fila de datos no quede lejos. */
+.gal{margin:0 0 12px}
 .gal-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:7px}
 .gal-t{font-size:10.5px;text-transform:uppercase;letter-spacing:1.1px;
   color:var(--dim);font-weight:700}
@@ -7826,7 +7828,10 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
 .gal-msg{color:var(--red);font-size:12px;line-height:1.5}
 .gal-tira{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin}
 /* `flex:none` o con doce fotos se aplastan hasta desaparecer. */
-.gal-mini{flex:none;position:relative;width:118px;height:88px;padding:0;
+/* 92×70 y no 118×88: en la columna del carné —unos 300 px— con las grandes
+   solo entraban dos y media, y una tira que hay que desplazar para ver la
+   tercera foto de tres es una tira que no enseña nada. Así entran tres. */
+.gal-mini{flex:none;position:relative;width:92px;height:70px;padding:0;
   border:1px solid var(--border);border-radius:10px;overflow:hidden;
   background:var(--card);cursor:zoom-in;transition:border-color .12s}
 .gal-mini:hover{border-color:var(--accent)}
