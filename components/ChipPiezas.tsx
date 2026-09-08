@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "@/components/Enlace";
 import { txtEstadoEq, colorEstadoEq } from "@/lib/estadosEquipo";
 
@@ -53,6 +54,34 @@ const valeM = (p: PiezaMontada): { v: number; esti: boolean } => {
  * la ventana y ningún overflow lo corta, pero entonces hay que decirle dónde:
  * se mide el botón al abrir y se coloca debajo, corrigiendo si se saldría por
  * el borde derecho o por abajo.
+ * ── Y POR QUÉ, ADEMÁS, SE PINTA EN UN PORTAL ──
+ * `fixed` esquiva el `overflow`, pero no esquiva la OPACIDAD. Una pieza que
+ * hoy no puede salir se apaga entera —«lo tiene JohnO»— con
+ * `.kit-pz.ocupada .kit-pz-l2 > *{opacity:.5}`, y este chip es hijo directo
+ * de esa línea: el pop-up salía translúcido, con los kits de detrás leyéndose
+ * a través de las ocho piezas. La opacidad de un antepasado NO se puede
+ * deshacer desde dentro; no hay `opacity:1` que valga. Y de paso crea un
+ * contexto de apilamiento, así que el z-index 41 dejaba de competir con la
+ * página y las tarjetas de abajo se le pintaban encima.
+ * Había más, y peor de ver: las filas de aquí dentro usan `.kit-pz-img` y
+ * `.kit-pz-folio`, las MISMAS clases que la fila de fuera, así que también les
+ * caía `.kit-pz.ocupada .kit-pz-img{opacity:.34;filter:grayscale(1)}`. Las
+ * ocho miniaturas salían al 34% y en blanco y negro —encima del 50% heredado—
+ * y CAMBIABAN al pasar el ratón por la fila de detrás. Se venía a este pop-up
+ * a reconocer piezas por la foto.
+ * Colgado de `document.body` no hereda nada de la fila: ni opacidad, ni
+ * `transform`, ni `filter`, ni recortes, ni reglas escritas «dentro de».
+ *
+ * ⚠ LO QUE SÍ CAMBIA CON EL PORTAL: los eventos NATIVOS. Los de React siguen
+ * burbujeando por el árbol de React, así que los `stopPropagation` de aquí
+ * siguen impidiendo que el `<a class="kit-pz">` de detrás navegue. Pero la
+ * activación nativa del `<label class="ent-lote-fila">` de EntregaLote depende
+ * del árbol del DOM, y la tapa —un `<span>`, o sea NO es contenido
+ * interactivo— vivía dentro de ese label: un clic en cualquier punto de la
+ * pantalla habría marcado la casilla, y lo único que lo impedía era el
+ * `preventDefault` de la tapa. Fuera del label eso ya no puede pasar. El
+ * `preventDefault` se queda, pero de cinturón, no de único freno.
+ *
  * Se cierra al hacer scroll en vez de perseguir al botón: un pop-up que sigue
  * a su fila mientras la lista se mueve es peor que uno que se va. Y el cierre
  * escucha el scroll de TODA la página en captura, no la rueda sobre una capa:
@@ -170,7 +199,11 @@ export default function ChipPiezas({ piezas, titulo = "Va armado: lleva piezas m
         🔩 {piezas.length} pieza{piezas.length === 1 ? "" : "s"}
       </button>
 
-      {abierto && (
+      {/* `typeof document` es el mismo guardia que Agenda y LinkPreview: en el
+          servidor no hay `body` al que colgarlo. Aquí nunca llega a hacer
+          falta —esto solo se abre con un clic— pero la comprobación es la que
+          hace que no dependa de eso. */}
+      {abierto && typeof document !== "undefined" && createPortal(
         <>
           {/* La capa que cierra al pulsar fuera —y al hacer scroll, porque el
               pop-up está anclado a una posición de pantalla que deja de ser la
@@ -236,7 +269,8 @@ export default function ChipPiezas({ piezas, titulo = "Va armado: lleva piezas m
             ))}
             </span>
           </span>
-        </>
+        </>,
+        document.body,
       )}
     </span>
   );

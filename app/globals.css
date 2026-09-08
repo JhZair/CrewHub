@@ -4193,7 +4193,13 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
 .ens-padre-txt{display:flex;flex-direction:column;gap:3px;min-width:0}
 .ens-padre-n{color:var(--violet);font-weight:700;font-size:13px}
 .ens-padre-d{color:var(--muted);font-size:12px;line-height:1.5}
-.ens-chip-wrap{position:relative;display:inline-flex;flex:none}
+/* SIN `position:relative`: no servia de nada. El pop-up es `fixed` y solo lo
+   contendrian `transform`, `filter`, `perspective`, `contain` o `will-change`
+   —nunca `relative`—, y ahora ademas se pinta en un portal colgado de <body>.
+   Dejarlo escrito sugiere que el pop-up se ancla aqui, que es justo lo que
+   hay que NO creerse al tocar esto. `inline-flex` y `flex:none` si hacen
+   falta: el chip es item flex de .kit-pz-l2, .eq-uso-l1 y .ent-lote-fila. */
+.ens-chip-wrap{display:inline-flex;flex:none}
 .ens-tapa{position:fixed;inset:0;z-index:40}
 /* `fixed`, no `absolute`: las listas que lo contienen tienen overflow-y:auto
    y un hijo absolute se recorta contra sus bordes — el pop-up salia cortado
@@ -4329,8 +4335,17 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
 .kit-pz.ocupada .kit-pz-folio{opacity:.45}
 /* Todo lo de la segunda linea baja MENOS el motivo: la subcategoria y el
    precio son contexto —se apagan con la pieza— y el «lo tiene KatyP» es lo
-   unico accionable de la fila, asi que se queda como esta. */
-.kit-pz.ocupada .kit-pz-l2 > *:not(.kit-pz-por){opacity:.5}
+   unico accionable de la fila, asi que se queda como esta.
+   Y el chip de piezas montadas baja MENOS, no la mitad: es un BOTON. Que la
+   pieza este fuera no cambia lo que lleva dentro —al recibirla hay que contar
+   contra esa lista, justamente— y un control al 50% ni se lee ni parece que
+   se pueda pulsar. Al 75% sigue leyendose como secundario sin dejar de
+   parecer pulsable; a brillo entero se convertiria en lo mas encendido de una
+   fila apagada, por encima del nombre de la propia pieza.
+   ⚠ El `:not()` da por hecho que el chip es hijo DIRECTO de .kit-pz-l2. Si
+   algun dia se envuelve en algo, vuelve al 50% sin dar ningun error. */
+.kit-pz.ocupada .kit-pz-l2 > *:not(.kit-pz-por):not(.ens-chip-wrap){opacity:.5}
+.kit-pz.ocupada .kit-pz-l2 > .ens-chip-wrap{opacity:.75}
 /* El precio deja de gritar en verde azulado. Un numero encendido al lado de
    una pieza que hoy no puede salir se lee como «esto esta bien». */
 .kit-pz.ocupada .kit-pz-precio{color:var(--dim);font-weight:600}
