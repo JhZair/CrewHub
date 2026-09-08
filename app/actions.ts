@@ -14,8 +14,15 @@ function revalidarEquipos() {
   revalidatePath("/equipamiento");
   revalidatePath("/equipamiento/entrega");
   revalidatePath("/equipamiento/combos");
+  revalidatePath("/equipamiento/asignados");
 }
 import { entregableEq, porQueNoEq, enRonda, txtEstadoEq } from "@/lib/estadosEquipo";
+import { META_MOTIVO, esMotivo, estadoTrasQuitar, type MotivoFin } from "@/lib/asignaciones";
+/* Objeto o arreglo segun como PostgREST resuelva la relacion. Leer solo una de
+   las dos formas deja el dato en blanco sin que nada falle. Es el mismo de
+   lib/equipamientoDatos, repetido aqui porque este fichero es de servidor y no
+   puede importar de un modulo que arrastre el cliente de Supabase del navegador. */
+const un1 = (v: any) => (Array.isArray(v) ? v[0] : v);
 import { ESTADOS_COMP } from "@/lib/compromisos";
 import { META_RENDICION, esTablaRendicion, anclaRendicion, duenoDe, type TablaRendicion } from "@/lib/rendicionHilo";
 import { COLS_DUENO_COM, COLS_DUENO_COM_EXTRA } from "@/lib/vinculoComentario";
@@ -2081,7 +2088,10 @@ export async function contextoDelDia(personaId: string, fecha: string) {
       q => q.eq("entregado_por", uid).eq("desde", fecha)) : Promise.resolve({ data: [] }),
     prestamosCon(supabase, "id,desde,tipo,PROY,equipo:equipamiento(id,folio,nombre)",
       q => q.eq("persona_id", personaId).eq("desde", fecha)),
-    prestamosCon(supabase, "id,hasta,tipo,PROY,equipo:equipamiento(id,folio,nombre)",
+    /* `motivo_fin` también: sin él, el día de Michel decía «↩ Devolvió la
+       laptop» el día que la laptop salió a un rodaje de otra persona. Michel no
+       devolvió nada — su asignación se apartó, y apartarse pone `hasta`. */
+    prestamosCon(supabase, "id,hasta,tipo,motivo_fin,PROY,equipo:equipamiento(id,folio,nombre)",
       q => q.eq("persona_id", personaId).eq("hasta", fecha)),
     supabase.from("rhe").select("id,numero,monto,concepto,fecha")
       .eq("persona_id", personaId).eq("fecha", fecha),
@@ -2259,9 +2269,23 @@ export async function contextoDelDia(personaId: string, fecha: string) {
     /* PARA QUE salieron. El prestamo lo sabe y la ventana no lo decia, y es
        justo el contexto de trabajo que se viene a buscar aqui. */
     (p) => (nombreProy(p) ? `para ${nombreProy(p)}` : null));
+  /* ── LO QUE SE CIERRA NO ES SIEMPRE UNA DEVOLUCIÓN ──
+     Cerrar una custodia pone `hasta`, y hay TRES cosas que lo hacen: devolver
+     un préstamo, apartar una asignación porque el equipo salió a una salida, y
+     terminarla de verdad. Decirlas todas «↩ Devolvió» era impreciso cuando
+     solo existía la primera; con las otras dos es un hecho falso, y de los que
+     se leen en el peor momento: «Michel devolvió la laptop» el día en que la
+     laptop se la llevó otro y sigue siendo suya. */
   enTandas(presDevolvio.data || [],
-    () => "↩", () => "Devolvió",
-    (p) => (nombreProy(p) ? `de ${nombreProy(p)}` : null));
+    (p) => (p.motivo_fin === "prestado" ? "📌" : p.tipo === "asignacion" ? "📌" : "↩"),
+    (p) => (p.motivo_fin === "prestado" ? "Prestó lo suyo"
+      : p.tipo === "asignacion" ? "Dejó de tener a su cargo" : "Devolvió"),
+    (p) => {
+      if (p.motivo_fin === "prestado") return "vuelve a ser suyo al devolverlo";
+      const m = p.tipo === "asignacion" && esMotivo(p.motivo_fin)
+        ? META_MOTIVO[p.motivo_fin as MotivoFin].txt.toLowerCase() : null;
+      return m || (nombreProy(p) ? `de ${nombreProy(p)}` : null);
+    });
   (rhes.data || []).forEach((r: any) => hechos.push({
     at: null, ico: "🧾", clase: "rhe",
     txt: `RHE ${r.numero || ""} · S/ ${Math.round(Number(r.monto) || 0).toLocaleString("es-PE")}`.trim(),
@@ -8593,6 +8617,13 @@ export async function desensamblar(piezaIds: string[]) {
   return { ok: true, sueltas: ids.length };
 }
 
+/* ENTREGAR O ASIGNAR UN LOTE.
+ *
+ * Las dos cosas son la misma escritura —una custodia: quién lo tiene, desde
+ * cuándo, quién se lo dio— y solo cambia su naturaleza, que es la columna
+ * `tipo`. Está razonado en db/asignacion.sql. Tener dos acciones gemelas
+ * habría sido tener dos sitios donde arreglar el mismo fallo.
+ */
 export async function prestarEquipos(
   equipoIds: string[], personaId: string, proyectoId: string | null, nota: string,
   /* De qué kit sale CADA equipo, no uno para todo el lote. Una salida de
@@ -8600,7 +8631,21 @@ export async function prestarEquipos(
      drone— y con un solo `kitId` los doce equipos quedaban etiquetados con
      el mismo, o sea que la mitad del historial era falso. A la vuelta, «¿el
      kit volvió entero?» se contestaba contra el kit equivocado. */
-  kitDe?: Record<string, string> | null
+  kitDe?: Record<string, string> | null,
+  tipo: "prestamo" | "asignacion" = "prestamo",
+  /* ── LLEVARSE ALGO QUE ES DE ALGUIEN ──
+   * `asignado` es `entregable: false` y lo dice con todas sus letras: «para
+   * llevarse la laptop de Michel hay que hablar con Michel, no marcar una
+   * casilla». Eso sigue. Lo que cambia es que ahora, cuando SÍ se ha hablado
+   * con Michel, prestarla no destruye la asignación: se aparta y vuelve sola.
+   *
+   * Este permiso es explícito y no se deduce del estado, y esa es toda su
+   * razón de ser: la lista que vio el navegador puede tener minutos. Sin él,
+   * un equipo que pasó a estar asignado MIENTRAS alguien marcaba casillas
+   * saldría igual, apartando en silencio una asignación que quien entrega ni
+   * sabe que existe. Con él, el servidor distingue «lo elegí sabiendo de quién
+   * era» de «se volvió de alguien mientras yo elegía». */
+  conAsignados = false,
 ) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -8621,14 +8666,44 @@ export async function prestarEquipos(
      `undefined` pasaba por bueno y salía a rodaje algo que la pantalla ya
      marcaba como no disponible. Preguntar «¿es entregable?» no tiene ese
      agujero — la lista blanca es explícita, la negra siempre olvida un caso. */
-  const omitidos = (eqs || []).filter((e: any) => !entregableEq(e.estado))
+  /* Un asignado pasa SOLO si se prestó a sabiendas. Nunca al asignar: para
+     que un equipo cambie de dueño hay que quitárselo antes al anterior, y eso
+     es lo que dice el motivo «pasa a otra persona». Si se dejara pasar aquí,
+     reasignar sería un movimiento silencioso que nadie escribió. */
+  const vale = (e: any) => entregableEq(e.estado)
+    || (conAsignados && tipo === "prestamo" && e.estado === "asignado");
+  const omitidos = (eqs || []).filter((e: any) => !vale(e))
     .map((e: any) => `${e.folio || ""} ${e.nombre} (${porQueNoEq(e.estado)})`.trim());
-  const buenos = (eqs || []).filter((e: any) => entregableEq(e.estado)).map((e: any) => e.id);
-  if (!buenos.length) return { error: `Ninguno se puede entregar: ${omitidos.join(", ")}` };
+  const buenos = (eqs || []).filter(vale).map((e: any) => e.id);
+  if (!buenos.length) {
+    return { error: `Ninguno se puede ${tipo === "asignacion" ? "asignar" : "entregar"}: ${omitidos.join(", ")}` };
+  }
 
   const hoy = hoyLima();
-  // Lo que alguien más tuviera abierto se cierra hoy, igual que en el préstamo
-  // de a uno — pero para todo el lote de una vez.
+  /* ── LO QUE HABÍA ABIERTO, ANTES DE CERRARLO ──
+     Se lee primero porque hay que saber CUÁLES eran asignaciones: esas no se
+     cierran igual que un préstamo. Se apartan con `motivo_fin = 'prestado'` y
+     el préstamo nuevo guarda a cuál hay que volver. Sin este paso previo, al
+     devolver no habría forma de saber que la laptop era de Michel: la fila ya
+     estaría cerrada y sería indistinguible de una que terminó de verdad. */
+  const { data: abiertas, error: eAb } = await supabase.from("equipo_prestamos")
+    .select("id,equipamiento_id,tipo").in("equipamiento_id", buenos).is("hasta", null);
+  /* Se corta AQUÍ si esto falla. Tragarse el error dejaba `asigDe` vacío, y
+     entonces la asignación se cerraba sin motivo y sin puntero: destruida en
+     silencio, que es exactamente lo que este paso previo existe para evitar. */
+  if (eAb) return { error: `No se pudo leer quién tiene esos equipos: ${eAb.message}` };
+  const asigDe = new Map<string, string>();
+  for (const a of (abiertas || []) as any[]) {
+    if (a.tipo === "asignacion" && a.equipamiento_id) asigDe.set(a.equipamiento_id, a.id);
+  }
+
+  const idsAsig = [...asigDe.values()];
+  if (idsAsig.length) {
+    await supabase.from("equipo_prestamos")
+      .update({ hasta: hoy, motivo_fin: "prestado" }).in("id", idsAsig);
+  }
+  // El resto —préstamos de otra persona que quedaron sin cerrar— se cierra sin
+  // motivo, que es lo que significaba `hasta` antes de existir esa columna.
   await supabase.from("equipo_prestamos").update({ hasta: hoy })
     .in("equipamiento_id", buenos).is("hasta", null);
 
@@ -8639,15 +8714,42 @@ export async function prestarEquipos(
   const { error } = await supabase.from("equipo_prestamos").insert(
     buenos.map(id => ({
       equipamiento_id: id, persona_id: personaId,
-      proyecto_id: proyectoId || null, nota: (nota || "").trim() || null,
-      kit_id: kitDe?.[id] || null,
+      /* Una asignación NO es para un proyecto: es de la persona. La columna
+         existe y la acción la aceptaría, pero escribirla aquí convertiría en
+         dato una cosa que la ficha del equipo ya decide no preguntar. */
+      proyecto_id: tipo === "asignacion" ? null : (proyectoId || null),
+      nota: (nota || "").trim() || null,
+      kit_id: tipo === "asignacion" ? null : (kitDe?.[id] || null),
       entregado_por: user.id,
+      tipo,
+      reanuda_id: tipo === "prestamo" ? (asigDe.get(id) || null) : null,
     })));
-  if (error) return { error: error.message };
+  if (error) {
+    return {
+      error: /tipo|motivo_fin|reanuda/i.test(error.message)
+        ? "Falta correr db/asignacion-suspender.sql en Supabase."
+        : error.message,
+    };
+  }
 
   const { error: e2 } = await supabase.from("equipamiento")
-    .update({ estado: "en_uso" }).in("id", buenos);
+    .update({ estado: tipo === "asignacion" ? "asignado" : "en_uso" }).in("id", buenos);
   if (e2) return { error: `Se registraron ${buenos.length}, pero el estado no se actualizó: ${e2.message}` };
+
+  /* ── UNA ASIGNACIÓN SE ESCRIBE EN LA ACTIVIDAD DEL EQUIPO ──
+     Un préstamo se anota contra el PROYECTO (abajo) porque es un suceso del
+     rodaje. Una asignación no tiene proyecto: es un suceso del equipo, y de
+     los que más se preguntan después —«¿desde cuándo la tiene?», «¿quién se
+     la dio?»—. Hasta ahora no se anotaba en ningún sitio: la asignación
+     existía en la tabla y no aparecía en ningún feed. */
+  if (tipo === "asignacion") {
+    const quien = (await supabase.from("personas").select("nombre,alias").eq("id", personaId).single()).data;
+    const nom = quien?.alias || quien?.nombre || "alguien";
+    await supabase.from("actividad").insert(buenos.map(id => ({
+      entidad_tipo: "equipamiento", entidad_id: id, actor_id: user.id, tipo: "edicion",
+      detalle: { mensaje: `📌 se lo asignó a ${nom}${(nota || "").trim() ? ` — ${nota.trim()}` : ""}` },
+    })));
+  }
 
   /* La salida de equipos ES un suceso del proyecto, y por eso se anota contra
      el proyecto y no contra cada cámara: los eventos de una cámara son de la
@@ -8662,7 +8764,7 @@ export async function prestarEquipos(
   }
   buenos.forEach(id => revalidatePath(`/entidad/equipamiento/${id}`));
   revalidarEquipos();
-  return { entregados: buenos.length, omitidos };
+  return { entregados: buenos.length, omitidos, apartadas: idsAsig.length };
 }
 
 /* Devolver de golpe todo lo que tiene una persona. El reverso exacto de la
@@ -8679,7 +8781,7 @@ export async function devolverEquipos(prestamoIds: string[]) {
   /* Los ids de equipo salen de los propios préstamos, no del navegador: así no
      hay forma de cerrar un préstamo y liberar otro equipo. */
   const { data: pres, error: e0 } = await supabase.from("equipo_prestamos")
-    .select("id,equipamiento_id").in("id", ids).is("hasta", null);
+    .select("id,equipamiento_id,reanuda_id").in("id", ids).is("hasta", null);
   if (e0) return { error: e0.message };
   if (!pres?.length) return { error: "Esos préstamos ya estaban cerrados." };
 
@@ -8688,30 +8790,184 @@ export async function devolverEquipos(prestamoIds: string[]) {
     .update({ hasta: hoy }).in("id", pres.map((p: any) => p.id));
   if (error) return { error: error.message };
 
+  /* ── VUELVE A SU DUEÑO, NO AL ESTANTE ──
+     Si este préstamo apartó una asignación, la asignación se reabre con su
+     `desde` original: Michel la tiene desde marzo, y el rodaje fue un
+     paréntesis contado en la fila del préstamo, no una interrupción de su
+     custodia. Sin esto, devolver la laptop la dejaba «disponible» y el
+     siguiente que pasara se la llevaba. */
+  const reanudar = pres.map((p: any) => p.reanuda_id).filter(Boolean) as string[];
+  const vuelven = new Set<string>();
+  if (reanudar.length) {
+    const { data: reab } = await supabase.from("equipo_prestamos")
+      .update({ hasta: null, motivo_fin: null }).in("id", reanudar)
+      /* Solo las APARTADAS. Una que se quitó de verdad mientras el equipo
+         andaba fuera no puede resucitar al devolverlo. */
+      .eq("motivo_fin", "prestado")
+      .select("equipamiento_id");
+    for (const r of (reab || []) as any[]) if (r.equipamiento_id) vuelven.add(r.equipamiento_id);
+  }
+
   const eqIds = pres.map((p: any) => p.equipamiento_id).filter(Boolean);
-  const { error: e2 } = await supabase.from("equipamiento")
-    .update({ estado: "disponible" }).in("id", eqIds);
-  if (e2) return { error: `Se cerraron ${pres.length}, pero el estado no se actualizó: ${e2.message}` };
+  const libres = eqIds.filter((id: string) => !vuelven.has(id));
+  /* Dos escrituras y no una: el estado NO es el mismo para todos. Poner
+     «disponible» a todo el lote y corregir después habría dejado una ventana
+     en la que la laptop de Michel figuraba libre. */
+  if (libres.length) {
+    const { error: e2 } = await supabase.from("equipamiento")
+      .update({ estado: "disponible" }).in("id", libres);
+    if (e2) return { error: `Se cerraron ${pres.length}, pero el estado no se actualizó: ${e2.message}` };
+  }
+  if (vuelven.size) {
+    const { error: e3 } = await supabase.from("equipamiento")
+      .update({ estado: "asignado" }).in("id", [...vuelven]);
+    if (e3) return { error: `Se cerraron ${pres.length}, pero ${vuelven.size} no volvieron a su persona: ${e3.message}` };
+  }
 
   eqIds.forEach((id: string) => revalidatePath(`/entidad/equipamiento/${id}`));
   revalidarEquipos();
-  return { devueltos: pres.length };
+  return { devueltos: pres.length, reanudadas: vuelven.size };
 }
 
 export async function devolverEquipo(prestamoId: string, equipoId: string) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
+  /* Se lee ANTES de cerrar, para saber si esto apartaba una asignación. Es la
+     misma regla que el lote y por lo mismo: la ficha del equipo devuelve de a
+     uno, y si solo el lote supiera volver a su dueño, devolver desde la ficha
+     dejaría la laptop de Michel en el estante. */
+  const { data: pre } = await supabase.from("equipo_prestamos")
+    .select("reanuda_id").eq("id", prestamoId).is("hasta", null).maybeSingle();
   const { error } = await supabase.from("equipo_prestamos")
     .update({ hasta: hoyLima() })
     .eq("id", prestamoId);
   if (error) return { error: error.message };
+
+  let vuelve = false;
+  if ((pre as any)?.reanuda_id) {
+    /* ⚠ `eq("motivo_fin","prestado")` y no a ciegas. Una asignación apartada
+       se puede QUITAR mientras el equipo anda fuera —alguien deja el
+       colectivo—, y eso le pone su motivo de verdad y corta el puntero. Sin
+       esta condición, cerrar el préstamo desde una pestaña vieja la resucitaba
+       con el motivo borrado: el equipo volvía a ser de quien ya no está y lo
+       escrito en la actividad quedaba mintiendo. */
+    const { data: reab } = await supabase.from("equipo_prestamos")
+      .update({ hasta: null, motivo_fin: null })
+      .eq("id", (pre as any).reanuda_id).eq("motivo_fin", "prestado").select("id");
+    vuelve = !!reab?.length;
+  }
   const { error: e2 } = await supabase.from("equipamiento")
-    .update({ estado: "disponible" }).eq("id", equipoId);
+    .update({ estado: vuelve ? "asignado" : "disponible" }).eq("id", equipoId);
   if (e2) return { error: "Devolución registrada, pero el estado no se actualizó: " + e2.message };
   revalidatePath(`/entidad/equipamiento/${equipoId}`);
   revalidarEquipos();
-  return {};
+  return { reanudada: vuelve };
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   📌 QUITAR UNA ASIGNACIÓN — CON MOTIVO, Y QUE QUEDE ESCRITO
+
+   Devolver un préstamo y quitar una asignación cerraban la misma fila de la
+   misma manera, y después el histórico las contaba igual: «↩ Devolvió». Son
+   sucesos distintos. Que una cámara vuelva de un rodaje no es noticia; que
+   deje de ser de Fulano sí, y es exactamente lo que hay que poder mirar el
+   día que alguien pregunta por ella.
+
+   ⚠ Esto NO es el camino de la vuelta de un rodaje. Un equipo asignado que
+   sale a una salida se aparta solo y vuelve solo (`reanuda_id`). Aquí se
+   termina la asignación de verdad: se acaba, no se aparta. Por eso el motivo
+   `prestado` no se acepta — lo pone la máquina, no una persona.
+   ══════════════════════════════════════════════════════════════════════════ */
+export async function quitarAsignacion(prestamoId: string, motivo: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!esMotivo(motivo) || !META_MOTIVO[motivo].eligible) {
+    return { error: "Falta decir por qué se le quita." };
+  }
+
+  /* El equipo y la persona salen de la propia fila, no del navegador: así no
+     hay manera de cerrar la asignación de alguien y liberar el equipo de otro. */
+  const { data: asg, error: e0 } = await supabase.from("equipo_prestamos")
+    .select("id,equipamiento_id,tipo,hasta,motivo_fin,persona:personas(id,nombre,alias),equipo:equipamiento(id,estado,nombre,folio)")
+    .eq("id", prestamoId).maybeSingle();
+  if (e0) return { error: e0.message };
+  if (!asg) return { error: "Esa asignación ya no existe." };
+  if ((asg as any).tipo !== "asignacion") return { error: "Eso es un préstamo: se devuelve, no se quita." };
+
+  /* ── LA QUE ESTÁ EN UN RODAJE TAMBIÉN SE PUEDE QUITAR ──
+     Una asignación apartada por una salida está CERRADA —tiene `hasta`— y la
+     primera versión de esto exigía `hasta is null`, así que el ✕ contestaba
+     «ya no está abierta» a una fila que la pantalla acababa de describir como
+     apartada. Era el único estado sin salida, y justo el peor: el día que
+     alguien deja el colectivo con su cámara en un rodaje no había forma de
+     registrarlo.
+     Se acepta si sigue viva, y una apartada lo está: cerrada con
+     `motivo_fin = 'prestado'` y señalada por un préstamo abierto. */
+  const apartada = (asg as any).hasta !== null;
+  if (apartada && (asg as any).motivo_fin !== "prestado") {
+    return { error: "Esa asignación ya había terminado." };
+  }
+  let prestAbierto: any = null;
+  if (apartada) {
+    const { data: p } = await supabase.from("equipo_prestamos")
+      .select("id").eq("reanuda_id", prestamoId).is("hasta", null).maybeSingle();
+    if (!p) return { error: "Esa asignación ya había terminado." };
+    prestAbierto = p;
+  }
+
+  const { error } = await supabase.from("equipo_prestamos")
+    .update({ hasta: (asg as any).hasta || hoyLima(), motivo_fin: motivo })
+    .eq("id", prestamoId);
+  if (error) {
+    return {
+      error: /motivo_fin/i.test(error.message)
+        ? "Falta correr db/asignacion-suspender.sql en Supabase."
+        : error.message,
+    };
+  }
+
+  const eqId = (asg as any).equipamiento_id;
+  if (prestAbierto) {
+    /* SE CORTA EL HILO DE VUELTA. Si no, al devolver el equipo del rodaje la
+       asignación se reabriría sola y volvería a ser de alguien que ya no está,
+       borrando además el motivo que se acaba de escribir. Y NO se toca el
+       estado del equipo: hoy está `en_uso` en la calle, y ponerlo
+       «disponible» lo ofrecería a la siguiente salida estando fuera. Al
+       devolverlo caerá en `disponible` por el camino normal. */
+    await supabase.from("equipo_prestamos").update({ reanuda_id: null }).eq("id", prestAbierto.id);
+  } else {
+    /* El estado lo decide lib/asignaciones, no esta línea. Un equipo que se
+       malogró y volviera al inventario como «disponible» es un equipo que
+       alguien se lleva a un rodaje el jueves.
+       ⚠ Y no se pisa un estado que ya pedía atención. `comentarPrestamo` con
+       un parte de daño pone `en_reparacion` SIN cerrar la custodia, así que
+       una asignación viva puede estar sobre un equipo averiado o que no
+       aparece: escribir «disponible» encima lo devolvería al inventario como
+       si estuviera bien. */
+    const eqAhora = un1((asg as any).equipo);
+    const yaPedíaAtencion = !entregableEq(eqAhora?.estado) && eqAhora?.estado !== "asignado";
+    const nuevo = yaPedíaAtencion ? eqAhora?.estado : estadoTrasQuitar(motivo);
+    const { error: e2 } = await supabase.from("equipamiento")
+      .update({ estado: nuevo }).eq("id", eqId);
+    if (e2) return { error: `Se quitó la asignación, pero el estado no se actualizó: ${e2.message}` };
+  }
+
+  /* PostgREST devuelve un objeto para una relación a-uno, pero según cómo se
+     resuelva la clave puede venir envuelto en un array. Se aceptan las dos
+     formas: el nombre es lo único que hay que escribir en la actividad, y
+     quedarse sin él por esto pondría «alguien» donde va «Michel». */
+  const per = un1((asg as any).persona);
+  const nom = per?.alias || per?.nombre || "alguien";
+  await supabase.from("actividad").insert({
+    entidad_tipo: "equipamiento", entidad_id: eqId, actor_id: user.id, tipo: "edicion",
+    detalle: { mensaje: `📌 dejó de estar asignado a ${nom} — ${META_MOTIVO[motivo].txt.toLowerCase()}` },
+  });
+
+  revalidatePath(`/entidad/equipamiento/${eqId}`);
+  revalidarEquipos();
+  return { ok: true, estado: estadoTrasQuitar(motivo) };
 }
 
 /* COMENTAR UN PRÉSTAMO DE EQUIPO — la bitácora de esa salida (se lo pasó a

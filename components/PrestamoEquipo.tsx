@@ -1,6 +1,7 @@
 "use client";
 import { ESTADOS_EQUIPO, entregableEq, porQueNoEq } from "@/lib/estadosEquipo";
-import { prestarEquipo, devolverEquipo, comentarEquipo, comentarPrestamo, editarComentarioEquipo } from "@/app/actions";
+import { prestarEquipo, devolverEquipo, quitarAsignacion, comentarEquipo, comentarPrestamo, editarComentarioEquipo } from "@/app/actions";
+import { META_MOTIVO, MOTIVOS_ELEGIBLES, type MotivoFin } from "@/lib/asignaciones";
 import { EntPicker, type CatalogoItem } from "@/components/Composer";
 import Avatar from "@/components/Avatar";
 import Reacciones, { type Reaccion } from "@/components/Reacciones";
@@ -194,6 +195,18 @@ export default function PrestamoEquipo({ equipoId, prestamos, personas, proyecto
     setDevolviendo(null);
     if (res?.error) setError(res.error); else router.refresh();
   };
+  /* ⚠ QUITAR UNA ASIGNACIÓN NO ES DEVOLVER. Este botón llamaba a
+     `devolverEquipo`, que cierra la fila y pone «disponible» — sin motivo, sin
+     dejar nada en la actividad, y aplastando un «en reparación» si lo había.
+     Al aparecer la pestaña 📌 Asignados, que sí pregunta el porqué, esto se
+     quedó como una segunda puerta a la misma acción con otra semántica: se
+     quitaba desde aquí y en el historial no constaba nada. Ahora las dos
+     puertas pasan por la misma acción. */
+  const quitarAsig = async (id: string, motivo: MotivoFin) => {
+    const res: any = await quitarAsignacion(id, motivo);
+    setDevolviendo(null);
+    if (res?.error) setError(res.error); else router.refresh();
+  };
 
   // Un comentario + su sub-hilo de respuestas (recursivo, indentado).
   const nodo = (c: any, depth: number): any => {
@@ -361,10 +374,27 @@ export default function PrestamoEquipo({ equipoId, prestamos, personas, proyecto
         )}
         <span style={{ flex: 1 }} />
         {actual && (devolviendo === actual.id ? (
-          <span style={{ fontSize: 12.5, whiteSpace: "nowrap" }}>
-            ¿liberar? <button style={{ color: "var(--green)", fontWeight: 700 }} onClick={() => devolver(actual.id)}>sí</button>
-            {" / "}<button style={{ color: "var(--dim)" }} onClick={() => setDevolviendo(null)}>no</button>
-          </span>
+          actual.tipo === "asignacion" ? (
+            /* Los motivos, no un sí/no. Lo que se elige aquí es lo que va a
+               leer dentro de un año quien pregunte «¿y la cámara de Fulano?»,
+               y además decide en qué estado queda el equipo: «se malogró» NO
+               lo devuelve al inventario como disponible. */
+            <span style={{ fontSize: 12.5, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+              ¿por qué?
+              {MOTIVOS_ELEGIBLES.map(m => (
+                <button key={m} type="button" className="kit-chip" title={META_MOTIVO[m].ayuda}
+                  onClick={() => quitarAsig(actual.id, m)}>
+                  {META_MOTIVO[m].ico} {META_MOTIVO[m].txt}
+                </button>
+              ))}
+              <button style={{ color: "var(--dim)" }} onClick={() => setDevolviendo(null)}>cancelar</button>
+            </span>
+          ) : (
+            <span style={{ fontSize: 12.5, whiteSpace: "nowrap" }}>
+              ¿liberar? <button style={{ color: "var(--green)", fontWeight: 700 }} onClick={() => devolver(actual.id)}>sí</button>
+              {" / "}<button style={{ color: "var(--dim)" }} onClick={() => setDevolviendo(null)}>no</button>
+            </span>
+          )
         ) : (
           <button className="btn btn-ghost" style={{ padding: "4px 12px", fontSize: 12.5 }} onClick={() => setDevolviendo(actual.id)}>
             {actual.tipo === "asignacion" ? "↩ Quitar asignación" : "↩ Liberar"}

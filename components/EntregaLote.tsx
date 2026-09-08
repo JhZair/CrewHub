@@ -68,6 +68,24 @@ export default function EntregaLote({ equipos, personas, proyectos, kits = [], k
     () => equipos.filter(e => e.estado === "disponible")
       .sort((a, b) => (a.folio || "").localeCompare(b.folio || "")),
     [equipos]);
+
+  /* ── LO QUE ES DE ALGUIEN ──
+     Aparte, plegado, y con el nombre de su persona en cada fila. `asignado` es
+     `entregable:false` y lo dice con todas sus letras: «para llevarse la
+     laptop de Michel hay que hablar con Michel, no marcar una casilla». Eso
+     sigue: no entra en la lista de arriba y hay que abrir esto a propósito.
+     Lo que cambia es que, cuando ya se ha hablado con Michel, prestarla no
+     destruye su asignación. La custodia se APARTA y vuelve sola al devolver
+     (db/asignacion-suspender.sql). Antes el único camino era quitársela, y al
+     devolver el equipo quedaba «disponible»: Michel se quedaba sin laptop en
+     el sistema y el sistema sin saber de quién era. */
+  const deAlguien = useMemo(
+    () => equipos.filter(e => e.estado === "asignado")
+      .sort((a, b) => (a.quien || "").localeCompare(b.quien || "", "es")
+        || (a.folio || "").localeCompare(b.folio || "")),
+    [equipos]);
+  const [verAsig, setVerAsig] = useState(false);
+  const asigPorId = useMemo(() => new Set(deAlguien.map(e => e.id)), [deAlguien]);
   const librePorId = useMemo(() => new Set(libres.map(e => e.id)), [libres]);
   const porId = useMemo(() => new Map(equipos.map(e => [e.id, e])), [equipos]);
 
@@ -107,6 +125,14 @@ export default function EntregaLote({ equipos, personas, proyectos, kits = [], k
   const [filtro, setFiltro] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+
+  /* Se calcula de lo MARCADO, no del interruptor: cerrar el desplegable con
+     algo suyo ya marcado no puede hacer que el servidor lo rechace en
+     silencio. Y si no hay ninguno marcado, el permiso no se manda — así el
+     veto sigue protegiendo del caso que existe para proteger: que un equipo
+     pase a estar asignado MIENTRAS alguien marca casillas. */
+  const llevaAsignados = useMemo(
+    () => [...sel].some(id => asigPorId.has(id)), [sel, asigPorId]);
 
   const vistos = useMemo(() => {
     const ps = nrm(filtro).split(/\s+/).filter(Boolean);
@@ -151,7 +177,15 @@ export default function EntregaLote({ equipos, personas, proyectos, kits = [], k
      equipos que están sobre la mesa, y las etiquetas físicas están ordenadas
      por folio. El orden de clics es la historia de cómo se armó, que a nadie
      le sirve al entregar. */
-  const marcados = useMemo(() => libres.filter(e => sel.has(e.id)), [libres, sel]);
+  /* ⚠ De las DOS listas de las que se puede marcar, no solo de `libres`. Un
+     equipo a cargo de alguien que se marca en el desplegable de abajo se
+     entrega igual; si esta lista no lo tuviera, la columna «Se entregan»
+     diría 3 con 4 marcados, «Quitar todo» dejaría uno dentro y se saldría a
+     rodaje con algo que nadie repasó contra la mesa. Es el mismo fallo de la
+     selección invisible que ya hubo en «En uso ahora». */
+  const marcados = useMemo(
+    () => [...libres, ...deAlguien].filter(e => sel.has(e.id)),
+    [libres, deAlguien, sel]);
 
   function alternaKit(id: string) {
     const { k, van } = reparteKit(id);
@@ -191,12 +225,15 @@ export default function EntregaLote({ equipos, personas, proyectos, kits = [], k
   async function entregar() {
     if (!quien || !sel.size) return;
     setOcupado(true); setMsg(null);
-    const r: any = await prestarEquipos([...sel], quien.id, proy?.id || null, nota, kitDe);
+    const r: any = await prestarEquipos([...sel], quien.id, proy?.id || null, nota, kitDe,
+      "prestamo", llevaAsignados);
     setOcupado(false);
     if (r?.error) { setMsg(`⚠ ${r.error}`); return; }
     /* Lo omitido se dice, no se traga: quien entrega tiene que enterarse ahora,
-       no cuando busque la cámara el sábado. */
+       no cuando busque la cámara el sábado. Y lo apartado también: quien
+       recibe tiene que saber que eso vuelve a su persona, no al estante. */
     setMsg(`✔ ${r.entregados} equipo(s) a ${quien.nombre}` +
+      (r.apartadas ? ` · 📌 ${r.apartadas} vuelve(n) a su persona al devolverlos` : "") +
       (r.omitidos?.length ? ` · ⚠ fuera: ${r.omitidos.join(", ")}` : ""));
     setSel(new Set()); setNota(""); setKitsSel(new Set());
     router.refresh();
@@ -296,6 +333,46 @@ export default function EntregaLote({ equipos, personas, proyectos, kits = [], k
               </label>
             ))}
           </div>
+
+          {/* ── LO QUE ES DE ALGUIEN, APARTE Y PLEGADO ──
+              No entra en la lista de arriba y hay que abrirlo a propósito: la
+              regla de siempre es que para llevarse la laptop de Michel se
+              habla con Michel, no se marca una casilla. Lo que ya no pasa es
+              que hacerlo le cueste a Michel su laptop. */}
+          {deAlguien.length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <button type="button" className="dato-btn" style={{ color: "var(--blue)", fontSize: 12 }}
+                onClick={() => setVerAsig(v => !v)}>
+                {verAsig ? "▾" : "▸"} 📌 {deAlguien.length} a cargo de alguien
+                {llevaAsignados && !verAsig && <b> · {[...sel].filter(id => asigPorId.has(id)).length} marcado(s)</b>}
+              </button>
+              {verAsig && (
+                <>
+                  <div style={{ color: "var(--dim)", fontSize: 11.5, lineHeight: 1.5, margin: "6px 2px" }}>
+                    Estos son <b>de</b> alguien. Se pueden prestar para una salida —habla
+                    con quien lo tiene—, y al devolverlos <b>vuelven solos a su persona</b>:
+                    la asignación se aparta, no se pierde.
+                  </div>
+                  <div className="ent-caja">
+                    {deAlguien.map(e => (
+                      <label key={e.id} className="ent-lote-fila" data-marcada={sel.has(e.id) ? "1" : undefined}>
+                        <input type="checkbox" checked={sel.has(e.id)} onChange={() => alterna(e.id)} />
+                        {mini(e.cartel)}
+                        {e.folio && <span className="badge" style={{ color: "var(--muted)", background: "#1c1c2c", fontSize: 10.5 }}>{e.folio}</span>}
+                        <span style={{ flex: 1, fontSize: 13.5 }}>{e.nombre}</span>
+                        {/* De quién es. Sin esto, la lista es una segunda tanda
+                            de equipos disponibles con otro color, que es
+                            exactamente lo que no puede parecer. */}
+                        <span className="badge" style={{ color: "var(--blue)", background: "rgba(59,130,246,.12)", fontSize: 10.5 }}>
+                          📌 {e.quien || "alguien"}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         <div>

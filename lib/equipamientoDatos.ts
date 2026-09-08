@@ -87,12 +87,36 @@ export const kitsCrudos = cache(async () => {
 /** Lo que está en manos de alguien AHORA. Sin esto, el panel de kits solo
  *  puede decir «no disponible», que no sirve: lo que hace falta saber es a
  *  quién llamar. */
+/* `nota` y `reanuda_id` viajan aunque la pestaña de entrega no los use.
+   · La nota es lo que distingue una asignación útil de una fila: «puesto de
+     post», «dotación 2026». Es el único campo que dice POR QUÉ es suya.
+   · `reanuda_id` es cómo se encuentra una asignación APARTADA. Una asignación
+     suspendida por un rodaje está cerrada —tiene `hasta`—, así que no sale por
+     `hasta is null`: se llega a ella desde el préstamo que la apartó. */
+const CAMPOS_CUSTODIA =
+  "id,desde,hasta,kit_id,tipo,nota,reanuda_id"
+  + ",equipo:equipamiento(id,folio,nombre,categoria,subcategoria,estado,valor_compra,compra_id)"
+  + ",persona:personas(id,nombre,alias,foto_url)"
+  + ",proy:proyectos(id,nombre)"
+  + ",entrego:perfiles!equipo_prestamos_entregado_por_fkey(id,nombre,avatar_url)";
+
 export const enManosAhora = cache(async () => {
   const supabase = createClient();
-  return supabase.from("equipo_prestamos")
-    .select("id,desde,kit_id,tipo,equipo:equipamiento(id,folio,nombre,categoria,subcategoria,valor_compra,compra_id),persona:personas(id,nombre,alias,foto_url),proy:proyectos(id,nombre),entrego:perfiles!equipo_prestamos_entregado_por_fkey(id,nombre,avatar_url)")
+  return supabase.from("equipo_prestamos").select(CAMPOS_CUSTODIA)
     .is("hasta", null).order("desde", { ascending: false });
 });
+
+/** Las asignaciones que un préstamo abierto tiene APARTADAS. Segunda consulta
+ *  y no un `or(...)`: se necesitan los ids de la primera para pedir estas, y un
+ *  filtro compuesto sobre la misma tabla no puede expresar «las que apunta el
+ *  otro lado». Son pocas —tantas como equipos asignados fuera ahora mismo— y
+ *  solo se piden si hay alguna. */
+export async function asignacionesApartadas(abiertas: any[]) {
+  const ids = [...new Set(abiertas.map((p: any) => p.reanuda_id).filter(Boolean))] as string[];
+  if (!ids.length) return { data: [] as any[], error: null };
+  const supabase = createClient();
+  return supabase.from("equipo_prestamos").select(CAMPOS_CUSTODIA).in("id", ids);
+}
 
 /** A quién y para qué proyecto se entrega. Personas —no perfiles—: quien se
  *  lleva una cámara puede no tener cuenta. */

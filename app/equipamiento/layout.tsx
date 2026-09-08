@@ -70,6 +70,25 @@ export default async function EquipamientoLayout({ children }: { children: React
     ? null
     : (manos.data || []).filter((p: any) => p.tipo !== "asignacion").length;
 
+  /* ⚠ Las asignaciones NO son «las custodias abiertas de tipo asignación».
+     Una que está apartada por un rodaje tiene `hasta` puesto —está cerrada— y
+     no sale por aquí; se llega a ella desde el préstamo que la apartó, que la
+     señala con `reanuda_id`. Contarlas sin esto pondría un número que BAJA
+     cuando alguien saca un equipo a una salida, y esa cifra se lee como
+     «devolvieron cosas», que es lo contrario de lo que pasó.
+     Sin segunda consulta: el puntero ya viaja en las filas que hay aquí. */
+  const nAsig = (manos as any)?.error ? null : (() => {
+    const f = manos.data || [];
+    /* Un solo conjunto de ids y no una suma de dos cuentas: en el estado que
+       la base no impide —una asignación abierta Y un préstamo abierto que la
+       apunta— sumar daba 2 donde la lista enseña 1, y una pestaña que dice un
+       número distinto del que hay dentro se deja de creer. `asignacionesVivas`
+       deduplica igual, así que las dos cuentas salen del mismo criterio. */
+    const ids = new Set<string>(f.filter((p: any) => p.tipo === "asignacion").map((p: any) => p.id));
+    f.forEach((p: any) => { if (p.reanuda_id) ids.add(p.reanuda_id); });
+    return ids.size;
+  })();
+
   return (
     <div className="shell">
       <div className="topbar">
@@ -86,6 +105,12 @@ export default async function EquipamientoLayout({ children }: { children: React
       <Pestanas items={[
         { href: "/equipamiento", label: "📋 Inventario" },
         { href: "/equipamiento/entrega", label: "🤝 Entrega", n: nManos },
+        /* Separada de Entrega a propósito, y no un bloque más dentro de ella:
+           lo que hay aquí NO tiene que volver. Mezclarlas hacía crecer para
+           siempre una lista que se mira para reclamar — con veinte asignaciones
+           dentro, las tres salidas que sí hay que perseguir quedan enterradas.
+           El razonamiento está en app/equipamiento/entrega/page.tsx. */
+        { href: "/equipamiento/asignados", label: "📌 Asignados", n: nAsig },
         /* ⚠ Sin número, y es a propósito: la pestaña lleva DOS cosas dentro y
            un solo número no puede decir las dos —«26» al lado de «Combos y
            kits» se lee como veintiséis de algo, y son once kits y veintiséis

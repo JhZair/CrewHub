@@ -1889,9 +1889,18 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
          cosas (db/asignacion.sql) y el valor es lo que hace que la lista sirva
          para lo que de verdad se usa: cuando alguien deja el equipo, esto es
          el acta de devolución. */
+      /* ⚠ NO es `hasta is null`. Una asignación APARTADA porque su equipo salió
+         a un rodaje está cerrada —tiene `hasta`— y desaparecería de aquí justo
+         cuando este bloque más importa: sigue siendo suya y sigue habiendo que
+         recuperarla. Se piden también las que un préstamo abierto señala con
+         `reanuda_id`, que es como se distingue «apartada» de «terminada».
+         La pestaña 📌 Asignados hace lo mismo (lib/asignaciones.ts): si aquí se
+         usara el criterio corto, las dos pantallas dirían cosas distintas sobre
+         la misma persona. */
       supabase.from("equipo_prestamos")
-        .select("id,desde,nota,tipo,equipo:equipamiento(id,folio,nombre,categoria,subcategoria,valor_compra)")
-        .eq("persona_id", params.id).is("hasta", null).order("desde", { ascending: false }),
+        .select("id,desde,hasta,nota,tipo,motivo_fin,reanuda_id,equipo:equipamiento(id,folio,nombre,categoria,subcategoria,valor_compra)")
+        .or(`hasta.is.null,and(tipo.eq.asignacion,motivo_fin.eq.prestado)`)
+        .eq("persona_id", params.id).order("desde", { ascending: false }),
       supabase.from("proyectos")
         .select("id,nombre,tipo")
         .eq("cliente_id", params.id).order("nombre"),
@@ -3524,7 +3533,19 @@ export default async function Entidad({ params }: { params: { tipo: string; id: 
                       <span className="pm-val">S/ {Math.round(Number(r.equipo.valor_compra)).toLocaleString("es-PE")}</span>
                     )}
                     {esAsig
-                      ? <span>desde {fechaDia(r.desde)}</span>
+                      ? <>
+                          <span>desde {fechaDia(r.desde)}</span>
+                          {/* Sigue siendo suyo, pero hoy no lo tiene encima.
+                              Sin decirlo, este bloque —que es el acta que se
+                              repasa cuando alguien deja el equipo— mandaría a
+                              buscar en su casa algo que está en un rodaje. */}
+                          {r.motivo_fin === "prestado" && (
+                            <span className="badge" style={{ color: "var(--yellow)", background: "rgba(244,180,0,.12)", fontSize: TXT.chip }}
+                              title="Salió a una salida. Vuelve a su persona sola al devolverlo: la asignación no se ha perdido, está apartada.">
+                              🤝 en un rodaje
+                            </span>
+                          )}
+                        </>
                       /* En un préstamo lo que importa no es la fecha, es
                          cuánto lleva fuera: «hace 12 días» se lee sin restar. */
                       : <span className={dias(r.desde) > 7 ? "pm-tarde" : undefined}>

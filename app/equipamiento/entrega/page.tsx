@@ -66,6 +66,11 @@ export default async function EntregaEquipos({ searchParams }: {
           estado seguía cerrado, y el botón del kit acababa en un segundo clic
           sobre «Entregar equipos a alguien». No fallaba nada; simplemente no
           pasaba nada. */}
+      {/* `equipos` ya trae `quien` pegado a cada fila: lo pone
+          `inventarioParaPaneles` en lib/equipamientoDatos, y es lo que el panel
+          usa para decir DE QUIÉN es cada cosa en la lista de lo asignado. Sin
+          ese nombre, esa lista sería una segunda tanda de disponibles con otro
+          color, que es exactamente lo que no puede parecer. */}
       <EntregaLote key={kitPre || "_"} equipos={equipos as any}
         personas={cat.personas} proyectos={cat.proyectos}
         kits={kits} kitInicial={kitPre} />
@@ -80,7 +85,9 @@ export default async function EntregaEquipos({ searchParams }: {
         <div className="card" style={{ borderLeft: "3px solid var(--red)" }}>
           <b style={{ color: "var(--red)", fontSize: 13 }}>⚠ No se pudo leer quién tiene qué</b>
           <div style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 5, lineHeight: 1.55 }}>
-            {/(entregado_por|entrego)/.test(eManos)
+            {/(reanuda|motivo_fin)/.test(eManos)
+              ? <>Falta correr <code>db/asignacion-suspender.sql</code> en Supabase. Hasta entonces esta pantalla no puede pintarse — y hay equipos fuera, no es que no haya.</>
+              : /(entregado_por|entrego)/.test(eManos)
               ? <>Falta correr <code>db/prestamo-entregado-por.sql</code> en Supabase. Hasta entonces este panel no puede pintarse — y hay equipos prestados, no es que no haya.</>
               : eManos}
           </div>
@@ -91,8 +98,10 @@ export default async function EntregaEquipos({ searchParams }: {
           Una asignación no vuelve —la laptop es de Michel— y meterla aquí
           haría crecer para siempre una lista que se mira para reclamar: con
           veinte asignaciones dentro, las tres salidas de rodaje que sí hay que
-          perseguir quedan enterradas. Las asignaciones se ven en la ficha de
-          su equipo y filtrando por «📌 Asignados». */}
+          perseguir quedan enterradas. Tienen su propia pestaña: 📌 Asignados.
+          ⚠ Un equipo asignado que SÍ salió a un rodaje sale aquí, y tiene que
+          salir: hoy está fuera y tiene que volver. Que además sea de alguien
+          se ve en su pestaña, donde se dice que está en una salida. */}
       {enUso.length > 0 ? (
         /* El panel entero es cliente porque las casillas son estado, así que
            aquí solo se aplana lo que la consulta ya trajo: nada de funciones
@@ -125,8 +134,8 @@ export default async function EntregaEquipos({ searchParams }: {
            consulta falló» se veían igual: una pantalla sin el panel. */
         <div className="card" style={{ color: "var(--dim)", fontSize: 12.5, lineHeight: 1.55 }}>
           Ahora mismo no hay nada fuera. Las <b>asignaciones</b> —lo que alguien
-          tiene de forma permanente— no salen aquí porque no vuelven: se ven en la
-          ficha de su equipo y en el filtro «📌 Asignados» del inventario.
+          tiene de forma permanente— no salen aquí porque no vuelven: están en la
+          pestaña <b>📌 Asignados</b>.
         </div>
       )}
     </>
