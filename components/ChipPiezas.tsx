@@ -44,9 +44,11 @@ const valeM = (p: PiezaMontada): { v: number; esti: boolean } => {
  * kit y el combo sí se piden, y por lo contrario: se repiten en cada fila. Está
  * contado en `ChipPop`.)
  *
- * El pop-up NO es un enlace a ningún sitio: se abre encima y se cierra. Ir a
- * la ficha del ensamblado desde la pantalla de entrega es perder lo que ya
- * llevabas marcado.
+ * ⚠ Cada fila del pop-up SÍ lleva a la ficha del equipo, desde que `FilaPop`
+ * las pinta. Y desde la pantalla de entrega ir allí es perder lo que ya
+ * llevabas marcado — por eso la entrega, la asignación por lote y el
+ * escogedor de kits se envuelven en `SinNavegar`, que apaga el enlace sin
+ * tocar la fila. El porqué entero está en `components/FilaPop`.
  *
  * ⚠ Toda la mecánica del pop-up —portal, `fixed`, medir el alto, cerrarse al
  * desplazar la página pero no al desplazarse él— vive en `components/ChipPop`.

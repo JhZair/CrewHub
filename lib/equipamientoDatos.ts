@@ -62,10 +62,36 @@ export const equiposGordos = cache(async () => {
     .limit(TOPE_EQUIPOS + 1);
 });
 
-/** Los equipos con lo justo para nombrarlos, valorarlos y agruparlos. */
+/** Los equipos con lo justo para nombrarlos, valorarlos y agruparlos.
+ *  ⚠ Con límite y sonda, igual que `equiposGordos`. Estaba sin `.limit()`, que
+ *  no es «sin techo»: es el de PostgREST sin forma de saber que se tocó — y
+ *  aquí eso hace algo peor que faltar filas, hace acusar. El chip «🔧 dentro de
+ *  qué va» busca al anfitrión en esta misma lista: si el anfitrión no llegó, la
+ *  pieza diría «apunta a un equipo que no está» sobre una base sana. */
 export const equiposFlacos = cache(async () => {
   const supabase = createClient();
-  return supabase.from("equipamiento").select(CAMPOS_FLACO).order("folio");
+  return supabase.from("equipamiento").select(CAMPOS_FLACO).order("folio")
+    .limit(TOPE_EQUIPOS + 1);
+});
+
+/* ── CUÁNTAS FOTOS TIENE CADA EQUIPO ──
+   Solo el número: las URLs se piden al pulsar el chip. Quinientas filas × tres
+   fotos son doscientos kilobytes de direcciones que casi nadie llega a abrir.
+
+   ⚠ Devuelve `null` —y no un mapa vacío— si la consulta falla o si toca el
+   tope. Un mapa vacío pinta cero chips y se lee como «ningún equipo tiene
+   fotos», que sobre un inventario con fotos es la respuesta equivocada a algo
+   que nadie preguntó. Con `null`, el chip no se pinta porque no se sabe. */
+export const TOPE_FOTOS = TOPE_API - 1;
+
+export const fotosPorEquipo = cache(async (): Promise<Map<string, number> | null> => {
+  const supabase = createClient();
+  const { data, error } = await supabase.from("entidad_foto")
+    .select("entidad_id").eq("entidad_tipo", "equipamiento").limit(TOPE_FOTOS + 1);
+  if (error || !data || data.length > TOPE_FOTOS) return null;
+  const m = new Map<string, number>();
+  data.forEach((f: any) => m.set(f.entidad_id, (m.get(f.entidad_id) || 0) + 1));
+  return m;
 });
 
 /** Carteles (miniatura) de cada equipo. Una lista sin foto obliga a leer folio
@@ -325,6 +351,25 @@ export type EquipoParaPanel = EqBase & {
   valor_compra?: number | string | null;
   compra_id?: string | null;
   piezas?: any[];
+  /* ── DENTRO DE QUÉ VA, YA RESUELTO ──
+     `ensamblado_en` ya se pedía en `CAMPOS_FLACO` y `piezasMontadas` lo usaba
+     para mirar la relación DESDE EL ANFITRIÓN —qué lleva dentro—; lo que no
+     cruzaba a los paneles era el otro sentido, dentro de qué va esta pieza.
+     Se veía en
+     el escogedor de kits, que decía «está montado en otro equipo» sin decir en
+     cuál — y para averiguarlo había que cerrar el modal y perder lo marcado.
+     Se resuelve aquí y no en el cliente: el anfitrión sale de estas mismas
+     filas, y hacerlo allá obligaría a mandar el inventario entero dos veces. */
+  anfitrion?: {
+    id: string; folio: string | null; nombre: string;
+    estado: string | null; cartel: string | null; quien: string | null;
+  } | null;
+  /** Si la fila SEÑALA a alguien, aunque no se haya encontrado. Distingue «no
+   *  dice dentro de qué» de «señala a uno que no está en esta lista». */
+  apunta?: boolean;
+  /** Cuántas fotos tiene. `null` = no se sabe —la consulta falló o tocó el
+   *  tope—, que no es lo mismo que cero. */
+  nFotos?: number | null;
 };
 
 export function inventarioParaPaneles(
@@ -335,9 +380,12 @@ export function inventarioParaPaneles(
   porPiezaDeCombo: Map<string, number>,
   kitsPorEq: Map<string, { id: string; nombre: string }[]>,
   piezasDe: Map<string, any[]>,
+  nFotosPorEq: Map<string, number> | null,
 ): EquipoParaPanel[] {
+  const porId = new Map<string, any>((eqs || []).map((e: any) => [e.id, e]));
   return (eqs || []).map((e: any) => {
     const cb = comboPorEq.get(e.id);
+    const anf = e.ensamblado_en ? porId.get(e.ensamblado_en) : null;
     return {
       id: e.id, folio: e.folio, nombre: e.nombre,
       categoria: e.categoria, subcategoria: e.subcategoria, estado: e.estado,
@@ -347,14 +395,31 @@ export function inventarioParaPaneles(
       /* Solo lo justo para nombrarlo. El combo entero trae total, moneda,
          comprobante y proveedor; mandarlo repetido en doscientas filas sería
          mover el mismo objeto doscientas veces para pintar dos palabras. */
+      /* ⚠ `moneda` también: sin ella el chip del combo formatea con «S/» por
+         defecto y una boleta en dólares saldría con el símbolo equivocado. Es
+         un escalar corto; el resto del combo sigue sin viajar. */
       combo: cb ? { codigo: cb.codigo, nombre: cb.nombre, nUnidades: cb.nUnidades,
         total: cb.total != null ? Number(cb.total) : null,
+        moneda: cb.moneda ?? null,
         porPieza: porPiezaDeCombo.get(cb.id) ?? null } : null,
       kits: kitsPorEq.get(e.id) || [],
       /* Va con piezas dentro. Al entregar hay que decirlo: quien lo recibe
          firma por un monopod, no por un monopod y tres piezas sueltas — y a la
          vuelta es lo que hay que contar. */
       piezas: piezasDe.get(e.id) || [],
+      /* Solo en las filas que son pieza de algo: un `null` por equipo en
+         quinientas filas es medio kilobyte de decir «no». */
+      ...(e.ensamblado_en || e.estado === "ensamblado" ? {
+        apunta: !!e.ensamblado_en,
+        anfitrion: anf ? {
+          id: anf.id, folio: anf.folio || null, nombre: anf.nombre || "sin nombre",
+          estado: anf.estado || null, cartel: cartelPorEq.get(anf.id) || null,
+          quien: quienTiene.get(anf.id) || null,
+        } : null,
+      } : {}),
+      /* Igual con las fotos: solo cuando hay alguna, o cuando no se sabe. */
+      ...(nFotosPorEq === null ? { nFotos: null }
+        : nFotosPorEq.get(e.id) ? { nFotos: nFotosPorEq.get(e.id) } : {}),
     };
   });
 }
@@ -368,8 +433,9 @@ export function inventarioParaPaneles(
    entrega usa para pintar quién tiene qué.
    ══════════════════════════════════════════════════════════════════════════ */
 export async function inventarioDePaneles() {
-  const [eqs, media, compras, kitsRaw, manos] = await Promise.all([
+  const [eqs, media, compras, kitsRaw, manos, nFotosPorEq] = await Promise.all([
     equiposFlacos(), cartelesEquipo(), comprasCombo(), kitsCrudos(), enManosAhora(),
+    fotosPorEquipo(),
   ]);
   const filas = (eqs.data || []) as any[];
   const cartelPorEq = cartelPorEquipo(media);
@@ -379,7 +445,11 @@ export async function inventarioDePaneles() {
   const piezasDe = piezasMontadas(filas, cartelPorEq, comboPorEq, porPiezaDeCombo);
   return {
     equipos: inventarioParaPaneles(filas, quienTiene, cartelPorEq, comboPorEq,
-      porPiezaDeCombo, kitsPorEq, piezasDe),
+      porPiezaDeCombo, kitsPorEq, piezasDe, nFotosPorEq),
+    /* Si el inventario llegó al tope, quien pinte «🔧 dentro de qué va» tiene
+       que saberlo: sin esto acusaría a la base de un puntero roto cuando lo que
+       faltó fue la fila del anfitrión. */
+    cortado: filas.length > TOPE_EQUIPOS,
     combos, kits, eKits,
     enManos: manos.data || [],
     /* Los tres mapas los usa la pestaña de entrega para aplanar «quién tiene

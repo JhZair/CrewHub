@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { EntPicker, type CatalogoItem } from "@/components/Composer";
 import { prestarEquipos } from "@/app/actions";
 import ChipPiezas, { type PiezaMontada } from "@/components/ChipPiezas";
+import { SinNavegar } from "@/components/FilaPop";
 import { buscadorDe, pal } from "@/lib/buscar";
 
 /* 📌 ASIGNAR — dar de alta la dotación de alguien de una vez.
@@ -120,7 +121,12 @@ export default function AsignarLote({ equipos, personas }: {
     );
   }
 
+  /* Envuelto en `SinNavegar`: aquí hay un formulario a medio llenar —lo
+     marcado, la persona, la nota— y las filas de los pop-up de los chips son
+     enlaces a la ficha del equipo. Un clic curioso y `router.push` se lleva
+     todo lo escrito sin preguntar y sin error. El porqué, en `FilaPop`. */
   return (
+    <SinNavegar>
     <div className="card" id="asignar">
       <div className="panel-h" style={{ color: "var(--blue)" }}>📌 Asignar equipos</div>
 
@@ -223,5 +229,6 @@ export default function AsignarLote({ equipos, personas }: {
         {msg && <span style={{ fontSize: 12.5, color: msg.startsWith("⚠") ? "var(--red)" : "var(--green)" }}>{msg}</span>}
       </div>
     </div>
+    </SinNavegar>
   );
 }

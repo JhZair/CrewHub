@@ -5,6 +5,7 @@ import { EntPicker, type CatalogoItem } from "@/components/Composer";
 import { prestarEquipos } from "@/app/actions";
 import { porQueNo, nombraPieza, type PiezaKit, type KitVista } from "@/lib/kits";
 import ChipPiezas, { type PiezaMontada } from "@/components/ChipPiezas";
+import { SinNavegar } from "@/components/FilaPop";
 
 /* SALIDA A RODAJE — entregar muchos equipos a una persona de una vez.
  *
@@ -252,7 +253,12 @@ export default function EntregaLote({ equipos, personas, proyectos, kits = [], k
     );
   }
 
+  /* Envuelto en `SinNavegar`: aquí hay un formulario a medio llenar —lo
+     marcado, la persona, la nota— y las filas de los pop-up de los chips son
+     enlaces a la ficha del equipo. Un clic curioso y `router.push` se lleva
+     todo lo escrito sin preguntar y sin error. El porqué, en `FilaPop`. */
   return (
+    <SinNavegar>
     <div className="card" id="entregar">
       <div className="panel-h" style={{ color: "var(--yellow)" }}>🤝 Entregar equipos</div>
 
@@ -439,5 +445,6 @@ export default function EntregaLote({ equipos, personas, proyectos, kits = [], k
         {msg && <span style={{ fontSize: 12, color: msg.startsWith("⚠") ? "var(--red)" : "var(--green)" }}>{msg}</span>}
       </div>
     </div>
+    </SinNavegar>
   );
 }

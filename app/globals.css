@@ -4297,15 +4297,29 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
    Dejarlo escrito sugiere que el pop-up se ancla aqui, que es justo lo que
    hay que NO creerse al tocar esto. `inline-flex` y `flex:none` si hacen
    falta: el chip es item flex de .kit-pz-l2, .eq-uso-l1, .ent-lote-fila y
-   .eqx-l3. */
+   .chips-linea. */
 .ens-chip-wrap{display:inline-flex;flex:none}
-.ens-tapa{position:fixed;inset:0;z-index:40}
+/* 92/93 y no 40/41: desde que los chips salen también en el escogedor de «＋
+   Nuevo kit», el pop-up se abre DENTRO de un modal —y `.modal-fondo` es 80—.
+   Con 41 se pintaba detrás del modal: el chip respondía al clic, medía, se
+   colocaba… y no se veía nada.
+   ⚠ Con esto, `.ens-tapa` pasa por encima de TODO lo flotante salvo el visor
+   de fotos (300) y `.hoja-aviso` (9000). Es decir: con un pop-up abierto, el
+   primer clic sobre el ✕ del modal, «Guardar» o la franja de alarma solo
+   cierra el pop-up y hace falta un segundo. Es el precio de que «pulsar fuera
+   cierra» valga en todas partes, y es preferible a un pop-up invisible.
+   ⚠ Y queda por encima de `.anc` (91), que NO es lo deseable: si por teclado
+   se llega a abrir un `Anclado` con un chip abierto, el menú se ve y no se
+   puede pulsar. Por clic no puede pasar —la tapa se come el clic antes— así
+   que se deja así a sabiendas; el día que se pueda, la tapa tendrá que
+   cerrarse al abrirse cualquier otra capa, y no subir de número. */
+.ens-tapa{position:fixed;inset:0;z-index:92}
 /* `fixed`, no `absolute`: las listas que lo contienen tienen overflow-y:auto
    y un hijo absolute se recorta contra sus bordes — el pop-up salia cortado
    enseñando el titulo y ninguna pieza. Fijo se posiciona contra la ventana y
    ningun overflow lo corta; el sitio lo calcula el componente midiendo el
    boton al abrir. */
-.ens-pop{position:fixed;z-index:41;
+.ens-pop{position:fixed;z-index:93;
   display:flex;flex-direction:column;overflow:hidden;
   background:var(--panel);border:1px solid var(--border2);border-radius:10px;
   padding:7px;box-shadow:0 10px 28px rgba(0,0,0,.55)}
@@ -4380,6 +4394,10 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
 .ens-pop-fila{display:flex;flex:none;gap:8px;align-items:flex-start;padding:5px 4px;
   border-radius:8px;text-decoration:none;min-width:0}
 .ens-pop-fila:hover{background:rgba(255,255,255,.045)}
+/* Dentro de un formulario a medio llenar la fila no lleva a ningún sitio (ver
+   `SinNavegar` en components/FilaPop). Sin esto seguiría con la manita del
+   enlace: un cursor que promete un viaje que ya no ocurre. */
+.ens-pop-fila.no-va{cursor:default}
 /* ── LA FILA, EN TRES RENGLONES ──
    En una sola linea, dentro de una caja de 340 px, al nombre le quedaban unos
    veinte caracteres despues del folio, el estado y el precio — y esos veinte son
@@ -4878,8 +4896,12 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
 .eqx-nom{font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .eqx-l2{display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-width:0;font-size:11.5px}
 /* La línea de los chips. `wrap` porque un equipo puede estar en dos kits y
-   además venir de un combo, y en una pantalla estrecha eso no cabe de una. */
-.eqx-l3{display:flex;gap:6px;align-items:center;flex-wrap:wrap;min-width:0}
+   además venir de un combo, y en una pantalla estrecha eso no cabe de una.
+   Se llama `.chips-linea` y no `.eqx-l3` porque ya no es solo la tercera línea
+   de la fila de 🎥 equipos: la misma tanda de chips se pinta en el escogedor
+   de «＋ Nuevo kit». Un nombre que dice DÓNDE está deja de ser cierto en
+   cuanto la cosa aparece en un segundo sitio; este dice QUÉ es. */
+.chips-linea{display:flex;gap:6px;align-items:center;flex-wrap:wrap;min-width:0}
 .eqx-sub{color:var(--dim)}
 /* El valor que el desplegable no ofrece. En verde agua y no en amarillo: no
    es un aviso de que algo este mal —a veces es la unica forma de decir lo que

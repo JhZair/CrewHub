@@ -1,4 +1,5 @@
 "use client";
+import { createContext, useContext, type ReactNode } from "react";
 import Link from "@/components/Enlace";
 import { txtEstadoEq, colorEstadoEq } from "@/lib/estadosEquipo";
 import { soles } from "@/lib/compras";
@@ -40,6 +41,32 @@ import { soles } from "@/lib/compras";
    sería una regla con tres excepciones.
    ══════════════════════════════════════════════════════════════════════════ */
 
+/* ══════════════════════════════════════════════════════════════════════════
+   🚫 DONDE IRSE CUESTA CARO, LA FILA NO ES UN ENLACE
+
+   Cada fila de un pop-up lleva a la ficha del equipo, y desde una lista de
+   solo lectura eso es justo lo que se quiere. Desde DENTRO de un formulario a
+   medio llenar —el escogedor de «＋ Nuevo kit», la entrega en lote, la
+   asignación por lote— es una trampa: escribes el nombre, marcas ocho equipos,
+   abres 🔩 para comprobar una pieza, pulsas la fila… y `router.push` desmonta
+   el modal con todo lo escrito dentro. No hay aviso porque no hay error.
+
+   ⚠ El `preventDefault` que `ChipPop` pone en el pop-up NO frena esto: un
+   `<Link>` de Next cancela por su cuenta el clic nativo y navega desde su
+   propio manejador. Lo único que lo evita es no pintar el enlace.
+
+   Va por contexto y no por prop: entre quien sabe que hay un formulario
+   abierto —la pantalla— y la fila hay tres chips de por medio, y hacerlo
+   viajar a mano obligaría a que `ChipPiezas`, `ChipGrupo` y `ChipAnfitrion`
+   arrastren un dato que no es suyo. Quien abra un formulario lo envuelve en
+   `<SinNavegar>` y se olvida.
+   ══════════════════════════════════════════════════════════════════════════ */
+const CtxSinNavegar = createContext(false);
+
+export function SinNavegar({ children }: { children: ReactNode }) {
+  return <CtxSinNavegar.Provider value={true}>{children}</CtxSinNavegar.Provider>;
+}
+
 export type Precio = {
   valor: number;
   /** Repartido de una boleta, no propio: se pinta con «~» y en gris. Un número
@@ -66,6 +93,8 @@ export default function FilaPop({
    *  se ve— pero el motivo cambia según la lista. */
   sinPrecio?: string;
 }) {
+  const sinNavegar = useContext(CtxSinNavegar);
+
   /* La cifra, una sola vez y en el renglón que toque: con prestatario va abajo
      a su lado; sin él sube al primero y se ahorra un renglón entero por fila. */
   const cifra = precio
@@ -76,8 +105,17 @@ export default function FilaPop({
       ? <span className="ens-pop-sinval" title={sinPrecio}>⚠ sin precio</span>
       : null;
 
-  return (
-    <Link href={`/entidad/equipamiento/${id}`} className="ens-pop-fila">
+  /* El contenido en una VARIABLE, y el marco en un ternario abajo. Ni dos
+     `return` con el marcado repetido —dos copias de esta fila divergen a la
+     primera corrección, que es el motivo por el que este componente existe— ni
+     un `<Marco>` declarado aquí dentro: un componente definido en el cuerpo
+     cambia de identidad en cada render, y React desmontaría y volvería a montar
+     la fila entera —incluida la miniatura, que se recargaría— cada vez que el
+     pop-up se mide. Así el elemento es el mismo y solo cambia quién lo envuelve.
+     Sin enlace es un `<span>` y no un `<a>` sin `href`: un ancla sin destino
+     sigue saliendo en el Tab y prometiendo un viaje que no ocurre. */
+  const dentro = (
+    <>
       <span className="kit-pz-img">
         {cartel
           // eslint-disable-next-line @next/next/no-img-element
@@ -109,6 +147,10 @@ export default function FilaPop({
           </span>
         )}
       </span>
-    </Link>
+    </>
   );
+
+  return sinNavegar
+    ? <span className="ens-pop-fila no-va">{dentro}</span>
+    : <Link href={`/entidad/equipamiento/${id}`} className="ens-pop-fila">{dentro}</Link>;
 }

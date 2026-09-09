@@ -1,13 +1,19 @@
 "use client";
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, memo, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "@/components/Enlace";
 import { crearKit, guardarKit, setKitEquipos, borrarKit, revivirKit, fijarPortadaKit } from "@/app/actions";
 import { estadoKit, resumenKit, contextoKit, porQueNo, agruparPorCombo, valeAgrupar,
-  type PiezaKit, type EqBase, type KitVista } from "@/lib/kits";
-import { entregableEq } from "@/lib/estadosEquipo";
+  type PiezaKit, type KitVista } from "@/lib/kits";
+import { entregableEq, porQueNoEq } from "@/lib/estadosEquipo";
+import type { EquipoParaPanel } from "@/lib/equipamientoDatos";
 import PiezasKit from "@/components/PiezasKit";
 import Avatar from "@/components/Avatar";
+import ChipFotos from "@/components/ChipFotos";
+import ChipPiezas, { type PiezaMontada } from "@/components/ChipPiezas";
+import ChipGrupo from "@/components/ChipGrupo";
+import ChipAnfitrion from "@/components/ChipAnfitrion";
+import { SinNavegar } from "@/components/FilaPop";
 
 /* ARMAR KITS — «Entrevista PRO» es una cosa, no tres fichas que alguien
  * recuerda marcar de a una.
@@ -25,10 +31,62 @@ import Avatar from "@/components/Avatar";
 
 const nrm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
+/** Lo que dice `porQueNoEq` de un ensamblado. Se compara contra él para no
+ *  repetir la frase que el chip 🔧 ya dice, y con más detalle. Sale del
+ *  catálogo y no escrito a mano: si mañana cambia ahí, esto se entera. */
+const MONTADO = porQueNoEq("ensamblado");
+
+/* ── LOS CHIPS DE UNA FILA, LOS MISMOS QUE EN EL INVENTARIO ──
+   Escritos una vez aquí porque las dos columnas comparten `fila()` y porque el
+   orden es el mismo de /equipamiento: de lo más cercano a lo más lejano — la
+   foto es esta unidad; las piezas, lo que lleva dentro; el anfitrión, dentro de
+   qué va ella; el kit, con qué sale; el combo, con qué entró. */
+/* ⚠ `memo`, y no por elegancia: el escogedor pinta el inventario ENTERO —hasta
+   mil filas— y cada tecla del buscador reconcilia la lista completa. Sin esto,
+   cada pulsación repasaría hasta cinco chips por fila, y `ChipPiezas`,
+   `ChipGrupo` y `ChipAnfitrion` son un `ChipPop` con ocho hooks cada uno.
+   Las props son estables —`e` viene del servidor y `cortado` es un booleano—,
+   así que el memo acierta siempre salvo cuando la fila cambia de verdad. */
+const Chips = memo(function Chips({ e, cortado }: { e: EquipoParaPanel; cortado: boolean }) {
+  const esPieza = !!e.apunta || e.estado === "ensamblado";
+  /* ⚠ `e.combo` y no `e.compra_id`: la condición tiene que ser LA MISMA que la
+     del chip que se pinta abajo. Con `compra_id`, una unidad cuya compra no
+     vino en el lote de combos abría un `.chips-linea` sin un solo hijo. */
+  const hay = e.nFotos || e.piezas?.length || esPieza || e.kits?.length || e.combo;
+  if (!hay) return null;
+  return (
+    <span className="chips-linea">
+      <ChipFotos tipo="equipamiento" id={e.id} n={e.nFotos || 0} />
+      <ChipPiezas piezas={(e.piezas || []) as PiezaMontada[]} />
+      {esPieza && (
+        <ChipAnfitrion anfitrion={e.anfitrion || null} apunta={!!e.apunta} cortado={cortado} />
+      )}
+      {(e.kits || []).map(k => (
+        <ChipGrupo key={k.id} que="kit" id={k.id} nombre={k.nombre}
+          titulo={`Sale en el kit «${k.nombre}» — ver qué más va dentro`} />
+      ))}
+      {e.compra_id && e.combo && (
+        /* ⚠ `enChip` se calla cuando la unidad TIENE precio propio, igual que en
+           /equipamiento: si no, un combo de ocho unidades pinta ocho veces la
+           misma cifra de la boleta al lado de ocho precios distintos, y no hay
+           forma de saber cuál de las dos es de esta pieza. El total va crudo al
+           pop-up de todos modos: lo que se calla es el chip, no el dato. */
+        <ChipGrupo que="combo" id={e.compra_id} nombre={e.combo.codigo || e.combo.nombre}
+          total={e.combo.total ?? 0} moneda={e.combo.moneda}
+          enChip={!(Number(e.valor_compra) > 0) && Number(e.combo.total) > 0}
+          titulo={`Vino en ${e.combo.codigo || ""} ${e.combo.nombre}`.trim() + " — ver qué más trajo"} />
+      )}
+    </span>
+  );
+});
+
 /* ── El escogedor de equipos, compartido por «nuevo kit» y «editar kit» ── */
-function Escoge({ equipos, sel, alterna, onVaciar, portada, setPortada }: {
-  equipos: EqBase[]; sel: Set<string>; alterna: (id: string) => void;
+function Escoge({ equipos, sel, alterna, onVaciar, portada, setPortada, cortado }: {
+  equipos: EquipoParaPanel[]; sel: Set<string>; alterna: (id: string) => void;
   onVaciar: () => void;
+  /** Si el inventario llegó al tope de la API. Viaja hasta el chip 🔧 para que
+   *  no acuse a la base de un puntero roto cuando lo que faltó fue una fila. */
+  cortado: boolean;
   /** Qué pieza es la cara del kit, y cómo cambiarla. Vive en el editor —es
    *  parte de lo que se guarda— y aquí solo se pinta y se pulsa. */
   portada: string | null;
@@ -57,7 +115,7 @@ function Escoge({ equipos, sel, alterna, onVaciar, portada, setPortada }: {
      que salia igual de encendido que uno disponible — y era justo el caso del
      A-312. Y cuenta tambien a quien lo tiene prestado, que el rotulo amarillo
      no miraba. */
-  const fila = (e: EqBase, modo: "elegir" | "quitar") => {
+  const fila = (e: EquipoParaPanel, modo: "elegir" | "quitar") => {
     const trabada = !!e.quien || !entregableEq(e.estado);
     return (
     <label key={e.id} className={`ent-lote-fila${modo === "quitar" ? " elegida" : ""}${trabada ? " ocupada" : ""}`}
@@ -79,12 +137,31 @@ function Escoge({ equipos, sel, alterna, onVaciar, portada, setPortada }: {
         {(e.subcategoria || e.categoria) && (
           <span className="ent-fila-sub">{e.subcategoria || e.categoria}</span>
         )}
+        {/* ── LOS MISMOS CHIPS QUE EL INVENTARIO ──
+            Esta era la única fila del inventario que no llevaba ninguno, y aquí
+            hacen más falta que en ningún otro sitio: armar un kit es decidir
+            qué se lleva junto, y eso se decide sabiendo qué lleva cada cosa
+            dentro, en qué otro kit ya está y de qué combo vino.
+            En un renglón propio bajo el nombre: `.ent-lote-fila` es una sola
+            línea sin `wrap`, y cinco chips al lado del nombre lo habrían dejado
+            en tres caracteres.
+            ⚠ Y solo en la columna del INVENTARIO. En la de la derecha —lo ya
+            elegido— el sitio lo ocupan la ☆ y la ✕, y el pop-up de un chip
+            taparía justo lo que se está revisando. */}
+        {modo === "elegir" && <Chips e={e} cortado={cortado} />}
       </span>
       {/* Un equipo en reparación SÍ puede formar parte del kit: el kit dice
           qué lo compone, no qué está libre hoy. Lo que cambia es que al
           entregar se avisará de que falta — y por eso el motivo va con
-          nombre, «lo tiene KatyP», igual que en la lista del kit. */}
-      {trabada && <span className="kit-aviso">{porQueNo(e)}</span>}
+          nombre, «lo tiene KatyP», igual que en la lista del kit.
+          ⚠ Menos «está montado en otro equipo» Y SOLO en la columna de la
+          izquierda, que es la única que pinta el chip 🔧 —y él además dice EN
+          CUÁL—. A la derecha no hay chip que lo sustituya: callarlo también
+          allí dejaba la fila apagada sin una palabra que explicara por qué,
+          que es la fila que se repasa contra la bolsa antes de guardar. */}
+      {trabada && !(modo === "elegir" && porQueNo(e) === MONTADO) && (
+        <span className="kit-aviso">{porQueNo(e)}</span>
+      )}
       {/* ── LA CARA DEL KIT ──
           Solo en la columna de lo elegido: elegir portada entre doscientas
           piezas del inventario no significa nada, porque la portada es de las
@@ -177,8 +254,8 @@ function Escoge({ equipos, sel, alterna, onVaciar, portada, setPortada }: {
 }
 
 /* ── El formulario, uno solo para crear y para editar ── */
-function Editor({ kit, equipos, onCerrar }: {
-  kit: KitVista | null; equipos: EqBase[]; onCerrar: () => void;
+function Editor({ kit, equipos, cortado, onCerrar }: {
+  kit: KitVista | null; equipos: EquipoParaPanel[]; cortado: boolean; onCerrar: () => void;
 }) {
   const router = useRouter();
   const [nombre, setNombre] = useState(kit?.nombre || "");
@@ -253,7 +330,7 @@ function Editor({ kit, equipos, onCerrar }: {
         value={desc} onChange={e => setDesc(e.target.value)} style={{ width: "100%", marginTop: 8 }} />
 
       <Escoge equipos={equipos} sel={sel} alterna={alterna} onVaciar={() => setSel(new Set())}
-        portada={portada} setPortada={setPortada} />
+        portada={portada} setPortada={setPortada} cortado={cortado} />
 
       <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
         <button className="btn" disabled={ocupado || !nombre.trim()} onClick={guardar}>
@@ -276,7 +353,15 @@ function Editor({ kit, equipos, onCerrar }: {
   );
 }
 
-export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos: EqBase[] }) {
+export default function PanelKits({ kits, equipos, cortado }: {
+  kits: KitVista[]; equipos: EquipoParaPanel[];
+  /** Si el inventario llegó al tope de la API. Ver `Escoge`.
+   *  ⚠ OBLIGATORIO, sin `= false` por comodidad: el valor por defecto sería
+   *  «llegó entero», y quien monte este panel mañana y se olvide no obtendría
+   *  un error sino un chip 🔧 acusando a la base de un puntero roto. Un dato
+   *  que solo la página sabe no puede tener un valor supuesto. */
+  cortado: boolean;
+}) {
   const router = useRouter();
   const [editando, setEditando] = useState<string | null>(null);   // id del kit, o "_nuevo"
   const porEq = useMemo(() => new Map(equipos.map(e => [e.id, e])), [equipos]);
@@ -554,7 +639,13 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
               cerrar la página está donde se dejó, sin haber saltado.
               Se pinta UNA vez y fuera del `map`: dentro habría un modal por
               kit, y once elementos con `position:fixed` esperando su turno. */}
+          {/* ⚠ `SinNavegar`: aquí dentro hay un kit a medio armar —el nombre
+              escrito, ocho equipos marcados, la portada elegida— y las filas
+              de los pop-up de los chips son enlaces a la ficha del equipo. Un
+              clic curioso y `router.push` desmonta el modal con todo dentro,
+              sin preguntar y sin error. El porqué, en `FilaPop`. */}
           {editando && (
+            <SinNavegar>
             <div className="modal-fondo"
               onClick={e => { if (e.target === e.currentTarget) setEditando(null); }}>
               <div className="modal-caja modal-form">
@@ -566,9 +657,10 @@ export default function PanelKits({ kits, equipos }: { kits: KitVista[]; equipos
                 </div>
                 <Editor
                   kit={editando === "_nuevo" ? null : (vivos.find(k => k.id === editando) || null)}
-                  equipos={equipos} onCerrar={() => setEditando(null)} />
+                  equipos={equipos} cortado={cortado} onCerrar={() => setEditando(null)} />
               </div>
             </div>
+            </SinNavegar>
           )}
 
           {retirados.length > 0 && (

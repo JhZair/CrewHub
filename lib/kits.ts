@@ -38,6 +38,10 @@ export type ComboBreve = {
    *  hermanas, que es justo lo que no sabe. */
   total?: number | null;
   porPieza?: number | null;
+  /** En qué moneda está ese total. Sin ella, quien lo pinta cae a soles por
+   *  defecto y una boleta en dólares sale con «S/» — la misma cifra con el
+   *  símbolo equivocado, que es peor que no dar cifra. */
+  moneda?: string | null;
 };
 
 export type EqBase = {
