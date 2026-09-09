@@ -43,10 +43,14 @@ export type LecturaSol = {
   ruc: string | null;
   razon: string | null;
   filas: FilaSol[];
-  /** Líneas que parecían una fila y no se pudieron leer. Se devuelven en vez
-   *  de descartarse en silencio: un reporte medio leído que dice «importadas
-   *  12» cuando eran 14 es peor que uno que falla. */
-  ignoradas: string[];
+  /** Cuántas filas parecían una declaración y no se pudieron interpretar. Se
+   *  devuelven en vez de descartarse en silencio: un reporte medio leído que
+   *  dice «importadas 12» cuando eran 14 es peor que uno que falla.
+   *  ⚠ Un NÚMERO y no una lista de frases. Era `string[]` con una sola frase
+   *  que llevaba la cifra dentro, y quien lo pintaba hacía `.length`: con siete
+   *  filas perdidas la pantalla decía «1 línea». El aviso existía para que las
+   *  que faltan no pasen desapercibidas, y él mismo las escondía. */
+  ignoradas: number;
 };
 
 /* Qué obligación es cada formulario. 0621 es el IGV-Renta mensual —el único
@@ -119,7 +123,13 @@ const RE_FILA = new RegExp(
 /* El espacio duro que meten Word y algunos visores no es un espacio para una
    expresión regular: `\s` no lo casa y la fila se cae entera. Se normaliza
    antes de mirar nada. */
+/* \u26a0 Y `normalize("NFC")`: una tilde puede venir como car\u00e1cter propio (\u00ab\u00f3\u00bb) o
+   como letra + acento combinante (\u00abo\u00bb + U+0301). Las dos se ven id\u00e9nticas y solo
+   la primera casa `[\u00f3o]`. Con la descompuesta, \u00abPresentaci\u00f3n\u00bb, \u00abPer\u00edodo\u00bb,
+   \u00abN\u00famero de Orden\u00bb y \u00abTipo de Declaraci\u00f3n\u00bb fallaban los cuatro a la vez, as\u00ed
+   que el PDF entero se le\u00eda como si no tuviera declaraciones. */
 const limpiar = (t: string) => String(t || "")
+  .normalize("NFC")
   .replace(/\u00a0|\u2007|\u202f/g, " ")
   .replace(/[\u2010-\u2015]/g, "-");
 
@@ -191,8 +201,7 @@ export function leerReporteSol(texto: string): LecturaSol {
     ruc: rucDelTexto(texto),
     razon: mRaz ? mRaz[1].split(/\n/)[0].trim() : null,
     filas,
-    ignoradas: perdidas
-      ? [`${perdidas} fila(s) del reporte no se pudieron interpretar`] : [],
+    ignoradas: perdidas,
   };
 }
 
@@ -355,6 +364,17 @@ export type CasillasSol = {
   nroOrden: string;
   /** 'original' | 'rectificatoria' */
   tipo: string;
+  /* ── CUÁNDO SE PRESENTÓ, 'YYYY-MM-DD' ──
+   * El detalle de casillas la trae, en la misma línea que el número de orden:
+   * «0621 Número de Orden 1205072105 Fecha de Presentación 08/09/2026». No se
+   * leía, y por eso importar SOLO el detalle dejaba el periodo en «Pendiente»
+   * con su número de orden ya guardado: el sistema sabía el número de la
+   * declaración y seguía diciendo que no se había declarado. Cuadraba con lo
+   * que la pantalla contestaba —«✅ 1 declaración con sus cifras»— y con lo que
+   * el usuario veía —nada cambia—, y las dos cosas eran ciertas a la vez.
+   * `null` si el reporte no la trae: entonces las cifras entran y la fecha no,
+   * que es exactamente lo que había antes. */
+  fecha: string | null;
   /** Casilla 101 — IGV de ventas declarado. */
   debito: number;
   /** Casilla 178 — crédito fiscal de compras declarado. */
@@ -438,8 +458,28 @@ export function leerCasillasSol(texto: string): CasillasSol[] {
        ANTES, en la cabecera. Se retrocede un poco para alcanzarlos. */
     const bloque = t.slice(Math.max(0, desde - 400), hasta);
 
+    /* ⚠ EN LA CABECERA DE ESTA DECLARACIÓN, Y EN NINGÚN OTRO SITIO.
+       El «Período» va ANTES del número de orden, y por eso el retroceso de 400
+       caracteres existe. Pero la fecha y el tipo van DESPUÉS, en la misma línea
+       o en la siguiente:
+
+         0621 Número de Orden 1205072105 Fecha de Presentación 08/09/2026
+         Tipo de Declaración Original Tipo de Moneda Soles
+
+       Buscarlos en `bloque` los leía del trozo de atrás —con dos declaraciones
+       seguidas, LA ANTERIOR— y buscarlos en todo el trozo de delante los podía
+       leer de LA SIGUIENTE si algún formato pone la fecha antes del número. Las
+       dos direcciones dan lo mismo de malo: una fecha de otra declaración en
+       `declarado_en`, en silencio. Acotado a los 200 primeros caracteres, la
+       cabecera entra entera y ninguna vecina cabe.
+       Sin recurso hacia atrás: heredar del vecino es peor que no tener. Si no
+       está, `tipo` cae al «original» de siempre y `fecha` a null.
+       ⚠ Y los espacios de las etiquetas son `\s+`: literales, un PDF que parta
+       «Fecha de / Presentación» en dos líneas devolvía null sin decir nada. */
+    const cabecera = t.slice(desde, Math.min(hasta, desde + 200));
     const per = /Per[íi]odo\s+(\d{4})(\d{2})/.exec(bloque);
-    const tip = /Tipo de Declaraci[óo]n\s+(\w+)/.exec(bloque);
+    const tip = /Tipo\s+de\s+Declaraci[óo]n\s+(\w+)/.exec(cabecera);
+    const fpr = /Fecha\s+de\s+Presentaci[óo]n\s+(\d{2})\/(\d{2})\/(\d{4})/.exec(cabecera);
 
     const prev = porOrden.get(orden);
     const c3: Record<string, number> = prev?._c || {};
@@ -453,6 +493,9 @@ export function leerCasillasSol(texto: string): CasillasSol[] {
       mes: prev?.mes || (per ? Number(per[2]) : 0),
       nroOrden: orden,
       tipo: prev?.tipo || (tip ? tip[1].toLowerCase() : "original"),
+      /* La página 2 de la misma declaración repite la cabecera; se queda la
+         primera que se leyó, como con el periodo y el tipo. */
+      fecha: prev?.fecha || (fpr ? `${fpr[3]}-${fpr[2]}-${fpr[1]}` : null),
       debito: c3["101"] ?? 0,
       credito: c3["178"] ?? 0,
       resultado: "140" in c3 ? c3["140"] : null,
@@ -474,18 +517,58 @@ export function leerCasillasSol(texto: string): CasillasSol[] {
     .sort((a, b) => a.anio - b.anio || a.mes - b.mes || a.nroOrden.localeCompare(b.nroOrden));
 }
 
-/* ── DE VARIAS DECLARACIONES DEL MISMO PERIODO, LA ÚLTIMA ──
-   Al revés que en el reporte de constancias, donde manda la PRIMERA. No es
-   incoherencia: son dos preguntas distintas. La puntualidad la decide la
-   original —rectificar tarde no salva a la que llegó tarde—; las CIFRAS
-   vigentes son las de la última rectificatoria, porque es la que sustituye a
-   todas las anteriores ante SUNAT. */
-export function casillasVigentes(cs: CasillasSol[]): Map<string, CasillasSol> {
-  const m = new Map<string, CasillasSol>();
+/* ══════════════════════════════════════════════════════════════════════════
+   EL PERIODO SEGÚN SU DETALLE DE CASILLAS
+
+   ⚠ DOS PREGUNTAS, DOS DECLARACIONES DISTINTAS, y confundirlas cambia un dato
+   fiscal. Las CIFRAS que valen son las de la ÚLTIMA rectificatoria, porque es
+   la que sustituye a todas las anteriores ante SUNAT. Pero la FECHA que decide
+   si se presentó a tiempo es la de la PRIMERA — rectificar en octubre no vuelve
+   tardía una declaración de agosto, ni la salva si ya lo era. Está escrito en
+   `periodosDeSol` y en db/obligacion-constancia.sql, y aun así se coló: aquí
+   había una `casillasVigentes` que solo sabía dar la última, se marcaba el
+   periodo con ella, y un mes presentado dentro de plazo salía «declarado
+   tarde». La función se fue: una que solo contesta media pregunta es una
+   invitación a usarla para la otra media.
+
+   Así que esto devuelve las dos cosas juntas, con la misma forma que
+   `periodosDeSol` para que las dos puertas del importador se lean igual:
+   · `fecha` y `nroOrden` — de la PRIMERA. Son la prueba de la presentación.
+   · `rectificaciones` — las demás, que no se tiran: explican por qué el número
+     vigente no coincide con el de la prueba.
+   · `vigente` — la última, de donde salen las cifras y `declarado_orden`.
+   ══════════════════════════════════════════════════════════════════════════ */
+export type PeriodoCasillas = {
+  anio: number;
+  mes: number;
+  /** De la PRIMERA presentación. `null` si el detalle no traía fecha. */
+  fecha: string | null;
+  nroOrden: string;
+  rectificaciones: { fecha: string | null; nroOrden: string }[];
+  vigente: CasillasSol;
+};
+
+export function periodosDeCasillas(cs: CasillasSol[]): Map<string, PeriodoCasillas> {
+  const porK = new Map<string, CasillasSol[]>();
   for (const c of cs) {
     const k = `${c.anio}|${c.mes}`;
-    const prev = m.get(k);
-    if (!prev || c.nroOrden.localeCompare(prev.nroOrden) > 0) m.set(k, c);
+    porK.set(k, [...(porK.get(k) || []), c]);
   }
-  return m;
+  const out = new Map<string, PeriodoCasillas>();
+  porK.forEach((fs, k) => {
+    /* Por fecha y, a igualdad o sin ella, por número de orden: los dos crecen
+       con el tiempo. Es el mismo criterio de `periodosDeSol`; escrito distinto,
+       la misma declaración sería «la primera» por una puerta y no por la otra. */
+    const orden = [...fs].sort((a, b) =>
+      (a.fecha || "9999").localeCompare(b.fecha || "9999")
+      || a.nroOrden.localeCompare(b.nroOrden));
+    const [primera, ...resto] = orden;
+    out.set(k, {
+      anio: primera.anio, mes: primera.mes,
+      fecha: primera.fecha, nroOrden: primera.nroOrden,
+      rectificaciones: resto.map(r => ({ fecha: r.fecha, nroOrden: r.nroOrden })),
+      vigente: orden[orden.length - 1],
+    });
+  });
+  return out;
 }

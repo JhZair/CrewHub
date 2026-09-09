@@ -211,6 +211,19 @@ export default function ImportarSol({ empresaId, nombre }: {
                     Se leyó el reporte pero no se actualizó nada. Mira los avisos de abajo.
                   </div>
                 )}
+                {/* ── CIFRAS SÍ, MARCA NO, Y POR QUÉ ──
+                    El detalle de casillas normalmente trae su «Fecha de
+                    Presentación» y con ella el periodo queda marcado. Cuando no
+                    la trae, entran las cifras y el mes SIGUE en «Pendiente» — y
+                    eso, sin decirlo, es un tick verde arriba y una fila que no
+                    cambia: las dos respuestas ciertas y juntas sin sentido. */}
+                {res.sinFecha > 0 && (
+                  <div style={{ color: "var(--yellow)" }}>
+                    ⚠ {res.sinFecha} traían cifras pero no su fecha de presentación, así que
+                    siguen sin marcar. Suelta también la <b>relación de constancia de pagos</b>,
+                    que es la que dice cuándo se presentó cada una.
+                  </div>
+                )}
                 {res.yaEstaban > 0 && (
                   <div style={{ color: "var(--dim)" }}>
                     {res.yaEstaban} ya estaban marcados y no se tocaron

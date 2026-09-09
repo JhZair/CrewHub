@@ -28,7 +28,7 @@ import { META_RENDICION, esTablaRendicion, anclaRendicion, duenoDe, type TablaRe
 import { COLS_DUENO_COM, COLS_DUENO_COM_EXTRA } from "@/lib/vinculoComentario";
 import { icoTipo, esTipoCreable } from "@/lib/tipos";
 import { claseDe as claseDeObligacion, RESULTADOS as RESULTADOS_OBL, DIAS_AVISO } from "@/lib/obligaciones";
-import { leerReporteSol, periodosDeSol, leerCasillasSol, casillasVigentes, pareceCopiaPorColumnas, leerDeclaracionesSol, rucDelTexto } from "@/lib/importarSol";
+import { leerReporteSol, periodosDeSol, leerCasillasSol, periodosDeCasillas, pareceCopiaPorColumnas, leerDeclaracionesSol, rucDelTexto } from "@/lib/importarSol";
 import { FORM_CONF, nombreCorto, SUBCATS_EQUIPO } from "@/lib/entidades";
 import { ETAPAS_PROY_VALIDAS } from "@/lib/etapasProyecto";
 import { nrmQ } from "@/lib/quechua";
@@ -11412,8 +11412,16 @@ export async function importarDeclaracionesSol(
   const porClave = new Map<string, any>(
     (exist || []).map((p: any) => [clave(p.obligacion_id, p.anio, p.mes), p]));
 
-  let marcados = 0, yaEstaban = 0, sinPeriodo = 0, sinObligacion = 0;
+  let marcados = 0, yaEstaban = 0, sinPeriodo = 0, sinObligacion = 0, sinFecha = 0;
   const faltantes: string[] = [];
+  /** Qué filas ha CONTADO ya esta importación —marcadas o dadas por ya
+   *  marcadas—. `exist` se leyó antes de empezar, así que no sabe nada de lo
+   *  que llevamos escrito: sin esto, un periodo que venga en la constancia Y en
+   *  el detalle de casillas —lo normal cuando se sueltan los dos— sumaba dos
+   *  veces al recuento del pop-up. */
+  const tocadosAhora = new Set<string>();
+  /** Y qué periodos ya se dieron por ausentes, por lo mismo. */
+  const faltaronAhora = new Set<string>();
 
   for (const p of periodos) {
     const oid = oblDe.get(p.clase);
@@ -11423,11 +11431,12 @@ export async function importarDeclaracionesSol(
     const mes = p.clase === "igv_renta" ? p.mes : 0;
     const fila = porClave.get(clave(oid, p.anio, mes));
     if (!fila) {
-      sinPeriodo++;
+      const k = `${p.anio}|${mes}`;
+      if (!faltaronAhora.has(k)) { faltaronAhora.add(k); sinPeriodo++; }
       faltantes.push(`${String(p.mes).padStart(2, "0")}/${p.anio}`);
       continue;
     }
-    if (fila.declarado_en && !pisarManual) { yaEstaban++; continue; }
+    if (fila.declarado_en && !pisarManual) { yaEstaban++; tocadosAhora.add(fila.id); continue; }
 
     /* ── QUIÉN LO APUNTÓ Y CUÁNDO, TAMBIÉN AL IMPORTAR ──
        Aquí se guardaba `declarado_por` y NO `registrado_en`. El resultado era
@@ -11456,26 +11465,91 @@ export async function importarDeclaracionesSol(
     if (error && /registrado_en/.test(error.message)) ({ error } = await fijar({}));
     if (error) return { error: faltaObl(error.message) };
     marcados++;
+    tocadosAhora.add(fila.id);
   }
 
   /* ── Y LAS CASILLAS, SI EL TEXTO LAS TRAÍA ──
-     Van SIEMPRE, aunque el periodo ya estuviera marcado: aquí no hay nada que
-     pisar de nadie —el declarado no se teclea a mano en ninguna pantalla— y es
-     justo el dato que se viene a corregir cuando se rectifica un mes. */
+     Las CIFRAS van siempre, aunque el periodo ya estuviera marcado: son el dato
+     que se viene a corregir cuando se rectifica un mes, y no hay ninguna
+     pantalla donde se tecleen a mano — así que aquí no se pisa nada de nadie.
+     La MARCA es otra cosa: `marcarDeclarado` sí escribe `declarado_en` desde la
+     ficha, y por eso lleva su guarda.
+
+     ⚠ Y MARCAN EL PERIODO, si el detalle trae su fecha de presentación.
+     No lo hacían, y el resultado era una contradicción que se veía en pantalla:
+     alguien importaba el detalle de casillas de agosto, la aplicación se
+     quedaba con el número de orden de la declaración y sus cuatro cifras, y la
+     fila seguía diciendo «· Pendiente». Las dos respuestas eran ciertas por
+     separado —«✅ 1 declaración con sus cifras» y «no se declaró»— y juntas no
+     tenían sentido. Un papel que dice «Número de Orden 1205072105, Fecha de
+     Presentación 08/09/2026» ES la prueba de que se presentó.
+
+     ⚠ PERO CON LA PRIMERA, NO CON LA VIGENTE. Aquí se marcaba con la última
+     —lo correcto para las cifras, no para la fecha— y eso ponía la de la
+     RECTIFICATORIA en `declarado_en`: un mes presentado el 8 dentro de plazo y
+     rectificado en octubre salía «declarado tarde». `periodosDeCasillas` separa
+     las dos preguntas, que es lo que este módulo lleva diciendo desde el
+     principio y aun así se coló por esta puerta.
+     · marca, prueba y rectificaciones → la PRIMERA
+     · cifras y `declarado_orden`      → la VIGENTE
+
+     Si el detalle NO trae fecha, se quedan solo las cifras, como antes: sin
+     fecha no se puede decir si llegó a tiempo, y eso no se inventa.
+     ⚠ Lo que ya se marcó a mano NO se pisa salvo que se pida: `marcarDeclarado`
+     sí escribe `declarado_en` desde la pantalla. */
   let conCasillas = 0;
   const igvOblId = oblDe.get("igv_renta");
   if (casillas.length && igvOblId) {
-    for (const [, c] of casillasVigentes(casillas)) {
-      const fila = porClave.get(clave(igvOblId, c.anio, c.mes));
-      if (!fila) { sinPeriodo++; faltantes.push(`${String(c.mes).padStart(2, "0")}/${c.anio}`); continue; }
-      const { error } = await supabase.from("obligacion_periodo").update({
-        igv_debito: c.debito,
-        igv_credito: c.credito,
-        igv_resultado: c.resultado,
-        igv_a_pagar: c.aPagar,
-        declarado_orden: c.nroOrden,
-      }).eq("id", fila.id);
+    for (const [, p] of periodosDeCasillas(casillas)) {
+      const v = p.vigente;
+      const fila = porClave.get(clave(igvOblId, p.anio, p.mes));
+      if (!fila) {
+        /* ⚠ Solo si este periodo no faltaba ya por la otra rama: el mismo mes
+           ausente en los dos reportes se contaba dos veces. `faltantes` sí se
+           deduplicaba; el número de al lado, no. */
+        const k = `${p.anio}|${p.mes}`;
+        if (!faltaronAhora.has(k)) { faltaronAhora.add(k); sinPeriodo++; }
+        faltantes.push(`${String(p.mes).padStart(2, "0")}/${p.anio}`);
+        continue;
+      }
+
+      const campos: Record<string, any> = {
+        igv_debito: v.debito,
+        igv_credito: v.credito,
+        igv_resultado: v.resultado,
+        igv_a_pagar: v.aPagar,
+        declarado_orden: v.nroOrden,
+      };
+      /* `tocado` es lo que ESTA importación ya contó —marcado o dado por ya
+         marcado— en la rama de arriba. La lista `exist` se leyó antes de
+         empezar, así que no sabe nada de eso: sin este set, un periodo que
+         viniera en los dos reportes sumaba dos veces al recuento. */
+      const tocado = tocadosAhora.has(fila.id);
+      const marcable = !!p.fecha && !tocado && (!fila.declarado_en || pisarManual);
+      if (marcable) {
+        campos.declarado_en = p.fecha;
+        campos.declarado_por = user.id;
+        campos.nro_orden = p.nroOrden;
+        /* Las rectificatorias van CON la marca, no aparte: sin esto un periodo
+           marcado desde el detalle quedaba con `declarado_orden` distinto de
+           `nro_orden` y sin nada que lo explicara. */
+        campos.rectificaciones = p.rectificaciones.length ? p.rectificaciones : null;
+      }
+
+      const fijarC = (extra: Record<string, any>) => supabase.from("obligacion_periodo")
+        .update({ ...campos, ...extra }).eq("id", fila.id);
+      let { error } = await fijarC(marcable ? { registrado_en: new Date().toISOString() } : {});
+      if (error && /registrado_en/.test(error.message)) ({ error } = await fijarC({}));
       if (error) return { error: faltaObl(error.message) };
+
+      if (marcable) { marcados++; tocadosAhora.add(fila.id); }
+      else if (tocado) { /* ya lo contó la otra rama */ }
+      else if (p.fecha && fila.declarado_en) { yaEstaban++; tocadosAhora.add(fila.id); }
+      /* Cifras sí, marca no, porque el papel no trae la fecha. Se cuenta y se
+         dice: es exactamente la situación en la que el pop-up contestaba «✅ 1
+         declaración con sus cifras» y la fila seguía en «Pendiente», sin que
+         nada explicara por qué. */
+      else if (!p.fecha && !fila.declarado_en) sinFecha++;
       conCasillas++;
     }
   }
@@ -11486,9 +11560,9 @@ export async function importarDeclaracionesSol(
   });
   revalidatePath("/obligaciones");
   return {
-    marcados, yaEstaban, sinPeriodo, sinObligacion, conCasillas,
+    marcados, yaEstaban, sinPeriodo, sinObligacion, conCasillas, sinFecha,
     faltantes: [...new Set(faltantes)].slice(0, 12),
-    ignoradas: lectura.ignoradas.length,
+    ignoradas: lectura.ignoradas,
     razon: lectura.razon,
     sinComprobar,
   };
