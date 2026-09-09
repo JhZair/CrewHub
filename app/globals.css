@@ -8228,3 +8228,170 @@ a.sit-cosa-n:hover{color:var(--accent)}
    ya hay en la entrega— y solo acota el ancho: en una fila con nombre, cifras
    y cuatro botones, 150px de desplegable dejan el nombre en tres letras. */
 .sit-dentrode{max-width:130px;font-size:11.5px;padding:4px 7px}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   EL CÓDIGO, EL EDITOR Y LA REJILLA — db/sitios-detalle.sql
+   ────────────────────────────────────────────────────────────────────────── */
+
+/* El código va en monoespaciada porque se compara carácter a carácter con lo
+   que hay escrito en la etiqueta pegada al cajón, y en proporcional el 0 y la
+   O se parecen justo cuando importa. */
+.sit-cod{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color:var(--teal);background:#12252a;letter-spacing:.4px;flex:none}
+/* La falta de código NO se pinta como un hueco. Un renglón sin nada donde los
+   demás llevan «OF01-M01-C01» se lee como que ese sitio no necesita código; la
+   frase dice que falta ponerle la clave, que es lo que hay que hacer. */
+.sit-sincod{color:var(--dim);font-size:10.5px;font-style:italic;white-space:nowrap;flex:none}
+
+/* ── EL EDITOR ──
+   Con el borde a la izquierda igual que `.kit-editor`: los dos son «esta fila
+   está en modo de cambio», y dos marcas distintas para lo mismo obligan a
+   aprenderlo dos veces. */
+.sit-editor{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;
+  border-left:2px solid var(--accent);padding:9px 0 7px 11px;margin:2px 0 8px}
+.sit-campo{display:flex;flex-direction:column;gap:4px;min-width:0}
+.sit-campo>span{font-size:10.5px;color:var(--dim);font-weight:700;
+  text-transform:uppercase;letter-spacing:.4px}
+.sit-campo .ent-lote-inp,.sit-campo .ent-select{max-width:190px}
+/* Fila, columna y clave son de tres o cuatro caracteres: a 190px cada una, el
+   editor ocupaba dos renglones para no decir nada. */
+.sit-campo-corto .ent-lote-inp{max-width:88px}
+.sit-editor-btns{display:flex;gap:8px;align-items:center}
+.sit-editor-pie{flex:1 1 100%;color:var(--dim);font-size:11.5px;line-height:1.5;margin-top:2px}
+
+/* La línea de crear dentro. En `--dim` y sin fondo: es una acción que está
+   siempre disponible con el sitio abierto, y con el mismo peso que el
+   contenido competiría con lo que de verdad hay en el cajón. */
+.sit-nuevo-dentro{display:flex;flex-wrap:wrap;gap:7px;align-items:center;
+  padding:4px 0 10px}
+
+/* ── LA REJILLA ──
+   El mueble dibujado. `minmax(0,1fr)` en las columnas y no `1fr` a secas: con
+   `1fr`, un nombre largo dentro de una casilla ensancha su columna y desalinea
+   la rejilla entera, que es justo lo que la rejilla viene a evitar. */
+.rej{padding:2px 0 10px}
+.rej-malla{display:grid;gap:6px}
+.rej-casilla{display:flex;flex-direction:column;gap:4px;min-height:44px;
+  border:1px solid var(--border);border-radius:9px;padding:6px;min-width:0;
+  background:var(--card)}
+/* Las vacías, punteadas y sin fondo: se ve de un vistazo cuántos huecos quedan
+   sin tener que leer. */
+.rej-vacia{border-style:dashed;border-color:var(--border);background:transparent;
+  align-items:center;justify-content:center}
+/* Con algo elegido de la tira, los huecos se encienden: sin esto, tocar un
+   sitio de abajo no cambiaba nada en pantalla y no había forma de saber que el
+   siguiente toque iba a colocarlo. */
+.rej-diana{border-color:var(--teal);cursor:pointer}
+.rej-diana:hover{background:#12252a}
+.rej-hueco{color:var(--dim);font-size:10px;letter-spacing:.5px}
+
+.rej-cosa{display:flex;align-items:center;gap:5px;min-width:0;font-size:12px}
+.rej-ico{flex:none}
+.rej-clave{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color:var(--teal);background:#12252a;font-size:10px;padding:2px 6px;flex:none}
+.rej-nom{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}
+.rej-n{color:var(--teal);font-size:11px;font-weight:700;flex:none}
+.rej-dentro{color:var(--dim);font-weight:400}
+/* La ✕ solo aparece al pasar por encima de su casilla: veinte cruces siempre
+   visibles en un mueble de doce cajones convierten el dibujo en un formulario. */
+.rej-quitar{background:transparent;border:none;color:var(--dim);cursor:pointer;
+  font-size:11px;padding:0 2px;flex:none;opacity:0}
+.rej-casilla:hover .rej-quitar{opacity:1}
+.rej-quitar:hover{color:var(--red)}
+.rej-quitar:disabled{opacity:.3;cursor:default}
+
+.rej-sueltos{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:9px}
+.rej-sueltos-t{color:var(--dim);font-size:11.5px}
+.rej-suelto{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;
+  color:var(--text);background:transparent;border:1px dashed var(--border2);
+  border-radius:20px;padding:3px 10px;cursor:pointer;font-family:inherit}
+.rej-suelto:hover{border-color:var(--teal)}
+.rej-elegido{border-style:solid;border-color:var(--teal);color:var(--teal)}
+.rej-suelto:disabled{opacity:.4;cursor:default}
+
+/* El error del editor, pegado al botón que falló. Rojo y con borde propio: en
+   un bloque que ya tiene cinco campos y un pie explicativo, un renglón rojo sin
+   marco se lee como una sexta etiqueta. */
+.sit-editor-err{flex:1 1 100%;color:var(--red);font-size:12px;line-height:1.5;
+  border-left:2px solid var(--red);padding:4px 0 4px 8px;margin-top:2px}
+
+/* ── EL SELECTOR DE SITIO, CON LA CADENA ──
+   El nombre de un sitio solo es único dentro de su padre: seis cajones «01» en
+   seis muebles distintos son seis renglones idénticos. La clave delante y dónde
+   está detrás son lo que los separa. */
+.dsg-clave{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color:var(--teal);background:#12252a;font-size:10px;padding:2px 6px;flex:none}
+.dsg-op-n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+/* Empujado a la derecha y en gris: hace falta para elegir, pero no es lo que se
+   lee primero. `min-width:0` + elipsis para que una cadena de cuatro niveles no
+   ensanche la lista entera. */
+.dsg-donde{margin-left:auto;color:var(--dim);font-size:11px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:0 1 auto}
+
+/* La miniatura dentro de un cajón, más chica que la de una lista: aquí la fila
+   ya lleva folio, nombre y hasta cinco chips, y a 60px la foto empujaba los
+   chips a un segundo renglón por cada equipo. `--mini` se pisa igual que en
+   `.ug-img`, para no duplicar la regla de `.mini-eq`. */
+.sit-mini{--mini:34px;width:34px;height:34px;flex:none}
+
+/* El chip de una casilla de la rejilla: el número, pero pulsable. Hereda el
+   color del contenido —`--teal`, igual que las cifras del árbol— porque
+   contesta lo mismo; lo que cambia es que ahora se puede abrir. */
+.chip-sitio{color:var(--teal)}
+/* El cero NO es un chip: no abre nada, así que tampoco puede parecer que sí.
+   En `--dim` y sin fondo, para que la rejilla se recorra viendo los que tienen. */
+.rej-cero{color:var(--dim);font-weight:400}
+
+/* El desplegable de «mover» necesita más ancho que los otros campos: sus
+   opciones son la ruta entera —«OF01-M01 · Oficina Principal › Mueble 01»— y
+   a 190px ninguna se lee, que es justo lo que este control vino a arreglar. */
+.sit-campo-ancho .ent-select{max-width:min(420px, 100%)}
+
+/* ── EL 📍 DE UNA FILA DEL INVENTARIO ──
+   Enlace, no etiqueta muda: lleva a la pestaña Sitios con ese código buscado.
+   Con el código en monoespaciada, por lo mismo que en la pestaña de sitios: se
+   compara carácter a carácter con la pegatina del cajón, y el 0 y la O se
+   parecen justo cuando importa. */
+/* ⚠ Es un `<button>`, no un enlace: la fila entera ya es un `<a>` y un ancla
+   dentro de otra rompe la hidratación —está contado en components/ChipSitio—.
+   Por eso van explícitos el cursor y la tipografía, que un botón no hereda. */
+.chip-sit-eq{display:inline-flex;align-items:center;gap:4px;cursor:pointer;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color:var(--teal);background:#12252a;border:1px solid transparent}
+.chip-sit-eq:hover{border-color:var(--teal)}
+/* Roto o en bucle: en rojo y SIN enlace —no hay adónde ir— para que no se lea
+   como un sitio más que resulta que está en otro color. */
+.chip-sit-mal{color:var(--red);background:#2a1218}
+
+/* ── UN KIT DENTRO DE UNA CASILLA ──
+   Sus piezas van sangradas y con una línea a la izquierda: sin eso, dieciséis
+   equipos debajo del kit se leen como dieciséis cosas sueltas en el cajón, que
+   es lo contrario de lo que dicen. */
+.rej-kit{display:flex;flex-direction:column;gap:2px}
+.rej-kit-piezas{display:flex;flex-direction:column;gap:1px;
+  margin:2px 0 4px 10px;padding-left:8px;border-left:1px solid var(--border2)}
+.rej-kit-pieza{display:flex;flex-direction:column}
+/* La pieza que dice estar en OTRO sitio: en amarillo y con su porqué en la
+   etiqueta. No es un error de la base —es un dato que no cuadra con el kit— y
+   por eso avisa en vez de alarmar. */
+.rej-kit-otro{color:var(--yellow);font-size:10.5px;margin-left:34px}
+.rej-kit-fuera{color:var(--yellow)}
+
+/* «🔩 montada» / «🎒 dentro»: qué relación tiene con lo que la lleva. Son dos
+   cosas que se comportan al revés —una no se presta suelta y la otra sí— y sin
+   la marca las dos se leen igual dentro de la misma lista sangrada. */
+.rej-kit-como{color:var(--dim);font-size:10.5px;margin-left:34px}
+
+/* El cero de un sitio VACÍO de verdad, apagado. En el mismo verde agua y en
+   negrita que las cifras de al lado, un cero se lee igual de fuerte que un
+   ocho; y es el que se busca al mirar dónde queda hueco, no el que compite. */
+.sit-cifras .sit-vacio{color:var(--dim);font-weight:400}
+
+/* Con dos niveles de sangrado —un kit, su pieza, y lo que la pieza lleva
+   montado— el margen fijo dejaba la tercera columna en tres letras. El segundo
+   nivel sangra la mitad. */
+.rej-kit-piezas .rej-kit-piezas{margin-left:6px;padding-left:6px}
+
+/* La línea de plegar la rejilla: pequeña y arriba, porque es una preferencia
+   de la vista y no una acción sobre el inventario. */
+.rej-cab{display:flex;margin-bottom:6px}

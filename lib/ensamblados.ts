@@ -74,6 +74,13 @@ export type NodoEns = {
    *  los leía nadie: dos campos por nodo cruzando al navegador en cuarenta y
    *  cuatro raíces y ciento catorce piezas para nada. */
   guardado?: import("@/lib/sitios").Guardado;
+  /** Con qué kits SALE este ensamblado. La pone `arbolEnsamblados` y solo en
+   *  las raíces, igual que `guardado`.
+   *  ⚠ No es un adorno: el kit es lo que ARRASTRA un ensamblado a su cajón. Un
+   *  rig que sale en el «Kit de Grabación Portátil» se guarda donde ese bolso,
+   *  y sin verlo aquí uno le anota un sitio distinto al del kit con el que
+   *  viaja — y a la vuelta la mitad del kit está en dos cajones. */
+  kits?: { id: string; nombre: string }[];
   piezas: NodoEns[];
 };
 

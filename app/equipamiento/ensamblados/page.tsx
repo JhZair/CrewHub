@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import PanelEnsamblados from "@/components/PanelEnsamblados";
 import { arbolEnsamblados } from "@/lib/equipamientoDatos";
+import { faltaCorrer } from "@/lib/sitios";
 
 export const metadata: Metadata = { title: "🔧 Ensamblados" };
 
@@ -66,8 +67,8 @@ export default async function Ensamblados() {
           <div style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 5, lineHeight: 1.55 }}>
             Los ensamblados salen bien; lo que no se puede es decir dónde se
             guarda cada uno ni cambiarlo desde aquí.{" "}
-            {/(does not exist|schema cache|PGRST20)/i.test(eSitios)
-              ? <>Falta correr <code>db/sitios.sql</code> en Supabase.</>
+            {faltaCorrer(eSitios)
+              ? <>Falta correr <code>{faltaCorrer(eSitios)}</code> en Supabase.</>
               : <code style={{ fontSize: 11 }}>{eSitios}</code>}
           </div>
         </div>

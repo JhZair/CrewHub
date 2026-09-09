@@ -144,14 +144,19 @@ export default async function EquipamientoLayout({ children }: { children: React
            El aviso ámbar es otra cosa —las piezas que no encajan en ningún
            árbol— y por eso va aparte y no sumado: «3» junto a «28» dice que hay
            tres que mirar, y un «31» no diría nada. */
-        /* La quinta contesta la pregunta al REVÉS: las otras cuatro son sobre
-           una cosa —dónde está, con qué sale, de qué está hecha— y esta es
-           sobre un sitio: «¿qué hay en el Cajón 07?». Sin número: lo que
-           importa no es cuántos cajones hay sino qué falta por anotar, y eso
-           se dice dentro con nombre y apellido. */
-        { href: "/equipamiento/sitios", label: "📍 Sitios" },
         { href: "/equipamiento/ensamblados", label: "🔧 Ensamblados", n: nEns,
           avisos: nSueltas ? [{ n: nSueltas, txt: "piezas que no encajan en ningún ensamblado", tono: "ambar" as const }] : null },
+        /* ── LA ÚLTIMA, Y NO POR MENOS IMPORTANTE ──
+           Es la única que pregunta al REVÉS: las cinco de su izquierda son
+           sobre una COSA —dónde está, a quién se le asignó, con qué sale, de
+           qué está hecha— y esta es sobre un SITIO: «¿qué hay en el Cajón 07?».
+           Va al final porque el orden de la barra sigue el ciclo de vida de un
+           equipo, y el sitio no es un paso de ese ciclo: es el vocabulario que
+           lo cruza entero. Metida en medio partía la secuencia; al final se lee
+           como lo que es, la vista transversal.
+           Sin número: lo que importa no es cuántos cajones hay sino qué falta
+           por anotar, y eso se dice dentro con nombre y apellido. */
+        { href: "/equipamiento/sitios", label: "📍 Sitios" },
       ]} />
 
       {children}

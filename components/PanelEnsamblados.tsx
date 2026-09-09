@@ -11,6 +11,7 @@ import { soles } from "@/lib/compras";
    `tsc` no lo ve, así que pasa limpio y revienta al compilar. */
 import { valorDeNodo, piezasDeNodo, type NodoEns, type SueltaEns } from "@/lib/ensamblados";
 import DondeSeGuarda, { type Contenedor } from "@/components/DondeSeGuarda";
+import ChipGrupo from "@/components/ChipGrupo";
 import type { Sitio } from "@/lib/sitios";
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -414,6 +415,20 @@ export default function PanelEnsamblados({
                     guardado={r.guardado || { ruta: [], origen: "ninguno", bucle: false, roto: false }}
                     sitios={sitios} contenedores={contenedores}
                     error={eSitios} cortado={!!sitiosCortados} />
+                  {/* ── CON QUÉ KITS SALE, EN EL MISMO RENGLÓN QUE SU SITIO ──
+                      ⚠ Y no es decoración: EL KIT ES LO QUE LO ARRASTRA A SU
+                      CAJÓN. Este renglón dice «sin sitio anotado» cuarenta y
+                      cuatro veces y con el botón «anotar» al lado; sin ver que
+                      este rig sale en el «Kit de Grabación Portátil», se le
+                      anota un cajón cualquiera y a la vuelta la mitad del kit
+                      está repartida en dos sitios. La respuesta casi siempre es
+                      «donde el bolso de su kit», y tiene que estar a la vista
+                      justo donde se decide.
+                      El chip abre y enseña qué más va en ese kit. */}
+                  {(r.kits || []).map(k => (
+                    <ChipGrupo key={k.id} que="kit" id={k.id} nombre={k.nombre}
+                      titulo={`Sale en el kit «${k.nombre}» — ver qué más va dentro y dónde se guarda`} />
+                  ))}
                 </div>
 
                 {abierta && (

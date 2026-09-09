@@ -1,11 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
 import { equiposGordos, enManosAhora, cartelesEquipo, kitsCrudos, comprasCombo,
   cartelPorEquipo, quienTieneEquipo, contextoKits, repartoPorPieza, piezasMontadas,
-  un1, TOPE_EQUIPOS, fotosPorEquipo } from "@/lib/equipamientoDatos";
+  un1, TOPE_EQUIPOS, fotosPorEquipo, sitiosTodos } from "@/lib/equipamientoDatos";
+import { resolvedorDeGuardado, type Sitio } from "@/lib/sitios";
 import ChipPiezas from "@/components/ChipPiezas";
 import ChipFotos from "@/components/ChipFotos";
 import ChipGrupo from "@/components/ChipGrupo";
 import ChipAnfitrion, { type Anfitrion } from "@/components/ChipAnfitrion";
+import ChipSitio from "@/components/ChipSitio";
 import BotonComprobar from "@/components/BotonComprobar";
 import FilasEquipo from "@/components/FilasEquipo";
 import PonerSubcategoria from "@/components/PonerSubcategoria";
@@ -115,7 +117,7 @@ export default async function Equipamiento({ searchParams }: {
 
   const [{ data: eqs }, manos, media, kitsRaw, { data: comprasRaw },
          { data: vincs }, comsBita, comsUso, usosRec, { data: comBita },
-         { data: prestAll }, usosFin, nFotos] = await Promise.all([
+         { data: prestAll }, usosFin, nFotos, sitiosQ] = await Promise.all([
     equiposGordos(), enManosAhora(), cartelesEquipo(), kitsCrudos(), comprasCombo(),
     supabase.from("publicacion_vinculos")
       /* ⚠ EL CONTADOR 💬 YA NO SE CUENTA A MANO.
@@ -171,6 +173,15 @@ export default async function Equipamiento({ searchParams }: {
        AL FINAL, como avisa el comentario de arriba: esto se destructura POR
        POSICIÓN y meter una consulta en medio ya desalineó seis tablas una vez. */
     fotosPorEquipo(),
+    /* ── DÓNDE SE GUARDA CADA COSA ──
+       AL FINAL, por lo que avisan los dos comentarios de arriba: esto se
+       destructura POR POSICIÓN. `sitiosTodos` está `cache()`ada y la piden ya
+       las cinco pestañas de equipamiento, así que entrando desde cualquiera de
+       ellas no es un viaje más. El error no se mira aquí: sin sitios el
+       resolvedor devuelve «no se sabe» para todos y las filas no pintan el 📍,
+       que es lo mismo que pasa cuando nadie lo ha anotado. La pestaña Sitios es
+       la que dice qué migración falta, y es donde se va a mirar. */
+    sitiosTodos(),
   ]);
   /* ⚠ Los dos errores se MIRAN, y esto se dejó fuera al partir la pantalla.
      El aviso de «no se pudo leer quién tiene qué» se mudó entero a la pestaña
@@ -249,6 +260,17 @@ export default async function Equipamiento({ searchParams }: {
   const piezasDe = piezasMontadas(
     (eqs || []) as any[], cartelPorEq, comboPorEq,
     repartoPorPieza((eqs || []) as any[], comprasRaw ? { data: comprasRaw } : null),
+  );
+
+  /* ── LA CADENA DE «DÓNDE SE GUARDA», RESUELTA UNA VEZ ──
+     Una sola construcción para las quinientas filas, y con memoria dentro: sin
+     ella, la cadena del Bolso Tenba se recorrería una vez por cada cosa que
+     lleva dentro. La regla entera vive en `lib/sitios` —y NO se copia aquí—
+     porque la comparten la ficha, los kits, los ensamblados y la vista por
+     sitio: escrita cinco veces, la ficha diría «Cajón 08» y esta lista «Bolso
+     Tenba» del mismo equipo, y las dos tendrían razón a medias. */
+  const dondeSeGuarda = resolvedorDeGuardado(
+    ((sitiosQ as any)?.data || []) as Sitio[], (eqs || []) as any[],
   );
 
   /* ⚠ `eqsConDueno` —el inventario entero con dueño, combo, kits y piezas—
@@ -487,6 +509,11 @@ export default async function Equipamiento({ searchParams }: {
        recibe `cortado`: sin él acusaría a la base de una avería que no tiene. */
     const anf = x.ensamblado_en ? porIdEq.get(x.ensamblado_en) : null;
     const esPieza = !!x.ensamblado_en || x.estado === "ensamblado";
+    /* Dónde se guarda ESTA fila. Sale del resolvedor de arriba, que ya
+       tiene memoria: pedirlo aquí no recorre la cadena otra vez. */
+    const guardado = dondeSeGuarda.de(x.id);
+    const tieneSitio = guardado.ruta.some(t => t.tipo === "sitio")
+      || guardado.bucle || guardado.roto;
     const anfitrion: Anfitrion | null = anf ? {
       id: anf.id, folio: anf.folio, nombre: anf.nombre || "sin nombre",
       estado: anf.estado, cartel: cartelPorEq.get(anf.id) || null,
@@ -585,7 +612,11 @@ export default async function Equipamiento({ searchParams }: {
 
                   Si no hay ninguno la línea no se pinta: un renglón vacío bajo
                   cada fila son quinientos renglones de nada. */}
-              {(nFotos?.get(x.id) || piezasDe.get(x.id)?.length || esPieza || misKits.length || cb) ? (
+              {/* ⚠ `tieneSitio` TAMBIÉN en la condición. Sin él, un equipo cuyo
+                  único chip fuera el 📍 —sin fotos, sin piezas, sin kit y sin
+                  combo— no pintaba la línea y el sitio desaparecía justo en las
+                  filas más desnudas, que son las que más lo necesitan. */}
+              {(nFotos?.get(x.id) || piezasDe.get(x.id)?.length || esPieza || misKits.length || cb || tieneSitio) ? (
                 <div className="chips-linea">
                   {/* Buscas «maleta», te salen ocho, y para saber cuál es cuál
                       había que abrir ocho fichas y volver ocho veces perdiendo
@@ -601,6 +632,14 @@ export default async function Equipamiento({ searchParams }: {
                     <ChipAnfitrion anfitrion={anfitrion}
                       apunta={!!x.ensamblado_en} cortado={inventarioCortado} />
                   )}
+                  {/* ── Y DÓNDE VUELVE ──
+                      Buscar «gimbal» daba nueve resultados y ninguno decía a qué
+                      cajón ir; el dato existía desde db/sitios.sql y no se
+                      pintaba. Va aquí y no al final porque el orden de esta
+                      línea es de lo más cercano a lo más lejano: lo que lleva
+                      dentro, dentro de qué va, DÓNDE SE GUARDA, con qué sale,
+                      con qué entró. */}
+                  <ChipSitio guardado={guardado} />
                   {misKits.map((k: any) => (
                     <ChipGrupo key={k.id} que="kit" id={k.id} nombre={k.nombre}
                       titulo={`Sale en el kit «${k.nombre}» — ver qué más va dentro`} />

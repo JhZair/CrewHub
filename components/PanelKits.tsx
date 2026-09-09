@@ -1,5 +1,5 @@
 "use client";
-import { Fragment, memo, useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "@/components/Enlace";
 import { crearKit, guardarKit, setKitEquipos, borrarKit, revivirKit, fijarPortadaKit } from "@/app/actions";
@@ -9,10 +9,7 @@ import { entregableEq, porQueNoEq } from "@/lib/estadosEquipo";
 import type { EquipoParaPanel } from "@/lib/equipamientoDatos";
 import PiezasKit from "@/components/PiezasKit";
 import Avatar from "@/components/Avatar";
-import ChipFotos from "@/components/ChipFotos";
-import ChipPiezas, { type PiezaMontada } from "@/components/ChipPiezas";
-import ChipGrupo from "@/components/ChipGrupo";
-import ChipAnfitrion from "@/components/ChipAnfitrion";
+import ChipsEquipo from "@/components/ChipsEquipo";
 import { SinNavegar } from "@/components/FilaPop";
 import DondeSeGuarda from "@/components/DondeSeGuarda";
 import type { Sitio } from "@/lib/sitios";
@@ -38,49 +35,9 @@ const nrm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCas
  *  catálogo y no escrito a mano: si mañana cambia ahí, esto se entera. */
 const MONTADO = porQueNoEq("ensamblado");
 
-/* ── LOS CHIPS DE UNA FILA, LOS MISMOS QUE EN EL INVENTARIO ──
-   Escritos una vez aquí porque las dos columnas comparten `fila()` y porque el
-   orden es el mismo de /equipamiento: de lo más cercano a lo más lejano — la
-   foto es esta unidad; las piezas, lo que lleva dentro; el anfitrión, dentro de
-   qué va ella; el kit, con qué sale; el combo, con qué entró. */
-/* ⚠ `memo`, y no por elegancia: el escogedor pinta el inventario ENTERO —hasta
-   mil filas— y cada tecla del buscador reconcilia la lista completa. Sin esto,
-   cada pulsación repasaría hasta cinco chips por fila, y `ChipPiezas`,
-   `ChipGrupo` y `ChipAnfitrion` son un `ChipPop` con ocho hooks cada uno.
-   Las props son estables —`e` viene del servidor y `cortado` es un booleano—,
-   así que el memo acierta siempre salvo cuando la fila cambia de verdad. */
-const Chips = memo(function Chips({ e, cortado }: { e: EquipoParaPanel; cortado: boolean }) {
-  const esPieza = !!e.apunta || e.estado === "ensamblado";
-  /* ⚠ `e.combo` y no `e.compra_id`: la condición tiene que ser LA MISMA que la
-     del chip que se pinta abajo. Con `compra_id`, una unidad cuya compra no
-     vino en el lote de combos abría un `.chips-linea` sin un solo hijo. */
-  const hay = e.nFotos || e.piezas?.length || esPieza || e.kits?.length || e.combo;
-  if (!hay) return null;
-  return (
-    <span className="chips-linea">
-      <ChipFotos tipo="equipamiento" id={e.id} n={e.nFotos || 0} />
-      <ChipPiezas piezas={(e.piezas || []) as PiezaMontada[]} />
-      {esPieza && (
-        <ChipAnfitrion anfitrion={e.anfitrion || null} apunta={!!e.apunta} cortado={cortado} />
-      )}
-      {(e.kits || []).map(k => (
-        <ChipGrupo key={k.id} que="kit" id={k.id} nombre={k.nombre}
-          titulo={`Sale en el kit «${k.nombre}» — ver qué más va dentro`} />
-      ))}
-      {e.compra_id && e.combo && (
-        /* ⚠ `enChip` se calla cuando la unidad TIENE precio propio, igual que en
-           /equipamiento: si no, un combo de ocho unidades pinta ocho veces la
-           misma cifra de la boleta al lado de ocho precios distintos, y no hay
-           forma de saber cuál de las dos es de esta pieza. El total va crudo al
-           pop-up de todos modos: lo que se calla es el chip, no el dato. */
-        <ChipGrupo que="combo" id={e.compra_id} nombre={e.combo.codigo || e.combo.nombre}
-          total={e.combo.total ?? 0} moneda={e.combo.moneda}
-          enChip={!(Number(e.valor_compra) > 0) && Number(e.combo.total) > 0}
-          titulo={`Vino en ${e.combo.codigo || ""} ${e.combo.nombre}`.trim() + " — ver qué más trajo"} />
-      )}
-    </span>
-  );
-});
+/* Los chips de una fila viven en `components/ChipsEquipo`: los usan también
+   la vista por sitio y —en su versión de servidor— /equipamiento. Estaban
+   escritos aquí, y por eso la vista por sitio nació sin ellos. */
 
 /* ── El escogedor de equipos, compartido por «nuevo kit» y «editar kit» ── */
 function Escoge({ equipos, sel, alterna, onVaciar, portada, setPortada, cortado }: {
@@ -150,7 +107,7 @@ function Escoge({ equipos, sel, alterna, onVaciar, portada, setPortada, cortado 
             ⚠ Y solo en la columna del INVENTARIO. En la de la derecha —lo ya
             elegido— el sitio lo ocupan la ☆ y la ✕, y el pop-up de un chip
             taparía justo lo que se está revisando. */}
-        {modo === "elegir" && <Chips e={e} cortado={cortado} />}
+        {modo === "elegir" && <ChipsEquipo e={e} cortado={cortado} />}
       </span>
       {/* Un equipo en reparación SÍ puede formar parte del kit: el kit dice
           qué lo compone, no qué está libre hoy. Lo que cambia es que al

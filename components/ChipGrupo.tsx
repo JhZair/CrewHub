@@ -32,11 +32,21 @@ import { soles } from "@/lib/compras";
    preguntando quien mira el kit antes de una salida.
    ══════════════════════════════════════════════════════════════════════════ */
 
-export default function ChipGrupo({ que, id, nombre, total: totalBoleta, enChip, moneda, titulo }: {
+export default function ChipGrupo({ que, id, nombre, rotulo, total: totalBoleta, enChip, moneda, titulo }: {
   que: "kit" | "combo";
   id: string;
-  /** Lo que se lee en el chip: el nombre del kit, o el código del combo. */
+  /** Cómo se llama: el nombre del kit, o el código del combo. Es lo que se lee
+   *  en el chip y lo que encabeza el pop-up. */
   nombre: string;
+  /* ── LO QUE SE LEE EN EL CHIP, CUANDO NO ES EL NOMBRE ──
+     En el inventario el chip es la única mención del kit, así que dice su
+     nombre. En la vista por sitio el kit ES la fila —su cara y su nombre están
+     dos centímetros a la izquierda— y repetirlo en el chip pintaba «S24 básico
+     · 📦 S24 básico». Ahí el chip dice lo que la fila no: «📦 2 equipos», que
+     además es la misma forma que el «🔩 4 piezas» del equipo de al lado.
+     ⚠ Solo cambia el rótulo. El pop-up sigue encabezado por `nombre`: quien lo
+     abre desde «2 equipos» necesita ver de QUÉ kit son. */
+  rotulo?: React.ReactNode;
   /* ── LA CIFRA DE UN COMBO SALE DE LA BOLETA, NO DE UNA SUMA ──
    * Un combo tiene un precio: el que dice el papel. La suma de los precios
    * propios de sus unidades es OTRA cosa —casi siempre menor, porque a las
@@ -70,7 +80,7 @@ export default function ChipGrupo({ que, id, nombre, total: totalBoleta, enChip,
       clase={esKit ? "chip-kit" : "chip-combo"}
       etiqueta={
         <>
-          {esKit ? "📦" : "🧾"} <span className="chip-gr-n">{nombre}</span>
+          {esKit ? "📦" : "🧾"} <span className="chip-gr-n">{rotulo ?? nombre}</span>
           {!esKit && enChip && cifra > 0 && (
             <span style={{ opacity: .75, fontWeight: 400 }}> · {soles(cifra, moneda || undefined)}</span>
           )}

@@ -2,7 +2,10 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { crearSitio, guardarEn, type Destino } from "@/app/equipamiento/acciones";
-import { textoDeRuta, type Guardado, type Sitio, type Tramo } from "@/lib/sitios";
+import {
+  textoDeRuta, codigoDeRuta, faltaCorrer, iconoDeSitio, resolvedorDeGuardado,
+  type Guardado, type Sitio, type Tramo,
+} from "@/lib/sitios";
 
 /* ══════════════════════════════════════════════════════════════════════════
    📍 DÓNDE SE GUARDA ESTO — el control, en un solo sitio
@@ -113,13 +116,48 @@ export default function DondeSeGuarda({
     return malo;
   }, [contenedores, id, abierto]);
 
+  /* ── CADA SITIO, CON SU CADENA ──
+     ⚠ EL NOMBRE SOLO NO IDENTIFICA UN SITIO. La lista pintaba «📍 01» seis
+     veces —los seis cajones de un mueble se llaman 01…06— y encima ordenada
+     alfabéticamente, así que salían todos juntos arriba del todo, lejos del
+     mueble al que pertenecen y sin nada que los distinguiera. El nombre es
+     único DENTRO DE SU PADRE, que es justo lo que la lista no enseñaba.
+
+     Así que cada opción lleva su clave, y debajo dónde está: «en Oficina
+     Principal › Mueble 01». Y se ordena por esa cadena y no por el nombre, para
+     que los seis cajones salgan seguidos bajo su mueble en vez de encabezar la
+     lista como si fueran sitios sueltos.
+
+     Solo con el selector ABIERTO, por lo mismo que `prohibidos`: la pestaña de
+     ensamblados monta cuarenta y cuatro de estos y casi ninguno se abre. */
+  const sitiosConRuta = useMemo(() => {
+    if (!abierto) return [];
+    const r = resolvedorDeGuardado(sitios, []);
+    return sitios.map(s => {
+      const ruta = r.rutaDeSitio(s.id).ruta;
+      return {
+        s,
+        /* Los padres, sin él mismo: repetir su propio nombre debajo de su
+           propio nombre no dice nada. Vacío si está suelto, o si su cadena da
+           vueltas —ahí `ruta` viene vacía a propósito—. */
+        donde: textoDeRuta(ruta.slice(0, -1)),
+        codigo: codigoDeRuta(ruta),
+      };
+    }).sort((a, b) =>
+      `${a.donde} ${a.s.nombre}`.localeCompare(`${b.donde} ${b.s.nombre}`, "es"));
+  }, [sitios, abierto]);
+
   const opciones = useMemo(() => {
     const ps = nrm(q).split(/\s+/).filter(Boolean);
     const casa = (t: string) => ps.every(p => nrm(t).includes(p));
-    const sit = sitios.filter(s => casa(s.nombre));
+    /* Se busca también por CLAVE, por CÓDIGO y por dónde está: escribir
+       «Mueble 01» tiene que encontrar sus seis cajones —que no lo llevan en el
+       nombre— y pegar «OF01-M01-C03» tiene que llevar a uno solo. */
+    const sit = sitiosConRuta.filter(x =>
+      casa(`${x.s.nombre} ${x.s.clave || ""} ${x.codigo || ""} ${x.donde}`));
     const eqs = contenedores.filter(c => !prohibidos.has(c.id) && casa(`${c.folio || ""} ${c.nombre}`));
     return { sitios: sit.slice(0, 30), equipos: eqs.slice(0, 30), nSitios: sit.length };
-  }, [sitios, contenedores, q, prohibidos]);
+  }, [sitiosConRuta, contenedores, q, prohibidos]);
 
   async function poner(destino: Destino) {
     setOcupado(true); setErr("");
@@ -175,10 +213,16 @@ export default function DondeSeGuarda({
             <span className="dsg-ico">✕</span> quitarle el sitio
           </button>
         )}
-        {opciones.sitios.map(s => (
-          <button key={s.id} type="button" className="dsg-op" disabled={ocupado}
+        {opciones.sitios.map(({ s, donde, codigo }) => (
+          <button key={s.id} type="button" className="dsg-op dsg-sitio" disabled={ocupado}
+            title={codigo || undefined}
             onClick={() => poner({ sitio: s.id })}>
-            <span className="dsg-ico">📍</span> {s.nombre}
+            <span className="dsg-ico">{iconoDeSitio(s.tipo)}</span>
+            {s.clave && <span className="badge dsg-clave">{s.clave}</span>}
+            <span className="dsg-op-n">{s.nombre}</span>
+            {/* Dónde está, en gris y a la derecha: es lo que separa un «01» de
+                otro «01», pero no es lo que se lee primero. */}
+            {donde && <span className="dsg-donde">en {donde}</span>}
           </button>
         ))}
         {opciones.equipos.map(c => (
@@ -265,8 +309,17 @@ export default function DondeSeGuarda({
           ? guardado.ruta.map((t, i) => (
             <span key={t.id} className="dsg-tramo">
               {i > 0 && <span className="dsg-sep">›</span>}
+              {/* ⚠ SIN 📍 EN CADA TRAMO. Los sitios llevaban uno cada uno,
+                  debajo de un título que ya dice «📍 Dónde se guarda»: cuatro
+                  chinchetas idénticas en cuatro centímetros, y ninguna
+                  distinguía nada porque todas eran la misma. Lo que separa un
+                  tramo del siguiente es el «›», y lo que separa un sitio de un
+                  bolso es el color —`dsg-sitio` contra `dsg-equipo`—.
+                  El 🎒 SÍ se queda: no es decoración, es la única marca de que
+                  ese eslabón es una cosa del inventario y no un mueble, y por
+                  tanto de que hay algo más que abrir para llegar. */}
               <span className={t.tipo === "sitio" ? "dsg-sitio" : "dsg-equipo"}>
-                {t.tipo === "sitio" ? "📍" : "🎒"} {t.nombre}
+                {t.tipo === "equipo" && "🎒 "}{t.nombre}
               </span>
             </span>
           ))
@@ -306,8 +359,11 @@ export default function DondeSeGuarda({
       {error && (
         <div className="dsg-porque" style={{ color: "var(--red)" }}>
           ⚠ No se pudo leer dónde se guarda.{" "}
-          {/(does not exist|schema cache|PGRST20)/i.test(error)
-            ? <>Falta correr <code>db/sitios.sql</code> en Supabase.</>
+          {/* ⚠ Cuál de las dos migraciones falta lo decide `faltaCorrer`: con la
+              tabla ya creada, «corre db/sitios.sql» manda a correr un archivo
+              que no arregla nada. */}
+          {faltaCorrer(error)
+            ? <>Falta correr <code>{faltaCorrer(error)}</code> en Supabase.</>
             : <code style={{ fontSize: 11 }}>{error}</code>}
         </div>
       )}

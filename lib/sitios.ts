@@ -30,7 +30,87 @@ export type Sitio = {
   id: string;
   nombre: string;
   dentro_de?: string | null;
+  /* Los cuatro de db/sitios-detalle.sql. Opcionales de verdad y no por
+     comodidad: un sitio SIN tipo y SIN clave es válido —«Depósito» no tiene
+     número que deducir— y la pantalla tiene que saber pintarlo. */
+  tipo?: string | null;
+  /** Solo SU tramo: «C01», no «OF01-M01-C01». El código entero se arma
+   *  subiendo la cadena con `codigoDeRuta`, para que no pueda contradecirla. */
+  clave?: string | null;
+  fila?: number | null;
+  columna?: number | null;
 };
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LOS TIPOS DE SITIO
+
+   Aquí y no en un enum de Postgres, por lo que dice db/sitios-detalle.sql:
+   añadir «vitrina» tiene que ser esta línea y no una migración. El tipo decide
+   tres cosas —el ícono, el prefijo que se sugiere para la clave, y qué se
+   ofrece crear dentro— y las tres viven juntas porque se leen juntas.
+
+   ⚠ `prefijo` TIENE que decir lo mismo que el `case` de db/sitios-detalle.sql.
+   Son los dos únicos sitios donde está escrito. Si aquí un cajón sugiere «CJ»
+   y allí el traslado escribió «C», el mismo cajón tendría dos claves según
+   quién lo mirara — y la segunda se descubriría al chocar contra el índice.
+
+   Cajón y compartimiento comparten «C», y estante y espacio comparten «E», a
+   propósito: el nivel de la cadena ya los separa. OF01-M01-C01 es el cajón del
+   mueble; OF01-C01-E01, el compartimiento de la oficina.
+   ══════════════════════════════════════════════════════════════════════════ */
+export type TipoSitio = {
+  etiqueta: string;
+  icono: string;
+  prefijo: string;
+  /* ── QUÉ SE SUGIERE CREAR DENTRO ──
+     ⚠ SUGIERE, NO PROHÍBE. Esta lista decide qué sale PRIMERO en el desplegable
+     de «＋ dentro de», no qué se puede crear: la pantalla ofrece el resto de
+     tipos debajo, en su propio grupo.
+
+     El motivo es un fallo que costó una pantalla muerta: `espacio` tenía la
+     lista vacía —«es el último nivel»— y dentro de un «Espacio 3» el
+     desplegable salía con el «— tipo —» y NADA más. Un control sin una sola
+     opción no se lee como «aquí no va nada»: se lee como que la pantalla está
+     rota, y encima la premisa era falsa —un espacio de una oficina lleva
+     muebles perfectamente—.
+
+     Una taxonomía escrita de antemano no puede saber cómo es el almacén de
+     nadie. Lo que sabe es qué es lo HABITUAL, y eso es lo que ordena la lista. */
+  dentro: string[];
+};
+
+export const TIPOS_SITIO: Record<string, TipoSitio> = {
+  oficina:        { etiqueta: "Oficina",        icono: "🏢", prefijo: "OF", dentro: ["mueble", "estante", "compartimiento", "espacio"] },
+  almacen:        { etiqueta: "Almacén",        icono: "🏬", prefijo: "AL", dentro: ["mueble", "estante", "cajon", "espacio"] },
+  mueble:         { etiqueta: "Mueble",         icono: "🗄️", prefijo: "M",  dentro: ["cajon", "estante"] },
+  estante:        { etiqueta: "Estante",        icono: "📚", prefijo: "E",  dentro: ["compartimiento", "espacio"] },
+  cajon:          { etiqueta: "Cajón",          icono: "📦", prefijo: "C",  dentro: ["compartimiento", "espacio"] },
+  compartimiento: { etiqueta: "Compartimiento", icono: "🗃️", prefijo: "C",  dentro: ["espacio"] },
+  /* Un «espacio» es una zona —«Espacio 3» de una oficina—, no el hueco de un
+     cajón: lo normal es que lleve muebles. Estaba con la lista vacía por
+     confundirlo con lo segundo. */
+  espacio:        { etiqueta: "Espacio",        icono: "⬜", prefijo: "E",  dentro: ["mueble", "estante", "cajon", "compartimiento"] },
+};
+
+/** El ícono de un sitio. 📍 para el que no tiene tipo: es el que ya usaba la
+ *  pantalla, así que un sitio sin tipo se sigue viendo igual que ayer en vez
+ *  de aparecer roto. */
+export const iconoDeSitio = (tipo?: string | null) =>
+  (tipo && TIPOS_SITIO[tipo]?.icono) || "📍";
+
+export const etiquetaDeTipo = (tipo?: string | null) =>
+  (tipo && TIPOS_SITIO[tipo]?.etiqueta) || "sin tipo";
+
+/** La clave que le tocaría a un nombre por su tipo: «Cajón 07» → «C07».
+ *  ⚠ Es la misma regla que el traslado de db/sitios-detalle.sql, incluido el
+ *  `\d+` y no `\d{1,3}`: con tope, «Cajón 1024» daba «C024». Se SUGIERE, no se
+ *  impone — quien crea el sitio la puede cambiar antes de guardar. */
+export function claveSugerida(tipo?: string | null, nombre?: string | null): string {
+  const t = tipo ? TIPOS_SITIO[tipo] : null;
+  if (!t) return "";
+  const n = String(nombre || "").match(/(\d+)\s*$/)?.[1];
+  return n ? t.prefijo + n : "";
+}
 
 /** Lo mínimo de un equipo para saber dónde se guarda. Lo cumplen las filas
  *  flacas del inventario sin tocar nada. */
@@ -50,6 +130,10 @@ export type Tramo = {
   id: string;
   nombre: string;
   folio?: string | null;
+  /** Solo en los tramos de tipo «sitio», y solo si lo tienen. Viaja EN el
+   *  tramo y no se busca aparte porque el código se arma de la cadena: quien
+   *  tiene la cadena tiene ya todo lo que hace falta. */
+  clave?: string | null;
 };
 
 export type Guardado = {
@@ -76,6 +160,175 @@ const VACIO: Guardado = { ruta: [], origen: "ninguno", bucle: false, roto: false
  *  decide qué decir cuando no se sabe, que no es lo mismo en una ficha que en
  *  una fila de lista. */
 export const textoDeRuta = (r: Tramo[]) => r.map(t => t.nombre).join(" › ");
+
+/* ══════════════════════════════════════════════════════════════════════════
+   EL CÓDIGO — «OF01-M01-C01»
+
+   ⚠ ESTO ES LO QUE db/sitios-detalle.sql SE NEGÓ A GUARDAR EN UNA COLUMNA, y
+   la razón está allí entera: un código escrito en cada fila es una segunda
+   verdad que se rompe SIN DAR ERROR —mueves el Mueble 01 a otra oficina y sus
+   doce cajones siguen diciendo OF01 para siempre—. Se arma de la cadena, que
+   es la única que sabe la respuesta, y por eso vive aquí, al lado de la
+   función que resuelve la cadena, y no en la pantalla que lo pinta.
+
+   ── Y POR QUÉ DEVUELVE NULL EN VEZ DE UN CÓDIGO CORTO ──
+   Si el Mueble 01 no tiene clave, la cadena Oficina › Mueble › Cajón daría
+   «OF01-C01» saltándose un nivel — que es un código VÁLIDO de otra cosa: el
+   compartimiento 01 de la oficina. Un código que señala a un sitio distinto
+   del que se está mirando es peor que no tener código, porque se copia, se
+   pega en una etiqueta y se pega en un cajón que no es. Sin todos los
+   eslabones no hay código, y la pantalla dice que falta poner la clave.
+   ══════════════════════════════════════════════════════════════════════════ */
+export function codigoDeRuta(r: Tramo[]): string | null {
+  const sitios = r.filter(t => t.tipo === "sitio");
+  if (!sitios.length) return null;
+  if (sitios.some(t => !t.clave)) return null;
+  return sitios.map(t => t.clave).join("-");
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   QUÉ HAY EN CADA SITIO, Y CUÁNTO
+
+   Devuelve por sitio DOS cosas que se pintan juntas y que hay que definir
+   juntas, o se separan:
+
+     · las LISTAS —`directo` y `kits`— de lo que cuelga de ESE sitio y de nadie
+       más. Es la primera cifra: lo que se ve al abrir el cajón.
+     · `total`: todo lo que hay en él y en los sitios que lleva dentro, contando
+       además lo metido en un bolso y lo atornillado. Es la segunda cifra.
+
+   ⚠ POR QUÉ ESTÁ AQUÍ Y NO EN LA PANTALLA. Hubo un `contarPorSitio` que
+   devolvía solo las cifras y se quitó con razón —tener las cuentas por un lado
+   y las listas por otro es tener dos criterios de «qué cuenta como estar aquí»
+   que se van a separar—. Se separaron igual, dentro de la pantalla: `total`
+   contaba equipos y NO kits mientras la primera cifra sí los sumaba, así que el
+   Espacio 4 decía «0» teniendo tres kits en sus compartimientos y el Mueble 01
+   decía «5» donde había ocho. Un sitio que dice cero sobre un compartimiento
+   lleno es la mentira en la dirección que más tranquiliza.
+
+   Así que un solo recorrido devuelve las dos cosas —un criterio— y vive aquí,
+   donde se puede probar con un árbol de tres niveles sin montar la pantalla.
+   ══════════════════════════════════════════════════════════════════════════ */
+export function contenidoPorSitio<E extends { id: string }, K>(
+  sitios: { id: string }[],
+  equipos: E[],
+  kits: K[],
+  resolver: {
+    de: (id: string) => Guardado;
+    deKit: (k: any) => Guardado;
+  },
+): Map<string, { directo: E[]; kits: K[]; total: number }> {
+  const m = new Map<string, { directo: E[]; kits: K[]; total: number }>();
+  sitios.forEach(s => m.set(s.id, { directo: [], kits: [], total: 0 }));
+
+  const sube = (ruta: Tramo[]) => {
+    const enRuta = ruta.filter(t => t.tipo === "sitio");
+    enRuta.forEach(t => { const x = m.get(t.id); if (x) x.total++; });
+    return enRuta;
+  };
+
+  for (const e of equipos) {
+    const g = resolver.de(e.id);
+    /* ⚠ Directo solo si NO hay un equipo de por medio: en el cajón está el
+       bolso, y dentro del bolso la cámara. Vale igual para lo atornillado —la
+       pieza está dentro del rig, no suelta en el cajón—, y por eso la condición
+       mira la RUTA y no los punteros: los dos casos dejan un tramo de tipo
+       «equipo» en ella. */
+    const hayEquipo = g.ruta.some(t => t.tipo === "equipo");
+    const enRuta = sube(g.ruta);
+    if (!enRuta.length) continue;
+    if (!hayEquipo) m.get(enRuta[enRuta.length - 1].id)?.directo.push(e);
+  }
+
+  for (const k of kits) {
+    const g = resolver.deKit(k);
+    const enRuta = sube(g.ruta);
+    if (!enRuta.length) continue;
+    /* El kit cuelga del sitio más hondo de su cadena, esté guardado en un sitio
+       o dentro de un bolso que está en un sitio. */
+    m.get(enRuta[enRuta.length - 1].id)?.kits.push(k);
+  }
+
+  return m;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   QUÉ RAMAS ENSEÑA UNA BÚSQUEDA
+
+   Filtrar un ÁRBOL no es filtrar una lista: un nodo se enseña si casa él, y
+   TAMBIÉN si casa cualquiera de sus descendientes, porque si no el que casa no
+   tiene por dónde salir a la pantalla.
+
+   ⚠ La vista por sitio miraba un solo nivel —`casa(s) || hijos.some(casa)`— y
+   con tres —Oficina › Mueble › Cajón— buscar el código de un cajón dejaba la
+   pantalla VACÍA sobre treinta y tres sitios y un acierto exacto: ni el cajón
+   se pintaba (su padre no se pintaba), ni el padre, ni el abuelo. Y era el caso
+   normal, porque es adonde lleva el chip 📍 del inventario.
+
+   Vive aquí y no en la pantalla por lo mismo que el resto de este archivo: es
+   una regla con una forma fácil de equivocar, la van a querer el árbol de
+   ensamblados y cualquier otra lista con jerarquía, y escrita dos veces se
+   arregla una sola.
+   ══════════════════════════════════════════════════════════════════════════ */
+export function ramasQueCasan<T extends { id: string }>(
+  nodos: T[],
+  /** Los hijos de cada nodo, por id de padre. La raíz cuelga de `null`. */
+  hijosDe: Map<string | null, T[]>,
+  casa: (n: T) => boolean,
+): Map<string, boolean> {
+  const m = new Map<string, boolean>();
+  /* ⚠ `visto` corta los bucles. Un ciclo A→B→A colgaría el recorrido para
+     siempre en vez de dar un resultado incompleto, y una pantalla que no
+     responde no dice cuál es el sitio que está mal. */
+  const visto = new Set<string>();
+  const calc = (n: T): boolean => {
+    const hecho = m.get(n.id);
+    if (hecho !== undefined) return hecho;
+    if (visto.has(n.id)) return false;
+    visto.add(n.id);
+    let r = casa(n);
+    /* Sin cortocircuito a propósito: se recorren TODOS los hijos aunque uno ya
+       haya dado positivo, para que cada uno quede memorizado. Con `some`, los
+       hermanos posteriores al primer acierto se recalcularían al pintarlos. */
+    for (const h of hijosDe.get(n.id) || []) if (calc(h)) r = true;
+    m.set(n.id, r);
+    return r;
+  };
+  nodos.forEach(calc);
+  return m;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   QUÉ ARCHIVO FALTA CORRER
+
+   ⚠ SON DOS MIGRACIONES Y DAN ERRORES DISTINTOS. Hasta ahora cualquier «does
+   not exist» sobre `sitios` se rotulaba «falta correr db/sitios.sql», y con la
+   tabla ya creada esa frase manda a correr un archivo que no arregla nada: lo
+   que falta es `db/sitios-detalle.sql`, y quien lea el aviso lo correrá dos
+   veces y seguirá viendo lo mismo.
+
+     · falta la TABLA   → `relation "sitios" does not exist`  → db/sitios.sql
+     · falta la COLUMNA → `column sitios.clave does not exist`→ db/sitios-detalle.sql
+
+   Devuelve el nombre del archivo o `null`, y `null` significa «este error no es
+   una migración que falta»: rotular CUALQUIER fallo como migración convierte
+   una FK rota o un permiso en una instrucción que no arregla nada, que es
+   exactamente lo que `traducir()` ya evitaba en las acciones.
+   ══════════════════════════════════════════════════════════════════════════ */
+export function faltaCorrer(msg?: string | null): string | null {
+  const m = String(msg || "");
+  if (!m) return null;
+  /* Primero el detalle: su mensaje también contiene «does not exist» y con el
+     orden al revés se lo tragaría siempre la regla de la tabla. */
+  if (/column\s+"?(sitios\.)?(tipo|clave|fila|columna)"?\s+does not exist/i.test(m)
+    || /find the '(tipo|clave|fila|columna)' column/i.test(m)) {
+    return "db/sitios-detalle.sql";
+  }
+  if (/relation "?sitios"?.*does not exist|'sitios'.*schema cache|PGRST20/i.test(m)) {
+    return "db/sitios.sql";
+  }
+  return null;
+}
 
 /* ══════════════════════════════════════════════════════════════════════════
    EL RESOLVEDOR
@@ -107,7 +360,7 @@ export function resolvedorDeGuardado(sitios: Sitio[], equipos: EqGuardable[]) {
          sin marca: «Cajón 07» a secas, idéntico a un cajón sano que está en la
          raíz. El aviso desaparecía justo en el caso en que hace falta. */
       if (!s) { if (cursor !== id) roto = true; break; }
-      dentroAfuera.push({ tipo: "sitio", id: s.id, nombre: s.nombre });
+      dentroAfuera.push({ tipo: "sitio", id: s.id, nombre: s.nombre, clave: s.clave || null });
       cursor = s.dentro_de || null;
     }
     /* ⚠ Con bucle NO se devuelve la ruta a medias. Recorrer una cadena

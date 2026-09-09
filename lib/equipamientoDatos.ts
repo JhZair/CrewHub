@@ -117,9 +117,23 @@ export const fotosPorEquipo = cache(async (): Promise<Map<string, number> | null
    base sana. Es el mismo fallo que ya pagó `equiposFlacos`. */
 export const TOPE_SITIOS = TOPE_API - 1;
 
+/* ⚠ `tipo,clave,fila,columna` VIAJAN SIEMPRE, y no solo en la pestaña que los
+   pinta. La cadena que arma el código —«OF01-M01-C01»— pasa por los sitios
+   PADRE, así que el cajón necesita la clave de su mueble y la de su oficina
+   aunque ninguno de los dos se esté mirando. Con un `select` flaco en las
+   otras pantallas, el mismo cajón enseñaría su código completo aquí y «falta
+   la clave» en la ficha del equipo, que es la clase de desacuerdo que
+   `lib/sitios` existe para impedir.
+
+   El coste es cuatro columnas cortas sobre una lista de mil filas como mucho.
+   ⚠ Si la migración de detalle no está corrida, esto falla ENTERO y con él
+   todas las pestañas de equipamiento. Es a propósito y es la razón de que
+   `traducir()` distinga «falta la tabla» de «falta la columna»: las dos frases
+   mandan a correr un archivo distinto, y la de siempre mandaba al que ya
+   estaba corrido. */
 export const sitiosTodos = cache(async () => {
   const supabase = createClient();
-  return supabase.from("sitios").select("id,nombre,dentro_de")
+  return supabase.from("sitios").select("id,nombre,dentro_de,tipo,clave,fila,columna")
     .order("nombre").limit(TOPE_SITIOS + 1);
 });
 
@@ -525,8 +539,13 @@ export async function inventarioDePaneles() {
 
 /** Lo que necesita la pestaña 🔧 Ensamblados, y nada más. */
 export const arbolEnsamblados = cache(async () => {
-  const [eqs, media, manos, sitiosQ] = await Promise.all([
+  const [eqs, media, manos, sitiosQ, kitsRaw] = await Promise.all([
     equiposFlacos(), cartelesEquipo(), enManosAhora(), sitiosTodos(),
+    /* ⚠ `kitsCrudos` está `cache()`ada y ya la piden el inventario, los combos
+       y la vista por sitio: entrando desde cualquiera de ellas no es un viaje
+       más. Y lo que trae es lo que decide dónde va un ensamblado — el kit lo
+       arrastra a su cajón—, así que no verlo aquí es anotar a ciegas. */
+    kitsCrudos(),
   ]);
   const filas = (eqs.data || []) as any[];
   const cartelPorEq = cartelPorEquipo(media);
@@ -540,7 +559,14 @@ export const arbolEnsamblados = cache(async () => {
      fila cruzando al navegador para no pintarse nunca. */
   const listaSitios = ((sitiosQ as any)?.data || []) as Sitio[];
   const donde = resolvedorDeGuardado(listaSitios, filas as any);
-  raices.forEach(r => { r.guardado = donde.de(r.id); });
+  const { kitsPorEq } = contextoKits(kitsRaw);
+  /* SOLO en las raíces, igual que la cadena: a una pieza atornillada no se le
+     pinta nada de esto —hereda de su anfitrión— y sus chips serían objetos por
+     fila cruzando al navegador para no pintarse nunca. */
+  raices.forEach(r => {
+    r.guardado = donde.de(r.id);
+    r.kits = kitsPorEq.get(r.id) || [];
+  });
 
   /* ── LOS CANDIDATOS A MONTAR ──
      ⚠ LISTA BLANCA, no una lista de exclusiones. Estuvo escrito al revés —«ni

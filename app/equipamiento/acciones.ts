@@ -1,6 +1,7 @@
 "use server";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { faltaCorrer, TIPOS_SITIO } from "@/lib/sitios";
 
 /* ══════════════════════════════════════════════════════════════════════════
    📍 DÓNDE SE GUARDA CADA COSA — las acciones
@@ -31,17 +32,28 @@ const revalidar = () => {
   revalidatePath("/equipamiento/sitios");
 };
 
-/* Traduce los dos errores de Postgres que este módulo puede provocar de
-   verdad. Solo esos: rotular CUALQUIER «does not exist» como «falta correr la
+/* Traduce los errores de Postgres que este módulo puede provocar de verdad.
+   Solo esos: rotular CUALQUIER «does not exist» como «falta correr la
    migración» convierte un problema real —una FK rota, un enum que cambió— en
-   una instrucción que no arregla nada.
-   · `relation "sitios" does not exist`  → la migración no está corrida
-   · `duplicate key … idx_sitio_nombre*` → ya hay un sitio así en ese nivel. Es
-     alcanzable al renombrar, al borrar un padre (sus hijos suben a la raíz y
-     pueden chocar) y al sacar uno a la raíz. */
+   una instrucción que no arregla nada. Cuál de las dos migraciones falta lo
+   decide `faltaCorrer`, que es la misma función que usan las pantallas: con
+   dos copias de la regla, la acción diría un archivo y el aviso de arriba
+   diría el otro sobre el mismo fallo.
+
+   ⚠ EL DUPLICADO SON DOS COSAS DISTINTAS Y ANTES ERAN UNA. `idx_sitio_nombre*`
+   e `idx_sitio_clave*` chocan por motivos que se arreglan distinto —el nombre
+   se cambia, la clave se cambia o se deja vacía— y la frase de «ponle otro
+   nombre» sobre una clave repetida manda a cambiar lo que no falla. El orden
+   importa: la de clave va primero porque la genérica de `duplicate key` se las
+   tragaría las dos. */
 const traducir = (msg: string) => {
-  if (/relation "?sitios"?.*does not exist|'sitios'.*schema cache|PGRST20/i.test(msg)) {
-    return "Falta correr db/sitios.sql en Supabase.";
+  const archivo = faltaCorrer(msg);
+  if (archivo) return `Falta correr ${archivo} en Supabase.`;
+  if (/idx_sitio_clave/i.test(msg)) {
+    return "Ya hay un sitio con esa clave dentro del mismo sitio. La clave solo tiene que ser única entre hermanos: «C01» puede repetirse en otro mueble.";
+  }
+  if (/sitio_rejilla_positiva/i.test(msg)) {
+    return "La fila y la columna empiezan en 1, no en 0. Déjalas vacías si ese sitio no está en una rejilla.";
   }
   if (/duplicate key|idx_sitio_nombre/i.test(msg)) {
     return "Ya hay un sitio con ese nombre en ese mismo nivel. Ponle otro nombre, o muévelo dentro de otro sitio.";
@@ -55,7 +67,14 @@ const traducir = (msg: string) => {
  *  Devuelve el existente en vez de fallar, como `crearLugar`: quien escribe
  *  «Cajón 07» en el selector quiere ESE cajón, y un error de clave duplicada
  *  le pediría adivinar que ya estaba. */
-export async function crearSitio(nombre: string, dentroDe?: string | null) {
+export async function crearSitio(
+  nombre: string, dentroDe?: string | null,
+  /* ⚠ Solo se mandan a la base las claves que vengan puestas. Poniéndolas
+     siempre —aunque fueran null— este `insert` pediría cuatro columnas que
+     no existen mientras db/sitios-detalle.sql no esté corrido, y con él se
+     caería el «＋ Sitio» del bloque 📍 de cada ficha, que hoy funciona. */
+  campos?: { tipo?: string | null; clave?: string | null },
+) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
@@ -75,22 +94,125 @@ export async function crearSitio(nombre: string, dentroDe?: string | null) {
   if (eBusca) return { error: traducir(eBusca.message) };
   if (ex) return { id: ex.id, nombre: ex.nombre, yaEstaba: true };
 
+  const fila: Record<string, any> = {
+    nombre: limpio, dentro_de: dentroDe || null, creado_por: user.id,
+  };
+  if (campos?.tipo !== undefined) {
+    const t = campos.tipo ? String(campos.tipo).trim() : null;
+    if (t && !TIPOS_SITIO[t]) return { error: `«${t}» no es un tipo de sitio conocido.` };
+    fila.tipo = t;
+  }
+  if (campos?.clave !== undefined) {
+    const c = String(campos.clave || "").trim().toUpperCase().replace(/\s+/g, "");
+    if (c.includes("-")) {
+      return { error: "La clave no puede llevar guiones: el guión es lo que separa los tramos del código (OF01-M01-C01). Prueba «M01»." };
+    }
+    fila.clave = c || null;
+  }
+
   const { data, error } = await supabase.from("sitios")
-    .insert({ nombre: limpio, dentro_de: dentroDe || null, creado_por: user.id })
-    .select("id,nombre").single();
+    .insert(fila).select("id,nombre").single();
   if (error) return { error: traducir(error.message) };
   revalidar();
   return { id: data.id, nombre: data.nombre };
 }
 
-export async function renombrarSitio(id: string, nombre: string) {
+/** Lo que se puede cambiar de un sitio. `undefined` es «no lo toques» y `null`
+ *  es «bórralo»: sin esa diferencia no habría forma de quitar una clave mal
+ *  deducida, que es justo lo que el informe de db/sitios-detalle.sql manda a
+ *  hacer a mano. */
+export type CamposSitio = {
+  nombre?: string;
+  tipo?: string | null;
+  clave?: string | null;
+  fila?: number | null;
+  columna?: number | null;
+};
+
+/** Cambiar un sitio: el nombre y los tres datos de db/sitios-detalle.sql.
+ *
+ *  ── UNA SOLA ACCIÓN, COMO `guardarEn` ──
+ *  Era `renombrarSitio`, y con cuatro campos más habrían sido cinco acciones
+ *  que se copian la una a la otra —la misma sesión, el mismo `traducir`, el
+ *  mismo `revalidar`— y en las que la validación de la clave viviría en una
+ *  sola. La pantalla manda lo que cambió y lo demás se queda como estaba.
+ *
+ *  ⚠ La rejilla se escribe COMPLETA o no se escribe: mandar fila sin columna
+ *  deja un sitio que no se puede dibujar y que tampoco está «sin colocar».
+ *  Ver el comentario de abajo. */
+export async function editarSitio(id: string, campos: CamposSitio) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
-  const limpio = String(nombre || "").trim();
-  if (!limpio) return { error: "El nombre no puede quedar vacío." };
-  const { error } = await supabase.from("sitios").update({ nombre: limpio }).eq("id", id);
+
+  const set: Record<string, any> = {};
+
+  if (campos.nombre !== undefined) {
+    const limpio = String(campos.nombre || "").trim();
+    if (!limpio) return { error: "El nombre no puede quedar vacío." };
+    set.nombre = limpio;
+  }
+
+  /* ⚠ El tipo se comprueba contra `TIPOS_SITIO`. La columna es `text` a
+     propósito —añadir «vitrina» tiene que ser una línea de código y no una
+     migración, lo dice db/sitios-detalle.sql— pero «text» no es «cualquier
+     cosa»: un tipo que el catálogo no conoce se queda sin ícono, sin prefijo
+     y sin nada que ofrecer crear dentro, y la pantalla lo pinta como si no
+     tuviera tipo. Sería un dato escrito que no hace nada. */
+  if (campos.tipo !== undefined) {
+    const t = campos.tipo ? String(campos.tipo).trim() : null;
+    if (t && !TIPOS_SITIO[t]) {
+      return { error: `«${t}» no es un tipo de sitio conocido.` };
+    }
+    set.tipo = t;
+  }
+
+  if (campos.clave !== undefined) {
+    /* Mayúsculas y sin espacios: el índice único es sobre `lower(clave)`, así
+       que «c07» y «C07» ya chocan entre sí; guardarlas tal cual escribiría la
+       misma clave de dos formas y las etiquetas saldrían distintas.
+       ⚠ Y SIN GUIONES. El guión es lo que une los tramos del código:
+       «OF01-M01-C01». Una clave «M-01» daría «OF01-M-01-C01», que no se puede
+       volver a partir y que además puede coincidir con el código de otro
+       sitio. Se rechaza en vez de limpiarse a la fuerza: quien escribió «M-01»
+       quería otra cosa y hay que decírselo. */
+    const c = String(campos.clave || "").trim().toUpperCase().replace(/\s+/g, "");
+    if (c.includes("-")) {
+      return { error: "La clave no puede llevar guiones: el guión es lo que separa los tramos del código (OF01-M01-C01). Prueba «M01»." };
+    }
+    set.clave = c || null;
+  }
+
+  /* ⚠ LAS DOS O NINGUNA. Fila sin columna no se puede dibujar —no hay dónde
+     ponerlo— y tampoco cuenta como «sin colocar», así que el sitio
+     desaparecería de las dos listas de la rejilla. La base no lo puede
+     impedir: su check solo mira que cada una sea positiva. */
+  const tocaRejilla = campos.fila !== undefined || campos.columna !== undefined;
+  if (tocaRejilla) {
+    const num = (v: any) => {
+      if (v === null || v === undefined || v === "") return null;
+      const n = Number(v);
+      return Number.isInteger(n) ? n : NaN;
+    };
+    const f = num(campos.fila), c = num(campos.columna);
+    if (Number.isNaN(f) || Number.isNaN(c)) {
+      return { error: "La fila y la columna son números enteros." };
+    }
+    if ((f === null) !== (c === null)) {
+      return { error: "La fila y la columna van juntas: con solo una de las dos no se puede colocar el sitio en la rejilla. Pon las dos, o deja las dos vacías." };
+    }
+    if ((f !== null && f < 1) || (c !== null && c < 1)) {
+      return { error: "La fila y la columna empiezan en 1, no en 0." };
+    }
+    set.fila = f; set.columna = c;
+  }
+
+  if (!Object.keys(set).length) return { ok: true, sinCambios: true };
+
+  const { data, error } = await supabase.from("sitios")
+    .update(set).eq("id", id).select("id");
   if (error) return { error: traducir(error.message) };
+  if (!data?.length) return { error: "No se guardó: no tienes permiso, o ese sitio ya no está." };
   revalidar();
   return { ok: true };
 }
