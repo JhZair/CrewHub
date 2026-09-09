@@ -8054,12 +8054,34 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
 .ens-tarjetas{display:flex;flex-direction:column;gap:10px;margin-top:10px}
 .ens-tarjeta{border:1px solid var(--border);border-radius:11px;overflow:hidden;
   background:rgba(255,255,255,.015)}
+/* Sin `border-bottom` cuando la tarjeta está CERRADA: un borde que no separa
+   nada de nada es una raya suelta bajo cada título, y con cuarenta y cuatro se
+   lee como una tabla rota. Lo pone la clase, que ya sabe el estado. */
 .ens-titulo{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:9px 11px;
-  border-bottom:1px solid var(--border);background:rgba(255,140,66,.05)}
-.ens-nom-g{font-size:14px;font-weight:700;color:var(--text);text-decoration:none;
+  background:rgba(255,140,66,.05)}
+.ens-tarjeta.abierta .ens-titulo{border-bottom:1px solid var(--border)}
+/* ⚠ El realce del hover va en el BOTÓN, no en la tarjeta entera. Estuvo en
+   `.ens-tarjeta:not(.abierta):hover .ens-titulo` y encendía la fila completa
+   —incluidos el resumen, el «lo tiene» y el hueco del `spacer`, que no son
+   pulsables— prometiendo un clic que ahí no existe. Lo que se ilumina es lo
+   que responde. */
+.ens-plegar{display:flex;align-items:center;gap:8px;background:none;border:none;
+  padding:0;cursor:pointer;font-family:inherit;color:inherit;text-align:left;
+  /* ⚠ Base `140px`, no `260px`. Con 260 y `.ens-resumen` en `nowrap`, la
+     cabecera se partía en dos renglones a 375px: cuarenta y cuatro cabeceras a
+     doble altura son justo lo que el plegado venía a ahorrar. `kit-plegar` usa
+     `flex:none` por lo mismo —que no empuje al resumen—; aquí crece porque el
+     nombre es lo largo, pero con una base que cabe en un móvil. */
+  flex:1 1 140px;min-width:0}
+.ens-plegar:hover .ens-nom-g{color:var(--accent)}
+.ens-plegar:hover .panel-flecha{opacity:1}
+.ens-nom-g{font-size:14px;font-weight:700;color:var(--text);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-.ens-nom-g:hover{color:var(--accent)}
-.ens-resumen{color:var(--teal);font-size:11.5px;font-weight:700;white-space:nowrap}
+/* Lo marcado, dicho en la cabecera cuando el árbol está plegado: sin esto,
+   marcas cinco, pliegas, y la barra ofrece desmontar cinco invisibles. */
+.ens-marcadas{color:var(--yellow);font-size:11px;font-weight:700;white-space:nowrap;
+  background:rgba(244,180,0,.12);border-radius:20px;padding:2px 8px}
+.ens-resumen{color:var(--teal);font-size:11.5px;font-weight:700;white-space:nowrap;flex:none}
 /* En ámbar y no en gris: que el conjunto esté en la mochila de alguien es lo
    que decide si se puede desarmar hoy, no un dato de adorno. */
 .ens-quien{color:var(--yellow);font-size:11.5px;white-space:nowrap}

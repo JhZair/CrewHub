@@ -144,6 +144,24 @@ export default function PanelEnsamblados({ raices, sueltas, candidatos, cortado 
   /** Id del anfitrión al que se van a montar piezas, o `"_nuevo"` para elegirlo
    *  dentro del pop-up. `null` = cerrado. */
   const [montando, setMontando] = useState<string | null>(null);
+  /* ── PLEGADAS DE ENTRADA ──
+     Son cuarenta y cuatro y van a ser más: abiertas, la pantalla es un muro de
+     ciento catorce renglones y el índice —que es para lo que se entra: «¿qué
+     tengo armado?»— queda enterrado. Cerradas, la tarjeta ya contesta con su
+     título: qué es, cuántas piezas y cuánto vale.
+     ⚠ El conjunto es de ABIERTAS y no de cerradas, a propósito: con un set de
+     cerradas, cada ensamblado nuevo nacería abierto y la lista volvería sola al
+     muro a medida que crece.
+     ⚠ Acumula ids de ensamblados que ya se desarmaron y no se poda: nadie
+     recorre el conjunto —cada tarjeta pregunta por el suyo con `has`, y el
+     botón de arriba pregunta por las que se VEN—, así que un id muerto no
+     puede pintar ni contar nada. Podarlo pediría un efecto sobre `raices` para
+     no arreglar ningún síntoma. Cuando lo tuvo —la etiqueta salía de
+     `abiertos.size`— sí mentía, y eso es lo que se corrigió allí. */
+  const [abiertos, setAbiertos] = useState<Set<string>>(new Set());
+  const alternaCaja = (id: string) => setAbiertos(s => {
+    const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n;
+  });
   const [ocupado, setOcupado] = useState(false);
   const [err, setErr] = useState("");
 
@@ -156,17 +174,42 @@ export default function PanelEnsamblados({ raices, sueltas, candidatos, cortado 
      cualquiera de sus piezas, y entonces se pinta ENTERA — enseñar solo la
      pieza que coincide sería devolver otra vez la lista plana que esta pantalla
      viene a sustituir. */
+  /* Una sola función de coincidencia para las dos cosas que preguntan lo mismo
+     —qué tarjetas se ven y cuáles se abren solas—: escritas dos veces, divergen
+     a la primera corrección. */
+  const casa = (r: NodoEns, ps: string[], soloDentro = false) => {
+    const nodos = soloDentro ? aplanar(r) : [r, ...aplanar(r)];
+    const txt = nrm(nodos
+      .map(n => `${n.folio || ""} ${n.nombre} ${n.categoria || ""} ${n.subcategoria || ""}`).join(" "));
+    return ps.every(p => txt.includes(p));
+  };
+
   const vistas = useMemo(() => {
     const ps = nrm(filtro).split(/\s+/).filter(Boolean);
     if (!ps.length) return raices;
-    return raices.filter(r => {
-      const txt = nrm([r, ...aplanar(r)]
-        .map(n => `${n.folio || ""} ${n.nombre} ${n.categoria || ""} ${n.subcategoria || ""}`).join(" "));
-      return ps.every(p => txt.includes(p));
-    });
+    return raices.filter(r => casa(r, ps));
   }, [raices, filtro]);
 
+  /* ⚠ Buscar ABRE, no pisa. Estuvo como `abierta = !!filtro || abiertos.has(id)`
+     y era un atajo con tres consecuencias: el botón de plegar de cada tarjeta
+     dejaba de hacer nada visible mientras se buscaba —pero SÍ tocaba `abiertos`,
+     así que al borrar el filtro aparecían tarjetas plegadas que nadie plegó—, y
+     «abrir/cerrar todas» decía cosas que no pasaban. Un estado que se pinta de
+     una forma y se guarda de otra siempre acaba así.
+     Ahora `abiertos` es la única verdad y el buscador solo AÑADE: al teclear se
+     abren las que coinciden POR DENTRO, que son las que si no dirían «está en
+     alguno de estos» sin decir en cuál. Las que coinciden por el nombre del
+     anfitrión no se abren: ahí la tarjeta ya contesta con su título. */
+  const alFiltrar = (q: string) => {
+    setFiltro(q);
+    const ps = nrm(q).split(/\s+/).filter(Boolean);
+    if (!ps.length) return;
+    const porDentro = raices.filter(r => casa(r, ps) && casa(r, ps, true)).map(r => r.id);
+    if (porDentro.length) setAbiertos(s => new Set([...s, ...porDentro]));
+  };
+
   const totalPiezas = useMemo(() => raices.reduce((s, r) => s + piezasDeNodo(r), 0), [raices]);
+  const todasAbiertas = vistas.length > 0 && vistas.every(r => abiertos.has(r.id));
 
   async function correr(fn: () => Promise<any>, alTerminar?: () => void) {
     setOcupado(true); setErr("");
@@ -242,8 +285,30 @@ export default function PanelEnsamblados({ raices, sueltas, candidatos, cortado 
           </b>
           <span className="spacer" />
           <input className="ent-lote-inp" placeholder="Buscar por folio, nombre o categoría…"
-            value={filtro} onChange={e => setFiltro(e.target.value)} />
-          <button type="button" className="btn" onClick={() => { setSel(new Set()); setMontando("_nuevo"); }}>
+            value={filtro} onChange={e => alFiltrar(e.target.value)} />
+          {/* ⚠ Mira las que se VEN, no `abiertos.size`. Con el tamaño del
+              conjunto, abrir UNA de cuarenta y cuatro ya ponía «cerrar todas»
+              —y la acción que hace falta en ese momento es la contraria—; y
+              peor: `abiertos` guarda ids de ensamblados que ya se desarmaron,
+              así que podía decir «cerrar todas» con las cuarenta y cuatro
+              cerradas. Preguntando por lo visible, la etiqueta no puede
+              mentir. Y se pinta también buscando: ahora el buscador solo
+              añade, así que cerrar y abrir siguen haciendo lo que dicen. */}
+          {vistas.length > 1 && (
+            <button type="button" className="dato-btn"
+              onClick={() => setAbiertos(s => {
+                const n = new Set(s);
+                if (todasAbiertas) vistas.forEach(r => n.delete(r.id));
+                else vistas.forEach(r => n.add(r.id));
+                return n;
+              })}>
+              {todasAbiertas ? "cerrar todas" : "abrir todas"}
+            </button>
+          )}
+          {/* Sin `setSel(new Set())`: lo marcado es para DESMONTAR, y ponerse a
+              armar otra cosa no lo cancela. Borrarlo aquí tiraba en silencio lo
+              que el usuario llevaba marcado. */}
+          <button type="button" className="btn" onClick={() => setMontando("_nuevo")}>
             🔧 Armar
           </button>
         </div>
@@ -267,29 +332,60 @@ export default function PanelEnsamblados({ raices, sueltas, candidatos, cortado 
           {vistas.map(r => {
             const dentro = aplanar(r);
             const marcadasAqui = dentro.filter(p => sel.has(p.id));
+            const abierta = abiertos.has(r.id);
             return (
-              <div key={r.id} className="ens-tarjeta">
+              <div key={r.id} className={`ens-tarjeta${abierta ? " abierta" : ""}`}>
                 <div className="ens-titulo">
-                  <Mini url={r.cartel} />
-                  {r.folio && <span className="badge kit-folio">{r.folio}</span>}
-                  <Link href={`/entidad/equipamiento/${r.id}`} className="ens-nom-g">{r.nombre}</Link>
+                  {/* Un BOTÓN de verdad y no un `div` con `onClick`: se enfoca
+                      con el Tab, se activa con Enter y dice si está abierto.
+                      Se lleva la miniatura, el folio y el nombre para que el
+                      área de clic sea media fila y no una flecha de diez
+                      píxeles — con cuarenta y cuatro tarjetas eso se nota.
+                      ⚠ Por eso el nombre va en `<b>` y no en un `<Link>`: el
+                      modelo de contenido de `<button>` no admite descendientes
+                      interactivos, así que un ancla dentro es HTML inválido —y
+                      un lector de pantalla se encuentra dos controles anidados
+                      sin saber cuál anunciar—. El navegador NO lo reacomoda: se
+                      queda anidado y roto en silencio, que es lo peor de los dos
+                      mundos. La ficha se abre con el ↗ de la derecha. */}
+                  <button type="button" className="ens-plegar" aria-expanded={abierta}
+                    onClick={() => alternaCaja(r.id)}
+                    /* El nombre va SIEMPRE en el `title`: es lo único que deja
+                       leer entero un nombre largo, que el ellipsis corta. */
+                    title={abierta ? `Ocultar las piezas de «${r.nombre}»`
+                      : `Ver las ${piezasDeNodo(r)} piezas de «${r.nombre}»`}>
+                    <span className="panel-flecha" aria-hidden>{abierta ? "▾" : "▸"}</span>
+                    <Mini url={r.cartel} />
+                    {r.folio && <span className="badge kit-folio">{r.folio}</span>}
+                    <b className="ens-nom-g">{r.nombre}</b>
+                  </button>
                   <span className="ens-resumen">
                     {piezasDeNodo(r)} pieza(s) · {soles(valorDeNodo(r))}
                   </span>
                   {/* Prestado: se dice ARRIBA, en el título. Es lo que decide si
                       se puede tocar hoy — no está aquí, está en una mochila. */}
                   {r.quien && <span className="ens-quien">lo tiene {r.quien}</span>}
+                  {/* ⚠ Lo marcado se dice en la CABECERA cuando está cerrada.
+                      Si no, marcas cinco piezas, pliegas, y la barra de abajo
+                      ofrece desmontar cinco que ya no se ven por ningún lado. */}
+                  {!abierta && marcadasAqui.length > 0 && (
+                    <span className="ens-marcadas">{marcadasAqui.length} marcada(s)</span>
+                  )}
                   <span className="spacer" />
+                  <Link href={`/entidad/equipamiento/${r.id}`} className="dato-btn"
+                    title={`Abrir la ficha de ${r.nombre}`}>↗ ficha</Link>
                   <button type="button" className="dato-btn" disabled={ocupado}
                     title={`Montar más piezas dentro de ${r.nombre}`}
                     onClick={() => setMontando(r.id)}>＋ piezas</button>
                 </div>
-                <div className="ens-arbol">
-                  {r.piezas.map(p => (
-                    <Pieza key={p.id} n={p} nivel={0} sel={sel} alterna={alterna} />
-                  ))}
-                </div>
-                {marcadasAqui.length > 0 && (
+                {abierta && (
+                  <div className="ens-arbol">
+                    {r.piezas.map(p => (
+                      <Pieza key={p.id} n={p} nivel={0} sel={sel} alterna={alterna} />
+                    ))}
+                  </div>
+                )}
+                {abierta && marcadasAqui.length > 0 && (
                   <div className="ens-pie">
                     <span>{marcadasAqui.length} marcada(s) en este ensamblado</span>
                     <button type="button" className="btn btn-ghost" disabled={ocupado}
@@ -333,9 +429,12 @@ export default function PanelEnsamblados({ raices, sueltas, candidatos, cortado 
         <Montador anfitrionFijo={montando === "_nuevo" ? null : montando}
           raices={raices} candidatos={candidatos} ocupado={ocupado}
           onCerrar={() => setMontando(null)} err={err}
+          /* ⚠ Se abre lo que se acaba de armar. Con todo plegado por defecto,
+             montar siete piezas y ver la lista igual que antes es no tener
+             acuse de recibo: no se distingue de que no haya pasado nada. */
           onMontar={(padre, ids) => correr(
             () => ensamblar(padre, ids),
-            () => setMontando(null),
+            () => { setMontando(null); setAbiertos(s => new Set([...s, padre])); },
           )} />
       )}
     </>
