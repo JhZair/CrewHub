@@ -3,6 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 import { FUERA_DE_INVENTARIO, NECESITA_ATENCION } from "@/lib/estadosEquipo";
 import { TOPE_API } from "@/lib/api";
 import type { KitVista, EqBase } from "@/lib/kits";
+/* El árbol vive en `lib/ensamblados`, que no toca la base: `PanelEnsamblados`
+   es de cliente y usa sus funciones como valores, así que no puede colgar de
+   un módulo que importe `lib/supabase/server`. Ver el aviso de allí. */
+import { arbolDeEnsamblados } from "@/lib/ensamblados";
 
 /* ══════════════════════════════════════════════════════════════════════════
    LOS DATOS DE 🎥 EQUIPOS, PEDIDOS UNA SOLA VEZ
@@ -463,3 +467,41 @@ export async function inventarioDePaneles() {
     eManos: (manos as any)?.error?.message || null,
   };
 }
+
+/** Lo que necesita la pestaña 🔧 Ensamblados, y nada más. */
+export const arbolEnsamblados = cache(async () => {
+  const [eqs, media, manos] = await Promise.all([
+    equiposFlacos(), cartelesEquipo(), enManosAhora(),
+  ]);
+  const filas = (eqs.data || []) as any[];
+  const cartelPorEq = cartelPorEquipo(media);
+  const quienTiene = quienTieneEquipo(manos);
+  const { raices, sueltas } = arbolDeEnsamblados(filas, cartelPorEq, quienTiene);
+
+  /* ── LOS CANDIDATOS A MONTAR ──
+     ⚠ LISTA BLANCA, no una lista de exclusiones. Estuvo escrito al revés —«ni
+     montado, ni prestado»— y la lista negra siempre olvida un caso: dejaba
+     pasar `perdido`, `de_baja`, `asignado` y el estado vacío. Y `ensamblar`
+     hace `update({ estado: "ensamblado" })`, o sea que montar un equipo perdido
+     BORRA el único sitio donde constaba que estaba perdido, y montar la laptop
+     asignada a Michel la desasigna sin decir nada. Son los mismos tres estados
+     que ofrece la ficha del equipo (`app/entidad/[tipo]/[id]`), y por el mismo
+     motivo: lo que está en la calle o de baja no se atornilla. */
+  const MONTABLES = new Set(["disponible", "no_aparece", "en_reparacion"]);
+  const candidatos = filas
+    .filter(e => !e.ensamblado_en && MONTABLES.has(String(e.estado || "")))
+    .map(e => ({
+      id: e.id, folio: e.folio || null, nombre: e.nombre || "sin nombre",
+      categoria: e.categoria || null, subcategoria: e.subcategoria || null,
+      estado: e.estado || null, cartel: cartelPorEq.get(e.id) || null,
+      valor: e.valor_compra != null ? Number(e.valor_compra) : null,
+    }));
+
+  return {
+    raices, sueltas, candidatos,
+    /* Si el inventario llegó al tope, una pieza «perdida» no acusa a la base:
+       lo que falta es media lista. La pantalla lo dice con otras palabras. */
+    cortado: filas.length > TOPE_EQUIPOS,
+    eEquipos: (eqs as any)?.error?.message || null,
+  };
+});

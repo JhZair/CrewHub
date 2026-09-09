@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import Link from "@/components/Enlace";
 import Volver from "@/components/Volver";
 import Pestanas from "@/components/Pestanas";
-import { enManosAhora } from "@/lib/equipamientoDatos";
+import { enManosAhora, arbolEnsamblados } from "@/lib/equipamientoDatos";
 
 /* ══════════════════════════════════════════════════════════════════════════
    🎥 EQUIPOS — LA CABECERA Y LAS TRES PESTAÑAS
@@ -58,7 +58,24 @@ export default async function EquipamientoLayout({ children }: { children: React
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const manos = await enManosAhora();
+  /* ⚠ El `Promise.all` NO las paraleliza de verdad: `arbolEnsamblados` hace su
+     propio `await enManosAhora()` por dentro. No sobra —`cache()` deduplica y
+     el coste es el mismo— pero la razón por la que está aquí es la forma, no la
+     velocidad: son dos datos de la cabecera y se piden juntos.
+
+     ⚠ Y cuesta UNA CONSULTA NUEVA en 📋 Inventario, que es la pestaña más
+     visitada: esa pantalla usa `equiposGordos` y no pasaba por `equiposFlacos`,
+     así que ahora la tabla `equipamiento` se pide dos veces en ese render —una
+     gorda y una flaca— solo para el número de una pestaña donde no se está. En
+     las otras cuatro es gratis: ya pedían la flaca. Se acepta a sabiendas; si
+     algún día pesa, lo que hay que hacer es que el inventario lea de la flaca y
+     pida aparte las columnas que solo él usa, no quitar el número. */
+  const [manos, ens] = await Promise.all([enManosAhora(), arbolEnsamblados()]);
+  /* ⚠ `null` cuando no se pudo leer el inventario, no cero: un «0» en la
+     etiqueta se lee como «no hay nada armado» sobre ciento doce piezas
+     montadas. Mismo criterio que `nManos`. */
+  const nEns = ens.eEquipos ? null : ens.raices.length;
+  const nSueltas = ens.eEquipos ? 0 : ens.sueltas.length;
   /* ⚠ `null` cuando la consulta falla, no cero. Un «0» en la etiqueta se lee
      como «no hay nada fuera», que sobre un inventario que está en la calle es
      la mentira que más caro sale. `Pestanas` no pinta el número si no lo es. */
@@ -117,6 +134,16 @@ export default async function EquipamientoLayout({ children }: { children: React
            kits» se lee como veintiséis de algo, y son once kits y veintiséis
            combos—. Cada panel ya pinta el suyo en su propio título. */
         { href: "/equipamiento/combos", label: "🧰 Combos y kits" },
+        /* ⚠ El número son los ensamblados ARMADOS, no las piezas montadas. El
+           filtro del inventario dice «Ensamblados · 112» y son las piezas; aquí
+           lo que se lista son los conjuntos, que son muchos menos. Poner 112 al
+           lado de una lista de treinta tarjetas es el fallo que ya se evitó en
+           «Combos y kits»: un número que no cuenta lo que se ve.
+           El aviso ámbar es otra cosa —las piezas que no encajan en ningún
+           árbol— y por eso va aparte y no sumado: «3» junto a «28» dice que hay
+           tres que mirar, y un «31» no diría nada. */
+        { href: "/equipamiento/ensamblados", label: "🔧 Ensamblados", n: nEns,
+          avisos: nSueltas ? [{ n: nSueltas, txt: "piezas que no encajan en ningún ensamblado", tono: "ambar" as const }] : null },
       ]} />
 
       {children}

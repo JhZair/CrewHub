@@ -15,6 +15,10 @@ function revalidarEquipos() {
   revalidatePath("/equipamiento/entrega");
   revalidatePath("/equipamiento/combos");
   revalidatePath("/equipamiento/asignados");
+  /* ⚠ Y la de ensamblados. Sin esta línea, montar o desmontar desde la ficha
+     de un equipo dejaba la pestaña 🔧 enseñando el árbol anterior — y el
+     número de la cabecera, que sale del mismo cargador, también. */
+  revalidatePath("/equipamiento/ensamblados");
 }
 import { entregableEq, porQueNoEq, enRonda, txtEstadoEq } from "@/lib/estadosEquipo";
 import { META_MOTIVO, esMotivo, estadoTrasQuitar, type MotivoFin } from "@/lib/asignaciones";
