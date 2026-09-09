@@ -8131,3 +8131,88 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
    existe, y de ahí sale un duplicado nacido de un límite invisible. */
 .ens-corte{padding:7px 10px;color:var(--dim);font-size:11.5px;text-align:center;
   border-top:1px dashed var(--border2)}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   📍 DÓNDE SE GUARDA — el bloque de la ficha y el control compacto
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.dsg-bloque{border-left:3px solid var(--teal)}
+.dsg-cab{display:flex;gap:10px;align-items:center;justify-content:space-between;
+  margin-bottom:7px}
+/* La cadena entera, envolviendo: «Depósito › Cajón 08 › Bolso Tenba» no cabe
+   en una línea de ficha y cortarla con ellipsis esconde justo el final, que es
+   el eslabón más concreto — el que se va a buscar. */
+.dsg-ruta{display:flex;flex-wrap:wrap;align-items:center;gap:2px;
+  font-size:13.5px;line-height:1.6}
+.dsg-tramo{display:inline-flex;align-items:center;gap:6px}
+.dsg-sep{color:var(--dim);margin:0 5px}
+/* Dos colores porque son dos cosas: un sitio es un mueble, un contenedor es un
+   equipo con folio que se puede abrir en su ficha. */
+.dsg-sitio{color:var(--teal)}
+.dsg-equipo{color:var(--accent)}
+.dsg-porque{color:var(--muted);font-size:12px;line-height:1.55;margin-top:7px}
+
+.dsg-compacto{display:inline-flex;align-items:center;gap:7px;flex-wrap:wrap;
+  font-size:11.5px;min-width:0}
+
+.dsg-selector{margin-top:9px;display:flex;flex-direction:column;gap:7px}
+.dsg-lista{display:flex;flex-direction:column;max-height:240px;overflow-y:auto;
+  border:1px solid var(--border);border-radius:9px}
+.dsg-op{display:flex;align-items:center;gap:8px;padding:7px 9px;background:none;
+  border:none;border-bottom:1px solid var(--border);cursor:pointer;
+  font-family:inherit;font-size:13px;color:var(--text);text-align:left;width:100%}
+.dsg-op:last-child{border-bottom:none}
+.dsg-op:hover{background:rgba(167,139,250,.09)}
+.dsg-op:disabled{opacity:.5;cursor:default}
+.dsg-ico{flex:none}
+/* El de crear, en verde agua y al final: es la salida cuando ninguna de las de
+   arriba sirve, no la primera opción. */
+.dsg-crear{color:var(--teal)}
+.dsg-vacio{padding:11px;color:var(--dim);font-size:12.5px;line-height:1.5}
+/* El sitio del kit, en su propio renglón bajo el uso y la descripción: es un
+   dato de otra clase —dónde ir a buscarlo— y mezclado con el «para qué sirve»
+   se leía como parte de la frase, que es literalmente lo que era. */
+.kit-donde{margin-top:5px}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   📍 SITIOS — el árbol de muebles y qué hay en cada uno
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.sit-faltan{border-left:3px solid var(--yellow)}
+.sit-rotos{display:flex;flex-wrap:wrap;gap:7px;margin-top:7px}
+.sit-roto{display:inline-flex;align-items:center;gap:6px;font-size:12px;
+  color:var(--text);text-decoration:none;border:1px solid var(--border2);
+  border-radius:20px;padding:3px 9px}
+.sit-roto:hover{border-color:var(--red);color:var(--red)}
+
+.sit-arbol{display:flex;flex-direction:column;margin-top:10px}
+.sit-fila{display:flex;gap:8px;align-items:center;padding:6px 2px;
+  border-bottom:1px solid var(--border);min-width:0}
+.sit-fila:last-child{border-bottom:none}
+/* El sangrado en un hueco propio, no en un `padding`: con padding, el borde
+   inferior de cada fila empezaría más adentro en cada nivel y el árbol se
+   leería como una escalera rota. */
+.sit-sangria{flex:none;border-left:1px solid var(--border2);align-self:stretch}
+.sit-plegar{display:flex;align-items:center;gap:8px;background:none;border:none;
+  padding:0;cursor:pointer;font-family:inherit;color:inherit;text-align:left;
+  flex:1 1 140px;min-width:0}
+.sit-plegar:hover .sit-nom{color:var(--teal)}
+.sit-ico{flex:none}
+.sit-nom{font-size:13.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;min-width:0}
+/* Los dos números: el de fuera es lo que se ve al abrir, el de dentro lo que
+   hay contando los bolsos. Distinto peso porque contestan cosas distintas. */
+.sit-cifras{color:var(--teal);font-size:11.5px;font-weight:700;white-space:nowrap;flex:none}
+.sit-total{color:var(--dim);font-weight:400}
+
+.sit-dentro{display:flex;flex-direction:column;gap:1px;padding:4px 0 8px}
+.sit-cosa{display:flex;gap:8px;align-items:center;font-size:12.5px;min-width:0;
+  padding:2px 0}
+.sit-cosa-n{color:var(--text);text-decoration:none;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;min-width:0}
+a.sit-cosa-n:hover{color:var(--accent)}
+.sit-cosa-t{color:var(--dim);font-size:11px;white-space:nowrap}
+/* El desplegable de «dentro de qué sitio». Reusa `.ent-select` —el mismo que
+   ya hay en la entrega— y solo acota el ancho: en una fila con nombre, cifras
+   y cuatro botones, 150px de desplegable dejan el nombre en tres letras. */
+.sit-dentrode{max-width:130px;font-size:11.5px;padding:4px 7px}

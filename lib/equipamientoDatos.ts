@@ -7,6 +7,7 @@ import type { KitVista, EqBase } from "@/lib/kits";
    es de cliente y usa sus funciones como valores, así que no puede colgar de
    un módulo que importe `lib/supabase/server`. Ver el aviso de allí. */
 import { arbolDeEnsamblados } from "@/lib/ensamblados";
+import { resolvedorDeGuardado, type Sitio } from "@/lib/sitios";
 
 /* ══════════════════════════════════════════════════════════════════════════
    LOS DATOS DE 🎥 EQUIPOS, PEDIDOS UNA SOLA VEZ
@@ -42,8 +43,16 @@ import { arbolDeEnsamblados } from "@/lib/ensamblados";
    ══════════════════════════════════════════════════════════════════════════ */
 
 /** Lo que la entrega y los kits necesitan de un equipo. Nada más. */
+/* ⚠ `guardado_sitio` y `guardado_en_equipo` NO sobran. La cadena de «dónde se
+   guarda» se resuelve con ESTAS filas, y sin las dos columnas el resolvedor
+   corta en el primer eslabón: un kit guardado en el Bolso Tenba decía «Bolso
+   Tenba» y nunca «Depósito › Cajón 08 › Bolso Tenba», con `roto: false` — o
+   sea indistinguible de un bolso que de verdad no tiene sitio. Y la ficha del
+   equipo, que sí las traía, decía la cadena entera: el mismo bolso, dos
+   respuestas, que es exactamente lo que `lib/sitios` existe para impedir. */
 const CAMPOS_FLACO =
-  "id,folio,nombre,categoria,subcategoria,estado,valor_compra,compra_id,ensamblado_en";
+  "id,folio,nombre,categoria,subcategoria,estado,valor_compra,compra_id,ensamblado_en"
+  + ",guardado_sitio,guardado_en_equipo";
 
 /* ── LAS FILAS EN CRUDO ────────────────────────────────────────────────── */
 
@@ -98,6 +107,22 @@ export const fotosPorEquipo = cache(async (): Promise<Map<string, number> | null
   return m;
 });
 
+/* ── LOS SITIOS DONDE SE GUARDA LO DEMÁS ──
+   Muebles y estantes: `sitios`, no `lugares` —esos son locaciones de rodaje,
+   con dirección y latitud—. El porqué entero, en db/sitios.sql.
+
+   ⚠ Con límite y sonda como todo lo demás. Hoy son cuatro cajones; el día que
+   sean mil, un `select` sin techo devolvería novecientos noventa y nueve y la
+   cadena de los que faltan diría «apunta a un sitio que ya no está» sobre una
+   base sana. Es el mismo fallo que ya pagó `equiposFlacos`. */
+export const TOPE_SITIOS = TOPE_API - 1;
+
+export const sitiosTodos = cache(async () => {
+  const supabase = createClient();
+  return supabase.from("sitios").select("id,nombre,dentro_de")
+    .order("nombre").limit(TOPE_SITIOS + 1);
+});
+
 /** Carteles (miniatura) de cada equipo. Una lista sin foto obliga a leer folio
  *  por folio; con foto se reconoce de un vistazo cuál falta. */
 export const cartelesEquipo = cache(async () => {
@@ -120,7 +145,7 @@ export const kitsCrudos = cache(async () => {
   const supabase = createClient();
   const [kits, puente] = await Promise.all([
     supabase.from("kits")
-      .select("id,nombre,uso,descripcion,retirado_en,portada_equipo_id,autor:perfiles(nombre,avatar_url,color)")
+      .select("id,nombre,uso,descripcion,retirado_en,portada_equipo_id,guardado_sitio,guardado_en_equipo,autor:perfiles(nombre,avatar_url,color)")
       .order("nombre"),
     supabase.from("kit_equipos").select("kit_id,equipamiento_id"),
   ]);
@@ -234,6 +259,8 @@ export function contextoKits(crudos: { kits: any; puente: any }) {
     retirado: !!k.retirado_en, equipoIds: eqsDeKit.get(k.id) || [],
     portadaId: k.portada_equipo_id || null,
     autor: un1(k.autor) || null,
+    guardadoSitio: k.guardado_sitio || null,
+    guardadoEnEquipo: k.guardado_en_equipo || null,
   }));
 
   /* Con el id, no solo el nombre: el nombre basta para pintar el chip, pero
@@ -374,6 +401,16 @@ export type EquipoParaPanel = EqBase & {
   /** Cuántas fotos tiene. `null` = no se sabe —la consulta falló o tocó el
    *  tope—, que no es lo mismo que cero. */
   nFotos?: number | null;
+  /* ── DÓNDE SE GUARDA, EN CRUDO ──
+     Los dos punteros y el del ensamblado viajan para que el selector de
+     «dónde se guarda» pueda excluir a los descendientes: lo que va DENTRO de
+     una cosa no puede contenerla, y ofrecerlo para luego rechazarlo con un
+     error es peor que no ofrecerlo. La CADENA resuelta no viaja por equipo —se
+     resuelve una vez en el servidor— pero estos tres campos son tres cadenas
+     cortas por fila y ya estaban en `CAMPOS_FLACO`. */
+  ensamblado_en?: string | null;
+  guardado_sitio?: string | null;
+  guardado_en_equipo?: string | null;
 };
 
 export function inventarioParaPaneles(
@@ -394,6 +431,9 @@ export function inventarioParaPaneles(
       id: e.id, folio: e.folio, nombre: e.nombre,
       categoria: e.categoria, subcategoria: e.subcategoria, estado: e.estado,
       valor_compra: e.valor_compra ?? null, compra_id: e.compra_id ?? null,
+      ensamblado_en: e.ensamblado_en ?? null,
+      guardado_sitio: e.guardado_sitio ?? null,
+      guardado_en_equipo: e.guardado_en_equipo ?? null,
       quien: quienTiene.get(e.id) || null,
       cartel: cartelPorEq.get(e.id) || null,
       /* Solo lo justo para nombrarlo. El combo entero trae total, moneda,
@@ -437,14 +477,24 @@ export function inventarioParaPaneles(
    entrega usa para pintar quién tiene qué.
    ══════════════════════════════════════════════════════════════════════════ */
 export async function inventarioDePaneles() {
-  const [eqs, media, compras, kitsRaw, manos, nFotosPorEq] = await Promise.all([
+  const [eqs, media, compras, kitsRaw, manos, nFotosPorEq, sitios] = await Promise.all([
     equiposFlacos(), cartelesEquipo(), comprasCombo(), kitsCrudos(), enManosAhora(),
-    fotosPorEquipo(),
+    fotosPorEquipo(), sitiosTodos(),
   ]);
   const filas = (eqs.data || []) as any[];
   const cartelPorEq = cartelPorEquipo(media);
   const { combos, porPiezaDeCombo, comboPorEq } = contextoCombos(filas, compras, cartelPorEq);
   const { kits, kitsPorEq, error: eKits } = contextoKits(kitsRaw);
+  /* La ruta de cada kit, resuelta AQUÍ y no en el panel: el panel es de
+     cliente y resolverla allí obligaría a mandarle los quinientos equipos y
+     los sitios enteros para pintar catorce renglones de texto. */
+  const listaSitios = ((sitios as any)?.data || []) as Sitio[];
+  const dondeSeGuarda = resolvedorDeGuardado(listaSitios, filas as any);
+  kits.forEach(k => {
+    k.guardado = dondeSeGuarda.deKit({
+      guardado_sitio: k.guardadoSitio, guardado_en_equipo: k.guardadoEnEquipo,
+    });
+  });
   const quienTiene = quienTieneEquipo(manos);
   const piezasDe = piezasMontadas(filas, cartelPorEq, comboPorEq, porPiezaDeCombo);
   return {
@@ -460,6 +510,11 @@ export async function inventarioDePaneles() {
        qué»: la foto, de qué combo vino y qué lleva montado dentro. Van aquí
        —y no se recalculan allá— porque salen de las mismas filas. */
     cartelPorEq, comboPorEq, piezasDe,
+    /* Los sitios y el resolvedor viajan para que los paneles no los pidan otra
+       vez. `sitios` va a los selectores; `dondeSeGuarda` se queda en el
+       servidor —es una función, no cruza— y aquí solo se usa para los kits. */
+    sitios: listaSitios,
+    sitiosCortados: listaSitios.length > TOPE_SITIOS,
     /* ⚠ El error de la lista de equipos se DEVUELVE, no se traga. Sin equipos,
        la entrega dice «no hay nada disponible» y el panel de kits dice que
        todas las piezas faltan: dos mentiras en la dirección que más alarma. */

@@ -79,6 +79,16 @@ export type KitVista = {
    *  rara lo que hace falta saber es a quién preguntarle por qué está ahí.
    *  El dato se guarda desde db/kits.sql y no lo leía nadie. */
   autor?: { nombre?: string | null; avatar_url?: string | null; color?: string | null } | null;
+  /* ── DÓNDE SE GUARDA ──
+     Los dos punteros crudos —los necesita el control para saber si el sitio es
+     propio y para poder quitarlo— y la ruta YA RESUELTA, que la calcula el
+     servidor con `lib/sitios`. Resolver en el cliente obligaría a mandarle el
+     inventario entero por cada kit, que es justo lo que este archivo evita.
+     El sitio vivía escrito a mano dentro de `descripcion` («Se encuentra en el
+     Cajón 07»): db/sitios.sql lo trasladó y aquí es un dato de verdad. */
+  guardadoSitio?: string | null;
+  guardadoEnEquipo?: string | null;
+  guardado?: import("@/lib/sitios").Guardado;
 };
 
 export type PiezaKit = {

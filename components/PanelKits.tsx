@@ -14,6 +14,8 @@ import ChipPiezas, { type PiezaMontada } from "@/components/ChipPiezas";
 import ChipGrupo from "@/components/ChipGrupo";
 import ChipAnfitrion from "@/components/ChipAnfitrion";
 import { SinNavegar } from "@/components/FilaPop";
+import DondeSeGuarda from "@/components/DondeSeGuarda";
+import type { Sitio } from "@/lib/sitios";
 
 /* ARMAR KITS — «Entrevista PRO» es una cosa, no tres fichas que alguien
  * recuerda marcar de a una.
@@ -353,8 +355,12 @@ function Editor({ kit, equipos, cortado, onCerrar }: {
   );
 }
 
-export default function PanelKits({ kits, equipos, cortado }: {
+export default function PanelKits({ kits, equipos, cortado, sitios }: {
   kits: KitVista[]; equipos: EquipoParaPanel[];
+  /** Los sitios donde se puede guardar un kit. Van desde la página con el
+   *  resto del inventario: pedirlos por cada tarjeta serían catorce viajes
+   *  para catorce desplegables que casi nunca se abren. */
+  sitios: Sitio[];
   /** Si el inventario llegó al tope de la API. Ver `Escoge`.
    *  ⚠ OBLIGATORIO, sin `= false` por comodidad: el valor por defecto sería
    *  «llegó entero», y quien monte este panel mañana y se olvide no obtendría
@@ -365,6 +371,16 @@ export default function PanelKits({ kits, equipos, cortado }: {
   const router = useRouter();
   const [editando, setEditando] = useState<string | null>(null);   // id del kit, o "_nuevo"
   const porEq = useMemo(() => new Map(equipos.map(e => [e.id, e])), [equipos]);
+
+  /* ⚠ FUERA del `map` de kits. Estaba dentro, así que con catorce kits y
+     quinientos equipos se creaban siete mil objetos en CADA render del panel —y
+     como la identidad del arreglo cambiaba siempre, rompía el `useMemo` de las
+     catorce instancias de `DondeSeGuarda`: catorce filtrados con `normalize`
+     por cada tecla del buscador de arriba. */
+  const contenedores = useMemo(() => equipos.map(e => ({
+    id: e.id, folio: e.folio, nombre: e.nombre,
+    dentroDe: e.guardado_en_equipo || e.ensamblado_en || null,
+  })), [equipos]);
 
   const vivos = kits.filter(k => !k.retirado);
   const retirados = kits.filter(k => k.retirado);
@@ -548,6 +564,25 @@ export default function PanelKits({ kits, equipos, cortado }: {
                     {k.descripcion && <span className="kit-desc">{k.descripcion}</span>}
                   </div>
                 )}
+
+                {/* ── DÓNDE SE GUARDA, COMO DATO Y NO COMO NOTA ──
+                    Esto vivía escrito dentro de la descripción de arriba —«Se
+                    encuentra en el Cajón 07»— y por eso no se podía preguntar
+                    qué hay en ese cajón, ni renombrarlo de una vez, ni evitar
+                    que «Cajón 7» y «cajon 07» fueran dos. db/sitios.sql lo
+                    trasladó; el texto viejo sigue arriba hasta que alguien lo
+                    limpie, a propósito: un traslado que además borra la fuente
+                    no se puede comprobar después.
+                    ⚠ Los contenedores salen de `equipos`, que es el inventario
+                    que este panel YA tiene: un bolso es un equipo cualquiera y
+                    no hay ninguna marca de «esto es un bolso» — ni hace falta,
+                    porque quien elige sabe cuál es su maletín. */}
+                <div className="kit-donde">
+                  <DondeSeGuarda que="kit" id={k.id} compacto
+                    guardado={k.guardado || { ruta: [], origen: "ninguno", bucle: false, roto: false }}
+                    sitios={sitios}
+                    contenedores={contenedores} />
+                </div>
 
                 {/* TERCERA LÍNEA: LAS CIFRAS. Con el kit plegado, «12 equipos ·
                     completo»

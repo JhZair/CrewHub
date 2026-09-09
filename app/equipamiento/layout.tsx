@@ -142,6 +142,12 @@ export default async function EquipamientoLayout({ children }: { children: React
            El aviso ámbar es otra cosa —las piezas que no encajan en ningún
            árbol— y por eso va aparte y no sumado: «3» junto a «28» dice que hay
            tres que mirar, y un «31» no diría nada. */
+        /* La quinta contesta la pregunta al REVÉS: las otras cuatro son sobre
+           una cosa —dónde está, con qué sale, de qué está hecha— y esta es
+           sobre un sitio: «¿qué hay en el Cajón 07?». Sin número: lo que
+           importa no es cuántos cajones hay sino qué falta por anotar, y eso
+           se dice dentro con nombre y apellido. */
+        { href: "/equipamiento/sitios", label: "📍 Sitios" },
         { href: "/equipamiento/ensamblados", label: "🔧 Ensamblados", n: nEns,
           avisos: nSueltas ? [{ n: nSueltas, txt: "piezas que no encajan en ningún ensamblado", tono: "ambar" as const }] : null },
       ]} />

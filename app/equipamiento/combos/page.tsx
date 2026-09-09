@@ -39,7 +39,7 @@ export default async function CombosYKits() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { equipos, combos, kits, eKits, eEquipos, cortado } = await inventarioDePaneles();
+  const { equipos, combos, kits, eKits, eEquipos, cortado, sitios } = await inventarioDePaneles();
 
   /* Las categorías que hay de verdad, para el selector de un combo. Salen del
      inventario y no de una lista escrita a mano: una categoría que nadie usa
@@ -95,7 +95,7 @@ export default async function CombosYKits() {
           de una pieza cuyo anfitrión se quedó fuera diría «no encuentro dónde»
           y eso se lee como puntero roto. Con esto dice la verdad —falta media
           lista—. Va desde aquí porque es la página la que sabe si se cortó. */}
-      <PanelKits kits={kits} equipos={equipos} cortado={cortado} />
+      <PanelKits kits={kits} equipos={equipos} cortado={cortado} sitios={sitios} />
     </>
   );
 }

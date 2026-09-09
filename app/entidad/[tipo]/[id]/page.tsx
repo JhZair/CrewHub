@@ -97,6 +97,9 @@ import FilasDatos, { camposSecundarios } from "@/components/MasDatos";
 import LinkVerificable from "@/components/LinkVerificable";
 import Completitud from "@/components/Completitud";
 import Link from "@/components/Enlace";
+import DondeSeGuarda from "@/components/DondeSeGuarda";
+import { resolvedorDeGuardado } from "@/lib/sitios";
+import { TOPE_API } from "@/lib/api";
 import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { ICO_ENT, nombreDe, grafiasDe, TABLA_DE, tipoCanonico } from "@/lib/secciones";
@@ -1049,6 +1052,17 @@ export default async function Entidad({ params, searchParams }: {
   let piezasMontadas: PiezaKit[] = [];
   let montadoEn: { id: string; folio?: string | null; nombre: string; cartel?: string | null } | null = null;
   let candidatosMontar: any[] = [];
+  /* ── DÓNDE SE GUARDA ──
+     Se resuelve en el servidor y viaja YA RESUELTO: el componente recibe la
+     cadena hecha, no las dos listas para que la calcule él. Es la misma razón
+     por la que existe `lib/sitios` — si la ficha resolviera por su cuenta y la
+     lista por la suya, el mismo equipo diría dos cosas. */
+  let guardadoDe: import("@/lib/sitios").Guardado =
+    { ruta: [], origen: "ninguno", bucle: false, roto: false };
+  let sitiosLista: any[] = [];
+  let contenedores: any[] = [];
+  let eSitios: string | null = null;
+  let sitiosCortado = false;
   /* (Aquí se cargaban las unidades de un combo para su ficha. La ficha se
      fue: un combo se registra una vez y no se toca, así que no necesitaba
      página con repositorio, casos y portada. Lo reemplaza la vista al
@@ -1103,7 +1117,8 @@ export default async function Entidad({ params, searchParams }: {
        pantalla: traer los 260 equipos para descartar 30 sería mover el
        inventario entero por una lista de veinte. */
     if (params.tipo === "equipamiento") {
-      const [{ data: dentro }, { data: cont }, { data: libres }, { data: mmTodos }] = await Promise.all([
+      const [{ data: dentro }, { data: cont }, { data: libres }, { data: mmTodos },
+             sitiosQ, todosQ] = await Promise.all([
         supabase.from("equipamiento")
           .select("id,folio,nombre,estado,categoria,subcategoria,valor_compra")
           .eq("ensamblado_en", params.id).order("folio"),
@@ -1126,6 +1141,20 @@ export default async function Entidad({ params, searchParams }: {
            foto llegaba vacía sin que nada fallara. */
         supabase.from("entidad_media").select("entidad_id,cartel_url")
           .eq("entidad_tipo", "equipamiento"),
+        /* ── DÓNDE SE GUARDA: LOS SITIOS Y LA CADENA ──
+           ⚠ En ESTA tanda y no en un `await` de después: encadenar un segundo
+           `Promise.all` es un viaje entero más en la pantalla más visitada.
+           ⚠ Y con sonda (`+1`), no `.limit(1000)` a pelo. Mil es el techo de
+           PostgREST: pedir exactamente mil no deja forma de saber si se cortó,
+           y una lista cortada hace que el resolvedor diga «apunta a un equipo
+           que no está» sobre una base sana. Lo dice `lib/api`. */
+        supabase.from("sitios").select("id,nombre,dentro_de")
+          .order("nombre").limit(TOPE_API),
+        /* La lista ENTERA hace falta para subir la cadena de contenedores;
+           `libres` de arriba está filtrada por estado y no sirve. */
+        supabase.from("equipamiento")
+          .select("id,folio,nombre,ensamblado_en,guardado_sitio,guardado_en_equipo")
+          .order("folio").limit(TOPE_API),
       ]);
       const cartelTodos = new Map<string, string>();
       (mmTodos || []).forEach((m: any) => { if (m.cartel_url) cartelTodos.set(m.entidad_id, m.cartel_url); });
@@ -1138,6 +1167,28 @@ export default async function Entidad({ params, searchParams }: {
         categoria: d.categoria, subcategoria: d.subcategoria,
         valor: d.valor_compra ? Number(d.valor_compra) : null,
       }));
+      /* ⚠ El error NO se traga. Sin la migración corrida, tragarlo pinta un
+         bloque que dice «sin sitio anotado» con el selector vacío: exactamente
+         igual que un equipo al que nadie le ha puesto sitio todavía, y sin una
+         palabra sobre qué archivo falta correr. */
+      eSitios = (sitiosQ as any)?.error?.message || (todosQ as any)?.error?.message || null;
+      const sitiosRaw = ((sitiosQ as any)?.data || []) as any[];
+      const contRaw = ((todosQ as any)?.data || []) as any[];
+      sitiosCortado = sitiosRaw.length >= TOPE_API || contRaw.length >= TOPE_API;
+      sitiosLista = sitiosRaw;
+      guardadoDe = resolvedorDeGuardado(sitiosLista, contRaw as any).de(params.id);
+      /* ⚠ Los contenedores solo viajan si el bloque se puede EDITAR. Una pieza
+         atornillada no puede tener sitio propio —lo impide un check— así que
+         su selector no se abre nunca: mandarle quinientos objetos al navegador
+         es pagar el payload de un desplegable que no existe. Son ciento doce
+         piezas montadas; ciento doce fichas que dejan de pagarlo. */
+      contenedores = guardadoDe.origen === "ensamblado" ? [] : contRaw
+        .filter((e: any) => e.id !== params.id)
+        .map((e: any) => ({
+          id: e.id, folio: e.folio, nombre: e.nombre,
+          dentroDe: e.guardado_en_equipo || e.ensamblado_en || null,
+        }));
+
       const c1 = Array.isArray(cont) ? (cont as any)[0] : cont;
       /* Con su foto, del mapa que ya está cargado. «Está atornillada dentro
          de A-236 · IDOGEAR - Cinturón MOLLE» son ocho palabras para algo que
@@ -3465,6 +3516,17 @@ export default async function Entidad({ params, searchParams }: {
               texto suelto que no llevaba a ninguna parte.
               Se ve SIEMPRE, con combo o sin él: si el panel solo apareciera
               cuando el dato ya está, no habría forma de ponerlo. */}
+          {/* ── DÓNDE SE GUARDA ──
+              El primero de los cuatro, porque es la única pregunta que se hace
+              con el equipo NO delante: las otras tres —de qué está hecho, con
+              qué entró, con qué sale— se contestan teniéndolo en la mano. Esta
+              se abre justamente para ir a buscarlo. */}
+          {params.tipo === "equipamiento" && (
+            <DondeSeGuarda que="equipo" id={params.id} guardado={guardadoDe}
+              sitios={sitiosLista} contenedores={contenedores}
+              error={eSitios} cortado={sitiosCortado} />
+          )}
+
           {/* ── DE QUÉ ESTÁ HECHO ──
               Va ANTES del combo y de los kits porque es lo más físico de los
               tres: el combo dice con qué entró, el kit con qué sale, y esto

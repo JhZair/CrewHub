@@ -8845,7 +8845,17 @@ export async function ensamblar(padreId: string, piezaIds: string[]) {
 
   const buenos = (eqs || []).map((e: any) => e.id);
   const { data, error } = await supabase.from("equipamiento")
-    .update({ ensamblado_en: padreId, estado: "ensamblado" })
+    /* ⚠ Y SE LIMPIA DÓNDE SE GUARDABA. Una pieza atornillada no tiene sitio
+       propio —lo hereda de su anfitrión— y el check `eq_un_solo_guardado` de
+       db/sitios.sql lo impide en la base. Sin estas dos líneas, montar una
+       pieza a la que alguien le había anotado un cajón violaba el check… y
+       como el update es `.in(ids)`, UNA sola pieza con sitio tumbaba el lote
+       entero con el mensaje crudo de Postgres. El montaje habría dejado de
+       funcionar en cuanto se empezara a usar la función de al lado. */
+    .update({
+      ensamblado_en: padreId, estado: "ensamblado",
+      guardado_sitio: null, guardado_en_equipo: null,
+    })
     .in("id", buenos).select("id");
   if (error) return { error: error.message };
   if (!data?.length) return { error: "No se guardó: no tienes permiso, o esas piezas ya no están." };
