@@ -11406,7 +11406,10 @@ export async function importarDeclaracionesSol(
   if (!oblDe.size) return { error: "Esta empresa no tiene ninguna obligación registrada todavía." };
 
   const { data: exist } = await supabase.from("obligacion_periodo")
-    .select("id,obligacion_id,anio,mes,declarado_en")
+    /* `nro_orden` viaja para poder COMPARARLO con el del papel: si no coinciden
+       en un periodo que ya estaba marcado, se avisa en vez de callarlo. Sin
+       traerlo, la comparación siempre daba «igual» y no comprobaba nada. */
+    .select("id,obligacion_id,anio,mes,declarado_en,nro_orden")
     .in("obligacion_id", [...oblDe.values()]);
   const clave = (oid: string, a: number, m: number) => `${oid}|${a}|${m}`;
   const porClave = new Map<string, any>(
@@ -11498,6 +11501,9 @@ export async function importarDeclaracionesSol(
      ⚠ Lo que ya se marcó a mano NO se pisa salvo que se pida: `marcarDeclarado`
      sí escribe `declarado_en` desde la pantalla. */
   let conCasillas = 0;
+  /* Periodos donde el papel y lo ya marcado NO dicen lo mismo. Se recogen para
+     nombrarlos: «2 no coinciden» sin decir cuáles no se puede comprobar. */
+  const discrepan: string[] = [];
   const igvOblId = oblDe.get("igv_renta");
   if (casillas.length && igvOblId) {
     for (const [, p] of periodosDeCasillas(casillas)) {
@@ -11519,6 +11525,16 @@ export async function importarDeclaracionesSol(
         igv_resultado: v.resultado,
         igv_a_pagar: v.aPagar,
         declarado_orden: v.nroOrden,
+        /* ⚠ `rectificaciones` va CON LAS CIFRAS, no con la marca. Estuvo dentro
+           del `if (marcable)` y ahí quedaba congelada: una fila ya marcada no
+           es marcable, así que una rectificatoria escrita mal —por ejemplo la
+           que inventaba el lector cuando metía agosto dentro de julio— no la
+           limpiaba NINGUNA reimportación. Se quedaba pintando un «↻1» eterno
+           cuyo tooltip citaba el número de orden de otro mes como prueba de
+           una rectificación que nunca existió.
+           Va aquí por el mismo motivo que las cifras: nadie la teclea a mano,
+           sale entera del papel, y por tanto el papel manda siempre. */
+        rectificaciones: p.rectificaciones.length ? p.rectificaciones : null,
       };
       /* `tocado` es lo que ESTA importación ya contó —marcado o dado por ya
          marcado— en la rama de arriba. La lista `exist` se leyó antes de
@@ -11544,7 +11560,25 @@ export async function importarDeclaracionesSol(
 
       if (marcable) { marcados++; tocadosAhora.add(fila.id); }
       else if (tocado) { /* ya lo contó la otra rama */ }
-      else if (p.fecha && fila.declarado_en) { yaEstaban++; tocadosAhora.add(fila.id); }
+      else if (p.fecha && fila.declarado_en) {
+        yaEstaban++; tocadosAhora.add(fila.id);
+        /* ⚠ Y SI EL PAPEL DICE OTRA COSA, SE DICE. `declarado_en` y `nro_orden`
+           sí se teclean a mano —`marcarDeclarado` los escribe desde la ficha—,
+           así que no se pisan sin permiso. Pero callar que no coinciden es
+           dejar en pantalla una fecha que el documento desmiente, y esa fecha
+           es la que decide «declarado a tiempo» o «declarado tarde».
+           Hace falta ahora mismo: las filas que escribió el lector cuando metía
+           un mes dentro de otro se quedaron con la fecha del mes vecino, y como
+           ya tienen `declarado_en` ninguna reimportación las toca. Sin este
+           aviso, el arreglo del lector las dejaría mal para siempre y en
+           silencio. Con él, el pop-up dice cuáles y que se arreglan marcando
+           «Corregir también los que ya estaban marcados». */
+        const fEq = String(fila.declarado_en).slice(0, 10) === p.fecha;
+        const oEq = !fila.nro_orden || String(fila.nro_orden) === p.nroOrden;
+        if (!fEq || !oEq) {
+          discrepan.push(`${String(p.mes).padStart(2, "0")}/${p.anio}`);
+        }
+      }
       /* Cifras sí, marca no, porque el papel no trae la fecha. Se cuenta y se
          dice: es exactamente la situación en la que el pop-up contestaba «✅ 1
          declaración con sus cifras» y la fila seguía en «Pendiente», sin que
@@ -11561,6 +11595,7 @@ export async function importarDeclaracionesSol(
   revalidatePath("/obligaciones");
   return {
     marcados, yaEstaban, sinPeriodo, sinObligacion, conCasillas, sinFecha,
+    discrepan: [...new Set(discrepan)].slice(0, 12),
     faltantes: [...new Set(faltantes)].slice(0, 12),
     ignoradas: lectura.ignoradas,
     razon: lectura.razon,

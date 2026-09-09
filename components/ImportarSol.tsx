@@ -230,6 +230,25 @@ export default function ImportarSol({ empresaId, nombre }: {
                     {!pisar && " — marca la casilla de arriba si quieres corregirlos"}
                   </div>
                 )}
+                {/* ── EL PAPEL DICE UNA COSA Y LA FICHA OTRA ──
+                    En AMARILLO y no en gris al lado del «ya estaban marcados»:
+                    no es lo mismo «no hacía falta tocarlo» que «no lo toqué y
+                    además no coincide». Lo que no coincide es la fecha o el
+                    número de orden, o sea justo lo que decide si el periodo
+                    salió a tiempo y con qué prueba. Callarlo dejaba en pantalla
+                    una fecha que el propio documento desmiente. */}
+                {res.discrepan?.length > 0 && (
+                  <div style={{ color: "var(--yellow)" }}>
+                    ⚠ En {res.discrepan.length} el papel no dice lo mismo que la ficha
+                    {` (${res.discrepan.join(", ")})`}: cambia la fecha de presentación
+                    o el número de orden. Marca «Corregir también los que ya estaban
+                    marcados» y vuelve a importar para dejarlos como el documento.
+                    {/* Sin comprobar `pisar`: con la casilla marcada estos periodos
+                        se corrigen en el sitio y no llegan a contarse aquí, así
+                        que un «ya quedaron corregidos» sería una rama muerta que
+                        se lee como si pudiera aparecer. */}
+                  </div>
+                )}
                 {/* ── LO QUE NO ENCAJÓ SE DICE, CON NOMBRES ──
                     «Importadas 12» cuando el reporte traía 18 es la clase de
                     resultado que se cree y deja seis meses fuera sin que nadie
