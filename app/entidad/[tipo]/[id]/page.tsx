@@ -3,7 +3,7 @@ import BotonAlarma from "@/components/BotonAlarma";
 import { alarmasVivas } from "@/app/actions";
 import Volver from "@/components/Volver";
 import { Mantenimiento } from "@/components/EntidadForm";
-import { SUNAT_EMPRESA, DOCS_EMPRESA, DNI_PERSONA, DOCS_PERSONA, SUNAT_PERSONA, GRUPO_TONO, completitud, REGIONES, COLOR_ENTIDAD, TIPO_COLOR } from "@/lib/entidades";
+import { SUNAT_EMPRESA, DOCS_EMPRESA, DNI_PERSONA, DOCS_PERSONA, SUNAT_PERSONA, GRUPO_TONO, completitud, REGIONES, COLOR_ENTIDAD, TIPO_COLOR, ALTA_SUELTA } from "@/lib/entidades";
 import { rucDePersona } from "@/lib/ruc";
 import { estado4ta, money } from "@/lib/cuarta";
 import { diasDeVigencia, fmtVence, vigenciaVencida } from "@/lib/vigencia";
@@ -2468,6 +2468,39 @@ export default async function Entidad({ params, searchParams }: {
       <div className="topbar">
         <Volver />
         <span className="spacer" />
+        {/* ── DAR DE ALTA EL SIGUIENTE, DESDE AQUÍ ──
+            Dar de alta varios seguidos es lo normal —llega una compra y son
+            ocho equipos— y el sitio donde acabas después de crear uno es
+            justamente donde hace falta poder crear el siguiente.
+
+            ⚠ ESTE BOTÓN YA EXISTÍA y no se veía: vivía en la fila de acciones
+            del carné, a media página, debajo de la portada y del nombre. Se
+            pidió «añade el botón de nuevo equipo» señalando esta barra. Un
+            control que hay que descubrir no existe, así que se mudó aquí, que
+            es donde `app/equipamiento/layout.tsx` ya pone el suyo y donde se
+            buscan los controles. No es un botón nuevo: es el mismo, visible.
+
+            ⚠ Y sale de `ALTA_SUELTA`, no de `FORM_CONF`. El primer intento usó
+            `FORM_CONF` dando por hecho que era «lo que se puede crear», y no lo
+            es: es «lo que el formulario sabe pintar», que se usa igual para
+            editar. Con ella, la ficha de una postulación ofrecía un alta que
+            revienta siempre —tres columnas NOT NULL que ese formulario no
+            tiene— y la de un combo un atajo que se salta el lote y nace sin
+            código. `ALTA_SUELTA` lleva escrito, tipo por tipo, cuál de las dos
+            cosas es cada una y por qué.
+
+            El rótulo también viene de allí, y por eso es el MISMO que el del
+            listado: decía «＋ Nuevo equipo» en /equipamiento y, a un clic, «＋
+            Equipo audiovisual» aquí. Dos nombres para un botón que lleva al
+            mismo formulario. */}
+        {ALTA_SUELTA[params.tipo] && (
+          <Link href={`/entidad/${params.tipo}/nuevo`} className="btn"
+            /* «otro» y no «uno»: desde una ficha, lo que se da de alta es el
+               SIGUIENTE. Es la razón por la que el botón está aquí. */
+            title="Registrar otro, sin volver al listado">
+            {ALTA_SUELTA[params.tipo]}
+          </Link>
+        )}
         {/* ── ENCENDER, EN LA BARRA DE CONTROLES ──
             El botón es un CONTROL, no contenido: va con los demás controles, al
             extremo derecho de la barra de arriba. Puesto sobre la portada
@@ -3411,19 +3444,16 @@ export default async function Entidad({ params, searchParams }: {
             </div>
             <div className="carne-acciones" style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
               <Mantenimiento tipo={params.tipo} id={params.id} valores={ent} />
-              {/* ＋ NUEVO, DESDE LA FICHA. Dar de alta varios seguidos es lo
-                  normal —llega una compra y son ocho equipos— y el único botón
-                  para crear estaba en el listado: había que volver, buscarlo y
-                  empezar. El sitio donde acabas después de crear uno es
-                  justamente donde hace falta poder crear el siguiente.
-                  Solo para los tipos que se dan de alta en tanda; una empresa
-                  o un proyecto se crean de uno en uno y ahí sería ruido. */}
-              {["equipamiento", "persona", "lugar"].includes(params.tipo) && (
-                <Link href={`/entidad/${params.tipo}/nuevo`} className="btn btn-ghost"
-                  title={`Registrar otro ${conf.tabla === "equipamiento" ? "equipo" : params.tipo}`}>
-                  ＋ Nuevo
-                </Link>
-              )}
+              {/* ⚠ AQUÍ ESTABA EL «＋ Nuevo», Y NADIE LO ENCONTRABA.
+                  Vivía en esta fila, entre las acciones del carné, y solo para
+                  equipamiento/persona/lugar. Se pidió «añade el botón de nuevo
+                  equipo en la página» señalando la barra de arriba: existiendo,
+                  no se veía. Un control escondido en una fila de acciones a
+                  media página, debajo de la portada y del nombre, no está.
+                  Se mudó ARRIBA, a la `topbar`, que es donde el listado ya
+                  pone el suyo y donde se buscan los controles — y de paso dejó
+                  de ser una lista de tres tipos escrita a mano. El porqué
+                  entero está allí. */}
               {/* Los de empresa (verificar / ficha SUNAT) van en el bloque 🏛 SUNAT */}
               {/* Verificar DNI vive ahora en el bloque 🪪 Identidad */}
             </div>

@@ -52,7 +52,12 @@ a{color:inherit;text-decoration:none}
    con las tarjetas del contenido ya poniendo su propio borde justo debajo.
    Dos bordes paralelos separados por un hueco no son una frontera: son ruido,
    y ruido que además cobra alto. */
-.topbar{display:flex;align-items:center;gap:10px;padding:12px 0 4px;margin-bottom:12px;min-width:0}
+/* `flex-wrap:wrap` y no `nowrap`: esta barra lleva ⬡ + menú + los controles de
+   la pantalla + el rótulo del tipo, y no hay ningún `@media` que la apile. Sin
+   envolver, en un móvil de 375px el último control que se añada no se encoge
+   —se sale, o parte su texto en dos líneas dentro del botón—. Envolviendo, la
+   fila crece un renglón solo cuando de verdad no cabe. */
+.topbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 0 4px;margin-bottom:12px;min-width:0}
 
 .logo{display:flex;align-items:center;gap:8px;font-weight:800;font-size:17px;white-space:nowrap}
 .logo .ic{width:36px;height:36px;background:linear-gradient(135deg,#f4b400,#f59e0b);border-radius:10px;display:flex;align-items:center;justify-content:center;color:#1a1200;font-size:19px}

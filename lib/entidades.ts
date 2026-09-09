@@ -616,6 +616,44 @@ export const LENGUAS = [
   "Otra lengua originaria", "Lengua de señas peruana",
 ];
 
+/* ══════════════════════════════════════════════════════════════════════════
+   ＋ QUÉ SE DA DE ALTA SUELTO, Y CÓMO SE LLAMA EL BOTÓN
+
+   Los tipos cuya alta ES el formulario genérico de `/entidad/<tipo>/nuevo`,
+   con el rótulo exacto con el que ya se ofrecen. Está aquí y no repetido en
+   cada pantalla para que el MISMO botón no cambie de nombre según dónde estés:
+   decía «＋ Nuevo equipo» en el listado y, a un clic, «＋ Equipo audiovisual»
+   en la ficha.
+
+   ⚠ ESTO NO ES `FORM_CONF`, Y CONFUNDIRLOS OFRECE ALTAS QUE NO EXISTEN.
+   `FORM_CONF` dice qué sabe PINTAR el formulario, y se usa igual para editar.
+   Los cuatro tipos que están allí y no aquí tienen su alta en otro sitio, con
+   reglas que este formulario no conoce:
+
+     · postulacion — `convocatoria_id`, `proyecto_id` y `empresa_id` son NOT
+       NULL en el schema y el formulario no los tiene: se rellenan quince
+       campos, se pulsa Guardar y sale el error crudo de Postgres. Se crea con
+       `crearPostulacion` desde el «＋ Postular» de su convocatoria.
+     · compra — el alta es el LOTE (`AltaLote`): la compra Y sus N unidades
+       foliadas en una pasada, que es para lo que existe un combo. Además
+       `guardarEntidad` no tiene prefijo para `compra`, así que el código C-###
+       nacería vacío. Y `lib/secciones` ya declara que la compra no tiene ficha.
+     · lugar — `crearLugar` deduplica por nombre con `ilike` y devuelve el que
+       ya existe; el formulario genérico duplicaría.
+     · etiqueta — `nombre` es unique y nadie ofrece esa alta en ninguna
+       pantalla. Repetir una sale por un `alert` con el error de la base.
+
+   Añadir un tipo aquí es afirmar que su alta suelta funciona de verdad. Se
+   comprueba creando uno, no leyendo `FORM_CONF`.
+   ══════════════════════════════════════════════════════════════════════════ */
+export const ALTA_SUELTA: Record<string, string> = {
+  proyecto: "＋ Nuevo proyecto",
+  empresa: "＋ Nueva empresa",
+  persona: "＋ Nueva persona",
+  equipamiento: "＋ Nuevo equipo",
+  convocatoria: "＋ Nueva convocatoria",
+};
+
 export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: CampoDef[] }> = {
   proyecto: {
     tabla: "proyectos",

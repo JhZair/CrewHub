@@ -6,7 +6,7 @@ import TablaVistas from "@/components/TablaVistas";
 import Avatar from "@/components/Avatar";
 import { OjoEmpresa } from "@/components/Ojo";
 import { alertaSunat, empresaDeCasa, esNuestra, esProblematico, textoSunat } from "@/lib/sunat";
-import { REL_EMPRESA, EST_EMPRESA, completitud } from "@/lib/entidades";
+import { REL_EMPRESA, EST_EMPRESA, completitud, ALTA_SUELTA } from "@/lib/entidades";
 import { TXT } from "@/lib/texto";
 import Completitud from "@/components/Completitud";
 import { CERRADOS } from "@/lib/familia";
@@ -496,7 +496,7 @@ export default async function Empresas({ searchParams }: {
           title="Todos los casos, agrupados por empresa">🗂 Casos</Link>
         <Link href="/historial/empresa" className="btn btn-ghost"
           title="Todo lo que se movió en las empresas, por periodo">🕐 Historial</Link>
-        <Link href="/entidad/empresa/nuevo" className="btn">＋ Nueva empresa</Link>
+        <Link href="/entidad/empresa/nuevo" className="btn">{ALTA_SUELTA.empresa}</Link>
       </div>
       <h1 className="title-lg">🏢 Empresas</h1>
 

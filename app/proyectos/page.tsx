@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
-import { TIPO_COLOR, completitud } from "@/lib/entidades";
+import { TIPO_COLOR, completitud, ALTA_SUELTA } from "@/lib/entidades";
 import { ETAPAS_PROY_UNICAS, metaEtapaProy, enMarchaProy } from "@/lib/etapasProyecto";
 import Completitud from "@/components/Completitud";
 import { buscadorDe, pal } from "@/lib/buscar";
@@ -225,7 +225,7 @@ export default async function Proyectos({ searchParams }: {
           title="Todos los casos, agrupados por proyecto">🗂 Casos</Link>
         <Link href="/historial/proyecto" className="btn btn-ghost"
           title="Todo lo que se movió en los proyectos, por periodo">🕐 Historial</Link>
-        <Link href="/entidad/proyecto/nuevo" className="btn">＋ Nuevo proyecto</Link>
+        <Link href="/entidad/proyecto/nuevo" className="btn">{ALTA_SUELTA.proyecto}</Link>
       </div>
       <h1 className="title-lg">📁 Proyectos</h1>
 

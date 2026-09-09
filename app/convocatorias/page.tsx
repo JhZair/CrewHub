@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
-import { TIPO_COLOR, EST_CONVOCATORIA } from "@/lib/entidades";
+import { TIPO_COLOR, EST_CONVOCATORIA, ALTA_SUELTA } from "@/lib/entidades";
 import { TXT } from "@/lib/texto";
 import CanchaTemporada, { type Frente } from "@/components/CanchaTemporada";
 import { buscadorDe, pal } from "@/lib/buscar";
@@ -159,7 +159,7 @@ export default async function Convocatorias({ searchParams }: {
           title="Todos los casos, agrupados por convocatoria">🗂 Casos</Link>
         <Link href="/historial/convocatoria" className="btn btn-ghost"
           title="Todo lo que se movió en las convocatorias, por periodo">🕐 Historial</Link>
-        <Link href="/entidad/convocatoria/nuevo" className="btn">＋ Nueva convocatoria</Link>
+        <Link href="/entidad/convocatoria/nuevo" className="btn">{ALTA_SUELTA.convocatoria}</Link>
       </div>
       <h1 className="title-lg">📜 Convocatorias y fondos</h1>
 

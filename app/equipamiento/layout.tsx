@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ALTA_SUELTA } from "@/lib/entidades";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import Link from "@/components/Enlace";
@@ -98,7 +99,7 @@ export default async function EquipamientoLayout({ children }: { children: React
           title="Todos los casos, agrupados por equipo">🗂 Casos</Link>
         <Link href="/historial/equipamiento" className="btn btn-ghost"
           title="Todo lo que se movió en los equipos, por periodo">🕐 Historial</Link>
-        <Link href="/entidad/equipamiento/nuevo" className="btn">＋ Nuevo equipo</Link>
+        <Link href="/entidad/equipamiento/nuevo" className="btn">{ALTA_SUELTA.equipamiento}</Link>
       </div>
       <h1 className="title-lg">🎥 Equipos audiovisuales</h1>
 

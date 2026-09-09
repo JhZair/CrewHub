@@ -10,7 +10,7 @@ import { buscadorDe, pal } from "@/lib/buscar";
 import Avatar from "@/components/Avatar";
 import { OjoPersona } from "@/components/Ojo";
 import Completitud from "@/components/Completitud";
-import { completitud, EQUIPOS_PERSONA, ESPECIALIDADES } from "@/lib/entidades";
+import { completitud, EQUIPOS_PERSONA, ESPECIALIDADES, ALTA_SUELTA } from "@/lib/entidades";
 import TablaVistas from "@/components/TablaVistas";
 import Link from "@/components/Enlace";
 import { redirect } from "next/navigation";
@@ -392,7 +392,7 @@ export default async function Personas({ searchParams }: {
           title="Todos los casos, agrupados por persona">🗂 Casos</Link>
         <Link href="/historial/persona" className="btn btn-ghost"
           title="Todo lo que se movió en las personas, por periodo">🕐 Historial</Link>
-        <Link href="/entidad/persona/nuevo" className="btn">＋ Nueva persona</Link>
+        <Link href="/entidad/persona/nuevo" className="btn">{ALTA_SUELTA.persona}</Link>
       </div>
       <h1 className="title-lg">👤 Personas</h1>
 
