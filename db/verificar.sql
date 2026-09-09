@@ -11,6 +11,14 @@
 -- ------------------------------------------------------------
 with esperado(clase, obj, para, archivo) as (values
   -- Personas
+  /* Dónde se guarda cada cosa. `sitios` son muebles y estantes —NO `lugares`,
+     que son locaciones de rodaje con latitud—; los dos punteros son
+     excluyentes y una pieza atornillada no puede tener sitio propio. */
+  ('tab', 'sitios',                             'Dónde se guarda cada cosa',  'sitios.sql'),
+  ('col', 'equipamiento.guardado_sitio',        'Sitio donde se guarda',      'sitios.sql'),
+  ('col', 'equipamiento.guardado_en_equipo',    'Dentro de qué bolso va',     'sitios.sql'),
+  ('col', 'kits.guardado_sitio',                'Sitio donde se guarda el kit','sitios.sql'),
+  ('col', 'kits.guardado_en_equipo',            'En qué bolso va el kit',     'sitios.sql'),
   ('col', 'personas.firma_url',                 'Firma escaneada',            'persona-firma.sql'),
   ('col', 'personas.foto_url',                  'Foto del perfil',            'persona-foto.sql'),
   ('col', 'personas.dni_url',                   'DNI escaneado',              'persona-firma.sql'),
