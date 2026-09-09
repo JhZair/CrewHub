@@ -525,13 +525,22 @@ export async function inventarioDePaneles() {
 
 /** Lo que necesita la pestaña 🔧 Ensamblados, y nada más. */
 export const arbolEnsamblados = cache(async () => {
-  const [eqs, media, manos] = await Promise.all([
-    equiposFlacos(), cartelesEquipo(), enManosAhora(),
+  const [eqs, media, manos, sitiosQ] = await Promise.all([
+    equiposFlacos(), cartelesEquipo(), enManosAhora(), sitiosTodos(),
   ]);
   const filas = (eqs.data || []) as any[];
   const cartelPorEq = cartelPorEquipo(media);
   const quienTiene = quienTieneEquipo(manos);
   const { raices, sueltas } = arbolDeEnsamblados(filas, cartelPorEq, quienTiene);
+
+  /* La cadena de cada ANFITRIÓN, resuelta aquí. Solo las raíces, y NO por
+     coste: `resolvedorDeGuardado` memoiza, así que las piezas saldrían casi
+     gratis. Es porque a una pieza no se le pinta control —hereda, y el check
+     de la base le prohíbe sitio propio—, así que su cadena sería un objeto por
+     fila cruzando al navegador para no pintarse nunca. */
+  const listaSitios = ((sitiosQ as any)?.data || []) as Sitio[];
+  const donde = resolvedorDeGuardado(listaSitios, filas as any);
+  raices.forEach(r => { r.guardado = donde.de(r.id); });
 
   /* ── LOS CANDIDATOS A MONTAR ──
      ⚠ LISTA BLANCA, no una lista de exclusiones. Estuvo escrito al revés —«ni
@@ -554,9 +563,37 @@ export const arbolEnsamblados = cache(async () => {
 
   return {
     raices, sueltas, candidatos,
-    /* Si el inventario llegó al tope, una pieza «perdida» no acusa a la base:
-       lo que falta es media lista. La pantalla lo dice con otras palabras. */
+    /* Los sitios y los contenedores para el control de «dónde se guarda» de
+       cada tarjeta. Los contenedores son TODOS los equipos: un bolso es un
+       equipo cualquiera y no hay marca que lo distinga — ni hace falta, porque
+       quien elige sabe cuál es su maletín.
+       ⚠ Y PESA: son ~500 objetos de cuatro campos que cruzan al navegador en
+       cada visita a la pestaña, para llenar cuarenta y cuatro desplegables que
+       casi nunca se abren. Es la misma clase de gasto que la cabecera de este
+       archivo presume de haber quitado. Se acepta porque un ensamblado sí se
+       guarda a veces dentro de un bolso y quitarlo sería mutilar la función en
+       una pantalla y no en otra; si algún día pesa de verdad, lo que hay que
+       hacer es pedirlos al ABRIR el desplegable —como `VinculosEditor` con sus
+       catálogos— y no recortar la lista en silencio. */
+    sitios: listaSitios,
+    contenedores: filas.map(e => ({
+      id: e.id, folio: e.folio || null, nombre: e.nombre || "sin nombre",
+      dentroDe: e.guardado_en_equipo || e.ensamblado_en || null,
+    })),
+    /* ⚠ DOS topes y DOS errores, no uno de cada. Estuvieron fundidos con un
+       `||` y las dos mezclas mentían:
+       · con `eEquipos` incluyendo el fallo de `sitios`, un `db/sitios.sql` sin
+         correr apagaba el número de la pestaña 🔧 Y su aviso ámbar, y la
+         pantalla decía «no se pudieron leer los equipos» sobre unos equipos
+         perfectamente leídos.
+       · con `cortado` incluyendo el tope de sitios, mil cajones sobre un
+         inventario sano hacían que una pieza rota dijera «apunta a un equipo
+         que no llegó» — absolver a una base que sí está rota.
+       `inventarioDePaneles` ya los tenía separados sesenta líneas más arriba;
+       esto los volvió a juntar y hay que no volver a hacerlo. */
     cortado: filas.length > TOPE_EQUIPOS,
+    sitiosCortados: listaSitios.length > TOPE_SITIOS,
     eEquipos: (eqs as any)?.error?.message || null,
+    eSitios: (sitiosQ as any)?.error?.message || null,
   };
 });

@@ -66,6 +66,14 @@ export type NodoEns = {
   /** Precio propio. El del conjunto se suma con `valorDeNodo`, que baja por
    *  todo el árbol: el valor de un rig es el de sus piezas, no un dato. */
   valor: number | null;
+  /** La cadena de dónde se guarda, ya resuelta. La pone `arbolEnsamblados`, que
+   *  es quien tiene la lista de sitios, y SOLO en las raíces: a una pieza
+   *  atornillada no se le pinta control —hereda, y un check de la base le
+   *  prohíbe sitio propio—, así que en las piezas queda `undefined`.
+   *  ⚠ Los dos punteros crudos NO viajan. Estuvieron aquí «por si acaso» y no
+   *  los leía nadie: dos campos por nodo cruzando al navegador en cuarenta y
+   *  cuatro raíces y ciento catorce piezas para nada. */
+  guardado?: import("@/lib/sitios").Guardado;
   piezas: NodoEns[];
 };
 

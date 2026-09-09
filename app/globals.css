@@ -8086,6 +8086,13 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
    que decide si se puede desarmar hoy, no un dato de adorno. */
 .ens-quien{color:var(--yellow);font-size:11.5px;white-space:nowrap}
 
+/* El sitio del ensamblado: renglón propio entre el título y el árbol, no un
+   ítem más del título. Dentro de aquella fila flex se llevaba la línea entera
+   igualmente —base del 100%— y además empujaba los botones de acción a una
+   tercera. Aquí ocupa lo suyo y no compite con nada. */
+.ens-donde{padding:5px 11px;border-top:1px solid var(--border);
+  background:rgba(255,255,255,.012)}
+
 .ens-arbol{display:flex;flex-direction:column}
 .ens-fila{display:flex;gap:8px;align-items:center;padding:5px 11px;cursor:pointer;
   border-bottom:1px solid var(--border);min-width:0}
@@ -8152,8 +8159,13 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
 .dsg-equipo{color:var(--accent)}
 .dsg-porque{color:var(--muted);font-size:12px;line-height:1.55;margin-top:7px}
 
+/* `inline-flex` para que se lea como una línea más de la tarjeta, pero es un
+   `<div>`: dentro lleva el selector, que es un bloque. */
 .dsg-compacto{display:inline-flex;align-items:center;gap:7px;flex-wrap:wrap;
   font-size:11.5px;min-width:0}
+/* En compacto no cabe la frase entera de por qué no se puede editar: solo de
+   quién lo hereda. El porqué está en el bloque de la ficha. */
+.dsg-hereda{color:var(--dim);font-size:10.5px}
 
 .dsg-selector{margin-top:9px;display:flex;flex-direction:column;gap:7px}
 .dsg-lista{display:flex;flex-direction:column;max-height:240px;overflow-y:auto;

@@ -63,11 +63,13 @@ export default async function EquipamientoLayout({ children }: { children: React
      el coste es el mismo— pero la razón por la que está aquí es la forma, no la
      velocidad: son dos datos de la cabecera y se piden juntos.
 
-     ⚠ Y cuesta UNA CONSULTA NUEVA en 📋 Inventario, que es la pestaña más
-     visitada: esa pantalla usa `equiposGordos` y no pasaba por `equiposFlacos`,
-     así que ahora la tabla `equipamiento` se pide dos veces en ese render —una
-     gorda y una flaca— solo para el número de una pestaña donde no se está. En
-     las otras cuatro es gratis: ya pedían la flaca. Se acepta a sabiendas; si
+     ⚠ Y cuesta DOS consultas nuevas en 📋 Inventario, que es la pestaña más
+     visitada: esa pantalla usa `equiposGordos` y no pasa ni por `equiposFlacos`
+     ni por `sitiosTodos`, así que en ese render la tabla `equipamiento` se pide
+     dos veces —una gorda y una flaca— más la de sitios, solo para el número de
+     una pestaña donde no se está. (Era una; subió a dos cuando el árbol de
+     ensamblados empezó a resolver también dónde se guarda cada anfitrión.) En
+     las otras cinco es gratis: ya pedían las dos. Se acepta a sabiendas; si
      algún día pesa, lo que hay que hacer es que el inventario lea de la flaca y
      pida aparte las columnas que solo él usa, no quitar el número. */
   const [manos, ens] = await Promise.all([enManosAhora(), arbolEnsamblados()]);

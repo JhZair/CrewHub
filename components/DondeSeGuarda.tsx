@@ -91,7 +91,13 @@ export default function DondeSeGuarda({
      puede contenerlo: son los que tienen a `id` en su propia cadena.
      Se calcula con los mismos datos que ya viajaron —`contenedores` trae los
      dos punteros— sin pedir nada más. */
+  /* ⚠ Solo cuando el selector está ABIERTO. Sin la guarda, la pestaña de
+     ensamblados monta cuarenta y cuatro de estos y cada uno construía un mapa
+     de quinientas entradas y recorría quinientas cadenas con su propio `Set`:
+     veintidós mil recorridos en el montaje para llenar unos desplegables que
+     casi nunca se abren. `PanelKits` ya pagó una versión de esto con catorce. */
   const prohibidos = useMemo(() => {
+    if (!abierto) return new Set<string>([id]);
     const dentroDe = new Map<string, string | null>(
       contenedores.map(c => [c.id, c.dentroDe ?? null]));
     const malo = new Set<string>([id]);
@@ -105,7 +111,7 @@ export default function DondeSeGuarda({
       }
     }
     return malo;
-  }, [contenedores, id]);
+  }, [contenedores, id, abierto]);
 
   const opciones = useMemo(() => {
     const ps = nrm(q).split(/\s+/).filter(Boolean);
@@ -210,7 +216,15 @@ export default function DondeSeGuarda({
 
   if (compacto) {
     return (
-      <span className="dsg-compacto">
+      /* `<div>` y no `<span>`: el selector que va dentro es un bloque —lleva su
+         propia lista y su campo de texto— y un `<div>` dentro de un `<span>`
+         es anidamiento inválido. No lo rompe nada visible: el parser NO
+         autocierra un `<span>` ante un `<div>` (eso solo pasa con `<p>`), y
+         `inline-flex` blockifica a los hijos igual. Se corrige por lo que es,
+         no por un fallo observado — decir lo contrario sería inventarse un
+         síntoma para justificar un cambio. Y sigue leyéndose en línea, que es
+         lo único que se quería del `<span>`. */
+      <div className="dsg-compacto">
         <span style={{ color: tono }} title={heredado && deQuien
           ? `Lo hereda de ${deQuien.nombre}` : undefined}>📍 {texto}</span>
         {!heredado && (
@@ -218,8 +232,20 @@ export default function DondeSeGuarda({
             {guardado.ruta.length ? "cambiar" : "anotar"}
           </button>
         )}
+        {/* Heredado, en compacto, se dice corto: la frase larga —y la
+            distinción entre atornillado y metido en un bolso— es del bloque de
+            la ficha, que tiene sitio para explicarla. El nombre de quien lo
+            contiene está en el `title` del 📍 de al lado.
+            ⚠ Sin ternario `atornillado ? … : …`: en compacto ese caso no
+            existe. Los dos únicos usos son raíces de ensamblado —que por
+            definición no están atornilladas a nada— y kits, que no tienen
+            `ensamblado_en`. Una rama que no puede ejecutarse se lee como que sí
+            puede, y el día que alguien la toque no sabrá que estaba muerta. */}
+        {heredado && deQuien && (
+          <span className="dsg-hereda">lo hereda de {deQuien.nombre}</span>
+        )}
         {abierto && selector}
-      </span>
+      </div>
     );
   }
 

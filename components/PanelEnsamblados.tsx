@@ -10,6 +10,8 @@ import { soles } from "@/lib/compras";
    habla con la base, el build de Next lo rechaza —arrastra `next/headers`— y
    `tsc` no lo ve, así que pasa limpio y revienta al compilar. */
 import { valorDeNodo, piezasDeNodo, type NodoEns, type SueltaEns } from "@/lib/ensamblados";
+import DondeSeGuarda, { type Contenedor } from "@/components/DondeSeGuarda";
+import type { Sitio } from "@/lib/sitios";
 
 /* ══════════════════════════════════════════════════════════════════════════
    🔧 ENSAMBLADOS — DE QUÉ ESTÁ HECHA CADA COSA
@@ -130,10 +132,25 @@ function Pieza({ n, nivel, sel, alterna }: {
   );
 }
 
-export default function PanelEnsamblados({ raices, sueltas, candidatos, cortado }: {
+export default function PanelEnsamblados({
+  raices, sueltas, candidatos, cortado, sitios, contenedores, eSitios, sitiosCortados,
+}: {
   raices: NodoEns[];
   sueltas: SueltaEns[];
   candidatos: Cand[];
+  /* ── DÓNDE SE GUARDA EL ENSAMBLADO ──
+     Un anfitrión de primer nivel NO está atornillado a nada, así que sí puede
+     tener sitio propio — y es el que hace falta anotar: sus piezas lo heredan
+     de él, así que con una línea quedan sitiadas las siete. El control estaba
+     solo en su ficha, y con cuarenta y cuatro ensamblados eso son cuarenta y
+     cuatro idas y vueltas para lo que aquí es una lista. */
+  sitios: Sitio[];
+  contenedores: Contenedor[];
+  /** Lo que falló al leer los sitios, y si la lista se cortó. Van al control
+   *  para que no diga «sin sitio anotado» cuando lo que pasa es que no se pudo
+   *  leer, ni acuse a la base cuando lo que faltó fue media lista. */
+  eSitios?: string | null;
+  sitiosCortados?: boolean;
   /** Si el inventario llegó al tope de la API. Cambia lo que significa una
    *  pieza «perdida»: no es la base rota, es media lista que no llegó. */
   cortado: boolean;
@@ -365,6 +382,7 @@ export default function PanelEnsamblados({ raices, sueltas, candidatos, cortado 
                   {/* Prestado: se dice ARRIBA, en el título. Es lo que decide si
                       se puede tocar hoy — no está aquí, está en una mochila. */}
                   {r.quien && <span className="ens-quien">lo tiene {r.quien}</span>}
+
                   {/* ⚠ Lo marcado se dice en la CABECERA cuando está cerrada.
                       Si no, marcas cinco piezas, pliegas, y la barra de abajo
                       ofrece desmontar cinco que ya no se ven por ningún lado. */}
@@ -378,6 +396,26 @@ export default function PanelEnsamblados({ raices, sueltas, candidatos, cortado 
                     title={`Montar más piezas dentro de ${r.nombre}`}
                     onClick={() => setMontando(r.id)}>＋ piezas</button>
                 </div>
+                {/* ── DÓNDE SE GUARDA, EN SU PROPIO RENGLÓN ──
+                    ⚠ FUERA de `.ens-titulo`, y no por gusto. Estuvo dentro con
+                    `flex:1 1 100%`, y un ítem flex con base del 100% no puede
+                    compartir renglón NI con lo de antes NI con lo de después:
+                    partía la cabecera en tres siempre —hasta en pantalla ancha—
+                    y descolgaba «↗ ficha» y «＋ piezas» a una línea propia. Con
+                    cuarenta y cuatro tarjetas eso triplica justo la altura que
+                    el plegado vino a ahorrar.
+                    ⚠ Y fuera también del `<button>` de plegar: este control
+                    lleva botones dentro, y un botón dentro de otro sí lo
+                    autocierra el parser — la mitad del título dejaría de plegar.
+                    Se ve con la tarjeta CERRADA: dónde está el ensamblado es la
+                    mitad de para lo que se entra aquí. */}
+                <div className="ens-donde">
+                  <DondeSeGuarda que="equipo" id={r.id} compacto
+                    guardado={r.guardado || { ruta: [], origen: "ninguno", bucle: false, roto: false }}
+                    sitios={sitios} contenedores={contenedores}
+                    error={eSitios} cortado={!!sitiosCortados} />
+                </div>
+
                 {abierta && (
                   <div className="ens-arbol">
                     {r.piezas.map(p => (

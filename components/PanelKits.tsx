@@ -580,8 +580,11 @@ export default function PanelKits({ kits, equipos, cortado, sitios }: {
                 <div className="kit-donde">
                   <DondeSeGuarda que="kit" id={k.id} compacto
                     guardado={k.guardado || { ruta: [], origen: "ninguno", bucle: false, roto: false }}
-                    sitios={sitios}
-                    contenedores={contenedores} />
+                    sitios={sitios} contenedores={contenedores}
+                    /* `cortado` es el del INVENTARIO, que es lo que resuelve la
+                       cadena de un kit guardado dentro de un bolso: si faltó
+                       media lista, el bolso puede no haber llegado. */
+                    cortado={cortado} />
                 </div>
 
                 {/* TERCERA LÍNEA: LAS CIFRAS. Con el kit plegado, «12 equipos ·

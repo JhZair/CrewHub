@@ -35,7 +35,8 @@ export default async function Ensamblados() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { raices, sueltas, candidatos, cortado, eEquipos } = await arbolEnsamblados();
+  const { raices, sueltas, candidatos, cortado, sitiosCortados, eEquipos, eSitios,
+          sitios, contenedores } = await arbolEnsamblados();
 
   return (
     <>
@@ -56,6 +57,32 @@ export default async function Ensamblados() {
       {/* El tope de la API alcanzado no es un detalle técnico aquí: una pieza
           cuyo anfitrión no llegó se leería como «apunta a un equipo que ya no
           está», o sea como una base rota. Se avisa antes de que nadie lo lea. */}
+      {/* ⚠ El de SITIOS es otro aviso y va aparte. Fundidos, mil cajones sobre
+          un inventario sano hacían que la pantalla dijera «se leyeron los
+          primeros mil equipos», que es falso. */}
+      {eSitios && (
+        <div className="card" style={{ borderLeft: "3px solid var(--yellow)" }}>
+          <b style={{ color: "var(--yellow)", fontSize: 13 }}>⚠ No se pudieron leer los sitios</b>
+          <div style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 5, lineHeight: 1.55 }}>
+            Los ensamblados salen bien; lo que no se puede es decir dónde se
+            guarda cada uno ni cambiarlo desde aquí.{" "}
+            {/(does not exist|schema cache|PGRST20)/i.test(eSitios)
+              ? <>Falta correr <code>db/sitios.sql</code> en Supabase.</>
+              : <code style={{ fontSize: 11 }}>{eSitios}</code>}
+          </div>
+        </div>
+      )}
+
+      {sitiosCortados && (
+        <div className="card" style={{ borderLeft: "3px solid var(--yellow)" }}>
+          <b style={{ color: "var(--yellow)", fontSize: 13 }}>⚠ La lista de sitios llegó al tope</b>
+          <div style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 5, lineHeight: 1.55 }}>
+            Alguna cadena puede salir cortada o diciendo que apunta a un sitio
+            que no está. Los ensamblados en sí están completos.
+          </div>
+        </div>
+      )}
+
       {cortado && (
         <div className="card" style={{ borderLeft: "3px solid var(--yellow)" }}>
           <b style={{ color: "var(--yellow)", fontSize: 13 }}>⚠ El inventario llegó al tope</b>
@@ -68,7 +95,9 @@ export default async function Ensamblados() {
       )}
 
       <PanelEnsamblados raices={raices} sueltas={sueltas}
-        candidatos={candidatos} cortado={cortado} />
+        candidatos={candidatos} cortado={cortado}
+        sitios={sitios} contenedores={contenedores}
+        eSitios={eSitios} sitiosCortados={sitiosCortados} />
     </>
   );
 }
