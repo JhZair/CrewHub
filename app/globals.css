@@ -4806,7 +4806,11 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
   align-items:center;justify-content:center;font-size:16px}
 .cbo-img img{width:100%;height:100%;object-fit:cover}
 /* Buscar y filtrar, con dieciocho combos la lista ya no se lee: se busca. */
-.cbo-filtros{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:10px 0 2px}
+/* ⚠ Era esta misma regla en `flex` horizontal: buscador, diez chips de
+   categoria, el orden y el limpiar compitiendo por el ancho de una fila.
+   Ahora apila dos alturas — ver el bloque del final del archivo. */
+.cbo-filtros{display:block;margin:10px 0 2px}
+.cbo-filtros-l1{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 
 .cbo-fila{display:block;text-decoration:none;padding:8px 4px;
   border-top:1px solid var(--border)}
@@ -8395,3 +8399,179 @@ a.sit-cosa-n:hover{color:var(--accent)}
 /* La línea de plegar la rejilla: pequeña y arriba, porque es una preferencia
    de la vista y no una acción sobre el inventario. */
 .rej-cab{display:flex;margin-bottom:6px}
+
+/* ── LA CAJA DE UN SITIO ABIERTO ──
+   Todo lo que pertenece a un sitio desplegado —su rejilla, lo que hay dentro,
+   el ＋ y sus hijos— dentro de un marco con riel a la izquierda. Y como las
+   cajas se ANIDAN, la sangría sale sola: esto sustituye a un `nivel * 18 + 22`
+   que estaba escrito a mano en cinco sitios y desincronizado en dos, y que a
+   partir del tercer nivel ya no dejaba ver dónde acababa un sitio. */
+.sit-caja{border-left:2px solid var(--border2);border-radius:0 8px 8px 0;
+  padding:4px 0 2px 12px;margin:2px 0 6px 11px}
+/* El riel se aclara al pasar por encima: con cuatro anidadas, saber cuál es la
+   que estás mirando es la mitad del problema. */
+.sit-caja:hover{border-left-color:var(--border2)}
+.sit-caja:has(> .sit-fila:hover){border-left-color:var(--teal)}
+
+/* La casilla como botón: el sitio plegado. Hereda la fila, así que solo hay que
+   apagarle lo que un botón trae de fábrica. */
+.rej-abrir{display:flex;align-items:center;gap:5px;min-width:0;flex:1;
+  background:none;border:none;padding:0;cursor:pointer;color:inherit;
+  font-family:inherit;font-size:inherit;text-align:left}
+.rej-abrir:hover .rej-nom{color:var(--teal)}
+/* Desplegada: su contenido está saliendo abajo como renglón, y hay que poder
+   emparejar el dibujo con lo que se lee. */
+.rej-abierta{outline:1px solid var(--teal);outline-offset:3px;border-radius:6px}
+
+/* ── LOS TRES BLOQUES DE UN COMBO ABIERTO ──
+   La compra, sus unidades y el buscador de sumar son tres cosas distintas y se
+   apilaban sin nada en medio: se leían como un formulario larguísimo, y la nota
+   del combo quedaba pegada a la primera unidad como si fuera suya. Mismo riel
+   que `.sit-caja`, por lo mismo. */
+.cbo-bloque{border-left:2px solid var(--border2);padding:6px 0 6px 11px;margin:9px 0 0}
+.cbo-bloque-h{color:var(--dim);font-size:10.5px;font-weight:700;letter-spacing:.6px;
+  text-transform:uppercase;margin-bottom:6px}
+/* El desplegable de orden: corto, porque sus cuatro opciones son de tres
+   palabras y al lado del buscador no puede robarle el ancho. */
+.cbo-orden{font-size:11.5px;padding:4px 7px;max-width:170px}
+
+/* ── EL COMBO ABIERTO, MARCADO ──
+   Abrir un combo solo hacia crecer la fila hacia abajo, y con veintiocho
+   filas del mismo alto eso no dice cual esta abierta: al desplazarse un poco
+   se pierde de vista la cabecera y quedan campos sueltos que podrian ser de
+   cualquiera. Peor con dos ediciones seguidas —se cierra una, se abre otra— y
+   la pantalla es identica salvo por donde cae el formulario.
+   Ambar y no violeta: en esta app el ambar es el combo y el violeta el kit
+   (.kit-caja.abierto), y son las dos mitades de la misma pantalla. Un color
+   por concepto.
+   La franja de la izquierda es lo que se ve de reojo; el tinte es lo que
+   agrupa la cabecera con su editor en un solo bloque. `padding-left` compensa
+   los 3 px de la franja para que el nombre no se desplace al abrir —un texto
+   que salta al pulsarlo se lee como un fallo—. */
+.cbo-fila.editando{background:rgba(217,154,63,.07);border-left:3px solid #d99a3f;
+  border-radius:0 9px 9px 0;padding-left:5px}
+/* ⚠ Sin esto, pasar el raton por encima aclaraba la fila abierta con
+   `.cbo-fila:hover` y el marcado se movia mientras se escribe. Ahi el bloque
+   ya esta abierto: no hay nada que anunciar. Es lo mismo que hace
+   `.kit-caja.editando:hover`, y por lo mismo. */
+.cbo-fila.editando:hover{background:rgba(217,154,63,.07)}
+/* La ✎ pasa a ✕ al abrir; el color dice que ESE es el boton que cierra. */
+.cbo-edita-on{color:#d99a3f}
+
+/* La miniatura dentro de un combo: 38 px, el mismo tamano que la cara del
+   combo (.cbo-img). Los 60 de fabrica son para escoger mirando —armar un kit,
+   elegir que se entrega—; aqui las listas son de comprobacion, y trece filas
+   de 60 px convierten un combo en una pagina de desplazamiento.
+   Va como variable y no como width/height: asi la caja, la foto y el icono del
+   hueco se reescalan juntos. Poniendo solo el ancho, el 🎥 del equipo sin foto
+   se quedaba a tamano de 60 dentro de una caja de 38. */
+.cbo-mini{--mini:38px}
+
+/* ── EL KIT QUE NO ES SUYO ──
+   Una pieza atornillada dentro de un equipo que si esta en el kit viaja con el
+   kit sin pertenecer a el. Se marca, porque las dos cosas se hacen distinto: al
+   miembro se le quita el ✕ en el editor del kit; a la pieza montada hay que
+   desmontarla. Un chip identico al de una pertenencia de verdad estaria
+   afirmando algo que no es.
+   Punteado y no otro color: el violeta ya significa «kit» en toda la app, y
+   cambiarselo obligaria a aprender un color nuevo para el mismo concepto. El
+   borde discontinuo se lee como «esto es de al lado» sin explicar nada. */
+.chip-gr-prestado{border-style:dashed}
+.chip-gr-marca{margin-left:3px;opacity:.7;font-size:10px}
+
+/* ── EL CODIGO ENTERO EN EL SELECTOR DE SITIO ──
+   `.dsg-clave` era «C02»: cuatro caracteres y catorce sitios con el mismo.
+   Ahora la etiqueta lleva el codigo completo —«OF01-E02-N01-C03»—, que si
+   identifica a uno. Es tres veces mas largo, asi que hay que decirle a la fila
+   que el que cede es el NOMBRE y no el: sin `flex:none` aqui y elipsis alla, el
+   codigo se partia en dos renglones y cada opcion media el doble de alto.
+   Letra un punto mas chica que la clave corta: dieciseis caracteres a 10px
+   empujaban el «en Oficina Principal › …» fuera de la fila. */
+.dsg-cod{font-size:9.5px;letter-spacing:-.2px;flex:none;white-space:nowrap}
+
+/* ── UN KIT SIN SITIO, Y A CUANTOS ARRASTRA ──
+   Un kit responde por TODOS sus equipos —donde esta el kit estan sus piezas—,
+   asi que un kit sin cajon deja a doce equipos sin cajon de golpe, y ninguno de
+   los doce lo puede arreglar por su cuenta: anotarselo a mano los desengancha
+   del kit. Por eso el hueco se marca en la fila del kit y no en las suyas.
+   Rojo TENUE —fondo al 7 %, sin ⚠ y sin borde grueso—: falta un dato, no hay
+   nada roto. Lo que tiene que hacer es destacar al bajar por la lista, no
+   alarmar; los avisos de verdad de esta app llevan `var(--red)` entero. */
+.kit-donde.kit-sinsitio{background:rgba(255,77,94,.07);border-radius:8px;
+  padding:3px 8px;margin-left:-8px}
+.kit-sinsitio-n{color:var(--red);opacity:.8;font-size:11px}
+/* Lo mismo del otro lado: el ensamblado cuyo kit no sabe donde se guarda. No
+   lleva fondo —la tarjeta ya tiene el suyo— solo la frase, porque aqui el
+   arreglo NO esta: esta en el kit, y la frase es lo unico que lleva alli. */
+.ens-sinsitio{color:var(--red);opacity:.8;font-size:11px}
+
+/* ── LOS ENCABEZADOS DE GRUPO EN ENSAMBLADOS ──
+   Ocupan la fila ENTERA de la rejilla (`grid-column:1/-1`): sin eso, con dos
+   columnas el encabezado se colocaba como una tarjeta mas y quedaba a media
+   altura, al lado de la primera de su grupo en vez de encima de todas.
+   Fina y en versalitas, no una barra: separa sin competir con las tarjetas,
+   que son lo que se viene a mirar. Es el mismo peso que `.cbo-bloque-h`. */
+.ens-grupo-h{grid-column:1/-1;display:flex;align-items:center;gap:8px;
+  margin:10px 0 -2px;padding-bottom:5px;border-bottom:1px solid var(--border);
+  color:var(--dim);font-size:11px;font-weight:700;letter-spacing:.5px}
+.ens-grupo-h:first-child{margin-top:0}
+.ens-grupo-n{margin-left:auto;font-weight:400;opacity:.75}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LOS FILTROS: UN ROTULO ARRIBA Y UNA TIRA QUE SE DESPLAZA
+
+   El porque de las dos decisiones esta en components/Filtros.tsx, junto al
+   marcado. Aqui solo lo que hay que saber para TOCAR estas reglas sin
+   romperlas — y las dos formas de romperlas no dan error, dan chips
+   estrujados.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* `min-width:0` no sobra: un item de flex o de grid no baja de su contenido, y
+   sin esto la tira ensancharia la tarjeta —y la pagina— en vez de desplazarse
+   el dia que este panel viva dentro de una rejilla. */
+.filt-grupo{padding:3px 0;min-width:0}
+/* Encima y no en una columna de la izquierda: asi no le quita ancho a la tira
+   —que es de lo que va todo esto— y el rotulo puede ser tan largo como haga
+   falta. Mismo peso que `.cbo-bloque-h` y `.ens-grupo-h`: la app tiene un solo
+   tamaño de rotulo pequeño. */
+.filt-tit{display:block;font-size:9.5px;text-transform:uppercase;
+  letter-spacing:1px;color:var(--dim);margin-bottom:3px}
+/* ⚠ `nowrap` + `overflow-x:auto` es la mitad del asunto; la otra mitad es el
+   `flex:none` de abajo. Sin el, los chips se encogen por debajo de su texto,
+   no hay desbordamiento y por tanto NO hay desplazamiento: se ve un diseño que
+   aprieta, no una tira que se mueve.
+   `overscroll-behavior-x:contain` para que llegar al final de las categorias no
+   encadene el gesto a la pagina —o al historial del navegador, que en un
+   trackpad es un «atras» accidental—. */
+.filt-tira{display:flex;gap:5px;align-items:center;flex-wrap:nowrap;
+  overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;
+  padding-bottom:5px;
+  scrollbar-width:thin;scrollbar-color:var(--border2) transparent}
+.filt-tira > *{flex:none}
+/* ── EL CHIP, MAS APRETADO SOLO AQUI ──
+   `.vtab` de fabrica lleva 8/14 de relleno y 12.5 px de letra, y esa medida es
+   la de las PESTAÑAS de navegacion (`.vtabs`), donde hay seis y se pulsan
+   constantemente. En una tira de filtros hay dieciseis, y cada 4 px de relleno
+   que sobran son un chip menos a la vista: pasando a 5/10 caben tres o cuatro
+   mas antes de tener que desplazar.
+   ⚠ Y por eso va ANIDADO bajo `.filt-tira` y no tocando `.vtab`: encogerlo en
+   su sitio encogeria tambien la barra de pestañas de todas las pantallas, que
+   nadie pidio y que es donde el tamaño grande si esta justificado.
+   No baja de aqui: 5 px de relleno + 12 px de linea son ~26 px de alto, que
+   sigue siendo un blanco comodo. Apretarlo mas empieza a costar clics
+   fallados, y un filtro que hay que pulsar dos veces cuesta mas de lo que
+   ahorra el pixel. */
+.filt-tira .vtab,.filt-tira .kit-chip{padding:5px 10px;font-size:12px;gap:5px}
+/* El radio SI se toca aparte y solo en `.vtab`: `.kit-chip` es una pastilla
+   (999px) y `.vtab` un rectangulo redondeado, y cada uno lo es en toda la app.
+   Meterlos en la regla de arriba le habria cambiado la FORMA a los chips de
+   los combos de paso, que no es un ajuste de espacio: es un rediseño colado
+   dentro de otro cambio. */
+.filt-tira .vtab{border-radius:8px}
+/* La barra, SIEMPRE visible: una tira que se desplaza sin marca es contenido
+   escondido, y nadie arrastra lo que no sabe que esta. Fina y sin fondo de
+   canal para que no compita con los chips. */
+.filt-tira::-webkit-scrollbar{height:6px}
+.filt-tira::-webkit-scrollbar-track{background:transparent}
+.filt-tira::-webkit-scrollbar-thumb{background:var(--border2);border-radius:99px}
+.filt-tira::-webkit-scrollbar-thumb:hover{background:var(--dim)}

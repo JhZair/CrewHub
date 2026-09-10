@@ -80,7 +80,16 @@ export type NodoEns = {
    *  rig que sale en el «Kit de Grabación Portátil» se guarda donde ese bolso,
    *  y sin verlo aquí uno le anota un sitio distinto al del kit con el que
    *  viaja — y a la vuelta la mitad del kit está en dos cajones. */
-  kits?: { id: string; nombre: string }[];
+  kits?: {
+    id: string; nombre: string;
+    /* ── EL KIT QUE NO SABE DÓNDE SE GUARDA ──
+       Sin esto, la fila no puede distinguir dos situaciones que se ven igual y
+       se arreglan en sitios distintos: «este equipo no tiene sitio porque
+       nadie se lo anotó» y «no lo tiene porque su KIT no lo tiene». La segunda
+       no se arregla aquí —anotárselo al equipo lo desengancharía del kit— sino
+       en el kit, y por eso la fila tiene que poder decirlo y llevar allí. */
+    sinSitio?: boolean;
+  }[];
   piezas: NodoEns[];
 };
 

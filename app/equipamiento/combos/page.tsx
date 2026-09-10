@@ -70,6 +70,22 @@ export default async function CombosYKits() {
           id: e.id, folio: e.folio, nombre: e.nombre, categoria: e.categoria,
           estado: e.estado, compra_id: e.compra_id,
           compra: e.compra_id ? (combos.find((c: any) => c.id === e.compra_id)?.nombre || null) : null,
+          /* ── DOS CAMPOS MÁS, Y NINGUNA CONSULTA MÁS ──
+             Los dos venían YA en cada fila de `inventarioParaPaneles`; lo que
+             pasaba es que este `map` los dejaba fuera. Ahora el editor del
+             combo enseña lo que enseñaba la vista al vuelo que se ha quitado:
+             cuánto costó cada pieza —para contrastarlo contra el total de la
+             boleta— y en manos de quién está.
+             Si se recortan otra vez «porque no se usan», lo que se rompe no es
+             el editor: es la comprobación de que la suma de las piezas cuadra
+             con lo que dice el papel. Y esa no avisa al fallar. */
+          valor_compra: e.valor_compra ?? null,
+          quien: e.quien ?? null,
+          /* Su foto. Ya venía en la fila —la usa la cara del combo, que es la
+             de su primera unidad con foto— y aun así cada equipo se listaba
+             sin ella. No cuesta ni una consulta más: `cartelesEquipo()` se
+             pide una sola vez para toda la pantalla. */
+          cartel: e.cartel ?? null,
         }))} />
 
       {/* Si la consulta de kits falla, se DICE. Sin esto el panel sale vacío y

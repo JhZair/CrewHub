@@ -32,7 +32,7 @@ import { soles } from "@/lib/compras";
    preguntando quien mira el kit antes de una salida.
    ══════════════════════════════════════════════════════════════════════════ */
 
-export default function ChipGrupo({ que, id, nombre, rotulo, total: totalBoleta, enChip, moneda, titulo }: {
+export default function ChipGrupo({ que, id, nombre, rotulo, porAnfitrion, total: totalBoleta, enChip, moneda, titulo }: {
   que: "kit" | "combo";
   id: string;
   /** Cómo se llama: el nombre del kit, o el código del combo. Es lo que se lee
@@ -47,6 +47,15 @@ export default function ChipGrupo({ que, id, nombre, rotulo, total: totalBoleta,
      ⚠ Solo cambia el rótulo. El pop-up sigue encabezado por `nombre`: quien lo
      abre desde «2 equipos» necesita ver de QUÉ kit son. */
   rotulo?: React.ReactNode;
+  /* ── NO ES SUYO: LO ARRASTRA SU ANFITRIÓN ──
+     Un cable atornillado dentro de un power bank que sí está en el kit viaja
+     con el kit y no pertenece a él. La diferencia no es un matiz: el miembro
+     se puede quitar desde el editor del kit y cuenta como una salida al
+     entregar; la pieza montada, ni lo uno ni lo otro —sale porque va dentro—.
+     Pintado igual que una pertenencia de verdad, el chip afirmaría algo falso,
+     así que se marca: ↖ y el borde punteado. El pop-up es el MISMO, que la
+     pregunta que lo abre —qué más va en ese kit— sí es la misma. */
+  porAnfitrion?: boolean;
   /* ── LA CIFRA DE UN COMBO SALE DE LA BOLETA, NO DE UNA SUMA ──
    * Un combo tiene un precio: el que dice el papel. La suma de los precios
    * propios de sus unidades es OTRA cosa —casi siempre menor, porque a las
@@ -77,10 +86,16 @@ export default function ChipGrupo({ que, id, nombre, rotulo, total: totalBoleta,
   return (
     <ChipPop
       titulo={titulo}
-      clase={esKit ? "chip-kit" : "chip-combo"}
+      clase={`${esKit ? "chip-kit" : "chip-combo"}${porAnfitrion ? " chip-gr-prestado" : ""}`}
       etiqueta={
         <>
           {esKit ? "📦" : "🧾"} <span className="chip-gr-n">{rotulo ?? nombre}</span>
+          {/* La ↖ va DESPUÉS del nombre y no antes: delante empujaba el emoji y
+              el nombre, y en una línea de cinco chips lo que se lee de un
+              barrido es dónde empieza cada uno. Con `aria-hidden` porque no es
+              información: lo que dice de verdad está en el `title`, que es lo
+              que lee un lector de pantalla. */}
+          {porAnfitrion && <span className="chip-gr-marca" aria-hidden="true">↖</span>}
           {!esKit && enChip && cifra > 0 && (
             <span style={{ opacity: .75, fontWeight: 400 }}> · {soles(cifra, moneda || undefined)}</span>
           )}

@@ -80,6 +80,14 @@ export default function PanelSitios({ sitios, equipos, kits, cortado, qInicial }
   const [abiertos, setAbiertos] = useState<Set<string>>(new Set());
   const [editando, setEditando] = useState<string | null>(null);
   const [moviendo, setMoviendo] = useState<string | null>(null);
+  /* Qué hijo se está colocando en la rejilla de su padre, y qué rejillas están
+     plegadas. Viven AQUÍ y no dentro de `RejillaSitio` porque es este árbol el
+     que decide qué hijos pinta como renglones: un cajón ya dibujado en la
+     rejilla no vuelve a salir abajo, y para saberlo hay que saber las dos. */
+  const [colocando, setColocando] = useState<string | null>(null);
+  const [rejillasOcultas, setRejillasOcultas] = useState<Set<string>>(new Set());
+  /** En qué sitio está abierto el formulario de crear dentro. */
+  const [creandoEn, setCreandoEn] = useState<string | null>(null);
   const [ed, setEd] = useState<Borrador>(VACIO);
   const [nuevo, setNuevo] = useState("");
   const [nuevoTipo, setNuevoTipo] = useState("");
@@ -430,10 +438,30 @@ export default function PanelSitios({ sitios, equipos, kits, cortado, qInicial }
     const sugeridos = (s.tipo && TIPOS_SITIO[s.tipo]?.dentro) || [];
     const otros = Object.keys(TIPOS_SITIO).filter(t => !sugeridos.includes(t));
 
+    /* ── O EN LA REJILLA, O COMO RENGLÓN: NUNCA LAS DOS ──
+       ⚠ Este era el ruido: el Nivel 01 dibujaba sus tres compartimientos y JUSTO
+       DEBAJO los tres volvían a salir como renglones con sus mismos botones. La
+       misma cosa dos veces a dos centímetros, y con cuatro niveles eso son doce
+       bloques apilados para once cajones vacíos.
+       Ahora la casilla ES el cajón plegado. Al abrirlo sale abajo con todo lo
+       suyo —y la casilla se marca—, que es lo único que justifica repetirlo.
+
+       Con el buscador escrito NO hay rejilla: buscar es una operación de lista,
+       y ahí sí hacen falta todos los renglones a la vez. */
+    const colocado = (h: Sitio) => h.fila != null && h.columna != null;
+    const colocandoAqui = colocando && hijos.some(h => h.id === colocando) ? colocando : null;
+    const hayRejilla = !q && hijos.length > 0
+      && (hijos.some(colocado) || !!colocandoAqui)
+      /* Plegada se respeta… salvo mientras se coloca, que es cuando hace falta
+         ver los huecos. */
+      && (!rejillasOcultas.has(s.id) || !!colocandoAqui);
+    const filasHijos = hayRejilla
+      ? hijos.filter(h => !colocado(h) || abiertos.has(h.id))
+      : hijos;
+
     return (
       <Fragment key={s.id}>
         <div className="sit-fila">
-          {nivel > 0 && <span className="sit-sangria" style={{ width: nivel * 18 }} aria-hidden />}
           <button type="button" className="sit-plegar" aria-expanded={abierta}
             onClick={() => alterna(s.id)}
             title={abierta ? `Ocultar lo que hay en «${s.nombre}»` : `Ver lo que hay en «${s.nombre}»`}>
@@ -484,6 +512,19 @@ export default function PanelSitios({ sitios, equipos, kits, cortado, qInicial }
             {aqui === 0 && dentro.total === 0 && <span className="sit-vacio">0</span>}
           </span>
           <span className="spacer" />
+          {/* «colocar» solo cuando de verdad se puede: el sitio tiene padre y
+              todavía no está en su rejilla. Es lo que sustituye a la tira de
+              chips que había debajo del dibujo — la misma acción, pedida desde
+              el renglón de cada uno en vez de desde una tercera lista con los
+              mismos sitios. */}
+          {s.dentro_de && !(s.fila != null && s.columna != null) && (
+            <button type="button" className="dato-btn"
+              style={colocando === s.id ? { color: "var(--teal)", borderColor: "var(--teal)" } : undefined}
+              title="Ponerlo en la rejilla de su sitio: se enciende el dibujo de arriba y se toca un hueco"
+              onClick={() => setColocando(c => (c === s.id ? null : s.id))}>
+              {colocando === s.id ? "elige el hueco…" : "colocar"}
+            </button>
+          )}
           <button type="button" className="dato-btn"
             onClick={() => { setMoviendo(null); enEd ? setEditando(null) : abrirEditor(s); }}>
             {enEd ? "cerrar" : "editar"}
@@ -531,7 +572,7 @@ export default function PanelSitios({ sitios, equipos, kits, cortado, qInicial }
             poner el cursor plegaba el sitio. Y ahora son cinco campos: en la
             fila no caben sin dejar el nombre en tres letras. */}
         {enEd && (
-          <div className="sit-editor" style={{ marginLeft: nivel * 18 + 22 }}>
+          <div className="sit-editor">
             <label className="sit-campo">
               <span>Nombre</span>
               <input className="ent-lote-inp" autoFocus value={ed.nombre}
@@ -603,7 +644,7 @@ export default function PanelSitios({ sitios, equipos, kits, cortado, qInicial }
             elegir a ciegas y a deshacerlo después. Ordenadas por esa ruta, así
             que los hermanos salen juntos bajo su padre. */}
         {enMov && (
-          <div className="sit-editor" style={{ marginLeft: nivel * 18 + 22 }}>
+          <div className="sit-editor">
             <label className="sit-campo sit-campo-ancho">
               <span>Dentro de</span>
               <select className="ent-select" disabled={ocupado} autoFocus
@@ -634,18 +675,46 @@ export default function PanelSitios({ sitios, equipos, kits, cortado, qInicial }
           </div>
         )}
 
-        {/* ── EL MUEBLE DIBUJADO ──
-            Solo si tiene sitios dentro: una rejilla sobre un cajón que solo
-            contiene equipos es un marco vacío que no dice nada. */}
-        {abierta && hijos.length > 0 && (
-          <div style={{ marginLeft: (nivel + 1) * 18 + 22 }}>
-            <RejillaSitio hijos={hijos} contenido={contenidoRejilla} codigos={codigos} ocupado={ocupado}
-              onColocar={(id, f, c) => correr(() => editarSitio(id, { fila: f, columna: c }))} />
-          </div>
-        )}
+        {/* ── TODO LO DE UN SITIO ABIERTO, EN UNA CAJA ──
+            ⚠ Antes esto eran cuatro bloques sueltos —rejilla, contenido, crear,
+            hijos— separados solo por un `margin-left` calculado a mano. A partir
+            del tercer nivel nadie distinguía dónde empezaba un sitio y dónde
+            acababa: los renglones de un nieto y los de su tío se leían igual.
+            Ahora cada sitio abierto es una caja con su riel a la izquierda, y
+            como las cajas se anidan, la sangría sale sola: se acabó el
+            `nivel * 18 + 22` repetido en cinco sitios y desincronizado en dos. */}
+        {abierta && (
+          <div className="sit-caja">
+            {/* La rejilla, solo si tiene sitios dentro y no está plegada: un
+                marco sobre un cajón que solo contiene equipos no dice nada. */}
+            {hayRejilla && (
+              <RejillaSitio hijos={hijos} contenido={contenidoRejilla} codigos={codigos}
+                ocupado={ocupado}
+                colocando={colocandoAqui} abiertos={abiertos}
+                oculta={rejillasOcultas.has(s.id)}
+                onOcultar={() => setRejillasOcultas(x => {
+                  const n = new Set(x); n.has(s.id) ? n.delete(s.id) : n.add(s.id); return n;
+                })}
+                onElegir={setColocando}
+                onAbrir={id => alterna(id)}
+                onColocar={(id, f, c) => correr(
+                  () => editarSitio(id, { fila: f, columna: c }),
+                  () => setColocando(null),
+                )} />
+            )}
+            {/* Plegada, queda el rastro: si desapareciera del todo, el dato de
+                fila y columna se vuelve invisible y nadie lo mantiene. */}
+            {!hayRejilla && !q && hijos.some(h => h.fila != null && h.columna != null) && (
+              <div className="rej-cab">
+                <button type="button" className="dato-btn"
+                  onClick={() => setRejillasOcultas(x => { const n = new Set(x); n.delete(s.id); return n; })}>
+                  ▦ ver la rejilla ({hijos.filter(h => h.fila != null && h.columna != null).length})
+                </button>
+              </div>
+            )}
 
-        {abierta && (dentro.directo.length > 0 || dentro.kits.length > 0) && (
-          <div className="sit-dentro" style={{ marginLeft: (nivel + 1) * 18 + 22 }}>
+            {(dentro.directo.length > 0 || dentro.kits.length > 0) && (
+          <div className="sit-dentro">
             {dentro.kits.map(k => {
               const cara = caraDeKit(k);
               return (
@@ -717,8 +786,23 @@ export default function PanelSitios({ sitios, equipos, kits, cortado, qInicial }
             —el ícono y el prefijo son las otras dos— y sin ella la jerarquía se
             construye desde el desplegable «dentro de», que obliga a crear el
             sitio suelto primero y moverlo después. */}
-        {abierta && (
-          <div className="sit-nuevo-dentro" style={{ marginLeft: (nivel + 1) * 18 + 22 }}>
+            {/* ── EL ＋ PLEGADO ──
+                ⚠ Este formulario —desplegable, campo y botón— salía ENTERO en
+                cada sitio abierto. Con cuatro niveles abiertos son cuatro
+                formularios apilados entre el contenido de uno y el del
+                siguiente, y ninguno se está usando: crear un sitio se hace una
+                vez y mantenerlo, todos los días. Se pliega detrás de un ＋, como
+                ya hicimos con «mover». */}
+            {creandoEn !== s.id ? (
+              <div className="sit-nuevo-dentro">
+                <button type="button" className="dato-btn"
+                  onClick={() => { setCreandoEn(s.id); setDentroDe(s.id); setNuevoHijo(""); setNuevoHijoTipo(""); }}
+                  title={`Crear un sitio dentro de «${s.nombre}»`}>
+                  ＋ dentro
+                </button>
+              </div>
+            ) : (
+          <div className="sit-nuevo-dentro">
             <span className="sit-cosa-t">＋ dentro de «{s.nombre}»:</span>
             <select className="ent-select sit-dentrode" value={dentroDe === s.id ? nuevoHijoTipo : ""}
               onChange={e => { setDentroDe(s.id); setNuevoHijoTipo(e.target.value); }}>
@@ -771,10 +855,18 @@ export default function PanelSitios({ sitios, equipos, kits, cortado, qInicial }
                   () => { avisaSinClave(nuevoHijo, nuevoHijoTipo); setNuevoHijo(""); setAbiertos(x => new Set(x).add(s.id)); },
                 );
               }}>crear</button>
+            <button type="button" className="dato-btn"
+              onClick={() => setCreandoEn(null)}>cancelar</button>
+          </div>
+            )}
+
+            {/* Los hijos, DENTRO de la caja: es lo que hace que la sangría salga
+                sola y que se vea de un vistazo dónde acaba este sitio.
+                ⚠ `filasHijos` y no `hijos`: los que ya están dibujados en la
+                rejilla de arriba no se repiten aquí. */}
+            {filasHijos.map(h => pintaSitio(h, nivel + 1))}
           </div>
         )}
-
-        {abierta && hijos.map(h => pintaSitio(h, nivel + 1))}
       </Fragment>
     );
   };

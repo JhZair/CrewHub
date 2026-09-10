@@ -2,6 +2,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "@/components/Enlace";
+import MiniEquipo from "@/components/MiniEquipo";
 import { asignarACompra } from "@/app/compras/acciones";
 
 /* SUMAR AL COMBO EQUIPOS QUE YA EXISTEN.
@@ -23,6 +24,22 @@ export type EqLibre = {
   id: string; folio?: string | null; nombre: string;
   categoria?: string | null; estado?: string | null;
   compra_id?: string | null; compra?: string | null;
+  /* ── LOS DOS CAMPOS QUE NO USA ESTA PANTALLA ──
+     Aquí no pintan nada: se busca un equipo por folio o nombre y se marca.
+     Existen porque `EqLibre` es también lo que recibe PanelCombos para pintar
+     las unidades YA colgadas de un combo, y ahí sí hacen falta: el precio de
+     cada pieza —que es lo que se contrasta contra el total de la boleta— y en
+     manos de quién está.
+     Opcionales a propósito: los otros sitios que arman un `EqLibre` no tienen
+     por qué saber de esto, y sin el `?` cada uno tendría que inventarse un
+     valor —o dejar de compilar por un dato que no usa—. */
+  valor_compra?: number | string | null;
+  /** El nombre de quien lo tiene ahora, si está entregado. */
+  quien?: string | null;
+  /** Su foto. Aquí SÍ se usa: se busca entre doscientos equipos y «Batería
+   *  NP-F970» son cinco filas idénticas de texto. La foto es lo que
+   *  distingue la que era de las otras cuatro. */
+  cartel?: string | null;
 };
 
 const nrm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
@@ -90,18 +107,32 @@ export default function AsignarACompra({ compraId, equipos }: {
         placeholder="Buscar por folio, nombre o categoría — «radio», «A-127»…"
         style={{ width: "100%" }} />
 
+      {/* ── LA PISTA VA FUERA DE LA CAJA ──
+          ⚠ Esto era un `.cmp-lista` —con su borde y su fondo— conteniendo una
+          sola línea de texto gris, y quedaba JUSTO DEBAJO del campo de buscar.
+          Dos rectángulos apilados del mismo ancho y con el mismo borde: se leía
+          como dos buscadores, y uno de ellos «no dejaba escribir». No era un
+          campo, era la lista de resultados vacía.
+          Sin caja no hay ambigüedad: mientras no se escribe hay una frase, y la
+          caja aparece cuando hay algo que meter dentro. */}
+      {!filtro.trim() && (
+        <div style={{ color: "var(--dim)", fontSize: 12, marginTop: 6, lineHeight: 1.5 }}>
+          Escribe algo para buscar entre los {candidatos.length} equipos del inventario.
+        </div>
+      )}
+
+      {filtro.trim() && (
       <div className="cmp-lista">
-        {!filtro.trim() && (
-          <div style={{ padding: 11, color: "var(--dim)", fontSize: 12.5 }}>
-            Escribe algo para buscar entre los {candidatos.length} equipos del inventario.
-          </div>
-        )}
-        {filtro.trim() && !vistos.length && (
+        {!vistos.length && (
           <div style={{ padding: 11, color: "var(--dim)", fontSize: 12.5 }}>Nada coincide con «{filtro}».</div>
         )}
         {vistos.map(e => (
-          <label key={e.id} className="ent-lote-fila">
+          <label key={e.id} className="ent-lote-fila cbo-mini">
             <input type="checkbox" checked={sel.has(e.id)} onChange={() => alterna(e.id)} />
+            {/* La foto ANTES del folio, como en el escogedor de kits: nadie se
+                sabe los folios de memoria, y marcar la casilla equivocada aquí
+                le reescribe la procedencia a un equipo que no era. */}
+            <MiniEquipo url={e.cartel} />
             {e.folio && <span className="badge kit-folio">{e.folio}</span>}
             <span style={{ flex: 1, fontSize: 13.5 }}>{e.nombre}</span>
             {/* Ya tiene procedencia: se ofrece igual, pero diciendo cuál.
@@ -115,6 +146,7 @@ export default function AsignarACompra({ compraId, equipos }: {
           </label>
         ))}
       </div>
+      )}
 
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 9 }}>
         <button className="btn" disabled={ocupado || !sel.size} onClick={sumar}>

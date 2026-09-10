@@ -124,6 +124,17 @@ export type EqGuardable = {
   guardado_en_equipo?: string | null;
 };
 
+/** Un kit, con lo justo para saber dónde se guarda y a quién arrastra. */
+export type KitGuardable = {
+  id: string;
+  nombre: string;
+  guardado_sitio?: string | null;
+  guardado_en_equipo?: string | null;
+  /** Los equipos que lo componen. Es lo que hace que el kit responda por
+   *  ellos: donde está el kit están sus piezas. */
+  equipoIds?: string[];
+};
+
 /** Un eslabón de la cadena, de fuera hacia dentro. */
 export type Tramo = {
   tipo: "sitio" | "equipo";
@@ -145,7 +156,23 @@ export type Guardado = {
     | "propio"       // tiene su sitio anotado
     | "contenedor"   // está metido en otro equipo (su bolso, su maleta)
     | "ensamblado"   // está atornillado dentro de otro: no puede tener el suyo
+    | "kit"          // es parte de un kit y se guarda donde se guarde el kit
     | "ninguno";     // nadie lo ha anotado
+  /* ── DE QUÉ KIT LO HEREDA ──
+     El kit NO es un tramo de la ruta: sus equipos no están «dentro del kit»,
+     están donde esté el kit —un kit es una lista, no una caja—. Pero la
+     pantalla tiene que poder decir de dónde sale la respuesta y a dónde ir a
+     cambiarla, y para eso hace falta su nombre.
+     Se rellena SOLO con `origen: "kit"`, y también cuando hay disputa: ahí es
+     lo único que se puede ofrecer para ir a arreglarla. */
+  porKit?: { id: string; nombre: string } | null;
+  /* ── DOS KITS QUE NO SE PONEN DE ACUERDO ──
+     Un equipo puede salir en varios kits, y nada impide que dos de ellos se
+     guarden en cajones distintos. La cosa está en UNO de los dos, y elegir por
+     nuestra cuenta sería inventarse cuál: con esto la ruta va vacía y la
+     pantalla lo dice, que es lo único cierto.
+     Distinto de `roto` a propósito: ahí falta un dato; aquí sobran. */
+  disputa?: boolean;
   /** La cadena daba vueltas y se cortó. Lo de la ruta es cierto hasta el corte. */
   bucle: boolean;
   /** Apunta a un sitio o a un equipo que no está en las listas cargadas. Puede
@@ -155,6 +182,13 @@ export type Guardado = {
 };
 
 const VACIO: Guardado = { ruta: [], origen: "ninguno", bucle: false, roto: false };
+
+/** ¿No se sabe dónde está? Es la pregunta que hacen las tres listas para
+ *  pintar el aviso, y escrita a mano en cada una divergiría a la primera: hay
+ *  CUATRO formas de no saberlo —nadie lo anotó, la cadena da vueltas, apunta a
+ *  algo que no está, o dos kits no se ponen de acuerdo— y `!ruta.length` a
+ *  secas las junta todas, que para avisar es justo lo que se quiere. */
+export const sinSitio = (g?: Guardado | null) => !g || !g.ruta.length;
 
 /** «Depósito › Cajón 08 › Bolso Tenba». Sin ruta, cadena vacía: quien la pinte
  *  decide qué decir cuando no se sabe, que no es lo mismo en una ficha que en
@@ -337,11 +371,27 @@ export function faltaCorrer(msg?: string | null): string | null {
    memoria: en un inventario de quinientos equipos guardados en veinte bolsos,
    sin ella la cadena del bolso se recorre quinientas veces.
    ══════════════════════════════════════════════════════════════════════════ */
-export function resolvedorDeGuardado(sitios: Sitio[], equipos: EqGuardable[]) {
+export function resolvedorDeGuardado(
+  sitios: Sitio[], equipos: EqGuardable[],
+  /* ── LOS KITS, OPCIONALES ──
+     Sin ellos el resolvedor se comporta EXACTAMENTE como antes, y eso es a
+     propósito: lo llaman seis pantallas y solo tres saben de kits. La ficha de
+     un equipo no carga la tabla de kits, y obligarla a cargarla para resolver
+     una cadena sería un viaje por pantalla para un dato que casi nunca cambia
+     la respuesta. Donde sí se pasan, mandan. */
+  kits: KitGuardable[] = [],
+) {
   const porSitio = new Map<string, Sitio>((sitios || []).map(s => [s.id, s]));
   const porEq = new Map<string, EqGuardable>((equipos || []).map(e => [e.id, e]));
   const memoSitio = new Map<string, { ruta: Tramo[]; bucle: boolean; roto: boolean }>();
   const memoEq = new Map<string, Guardado>();
+  const memoKit = new Map<string, Guardado>();
+
+  /** En qué kits está cada equipo. Al revés que `equipoIds`, que es como
+   *  viajan los kits. */
+  const kitsDeEq = new Map<string, KitGuardable[]>();
+  (kits || []).forEach(k => (k.equipoIds || []).forEach(
+    eq => kitsDeEq.set(eq, [...(kitsDeEq.get(eq) || []), k])));
 
   /** La cadena de un SITIO, de fuera a dentro, él incluido. */
   function rutaDeSitio(id: string): { ruta: Tramo[]; bucle: boolean; roto: boolean } {
@@ -402,6 +452,11 @@ export function resolvedorDeGuardado(sitios: Sitio[], equipos: EqGuardable[]) {
       ? { id: e.guardado_en_equipo, origen: "contenedor" as const }
       : null;
 
+    /* Lo que dicen sus kits, si es que está en alguno y alguno tiene sitio.
+       Se pide antes del `if` para no llamarlo dos veces —resolver un kit
+       resuelve una cadena entera— y `null` cuando no hay nada que heredar. */
+    const delKit = padre ? null : porKitDe(id);
+
     if (padre) {
       const cont = porEq.get(padre.id);
       if (!cont) {
@@ -425,6 +480,16 @@ export function resolvedorDeGuardado(sitios: Sitio[], equipos: EqGuardable[]) {
             origen: padre.origen, bucle: false, roto: arriba.roto,
           };
       }
+    } else if (delKit) {
+      /* ── EL KIT MANDA SOBRE EL SITIO PROPIO ──
+         Y va ANTES de `guardado_sitio`, no después: un equipo que sale en un
+         kit está donde esté el kit, y anotarle uno propio no lo mueve — deja
+         dos respuestas para la misma pregunta y la lista de empaque repartida
+         en dos cajones.
+         Detrás de anfitrión y contenedor, en cambio: lo atornillado y lo
+         metido en un bolso es dónde está la cosa FÍSICAMENTE, y ese bolso ya
+         sube por su cuenta hasta el kit si es que va en él. */
+      out = delKit;
     } else if (e.guardado_sitio) {
       const s = rutaDeSitio(e.guardado_sitio);
       out = { ruta: s.ruta, origen: "propio", bucle: s.bucle,
@@ -440,8 +505,69 @@ export function resolvedorDeGuardado(sitios: Sitio[], equipos: EqGuardable[]) {
     return out;
   }
 
+  /* ══════════════════════════════════════════════════════════════════════
+     LO QUE DICEN LOS KITS DE UN EQUIPO
+
+     Devuelve `null` si no hay nada que heredar —no está en ningún kit, o
+     ninguno de sus kits tiene sitio anotado—, y entonces el equipo sigue con
+     lo suyo. No es lo mismo «este kit no lo guarda en ninguna parte» que
+     «este equipo no tiene sitio»: lo primero es un kit al que le falta el
+     dato, y quien lo arregla es el kit.
+
+     ⚠ EL CASO DE LOS DOS KITS. Un equipo puede salir en varios, y nada impide
+     que dos de ellos vivan en cajones distintos. La cosa está en UNO, y elegir
+     por nuestra cuenta —el primero de la lista, que es el orden en que se
+     crearon los kits— sería inventarse cuál y enseñarlo con la misma cara que
+     un dato cierto. Si coinciden, se hereda; si no, se dice.
+     ══════════════════════════════════════════════════════════════════════ */
+  function porKitDe(eqId: string): Guardado | null {
+    const suyos = kitsDeEq.get(eqId);
+    if (!suyos || !suyos.length) return null;
+
+    /* Solo los kits que contestan algo. Uno sin sitio no descarta al hermano
+       que sí lo tiene: no hay disputa entre un dato y su ausencia. */
+    const conRespuesta = suyos
+      .map(k => ({ k, g: deKit(k) }))
+      .filter(x => x.g.ruta.length > 0);
+    if (!conRespuesta.length) return null;
+
+    const primero = conRespuesta[0];
+    const marca = (g: Guardado) => textoDeRuta(g.ruta);
+    const todosIgual = conRespuesta.every(x => marca(x.g) === marca(primero.g));
+    const kit = { id: primero.k.id, nombre: primero.k.nombre };
+
+    if (!todosIgual) {
+      return { ruta: [], origen: "kit", bucle: false, roto: false,
+        porKit: kit, disputa: true };
+    }
+    return { ...primero.g, origen: "kit", porKit: kit };
+  }
+
+  /* ⚠ Los kits también pueden encadenarse en círculo: un kit guardado dentro
+     de un bolso que es miembro de ese mismo kit. `de()` tiene su `enCurso`,
+     pero sin este el ciclo entra por el otro lado —kit → equipo → kit— y la
+     recursión no ve el `Set` del vecino. */
+  const enCursoKit = new Set<string>();
+
   /** Igual, para un KIT: los mismos dos punteros, sin `ensamblado_en`. */
-  function deKit(k: { guardado_sitio?: string | null; guardado_en_equipo?: string | null }): Guardado {
+  function deKit(k: { id?: string; guardado_sitio?: string | null; guardado_en_equipo?: string | null }): Guardado {
+    /* Memoria e id son opcionales porque este resolvedor se llamaba —y se
+       sigue llamando— con un objeto suelto de dos punteros, sin id. Sin id no
+       hay memoria y tampoco corte de ciclo, que era exactamente el
+       comportamiento de antes: no se empeora nada, y se mejora en cuanto la
+       llamada trae el id. */
+    if (k.id) {
+      const hecho = memoKit.get(k.id);
+      if (hecho) return hecho;
+      if (enCursoKit.has(k.id)) return { ...VACIO, bucle: true };
+      enCursoKit.add(k.id);
+    }
+    const out = deKitCrudo(k);
+    if (k.id) { enCursoKit.delete(k.id); memoKit.set(k.id, out); }
+    return out;
+  }
+
+  function deKitCrudo(k: { guardado_sitio?: string | null; guardado_en_equipo?: string | null }): Guardado {
     if (k.guardado_en_equipo) {
       const cont = porEq.get(k.guardado_en_equipo);
       if (!cont) return { ruta: [], origen: "contenedor", bucle: false, roto: true };
@@ -464,4 +590,93 @@ export function resolvedorDeGuardado(sitios: Sitio[], equipos: EqGuardable[]) {
   }
 
   return { de, deKit, rutaDeSitio };
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   BUSCAR UN SITIO ESCRIBIENDO COMO SE HABLA
+
+   Un árbol de sitios se nombra a medias con letras y a medias con números
+   —«Compartimiento 03», «Nivel 01», «Espacio 2»— y ahí una búsqueda de
+   «cada palabra tiene que estar en alguna parte del renglón» miente de dos
+   formas a la vez. Las dos pasaron, escribiendo «espacio 02»:
+
+   1. NO SALÍA lo que se buscaba. «Compartimiento 03 · Espacio 2 · Nivel 01»
+      no contiene «02» por ninguna parte, así que quedaba fuera — aunque está
+      en el Espacio 2, que es lo único que se preguntó. Los sitios se llamaron
+      «Espacio 2» y «Nivel 01» el mismo día y nadie decidió esa diferencia.
+   2. SALÍA lo que NO se buscaba. «Compartimiento 01 · Espacio 2 · Nivel 02»
+      sí contenía «02»… en «Nivel 02». El número de una palabra contestaba por
+      otra, y en pantalla las dos filas se veían igual de legítimas.
+
+   Dos reglas, y con estas dos «espacio 02», «Espacio 2» y «espacio 2» son la
+   misma pregunta y ninguna de las tres trae niveles:
+
+   · «02» y «2» SON EL MISMO NÚMERO. Se quitan los ceros de delante a los dos
+     lados, así que da igual cómo lo escribiera quien creó el sitio y cómo lo
+     escriba quien lo busca.
+   · UN NÚMERO SUELTO SE PEGA A SU PALABRA. «espacio 2» se busca entero, no
+     «espacio» por un lado y «2» por otro. Es lo que evita que el «2» de
+     «Nivel 2» dé por buena una fila del espacio equivocado.
+
+   Lo que se escribe suelto sigue funcionando como siempre: «compartimiento»
+   trae todos, «OF01-E02-N01-C03» trae uno, y «nivel 1 compartimiento 3» pide
+   las dos cosas a la vez sin importar en qué orden se escribieron.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** Sin tildes, en minúsculas y con los números sin ceros de relleno.
+ *  Se aplica IGUAL al texto y a la consulta: si solo se hiciera de un lado,
+ *  «C03» dejaría de encontrar a `C03`. */
+export function normalizaBusqueda(s: string): string {
+  return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
+    /* `\d+` entero y no `0+` al principio: reemplazar solo los ceros dejaría
+       «0» a secas convertido en cadena vacía, y «Nivel 0» —que existe— se
+       volvería imposible de escribir. Así «007»→«7» y «0»→«0». */
+    .replace(/\d+/g, d => String(Number(d)));
+}
+
+/* Palabras que se escriben al hablar y no están escritas en ningún sitio.
+   «compartimiento 3, del nivel 1» es como se dice en voz alta, y ese «del» no
+   aparece en «Compartimiento 03 · Espacio 2 · Nivel 01»: exigirlo devolvía
+   CERO resultados por una palabra que no significaba nada. Un buscador que se
+   queda mudo porque sobró un artículo se lee como «eso no existe».
+   Cortísima y solo artículos y preposiciones: cuanto más larga, más cerca está
+   el día que se coma una palabra que sí distinguía dos sitios. */
+const RELLENO = new Set(["de", "del", "la", "el", "los", "las", "en", "y", "a", "al"]);
+
+/** Los trozos que hay que encontrar, ya con los números pegados a su palabra.
+ *  Separado de `casaConsulta` porque es lo único que hay que mirar cuando algo
+ *  no aparece: dice exactamente qué se está buscando. */
+export function trozosDeConsulta(consulta: string): string[] {
+  /* Comas, puntos y comas y los separadores de ruta también parten: se
+     escribe «compartimiento 3, del nivel 1» tal cual, y con solo espacios el
+     término quedaba «3,» y no casaba con nada. */
+  const todos = normalizaBusqueda(consulta).split(/[\s,;·›>/]+/).filter(Boolean);
+  /* ⚠ El relleno se quita ANTES de pegar los números: con «del» en medio,
+     «del nivel 1» habría dejado «nivel» y «1» separados por él y el número no
+     se habría pegado a su palabra.
+     Y solo si queda algo: quien escriba «el» a secas está buscando eso, y
+     dejarle la lista entera es mejor que dejársela vacía. */
+  const utiles = todos.filter(t => !RELLENO.has(t));
+  const brutos = utiles.length ? utiles : todos;
+  const out: string[] = [];
+  for (const t of brutos) {
+    const soloNumero = /^\d+$/.test(t);
+    /* Se pega al anterior solo si el anterior NO es también un número: «nivel
+       1 2» son dos números seguidos y nadie quiso decir «nivel 1 2». */
+    if (soloNumero && out.length && !/^\d+$/.test(out[out.length - 1].split(" ").pop() || "")) {
+      out[out.length - 1] = `${out[out.length - 1]} ${t}`;
+    } else {
+      out.push(t);
+    }
+  }
+  return out;
+}
+
+/** ¿Este renglón contesta a lo que se escribió? `texto` es todo lo que se
+ *  puede escribir para llegar a él: su nombre, su clave, su código y su ruta. */
+export function casaConsulta(texto: string, consulta: string): boolean {
+  const trozos = trozosDeConsulta(consulta);
+  if (!trozos.length) return true;
+  const t = normalizaBusqueda(texto);
+  return trozos.every(p => t.includes(p));
 }

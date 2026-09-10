@@ -7,7 +7,7 @@ import type { KitVista, EqBase } from "@/lib/kits";
    es de cliente y usa sus funciones como valores, así que no puede colgar de
    un módulo que importe `lib/supabase/server`. Ver el aviso de allí. */
 import { arbolDeEnsamblados } from "@/lib/ensamblados";
-import { resolvedorDeGuardado, type Sitio } from "@/lib/sitios";
+import { resolvedorDeGuardado, sinSitio, type Sitio, type KitGuardable } from "@/lib/sitios";
 
 /* ══════════════════════════════════════════════════════════════════════════
    LOS DATOS DE 🎥 EQUIPOS, PEDIDOS UNA SOLA VEZ
@@ -287,6 +287,25 @@ export function contextoKits(crudos: { kits: any; puente: any }) {
   return { kits, kitsPorEq, eqsDeKit, error: (crudos.kits as any)?.error?.message || null };
 }
 
+/* ── LOS KITS, EN LA FORMA QUE ENTIENDE EL RESOLVEDOR DE SITIOS ──
+   `KitVista` tiene catorce campos y el resolvedor necesita cuatro. La
+   traducción va aquí y no en cada llamada: son tres pantallas, y con la
+   tercera copia una se olvidaría de pasar `equipoIds` — y sin él el kit
+   resuelve su propio sitio pero no arrastra a nadie, que es un fallo mudo:
+   todo sigue funcionando, solo que los equipos del kit vuelven a salir «sin
+   sitio anotado» como si nadie hubiera tocado nada. */
+export function kitsGuardables(kits: KitVista[]): KitGuardable[] {
+  return (kits || [])
+    /* Un kit retirado no guarda nada: sus equipos volvieron al inventario y
+       heredar de él los ataría a un cajón que ya no los contiene. */
+    .filter(k => !k.retirado)
+    .map(k => ({
+      id: k.id, nombre: k.nombre,
+      guardado_sitio: k.guardadoSitio, guardado_en_equipo: k.guardadoEnEquipo,
+      equipoIds: k.equipoIds,
+    }));
+}
+
 /** Los combos con lo que trajo cada uno, y cuánto le toca a cada pieza. */
 /**
  * CUÁNTO LE TOCA A CADA PIEZA de un combo: el total de la boleta menos lo que
@@ -503,9 +522,10 @@ export async function inventarioDePaneles() {
      cliente y resolverla allí obligaría a mandarle los quinientos equipos y
      los sitios enteros para pintar catorce renglones de texto. */
   const listaSitios = ((sitios as any)?.data || []) as Sitio[];
-  const dondeSeGuarda = resolvedorDeGuardado(listaSitios, filas as any);
+  const dondeSeGuarda = resolvedorDeGuardado(listaSitios, filas as any, kitsGuardables(kits));
   kits.forEach(k => {
     k.guardado = dondeSeGuarda.deKit({
+      id: k.id,
       guardado_sitio: k.guardadoSitio, guardado_en_equipo: k.guardadoEnEquipo,
     });
   });
@@ -558,14 +578,32 @@ export const arbolEnsamblados = cache(async () => {
      de la base le prohíbe sitio propio—, así que su cadena sería un objeto por
      fila cruzando al navegador para no pintarse nunca. */
   const listaSitios = ((sitiosQ as any)?.data || []) as Sitio[];
-  const donde = resolvedorDeGuardado(listaSitios, filas as any);
-  const { kitsPorEq } = contextoKits(kitsRaw);
+  /* ⚠ `contextoKits` ANTES del resolvedor, y sus kits DENTRO de él. Estaba al
+     revés —primero el resolvedor, luego los kits— y con ese orden el kit solo
+     servía para pintar su chip: la cadena se resolvía sin él y los cuarenta y
+     cuatro ensamblados salían «sin sitio anotado» con su botón «anotar» al
+     lado, aunque su kit tuviera cajón. Se anotaba uno a mano y a la vuelta
+     medio kit estaba repartido en dos sitios.
+     Un kit no es una caja —sus equipos no están «dentro» de él— pero sí es
+     quien contesta dónde están: si el kit vive en el Cajón 08, sus piezas
+     están en el Cajón 08. */
+  const { kitsPorEq, kits: losKits } = contextoKits(kitsRaw);
+  const donde = resolvedorDeGuardado(listaSitios, filas as any, kitsGuardables(losKits));
   /* SOLO en las raíces, igual que la cadena: a una pieza atornillada no se le
      pinta nada de esto —hereda de su anfitrión— y sus chips serían objetos por
      fila cruzando al navegador para no pintarse nunca. */
+  /* Qué kits no saben dónde se guardan. Se resuelve una vez por kit —el
+     resolvedor memoiza— y viaja en el chip para que la fila pueda decir dónde
+     está el hueco de verdad. */
+  const kitSinSitio = new Map<string, boolean>();
+  losKits.forEach(k => kitSinSitio.set(k.id, sinSitio(donde.deKit({
+    id: k.id, guardado_sitio: k.guardadoSitio, guardado_en_equipo: k.guardadoEnEquipo,
+  }))));
   raices.forEach(r => {
     r.guardado = donde.de(r.id);
-    r.kits = kitsPorEq.get(r.id) || [];
+    r.kits = (kitsPorEq.get(r.id) || []).map(k => ({
+      ...k, sinSitio: kitSinSitio.get(k.id) ?? true,
+    }));
   });
 
   /* ── LOS CANDIDATOS A MONTAR ──

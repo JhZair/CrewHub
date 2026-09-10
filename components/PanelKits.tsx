@@ -9,10 +9,10 @@ import { entregableEq, porQueNoEq } from "@/lib/estadosEquipo";
 import type { EquipoParaPanel } from "@/lib/equipamientoDatos";
 import PiezasKit from "@/components/PiezasKit";
 import Avatar from "@/components/Avatar";
-import ChipsEquipo from "@/components/ChipsEquipo";
+import ChipsEquipo, { type QueChip } from "@/components/ChipsEquipo";
 import { SinNavegar } from "@/components/FilaPop";
 import DondeSeGuarda from "@/components/DondeSeGuarda";
-import type { Sitio } from "@/lib/sitios";
+import { sinSitio, type Sitio } from "@/lib/sitios";
 
 /* ARMAR KITS — «Entrevista PRO» es una cosa, no tres fichas que alguien
  * recuerda marcar de a una.
@@ -38,6 +38,14 @@ const MONTADO = porQueNoEq("ensamblado");
 /* Los chips de una fila viven en `components/ChipsEquipo`: los usan también
    la vista por sitio y —en su versión de servidor— /equipamiento. Estaban
    escritos aquí, y por eso la vista por sitio nació sin ellos. */
+
+/** Los chips de la columna «en el kit»: qué lleva dentro y dentro de qué va.
+ *  Los otros tres los dice ya el contexto —«sale en el kit X» repite el título
+ *  de la columna— o son de la ficha y no del empaque.
+ *  ⚠ Constante de MÓDULO, no un literal en el JSX: `ChipsEquipo` es `memo` y
+ *  un array recién creado en cada render lo anula. Aquí importa de verdad —el
+ *  escogedor repinta hasta mil filas por cada tecla del buscador—. */
+const EN_EL_KIT: readonly QueChip[] = ["piezas", "anfitrion"];
 
 /* ── El escogedor de equipos, compartido por «nuevo kit» y «editar kit» ── */
 function Escoge({ equipos, sel, alterna, onVaciar, portada, setPortada, cortado }: {
@@ -104,21 +112,37 @@ function Escoge({ equipos, sel, alterna, onVaciar, portada, setPortada, cortado 
             En un renglón propio bajo el nombre: `.ent-lote-fila` es una sola
             línea sin `wrap`, y cinco chips al lado del nombre lo habrían dejado
             en tres caracteres.
-            ⚠ Y solo en la columna del INVENTARIO. En la de la derecha —lo ya
-            elegido— el sitio lo ocupan la ☆ y la ✕, y el pop-up de un chip
-            taparía justo lo que se está revisando. */}
-        {modo === "elegir" && <ChipsEquipo e={e} cortado={cortado} />}
+
+            ── Y A LA DERECHA TAMBIÉN, PERO SOLO DOS ──
+            ⚠ Aquí decía «solo en la columna del INVENTARIO; a la derecha el
+            sitio lo ocupan la ☆ y la ✕». Estaba mal, y por el lado que más
+            duele: la columna de la derecha es LA LISTA DE EMPAQUE, y lo que se
+            comprueba contra la bolsa no es cuántas fichas hay, es cuántas
+            COSAS. Un kit de seis con una bolsa que lleva cuatro piezas dentro
+            son diez objetos, y sin el 🔧 la lista decía seis. Se cuenta bien
+            delante de la mochila o se cuenta mal el sábado, cargando.
+            (El sitio nunca fue el problema: los chips van en su propio renglón
+            bajo el nombre, no en la fila de la ☆ y la ✕.)
+
+            Dos y no los cinco, porque el resto ya lo dice el contexto: el chip
+            «sale en el kit X» repetiría el título de la columna, y las fotos y
+            el combo son de la ficha, no del empaque. El anfitrión sí entra —y
+            sustituye al aviso de texto, ver abajo—. */}
+        {modo === "elegir"
+          ? <ChipsEquipo e={e} cortado={cortado} />
+          : <ChipsEquipo e={e} cortado={cortado} muestra={EN_EL_KIT} />}
       </span>
       {/* Un equipo en reparación SÍ puede formar parte del kit: el kit dice
           qué lo compone, no qué está libre hoy. Lo que cambia es que al
           entregar se avisará de que falta — y por eso el motivo va con
           nombre, «lo tiene KatyP», igual que en la lista del kit.
-          ⚠ Menos «está montado en otro equipo» Y SOLO en la columna de la
-          izquierda, que es la única que pinta el chip 🔧 —y él además dice EN
-          CUÁL—. A la derecha no hay chip que lo sustituya: callarlo también
-          allí dejaba la fila apagada sin una palabra que explicara por qué,
-          que es la fila que se repasa contra la bolsa antes de guardar. */}
-      {trabada && !(modo === "elegir" && porQueNo(e) === MONTADO) && (
+          ⚠ Menos «está montado en otro equipo», que ahora se calla en LAS DOS
+          columnas. Antes solo en la izquierda, y el motivo estaba escrito
+          aquí: «a la derecha no hay chip que lo sustituya». Ya lo hay —el
+          anfitrión entró con los chips de arriba— y él dice además EN CUÁL,
+          que es la mitad que faltaba. Repetirlo en texto al lado sería el
+          mismo dato dos veces en la misma fila. */}
+      {trabada && porQueNo(e) !== MONTADO && (
         <span className="kit-aviso">{porQueNo(e)}</span>
       )}
       {/* ── LA CARA DEL KIT ──
@@ -534,7 +558,17 @@ export default function PanelKits({ kits, equipos, cortado, sitios }: {
                     que este panel YA tiene: un bolso es un equipo cualquiera y
                     no hay ninguna marca de «esto es un bolso» — ni hace falta,
                     porque quien elige sabe cuál es su maletín. */}
-                <div className="kit-donde">
+                {/* ── UN KIT SIN SITIO ES UN HUECO, NO UN CAMPO VACÍO ──
+                    Y por eso se marca en rojo tenue en vez de quedarse en gris
+                    como un dato más que nadie rellenó. Un kit responde por
+                    TODOS sus equipos —donde está el kit están sus piezas—, así
+                    que un kit sin cajón deja a doce equipos sin cajón de golpe,
+                    y ninguno de los doce puede arreglarlo por su cuenta:
+                    anotárselo a mano los desengancharía del kit.
+                    Tenue —fondo al 7 %— y no un aviso rojo con ⚠: falta un
+                    dato, no hay nada roto. Lo que tiene que hacer es que la
+                    fila destaque al bajar por la lista, no alarmar. */}
+                <div className={`kit-donde${sinSitio(k.guardado) ? " kit-sinsitio" : ""}`}>
                   <DondeSeGuarda que="kit" id={k.id} compacto
                     guardado={k.guardado || { ruta: [], origen: "ninguno", bucle: false, roto: false }}
                     sitios={sitios} contenedores={contenedores}
@@ -542,6 +576,15 @@ export default function PanelKits({ kits, equipos, cortado, sitios }: {
                        cadena de un kit guardado dentro de un bolso: si faltó
                        media lista, el bolso puede no haber llegado. */
                     cortado={cortado} />
+                  {/* A cuántos arrastra. «Sin sitio» sobre un kit de una pieza
+                      y sobre uno de doce es el mismo texto y no el mismo
+                      problema: el número es lo que decide cuál se anota
+                      primero. */}
+                  {sinSitio(k.guardado) && piezas.length > 0 && (
+                    <span className="kit-sinsitio-n">
+                      · {piezas.length} equipo(s) se quedan sin sitio por esto
+                    </span>
+                  )}
                 </div>
 
                 {/* TERCERA LÍNEA: LAS CIFRAS. Con el kit plegado, «12 equipos ·

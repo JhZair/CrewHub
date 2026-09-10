@@ -26,30 +26,55 @@ import ChipAnfitrion from "@/components/ChipAnfitrion";
    cada uno. Las props son estables —`e` viene del servidor y `cortado` es un
    booleano—, así que el memo acierta siempre salvo cuando la fila cambia de
    verdad. */
-const ChipsEquipo = memo(function ChipsEquipo({ e, cortado }: {
+/** Qué chips puede llevar una fila. El orden de este tipo NO manda: manda el
+ *  del JSX de abajo, que es el de /equipamiento. */
+export type QueChip = "fotos" | "piezas" | "anfitrion" | "kits" | "combo";
+
+/** Todos, que es lo que quiere casi cualquier lista. Constante de módulo y no
+ *  un literal en el valor por defecto: `muestra = ["fotos", …]` crearía un
+ *  array NUEVO en cada render y le rompería el `memo` a todas las llamadas que
+ *  no pasan la prop — es decir, al inventario entero. */
+const TODOS: readonly QueChip[] = ["fotos", "piezas", "anfitrion", "kits", "combo"];
+
+const ChipsEquipo = memo(function ChipsEquipo({ e, cortado, muestra = TODOS }: {
   e: EquipoParaPanel;
   /** Si el inventario llegó al tope de la API. Viaja hasta el chip 🔧 para que
    *  no acuse a la base de un puntero roto cuando lo que faltó fue una fila. */
   cortado?: boolean;
+  /** Qué chips pintar. Para las listas donde alguno sobra por el contexto —en
+   *  la columna «en el kit» de un editor de kits, el chip «sale en el kit X»
+   *  repite el título de la columna—.
+   *  ⚠ Pásalo SIEMPRE como constante de módulo, nunca como literal en el JSX:
+   *  un array recién creado hace fallar el `memo` en cada tecla del buscador,
+   *  que es justo lo que ese memo existe para evitar. */
+  muestra?: readonly QueChip[];
 }) {
   const esPieza = !!e.apunta || e.estado === "ensamblado";
+  const q = (k: QueChip) => muestra.includes(k);
   /* ⚠ `e.combo` y no `e.compra_id`: la condición tiene que ser LA MISMA que la
      del chip que se pinta abajo. Con `compra_id`, una unidad cuya compra no
-     vino en el lote de combos abría un `.chips-linea` sin un solo hijo. */
-  const hay = e.nFotos || e.piezas?.length || esPieza || e.kits?.length || e.combo;
+     vino en el lote de combos abría un `.chips-linea` sin un solo hijo.
+     ⚠ Y cada término mira su `q(...)`: sin eso, una fila que solo tiene fotos
+     y kits abría el `.chips-linea` —con su margen y su renglón— en una lista
+     que pidió únicamente 🔧 piezas, y salía un hueco donde no hay nada. */
+  const hay = (q("fotos") && e.nFotos)
+    || (q("piezas") && e.piezas?.length)
+    || (q("anfitrion") && esPieza)
+    || (q("kits") && e.kits?.length)
+    || (q("combo") && e.combo);
   if (!hay) return null;
   return (
     <span className="chips-linea">
-      <ChipFotos tipo="equipamiento" id={e.id} n={e.nFotos || 0} />
-      <ChipPiezas piezas={(e.piezas || []) as PiezaMontada[]} />
-      {esPieza && (
+      {q("fotos") && <ChipFotos tipo="equipamiento" id={e.id} n={e.nFotos || 0} />}
+      {q("piezas") && <ChipPiezas piezas={(e.piezas || []) as PiezaMontada[]} />}
+      {q("anfitrion") && esPieza && (
         <ChipAnfitrion anfitrion={e.anfitrion || null} apunta={!!e.apunta} cortado={!!cortado} />
       )}
-      {(e.kits || []).map(k => (
+      {q("kits") && (e.kits || []).map(k => (
         <ChipGrupo key={k.id} que="kit" id={k.id} nombre={k.nombre}
           titulo={`Sale en el kit «${k.nombre}» — ver qué más va dentro`} />
       ))}
-      {e.compra_id && e.combo && (
+      {q("combo") && e.compra_id && e.combo && (
         /* ⚠ `enChip` se calla cuando la unidad TIENE precio propio, igual que en
            /equipamiento: si no, un combo de ocho unidades pinta ocho veces la
            misma cifra de la boleta al lado de ocho precios distintos, y no hay

@@ -308,3 +308,78 @@ export function resumenKit(e: EstadoKit): { txt: string; color: string } {
 export function saliCompleto(enManos: number, delKit: number) {
   return { completo: enManos >= delKit, faltan: Math.max(0, delKit - enManos) };
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   EL KIT QUE ARRASTRA A UNA PIEZA MONTADA
+
+   Un cable atornillado dentro de un power bank NO está en ningún kit: quien
+   está en el kit es el power bank. Y aun así el cable sale de viaje, porque va
+   dentro. En el inventario eso salía como nada — tres cables «Ensamblado», sin
+   una palabra de a dónde van — y la pregunta que se hace delante de esa lista
+   es exactamente esa: si me llevo el kit, ¿esto viene?
+
+   ── POR QUÉ NO SE PUEDE «ARREGLAR» METIENDO LA PIEZA EN EL KIT ──
+   Porque no es verdad, y romperia dos cosas. El kit se edita: si el cable
+   figurara como miembro, aparecería en la columna «en el kit» con su ✕ y
+   quitarlo de ahí no lo sacaría de la mochila —sigue atornillado—. Y al
+   entregar, el kit contaría el cable Y el power bank como dos salidas, cuando
+   físicamente sale un objeto. La pertenencia es del anfitrión; lo que hereda
+   la pieza es el VIAJE.
+
+   ── SE SUBE, NO SE BAJA ──
+   La cadena puede tener varios pisos —una pieza dentro de una jaula dentro de
+   una cámara— y el kit puede estar en cualquiera de ellos. Se sube hasta la
+   raíz recogiendo lo que haya.
+   ⚠ Con `visto`. `ensamblado_en` es un puntero que la base no impide que
+   apunte en círculo (A dentro de B, B dentro de A), y sin el corte esto es un
+   bucle infinito EN EL SERVIDOR, que no se ve como un fallo de la fila: se ve
+   como una página que no responde.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** Un kit al que una pieza va a parar por estar montada dentro de otra cosa. */
+export type KitPorAnfitrion = KitBreve & {
+  /** Quién lo arrastra: el equipo de la cadena que sí es miembro del kit. Es
+   *  la mitad de la respuesta —«va con el S24 básico» no dice si sacarlo o
+   *  no; «lo lleva el A-052» sí—. */
+  porId: string;
+  porNombre: string;
+};
+
+export function kitsPorAnfitrion(
+  id: string,
+  /** En qué kits está cada equipo, DIRECTAMENTE. El mismo mapa que pinta los
+   *  chips normales; aquí se consulta por los anfitriones. */
+  kitsPorEq: Map<string, KitBreve[]>,
+  /** De un equipo a su anfitrión y su nombre. `null` en `dentroDe` = es raíz.
+   *  Se pide como función y no como dos mapas para que la llamada sirva igual
+   *  con la fila cruda del inventario o con un nodo ya montado. */
+  sube: (eqId: string) => { dentroDe: string | null; nombre: string } | null,
+  /** Cuántos pisos como mucho. No es una optimización: es el segundo corte
+   *  —el primero es `visto`— para una cadena larguísima creada por error. */
+  tope = 24,
+): KitPorAnfitrion[] {
+  const salida: KitPorAnfitrion[] = [];
+  /* Los que la pieza YA tiene por su cuenta no se repiten: quedaría «📦 S24
+     básico · 📦 S24 básico» en la misma fila, y el segundo mintiendo. */
+  const ya = new Set((kitsPorEq.get(id) || []).map(k => k.id));
+  const visto = new Set<string>([id]);
+  let actual = sube(id)?.dentroDe || null;
+  let pisos = 0;
+
+  while (actual && !visto.has(actual) && pisos < tope) {
+    visto.add(actual);
+    pisos++;
+    const info = sube(actual);
+    (kitsPorEq.get(actual) || []).forEach(k => {
+      if (ya.has(k.id)) return;
+      ya.add(k.id);
+      salida.push({
+        id: k.id, nombre: k.nombre,
+        porId: actual as string,
+        porNombre: info?.nombre || "su anfitrión",
+      });
+    });
+    actual = info?.dentroDe || null;
+  }
+  return salida;
+}

@@ -2,10 +2,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import AltaLote from "@/components/AltaLote";
-import VistaCompra from "@/components/VistaCompra";
+import Copiar from "@/components/Copiar";
+import MiniEquipo from "@/components/MiniEquipo";
 import AsignarACompra, { SacarDelCombo } from "@/components/AsignarACompra";
 import { guardarCompra, borrarCompra } from "@/app/compras/acciones";
 import { soles } from "@/lib/compras";
+import { colorEstadoEq, txtEstadoEq } from "@/lib/estadosEquipo";
 import type { EqLibre } from "@/components/AsignarACompra";
 
 /* LOS COMBOS — cómo entró cada cosa.
@@ -68,6 +70,13 @@ export default function PanelCombos({ combos, categorias = [], inventario = [] }
      sobrevivan a abrir y cerrar un editor. */
   const [cat, setCat] = useState("");
   const [txt, setTxt] = useState("");
+  /* ── EL ORDEN, ELEGIBLE ──
+     Veintiocho combos salían en el orden que devolvía la consulta, que no es un
+     orden: es un accidente. Y la pregunta cambia el criterio — «qué compramos
+     último» es la fecha, «cuánto costó aquello» es el importe, y «C-015» es el
+     código—. Por defecto la FECHA, de lo más reciente a lo más viejo: a un
+     combo se vuelve casi siempre por algo que acaba de llegar. */
+  const [orden, setOrden] = useState<"fecha" | "codigo" | "importe" | "unidades">("fecha");
 
   const vivos = combos;
 
@@ -107,6 +116,28 @@ export default function PanelCombos({ combos, categorias = [], inventario = [] }
           const pajar = nrm(`${c.codigo || ""} ${c.nombre} ${c.proveedor || ""} ${(c.categorias || []).join(" ")}`);
           return ps.every(p => pajar.includes(p));
         });
+
+        /* ⚠ Lo que no tiene el dato va AL FINAL, en los cuatro criterios. Un
+           combo sin fecha ordenado como si fuera del año cero encabeza la lista
+           por «lo más reciente», que es exactamente lo contrario de lo que se
+           pidió — y en una lista de veintiocho nadie lo nota. */
+        const alFinal = (v: any) => v === null || v === undefined || v === "";
+        const cmp = (a: ComboVista, b: ComboVista) => {
+          const por = (va: any, vb: any, desc: boolean) => {
+            if (alFinal(va) !== alFinal(vb)) return alFinal(va) ? 1 : -1;
+            if (alFinal(va)) return 0;
+            const d = typeof va === "string" ? String(va).localeCompare(String(vb), "es") : va - vb;
+            return desc ? -d : d;
+          };
+          if (orden === "fecha") return por(a.fecha, b.fecha, true)
+            /* Empate de fecha —media compra del mismo día no la lleva— se
+               deshace por código, que sí es único y estable. */
+            || String(b.codigo || "").localeCompare(String(a.codigo || ""), "es");
+          if (orden === "importe") return por(Number(a.total) || null, Number(b.total) || null, true);
+          if (orden === "unidades") return por(a.nUnidades || null, b.nUnidades || null, true);
+          return por(a.codigo, b.codigo, false);
+        };
+        const ordenada = [...lista].sort(cmp);
         return (
         <div style={{ marginTop: 8 }}>
           <AltaLote categorias={categorias} />
@@ -124,19 +155,50 @@ export default function PanelCombos({ combos, categorias = [], inventario = [] }
           {/* Buscar y filtrar. Con dieciocho combos la lista ya no se lee, se
               busca — y lo que se recuerda de una compra vieja es la marca, el
               proveedor o el código, no en qué puesto de la lista estaba. */}
-          {combos.length > 6 && (
+          {combos.length > 3 && (
             <div className="cbo-filtros">
-              <input className="ent-lote-inp" placeholder="Buscar por código, nombre, proveedor…"
-                value={txt} onChange={e => setTxt(e.target.value)} style={{ flex: 1, minWidth: 190 }} />
-              {cats.map(k => (
-                <button key={k} type="button" className={`kit-chip${cat === k ? " on" : ""}`}
-                  onClick={() => setCat(cat === k ? "" : k)}>{k}</button>
-              ))}
-              {(cat || txt) && (
-                <button type="button" className="dato-btn" style={{ color: "var(--dim)" }}
-                  onClick={() => { setCat(""); setTxt(""); }}>
-                  {lista.length} de {combos.length} · limpiar
-                </button>
+              {/* ── LO QUE SE ESCRIBE Y LO QUE SE ELIGE, EN DOS ALTURAS ──
+                  ⚠ El buscador NO puede ir dentro de la tira que se desplaza:
+                  una tira mete lo que sobra fuera de la vista, y lo primero
+                  que hace uno aquí es escribir. Arriba, con el orden y el
+                  «limpiar», que son los tres controles que siempre se ven. */}
+              <div className="cbo-filtros-l1">
+                <input className="ent-lote-inp" placeholder="Buscar por código, nombre, proveedor…"
+                  value={txt} onChange={e => setTxt(e.target.value)} style={{ flex: 1, minWidth: 190 }} />
+                {/* El orden, al lado del buscador y no en otra fila: filtrar y
+                    ordenar son la misma operación —«enséñame estos, así»— y
+                    separarlos obliga a buscar el segundo control. */}
+                <select className="ent-select cbo-orden" value={orden}
+                  title="En qué orden salen los combos"
+                  onChange={e => setOrden(e.target.value as any)}>
+                  <option value="fecha">↓ más recientes</option>
+                  <option value="codigo">↑ por código</option>
+                  <option value="importe">↓ los más caros</option>
+                  <option value="unidades">↓ los que más trajeron</option>
+                </select>
+                {(cat || txt) && (
+                  <button type="button" className="dato-btn" style={{ color: "var(--dim)" }}
+                    onClick={() => { setCat(""); setTxt(""); }}>
+                    {lista.length} de {combos.length} · limpiar
+                  </button>
+                )}
+              </div>
+              {/* Las categorías, en la misma tira con rótulo que los filtros
+                  del inventario. Eran chips sueltos entre el buscador y el
+                  orden: con diez, empujaban el desplegable a un tercer renglón
+                  y nada decía que aquello fuera «categoría». Las clases son las
+                  del sistema —`filt-grupo` / `filt-tit` / `filt-tira`— para que
+                  esto no se convierta en un segundo diseño de filtros. */}
+              {cats.length > 0 && (
+                <div className="filt-grupo">
+                  <span className="filt-tit">Categoría</span>
+                  <div className="filt-tira">
+                    {cats.map(k => (
+                      <button key={k} type="button" className={`kit-chip${cat === k ? " on" : ""}`}
+                        onClick={() => setCat(cat === k ? "" : k)}>{k}</button>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
           )}
@@ -147,12 +209,17 @@ export default function PanelCombos({ combos, categorias = [], inventario = [] }
             </div>
           )}
 
-          {lista.map(c => {
+          {ordenada.map(c => {
             const fecha = c.fecha
               ? new Date(String(c.fecha) + "T12:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" })
               : null;
+            /* Un combo abierto no es «la fila de abajo un poco más alta»: es
+               la única de las veintiocho que está en modo edición, y eso tiene
+               que verse desde el otro extremo de la pantalla. */
+            const abierta = edita === c.id;
+            const alterna = () => { setEdita(abierta ? null : c.id); setErr(""); };
             return (
-              <div key={c.id} className="cbo-fila">
+              <div key={c.id} className={`cbo-fila${abierta ? " editando" : ""}`}>
                 <div className="cbo-l1">
                   {/* La cara del combo: la foto de la primera unidad que tenga
                       una. Un combo no es una cosa —es una compra— pero se
@@ -164,25 +231,51 @@ export default function PanelCombos({ combos, categorias = [], inventario = [] }
                       ? <img src={c.cartel} alt="" referrerPolicy="no-referrer" />
                       : <span>🧾</span>}
                   </span>
-                  {c.codigo && <span className="badge cmp-cod">{c.codigo}</span>}
-                  {/* El nombre abre la vista al vuelo. Un combo se ve entero de
-                      un vistazo: no necesita página, necesita no hacerte perder
-                      el sitio. */}
-                  <VistaCompra compraId={c.id}>
-                    {abrir => (
-                      <button className="cbo-nom" onClick={abrir} title="Ver el combo sin salir de aquí">
-                        {c.nombre}
-                      </button>
-                    )}
-                  </VistaCompra>
+                  {/* El código y el total, COPIABLES. Los traía la vista al
+                      vuelo y son justo los dos datos que se van a pegar en una
+                      rendición — el sitio donde perder un dígito no falla:
+                      cuadra con otra cosa y el error sale semanas después. */}
+                  {c.codigo && (
+                    <Copiar valor={c.codigo} etiqueta="código">
+                      <span className="badge cmp-cod">{c.codigo}</span>
+                    </Copiar>
+                  )}
+                  {/* ── EL NOMBRE ABRE EL EDITOR, NO UN POP-UP ──
+                      Hasta aquí el nombre abría `VistaCompra` —la vista al
+                      vuelo— y la ✎ abría el editor: dos gestos, dos capas y el
+                      MISMO combo. Con el editor partido en tres bloques con
+                      nombre, la vista ya no enseñaba nada que el editor no
+                      enseñe… salvo cuatro cosas, y esas se han traído aquí
+                      dentro en vez de perderse: el precio de cada unidad, la
+                      suma de las piezas contra el total de la boleta, quién
+                      tiene cada una, y los dos enlaces —boleta y ficha del
+                      producto— abribles de verdad.
+                      Lo que se gana no es una capa menos: es que corregir deje
+                      de ser un segundo viaje. Antes se abría el combo para
+                      mirarlo, se veía la fecha mal, se cerraba el pop-up y
+                      había que buscar la ✎ para volver a abrir lo mismo.
+                      ⚠ `components/VistaCompra` NO se borra: la usan la ficha
+                      del equipo, el alta en lote y el buscador, y ahí sí hace
+                      falta —esas pantallas no llevan editor detrás—. Lo que
+                      sobraba era aquí, donde el editor está a un clic. */}
+                  <button className="cbo-nom" onClick={alterna}
+                    title={abierta ? "Cerrar el combo" : "Abrir el combo — verlo y corregirlo"}>
+                    {c.nombre}
+                  </button>
                   <span style={{ flex: 1 }} />
                   {c.total != null && (
-                    <b style={{ color: "var(--teal)", fontSize: 12.5, whiteSpace: "nowrap" }}>
-                      {soles(Number(c.total), c.moneda || "PEN")}
-                    </b>
+                    <Copiar valor={String(c.total)} etiqueta="total">
+                      <b style={{ color: "var(--teal)", fontSize: 12.5, whiteSpace: "nowrap" }}>
+                        {soles(Number(c.total), c.moneda || "PEN")}
+                      </b>
+                    </Copiar>
                   )}
-                  <button className="dato-btn" title="Editar el combo"
-                    onClick={() => { setEdita(edita === c.id ? null : c.id); setErr(""); }}>✎</button>
+                  {/* El botón dice en qué estado ESTÁ, no solo qué hace. Con un
+                      ✎ fijo, el combo abierto y el cerrado tenían el mismo
+                      botón y no había dónde pulsar para cerrar sin buscarlo. */}
+                  <button className={`dato-btn${abierta ? " cbo-edita-on" : ""}`}
+                    title={abierta ? "Cerrar el combo" : "Abrir el combo — verlo y corregirlo"}
+                    onClick={alterna}>{abierta ? "✕" : "✎"}</button>
                 </div>
                 <div className="cbo-l2">
                   {c.proveedor && <span>{c.proveedor}</span>}
@@ -207,7 +300,7 @@ export default function PanelCombos({ combos, categorias = [], inventario = [] }
                   </span>
                 </div>
 
-                {edita === c.id && (
+                {abierta && (
                   <EditorCombo c={c} inventario={inventario}
                     onErr={setErr} onListo={() => { setEdita(null); router.refresh(); }} />
                 )}
@@ -246,6 +339,8 @@ function EditorCombo({ c, inventario, onErr, onListo }: {
 
   return (
     <div className="cbo-editor" onClick={e => e.stopPropagation()}>
+      <div className="cbo-bloque">
+        <div className="cbo-bloque-h">La compra</div>
       <form className="cmp-form" onSubmit={async ev => {
         ev.preventDefault();
         const f = new FormData(ev.currentTarget as HTMLFormElement);
@@ -280,17 +375,45 @@ function EditorCombo({ c, inventario, onErr, onListo }: {
             ninguna pista de cuál es cuál.
             El rótulo no se va al escribir, y ponerlos lado a lado convierte
             la diferencia en lo primero que se ve. */}
+        {/* ── Y ABRIBLES ──
+            Con la vista al vuelo fuera, este era el único sitio donde vivía la
+            boleta… y aquí era texto dentro de una caja: para verla había que
+            seleccionar la URL, copiarla y pegarla. Un enlace al lado la abre.
+            ⚠ Enlaza `c.comprobante_url` —lo GUARDADO— y no lo que hay escrito
+            en el campo: el input no está controlado, así que mientras se
+            teclea una URL nueva el enlace seguiría apuntando a la vieja y
+            abriría el papel equivocado sin decirlo. Por eso el rótulo dice «la
+            guardada»: se abre lo que está en la base, y para abrir la nueva
+            hay que guardar primero.
+            ⚠ Y por eso estos dos campos dejan de ser un `<label>` que envuelve
+            al input y pasan a ser un `<div>` con `htmlFor`: un enlace DENTRO de
+            un `<label>` es contenido interactivo dentro de contenido
+            interactivo —HTML inválido— y el clic sobre el enlace dispara
+            además la activación del rótulo. Con el `id` explícito el rótulo
+            sigue enfocando su campo al pulsarlo y el enlace es solo un enlace. */}
         <div className="cmp-fila">
-          <label className="cmp-campo" style={{ flex: 1, minWidth: 210 }}>
-            <span className="cmp-lbl">🧾 Comprobante — la boleta o factura</span>
-            <input name="comprobante_url" defaultValue={c.comprobante_url || ""}
+          <div className="cmp-campo" style={{ flex: 1, minWidth: 210 }}>
+            <span className="cmp-lbl">
+              <label htmlFor={`cbo-comp-${c.id}`}>🧾 Comprobante — la boleta o factura</label>
+              {c.comprobante_url && (
+                <> · <a href={c.comprobante_url} target="_blank" rel="noopener noreferrer"
+                  className="fv-link">abrir la guardada ↗</a></>
+              )}
+            </span>
+            <input id={`cbo-comp-${c.id}`} name="comprobante_url" defaultValue={c.comprobante_url || ""}
               style={{ ...inp, width: "100%" }} placeholder="https://…" />
-          </label>
-          <label className="cmp-campo" style={{ flex: 1, minWidth: 210 }}>
-            <span className="cmp-lbl">🔗 Producto — su ficha en la web del vendedor</span>
-            <input name="link" defaultValue={c.link || ""}
+          </div>
+          <div className="cmp-campo" style={{ flex: 1, minWidth: 210 }}>
+            <span className="cmp-lbl">
+              <label htmlFor={`cbo-link-${c.id}`}>🔗 Producto — su ficha en la web del vendedor</label>
+              {c.link && (
+                <> · <a href={c.link} target="_blank" rel="noopener noreferrer"
+                  className="fv-link">abrir la guardada ↗</a></>
+              )}
+            </span>
+            <input id={`cbo-link-${c.id}`} name="link" defaultValue={c.link || ""}
               style={{ ...inp, width: "100%" }} placeholder="https://…" />
-          </label>
+          </div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <button className="btn" style={{ padding: "5px 12px", fontSize: 12 }} disabled={ocupado}>
@@ -315,24 +438,73 @@ function EditorCombo({ c, inventario, onErr, onListo }: {
           )}
         </div>
       </form>
+      </div>
 
-      {suyas.length > 0 && (
-        <div style={{ marginTop: 9 }}>
-          <div style={{ color: "var(--dim)", fontSize: 10.5, letterSpacing: .6, textTransform: "uppercase" }}>
-            Unidades · {suyas.length}
-          </div>
+      {/* ── TRES BLOQUES, TRES MARCOS ──
+          ⚠ Abrir un combo apilaba el formulario, la lista de unidades y el
+          buscador de sumar uno detrás de otro y sin nada que los separara: tres
+          cosas distintas que se leían como un formulario larguísimo, y la
+          «Nota» del combo quedaba pegada a la primera unidad como si fuera
+          suya. Cada uno en su caja con su nombre — es lo mismo que se acaba de
+          hacer con los sitios y por lo mismo. */}
+      {suyas.length > 0 && (() => {
+        /* ── LA COMPROBACIÓN QUE TRAÍA LA VISTA AL VUELO ──
+           Los precios de las piezas NO son adorno: son la única forma de ver
+           que alguien puso un valor mal. Suelto, cualquier número parece
+           razonable —¿180 soles por un micro? podría ser—; puestas la suma de
+           las piezas y el total de la boleta una al lado de la otra, un cero
+           de más salta a la vista sin buscarlo.
+           `nVivas` sale de la fila y no de aquí: `suyas` son las unidades que
+           el inventario dice que son de este combo, y basta con que la lista
+           llegue recortada para que este número mintiera. Los conteos los da
+           el servidor, que los cuenta enteros. */
+        const mon = c.moneda || "PEN";
+        const conPrecio = suyas.filter(u => Number(u.valor_compra) > 0);
+        const sumaPiezas = conPrecio.reduce((a, u) => a + Number(u.valor_compra), 0);
+        return (
+        <div className="cbo-bloque">
+          <div className="cbo-bloque-h">Unidades · {suyas.length}</div>
           {suyas.map(u => (
-            <div key={u.id} className="info-row" style={{ padding: "3px 0" }}>
+            <div key={u.id} className="info-row cbo-mini" style={{ padding: "3px 0" }}>
+              {/* ── LA FOTO, COMO EN TODAS LAS DEMÁS LISTAS ──
+                  Era la única lista de equipos de la app sin miniatura: los
+                  kits la tienen, los ensamblados la tienen y el árbol de
+                  sitios la tiene. Y aquí hace la misma falta que allí — un
+                  combo de trece piezas son trece renglones de texto que se
+                  parecen entre sí, y lo que se viene a comprobar es que lo
+                  colgado del combo es de verdad lo que trajo esa caja. */}
+              <MiniEquipo url={u.cartel} />
               {u.folio && <span className="kit-pz-folio">{u.folio}</span>}
               <a href={`/entidad/equipamiento/${u.id}`} style={{ flex: 1, fontSize: 12.5, minWidth: 0 }}>{u.nombre}</a>
-              <span style={{ color: "var(--dim)", fontSize: 11 }}>{(u.estado || "").replace(/_/g, " ")}</span>
+              {Number(u.valor_compra) > 0 && (
+                <span style={{ color: "var(--dim)", fontSize: 11, whiteSpace: "nowrap" }}>
+                  {soles(Number(u.valor_compra), mon)}
+                </span>
+              )}
+              {/* El estado CON su color y, si está entregado, con el nombre de
+                  quien lo tiene. Antes salía en gris y con los guiones bajos
+                  puestos —«en_uso»—: se leía igual que la categoría, y «¿quién
+                  lo tiene?» es justo la pregunta que trae a mirar un combo. */}
+              <span style={{ color: colorEstadoEq(u.estado), fontSize: 11, whiteSpace: "nowrap" }}>
+                {u.quien ? `lo tiene ${u.quien}` : txtEstadoEq(u.estado)}
+              </span>
               <SacarDelCombo equipoId={u.id} />
             </div>
           ))}
+          {sumaPiezas > 0 && c.total != null && (
+            <div style={{ color: "var(--dim)", fontSize: 11, marginTop: 6, lineHeight: 1.5 }}>
+              {conPrecio.length} pieza(s) con precio propio suman {soles(sumaPiezas, mon)}
+              {" "}de los {soles(Number(c.total), mon)} de la boleta.
+            </div>
+          )}
         </div>
-      )}
+        );
+      })()}
 
-      <AsignarACompra compraId={c.id} equipos={inventario} />
+      <div className="cbo-bloque">
+        <div className="cbo-bloque-h">Sumar equipos que ya existen</div>
+        <AsignarACompra compraId={c.id} equipos={inventario} />
+      </div>
     </div>
   );
 }

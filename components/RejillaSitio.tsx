@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import ChipPop from "@/components/ChipPop";
 import FilaPop from "@/components/FilaPop";
 import { iconoDeSitio, type Sitio } from "@/lib/sitios";
@@ -21,15 +21,16 @@ import { iconoDeSitio, type Sitio } from "@/lib/sitios";
    ya hay algo en el sitio al que hay que crecer, que es un huevo y su gallina.
    El hueco de sobra es lo que hace que colocar sea posible la primera vez.
 
-   ── LOS QUE NO ESTÁN COLOCADOS NO SE ESCONDEN ──
-   Van en una tira debajo, y no fuera de la vista: la posición es opcional a
-   propósito —un cajón suelto en un almacén no está en ninguna rejilla— y una
-   rejilla bonita con cuatro cajones dibujados sobre un mueble que tiene doce
-   diría que están todos.
+   ── LOS QUE NO ESTÁN COLOCADOS SIGUEN EN EL ÁRBOL ──
+   La posición es opcional a propósito —un cajón suelto en un almacén no está en
+   ninguna rejilla—, así que un mueble de doce con cuatro dibujados no dice que
+   estén todos: los ocho restantes salen como renglones debajo, con su botón
+   «colocar». Aquí llegó a haber una TIRA con esos ocho en chips, y era la
+   tercera copia del mismo cajón en la misma pantalla.
 
-   Se coloca en dos toques: se elige uno de la tira y se toca el hueco. No hay
-   arrastre porque esto se usa con el mueble abierto delante y una mano
-   ocupada, y porque un arrastre que falla en un móvil no dice por qué.
+   Se coloca en dos toques: «colocar» en el renglón, y el hueco. No hay arrastre
+   porque esto se usa con el mueble abierto delante y una mano ocupada, y porque
+   un arrastre que falla en un móvil no dice por qué.
    ══════════════════════════════════════════════════════════════════════════ */
 
 /* ── QUÉ HAY EN UNA CASILLA, Y NO CUÁNTO ──
@@ -129,25 +130,36 @@ function Cosa({ c, aviso }: { c: CosaEnSitio; aviso?: React.ReactNode }) {
   );
 }
 
-export default function RejillaSitio({ hijos, contenido, codigos, ocupado, onColocar }: {
+/* ⚠ SIN ESTADO PROPIO. Qué se está colocando y si la rejilla está plegada
+   viven en `PanelSitios`, y no por gusto: es ÉL quien decide qué hijos pinta
+   como renglones debajo, y esa decisión depende de las dos cosas. Con el estado
+   aquí dentro, el árbol no podía saber si un cajón ya se estaba enseñando en el
+   dibujo — y por eso el mismo Compartimiento 01 salía dos veces a dos
+   centímetros, en la rejilla y como renglón. */
+export default function RejillaSitio({
+  hijos, contenido, codigos, ocupado, colocando, abiertos,
+  onColocar, onElegir, onAbrir, oculta, onOcultar,
+}: {
   hijos: Sitio[];
   contenido: Map<string, ContenidoSitio>;
   codigos: Map<string, string | null>;
   ocupado: boolean;
+  /** Qué hijo se está colocando ahora mismo, si alguno. */
+  colocando: string | null;
+  /** Cuáles están desplegados en el árbol: una casilla abierta se marca, porque
+   *  su contenido está saliendo como renglón justo debajo. */
+  abiertos: Set<string>;
   onColocar: (id: string, fila: number | null, columna: number | null) => void;
+  onElegir: (id: string | null) => void;
+  onAbrir: (id: string) => void;
+  oculta: boolean;
+  onOcultar: () => void;
 }) {
-  const [elegido, setElegido] = useState<string | null>(null);
-  /* Plegar la rejilla es una preferencia de ESTA rejilla, así que vive en ella.
-     Un mueble de doce cajones dibujado se lee de un vistazo; ocho compartimientos
-     que nunca se colocaron son un marco vacío repetido en cada sitio abierto. */
-  const [oculta, setOculta] = useState(false);
+  const elegido = colocando;
+  const setElegido = onElegir;
 
   const colocados = useMemo(
     () => hijos.filter(h => h.fila != null && h.columna != null),
-    [hijos],
-  );
-  const sueltos = useMemo(
-    () => hijos.filter(h => h.fila == null || h.columna == null),
     [hijos],
   );
 
@@ -214,10 +226,22 @@ export default function RejillaSitio({ hijos, contenido, codigos, ocupado, onCol
               </>
             );
             return (
-              <div key={h.id} className="rej-cosa" title={cod || undefined}>
-                <span className="rej-ico" aria-hidden>{iconoDeSitio(h.tipo)}</span>
-                {h.clave && <span className="badge rej-clave">{h.clave}</span>}
-                <span className="rej-nom">{h.nombre}</span>
+              <div key={h.id} className={`rej-cosa${abiertos.has(h.id) ? " rej-abierta" : ""}`}
+                title={cod || undefined}>
+                {/* ── LA CASILLA ES EL SITIO PLEGADO, Y ABRE ──
+                    ⚠ Antes cada cajón salía DOS veces: dibujado aquí y otra vez
+                    como renglón debajo, con sus mismos botones. Ahora la casilla
+                    es su forma cerrada y al tocarla se despliega abajo con todo
+                    lo suyo. Una cosa, un sitio en la pantalla. */}
+                <button type="button" className="rej-abrir"
+                  onClick={e => { e.stopPropagation(); onAbrir(h.id); }}
+                  title={abiertos.has(h.id)
+                    ? `Plegar «${h.nombre}» (está desplegado abajo)`
+                    : `Abrir «${h.nombre}» y ver lo que tiene dentro`}>
+                  <span className="rej-ico" aria-hidden>{iconoDeSitio(h.tipo)}</span>
+                  {h.clave && <span className="badge rej-clave">{h.clave}</span>}
+                  <span className="rej-nom">{h.nombre}</span>
+                </button>
                 {/* ⚠ El cero NO se hace pulsable. Un chip que abre para decir
                     «aquí no hay nada» en once de doce cajones es once promesas
                     incumplidas; y la rejilla se recorre buscando lo que SÍ
@@ -314,7 +338,7 @@ export default function RejillaSitio({ hijos, contenido, codigos, ocupado, onCol
               invisible y nadie lo mantiene. */}
           <div className="rej-cab">
             <button type="button" className="dato-btn"
-              onClick={() => setOculta(o => !o)}
+              onClick={onOcultar}
               title={oculta ? "Ver el mueble dibujado" : "Plegar el dibujo y dejar solo la lista de abajo"}>
               ▦ {oculta ? `ver la rejilla (${colocados.length})` : "ocultar la rejilla"}
             </button>
@@ -327,28 +351,11 @@ export default function RejillaSitio({ hijos, contenido, codigos, ocupado, onCol
         </>
       )}
 
-      {sueltos.length > 0 && (
-        <div className="rej-sueltos">
-          <span className="rej-sueltos-t">
-            {elegido
-              ? "Toca un hueco de la rejilla para colocarlo."
-              : colocados.length
-                ? `Sin colocar (${sueltos.length}) — toca uno para ponerlo en la rejilla:`
-                /* Sin nada colocado no hay rejilla que enseñar todavía, así que
-                   la frase no puede mandar a una que no está. */
-                : `${sueltos.length} sitio(s) dentro — toca uno para empezar a dibujar el mueble:`}
-          </span>
-          {sueltos.map(h => (
-            <button key={h.id} type="button" disabled={ocupado}
-              className={`rej-suelto${elegido === h.id ? " rej-elegido" : ""}`}
-              onClick={() => setElegido(x => (x === h.id ? null : h.id))}>
-              <span aria-hidden>{iconoDeSitio(h.tipo)}</span>
-              {h.clave && <span className="badge rej-clave">{h.clave}</span>}
-              {h.nombre}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* ── LA TIRA DE «SIN COLOCAR» SE FUE ──
+          ⚠ Eran los mismos sitios que el árbol ya pinta como renglones justo
+          debajo: la tercera copia del mismo cajón en la misma pantalla. Colocar
+          se pide ahora desde el renglón de cada uno, con su botón «colocar», y
+          lo que enciende los huecos es eso. Aquí solo queda el dibujo. */}
     </div>
   );
 }

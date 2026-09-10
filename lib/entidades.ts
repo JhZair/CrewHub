@@ -253,7 +253,15 @@ export const SUBCATS_EQUIPO: Record<string, string[]> = {
        hay «Monitor» (la pantalla) y en cámara «Monitor externo». Tres cosas
        distintas que se llaman igual son tres búsquedas que se estorban. */
     "Audífonos", "Monitores de estudio",
-    "Caña / Boom pole", "Zeppelin / Paravientos", "Cable XLR", "Adaptador de audio",
+    "Caña / Boom pole", "Zeppelin / Paravientos", "Cable XLR",
+    /* Lo que une la consola con un instrumento, un parlante o la salida de
+       otro aparato: el Jack 6.35 TS macho-macho (A-445, A-446), el 3.5 mm a
+       2 RCA (A-632). No es XLR y tampoco es un adaptador —no convierte nada,
+       solo une—. Sin nombre propio caían en «Adaptador de audio» o en el
+       vacío, y con tres colgando de la Xenyx ya son una familia.
+       «Adaptador de audio» queda para la pieza corta o rígida que cambia de
+       conector: el jack 3.5→6.35, el TRS→TRRS, el splitter. */
+    "Cable de audio (Jack / RCA)", "Adaptador de audio",
     "Pilas / Batería de sonido",
     /* Y el de sonido, que faltaba por el mismo hueco. La bolsa de sonido no es
        un accesorio: es donde vive el kit entero —grabadora, transmisores,
@@ -264,6 +272,11 @@ export const SUBCATS_EQUIPO: Record<string, string[]> = {
        plaza. Confundirlos hace que quien prepara una proyección comunitaria
        busque entre los monitores de la sala de edición. */
     "Altavoz / Parlante",
+    /* Los Sound King de los JBL. No son «Trípode» de soporte —esa categoría
+       es lo que va entre la cámara y algo— ni «Trípode de luz», ni la araña
+       del micro. Van ensamblados con los parlantes y quien arma una
+       proyección los busca junto a ellos. */
+    "Pedestal de parlante",
     /* La araña del RØDE SM7-R. No es «caña» ni «case»: es lo que aísla el
        micro de los golpes de la mesa, se pierde por su cuenta y sin ella el
        micro de mil soles graba cada vez que alguien apoya un codo. */
@@ -388,7 +401,18 @@ export const SUBCATS_EQUIPO: Record<string, string[]> = {
        es lo mismo — si se queda en la oficina, la grabadora no funciona
        aunque tenga pilas nuevas, y quien la busca la busca por su aparato. */
     "Fuente / Adaptador de corriente",
-    "Pilas AA / AAA", "Estuche de baterías", "Extensión eléctrica", "Regleta",
+    "Pilas AA / AAA", "Estuche de baterías",
+    /* El cable USB-C que se compra para DAR corriente: el Baseus 100W, el
+       GMOBILE 60W que alimenta la Molus G60 desde el power bank, los Samsung
+       45W. Va aquí y no en cómputo por lo que hace: sin él la luz no enciende
+       y la cámara no carga. El de 20 Gbps que conecta un monitor es otra cosa
+       y vive en cómputo, aunque por fuera se parezcan. Cuando dudes, mira la
+       serigrafía: vatios → carga; Gbps o 4K → datos.
+       Y su estuche, por la regla de siempre: el estuche va con lo que guarda.
+       La bolsa organizadora MYBAGZING guarda cables y cargadores, así que no
+       es «Mochila / Case» de producción ni «Caja organizadora» de camping. */
+    "Cable USB-C de carga", "Estuche de cables",
+    "Extensión eléctrica", "Regleta",
     /* Aparte de la regleta: una regleta multiplica enchufes, un supresor
        PROTEGE. En un pueblo con la red inestable, enchufar el PC de edición a
        una regleta cualquiera creyendo que está protegido es el error que
@@ -411,7 +435,13 @@ export const SUBCATS_EQUIPO: Record<string, string[]> = {
     "Proyector", "Pantalla / Ecrán",
     "Disco duro externo",
     "SSD", "NAS / Servidor", "Lector de memorias", "Hub USB", "Teclado", "Mouse",
-    "Cable HDMI", "Adaptador", "Tableta gráfica", "Router / Red",
+    "Cable HDMI",
+    /* El USB-C que se compra por lo que TRANSMITE: 20 Gbps, 4K a 144 Hz,
+       DisplayPort. Conecta un monitor o un SSD; que además cargue es lo de
+       menos. Al lado del HDMI porque quien busca uno busca el otro. El
+       USB-C de vatios (100W, 60W) es de energía, «Cable USB-C de carga». */
+    "Cable USB-C (datos / video)",
+    "Adaptador", "Tableta gráfica", "Router / Red",
     /* La placa base, la RAM, la fuente, la tarjeta gráfica. Se compran sueltas
        —con su boleta cada una— y viven dentro del «PC de edición», que es un
        equipo distinto y ya registrado. Sin este nombre, una Asus ROG Maximus
@@ -850,6 +880,13 @@ export const FORM_CONF: Record<string, { tabla: string; titulo: string; campos: 
       { key: "estado", label: "Estado", tipo: "select", opciones: [...ESTADOS_ELEGIBLES],
         explicaActual: {
           en_uso: "en uso — lo tiene alguien; se quita al devolverlo",
+          /* ⚠ Faltaba, y los tres estados que no se ponen a mano son los
+             mismos tres —`A_MANO_NO` en lib/estadosEquipo—. Sin su línea, un
+             equipo asignado enseñaba «asignado (valor actual)» a secas: la
+             misma cara que tendría un estado sobrante de una migración, y
+             ninguna pista de por qué no se puede elegir otro ni de dónde se
+             cambia. Los otros dos sí lo explicaban. */
+          asignado: "asignado — se lo dieron a alguien; se quita al cerrar la asignación",
           ensamblado: "ensamblado — está montado dentro de otro equipo",
         } },
       { key: "valor_compra", label: "Valor de compra (S/)" },

@@ -17,13 +17,45 @@ export function Chip({ href, on, color, title, children }: {
   );
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   UNA DIMENSIÓN DE FILTRO = UN RÓTULO ARRIBA Y UNA TIRA QUE SE DESPLAZA
+
+   ── EL RÓTULO, ENCIMA Y NO AL LADO ──
+   Estaba en una columna de 58 px a la izquierda, y esa columna hacía dos
+   cosas malas a la vez: se comía 58 px de ancho en TODAS las filas —justo el
+   ancho que le falta a la de categorías— y obligaba a que «CATEGORÍA» cupiera
+   en 58 px, que no cabe. Encima, el rótulo no le quita ancho a nada y puede
+   ser tan largo como haga falta.
+
+   ── UNA SOLA LÍNEA, CON DESPLAZAMIENTO ──
+   Con `wrap`, diez categorías ocupaban tres renglones y el bloque de filtros
+   medía media pantalla: al entrar al inventario lo primero que se veía eran
+   los filtros, y había que bajar para ver el inventario. En una línea, cada
+   dimensión mide UNA fila pase lo que pase, el bloque entero es previsible, y
+   lo que no cabe se alcanza desplazando.
+
+   ⚠ LOS DOS DETALLES SIN LOS QUE ESTO NO FUNCIONA, y los dos fallan sin dar
+   error —salen chips estrujados en vez de una tira que se desplaza—:
+    · `flex:none` en CADA hijo. Un hijo flex se encoge por debajo de su
+      contenido por defecto: sin esto los chips no desbordan, se aplastan, y
+      «sin subcategoría · 76» acaba en «sin subcat…». No hay desbordamiento,
+      así que tampoco hay desplazamiento: no aparece la barra y parece que el
+      diseño simplemente aprieta.
+    · `min-width:0` en el grupo. Un ítem de flex o de grid tampoco baja de su
+      contenido: dentro de un contenedor así, la tira ensancharía la tarjeta
+      —y con ella la página— en lugar de desplazarse. Hoy `.card` es un bloque
+      y no hace falta; el día que alguien meta el panel en una rejilla, sí.
+
+   ── Y LA BARRA SE VE SIEMPRE ──
+   Una tira que se desplaza sin ninguna marca es contenido escondido: nadie
+   arrastra lo que no sabe que está. La barra fina es la marca, y por eso se
+   pinta siempre y no al pasar el ratón.
+   ══════════════════════════════════════════════════════════════════════════ */
 export function FilaFiltro({ titulo, children }: { titulo: string; children: ReactNode }) {
   return (
-    <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", padding: "5px 0" }}>
-      <span style={{ fontSize: 9.5, textTransform: "uppercase", letterSpacing: 1, color: "var(--dim)", width: 58, flex: "none" }}>
-        {titulo}
-      </span>
-      {children}
+    <div className="filt-grupo">
+      <span className="filt-tit">{titulo}</span>
+      <div className="filt-tira">{children}</div>
     </div>
   );
 }

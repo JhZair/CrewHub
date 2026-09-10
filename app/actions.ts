@@ -118,22 +118,56 @@ export async function guardarEntidad(tipo: string, id: string | null, datos: Rec
        que se cree.
        Se comprueba en el servidor y no solo en la pantalla: la pantalla es
        una cortesía, el servidor es la regla. */
-    if (tipo === "equipamiento" && "estado" in limpio) {
+    /* ⚠ SOLO SI EL ESTADO CAMBIA DE VERDAD, y esto es la mitad del arreglo.
+       El formulario manda SIEMPRE los doce campos, tenga el usuario tocado uno
+       o ninguno: así que `"estado" in limpio` era cierto al corregir la
+       CATEGORÍA de un cable, y las tres comprobaciones de abajo se ejecutaban
+       igual y devolvían un error que abortaba el guardado ENTERO. El resultado
+       era una ficha imposible de corregir mientras el equipo estuviera fuera —
+       ni la categoría, ni la subcategoría, ni la descripción, ni el link— y un
+       mensaje que hablaba del estado, que es justo lo que no se había tocado.
+       Comparando contra lo guardado, un estado que no cambia no dispara nada:
+       las reglas siguen enteras para quien SÍ intenta cambiarlo. */
+    const estadoCambia = "estado" in limpio
+      && String(limpio.estado ?? "") !== String((antes as any)?.estado ?? "");
+    if (tipo === "equipamiento" && estadoCambia) {
       const { data: abierto } = await supabase.from("equipo_prestamos")
-        .select("id,persona:personas(nombre,alias)")
+        .select("id,tipo,persona:personas(nombre,alias)")
         .eq("equipamiento_id", id).is("hasta", null).limit(1).maybeSingle();
       const q: any = abierto ? (Array.isArray((abierto as any).persona) ? (abierto as any).persona[0] : (abierto as any).persona) : null;
       const quien = q?.alias || q?.nombre || "alguien";
-      if (abierto && limpio.estado !== "en_uso") {
-        return { error: `Está prestado —lo tiene ${quien}—, así que su estado lo manda el préstamo. Regístralo como devuelto y después cámbialo. Si se perdió o se rompió estando fuera, dilo en su bitácora: al devolverlo se le pone el estado que toque.` };
+      /* ── Y LA OTRA MITAD: UNA CUSTODIA ABIERTA NO SIEMPRE ES «EN USO» ──
+         ⚠ `equipo_prestamos` guarda las DOS custodias —`tipo` es 'prestamo' o
+         'asignacion'— y cada una deja el equipo en un estado distinto: la
+         primera en «en uso», la segunda en «asignado» (ver `entregarLote`).
+         Esto exigía «en uso» para cualquier fila abierta, así que sobre un
+         equipo ASIGNADO la condición era imposible de satisfacer: su estado
+         correcto es «asignado» y el guardado se rechazaba diciendo «está
+         prestado». Ni el estado era el que decía ni la palabra era la que
+         tocaba — a nadie le «prestan» su propia laptop de trabajo. */
+      const esAsignacion = (abierto as any)?.tipo === "asignacion";
+      const debeSer = esAsignacion ? "asignado" : "en_uso";
+      const comoSeLlama = esAsignacion ? "asignado a" : "prestado a";
+      if (abierto && limpio.estado !== debeSer) {
+        return { error: `Está ${comoSeLlama} ${quien}, así que su estado lo manda esa entrega. Ciérrala primero y después cámbialo. Si se perdió o se rompió estando fuera, dilo en su bitácora: al devolverlo se le pone el estado que toque.` };
       }
       if (!abierto && limpio.estado === "en_uso") {
         return { error: "«En uso» no se pone a mano: sale de un préstamo abierto, y este equipo no tiene ninguno. Entrégalo desde /equipamiento y el estado se pone solo." };
+      }
+      /* Y al revés con «asignado», por lo mismo: sin una asignación abierta
+         detrás es una etiqueta que no cuenta a quién se lo dieron. */
+      if (!abierto && limpio.estado === "asignado") {
+        return { error: "«Asignado» no se pone a mano: sale de una asignación abierta, y este equipo no tiene ninguna. Asígnalo desde /equipamiento y el estado se pone solo." };
       }
       /* Y lo mismo con «ensamblado», por la misma razón: lo gobierna el equipo
          que contiene la pieza, no este formulario. Cambiarlo a mano dejaría la
          pieza «disponible» y a la vez atornillada dentro de otra cosa — dos
          verdades, y la lista de entrega se creería la primera. */
+      /* (Este par ya estaba a salvo del fallo de arriba —una pieza montada
+         tiene `estado: "ensamblado"`, así que al corregirle la categoría el
+         valor coincidía y la condición no saltaba— pero ahora además ni
+         siquiera se evalúa si el estado no cambia, que es la regla correcta y
+         no una coincidencia afortunada.) */
       const montada = (antes as any)?.ensamblado_en || null;
       if (montada && limpio.estado !== "ensamblado") {
         return { error: "Está montada dentro de otro equipo, así que su estado lo manda ese equipo. Desmóntala desde su ficha y después cámbialo." };

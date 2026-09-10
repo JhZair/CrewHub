@@ -1,8 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { equiposGordos, enManosAhora, cartelesEquipo, kitsCrudos, comprasCombo,
   cartelPorEquipo, quienTieneEquipo, contextoKits, repartoPorPieza, piezasMontadas,
-  un1, TOPE_EQUIPOS, fotosPorEquipo, sitiosTodos } from "@/lib/equipamientoDatos";
+  un1, TOPE_EQUIPOS, fotosPorEquipo, sitiosTodos, kitsGuardables } from "@/lib/equipamientoDatos";
 import { resolvedorDeGuardado, type Sitio } from "@/lib/sitios";
+import { kitsPorAnfitrion } from "@/lib/kits";
 import ChipPiezas from "@/components/ChipPiezas";
 import ChipFotos from "@/components/ChipFotos";
 import ChipGrupo from "@/components/ChipGrupo";
@@ -198,7 +199,7 @@ export default async function Equipamiento({ searchParams }: {
   /* Los kits y en qué kits está cada equipo: la misma función que usan la
      pestaña de combos y kits y el layout. La fila del inventario solo pinta
      sus nombres, pero quién está en qué kit no puede decidirse dos veces. */
-  const { kitsPorEq } = contextoKits(kitsRaw);
+  const { kitsPorEq, kits: losKits } = contextoKits(kitsRaw);
 
   /* Quién tiene cada equipo AHORA: la fila lo dice al lado del estado. */
   const quienTiene = quienTieneEquipo(manos);
@@ -239,6 +240,22 @@ export default async function Equipamiento({ searchParams }: {
      función que no ahorra nada. */
   const porIdEq = new Map<string, any>((eqs || []).map((x: any) => [x.id, x]));
 
+  /* ── CÓMO SE SUBE POR LA CADENA DE ENSAMBLADO ──
+     Lo necesita `kitsPorAnfitrion` para saber qué kit arrastra a una pieza
+     atornillada. Se define UNA vez y la usan las quinientas filas: la regla de
+     subir vive en `lib/kits` —donde se puede probar sola— y lo único que pone
+     esta pantalla es de dónde salen los datos.
+     El nombre va CON FOLIO —«A-052 Power Bank Xiaomi»— porque acaba dentro del
+     título del chip, y «va con el Power Bank» no dice cuál de los tres. */
+  const subeEq = (eqId: string) => {
+    const r = porIdEq.get(eqId);
+    if (!r) return null;
+    return {
+      dentroDe: r.ensamblado_en || null,
+      nombre: `${r.folio ? r.folio + " " : ""}${r.nombre || "sin nombre"}`,
+    };
+  };
+
   /* ── LAS PIEZAS MONTADAS DENTRO DE CADA EQUIPO ──
      El chip «🔩 N piezas» estaba en la entrega y en los kits, y faltaba justo
      donde más se busca: la lista del inventario. Buscas «soporte de pecho»,
@@ -269,8 +286,15 @@ export default async function Equipamiento({ searchParams }: {
      porque la comparten la ficha, los kits, los ensamblados y la vista por
      sitio: escrita cinco veces, la ficha diría «Cajón 08» y esta lista «Bolso
      Tenba» del mismo equipo, y las dos tendrían razón a medias. */
+  /* ⚠ Y LOS KITS DENTRO. Un equipo que sale en un kit está donde esté el kit,
+     y esa regla la aplica el resolvedor solo si se le pasan. Sin ellos, esta
+     lista diría «sin sitio» del mismo equipo que la pestaña de ensamblados
+     enseña en el Cajón 08 — que es exactamente el desacuerdo que el párrafo de
+     arriba dice que `lib/sitios` existe para impedir.
+     No cuesta una consulta: `kitsRaw` ya está pedido para los chips. */
   const dondeSeGuarda = resolvedorDeGuardado(
     ((sitiosQ as any)?.data || []) as Sitio[], (eqs || []) as any[],
+    kitsGuardables(losKits),
   );
 
   /* ⚠ `eqsConDueno` —el inventario entero con dueño, combo, kits y piezas—
@@ -514,6 +538,15 @@ export default async function Equipamiento({ searchParams }: {
     const guardado = dondeSeGuarda.de(x.id);
     const tieneSitio = guardado.ruta.some(t => t.tipo === "sitio")
       || guardado.bucle || guardado.roto;
+    /* ── LOS KITS QUE LE LLEGAN POR ESTAR MONTADA DENTRO DE OTRA COSA ──
+       Los tres cables «Cable carga súper rápida 45W» salían sin una palabra de
+       a dónde van: no están en ningún kit —quien está es el power bank que los
+       lleva atornillados— y aun así viajan con él. La fila decía «Ensamblado»
+       y ahí se acababa, justo delante de la pregunta que se hace mirándola: si
+       me llevo el kit, ¿esto viene?
+       Solo si es pieza: para todos los demás la llamada devolvería vacío, y
+       son cuatrocientas filas. La regla —y sus bucles— viven en `lib/kits`. */
+    const kitsPrestados = esPieza ? kitsPorAnfitrion(x.id, kitsPorEq, subeEq) : [];
     const anfitrion: Anfitrion | null = anf ? {
       id: anf.id, folio: anf.folio, nombre: anf.nombre || "sin nombre",
       estado: anf.estado, cartel: cartelPorEq.get(anf.id) || null,
@@ -616,7 +649,8 @@ export default async function Equipamiento({ searchParams }: {
                   único chip fuera el 📍 —sin fotos, sin piezas, sin kit y sin
                   combo— no pintaba la línea y el sitio desaparecía justo en las
                   filas más desnudas, que son las que más lo necesitan. */}
-              {(nFotos?.get(x.id) || piezasDe.get(x.id)?.length || esPieza || misKits.length || cb || tieneSitio) ? (
+              {(nFotos?.get(x.id) || piezasDe.get(x.id)?.length || esPieza || misKits.length
+                || kitsPrestados.length || cb || tieneSitio) ? (
                 <div className="chips-linea">
                   {/* Buscas «maleta», te salen ocho, y para saber cuál es cuál
                       había que abrir ocho fichas y volver ocho veces perdiendo
@@ -643,6 +677,19 @@ export default async function Equipamiento({ searchParams }: {
                   {misKits.map((k: any) => (
                     <ChipGrupo key={k.id} que="kit" id={k.id} nombre={k.nombre}
                       titulo={`Sale en el kit «${k.nombre}» — ver qué más va dentro`} />
+                  ))}
+                  {/* ── Y CON QUÉ SALE SIN ESTAR EN ÉL ──
+                      Distinto del de arriba a propósito, y esa diferencia es
+                      todo el punto: este cable NO es miembro del kit, así que
+                      no se le puede quitar desde el editor ni cuenta como una
+                      salida más al entregar. Lo que dice el chip es que va
+                      dentro de algo que sí es del kit — y por eso lleva la ↖ y
+                      el borde punteado, y por eso el título nombra a quien lo
+                      arrastra. Pintado igual que una pertenencia de verdad,
+                      esta línea estaría afirmando algo falso. */}
+                  {kitsPrestados.map(k => (
+                    <ChipGrupo key={`ha-${k.id}`} que="kit" id={k.id} nombre={k.nombre} porAnfitrion
+                      titulo={`Va con el kit «${k.nombre}» por estar montada en ${k.porNombre} — no es del kit: lo es su anfitrión. Ver qué más va dentro`} />
                   ))}
                   {cb && (
                     /* El total y la moneda van CRUDOS, no ya formateados: el

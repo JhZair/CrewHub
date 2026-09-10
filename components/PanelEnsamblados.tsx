@@ -12,7 +12,7 @@ import { soles } from "@/lib/compras";
 import { valorDeNodo, piezasDeNodo, type NodoEns, type SueltaEns } from "@/lib/ensamblados";
 import DondeSeGuarda, { type Contenedor } from "@/components/DondeSeGuarda";
 import ChipGrupo from "@/components/ChipGrupo";
-import type { Sitio } from "@/lib/sitios";
+import { textoDeRuta, type Sitio } from "@/lib/sitios";
 
 /* ══════════════════════════════════════════════════════════════════════════
    🔧 ENSAMBLADOS — DE QUÉ ESTÁ HECHA CADA COSA
@@ -158,6 +158,10 @@ export default function PanelEnsamblados({
 }) {
   const router = useRouter();
   const [filtro, setFiltro] = useState("");
+  /* Cómo se agrupan las tarjetas. Vive aquí y no en la URL a propósito: es una
+     forma de mirar, no un sitio al que volver, y en la URL competiría con el
+     `?q=` que ya usan los chips de sitio para traer aquí. */
+  const [agrupa, setAgrupa] = useState<"no" | "kit" | "sitio">("no");
   const [sel, setSel] = useState<Set<string>>(new Set());
   /** Id del anfitrión al que se van a montar piezas, o `"_nuevo"` para elegirlo
    *  dentro del pop-up. `null` = cerrado. */
@@ -202,11 +206,48 @@ export default function PanelEnsamblados({
     return ps.every(p => txt.includes(p));
   };
 
+  /* ── AGRUPAR: POR KIT, POR SITIO, O POR NADA ──
+     Cuarenta y cuatro tarjetas en una columna se leen una a una y no contestan
+     las dos preguntas que traen aquí: «¿qué va en el bolso del kit X?» y «¿qué
+     hay armado en el Cajón 08?». Agrupadas, las dos se contestan mirando.
+
+     Por KIT y no por kits: una tarjeta que sale en dos kits aparece UNA vez,
+     bajo el primero por nombre. Duplicarla haría que «44 ensamblados» dejara
+     de cuadrar con lo que se ve —el mismo motivo por el que los combos se
+     filtran por categoría en vez de agruparse—, y el chip de la fila sigue
+     diciendo los dos.
+
+     Lo que no tiene el dato va AL FINAL, igual que en los combos: «sin kit» y
+     «sin sitio» son la pila de pendientes, y encabezando la lista empujarían
+     fuera de pantalla justo lo que sí está en orden. */
+  const grupoDe = (r: NodoEns) => {
+    if (agrupa === "kit") {
+      const ks = [...(r.kits || [])].sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+      return ks.length ? `📦 ${ks[0].nombre}` : "";
+    }
+    if (agrupa === "sitio") {
+      const g = r.guardado;
+      if (!g || !g.ruta.length) return "";
+      return `📍 ${textoDeRuta(g.ruta)}`;
+    }
+    return "";
+  };
+  const SIN_GRUPO = agrupa === "kit" ? "— sin kit" : "— sin sitio anotado";
+
   const vistas = useMemo(() => {
     const ps = nrm(filtro).split(/\s+/).filter(Boolean);
-    if (!ps.length) return raices;
-    return raices.filter(r => casa(r, ps));
-  }, [raices, filtro]);
+    const base = ps.length ? raices.filter(r => casa(r, ps)) : raices;
+    if (agrupa === "no") return base;
+    /* Copia antes de ordenar: `raices` viene del servidor y `sort` muta en el
+       sitio — sin el `[...]`, cambiar de agrupación reordenaba también la
+       lista de «sin agrupar», que nadie pidió tocar. */
+    return [...base].sort((a, b) => {
+      const ga = grupoDe(a), gb = grupoDe(b);
+      if (!ga !== !gb) return ga ? -1 : 1;   // los sin dato, al final
+      const d = ga.localeCompare(gb, "es");
+      return d || (a.folio || "").localeCompare(b.folio || "", "es");
+    });
+  }, [raices, filtro, agrupa]);
 
   /* ⚠ Buscar ABRE, no pisa. Estuvo como `abierta = !!filtro || abiertos.has(id)`
      y era un atajo con tres consecuencias: el botón de plegar de cada tarjeta
@@ -304,6 +345,19 @@ export default function PanelEnsamblados({
           <span className="spacer" />
           <input className="ent-lote-inp" placeholder="Buscar por folio, nombre o categoría…"
             value={filtro} onChange={e => alFiltrar(e.target.value)} />
+          {/* Agrupar, al lado de buscar: son la misma operación —«enséñame
+              estos, así»— y en otra fila obliga a buscar el segundo control.
+              Es lo mismo que se hizo con el orden de los combos.
+              ⚠ Agrupa, NO filtra: las cuarenta y cuatro siguen estando: solo
+              cambian de orden y ganan encabezados. Si escondiera algo, el «44
+              ensamblados» del título dejaría de cuadrar con lo que se ve. */}
+          <select className="ent-select cbo-orden" value={agrupa}
+            title="Cómo se agrupan las tarjetas"
+            onChange={e => setAgrupa(e.target.value as any)}>
+            <option value="no">sin agrupar</option>
+            <option value="kit">📦 por kit</option>
+            <option value="sitio">📍 por sitio</option>
+          </select>
           {/* ⚠ Mira las que se VEN, no `abiertos.size`. Con el tamaño del
               conjunto, abrir UNA de cuarenta y cuatro ya ponía «cerrar todas»
               —y la acción que hace falta en ese momento es la contraria—; y
@@ -347,12 +401,32 @@ export default function PanelEnsamblados({
         )}
 
         <div className="ens-tarjetas">
-          {vistas.map(r => {
+          {vistas.map((r, i) => {
             const dentro = aplanar(r);
             const marcadasAqui = dentro.filter(p => sel.has(p.id));
             const abierta = abiertos.has(r.id);
+            /* El encabezado se decide COMPARANDO con la tarjeta anterior, no
+               partiendo la lista en sublistas. Así el `.ens-tarjetas` sigue
+               siendo un solo contenedor —su rejilla y su espaciado no cambian—
+               y «sin agrupar» pinta exactamente lo de siempre, sin una capa de
+               `<div>` que no hace nada. */
+            const g = agrupa === "no" ? "" : (grupoDe(r) || SIN_GRUPO);
+            const gAnterior = agrupa === "no" || i === 0
+              ? null : (grupoDe(vistas[i - 1]) || SIN_GRUPO);
+            const cabecera = agrupa !== "no" && g !== gAnterior;
+            const cuantos = cabecera
+              ? vistas.filter(x => (grupoDe(x) || SIN_GRUPO) === g).length : 0;
             return (
-              <div key={r.id} className={`ens-tarjeta${abierta ? " abierta" : ""}`}>
+              <Fragment key={r.id}>
+              {cabecera && (
+                <div className="ens-grupo-h">
+                  <span>{g}</span>
+                  {/* El número, porque un encabezado sin él obliga a contar
+                      tarjetas para saber si el kit está entero. */}
+                  <span className="ens-grupo-n">{cuantos}</span>
+                </div>
+              )}
+              <div className={`ens-tarjeta${abierta ? " abierta" : ""}`}>
                 <div className="ens-titulo">
                   {/* Un BOTÓN de verdad y no un `div` con `onClick`: se enfoca
                       con el Tab, se activa con Enter y dice si está abierto.
@@ -427,8 +501,27 @@ export default function PanelEnsamblados({
                       El chip abre y enseña qué más va en ese kit. */}
                   {(r.kits || []).map(k => (
                     <ChipGrupo key={k.id} que="kit" id={k.id} nombre={k.nombre}
-                      titulo={`Sale en el kit «${k.nombre}» — ver qué más va dentro y dónde se guarda`} />
+                      titulo={k.sinSitio
+                        ? `El kit «${k.nombre}» no tiene sitio anotado, así que esto tampoco lo tiene. Se arregla en el kit — ver qué más va dentro`
+                        : `Sale en el kit «${k.nombre}» — ver qué más va dentro y dónde se guarda`} />
                   ))}
+                  {/* ── DÓNDE ESTÁ EL HUECO DE VERDAD ──
+                      ⚠ Antes esto decía «sin sitio anotado · anotar» cuarenta y
+                      cuatro veces, y el botón invitaba a resolverlo aquí. Pero
+                      un equipo que sale en un kit está donde esté el kit:
+                      anotarle un cajón propio no lo mueve, lo DESENGANCHA —deja
+                      dos respuestas para la misma pregunta y a la vuelta medio
+                      kit repartido en dos sitios—. `resolvedorDeGuardado` ya no
+                      lo permite: con kits, el kit manda, y por eso el control
+                      de arriba sale sin botón.
+                      Lo que queda por decir es a dónde ir, y es lo único que
+                      esta línea hace. Sin ella el renglón sería un dato en gris
+                      sin salida, que es como se lee una pantalla rota. */}
+                  {(r.kits || []).some(k => k.sinSitio) && (
+                    <span className="ens-sinsitio">
+                      su kit tampoco lo tiene — anótalo ahí
+                    </span>
+                  )}
                 </div>
 
                 {abierta && (
@@ -451,6 +544,7 @@ export default function PanelEnsamblados({
                   </div>
                 )}
               </div>
+              </Fragment>
             );
           })}
         </div>
