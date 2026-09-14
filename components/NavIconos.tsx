@@ -78,6 +78,11 @@ const DESTINOS: Destino[] = [
   { ruta: "/llaves", ico: "🔑", txt: "llaves", grupo: "dia" },
   { ruta: "/etiquetas", ico: "🏷️", txt: "etiquetas", grupo: "dia" },
   { ruta: "/casilla", ico: "📬", txt: "casilla DAFO", grupo: "dia" },
+  /* Al lado de la casilla a propósito: las dos son «lo que dice DAFO». Esta
+     pantalla no se puede alcanzar desde ninguna ficha —cruza TODAS las
+     convocatorias, así que no pertenece a ninguna— y sin puerta propia
+     sencillamente no existiría. */
+  { ruta: "/rivales", ico: "🏁", txt: "la competencia", grupo: "dia" },
 ];
 
 const estaEn = (d: Destino, p: string) => d.activo ? d.activo(p) : p === d.ruta;

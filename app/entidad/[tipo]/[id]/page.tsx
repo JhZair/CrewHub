@@ -73,6 +73,7 @@ import { previewCandidates } from "@/lib/drive";
 import Materiales from "@/components/Materiales";
 import LineaTiempo from "@/components/LineaTiempo";
 import CronogramaProyecto from "@/components/CronogramaProyecto";
+import Competencia from "@/components/Competencia";
 import CronogramaPostulacion from "@/components/CronogramaPostulacion";
 import Presupuesto from "@/components/Presupuesto";
 import CredencialesRef from "@/components/CredencialesRef";
@@ -110,6 +111,7 @@ import PiezasKit from "@/components/PiezasKit";
 import GaleriaFotos from "@/components/GaleriaFotos";
 import Ensamblado from "@/components/Ensamblado";
 import ComboDelEquipo from "@/components/ComboDelEquipo";
+import { historialDeConvocatoria, todaLaCompetencia, type ConvRival } from "@/lib/rivales";
 
 /* PERFIL DE ENTIDAD VIVA — dos columnas:
    izquierda = el carné (datos estáticos, relaciones, credenciales)
@@ -1009,8 +1011,15 @@ export default async function Entidad({ params, searchParams }: {
     }));
   }
   let postus: any[] = [], proyectosCat: any[] = [], empresasCat: any[] = [], cartelesProy: Record<string, string> = {}, logosEmp: Record<string, string> = {};
+  let competencia: any[] = [];
+  /* Todas NUESTRAS empresas, para reconocernos en la lista de competidores
+     aunque la postulación de este concurso no esté cargada todavía. */
+  let empresasNuestras: any[] = [];
+  /* El historial de cada rival: cuántas veces se ha presentado antes y hasta
+     dónde llegó. Se calcula aquí, no en la pantalla (ver más abajo). */
+  let histComp: Record<string, any> = {};
   if (params.tipo === "convocatoria") {
-    const [ca, pf, po, pr, em, mm] = await Promise.all([
+    const [ca, pf, po, pr, em, mm, cp] = await Promise.all([
       supabase.from("cronograma_actividades")
         /* Ídem para el cronograma de una convocatoria. */
         .select("*, resp:perfiles!responsable(nombre), " +
@@ -1021,19 +1030,50 @@ export default async function Entidad({ params, searchParams }: {
       /* Cada postulación con su proyecto, la empresa que la presentó y su
          equipo —para dar contexto en la pestaña sin entrar a cada una. */
       supabase.from("postulaciones")
-        .select("*, proy:proyectos(id,nombre), emp:empresas(id,nombre,codigo), equipo:postulacion_equipo(cargo,persona:personas(id,nombre,alias,foto_url))")
+        /* El `ruc` de la empresa es lo que permite reconocer NUESTRA fila dentro
+           de la lista de competidores, que se identifican por RUC. */
+        .select("*, proy:proyectos(id,nombre), emp:empresas(id,nombre,codigo,ruc,razon_social), equipo:postulacion_equipo(cargo,persona:personas(id,nombre,alias,foto_url))")
         .eq("convocatoria_id", params.id).order("creado_en"),
       supabase.from("proyectos").select("id,nombre").order("nombre"),
-      supabase.from("empresas").select("id,nombre,codigo").order("codigo"),
+      /* Con su RUC: es lo que permite reconocer cuáles de los competidores
+         somos nosotros aunque el nombre esté escrito de otra manera.
+         ⚠ Y con la RAZÓN SOCIAL, que es el dato que casa de verdad: en el
+         sistema `nombre` es el nombre corto de trabajo —«PukllaychaF»— y el
+         que sale en las resoluciones es el legal, «PUKLLAYCHA FILMS E.I.R.L.».
+         Comparando solo contra `nombre` nuestras propias empresas se quedaban
+         sin marcar en su propia lista de rivales. */
+      supabase.from("empresas").select("id,nombre,codigo,ruc,razon_social").order("codigo"),
       // Pósters (cartel) de proyecto Y logo de empresa, para ponerle cara a cada
       // postulación y a la empresa que la presenta.
       supabase.from("entidad_media").select("entidad_id,entidad_tipo,cartel_url").in("entidad_tipo", ["proyecto", "empresa"]),
+      /* Los otros postulantes del concurso, leídos de las listas que publica
+         DAFO. No son entidades del sistema: ver db/competencia.sql. */
+      supabase.from("convocatoria_competencia").select("*")
+        .eq("convocatoria_id", params.id).order("empresa"),
     ]);
     cronoActs = ca.data || [];
+    competencia = cp.data || [];
     perfilesCat = pf.data || [];
     postus = po.data || [];
     proyectosCat = pr.data || [];
     empresasCat = (em.data || []).map((x: any) => ({ id: x.id, nombre: x.codigo ? `${x.codigo} · ${x.nombre}` : x.nombre }));
+    empresasNuestras = (em.data || []) as any[];
+    /* ── ⚠ EL HISTORIAL SE PIDE APARTE, Y A PROPÓSITO ──
+       La pregunta «¿este rival es nuevo o lleva cuatro años intentándolo?» se
+       hace justo aquí, mirando la lista de este concurso, y mandar a la gente a
+       otra pantalla a buscarlo es perder el hilo. Pero para contestarla hacen
+       falta TODAS las convocatorias, no solo esta: por eso una segunda consulta
+       —solo las columnas que hacen falta para agrupar— y el mismo
+       `agrupaRivales` que usa la matriz de /rivales. Si aquí saliera «3ª vez» y
+       allí «2ª», una de las dos pantallas estaría mintiendo. */
+    if ((cp.data || []).length) {
+      const { filas: todas } = await todaLaCompetencia(supabase,
+        "id,convocatoria_id,ruc,empresa,region,etapa,categoria,modalidad,titulo,personas,monto,fuente");
+      const { data: convsTodas } = await supabase.from("convocatorias").select("id,codigo,nombre,anio");
+      histComp = historialDeConvocatoria(todas,
+        new Map<string, ConvRival>(((convsTodas || []) as ConvRival[]).map(c => [c.id, c])),
+        params.id);
+    }
     (mm.data || []).forEach((m: any) => {
       if (!m.cartel_url) return;
       if (m.entidad_tipo === "proyecto") cartelesProy[m.entidad_id] = m.cartel_url;
@@ -5240,7 +5280,10 @@ export default async function Entidad({ params, searchParams }: {
                 {cronoDeFondos}
                 <CronogramaProyecto key="crono" dueno={params.tipo as "proyecto" | "convocatoria"}
                   duenoId={params.id} actividades={cronoActs} perfiles={perfilesCat}
-                  plantillas={plantillas} tipoProyecto={ent.tipo || ""} />
+                  plantillas={plantillas} tipoProyecto={ent.tipo || ""}
+                  /* Para proponer qué modalidad del PDF de las bases es esta
+                     convocatoria. En un proyecto no se usa. */
+                  nombreDueno={nombre || ""} />
               </>
             );
 
@@ -5496,6 +5539,34 @@ export default async function Entidad({ params, searchParams }: {
             const histConv = eventosVis.length > 0 ? histInner : (
               <div className="empty" style={{ padding: "18px 0" }}>Sin actividad registrada todavía.</div>
             );
+            /* Contra quién competimos: la otra cara de «a qué nos presentamos»,
+               y por eso justo detrás de las postulaciones. */
+            const compConv = (
+              <Competencia convocatoriaId={params.id} nombre={nombre || ""}
+                /* Su año, para que el cargador avise si el PDF es de otra
+                   edición: el error que no se nota (ver `otroAnio`). */
+                anio={(ent as any)?.anio ?? null}
+                filas={competencia}
+                /* De las dos fuentes: las empresas con las que postulamos AQUÍ
+                   y, por si esa postulación no está cargada, todas las
+                   nuestras. Una empresa del sistema es nuestra en cualquier
+                   concurso. */
+                rucsPropios={[...postus.map((p: any) => p.emp?.ruc),
+                  ...empresasNuestras.map((e: any) => e.ruc)].filter(Boolean)}
+                /* Los DOS nombres de cada una —el corto de trabajo y la razón
+                   social— porque el documento usa el legal y el sistema el
+                   otro, y cualquiera de los dos puede ser el que case. */
+                empresasPropias={[...postus.map((p: any) => p.emp?.nombre),
+                  ...postus.map((p: any) => p.emp?.razon_social),
+                  ...empresasNuestras.map((e: any) => e.nombre),
+                  ...empresasNuestras.map((e: any) => e.razon_social)].filter(Boolean)}
+                /* Y los proyectos con los que postulamos AQUÍ: cuando el
+                   nombre de la empresa no casa por lo que sea, el título del
+                   proyecto sí, y en esta lista un título repetido no es
+                   casualidad. */
+                proyectosPropios={postus.map((p: any) => p.proy?.nombre).filter(Boolean)}
+                historial={histComp} />
+            );
             /* Postulaciones primero: en una convocatoria, lo que se viene a ver
                es a qué presentamos. Luego el cronograma del concurso, y después
                el trabajo/repositorio/historial. */
@@ -5503,13 +5574,14 @@ export default async function Entidad({ params, searchParams }: {
               <TabsPanel extra={driveTab} masUltima
                 labels={[
                   `🎯 Postulaciones · ${postus.length}`,
+                  `🏁 Competencia · ${competencia.length}`,
                   etiquetaCrono,
                   `📋 Casos · ${activas.length}`,
                   `📚 Repositorio · ${objetosDe.length}`,
                   `🕐 Historial · ${totEventos}`,
                 ]}
-                paneles={[postusConv, cronoNode, trabajoNode, repoConv, histConv]}
-                iconoSolo={[4]}
+                paneles={[postusConv, compConv, cronoNode, trabajoNode, repoConv, histConv]}
+                iconoSolo={[5]}
               />
             );
           })()}

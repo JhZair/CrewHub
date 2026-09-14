@@ -19,6 +19,7 @@ import VistaRapida from "@/components/VistaRapida";
 import FechaMini from "@/components/FechaMini";
 import { sinBot } from "@/lib/personas";
 import { type Etapa, ETAPAS_CINE, nombreEtapa } from "@/lib/etapas";
+import CargarBasesCrono from "@/components/CargarBasesCrono";
 import { DIAS_AVISO_DEF } from "@/lib/plazo";
 import { opcionesResp } from "@/lib/personas";
 import { repartirCasos, resumenCasos, casoCerrado, type CasoMin } from "@/lib/casosActividad";
@@ -176,8 +177,12 @@ function FormAct({ f, setF, perfiles, etapas, onSave, onCancel, ocupado, editar 
   );
 }
 
-export default function CronogramaProyecto({ dueno = "proyecto", duenoId, actividades, perfiles, plantillas = [], tipoProyecto = "", etapas = ETAPAS_CINE, limite, limiteNombre, puedeCorrer = false }: {
+export default function CronogramaProyecto({ dueno = "proyecto", duenoId, actividades, perfiles, plantillas = [], tipoProyecto = "", etapas = ETAPAS_CINE, limite, limiteNombre, puedeCorrer = false, nombreDueno = "" }: {
   dueno?: "proyecto" | "convocatoria" | "postulacion";
+  /** Cómo se llama la convocatoria. Solo lo usa «cargar de las bases», para
+   *  proponer qué modalidad del PDF es la suya. Vacío = no propone ninguna y
+   *  hay que marcarla a mano, que funciona igual. */
+  nombreDueno?: string;
   duenoId: string;
   actividades: any[];
   /* ── EL PLAZO, PARA «CORRER FECHAS» ──
@@ -242,7 +247,7 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
   const [ef, setEf] = useState<Campos>(VACIO);
   // Plantillas: el panel se declara aquí y no junto a sus funciones porque el
   // Escape de más abajo lo lee, y un `const` no existe antes de su línea.
-  const [panel, setPanel] = useState<"" | "guardar" | "aplicar" | "correr">("");
+  const [panel, setPanel] = useState<"" | "guardar" | "aplicar" | "correr" | "bases">("");
   const [nomPl, setNomPl] = useState("");
   const [plSel, setPlSel] = useState("");
   const [desde, setDesde] = useState("");
@@ -633,6 +638,19 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
             title="Guardar este cronograma para reusarlo en el próximo proyecto"
             onClick={() => setPanel("guardar")}>📋 Guardar como plantilla</button>
         )}
+        {/* ── LEER EL CRONOGRAMA DE LAS BASES ──
+            Solo en una CONVOCATORIA: el PDF de las bases es suyo, y un proyecto
+            o una postulación no tienen ninguno que subir.
+            Y con el cronograma lleno también, al revés que «Usar plantilla»:
+            una plantilla vuelca un cronograma entero y duplicaría lo que ya
+            está, pero de las bases se cargan hitos sueltos —lo normal es haber
+            anotado el cierre a mano y querer las otras diecinueve fechas—. Lo
+            que ya vino de las bases no se repite: lo comprueba el servidor. */}
+        {dueno === "convocatoria" && !panel && (
+          <button className="btn btn-ghost" style={{ padding: "5px 12px", fontSize: 12, color: "var(--accent)" }}
+            title="Subir el PDF de las bases y sacar de ahí las fechas del concurso"
+            onClick={() => setPanel("bases")}>📄 Cargar de las bases</button>
+        )}
         {/* ── CORRER, SOLO EN UN FONDO ──
             Correr las fechas sella una versión del cronograma, y las versiones
             (`version_fondo`) cuelgan de una POSTULACIÓN. En un proyecto o una
@@ -674,6 +692,11 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
           <button className="btn btn-ghost" style={{ padding: "7px 10px", fontSize: 12 }}
             onClick={() => setPanel("")}>Cancelar</button>
         </div>
+      )}
+
+      {panel === "bases" && (
+        <CargarBasesCrono convocatoriaId={duenoId} nombre={nombreDueno}
+          onCerrar={() => setPanel("")} />
       )}
 
       {panel === "aplicar" && (

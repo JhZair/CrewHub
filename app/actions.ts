@@ -66,6 +66,9 @@ import { estadoPorCasos } from "@/lib/casosActividad";
 import { esSituacion } from "@/lib/situacionReparto";
 import { TOPE_API, techo } from "@/lib/api";
 import { esUuid } from "@/lib/texto";
+import { leerCronogramaBases } from "@/lib/cronogramaBases";
+import { leerResolucionDafo, leerCabecera, filasDeCeldas, type FilaRes, type EtapaRes } from "@/lib/resolucionDafo";
+import { armarTablas, type Trozo } from "@/lib/tablaPdf";
 
 /* Crear o actualizar una entidad núcleo (proyecto/empresa/persona).
    La config compartida actúa como whitelist de tabla y campos. */
@@ -6145,7 +6148,17 @@ export async function quitarEquipoProyecto(id: string, proyectoId: string) {
  *
  * Solo hace el UPDATE: el trigger `registrar_evento_estado` (db/schema.sql) ya
  * escribe el cambio en el historial con el actor, como en los casos. */
-const ESTADOS_POST = ["en_preparacion", "enviada", "en_subsanacion", "apta", "no_apta", "finalista", "ganadora", "finalista_no_ganadora"];
+/* ⚠ LA LISTA BLANCA TIENE QUE TENER LOS DIEZ, NO OCHO.
+   Faltaban `no_seleccionada` y `retirada`, y faltaban en silencio: nada los
+   ofrecía desde la pantalla, así que la validación nunca se ejecutaba sobre
+   ellos y el hueco no se veía. El día que el stepper estrenara la salida «No
+   la eligieron» —hoy—, el botón habría existido, se habría pulsado, y el
+   servidor habría contestado «Estado no válido»: un fallo nuevo estrenado por
+   un cambio de una línea en otro archivo.
+   Los diez son los de `db/schema.sql` y los del selector de la convocatoria
+   (components/Postulaciones). Si se separan otra vez, la pantalla ofrece algo
+   que el servidor rechaza — y el rechazo llega después del clic. */
+const ESTADOS_POST = ["en_preparacion", "enviada", "en_subsanacion", "apta", "no_apta", "finalista", "ganadora", "finalista_no_ganadora", "no_seleccionada", "retirada"];
 export async function cambiarEstadoPostulacion(id: string, estado: string) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -7536,6 +7549,506 @@ export async function materializarActividad(actId: string, dueno: string, duenoI
   }
   revalidatePath(`/entidad/${dueno}/${duenoId}`);
   revalidatePath("/");
+  return {};
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   📄 EL CRONOGRAMA, LEÍDO DE LAS BASES
+
+   Toda convocatoria DAFO trae su cronograma en el PDF de las bases, y hasta hoy
+   se copiaba a mano: veinte filas, fecha por fecha. Son las fechas de las que
+   cuelga todo lo demás —el aviso de cierre, la cuenta atrás de finalistas, el
+   «sigue: Declaración de ganadores» de cada postulación—, así que una tecleada
+   mal no se nota hasta que la cuenta atrás dice otra cosa que el papel.
+
+   ── DOS ACCIONES Y NO UNA, A PROPÓSITO ──
+   `leerBasesDePdf` LEE y no escribe nada. `cargarCronogramaDeBases` escribe lo
+   que la persona confirmó. Entre las dos va la pantalla, y esa separación es
+   lo único que impide el error grave de esta tabla: las bases traen un bloque
+   por MODALIDAD —Desarrollo, Producción Nacional, Regiones— con las mismas
+   cuatro filas y fechas distintas, y una convocatoria de aquí es UNA modalidad.
+   Cargando a ciegas, C-060 «Producción Largo Regiones» se llevaría también la
+   declaración de beneficiarios de Desarrollo y tendría tres fechas
+   contradictorias sin nada que señalara cuál sobra.
+
+   La regla de lectura entera vive en `lib/cronogramaBases`, sin PDF ni base de
+   datos, y se prueba contra el texto real de unas bases. Aquí solo se saca el
+   texto del archivo y se guarda lo confirmado.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** Tope del archivo. Unas bases son ~1,5 MB; 20 deja sitio de sobra para un
+ *  escaneo pesado sin dejar que alguien suba un vídeo por equivocación. */
+const TOPE_PDF = 20 * 1024 * 1024;
+
+/**
+ * El texto de un PDF subido, o el motivo por el que no se pudo sacar dicho de
+ * forma que se entienda sin saber qué es un PDF.
+ * @param que cómo llamar al archivo en los mensajes («el PDF de las bases»).
+ */
+async function textoDePdf(f: unknown, que: string, conTrozos = false):
+  Promise<{ texto: string; trozos?: Trozo[][] } | { error: string }> {
+  if (!(f instanceof File) || !f.size) return { error: "No llegó ningún archivo." };
+  if (f.size > TOPE_PDF) {
+    return { error: `El archivo pesa ${(f.size / 1048576).toFixed(1)} MB y el tope son 20. ¿Seguro que es ${que}?` };
+  }
+  let texto = "";
+  let trozos: Trozo[][] | undefined;
+  try {
+    /* Importación DINÁMICA y dentro del try. `pdf-parse` arrastra pdfjs, que
+       es pesado y solo hace falta cuando alguien sube un PDF: arriba del
+       archivo lo cargaría en cada petición de todo el sistema, porque
+       `app/actions.ts` lo importa media aplicación. */
+    const { PDFParse } = await import("pdf-parse");
+    const p = new PDFParse({ data: new Uint8Array(await f.arrayBuffer()) });
+    try {
+      texto = (await p.getText()).text || "";
+      /* Y los trozos CON SU POSICIÓN, para poder leer la tabla por columnas.
+         `load()` devuelve el documento de pdfjs que hay debajo, y de ahí sale
+         `getTextContent()`, que es lo único que conserva las coordenadas. */
+      if (conTrozos) {
+        /* ⚠ `load()` está marcado como privado en los tipos de `pdf-parse`
+           aunque funciona: es el único acceso al documento de pdfjs, que es
+           quien tiene las coordenadas. Si un día lo quitan de verdad, esto
+           lanza, el `catch` de arriba lo recoge y se lee por texto. */
+        const doc: any = await (p as any).load();
+        trozos = [];
+        for (let n = 1; n <= doc.numPages; n++) {
+          const tc = await (await doc.getPage(n)).getTextContent();
+          trozos.push(tc.items
+            .filter((i: any) => typeof i.str === "string" && i.str.trim())
+            /* ⚠ SIN REDONDEAR. Las coordenadas venían a entero y parecía
+               inofensivo: son puntos de papel. Pero el lector distingue una
+               fila de la siguiente por DÉCIMAS —el hueco dentro de una fila y
+               el hueco entre dos miden trece puntos los dos, y solo se
+               diferencian en la parte decimal—, y al redondear las dos medidas
+               se vuelven iguales: en el fallo de 2023 una beneficiaria salía
+               con media razón social y sin proyecto, sin ningún aviso. Las
+               líneas se agrupan por cercanía dentro del lector (`alineaY`),
+               que es donde se puede hacer sin perder la medida. */
+            .map((i: any) => ({
+              x: i.transform[4], y: i.transform[5],
+              w: i.width || 0, s: i.str.trim(),
+            })));
+        }
+      }
+    } finally { await p.destroy(); }
+  } catch (e: any) {
+    return { error: `No se pudo abrir el PDF: ${e?.message || "archivo ilegible"}` };
+  }
+  /* ⚠ Un PDF ESCANEADO no da error: da cero texto. Sin este aviso, la pantalla
+     diría «no encontré ninguna tabla» —igual que ante un documento que no la
+     trae— y nadie sabría que el problema es que el archivo son fotos y que la
+     salida es pedir el PDF bueno, no revisar nada. */
+  if (texto.replace(/\s/g, "").length < 200) {
+    return { error: "El PDF no tiene texto: parece un escaneo (páginas como imagen). Hace falta el PDF original de DAFO, del que se puede copiar y pegar." };
+  }
+  return { texto, trozos };
+}
+
+export async function leerBasesDePdf(fd: FormData) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  const r = await textoDePdf(fd.get("pdf"), "el PDF de las bases");
+  if ("error" in r) return r;
+
+  const { bloques, sinLeer } = leerCronogramaBases(r.texto);
+  if (!bloques.length) {
+    return { error: "El PDF tiene texto, pero no encontré la sección «CRONOGRAMA DEL CONCURSO» con su tabla de fechas. Comprueba que sean las bases completas." };
+  }
+  return { bloques, sinLeer };
+}
+
+export async function cargarCronogramaDeBases(
+  convocatoriaId: string,
+  filas: { nombre: string; ini: string; fin: string | null }[],
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!esUuid(convocatoriaId)) return { error: "Convocatoria no válida." };
+  const buenas = (filas || []).filter(f => f?.nombre?.trim() && /^\d{4}-\d{2}-\d{2}$/.test(String(f.ini)));
+  if (!buenas.length) return { error: "No marcaste ninguna fecha." };
+
+  /* ── NO DUPLICAR AL VOLVER A SUBIR EL MISMO PDF ──
+     Subir dos veces es lo más normal del mundo —se corrige la modalidad, se
+     recarga tras una fe de erratas— y sin esto la segunda vez deja el
+     cronograma con cada hito repetido. Se comparan por NOMBRE contra lo que ya
+     vino de las bases: lo que la persona escribió a mano no cuenta como
+     duplicado, porque puede llamarse igual queriendo decir otra cosa. */
+  const { data: yaHay } = await supabase.from("cronograma_actividades")
+    .select("nombre").eq("convocatoria_id", convocatoriaId).eq("fuente", "bases_concurso");
+  const conocidos = new Set((yaHay || []).map((a: any) => String(a.nombre || "").trim().toLowerCase()));
+  const nuevas = buenas.filter(f => !conocidos.has(f.nombre.trim().toLowerCase()));
+  if (!nuevas.length) {
+    return { error: "Esas fechas ya estaban cargadas de las bases. Si cambiaron, bórralas del cronograma y vuelve a subir el PDF." };
+  }
+
+  const { error } = await supabase.from("cronograma_actividades").insert(
+    nuevas.map((f, i) => ({
+      convocatoria_id: convocatoriaId,
+      nombre: f.nombre.slice(0, 200),
+      /* `administracion`: es la etapa donde vive el trámite de un concurso, la
+         misma en la que ya cae «Cierre de postulación». */
+      etapa: "administracion",
+      fecha_inicio: f.ini,
+      /* Solo si hay tramo Y no va al revés. «Hasta el 30 de abril» es un tope,
+         no una ventana, y llega con `fin` nulo desde el parser. */
+      fecha_fin: f.fin && f.fin >= f.ini ? f.fin : null,
+      /* Los dos campos que el esquema reservó para esto desde el principio:
+         `hito_externo` = fecha fijada por el Ministerio —genera aviso con
+         cuenta atrás, no tarea— y `fuente` dice de dónde salió, que es lo que
+         permite reconocerlas al recargar y no duplicarlas. */
+      clase: "hito_externo",
+      fuente: "bases_concurso",
+      orden: (i + 1) * 10,
+    })),
+  );
+  if (error) return { error: error.message };
+
+  revalidatePath(`/entidad/convocatoria/${convocatoriaId}`);
+  revalidatePath("/postulaciones");
+  return { creadas: nuevas.length, repetidas: buenas.length - nuevas.length };
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   🏁 CON QUIÉN SE COMPITE, LEÍDO DE LAS LISTAS DE DAFO
+
+   Mismo reparto que el cronograma de las bases: `leerCompetenciaDeDafo` LEE y
+   no escribe, `cargarCompetencia` guarda lo que la persona confirmó, y entre
+   las dos va la pantalla. Aquí la separación pesa más todavía, porque estas
+   tablas vienen de un PDF SIN COLUMNAS: `lib/resolucionDafo` acierta la empresa
+   y su RUC en las 476 filas de los doce documentos de prueba, pero en cuarenta
+   avisa de que algo no pudo asegurar. Cargar a ciegas metería esas cuarenta sin
+   que nadie las viera; enseñándolas, se arreglan en veinte segundos.
+
+   El porqué de la tabla —y de que estos NO sean empresas ni proyectos del
+   sistema— está en `db/competencia.sql`.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+export async function leerCompetenciaDeDafo(fd: FormData) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  const r = await textoDePdf(fd.get("pdf"), "una lista de DAFO", true);
+  if ("error" in r) return r;
+
+  /* ── PRIMERO POR COLUMNAS ──
+     Si se puede leer la tabla por donde está pintada, se lee así: el título del
+     proyecto sale separado del nombre de su director porque son dos columnas
+     distintas, y no porque hayamos acertado dónde cortar. Solo si no hay tabla
+     reconocible se pasa al lector de texto, que reconstruye lo que puede. */
+  const cabecera = leerCabecera(r.texto);
+  let filas: FilaRes[] = [];
+  let sinLeer: string[] = [];
+  let notas: string[] = [];
+  let porColumnas = false;
+  /* ⚠ TODAS las tablas del documento, no la primera ni la más grande. Una
+     resolución trae más de una y no siempre iguales: el fallo pone las
+     beneficiarias y debajo la lista de espera —que además lleva columna de N°—,
+     y una relación trae una tabla por modalidad. Cada una se lee con sus propias
+     columnas y aquí se juntan en una sola lista, en el orden del papel. */
+  const tablas = r.trozos ? armarTablas(r.trozos) : [];
+  if (tablas.length && cabecera.etapa) {
+    filas = tablas.flatMap(t => filasDeCeldas(t.rotulos, t.filas, cabecera));
+    porColumnas = filas.length > 0;
+  }
+  if (!porColumnas) {
+    const t = leerResolucionDafo(r.texto);
+    filas = t.filas; sinLeer = t.sinLeer; notas = t.notas;
+  }
+  if (!cabecera.etapa) {
+    return { error: "Este PDF no parece una de las listas de DAFO. Se reconocen cuatro: la relación de postulaciones recibidas, la resolución de aptas, la de finalistas y el fallo de beneficiarias." };
+  }
+  if (!filas.length) {
+    return { error: `Se reconoció el documento (${ETAPA_TXT_ACC[cabecera.etapa]}) pero no se pudo leer ninguna fila de su tabla. Puede que DAFO haya cambiado el formato: avisa con el PDF a mano.` };
+  }
+  return { cabecera, filas, sinLeer, notas, porColumnas };
+}
+
+/* El orden del embudo, para que una etapa no retroceda. */
+const ORDEN_ETAPA: Record<string, number> = {
+  recibida: 1, apta: 2, finalista: 3, beneficiaria: 4,
+};
+const ETAPA_TXT_ACC: Record<string, string> = {
+  recibida: "relación de recibidas", apta: "resolución de aptas",
+  finalista: "resolución de finalistas", beneficiaria: "fallo de beneficiarias",
+};
+
+/** La misma clave que usan los dos índices únicos de la tabla. */
+const claveComp = (ruc: string | null, empresa: string) =>
+  ruc ? `r:${ruc}` : `n:${empresa.trim().toLowerCase()}`;
+
+export async function cargarCompetencia(
+  convocatoriaId: string,
+  filas: (Pick<FilaRes, "empresa" | "ruc" | "region" | "titulo" | "categoria" | "modalidad" | "monto" | "avisos" | "crudo" | "personas"> & { etapa: EtapaRes; n?: number | null })[],
+  fuente: string,
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!esUuid(convocatoriaId)) return { error: "Convocatoria no válida." };
+  const buenas = (filas || []).filter(f => f?.empresa?.trim() && ORDEN_ETAPA[f.etapa]);
+  if (!buenas.length) return { error: "No marcaste ninguna fila." };
+
+  const { data: yaHay, error: eLee } = await supabase.from("convocatoria_competencia")
+    .select("id,ruc,empresa,etapa,titulo,personas,avisos,modalidad,categoria").eq("convocatoria_id", convocatoriaId);
+  if (eLee) return { error: eLee.message };
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     UNA MODALIDAD ESCRITA DE DOS MANERAS SIGUE SIENDO UNA
+
+     Los filtros de la pestaña salen de lo que hay guardado, así que dos grafías
+     del mismo texto se convierten en dos botones: «Producción de Documental ·
+     41» y «Producción de documental · 1». Y no es un defecto de la lectura —lo
+     que dice cada documento es lo que se guarda—: es que el Ministerio escribe
+     la misma modalidad en minúscula en una resolución y con mayúscula en la
+     siguiente, y a veces el PDF le parte una letra («Producció n»).
+
+     El filtro partido es peor que feo: dice que en el concurso hubo dos
+     modalidades cuando hubo una, y quien filtre por la de 41 se pierde a un
+     competidor sin enterarse.
+
+     Se unifica por una LLAVE —sin tildes, sin mayúsculas, sin letras sueltas— y
+     gana la grafía que más veces aparece. Se arreglan también las filas ya
+     guardadas, aunque esta carga no las toque: es lo mismo que hace el título
+     limpio con el sucio, cada documento aporta lo que sabe.
+     ⚠ La llave es solo para comparar. Lo que se guarda es siempre una grafía
+     que el documento escribió de verdad, nunca una inventada por mí.
+     ══════════════════════════════════════════════════════════════════════════ */
+  const claveTxt = (m: string | null | undefined) => (m || "")
+    .normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
+    /* «producció n» → «produccion»: la letra suelta que dejó el PDF. */
+    .replace(/\b([a-z]{2,}) ([b-df-hj-np-tv-xz])\b/g, "$1$2")
+    .replace(/[^a-z0-9]+/g, " ").trim();
+
+  const canonDe = (campo: "modalidad" | "categoria") => {
+    const cuenta = new Map<string, Map<string, number>>();
+    const anota = (v: string | null | undefined) => {
+      const t = (v || "").trim();
+      if (!t) return;
+      const k = claveTxt(t);
+      if (!k) return;
+      if (!cuenta.has(k)) cuenta.set(k, new Map());
+      const m = cuenta.get(k)!;
+      m.set(t, (m.get(t) || 0) + 1);
+    };
+    (yaHay || []).forEach((y: any) => anota(y[campo]));
+    buenas.forEach(f => anota((f as any)[campo]));
+    const out = new Map<string, string>();
+    cuenta.forEach((grafias, k) => {
+      /* La más repetida; a igualdad, la más larga —que suele ser la entera— y
+         luego alfabética, para que el resultado no dependa del orden de carga. */
+      const mejor = [...grafias.entries()].sort((a, b) =>
+        b[1] - a[1] || b[0].length - a[0].length || a[0].localeCompare(b[0]))[0][0];
+      out.set(k, mejor);
+    });
+    return out;
+  };
+  const canonMod = canonDe("modalidad"), canonCat = canonDe("categoria");
+  const unifica = (v: string | null | undefined, mapa: Map<string, string>) =>
+    (v?.trim() ? (mapa.get(claveTxt(v)) || v.trim()) : null);
+
+  /* ── QUIÉN YA ESTABA ──
+     Por RUC cuando lo hay, y si no por nombre. Y además por SUFIJO, que es la
+     única forma de reconocer el fallo conocido del lector: una razón social
+     partida en varias líneas puede llegar sin su principio («GROUP S.A.C.» por
+     «ALHE ENTERPRISE GROUP S.A.C.»), y sin esto la misma empresa entraría dos
+     veces —una por cada lista— y el concurso parecería tener más competidores
+     de los que tiene. Se exige que el trozo corto tenga fondo (≥10 letras) para
+     que «FILMS S.A.C.» no se coma a nadie. */
+  const nrm = (s: string) => (s || "").trim().toLowerCase().replace(/[^a-záéíóúñ0-9]+/gi, " ").replace(/\s+/g, " ").trim();
+  /** Todas las guardadas que son ESTA empresa. Puede haber más de una. */
+  const mismaEmpresa = (ruc: string | null, empresa: string): any[] => {
+    const k = claveComp(ruc, empresa);
+    const directas = (yaHay || []).filter(y => claveComp(y.ruc, y.empresa) === k);
+    if (directas.length) return directas;
+    const n = nrm(empresa);
+    if (n.length < 10) return [];
+    return (yaHay || []).filter(y => {
+      const m = nrm(y.empresa);
+      return m.length >= 10 && (m.endsWith(n) || n.endsWith(m));
+    });
+  };
+
+  /* ── ¿Y ES EL MISMO PROYECTO? ──
+     Sin título no se puede decir que no, así que se dice que sí: es lo que pasa
+     en las listas que no lo publican, y ahí una empresa es un competidor. Y un
+     título que EMPIEZA por el otro es el mismo: así llega de las listas donde el
+     nombre del director viene pegado detrás del título. */
+  const mismoProyecto = (a: string | null, b: string | null) => {
+    const x = nrm(a || ""), y = nrm(b || "");
+    if (!x || !y) return true;
+    return x === y || x.startsWith(y) || y.startsWith(x);
+  };
+
+  /* ── ⚠ UNA EMPRESA PUEDE COMPETIR CONTRA SÍ MISMA ──
+     Se dio por hecho que en un concurso cada empresa presenta un proyecto, y no
+     es verdad: en las aptas de 2025, HUACA RAJADA CINE presenta «Inmigrantes» y
+     «MAMA QOCHAQ» y ÑAWINCHIK va con dos proyectos más. Buscando solo por RUC,
+     las dos filas eran «la misma» y la carga entera se caía contra el índice
+     único —«duplicate key value violates idx_competencia_ruc»— sin guardar nada.
+
+     Lo que identifica una fila de esta tabla no es una empresa: es una
+     POSTULACIÓN, o sea empresa + proyecto. Con esa pareja las dos entran, se
+     cuentan como dos rivales en la carrera —que es lo que son— y cada una lleva
+     su propio director. Y para la matriz de intentos sigue siendo un solo año:
+     allí se cuentan convocatorias distintas, no filas (ver `lib/rivales.ts`).
+
+     El índice de la tabla lleva ahora el título por el mismo motivo
+     (`db/competencia.sql`). */
+  const existente = (ruc: string | null, empresa: string, titulo: string | null) => {
+    const cands = mismaEmpresa(ruc, empresa);
+    if (!cands.length) return null;
+    const casa = cands.find(c => mismoProyecto(c.titulo, titulo));
+    if (casa) return casa;
+    /* Ninguna casa y todas tienen título: es OTRO proyecto de la misma empresa.
+       Si alguna estuviera sin título no se podría afirmar, y ahí se prefiere
+       completar la que hay antes que duplicar un competidor. */
+    if (titulo?.trim() && cands.every(c => c.titulo?.trim())) return null;
+    return cands[0];
+  };
+
+  const nuevas: any[] = [];
+  const avanzan: { id: string; etapa: string; f: any }[] = [];
+  /* Filas ya guardadas a las que esta lista les mejora el título. */
+  const limpian: { id: string; titulo: string; personas: string | null; avisos: string[] }[] = [];
+  let iguales = 0;
+  /* ⚠ Y las que ya van en ESTA misma tanda. Los índices únicos miran la tabla
+     entera, no solo lo que había antes de empezar: un documento que repite una
+     fila —pasa cuando una lista trae la misma postulación en dos modalidades—
+     tumbaba el `insert` completo. Aquí se descartan antes de llegar. */
+  const enTanda = new Set<string>();
+  for (const f of buenas) {
+    const ruc = f.ruc?.trim() || null;
+    const ya = existente(ruc, f.empresa, f.titulo || null);
+    if (!ya) {
+      const k = `${claveComp(ruc, f.empresa)}|${nrm(f.titulo || "")}`;
+      if (enTanda.has(k)) { iguales++; continue; }
+      enTanda.add(k);
+      nuevas.push({
+        convocatoria_id: convocatoriaId,
+        ruc, empresa: f.empresa.trim().slice(0, 300),
+        region: f.region || null, etapa: f.etapa,
+        categoria: unifica(f.categoria, canonCat), modalidad: unifica(f.modalidad, canonMod),
+        titulo: (f.titulo || "").slice(0, 500) || null,
+        personas: (f.personas || "").slice(0, 300) || null,
+        monto: f.monto ?? null, n_orden: f.n ?? null,
+        avisos: f.avisos || [], crudo: (f.crudo || "").slice(0, 1000) || null,
+        fuente: fuente?.slice(0, 200) || null,
+        creado_por: user.id,
+      });
+      continue;
+    }
+    /* ── LA ETAPA AVANZA, NUNCA RETROCEDE ──
+       Las listas se cargan en el orden en que a uno le da la gana, y lo normal
+       es hacerlo cuando ya salieron todas. Sin este freno, cargar la relación de
+       recibidas después del fallo dejaría a las ganadoras marcadas como
+       «recibida» —y el embudo de la competencia diría que no ganó nadie—. */
+    if (ORDEN_ETAPA[f.etapa] > ORDEN_ETAPA[ya.etapa]) avanzan.push({ id: ya.id, etapa: f.etapa, f });
+    /* ── UNA LISTA LIMPIA ARREGLA A LAS DEMÁS ──
+       El mismo proyecto sale en las cuatro listas del concurso, y no todas se
+       leen igual de bien: donde el documento trae columna de categoría —o donde
+       el responsable viene repetido— el título sale exacto, y donde no, llega
+       con los nombres pegados detrás. Así que si esta lista trae limpio un
+       título que estaba sucio, se cambia; y al revés NUNCA, que sería cambiar un
+       dato bueno por uno peor solo porque llegó después.
+       Es lo mismo que hace el RUC con el nombre: cada documento aporta lo que
+       sabe y el competidor se va completando. */
+    else {
+      iguales++;
+      const sucio = (ya.avisos || []).some((a: string) => a.startsWith("el proyecto"));
+      const limpio = !(f.avisos || []).some(a => a.startsWith("el proyecto"));
+      if (sucio && limpio && f.titulo?.trim()) {
+        limpian.push({ id: ya.id, titulo: f.titulo.trim(), personas: f.personas || null,
+          avisos: (ya.avisos || []).filter((a: string) => !a.startsWith("el proyecto")) });
+      }
+      /* Y si esta lista trae el director y la guardada no lo tenía, se añade:
+         cada documento aporta lo que sabe. */
+      else if (!ya.personas && f.personas?.trim()) {
+        limpian.push({ id: ya.id, titulo: ya.titulo, personas: f.personas.trim(), avisos: ya.avisos || [] });
+      }
+    }
+  }
+
+  if (nuevas.length) {
+    const { error } = await supabase.from("convocatoria_competencia").insert(nuevas);
+    /* ⚠ UN ERROR DE POSTGRES NO ES UN MENSAJE PARA NADIE. «duplicate key value
+       violates unique constraint "idx_competencia_ruc"» delante de una lista de
+       41 filas leídas bien no dice ni qué pasó ni qué hacer, y lo que pasa es
+       casi siempre lo mismo: la base todavía tiene el índice antiguo —el que
+       daba por hecho que una empresa presenta un solo proyecto por concurso— y
+       falta correr `db/competencia.sql`. Se dice eso, con el nombre del archivo,
+       y debajo el error de verdad por si fuera otra cosa. */
+    if (error) {
+      const choque = error.code === "23505" || /duplicate key|unique constraint/i.test(error.message);
+      return {
+        error: choque
+          ? "La base todavía tiene el índice antiguo, que solo admitía una fila por empresa "
+            + "en cada concurso — y en esta lista hay empresas con dos proyectos, que son dos "
+            + "competidores distintos. Corre db/competencia.sql en Supabase → SQL Editor y vuelve "
+            + `a cargar; no se guardó nada. (${error.message})`
+          : error.message,
+      };
+    }
+  }
+  for (const a of avanzan) {
+    /* El RUC también: la relación de recibidas no lo trae y la resolución sí, y
+       es lo que convierte a un nombre en un competidor identificable. Y el
+       título, si el de esta lista viene mejor. */
+    const f = a.f;
+    const limpio = !(f.avisos || []).some((x: string) => x.startsWith("el proyecto"));
+    await supabase.from("convocatoria_competencia").update({
+      etapa: a.etapa,
+      ...(f?.ruc ? { ruc: f.ruc.trim() } : {}),
+      ...(f?.monto ? { monto: f.monto } : {}),
+      ...(f?.categoria ? { categoria: unifica(f.categoria, canonCat) } : {}),
+      ...(limpio && f?.titulo?.trim() ? { titulo: f.titulo.trim(), avisos: f.avisos || [] } : {}),
+      ...(f?.personas?.trim() ? { personas: f.personas.trim() } : {}),
+      visto_en: new Date().toISOString(),
+    }).eq("id", a.id);
+  }
+  for (const l of limpian) {
+    await supabase.from("convocatoria_competencia")
+      .update({ titulo: l.titulo, personas: l.personas, avisos: l.avisos, visto_en: new Date().toISOString() })
+      .eq("id", l.id);
+  }
+
+  /* ── Y SE UNIFICAN LAS QUE YA ESTABAN ──
+     Aunque esta carga no las toque. Una fila guardada con la grafía rara no se
+     arregla sola nunca —la lista que la trajo no se va a volver a subir—, y
+     mientras siga ahí el filtro de la pestaña sigue partido en dos. */
+  let unificadas = 0;
+  for (const [campo, mapa] of [["modalidad", canonMod], ["categoria", canonCat]] as const) {
+    const porGrafia = new Map<string, string[]>();
+    for (const y of (yaHay || []) as any[]) {
+      const v = (y[campo] || "").trim();
+      if (!v) continue;
+      const bueno = mapa.get(claveTxt(v));
+      if (!bueno || bueno === v) continue;
+      if (!porGrafia.has(bueno)) porGrafia.set(bueno, []);
+      porGrafia.get(bueno)!.push(y.id);
+    }
+    for (const [bueno, ids] of porGrafia) {
+      await supabase.from("convocatoria_competencia").update({ [campo]: bueno }).in("id", ids);
+      unificadas += ids.length;
+    }
+  }
+
+  revalidatePath(`/entidad/convocatoria/${convocatoriaId}`);
+  return { creadas: nuevas.length, avanzadas: avanzan.length, iguales, limpiadas: limpian.length, unificadas };
+}
+
+export async function borrarCompetencia(convocatoriaId: string, id: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!esUuid(id) || !esUuid(convocatoriaId)) return { error: "Fila no válida." };
+  const { error } = await supabase.from("convocatoria_competencia").delete().eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath(`/entidad/convocatoria/${convocatoriaId}`);
   return {};
 }
 

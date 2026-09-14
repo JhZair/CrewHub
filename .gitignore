@@ -24,3 +24,6 @@ _temp/
 # el riesgo no es este archivo: es el siguiente que alguien deje ahí.
 Temporal/
 _t.mjs
+
+# Lo que Claude deja en la raíz al mandar un archivo
+Claude outputs/

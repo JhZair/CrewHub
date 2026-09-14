@@ -10,6 +10,21 @@
    `frame-ancestors 'self'`: solo nos embebemos nosotros. El propio Monitor
    sigue funcionando porque es el mismo origen. */
 const nextConfig = {
+  /* ⚠ `pdf-parse` FUERA DEL EMPAQUETADO DEL SERVIDOR.
+     Arrastra `pdfjs`, que trae binarios, `eval` y rutas de trabajador que se
+     resuelven en tiempo de ejecución. Empaquetado por webpack se rompe de la
+     peor manera: compila sin una queja y revienta al abrir el primer PDF, ya
+     en producción. Como externo, Node lo carga de `node_modules` tal cual.
+     Solo afecta al servidor: esto no cruza al navegador. */
+  /* ⚠ `experimental.serverComponentsExternalPackages` y NO
+     `serverExternalPackages`. El segundo es el nombre de Next 15 y este
+     proyecto va por 14.2.15: allí la clave no existe, y Next NO falla — avisa
+     («Unrecognized key(s) in object») y sigue compilando como si nada. O sea
+     que el build sale en verde con el paquete empaquetado igualmente, y la
+     avería aparece al abrir el primer PDF, en producción.
+     El día que se suba a Next 15 hay que renombrarla: allí esta se ignora
+     —también en silencio— y vuelve el mismo problema por el otro lado. */
+  experimental: { serverComponentsExternalPackages: ["pdf-parse"] },
   async headers() {
     return [{
       source: "/:path*",

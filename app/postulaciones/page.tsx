@@ -2,18 +2,19 @@ import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
 import { TIPO_COLOR } from "@/lib/entidades";
+import { prefijoComun, sinPrefijo } from "@/lib/texto";
 // EN_JUEGO y la regla de ejecución viven en lib/fondos.ts: /empresas las
 // tenía escritas aparte, y ya no decían lo mismo.
 import { EN_JUEGO, ejecutando, rendicionVencida, plazoRendicion } from "@/lib/fondos";
 import { avisoVencido } from "@/lib/estados";
 import { buscadorDe, pal } from "@/lib/buscar";
 import { esDirectorObra } from "@/lib/personas";
-import { postApagada } from "@/lib/resultados";
+import { postApagada, postCerradaSinPremio } from "@/lib/resultados";
 import { hoyLima } from "@/lib/fechas";
-import FiltroCombo from "@/components/FiltroCombo";
 import { ordenarEquipo } from "@/lib/rolesEquipo";
 import Avatar from "@/components/Avatar";
 import RielHitos from "@/components/RielHitos";
+import CaidosPop from "@/components/CaidosPop";
 import Link from "@/components/Enlace";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
@@ -27,6 +28,15 @@ export const metadata: Metadata = { title: "🎯 Postulaciones" };
 const EST_META: Record<string, [string, string]> = {
   en_preparacion: ["🛠 En preparación", "var(--violet)"],
   enviada: ["📨 Enviadas", "var(--blue)"],
+  /* ⚠ FALTABA, y no era un chip de menos: era CINCO POSTULACIONES INVISIBLES.
+     `en_subsanacion` existe en la base, en el stepper de la ficha y en
+     `EN_JUEGO` de lib/fondos — solo esta pantalla no lo conocía. Sin su
+     entrada aquí no había chip para filtrarlas, el badge de su tarjeta
+     enseñaba la clave en crudo («en_subsanacion»), y el embudo las dejaba
+     fuera de TODAS sus bandas: el título decía «21 postulaciones» y el primer
+     escalón «16 se prepararon», con los cuatro porcentajes calculados sobre
+     16. Nada fallaba; simplemente cinco no estaban. */
+  en_subsanacion: ["🔧 En subsanación", "var(--yellow)"],
   apta: ["✅ Aptas", "var(--teal)"],
   no_apta: ["🚫 No aptas", "var(--red)"],
   finalista: ["⭐ Finalistas", "var(--yellow)"],
@@ -254,33 +264,35 @@ export default async function Postulaciones({ searchParams }: {
      abría la portada con el embudo del 2027 —tres postulaciones sin enviar—
      como si fuera el resumen del trabajo. Si el año en curso todavía no tiene
      ninguna, sí manda el más alto: un embudo vacío no dice nada. */
-  /* ── LOS DOS COMBOS ──
-     Chips para lo que tiene tope (seis estados, seis tipos); combo para lo que
-     crece sin techo (los años, y las convocatorias, que ya pasan de treinta).
-     La regla es «¿esta lista tiene final?» — no el gusto de cada fila. */
+  /* ── YA NO HAY COMBOS: TODO ES CHIP ──
+     ⚠ Aquí decía «chips para lo que tiene tope; combo para lo que crece sin
+     techo —los años, y las convocatorias, que ya pasan de treinta—. La regla
+     es ¿esta lista tiene final?». Esa regla existía por UN motivo concreto y
+     el motivo ya no está: con `flex-wrap`, treinta convocatorias ocupaban
+     cuatro renglones y empujaban el panel entero fuera de la vista. Desde que
+     `.filt-tira` es una sola línea que se desplaza (ver components/Filtros),
+     una dimensión de treinta cuesta exactamente lo mismo que una de seis: un
+     renglón. La lista sin final dejó de ser un problema de sitio.
+
+     Y volver a chip no es solo cosmético, gana tres cosas que el desplegable
+     no podía dar:
+      · Los CONTEOS se ven sin abrir nada. «No aptas · 5» al lado de «Aptas ·
+        5» es la comparación que uno viene a hacer; dentro de un menú hay que
+        abrirlo y recordar.
+      · Se ve QUÉ HAY. Con el combo cerrado, que existieran nueve
+        convocatorias de este año era invisible hasta pulsarlo.
+      · Un clic en vez de dos.
+
+     `components/FiltroCombo` se queda sin usos con esto y se borra: un
+     componente que ya no se monta en ninguna parte es una respuesta a una
+     pregunta que la app dejó de hacerse. */
   const conAnio = todosAnios ? "a=todos&" : `a=${aAlcance}&`;
   const nAnio = (y: any) => anios.filter((x: any) => x === y).length;
-  const opcAnio: string[][] = [
-    ...porAnio.map((y: any) => [String(y), `${y} · ${nAnio(y)}`]),
-    /* La escapatoria: sin ella, un año elegido no se puede desmarcar —el
-       desplegable no tiene «ninguno»— y la pantalla se quedaría sin forma de
-       mirar los siete años juntos. */
-    ["todos", `Todos los años · ${anios.length}`],
-  ];
-  const hrefAnio: Record<string, string> = Object.fromEntries(
-    opcAnio.map(([v]) => [v, `/postulaciones?a=${v}`]));
-
-  const opcConv: string[][] = [
-    ["", `Todas las convocatorias · ${convsFiltro.length}`],
-    /* Código Y nombre: «C-072» solo sirve a quien ya se los sabe de memoria, y
-       el nombre solo no distingue el de Producción del de Desarrollo del mismo
-       año. Los dos juntos son el identificador completo, igual que en el
-       listado de convocatorias. */
-    ...convsFiltro.map(cv => [cv.id,
-      `${cv.codigo} · ${cv.nombre}${todosAnios && cv.anio ? ` (${cv.anio})` : ""} · ${cv.n}`]),
-  ];
-  const hrefConv: Record<string, string> = Object.fromEntries(
-    opcConv.map(([v]) => [v, v ? `/postulaciones?${conAnio}c=${v}` : `/postulaciones?${conAnio.slice(0, -1)}`]));
+  /* Lo que comparten los nombres de las convocatorias que se van a pintar. Se
+     calcula UNA vez y sobre `convsFiltro` —las de esta pantalla, ya acotadas
+     por el año—, no sobre el catálogo entero: el prefijo que sobra depende de
+     con quién se la esté comparando. */
+  const prefConv = prefijoComun(convsFiltro.map(cv => cv.nombre || ""));
 
   const anioEmbudo = Number(searchParams?.y)
     || (anios.includes(Number(anioActual)) ? Number(anioActual) : 0)
@@ -294,7 +306,11 @@ export default async function Postulaciones({ searchParams }: {
      por un RUC con el que no convenció con su película. */
   const LLEGO: Record<string, number> = {
     en_preparacion: 1, retirada: 1,
-    enviada: 2, no_apta: 2,
+    /* En subsanación llegó a ENVIARSE: DAFO la recibió, la observó y la
+       devolvió para corregir. Por eso comparte escalón con `enviada` y NO
+       está en `CAE`: no se cayó, sigue en carrera —es lo mismo que dice
+       `EN_JUEGO`— y se pinta entre las vivas de esa banda. */
+    enviada: 2, no_apta: 2, en_subsanacion: 2,
     apta: 3, no_seleccionada: 3,
     finalista: 4, finalista_no_ganadora: 4,
     ganadora: 5,
@@ -328,6 +344,19 @@ export default async function Postulaciones({ searchParams }: {
     return { n, ico, txt, col, llegaron, caidos, vivos };
   });
   const base = Math.max(1, embudo[0].llegaron.length);
+  /* ── LAS QUE EL EMBUDO NO SABE DÓNDE PONER ──
+     ⚠ Esto nació de un fallo real y su única misión es que no se repita. Una
+     postulación con un estado que no esté en `LLEGO` saca 0 y no supera el
+     `>= 1` de ninguna banda: desaparece de las cinco, del cálculo de los
+     porcentajes y de la base. Y no da error — el embudo sale entero y
+     coherente consigo mismo, solo que hablando de menos postulaciones de las
+     que hay. Pasó con `en_subsanacion` y se descubrió porque alguien comparó
+     el «21 postulaciones» del título con el «16 se prepararon» de la primera
+     banda.
+     Ese es justo el chivato, así que ahora lo dice la pantalla en vez de
+     dejarlo a la vista de quien se fije. Con todos los estados conocidos
+     `perdidas` es 0 y no se pinta nada. */
+  const perdidas = delAnio.length - embudo[0].llegaron.length;
   const ganaronAnio = delAnio.filter((p: any) => p.estado === "ganadora");
   const decidióAnio = delAnio.filter((p: any) => !EN_JUEGO.includes(p.estado)).length;
 
@@ -348,6 +377,48 @@ export default async function Postulaciones({ searchParams }: {
        que se apaga hacia la derecha), la misma técnica que los casos del feed.
        Ganadora glow verde, no apta rojo, finalista ámbar… de un vistazo. */
     const estCol = EST_META[p.estado]?.[1] || "var(--muted)";
+
+    /* ══ LA QUE YA CERRÓ SIN GANAR SE PLIEGA A UN RENGLÓN ══
+       Una tarjeta entera son cinco bloques —el trío con sus retratos, la fila
+       de avatares del equipo, la vida en CrewHub+, la línea de tiempo— y los
+       cinco contestan preguntas de algo que TODAVÍA COMPITE: quién lo lleva,
+       qué falta, qué fecha se viene. Sobre una postulación decidida ninguna de
+       esas preguntas tiene sentido, y aun así ocupaba lo mismo que una viva:
+       en un año con veintiuna, las cinco que perdieron empujaban fuera de la
+       pantalla a las que todavía se pueden trabajar.
+
+       ⚠ Y el riel MENTÍA. PO-051 perdió, y su línea de tiempo seguía
+       anunciando «sigue: Declaración de ganadores · en 4 días» porque las
+       fechas son de la convocatoria, no suyas. No era un adorno de más: era
+       una fecha futura sobre algo que ya terminó.
+
+       Se queda lo que sirve para encontrarla y para saber qué le pasó: código,
+       proyecto, empresa, concurso y desenlace. Lo demás está a un clic, en su
+       ficha. */
+    if (postCerradaSinPremio(p.estado)) {
+      return (
+        <Link key={p.id} href={`/entidad/postulacion/${p.id}`}>
+          <div className="card link post-apagada post-cerrada"
+            style={{ cursor: "pointer",
+              borderLeft: `3px solid color-mix(in srgb, ${estCol} 45%, transparent)` }}>
+            <b className="pc-cod">🎯 {p.codigo || "—"}</b>
+            <span className="pc-nom" style={{ color: "var(--violet)" }}>{p.proy?.nombre || "—"}</span>
+            {p.emp?.nombre && <span className="pc-emp">{p.emp.nombre}</span>}
+            <span style={{ flex: 1 }} />
+            {p.conv && (
+              <span className="pc-conv"
+                title={`${p.conv.codigo} · ${p.conv.nombre || ""}${p.conv.anio ? ` · ${p.conv.anio}` : ""}`}>
+                📜 {p.conv.codigo}
+              </span>
+            )}
+            <span className="badge" style={{ color: estCol, background: "#1c1c2c" }}>
+              {(EST_META[p.estado]?.[0] || p.estado).replace(/^\S+ /, "")}
+            </span>
+          </div>
+        </Link>
+      );
+    }
+
     return (
     <Link key={p.id} href={`/entidad/postulacion/${p.id}`}>
       <div className={`card link${apagada ? " post-apagada" : ""}`}
@@ -531,23 +602,68 @@ export default async function Postulaciones({ searchParams }: {
           })}
         </FilaFiltro>
         <FilaFiltro titulo="Año del concurso">
-          {/* `value` es lo ELEGIDO (vacío al entrar) y `etiqueta` es lo que
-              MANDA (el año en curso). No son lo mismo y por eso van separados:
-              si el combo se marcara a sí mismo en 2026 sin que nadie lo
-              hubiera elegido, volver a pulsar 2026 no haría nada —el menú no
-              reacciona al valor que ya tiene— y no habría forma de llegar a la
-              lista del año desde aquí. */}
-          <FiltroCombo value={todosAnios ? "todos" : a} options={opcAnio} hrefs={hrefAnio}
-            etiqueta={opcAnio.find(o => o[0] === (todosAnios ? "todos" : aAlcance))?.[1]} />
+          {/* ── SE MARCA EL AÑO QUE MANDA, NO EL QUE SE PULSÓ ──
+              ⚠ Con el desplegable esto no se podía, y el porqué estaba escrito
+              aquí: al entrar sin elegir nada el panel YA está acotado al año en
+              curso, pero marcar 2026 en el menú lo dejaba sin salida — un menú
+              no reacciona al valor que ya tiene, así que volver a pulsar 2026
+              no hacía nada y no había forma de llegar a la lista del año desde
+              aquí. Se marcaba el valor elegido (vacío) y el año real iba en la
+              etiqueta: dos cosas para decir una.
+              Un chip es un enlace, y pulsar el que ya está encendido navega
+              igual. Así que se marca `aAlcance` —lo que de verdad está
+              filtrando— y la pantalla deja de tener un filtro activo que no se
+              veía activo. */}
+          {porAnio.map((y: any) => (
+            <Chip key={y} href={`/postulaciones?a=${y}`}
+              on={!todosAnios && String(y) === aAlcance}>
+              {y} · {nAnio(y)}
+            </Chip>
+          ))}
+          {/* La escapatoria. Con el desplegable era obligatoria —no tenía
+              «ninguno»— y con chips también hace falta: el año en curso manda
+              aunque nadie lo pulse, así que sin esto no hay forma de mirar los
+              siete años juntos. */}
+          <Chip href="/postulaciones?a=todos" on={todosAnios}>
+            Todos los años · {anios.length}
+          </Chip>
         </FilaFiltro>
         {convsFiltro.length > 0 && (
           <FilaFiltro titulo="Convocatoria">
-            <FiltroCombo value={c} options={opcConv} hrefs={hrefConv} ancho={420}
-              /* El botón dice solo el CÓDIGO cuando hay una elegida: el nombre
-                 completo mide media pantalla y ya está en el resumen de
-                 resultados, justo debajo. El menú sí los lleva enteros, que es
-                 donde hacen falta para elegir. */
-              etiqueta={c ? (convsFiltro.find(x => x.id === c)?.codigo || "Convocatoria") : undefined} />
+            <Chip href={`/postulaciones?${conAnio.slice(0, -1)}`} on={!c}>
+              Todas · {convsFiltro.length}
+            </Chip>
+            {/* ── EL CÓDIGO NO BASTA, Y EL NOMBRE ENTERO NO CABE ──
+                ⚠ Estos chips salieron diciendo solo «C-060 · 1», «C-062 · 4»…
+                y eso no se puede elegir: los códigos no se saben de memoria, y
+                nueve seguidos son nueve etiquetas indistinguibles. El menú de
+                antes al menos llevaba el nombre completo dentro.
+                Pero el nombre completo tampoco cabe —«Concurso de Proyectos de
+                Animación» por nueve es una tira por la que hay que viajar— y
+                ahí está el truco: las cuatro primeras palabras son IDÉNTICAS en
+                las nueve. Lo que todas comparten no distingue a ninguna.
+                `prefijoComun` lo mide sobre lo que hay en pantalla y lo quita,
+                así que el chip dice «C-072 · Animación · 4»: el código para
+                nombrarla, la palabra que la distingue para reconocerla.
+                El nombre entero sigue en el `title`, y la elegida se nombra
+                completa en el resumen de resultados, justo debajo.
+                El año solo cuando se ven todos: dentro de un año ya elegido,
+                repetirlo nueve veces no distingue nada. */}
+            {convsFiltro.map(cv => {
+              const corto = sinPrefijo(cv.nombre || "", prefConv);
+              return (
+                <Chip key={cv.id} href={`/postulaciones?${conAnio}c=${cv.id}`} on={c === cv.id}
+                  title={`${cv.codigo} · ${cv.nombre}${cv.anio ? ` (${cv.anio})` : ""} — ${cv.n} postulación(es)`}>
+                  {cv.codigo}
+                  {/* Acotado con elipsis: el recorte del prefijo depende de qué
+                      convocatorias haya en pantalla, así que un año con nombres
+                      que no se parecen entre sí las deja enteras — y una sola
+                      larga no puede estirar la fila hasta hacerla inmanejable. */}
+                  {corto && <span className="filt-corto"> · {corto}</span>}
+                  {todosAnios && cv.anio ? ` (${cv.anio})` : ""} · {cv.n}
+                </Chip>
+              );
+            })}
           </FilaFiltro>
         )}
         <FilaFiltro titulo="Tipo de proyecto">
@@ -609,6 +725,12 @@ export default async function Postulaciones({ searchParams }: {
             <div className="card" style={{ borderColor: "rgba(59,130,246,.35)" }}>
               <div className="panel-h" style={{ color: "var(--blue)", display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ flex: 1 }}>🎯 Embudo {anioEmbudo} · {delAnio.length} postulaciones</span>
+                {perdidas > 0 && (
+                  <span className="badge" style={{ color: "var(--red)", background: "rgba(255,77,94,.12)" }}
+                    title="Tienen un estado que este embudo no sabe en qué escalón poner, así que no están contadas en ninguna banda ni en los porcentajes. Es un fallo del código, no de los datos: falta añadir ese estado al mapa LLEGO de esta pantalla.">
+                    ⚠ {perdidas} fuera del embudo
+                  </span>
+                )}
                 {/* Navegar años: el embudo de un año es una historia cerrada */}
                 {porAnio.filter((y: any) => y !== anioEmbudo).map((y: any) => (
                   <Link key={y} href={`/postulaciones?y=${y}`} className="badge"
@@ -640,33 +762,79 @@ export default async function Postulaciones({ searchParams }: {
                       )}
                     </div>
                     {/* La barra ES el embudo: se estrecha sola porque toda
-                        ganadora fue finalista, toda finalista fue enviada.
-                        Por eso el CARRIL tiene que medir lo mismo en todas las
-                        filas. Antes era `flex:1` y compartía la fila con el
-                        texto de los caídos, así que una banda con caídos tenía
-                        menos sitio: «Se enviaron · 100%» y «Aptas · 100%»
-                        salían de distinto largo siendo las dos 100%. Un embudo
-                        cuyo ancho no se puede comparar entre filas no es un
-                        embudo, es un adorno.
-                        La columna de la derecha va con ancho fijo y se reserva
-                        aunque esté vacía. */}
-                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      <span style={{ flex: 1, height: 10, background: "var(--bg)", borderRadius: 5, overflow: "hidden" }}>
-                        <span style={{ display: "block", height: "100%", borderRadius: 5,
-                          width: `${Math.max(pct, llegaron.length ? 3 : 0)}%`, background: col, opacity: .85 }} />
-                      </span>
-                      {/* Los que se cayeron aquí: el embudo se explica por ellos */}
-                      <span style={{ width: 190, flex: "0 0 190px", color: "var(--dim)", fontSize: 11,
-                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                        title={caidos.length
-                          ? caidos.map((p: any) => `${p.codigo || ""} ${p.proy?.nombre || ""}`.trim()).join("\n")
-                          : undefined}>
-                        {caidos.length > 0 && <>↘ {caidos.length} {CAE[caidos[0].estado]}</>}
-                      </span>
-                    </div>
-                    {/* Quiénes están parados en este escalón ahora mismo */}
-                    {vivos.length > 0 && (
-                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 5 }}>
+                        ganadora fue finalista, toda finalista fue enviada. Por
+                        eso el CARRIL tiene que medir lo mismo en todas las
+                        filas — un embudo cuyo ancho no se puede comparar entre
+                        filas no es un embudo, es un adorno.
+                        ⚠ Ahora ocupa el ANCHO ENTERO. Antes cedía 190 px fijos
+                        a la columna de los caídos, y esa columna se reservaba
+                        aunque estuviera vacía: la barra medía menos de lo que
+                        podía en todas las bandas para dejar sitio a un texto
+                        que solo aparece en tres. Y encima no cabía —«5 no aptas
+                        — DAFO las sacó por p…»—. El texto se fue abajo, con el
+                        resto del desglose, y el carril recuperó su ancho. */}
+                    <span style={{ display: "block", height: 10, background: "var(--bg)", borderRadius: 5, overflow: "hidden" }}>
+                      <span style={{ display: "block", height: "100%", borderRadius: 5,
+                        width: `${Math.max(pct, llegaron.length ? 3 : 0)}%`, background: col, opacity: .85 }} />
+                    </span>
+                    {/* ── EL DESGLOSE DE LA BANDA, EN UNA SOLA LÍNEA ──
+                        ⚠ Las tres cifras de una misma banda vivían en tres
+                        sitios: el total arriba, los caídos a la derecha de la
+                        barra y el resto debajo, antes de los chips. Tres trozos
+                        de la misma resta repartidos por la fila, y ninguno
+                        decía que fueran la misma resta.
+                        Juntos y en el orden del embudo —lo que siguió, lo que
+                        está, lo que se fue— la cuenta se comprueba leyendo:
+                        9 + 6 + 5 = las 20 de la banda. Ese cuadre es lo que
+                        contesta el «dice 20 y solo veo 6» sin tener que
+                        explicarlo en ningún sitio.
+                        Va SIEMPRE que haya algo que desglosar, aunque no queden
+                        chips debajo: una banda de la que todas avanzaron
+                        también tiene una historia, y antes esa no se contaba
+                        porque la línea colgaba de que hubiera `vivos`. */}
+                    {(vivos.length > 0 || caidos.length > 0) && (
+                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 5, alignItems: "center" }}>
+                        <span className="emb-desglose">
+                          {llegaron.length - vivos.length - caidos.length > 0 && (
+                            <span>{llegaron.length - vivos.length - caidos.length} avanzaron</span>
+                          )}
+                          {vivos.length > 0 && (
+                            <span style={{ color: col }}>
+                              {vivos.length} {n === 5 ? "ganaron" : "siguen aquí"}
+                            </span>
+                          )}
+                          {/* Los que se cayeron aquí: el embudo se explica por
+                              ellos, así que se pueden ABRIR. Los nombres vivían
+                              en el `title` del navegador —había que acertar a
+                              dejar el ratón quieto encima, no se podía pulsar
+                              ninguno, y en una tableta no existían—, y «cuáles
+                              son» es justo lo que se viene a preguntar aquí. */}
+                          {caidos.length > 0 && (() => {
+                            /* ⚠ El código de la convocatoria SOLO no dice nada:
+                               «C-068» no es un concurso, es una etiqueta que hay
+                               que ir a buscar. Y las caídas de una banda suelen
+                               ser de convocatorias distintas —C-067, C-068,
+                               C-072—, así que sin el nombre no se puede ni
+                               agrupar mentalmente lo que se está mirando.
+                               El nombre entero tampoco cabe en un pop-up de 420,
+                               y aquí sirve el mismo truco que en los filtros: lo
+                               que estas convocatorias COMPARTEN no distingue a
+                               ninguna. Se mide sobre las de ESTA banda —no sobre
+                               las del año— porque es esta lista la que se está
+                               leyendo. */
+                            const pref = prefijoComun(caidos.map((p: any) => p.conv?.nombre || ""));
+                            return (
+                              <CaidosPop n={caidos.length} motivo={CAE[caidos[0].estado]}
+                                caidos={caidos.map((p: any) => ({
+                                  id: p.id, codigo: p.codigo,
+                                  proyecto: p.proy?.nombre, empresa: p.emp?.nombre,
+                                  conv: p.conv?.codigo,
+                                  convNombre: sinPrefijo(p.conv?.nombre || "", pref),
+                                  convEntera: `${p.conv?.codigo || ""} · ${p.conv?.nombre || ""}`.trim(),
+                                }))} />
+                            );
+                          })()}
+                        </span>
                         {vivos.map((p: any) => (
                           <Link key={p.id} href={`/entidad/postulacion/${p.id}`} className="badge"
                             title={`${p.conv?.nombre || ""} ${p.conv?.anio || ""} · ${p.emp?.nombre || "sin empresa"}`}

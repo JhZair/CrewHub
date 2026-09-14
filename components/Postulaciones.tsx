@@ -11,9 +11,16 @@ import { useState } from "react";
 
 /* Estados alineados con el ciclo de vida real de una postulación (el mismo del
    stepper de su ficha): preparación → enviada → apta → finalista → ganadora,
-   con salidas «no apta» y «no ganó». Los dos últimos (no_seleccionada,
-   retirada) son legado: se mantienen para que una postulación vieja con ese
-   estado siga mostrándose bien en el selector. */
+   con cuatro salidas.
+   ⚠ Aquí decía que `no_seleccionada` y `retirada` eran «legado: se mantienen
+   para que una postulación vieja con ese estado siga mostrándose bien». No lo
+   son, y creérselo costó una salida: `no_seleccionada` —pasó papeles y el
+   jurado no la eligió— es el desenlace MÁS COMÚN de todos, el que el
+   importador de resultados escribe solo al cargar un concurso decidido, y el
+   que el embudo de /postulaciones cuenta en su propia banda. Lo que pasaba es
+   que el stepper de la ficha no lo ofrecía, así que a mano no se llegaba
+   nunca: se ponía «no apta» o «no ganó», que dicen otra cosa.
+   `retirada` tampoco es legado: es no haberse presentado. */
 const ESTADOS: [string, string, string][] = [
   ["en_preparacion", "🛠 En preparación", "var(--violet)"],
   ["enviada", "📨 Enviada", "var(--blue)"],

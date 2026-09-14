@@ -15,6 +15,27 @@ export function resultadoPostulacion(estado?: string | null): Veredicto | null {
   }
 }
 
+/* ── ¿CERRÓ Y NO GANÓ? ──
+ * Más estrecha que `postApagada`, y la diferencia importa: aquí solo entran las
+ * que tienen un desenlace NEGATIVO escrito en su propio estado —no apta, no
+ * seleccionada, finalista que no ganó, retirada—.
+ *
+ * `postApagada` apaga además dos casos que NO son esto y que se colarían si se
+ * reutilizara para plegar la tarjeta:
+ *  · La EXTERNA que ganó. Se apaga porque el logro no es de la casa, pero es
+ *    una ganadora: plegarla escondería el resultado del concurso.
+ *  · La que sigue como «finalista» con su convocatoria ya cerrada. Perdió de
+ *    hecho, pero nadie lo registró — y plegarla escondería justo la fila que
+ *    hay que ir a corregir.
+ *
+ * Se deriva de `resultadoPostulacion` en vez de repetir la lista de estados: si
+ * mañana entra otro desenlace negativo, esto se entera solo. Copiarla sería
+ * volver a tener dos sitios donde decir lo mismo, que es de lo que este archivo
+ * salió a escapar. */
+export function postCerradaSinPremio(estado?: string | null): boolean {
+  return !!resultadoPostulacion(estado) && estado !== "ganadora";
+}
+
 /* ── ¿VA APAGADA? ──
  * Una postulación se pinta apagada cuando ya no compite. Vivía escrita a mano
  * dentro de /postulaciones, y el listado de convocatorias solo copió la mitad

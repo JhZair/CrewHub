@@ -97,3 +97,76 @@ export function coincide(campo: string, consulta: string): boolean {
 const RE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const esUuid = (v: unknown): boolean => RE_UUID.test(String(v ?? "").trim());
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LO QUE TODOS COMPARTEN NO DISTINGUE A NINGUNO
+
+   Nueve convocatorias del mismo año se llaman «Concurso de Proyectos de
+   Animación», «Concurso de Proyectos de Cortometraje», «Concurso de Proyectos
+   de Documental — Producción»… Las primeras cuatro palabras son idénticas en
+   las nueve: ocupan la mitad del chip y no ayudan a elegir ninguna, que es
+   exactamente la definición de ruido.
+
+   Se calcula sobre lo que HAY EN PANTALLA y no contra una lista de prefijos
+   escritos a mano. Un catálogo de fórmulas —«Concurso de», «Estímulos
+   Económicos para»…— envejece: el día que DAFO estrene un nombre nuevo, el
+   prefijo se queda entero y nadie se entera. Lo que comparten nueve nombres es
+   un hecho de esos nueve nombres, y se puede medir.
+
+   ⚠ Y por eso mismo el resultado NO se guarda ni se compara con nada: cambia
+   con el filtro de año, porque cambia la lista. «Documental — Producción» con
+   nueve del 2026 puede ser «Concurso de Proyectos de Documental — Producción»
+   viendo los siete años, si ahí ya no hay prefijo común. Es una ayuda para
+   leer, no un nombre.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** Cuántas palabras iniciales comparten TODOS. Devuelve la cadena a quitar
+ *  —ya cortada en un espacio— o "" si no hay nada que valga la pena. */
+export function prefijoComun(nombres: string[]): string {
+  const xs = (nombres || []).map(n => String(n ?? "").trim()).filter(Boolean);
+  /* Con uno solo no hay nada «común»: quitarle sus tres primeras palabras
+     porque se parecen a sí mismas lo dejaría irreconocible. */
+  if (xs.length < 2) return "";
+
+  /* Se compara sin tildes ni mayúsculas —«Animación» y «animacion» comparten
+     prefijo aunque no coincidan carácter a carácter— pero se DEVUELVE el trozo
+     del primer nombre tal cual: lo que se recorta es texto real. */
+  const norm = xs.map(normalizar);
+  let i = 0;
+  while (i < norm[0].length && norm.every(s => s[i] === norm[0][i])) i++;
+
+  /* Al último espacio: cortar a media palabra deja «Concurso de Proyectos de
+     Anim|ación» y el chip diría «ación».
+     ⚠ El índice viene de la cadena NORMALIZADA y se aplica sobre la ORIGINAL.
+     Vale porque `normalizar` conserva la longitud en castellano —«ó» y «ñ» se
+     descomponen y pierden la marca, un carácter por carácter—, y si algún día
+     dejara de valer el fallo no es silencioso: `sinPrefijo` vuelve a comprobar
+     con `startsWith` antes de recortar, así que un prefijo mal medido devuelve
+     el nombre entero en vez de un trozo cortado por el sitio equivocado. */
+  const corte = xs[0].slice(0, i).lastIndexOf(" ");
+  if (corte <= 0) return "";
+  const pref = xs[0].slice(0, corte + 1);
+
+  /* Dos guardas, y las dos evitan dejar un chip peor que el original:
+     · Menos de dos palabras no compensa. Quitar «El » no ahorra nada y a
+       cambio empieza los nombres en minúscula o a media frase.
+     · Si a ALGUNO le deja menos de tres caracteres, no se quita a ninguno: un
+       chip que dice «A» no es más corto, es ilegible. Pasa cuando lo único que
+       distingue dos nombres es una letra o un número al final —«Concurso de
+       Cine A» y «… B»—, y ahí el prefijo largo ES el nombre.
+     (El caso de un nombre que es prefijo de otro —«Documental» y «Documental
+     Producción»— no necesita guarda: el corte al último espacio ya retrocede
+     una palabra, así que quedan «Documental» y «Documental Producción». Se
+     dice porque parece que hiciera falta y no la hace.) */
+  if (pref.trim().split(/\s+/).length < 2) return "";
+  if (xs.some(n => n.length - pref.length < 3)) return "";
+  return pref;
+}
+
+/** El nombre sin ese prefijo. Si no encaja —un nombre que no lo lleva— vuelve
+ *  entero, que es lo correcto: nunca se recorta lo que no se comprobó. */
+export function sinPrefijo(nombre: string, prefijo: string): string {
+  const n = String(nombre ?? "").trim();
+  if (!prefijo) return n;
+  return normalizar(n).startsWith(normalizar(prefijo)) ? n.slice(prefijo.length).trim() : n;
+}

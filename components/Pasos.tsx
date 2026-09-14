@@ -31,6 +31,23 @@ const CFG: Record<string, { pasos: Paso[]; salidas: Salida[]; set: (id: string, 
       // que corregir y reenviar). Va con 🔧, no con ✕, y marca hasta «enviada».
       { e: "en_subsanacion", label: "En subsanación", col: "var(--yellow)", bg: "rgba(244,180,0,.16)", llego: 1, pre: "🔧" },
       { e: "no_apta", label: "No apta", col: "var(--red)", bg: "rgba(255,77,94,.14)", llego: 1 },
+      /* ── LA SALIDA QUE FALTABA: PASÓ PAPELES Y EL JURADO NO LA ELIGIÓ ──
+         ⚠ Sin esta, una postulación apta que no llegó a la final NO TENÍA
+         dónde acabar, y las dos salidas que había obligaban a mentir: «No
+         apta» afirma que DAFO la sacó por papeles —pasó la revisión— y «No
+         ganó» guarda `finalista_no_ganadora`, que afirma que llegó a la final
+         —nunca llegó—. Las dos mentiras son de las que no fallan: la ficha se
+         guarda tan contenta y el embudo del año cuenta un finalista que no
+         existió, o un rechazo administrativo que no hubo.
+         Y `no_seleccionada` no es un estado nuevo: la base lo tiene desde
+         `db/schema.sql`, el embudo de /postulaciones le da su propia banda
+         —«no las eligió el jurado», a la altura de «apta»— y el importador de
+         resultados YA lo escribe solo al cargar un concurso decidido. Lo
+         único que faltaba era el botón para ponerlo a mano.
+         `llego: 2` porque llegó hasta «Apta», que es el tercer paso (0-based).
+         Gris y no rojo: no es un rechazo, es no haber sido elegida entre
+         varias buenas. El rojo lo tiene «No apta», que sí es un portazo. */
+      { e: "no_seleccionada", label: "No la eligieron", col: "var(--dim)", bg: "rgba(255,255,255,.06)", llego: 2 },
       { e: "finalista_no_ganadora", label: "No ganó", col: "var(--yellow)", bg: "rgba(244,180,0,.16)", llego: 3 },
     ],
     set: cambiarEstadoPostulacion,
@@ -91,14 +108,27 @@ export default function Pasos({ tipo, id, estado, subtipo }: {
         {pasos.map((p, i) => (
           <div key={p.e} className="pp-item">
             {i > 0 && <span className={`pp-con${i <= llego ? " on" : ""}`} />}
+            {/* ── EL RÓTULO ARRIBA, Y EN EL DOM TAMBIÉN ──
+                Se podría voltear con `flex-direction:column-reverse` y dejar el
+                marcado como estaba, pero entonces lo que se lee y lo que se oye
+                dejarían de coincidir: un lector de pantalla anuncia el orden del
+                DOM, así que diría el icono antes que el nombre del paso. Se
+                cambia el orden de verdad y el CSS solo alinea. */}
             <button className={`pp-nodo${i <= llego ? " hecho" : ""}${p.e === estado ? " actual" : ""}`}
               disabled={!!guardando} onClick={() => ir(p.e)} title={`Marcar: ${p.label}`}>
-              <span className="pp-punto">{guardando === p.e ? "…" : p.ico}</span>
               <span className="pp-lbl">{p.label}</span>
+              <span className="pp-punto">{guardando === p.e ? "…" : p.ico}</span>
             </button>
           </div>
         ))}
       </div>
+      {/* ⚠ Solo si LAS HAY. Un proyecto no tiene salidas negativas —su ciclo
+          las gobierna el estado de actividad— y esto le pintaba un `<div>`
+          vacío igualmente. No se veía… hasta que la barra ganó marco y hueco
+          entre filas: entonces el proyecto estrenaba seis píxeles de nada
+          dentro del recuadro y una barra más alta que la de al lado, sin que
+          nadie tocara su código. */}
+      {salidas.length > 0 && (
       <div className="pp-salidas">
         {salidas.map(s => {
           const on = estado === s.e;
@@ -111,6 +141,7 @@ export default function Pasos({ tipo, id, estado, subtipo }: {
           );
         })}
       </div>
+      )}
       {error && <span className="pp-err">⚠ {error}</span>}
     </div>
   );
