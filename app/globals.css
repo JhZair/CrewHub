@@ -3204,8 +3204,43 @@ img.av{border:1px solid var(--border2)}
    resolver tiene que seguir gritando. Vuelve al pasar el cursor. */
 .gt-row.resuelta{opacity:.42}
 .gt-row.resuelta:hover{opacity:1}
-.gt-nombre{width:240px;flex-shrink:0;font-size:13px;color:#c6c6da;padding-right:10px;display:flex;align-items:center;gap:6px}
+/* ⚠ El ancho lo manda `--gt-nombre`, que pone el componente: el mismo número
+   coloca el eje de meses, la rejilla y la marca de HOY, y tenerlo escrito
+   también aquí hacía que cambiar uno solo corriera el calendario respecto de
+   las barras — sin romperse, solo mintiendo. El 240 queda de red por si esta
+   clase se usa fuera del Gantt. */
+.gt-nombre{width:var(--gt-nombre,240px);flex-shrink:0;font-size:13px;color:#c6c6da;padding-right:10px;display:flex;align-items:center;gap:6px}
 .gt-nombre-txt{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* El ✎ de cada fila del Gantt. Tenue por defecto y entero al pasar por encima:
+   en veintinueve filas, veintinueve iconos a plena luz compiten con los nombres
+   —que es lo que se lee— y esconderlo del todo hasta el hover lo haría
+   inalcanzable en una pantalla táctil. */
+/* El 📝 de la nota, en la misma familia que el ✎ de al lado: sin caja, tenue
+   y entero al pasar por encima. Solo aparece en las filas que tienen nota, así
+   que su presencia ya es el dato —«esta actividad tiene algo escrito»— y no
+   hace falta que grite. */
+/* ⚠ Escrito sobre `.gt-nombre` y no suelto: `.ens-marca-btn` trae su caja azul
+   —fondo, borde y píldora— y con la misma especificidad ganaba a ratos. Aquí
+   el 📝 tiene que ser un icono desnudo, como el ✎ de al lado, o dos filas
+   seguidas parecen tener dos cosas distintas cuando tienen la misma. */
+.gt-nombre .chip-nota{flex-shrink:0;background:none;border:0;padding:0 1px;
+  font-size:11px;opacity:.45;transition:opacity .12s}
+.gt-row:hover .gt-nombre .chip-nota{opacity:1}
+.gt-nombre .chip-nota:hover{opacity:1;background:none;border:0}
+/* El texto dentro del pop-up: respeta los saltos de línea que escribió quien
+   la puso, igual que en la vista de lista. */
+.gt-nota{display:block;padding:8px 10px;font-size:12px;line-height:1.6;
+  color:var(--muted);white-space:pre-wrap}
+/* Cuántos casos hay, cuando hay más de uno. Pegado al 👁 y sin fondo: es una
+   coletilla del icono —«este y otros dos»—, no un contador aparte que haya que
+   interpretar. Siempre visible, también sin hover: un aviso que solo aparece
+   al pasar por encima no avisa a quien no pasa. */
+.gt-ncasos{flex-shrink:0;margin-left:-1px;font-size:9.5px;font-weight:700;
+  color:var(--dim);line-height:1;cursor:default}
+.gt-ed{flex-shrink:0;background:none;border:0;padding:0 2px;cursor:pointer;
+  color:var(--dim);font-size:12px;opacity:.4;transition:opacity .12s,color .12s;font-family:inherit}
+.gt-row:hover .gt-ed{opacity:1}
+.gt-ed:hover,.gt-ed:focus-visible{color:var(--accent);opacity:1}
 /* Rejilla de meses: detrás de las barras, encima del fondo. Las de enero más
    marcadas — en un cronograma de dos años, el cambio de año es la referencia. */
 .gt-lineas{position:absolute;top:14px;bottom:26px;right:0;pointer-events:none;z-index:1}
@@ -7563,13 +7598,33 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
    que aprenderlos dos veces. Prefijo propio porque el tamaño y el color de la
    etapa son de aquí; heredarlo con `.acta-caso` habría atado dos pantallas por
    la hoja de estilos, que es como se pierde el rastro de qué rompe qué. */
-.cr-casos { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap;
-  max-width: 260px; }
+/* ⚠ EN COLUMNA, NO EN FILA CON `flex-wrap`.
+   Con `wrap` + `max-width`, en cuanto los chips no caben en un renglón la caja
+   se queda midiendo los 320 px del tope aunque el contenido ocupe 200: los
+   chips bajan de línea y a la derecha queda un agujero que empuja los iconos
+   de la fila lejos, como si faltara algo ahí. No es un margen feo — un hueco
+   marcado en una fila se lee como un dato que no cargó.
+   En columna la caja mide lo que mide el chip más ancho y no sobra nada. Y el
+   apilado es el mismo que ya hacía el `wrap` en cuanto hay más de dos: aquí
+   los chips llevan nombre, así que en fila casi nunca caben dos. */
+.cr-casos { display: inline-flex; flex-direction: column; align-items: flex-start;
+  gap: 4px; max-width: 320px; }
 .cr-caso { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px;
   color: var(--violet); text-decoration: none; white-space: nowrap; font-weight: 700;
   background: var(--card); border: 1px solid var(--border); border-radius: 999px;
   padding: 2px 5px 2px 3px; }
 .cr-caso:hover { border-color: var(--violet); background: rgba(124,92,255,.14); }
+/* El nombre corto, solo cuando la actividad tiene varios casos (lo decide
+   `rotulosCasos`, no la hoja de estilos).
+   En el color del texto y no en el violeta del chip: el violeta es «esto es un
+   enlace», y si el rótulo también fuera violeta, el chip entero se leería como
+   una sola palabra larga en vez de como «quién · qué · en qué estado».
+   ⚠ El `max-width` es el que impide que un título largo empuje la fecha y los
+   iconos fuera de la fila; el `min-width: 0` es el que hace que el ellipsis
+   funcione DENTRO de un flex — sin él, el hijo se niega a encogerse por debajo
+   de su contenido y el recorte no llega a ocurrir. */
+.cr-caso-t { max-width: 104px; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; font-weight: 600; color: var(--text); }
 /* Un caso cerrado se sigue viendo —en un cronograma, lo hecho es lo que hay que
    poder enseñar— pero apagado: lo que pide atención es lo que sigue abierto. */
 .cr-caso-off { opacity: .5; }
@@ -8981,6 +9036,25 @@ a.sit-cosa-n:hover{color:var(--accent)}
 .mrv-ed.e-finalista{color:var(--teal);border-color:rgba(0,191,165,.3)}
 .mrv-x{margin-left:3px;opacity:.7;font-size:9.5px}
 .mrv-gano{color:var(--yellow);background:rgba(255,193,7,.13);flex:none}
+/* ── LA INSIGNIA DEL AÑO QUE SE ESTÁ MIRANDO ──
+   Con un concurso filtrado, esta sustituye a `.mrv-gano` y dice lo que pasó
+   AHÍ. Toma el color de su etapa —las mismas clases `e-*` que los chips de
+   años y que el embudo— para que titular y letra pequeña no puedan decir
+   cosas distintas: si el chip de 2024 está amarillo, la insignia también.
+   ⚠ Los colores van PEGADOS a `.mrv-aqui` y no sueltos en `.e-*`: esos mismos
+   nombres los usan las insignias de etapa de otras pantallas y les pintarían
+   el fondo. Es la lección que dejó sin barras el embudo una vez. */
+.mrv-aqui{flex:none;font-weight:700;color:var(--muted);background:var(--bg);
+  border:1px solid var(--border)}
+.mrv-aqui.e-apta{color:var(--violet);border-color:rgba(167,139,250,.3)}
+.mrv-aqui.e-finalista{color:var(--teal);border-color:rgba(0,191,165,.3)}
+.mrv-aqui.e-beneficiaria{color:var(--yellow);background:rgba(255,193,7,.13);
+  border-color:rgba(255,193,7,.35)}
+/* Haber ganado OTRO año: gris y detrás. Es cierto y es útil, pero no es la
+   respuesta a la pregunta que hace la pantalla con el filtro puesto, así que
+   no puede competir con la insignia que sí lo es. */
+.mrv-gano-otro{color:var(--dim);background:var(--bg);border:1px solid var(--border);
+  font-size:10px;flex:none;font-weight:600}
 .mrv-multi{color:var(--violet);background:rgba(124,92,255,.14);flex:none}
 .mrv-duda{color:var(--red);background:rgba(255,82,82,.1);flex:none;opacity:.85}
 .mrv-dir-nom{letter-spacing:.2px}

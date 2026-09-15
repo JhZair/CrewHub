@@ -36,6 +36,13 @@ type Orden = "veces" | "lejos" | "az" | "nuevo";
 
 const anioDe = (i: Intento) => i.conv?.anio || 0;
 
+/** Cómo se dice la etapa de UNA empresa. `txtEtapa` habla en plural —«ganaron»,
+ *  «finalistas»— porque nació para rotular las bandas del embudo, y en la
+ *  insignia de una sola empresa se lee como si fueran varias. */
+const SOLA: Record<string, string> = {
+  recibida: "se presentó", apta: "apta", finalista: "finalista", beneficiaria: "ganó",
+};
+
 /** De la etapa a su contador, que no se llaman igual: la etapa es «recibida»
  *  —una fila— y el contador «recibidas» —cuántas hay—. */
 const CAMPO = {
@@ -87,6 +94,50 @@ export default function MatrizRivales({ rivales, directores, convs, filas }: {
      el contador, todos saldrían con un intento y la pantalla no diría nada. */
   const casa = (texto: string) => !busca.trim() || casaConsulta(texto, busca);
   const enConv = (is: Intento[]) => !fConv || is.some(i => i.fila.convocatoria_id === fConv);
+
+  /* ── ⚠ QUÉ HIZO ESTE RIVAL EN LA CONVOCATORIA QUE SE ESTÁ MIRANDO ──
+     Aquí había un fallo de los que no dan error y se leen perfectamente. Con
+     el filtro «estuvo en 2024» puesto, la insignia de cada empresa seguía
+     diciendo su mejor resultado DE TODOS LOS AÑOS: salían trece «🏆 ganó» en
+     una lista encabezada por 2024, y 2024 no repartió trece estímulos. Los
+     chips de años, justo debajo, decían la verdad —«2024 ✅ apta», «2025 🏆»—
+     pero nadie lee la letra pequeña para desmentir un titular.
+     Y no era solo la insignia: el orden «llegó más lejos» ordenaba por el
+     mismo máximo global, así que los trece falsos ganadores salían arriba.
+
+     La regla: si hay una convocatoria elegida, TODO lo que resuma una fila
+     —insignia, monto y orden— habla de ESA. Lo de las otras ediciones sigue
+     estando, en los chips y en un aviso aparte que dice que es de otro año. */
+  const enEsa = (is: Intento[]) => {
+    if (!fConv) return null;
+    const suyas = is.filter(i => i.fila.convocatoria_id === fConv);
+    if (!suyas.length) return null;
+    const mejor = suyas.reduce((m, i) =>
+      (ORDEN[i.fila.etapa] || 0) > (ORDEN[m.fila.etapa] || 0) ? i : m, suyas[0]);
+    /* Los años en los que ganó pero NO es este: es lo que la insignia vieja
+       estaba enseñando como si fuera de aquí, y sigue siendo un dato bueno
+       —solo que de otra edición, y hay que decirlo—. */
+    const fuera = [...new Set(is
+      .filter(i => i.fila.etapa === "beneficiaria" && i.fila.convocatoria_id !== fConv)
+      .map(i => i.conv?.anio || 0).filter(Boolean))].sort((a, b) => b - a);
+    return {
+      etapa: mejor.fila.etapa,
+      n: suyas.length,
+      anio: mejor.conv?.anio ?? null,
+      soles: suyas.reduce((t, i) =>
+        t + (i.fila.etapa === "beneficiaria" ? Number(i.fila.monto) || 0 : 0), 0),
+      gano: suyas.some(i => i.fila.etapa === "beneficiaria"),
+      ganoFuera: fuera,
+    };
+  };
+  /* Hasta dónde llegó, para ORDENAR: en la edición elegida si hay una, y si
+     no, en su mejor año. Sin esto, «llegó más lejos» con un filtro puesto
+     ordena por un resultado que no es el de la lista que se está mirando. */
+  const lejosDe = (r: { intentos: Intento[]; mejor: string }) =>
+    fConv ? (ORDEN[enEsa(r.intentos)?.etapa || ""] || 0) : (ORDEN[r.mejor] || 0);
+  /* Y lo mismo para el interruptor «solo los que ganaron». */
+  const ganoAqui = (r: { intentos: Intento[]; gano: number }) =>
+    fConv ? !!enEsa(r.intentos)?.gano : r.gano > 0;
   const enCat = (is: Intento[]) => !fCat || is.some(i => i.fila.categoria === fCat);
 
   const lista = useMemo(() => {
@@ -94,12 +145,12 @@ export default function MatrizRivales({ rivales, directores, convs, filas }: {
       enConv(r.intentos) && enCat(r.intentos)
       && (!fReg || r.regiones.includes(fReg))
       && (!repiten || r.veces > 1)
-      && (!ganaron || r.gano > 0)
+      && (!ganaron || ganoAqui(r))
       && casa([r.nombre, ...r.alias, r.ruc, ...r.proyectos, ...r.directores].filter(Boolean).join(" · ")));
     const cmp: Record<Orden, (a: Rival, b: Rival) => number> = {
-      veces: (a, b) => b.veces - a.veces || (ORDEN[b.mejor] || 0) - (ORDEN[a.mejor] || 0)
+      veces: (a, b) => b.veces - a.veces || lejosDe(b) - lejosDe(a)
         || a.nombre.localeCompare(b.nombre),
-      lejos: (a, b) => (ORDEN[b.mejor] || 0) - (ORDEN[a.mejor] || 0) || b.soles - a.soles
+      lejos: (a, b) => lejosDe(b) - lejosDe(a) || b.soles - a.soles
         || b.veces - a.veces || a.nombre.localeCompare(b.nombre),
       az: (a, b) => a.nombre.localeCompare(b.nombre),
       nuevo: (a, b) => Math.max(...b.intentos.map(anioDe), 0) - Math.max(...a.intentos.map(anioDe), 0)
@@ -113,13 +164,13 @@ export default function MatrizRivales({ rivales, directores, convs, filas }: {
       enConv(d.intentos) && enCat(d.intentos)
       && (!fReg || d.intentos.some(i => i.fila.region === fReg))
       && (!repiten || d.veces > 1)
-      && (!ganaron || d.gano > 0)
+      && (!ganaron || ganoAqui(d))
       && casa([d.nombre, ...d.alias, ...d.empresas, ...d.proyectos].join(" · ")));
     if (orden === "az") return out.sort((a, b) => a.nombre.localeCompare(b.nombre));
     if (orden === "nuevo") return out.sort((a, b) =>
       Math.max(...b.intentos.map(anioDe), 0) - Math.max(...a.intentos.map(anioDe), 0));
     if (orden === "lejos") return out.sort((a, b) =>
-      (ORDEN[b.mejor] || 0) - (ORDEN[a.mejor] || 0) || b.veces - a.veces);
+      lejosDe(b) - lejosDe(a) || b.veces - a.veces);
     return out;
   }, [directores, busca, fConv, fReg, fCat, repiten, ganaron, orden]);
 
@@ -749,12 +800,36 @@ export default function MatrizRivales({ rivales, directores, convs, filas }: {
                     {r.nuestra && <span className="badge riv-yo">nosotros</span>}
                     {r.ruc && <span className="kit-pz-folio">{r.ruc}</span>}
                     {r.regiones.map(g => <span key={g} className="badge riv-reg">{g}</span>)}
-                    {r.gano > 0 && (
-                      <span className="badge mrv-gano">
-                        🏆 ganó{r.gano > 1 ? ` ${r.gano} veces` : ""}
-                        {r.soles > 0 ? ` · S/ ${r.soles.toLocaleString("es-PE")}` : ""}
-                      </span>
-                    )}
+                    {(() => {
+                      /* Con una convocatoria elegida, la insignia dice lo que
+                         pasó AHÍ. Sin filtro, el resumen de todos los años. */
+                      const e = enEsa(r.intentos);
+                      if (e) return (
+                        <>
+                          <span className={`badge mrv-aqui e-${e.etapa}`}
+                            title={`Lo que hizo en la convocatoria filtrada${e.n > 1 ? `, con ${e.n} proyectos` : ""}.`}>
+                            {icoEtapa(e.etapa)} {SOLA[e.etapa] || e.etapa}
+                            {e.anio ? ` en ${e.anio}` : ""}
+                            {e.soles > 0 ? ` · S/ ${e.soles.toLocaleString("es-PE")}` : ""}
+                          </span>
+                          {/* Ganar otro año es un dato bueno y se enseña — pero
+                              aparte y en gris, para que no se confunda con el
+                              resultado del año que se está mirando. */}
+                          {e.ganoFuera.length > 0 && (
+                            <span className="badge mrv-gano-otro"
+                              title={`Ganó en ${e.ganoFuera.join(", ")}, no en la convocatoria filtrada.`}>
+                              🏆 ganó en {e.ganoFuera.join(", ")}
+                            </span>
+                          )}
+                        </>
+                      );
+                      return r.gano > 0 ? (
+                        <span className="badge mrv-gano">
+                          🏆 ganó{r.gano > 1 ? ` ${r.gano} veces` : ""}
+                          {r.soles > 0 ? ` · S/ ${r.soles.toLocaleString("es-PE")}` : ""}
+                        </span>
+                      ) : null;
+                    })()}
                     {/* ⚠ El aviso de que este nombre podría ser de otra: se dice,
                         no se esconde ni se resuelve a la brava. */}
                     {r.ambiguo && (
@@ -804,7 +879,25 @@ export default function MatrizRivales({ rivales, directores, convs, filas }: {
                         🏢 {d.empresas.length} productoras
                       </span>
                     )}
-                    {d.gano > 0 && <span className="badge mrv-gano">🏆 ganó{d.gano > 1 ? ` ${d.gano} veces` : ""}</span>}
+                    {(() => {
+                      const e = enEsa(d.intentos);
+                      if (e) return (
+                        <>
+                          <span className={`badge mrv-aqui e-${e.etapa}`}>
+                            {icoEtapa(e.etapa)} {SOLA[e.etapa] || e.etapa}{e.anio ? ` en ${e.anio}` : ""}
+                          </span>
+                          {e.ganoFuera.length > 0 && (
+                            <span className="badge mrv-gano-otro"
+                              title={`Ganó en ${e.ganoFuera.join(", ")}, no en la convocatoria filtrada.`}>
+                              🏆 ganó en {e.ganoFuera.join(", ")}
+                            </span>
+                          )}
+                        </>
+                      );
+                      return d.gano > 0
+                        ? <span className="badge mrv-gano">🏆 ganó{d.gano > 1 ? ` ${d.gano} veces` : ""}</span>
+                        : null;
+                    })()}
                   </div>
                   <div className="mrv-tira">{tira(d.intentos)}</div>
                   <div className="mrv-emp-lista">{d.empresas.join(" · ")}</div>

@@ -38,9 +38,13 @@ import { fechaCorta, hoyLima } from "@/lib/fechas";
    ══════════════════════════════════════════════════════════════════════════ */
 
 export default function CorrerCronograma({
-  postulacionId, actividades, etapas, limite, limiteNombre, onCerrar,
+  dueno = "postulacion", duenoId, actividades, etapas, limite, limiteNombre, onCerrar,
 }: {
-  postulacionId: string;
+  /** De quién es el cronograma. El fondo sella una versión al correr; un
+   *  proyecto o una convocatoria dejan el rastro en su bitácora, con las
+   *  fechas viejas dentro (ver `correrCronograma`). */
+  dueno?: "proyecto" | "convocatoria" | "postulacion";
+  duenoId: string;
   actividades: ActCorrer[];
   etapas: Etapa[];
   /** El plazo que manda, ya decidido por `plazoFondo`. */
@@ -96,7 +100,7 @@ export default function CorrerCronograma({
     let r: any;
     try {
       r = await correrCronograma({
-        postulacionId, modo, etapa: modo === "todo" ? undefined : etapa,
+        dueno, duenoId, modo, etapa: modo === "todo" ? undefined : etapa,
         fecha, moverHechas, nota,
       });
     } catch (e: any) {

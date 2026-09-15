@@ -108,6 +108,98 @@ export function resumenCasos(casos: CasoMin[]) {
   };
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   CÓMO SE LLAMA CADA CHIP CUANDO HAY VARIOS
+
+   El chip de un caso enseñaba la cara de quien lo lleva y su estado. Con un
+   caso por actividad bastaba. Con tres no: «Ingesta, organización y
+   sincronización» tenía los suyos los tres resueltos y los tres de Michel, así
+   que la fila pintaba TRES CHIPS IDÉNTICOS. Tres cosas distintas dibujadas
+   igual no son un adorno feo — son una fila que miente: obliga a abrirlos uno
+   por uno para saber cuál es cuál, que es exactamente el trabajo que el
+   cronograma existe para ahorrar.
+
+   Lo que los distingue es el título, y el título no cabe entero en una fila de
+   chips. De ahí este cálculo: NO el título, sino lo mínimo que hace falta para
+   no confundirlo con sus hermanos.
+
+   ⚠ POR QUÉ SE RECORTA LO COMÚN Y NO SE FÍA DEL «…» DEL CSS.
+   Porque los casos de una misma actividad nacen casi siempre del mismo sitio y
+   empiezan igual —«Ingesta — audio», «Ingesta — video»—, y cortar por la
+   derecha con ellipsis deja «Ingesta —…» en los tres: el ellipsis se come
+   justamente la parte que los diferencia y el resultado se lee igual de mal
+   que antes, pero ocupando el triple. Se quita el arranque que TODOS comparten
+   y se enseña lo que sigue, que es lo único con información.
+
+   El título completo nunca se pierde: sigue en el `title` del chip.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Un recorte a lo bruto dejaría restos como «— audio» o «: audio». Se limpian
+   los separadores sueltos de los bordes, no las letras. */
+const limpiaBordes = (s: string) =>
+  s.replace(/^[\s\-–—:·,;|/]+/, "").replace(/[\s\-–—:·,;|/]+$/, "").trim();
+
+const palabras = (s: string) => s.split(/\s+/).filter(Boolean);
+
+/** Cuántas palabras iniciales comparten TODAS las listas. */
+function comunInicio(ls: string[][]) {
+  let n = 0;
+  while (ls.every(l => n < l.length - 1 && l[n] === ls[0][n])) n++;
+  return n;
+}
+
+/**
+ * El rótulo corto de cada caso de una fila, por id.
+ *
+ * Devuelve un mapa VACÍO cuando hay un solo caso: ahí el chip ya es
+ * inconfundible y el título suele repetir el nombre de la actividad que tiene
+ * al lado —ponerlo sería ruido, y ruido que empuja la fila.
+ */
+export function rotulosCasos(casos: CasoMin[]): Map<string, string> {
+  const m = new Map<string, string>();
+  if (casos.length < 2) return m;
+
+  const base = casos.map(c => String(c.titulo || "").trim());
+
+  /* Recortar solo tiene sentido si hay algo que recortar y algo que queda. Si
+     dos títulos son iguales de verdad, el recorte no inventa diferencias: se
+     detecta abajo y se numeran. */
+  let corto = base;
+  const llenos = base.filter(Boolean);
+  if (llenos.length === base.length) {
+    const ls = base.map(palabras);
+    /* `- 1` en comunInicio: nunca se consume la última palabra de un título;
+       un rótulo vacío es peor que uno largo.
+
+       ⚠ Solo por delante. Recortar también la cola común —«Rodaje día 1
+       Nelly» / «Rodaje día 2 Nelly» → «1» / «2»— deja rótulos exactos y
+       cortísimos que no significan NADA al mirarlos: un «1» junto a una cara
+       no dice de qué caso se habla, y entonces el chip vuelve a haber que
+       abrirlo, que es el problema del que veníamos. Quitar el arranque común
+       ya separa siempre que separarse sea posible; lo que sobra por la
+       derecha es contexto, y el contexto es lo único que hace legible un
+       rótulo de tres palabras. */
+    const tent = ls.map(l => limpiaBordes(l.slice(comunInicio(ls)).join(" ")));
+    /* Solo se acepta el recorte si SIRVE: todos con texto y todos distintos.
+       Si no, se vuelve a los títulos enteros — mejor largo que engañoso. */
+    const util = tent.every(Boolean) && new Set(tent).size === tent.length;
+    if (util) corto = tent;
+  }
+
+  /* Últimas defensas: títulos vacíos o repetidos de verdad. Se numeran en el
+     orden en que se pintan, para que al menos «el primero» y «el segundo»
+     signifiquen algo al mirar y al hablar de ellos. */
+  const vistos = new Map<string, number>();
+  casos.forEach((c, i) => {
+    const t = corto[i];
+    const repes = base.filter(x => x === base[i]).length;
+    const n = (vistos.get(t) || 0) + 1;
+    vistos.set(t, n);
+    m.set(c.id, !t ? `#${i + 1}` : repes > 1 || n > 1 ? `${t} #${n}` : t);
+  });
+  return m;
+}
+
 /** Agrupar por actividad los casos que llegan en una sola consulta. Se hace
  *  aquí porque las dos pantallas que montan el cronograma lo necesitan igual, y
  *  una de ellas ya se equivocó una vez armando su propia versión. */

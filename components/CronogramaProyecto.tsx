@@ -16,13 +16,14 @@ import CorrerCronograma from "@/components/CorrerCronograma";
 import NavFechas from "@/components/NavFechas";
 import Avatar from "@/components/Avatar";
 import VistaRapida from "@/components/VistaRapida";
+import ChipPop from "@/components/ChipPop";
 import FechaMini from "@/components/FechaMini";
 import { sinBot } from "@/lib/personas";
 import { type Etapa, ETAPAS_CINE, nombreEtapa } from "@/lib/etapas";
 import CargarBasesCrono from "@/components/CargarBasesCrono";
 import { DIAS_AVISO_DEF } from "@/lib/plazo";
 import { opcionesResp } from "@/lib/personas";
-import { repartirCasos, resumenCasos, casoCerrado, type CasoMin } from "@/lib/casosActividad";
+import { repartirCasos, resumenCasos, casoCerrado, rotulosCasos, type CasoMin } from "@/lib/casosActividad";
 import { rotuloEstado, claseEstado } from "@/lib/estados";
 /* `nombreEtapa` queda solo de respaldo: ver `nomEtapa` abajo. */
 
@@ -600,7 +601,20 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
      él a mano. Estaban en 170 mientras el CSS decía 240, así que la línea de
      HOY caía 70px a la izquierda de donde debía — con un cronograma de un año,
      casi un mes de error, y en silencio. */
-  const GT_NOMBRE = 240;
+  /* ── ⚠ EL ANCHO DEL RÓTULO VIVE AQUÍ Y SOLO AQUÍ ──
+     Estaba escrito dos veces: este número —que coloca el eje de meses, las
+     líneas de la rejilla, la marca de HOY y la leyenda— y un `width: 240px` en
+     `.gt-nombre`. Dos copias del mismo dato, y de las peores: cambiar una sola
+     no rompe nada visible al instante, desplaza el eje respecto de las barras.
+     Un Gantt con el calendario corrido sesenta píxeles se lee perfectamente y
+     miente en todas sus fechas.
+     Ahora el CSS lo lee de `--gt-nombre`, que se pone abajo desde aquí.
+
+     300 y no 240 porque la columna ganó dos iconos —la nota y el lápiz— y los
+     nombres se cortaban en la mitad: «Visionado y re…», «Primer ensamb…». El
+     precio son sesenta píxeles menos de línea de tiempo; el nombre de la
+     actividad es lo que se lee primero. */
+  const GT_NOMBRE = 300;
 
   const cuerpo = (
     /* `cr-caja` además de `card`: la tarjeta es correcta cuando el cronograma
@@ -651,12 +665,21 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
             title="Subir el PDF de las bases y sacar de ahí las fechas del concurso"
             onClick={() => setPanel("bases")}>📄 Cargar de las bases</button>
         )}
-        {/* ── CORRER, SOLO EN UN FONDO ──
-            Correr las fechas sella una versión del cronograma, y las versiones
-            (`version_fondo`) cuelgan de una POSTULACIÓN. En un proyecto o una
-            convocatoria el botón movería las fechas sin dejar rastro de las
-            viejas, que es exactamente lo que este trabajo vino a evitar. */}
-        {dueno === "postulacion" && puedeCorrer && visibles.length > 0 && !panel && (
+        {/* ── ⚠ CORRER TAMBIÉN EN UN PROYECTO ──
+            Esto era solo de los fondos, y el motivo estaba escrito aquí:
+            correr sella una versión, las versiones (`version_fondo`) cuelgan de
+            una POSTULACIÓN, y en un proyecto el botón movería las fechas sin
+            dejar rastro de las viejas. La objeción era buena; la conclusión,
+            demasiado ancha. La falta es la misma en las dos partes —el rodaje
+            se atrasa una semana y hay que empujar la postproducción entera, que
+            a mano son veinte filas con dos fechas cada una— y lo que faltaba
+            era el rastro, no el permiso.
+            Ahora, sin versión, la bitácora guarda las fechas VIEJAS de cada
+            actividad movida (ver `correrCronograma`): se puede reconstruir.
+            Y el permiso sigue la regla de cada dueño: administración en un
+            fondo —expediente público con plazo de acta—, y en un proyecto el
+            mismo que ya tiene quien arrastra una fecha suelta. */}
+        {(dueno !== "postulacion" || puedeCorrer) && visibles.length > 0 && !panel && (
           <button className="btn btn-ghost" style={{ padding: "5px 12px", fontSize: 12, color: "var(--accent)" }}
             title="Desplazar una etapa —y lo que viene detrás— a una fecha nueva"
             onClick={() => setPanel("correr")}>⏩ Correr fechas</button>
@@ -726,7 +749,7 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
            lista filtrada, esas filas no saldrían ni en la cuenta de lo que no
            se mueve — que es justo donde alguien las echaría en falta. */
         <CorrerCronograma
-          postulacionId={duenoId} actividades={actividades as any} etapas={etapas}
+          dueno={dueno} duenoId={duenoId} actividades={actividades as any} etapas={etapas}
           limite={limite} limiteNombre={limiteNombre}
           onCerrar={() => setPanel("")} />
       )}
@@ -931,10 +954,24 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
                         relación —trabajo colgando de una fila— y con dos diseños
                         distintos habría que aprenderlos dos veces.
                         Los CERRADOS se pintan también, atenuados: en un
-                        cronograma, lo hecho es justo lo que hay que enseñar. */}
-                    {casosDe(a).length > 0 && (
+                        cronograma, lo hecho es justo lo que hay que enseñar.
+
+                        ── Y CON VARIOS, CÓMO SE LLAMA CADA UNO ──
+                        Con un caso por actividad, cara + estado bastaba. Con
+                        tres del mismo responsable y en el mismo estado, la
+                        fila pintaba tres chips idénticos y había que abrirlos
+                        uno a uno para saber cuál era cuál — justo el trabajo
+                        que el cronograma existe para ahorrar.
+                        `rotulosCasos` da lo mínimo que los separa (y nada
+                        cuando hay uno solo: ahí el título repite el nombre de
+                        la actividad que tiene al lado). El título entero
+                        sigue en el `title` del chip. */}
+                    {casosDe(a).length > 0 && (() => {
+                      const cs = repartirCasos(casosDe(a)).todos;
+                      const rot = rotulosCasos(cs);
+                      return (
                       <span className="cr-casos" title={resumenCasos(casosDe(a)).texto}>
-                        {repartirCasos(casosDe(a)).todos.map((c: CasoMin) => (
+                        {cs.map((c: CasoMin) => (
                           <span key={c.id}
                             className={`cr-caso fila-cap${casoCerrado(c) ? " cr-caso-off" : ""}`}
                             title={`${c.titulo || "Caso"} — ${c.resp?.nombre || "sin responsable"}`}>
@@ -946,6 +983,7 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
                             {c.resp?.nombre
                               ? <Avatar size={15} nombre={c.resp.nombre} src={c.resp.avatar_url} color={c.resp.color} />
                               : <span className="cr-nadie" title="Sin responsable">·</span>}
+                            {rot.get(c.id) && <span className="cr-caso-t">{rot.get(c.id)}</span>}
                             {c.estado && (
                               <span className={`pill st-${claseEstado(c.estado, c.tipo || "tarea")}`}
                                 style={{ fontSize: 9 }}>
@@ -960,7 +998,8 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
                           </span>
                         ))}
                       </span>
-                    )}
+                      );
+                    })()}
                     {/* ── ATAR UNO QUE YA EXISTE ──
                         `materializar` (▶) abre uno nuevo; esto ata el que ya
                         está en el tablero. Sin esto quedaban dos objetos
@@ -1091,7 +1130,8 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
 
       {/* ===== VISTA GANTT ===== */}
       {vista === "gantt" && visibles.length > 0 && (
-        <div className="gt" style={{ position: "relative", marginTop: 12 }}>
+        <div className="gt"
+          style={{ position: "relative", marginTop: 12, ["--gt-nombre" as any]: `${GT_NOMBRE}px` }}>
           <NavFechas
             onHoy={() => { if (ZOOM_G[zoomG].d === 0) setZoomG(2); setDesdeG(isoDe(Date.now() - 15 * dia)); }}
             onPrev={() => moverG(-30)} onNext={() => moverG(30)}
@@ -1183,13 +1223,6 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
               )}
               <div className={`gt-row${apagada ? " resuelta" : ""}`}>
                 <div className="gt-nombre" title={a.nombre}>
-                  {/* Trabajar el caso al vuelo, sin salir del Gantt. Va DENTRO
-                      del rótulo, que tiene ancho fijo: fuera descuadraría el
-                      eje temporal. Mismo criterio que en la Agenda. */}
-                  {/* El primer caso vivo, o el primero que haya: en el Gantt no
-                      cabe una fila de chips, y la vista rápida es un vistazo,
-                      no el índice. La lista de arriba los enseña todos. */}
-                  {casosDe(a)[0] && <VistaRapida pubId={repartirCasos(casosDe(a)).todos[0].id} />}
                   <span className="gt-nombre-txt">
                     {a.clase === "continua" ? "🔁 "
                       : a.estado === "finalizada" ? "✅ " : a.estado === "planificada" ? "" : "🟣 "}
@@ -1206,9 +1239,80 @@ export default function CronogramaProyecto({ dueno = "proyecto", duenoId, activi
                         src={fotoDe(respDe(a.responsable))} color={respDe(a.responsable)?.color} />
                     </span>
                   )}
+                  {/* ── LOS TRES ICONOS, JUNTOS Y AL FINAL ──
+                      La vista rápida del caso iba DELANTE del nombre, de cuando
+                      era el único icono de la fila. Con la nota y el lápiz
+                      detrás, el rótulo quedaba con un icono a cada lado y el
+                      texto en medio: tres cosas que hacen lo mismo —abrir algo
+                      de esta actividad— repartidas en dos sitios, y el nombre
+                      empezando más adentro en unas filas que en otras.
+                      Ahora los tres van al final, en el mismo orden siempre:
+                      mirar el caso, leer la nota, editar. El nombre arranca
+                      pegado al margen y se alinea con el de arriba y el de
+                      abajo, que es lo que permite recorrer la columna con la
+                      vista.
+                      Sigue DENTRO del rótulo, que tiene ancho fijo: fuera
+                      descuadraría el eje temporal. */}
+                  {/* El primer caso vivo, o el primero que haya: en el Gantt no
+                      cabe una fila de chips, y la vista rápida es un vistazo,
+                      no el índice. La lista de arriba los enseña todos.
+                      ⚠ Pero si hay más de uno SE DICE, con el número al lado.
+                      Sin eso, el nombre enlaza a uno de tres sin avisar y el
+                      👁 enseña ese mismo: la fila afirma en silencio que el
+                      caso de esta actividad es ése. Quien se fía abre el
+                      equivocado y da por revisado lo que no miró. Un número no
+                      cabe mal en ningún ancho y convierte el silencio en «hay
+                      más, míralos en la lista». */}
+                  {casosDe(a)[0] && <VistaRapida pubId={repartirCasos(casosDe(a)).todos[0].id} />}
+                  {casosDe(a).length > 1 && (
+                    <span className="gt-ncasos"
+                      title={`${resumenCasos(casosDe(a)).texto} — se ven todos en la vista de lista`}>
+                      {casosDe(a).length}
+                    </span>
+                  )}
+                  {/* ── ⚠ LA NOTA DE LA ACTIVIDAD, SIN TENER QUE EDITARLA ──
+                      La descripción —«a partir del bloqueo de imagen no se
+                      añaden ni recortan fotogramas»— es el CÓMO de la
+                      actividad, y en el Gantt solo se veía abriendo el
+                      formulario de edición. O sea: para leer una nota había
+                      que ponerse a modificar la fila, con el riesgo de dejar
+                      algo tocado por haber ido a mirar.
+                      En la lista se pinta entera debajo del renglón, que ahí
+                      cabe. Aquí no: la columna son 240 px fijos y las filas van
+                      alineadas con sus barras —un segundo renglón desalinearía
+                      el cronograma entero—. Así que va en un pop-up, con el
+                      mismo 📝 visible solo donde hay algo que leer. */}
+                  {a.descripcion && (
+                    <ChipPop clase="chip-nota" ancho={380}
+                      titulo={`Ver la nota de «${a.nombre}»`}
+                      etiqueta={<>📝</>}
+                      cabecera={<span className="chip-gr-h">📝 {a.nombre}</span>}>
+                      <span className="gt-nota">{a.descripcion}</span>
+                    </ChipPop>
+                  )}
+                  {/* ── ⚠ EDITAR TAMBIÉN DESDE EL GANTT ──
+                      El ✎ solo estaba en la lista, así que para corregir una
+                      fecha había que cambiar de vista, buscar la actividad
+                      entre veintinueve y volver. Y es al revés: el Gantt es
+                      justo donde se VE que una fecha está mal —una barra que
+                      pisa a otra, una que se fue sola— y donde apetece
+                      arreglarla sin perder de vista el dibujo.
+                      Tenue y no escondido: en veintinueve filas, veintinueve
+                      iconos a plena luz se comen la columna; oculto hasta el
+                      hover, no existe en una pantalla táctil. */}
+                  <button className="gt-ed" title={`Editar «${a.nombre}»`}
+                    onClick={() => abrirEdicion(a)}>✎</button>
                 </div>
                 {barra}
               </div>
+              {/* El formulario se abre DEBAJO de su fila y a todo el ancho. No
+                  dentro del rótulo —240 px fijos, lo reventaría— ni arriba del
+                  todo, que en un cronograma de veintinueve filas deja el
+                  formulario en un sitio y la actividad en otro. */}
+              {editando === a.id && (
+                <FormAct f={ef} setF={setEf} perfiles={perfiles} etapas={etapas} ocupado={ocupado} editar
+                  onSave={guardarEdicion} onCancel={() => setEditando(null)} />
+              )}
               </Fragment>
             );
           })}
