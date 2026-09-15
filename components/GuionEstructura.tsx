@@ -1,12 +1,12 @@
 "use client";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useRouter } from "next/navigation";
 import Tratamiento from "@/components/Tratamiento";
 import Espina, { type BeatFila } from "@/components/Espina";
 import { crearActo, guardarActo, borrarActo, crearSecuencia,
   elegirPlantilla, crearHilo, borrarHilo, sembrarBeats, crearBeat } from "@/app/guion/acciones";
 import { PLANTILLAS, plantillaDe, VOZ, minutosDe, minutosHum, repartoActos,
-  diagnosticar, explicar, plantillaDeLosActos, type ModoGuion } from "@/lib/guion";
+  diagnosticar, explicar, plantillaDeLosActos, colorActo, type ModoGuion } from "@/lib/guion";
 
 /* LA ESTRUCTURA: actos con sus secuencias.
  *
@@ -88,22 +88,63 @@ export default function GuionEstructura({ tratamientoId, modo, plantilla, actos,
      panel de hilos para perder el párrafo que estabas escribiendo.
      Es una función que devuelve una lista, no un componente: se llama, no
      se monta, y el estado de cada `Tratamiento` sobrevive. */
-  const filasDe = (lista: Sec[]) => lista.map((s, i) => (
-    <Tratamiento key={s.id} sec={s} tratamientoId={tratamientoId} hilos={hilos} modo={modo}
-      n={nDe.get(s.id) || 0} beats={beatDe.get(s.id) || []}
-      primera={i === 0} ultima={i === lista.length - 1} />
-  ));
+  /* ══════════════════════════════════════════════════════════════════════
+     EL ORDEN DE UN ACTO: UNA SOLA LECTURA, DE ARRIBA A ABAJO
 
-  /* La espina de un acto. Va ARRIBA de sus secuencias y no al final: es lo
-     que hay que leer antes de escribir, no después. */
+     ⚠ Antes el acto se leía DOS VECES. Arriba iban TODOS sus puntos —el de
+     6% y el de 24%— y debajo todas sus secuencias, y como cada secuencia
+     enseñaba además, en una píldora, el punto que carga con su nota entera,
+     lo mismo aparecía dos veces en la misma tarjeta y en dos sitios
+     distintos. Para seguir la película había que leer los puntos hacia abajo
+     y luego volver a subir a la primera secuencia.
+
+     Ahora el punto anclado va JUSTO DEBAJO de su secuencia. El acto se lee
+     una vez y en orden de película, y el punto queda donde sirve: primero
+     SEC 01 con su título y su tratamiento —que es lo que se escribe y lo que
+     se lee— y pegado debajo, en gris, qué tenía que conseguir ese tramo y si
+     cayó donde se esperaba. Es la comprobación, y una comprobación va después
+     de lo comprobado.
+     (Estuvo un rato encima. Debajo se lee mejor: arriba partía en dos la
+     lectura de cada secuencia —punto, título, texto, punto, título, texto— y
+     el ojo tropezaba con la maquinaria antes que con la película.)
+     La píldora de dentro sobra y se fue: con la fila completa a un
+     centímetro, repetir la nota era ruido — y además allí no se podía ni
+     editar ni desanclar.
+
+     Los puntos SIN secuencia sí siguen arriba, en bloque (`espinaDe`): no
+     tienen sitio en la cronología todavía, y precisamente por eso son la
+     lista de lo que le falta a este acto. */
+  const filasDe = (lista: Sec[]) => lista.map((s, i) => {
+    const suyos = beatDe.get(s.id) || [];
+    return (
+      <Fragment key={s.id}>
+        <Tratamiento sec={s} tratamientoId={tratamientoId} hilos={hilos} modo={modo}
+          n={nDe.get(s.id) || 0}
+          primera={i === 0} ultima={i === lista.length - 1} />
+        {suyos.length > 0 && (
+          <div className="es-bloque es-bloque-sec">
+            {suyos.map(b => (
+              <Espina key={b.id} beat={b} tratamientoId={tratamientoId} secs={opciones}
+                pctReal={pctDe.get(s.id) ?? null} />
+            ))}
+          </div>
+        )}
+      </Fragment>
+    );
+  });
+
+  /* Los puntos del acto que TODAVÍA no carga ninguna secuencia. Van arriba y
+     en bloque: es la lista de lo que a este acto le falta, y leerla antes de
+     escribir es el trabajo. Los anclados no están aquí — están con su
+     secuencia, ahí abajo. */
   const espinaDe = (actoId: string | null) => {
-    const suyos = beats.filter(b => (b.acto_id || null) === actoId);
+    const suyos = beats.filter(b => (b.acto_id || null) === actoId && !b.secuencia_id);
     if (!suyos.length) return null;
     return (
       <div className="es-bloque">
         {suyos.map(b => (
           <Espina key={b.id} beat={b} tratamientoId={tratamientoId} secs={opciones}
-            pctReal={b.secuencia_id ? pctDe.get(b.secuencia_id) ?? null : null} />
+            pctReal={null} />
         ))}
       </div>
     );
@@ -147,8 +188,16 @@ export default function GuionEstructura({ tratamientoId, modo, plantilla, actos,
         {/* Reparto del metraje. Es lo que un tratamiento no puede ver solo. */}
         {total > 0 && (
           <div className="gu-barra">
-            {filas.filter(f => f.min > 0).map((f, i) => (
-              <span key={f.id} className="gu-tramo" style={{ width: `${f.pct}%`, opacity: 1 - i * 0.14 }}
+            {/* ⚠ El color sale de la posición del acto en `actos`, NO del
+                índice de este `.map`: aquí se han filtrado los que no tienen
+                minutos, así que con un acto vacío en medio los colores se
+                correrían y la barra dejaría de coincidir con las tarjetas de
+                abajo. Un código de color que cambia según lo que se filtre es
+                peor que no tenerlo. */}
+            {filas.filter(f => f.min > 0).map(f => (
+              <span key={f.id} className="gu-tramo"
+                style={{ width: `${f.pct}%`,
+                  ["--ac" as any]: colorActo(actos.findIndex(a => a.id === f.id)) }}
                 title={`${f.nombre}: ${minutosHum(f.min)} · ${Math.round(f.pct)}%`}>
                 <b>{f.nombre}</b> {Math.round(f.pct)}%
               </span>
@@ -229,7 +278,11 @@ export default function GuionEstructura({ tratamientoId, modo, plantilla, actos,
         const suyas = secs.filter(s => s.acto_id === a.id);
         const f = filas.find(x => x.id === a.id);
         return (
-          <div key={a.id} className="card gu-acto">
+          /* El color del acto también en el borde de su tarjeta: es lo que
+             permite saber en qué tramo estás con la barra ya fuera de
+             pantalla, que es la mitad del tiempo en un documento largo. */
+          <div key={a.id} className="card gu-acto gu-acto-col"
+            style={{ ["--ac" as any]: colorActo(actos.findIndex(x => x.id === a.id)) }}>
             <div className="gu-acto-h">
               {editActo === a.id ? (
                 <form className="gu-form" onSubmit={async e => {
@@ -244,7 +297,12 @@ export default function GuionEstructura({ tratamientoId, modo, plantilla, actos,
                 </form>
               ) : (
                 <>
-                  {a.clave && <span className="gu-acto-c">{a.clave}</span>}
+                  {a.clave && (
+                    <span className="gu-acto-c"
+                      style={{ ["--ac" as any]: colorActo(actos.findIndex(x => x.id === a.id)) }}>
+                      {a.clave}
+                    </span>
+                  )}
                   <b style={{ fontSize: 14 }}>{a.nombre}</b>
                   <span style={{ color: "var(--dim)", fontSize: 11.5 }}>
                     {suyas.length} {suyas.length === 1 ? V.sec.toLowerCase() : V.secs.toLowerCase()}

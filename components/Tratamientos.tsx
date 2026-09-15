@@ -7,6 +7,7 @@ import {
   duplicarTratamiento, borrarTratamiento,
 } from "@/app/guion/acciones";
 import { fechaDia } from "@/lib/fechas";
+import { PLANTILLAS } from "@/lib/guion";
 import {
   ordenarTratamientos, tituloDe, nivelDe, metaNivel, NIVELES,
   nivelDestino, llegoAlDestino, estadoDe, META_ESTADO_TRAT,
@@ -35,7 +36,7 @@ import {
    ══════════════════════════════════════════════════════════════════════════ */
 
 export default function Tratamientos({
-  proyectoId, tipoProyecto, tratamientos, cuentas = null, fondos = [],
+  proyectoId, tipoProyecto, tratamientos, cuentas = null, actos = null, fondos = [],
   soloDelFondo = null, error: errServidor = null, puedeEditar = true,
 }: {
   proyectoId: string;
@@ -53,6 +54,11 @@ export default function Tratamientos({
    *  «—» en vez de «vacío», que sobre un documento con veinte secuencias
    *  dentro sería mentira. */
   cuentas?: Record<string, number> | null;
+  /** Cuántos ACTOS tiene cada documento, por id. Sin esto, un documento que
+   *  acaba de nacer con su modelo —tres actos y su espina— se lee «vacío», que
+   *  es lo que se dice de uno creado y abandonado. Mismo `null` que `cuentas`:
+   *  «no se sabe», no «cero». */
+  actos?: Record<string, number> | null;
   /** Los fondos de esta película, para poder marcar a cuál se presentó cada
    *  documento. */
   fondos?: { id: string; codigo?: string | null; nombre?: string | null }[];
@@ -102,9 +108,20 @@ export default function Tratamientos({
     const r: any = await crearTratamiento(proyectoId, {
       nombre: f.nombre, version: f.version, nivel: f.nivel,
       url: f.url, postulacionId: f.postulacion_id || null, nota: f.nota,
+      /* Solo el documento que se va a escribir aquí dentro nace con modelo: al
+         enlazado la estructura se la da su documento de fuera, y sembrarle
+         actos vacíos sería inventarle una que nadie escribió. */
+      plantilla: esEnlace ? null : (f.plantilla ?? PLANTILLAS[0].clave),
     });
     setOcupado(false);
     if (r?.error) { setError(r.error); return; }
+    /* Lo que se creó, dicho en números. «Creado» a secas no distingue el
+       documento que nace con su mapa del que nace vacío, que es justo la
+       diferencia que esto vino a arreglar. */
+    const p = r?.plantilla;
+    setAviso(p?.aviso ? `⚠ ${p.aviso}`
+      : p ? `Creado con la estructura de ${p.nombre}: ${p.actos} actos y ${p.beats} puntos.`
+        : "");
     refrescar();
   };
 
@@ -185,7 +202,7 @@ export default function Tratamientos({
               title="Registrar un tratamiento que ya existe en Drive, Word o PDF">🔗 Enlazar uno</button>
             <button type="button" className="btn btn-ghost trt-btn"
               onClick={() => { setCreando("nuevo"); setF({ nivel: "secuenciado" }); setError(""); setAviso(""); }}
-              title="Empezar un documento vacío para escribirlo aquí dentro">＋ Nuevo</button>
+              title="Empezar un documento para escribirlo aquí dentro, con sus actos y su espina ya puestos">＋ Nuevo</button>
           </>
         )}
       </div>
@@ -208,7 +225,7 @@ export default function Tratamientos({
           <div className="trt-nuevo-t">
             {creando === "enlace"
               ? "🔗 Un documento que ya existe fuera. Se registra con su enlace; trocearlo en secuencias aquí dentro es opcional y se hace después."
-              : "＋ Un documento vacío para escribirlo aquí: actos, secuencias y su tratamiento en prosa."}
+              : "＋ Un documento para escribirlo aquí: nace con los actos y la espina del modelo que elijas, y encima cuelgas las secuencias."}
           </div>
           <div className="trt-grid">
             <label>
@@ -233,6 +250,31 @@ export default function Tratamientos({
                 <select value={f.postulacion_id || ""} onChange={e => setNuevo("postulacion_id", e.target.value)} style={inputStyle}>
                   <option value="">— a ninguno —</option>
                   {fondos.map(x => <option key={x.id} value={x.id}>{x.codigo || x.nombre}</option>)}
+                </select>
+              </label>
+            )}
+            {/* ── EL MODELO CON EL QUE NACE ──
+                ⚠ Aquí estaba el agujero. «＋ Nuevo» creaba un documento vacío
+                y la estructura se elegía después, en otra pantalla y en otra
+                pestaña dentro de ella — así que no se elegía: el documento se
+                quedaba creado, vigente y sin nada dentro, que es el estado que
+                la ficha de la película denuncia en rojo porque MIENTE (la
+                película se cuenta entre las que tienen documento vigente).
+                Viene con modelo por defecto y no en blanco a propósito: la
+                pantalla del guion ya decía «estás escribiendo contra Tres
+                actos» aunque no se hubiera elegido ninguno —`plantillaDe(null)`
+                cae en el primero—, así que dejarlo vacío era enseñar un modelo
+                que no existía en la base. Ahora lo que se ve es lo que hay.
+                Y no es una jaula: se cambia luego sin perder una palabra. */}
+            {creando === "nuevo" && (
+              <label>
+                <span>Modelo narrativo</span>
+                <select value={f.plantilla ?? PLANTILLAS[0].clave}
+                  onChange={e => setNuevo("plantilla", e.target.value)} style={inputStyle}>
+                  {PLANTILLAS.map(p => (
+                    <option key={p.clave} value={p.clave}>{p.nombre} · {p.fuente}</option>
+                  ))}
+                  <option value="">— ninguno por ahora —</option>
                 </select>
               </label>
             )}
@@ -262,7 +304,7 @@ export default function Tratamientos({
         const nivel = nivelDe(t);
         const est = estadoDe(t);
         const n = cuentas ? (cuentas[t.id] ?? 0) : undefined;
-        const carga = cargaDe(t, n);
+        const carga = cargaDe(t, n, actos ? (actos[t.id] ?? 0) : undefined);
         const abierta = editando === t.id;
         return (
           <div key={t.id} className={`trt-fila${est === "descartado" ? " es-desc" : ""}`}>

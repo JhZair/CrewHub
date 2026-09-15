@@ -113,27 +113,49 @@ export function tituloDe(t: Tratamiento): string {
 }
 
 /* ── EN QUÉ ESTADO DE CARGA ESTÁ ──
- * Tres situaciones que se ven distinto y se leen distinto:
- *   escrito   — tiene secuencias aquí dentro
- *   enlazado  — solo su `url`: existe, vive en Drive, no está troceado
- *   vacío     — ni una cosa ni la otra. Es un documento que alguien creó y no
- *               volvió a tocar, y decirlo evita que parezca que se perdió.
+ * Cuatro situaciones que se ven distinto y se leen distinto:
+ *   escrito      — tiene secuencias aquí dentro
+ *   enlazado     — solo su `url`: existe, vive en Drive, no está troceado
+ *   estructurado — tiene sus ACTOS (y su espina) y ni una secuencia escrita
+ *   vacío        — ninguna de las tres. Es un documento que alguien creó y no
+ *                  volvió a tocar, y decirlo evita que parezca que se perdió.
+ *
+ * ⚠ `estructurado` ES NUEVO Y ARREGLA UNA MENTIRA.
+ * Hasta hoy solo se contaban las secuencias, así que un documento que acababa
+ * de nacer con su modelo narrativo —tres actos y seis puntos de espina, un
+ * mapa entero— se leía igual que uno creado y abandonado: «vacío · ni
+ * secuencias ni enlace». Y eso es falso justo en el momento en que alguien
+ * acaba de hacer lo correcto.
+ * Son dos estados distintos y se atienden distinto: al vacío hay que elegirle
+ * un modelo; al estructurado hay que sentarse a escribirlo. Pintarlos iguales
+ * mandaba a la misma pantalla a resolver dos problemas que no lo son.
+ *
  * ⚠ `nSecuencias` viene de fuera y puede ser `undefined` cuando la consulta
  * falló. `undefined` NO es cero: con la lista rota, todo saldría «enlazado» o
  * «vacío» —o sea, «aquí no hay nada escrito»— sobre documentos con veinte
- * secuencias dentro. Por eso hay un cuarto valor. */
-export type Carga = "escrito" | "enlazado" | "vacio" | "no-se-sabe";
+ * secuencias dentro. Por eso existe `no-se-sabe`.
+ *
+ * ⚠ `nActos` NO tiene ese salvavidas, y es deliberado: omitirlo devuelve el
+ * comportamiento viejo —un estructurado se lee «vacío»—, que es el error hacia
+ * el lado ruidoso y no hacia el silencioso. Quien llame TIENE que pasarlo; las
+ * tres pantallas que lo hacen lo piden embebido con `actos:guion_actos(count)`
+ * en la misma consulta, sin viaje de más. */
+export type Carga = "escrito" | "enlazado" | "estructurado" | "vacio" | "no-se-sabe";
 
-export function cargaDe(t: Tratamiento, nSecuencias?: number): Carga {
+export function cargaDe(t: Tratamiento, nSecuencias?: number, nActos?: number): Carga {
   if (nSecuencias === undefined || nSecuencias === null) return "no-se-sabe";
   if (nSecuencias > 0) return "escrito";
-  return (t.url || "").trim() ? "enlazado" : "vacio";
+  /* El enlace manda sobre la estructura: si el documento vive en Drive, lo que
+     hay que saber es eso —dónde está— y no que aquí dentro tenga actos. */
+  if ((t.url || "").trim()) return "enlazado";
+  return (nActos ?? 0) > 0 ? "estructurado" : "vacio";
 }
 
 export const META_CARGA: Record<Carga, { txt: string; ayuda: string }> = {
   escrito:  { txt: "escrito aquí", ayuda: "Tiene secuencias dentro del sistema" },
   enlazado: { txt: "solo el enlace", ayuda: "El documento vive fuera (Drive, PDF). Todavía no está troceado en secuencias aquí." },
-  vacio:    { txt: "vacío", ayuda: "Ni secuencias ni enlace: está creado y sin contenido" },
+  estructurado: { txt: "solo la estructura", ayuda: "Tiene sus actos y su espina —el mapa— pero ninguna secuencia escrita. Es el estado normal de un documento recién empezado: falta sentarse a escribirlo." },
+  vacio:    { txt: "vacío", ayuda: "Ni estructura, ni secuencias, ni enlace: está creado y sin contenido" },
   "no-se-sabe": { txt: "—", ayuda: "No se pudo contar las secuencias" },
 };
 
@@ -209,7 +231,8 @@ export const peliculaViva = (p: PeliMin) => (p.etapa || "") !== "finalizado";
 /** Qué le falta a una película. `null` cuando no le falta nada — y eso NO es
  *  lo mismo que «no lo sé»: si la consulta de tratamientos falló, quien llama
  *  no debe pintar ningún diagnóstico. */
-export type Falta = "sin-nada" | "sin-vigente" | "vacio" | "corto" | "solo-enlazado" | null;
+export type Falta = "sin-nada" | "sin-vigente" | "vacio" | "solo-estructura"
+  | "corto" | "solo-enlazado" | null;
 
 /* ── UN COLOR POR FALTA ──
    ⚠ Tres de las cinco eran `var(--yellow)`: `sin-nada`, `sin-vigente` y
@@ -247,7 +270,18 @@ export const META_FALTA: Record<Exclude<Falta, null>, { txt: string; ayuda: stri
   "sin-vigente": { txt: "sin vigente", col: "var(--orange)",
     ayuda: "Hay documentos, pero ninguno marcado como el que manda hoy: al entrar, nadie sabe cuál leer." },
   "vacio": { txt: "documento vacío", col: "var(--red)",
-    ayuda: "El documento vigente no tiene secuencias NI enlace: está creado y sin nada dentro. Es el peor de los cinco porque MIENTE: la película se cuenta entre las que tienen su documento vigente." },
+    ayuda: "El documento vigente no tiene estructura, ni secuencias, ni enlace: está creado y sin nada dentro. Es el peor de los seis porque MIENTE: la película se cuenta entre las que tienen su documento vigente." },
+  /* ⚠ NARANJA, no rojo ni gris, y las dos alternativas se consideraron.
+     No es rojo porque aquí sí hay trabajo hecho y es el trabajo correcto:
+     alguien eligió el modelo y el documento tiene su mapa. Pintar de alarma el
+     resultado de haber hecho lo que tocaba enseña a ignorar el rojo.
+     No es gris porque un mapa sin texto NO SE PUEDE LEER NI MANDAR: la
+     película sigue contándose entre las que tienen su documento vigente y no
+     hay una palabra que enseñar a un jurado. Eso es exactamente el naranja de
+     esta pantalla —hay trabajo hecho pero no se puede usar— y por eso también
+     apaga el visto verde del titular. */
+  "solo-estructura": { txt: "solo la estructura", col: "var(--orange)",
+    ayuda: "El documento vigente tiene sus actos y su espina pero ni una secuencia escrita. No es un fallo: es el paso siguiente después de elegir el modelo. Pero todavía no hay nada que leer ni que mandar." },
   "solo-enlazado": { txt: "solo enlazado", col: "var(--dim)",
     ayuda: "El documento está registrado con su enlace pero no se ha troceado en secuencias aquí dentro. No es un error: es lo normal mientras vive en Drive." },
   /* ⚠ La ayuda NO nombra tipos de película, y es una corrección. Decía «en
@@ -283,6 +317,12 @@ export function diagnosticar(
   peli: PeliMin,
   tratamientos: Tratamiento[],
   cuentas: Record<string, number> | null,
+  /** Cuántos ACTOS tiene cada documento, por id. Distingue el documento vacío
+   *  del que ya tiene su mapa y le falta el texto.
+   *  ⚠ `null` o ausente cae en el diagnóstico viejo —todo lo no escrito es
+   *  «vacío»—, que exagera en vez de callar. Con la consulta caída prefiero un
+   *  rojo de más que una película en verde sin nada dentro. */
+  actos: Record<string, number> | null = null,
 ): FilaPelicula {
   const suyos = ordenarTratamientos(tratamientos.filter(t => t.proyecto_id === peli.id));
   /* Los descartados no cuentan para el diagnóstico: una película cuyo único
@@ -309,7 +349,11 @@ export function diagnosticar(
      `cargaDe` ya nombraba este estado —«vacío»— y el diagnóstico era el único
      sitio que lo daba por bueno: la película se contaba en «✔ todas tienen su
      documento vigente» con un documento completamente vacío dentro. */
-  else if (sinSecuencias && !(vigente.url || "").trim()) falta = "vacio";
+  /* Y de ese «nada en ninguna parte» se separa el que SÍ tiene su mapa: son
+     dos trabajos distintos —elegirle un modelo, o sentarse a escribir— y con
+     un solo veredicto la película en rojo mandaba a la pantalla equivocada. */
+  else if (sinSecuencias && !(vigente.url || "").trim())
+    falta = (actos && (actos[vigente.id] ?? 0) > 0) ? "solo-estructura" : "vacio";
   else if (!llegoAlDestino(vigente, peli.tipo)) falta = "corto";
   else if (sinSecuencias) falta = "solo-enlazado";
 
@@ -327,6 +371,9 @@ export type Diagnostico = {
    *  el vigente COMPLETAMENTE VACÍO dejaba encendido el visto verde. Un
    *  diagnóstico que no se suma es un diagnóstico que no existe. */
   vacios: number;
+  /** Con el mapa puesto y sin escribir. Cuenta aparte de `vacios` porque se
+   *  atiende distinto: aquí no hay nada que decidir, hay que escribir. */
+  soloEstructura: number;
   soloEnlazado: number;
   cortos: number;
   /** Cuántos documentos hay en total, para que el titular no hable solo de
@@ -336,13 +383,14 @@ export type Diagnostico = {
 
 export function resumirDiagnostico(filas: FilaPelicula[]): Diagnostico {
   const r: Diagnostico = { peliculas: filas.length, sinNada: 0, sinVigente: 0,
-    vacios: 0, soloEnlazado: 0, cortos: 0, documentos: 0 };
+    vacios: 0, soloEstructura: 0, soloEnlazado: 0, cortos: 0, documentos: 0 };
   for (const f of filas) {
     /* Los VIVOS, no todos: ver el comentario de `FilaPelicula.vivos`. */
     r.documentos += f.vivos.length;
     if (f.falta === "sin-nada") r.sinNada++;
     else if (f.falta === "sin-vigente") r.sinVigente++;
     else if (f.falta === "vacio") r.vacios++;
+    else if (f.falta === "solo-estructura") r.soloEstructura++;
     else if (f.falta === "solo-enlazado") r.soloEnlazado++;
     else if (f.falta === "corto") r.cortos++;
   }
@@ -363,7 +411,8 @@ export function resumirDiagnostico(filas: FilaPelicula[]): Diagnostico {
    compilaba: la nueva desaparecía de la ayuda y caía al final del orden sin
    que nadie se enterara. Un `Record` obliga a darle su sitio. */
 const RANGO_FALTA: Record<Exclude<Falta, null>, number> = {
-  "vacio": 0, "sin-vigente": 1, "corto": 2, "solo-enlazado": 3, "sin-nada": 4,
+  "vacio": 0, "sin-vigente": 1, "solo-estructura": 2,
+  "corto": 3, "solo-enlazado": 4, "sin-nada": 5,
 };
 export const ORDEN_FALTA = (Object.keys(RANGO_FALTA) as Exclude<Falta, null>[])
   .sort((a, b) => RANGO_FALTA[a] - RANGO_FALTA[b]);
@@ -444,7 +493,11 @@ export function motivoFalta(f: FilaPelicula): string {
         + " y ninguno marcado como el que manda hoy";
     case "vacio":
       return f.vigente
-        ? `«${tituloDe(f.vigente)}» manda hoy y no tiene ni secuencias ni enlace`
+        ? `«${tituloDe(f.vigente)}» manda hoy y no tiene ni estructura, ni secuencias, ni enlace`
+        : "";
+    case "solo-estructura":
+      return f.vigente
+        ? `«${tituloDe(f.vigente)}» tiene su estructura puesta y ni una secuencia escrita`
         : "";
     case "corto": {
       const hay = f.vigente ? metaNivel(nivelDe(f.vigente)).txt.toLowerCase() : "";

@@ -74,7 +74,8 @@ export default async function GuionDePelicula(
        al navegador el trabajo de todo el mundo. */
     supabase.from("tratamiento")
       .select("id,proyecto_id,postulacion_id,nombre,version,nivel,estado," +
-        "presentado_en,vigente,url,nota,creado_en,secs:guion_secuencias(count)")
+        "presentado_en,vigente,url,nota,creado_en,secs:guion_secuencias(count)," +
+        "actos:guion_actos(count)")
       .eq("proyecto_id", params.id)
       /* `techo(n)+1` para poder DETECTAR el corte, igual que el índice: pedir
          una fila de más y mirar si volvió. Sin eso, una película con más
@@ -98,13 +99,18 @@ export default async function GuionDePelicula(
   /* ⚠ La sonda se COMPARA y se RECORTA. Comparar sin recortar mete una fila
      de más en la lista; recortar sin comparar deja el corte invisible. */
   const cortado = (trats.data || []).length > techo(200);
-  const lista: (Tratamiento & { _n: number })[] = eTrat ? []
+  const lista: (Tratamiento & { _n: number; _a: number })[] = eTrat ? []
     : ((trats.data || []) as any[]).slice(0, techo(200))
-        .map(t => ({ ...t, _n: t.secs?.[0]?.count ?? 0 }));
+        .map(t => ({ ...t, _n: t.secs?.[0]?.count ?? 0, _a: t.actos?.[0]?.count ?? 0 }));
   /* `null` es «no se sabe», no «cero»: con la consulta rota, cada documento
      dice «—» en vez de «vacío» — que sobre veinte secuencias sería falso. */
   const cuentas: Record<string, number> | null = eTrat
     ? null : Object.fromEntries(lista.map(t => [t.id, t._n]));
+  /* Los actos, por la misma razón y con la misma regla del `null`: un
+     documento con su mapa puesto no es un documento vacío, y decirlo al revés
+     acusa de abandono a quien acaba de empezar. */
+  const actosDe: Record<string, number> | null = eTrat
+    ? null : Object.fromEntries(lista.map(t => [t.id, t._a]));
 
   const fondos = ((posts.data || []) as any[]).map(q => {
     const conv = Array.isArray(q.conv) ? q.conv[0] : q.conv;
@@ -115,7 +121,7 @@ export default async function GuionDePelicula(
     };
   });
 
-  const f = diagnosticar(peli as any, lista, cuentas);
+  const f = diagnosticar(peli as any, lista, cuentas, actosDe);
   const doc = modoGuion((peli as any).tipo) === "documental";
   const nombre = (peli as any).nombre_corto || (peli as any).nombre || "(sin nombre)";
   const largo = String((peli as any).nombre || "");
@@ -171,7 +177,7 @@ export default async function GuionDePelicula(
           y borrar un tratamiento se lleva sus actos, secuencias, hilos y
           espina. Desde el índice no se podía, y era lo correcto. */}
       <Tratamientos proyectoId={(peli as any).id} tipoProyecto={(peli as any).tipo}
-        tratamientos={f.tratamientos} cuentas={cuentas}
+        tratamientos={f.tratamientos} cuentas={cuentas} actos={actosDe}
         fondos={fondos} error={eTrat} />
 
       <QueEsUnTratamiento />

@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { guardarBeat, borrarBeat } from "@/app/guion/acciones";
+import { guardarBeat, borrarBeat, secuenciaDesdeBeat, restaurarBeat } from "@/app/guion/acciones";
 import { ICO_BEAT, TXT_BEAT, type TipoBeat } from "@/lib/guion";
 
 /* UN PUNTO DE LA ESPINA.
@@ -27,6 +27,10 @@ import { ICO_BEAT, TXT_BEAT, type TipoBeat } from "@/lib/guion";
 export type BeatFila = {
   id: string; nombre: string; que?: string | null; tipo: TipoBeat;
   pos?: number | null; nota?: string | null; secuencia_id?: string | null;
+  /** De qué entrada del catálogo salió, si salió de alguna. Solo con esto se
+   *  puede volver a copiar de ella; los puntos inventados a mano la tienen
+   *  nula y por eso no se les ofrece restaurar. */
+  clave?: string | null;
 };
 type SecOp = { id: string; nombre: string; n: number };
 
@@ -41,6 +45,9 @@ export default function Espina({ beat, tratamientoId, secs, pctReal }: {
   const [err, setErr] = useState("");
   const [abierto, setAbierto] = useState(false);
   const [pide, setPide] = useState<string | null>(null);
+  const [creando, setCreando] = useState(false);
+  const [restaurando, setRestaurando] = useState(false);
+  const [aviso, setAviso] = useState("");
   const reloj = useRef<any>(null);
   const cola = useRef<Record<string, any>>({});
   const enVuelo = useRef<Promise<boolean> | null>(null);
@@ -75,6 +82,34 @@ export default function Espina({ beat, tratamientoId, secs, pctReal }: {
     if (!(await volcar())) return;
     const r: any = await guardarBeat(beat.id, tratamientoId, campos);
     if (r?.error) setErr(r.error); else router.refresh();
+  }
+
+  /* Volver a copiar del catálogo. NO toca la nota —eso es de esta película—
+     y se dice qué cambió: «restaurado» sobre algo que ya estaba igual deja
+     pensando si el botón hizo algo. */
+  async function restaurar() {
+    if (restaurando) return;
+    if (!(await volcar())) return;
+    setRestaurando(true); setErr(""); setAviso("");
+    const r: any = await restaurarBeat(beat.id, tratamientoId);
+    setRestaurando(false);
+    if (r?.error) { setErr(r.error); return; }
+    if (r?.igual) { setAviso("Ya estaba igual que en el catálogo."); return; }
+    setAviso(`Se volvió a copiar ${(r.campos || []).join(", ")} del catálogo. Tu nota no se tocó.`);
+    router.refresh();
+  }
+
+  /* ── LA SECUENCIA QUE FALTA ──
+     Se vuelca antes lo que haya en la cola: crear dispara un `router.refresh()`
+     y con la nota a medio guardar el refresco se la lleva por delante. */
+  async function crearSuya() {
+    if (creando) return;
+    if (!(await volcar())) return;
+    setCreando(true); setErr("");
+    const r: any = await secuenciaDesdeBeat(beat.id, tratamientoId);
+    setCreando(false);
+    if (r?.error) { setErr(r.error); return; }
+    router.refresh();
   }
 
   async function borrar(confirmado = false) {
@@ -114,7 +149,21 @@ export default function Espina({ beat, tratamientoId, secs, pctReal }: {
             <button className="dato-btn" title="Desanclar" onClick={() => cambiar({ secuencia_id: null })}>✕</button>
           </span>
         ) : (
-          <span className="es-vacio">sin secuencia</span>
+          <>
+            <span className="es-vacio">sin secuencia</span>
+            {/* ── ＋ LA CREA EN SU ACTO Y LA DEJA ANCLADA ──
+                Junto al «sin secuencia» y no al final de la fila: el hueco y
+                la forma de taparlo se leen del tirón. El desplegable de al
+                lado sigue siendo para ANCLAR una que ya existe — son dos
+                gestos distintos y por eso son dos controles.
+                Nace vacía: el `que` de aquí arriba es la guía del catálogo, no
+                el tratamiento de esta película, y copiarlo dentro haría que el
+                diagnóstico la diera por escrita. */}
+            <button className="es-crear" disabled={creando} onClick={crearSuya}
+              title={`Crear la secuencia «${beat.nombre}» en este acto y anclarla a este punto`}>
+              {creando ? "…" : "＋ secuencia"}
+            </button>
+          </>
         )}
 
         <select className="es-sel" value={beat.secuencia_id || ""}
@@ -141,6 +190,7 @@ export default function Espina({ beat, tratamientoId, secs, pctReal }: {
         </div>
       )}
       {err && <div className="err-inline">⚠ {err}</div>}
+      {aviso && <div className="es-aviso">✓ {aviso}</div>}
 
       {/* La nota se ve SIEMPRE si está escrita: es lo que hay que tener
           delante mientras se escribe la secuencia. Lo que se pliega es la
@@ -152,6 +202,18 @@ export default function Espina({ beat, tratamientoId, secs, pctReal }: {
             onChange={e => { setNota(e.target.value); programar({ nota: e.target.value }); }}
             onBlur={volcarYRefrescar}
             placeholder="Y aquí, en esta historia, ¿qué pasa exactamente?" />
+          {/* ── LA AYUDA, FIJA Y NO EN EL PLACEHOLDER ──
+              El placeholder decía lo mismo y desaparecía con la primera letra,
+              o sea justo cuando empiezas a dudar de si esto era el sitio. El
+              resultado es el que había que esperar: aquí dentro acababa el
+              tratamiento entero, copiado de la secuencia de abajo.
+              Dice las dos cosas que hay que saber —el tamaño y dónde va lo
+              otro—, porque «la decisión» a secas no impide volver a pegar tres
+              párrafos. */}
+          <div className="es-ayuda">
+            La <b>decisión</b>, en una o dos líneas: qué de esta película cumple
+            este punto. El tratamiento en prosa va en la secuencia, no aquí.
+          </div>
           <div className="es-fila">
             <select className="es-sel" value={beat.tipo} onChange={e => cambiar({ tipo: e.target.value })}>
               <option value="giro">◆ punto de giro</option>
@@ -161,6 +223,22 @@ export default function Espina({ beat, tratamientoId, secs, pctReal }: {
             <input className="gu-min" defaultValue={beat.pos ?? ""} inputMode="decimal" placeholder="%"
               title="Dónde se espera, en % del metraje"
               onBlur={e => cambiar({ pos: e.target.value })} />
+            <span style={{ flex: 1 }} />
+            {/* ── VOLVER AL CATÁLOGO ──
+                El nombre, la guía, el tipo y el `%` vienen COPIADOS de la
+                plantilla, así que se tocan sin querer —el `%` y el tipo están
+                aquí mismo, a un clic— y hasta hoy no había vuelta atrás.
+                Solo para los puntos que salieron de una plantilla: los que
+                inventas a mano no tienen original al que volver, y un botón
+                que no puede hacer nada es peor que ninguno.
+                ⚠ No se lleva tu nota. Se dice en el propio botón, porque si
+                hay que probarlo para saberlo, no se prueba. */}
+            {beat.clave && (
+              <button className="es-rest" disabled={restaurando} onClick={restaurar}
+                title="Vuelve a copiar el nombre, la guía, el tipo y el % de la plantilla. Tu nota no se toca.">
+                {restaurando ? "…" : "↺ volver al original"}
+              </button>
+            )}
           </div>
         </div>
       ) : (

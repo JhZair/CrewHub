@@ -187,8 +187,12 @@ export function marcas(cols: Columna[], cada = 5): Marca[] {
 export const ANCHO_COL = 210;
 /** El de la primera columna, la de los rótulos de fila. Va fija (`sticky`) al
  *  desplazar en horizontal: sin ella, a la tercera pantalla de scroll nadie
- *  sabe si está leyendo el cuerpo o el resumen. */
-export const ANCHO_ROTULO = 96;
+ *  sabe si está leyendo el cuerpo o el resumen.
+ *  ⚠ 124 y no 96. Con 96, el nombre de un hilo de dos palabras —«El
+ *  sacrificio», «La herencia»— partía en dos líneas y su fila crecía al doble
+ *  de alto que las demás: la banda del hilo dejaba de alinearse con el resto y
+ *  la pantalla se leía como si esas filas fueran otra cosa. */
+export const ANCHO_ROTULO = 124;
 /* ⚠ Este número está TAMBIÉN en `.rej-rot` de app/globals.css. No se puede leer
    una constante de TypeScript desde una hoja de estilos, así que la columna fija
    lleva su ancho en línea desde aquí y la regla CSS solo pone el mínimo. Si
@@ -224,6 +228,37 @@ export function filasDeHilos(
     const en = cols.map(c => (c.sec.hilos || []).includes(h.id));
     return { hilo: h, en, cuantas: en.filter(Boolean).length };
   });
+}
+
+/* ── LOS TRAMOS SEGUIDOS DE UN HILO ──
+ *
+ * La referencia pinta cada hilo como una banda CONTINUA que se ensancha donde
+ * la película lo toca, y eso no es adorno: un hilo es algo que atraviesa la
+ * historia y tiene que cerrarse. Con una marca suelta por celda —lo que había—
+ * un hilo tocado en las secuencias 2, 3 y 4 se veía igual que uno tocado en la
+ * 2, la 9 y la 20, y la diferencia entre esas dos películas es justo lo que
+ * hay que poder ver: la primera desarrolla el hilo, la segunda lo menciona.
+ *
+ * Esto agrupa las columnas consecutivas en TRAMOS. Cada tramo se dibuja como
+ * un solo bloque redondeado; el hueco entre dos tramos es el tiempo en que la
+ * película se olvida del hilo, y se ve como lo que es: un hueco.
+ *
+ * ⚠ Devuelve índices de columna en base 0. Quien dibuje con `grid-column` tiene
+ * que sumar 1 — la rejilla CSS cuenta desde 1 y la confusión de una columna es
+ * exactamente la que nadie ve hasta que el hilo aparece corrido un sitio.
+ */
+export type Tramo = { desde: number; largo: number };
+
+export function tramosDeHilo(en: boolean[]): Tramo[] {
+  const out: Tramo[] = [];
+  let i = 0;
+  while (i < en.length) {
+    if (!en[i]) { i++; continue; }
+    const desde = i;
+    while (i < en.length && en[i]) i++;
+    out.push({ desde, largo: i - desde });
+  }
+  return out;
 }
 
 /* ══════════════ LOS BEATS SOBRE LA REJILLA ══════════════

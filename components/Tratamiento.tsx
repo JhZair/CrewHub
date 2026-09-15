@@ -2,8 +2,7 @@
 import { useState } from "react";
 import { moverSecuencia, borrarSecuencia, marcarHilo } from "@/app/guion/acciones";
 import { usarGuardadoSecuencia, ROTULO_GUARDADO } from "@/lib/usarGuardadoSecuencia";
-import { palabras, minutosDe, minutosHum, MIN_PARA_ANALIZAR, VOZ, ICO_BEAT, type ModoGuion } from "@/lib/guion";
-import type { BeatFila } from "@/components/Espina";
+import { palabras, minutosDe, minutosHum, MIN_PARA_ANALIZAR, VOZ, type ModoGuion } from "@/lib/guion";
 
 /* EL TRATAMIENTO DE UNA SECUENCIA — la tarjeta de la vista «Cards».
  *
@@ -26,12 +25,16 @@ type Sec = {
 };
 type Hilo = { id: string; nombre: string; color: string };
 
-export default function Tratamiento({ sec, tratamientoId, hilos, modo, n, beats = [], primera, ultima }: {
+/* ⚠ AQUÍ HABÍA UN `beats` Y SE FUE, con su import de `BeatFila` y de
+   `ICO_BEAT`. Servía para pintar aquí dentro el punto que carga la secuencia,
+   y ese punto ahora va entero —editable— justo encima de esta tarjeta. Dejar
+   la prop «por si acaso» habría sido peor que quitarla: el siguiente que la
+   lea creerá que hay dos sitios donde se enseña el punto y buscará por qué
+   uno no se pinta. */
+export default function Tratamiento({ sec, tratamientoId, hilos, modo, n, primera, ultima }: {
   sec: Sec; tratamientoId: string; hilos: Hilo[]; modo: ModoGuion;
   /** Número visible (SEC 01) y si es la primera/última DE SU ACTO. */
   n: number; primera: boolean; ultima: boolean;
-  /** Los puntos de la estructura que esta secuencia carga. */
-  beats?: BeatFila[];
 }) {
   const { estado, err, setErr, programar, volcar, volcarYRefrescar, olvidar, router } =
     usarGuardadoSecuencia(sec.id, tratamientoId);
@@ -75,8 +78,12 @@ export default function Tratamiento({ sec, tratamientoId, hilos, modo, n, beats 
           onBlur={volcarYRefrescar}
           placeholder={`Nombre de la ${V.sec.toLowerCase()}`} />
 
-        <span className={`gu-estado gu-${estado}`}>{ROTULO_GUARDADO[estado]}</span>
-        <span style={{ flex: 1 }} />
+        {/* ⚠ Aquí había un separador elástico y sobraba. `.gu-nombre` ya es
+            `flex:1`, así que los dos crecían a partes iguales y el nombre se
+            quedaba con la mitad del hueco libre: «El día central y la
+            procesión (Parte 1: La Sa…». Quitándolo, el nombre se lleva todo lo
+            que sobra —que es de lo que va esta fila— y el grupo de la derecha
+            sigue pegado al borde igual. */}
 
         <span className="gu-peso" title={estimado
           ? `Estimado: ${pal} palabras ÷ 190 por minuto. Escribe los minutos para fijarlos.`
@@ -87,6 +94,20 @@ export default function Tratamiento({ sec, tratamientoId, hilos, modo, n, beats 
           onChange={e => { setMinutos(e.target.value); programar({ minutos: e.target.value }); }}
           onBlur={volcarYRefrescar} placeholder="min"
           title="Minutos. Vacío = que los estime por palabras." />
+
+        {/* ── EL ESTADO DE GUARDADO, A LA DERECHA Y JUNTO A LOS BOTONES ──
+            Estaba pegado al nombre, en mitad de la fila: ahí un «· guardado»
+            en verde parece parte del título, y con diez secuencias la columna
+            de estados caía en diez sitios distintos según lo largo que fuera
+            cada nombre.
+            Aquí ocupa el mismo sitio en todas las filas y en el mismo que en
+            la fila del punto de la espina, que es el otro sitio donde esto se
+            autoguarda: una sola cosa que aprender.
+            ⚠ Con ancho fijo, y no es cosmética: el rótulo cambia de largo
+            mientras escribes —«· sin guardar» → «· guardando…» → «· guardado»—
+            y sin reservarle el hueco, los cuatro botones de al lado bailan
+            bajo el cursor justo cuando estás tecleando. */}
+        <span className={`gu-estado gu-${estado}`}>{ROTULO_GUARDADO[estado]}</span>
 
         <button className="dato-btn" disabled={primera} title="Subir dentro del acto" onClick={() => mover(-1)}>↑</button>
         <button className="dato-btn" disabled={ultima} title="Bajar dentro del acto" onClick={() => mover(1)}>↓</button>
@@ -108,19 +129,15 @@ export default function Tratamiento({ sec, tratamientoId, hilos, modo, n, beats 
       )}
       {err && <div className="err-inline">⚠ {err}</div>}
 
-      {/* Qué punto de la estructura carga esta secuencia. Va PEGADO al
-          nombre y no en un panel aparte: es lo que hay que tener delante
-          mientras se escribe, no algo que se consulta. */}
-      {beats.length > 0 && (
-        <div className="gu-beats">
-          {beats.map(b => (
-            <span key={b.id} className={`gu-beat es-${b.tipo}`} title={b.que || ""}>
-              {ICO_BEAT[b.tipo]} {b.nombre}
-              {b.nota?.trim() && <i> — {b.nota.trim()}</i>}
-            </span>
-          ))}
-        </div>
-      )}
+      {/* ── AQUÍ IBA LA PÍLDORA DEL PUNTO, Y SE FUE ──
+          Enseñaba el punto que carga esta secuencia con su nota entera, y la
+          idea era buena: tenerlo delante mientras se escribe. El problema es
+          que ARRIBA, en el bloque de espina del acto, estaba ese mismo punto
+          otra vez —con su guía, su nota, su desplegable y su ✕—, así que el
+          acto se leía dos veces y no se sabía cuál de los dos mandaba.
+          Ahora la fila completa del punto va justo encima de esta tarjeta, a
+          un centímetro y editable. Repetirla aquí dentro era ruido, y encima
+          la copia de aquí no se podía ni editar ni desanclar. */}
 
       {abierto ? (
         <>

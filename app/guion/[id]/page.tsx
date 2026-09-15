@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import GuionEstructura from "@/components/GuionEstructura";
 import GuionTimeline from "@/components/GuionTimeline";
+import ElegirModelo from "@/components/ElegirModelo";
 import { modoGuion, VOZ, plantillaDe, explicar, minutosHum, repartoActos,
   diagnosticar as diagnosticarGuion } from "@/lib/guion";
 import { columnas } from "@/lib/timeline";
@@ -28,13 +29,13 @@ export const metadata: Metadata = { title: "✍ Guion" };
  * al lado del carné del proyecto.
  *
  * ╔══════════════════════════════════════════════════════════════════════╗
- * ║  LA REJILLA: columnas = secuencias, filas = capas                    ║
+ * ║  LA LÍNEA DE TIEMPO: columnas = secuencias, filas = capas            ║
  * ╚══════════════════════════════════════════════════════════════════════╝
  * Referencia de diseño compartida por el equipo (tres capturas de una
  * herramienta de escritura de guion, sobre «The Social Network»). Lo que
  * enseñan, y que conviene tener escrito porque ya se perdió una vez:
  *
- * ── NO ES UNA LÍNEA DE TIEMPO PROPORCIONAL: ES UNA REJILLA ──
+ * ── NO ES PROPORCIONAL AL TIEMPO, Y ESA ES LA DIFERENCIA CON RESOLVE ──
  * Cada COLUMNA es una secuencia, de ancho FIJO. Cada FILA es una capa de
  * información sobre las mismas columnas. Y la proporción al metraje vive en
  * una REGLA numerada abajo (1, 5, 10… 80 páginas), teñida por acto.
@@ -71,8 +72,8 @@ export const metadata: Metadata = { title: "✍ Guion" };
  *   Tone           → un campo de tono
  *
  * ── DECIDIDO ──
- *   · La rejilla SUSTITUYE a la lista vertical: no conviven, se conmuta.
- *   · Las vistas de entrada son Timeline · Cards · Page · Story Stats.
+ *   · La línea de tiempo SUSTITUYE a la lista vertical: no conviven, se conmuta.
+ *   · Las cuatro vistas: Línea de tiempo · Tarjetas · Documento · Diagnóstico.
  *   · Se escribe EN LA CELDA, con «More» para el cajón completo. Escribir sin
  *     cambiar de sitio es lo que hace que la herramienta se use; un panel que
  *     hay que abrir cuesta dos clics por frase.
@@ -87,13 +88,21 @@ export const metadata: Metadata = { title: "✍ Guion" };
  * dice que no has escrito nada.
  */
 /* ── LAS VISTAS ──
- * La rejilla SUSTITUYE a la lista vertical: no conviven, se conmuta. La
+ * La línea de tiempo SUSTITUYE a la lista vertical: no conviven, se conmuta.
  * elección va en la URL y no en estado de cliente porque son cuatro formas de
- * mirar lo mismo que hay que poder enlazar —«míralo en la rejilla»— y volver
+ * mirar lo mismo que hay que poder enlazar —«míralo en la línea de tiempo»— y
  * atrás con el botón del navegador. */
+/* ⚠ «Línea de tiempo» y no «Rejilla», que es como se llamó al principio.
+   Rejilla describía el DIBUJO; línea de tiempo describe lo que se hace en
+   ella. Quien monta documental lleva años mirando una línea de tiempo en
+   Resolve o en Premiere, y es la misma operación: bloques en orden, se
+   arrastran, se miden. Poner otro nombre a lo mismo obliga a traducir cada
+   vez, y una pantalla que hay que traducir se abre menos.
+   La clave de la URL sigue siendo `timeline`: renombrarla rompería los enlaces
+   que ya se pasaron por ahí para no cambiar una palabra de pantalla. */
 const VISTAS = [
-  { k: "timeline", ico: "⧉", txt: "Rejilla",
-    que: "Cada columna una secuencia, cada fila una capa: estructura, cuerpo, hilos y la regla de metraje." },
+  { k: "timeline", ico: "⏱", txt: "Línea de tiempo",
+    que: "Cada columna una secuencia, cada fila una capa: actos, estructura, cuerpo, hilos de trama y la regla de metraje." },
   { k: "cards", ico: "▤", txt: "Tarjetas",
     que: "Una secuencia debajo de otra, con su acto, sus hilos y la espina. Para escribir seguido." },
   { k: "page", ico: "▦", txt: "Documento",
@@ -135,7 +144,11 @@ export default async function Guion({
     /* La espina: los puntos de giro y de inflexión en su orden. Es lo que
        convierte «Save the Cat» en una guía y no en una etiqueta. */
     supabase.from("guion_beats")
-      .select("id,nombre,que,tipo,pos,nota,acto_id,secuencia_id,orden")
+      /* `clave` viaja también: es lo que ata el punto a su entrada del
+         catálogo y lo único que permite volver a copiar de ella. Los puntos
+         que el autor inventa la tienen nula, y por eso allí no se ofrece
+         restaurar: no hay de dónde. */
+      .select("id,clave,nombre,que,tipo,pos,nota,acto_id,secuencia_id,orden")
       .eq("tratamiento_id", params.id).order("orden"),
   ]);
 
@@ -171,10 +184,10 @@ export default async function Guion({
   const T = trat as any;
 
   /* ── LO QUE COMPARTEN LAS CUATRO VISTAS ──
-     Las columnas se calculan una vez y las usan la rejilla, el documento y el
+     Las columnas se calculan una vez y las usan la línea de tiempo, el documento
      diagnóstico. Que cada vista hiciera su propio reparto es la forma segura de
      que el «25%» del diagnóstico no cuadre con la banda que se ve en la
-     rejilla. */
+     línea de tiempo. */
   const cols = columnas(secuencias as any, (actos as any) || []);
   const reparto = repartoActos((actos as any) || [], secuencias as any);
   /* Dónde cae de VERDAD cada secuencia, en % del metraje: el CENTRO de su
@@ -196,7 +209,7 @@ export default async function Guion({
      con un parámetro repetido. */
   const vBruto = searchParams?.v;
   const vistaPedida = Array.isArray(vBruto) ? (vBruto[vBruto.length - 1] || "") : (vBruto || "");
-  /* Una vista desconocida cae en la rejilla en vez de pintar la pantalla en
+  /* Una vista desconocida cae en la línea de tiempo en vez de pintar la pantalla en
      blanco: un enlace viejo o un parámetro mal escrito no puede parecer que el
      tratamiento está vacío. */
   const vista: Vista = (VISTAS.some(x => x.k === vistaPedida) ? vistaPedida : "timeline") as Vista;
@@ -205,7 +218,18 @@ export default async function Guion({
     /* `.shell` + `.topbar`, como el resto de las pantallas: `.wrap` no existe
        en app/globals.css, así que la página salía a sangre completa y el
        «volver» fuera de su barra. */
-    <div className="shell shell-ancho">
+    /* ── LA LÍNEA DE TIEMPO SE LLEVA TODA LA PANTALLA ──
+       El resto de vistas viven en `shell-ancho` (1180 px): un tratamiento se
+       lee en prosa y una columna de texto de más de 100 caracteres cansa.
+       La línea de tiempo es lo contrario — once columnas, ocho capas y una
+       regla — y ahí el ancho no es lujo: cada 210 px que sobran son una
+       secuencia más que se ve sin desplazar, y ver DOS actos a la vez es lo
+       que permite comparar cómo reparten el metraje. Encerrarla en 1180
+       obligaba a arrastrar para leer lo que la vista existe para enseñar de
+       un golpe.
+       ⚠ El texto de cabecera NO se estira con ella: va limitado aparte. Una
+       frase de doscientos caracteres de ancho no se lee, se escanea. */
+    <div className={`shell ${vista === "timeline" ? "shell-total" : "shell-ancho"}`}>
       <div className="topbar"><Volver /></div>
 
       {/* El título es el del DOCUMENTO, no el de la película: con varios
@@ -217,7 +241,7 @@ export default async function Guion({
           {proy.nombre_corto || proy.nombre} →
         </Link>
       </h1>
-      <div style={{ color: "var(--dim)", fontSize: 12.5, margin: "-6px 0 14px", lineHeight: 1.6 }}>
+      <div className="gv-intro" style={{ color: "var(--dim)", fontSize: 12.5, margin: "-6px 0 14px", lineHeight: 1.6 }}>
         <span style={{ color: META_ESTADO_TRAT[estadoTrat(T)].col }}>
           {META_ESTADO_TRAT[estadoTrat(T)].ico} {META_ESTADO_TRAT[estadoTrat(T)].txt}
         </span>
@@ -238,6 +262,15 @@ export default async function Guion({
           ? "Lo que esperas que ocurra, secuencia por secuencia. En documental el tratamiento se prevé, no se dicta."
           : "Qué pasa, secuencia por secuencia y en prosa. De aquí sale después el guion en escenas."}
         {" "}Estás escribiendo contra <b>{P.nombre}</b>.
+        {/* La regla de montaje del modelo, cuando la tiene. Va en la cabecera y
+            no dentro de una vista porque aplica a las cuatro: es cómo se monta
+            el documento entero, no cómo se mira. Un modelo coral sin su «agrupa
+            por temas, no por personas» se convierte en seis entrevistas
+            seguidas, y eso no se descubre hasta el montaje, cuando ya está
+            rodado. */}
+        {P.nota && (
+          <><br /><span style={{ color: "var(--muted)" }}>▸ {P.nota}</span></>
+        )}
       </div>
 
       {fallo && (
@@ -248,16 +281,28 @@ export default async function Guion({
         </div>
       )}
 
+      {/* ── EL DOCUMENTO RECIÉN NACIDO ──
+          ⚠ Aquí había una instrucción imposible de obedecer: «Elige ABAJO el
+          modelo con el que quieres escribir», y abajo no había nada que
+          elegir. El desplegable de plantillas vive en GuionEstructura, o sea
+          en la vista ▤ Tarjetas, y un tratamiento nuevo abre en ⏱ Línea de tiempo: la
+          pantalla pedía algo que solo aparecía cambiando antes de pestaña, y
+          nada lo decía.
+          El coste no se quedaba en la incomodidad: el documento se quedaba
+          creado, vigente y VACÍO, que es el estado que la ficha de la película
+          marca en rojo porque miente —la película se cuenta entre las que
+          tienen documento vigente sin tener una secuencia dentro—.
+          Ahora la elección está donde se pide. */}
       {!fallo && !actos?.length && !secuencias.length && (
         <div className="card" style={{ borderColor: "rgba(167,139,250,.35)" }}>
           <b>Todavía no hay estructura.</b>
           <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 6, lineHeight: 1.55 }}>
-            Elige abajo el modelo con el que quieres escribir: se crean sus actos y su espina
+            Elige el modelo con el que quieres escribir: se crean sus actos y su espina
             —cada punto de giro y de inflexión, en orden, con qué tiene que conseguir—.
             Ese es el mapa. Después vas colgando {V.secs.toLowerCase()} de cada punto y
             escribiendo el tratamiento de cada una.
-            <br />La plantilla es una capa: puedes cambiarla más adelante sin perder una palabra.
           </div>
+          <ElegirModelo tratamientoId={T.id} modo={modo} />
         </div>
       )}
 

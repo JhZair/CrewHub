@@ -148,7 +148,7 @@ export default async function AudiovisualPage({ params }: { params: { id: string
        proyecto: aquí no se pinta ninguna secuencia, solo su número. */
     supabase.from("tratamiento")
       .select("id,nombre,version,nivel,estado,presentado_en,vigente,url,nota," +
-        "postulacion_id,creado_en,secs:guion_secuencias(count)")
+        "postulacion_id,creado_en,secs:guion_secuencias(count),actos:guion_actos(count)")
       .eq("postulacion_id", params.id).order("creado_en", { ascending: false }).limit(techo(100)),
   ]);
 
@@ -347,6 +347,8 @@ export default async function AudiovisualPage({ params }: { params: { id: string
             tratamientos={trats} error={tratsError}
             cuentas={tratsError ? null
               : Object.fromEntries(trats.map((t: any) => [t.id, t._n]))}
+            actos={tratsError ? null
+              : Object.fromEntries(trats.map((t: any) => [t.id, t.actos?.[0]?.count ?? 0]))}
             soloDelFondo={params.id} puedeEditar={false} />
         </Plegable>
       </div>

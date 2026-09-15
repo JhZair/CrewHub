@@ -92,7 +92,7 @@ export default async function IndiceGuion({
        sobre trabajo que sí existe. */
     supabase.from("tratamiento")
       .select("id,proyecto_id,nombre,version,nivel,estado,vigente,url,creado_en," +
-        "secs:guion_secuencias(count)")
+        "secs:guion_secuencias(count),actos:guion_actos(count)")
       .order("creado_en", { ascending: false }).limit(techo(900) + 1),
   ]);
   /* ⚠ Las `postulaciones` ya NO se piden. Solo servían para llenar el
@@ -116,15 +116,21 @@ export default async function IndiceGuion({
   const cortadoProy = (proys.data || []).length > techo(400);
 
   const listaTrats = ((trats.data || []) as any[]).slice(0, techo(900))
-    .map(t => ({ ...t, _n: t.secs?.[0]?.count ?? 0 }));
+    .map(t => ({ ...t, _n: t.secs?.[0]?.count ?? 0, _a: t.actos?.[0]?.count ?? 0 }));
   const cuentas: Record<string, number> | null = eTrat
     ? null
     : Object.fromEntries(listaTrats.map(t => [t.id, t._n]));
+  /* Los ACTOS, para separar el documento vacío del que ya tiene su mapa. Va
+     embebido en la MISMA consulta: preguntarlos aparte sería un segundo viaje
+     de novecientas filas para contestar «¿está empezado?». */
+  const actosDe: Record<string, number> | null = eTrat
+    ? null
+    : Object.fromEntries(listaTrats.map(t => [t.id, t._a]));
 
   const peliculas = ((proys.data || []) as any[]).slice(0, techo(400))
     .filter(p => todas || peliculaViva(p));
   const filas = ordenarPeliculas(
-    peliculas.map(p => diagnosticar(p, listaTrats, cuentas)));
+    peliculas.map(p => diagnosticar(p, listaTrats, cuentas, actosDe)));
   const res = resumirDiagnostico(filas);
   const ocultas = Math.min(((proys.data || []) as any[]).length, techo(400)) - peliculas.length;
 
@@ -231,6 +237,14 @@ export default async function IndiceGuion({
               <span className="gx-n" style={{ color: META_FALTA["corto"].col }}
                 title={META_FALTA["corto"].ayuda}>{res.cortos} sin llegar al guion</span>
             )}
+            {/* El mapa puesto y sin escribir. Cuenta aparte del vacío: no es
+                lo mismo «hay que elegirle un modelo» que «hay que sentarse a
+                escribirlo», y con un solo número la pantalla mandaba a las dos
+                al mismo sitio. */}
+            {res.soloEstructura > 0 && (
+              <span className="gx-chip" style={{ color: META_FALTA["solo-estructura"].col }}
+                title={META_FALTA["solo-estructura"].ayuda}>{res.soloEstructura} sin escribir</span>
+            )}
             {res.soloEnlazado > 0 && (
               <span className="gx-n" style={{ color: META_FALTA["solo-enlazado"].col }}
                 title={META_FALTA["solo-enlazado"].ayuda}>{res.soloEnlazado} solo enlazado{res.soloEnlazado === 1 ? "" : "s"}</span>
@@ -239,7 +253,8 @@ export default async function IndiceGuion({
               <span className="gx-n" style={{ color: META_FALTA["sin-nada"].col }}
                 title={META_FALTA["sin-nada"].ayuda}>{res.sinNada} sin empezar</span>
             )}
-            {res.sinNada === 0 && res.sinVigente === 0 && res.vacios === 0 && res.peliculas > 0 && (
+            {res.sinNada === 0 && res.sinVigente === 0 && res.vacios === 0
+              && res.soloEstructura === 0 && res.peliculas > 0 && (
               <span className="gx-n" style={{ color: "var(--green)" }}>✔ todas tienen su documento vigente</span>
             )}
             <span style={{ flex: 1 }} />

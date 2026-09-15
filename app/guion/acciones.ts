@@ -1,7 +1,7 @@
 "use server";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import { ACTOS_BASE, plantillaDe, PLANTILLAS } from "@/lib/guion";
+import { ACTOS_BASE, plantillaDe, PLANTILLAS, slugBeat } from "@/lib/guion";
 import { techo } from "@/lib/api";
 
 /* LAS ACCIONES DEL GUION.
@@ -142,11 +142,12 @@ export async function sembrarBeats(tratamientoId: string, clave: string) {
   const yaEstan = new Set((hay || []).map((b: any) => b.clave).filter(Boolean));
   const desde = Math.max(-1, ...((hay || []).map((b: any) => b.orden ?? 0))) + 1;
 
-  const slug = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-
+  /* ⚠ El slug es `slugBeat` de lib/guion.ts y NO una copia local. Sembrar arma
+     la clave y `restaurarBeat` la busca; con dos funciones, el día que una
+     cambie las claves dejan de coincidir y restaurar dirá «ya no está en el
+     catálogo» sobre puntos que sí están, sin dar error. */
   const filas = p.beats
-    .map((b, i) => ({ b, i, clave: `${p.clave}:${slug(b.n)}` }))
+    .map((b, i) => ({ b, i, clave: `${p.clave}:${slugBeat(b.n)}` }))
     .filter(x => !yaEstan.has(x.clave))
     .map((x, k) => ({
       tratamiento_id: tratamientoId, clave: x.clave, nombre: x.b.n, que: x.b.que,
@@ -160,6 +161,68 @@ export async function sembrarBeats(tratamientoId: string, clave: string) {
   if (error) return { error: error.message };
   revalidar(tratamientoId);
   return { nuevos: filas.length, yaEstaban: p.beats.length - filas.length };
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   VOLVER A COPIAR UN PUNTO DEL CATÁLOGO
+
+   La guía de un punto —«Plantea el desafío: lo que cuesta mantener viva la
+   tradición»— viaja COPIADA del catálogo, no referenciada, y está razonado en
+   db/guion-beats.sql: si el catálogo se corrige, los guiones ya escritos
+   siguieron la guía que leyeron, no la nueva. Esa decisión es correcta y se
+   queda.
+
+   Pero copiada significa tocable, y lo tocable se toca sin querer: el `%`, el
+   tipo o la guía se cambian con un clic, y hasta hoy no había vuelta atrás.
+   Perder la guía de un modelo no es como perder un dato cualquiera — es
+   quedarse con el nombre del punto y sin lo que había que conseguir en él, que
+   es justo para lo que sirve una plantilla.
+
+   ⚠ NO TOCA LA NOTA, Y ESA ES LA REGLA. La nota es lo que pasa en ESTA
+   película y no está en ningún catálogo; si restaurar se la llevara, el botón
+   sería una trampa con forma de red de seguridad. Se restaura lo que vino de
+   fuera —nombre, guía, tipo y posición— y se deja intacto lo que puso el autor.
+   Tampoco toca a qué secuencia está anclado: eso también es suyo.
+
+   Solo para los puntos CON `clave`, que son los que salieron de una plantilla.
+   Los que el autor inventa no tienen de dónde volver, y ofrecerles un botón que
+   no puede hacer nada es peor que no ofrecerlo.
+   ══════════════════════════════════════════════════════════════════════════ */
+export async function restaurarBeat(id: string, tratamientoId: string) {
+  const { supabase, user } = await sesion();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  const { data: b, error: e0 } = await supabase.from("guion_beats")
+    .select("id,clave,nombre,que,tipo,pos").eq("id", id).maybeSingle();
+  if (e0) return { error: e0.message };
+  if (!b) return { error: "Ese punto ya no está." };
+  if (!b.clave) return { error: "Este punto no salió de una plantilla: no hay original al que volver." };
+
+  /* La clave es «plantilla:nombre-en-slug», la misma que arma `sembrarBeats`.
+     Se busca el original recomponiéndola igual, y no por el nombre de ahora:
+     el nombre es una de las cosas que pudo cambiarse. */
+  const [claveP] = String(b.clave).split(":");
+  const p = PLANTILLAS.find(x => x.clave === claveP);
+  const orig = p?.beats.find(x => `${p.clave}:${slugBeat(x.n)}` === b.clave);
+  if (!orig) return { error: `«${b.clave}» ya no está en el catálogo: no hay original al que volver.` };
+
+  const patch = { nombre: orig.n, que: orig.que, tipo: orig.tipo, pos: orig.pos };
+  /* Qué cambia de verdad, para poder decirlo. «Restaurado» a secas sobre algo
+     que ya estaba igual deja pensando si el botón hizo algo. */
+  const campos: string[] = [];
+  if ((b.nombre || "") !== orig.n) campos.push("el nombre");
+  if ((b.que || "") !== orig.que) campos.push("la guía");
+  if ((b.tipo || "") !== orig.tipo) campos.push("el tipo");
+  if (Number(b.pos) !== orig.pos) campos.push("la posición");
+  if (!campos.length) return { igual: true, nombre: orig.n };
+
+  const { data: ok, error } = await supabase.from("guion_beats")
+    .update(patch).eq("id", id).select("id");
+  if (error) return { error: error.message };
+  if (!ok?.length) return { error: "No se restauró: no tienes permiso, o ya no existe." };
+
+  revalidar(tratamientoId);
+  return { nombre: orig.n, campos };
 }
 
 export async function crearBeat(tratamientoId: string, actoId: string | null, nombre: string) {
@@ -280,6 +343,73 @@ export async function crearSecuencia(tratamientoId: string, actoId: string | nul
   if (error) return { error: error.message };
   revalidar(tratamientoId);
   return { id: data.id };
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LA SECUENCIA QUE FALTA PARA UN PUNTO DE LA ESPINA
+
+   Un punto sin secuencia es el dato más útil de la pantalla mientras se
+   escribe: dice qué tramo de la película todavía no existe. Pero el gesto que
+   sigue —«pues escríbeme esa»— costaba tres pasos en dos sitios distintos:
+   bajar al acto, «＋ Secuencia», ponerle nombre, y volver a subir al punto a
+   anclarla en el desplegable. Tres pasos para uno, y en medio es fácil
+   colgarla del acto equivocado y no enterarse hasta el diagnóstico.
+
+   ⚠ NO ESCRIBE EL TRATAMIENTO. La secuencia nace VACÍA a propósito.
+   La tentación era copiar el `que` del punto —«Plantea el desafío: lo que
+   cuesta mantener viva la tradición»— dentro del texto, y estaría mal por dos
+   razones: ese texto es la guía genérica del catálogo, no lo que pasa en ESTA
+   película, y una vez dentro se cuenta como palabras escritas. O sea que el
+   diagnóstico daría la secuencia por redactada y la vista Documento imprimiría
+   la guía del manual como si fuera el tratamiento. Escribir lo que nadie
+   escribió es peor que dejar el hueco: el hueco se ve.
+   La guía sigue donde estaba, en el punto, justo encima.
+   ══════════════════════════════════════════════════════════════════════════ */
+export async function secuenciaDesdeBeat(beatId: string, tratamientoId: string) {
+  const { supabase, user } = await sesion();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  const { data: b, error: e0 } = await supabase.from("guion_beats")
+    .select("id,nombre,acto_id,secuencia_id").eq("id", beatId).maybeSingle();
+  if (e0) return { error: e0.message };
+  if (!b) return { error: "Ese punto ya no está." };
+  /* Ya anclado: no se crea una segunda. El botón solo se pinta cuando no lo
+     está, pero entre que se pintó y se pulsó pudo anclarlo otra pestaña — y
+     entonces esto habría creado una secuencia duplicada y robado el ancla. */
+  if (b.secuencia_id) return { error: "Ese punto ya tiene su secuencia." };
+
+  /* Al final de SU acto, no al final del documento. `moverSecuencia` ordena
+     dentro del acto, así que el `orden` es de hecho por acto: mandarla al
+     final de todo la pintaría debajo del tercer acto hasta que alguien la
+     subiera a mano, que es justo el paso que esto viene a quitar. */
+  let q = supabase.from("guion_secuencias").select("orden")
+    .eq("tratamiento_id", tratamientoId);
+  q = b.acto_id ? q.eq("acto_id", b.acto_id) : q.is("acto_id", null);
+  const { data: hay } = await q.order("orden", { ascending: false }).limit(1);
+  const orden = ((hay?.[0]?.orden ?? -1) as number) + 1;
+
+  const { data: nueva, error } = await supabase.from("guion_secuencias").insert({
+    tratamiento_id: tratamientoId,
+    acto_id: b.acto_id || null,
+    nombre: (b.nombre || "").trim() || "Secuencia sin título",
+    orden,
+  }).select("id").single();
+  if (error) return { error: error.message };
+
+  /* Y se ancla. ⚠ Si esto falla, la secuencia YA existe: se dice, con su
+     nombre, en vez de devolver un error a secas. Quien lee «no se pudo» y no
+     ve la secuencia vuelve a pulsar, y entonces sí hay dos. */
+  const { data: ok, error: e2 } = await supabase.from("guion_beats")
+    .update({ secuencia_id: nueva.id }).eq("id", beatId).select("id");
+  if (e2 || !ok?.length) {
+    revalidar(tratamientoId);
+    return { error: `Se creó «${b.nombre}» pero no quedó anclada al punto`
+      + (e2 ? `: ${e2.message}` : ". Ánclala con el desplegable.")
+      + " La secuencia está ahí abajo, no la crees otra vez." };
+  }
+
+  revalidar(tratamientoId);
+  return { id: nueva.id as string, nombre: b.nombre };
 }
 
 /** Guardar el tratamiento. Se llama sola cada 800 ms mientras se escribe,
@@ -494,7 +624,9 @@ const ESTADOS_OK = ["borrador", "presentado", "descartado"];
 export async function crearTratamiento(
   proyectoId: string,
   d: { nombre?: string; version?: string; nivel?: string; url?: string;
-       postulacionId?: string | null; nota?: string },
+       postulacionId?: string | null; nota?: string;
+       /** Modelo narrativo con el que nace el documento. Vacío = ninguno. */
+       plantilla?: string | null },
 ) {
   const { supabase, user } = await sesion();
   if (!user) return { error: "Sesión no encontrada." };
@@ -547,8 +679,33 @@ export async function crearTratamiento(
       + ((d.version || "").trim() ? ` · ${(d.version || "").trim()}` : "")
       + ((d.url || "").trim() ? " (enlazado, vive fuera)" : "") },
   });
+
+  /* ── NACER CON ESTRUCTURA, SI SE PIDIÓ ──
+     Crear el documento y elegir su modelo eran dos gestos en dos pantallas
+     distintas, y el segundo se olvidaba: el resultado es el documento creado,
+     vigente y vacío que la ficha de la película marca en rojo. Aquí se juntan.
+
+     Se REUTILIZA `elegirPlantilla` en vez de repetir la siembra: es quien sabe
+     que hay que crear los actos solo si no hay, emparejar los beats por acto y
+     anotarlo en el historial. Copiado aquí, el día que cambie una de las dos
+     mitades el documento nacería distinto según por dónde se creara.
+
+     ⚠ UN FALLO AL SEMBRAR NO DESHACE EL DOCUMENTO. El tratamiento ya existe y
+     ya está en el historial; devolver `error` haría que la pantalla dijera
+     «no se creó» sobre algo que sí está —y el siguiente intento crearía un
+     duplicado—. Se devuelve el id con el aviso, y la estructura se elige a
+     mano en la pantalla del documento, que es donde vive esa decisión. */
+  const clave = (d.plantilla || "").trim();
+  let plantilla: any = null;
+  if (clave) {
+    const r: any = await elegirPlantilla(data.id as string, clave);
+    plantilla = r?.error
+      ? { aviso: `El documento se creó, pero su estructura no: ${r.error}` }
+      : { nombre: plantillaDe(clave).nombre, actos: r?.sembrados || 0, beats: r?.beats || 0 };
+  }
+
   revalidarTrat(proyectoId, data.id);
-  return { id: data.id as string };
+  return { id: data.id as string, plantilla };
 }
 
 const CAMPOS_TRAT = [

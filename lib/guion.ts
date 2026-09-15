@@ -42,7 +42,17 @@ export type Beat = {
   /** A qué acto de la plantilla pertenece (índice en ACTOS_BASE). */
   acto: number;
 };
-export type Plantilla = { clave: string; nombre: string; fuente: string; beats: Beat[] };
+/** `nota` — cómo se monta con este modelo, cuando el modelo lo exige.
+ *
+ *  ⚠ Opcional a propósito. Los cuatro modelos de guion clásicos no la llevan:
+ *  dicen DÓNDE va cada cosa y el montaje se da por sabido. Pero hay formas
+ *  —el coral, el de proceso— donde la estructura no se sostiene sin su regla
+ *  de montaje: agrupar por temas y no por personas es lo que impide que un
+ *  documental coral se convierta en seis entrevistas seguidas. Esa regla
+ *  escrita en el cuaderno de alguien se pierde; aquí viaja con el modelo y se
+ *  lee mientras se escribe. */
+export type Plantilla = { clave: string; nombre: string; fuente: string;
+  nota?: string; beats: Beat[] };
 
 export const ICO_BEAT: Record<TipoBeat, string> = { giro: "◆", inflexion: "◈", estado: "·" };
 export const TXT_BEAT: Record<TipoBeat, string> = {
@@ -130,6 +140,46 @@ export const PLANTILLAS: Plantilla[] = [
         que: "El nivel nuevo, más alto o más bajo. La medida de todo lo anterior." },
     ],
   },
+  /* ── EL ÚNICO QUE NO ES UNA ESCUELA DE GUION ──
+   * Los cuatro de arriba vienen de un autor y sirven para una historia con
+   * PROTAGONISTA. Un documental coral no lo tiene: la fiesta es el tren, y las
+   * voces tejen un tapiz del que la comunidad entera es el sujeto. Forzarlo en
+   * Save the Cat obliga a nombrar un héroe que la película no tiene, y a buscar
+   * su «noche oscura del alma» en un pueblo entero — la plantilla acaba
+   * diagnosticando desvíos de una historia que nadie está contando.
+   *
+   * Por eso la espina no la marcan las decisiones de un personaje sino los
+   * TRAMOS DEL PROPIO EVENTO: preparación, víspera, día central, traspaso,
+   * resaca. Eso es lo que hace que un documental de proceso se sostenga sin
+   * héroe.
+   *
+   * ⚠ Y por eso su `fuente` no es un nombre propio: es una forma del oficio,
+   * no la teoría de alguien. Inventarle un autor sería citar a quien no lo
+   * escribió.
+   */
+  {
+    clave: "coral-evento",
+    nombre: "Coral centrado en el evento",
+    fuente: "Documental de proceso",
+    nota: "Monta por TEMAS y no por personajes —la fe, el sacrificio, la herencia—, "
+      + "no en un bloque cerrado por cada entrevistado. Cada secuencia es un capítulo "
+      + "con su inicio, nudo y desenlace. Y alterna estruendo con pausa: sin la "
+      + "exhalación, la masa festiva satura y deja de significar.",
+    beats: [
+      { n: "El despertar y la llamada", pos: 6, tipo: "estado", acto: 0,
+        que: "Establece el contrato con el espectador: la atmósfera y la diversidad de voces —mayordomos, músicos, vecinos—. En pantalla, el entorno de la comunidad y los primeros ritos o anuncios de la fiesta." },
+      { n: "El compromiso y los preparativos", pos: 24, tipo: "giro", acto: 0,
+        que: "Plantea el desafío: lo que cuesta —en dinero, en cuerpo y en logística— mantener viva la tradición. En pantalla, las comidas, la vestimenta, el ensayo de las comparsas, el adorno de los altares." },
+      { n: "La víspera y la transformación del espacio", pos: 42, tipo: "estado", acto: 1,
+        que: "Explora el subtexto y las fricciones: la fe frente a la modernidad, lo intergeneracional, el retorno de los migrantes. En pantalla, la entrada de las bandas, la llegada de visitantes, el estallido de la noche." },
+      { n: "El día central y la procesión", pos: 66, tipo: "inflexion", acto: 1,
+        que: "Pico de la curva dramática: el montaje amalgama las miradas y los testimonios en una sola experiencia colectiva. En pantalla, la salida de la imagen, el fervor, la danza catártica, la masa y el límite del cansancio." },
+      { n: "El cambio de cargo · carguyoc", pos: 84, tipo: "giro", acto: 2,
+        que: "El paso de testigo que garantiza la continuidad del ciclo. Es el clímax AFECTIVO, y por eso va después del ritual y no dentro: la procesión es el pico de intensidad, esto es el que decide que habrá otro año." },
+      { n: "La resaca y la calma", pos: 96, tipo: "estado", acto: 2,
+        que: "Mide el impacto: la comunidad renovada y la memoria viva por encima del paso del tiempo. En pantalla, el pueblo volviendo a la normalidad, la plaza vaciándose, reflexiones breves sobre la fe y la identidad." },
+    ],
+  },
 ];
 
 const POR_CLAVE = new Map(PLANTILLAS.map(p => [p.clave, p]));
@@ -162,7 +212,60 @@ export const ACTOS_BASE: Record<string, { clave: string; nombre: string }[]> = {
     { clave: "II", nombre: "Oponente y plan" },
     { clave: "III", nombre: "Batalla y revelación" },
   ],
+  /* Los tramos son los del EVENTO, no los de una historia: es lo que permite
+     escribir sin protagonista. Se nombran por lo que pasa en el pueblo, que es
+     lo que se puede ir a rodar. */
+  "coral-evento": [
+    { clave: "I", nombre: "La preparación y la promesa" },
+    { clave: "II", nombre: "La inmersión y el caos festivo" },
+    { clave: "III", nombre: "La catarsis y el traspaso" },
+  ],
 };
+
+/** La clave con la que un punto sembrado recuerda de qué entrada del catálogo
+ *  salió: «save-the-cat:catalizador».
+ *
+ *  ⚠ VIVE AQUÍ Y NO EN LA ACCIÓN QUE SIEMBRA, y es lo único que hace posible
+ *  volver a copiar del catálogo. Sembrar arma la clave y restaurar la busca; si
+ *  cada uno tuviera su propia función de slug, el día que una cambiara —una
+ *  tilde, un guion— las claves dejarían de coincidir y restaurar contestaría
+ *  «ya no está en el catálogo» sobre puntos que sí están. Un fallo que no da
+ *  error y solo se ve el día que alguien necesita deshacer algo. */
+export const slugBeat = (t: string) =>
+  t.normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+/* ── UN COLOR POR ACTO ──
+ *
+ * Los actos se pintaban todos del mismo violeta, y la barra de reparto los
+ * separaba bajando la opacidad —`1 - i * 0.14`—. Con tres actos eso da tres
+ * violetas casi iguales: para saber qué tramo estás mirando hay que leer el
+ * rótulo, y en la rejilla, donde las bandas van estrechas, el rótulo se corta.
+ * Un color que se repite no es un color, es un adorno.
+ *
+ * Con identidad propia, el acto se reconoce de un vistazo en los tres sitios
+ * donde aparece —la barra de reparto, la cabecera de su tarjeta y la banda de
+ * la rejilla— y el ojo puede seguir «lo verde» por la pantalla sin leer.
+ *
+ * ⚠ POR POSICIÓN, NO POR NOMBRE NI POR CLAVE. Los actos se renombran («II» →
+ * «La inmersión y el caos festivo») y se parten; atar el color al texto haría
+ * que renombrar un acto le cambiara el color, y entonces el color no
+ * identificaría nada. La posición es lo que no cambia: el segundo acto sigue
+ * siendo el segundo tramo de la película se llame como se llame.
+ *
+ * ⚠ Y NO se toca el color de los PUNTOS de la espina, que va por tipo —giro,
+ * inflexión, estado—. Son dos lenguajes distintos sobre la misma pantalla:
+ * dónde estás y qué clase de cosa es. Mezclarlos deja los dos ilegibles.
+ *
+ * Cinco y con módulo: Save the Cat ya trae cuatro actos y cualquiera puede
+ * añadir uno a mano. Con una lista corta y sin módulo, el quinto acto saldría
+ * sin color —o reventaría—, y eso pasa el día que menos se mira.
+ */
+export const COLORES_ACTO = [
+  "var(--violet)", "var(--teal)", "var(--orange)", "var(--blue)", "var(--green)",
+];
+export const colorActo = (i: number) =>
+  COLORES_ACTO[((i % COLORES_ACTO.length) + COLORES_ACTO.length) % COLORES_ACTO.length];
 
 /** ¿De qué plantilla son los actos que tiene el proyecto? Se deduce de sus
  *  nombres, porque no se guarda: los actos se siembran una vez y después son

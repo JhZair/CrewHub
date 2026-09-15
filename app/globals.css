@@ -2209,6 +2209,21 @@ button.obj-mini:hover,a.obj-mini:hover{border-color:var(--accent)}
    Una clase, un número. El `min` con `96vw` es lo que impide que en una
    pantalla de 1000px el contenido llegue pegado a los dos bordes. */
 .shell-ancho{max-width:min(1180px,96vw)}
+/* ── TODA LA PANTALLA ──
+   Para las vistas que son un lienzo y no un texto: hoy, la línea de tiempo del
+   tratamiento. Ahí el ancho no es lujo — cada columna que cabe sin desplazar
+   es una secuencia más a la vista, y ver dos actos a la vez es lo que permite
+   comparar cómo reparten el metraje.
+   ⚠ `max-width:none`, no `100vw`. Con `100vw` el ancho INCLUYE la barra de
+   desplazamiento vertical, así que la página se pasa de largo por quince
+   píxeles y aparece una barra horizontal en toda la aplicación para nada.
+   Sin tope, el bloque ocupa lo que hay y no hay nada que calcular. */
+.shell-total{max-width:none}
+/* Y el texto de cabecera NO se estira con el lienzo: una frase de doscientos
+   caracteres de ancho no se lee, se escanea. El ojo pierde el renglón al
+   volver. Esto es lo único que hay que acordarse de limitar al abrir una
+   pantalla a todo lo ancho. */
+.shell-total .gv-intro,.shell-total .title-lg{max-width:110ch}
 
 /* ===== Perfil de entidad en dos columnas ===== */
 /* ⚠ `minmax(0, 1fr)` y NO `1fr`. Una pista de rejilla tiene mínimo AUTOMÁTICO:
@@ -4739,7 +4754,15 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
    Todo el mundo escribe un primer acto de media pelicula sin darse cuenta. */
 .gu-barra{display:flex;height:26px;border-radius:8px;overflow:hidden;
   border:1px solid var(--border)}
-.gu-tramo{background:var(--accent);display:flex;align-items:center;justify-content:center;
+/* ══════ EL COLOR DE CADA ACTO ══════
+   Uno por tramo de la película, y el MISMO en los tres sitios donde el acto
+   aparece: el tramo de esta barra, la cabecera de su tarjeta y su banda en la
+   rejilla. Lo elige `colorActo` (lib/guion.ts) por POSICIÓN y llega aquí en
+   `--ac`; la hoja de estilos no sabe cuál toca, solo cómo se pinta.
+   ⚠ Antes se separaban bajando la opacidad —`1 - i * 0.14`—, que con tres
+   actos da tres violetas casi iguales: había que leer el rótulo para saber qué
+   tramo se miraba, y en la rejilla el rótulo se corta. */
+.gu-tramo{background:var(--ac,var(--accent));display:flex;align-items:center;justify-content:center;
   gap:6px;font-size:10.5px;color:#0d0d16;font-weight:600;overflow:hidden;
   white-space:nowrap;padding:0 6px;min-width:0}
 .gu-tramo b{font-weight:800}
@@ -4747,11 +4770,33 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
 .gu-acto{margin-top:12px}
 .gu-acto-h{display:flex;gap:9px;align-items:center;flex-wrap:wrap;
   padding-bottom:8px;border-bottom:1px solid var(--border);margin-bottom:4px}
-.gu-acto-c{background:rgba(167,139,250,.16);color:var(--violet);font-weight:800;
+.gu-acto-c{background:color-mix(in srgb,var(--ac,var(--violet)) 16%,transparent);
+  color:var(--ac,var(--violet));font-weight:800;
   font-size:11px;border-radius:6px;padding:2px 8px;letter-spacing:.5px}
+/* El canto de la tarjeta. Es lo que dice en qué acto estás cuando la barra de
+   reparto ya quedó fuera de pantalla, que en un documento largo es casi
+   siempre. Fino: es una señal de sitio, no un marco. */
+.gu-acto-col{border-left:3px solid var(--ac,var(--violet))}
 
-.gu-sec{padding:9px 0;border-bottom:1px solid rgba(255,255,255,.05)}
-.gu-sec:last-of-type{border-bottom:none}
+/* ══════ CADA SECUENCIA, UNA TARJETA DE VERDAD ══════
+   Era un renglón separado del siguiente por una línea de 1 px al 5% de
+   opacidad, o sea casi nada. Bastaba mientras una secuencia fuera un título y
+   un párrafo; deja de bastar en cuanto crece —y va a crecer: casos, reacciones
+   y comentarios por secuencia—. Con dos o tres bloques dentro y una línea casi
+   invisible fuera, no se sabe dónde acaba una secuencia y empieza la de abajo,
+   y un comentario acaba pareciendo de la equivocada.
+   Así que se hunde sobre el fondo del acto: `--bg` es más oscuro que la
+   tarjeta que las contiene, y con su borde y su aire alrededor cada secuencia
+   se ve como una pieza. El mismo recurso que ya usa `.gu-texto` aquí dentro,
+   que es lo que hace que esto no parezca otro diseño. */
+.gu-sec{padding:10px 12px;margin:0 0 10px;background:var(--bg);
+  border:1px solid var(--border);border-radius:10px}
+.gu-sec:last-of-type{margin-bottom:0}
+/* Una secuencia que lleva su punto debajo se pega a él: el aire que las separa
+   tiene que ser MENOR que el que separa una secuencia de la siguiente, o el
+   punto se lee como del bloque de abajo y dice algo falso. Ese es el trabajo
+   entero de estos dos números. */
+.gu-sec:has(+ .es-bloque-sec){margin-bottom:3px}
 .gu-sec-h{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
 .gu-sec-n{font-size:10px;letter-spacing:.8px;color:var(--dim);font-weight:700;flex:none}
 .gu-nombre{background:transparent;border:1px solid transparent;border-radius:7px;
@@ -4766,7 +4811,12 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
 
 /* Que se sepa si lo escrito esta a salvo. Un «Guardado» que miente es peor
    que no ponerlo, asi que el fallo se pinta en rojo y no se va solo. */
-.gu-estado{font-size:10.5px;white-space:nowrap}
+/* ⚠ Ancho fijo y alineado a la derecha. El rótulo cambia de largo mientras se
+   escribe —«· sin guardar» → «· guardando…» → «· guardado» → «· NO se
+   guardó»— y sin reservarle el hueco, lo que tiene al lado se desplaza solo,
+   bajo el cursor, en mitad de una frase. `min-width` y no `width` para que un
+   rótulo más largo no se recorte: prefiero que empuje a que mienta. */
+.gu-estado{font-size:10.5px;white-space:nowrap;min-width:82px;text-align:right}
 .gu-limpio{opacity:0}
 .gu-sucio{color:var(--yellow)}
 .gu-guardando{color:var(--dim)}
@@ -4806,6 +4856,13 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
    Va ARRIBA de las secuencias de su acto: es lo que hay que leer antes de
    escribir, no después. */
 .es-bloque{display:flex;flex-direction:column;gap:5px;margin:4px 0 12px}
+/* El punto anclado, pegado a SU secuencia y DEBAJO de ella. Margen mínimo
+   arriba y de sobra abajo: eso es lo que lo ata a la secuencia de encima en
+   vez de a la de después, que es la única forma de leerlo mal.
+   ⚠ Si algún día vuelve a ir encima, hay que invertir estos dos números a la
+   vez que el orden en `filasDe`; con el margen al revés, el punto se lee como
+   la cabecera de la secuencia siguiente y dice algo falso. */
+.es-bloque-sec{margin:2px 0 16px}
 .es-beat{border-left:3px solid var(--border2);padding:6px 0 6px 10px;border-radius:0 8px 8px 0}
 /* Un giro cambia la dirección de la historia; una inflexión cambia su
    naturaleza. Se ven distintos porque no son lo mismo, y confundirlos es
@@ -4828,6 +4885,34 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
    ámbar en vez de dejar el hueco: el hueco se lee como «todavía no toca». */
 .es-vacio{font-size:11px;color:var(--yellow);opacity:.8;font-style:italic}
 .es-desvio{color:var(--yellow);font-weight:700;font-size:10.5px}
+/* Crear la secuencia que falta. En ámbar como el «sin secuencia» al que
+   acompaña —son la falta y su remedio, y el color los ata—, pero con borde:
+   lo de al lado es un rótulo y esto se pulsa, y a 11px la única diferencia
+   que se ve a un metro es tener caja o no tenerla. */
+.es-crear{font-size:11px;font-family:inherit;cursor:pointer;white-space:nowrap;
+  color:var(--yellow);background:rgba(234,179,8,.10);
+  border:1px solid rgba(234,179,8,.35);border-radius:999px;padding:2px 9px}
+.es-crear:hover:not(:disabled){background:rgba(234,179,8,.20);border-color:var(--yellow)}
+.es-crear:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.es-crear:disabled{cursor:default;opacity:.5}
+/* La ayuda de la caja de la nota. FIJA y no en el `placeholder`: el
+   placeholder decía lo mismo y se iba con la primera letra, o sea justo cuando
+   empiezas a dudar de si ese era el sitio — y aquí dentro acababa el
+   tratamiento entero, copiado de la secuencia de abajo. */
+.es-ayuda{font-size:11px;color:var(--dim);line-height:1.5;margin:-2px 0 2px}
+.es-ayuda b{color:var(--muted);font-weight:700}
+/* Volver a copiar del catálogo. Discreto: es una red de seguridad, no una
+   acción del trabajo diario, y compitiendo con el ＋ ámbar se pulsaría por
+   error justo en el botón que reescribe cosas. */
+.es-rest{font-size:11px;font-family:inherit;cursor:pointer;white-space:nowrap;
+  color:var(--dim);background:none;border:1px solid var(--border);
+  border-radius:999px;padding:2px 9px}
+.es-rest:hover:not(:disabled){color:var(--text);border-color:var(--border2)}
+.es-rest:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.es-rest:disabled{cursor:default;opacity:.5}
+/* Lo que hizo el botón, dicho en palabras. «Restaurado» a secas sobre algo que
+   ya estaba igual deja pensando si pasó algo. */
+.es-aviso{font-size:11.5px;color:var(--green);line-height:1.5;margin:4px 0 0}
 .es-sel{background:var(--card);border:1px solid var(--border);border-radius:7px;
   padding:2px 6px;font-size:11px;color:var(--text);font-family:inherit;
   max-width:190px;outline:none;cursor:pointer}
@@ -4847,12 +4932,11 @@ a.dia-fila:hover{background:rgba(167,139,250,.08)}
 .es-fila{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
 
 /* El punto, sobre la secuencia que lo carga */
-.gu-beats{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 2px}
-.gu-beat{font-size:11px;border-radius:999px;padding:2px 10px;font-weight:600;
-  background:rgba(255,255,255,.05);color:var(--muted)}
-.gu-beat.es-giro{background:rgba(167,139,250,.16);color:var(--violet)}
-.gu-beat.es-inflexion{background:rgba(45,212,191,.14);color:var(--teal)}
-.gu-beat i{font-weight:400;opacity:.85}
+/* ⚠ AQUÍ VIVÍAN `.gu-beats` / `.gu-beat`: la píldora del punto dentro de la
+   tarjeta de la secuencia. Se fueron con ella —el punto ahora va entero justo
+   encima— y las reglas se borran en vez de quedarse por si acaso: CSS que no
+   pinta nada es lo que hace que la siguiente búsqueda de «dónde se estila el
+   punto» dé dos respuestas y una sea mentira. */
 
 /* ── COMBOS DE COMPRA ── */
 .cmp-form{display:flex;flex-direction:column;gap:8px;margin-top:8px}
@@ -7363,113 +7447,204 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
 .gx-filtro:focus-visible{outline:2px solid var(--blue);outline-offset:2px;border-radius:4px}
 
 /* ══════════════════════════════════════════════════════════════════════════
-   ⧉ LA REJILLA DEL TRATAMIENTO (components/GuionTimeline.tsx)
+   ⏱ LA LÍNEA DE TIEMPO DEL TRATAMIENTO (components/GuionTimeline.tsx)
 
-   Columnas = secuencias, de ancho FIJO. Filas = capas. La duración vive en la
-   regla de abajo y no en el ancho: con columnas proporcionales, una secuencia
-   de veinte segundos son doce píxeles y no cabe ni su número.
-   El scroll horizontal está en UN solo contenedor para que la estructura, las
-   columnas, los hilos y la regla se desplacen juntos.
+   Columnas = secuencias, de ancho FIJO. Filas = capas sobre esas columnas. La
+   duración vive en la regla de abajo y no en el ancho: con columnas
+   proporcionales, una secuencia de veinte segundos son doce píxeles y no cabe
+   ni su número. El scroll horizontal está en UN solo contenedor para que los
+   actos, las columnas, los hilos y la regla se desplacen juntos.
 
-   ⚠ PREFIJO `.rej-` Y NO `.tl-`. `.tl` ya era de la línea de actividad
-   (globals.css:553, con su filete vertical y su sangrado) y `.tl-scroll` de
-   `components/TableroTimeline.tsx`. Al llamar `.tl` a esto, la rejilla nacía
-   con un borde ajeno y —peor— el tablero PERDÍA su fondo, porque a igual
-   especificidad gana la regla posterior. Doce pantallas en producción usan
-   `.tl`. Un prefijo de dos letras parece libre y casi nunca lo está.
+   ⚠ PREFIJO `.ltg-` («línea de tiempo del guion»), Y ES EL TERCER INTENTO.
+   Primero fue `.tl-`, que ya era de la línea de actividad (globals.css:553) y
+   de `components/TableroTimeline.tsx`: la vista nacía con un borde ajeno y el
+   tablero PERDÍA su fondo, porque a igual especificidad gana la regla
+   posterior. Se cambió a `.rej-` … que es el prefijo de `RejillaSitio.tsx`, el
+   mueble de un sitio. No se vio porque los nombres que chocaban eran pocos,
+   pero eran los peores: `.rej-cab`, `.rej-n`, `.rej-nom` y `.rej-cero` los
+   escribían LAS DOS pantallas, y `.rej` a secas le colaba a esta vista el
+   `padding` de la estantería.
+   `.lt-` tampoco valía —`components/LineaTiempo.tsx`—. La lección, por tercera
+   vez: un prefijo corto parece libre y casi nunca lo está; se comprueba con un
+   grep antes de escribir la primera regla, no después del primer fallo raro.
+
+   ── EL ANCHO DE COLUMNA ES UNA VARIABLE ──
+   `--col` la pone el componente, porque la misma medida la necesitan la
+   rejilla CSS, el ancho total del lienzo y el control de densidad. Escrita en
+   dos sitios, cambiar uno desalinea la regla de sus columnas sin dar error.
    ══════════════════════════════════════════════════════════════════════════ */
-.rej{margin-top:10px}
-.rej-cab{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:8px;font-size:12px}
-.rej-cab-t{color:var(--dim);font-weight:700;letter-spacing:.4px}
-.rej-est{font-size:10.5px;color:var(--yellow);opacity:.8}
-.rej-suelto{font-size:10.5px;color:var(--yellow);opacity:.85}
+.ltg{margin-top:10px}
 
-.rej-scroll{overflow-x:auto;overflow-y:hidden;border:1px solid var(--border);border-radius:12px;
+/* ── LA BARRA DE ARRIBA: qué hay y qué falta ── */
+.ltg-cab{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;font-size:12px}
+.ltg-cab-t{color:var(--muted);font-weight:700;letter-spacing:.3px}
+/* Los avisos en ámbar: no son errores —una duración estimada o una secuencia
+   sin acto son estados normales mientras se escribe— pero hay que verlos sin
+   buscarlos. */
+.ltg-aviso{font-size:10.5px;color:var(--yellow);opacity:.85;white-space:nowrap}
+
+/* ── DENSIDAD ──
+   Tres anchos de columna. Con veinticuatro secuencias, el ancho cómodo para
+   escribir es incómodo para ver la forma de la película, y al revés: son dos
+   trabajos distintos sobre la misma pantalla y ninguno de los dos anchos sirve
+   para el otro. */
+.ltg-zoom{display:flex;gap:2px;border:1px solid var(--border);border-radius:999px;padding:2px}
+.ltg-zoom button{font-size:10.5px;font-family:inherit;cursor:pointer;background:none;
+  border:0;border-radius:999px;padding:2px 9px;color:var(--dim);line-height:1.6}
+.ltg-zoom button:hover{color:var(--text)}
+.ltg-zoom button.on{background:rgba(124,92,255,.18);color:var(--violet);font-weight:700}
+.ltg-zoom button:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+
+.ltg-scroll{overflow-x:auto;overflow-y:hidden;border:1px solid var(--border);border-radius:12px;
   background:rgba(255,255,255,.015)}
-.rej-fila{display:flex;align-items:stretch;border-top:1px solid var(--border)}
-.rej-fila:first-child{border-top:none}
-/* La primera columna, fija al desplazar: sin ella, a la tercera pantalla de
-   scroll nadie sabe si está leyendo el cuerpo o un hilo. */
-.rej-rot{position:sticky;left:0;z-index:2;overflow:hidden;text-overflow:ellipsis;padding:7px 9px;
-  background:#15151f;border-right:1px solid var(--border2);
-  font-size:10px;letter-spacing:.6px;text-transform:uppercase;color:var(--dim);font-weight:700;
-  display:flex;align-items:center;gap:5px}
-.rej-cols{display:grid}
-.rej-cel{padding:6px 8px;border-left:1px solid var(--border);min-width:0}
+.ltg-fila{display:flex;align-items:stretch;border-top:1px solid var(--border)}
+.ltg-fila:first-child{border-top:none}
 
-/* ── ESTRUCTURA ── */
-.rej-estructura{background:rgba(167,139,250,.05)}
-.rej-banda{grid-row:1;margin:4px 3px;padding:3px 9px;border-radius:6px;
-  background:rgba(167,139,250,.16);border:1px solid rgba(167,139,250,.3);
-  font-size:11px;font-weight:700;color:var(--violet);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-/* Un tramo sin acto se rotula en vez de dejarse en blanco: un hueco sin nombre
-   se lee como que falta un dato de la pantalla, y aquí falta de la película. */
-.rej-banda.es-suelta{background:rgba(244,180,0,.12);border-color:rgba(244,180,0,.3);color:var(--yellow)}
-.rej-beats{background:rgba(167,139,250,.03)}
-.rej-cel-beat{display:flex;flex-direction:column;gap:2px;min-height:20px}
-.rej-beat{font-size:10px;color:var(--violet);opacity:.95;white-space:nowrap;
-  overflow:hidden;text-overflow:ellipsis}
+/* ── LA COLUMNA DE RÓTULOS, FIJA ──
+   `sticky` al desplazar en horizontal: sin ella, a la tercera pantalla de
+   scroll nadie sabe si está leyendo el cuerpo o un hilo. Fondo OPACO y no
+   translúcido — con transparencia, las columnas se leen por debajo y el rótulo
+   deja de rotular nada. */
+.ltg-rot{position:sticky;left:0;z-index:3;overflow:hidden;text-overflow:ellipsis;
+  padding:9px 11px;background:#13131d;border-right:1px solid var(--border2);
+  font-size:9.5px;letter-spacing:.7px;text-transform:uppercase;color:var(--dim);font-weight:700;
+  display:flex;align-items:flex-start;gap:6px}
+/* ⚠ Arriba y no centrado. La fila del cuerpo mide trescientos píxeles de alto:
+   con el rótulo centrado, la palabra «Tratamiento» flotaba en mitad de la nada
+   y no se leía como la etiqueta de esa banda sino como un texto suelto. Todos
+   arriba y todos a la misma altura, que es lo que deja recorrer la columna de
+   rótulos con la vista. */
+.ltg-hilo .ltg-rot,.ltg-regla .ltg-rot,.ltg-actos .ltg-rot{align-items:center}
+/* El rótulo de una fila de trabajo —el cuerpo— pesa más que el de una capa de
+   consulta. Sin esta diferencia, las nueve filas se leen como nueve iguales. */
+.ltg-rot.es-fuerte{color:var(--muted)}
+.ltg-cols{display:grid}
+.ltg-cel{padding:6px 8px;border-left:1px solid var(--border);min-width:0}
 
-/* ── CABECERA DE COLUMNA ── */
-.rej-cel-cab{display:flex;flex-direction:column;gap:3px}
-.rej-cel-cab.es-abierta{background:rgba(167,139,250,.09)}
-.rej-cab-n{display:flex;align-items:center;gap:3px}
-.rej-n{font-size:11px;font-weight:800;color:var(--dim)}
-.rej-mov,.rej-mas{font-size:11px;color:var(--dim);padding:0 3px;line-height:1}
-.rej-mov:hover,.rej-mas:hover{color:var(--text)}
-.rej-nom{background:transparent;border:none;border-bottom:1px solid transparent;
-  font-size:12.5px;font-weight:600;color:var(--text);padding:1px 0;width:100%}
-.rej-nom:focus{outline:none;border-bottom-color:var(--violet)}
-.rej-min{font-size:10.5px;color:var(--dim);display:flex;align-items:baseline;gap:5px}
-.rej-est-mini{color:var(--yellow);opacity:.8}
-.rej-err{font-size:10.5px;color:var(--red)}
+/* ══════ ACTOS ══════
+   La banda lleva el color de su acto, el mismo de su tarjeta en Tarjetas y de
+   su tramo en la barra de reparto. Tres sitios, un color: es lo que permite
+   seguir un acto por la aplicación sin leer su nombre. */
+.ltg-actos{background:rgba(255,255,255,.02);padding:3px 0}
+.ltg-banda{grid-row:1;margin:2px 3px;padding:4px 10px;border-radius:7px;
+  font-size:11px;font-weight:700;letter-spacing:.2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  background:color-mix(in srgb,var(--ac,var(--violet)) 18%,transparent);
+  border:1px solid color-mix(in srgb,var(--ac,var(--violet)) 34%,transparent);
+  color:var(--ac,var(--violet))}
+/* ⚠ Después de `.ltg-banda`: un tramo SIN acto no es un acto, y su ámbar tiene
+   que ganar aunque la regla del color venga antes en el marcado. */
+.ltg-banda.es-suelta{background:rgba(244,180,0,.12);border-color:rgba(244,180,0,.32);
+  color:var(--yellow)}
 
-/* ── EL CUERPO: donde se escribe ── */
-.rej-cel-cuerpo{display:flex;flex-direction:column;gap:3px}
-.rej-txt{background:transparent;border:1px solid transparent;border-radius:8px;
-  color:var(--text);font-size:12px;line-height:1.5;padding:5px 6px;resize:vertical;
-  min-height:190px;width:100%;font-family:inherit}
-.rej-txt:focus{outline:none;border-color:var(--border2);background:rgba(255,255,255,.03)}
-.rej-pie{font-size:10px;color:var(--dim);display:flex;gap:6px;align-items:baseline}
+/* ══════ ESTRUCTURA: los puntos de la espina ══════
+   Cada punto, en la columna de la secuencia que lo carga. Los que no carga
+   ninguna NO se pintan aquí —no tienen columna— y por eso se cuentan arriba:
+   desaparecer sin más sería esconder el dato más útil mientras se escribe. */
+.ltg-espina{background:rgba(167,139,250,.04)}
+.ltg-cel-beat{display:flex;flex-direction:column;gap:3px;min-height:22px;justify-content:center}
+.ltg-beat{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;
+  border-radius:999px;padding:2px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  background:rgba(255,255,255,.05);color:var(--muted)}
+/* Un giro cambia la dirección de la historia; una inflexión cambia su
+   naturaleza. Se ven distintos porque no son lo mismo, igual que en Tarjetas. */
+.ltg-beat.es-giro{background:rgba(167,139,250,.18);color:var(--violet)}
+.ltg-beat.es-inflexion{background:rgba(45,212,191,.16);color:var(--teal)}
+.ltg-beat i{font-style:normal;opacity:.7;font-weight:400}
 
-/* ── HILOS ── */
-.rej-hilo .rej-rot{font-weight:600;text-transform:none;letter-spacing:0;font-size:11px}
-.rej-punto{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-.rej-cero{color:var(--yellow);opacity:.8;font-size:10px}
-.rej-cel-hilo{display:flex;align-items:center;min-height:22px;padding:4px 6px}
-.rej-barra{height:8px;border-radius:999px;width:100%;opacity:.75}
+/* ══════ LA CABECERA DE CADA COLUMNA ══════ */
+.ltg-cel-cab{display:flex;flex-direction:column;gap:4px;padding-top:7px}
+.ltg-cel-cab.es-abierta{background:rgba(167,139,250,.09)}
+.ltg-cab-n{display:flex;align-items:center;gap:4px}
+/* El número, teñido del color de SU acto: es lo que ata la columna a su tramo
+   cuando la banda de arriba ya quedó fuera de pantalla. */
+.ltg-n{font-size:10px;font-weight:800;letter-spacing:.5px;border-radius:5px;padding:1px 6px;
+  background:color-mix(in srgb,var(--ac,var(--dim)) 18%,transparent);
+  color:var(--ac,var(--dim))}
+.ltg-mov,.ltg-mas{font-size:11px;color:var(--dim);padding:0 3px;line-height:1;
+  background:none;border:0;cursor:pointer;font-family:inherit}
+.ltg-mov:hover,.ltg-mas:hover{color:var(--text)}
+.ltg-mov:focus-visible,.ltg-mas:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+.ltg-nom{background:transparent;border:none;border-bottom:1px solid transparent;
+  color:var(--text);font-size:12.5px;font-weight:600;font-family:inherit;width:100%;padding:1px 0}
+.ltg-nom:hover{border-bottom-color:var(--border)}
+.ltg-nom:focus{outline:none;border-bottom-color:var(--violet)}
+.ltg-min{font-size:10.5px;color:var(--dim);display:flex;align-items:baseline;gap:5px}
+.ltg-est-mini{color:var(--yellow);opacity:.8}
+.ltg-err{font-size:10.5px;color:var(--red)}
 
-/* ── LA REGLA ──
-   Cada marca va debajo de la columna en la que cae ese minuto. No es
-   proporcional porque las columnas no lo son: una regla proporcional sobre
-   columnas fijas se desalinea de lo que rotula. */
-.rej-regla{background:rgba(255,255,255,.02)}
-.rej-cel-regla{display:flex;gap:8px;align-items:center;min-height:20px}
-.rej-marca{font-size:10px;color:var(--dim);font-variant-numeric:tabular-nums}
+/* ══════ EL CUERPO: donde se escribe ══════
+   Se escribe EN la celda, sin abrir nada: un panel que hay que abrir cuesta
+   dos clics por frase, y entonces la herramienta se deja de usar. */
+.ltg-cel-cuerpo{display:flex;flex-direction:column;gap:3px}
+.ltg-txt{background:transparent;border:1px solid transparent;border-radius:8px;
+  color:var(--text);font-size:12px;line-height:1.55;padding:5px 6px;resize:vertical;
+  min-height:var(--alto,190px);width:100%;font-family:inherit}
+.ltg-txt::placeholder{color:var(--dim)}
+.ltg-txt:hover{border-color:var(--border)}
+.ltg-txt:focus{outline:none;border-color:var(--violet);background:rgba(255,255,255,.03)}
+.ltg-pie{font-size:10px;color:var(--dim);display:flex;gap:6px;align-items:baseline}
+/* Una celda sin una palabra escrita se marca en el pie y no con el fondo: el
+   fondo la convertiría en un error, y una secuencia sin escribir es el estado
+   normal de todo lo que todavía no se ha escrito. */
+.ltg-pie .es-vacio{color:var(--yellow);opacity:.75}
 
-/* ── EL CAJÓN ──
-   Debajo de la rejilla y en flujo. `.rej-scroll` tiene overflow, así que un
-   panel absoluto dentro se cortaría en su borde — la misma lección que el
-   panel de papeles de la cláusula 5.4. */
-.rej-cajon{margin-top:10px;padding:10px;border:1px solid var(--border2);border-radius:12px;
-  background:rgba(255,255,255,.025)}
-.rej-cajon-t{display:flex;align-items:center;gap:8px;font-size:12.5px;margin-bottom:8px}
-.rej-cajon-g{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
-.rej-cajon-g label{display:flex;flex-direction:column;gap:3px}
-.rej-cajon-g label>span{font-size:10px;letter-spacing:.5px;text-transform:uppercase;
+/* ══════ HILOS DE TRAMA ══════
+   ⚠ BANDAS CONTINUAS, no una marca por celda. Un hilo es algo que atraviesa la
+   película y tiene que cerrarse; con marcas sueltas, un hilo tocado en las
+   secuencias 2-3-4 se veía igual que uno tocado en la 2, la 9 y la 20 — y esa
+   es la diferencia entre desarrollar un hilo y mencionarlo.
+   La línea fina de fondo es el hilo existiendo; los bloques gruesos son donde
+   la película lo toca; el hueco entre dos bloques es el tiempo en que se
+   olvida de él, y se ve como lo que es. */
+.ltg-hilo .ltg-rot{font-weight:600;text-transform:none;letter-spacing:0;font-size:11px;
+  color:var(--muted)}
+.ltg-punto{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.ltg-cero{color:var(--yellow);opacity:.8;font-size:10px;font-weight:400}
+.ltg-pista{position:relative;min-height:26px;display:grid;align-items:center}
+/* El hilo «apagado»: cruza toda la anchura para que se vea que sigue vivo
+   entre un tramo y el siguiente. Va debajo de los tramos, sin capturar clics. */
+.ltg-pista::before{content:"";position:absolute;left:0;right:0;top:50%;height:2px;
+  transform:translateY(-50%);background:var(--h);opacity:.18;pointer-events:none}
+.ltg-tramo{position:relative;grid-row:1;height:11px;border-radius:999px;
+  margin:0 2px;background:var(--h);opacity:.85}
+.ltg-tramo:hover{opacity:1}
+
+/* ══════ LA REGLA ══════
+   Cada marca va DEBAJO DE LA COLUMNA en la que cae ese minuto, no en una
+   posición proporcional: las columnas no son proporcionales, así que una regla
+   proporcional se desalinearía de lo que rotula.
+   El filete de arriba lleva el color del acto de esa columna: es la tercera
+   lectura del mismo reparto —banda, número y regla— y la que permite ver de un
+   golpe cuánto metraje se lleva cada acto. */
+.ltg-regla{background:rgba(255,255,255,.025)}
+.ltg-cel-regla{display:flex;gap:8px;align-items:center;min-height:22px;position:relative}
+.ltg-cel-regla::before{content:"";position:absolute;left:0;right:0;top:0;height:2px;
+  background:var(--ac,var(--border2));opacity:.55}
+.ltg-marca{font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums;font-weight:600}
+
+/* ══════ EL CAJÓN ══════
+   Debajo de la línea de tiempo y en flujo. `.ltg-scroll` tiene overflow, así
+   que un panel absoluto dentro se cortaría en su borde — la misma lección que
+   el panel de papeles de la cláusula 5.4. */
+.ltg-cajon{margin-top:10px;padding:10px 12px;border:1px solid var(--border2);border-radius:12px;
+  background:var(--card)}
+.ltg-cajon-t{display:flex;align-items:center;gap:8px;font-size:12.5px;margin-bottom:8px}
+.ltg-cajon-g{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.ltg-cajon-g label{display:flex;flex-direction:column;gap:3px}
+.ltg-cajon-g label>span{font-size:10px;letter-spacing:.5px;text-transform:uppercase;
   color:var(--dim);font-weight:700}
-.rej-cajon-g input{background:var(--card);border:1px solid var(--border);border-radius:8px;
-  padding:6px 9px;font-size:12.5px;color:var(--text)}
-.rej-cajon-g small{font-size:10px;color:var(--dim)}
-.rej-cajon-h{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
-.rej-chip{font-size:11px;padding:2px 9px;border-radius:999px;border:1px solid var(--border);
+.ltg-cajon-g input{background:var(--bg);border:1px solid var(--border);border-radius:8px;
+  padding:5px 8px;font-size:12px;color:var(--text);font-family:inherit}
+.ltg-cajon-g small{font-size:10px;color:var(--dim)}
+.ltg-cajon-h{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.ltg-chip{font-size:11px;padding:2px 9px;border-radius:999px;border:1px solid var(--border);
   color:var(--dim)}
-.rej-chip.on{font-weight:600}
+.ltg-chip.on{font-weight:600}
 
 /* ── LAS CUATRO VISTAS DEL TRATAMIENTO (app/guion/[id]) ──
-   Rejilla · Tarjetas · Documento · Diagnóstico. La elección va en la URL, así
-   que son enlaces: cada vista tiene su dirección y el botón de atrás funciona. */
+   Línea de tiempo · Tarjetas · Documento · Diagnóstico. La elección va en la URL,
+   así que son enlaces: cada vista tiene su dirección y el botón de atrás va. */
 .gv-barra{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px}
 .gv-tab{font-size:12px;padding:5px 12px;border-radius:999px;text-decoration:none;
   border:1px solid var(--border);color:var(--dim);white-space:nowrap}
@@ -7477,6 +7652,28 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
 .gv-tab.on{color:var(--violet);border-color:rgba(167,139,250,.45);
   background:rgba(167,139,250,.12);font-weight:600}
 .gv-tab:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+
+/* ── ELEGIR EL MODELO EN LA TARJETA DE «TODAVÍA NO HAY ESTRUCTURA» ──
+   Botones anchos y no un desplegable: son cuatro modelos canónicos que se
+   eligen UNA vez, y con un <select> los tres que no están abiertos no existen
+   —hay que saber que están para ir a buscarlos—. Abiertos, cada uno enseña de
+   qué escuela viene y cuánto va a crear, que es lo que permite decidir sin
+   haberlos estudiado. */
+.gv-modelos{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.gv-modelo{display:flex;flex-direction:column;align-items:flex-start;gap:2px;
+  flex:1 1 168px;min-width:0;text-align:left;font-family:inherit;cursor:pointer;
+  background:var(--card);border:1px solid var(--border);border-radius:10px;
+  padding:9px 11px;color:var(--text);transition:border-color .12s,background .12s}
+.gv-modelo:hover:not(:disabled){border-color:rgba(167,139,250,.55);
+  background:rgba(124,92,255,.10)}
+.gv-modelo:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.gv-modelo:disabled{cursor:default;opacity:.55}
+.gv-modelo b{font-size:13px}
+.gv-modelo i{font-style:normal;font-size:11px;color:var(--violet)}
+/* Lo que va a crear, en números. Es lo que hace que pulsar no sea una apuesta. */
+.gv-modelo span{font-size:10.5px;color:var(--dim)}
+.gv-modelo em{font-style:normal;font-size:10.5px;color:var(--yellow)}
+.gv-modelos-pie{flex-basis:100%;font-size:11.5px;color:var(--dim);line-height:1.55}
 
 /* ── DOCUMENTO ──
    Para leer y para mandar. `pre-wrap` respeta los saltos que puso el autor:
