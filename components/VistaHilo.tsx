@@ -7,6 +7,8 @@ import LinkPreviews from "@/components/LinkPreviews";
 import TextoRico from "@/components/TextoRico";
 import Avatar from "@/components/Avatar";
 import PaletaRx from "@/components/PaletaRx";
+import EditorImagenes from "@/components/EditorImagenes";
+import { subirImagen, imagenesDePaste } from "@/lib/subirImagen";
 import { agrupar } from "@/lib/reacciones";
 
 /* VISTA HILO — base compartida de los pop-up interactivos (objeto del
@@ -73,7 +75,7 @@ function BarraRx({ rx, userId, ocupado, onReaccionar, titulo }: {
 export default function VistaHilo({
   children, tituloCab, abrirCompletoHref, abrirCompletoTitle, ariaLabel,
   cargar, listo, selComentarios, selReaccionesPorComentario, selPerfiles, selUserId,
-  cabecera, onComentar, onReaccionarComentario,
+  cabecera, onComentar, conImagenes, onReaccionarComentario,
   conHilo = true, claseCaja = "",
   permitirResponder = false, reaccionesHilo, onReaccionarHilo, onEditar,
   textoVacio = "Aún no hay comentarios.", placeholder = "Comentar al vuelo…  (@ para mencionar)",
@@ -107,13 +109,33 @@ export default function VistaHilo({
   conHilo?: boolean;
   /** Clase extra para la caja: una vista de datos necesita más ancho que un hilo. */
   claseCaja?: string;
-  onComentar?: (texto: string, respondeA: string | null) => Promise<any>;
+  /* ── ⚠ LAS IMÁGENES VAN EN EL TERCER ARGUMENTO, Y OPCIONAL ──
+     Este hilo ya PINTABA las imágenes de un comentario pero no dejaba adjuntar
+     ninguna: se podían ver las que llegaran por otra puerta y no crear una.
+     Y hay notas que son la imagen —el teaser de un rival, la foto de cómo
+     volvió una cámara— donde el texto es el pie, no el contenido.
+     Tercero y opcional para que las llamadas que ya existían sigan valiendo
+     tal cual: quien no las pase, no las manda, y nada se rompe en silencio. */
+  onComentar?: (texto: string, respondeA: string | null, imagenes?: string[]) => Promise<any>;
+  /** Enseñar la tira de imágenes en la caja de escribir. Quien lo encienda
+   *  tiene que pasar `imagenes` al servidor en `onComentar`, o se subirían
+   *  para nada. */
+  conImagenes?: boolean;
   onReaccionarComentario?: (comentarioId: string, emoji: string) => Promise<any>;
   permitirResponder?: boolean;
   /** Editar un comentario ya escrito. Si falta, el ✎ no aparece —una pantalla
    *  que no sabe editar no debe ofrecerlo—. La acción decide quién puede: aquí
    *  solo se enseña al autor, que es la misma regla, dicha antes de pulsar. */
-  onEditar?: (comentarioId: string, texto: string) => Promise<any>;
+  /* ── ⚠ EDITAR ES TAMBIÉN QUITAR UNA FOTO ──
+     Esto editaba solo el texto, y una imagen equivocada quedaba pegada al
+     comentario para siempre: la única salida era borrar el comentario entero y
+     volver a escribirlo, perdiendo su fecha, sus respuestas y sus reacciones.
+     La acción del servidor ya aceptaba la lista de imágenes desde el primer
+     día; lo que faltaba era la mitad de arriba.
+     Tercero y opcional, para que las llamadas que no las pasen sigan valiendo:
+     `editarComentario` solo toca la columna cuando se la mandan, así que no
+     pasarlas significa «déjalas como están», no «bórralas». */
+  onEditar?: (comentarioId: string, texto: string, imagenes?: string[]) => Promise<any>;
   /** Si se pasa, muestra una fila de reacciones al HILO (p. ej. la postulación). */
   reaccionesHilo?: (d: any) => RxItem[];
   onReaccionarHilo?: (emoji: string) => Promise<any>;
@@ -123,11 +145,16 @@ export default function VistaHilo({
   const [abierto, setAbierto] = useState(false);
   const [data, setData] = useState<any>(null);
   const [texto, setTexto] = useState("");
+  /** Las imágenes ya subidas y pendientes de mandar con el comentario. */
+  const [imgs, setImgs] = useState<string[]>([]);
   const [respondeA, setRespondeA] = useState<string | null>(null);
   /* Qué comentario está en edición y con qué texto. Uno a la vez: dos cajas
      abiertas en un hilo largo es pedir que se guarde en la equivocada. */
   const [editando, setEditando] = useState<string | null>(null);
   const [txtEd, setTxtEd] = useState("");
+  /** Las imágenes mientras se edita. Es una COPIA: mientras no se guarde, el
+   *  comentario sigue teniendo las suyas y Cancelar las devuelve enteras. */
+  const [imgsEd, setImgsEd] = useState<string[]>([]);
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
@@ -194,12 +221,15 @@ export default function VistaHilo({
   const comMap = new Map(comentarios.map((c: any) => [c.id, c]));
 
   const { enMencion, candidatos, aplicar } = menciones(texto, perfiles);
+
   const invocarMencion = (nombre: string) => setTexto(aplicar(nombre));
 
   const enviarComentario = () => {
-    if (!texto.trim() || !onComentar) return;
-    correr(() => onComentar(texto.trim(), respondeA), () => {
-      setTexto(""); setRespondeA(null);
+    /* Una nota que es SOLO una foto es una nota: «así llegó», «este es el
+       teaser». Exigir texto la convertía en dos pasos o en un «.» de relleno. */
+    if ((!texto.trim() && !imgs.length) || !onComentar) return;
+    correr(() => onComentar(texto.trim(), respondeA, imgs), () => {
+      setTexto(""); setRespondeA(null); setImgs([]);
       setTimeout(() => finRef.current?.scrollIntoView({ behavior: "smooth" }), 60);
     });
   };
@@ -270,7 +300,7 @@ export default function VistaHilo({
                                 Solo al autor y solo si la pantalla sabe editar. */}
                             {onEditar && c.autor_id === userId && (
                               <button className="vo-com-resp-btn" title="Editar mi comentario"
-                                onClick={() => { setEditando(c.id); setTxtEd(c.cuerpo || ""); }}>✎</button>
+                                onClick={() => { setEditando(c.id); setTxtEd(c.cuerpo || ""); setImgsEd([...(c.imagenes || [])]); }}>✎</button>
                             )}
                             {/* Que fue editado se DICE. Un texto que cambia sin
                                 dejar rastro convierte el hilo en algo que no se
@@ -291,11 +321,18 @@ export default function VistaHilo({
                                 style={{ width: "100%", background: "var(--bg)", color: "var(--text)",
                                   border: "1px solid var(--accent)", borderRadius: 8, padding: "6px 9px",
                                   fontSize: 13, fontFamily: "inherit", resize: "vertical" }} />
+                              {/* Las imágenes del comentario, con su ✕ para
+                                  quitarlas y el botón para añadir otras. Van
+                                  DENTRO del editor —y la tira de solo lectura
+                                  se esconde mientras tanto— porque dos juegos
+                                  de la misma foto a la vez, uno con ✕ y otro
+                                  sin él, no se sabe cuál manda. */}
+                              <EditorImagenes imgs={imgsEd} setImgs={setImgsEd} onError={setError} />
                               <div style={{ display: "flex", gap: 6 }}>
-                                <button className="btn" disabled={ocupado || !txtEd.trim()}
+                                <button className="btn" disabled={ocupado || (!txtEd.trim() && !imgsEd.length)}
                                   style={{ fontSize: 11.5, padding: "4px 12px" }}
                                   onClick={async () => {
-                                    const r: any = await onEditar!(c.id, txtEd);
+                                    const r: any = await onEditar!(c.id, txtEd, imgsEd);
                                     if (r?.error) { alert(r.error); return; }
                                     setEditando(null); recargar();
                                   }}>Guardar</button>
@@ -309,7 +346,7 @@ export default function VistaHilo({
                             <div className="vo-com-txt"><TextoRico texto={c.cuerpo} /></div>
                           ) : null}
                           <LinkPreviews texto={c.cuerpo} />
-                          {(c.imagenes || []).length > 0 && (
+                          {editando !== c.id && (c.imagenes || []).length > 0 && (
                             <div className="vo-com-imgs">
                               {c.imagenes.map((src: string, i: number) => (
                                 // eslint-disable-next-line @next/next/no-img-element
@@ -338,14 +375,35 @@ export default function VistaHilo({
                     <MencionesMenu candidatos={candidatos} onElegir={invocarMencion} />
                     <textarea value={texto} onChange={e => setTexto(e.target.value)}
                       placeholder={placeholder} rows={2}
+                      /* ⚠ PEGAR ES COMO SE ADJUNTA DE VERDAD.
+                         Una captura de pantalla está en el portapapeles, no en
+                         un archivo: obligar a guardarla en el escritorio para
+                         luego buscarla con el selector son cuatro pasos, y a
+                         ese precio la nota se queda sin la imagen. */
+                      onPaste={conImagenes ? (e => {
+                        const files = imagenesDePaste(e);
+                        if (!files.length) return;
+                        e.preventDefault();
+                        (async () => {
+                          for (const f of files.slice(0, Math.max(0, 6 - imgs.length))) {
+                            const r = await subirImagen(f);
+                            if (r.error) { setError(r.error); break; }
+                            if (r.url) setImgs(prev => [...prev, r.url!]);
+                          }
+                        })();
+                      }) : undefined}
                       onKeyDown={e => {
                         if (e.key === "Enter" && !e.shiftKey && enMencion && candidatos.length) {
                           e.preventDefault(); invocarMencion(candidatos[0].nombre); return;
                         }
                         if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) enviarComentario();
                       }} />
+                    {conImagenes && (
+                      <EditorImagenes imgs={imgs} setImgs={setImgs} onError={setError} />
+                    )}
                   </div>
-                  <button className="btn" disabled={ocupado || !texto.trim()} onClick={enviarComentario}>
+                  <button className="btn" disabled={ocupado || (!texto.trim() && !imgs.length)}
+                    onClick={enviarComentario}>
                     {ocupado ? "…" : "Comentar"}
                   </button>
                 </div>

@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Volver from "@/components/Volver";
 import { Chip, FilaFiltro, PanelFiltros } from "@/components/Filtros";
-import { TIPOS_OBJETO, TIPO_CV, icoObjeto, lblObjeto, ordenObjeto } from "@/lib/objetos";
+import { TIPOS_OBJETO, TIPO_CV, icoObjeto, lblObjeto, ordenObjeto, CASA_ICO, CASA_LBL, DUENO_CASA, esDeLaCasa } from "@/lib/objetos";
 import { ICO_ENT } from "@/lib/secciones";
 import { resolverNombres } from "@/lib/nombres";
 import { enlaceLimpio } from "@/lib/drive";
@@ -78,7 +78,12 @@ export default async function RepositorioPage({ searchParams }: {
   // Los nombres de los dueños: resolvedor compartido (lib/nombres).
   const nombres = await resolverNombres(supabase,
     todos.map((o: any) => ({ tipo: o.entidad_tipo, id: o.entidad_id })));
-  const duenoDe = (o: any) => nombres.get(`${o.entidad_tipo}:${o.entidad_id}`) || "—";
+  /* ⚠ La casa se contesta ANTES de mirar el mapa de nombres: no tiene id, así
+     que su clave sería «casa:null» y saldría el guion de «no sé de quién es»
+     —que aquí significa otra cosa: que el dueño se borró—. */
+  const duenoDe = (o: any) =>
+    esDeLaCasa(o.entidad_tipo) ? CASA_LBL
+      : (nombres.get(`${o.entidad_tipo}:${o.entidad_id}`) || "—");
 
   // Catálogos para elegir dueño al agregar desde aquí.
   const { catalogos, etiquetas } = await catalogosDuenos(supabase);
@@ -115,8 +120,9 @@ export default async function RepositorioPage({ searchParams }: {
       <h1 className="title-lg">📚 Repositorio</h1>
       <p style={{ color: "var(--dim)", fontSize: 12.5, margin: "0 0 12px" }}>
         Todo lo que sabemos y no cabe en un formulario: obras, referencias, prensa,
-        premios, investigaciones. Cada objeto pertenece a alguien — una persona,
-        un proyecto, una empresa — y se puede agregar desde aquí o desde su ficha.
+        premios, investigaciones, cursos. Casi todo pertenece a alguien — una persona,
+        un proyecto, una empresa — y lo que es del equipo y de nadie va a 🏠 la casa.
+        Se puede agregar desde aquí o desde su ficha.
       </p>
 
       <form className="card" style={{ display: "flex", gap: 10, padding: 12 }}>
@@ -149,6 +155,13 @@ export default async function RepositorioPage({ searchParams }: {
               </Chip>
             );
           })}
+          {/* La casa va con los demás y no aparte: al filtrar, la pregunta es
+              la misma —«¿de quién es esto?»— y su respuesta es una más. */}
+          {cntDe(DUENO_CASA) > 0 && (
+            <Chip href={`/repositorio?de=${DUENO_CASA}`} on={de === DUENO_CASA} color="var(--violet)">
+              {CASA_ICO} {CASA_LBL} · {cntDe(DUENO_CASA)}
+            </Chip>
+          )}
         </FilaFiltro>
       </PanelFiltros>
 

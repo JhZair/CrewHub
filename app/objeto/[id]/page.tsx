@@ -17,7 +17,7 @@ import { agruparEventos } from "@/lib/agrupar";
 import { filasEntidades, catalogosDeFilas, aliasPorCuenta } from "@/lib/catalogos";
 import { resolverNombres } from "@/lib/nombres";
 import { conAlias } from "@/lib/personas";
-import { icoObjeto, lblObjeto } from "@/lib/objetos";
+import { icoObjeto, lblObjeto, CASA_ICO, CASA_LBL, esDeLaCasa } from "@/lib/objetos";
 import { ICO_ENT, SECCIONES, rutaEntidad } from "@/lib/secciones";
 import { claseEstado, rotuloEstado } from "@/lib/estados";
 import { icoTipo } from "@/lib/tipos";
@@ -102,7 +102,9 @@ export default async function ObjetoPage({ params }: { params: { id: string } })
   const nombres = await resolverNombres(supabase, pares);
   const dueno = {
     tipo: o.entidad_tipo, id: o.entidad_id,
-    nombre: nombres.get(`${o.entidad_tipo}:${o.entidad_id}`) || "—",
+    /* La casa no tiene id ni ficha: su nombre se sabe sin preguntar. */
+    nombre: esDeLaCasa(o.entidad_tipo) ? CASA_LBL
+      : (nombres.get(`${o.entidad_tipo}:${o.entidad_id}`) || "—"),
   };
   const vinculadas = (vincs || []).map((v: any) => ({
     tipo: v.entidad_tipo, id: v.entidad_id,
@@ -189,9 +191,18 @@ export default async function ObjetoPage({ params }: { params: { id: string } })
         {o.fecha && <span>{fmtDia(o.fecha)}</span>}
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           de{" "}
-          <Link href={rutaEntidad(dueno.tipo, dueno.id) || "#"} style={{ color: "var(--violet)", fontWeight: 700 }}>
-            {ICO_ENT[dueno.tipo] || "🔗"} {dueno.nombre}
-          </Link>
+          {/* ⚠ La casa no lleva enlace: no hay ficha a la que ir. Un enlace que
+              no lleva a ninguna parte es peor que ninguno — se pulsa igual. */}
+          {esDeLaCasa(dueno.tipo) ? (
+            <span style={{ color: "var(--violet)", fontWeight: 700 }}
+              title="Material del equipo: no cuelga de ninguna ficha. Se busca en el repositorio.">
+              {CASA_ICO} {CASA_LBL}
+            </span>
+          ) : (
+            <Link href={rutaEntidad(dueno.tipo, dueno.id) || "#"} style={{ color: "var(--violet)", fontWeight: 700 }}>
+              {ICO_ENT[dueno.tipo] || "🔗"} {dueno.nombre}
+            </Link>
+          )}
           {/* Quien trae el material no siempre es de quien trata. */}
           <MoverObjeto objetoId={params.id} catalogos={catalogos} etiquetas={ETIQ_ENT} />
         </span>

@@ -8915,6 +8915,33 @@ a.sit-cosa-n:hover{color:var(--accent)}
   color:var(--dim);white-space:nowrap}
 .riv-hist-ed.e-beneficiaria{color:var(--yellow);border-color:rgba(255,193,7,.3)}
 .riv-hist-ed.e-finalista{color:var(--teal);border-color:rgba(0,191,165,.28)}
+/* ⚠ «1ª vez que la vemos» se DICE, pero en gris y sin insignia: es la ausencia
+   de historial, no un logro, y con el mismo amarillo que «3ª vez» competiría
+   por la mirada justo con lo que sí importa. Lo que no puede es faltar. */
+.riv-hist-1{color:var(--dim);font-style:italic}
+/* La empresa con dos proyectos en la misma edición: naranja, porque es lo
+   único de la fila que habla de estrategia y no de estado. Es un `ChipPop`,
+   así que hereda `.ens-marca`/`.ens-marca-btn` y solo cambia el color. */
+.chip-varios{color:var(--orange);background:rgba(245,158,11,.10);
+  border-color:rgba(245,158,11,.25);font-size:10px}
+.chip-varios:hover{border-color:var(--orange);background:rgba(245,158,11,.18)}
+/* El resumen del historial, ya pulsable. Sin color propio de estado: dentro
+   lleva las insignias de cada edición y son ELLAS las que tienen que resaltar;
+   un chip amarillo alrededor de un 🏆 amarillo no deja ver ninguno de los dos. */
+.chip-hist{display:inline-flex;align-items:center;gap:5px;flex-wrap:wrap;
+  font-size:10.5px;padding:1px 7px;text-align:left}
+.chip-hist > b{color:var(--yellow);font-size:10.5px}
+.chip-hist .riv-hist-ed{pointer-events:none}
+/* La fila del pop-up desde la que se abrió: se marca para no tener que
+   comparar títulos a ojo. */
+.riv-pop-yo{background:rgba(124,92,255,.10);border-radius:8px}
+.riv-pop-esta{color:var(--accent);font-size:9.5px;font-weight:700;text-transform:uppercase;
+  letter-spacing:.04em}
+.riv-pop-pie{line-height:1.6;text-align:left}
+/* Cuántas empresas hay detrás de las N postulaciones del título. */
+.riv-emps{color:var(--dim);font-size:11px;white-space:nowrap}
+.riv-pie{color:var(--dim);font-size:10.5px;line-height:1.6;margin-top:9px;
+  padding-top:8px;border-top:1px solid var(--border)}
 
 /* ══════════════════════════════════════════════════════════════════════════
    🏁 LA MATRIZ DE RIVALES (/rivales)
@@ -9090,3 +9117,60 @@ a.sit-cosa-n:hover{color:var(--accent)}
 .mrv-linea-g{width:44px;text-align:right;color:var(--dim);flex:none;font-size:10.5px}
 .mrv-linea-g.si{color:var(--yellow)}
 
+
+/* ── LA ZONA DE ACCIÓN DE UNA FILA DE COMPETENCIA ──
+   Reacciones y 💬 juntos, a la derecha y antes de la ✕. Rejilla y no flex por
+   la misma lección que en la rendición: con flex, el ancho depende de cuántas
+   reacciones haya, así que las filas comentadas empujan y la columna de la
+   derecha deja de estar alineada en una lista de cincuenta.
+   ⚠ Nunca `overflow:hidden` aquí: recorta la paleta de emojis, que es absoluta
+   y sale fuera. */
+.riv-acc{display:grid;grid-template-columns:minmax(0,96px) minmax(0,44px);gap:4px;
+  align-items:center;justify-items:center;flex:none}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ⚖️ EL JURADO DE UNA CONVOCATORIA
+   Misma familia visual que 🏁 —se leen seguidas y son la misma pregunta por
+   sus dos lados— pero con la biografía como protagonista en vez de la tabla.
+   ══════════════════════════════════════════════════════════════════════════ */
+.jur-roles{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.jur-roles-t{color:var(--dim);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em}
+/* El asiento que ocupa cada uno: violeta, que no lo usa ninguna etapa de 🏁,
+   para que un rol no se confunda nunca con «finalista» o «ganó». */
+.jur-rol{color:var(--violet);background:rgba(167,139,250,.12);font-size:10px;flex:none}
+
+.jur-lista{display:flex;flex-direction:column;gap:1px}
+.jur-item{display:flex;align-items:flex-start;gap:8px;padding:9px 10px;border-radius:9px}
+.jur-item:nth-child(odd){background:var(--bg)}
+.jur-l1{display:flex;align-items:center;gap:7px;flex-wrap:wrap;min-width:0}
+.jur-l1 > b{font-size:13px}
+.jur-sum{color:var(--muted);font-size:11.5px;line-height:1.65;margin-top:3px}
+/* ⚠ Recortada con `-webkit-line-clamp` y no con `height`: con una altura fija,
+   una biografía de dos líneas deja un hueco y una de ocho se corta a mitad de
+   renglón, dejando una fila de medias letras que parece un fallo de pintado. */
+.jur-sum.corta{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.jur-mas{display:block;background:none;border:0;color:var(--accent);font-size:10.5px;
+  cursor:pointer;padding:2px 0 0;font-family:inherit}
+.jur-mas:hover{text-decoration:underline}
+
+/* La caja de confirmar antes de guardar. Se puede escribir en todo porque son
+   cinco personas: ver el cabecero de CargarJurado. */
+.jur-ed{display:flex;flex-direction:column;gap:7px;margin:10px 0}
+.jur-ed-f{display:flex;gap:8px;padding:8px 9px;border-radius:9px;background:var(--bg);
+  border:1px solid var(--border)}
+.jur-ed-f.off{opacity:.45}
+.jur-ed-on{flex:none;padding-top:3px}
+.jur-ed-fila{display:flex;gap:6px;margin-top:4px;flex-wrap:wrap}
+.jur-ed-nom,.jur-ed-rol,.jur-ed-pais,.jur-ed-sum{background:var(--card);color:var(--text);
+  border:1px solid var(--border);border-radius:7px;padding:5px 8px;font-family:inherit;
+  font-size:12px;width:100%}
+.jur-ed-nom{font-weight:700;font-size:12.5px}
+.jur-ed-rol{flex:1 1 200px;min-width:0;width:auto}
+.jur-ed-pais{flex:0 1 140px;min-width:0;width:auto}
+.jur-ed-sum{margin-top:4px;line-height:1.6;resize:vertical}
+
+/* 🏠 El chip de «la casa» en el selector de dueño del repositorio. Hereda
+   `.echip` y solo añade lo de botón: los demás dueños abren una lista y este
+   elige directo, así que tiene que verse pulsable sin parecer otra cosa. */
+.echip-btn{cursor:pointer;font-family:inherit}
+.echip-btn:hover{border-color:var(--violet);color:var(--text)}

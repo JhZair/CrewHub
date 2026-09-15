@@ -371,16 +371,60 @@ export function agrupaDirectores(
    pantallas estaría mintiendo y no habría forma de saber cuál.
    ══════════════════════════════════════════════════════════════════════════ */
 
+/** Una aparición contada: un concurso, un año y qué pasó con ese proyecto. */
+export type Paso = {
+  id: string;
+  convocatoriaId: string;
+  anio: number | null;
+  codigo: string | null;
+  nombre: string | null;
+  etapa: string;
+  titulo: string | null;
+  monto: number | null;
+  /** Cuántos proyectos llevó a esa edición, si fue más de uno. */
+  cuantos: number;
+};
+
 export type Historial = {
   /** Convocatorias distintas en las que aparece, esta incluida. */
   veces: number;
   /** Lo más lejos que llegó en cualquiera de ellas. */
   mejor: string;
-  /** Cuántas veces ganó, en total. */
+  /** Cuántas veces ganó, en total —esta edición incluida—. */
   gano: number;
+  /** ⚠ Y cuántas ganó en las OTRAS, que es lo que «🏆 ya ganó» quiso decir
+   *  siempre. Con el total, una fila que ganó JUSTO ESTA edición se anunciaba
+   *  como si llegara con un premio debajo del brazo: «🏆 ya ganó · 2026 🏅»,
+   *  donde el único 🏆 era el de la propia fila que se estaba mirando. El
+   *  «ya» es la palabra que hace falsa esa frase, y el arreglo no es quitar la
+   *  palabra: es contar solo las otras. */
+  ganoOtras: number;
   /** Lo que hizo en las OTRAS, de lo más reciente a lo más antiguo. */
-  otras: { anio: number | null; codigo: string | null; etapa: string }[];
+  otras: Paso[];
+  /** Y los proyectos que lleva a ESTA, el que se está mirando incluido. */
+  aqui: Paso[];
+  /** Cuántos proyectos lleva esta misma empresa a ESTA convocatoria. Casi
+   *  siempre 1; cuando es 2 o 3 la lista enseña la misma empresa varias veces
+   *  y sin este número parece un error de carga en vez de lo que es: alguien
+   *  jugando con más de un caballo en la misma carrera. */
+  enEsta: number;
+  /** La clave del grupo de rivales, para poder contar EMPRESAS distintas con
+   *  exactamente el mismo criterio con el que se cuentan sus intentos. */
+  clave: string;
 };
+
+/** De un intento a la línea que se enseña de él. */
+const paso = (i: Intento, cuantos: number): Paso => ({
+  id: i.fila.id,
+  convocatoriaId: i.fila.convocatoria_id,
+  anio: i.conv?.anio ?? null,
+  codigo: i.conv?.codigo ?? null,
+  nombre: i.conv?.nombre ?? null,
+  etapa: i.fila.etapa,
+  titulo: i.fila.titulo ?? null,
+  monto: i.fila.monto == null ? null : Number(i.fila.monto) || null,
+  cuantos,
+});
 
 export function historialDeConvocatoria(
   filas: FilaRival[],
@@ -390,7 +434,13 @@ export function historialDeConvocatoria(
   const out: Record<string, Historial> = {};
   /* `esNuestra` no pinta nada aquí: lo que se quiere es el agrupamiento. */
   for (const r of agrupaRivales(filas, convs, () => false)) {
-    if (r.veces < 2) continue;
+    /* ⚠ ANTES SE SALTABA A LOS QUE SOLO APARECEN UNA VEZ, y esa ausencia se
+       leía como un dato: una fila sin línea de historial parecía decir «esta
+       es nueva». No decía eso. Decía «no la hemos visto en las ediciones que
+       hay cargadas», que con seis años cargados y tres sin cargar son cosas
+       distintas — y quien mira la lista no tiene manera de saber cuál.
+       Ahora sale una entrada por CADA fila y quien pinta decide qué enseñar,
+       que es donde se puede decir «1ª vez que la vemos» en vez de callar. */
     const otras = r.intentos
       .filter(i => i.fila.convocatoria_id !== convocatoriaId)
       /* Una empresa puede llevar dos proyectos a un mismo concurso: en su
@@ -403,11 +453,18 @@ export function historialDeConvocatoria(
         }
         return acc;
       }, [])
-      .map(i => ({ anio: i.conv?.anio ?? null, codigo: i.conv?.codigo ?? null, etapa: i.fila.etapa }));
-    if (!otras.length) continue;
-    for (const i of r.intentos) {
-      if (i.fila.convocatoria_id !== convocatoriaId) continue;
-      out[i.fila.id] = { veces: r.veces, mejor: r.mejor, gano: r.gano, otras };
+      .map(i => paso(i, r.intentos.filter(
+        x => x.fila.convocatoria_id === i.fila.convocatoria_id).length));
+    const aqui = r.intentos.filter(i => i.fila.convocatoria_id === convocatoriaId);
+    /* Las ganadas que NO son esta: se cuenta por convocatoria, no por fila, o
+       una empresa que ganó con dos proyectos el mismo año saldría con dos. */
+    const ganoOtras = otras.filter(o => o.etapa === "beneficiaria").length;
+    const pasosAqui = aqui.map(i => paso(i, aqui.length));
+    for (const i of aqui) {
+      out[i.fila.id] = {
+        veces: r.veces, mejor: r.mejor, gano: r.gano, ganoOtras, otras,
+        aqui: pasosAqui, enEsta: aqui.length, clave: r.clave,
+      };
     }
   }
   return out;

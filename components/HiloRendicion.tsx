@@ -60,11 +60,19 @@ export default function HiloRendicion({ tabla, filaId, cabecera, children }: {
          comprobante?» «lo subo mañana»— y sin responder cada mensaje queda
          suelto en la lista. */
       permitirResponder
-      onComentar={(texto, respondeA) => comentarRendicion(tabla, filaId, texto, [], respondeA)}
+      /* Con imágenes: una nota puede SER la imagen —el teaser que encontramos
+         de un proyecto rival, la foto de cómo volvió una cámara— y hasta ahora
+         el hilo las pintaba pero no dejaba adjuntar ninguna. */
+      conImagenes
+      onComentar={(texto, respondeA, imagenes) =>
+        comentarRendicion(tabla, filaId, texto, imagenes || [], respondeA)}
       /* Corregir lo escrito, sin tener que enmendar con un segundo comentario
          que deja el error arriba y la aclaración abajo. La acción comprueba
          que sea el autor; aquí el ✎ solo se le enseña a él. */
-      onEditar={(comentarioId, txt) => editarComentario(comentarioId, "", txt)}
+      /* Con las imágenes: editar tiene que poder quitar una foto equivocada,
+         o la única salida es borrar el comentario entero y perder su fecha,
+         sus respuestas y sus reacciones. */
+      onEditar={(comentarioId, txt, imagenes) => editarComentario(comentarioId, "", txt, imagenes)}
       onReaccionarComentario={(comentarioId, emoji) =>
         toggleReaccion(null, comentarioId, emoji, null, null, null, { tabla, id: filaId })}
       reaccionesHilo={(d) => d?.reaccionesHilo || []}

@@ -3,6 +3,7 @@ import { guardarObjeto } from "@/app/actions";
 import { EntPicker } from "@/components/Composer";
 import FormObjeto, { OBJETO_VACIO, type ValorObjeto } from "@/components/FormObjeto";
 import { ICO_ENT, SECCIONES } from "@/lib/secciones";
+import { CASA_ICO, CASA_LBL, DUENO_CASA, esDeLaCasa } from "@/lib/objetos";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -15,7 +16,13 @@ import { useState } from "react";
 
    Aquí se invierte el orden: se pega el link y se elige el dueño en el mismo
    formulario. La entidad sigue siendo obligatoria —un objeto sin dueño no
-   aparece en ninguna ficha y se pierde—, pero deja de ser un viaje aparte. */
+   aparece en ninguna ficha y se pierde—, pero deja de ser un viaje aparte.
+
+   ── 🏠 Y UNA SALIDA PARA LO QUE NO ES DE NADIE ──
+   La frase de arriba tenía una grieta: hay material que es del EQUIPO —un
+   curso, una plantilla, una guía— y no pertenece a ninguna ficha. Obligarlo a
+   elegir una empresa hacía justo lo que este componente vino a evitar: que no
+   se guardara. «La casa» es ese sitio, y vive solo en /repositorio. */
 
 type Cat = { id: string; nombre: string };
 
@@ -36,10 +43,11 @@ export default function NuevoObjeto({ catalogos, etiquetas }: {
 
   const guardar = async () => {
     if (guardando) return;
-    if (!dueno) { setError("Elige de quién es: una persona, un proyecto, una empresa…"); return; }
+    if (!dueno) { setError("Elige de quién es: una persona, un proyecto, una empresa… o la casa, si es material del equipo."); return; }
     setGuardando(true); setError("");
     const r: any = await guardarObjeto({
-      entidadTipo: dueno.tipo, entidadId: dueno.id,
+      /* La casa va sin id: es el único dueño que no es una ficha. */
+      entidadTipo: dueno.tipo, entidadId: esDeLaCasa(dueno.tipo) ? null : dueno.id,
       tipo: f.tipo, titulo: f.titulo, url: f.url, fecha: f.fecha, notas: f.notas,
     });
     setGuardando(false);
@@ -60,14 +68,28 @@ export default function NuevoObjeto({ catalogos, etiquetas }: {
             {ICO_ENT[dueno.tipo] || "🔗"} {dueno.nombre}
             <button className="x" title="Cambiar" onClick={() => setDueno(null)}>×</button>
           </span>
-        ) : SECCIONES.filter(s => catalogos[s.tipo]?.length).map(s => s.tipo).map(t => (
-          <EntPicker key={t} etiqueta={`${ICO_ENT[t] || "🔗"} ${etiquetas[t] || t}`}
-            items={catalogos[t] || []}
-            onPick={id => {
-              const it = (catalogos[t] || []).find(x => x.id === id);
-              setDueno({ tipo: t, id, nombre: it?.nombre || "—" });
-            }} />
-        ))}
+        ) : (
+          <>
+            {SECCIONES.filter(s => catalogos[s.tipo]?.length).map(s => s.tipo).map(t => (
+              <EntPicker key={t} etiqueta={`${ICO_ENT[t] || "🔗"} ${etiquetas[t] || t}`}
+                items={catalogos[t] || []}
+                onPick={id => {
+                  const it = (catalogos[t] || []).find(x => x.id === id);
+                  setDueno({ tipo: t, id, nombre: it?.nombre || "—" });
+                }} />
+            ))}
+            {/* ⚠ Un BOTÓN y no un `EntPicker`: los demás abren una lista para
+                elegir cuál, y la casa no tiene cuáles — es una sola. Darle
+                desplegable con una entrada sería prometer una elección que no
+                existe. Va al final, después de las fichas, porque es la
+                respuesta a «no es de ninguna de estas». */}
+            <button type="button" className="echip echip-btn"
+              title="Material del equipo: un curso, una plantilla, una guía. No cuelga de ninguna ficha y se busca en el repositorio."
+              onClick={() => setDueno({ tipo: DUENO_CASA, id: "", nombre: CASA_LBL })}>
+              {CASA_ICO} {CASA_LBL}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

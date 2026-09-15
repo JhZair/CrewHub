@@ -19,13 +19,20 @@
  * que un comentario no puede quedar huérfano.
  */
 
+/* ⚠ EL NOMBRE SE QUEDÓ CORTO Y NO SE CAMBIA A LA LIGERA.
+   Esto nació para las cinco tablas de la rendición y hoy describe cualquier
+   FILA QUE SE PUEDE COMENTAR: la sexta es una declaración mensual y la séptima
+   un competidor de un concurso — ninguna de las dos es una rendición de nada.
+   El nombre honrado sería `TablaHilo`, y renombrarlo toca catorce archivos que
+   no tienen ningún otro motivo para cambiar. Se deja dicho aquí, que es donde
+   se lee, en vez de hacer un cambio grande sin ninguna mejora dentro. */
 export type TablaRendicion =
   | "comprobante" | "estado_cuenta" | "rhe" | "gasto_dj" | "movimiento_banco"
-  | "obligacion_periodo";
+  | "obligacion_periodo" | "convocatoria_competencia" | "convocatoria_jurado";
 
 export const TABLAS_RENDICION: TablaRendicion[] =
   ["comprobante", "estado_cuenta", "rhe", "gasto_dj", "movimiento_banco",
-    "obligacion_periodo"];
+    "obligacion_periodo", "convocatoria_competencia", "convocatoria_jurado"];
 
 /* ── QUÉ CASO CUENTA ──
  * Uno archivado o descartado no ata la fila: dejarlo contar significaría que
@@ -77,6 +84,13 @@ export type MetaRendicion = {
    *  Las cinco del fondo lo embeben (`post:postulaciones`); la sexta no puede,
    *  porque su dueño es un par polimórfico sin clave foránea. */
   dueno?: (fila: any) => { tabla: string; id: string } | null;
+  /** Esta tabla no tiene `caso_id`: de una fila suya no se abre trabajo.
+   *  ⚠ Sin decirlo, `hilosDeFilas` pide `caso_id` igual y PostgREST responde
+   *  «column does not exist» en CADA carga de la pantalla: el contador seguiría
+   *  saliendo —ese fallo está tolerado— pero a costa de una consulta que no
+   *  puede funcionar nunca. Un error permanente y tolerado es ruido que tapa
+   *  al error de verdad el día que aparezca. */
+  sinCaso?: boolean;
   /** El emoji con el que se titula el caso que se abra desde esta fila. En un
    *  tablero de cuarenta casos, el icono es lo que dice de un vistazo si esto
    *  salió de una factura o de un movimiento del banco. */
@@ -192,6 +206,54 @@ export const META_RENDICION: Record<TablaRendicion, MetaRendicion> = {
     /* Sin `#ancla` a un fondo: la pantalla es una sola y la fila se busca por
        su id, igual que hace /caja con sus apuntes. */
     ruta: (_f, id) => `/obligaciones#${anclaRendicion("obligacion_periodo", id)}`,
+  },
+
+  /* ── LA SÉPTIMA NO ES NUESTRA ──
+     Un competidor no es una fila de nuestras cuentas: es lo que un documento
+     del Ministerio dijo de otra empresa. Lo que se comenta aquí NO es la fila
+     —esa la escribió DAFO y no se toca— sino lo que hemos averiguado nosotros:
+     que el proyecto ya tiene teaser, que el director es el mismo de tal
+     documental, dónde se estrenó. Esa investigación hoy se pierde, y cuando
+     esa empresa vuelva a salir en la lista de dentro de dos años es justo lo
+     que hará falta.
+     ⚠ Sin `caso_id` y sin monto en el rótulo: de un rival no se abre trabajo,
+     y lo que lo identifica es su PROYECTO, no una cifra. */
+  convocatoria_competencia: {
+    col: "competencia_id",
+    etiqueta: "un competidor",
+    sel: "convocatoria_id,empresa,titulo,etapa",
+    titulo: r => [(r?.titulo || "").slice(0, 45), r?.empresa ? `— ${String(r.empresa).slice(0, 35)}` : ""]
+      .filter(Boolean).join(" ") || "un competidor",
+    migracion: "db/competencia-comentarios.sql", ico: "🏁",
+    sinCaso: true,
+    /* La pestaña va en el hash porque esta ficha todavía resuelve sus pestañas
+       con `TabsPanel`, no con rutas: `#competencia/<ancla>` abre la pestaña y
+       salta a la fila. Las dos mitades hacen falta — sin la pestaña el aviso
+       aterriza en una lista montada pero oculta, y eso se lee como un enlace
+       roto aunque haya funcionado. */
+    ruta: (fila, id) => fila?.convocatoria_id
+      ? `/entidad/convocatoria/${fila.convocatoria_id}#competencia/${anclaRendicion("convocatoria_competencia", id)}`
+      : null,
+  },
+
+  /* ── Y LA OCTAVA: QUIÉN JUZGA ──
+     Lo que averigüemos de un jurado —qué premió, qué le interesa, dónde
+     coincidimos— guardado donde se va a buscar: en su fila, no en un WhatsApp.
+     ⚠ Con el mismo cuidado que los competidores y un poco más, porque aquí son
+     personas: lo que se guarda en la fila es lo que dice el documento público
+     y lo que se escribe en el hilo va con autor y fecha. Ni una cosa ni la
+     otra se enriquecen con nada de fuera. */
+  convocatoria_jurado: {
+    col: "jurado_id",
+    etiqueta: "un jurado",
+    sel: "convocatoria_id,nombre,rol",
+    titulo: r => [r?.nombre, r?.rol ? `— ${String(r.rol).slice(0, 40)}` : ""]
+      .filter(Boolean).join(" ") || "un jurado",
+    migracion: "db/jurados.sql", ico: "⚖️",
+    sinCaso: true,
+    ruta: (fila, id) => fila?.convocatoria_id
+      ? `/entidad/convocatoria/${fila.convocatoria_id}#jurado/${anclaRendicion("convocatoria_jurado", id)}`
+      : null,
   },
 };
 
@@ -321,6 +383,9 @@ export async function hilosDeFilas(
   /* Con `todas`, sin `.in`: `caso_id not null` ya deja fuera todo lo que no
      tiene caso, que es la inmensa mayoría. Filtrar además por varios cientos
      de ids era pagar por acotar algo ya acotado. */
+  if (META_RENDICION[tabla].sinCaso) {
+    return { conteo, reacciones, casos, error: errorDe(eC || eR, col, tabla) };
+  }
   const qCasos = supabase.from(tabla)
     .select(`id,caso_id,caso:publicaciones(estado,tipo,archivado_en)`)
     .not("caso_id", "is", null);
@@ -340,13 +405,14 @@ export async function hilosDeFilas(
     }
   });
 
-  const err = eC || eR;
-  return {
-    conteo, reacciones, casos,
-    error: err
-      ? (new RegExp(col).test(err.message || "")
-          ? `Falta correr ${META_RENDICION[tabla].migracion} en Supabase.`
-          : err.message)
-      : null,
-  };
+  return { conteo, reacciones, casos, error: errorDe(eC || eR, col, tabla) };
 }
+
+/** El fallo de las dos consultas del hilo, dicho en algo que se pueda hacer:
+ *  si lo que falta es la columna, lo que falta es correr un archivo. */
+const errorDe = (err: any, col: string, tabla: TablaRendicion) =>
+  err
+    ? (new RegExp(col).test(err.message || "")
+        ? `Falta correr ${META_RENDICION[tabla].migracion} en Supabase.`
+        : err.message)
+    : null;

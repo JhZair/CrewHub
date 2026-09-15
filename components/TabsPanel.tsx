@@ -20,8 +20,13 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
  * `extra` es un elemento que NO es panel (un enlace externo, la carpeta Drive):
  * se cuela en la fila, antes del botón «⋯ Más».
  *
- * `masUltima` manda la ÚLTIMA pestaña (el Historial) a un menú «⋯ Más», para
- * que la fila no se desborde cuando hay muchas pestañas. */
+ * `masUltima` manda las ÚLTIMAS pestañas a un menú «⋯ Más», para que la fila
+ * no se desborde cuando hay muchas. `true` manda una —el Historial, que es
+ * para lo que nació—; un número manda esas tantas.
+ * ⚠ Cuántas caben no lo decide esto, lo decide el ancho: una fila que se parte
+ * en dos deja la segunda línea pegada al panel y se lee como si esas pestañas
+ * fueran de otra cosa. Cuando una ficha gana una pestaña, hay que mirar si la
+ * fila sigue entrando y bajar otra al menú si no. */
 function parte(label: string) {
   const partes = String(label).split(" · ");
   const nombre = partes[0];
@@ -44,8 +49,8 @@ export default function TabsPanel({ labels, paneles, inicial = 0, iconoSolo = []
   /** Elemento(s) que NO son panel —típicamente un enlace externo, como la
    *  carpeta Drive— y se pintan en la fila de pestañas antes del «⋯ Más». */
   extra?: ReactNode;
-  /** Manda la última pestaña (Historial) al menú «⋯ Más». */
-  masUltima?: boolean;
+  /** Manda las últimas pestañas al menú «⋯ Más». `true` = una. */
+  masUltima?: boolean | number;
   /* ── EL RASTRO HASTA LO QUE FALTA ──
      Un aviso enterrado en la tercera sub-sección de una pestaña cerrada no
      avisa: hay que sospechar antes de mirar. La burbuja del menú dice que este
@@ -136,8 +141,14 @@ export default function TabsPanel({ labels, paneles, inicial = 0, iconoSolo = []
   const raiz = useRef<HTMLDivElement>(null);
 
   const [masOpen, setMasOpen] = useState(false);
-  // Índices que viven en el menú «⋯ Más». Por ahora, solo la última (Historial).
-  const enMas = masUltima && labels.length > 1 ? [labels.length - 1] : [];
+  /* Índices que viven en el menú «⋯ Más»: las últimas `nMas`, y nunca todas
+     —una fila de pestañas sin ninguna pestaña a la vista es un menú, no una
+     fila—. `true` sigue queriendo decir una, que es como lo llaman las siete
+     fichas que ya lo usaban. */
+  const nMas = Math.min(
+    masUltima === true ? 1 : Math.max(Number(masUltima) || 0, 0),
+    Math.max(labels.length - 1, 0));
+  const enMas = nMas > 0 ? labels.map((_, k) => k).slice(labels.length - nMas) : [];
   const activoEnMas = enMas.includes(i);
 
   const tabBtn = (k: number) => {

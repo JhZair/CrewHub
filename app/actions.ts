@@ -38,6 +38,8 @@ import { ETAPAS_PROY_VALIDAS } from "@/lib/etapasProyecto";
 import { nrmQ } from "@/lib/quechua";
 import { procesarSunatEmpresa, correrRondaSunat, consultarRucApi } from "@/lib/sunat";
 import { rucDePersona } from "@/lib/ruc";
+import { claveTexto, canoniza } from "@/lib/concursos";
+import { leeJurados } from "@/lib/jurados";
 /* La MISMA normalización de números de recibo que usa el cruce del lote. Dos
    formas de normalizar entre el cliente y el servidor es tener un cinturón
    más flojo que los tirantes. */
@@ -53,7 +55,7 @@ import { EMOJIS as EMOJIS_REACCION } from "@/lib/reacciones";
 import { SECCIONES, grafiasDe, tipoCanonico, ICO_ENT } from "@/lib/secciones";
 import { vinculosDePublicaciones, conNombre } from "@/lib/vinculosPub";
 import { fraccionValida, montoJornada } from "@/lib/jornadas";
-import { TIPOS_OBJETO } from "@/lib/objetos";
+import { TIPOS_OBJETO, esDeLaCasa } from "@/lib/objetos";
 import { catalogoObjetos, catalogosEntidades, filasEntidades, catalogosDeFilas } from "@/lib/catalogos";
 import { resolverNombres } from "@/lib/nombres";
 import { COL_DAFO, sinColumna, faltaAlguna, columnasQueFaltan, sinEstas, COLS_NUEVAS, COLS_NOTIF, TIPOS_DAFO } from "@/lib/notificaciones";
@@ -4496,7 +4498,10 @@ export async function guardarCv(personaId: string, enfoque: string, url: string,
    lo que se sabe de él, y por eso `url` puede ir vacía (una nota no tiene). */
 export async function guardarObjeto(a: {
   id?: string | null;
-  entidadTipo: string; entidadId: string;
+  entidadTipo: string;
+  /** Nulo SOLO cuando el dueño es la casa: ese material no cuelga de ninguna
+   *  ficha (ver `DUENO_CASA` en lib/objetos y db/repositorio-casa.sql). */
+  entidadId?: string | null;
   tipo: string; titulo: string; url?: string; fecha?: string; notas?: string;
 }) {
   const supabase = createClient();
@@ -4520,14 +4525,23 @@ export async function guardarObjeto(a: {
      sea uuid revienta en Postgres con un 22P02 que el humano no entiende.
      Ahora que se puede crear desde la página global, la entidad la elige el
      formulario y no la ruta: conviene comprobarla aquí. */
-  const dueno = SECCIONES.find(s => s.tipo === a.entidadTipo && s.tipo !== "objeto");
-  if (!dueno) return { error: "Elige de quién es el objeto." };
-  if (!esUuid(a.entidadId))
-    return { error: "No se reconoce a quién pertenece." };
-  // Y que exista: un uuid con forma válida pero inventado creaba un objeto
-  // sin ficha donde aparecer.
-  if (!a.id && !await existeEntidad(supabase, a.entidadTipo, a.entidadId))
-    return { error: "Esa ficha no existe." };
+  /* ── 🏠 SALVO LA CASA, QUE NO ES UNA FICHA ──
+     Es el único dueño sin id, y a propósito: material del equipo —un curso,
+     una plantilla— que no pertenece a ninguna entidad. Las tres comprobaciones
+     de abajo preguntan por una ficha que aquí no existe, así que se salta
+     entero; el check de la base (`objetos_dueno_chk`) es el que impide que
+     esta salida sirva para colar un objeto sin dueño de cualquier otro tipo. */
+  const deLaCasa = esDeLaCasa(a.entidadTipo);
+  if (!deLaCasa) {
+    const dueno = SECCIONES.find(s => s.tipo === a.entidadTipo && s.tipo !== "objeto");
+    if (!dueno) return { error: "Elige de quién es el objeto." };
+    if (!esUuid(a.entidadId || ""))
+      return { error: "No se reconoce a quién pertenece." };
+    // Y que exista: un uuid con forma válida pero inventado creaba un objeto
+    // sin ficha donde aparecer.
+    if (!a.id && !await existeEntidad(supabase, a.entidadTipo, a.entidadId!))
+      return { error: "Esa ficha no existe." };
+  }
   /* El link es OBLIGATORIO: un objeto del repositorio es la referencia a algo
      que existe en alguna parte. Sin link no hay objeto que referenciar, solo
      un título suelto. La única excepción es la nota, que es texto por
@@ -4544,14 +4558,20 @@ export async function guardarObjeto(a: {
     actualizado: hoyLima(),
   };
   const nuevo = !a.id;
-  // El update se acota a la entidad dueña: la tabla es compartida y un id
-  // suelto podría pisar el objeto de otra ficha.
+  const idDueno = deLaCasa ? null : (a.entidadId || null);
+  /* El update se acota a la entidad dueña: la tabla es compartida y un id
+     suelto podría pisar el objeto de otra ficha.
+     ⚠ Con la casa, `.eq("entidad_id", null)` NO acota nada: en SQL nada es
+     igual a null, así que ese filtro no casaría con su propia fila y el
+     guardado fallaría sin decir por qué. Para eso está `.is()`. */
+  const acota = (q: any) => deLaCasa
+    ? q.eq("entidad_tipo", a.entidadTipo).is("entidad_id", null)
+    : q.eq("entidad_tipo", a.entidadTipo).eq("entidad_id", idDueno);
   const { data: fil, error } = nuevo
     ? await supabase.from("objetos").insert({
-        ...fila, entidad_tipo: a.entidadTipo, entidad_id: a.entidadId, creado_por: user.id })
+        ...fila, entidad_tipo: a.entidadTipo, entidad_id: idDueno, creado_por: user.id })
         .select("id").single()
-    : await supabase.from("objetos").update(fila)
-        .eq("id", a.id).eq("entidad_tipo", a.entidadTipo).eq("entidad_id", a.entidadId)
+    : await acota(supabase.from("objetos").update(fila).eq("id", a.id))
         .select("id").single();
   if (error) {
     return { error: error.code === "23505" ? "Ya existe un objeto igual." : error.message };
@@ -4563,7 +4583,10 @@ export async function guardarObjeto(a: {
        algo al repositorio. Solo el hito de alta, no cada retoque.
      · En el objeto: «qué pasó con este libro» → su propia vida, edición a
        edición. Sin esto su página no tenía historial nunca. */
-  if (nuevo) {
+  /* La bitácora del dueño solo si hay dueño con ficha: la casa no tiene
+     página donde leerla, y `actividad` pide un id. La del objeto —la de
+     abajo— sí se escribe siempre, así que no se pierde el rastro. */
+  if (nuevo && !deLaCasa) {
     await supabase.from("actividad").insert({
       entidad_tipo: a.entidadTipo, entidad_id: a.entidadId, actor_id: user.id, tipo: "dato",
       detalle: { mensaje: `agregó al repositorio: ${titulo}` },
@@ -4576,7 +4599,9 @@ export async function guardarObjeto(a: {
     });
     revalidatePath(`/objeto/${objId}`);
   }
-  revalidatePath(`/entidad/${a.entidadTipo}/${a.entidadId}`);
+  /* Lo de la casa solo se ve en /repositorio; lo demás, además, en su ficha. */
+  revalidatePath("/repositorio");
+  if (!deLaCasa) revalidatePath(`/entidad/${a.entidadTipo}/${a.entidadId}`);
   return {};
 }
 
@@ -4602,30 +4627,37 @@ async function existeEntidad(supabase: any, tipo: string, id: string) {
    (de dónde salió, a dónde entró) y en la del propio objeto. Un dato que
    cambia de dueño sin dejar rastro es un dato que aparece «de la nada» en una
    ficha y nadie sabe por qué. */
-export async function moverObjeto(id: string, entidadTipo: string, entidadId: string) {
+export async function moverObjeto(id: string, entidadTipo: string, entidadId: string | null) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no encontrada." };
 
-  const dueno = SECCIONES.find(s => s.tipo === entidadTipo && s.tipo !== "objeto");
-  if (!dueno) return { error: "Ese tipo de ficha no puede tener repositorio." };
-  if (!esUuid(entidadId))
-    return { error: "No se reconoce la ficha de destino." };
+  /* 🏠 La casa también es un destino: si un curso se guardó por error dentro
+     de una empresa, tiene que poder salir de ahí. Es el único destino sin
+     ficha, así que las comprobaciones de ficha se saltan (ver `guardarObjeto`). */
+  const aLaCasa = esDeLaCasa(entidadTipo);
+  const destino = aLaCasa ? null : entidadId;
+  if (!aLaCasa) {
+    const dueno = SECCIONES.find(s => s.tipo === entidadTipo && s.tipo !== "objeto");
+    if (!dueno) return { error: "Ese tipo de ficha no puede tener repositorio." };
+    if (!esUuid(entidadId || ""))
+      return { error: "No se reconoce la ficha de destino." };
+  }
 
   const { data: o } = await supabase.from("objetos")
     .select("titulo,tipo,entidad_tipo,entidad_id").eq("id", id).maybeSingle();
   if (!o) return { error: "No se encontró el objeto." };
-  if (o.entidad_tipo === entidadTipo && o.entidad_id === entidadId) return {};
+  if (o.entidad_tipo === entidadTipo && o.entidad_id === destino) return {};
   /* Un CV solo tiene sentido colgando de una persona: su sección propia solo
      se dibuja ahí, y el repositorio genérico excluye tipo='cv'. Movido a un
      proyecto se volvía invisible en las dos pantallas. */
   if (o.tipo === "cv" && entidadTipo !== "persona")
     return { error: "Un CV solo puede pertenecer a una persona." };
-  if (!await existeEntidad(supabase, entidadTipo, entidadId))
+  if (!aLaCasa && !await existeEntidad(supabase, entidadTipo, entidadId!))
     return { error: "Esa ficha ya no existe." };
 
   const { error } = await supabase.from("objetos")
-    .update({ entidad_tipo: entidadTipo, entidad_id: entidadId }).eq("id", id);
+    .update({ entidad_tipo: entidadTipo, entidad_id: destino }).eq("id", id);
   if (error) {
     // El único choque posible es el índice de CV por enfoque.
     return { error: error.code === "23505" ? "Esa ficha ya tiene un objeto igual." : error.message };
@@ -4638,8 +4670,15 @@ export async function moverObjeto(id: string, entidadTipo: string, entidadId: st
      alguien ya lo revisó, la fila vieja queda pegada a la ficha anterior sin
      pintarse nunca, y al borrar el objeto se limpia con las claves nuevas, así
      que esa fila sobrevive al objeto para siempre. */
-  const { data: verifVieja } = await supabase.from("link_verificaciones")
-    .select("id").eq("entidad_tipo", o.entidad_tipo).eq("entidad_id", o.entidad_id)
+  /* ⚠ `.eq(col, null)` no casa con nada en SQL —nada es igual a null—, así que
+     un objeto que venía de la casa, o que va a ella, necesita `.is()`. Sin
+     esto la verificación del link no se reasignaba y el fallo era mudo: el
+     link volvía a «sin revisar» habiendo sido revisado. */
+  const porDueno = (q: any, tipo: string, idDueno: string | null) =>
+    idDueno === null ? q.eq("entidad_tipo", tipo).is("entidad_id", null)
+      : q.eq("entidad_tipo", tipo).eq("entidad_id", idDueno);
+  const { data: verifVieja } = await porDueno(
+    supabase.from("link_verificaciones").select("id"), o.entidad_tipo, o.entidad_id)
     .eq("campo", `objeto:${id}`).maybeSingle();
   if (verifVieja) {
     /* Si el objeto ya estuvo en la ficha destino puede haber quedado una fila
@@ -4647,10 +4686,10 @@ export async function moverObjeto(id: string, entidadTipo: string, entidadId: st
        limpia — pero SOLO si hay una que la reemplace: borrarla cuando el
        origen no tiene ninguna dejaría el link «sin revisar» habiendo sido
        revisado. */
-    await supabase.from("link_verificaciones").delete()
-      .eq("entidad_tipo", entidadTipo).eq("entidad_id", entidadId).eq("campo", `objeto:${id}`);
+    await porDueno(supabase.from("link_verificaciones").delete(), entidadTipo, destino)
+      .eq("campo", `objeto:${id}`);
     const { error: eVerif } = await supabase.from("link_verificaciones")
-      .update({ entidad_tipo: entidadTipo, entidad_id: entidadId }).eq("id", verifVieja.id);
+      .update({ entidad_tipo: entidadTipo, entidad_id: destino }).eq("id", verifVieja.id);
     // Se avisa, no se aborta: el objeto YA se movió, y dejar el error mudo es
     // exactamente lo que este bloque vino a evitar.
     if (eVerif) console.error("moverObjeto · verificación no reasignada:", eVerif.message);
@@ -4659,21 +4698,27 @@ export async function moverObjeto(id: string, entidadTipo: string, entidadId: st
   /* Y si el destino ya estaba VINCULADO al objeto, ese vínculo sobra: sería el
      mismo material saliendo dos veces en la misma ficha —en «Repositorio» y en
      «Del repositorio»— y contándose a sí mismo en 🔗. */
-  await supabase.from("objeto_vinculos").delete()
-    .eq("objeto_id", id).eq("entidad_tipo", entidadTipo).eq("entidad_id", entidadId);
+  /* A la casa no se le vincula nada —no tiene ficha donde saldría dos veces—,
+     así que con destino nulo esto no borra nada, que es lo correcto. */
+  if (!aLaCasa) {
+    await supabase.from("objeto_vinculos").delete()
+      .eq("objeto_id", id).eq("entidad_tipo", entidadTipo).eq("entidad_id", entidadId);
+  }
 
+  /* Las bitácoras de origen y destino, solo donde hay ficha que las enseñe.
+     La del propio objeto va siempre: es la que no se puede perder. */
   await supabase.from("actividad").insert([
-    { entidad_tipo: o.entidad_tipo, entidad_id: o.entidad_id, actor_id: user.id, tipo: "dato",
-      detalle: { mensaje: `movió «${o.titulo}» a otra ficha` } },
-    { entidad_tipo: entidadTipo, entidad_id: entidadId, actor_id: user.id, tipo: "dato",
-      detalle: { mensaje: `recibió del repositorio: ${o.titulo}` } },
+    ...(o.entidad_id ? [{ entidad_tipo: o.entidad_tipo, entidad_id: o.entidad_id, actor_id: user.id, tipo: "dato",
+      detalle: { mensaje: `movió «${o.titulo}» a otra ficha` } }] : []),
+    ...(destino ? [{ entidad_tipo: entidadTipo, entidad_id: destino, actor_id: user.id, tipo: "dato",
+      detalle: { mensaje: `recibió del repositorio: ${o.titulo}` } }] : []),
     { entidad_tipo: "objeto", entidad_id: id, actor_id: user.id, tipo: "editado",
-      detalle: { mensaje: `cambió de dueño` } },
+      detalle: { mensaje: aLaCasa ? `pasó a ser material de la casa` : `cambió de dueño` } },
   ]);
 
   revalidatePath(`/objeto/${id}`);
-  revalidatePath(`/entidad/${o.entidad_tipo}/${o.entidad_id}`);
-  revalidatePath(`/entidad/${entidadTipo}/${entidadId}`);
+  if (o.entidad_id) revalidatePath(`/entidad/${o.entidad_tipo}/${o.entidad_id}`);
+  if (destino) revalidatePath(`/entidad/${entidadTipo}/${destino}`);
   revalidatePath("/repositorio");
   return {};
 }
@@ -7628,6 +7673,9 @@ async function textoDePdf(f: unknown, que: string, conTrozos = false):
             .map((i: any) => ({
               x: i.transform[4], y: i.transform[5],
               w: i.width || 0, s: i.str.trim(),
+              /* El cuerpo de la letra. Las tablas no lo miran; las sumillas de
+                 jurado no se pueden leer sin él (ver `lib/jurados.ts`). */
+              h: i.height || 0,
             })));
         }
       }
@@ -7794,7 +7842,7 @@ export async function cargarCompetencia(
   if (!buenas.length) return { error: "No marcaste ninguna fila." };
 
   const { data: yaHay, error: eLee } = await supabase.from("convocatoria_competencia")
-    .select("id,ruc,empresa,etapa,titulo,personas,avisos,modalidad,categoria").eq("convocatoria_id", convocatoriaId);
+    .select("id,ruc,empresa,etapa,titulo,personas,avisos,modalidad,categoria,fuente").eq("convocatoria_id", convocatoriaId);
   if (eLee) return { error: eLee.message };
 
   /* ══════════════════════════════════════════════════════════════════════════
@@ -7818,35 +7866,16 @@ export async function cargarCompetencia(
      ⚠ La llave es solo para comparar. Lo que se guarda es siempre una grafía
      que el documento escribió de verdad, nunca una inventada por mí.
      ══════════════════════════════════════════════════════════════════════════ */
-  const claveTxt = (m: string | null | undefined) => (m || "")
-    .normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
-    /* «producció n» → «produccion»: la letra suelta que dejó el PDF. */
-    .replace(/\b([a-z]{2,}) ([b-df-hj-np-tv-xz])\b/g, "$1$2")
-    .replace(/[^a-z0-9]+/g, " ").trim();
+  const claveTxt = claveTexto;
 
-  const canonDe = (campo: "modalidad" | "categoria") => {
-    const cuenta = new Map<string, Map<string, number>>();
-    const anota = (v: string | null | undefined) => {
-      const t = (v || "").trim();
-      if (!t) return;
-      const k = claveTxt(t);
-      if (!k) return;
-      if (!cuenta.has(k)) cuenta.set(k, new Map());
-      const m = cuenta.get(k)!;
-      m.set(t, (m.get(t) || 0) + 1);
-    };
-    (yaHay || []).forEach((y: any) => anota(y[campo]));
-    buenas.forEach(f => anota((f as any)[campo]));
-    const out = new Map<string, string>();
-    cuenta.forEach((grafias, k) => {
-      /* La más repetida; a igualdad, la más larga —que suele ser la entera— y
-         luego alfabética, para que el resultado no dependa del orden de carga. */
-      const mejor = [...grafias.entries()].sort((a, b) =>
-        b[1] - a[1] || b[0].length - a[0].length || a[0].localeCompare(b[0]))[0][0];
-      out.set(k, mejor);
-    });
-    return out;
-  };
+  /* ⚠ Las grafías van con SU DOCUMENTO, no sueltas: `canoniza` solo unifica
+     una frase corta con una larga cuando ningún documento las escribió juntas
+     —ver el porqué en lib/concursos.ts—, y sin la fuente esa comprobación no
+     se puede hacer. Las que entran en esta carga llevan todas la misma. */
+  const canonDe = (campo: "modalidad" | "categoria") => canoniza([
+    ...((yaHay || []) as any[]).map(y => ({ texto: y[campo], fuente: y.fuente })),
+    ...buenas.map(f => ({ texto: (f as any)[campo], fuente })),
+  ]);
   const canonMod = canonDe("modalidad"), canonCat = canonDe("categoria");
   const unifica = (v: string | null | undefined, mapa: Map<string, string>) =>
     (v?.trim() ? (mapa.get(claveTxt(v)) || v.trim()) : null);
@@ -8047,6 +8076,123 @@ export async function borrarCompetencia(convocatoriaId: string, id: string) {
   if (!user) return { error: "Sesión no encontrada." };
   if (!esUuid(id) || !esUuid(convocatoriaId)) return { error: "Fila no válida." };
   const { error } = await supabase.from("convocatoria_competencia").delete().eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath(`/entidad/convocatoria/${convocatoriaId}`);
+  return {};
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ⚖️ QUIÉN JUZGA — LEER Y GUARDAR LA MESA DE UNA CONVOCATORIA
+
+   Mismo camino que la competencia y por los mismos motivos: se lee el PDF que
+   publica DAFO, se enseña lo leído para confirmarlo, y solo entonces se
+   guarda. Lo que cambia es el lector —una sumilla de jurado es prosa maquetada,
+   no una tabla: ver `lib/jurados.ts`— y que aquí NO hay etapas ni montos.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+export async function leerJuradoDeDafo(fd: FormData) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+
+  const r = await textoDePdf(fd.get("pdf"), "una sumilla de jurado", true);
+  if ("error" in r) return r;
+
+  /* La cabecera es la MISMA que la de las listas: de ahí salen el año y los
+     ejes del concurso, que es lo que permite avisar si estás subiendo el
+     jurado de ficción a la ficha de documental, o el de 2024 al 2025. Se
+     reaprovecha entera en vez de escribir una segunda: dos lectores de
+     cabecera acabarían diciendo cosas distintas del mismo papel. */
+  const cabecera = leerCabecera(r.texto);
+  const filas = r.trozos ? leeJurados(r.trozos) : [];
+  if (!filas.length) {
+    return { error: "No se reconoció ninguna persona en este PDF. Las sumillas de jurado traen cada nombre en letra más grande que su biografía; si este no, avisa con el PDF a mano." };
+  }
+  /* ⚠ Una mesa de veinte no existe: si salen tantos, lo que se leyó como
+     nombres es otra cosa —un índice, una lista de agradecimientos— y guardarlo
+     ensuciaría el cruce entre ediciones sin que nadie lo notara. Se dice y se
+     deja decidir, que es distinto de tragárselo o de rechazarlo en silencio. */
+  const dudoso = filas.length > 12
+    ? `Salieron ${filas.length} personas y una mesa suele tener entre tres y siete. Repasa la lista antes de guardar: puede que se haya colado algo que no es un jurado.`
+    : null;
+  return { cabecera, filas, dudoso };
+}
+
+export async function cargarJurado(
+  convocatoriaId: string,
+  filas: { nombre: string; rol?: string | null; pais?: string | null; sumilla?: string | null; avisos?: string[]; crudo?: string | null }[],
+  fuente: string,
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!esUuid(convocatoriaId)) return { error: "Convocatoria no válida." };
+  const buenas = (filas || []).filter(f => f?.nombre?.trim());
+  if (!buenas.length) return { error: "No marcaste a nadie." };
+
+  const { data: yaHay, error: eLee } = await supabase.from("convocatoria_jurado")
+    .select("id,nombre").eq("convocatoria_id", convocatoriaId);
+  if (eLee) {
+    return { error: /convocatoria_jurado/.test(eLee.message || "")
+      ? "Falta correr db/jurados.sql en Supabase → SQL Editor."
+      : eLee.message };
+  }
+
+  const llave = (n: string) => String(n || "").trim().toLowerCase();
+  const previos = new Map((yaHay || []).map((y: any) => [llave(y.nombre), y.id as string]));
+
+  /* ── VOLVER A SUBIR EL MISMO PDF ACTUALIZA, NO DUPLICA ──
+     Es lo más normal del mundo —se sube, se ve que una biografía salió
+     cortada, se arregla el lector y se vuelve a subir—. Y dentro de la misma
+     tanda también: si el PDF trajera dos veces a la misma persona, la segunda
+     pisa a la primera en vez de reventar contra el índice único con un mensaje
+     que en pantalla no significa nada. */
+  const nuevas: any[] = [];
+  const enTanda = new Set<string>();
+  let actualizadas = 0;
+  for (const f of buenas) {
+    const k = llave(f.nombre);
+    if (enTanda.has(k)) continue;
+    enTanda.add(k);
+    const fila = {
+      nombre: f.nombre.trim(),
+      rol: f.rol?.trim() || null,
+      pais: f.pais?.trim() || null,
+      sumilla: f.sumilla?.trim() || null,
+      avisos: (f.avisos || []).slice(0, 8),
+      crudo: f.crudo?.slice(0, 4000) || null,
+      fuente: fuente?.slice(0, 200) || null,
+    };
+    const id = previos.get(k);
+    if (id) {
+      await supabase.from("convocatoria_jurado")
+        .update({ ...fila, visto_en: new Date().toISOString() }).eq("id", id);
+      actualizadas++;
+    } else {
+      nuevas.push({ ...fila, convocatoria_id: convocatoriaId, creado_por: user.id });
+    }
+  }
+
+  if (nuevas.length) {
+    const { error } = await supabase.from("convocatoria_jurado").insert(nuevas);
+    if (error) {
+      return { error: error.code === "23505"
+        ? "Dos filas de este PDF tienen el mismo nombre. Quita la repetida antes de guardar."
+        : /convocatoria_jurado/.test(error.message || "")
+          ? "Falta correr db/jurados.sql en Supabase → SQL Editor."
+          : error.message };
+    }
+  }
+  revalidatePath(`/entidad/convocatoria/${convocatoriaId}`);
+  return { creadas: nuevas.length, actualizadas };
+}
+
+export async function borrarJurado(convocatoriaId: string, id: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no encontrada." };
+  if (!esUuid(id) || !esUuid(convocatoriaId)) return { error: "Fila no válida." };
+  const { error } = await supabase.from("convocatoria_jurado").delete().eq("id", id);
   if (error) return { error: error.message };
   revalidatePath(`/entidad/convocatoria/${convocatoriaId}`);
   return {};

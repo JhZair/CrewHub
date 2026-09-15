@@ -2,6 +2,7 @@
 import { moverObjeto } from "@/app/actions";
 import { EntPicker } from "@/components/Composer";
 import { ICO_ENT, SECCIONES } from "@/lib/secciones";
+import { CASA_ICO, CASA_LBL, DUENO_CASA } from "@/lib/objetos";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -20,7 +21,7 @@ export default function MoverObjeto({ objetoId, catalogos, etiquetas }: {
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState("");
 
-  const mover = async (tipo: string, id: string) => {
+  const mover = async (tipo: string, id: string | null) => {
     if (ocupado) return;
     setOcupado(true); setError("");
     const r: any = await moverObjeto(objetoId, tipo, id);
@@ -45,6 +46,14 @@ export default function MoverObjeto({ objetoId, catalogos, etiquetas }: {
         <EntPicker key={s.tipo} etiqueta={`${ICO_ENT[s.tipo] || "🔗"} ${etiquetas[s.tipo] || s.tipo}`}
           items={catalogos[s.tipo]} onPick={id => mover(s.tipo, id)} />
       ))}
+      {/* 🏠 También hacia la casa: un curso guardado por error dentro de una
+          empresa tiene que poder salir de ahí sin borrarlo y rehacerlo —eso
+          perdería sus comentarios, sus vínculos y su fecha—. */}
+      <button className="echip echip-btn"
+        title="Material del equipo: dejar de colgarlo de una ficha"
+        onClick={() => mover(DUENO_CASA, null)}>
+        {CASA_ICO} {CASA_LBL}
+      </button>
       <button className="btn btn-ghost" style={{ padding: "2px 9px", fontSize: 11 }}
         onClick={() => { setAbierto(false); setError(""); }}>cancelar</button>
     </span>

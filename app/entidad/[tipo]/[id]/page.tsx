@@ -112,6 +112,9 @@ import GaleriaFotos from "@/components/GaleriaFotos";
 import Ensamblado from "@/components/Ensamblado";
 import ComboDelEquipo from "@/components/ComboDelEquipo";
 import { historialDeConvocatoria, todaLaCompetencia, type ConvRival } from "@/lib/rivales";
+import { hilosDeFilas } from "@/lib/rendicionHilo";
+import Jurado from "@/components/Jurado";
+import { historialDeJurado, type ConvJur, type FilaJur } from "@/lib/jurados";
 
 /* PERFIL DE ENTIDAD VIVA — dos columnas:
    izquierda = el carné (datos estáticos, relaciones, credenciales)
@@ -1018,8 +1021,23 @@ export default async function Entidad({ params, searchParams }: {
   /* El historial de cada rival: cuántas veces se ha presentado antes y hasta
      dónde llegó. Se calcula aquí, no en la pantalla (ver más abajo). */
   let histComp: Record<string, any> = {};
+  let cruceComp: { ediciones: number; desde: number | null; hasta: number | null } | null = null;
+  /* Lo que hemos anotado nosotros de cada competidor: el contador y los 👀 que
+     van EN la lista. El hilo entero se trae al abrirlo; sin el contador aquí,
+     una nota de cuatro mensajes sobre un rival es invisible y nadie la
+     encuentra abriendo filas al azar. */
+  let hilosComp: {
+    conteo: Record<string, number>; reacciones: Record<string, any[]>;
+    userId: string; error: string | null;
+  } | null = null;
+  /* La mesa que juzga este concurso, y lo mismo para ella: quién repite, y las
+     notas que hayamos dejado sobre cada persona. */
+  let jurado: FilaJur[] = [];
+  let histJur: Record<string, any> = {};
+  let cruceJur: { ediciones: number; desde: number | null; hasta: number | null } | null = null;
+  let hilosJur: typeof hilosComp = null;
   if (params.tipo === "convocatoria") {
-    const [ca, pf, po, pr, em, mm, cp] = await Promise.all([
+    const [ca, pf, po, pr, em, mm, cp, ju] = await Promise.all([
       supabase.from("cronograma_actividades")
         /* Ídem para el cronograma de una convocatoria. */
         .select("*, resp:perfiles!responsable(nombre), " +
@@ -1050,6 +1068,11 @@ export default async function Entidad({ params, searchParams }: {
          DAFO. No son entidades del sistema: ver db/competencia.sql. */
       supabase.from("convocatoria_competencia").select("*")
         .eq("convocatoria_id", params.id).order("empresa"),
+      /* Y quién juzga. En su propia consulta y tolerando el fallo: si
+         db/jurados.sql no se ha corrido, esta ficha no puede dejar de
+         funcionar por una pestaña que todavía no existe. */
+      supabase.from("convocatoria_jurado").select("*")
+        .eq("convocatoria_id", params.id).order("creado_en"),
     ]);
     cronoActs = ca.data || [];
     competencia = cp.data || [];
@@ -1070,9 +1093,58 @@ export default async function Entidad({ params, searchParams }: {
       const { filas: todas } = await todaLaCompetencia(supabase,
         "id,convocatoria_id,ruc,empresa,region,etapa,categoria,modalidad,titulo,personas,monto,fuente");
       const { data: convsTodas } = await supabase.from("convocatorias").select("id,codigo,nombre,anio");
-      histComp = historialDeConvocatoria(todas,
-        new Map<string, ConvRival>(((convsTodas || []) as ConvRival[]).map(c => [c.id, c])),
-        params.id);
+      const mapaConvs = new Map<string, ConvRival>(
+        ((convsTodas || []) as ConvRival[]).map(c => [c.id, c]));
+      histComp = historialDeConvocatoria(todas, mapaConvs, params.id);
+      /* Contra cuántas ediciones se cruzó: lo que convierte «1ª vez que la
+         vemos» en una frase comprobable en vez de una impresión. Se cuenta
+         sobre las convocatorias que tienen filas CARGADAS —no sobre las que
+         existen en el sistema—, que es lo único que este cruce ha mirado. */
+      const idsCargados = new Set(todas.map(f => f.convocatoria_id));
+      const aniosCargados = [...idsCargados]
+        .map(id => mapaConvs.get(id)?.anio).filter(Boolean) as number[];
+      cruceComp = {
+        ediciones: idsCargados.size,
+        desde: aniosCargados.length ? Math.min(...aniosCargados) : null,
+        hasta: aniosCargados.length ? Math.max(...aniosCargados) : null,
+      };
+      /* ⚠ Solo los ids de ESTA convocatoria, no los de `todas`: el `.in(...)`
+         viaja en la URL y con veintiuna ediciones cargadas serían miles de
+         identificadores para averiguar que hay tres notas. */
+      const h = await hilosDeFilas(supabase, "convocatoria_competencia",
+        (cp.data || []).map((f: any) => f.id));
+      hilosComp = {
+        conteo: Object.fromEntries(h.conteo), reacciones: Object.fromEntries(h.reacciones),
+        userId: user?.id || "", error: h.error,
+      };
+    }
+
+    /* ── ⚖️ LA MESA, Y CONTRA QUÉ SE CRUZA ──
+       Mismo patrón que la competencia: para decir «3ª vez que juzga» hacen
+       falta TODAS las mesas cargadas, no solo esta. Son cinco filas por
+       convocatoria —un dato pequeño— así que se traen enteras sin paginar,
+       al revés que los competidores, que son doscientos por año. */
+    jurado = ((ju as any)?.data || []) as FilaJur[];
+    if (jurado.length) {
+      const [{ data: todasJ }, { data: convsTodas }] = await Promise.all([
+        supabase.from("convocatoria_jurado").select("id,convocatoria_id,nombre,rol"),
+        supabase.from("convocatorias").select("id,codigo,nombre,anio"),
+      ]);
+      const mapaJ = new Map<string, ConvJur>(
+        ((convsTodas || []) as ConvJur[]).map(c => [c.id, c]));
+      histJur = historialDeJurado((todasJ || []) as any[], mapaJ, params.id);
+      const idsJ = new Set(((todasJ || []) as any[]).map(f => f.convocatoria_id));
+      const aniosJ = [...idsJ].map(id => mapaJ.get(id)?.anio).filter(Boolean) as number[];
+      cruceJur = {
+        ediciones: idsJ.size,
+        desde: aniosJ.length ? Math.min(...aniosJ) : null,
+        hasta: aniosJ.length ? Math.max(...aniosJ) : null,
+      };
+      const hj = await hilosDeFilas(supabase, "convocatoria_jurado", jurado.map(f => f.id));
+      hilosJur = {
+        conteo: Object.fromEntries(hj.conteo), reacciones: Object.fromEntries(hj.reacciones),
+        userId: user?.id || "", error: hj.error,
+      };
     }
     (mm.data || []).forEach((m: any) => {
       if (!m.cartel_url) return;
@@ -5565,23 +5637,43 @@ export default async function Entidad({ params, searchParams }: {
                    proyecto sí, y en esta lista un título repetido no es
                    casualidad. */
                 proyectosPropios={postus.map((p: any) => p.proy?.nombre).filter(Boolean)}
-                historial={histComp} />
+                historial={histComp} cruce={cruceComp} hilos={hilosComp} />
+            );
+            /* Quién decide. Justo detrás de contra quién competimos: son las
+               dos mitades de la misma pregunta, y esta es la que se lee ANTES
+               de escribir el proyecto. */
+            const juradoConv = (
+              <Jurado convocatoriaId={params.id} nombre={nombre || ""}
+                anio={(ent as any)?.anio ?? null}
+                filas={jurado} historial={histJur} cruce={cruceJur} hilos={hilosJur} />
             );
             /* Postulaciones primero: en una convocatoria, lo que se viene a ver
                es a qué presentamos. Luego el cronograma del concurso, y después
                el trabajo/repositorio/historial. */
             return (
-              <TabsPanel extra={driveTab} masUltima
+              /* ⚠ DOS AL MENÚ, NO UNA. Con ⚖️ Jurado la fila pasó de seis
+                 pestañas a siete y se partió en dos líneas: la segunda quedaba
+                 pegada al panel, leyéndose como si «Repositorio» fuera parte
+                 de lo de abajo y no una pestaña. El sitio de las que se usan
+                 menos es el ⋮, que para eso está. */
+              <TabsPanel extra={driveTab} masUltima={2}
                 labels={[
                   `🎯 Postulaciones · ${postus.length}`,
                   `🏁 Competencia · ${competencia.length}`,
+                  `⚖️ Jurado · ${jurado.length}`,
                   etiquetaCrono,
                   `📋 Casos · ${activas.length}`,
                   `📚 Repositorio · ${objetosDe.length}`,
                   `🕐 Historial · ${totEventos}`,
                 ]}
-                paneles={[postusConv, compConv, cronoNode, trabajoNode, repoConv, histConv]}
-                iconoSolo={[5]}
+                paneles={[postusConv, compConv, juradoConv, cronoNode, trabajoNode, repoConv, histConv]}
+                /* ⚠ SIN ESTO, EL AVISO LLEGA Y NO HACE NADA.
+                   `#competencia/<fila>` abre la pestaña y salta a la fila, y es
+                   como aterriza quien pulsa «te mencionaron en un competidor».
+                   Sin `claves`, TabsPanel no sabe a qué pestaña se refiere el
+                   hash: la fila está montada pero oculta, y el enlace parece
+                   roto habiendo funcionado. */
+                claves={["postulaciones", "competencia", "jurado", "crono", "casos", "repositorio", "historial"]}
               />
             );
           })()}

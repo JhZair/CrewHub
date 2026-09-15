@@ -41,8 +41,15 @@
    sigue ahí. Este módulo es el camino bueno, no el único.
    ══════════════════════════════════════════════════════════════════════════ */
 
-/** Un trozo de texto tal como lo entrega el PDF: su posición y su ancho. */
-export type Trozo = { x: number; y: number; w: number; s: string };
+/** Un trozo de texto tal como lo entrega el PDF: su posición, su ancho y el
+ *  ALTO de su letra.
+ *  ⚠ El alto es opcional porque a este lector de tablas no le hace falta —una
+ *  celda es una celda escriba como escriba—, pero al de sumillas de jurado sí:
+ *  ahí lo único que separa un nombre de la línea de biografía que va debajo es
+ *  el cuerpo de la letra. Va en el MISMO tipo para que el extractor sea uno
+ *  solo: dos extractores casi iguales es la forma de que un arreglo entre por
+ *  una puerta y no por la otra. */
+export type Trozo = { x: number; y: number; w: number; s: string; h?: number };
 
 export type FilaTabla = {
   /** Una celda por columna. */
