@@ -2,6 +2,8 @@
 import { useState } from "react";
 import { moverSecuencia, borrarSecuencia, marcarHilo } from "@/app/guion/acciones";
 import { usarGuardadoSecuencia, ROTULO_GUARDADO } from "@/lib/usarGuardadoSecuencia";
+import SecuenciaFicha from "@/components/SecuenciaFicha";
+import type { ExtrasSec } from "@/components/GuionTimeline";
 import { palabras, minutosDe, minutosHum, MIN_PARA_ANALIZAR, VOZ, type ModoGuion } from "@/lib/guion";
 
 /* EL TRATAMIENTO DE UNA SECUENCIA — la tarjeta de la vista «Cards».
@@ -31,10 +33,12 @@ type Hilo = { id: string; nombre: string; color: string };
    la prop «por si acaso» habría sido peor que quitarla: el siguiente que la
    lea creerá que hay dos sitios donde se enseña el punto y buscará por qué
    uno no se pinta. */
-export default function Tratamiento({ sec, tratamientoId, hilos, modo, n, primera, ultima }: {
+export default function Tratamiento({ sec, tratamientoId, hilos, modo, n, primera, ultima, extras }: {
   sec: Sec; tratamientoId: string; hilos: Hilo[]; modo: ModoGuion;
   /** Número visible (SEC 01) y si es la primera/última DE SU ACTO. */
   n: number; primera: boolean; ultima: boolean;
+  /** Fotos, gente, renders, casos y comentarios de esta secuencia. */
+  extras?: ExtrasSec;
 }) {
   const { estado, err, setErr, programar, volcar, volcarYRefrescar, olvidar, router } =
     usarGuardadoSecuencia(sec.id, tratamientoId);
@@ -174,6 +178,28 @@ export default function Tratamiento({ sec, tratamientoId, hilos, modo, n, primer
             </span>
           )}
         </div>
+      )}
+
+      {/* ── LO QUE CUELGA DE LA SECUENCIA ──
+          Al PIE de la tarjeta y siempre visible, abierta o plegada: la
+          imagen, quién sale, el render, los casos y la conversación no son
+          parte de escribir el texto —son lo que hace falta para rodarlo— y
+          esconderlos dentro del modo edición los habría dejado donde estaban
+          antes de existir: fuera de la vista.
+          Solo se pinta si la página mandó los datos: sin `extras` la tira
+          saldría con todo a cero, que es distinto de «no se sabe». */}
+      {extras && (
+        <SecuenciaFicha
+          secuenciaId={sec.id} tratamientoId={tratamientoId} nombre={sec.nombre}
+          portada={extras.portadaDe[sec.id] || null}
+          fotos={extras.fotosDe[sec.id] || []}
+          reparto={extras.reparto}
+          actores={extras.actoresDe[sec.id] || []}
+          renders={extras.rendersDe[sec.id] || []}
+          casos={extras.casosDe[sec.id] || []}
+          reacciones={extras.rxSec[sec.id] || []}
+          nComentarios={extras.nCom[sec.id] || 0}
+          userId={extras.userId} />
       )}
     </div>
   );

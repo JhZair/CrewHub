@@ -6,6 +6,7 @@ import ElegirModelo from "@/components/ElegirModelo";
 import { modoGuion, VOZ, plantillaDe, explicar, minutosHum, repartoActos,
   diagnosticar as diagnosticarGuion } from "@/lib/guion";
 import { columnas } from "@/lib/timeline";
+import { hilosDeFilas } from "@/lib/rendicionHilo";
 import { tituloDe, nivelDe, metaNivel, nivelDestino, llegoAlDestino,
   estadoDe as estadoTrat, META_ESTADO_TRAT } from "@/lib/tratamiento";
 import Link from "@/components/Enlace";
@@ -158,9 +159,54 @@ export default async function Guion({
      proyectos de la base: crece sin techo y manda al navegador datos de
      guiones ajenos. */
   const ids = (secs || []).map((s: any) => s.id);
-  const { data: marcas } = ids.length
-    ? await supabase.from("guion_secuencia_hilos").select("secuencia_id,hilo_id").in("secuencia_id", ids)
-    : { data: [] as any[] };
+  /* ── TODO LO QUE CUELGA DE LAS SECUENCIAS, EN UNA SOLA RONDA ──
+     Siete consultas en paralelo y no siete viajes encadenados: ninguna depende
+     del resultado de otra, solo de `ids`. Y todas van acotadas con `.in(ids)`
+     por la misma razón que las marcas: estas tablas cuelgan de la secuencia y
+     no tienen `proyecto_id`, así que sin el `.in` se traen las de todos los
+     guiones de la base — crece sin techo y manda al navegador material de
+     películas ajenas. */
+  const vacio = { data: [] as any[], error: null as any };
+  const [
+    { data: marcas }, { data: portadas }, { data: fotos },
+    { data: repSec }, { data: renders }, { data: casosSec },
+    { data: elenco, error: eElenco },
+  ] = ids.length ? await Promise.all([
+    supabase.from("guion_secuencia_hilos").select("secuencia_id,hilo_id").in("secuencia_id", ids),
+    /* La imagen representativa vive en `entidad_media` con
+       `entidad_tipo='secuencia'`, como la de cualquier ficha. */
+    supabase.from("entidad_media").select("entidad_id,portada_url")
+      .eq("entidad_tipo", "secuencia").in("entidad_id", ids),
+    supabase.from("entidad_foto").select("id,entidad_id,url,pie,orden")
+      .eq("entidad_tipo", "secuencia").in("entidad_id", ids)
+      .order("orden").order("creado_en"),
+    supabase.from("guion_secuencia_actores")
+      .select("secuencia_id,proyecto_actor_id,principal").in("secuencia_id", ids),
+    /* `version desc`: el primero de cada secuencia es el vigente, y eso lo
+       decide el orden y no una bandera. */
+    supabase.from("guion_secuencia_render")
+      .select("id,secuencia_id,url,version,nota,duracion,creado_en")
+      .in("secuencia_id", ids).order("version", { ascending: false }),
+    supabase.from("publicaciones").select("id,titulo,estado,tipo,secuencia_id")
+      .in("secuencia_id", ids).is("archivado_en", null),
+    /* El reparto ENTERO de la película: es de donde se elige quién sale en
+       cada secuencia, así que no se puede acotar por secuencia. */
+    /* ⚠ `foto_url`, y NO `avatar_url`. `personas` tiene `foto_url` —como la
+       piden las otras seis pantallas que embeben personas— y no tiene `color`.
+       Pedir columnas que no existen no devuelve esas columnas vacías: PostgREST
+       RECHAZA LA CONSULTA ENTERA, así que `elenco` llegaba `null`, el reparto
+       salía como lista vacía y la secuencia decía «esta película todavía no
+       tiene reparto cargado» sobre diez actores sociales que estaban ahí.
+       Y el error se estaba tragando: por eso se suma a `fallo` abajo. */
+    supabase.from("proyecto_actores")
+      .select("id,rol,orden,persona:personas(id,nombre,alias,foto_url)")
+      .eq("proyecto_id", proy.id).order("orden"),
+  ]) : [vacio, vacio, vacio, vacio, vacio, vacio, vacio];
+
+  /* Los comentarios y las reacciones por secuencia: el mismo contador que usan
+     las otras ocho puertas del registro, sin una línea nueva. */
+  const { conteo: nCom, reacciones: rxSec } =
+    await hilosDeFilas(supabase, "guion_secuencia", ids);
 
   /* Una consulta rota devuelve `data: null`, y `|| []` la convierte en
      «no hay nada escrito»: exactamente lo mismo que se ve cuando de verdad
@@ -170,7 +216,11 @@ export default async function Guion({
      faltaba `guion_beats` la espina salía vacía sin decir por qué —y la
      página parecía funcionar—. Es el mismo fallo silencioso que llevo
      cerrando toda la sesión, cometido otra vez a los diez minutos. */
-  const fallo = explicar([eActos, eSecs, eHilos, eBeats]
+  /* ⚠ `eElenco` entra en la cadena, y es la lección de siempre cometida otra
+     vez: la consulta del reparto se destructuraba SIN su error, así que una
+     consulta rota se leía en pantalla como «esta película no tiene reparto» —
+     indistinguible de la verdad, y sobre diez personas que sí estaban. */
+  const fallo = explicar([eActos, eSecs, eHilos, eBeats, eElenco]
     .map((e: any) => e?.message).filter(Boolean).join(" · "));
 
   const hilosDe = new Map<string, string[]>();
@@ -178,6 +228,58 @@ export default async function Guion({
     hilosDe.set(m.secuencia_id, [...(hilosDe.get(m.secuencia_id) || []), m.hilo_id]));
 
   const secuencias = (secs || []).map((s: any) => ({ ...s, hilos: hilosDe.get(s.id) || [] }));
+
+  /* ── LO DE CADA SECUENCIA, INDEXADO ──
+     Se agrupa aquí, en el servidor, y no en cada componente: las dos vistas
+     necesitan lo mismo y agruparlo dos veces es dos sitios donde equivocarse
+     de clave. Un `Map` por cosa, y cada vista pide por id.
+     ⚠ Se pasan como objetos planos y no como `Map`: esto cruza a componentes
+     de cliente, y un `Map` no sobrevive la serialización del payload RSC —
+     llega como `{}` y todo sale vacío, sin error. */
+  const porSec = <T extends { secuencia_id?: string | null; entidad_id?: string | null }>(
+    filas: T[] | null,
+  ) => {
+    const m: Record<string, T[]> = {};
+    for (const f of filas || []) {
+      const k = (f.secuencia_id || f.entidad_id || "") as string;
+      if (!k) continue;
+      (m[k] ||= []).push(f);
+    }
+    return m;
+  };
+  const fotosDe = porSec(fotos as any);
+  const rendersDe = porSec(renders as any);
+  const casosDe = porSec(casosSec as any);
+  const actoresDe = porSec((repSec || []).map((r: any) =>
+    ({ ...r, id: r.proyecto_actor_id })) as any);
+  const portadaDe: Record<string, string> = {};
+  for (const p of (portadas || []) as any[]) {
+    if (p.portada_url) portadaDe[p.entidad_id] = p.portada_url;
+  }
+  /* ⚠ `elenco` y no `reparto`: en este archivo `reparto` ya es el REPARTO DEL
+     METRAJE por actos (`repartoActos`). Dos cosas distintas con el mismo
+     nombre en el mismo ámbito — la segunda no compila, que es la forma
+     amable de enterarse. */
+  const repartoPeli = ((elenco || []) as any[]).map(r => {
+    const p = Array.isArray(r.persona) ? r.persona[0] : r.persona;
+    return {
+      id: r.id as string,
+      /* El alias si lo hay: en el equipo la gente se nombra por él, y un
+         reparto que usa el nombre legal obliga a traducir cada fila. */
+      nombre: (p?.alias || p?.nombre || "sin nombre") as string,
+      rol: (r.rol || null) as string | null,
+      avatar: (p?.foto_url || null) as string | null,
+      color: null as string | null,
+      personaId: (p?.id || null) as string | null,
+    };
+  });
+  /* El mismo objeto para las dos vistas. Lo arma la página porque es la única
+     que tiene todo a la vez. */
+  const extras = {
+    portadaDe, fotosDe, rendersDe, casosDe, actoresDe, reparto: repartoPeli,
+    nCom: Object.fromEntries(nCom), rxSec: Object.fromEntries(rxSec),
+    userId: user.id,
+  };
   const modo = modoGuion(proy.tipo);
   const V = VOZ[modo];
   const P = plantillaDe((trat as any).plantilla);
@@ -322,13 +424,14 @@ export default async function Guion({
       {vista === "timeline" && (
         <GuionTimeline tratamientoId={T.id} modo={modo}
           secs={secuencias as any} actos={(actos as any) || []}
-          hilos={(hilos as any) || []} beats={(beats as any) || []} />
+          hilos={(hilos as any) || []} beats={(beats as any) || []}
+          extras={extras} />
       )}
 
       {vista === "cards" && (
         <GuionEstructura tratamientoId={T.id} modo={modo} plantilla={T.plantilla}
           actos={(actos as any) || []} secs={secuencias as any} hilos={(hilos as any) || []}
-          beats={(beats as any) || []} />
+          beats={(beats as any) || []} extras={extras} />
       )}
 
       {/* ── DOCUMENTO ──

@@ -2,6 +2,7 @@
 import { Fragment, useState } from "react";
 import { useRouter } from "next/navigation";
 import Tratamiento from "@/components/Tratamiento";
+import type { ExtrasSec } from "@/components/GuionTimeline";
 import Espina, { type BeatFila } from "@/components/Espina";
 import { crearActo, guardarActo, borrarActo, crearSecuencia,
   elegirPlantilla, crearHilo, borrarHilo, sembrarBeats, crearBeat } from "@/app/guion/acciones";
@@ -26,10 +27,12 @@ type Hilo = { id: string; nombre: string; color: string };
 
 const COLORES = ["#a78bfa", "#2dd4bf", "#f4b400", "#ff4d5e", "#84cc16", "#06b6d4", "#ec4899"];
 
-export default function GuionEstructura({ tratamientoId, modo, plantilla, actos, secs, hilos, beats }: {
+export default function GuionEstructura({ tratamientoId, modo, plantilla, actos, secs, hilos, beats, extras }: {
   tratamientoId: string; modo: ModoGuion; plantilla?: string | null;
   actos: Acto[]; secs: Sec[]; hilos: Hilo[];
   beats: (BeatFila & { acto_id?: string | null })[];
+  /** Fotos, gente, renders, casos y comentarios de cada secuencia. */
+  extras?: ExtrasSec;
 }) {
   const router = useRouter();
   const V = VOZ[modo];
@@ -119,7 +122,7 @@ export default function GuionEstructura({ tratamientoId, modo, plantilla, actos,
     return (
       <Fragment key={s.id}>
         <Tratamiento sec={s} tratamientoId={tratamientoId} hilos={hilos} modo={modo}
-          n={nDe.get(s.id) || 0}
+          n={nDe.get(s.id) || 0} extras={extras}
           primera={i === 0} ultima={i === lista.length - 1} />
         {suyos.length > 0 && (
           <div className="es-bloque es-bloque-sec">

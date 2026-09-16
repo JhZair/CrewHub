@@ -7642,6 +7642,148 @@ textarea.vf-ancho{resize:vertical;line-height:1.5}
   color:var(--dim)}
 .ltg-chip.on{font-weight:600}
 
+/* ══════════════════════════════════════════════════════════════════════════
+   🎞 LO QUE CUELGA DE UNA SECUENCIA (components/SecuenciaFicha.tsx)
+
+   La imagen, quién sale, el render, los casos y la conversación. Va al PIE de
+   la secuencia en Tarjetas y dentro del cajón en la línea de tiempo — el mismo
+   componente en los dos sitios, así que un solo bloque de estilos.
+
+   ── UNA TIRA DE CONTADORES, NO CINCO SECCIONES ──
+   Las cinco cosas abiertas a la vez, en una lista de veinte secuencias, son
+   una pantalla que no se puede recorrer. La tira dice CUÁNTO hay de cada una
+   —que es lo que se mira al pasar— y el panel se abre debajo solo cuando se
+   pide, de uno en uno.
+   ══════════════════════════════════════════════════════════════════════════ */
+.sqf{margin-top:8px;padding-top:7px;border-top:1px solid rgba(255,255,255,.05)}
+.sqf-tira{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.sqf-sep{flex:1}
+.sqf-b{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-family:inherit;
+  cursor:pointer;background:none;border:1px solid transparent;border-radius:999px;
+  padding:2px 9px;color:var(--dim);line-height:1.6}
+.sqf-b:hover{color:var(--text);border-color:var(--border)}
+.sqf-b.on{color:var(--violet);border-color:rgba(167,139,250,.45);
+  background:rgba(124,92,255,.12);font-weight:700}
+.sqf-b:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+
+/* ── LA IMAGEN Y QUIÉN SALE, A LA VISTA ──
+   Estos dos botones no cuentan: ENSEÑAN. De las cinco cosas que cuelgan de una
+   secuencia, la imagen y la gente son las que se miran al pasar —«¿cuál era la
+   del Tinkuy?», «¿esta es la de Lino?»— y un número no contesta ninguna de las
+   dos. Siguen abriendo su panel al pulsarlos: mirar no cuesta un clic, editar
+   sí. */
+.sqf-b-img{padding:2px 6px 2px 2px}
+.sqf-mini{width:44px;height:26px;object-fit:cover;border-radius:5px;
+  border:1px solid var(--border);display:block}
+.sqf-mini-no{display:flex;align-items:center;justify-content:center;font-size:12px;
+  border-style:dashed;border-color:var(--border2);color:var(--dim)}
+/* Cuántas más hay en la galería. Sin esto, la miniatura afirma en silencio que
+   esa es toda la imagen que existe de la secuencia. */
+.sqf-mas{font-size:9.5px;font-weight:700;color:var(--dim)}
+
+.sqf-b-gente{padding:2px 9px 2px 3px;gap:6px}
+.sqf-nadie{font-size:11px;color:var(--dim);font-style:italic}
+/* Apiladas, como en cualquier lista de gente de la casa: ocupan menos y se
+   leen como «un grupo» en vez de como tres datos sueltos. */
+.sqf-caras{display:inline-flex;align-items:center}
+.sqf-cara{display:inline-flex;border-radius:50%;border:2px solid var(--card);
+  margin-right:-7px}
+.sqf-cara:last-child{margin-right:0}
+/* Quien LLEVA la secuencia, con su aro. Es la misma distinción que la ★ del
+   panel, dicha sin texto porque aquí no cabe. */
+.sqf-cara.es-pri{border-color:var(--yellow)}
+.sqf-quien{font-size:11px;color:var(--text);font-weight:600;max-width:150px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+
+.sqf-panel{margin-top:8px;padding:10px 12px;background:var(--card);
+  border:1px solid var(--border);border-radius:10px;
+  display:flex;flex-direction:column;gap:8px}
+/* La cabecera de cada bloque dice QUÉ es y, en gris, la regla de uso. La regla
+   va aquí y no en un tooltip porque es lo que hace que el campo se llene bien
+   la primera vez, y un tooltip solo lo lee quien ya sospecha. */
+.sqf-h{font-size:11px;font-weight:700;letter-spacing:.3px;color:var(--muted);
+  display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.sqf-h span{font-weight:400;letter-spacing:0;color:var(--dim);font-size:10.5px}
+.sqf-no{font-size:11.5px;color:var(--dim);font-style:italic}
+
+/* ── IMÁGENES ── */
+.sqf-port{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.sqf-port-img{width:150px;height:84px;object-fit:cover;border-radius:8px;
+  border:1px solid var(--border2)}
+.sqf-port-no{width:150px;height:84px;border-radius:8px;border:1px dashed var(--border2);
+  display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--dim)}
+.sqf-port-acc{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.sqf-fotos{display:flex;gap:8px;flex-wrap:wrap}
+.sqf-foto{display:flex;flex-direction:column;gap:3px;width:128px;position:relative}
+.sqf-foto img{width:128px;height:72px;object-fit:cover;border-radius:7px;
+  border:1px solid var(--border)}
+.sqf-foto input{background:var(--bg);border:1px solid var(--border);border-radius:6px;
+  padding:3px 6px;font-size:10.5px;color:var(--text);font-family:inherit;width:100%}
+.sqf-foto>.dato-btn{position:absolute;top:3px;right:3px;background:rgba(0,0,0,.55);
+  border-radius:6px;padding:0 4px}
+
+/* ── QUIÉN SALE ── */
+.sqf-gente{display:flex;gap:6px;flex-wrap:wrap}
+/* Todo el reparto a la vista, dentro y fuera: elegir de una lista que solo
+   enseña lo ya elegido obliga a recordar quién más había. */
+.sqf-pers{display:inline-flex;align-items:center;gap:2px;border:1px solid var(--border);
+  border-radius:999px;padding:1px 3px 1px 1px;background:var(--bg)}
+.sqf-pers.on{border-color:rgba(167,139,250,.5);background:rgba(124,92,255,.10)}
+.sqf-pers-b{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;
+  font-family:inherit;cursor:pointer;background:none;border:0;border-radius:999px;
+  padding:1px 6px 1px 1px;color:var(--dim)}
+.sqf-pers.on .sqf-pers-b{color:var(--text);font-weight:600}
+.sqf-pers-b:hover{color:var(--text)}
+.sqf-pers-b i{font-style:normal;font-size:10px;color:var(--dim);font-weight:400}
+/* La estrella: quien LLEVA la secuencia. Apagada es un contorno, no un hueco:
+   un hueco se lee como que falta el control. */
+.sqf-pri{font-size:11px;background:none;border:0;cursor:pointer;padding:0 3px;
+  color:var(--border2);font-family:inherit}
+.sqf-pri:hover{color:var(--yellow)}
+.sqf-pri.on{color:var(--yellow)}
+
+/* ── EL RENDER ── */
+.sqf-rend-form{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.sqf-rend-form input{background:var(--bg);border:1px solid var(--border);border-radius:8px;
+  padding:5px 8px;font-size:11.5px;color:var(--text);font-family:inherit;min-width:0}
+.sqf-rends{display:flex;flex-direction:column;gap:4px}
+.sqf-rend{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11.5px;
+  padding:4px 8px;border-radius:8px;background:var(--bg);border:1px solid var(--border)}
+/* El vigente se marca, y es lo único que hace falta marcar: el orden ya dice
+   el resto. Sin esto, seis enlaces iguales obligan a comparar números. */
+.sqf-rend.es-vigente{border-color:rgba(46,204,113,.4)}
+.sqf-rend b{color:var(--muted)}
+.sqf-vig{font-size:9.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;
+  color:var(--green);background:rgba(46,204,113,.14);border-radius:5px;padding:1px 6px}
+.sqf-rend a{color:var(--blue);text-decoration:none}
+.sqf-rend a:hover{text-decoration:underline}
+.sqf-dur{font-variant-numeric:tabular-nums;color:var(--dim);font-size:10.5px}
+.sqf-rend i{font-style:normal;color:var(--muted);font-size:11px}
+.sqf-cuando{color:var(--dim);font-size:10px}
+
+/* ── LOS CASOS ──
+   Mismo chip que en el cronograma (`.cr-caso`), a propósito: son la misma
+   relación —trabajo colgando de una fila— y con dos diseños habría que
+   aprenderlos dos veces. */
+.sqf-casos{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.sqf-caso-acc{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+/* ══ LA FILA DE IMÁGENES DE LA LÍNEA DE TIEMPO ══
+   La que la referencia tiene y a esta pantalla le faltaba. En un documental
+   coral, «¿cuál era la del Tinkuy?» se contesta mirando, no leyendo
+   veinticuatro títulos. */
+.ltg-imgs{background:rgba(255,255,255,.015)}
+.ltg-cel-img{position:relative;display:flex;align-items:center;justify-content:center;
+  padding:5px 6px;min-height:64px}
+.ltg-cel-img img{width:100%;height:56px;object-fit:cover;border-radius:6px;
+  border:1px solid var(--border)}
+.ltg-sin-img{color:var(--dim);font-size:11px}
+/* Cuántas hay en la galería, cuando hay más de una. Si no, la miniatura
+   afirma en silencio que esa es toda la imagen que existe de la secuencia. */
+.ltg-nfotos{position:absolute;right:9px;bottom:8px;font-size:9.5px;font-weight:700;
+  color:var(--text);background:rgba(0,0,0,.6);border-radius:5px;padding:0 5px}
+
 /* ── LAS CUATRO VISTAS DEL TRATAMIENTO (app/guion/[id]) ──
    Línea de tiempo · Tarjetas · Documento · Diagnóstico. La elección va en la URL,
    así que son enlaces: cada vista tiene su dirección y el botón de atrás va. */

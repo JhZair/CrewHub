@@ -1017,3 +1017,384 @@ export async function borrarTratamiento(id: string, proyectoId: string, confirma
   revalidarTrat(proyectoId);
   return {};
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LO QUE CUELGA DE UNA SECUENCIA
+
+   Una secuencia era un nombre, un texto y unos minutos: suficiente para
+   ESCRIBIR el tratamiento, insuficiente para RODARLO. Al llegar al rodaje, lo
+   que hay que saber de «La Fe y el Santo Patrono» es quién sale, cómo se ve,
+   dónde está el render que se mandó al fondo y qué quedó pendiente — y todo
+   eso vivía en la cabeza de alguien, en un WhatsApp y en una carpeta de Drive.
+
+   El modelo está en db/secuencia-completa.sql, y casi nada es nuevo: la
+   portada y la galería son las tablas polimórficas de siempre, los casos son
+   una columna en `publicaciones` como en el cronograma, y los comentarios son
+   una puerta más del registro de lib/rendicionHilo.ts.
+
+   ── POR QUÉ ESTAS ACCIONES Y NO LAS GENÉRICAS DE app/actions.ts ──
+   `agregarFotos`, `quitarFoto` y `guardarImagenEntidad` hacen exactamente el
+   trabajo de almacenamiento que hace falta, y aun así no se llaman desde aquí.
+   Dos razones, y las dos son del MISMO tipo — anotan en el sitio equivocado:
+     · escriben en `actividad` con `entidad_tipo` = el tipo recibido, y una
+       secuencia NO es una entidad del sistema: no tiene ficha ni ruta. El
+       historial acabaría con filas que enlazan a ninguna parte, que es
+       justamente lo que db/repositorio-casa.sql se cuidó de no hacer.
+     · revalidan `/entidad/<tipo>/<id>`, una ruta que para una secuencia no
+       existe. No da error: simplemente no revalida nada, y la pantalla del
+       guion se queda con lo viejo.
+   Aquí la actividad se anota contra el PROYECTO —que es de quien es la
+   película— y se revalida la ruta del tratamiento.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** De qué tratamiento y proyecto es una secuencia. Lo piden casi todas las
+ *  acciones de aquí abajo: para revalidar la pantalla correcta y para anotar
+ *  la actividad en el proyecto. Un viaje, y las que anotan lo aprovechan. */
+async function deQuienEs(supabase: any, secuenciaId: string) {
+  const { data } = await supabase.from("guion_secuencias")
+    .select("id,nombre,texto,tratamiento_id,trat:tratamiento(proyecto_id)")
+    .eq("id", secuenciaId).maybeSingle();
+  if (!data) return null;
+  const trat: any = Array.isArray((data as any).trat) ? (data as any).trat[0] : (data as any).trat;
+  return {
+    id: data.id as string,
+    nombre: String((data as any).nombre || ""),
+    texto: String((data as any).texto || ""),
+    tratamientoId: (data as any).tratamiento_id as string,
+    proyectoId: (trat?.proyecto_id || null) as string | null,
+  };
+}
+
+/* ── LA IMAGEN QUE REPRESENTA LA SECUENCIA ──
+ * Una ranura, no la primera de una lista: `entidad_media` tiene
+ * `unique (entidad_tipo, entidad_id)` y por eso se hace UPSERT.
+ * ⚠ `portada_url` y no `cartel_url`. Cartel es vertical —un póster—; lo que
+ * representa una secuencia es un FOTOGRAMA, y un fotograma es apaisado. */
+export async function portadaSecuencia(secuenciaId: string, url: string | null) {
+  const { supabase, user } = await sesion();
+  if (!user) return { error: "Sesión no encontrada." };
+  const s = await deQuienEs(supabase, secuenciaId);
+  if (!s) return { error: "Esa secuencia ya no está." };
+
+  const { error } = await supabase.from("entidad_media").upsert(
+    { entidad_tipo: "secuencia", entidad_id: secuenciaId,
+      portada_url: (url || "").trim() || null, actualizado: new Date().toISOString() },
+    { onConflict: "entidad_tipo,entidad_id" });
+  if (error) return { error: error.message };
+  revalidar(s.tratamientoId);
+  return {};
+}
+
+/* ── LA GALERÍA ──
+ * `entidad_foto` trae lo que una lista de URLs no tiene: el PIE DE FOTO. Una
+ * foto de la que nadie sabe qué enseña es una foto que nadie mira. */
+export async function sumarFotosSecuencia(secuenciaId: string, urls: string[]) {
+  const { supabase, user } = await sesion();
+  if (!user) return { error: "Sesión no encontrada." };
+  const s = await deQuienEs(supabase, secuenciaId);
+  if (!s) return { error: "Esa secuencia ya no está." };
+  const lista = (urls || []).filter(Boolean);
+  if (!lista.length) return { error: "No hay ninguna imagen que guardar." };
+
+  /* El orden arranca después de la última. ⚠ Estrecha la ventana, no la
+     cierra: dos subidas a la vez leen el mismo máximo. No se pone unicidad a
+     propósito —haría fallar la segunda subida entera por un desempate que a
+     nadie le importa— y el empate se resuelve al leer, ordenando también por
+     `creado_en`. Lo que no puede pasar es perder una foto, y no pasa. */
+  const { data: ultima } = await supabase.from("entidad_foto")
+    .select("orden").eq("entidad_tipo", "secuencia").eq("entidad_id", secuenciaId)
+    .order("orden", { ascending: false }).limit(1).maybeSingle();
+  const base = Number((ultima as any)?.orden ?? -1) + 1;
+
+  const { error } = await supabase.from("entidad_foto").insert(
+    lista.map((url, i) => ({
+      entidad_tipo: "secuencia", entidad_id: secuenciaId, url,
+      orden: base + i, creado_por: user.id,
+    })));
+  /* ⚠ El patrón NO incluye el nombre de la tabla. El mensaje de una violación
+     de RLS también lo lleva dentro, así que un fallo de permisos se anunciaba
+     como «falta correr la migración»: un aviso que quien lo lee no puede
+     resolver haciendo lo que dice. */
+  if (error) {
+    return { error: /(does not exist|schema cache|PGRST20)/i.test(error.message)
+      ? "Falta correr db/entidad-foto.sql en Supabase." : error.message };
+  }
+  revalidar(s.tratamientoId);
+  return { sumadas: lista.length };
+}
+
+export async function pieFotoSecuencia(fotoId: string, tratamientoId: string, pie: string) {
+  const { supabase, user } = await sesion();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data, error } = await supabase.from("entidad_foto")
+    .update({ pie: pie.trim() || null }).eq("id", fotoId).select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "No se guardó: no tienes permiso, o esa foto ya no está." };
+  revalidar(tratamientoId);
+  return {};
+}
+
+export async function quitarFotoSecuencia(fotoId: string, tratamientoId: string) {
+  const { supabase, user } = await sesion();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data, error } = await supabase.from("entidad_foto")
+    .delete().eq("id", fotoId).select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "No se quitó: no tienes permiso, o ya no estaba." };
+  revalidar(tratamientoId);
+  return {};
+}
+
+/* ── QUIÉN SALE EN LA SECUENCIA ──
+ *
+ * ⚠ El id que entra es el de `proyecto_actores` —la fila del REPARTO— y no el
+ * de la persona. Es lo que hace cumplir «los actores sociales que están
+ * cargados en el proyecto»: con el id de la persona se podría meter en una
+ * secuencia a cualquiera del sistema, y el reparto dejaría de ser una lista
+ * cerrada. La pantalla solo ofrece el reparto, pero una acción de servidor no
+ * puede fiarse de lo que ofrece la pantalla. */
+export async function marcarActorSecuencia(
+  secuenciaId: string, proyectoActorId: string, dentro: boolean,
+) {
+  const { supabase, user } = await sesion();
+  if (!user) return { error: "Sesión no encontrada." };
+  const s = await deQuienEs(supabase, secuenciaId);
+  if (!s) return { error: "Esa secuencia ya no está." };
+
+  if (!dentro) {
+    const { error } = await supabase.from("guion_secuencia_actores").delete()
+      .eq("secuencia_id", secuenciaId).eq("proyecto_actor_id", proyectoActorId);
+    if (error) return { error: error.message };
+    revalidar(s.tratamientoId);
+    return {};
+  }
+
+  /* Y que sea del MISMO proyecto que la secuencia. La clave foránea garantiza
+     que la fila del reparto existe; no que sea de esta película. Sin esto, un
+     id copiado de otra pestaña metería a un actor de ROBOTRASH en una
+     secuencia de SanEsteban, y en pantalla se leería como un dato cierto. */
+  const { data: act } = await supabase.from("proyecto_actores")
+    .select("proyecto_id").eq("id", proyectoActorId).maybeSingle();
+  if (!act) return { error: "Ese actor ya no está en el reparto." };
+  if (s.proyectoId && act.proyecto_id !== s.proyectoId)
+    return { error: "Ese actor es de otra película." };
+
+  const { error } = await supabase.from("guion_secuencia_actores")
+    .upsert({ secuencia_id: secuenciaId, proyecto_actor_id: proyectoActorId },
+      { onConflict: "secuencia_id,proyecto_actor_id" });
+  if (error) {
+    return { error: /(does not exist|schema cache|PGRST20)/i.test(error.message)
+      ? "Falta correr db/secuencia-completa.sql en Supabase." : error.message };
+  }
+  revalidar(s.tratamientoId);
+  return {};
+}
+
+/** Quién LLEVA la secuencia, frente a quién aparece en ella. Puede haber más
+ *  de uno; lo que no puede es que no se sepa — una secuencia con siete actores
+ *  sin esto no dice de quién es, y el orden acaba decidiéndolo por accidente. */
+export async function principalActorSecuencia(
+  secuenciaId: string, proyectoActorId: string, principal: boolean,
+) {
+  const { supabase, user } = await sesion();
+  if (!user) return { error: "Sesión no encontrada." };
+  const s = await deQuienEs(supabase, secuenciaId);
+  if (!s) return { error: "Esa secuencia ya no está." };
+
+  const { data, error } = await supabase.from("guion_secuencia_actores")
+    .update({ principal }).eq("secuencia_id", secuenciaId)
+    .eq("proyecto_actor_id", proyectoActorId).select("secuencia_id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "Ese actor ya no está en esta secuencia." };
+  revalidar(s.tratamientoId);
+  return {};
+}
+
+/* ── EL RENDER, CON SU HISTORIAL ──
+ *
+ * ⚠ CADA SUBIDA ES UNA FILA NUEVA, NUNCA UN `update`. Con una columna
+ * `render_url`, subir la v3 pisa la v2 y se pierde el enlace a lo que vio el
+ * jurado — que es exactamente lo que hay que poder volver a mirar cuando
+ * llegan las observaciones.
+ * El vigente es el de `version` más alta. No hay bandera `vigente` y es a
+ * propósito: mientras «el último es el bueno» sea verdad, una bandera es un
+ * segundo sitio donde decir lo mismo. */
+export async function subirRenderSecuencia(
+  secuenciaId: string,
+  d: { url: string; nota?: string; duracion?: string },
+) {
+  const { supabase, user } = await sesion();
+  if (!user) return { error: "Sesión no encontrada." };
+  const s = await deQuienEs(supabase, secuenciaId);
+  if (!s) return { error: "Esa secuencia ya no está." };
+
+  const { url, error: eUrl } = urlLimpia(d.url);
+  if (eUrl) return { error: eUrl };
+  if (!url) return { error: "Pega el enlace al render." };
+
+  const { data: ult } = await supabase.from("guion_secuencia_render")
+    .select("version").eq("secuencia_id", secuenciaId)
+    .order("version", { ascending: false }).limit(1).maybeSingle();
+  const version = Number((ult as any)?.version ?? 0) + 1;
+
+  const { data: nueva, error } = await supabase.from("guion_secuencia_render").insert({
+    secuencia_id: secuenciaId, url, version,
+    nota: (d.nota || "").trim() || null,
+    duracion: (d.duracion || "").trim() || null,
+    creado_por: user.id,
+  }).select("id,version").single();
+  if (error) {
+    /* ⚠ El choque del único (secuencia_id, version) NO es un error del que
+       escribe: son dos personas subiendo a la vez y la segunda leyó el mismo
+       máximo. Decirle «ya existe la versión 3» la deja sin saber qué hacer;
+       decirle que reintente es lo que resuelve. */
+    if (/duplicate key|unique/i.test(error.message))
+      return { error: "Alguien acaba de subir otra versión. Vuelve a pulsar y se numerará la siguiente." };
+    return { error: /(does not exist|schema cache|PGRST20)/i.test(error.message)
+      ? "Falta correr db/secuencia-completa.sql en Supabase." : error.message };
+  }
+
+  if (s.proyectoId) {
+    await supabase.from("actividad").insert({
+      entidad_tipo: "proyecto", entidad_id: s.proyectoId, actor_id: user.id, tipo: "edicion",
+      detalle: { mensaje: `subió el render v${version} de «${s.nombre || "una secuencia"}»` },
+    });
+  }
+  revalidar(s.tratamientoId);
+  return { id: nueva.id as string, version };
+}
+
+/** Quitar una versión del historial. Borra el ENLACE, no el archivo: el render
+ *  sigue en Drive. Se dice en la pantalla, porque «borrar» sobre un vídeo de
+ *  tres horas de exportación asusta más de lo que debe. */
+export async function borrarRenderSecuencia(renderId: string, tratamientoId: string) {
+  const { supabase, user } = await sesion();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data, error } = await supabase.from("guion_secuencia_render")
+    .delete().eq("id", renderId).select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "No se quitó: no tienes permiso, o ya no estaba." };
+  revalidar(tratamientoId);
+  return {};
+}
+
+/* ══════════ LOS CASOS DE UNA SECUENCIA ══════════
+ *
+ * Uno a muchos y la relación vive en el caso (`publicaciones.secuencia_id`),
+ * igual que en el cronograma: una secuencia tiene los trabajos que haga falta
+ * —conseguir el permiso del templo, cerrar la entrevista, rodar la procesión—
+ * y con un solo hueco, abrir el segundo obliga a soltar el primero, que es
+ * justo el que guardaba la conversación. */
+
+/** Abrir un caso desde la secuencia. Nace con el TEXTO del tratamiento dentro,
+ *  no solo con su procedencia: quien abre el caso el día del rodaje mira el
+ *  caso, no vuelve al guion a buscar qué había que rodar.
+ *  ⚠ Es una COPIA con fecha, no un espejo: si luego se reescribe la secuencia,
+ *  el caso ya abierto no cambia. Es lo correcto —un caso es lo que se dijo
+ *  cuando se abrió— pero conviene saberlo. */
+export async function casoDesdeSecuencia(secuenciaId: string) {
+  const { supabase, user } = await sesion();
+  if (!user) return { error: "Sesión no encontrada." };
+  const s = await deQuienEs(supabase, secuenciaId);
+  if (!s) return { error: "Esa secuencia ya no está." };
+  if (!s.proyectoId) return { error: "Esa secuencia no tiene película: no se sabe dónde colgar el caso." };
+
+  const { data: proy } = await supabase.from("proyectos")
+    .select("nombre,nombre_corto").eq("id", s.proyectoId).maybeSingle();
+  const peli = (proy as any)?.nombre_corto || (proy as any)?.nombre || "la película";
+  const procedencia = `Del tratamiento de ${peli}, secuencia «${s.nombre || "sin título"}».`;
+
+  const { data: pub, error } = await supabase.from("publicaciones").insert({
+    autor_id: user.id,
+    tipo: "tarea",
+    titulo: s.nombre || "Secuencia sin título",
+    cuerpo: [s.texto.trim(), procedencia].filter(Boolean).join("\n\n"),
+    estado: "en_progreso",
+  }).select("id").single();
+  if (error) return { error: error.message };
+
+  await supabase.from("publicacion_vinculos").insert({
+    publicacion_id: pub.id, entidad_tipo: "proyecto", entidad_id: s.proyectoId,
+  });
+
+  /* ⚠ Si el atado falla, el caso YA existe y está vinculado al proyecto. Se
+     dice con su nombre en vez de devolver un error a secas: quien lee «no se
+     pudo» y no ve el caso vuelve a pulsar, y entonces sí hay dos. */
+  const { data: ok, error: eAtar } = await supabase.from("publicaciones")
+    .update({ secuencia_id: secuenciaId }).eq("id", pub.id).select("id");
+  if (eAtar || !ok?.length) {
+    revalidar(s.tratamientoId);
+    return { error: `El caso «${s.nombre}» se creó pero no quedó atado a la secuencia`
+      + (eAtar ? `: ${eAtar.message}` : ".")
+      + " Está en el tablero del proyecto, no lo crees otra vez." };
+  }
+
+  await supabase.from("actividad").insert({
+    entidad_tipo: "publicacion", entidad_id: pub.id, tipo: "bot",
+    detalle: { mensaje: "Caso creado desde el tratamiento", regla: "guion" },
+  });
+  revalidar(s.tratamientoId);
+  return { id: pub.id as string };
+}
+
+/** Atar un caso que YA existe. Sin esto quedaban dos objetos hablando del
+ *  mismo trabajo —el caso apuntado a mano y la secuencia— sin forma de
+ *  juntarlos. */
+export async function atarCasoASecuencia(secuenciaId: string, casoId: string) {
+  const { supabase, user } = await sesion();
+  if (!user) return { error: "Sesión no encontrada." };
+  const s = await deQuienEs(supabase, secuenciaId);
+  if (!s) return { error: "Esa secuencia ya no está." };
+
+  const { data: c } = await supabase.from("publicaciones")
+    .select("id,secuencia_id,titulo").eq("id", casoId).maybeSingle();
+  if (!c) return { error: "Ese caso ya no existe." };
+  /* Ya atado a OTRA secuencia: se dice, en vez de robárselo en silencio. Un
+     caso pertenece a una secuencia, y moverlo es una decisión de alguien. */
+  if ((c as any).secuencia_id && (c as any).secuencia_id !== secuenciaId)
+    return { error: "Ese caso ya cuelga de otra secuencia. Suéltalo allí primero." };
+
+  const { data, error } = await supabase.from("publicaciones")
+    .update({ secuencia_id: secuenciaId }).eq("id", casoId).select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "No se ató: no tienes permiso, o el caso ya no existe." };
+  revalidar(s.tratamientoId);
+  return {};
+}
+
+/** Soltar, no borrar: el caso sigue vivo en el tablero, solo deja de colgar de
+ *  aquí. Recibe el ID DEL CASO porque una secuencia tiene varios y cada chip
+ *  suelta el suyo. */
+export async function soltarCasoDeSecuencia(casoId: string, tratamientoId: string) {
+  const { supabase, user } = await sesion();
+  if (!user) return { error: "Sesión no encontrada." };
+  const { data, error } = await supabase.from("publicaciones")
+    .update({ secuencia_id: null }).eq("id", casoId).select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "No se soltó: no tienes permiso, o el caso ya no existe." };
+  revalidar(tratamientoId);
+  return {};
+}
+
+/** Los casos del proyecto que todavía no cuelgan de ninguna secuencia, para el
+ *  desplegable de «atar uno que ya existe». */
+export async function casosLibresDeSecuencia(secuenciaId: string) {
+  const { supabase, user } = await sesion();
+  if (!user) return { error: "Sesión no encontrada." };
+  const s = await deQuienEs(supabase, secuenciaId);
+  if (!s?.proyectoId) return { casos: [] };
+
+  const { data: vinc } = await supabase.from("publicacion_vinculos")
+    .select("publicacion_id").eq("entidad_tipo", "proyecto").eq("entidad_id", s.proyectoId)
+    .limit(techo(400));
+  const ids = (vinc || []).map((v: any) => v.publicacion_id);
+  if (!ids.length) return { casos: [] };
+
+  const { data, error } = await supabase.from("publicaciones")
+    .select("id,titulo,estado,tipo,secuencia_id,archivado_en")
+    .in("id", ids).is("secuencia_id", null).is("archivado_en", null)
+    .neq("estado", "descartada")
+    .order("creado_en", { ascending: false }).limit(techo(200));
+  if (error) return { error: error.message };
+  return { casos: data || [] };
+}

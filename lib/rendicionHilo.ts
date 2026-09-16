@@ -28,11 +28,13 @@
    se lee, en vez de hacer un cambio grande sin ninguna mejora dentro. */
 export type TablaRendicion =
   | "comprobante" | "estado_cuenta" | "rhe" | "gasto_dj" | "movimiento_banco"
-  | "obligacion_periodo" | "convocatoria_competencia" | "convocatoria_jurado";
+  | "obligacion_periodo" | "convocatoria_competencia" | "convocatoria_jurado"
+  | "guion_secuencia";
 
 export const TABLAS_RENDICION: TablaRendicion[] =
   ["comprobante", "estado_cuenta", "rhe", "gasto_dj", "movimiento_banco",
-    "obligacion_periodo", "convocatoria_competencia", "convocatoria_jurado"];
+    "obligacion_periodo", "convocatoria_competencia", "convocatoria_jurado",
+    "guion_secuencia"];
 
 /* ── QUÉ CASO CUENTA ──
  * Uno archivado o descartado no ata la fila: dejarlo contar significaría que
@@ -253,6 +255,36 @@ export const META_RENDICION: Record<TablaRendicion, MetaRendicion> = {
     sinCaso: true,
     ruta: (fila, id) => fila?.convocatoria_id
       ? `/entidad/convocatoria/${fila.convocatoria_id}#jurado/${anclaRendicion("convocatoria_jurado", id)}`
+      : null,
+  },
+
+  /* ── Y LA NOVENA: UNA SECUENCIA DEL TRATAMIENTO ──
+     La primera que no es un papel ni una persona, sino un TROZO DE PELÍCULA. Y
+     es donde más falta hacía: lo que se discute de una secuencia —«¿esto lo
+     rodamos antes o después de la procesión?», «Lino dijo que ese día no
+     está»— se decide por WhatsApp y no vuelve nunca a la secuencia, que es
+     justo donde hará falta el día del rodaje.
+
+     ⚠ `sinCaso: true`, y NO porque de una secuencia no se abra trabajo —se
+     abre, y mucho—. Es que esta relación no vive donde la buscaría esta
+     maquinaria: las cinco tablas de la rendición llevan su `caso_id` encima
+     porque tienen UN caso; una secuencia tiene los que haga falta, así que la
+     relación vive en el caso (`publicaciones.secuencia_id`), igual que en el
+     cronograma. Sin esta bandera, `hilosDeFilas` pediría `caso_id` en cada
+     carga y PostgREST contestaría «column does not exist» — el contador
+     seguiría saliendo, pero a costa de una consulta que no puede funcionar. */
+  guion_secuencia: {
+    col: "secuencia_id",
+    etiqueta: "una secuencia",
+    sel: "tratamiento_id,nombre,orden",
+    titulo: r => String(r?.nombre || "").trim() || "una secuencia sin título",
+    migracion: "db/secuencia-completa.sql", ico: "🎞",
+    sinCaso: true,
+    /* A la vista de Tarjetas y no a la Línea de tiempo: el aviso lleva a LEER
+       lo que se comentó, y en Tarjetas la secuencia se ve entera. En la línea
+       de tiempo habría que desplazarse hasta su columna. */
+    ruta: (fila, id) => fila?.tratamiento_id
+      ? `/guion/${fila.tratamiento_id}?v=cards#${anclaRendicion("guion_secuencia", id)}`
       : null,
   },
 };

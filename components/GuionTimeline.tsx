@@ -9,6 +9,7 @@ import {
   ANCHO_COL, ANCHO_ROTULO,
   type SecCol, type ActoMin,
 } from "@/lib/timeline";
+import SecuenciaFicha from "@/components/SecuenciaFicha";
 
 /* ══════════════════════════════════════════════════════════════════════════
    ⏱ LA LÍNEA DE TIEMPO — la vista principal del tratamiento
@@ -57,6 +58,26 @@ import {
    LineaTiempo.tsx. Un prefijo corto parece libre y casi nunca lo está.
    ══════════════════════════════════════════════════════════════════════════ */
 
+
+/* ── LO QUE CUELGA DE CADA SECUENCIA ──
+ * Lo arma la página (app/guion/[id]), que es la única que lo tiene todo a la
+ * vez, y lo reciben las DOS vistas con la misma forma. Agruparlo aquí y otra
+ * vez en Tarjetas serían dos sitios donde equivocarse de clave.
+ * ⚠ Objetos planos y no `Map`: esto cruza a componentes de cliente y un `Map`
+ * no sobrevive la serialización del payload RSC — llega como `{}` y todo sale
+ * vacío, sin dar error. */
+export type ExtrasSec = {
+  portadaDe: Record<string, string>;
+  fotosDe: Record<string, any[]>;
+  rendersDe: Record<string, any[]>;
+  casosDe: Record<string, any[]>;
+  actoresDe: Record<string, any[]>;
+  reparto: any[];
+  nCom: Record<string, number>;
+  rxSec: Record<string, any[]>;
+  userId: string;
+};
+
 type Hilo = { id: string; nombre: string; color: string };
 type Beat = { id: string; nombre: string; tipo?: string | null; pos?: number | null; secuencia_id?: string | null };
 
@@ -74,7 +95,7 @@ const DENSIDAD = [
 ] as const;
 
 export default function GuionTimeline({
-  tratamientoId, modo, secs, actos, hilos, beats,
+  tratamientoId, modo, secs, actos, hilos, beats, extras,
 }: {
   tratamientoId: string;
   modo: ModoGuion;
@@ -82,6 +103,7 @@ export default function GuionTimeline({
   actos: ActoMin[];
   hilos: Hilo[];
   beats: Beat[];
+  extras?: ExtrasSec;
 }) {
   const V = VOZ[modo];
   const router = useRouter();
@@ -253,6 +275,34 @@ export default function GuionTimeline({
             </div>
           </div>
 
+          {/* ══ IMÁGENES ══
+              La fila que la referencia tiene y a esta pantalla le faltaba. No
+              es decoración: en un documental coral, «¿cuál era la del Tinkuy?»
+              se contesta mirando, no leyendo veinticuatro títulos. Se pinta
+              solo si alguna secuencia tiene imagen — una fila de veinticuatro
+              huecos grises no enseña nada y roba sesenta píxeles de alto a lo
+              que sí. */}
+          {extras && cols.some(c => extras.portadaDe[c.sec.id]) && (
+            <div className="ltg-fila ltg-imgs">
+              <div className="ltg-rot" style={rot}>Imagen</div>
+              <div className="ltg-cols" style={rejilla}>
+                {cols.map(c => {
+                  const src = extras.portadaDe[c.sec.id];
+                  const n = (extras.fotosDe[c.sec.id] || []).length;
+                  return (
+                    <div key={c.sec.id} className="ltg-cel ltg-cel-img">
+                      {src
+                        ? <img src={src} alt="" loading="lazy"
+                            title={`${c.sec.nombre}${n > 1 ? ` · ${n} fotos` : ""}`} />
+                        : <span className="ltg-sin-img" title="Sin imagen representativa">—</span>}
+                      {n > 1 && <span className="ltg-nfotos">{n}</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* ══ LA CABECERA DE CADA COLUMNA ══ */}
           <div className="ltg-fila">
             <div className="ltg-rot es-fuerte" style={rot}>{V.sec}</div>
@@ -341,7 +391,7 @@ export default function GuionTimeline({
         const c = cols.find(x => x.sec.id === abierta);
         if (!c) return null;
         return <Cajon key={c.sec.id} col={c} tratamientoId={tratamientoId} modo={modo}
-          hilos={hilos} onCerrar={() => setAbierta(null)} />;
+          hilos={hilos} extras={extras} onCerrar={() => setAbierta(null)} />;
       })()}
     </div>
   );
@@ -425,9 +475,10 @@ function Celda({ sec, tratamientoId, ayuda }: {
 
 /* ── EL CAJÓN DE UNA COLUMNA ──
  * Lo que no cabe en la celda: los minutos a mano y los hilos. */
-function Cajon({ col, tratamientoId, modo, hilos, onCerrar }: {
+function Cajon({ col, tratamientoId, modo, hilos, extras, onCerrar }: {
   col: ReturnType<typeof columnas>[number];
-  tratamientoId: string; modo: ModoGuion; hilos: Hilo[]; onCerrar: () => void;
+  tratamientoId: string; modo: ModoGuion; hilos: Hilo[];
+  extras?: ExtrasSec; onCerrar: () => void;
 }) {
   const V = VOZ[modo];
   const { estado, err, programar, volcarYRefrescar } =
@@ -471,6 +522,23 @@ function Cajon({ col, tratamientoId, modo, hilos, onCerrar }: {
             );
           })}
       </div>
+
+      {/* Lo que cuelga de la secuencia, el MISMO componente que en Tarjetas.
+          El cajón es el sitio: en la celda no cabe, y aquí ya está abierto
+          porque alguien pulsó ⤢ sobre esta columna. */}
+      {extras && (
+        <SecuenciaFicha
+          secuenciaId={col.sec.id} tratamientoId={tratamientoId} nombre={col.sec.nombre}
+          portada={extras.portadaDe[col.sec.id] || null}
+          fotos={extras.fotosDe[col.sec.id] || []}
+          reparto={extras.reparto}
+          actores={extras.actoresDe[col.sec.id] || []}
+          renders={extras.rendersDe[col.sec.id] || []}
+          casos={extras.casosDe[col.sec.id] || []}
+          reacciones={extras.rxSec[col.sec.id] || []}
+          nComentarios={extras.nCom[col.sec.id] || 0}
+          userId={extras.userId} />
+      )}
     </div>
   );
 }
